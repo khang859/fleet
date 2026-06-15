@@ -28,7 +28,9 @@ import type {
   ConflictState,
   WorktreeInfo,
   PruneResult,
-  Project
+  Project,
+  FeatureSuggestion,
+  VerifyCommand
 } from '../../shared/kanban-types';
 import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
@@ -931,6 +933,36 @@ export class KanbanCommands {
   }
 
   /**
+   * Deterministic decompose enforcement (spec §4): after a decompose run produces
+   * ≥2 worktree children with no feature, create a feature named after the parent
+   * and group parent + children. Idempotent — re-running it once anything is grouped
+   * is a no-op. Called from the MCP kanban_complete handler when a decompose run ends.
+   */
+  enforceDecomposeGrouping(parentTaskId: string): void {
+    const parent = this.store.getTask(parentTaskId);
+    if (!parent || parent.featureId) return; // already grouped, or gone
+    const children = this.store
+      .childrenOf(parentTaskId)
+      .map((id) => this.store.getTask(id))
+      .filter((t): t is Task => t != null && t.workspaceKind === 'worktree');
+    if (children.length < 2) return;
+    // bail if ANY child is already grouped — never clobber an existing grouping
+    if (children.some((c) => c.featureId)) return;
+
+    const repoPath = parent.repoPath ?? children[0].repoPath ?? null;
+    const baseBranch = parent.baseBranch ?? children[0].baseBranch ?? null;
+    const feature = this.createFeature({
+      boardId: parent.boardId,
+      name: parent.title,
+      repoPath,
+      baseBranch
+    });
+    for (const t of [parent, ...children]) {
+      this.assignTaskToFeature(t.id, feature.id);
+    }
+  }
+
+  /**
    * Re-run decompose for a feature whose triage orchestrator only created some tasks.
    * Reuses an existing triage task in the feature when present; otherwise creates a fresh
    * triage task seeded with the feature's existing tasks so the orchestrator has context
@@ -976,6 +1008,42 @@ export class KanbanCommands {
     this.requestDecompose(triage.id);
     this.dispatcher.tick();
     return triage;
+  }
+
+  // ---- Feature suggestions ----
+
+  listSuggestions(boardId: string): FeatureSuggestion[] {
+    return this.store.listSuggestions(boardId, { status: 'pending' });
+  }
+
+  acceptSuggestion(id: string): Feature {
+    const s = this.store.getSuggestion(id);
+    if (!s) throw new CodedError(`suggestion not found: ${id}`, 'NOT_FOUND');
+    const tasks = s.taskIds
+      .map((tid) => this.store.getTask(tid))
+      .filter((t): t is Task => t !== null);
+    if (tasks.length === 0) {
+      this.store.updateSuggestionStatus(id, 'dismissed');
+      throw new CodedError('all suggested tasks no longer exist', 'BAD_REQUEST');
+    }
+    const baseBranch = tasks.find((t) => t.baseBranch != null)?.baseBranch ?? null;
+    const feature = this.createFeature({
+      boardId: s.boardId,
+      name: s.name,
+      repoPath: s.repoPath,
+      baseBranch
+    });
+    for (const t of tasks) {
+      this.assignTaskToFeature(t.id, feature.id);
+    }
+    this.store.updateSuggestionStatus(id, 'accepted');
+    return feature;
+  }
+
+  dismissSuggestion(id: string): void {
+    const s = this.store.getSuggestion(id);
+    if (!s) throw new CodedError(`suggestion not found: ${id}`, 'NOT_FOUND');
+    this.store.updateSuggestionStatus(id, 'dismissed');
   }
 
   /** Shared guard: a feature with the repo + integration branch needed for git ops. */
@@ -1093,6 +1161,7 @@ export class KanbanCommands {
     name: string;
     path: string;
     description?: string | null;
+    verifyCommands?: VerifyCommand[];
   }): Project {
     this.requireBoard(input.boardId);
     const name = (input.name ?? '').trim();
@@ -1114,7 +1183,19 @@ export class KanbanCommands {
       throw new CodedError(`this folder is already registered on this board`, 'BAD_REQUEST');
     }
     const description = input.description?.trim() || null;
-    return this.store.addProject({ boardId: input.boardId, name, path: input.path, description });
+    const project = this.store.addProject({ boardId: input.boardId, name, path: input.path, description });
+    if (input.verifyCommands && input.verifyCommands.length > 0) {
+      this.store.setProjectVerifyCommands(project.id, input.verifyCommands);
+      return this.store.getProject(project.id) ?? project;
+    }
+    return project;
+  }
+
+  setProjectVerifyCommands(projectId: string, commands: VerifyCommand[]): void {
+    if (!this.store.getProject(projectId)) {
+      throw new CodedError(`project not found: ${projectId}`, 'NOT_FOUND');
+    }
+    this.store.setProjectVerifyCommands(projectId, commands);
   }
 
   removeProject(id: string): void {

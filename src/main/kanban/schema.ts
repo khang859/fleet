@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 15;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tasks (
@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   conflict_files TEXT,
   worktree_pruned INTEGER NOT NULL DEFAULT 0,
   resolve_attempts INTEGER NOT NULL DEFAULT 0,
+  verify_attempts INTEGER NOT NULL DEFAULT 0,
+  review_verdict TEXT,
+  review_attempts INTEGER NOT NULL DEFAULT 0,
+  review_head_sha TEXT,
   system_kind TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
@@ -161,10 +165,25 @@ CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   path TEXT NOT NULL,
   description TEXT,
+  verify_commands TEXT,
   is_default INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_board_name ON projects(board_id, name);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_board_path ON projects(board_id, path);
+
+CREATE TABLE IF NOT EXISTS feature_suggestions (
+  id TEXT PRIMARY KEY,
+  board_id TEXT NOT NULL,
+  repo_path TEXT,
+  name TEXT NOT NULL,
+  task_ids TEXT NOT NULL DEFAULT '[]',
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_suggestions_board ON feature_suggestions(board_id);
+CREATE INDEX IF NOT EXISTS idx_suggestions_status ON feature_suggestions(status);
 `;

@@ -1,6 +1,29 @@
 # Changelog
 
-## v2.69.0
+## v2.71.2
+
+- **Fixed broken images, backgrounds & PDFs on macOS/Linux** — a regression from the WSL path work caused every locally-served file (`fleet-image://` / `fleet-pdf://`) to be routed through a WSL UNC bridge, which fails on non-Windows hosts. Backgrounds, the image viewer, image gallery, recent screenshots, slideshows, and the PDF viewer no longer come up blank on macOS and Linux. Native POSIX paths are now served directly; the WSL bridge only runs on Windows.
+
+## v2.71.1
+
+- **Fixed opening files from WSL panes** — opening a file (via Telescope, file browser, grep, or a markdown link) from a **WSL (this machine)** pane no longer fails with `ENOENT … stat 'C:\home\…'`. The file's WSL distro is now remembered on the viewer pane and its path is bridged to a `\\wsl.localhost\…` UNC path before being read, fixing the markdown, file-editor, PDF, and image viewers. No effect on macOS, Linux, or native-Windows files.
+
+## v2.71.0
+
+- **WSL repos run inside the distro** — for boards and panes backed by a `\\wsl.localhost\…` repo, Fleet now executes git/grep/find/ls-files, env-editor/env-sync, worktree management, and the full **kanban autopilot** pipeline (worker, verify, and review agents) *inside* the WSL distro instead of over the UNC bridge, and translates WSL↔Windows paths for file serving, screenshots, and paste. This makes autopilot, file tooling, and worktrees behave correctly for repos that live in WSL. **Note:** autopilot agents require **mirrored** WSL networking (`networkingMode=mirrored` in `%UserProfile%\.wslconfig`, then `wsl --shutdown`); in the default NAT mode the run is refused with an actionable message, because a distro can't reach Fleet's board server on the Windows host over NAT.
+- **Rune Quick-Assist** — summon Rune right at your cursor in any open file. A transient overlay auto-detects whether you're **asking** (answer appears in a one-shot anchored popover) or **editing** (the file is changed in place, then auto-reloaded and flashed, with one-click revert), backed by a non-blocking working pill and per-pane concurrency — no docked panel, chips, or mode juggling.
+
+## v2.70.1
+
+- **Clearer Claude session metadata** — the transcript header's cramped metadata strip is replaced with a labeled key→value panel (Cost, Model, Messages, Tokens, Cache, Branch, Duration). Cryptic glyphs are gone; every value carries a visible label, with token/cache breakdowns in tooltips. Session list cost badges gain explanatory tooltips.
+
+## v2.70.0
+
+- **Claude session cost estimator** — Claude session rows now show an estimated **cost badge**, and the transcript header gains a metadata strip aggregating token usage. Costs are computed from a bundled Claude pricing table that best-effort refreshes from a remote source (with cache fallback), and model-less entries are skipped so they don't void a session's estimate.
+- **Kanban agent code review (autopilot phase 5)** — completed tasks now pass through an automated **agent code-review stage** before reaching review/auto-merge. A reviewer worker inspects the task's diff and returns a verdict via a `kanban_review_verdict` tool: approve hands the task on to integrate/review, while a bounce spawns a bounded fix run with the review feedback in its prompt (retries capped, then blocked + notify). Adds a reviewer profile setting, an **Auto-review** toggle, a review badge on the board, and a dedicated `review_ready` notification. (Schema v15.)
+- **Kanban deterministic verify gates (autopilot)** — per-project verify commands (typecheck/test/lint) now run in the worktree after a task is completed, before it reaches review/integrate. A failure bounces a fresh work run with the failure output in its prompt; bounded retries then block the task and notify. Verify commands are editable per project in the Projects dialog, and long-running suites keep the task claim alive instead of failing open. (Schema v14.)
+- **Kanban auto-group tickets into features (autopilot phase 4)** — Fleet now detects related tickets and suggests grouping them into a feature. Decompose children are grouped automatically on completion, and a board banner surfaces feature suggestions you can accept or dismiss. (Schema v13.)
+- **Slideshow Files-mode management** — the Files-mode terminal background slideshow gains a non-destructive **Add…** button (appends and dedupes by path) alongside **Clear All**, replacing the old single "Change…" button that discarded your whole list. Thumbnails can be **drag-reordered** (with accessible ‹ › move buttons), and the full file list is now shown and scrollable as the management surface.
 
 - **Kanban feature PR lifecycle (autopilot phase 3)** — features now manage their own draft→ready GitHub PR. When the first task in a feature merges into its integration branch, Fleet auto-opens a **draft PR** for the feature and pushes the branch; subsequent task merges keep it updated. Once every task in the feature is done, the draft PR is automatically **flipped to ready for review** (using **Ship** also marks an existing draft ready), with a notification when it happens. The PR poller now tracks feature-PR state and the board rollup shows whether a feature's PR is draft or ready. (Schema v12.)
 - **Fix: permission notification no longer spams** — the "An agent needs your permission" OS notification (and chime) fired repeatedly while a Claude prompt was on screen because detection ran on every terminal redraw. It now fires **once per request**, re-arming only after you respond.

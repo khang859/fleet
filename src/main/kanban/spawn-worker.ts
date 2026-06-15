@@ -2,9 +2,16 @@ import { spawn } from 'child_process';
 import { mkdirSync, writeFileSync, openSync, closeSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { createLogger } from '../logger';
+import {
+  agentWslLocation,
+  agentMcpConfigPosixPath,
+  agentMcpUrl,
+  buildAgentSpawn,
+  agentHostFor
+} from './agent-context';
 import { renderProfileMarkdown } from './profile-file';
 import { isValidProfileName, type WorkerProfile } from '../../shared/types';
-import type { RunMode } from '../../shared/kanban-types';
+import type { RunMode, VerifyCommand } from '../../shared/kanban-types';
 import type { InlinedDoc } from './pm-paths';
 
 const log = createLogger('kanban-spawn');
@@ -21,6 +28,8 @@ export interface BuildWorkerInput {
   task: WorkerTaskInfo;
   workspace: string;
   mcpPort: number;
+  /** Host rune uses to reach the MCP server. Resolved per WSL networking mode; defaults to loopback. */
+  mcpHost?: string;
   runToken: string;
   logPath: string;
   mode: RunMode;
@@ -31,6 +40,12 @@ export interface BuildWorkerInput {
   docs?: InlinedDoc[];
   /** Branch to merge into the worktree for a resolve run (integration branch, or base for a feature_sync task). */
   resolveTarget?: string;
+  /** Failure output from a prior verify run; injected into the work prompt so the fix worker sees it. */
+  verifyFailure?: string;
+  /** Unified diff of the worktree vs its base, injected into the review prompt. */
+  reviewDiff?: string;
+  /** Prior review findings, injected into a bounce work prompt so the fix worker sees them. */
+  reviewFindings?: string;
 }
 
 export interface WorkerInvocation {
@@ -103,7 +118,36 @@ function buildPrompt(input: BuildWorkerInput): string {
       `resolved safely, call kanban_block with the reason instead.`
     );
   }
+  if (mode === 'suggest') {
+    return (
+      `suggest a feature grouping for kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `You are grouping related loose tickets so they can ship as one feature. Use kanban_list / ` +
+      `kanban_show if you need more detail. Do not implement anything and do not create tasks. When ` +
+      `you have identified a coherent group, call kanban_suggest_feature(name, task_ids, reason). If ` +
+      `no subset is clearly related, call kanban_block with a short reason.`
+    );
+  }
+  if (mode === 'review') {
+    const diff = input.reviewDiff?.trim() || '(no diff available)';
+    return (
+      `review kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `You are reviewing the implementation below as a code reviewer. Judge it against the task ` +
+      `goal and any acceptance criteria. When done, call kanban_review_verdict with decision ` +
+      `'approve' or 'request_changes', a one-line summary, and (for request_changes) specific ` +
+      `findings. Do not modify the code.\n\n## Diff\n\n\`\`\`diff\n${diff}\n\`\`\``
+    );
+  }
+  const verifyBlock = input.verifyFailure
+    ? `Your previous completion failed the project's verify commands. Fix the cause and call ` +
+      `kanban_complete again — it will re-run verification.\n\n\`\`\`\n${input.verifyFailure}\n\`\`\`\n\n`
+    : '';
+  const reviewBlock = input.reviewFindings
+    ? `A code review requested changes on your previous completion. Address each finding and call ` +
+      `kanban_complete again — it will be re-reviewed.\n\n\`\`\`\n${input.reviewFindings}\n\`\`\`\n\n`
+    : '';
   return (
+    reviewBlock +
+    verifyBlock +
     `work kanban task ${task.id}: ${task.title}\n\n${task.body}` +
     attachmentsSection(input) +
     docsSection(input) +
@@ -148,6 +192,13 @@ function requireToolsForMode(mode: RunMode): string | null {
       return 'kanban_update';
     case 'assign':
       return 'kanban_assign';
+    case 'suggest':
+      return 'kanban_suggest_feature,kanban_block';
+    case 'review':
+      return 'kanban_review_verdict';
+    case 'verify':
+      // A deterministic verify run has no agent and no terminal MCP tool.
+      return null;
     default:
       return null;
   }
@@ -157,8 +208,13 @@ function requireToolsForMode(mode: RunMode): string | null {
 export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation {
   const runeDir = join(input.workspace, '.rune');
   mkdirSync(runeDir, { recursive: true });
+  // The file is always written at a Windows-accessible path (a UNC path for a WSL
+  // worktree, via the 9p bridge). RUNE_MCP_CONFIG, though, must be the path rune
+  // sees: a POSIX path inside the distro, or the native path otherwise.
+  const loc = agentWslLocation(input.workspace);
   const mcpConfigPath = join(runeDir, 'mcp.json');
-  const url = `http://127.0.0.1:${input.mcpPort}/mcp?run=${input.runToken}`;
+  const runeMcpConfig = loc ? agentMcpConfigPosixPath(loc) : mcpConfigPath;
+  const url = agentMcpUrl(input.mcpPort, input.runToken, input.mcpHost ?? '127.0.0.1');
   writeFileSync(
     mcpConfigPath,
     JSON.stringify({ servers: { kanban: { type: 'http', url } } }, null, 2)
@@ -201,7 +257,7 @@ export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation
     cwd: input.workspace,
     logPath: input.logPath,
     env: {
-      RUNE_MCP_CONFIG: mcpConfigPath,
+      RUNE_MCP_CONFIG: runeMcpConfig,
       FLEET_KANBAN_TASK: input.task.id,
       FLEET_KANBAN_RUN: input.runToken
     }
@@ -233,7 +289,7 @@ const AUTH_FAILURE_RE =
   /auth(?:entication)?\s+(?:refresh\s+)?failed|refresh_token|sign(?:ing)?\s+in\s+again|invalid_grant|invalid[_\s]?api[_\s]?key|missing\s+api\s+key|\bunauthorized\b|\b401\b/i;
 
 /** Reads up to the last `maxBytes` of a (possibly missing) log file; '' on any error. */
-function readLogTail(logPath: string, maxBytes = 8192): string {
+export function readLogTail(logPath: string, maxBytes = 8192): string {
   try {
     const buf = readFileSync(logPath);
     return buf.subarray(Math.max(0, buf.length - maxBytes)).toString('utf-8');
@@ -280,17 +336,104 @@ export function lastLogLine(logPath: string, maxLen = 200): string | undefined {
   return last ? last.slice(0, maxLen) : undefined;
 }
 
+/**
+ * Builds a single POSIX-sh script that runs each verify command in order, printing a
+ * `=== verify: <label> ===` marker before each. `&&` chaining gives stop-on-first-failure
+ * with the failing command's exit code propagated (echo always returns 0). The last marker
+ * in the log identifies which command failed.
+ */
+export function buildVerifyScript(commands: VerifyCommand[]): string {
+  return commands
+    .map((c) => {
+      const marker = `=== verify: ${c.label} ===`;
+      // single-quote the marker for echo; escape any single quotes in the label
+      const safeMarker = marker.replace(/'/g, `'\\''`);
+      return `echo '${safeMarker}' && ${c.command}`;
+    })
+    .join(' && ');
+}
+
+/**
+ * Spawns the verify commands as one detached `sh -c` shell in the task's worktree,
+ * combined stdout+stderr → logPath. Returns the pid (or undefined on spawn failure).
+ * Deterministic: no agent, no MCP.
+ */
+export function spawnVerify(
+  input: { workspace: string; commands: VerifyCommand[]; logPath: string },
+  onExit?: (exit: WorkerExit) => void
+): number | undefined {
+  mkdirSync(dirname(input.logPath), { recursive: true });
+  const out = openSync(input.logPath, 'a');
+  // Verify commands operate on the worktree with the project's own toolchain, so
+  // for a WSL worktree they must run inside the distro (no MCP involved here).
+  const loc = agentWslLocation(input.workspace);
+  const spawnSpec = buildAgentSpawn(
+    {
+      command: 'sh',
+      args: ['-c', buildVerifyScript(input.commands)],
+      cwd: input.workspace,
+      env: {}
+    },
+    loc
+  );
+  const child = spawn(spawnSpec.file, spawnSpec.argv, {
+    cwd: spawnSpec.cwd,
+    env: { ...process.env, ...spawnSpec.env },
+    detached: true,
+    stdio: ['ignore', out, out]
+  });
+  let settled = false;
+  const settle = (exit: WorkerExit): void => {
+    if (settled) return;
+    settled = true;
+    onExit?.(exit);
+  };
+  child.on('error', (err: NodeJS.ErrnoException) => {
+    log.error('verify run failed to spawn', { error: err.message });
+    settle({ code: null, signal: null });
+  });
+  child.on('exit', (code, signal) => settle({ code, signal }));
+  closeSync(out);
+  child.unref();
+  return child.pid;
+}
+
 export function spawnRuneWorker(
   input: BuildWorkerInput,
   onSpawnError?: (err: NodeJS.ErrnoException) => void,
   onExit?: (exit: WorkerExit) => void
 ): number | undefined {
-  const inv = buildWorkerInvocation(input);
+  // A WSL worktree runs rune inside the distro; resolve the host it should use to
+  // reach the MCP server (and refuse up-front if the distro can't, e.g. NAT mode)
+  // before writing the scoped mcp.json with that host.
+  const loc = agentWslLocation(input.workspace);
+  let mcpHost = '127.0.0.1';
+  if (loc) {
+    const resolved = agentHostFor(loc.distro);
+    if ('unsupported' in resolved) {
+      const err: NodeJS.ErrnoException = Object.assign(new Error(resolved.unsupported), {
+        code: 'WSL_NAT_UNSUPPORTED'
+      });
+      log.error('kanban WSL worker unsupported under current networking mode', {
+        taskId: input.task.id,
+        distro: loc.distro,
+        reason: resolved.unsupported
+      });
+      onSpawnError?.(err);
+      return undefined;
+    }
+    mcpHost = resolved.host;
+  }
+  const inv = buildWorkerInvocation({ ...input, mcpHost });
   mkdirSync(dirname(inv.logPath), { recursive: true });
   const out = openSync(inv.logPath, 'a');
-  const child = spawn(inv.command, inv.args, {
-    cwd: inv.cwd,
-    env: { ...process.env, ...inv.env },
+  const spawnSpec = buildAgentSpawn(
+    { command: inv.command, args: inv.args, cwd: inv.cwd, env: inv.env },
+    loc
+  );
+  const child = spawn(spawnSpec.file, spawnSpec.argv, {
+    cwd: spawnSpec.cwd,
+    env: { ...process.env, ...spawnSpec.env },
     detached: true,
     stdio: ['ignore', out, out]
   });

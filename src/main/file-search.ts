@@ -1,11 +1,19 @@
-import { spawn, type ChildProcess } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import { stat, realpath } from 'fs/promises';
-import { basename, dirname } from 'path';
+import { basename, dirname, posix as posixPath } from 'path';
 import { homedir } from 'os';
 import type { FileSearchRequest, FileSearchResponse, FileSearchResult } from '../shared/ipc-api';
+import type { PathContext } from '../shared/shell-profiles';
 import { captureBoundedStdout } from './bounded-stdout';
+import { spawnInContext } from './run-in-context';
+import { toWslUncPath } from '../shared/path-platform';
 
 let activeProcess: ChildProcess | null = null;
+
+// The only object variant of PathContext is the WSL one.
+function isWslContext(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
+  return typeof ctx === 'object';
+}
 
 function killActive(): void {
   if (activeProcess && !activeProcess.killed) {
@@ -17,11 +25,21 @@ function killActive(): void {
 function buildCommand(
   query: string,
   scope: string | undefined,
-  limit: number
+  limit: number,
+  ctx: PathContext
 ): { cmd: string; args: string[] } {
+  const escapedQuery = query.replace(/'/g, "\\'");
+
+  // A WSL pane uses the distro's own indexer (locate), like native linux.
+  if (isWslContext(ctx)) {
+    return {
+      cmd: 'locate',
+      args: ['-i', '-l', String(limit), '--', `*${query}*`]
+    };
+  }
+
   const platform = process.platform;
   const searchScope = scope ?? homedir();
-  const escapedQuery = query.replace(/'/g, "\\'");
 
   if (platform === 'darwin') {
     return {
@@ -43,8 +61,22 @@ function buildCommand(
   };
 }
 
-async function statResult(filePath: string): Promise<FileSearchResult | null> {
+async function statResult(filePath: string, ctx: PathContext): Promise<FileSearchResult | null> {
   try {
+    if (isWslContext(ctx)) {
+      // The path is posix; stat it over the UNC bridge but keep posix coords in
+      // the result (realpath would rewrite it to a UNC path). Distro temp paths
+      // and symlinks are left unresolved — acceptable for a picker.
+      const s = await stat(toWslUncPath(ctx.distro, filePath));
+      if (!s.isFile()) return null;
+      return {
+        path: filePath,
+        name: posixPath.basename(filePath),
+        parentDir: posixPath.dirname(filePath),
+        modifiedAt: s.mtimeMs,
+        size: s.size
+      };
+    }
     const resolved = await realpath(filePath);
     const s = await stat(resolved);
     if (!s.isFile()) return null;
@@ -63,14 +95,16 @@ async function statResult(filePath: string): Promise<FileSearchResult | null> {
 export async function searchFiles(req: FileSearchRequest): Promise<FileSearchResponse> {
   killActive();
 
-  const { requestId, query, scope } = req;
+  const { requestId, query, scope, pathContext } = req;
   const limit = req.limit ?? 20;
+  const ctx: PathContext = pathContext ?? 'posix';
+  const wsl = isWslContext(ctx);
 
   if (!query.trim()) {
     return { success: true, requestId, results: [] };
   }
 
-  const { cmd, args } = buildCommand(query, scope, limit);
+  const { cmd, args } = buildCommand(query, scope, limit, ctx);
 
   return new Promise((resolve) => {
     const isNonIndexed = cmd === 'powershell' || cmd === 'find';
@@ -78,7 +112,7 @@ export async function searchFiles(req: FileSearchRequest): Promise<FileSearchRes
 
     let timedOut = false;
 
-    const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawnInContext(ctx, cmd, args, {});
     activeProcess = proc;
 
     const timer = setTimeout(() => {
@@ -95,19 +129,18 @@ export async function searchFiles(req: FileSearchRequest): Promise<FileSearchRes
       const errCode = (err as NodeJS.ErrnoException).code;
       const canFallback = cmd === 'locate' || cmd === 'es.exe';
       if (errCode === 'ENOENT' && canFallback) {
-        const fallbackScope = scope ?? homedir();
-        const isWin = process.platform === 'win32';
-        const fallbackCmd = isWin ? 'powershell' : 'find';
-        const fallbackArgs = isWin
-          ? [
+        // WSL and native-linux fall back to `find`; native-Windows to PowerShell.
+        const useFind = wsl || process.platform !== 'win32';
+        const fallbackScope = scope ?? (wsl ? '.' : homedir());
+        const fallbackCmd = useFind ? 'find' : 'powershell';
+        const fallbackArgs = useFind
+          ? [fallbackScope, '-maxdepth', '5', '-iname', `*${query}*`, '-type', 'f']
+          : [
               '-NoProfile',
               '-Command',
               `Get-ChildItem -Path '${fallbackScope}' -Recurse -Filter '*${query}*' -File -ErrorAction SilentlyContinue | Select-Object -First ${limit} -ExpandProperty FullName`
-            ]
-          : [fallbackScope, '-maxdepth', '5', '-iname', `*${query}*`, '-type', 'f'];
-        const findProc = spawn(fallbackCmd, fallbackArgs, {
-          stdio: ['ignore', 'pipe', 'pipe']
-        });
+            ];
+        const findProc = spawnInContext(ctx, fallbackCmd, fallbackArgs, {});
         activeProcess = findProc;
 
         const findTimer = setTimeout(() => {
@@ -119,7 +152,7 @@ export async function searchFiles(req: FileSearchRequest): Promise<FileSearchRes
         findProc.on('close', () => {
           clearTimeout(findTimer);
           activeProcess = null;
-          void processResults(findOut.text, limit, requestId).then(resolve);
+          void processResults(findOut.text, limit, requestId, ctx).then(resolve);
         });
 
         findProc.on('error', () => {
@@ -142,7 +175,7 @@ export async function searchFiles(req: FileSearchRequest): Promise<FileSearchRes
         return;
       }
 
-      void processResults(out.text, limit, requestId).then(resolve);
+      void processResults(out.text, limit, requestId, ctx).then(resolve);
     });
   });
 }
@@ -150,7 +183,8 @@ export async function searchFiles(req: FileSearchRequest): Promise<FileSearchRes
 async function processResults(
   stdout: string,
   limit: number,
-  requestId: number
+  requestId: number,
+  ctx: PathContext
 ): Promise<FileSearchResponse> {
   const paths = stdout
     .split('\n')
@@ -163,7 +197,7 @@ async function processResults(
 
   for (const p of paths) {
     if (results.length >= limit) break;
-    const result = await statResult(p);
+    const result = await statResult(p, ctx);
     if (result && !seen.has(result.path)) {
       seen.add(result.path);
       results.push(result);

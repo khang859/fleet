@@ -4,7 +4,8 @@ import { Folder, FolderOpen } from 'lucide-react';
 import { fuzzyMatch } from '../../../lib/commands';
 import { getFileIcon } from '../../../lib/file-icons';
 import { quotePathForShell, bracketedPaste } from '../../../lib/shell-utils';
-import { useWorkspaceStore } from '../../../store/workspace-store';
+import { useWorkspaceStore, getPaneContextById } from '../../../store/workspace-store';
+import { pathForPaneContext } from '../../../../../shared/path-platform';
 import type { DirEntry } from '../../../../../shared/ipc-api';
 import type { TelescopeMode, TelescopeItem } from '../types';
 
@@ -23,6 +24,7 @@ export function createBrowseMode(
   activePaneId: string | null,
   onStateChange: () => void
 ): TelescopeMode & { getState: () => BrowseState } {
+  const ctx = getPaneContextById(activePaneId);
   const state: BrowseState = {
     currentDir: cwd,
     entries: [],
@@ -35,7 +37,7 @@ export function createBrowseMode(
     state.loading = true;
     onStateChange();
 
-    const result = await window.fleet.file.readdir(dir);
+    const result = await window.fleet.file.readdir(dir, ctx);
     if (result.success) {
       // Sort: directories first, then alphabetical within each group
       state.entries = [...result.entries].sort((a, b) => {
@@ -47,7 +49,7 @@ export function createBrowseMode(
 
       // Fetch gitignore status (use cache if available)
       if (!ignoreCache.has(dir)) {
-        const ignored = await window.fleet.file.checkIgnored(dir);
+        const ignored = await window.fleet.file.checkIgnored(dir, ctx);
         ignoreCache.set(dir, new Set(ignored));
       }
       state.ignoredNames = ignoreCache.get(dir) ?? new Set();
@@ -117,14 +119,14 @@ export function createBrowseMode(
       if (isDirectory === true) {
         void loadDir(filePath);
       } else {
-        useWorkspaceStore.getState().openFile(filePath);
+        useWorkspaceStore.getState().openFile(filePath, ctx);
       }
     },
 
     onAltSelect: (item) => {
       const filePath = item.data?.filePath;
       if (typeof filePath !== 'string' || !activePaneId) return;
-      const quoted = quotePathForShell(filePath, window.fleet.platform);
+      const quoted = quotePathForShell(pathForPaneContext(filePath, ctx), ctx);
       window.fleet.pty.input({
         paneId: activePaneId,
         data: bracketedPaste(quoted + ' ')

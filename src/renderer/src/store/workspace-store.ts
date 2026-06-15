@@ -5,6 +5,7 @@ import { DEFAULT_TOOL_VISIBILITY } from '../../../shared/tools';
 import { getPaneTypeForFilePath } from '../../../shared/file-open';
 import { useCwdStore } from './cwd-store';
 import { useSettingsStore } from './settings-store';
+import { useRuneAssistStore } from './rune-assist-store';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { createLogger } from '../logger';
 import { clampSidebarWidth } from '../components/sidebar-constants';
@@ -278,7 +279,7 @@ type WorkspaceStore = {
   reconcileToolTabs: () => void;
 
   // File/image pane helpers
-  openFile: (filePath: string) => string;
+  openFile: (filePath: string, pathContext?: PathContext) => string;
   openFileInTab: (
     files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf'; label: string }>
   ) => void;
@@ -352,6 +353,48 @@ function getFirstLeafCwd(node: PaneNode | undefined): string | undefined {
 function findLeaf(node: PaneNode, paneId: string): PaneLeaf | null {
   if (node.type === 'leaf') return node.id === paneId ? node : null;
   return findLeaf(node.children[0], paneId) ?? findLeaf(node.children[1], paneId);
+}
+
+function hostDefaultContext(): PathContext {
+  return window.fleet.platform === 'win32' ? 'win32' : 'posix';
+}
+
+/**
+ * Resolve a specific pane's coordinate system, searching every tab. Falls back
+ * pane → owning tab → host default. Use this (not `window.fleet.platform`, which
+ * is always Windows under WSL panes) whenever building, reading, or pasting a
+ * path for a known pane.
+ */
+export function getPaneContextById(paneId: string | null | undefined): PathContext {
+  if (!paneId) return hostDefaultContext();
+  const { workspace } = useWorkspaceStore.getState();
+  for (const tab of workspace.tabs) {
+    const leaf = findLeaf(tab.splitRoot, paneId);
+    if (leaf) return leaf.pathContext ?? tab.pathContext ?? hostDefaultContext();
+  }
+  return hostDefaultContext();
+}
+
+/**
+ * Resolve the active pane's coordinate system + live cwd. Convenience wrapper
+ * over {@link getPaneContextById} for features that operate on the active pane.
+ */
+export function getActivePaneContext(): {
+  pathContext: PathContext;
+  cwd: string;
+  paneId: string | null;
+} {
+  const state = useWorkspaceStore.getState();
+  const tab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
+  const leaf = tab && state.activePaneId ? findLeaf(tab.splitRoot, state.activePaneId) : null;
+  const liveCwd = state.activePaneId
+    ? useCwdStore.getState().cwds.get(state.activePaneId)
+    : undefined;
+  return {
+    pathContext: getPaneContextById(state.activePaneId),
+    cwd: liveCwd ?? leaf?.cwd ?? '',
+    paneId: state.activePaneId
+  };
 }
 
 export function collectPaneIds(node: PaneNode): string[] {
@@ -503,6 +546,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closeTab: (tabId, serializedPanes) => {
     logTabs.debug('closeTab', { tabId });
+    // Cancel any in-flight Rune Quick-Assist turns for panes in this tab and drop their state.
+    const closing = get().workspace.tabs.find((t) => t.id === tabId);
+    if (closing) {
+      const rune = useRuneAssistStore.getState();
+      for (const pid of collectPaneIds(closing.splitRoot)) rune.disposePane(pid);
+    }
     set((state) => {
       const target = state.workspace.tabs.find((t) => t.id === tabId);
       // Pinned tabs (Kanban/Images/Annotate) are not closeable.
@@ -823,6 +872,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closePane: (paneId) => {
     logLayout.debug('closePane', { paneId });
+    // Cancel any in-flight Rune Quick-Assist turn for this pane and drop its state.
+    useRuneAssistStore.getState().disposePane(paneId);
     set((state) => {
       // Don't let the close-pane action destroy a pinned tab via its sole leaf.
       const owner = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
@@ -1171,11 +1222,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }));
   },
 
-  openFile: (filePath) => {
+  openFile: (filePath, pathContext) => {
     const paneType = getPaneTypeForFilePath(filePath);
     const tabType = paneType;
     const fileName = filePath.split('/').pop() ?? filePath;
-    const leaf: PaneLeaf = { type: 'leaf', id: generateId(), cwd: '/', paneType, filePath };
+    // Remember the coordinate system the path lives in (e.g. which WSL distro) so
+    // the viewer can bridge it for `fs` access — otherwise a posix path falls back
+    // to the win32 host context and `stat` fails (→ `C:\home\...` ENOENT).
+    const ctx = pathContext ?? getPaneContextById(get().activePaneId);
+    const leaf: PaneLeaf = {
+      type: 'leaf',
+      id: generateId(),
+      cwd: '/',
+      paneType,
+      filePath,
+      pathContext: ctx
+    };
     const tab: Tab = {
       id: generateId(),
       label: fileName,
@@ -1195,6 +1257,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   openFileInTab: (files) => {
+    // New tabs inherit the active pane's coordinate system (e.g. markdown links
+    // opened from a WSL pane stay in that distro's posix space).
+    const ctx = getPaneContextById(get().activePaneId);
     for (const file of files) {
       const state = get();
       // Dedup: check if file is already open in any tab
@@ -1216,7 +1281,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           id: generateId(),
           cwd: '/',
           paneType: file.paneType,
-          filePath: file.path
+          filePath: file.path,
+          pathContext: ctx
         };
         const tab: Tab = {
           id: generateId(),

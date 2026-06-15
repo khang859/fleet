@@ -1,13 +1,15 @@
+import type { PathContext } from '../../../shared/shell-profiles';
+
 /**
- * Quotes a file path for safe shell insertion.
- * On POSIX: wraps in single quotes, escaping any internal single quotes.
- * On Windows: wraps in double quotes, escaping any internal double quotes.
+ * Quotes a file path for safe shell insertion, keyed on the pane's coordinate
+ * system (NOT the host platform — a WSL pane on Windows runs a POSIX shell).
+ * win32: wraps in double quotes; posix/wsl: single quotes, escaping internals.
  */
-export function quotePathForShell(filePath: string, platform: string): string {
-  if (platform === 'win32') {
+export function quotePathForShell(filePath: string, pathContext: PathContext): string {
+  if (pathContext === 'win32') {
     return '"' + filePath.replace(/"/g, '\\"') + '"';
   }
-  // POSIX: single-quote, escape internal single quotes as '\''
+  // POSIX/WSL: single-quote, escape internal single quotes as '\''
   return "'" + filePath.replace(/'/g, "'\\''") + "'";
 }
 

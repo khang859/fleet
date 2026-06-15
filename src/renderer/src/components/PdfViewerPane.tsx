@@ -4,6 +4,8 @@ import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import './pdf-text-layer.css';
+import { toFleetPdfUrl } from '../../../shared/path-platform';
+import type { PathContext } from '../../../shared/shell-profiles';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -32,9 +34,10 @@ function formatSize(bytes: number): string {
 
 type PdfViewerPaneProps = {
   filePath: string;
+  pathContext?: PathContext;
 };
 
-export function PdfViewerPane({ filePath }: PdfViewerPaneProps): React.JSX.Element {
+export function PdfViewerPane({ filePath, pathContext }: PdfViewerPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -64,7 +67,7 @@ export function PdfViewerPane({ filePath }: PdfViewerPaneProps): React.JSX.Eleme
 
     let loadingTask: ReturnType<typeof pdfjs.getDocument> | null = null;
     const load = async (): Promise<void> => {
-      const stat = await window.fleet.file.stat(filePath);
+      const stat = await window.fleet.file.stat(filePath, pathContext);
       if (cancelled) return;
       if (!stat.success || !stat.data || stat.data.size === 0) {
         setError('File not found or unreadable');
@@ -74,7 +77,7 @@ export function PdfViewerPane({ filePath }: PdfViewerPaneProps): React.JSX.Eleme
       setFileSize(stat.data.size);
       try {
         loadingTask = pdfjs.getDocument({
-          url: `fleet-pdf://${encodeURI(filePath)}`,
+          url: toFleetPdfUrl(filePath),
           cMapUrl: CMAP_URL,
           cMapPacked: true,
           standardFontDataUrl: STANDARD_FONT_DATA_URL
@@ -104,7 +107,7 @@ export function PdfViewerPane({ filePath }: PdfViewerPaneProps): React.JSX.Eleme
       docRef.current = null;
       if (doc) void doc.destroy();
     };
-  }, [filePath]);
+  }, [filePath, pathContext]);
 
   // Render the current page whenever page or zoom changes. Cancels any in-flight
   // render first and snaps to the new page/scale with no transition.

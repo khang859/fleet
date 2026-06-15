@@ -64,7 +64,14 @@ import type {
   PmChatState,
   PmChatStatusPayload,
   PmChatTranscriptPayload,
-  KanbanAddProjectRequest
+  KanbanAddProjectRequest,
+  RuneAssistSendRequest,
+  RuneAssistStopRequest,
+  RuneAssistResetRequest,
+  RuneAssistStateRequest,
+  RuneAssistState,
+  RuneAssistStatusPayload,
+  RuneAssistResultPayload
 } from '../shared/ipc-api';
 import type {
   Board,
@@ -80,11 +87,13 @@ import type {
   SwarmCreated,
   Feature,
   FeatureDetail,
+  FeatureSuggestion,
   WorktreeInfo,
   PruneResult,
-  Project
+  Project,
+  VerifyCommand
 } from '../shared/kanban-types';
-import type { WslDistroState } from '../shared/shell-profiles';
+import type { WslDistroState, PathContext } from '../shared/shell-profiles';
 import type { RuneStatus, RuneInstallResult } from '../shared/rune';
 import type { RuneSettings, RuneSecrets } from '../shared/rune-config-types';
 import type {
@@ -251,12 +260,15 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.SETTINGS_SET, settings)
   },
   git: {
-    isRepo: async (cwd: string): Promise<GitIsRepoPayload> =>
-      typedInvoke(IPC_CHANNELS.GIT_IS_REPO, cwd),
-    repoRoot: async (cwd: string): Promise<GitRepoRootPayload> =>
-      typedInvoke(IPC_CHANNELS.GIT_REPO_ROOT, cwd),
-    getStatus: async (cwd: string, baseRef?: string): Promise<GitStatusPayload> =>
-      typedInvoke(IPC_CHANNELS.GIT_STATUS, cwd, baseRef)
+    isRepo: async (cwd: string, pathContext?: PathContext): Promise<GitIsRepoPayload> =>
+      typedInvoke(IPC_CHANNELS.GIT_IS_REPO, cwd, pathContext),
+    repoRoot: async (cwd: string, pathContext?: PathContext): Promise<GitRepoRootPayload> =>
+      typedInvoke(IPC_CHANNELS.GIT_REPO_ROOT, cwd, pathContext),
+    getStatus: async (
+      cwd: string,
+      baseRef?: string,
+      pathContext?: PathContext
+    ): Promise<GitStatusPayload> => typedInvoke(IPC_CHANNELS.GIT_STATUS, cwd, baseRef, pathContext)
   },
   worktree: {
     create: async (req: WorktreeCreateRequest): Promise<WorktreeCreateResponse> =>
@@ -274,16 +286,18 @@ const fleetApi = {
   },
   file: {
     read: async (
-      filePath: string
+      filePath: string,
+      pathContext?: PathContext
     ): Promise<
       | { success: true; data: { content: string; size: number; modifiedAt: number } }
       | { success: false; error: string }
-    > => typedInvoke(IPC_CHANNELS.FILE_READ, filePath),
+    > => typedInvoke(IPC_CHANNELS.FILE_READ, filePath, pathContext),
     write: async (
       filePath: string,
-      content: string
+      content: string,
+      pathContext?: PathContext
     ): Promise<{ success: true } | { success: false; error: string }> =>
-      typedInvoke(IPC_CHANNELS.FILE_WRITE, { filePath, content }),
+      typedInvoke(IPC_CHANNELS.FILE_WRITE, { filePath, content, pathContext }),
     openDialog: async (
       opts: {
         defaultPath?: string;
@@ -292,36 +306,39 @@ const fleetApi = {
       } = {}
     ): Promise<string[]> => typedInvoke(IPC_CHANNELS.FILE_OPEN_DIALOG, opts),
     list: async (
-      dirPath: string
+      dirPath: string,
+      pathContext?: PathContext
     ): Promise<{
       success: true;
       files: Array<{ path: string; relativePath: string; name: string }>;
-    }> => typedInvoke(IPC_CHANNELS.FILE_LIST, { dirPath }),
-    readdir: async (dirPath: string): Promise<ReaddirResponse> =>
-      typedInvoke(IPC_CHANNELS.FILE_READDIR, { dirPath }),
+    }> => typedInvoke(IPC_CHANNELS.FILE_LIST, { dirPath, pathContext }),
+    readdir: async (dirPath: string, pathContext?: PathContext): Promise<ReaddirResponse> =>
+      typedInvoke(IPC_CHANNELS.FILE_READDIR, { dirPath, pathContext }),
     onOpenInTab: (callback: (payload: FileOpenInTabPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.FILE_OPEN_IN_TAB, callback),
     readBinary: async (
-      filePath: string
+      filePath: string,
+      pathContext?: PathContext
     ): Promise<{ success: boolean; data?: { base64: string; mimeType: string }; error?: string }> =>
-      typedInvoke(IPC_CHANNELS.FILE_READ_BINARY, filePath),
+      typedInvoke(IPC_CHANNELS.FILE_READ_BINARY, filePath, pathContext),
     stat: async (
-      filePath: string
+      filePath: string,
+      pathContext?: PathContext
     ): Promise<{
       success: boolean;
       data?: { size: number; modifiedAt: number; mimeType: string };
       error?: string;
-    }> => typedInvoke(IPC_CHANNELS.FILE_STAT, filePath),
+    }> => typedInvoke(IPC_CHANNELS.FILE_STAT, filePath, pathContext),
     search: async (req: FileSearchRequest): Promise<FileSearchResponse> =>
       typedInvoke(IPC_CHANNELS.FILE_SEARCH, req),
     grep: async (req: FileGrepRequest): Promise<FileGrepResponse> =>
       typedInvoke(IPC_CHANNELS.FILE_GREP, req),
-    searchRecentImages: async (): Promise<RecentImagesResponse> =>
-      typedInvoke(IPC_CHANNELS.FILE_RECENT_IMAGES),
+    searchRecentImages: async (pathContext?: PathContext): Promise<RecentImagesResponse> =>
+      typedInvoke(IPC_CHANNELS.FILE_RECENT_IMAGES, { pathContext }),
     scanImageFolder: async (folderPath: string): Promise<string[]> =>
       typedInvoke(IPC_CHANNELS.FILE_SCAN_IMAGE_FOLDER, { folderPath }),
-    checkIgnored: async (dirPath: string): Promise<string[]> =>
-      typedInvoke(IPC_CHANNELS.FILE_CHECK_IGNORED, { dirPath })
+    checkIgnored: async (dirPath: string, pathContext?: PathContext): Promise<string[]> =>
+      typedInvoke(IPC_CHANNELS.FILE_CHECK_IGNORED, { dirPath, pathContext })
   },
   clipboard: {
     getHistory: async (): Promise<ClipboardHistoryResponse> =>
@@ -623,6 +640,12 @@ const fleetApi = {
       typedInvoke<void>(IPC_CHANNELS.KANBAN_DELETE_FEATURE, id),
     assignTaskToFeature: async (req: KanbanAssignTaskToFeatureRequest): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_ASSIGN_TASK_TO_FEATURE, req),
+    listSuggestions: async (boardId: string): Promise<FeatureSuggestion[]> =>
+      typedInvoke<FeatureSuggestion[]>(IPC_CHANNELS.KANBAN_LIST_SUGGESTIONS, boardId),
+    acceptSuggestion: async (id: string): Promise<Feature> =>
+      typedInvoke<Feature>(IPC_CHANNELS.KANBAN_ACCEPT_SUGGESTION, id),
+    dismissSuggestion: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_DISMISS_SUGGESTION, id),
     redecompose: async (featureId: string): Promise<Task> =>
       typedInvoke<Task>(IPC_CHANNELS.KANBAN_REDECOMPOSE, featureId),
     shipFeature: async (featureId: string): Promise<KanbanReviewActionResult> =>
@@ -654,13 +677,29 @@ const fleetApi = {
     removeProject: async (id: string): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_REMOVE_PROJECT, id),
     setDefaultProject: async (id: string): Promise<void> =>
-      typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_DEFAULT_PROJECT, id)
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_DEFAULT_PROJECT, id),
+    setProjectVerifyCommands: async (id: string, cmds: VerifyCommand[]): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_PROJECT_VERIFY, id, cmds)
+  },
+  runeAssist: {
+    send: async (req: RuneAssistSendRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_SEND, req),
+    stop: async (req: RuneAssistStopRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_STOP, req),
+    reset: async (req: RuneAssistResetRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_RESET, req),
+    getState: async (req: RuneAssistStateRequest): Promise<RuneAssistState> =>
+      typedInvoke<RuneAssistState>(IPC_CHANNELS.RUNE_ASSIST_STATE, req),
+    onStatus: (callback: (payload: RuneAssistStatusPayload) => void): Unsubscribe =>
+      onChannel<RuneAssistStatusPayload>(IPC_CHANNELS.RUNE_ASSIST_STATUS, callback),
+    onResult: (callback: (payload: RuneAssistResultPayload) => void): Unsubscribe =>
+      onChannel<RuneAssistResultPayload>(IPC_CHANNELS.RUNE_ASSIST_RESULT, callback)
   },
   envSync: {
     getConfig: async (repoDir: string): Promise<EnvSyncConfig | null> =>
       typedInvoke<EnvSyncConfig | null>(IPC_CHANNELS.ENV_SYNC_GET_CONFIG, repoDir),
-    discover: async (cwd: string): Promise<DiscoveredRepo | null> =>
-      typedInvoke<DiscoveredRepo | null>(IPC_CHANNELS.ENV_SYNC_DISCOVER, cwd),
+    discover: async (cwd: string, pathContext?: PathContext): Promise<DiscoveredRepo | null> =>
+      typedInvoke<DiscoveredRepo | null>(IPC_CHANNELS.ENV_SYNC_DISCOVER, cwd, pathContext),
     writeConfig: async (repoDir: string, config: EnvSyncConfig): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.ENV_SYNC_WRITE_CONFIG, repoDir, config),
     scan: async (repoDir: string): Promise<string[]> =>
@@ -697,8 +736,8 @@ const fleetApi = {
       )
   },
   envEditor: {
-    list: async (root: string): Promise<EnvFileEntry[]> =>
-      typedInvoke<EnvFileEntry[]>(IPC_CHANNELS.ENV_EDITOR_LIST, root),
+    list: async (root: string, pathContext?: PathContext): Promise<EnvFileEntry[]> =>
+      typedInvoke<EnvFileEntry[]>(IPC_CHANNELS.ENV_EDITOR_LIST, root, pathContext),
     read: async (absPath: string): Promise<EnvReadResult> =>
       typedInvoke<EnvReadResult>(IPC_CHANNELS.ENV_EDITOR_READ, absPath),
     write: async (
@@ -707,8 +746,8 @@ const fleetApi = {
       expectedMtimeMs?: number
     ): Promise<EnvWriteResult> =>
       typedInvoke<EnvWriteResult>(IPC_CHANNELS.ENV_EDITOR_WRITE, absPath, text, expectedMtimeMs),
-    create: async (dir: string, name: string): Promise<EnvPathResult> =>
-      typedInvoke<EnvPathResult>(IPC_CHANNELS.ENV_EDITOR_CREATE, dir, name),
+    create: async (dir: string, name: string, pathContext?: PathContext): Promise<EnvPathResult> =>
+      typedInvoke<EnvPathResult>(IPC_CHANNELS.ENV_EDITOR_CREATE, dir, name, pathContext),
     rename: async (absPath: string, newName: string): Promise<EnvPathResult> =>
       typedInvoke<EnvPathResult>(IPC_CHANNELS.ENV_EDITOR_RENAME, absPath, newName),
     delete: async (absPath: string): Promise<EnvTrashResult> =>

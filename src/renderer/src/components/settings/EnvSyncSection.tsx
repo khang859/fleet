@@ -13,6 +13,7 @@ import type {
   EnvSyncConfig,
   EnvSyncTarget
 } from '../../../../shared/env-sync-types';
+import type { PathContext } from '../../../../shared/shell-profiles';
 
 const STATUS_LABEL: Record<TargetSyncState, string> = {
   'in-sync': 'In sync',
@@ -489,13 +490,15 @@ export function EnvSyncSection(): React.JSX.Element {
 
   const refreshRepos = useCallback(async () => {
     const { workspaces } = await window.fleet.layout.list();
-    const cwds = new Set<string>();
+    // Keep each cwd's pane context so a WSL tab's posix cwd resolves correctly.
+    const cwds = new Map<string, PathContext | undefined>();
     for (const ws of workspaces) {
-      for (const tab of ws.tabs) if (tab.cwd) cwds.add(tab.cwd);
+      for (const tab of ws.tabs)
+        if (tab.cwd && !cwds.has(tab.cwd)) cwds.set(tab.cwd, tab.pathContext);
     }
     const found = new Map<string, DiscoveredRepo>();
-    for (const cwd of cwds) {
-      const repo = await window.fleet.envSync.discover(cwd);
+    for (const [cwd, ctx] of cwds) {
+      const repo = await window.fleet.envSync.discover(cwd, ctx);
       if (repo) found.set(repo.repoDir, repo);
     }
     const list = Array.from(found.values());

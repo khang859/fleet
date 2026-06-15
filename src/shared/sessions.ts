@@ -18,6 +18,15 @@ export type TranscriptMessage = {
   createdAt?: number;
 };
 
+/** Aggregated Claude token usage for a session (summed across models). */
+export type ClaudeUsage = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite5m: number;
+  cacheWrite1h: number;
+};
+
 export type SessionSummary = {
   agent: SessionAgent;
   id: string;
@@ -29,6 +38,13 @@ export type SessionSummary = {
   updatedAt: number; // epoch ms
   messageCount: number;
   preview: string;
+  // Claude-only cost + metadata (all undefined for Rune and for transcripts without usage):
+  costUsd?: number; // undefined when a model in the session is unpriced
+  claudeUsage?: ClaudeUsage;
+  models?: string[]; // distinct models, first-appearance order
+  gitBranch?: string;
+  startedAt?: number; // epoch ms of first timestamped entry
+  endedAt?: number; // epoch ms of last timestamped entry
 };
 
 export type TokenUsage = { input: number; output: number; cacheRead: number };

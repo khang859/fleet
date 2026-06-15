@@ -7,7 +7,7 @@ import { PaneToolbar } from './PaneToolbar';
 import { SearchBar } from './SearchBar';
 import { openAnnotateModal } from '../lib/annotate-modal-bridge';
 import { useCwdStore } from '../store/cwd-store';
-import { useWorkspaceStore } from '../store/workspace-store';
+import { useWorkspaceStore, getPaneContextById } from '../store/workspace-store';
 import { getFleetSkillContentInput } from '../lib/fleet-skill-prompt';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
 import type { TerminalBackground } from '../../../shared/types';
@@ -94,7 +94,7 @@ export function TerminalPane({
 
     if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
     gitCheckTimerRef.current = setTimeout(() => {
-      void window.fleet.git.isRepo(currentCwd).then((result) => {
+      void window.fleet.git.isRepo(currentCwd, getPaneContextById(paneId)).then((result) => {
         setIsGitRepo(result.isRepo);
       });
     }, 500);
@@ -102,7 +102,7 @@ export function TerminalPane({
     return () => {
       if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
     };
-  }, [currentCwd]);
+  }, [currentCwd, paneId]);
   // Listen for search toggle events targeted at this pane
   useEffect(() => {
     const handler = (e: Event): void => {

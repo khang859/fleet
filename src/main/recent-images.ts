@@ -4,6 +4,9 @@ import { basename, dirname, extname, join } from 'path';
 import { homedir } from 'os';
 import { nativeImage } from 'electron';
 import type { RecentImageResult, RecentImagesResponse } from '../shared/ipc-api';
+import type { PathContext } from '../shared/shell-profiles';
+import { toWslUncPath } from '../shared/path-platform';
+import type { WslService } from './wsl-service';
 import { captureBoundedStdout } from './bounded-stdout';
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
@@ -11,6 +14,9 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB — skip large files for thumbna
 const RESULT_LIMIT = 5;
 const STAT_LIMIT = 200; // stat at most this many candidates before sorting
 const SCAN_RESULT_LIMIT = 1000; // recursive readdir over Pictures/Downloads can return enormous trees
+// A WSL UNC read can cold-boot a stopped distro (multi-second). Bound it and
+// degrade to Windows-only results rather than hang the picker.
+const WSL_SCAN_BUDGET_MS = 2500;
 
 type FileCandidate = {
   path: string;
@@ -119,9 +125,53 @@ async function scanKnownDirs(): Promise<string[]> {
   return results;
 }
 
-export async function searchRecentImages(): Promise<RecentImagesResponse> {
+/**
+ * Scan the WSL pane's home image dirs over the 9P UNC share. Depth-1 only (no
+ * recursive walk — the share is slow) and includes the home root since Linux
+ * screenshot tools often drop files in `~`. Returns Windows-accessible UNC paths.
+ */
+async function scanWslDirs(distro: string, wslService: WslService): Promise<string[]> {
+  const home = await wslService.homeDir(distro);
+  if (!home) return [];
+  const subdirs = ['', 'Desktop', 'Downloads', 'Pictures'];
+  const results: string[] = [];
+
+  for (const sub of subdirs) {
+    const uncDir = toWslUncPath(distro, sub ? `${home}/${sub}` : home);
+    try {
+      const entries = await readdir(uncDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (results.length >= SCAN_RESULT_LIMIT) return results;
+        if (entry.isFile() && IMAGE_EXTS.has(extname(entry.name).toLowerCase())) {
+          results.push(join(uncDir, entry.name));
+        }
+      }
+    } catch {
+      // Missing/unreadable dir or stopped distro — skip.
+    }
+  }
+  return results;
+}
+
+async function scanWslDirsBounded(distro: string, wslService: WslService): Promise<string[]> {
+  return Promise.race([
+    scanWslDirs(distro, wslService),
+    new Promise<string[]>((resolve) => setTimeout(() => resolve([]), WSL_SCAN_BUDGET_MS))
+  ]);
+}
+
+export async function searchRecentImages(
+  wslService: WslService,
+  pathContext?: PathContext
+): Promise<RecentImagesResponse> {
   try {
     const paths = await spawnSearch();
+
+    // For a WSL pane, additionally surface images from the distro's home dirs.
+    if (typeof pathContext === 'object' && pathContext.kind === 'wsl') {
+      const wslPaths = await scanWslDirsBounded(pathContext.distro, wslService);
+      paths.push(...wslPaths);
+    }
 
     // Stat candidates and collect metadata
     const seen = new Set<string>();

@@ -107,7 +107,8 @@ export const DEFAULT_SETTINGS: FleetSettings = {
       autoDecompose: false,
       maxDecompose: 1,
       autoAssign: true,
-      autoIntegrate: true
+      autoIntegrate: true,
+      autoReview: true
     },
     defaults: { workspaceKind: 'scratch', maxRuntimeSeconds: null },
     artifactRetentionDays: 14,

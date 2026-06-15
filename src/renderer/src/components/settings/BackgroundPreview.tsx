@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { TerminalBackground } from '../../../../shared/types';
+import { toFleetImageUrl } from '../../../../shared/path-platform';
 
 const FIT_STYLES: Record<TerminalBackground['fit'], { size: string; repeat: string }> = {
   cover: { size: 'cover', repeat: 'no-repeat' },
@@ -35,7 +36,7 @@ export function BackgroundPreview(props: {
   const imageLayerStyle: CSSProperties | null = previewImagePath
     ? {
         inset: background.blur > 0 ? -background.blur * 2 : 0,
-        backgroundImage: `url("${encodeURI(`fleet-image://${previewImagePath}`)}")`,
+        backgroundImage: `url("${toFleetImageUrl(previewImagePath)}")`,
         backgroundSize: FIT_STYLES[background.fit].size,
         backgroundRepeat: FIT_STYLES[background.fit].repeat,
         backgroundPosition: 'center',

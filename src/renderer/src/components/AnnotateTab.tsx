@@ -10,6 +10,7 @@ import {
 import { useAnnotationStore } from '../store/annotation-store';
 import { openAnnotateModal } from '../lib/annotate-modal-bridge';
 import { useToastStore } from '../store/toast-store';
+import { toFleetImageUrl } from '../../../shared/path-platform';
 
 function timeAgo(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -117,7 +118,7 @@ export function AnnotateTab(): React.JSX.Element {
           <div className="px-3 py-2 border-b border-neutral-800">
             <div className="text-xs text-neutral-500 mb-1">Drawing</div>
             <img
-              src={`fleet-image://${detail.drawingOverlayPath}`}
+              src={toFleetImageUrl(detail.drawingOverlayPath)}
               alt="Drawing overlay"
               className="rounded border border-neutral-700 max-w-full max-h-60 object-contain"
             />
@@ -181,7 +182,7 @@ export function AnnotateTab(): React.JSX.Element {
                   )}
                   {el.screenshotPath && (
                     <img
-                      src={`fleet-image://${el.screenshotPath}`}
+                      src={toFleetImageUrl(el.screenshotPath)}
                       alt={`Element ${i + 1}`}
                       className="mt-1 rounded border border-neutral-700 max-w-full max-h-40 object-contain"
                     />

@@ -1,7 +1,5 @@
 import { app, BrowserWindow, ipcMain, Notification, nativeImage, net, protocol } from 'electron';
 import { safeOpenExternal } from './safe-external';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { existsSync, statSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -33,6 +31,8 @@ import { FleetBridgeServer } from './fleet-bridge';
 import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
 import { WslService } from './wsl-service';
+import { parseFleetUrl } from './protocol-paths';
+import { toWslUncPath } from '../shared/path-platform';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload } from '../shared/ipc-api';
@@ -42,6 +42,7 @@ import type {
   ImageSettings,
   WorkerProfile
 } from '../shared/types';
+import { REVIEWER_PROFILE_NAME, DEFAULT_REVIEWER_INSTRUCTIONS } from '../shared/types';
 import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
 import { randomUUID } from 'crypto';
 import { createLogger } from './logger';
@@ -52,11 +53,19 @@ import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { PmChatService } from './kanban/pm-chat-service';
-import { prepareWorkspace, ensureFeatureBranch, checkoutBranchWorktree } from './kanban/workspace';
+import { RuneFileChatService } from './rune-assist/rune-file-chat-service';
+import { registerRuneAssistIpc } from './rune-assist/rune-assist-ipc';
+import {
+  prepareWorkspace,
+  ensureFeatureBranch,
+  checkoutBranchWorktree,
+  worktreeDiff
+} from './kanban/workspace';
 import { PrPoller } from './kanban/pr-poller';
 import { loadTaskDocs, pmDocsDir } from './kanban/pm-paths';
 import {
   spawnRuneWorker,
+  spawnVerify,
   resolveWorkProfile,
   detectAuthFailure,
   extractRuneError,
@@ -89,6 +98,18 @@ let kanbanPrPoller: PrPoller | undefined;
 let kanbanCommands: KanbanCommands | undefined;
 let kanbanNotifier: KanbanNotifier | null = null;
 let pmChat: PmChatService | undefined;
+let runeAssist: RuneFileChatService | null = null;
+
+function requireKanbanStore(): KanbanStore {
+  if (!kanbanStore) throw new Error('kanban store not initialized');
+  return kanbanStore;
+}
+
+function requireKanbanCommands(): KanbanCommands {
+  if (!kanbanCommands) throw new Error('kanban commands not initialized');
+  return kanbanCommands;
+}
+
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
@@ -140,27 +161,6 @@ imageService.on('changed', (id: string) => {
   }
 });
 log.info('startup marker', { runtime: 'spawn-ipc', preload: 'out/preload/index.js' });
-
-const execAsync = promisify(exec);
-
-/**
- * On first launch on macOS, check if Claude Code is installed.
- * If so, auto-enable the copilot and mark it as done so we never touch it again.
- */
-async function autoEnableCopilot(settings: SettingsStore): Promise<void> {
-  const current = settings.get();
-  if (current.copilot.autoEnabled) return; // already ran once
-  if (process.platform !== 'darwin') return;
-
-  try {
-    await execAsync('claude --version', { timeout: 3000 });
-    log.info('claude-code detected, auto-enabling copilot');
-    settings.set({ copilot: { ...current.copilot, enabled: true, autoEnabled: true } });
-  } catch {
-    // Claude Code not installed — just mark as checked so we don't retry
-    settings.set({ copilot: { ...current.copilot, autoEnabled: true } });
-  }
-}
 
 function getHostPlatform(): HostContextPayload['platform'] {
   const p = process.platform;
@@ -292,19 +292,76 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 void app.whenReady().then(async () => {
+  // Resolve a fleet-image/fleet-pdf request URL to a filesystem-accessible
+  // absolute path. The renderer's canonical builder puts the path in the URL path
+  // position (empty authority); legacy call sites still emit backslash shapes that
+  // make `new URL` throw, so parseFleetUrl parses by hand. A bare POSIX path is a
+  // native path on macOS/Linux (served directly); only under win32 does a
+  // distro-less POSIX path need the default-distro WSL UNC bridge.
+  const resolveFleetPath = async (rawUrl: string, scheme: string): Promise<string | null> => {
+    const parsed = parseFleetUrl(rawUrl, scheme);
+    if (!parsed) return null;
+    if (parsed.kind === 'win') return parsed.path;
+    if (process.platform !== 'win32') return parsed.posixPath;
+    const distros = await wslService.listDistros();
+    const distro = distros.find((d) => d.isDefault)?.name ?? distros[0]?.name;
+    return distro ? toWslUncPath(distro, parsed.posixPath) : null;
+  };
+
+  const isUncPath = (p: string): boolean => p.startsWith('\\\\') || p.startsWith('//');
+
+  const IMAGE_MIME: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    svg: 'image/svg+xml',
+    bmp: 'image/bmp',
+    avif: 'image/avif',
+    ico: 'image/x-icon'
+  };
+
   protocol.handle('fleet-image', async (request) => {
-    const filePath = decodeURIComponent(new URL(request.url).pathname);
-    return net.fetch(`file://${filePath}`);
+    const filePath = await resolveFleetPath(request.url, 'fleet-image');
+    if (!filePath) return new Response('Bad Request', { status: 400 });
+    // Node `fs` reads the WSL 9P UNC share natively; net.fetch is unreliable for
+    // UNC, so readFile+Response is the primary path there. Plain drive/POSIX
+    // paths keep the streaming net.fetch path.
+    if (isUncPath(filePath)) {
+      try {
+        const data = await readFile(filePath);
+        const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+        return new Response(new Uint8Array(data), {
+          headers: { 'Content-Type': IMAGE_MIME[ext] ?? 'application/octet-stream' }
+        });
+      } catch {
+        return new Response('Not Found', { status: 404 });
+      }
+    }
+    return net.fetch(pathToFileURL(filePath).toString());
   });
 
   // Serve local PDFs to the bundled pdf.js viewer (fetch works through custom
   // schemes even though Chromium's native PDF viewer does not on Electron 39).
   protocol.handle('fleet-pdf', async (request) => {
-    // resolve() normalizes any `..` segments so the .pdf suffix check below is
-    // a meaningful guard, not bypassable via traversal.
-    const filePath = resolve(fileURLToPath(`file://${new URL(request.url).pathname}`));
+    const resolved = await resolveFleetPath(request.url, 'fleet-pdf');
+    if (!resolved) return new Response('Bad Request', { status: 400 });
+    // resolve() normalizes any `..` segments so the .pdf suffix check is a
+    // meaningful guard, not bypassable via traversal.
+    const filePath = resolve(resolved);
     if (!filePath.toLowerCase().endsWith('.pdf')) {
       return new Response('Forbidden', { status: 403 });
+    }
+    if (isUncPath(filePath)) {
+      try {
+        const data = await readFile(filePath);
+        return new Response(new Uint8Array(data), {
+          headers: { 'Content-Type': 'application/pdf' }
+        });
+      } catch {
+        return new Response('Not Found', { status: 404 });
+      }
     }
     return net.fetch(pathToFileURL(filePath).toString());
   });
@@ -402,7 +459,7 @@ void app.whenReady().then(async () => {
   imageService.resumeInterrupted();
 
   // Clean up old annotations based on retention settings
-  const retentionDays = settingsStore.get().annotate?.retentionDays ?? 3;
+  const retentionDays = settingsStore.get().annotate.retentionDays;
   annotationStore.cleanup(retentionDays);
 
   // Forward annotation changes to renderer
@@ -494,14 +551,6 @@ void app.whenReady().then(async () => {
   });
   fleetBridge.start().catch((err: unknown) => {
     log.error('Fleet bridge failed to start', {
-      error: err instanceof Error ? err.message : String(err)
-    });
-  });
-
-  // Auto-enable copilot on first launch if macOS + Claude Code installed.
-  // Awaited so initCopilot sees the updated setting; exec has a 3s timeout.
-  await autoEnableCopilot(settingsStore).catch((err: unknown) => {
-    log.error('copilot auto-enable check failed', {
       error: err instanceof Error ? err.message : String(err)
     });
   });
@@ -805,6 +854,7 @@ void app.whenReady().then(async () => {
 
   // Bootstrap kanban subsystem
   const KANBAN_HOME = join(homedir(), '.fleet', 'kanban');
+  const verifyLogPath = (runId: number): string => join(KANBAN_HOME, 'logs', `verify-${runId}.log`);
   kanbanStore = new KanbanStore(join(KANBAN_HOME, 'kanban.db'), {
     onEvent: (event) => {
       const w = mainWindow;
@@ -822,6 +872,7 @@ void app.whenReady().then(async () => {
   });
   kanbanNotifier = new KanbanNotifier({
     isOsEnabled: (category) => settingsStore.get().kanban.notifications[category].os,
+    isAutoReviewOn: () => settingsStore.get().kanban.dispatcher.autoReview,
     getTask: (taskId) => {
       const t = kanbanStore?.getTask(taskId);
       return t ? { title: t.title, boardId: t.boardId } : null;
@@ -863,6 +914,7 @@ void app.whenReady().then(async () => {
       autoDecompose: d.autoDecompose,
       autoAssign: d.autoAssign,
       autoIntegrate: d.autoIntegrate,
+      autoReview: d.autoReview,
       maxDecompose: d.maxDecompose,
       artifactRetentionDays: settingsStore.get().kanban.artifactRetentionDays
     };
@@ -898,7 +950,7 @@ void app.whenReady().then(async () => {
           worktreesRoot: join(KANBAN_HOME, 'worktrees'),
           taskId: task.id
         });
-        kanbanStore!.setWorkspace(task.id, wt.path, wt.branchName, task.baseBranch ?? null);
+        requireKanbanStore().setWorkspace(task.id, wt.path, wt.branchName, task.baseBranch ?? null);
         return wt.path;
       }
       // A worktree task in a feature branches off the feature's integration branch
@@ -911,7 +963,7 @@ void app.whenReady().then(async () => {
         task.repoPath &&
         task.workspacePath == null
       ) {
-        const feature = kanbanStore!.getFeature(task.featureId);
+        const feature = requireKanbanStore().getFeature(task.featureId);
         if (feature) {
           const integrationBranch = feature.integrationBranch ?? `fleet/feature-${feature.id}`;
           const ensured = ensureFeatureBranch({
@@ -927,7 +979,10 @@ void app.whenReady().then(async () => {
           }
           featureStartPoint = integrationBranch;
           if (!feature.integrationBranch) {
-            kanbanStore!.updateFeature(feature.id, { integrationBranch, mergeState: 'pending' });
+            requireKanbanStore().updateFeature(feature.id, {
+              integrationBranch,
+              mergeState: 'pending'
+            });
           }
         }
       }
@@ -950,11 +1005,16 @@ void app.whenReady().then(async () => {
         (task.workspaceKind === 'worktree' || task.workspaceKind === 'scratch') &&
         task.workspacePath == null
       ) {
-        kanbanStore!.setWorkspace(task.id, prepared.path, prepared.branchName, prepared.baseBranch);
+        requireKanbanStore().setWorkspace(
+          task.id,
+          prepared.path,
+          prepared.branchName,
+          prepared.baseBranch
+        );
       }
       return prepared.path;
     },
-    spawnWorker: ({ task, runId, lock, workspace, mode }) => {
+    spawnWorker: ({ task, runId, lock, workspace, mode, verifyFailure, reviewFindings }) => {
       // Pre-flight gate: if we already know rune is missing, fail fast with a clear, actionable
       // reason. This routes through the dispatcher's catch → spawn_failed (shown in the drawer)
       // instead of letting the worker die and surface as a cryptic "pid not alive" reclaim.
@@ -966,6 +1026,7 @@ void app.whenReady().then(async () => {
       const profiles = settingsStore.get().kanban.profiles;
       let profile: WorkerProfile | null;
       let roster: Array<{ name: string; description: string }> | undefined;
+      let reviewDiff: string | undefined;
       if (mode === 'work' || mode === 'resolve') {
         const resolved = resolveWorkProfile(profiles, task.assignee);
         profile = resolved.profile;
@@ -976,6 +1037,20 @@ void app.whenReady().then(async () => {
             fallback: profile?.name ?? null
           });
         }
+      } else if (mode === 'review') {
+        // Singleton reviewer selected BY MODE; fall back to an in-memory default persona when
+        // no saved reviewer profile exists (existing users have none). NEVER write task.assignee.
+        const reviewerProfile = profiles.find(
+          (p) => p.name === REVIEWER_PROFILE_NAME && p.role === 'reviewer'
+        );
+        profile = reviewerProfile ?? {
+          name: REVIEWER_PROFILE_NAME,
+          role: 'reviewer',
+          model: '',
+          skills: [],
+          instructions: DEFAULT_REVIEWER_INSTRUCTIONS
+        };
+        reviewDiff = worktreeDiff({ workspacePath: workspace, baseBranch: task.baseBranch });
       } else {
         // decompose/specify: run as an orchestrator profile; offer the worker roster.
         profile =
@@ -983,7 +1058,7 @@ void app.whenReady().then(async () => {
           profiles.find((p) => p.name === 'orchestrator') ??
           null;
         roster = profiles
-          .filter((p) => p.role !== 'orchestrator')
+          .filter((p) => p.role === 'worker')
           .map((p) => ({
             name: p.name,
             description: (p.instructions.split('\n')[0] ?? '').slice(0, 120)
@@ -994,7 +1069,9 @@ void app.whenReady().then(async () => {
         // decompose/specify record the orchestrator as the card's assignee; an assign run
         // must not — it exists precisely to choose and set the real assignee itself.
         if (mode !== 'assign') {
-          kanbanStore!.updateTask(task.id, { assignee: profile?.name ?? 'orchestrator' });
+          requireKanbanStore().updateTask(task.id, {
+            assignee: profile?.name ?? 'orchestrator'
+          });
         }
       }
       let resolveTarget: string | undefined;
@@ -1002,7 +1079,7 @@ void app.whenReady().then(async () => {
         if (task.systemKind === 'feature_sync') {
           resolveTarget = task.baseBranch ?? undefined; // system task's branch IS the integration branch; merge base in
         } else if (task.featureId) {
-          const f = kanbanStore!.getFeature(task.featureId);
+          const f = requireKanbanStore().getFeature(task.featureId);
           resolveTarget = f ? (f.integrationBranch ?? `fleet/feature-${f.id}`) : undefined;
         } else {
           resolveTarget = task.baseBranch ?? undefined;
@@ -1021,16 +1098,21 @@ void app.whenReady().then(async () => {
           },
           workspace,
           resolveTarget,
+          verifyFailure,
+          reviewDiff,
+          reviewFindings,
           mcpPort: kanbanMcpPort,
           runToken,
           logPath,
           mode,
           profile,
           roster,
-          attachments: kanbanStore!.listAttachments(task.id).map((a) => ({
-            filename: a.filename,
-            storedPath: a.storedPath
-          })),
+          attachments: requireKanbanStore()
+            .listAttachments(task.id)
+            .map((a) => ({
+              filename: a.filename,
+              storedPath: a.storedPath
+            })),
           docs: loadTaskDocs(pmDocsDir(KANBAN_HOME, task.boardId), task.docs)
         },
         // ENOENT here means rune vanished from PATH after our cached check. Mark it missing so
@@ -1043,7 +1125,7 @@ void app.whenReady().then(async () => {
         // That keeps the map to in-flight-but-exited runs and lets reclaim()
         // classify rune's exit-3 "incomplete" without false-flagging successes.
         (exit) => {
-          const t = kanbanStore!.getTask(task.id);
+          const t = requireKanbanStore().getTask(task.id);
           if (t?.status !== 'running' || t.currentRunId !== runId) return;
           // Classify the cause of death while the log path is in scope, so the
           // dispatcher can surface the real error and block retry-proof failures
@@ -1074,7 +1156,8 @@ void app.whenReady().then(async () => {
     config: buildDispatcherConfig(),
     intervalMs: settingsStore.get().kanban.dispatcher.intervalMs,
     workerExit: (id) => workerExits.get(id),
-    clearWorkerExit: (id) => workerExits.delete(id)
+    clearWorkerExit: (id) => workerExits.delete(id),
+    verifyLogPath
   });
   kanbanDispatcher.start();
   // Poll GitHub PR status out-of-band (a gh network call inside the 5s dispatch
@@ -1090,14 +1173,26 @@ void app.whenReady().then(async () => {
     },
     () => settingsStore.get().kanban.profiles
   );
-  kanbanMcp.setSwarmHandler((input) => kanbanCommands!.createSwarm(input));
+  kanbanMcp.setSwarmHandler((input) => requireKanbanCommands().createSwarm(input));
   kanbanMcp.setCommands(kanbanCommands);
   kanbanMcp.setKanbanHome(KANBAN_HOME);
+  kanbanMcp.setVerifyRunner(({ runId, taskId, workspace, commands }) => {
+    const logPath = verifyLogPath(runId);
+    return spawnVerify({ workspace, commands, logPath }, (exit) => {
+      // Raw recorder: NO rune auth/crash classification (a test exit-3 or a "401" in
+      // output must not be misread as a fatal block). Same running/currentRunId guard as
+      // the rune recorder so a late exit (after reclaim already fail-opened) can't leave a
+      // stale entry.
+      const t = kanbanStore!.getTask(taskId);
+      if (t?.status !== 'running' || t.currentRunId !== runId) return;
+      workerExits.set(runId, { code: exit.code, signal: exit.signal });
+    });
+  });
   pmChat = new PmChatService({
     mcp: kanbanMcp,
     mcpPort: kanbanMcpPort,
     kanbanHome: KANBAN_HOME,
-    getProjects: (boardId) => kanbanCommands!.listProjects(boardId),
+    getProjects: (boardId) => requireKanbanCommands().listProjects(boardId),
     emitStatus: (payload) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.KANBAN_PM_STATUS, payload);
@@ -1110,6 +1205,21 @@ void app.whenReady().then(async () => {
     }
   });
   registerKanbanIpc(kanbanCommands, pmChat);
+
+  runeAssist = new RuneFileChatService({
+    stateDir: app.getPath('userData'),
+    emitStatus: (payload) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.RUNE_ASSIST_STATUS, payload);
+      }
+    },
+    emitResult: (payload) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.RUNE_ASSIST_RESULT, payload);
+      }
+    }
+  });
+  registerRuneAssistIpc(runeAssist);
 
   sessionsService = new SessionsService();
   registerSessionsIpcHandlers(sessionsService);
@@ -1151,6 +1261,7 @@ function shutdownAll(): void {
   kanbanDispatcher?.stop();
   kanbanPrPoller?.stop();
   pmChat?.dispose();
+  runeAssist?.dispose();
   void kanbanMcp?.stop();
   kanbanStore?.close();
 }

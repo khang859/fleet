@@ -161,28 +161,42 @@ export function PaneGrid({
         if (leaf.node.paneType === 'file') {
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
-              <FileEditorPane paneId={leaf.id} filePath={leaf.node.filePath ?? ''} />
+              <FileEditorPane
+                paneId={leaf.id}
+                filePath={leaf.node.filePath ?? ''}
+                pathContext={leaf.node.pathContext}
+              />
             </div>
           );
         }
         if (leaf.node.paneType === 'markdown') {
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
-              <MarkdownPane paneId={leaf.id} filePath={leaf.node.filePath ?? ''} />
+              <MarkdownPane
+                paneId={leaf.id}
+                filePath={leaf.node.filePath ?? ''}
+                pathContext={leaf.node.pathContext}
+              />
             </div>
           );
         }
         if (leaf.node.paneType === 'image') {
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
-              <ImageViewerPane filePath={leaf.node.filePath ?? ''} />
+              <ImageViewerPane
+                filePath={leaf.node.filePath ?? ''}
+                pathContext={leaf.node.pathContext}
+              />
             </div>
           );
         }
         if (leaf.node.paneType === 'pdf') {
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
-              <PdfViewerPane filePath={leaf.node.filePath ?? ''} />
+              <PdfViewerPane
+                filePath={leaf.node.filePath ?? ''}
+                pathContext={leaf.node.pathContext}
+              />
             </div>
           );
         }

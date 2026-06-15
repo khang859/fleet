@@ -11,8 +11,16 @@ export type TaskStatus =
 
 export type WorkspaceKind = 'scratch' | 'dir' | 'worktree';
 
-/** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign' | 'resolve'. */
-export type RunMode = 'work' | 'decompose' | 'specify' | 'assign' | 'resolve';
+/** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign' | 'resolve' | 'suggest'; 'verify' is a deterministic (non-agent) verify-command run; 'review' is an agent code-review run (spec §232). */
+export type RunMode =
+  | 'work'
+  | 'decompose'
+  | 'specify'
+  | 'assign'
+  | 'resolve'
+  | 'suggest'
+  | 'verify'
+  | 'review';
 
 /** A triage task can be flagged for an orchestrator run. */
 export type PendingMode = 'decompose' | 'specify';
@@ -31,7 +39,8 @@ export type RunOutcome =
   | 'spawn_failed'
   | 'gave_up'
   | 'reclaimed'
-  | 'incomplete'; // exited cleanly without calling a completion tool (review-required)
+  | 'incomplete' // exited cleanly without calling a completion tool (review-required)
+  | 'failed'; // a verify run exited non-zero (deterministic verify-command failure)
 
 export type FeatureStatus = 'active' | 'shipped' | 'archived';
 export type FeatureMergeState = 'pending' | 'in_progress' | 'conflict' | 'merged';
@@ -40,6 +49,15 @@ export type PrState = 'open' | 'merged' | 'closed' | 'draft';
 export type ChecksState = 'passing' | 'failing' | 'pending';
 /** Result of a local pre-merge conflict check (Phase 3). */
 export type ConflictState = 'clean' | 'conflicts' | 'error';
+
+/** Agent code-review outcome recorded on a task (spec §232). */
+export type ReviewVerdict = 'approve' | 'request_changes';
+
+/** One labeled verify command run in a task's worktree before it reaches review (spec §231). */
+export interface VerifyCommand {
+  label: string;
+  command: string;
+}
 
 /** GitHub PR status for a task, polled from `gh`. Null fields until first sync. */
 export interface TaskPrInfo {
@@ -83,6 +101,29 @@ export interface CreateFeatureInput {
   name: string;
   repoPath?: string | null;
   baseBranch?: string | null;
+}
+
+export type SuggestionStatus = 'pending' | 'accepted' | 'dismissed';
+
+/** A PM-proposed grouping of loose tickets into a feature, awaiting a human Accept/Dismiss (spec §4). */
+export interface FeatureSuggestion {
+  id: string;
+  boardId: string;
+  repoPath: string | null;
+  name: string;
+  taskIds: string[];
+  reason: string | null;
+  status: SuggestionStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateSuggestionInput {
+  boardId: string;
+  repoPath: string | null;
+  name: string;
+  taskIds: string[];
+  reason?: string | null;
 }
 
 export interface UpdateFeatureInput {
@@ -166,6 +207,14 @@ export interface Task {
   lastHeartbeatAt: number | null;
   consecutiveFailures: number;
   resolveAttempts: number;
+  /** Bounded verify-fix budget; mirrors resolveAttempts. */
+  verifyAttempts: number;
+  /** Agent code-review verdict; null until the reviewer runs (spec §232). */
+  reviewVerdict: ReviewVerdict | null;
+  /** Bounded review-fix budget; mirrors verifyAttempts. */
+  reviewAttempts: number;
+  /** Worktree HEAD captured when the reviewer approved; integrate merges only at this SHA. */
+  reviewHeadSha: string | null;
   lastFailureError: string | null;
   maxRuntimeSeconds: number | null;
   maxRetries: number;
@@ -203,6 +252,8 @@ export interface Project {
   name: string;
   path: string;
   description: string | null;
+  /** Ordered verify commands run after a worktree completion; empty = no verify gate. */
+  verifyCommands: VerifyCommand[];
   isDefault: boolean;
   createdAt: number;
   updatedAt: number;

@@ -15,9 +15,15 @@ import { getFileIcon } from './lib/file-icons';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { PaneGrid } from './components/PaneGrid';
-import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from './store/workspace-store';
+import {
+  useWorkspaceStore,
+  collectPaneIds,
+  collectPaneLeafs,
+  getPaneContextById
+} from './store/workspace-store';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
+import { useRuneAssistEvents } from './hooks/use-rune-assist-events';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, restartingPanes, serializePane } from './hooks/use-terminal';
 import { initCwdListener, useCwdStore } from './store/cwd-store';
@@ -97,6 +103,7 @@ export function App(): React.JSX.Element {
   usePaneNavigation();
   useNotifications();
   useKanbanAttention();
+  useRuneAssistEvents();
   const { loadSettings } = useSettingsStore();
   const initRef = useRef(false);
   const [showUndoToast, setShowUndoToast] = useState(false);
@@ -478,13 +485,14 @@ export function App(): React.JSX.Element {
       pendingKillRef.current = paneIds;
       // Capture worktree path for delayed cleanup
       const worktreePath = lastClosedTab.tab.worktreePath;
+      const worktreePathContext = lastClosedTab.tab.pathContext;
       undoTimerRef.current = setTimeout(() => {
         setShowUndoToast(false);
         killClosedTabPtys(paneIds);
         pendingKillRef.current = [];
         // Clean up worktree after undo window expires
         if (worktreePath) {
-          void window.fleet.worktree.remove({ worktreePath });
+          void window.fleet.worktree.remove({ worktreePath, pathContext: worktreePathContext });
         }
       }, UNDO_TOAST_DURATION);
     }
@@ -1016,7 +1024,8 @@ export function App(): React.JSX.Element {
                       pendingKillRef.current = [];
                       if (lastClosedTab.tab.worktreePath) {
                         void window.fleet.worktree.remove({
-                          worktreePath: lastClosedTab.tab.worktreePath
+                          worktreePath: lastClosedTab.tab.worktreePath,
+                          pathContext: lastClosedTab.tab.pathContext
                         });
                       }
                     }
@@ -1054,6 +1063,7 @@ export function App(): React.JSX.Element {
         isOpen={gitChangesOpen}
         onClose={() => setGitChangesOpen(false)}
         cwd={focusedPaneCwd}
+        pathContext={getPaneContextById(activePaneId)}
       />
       <QuickOpenOverlay
         isOpen={quickOpenOpen}
@@ -1074,11 +1084,13 @@ export function App(): React.JSX.Element {
         isOpen={envSyncOpen}
         onClose={() => setEnvSyncOpen(false)}
         cwd={focusedPaneCwd}
+        pathContext={getPaneContextById(activePaneId)}
       />
       <EnvEditorModal
         isOpen={envEditorOpen}
         onClose={() => setEnvEditorOpen(false)}
         cwd={focusedPaneCwd}
+        pathContext={getPaneContextById(activePaneId)}
       />
       <AnnotateModal open={false} onClose={() => {}} />
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />

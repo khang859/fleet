@@ -8,6 +8,7 @@ const proj = (over: Partial<Project>): Project => ({
   name: 'fleet',
   path: '/Users/me/fleet',
   description: null,
+  verifyCommands: [],
   isDefault: false,
   createdAt: 0,
   updatedAt: 0,

@@ -1,5 +1,5 @@
 import type { Workspace, NotificationEvent, ActivityState } from './types';
-import type { ShellProfile, WslDistroState } from './shell-profiles';
+import type { ShellProfile, WslDistroState, PathContext } from './shell-profiles';
 import type { TranscriptMessage } from './sessions';
 import type {
   UpdateTaskFields,
@@ -11,8 +11,10 @@ import type {
   CreateFeatureInput,
   UpdateFeatureInput,
   FeatureStatus,
-  ConflictState
+  ConflictState,
+  VerifyCommand
 } from './kanban-types';
+import type { RuneAssistMode, RuneAssistSelection } from './rune-assist';
 
 export type PtyCreateRequest = {
   paneId: string;
@@ -165,6 +167,8 @@ export type FileSearchRequest = {
   query: string;
   scope?: string;
   limit?: number;
+  /** Pane coordinate system; WSL panes run locate/find inside the distro. */
+  pathContext?: PathContext;
 };
 
 export type FileSearchResult = {
@@ -184,6 +188,8 @@ export type FileGrepRequest = {
   query: string;
   cwd: string;
   limit?: number;
+  /** Pane coordinate system; WSL panes run rg/grep inside the distro. */
+  pathContext?: PathContext;
 };
 
 export type FileGrepResult = {
@@ -235,6 +241,8 @@ export interface LogEntry {
 
 export type WorktreeCreateRequest = {
   repoPath: string;
+  /** Pane context; for a WSL pane the worktree is created inside the distro. */
+  pathContext?: PathContext;
 };
 
 export type WorktreeCreateResponse = {
@@ -244,6 +252,8 @@ export type WorktreeCreateResponse = {
 
 export type WorktreeRemoveRequest = {
   worktreePath: string;
+  /** Pane context the worktree belongs to; routes git into the distro for WSL. */
+  pathContext?: PathContext;
 };
 
 export type ShellProfilesListResponse = {
@@ -400,6 +410,7 @@ export type KanbanAddProjectRequest = {
   name: string;
   path: string;
   description?: string | null;
+  verifyCommands?: VerifyCommand[];
 };
 
 export type PmChatSendRequest = {
@@ -424,6 +435,53 @@ export type PmChatStatusPayload = {
 export type PmChatTranscriptPayload = {
   boardId: string;
   messages: TranscriptMessage[];
+};
+
+// --- Rune Quick-Assist ---
+export type RuneAssistSendRequest = {
+  cwd: string;
+  paneId: string;
+  text: string;
+  mode: RuneAssistMode;
+  contextFile?: string;
+  selection?: RuneAssistSelection;
+};
+
+export type RuneAssistStopRequest = { cwd: string; paneId: string };
+export type RuneAssistResetRequest = { cwd: string };
+/** Query in-flight state either by resolved cwd or by the open file (which resolves to its repo root). */
+export type RuneAssistStateRequest = { cwd?: string; filePath?: string };
+
+export type RuneAssistState = {
+  cwd: string;
+  inFlight: boolean;
+  error: string | null;
+  sessionId: string | null;
+  /** The turn currently running for this cwd (for rehydrating the overlay after a refresh). */
+  activeTurn: {
+    paneId: string;
+    mode: RuneAssistMode;
+    startedAt: number;
+    step: string | null;
+  } | null;
+};
+
+export type RuneAssistStatusPayload = {
+  cwd: string;
+  paneId: string;
+  phase: 'idle' | 'working' | 'error';
+  step?: string;
+  error?: string;
+};
+
+export type RuneAssistResultPayload = {
+  cwd: string;
+  paneId: string;
+  mode: RuneAssistMode;
+  /** Ask: the assistant's answer text. */
+  answer?: string;
+  /** Edit: files rune wrote (best-effort), for reloading other open panes. */
+  changedFiles?: string[];
 };
 
 export type {
