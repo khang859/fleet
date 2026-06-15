@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.72.1
+
+- **Fix Learnings distill noise from Rune** — headless `rune --prompt` runs now set `RUNE_NO_ATTACH=1`, so Rune no longer scans the prompt for file references and auto-attaches them. Previously, distilling a session (or running a Kanban worker / PM chat) fed Rune a prompt full of incidental file paths, which Rune inlined from the current directory and annotated with `(could not attach …)` lines on stdout — polluting the prompt and corrupting the distilled learning. Requires Rune v0.9.0+ (older Rune ignores the variable).
+
 ## v2.72.0
 
 - **Learnings KB — distill sessions into reusable knowledge** — a new **Learnings** view in the Sessions tool turns finished agent sessions into durable, cross-project engineering notes. Hit **✨ Distill** on a session (or one Rune branch) and Fleet runs a headless one-shot pass (Rune, falling back to Claude) to draft a titled markdown learning — problem, root cause, fix, tags — which you can edit, dedup-merge against existing entries, and save into a Fleet-owned store (`~/.fleet/learnings/learnings.db`, separate from any repo). Browse, full-text search, edit, and export learnings as standalone `.md` into any project. Hardened across the board: FTS5 handles punctuation/CJK input, exact tag-membership filtering, agent-failure output is never saved as a "learning", orphaned distill processes are killed as a group, IPC inputs are validated and errors sanitized, exports avoid filename collisions and Windows reserved names, and titles are stripped of HTML before export.
