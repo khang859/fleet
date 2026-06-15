@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.71.2
+
+- **Fixed broken images, backgrounds & PDFs on macOS/Linux** — a regression from the WSL path work caused every locally-served file (`fleet-image://` / `fleet-pdf://`) to be routed through a WSL UNC bridge, which fails on non-Windows hosts. Backgrounds, the image viewer, image gallery, recent screenshots, slideshows, and the PDF viewer no longer come up blank on macOS and Linux. Native POSIX paths are now served directly; the WSL bridge only runs on Windows.
+
 ## v2.71.1
 
 - **Fixed opening files from WSL panes** — opening a file (via Telescope, file browser, grep, or a markdown link) from a **WSL (this machine)** pane no longer fails with `ENOENT … stat 'C:\home\…'`. The file's WSL distro is now remembered on the viewer pane and its path is bridged to a `\\wsl.localhost\…` UNC path before being read, fixing the markdown, file-editor, PDF, and image viewers. No effect on macOS, Linux, or native-Windows files.
