@@ -289,15 +289,17 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 void app.whenReady().then(async () => {
-  // Resolve a fleet-image/fleet-pdf request URL to a Windows-accessible absolute
-  // path. The renderer's canonical builder puts the path in the URL path position
-  // (empty authority); legacy call sites still emit backslash shapes that make
-  // `new URL` throw, so parseFleetUrl parses by hand. A bare POSIX path that
-  // arrives without a distro is bridged to UNC using the default distro.
+  // Resolve a fleet-image/fleet-pdf request URL to a filesystem-accessible
+  // absolute path. The renderer's canonical builder puts the path in the URL path
+  // position (empty authority); legacy call sites still emit backslash shapes that
+  // make `new URL` throw, so parseFleetUrl parses by hand. A bare POSIX path is a
+  // native path on macOS/Linux (served directly); only under win32 does a
+  // distro-less POSIX path need the default-distro WSL UNC bridge.
   const resolveFleetPath = async (rawUrl: string, scheme: string): Promise<string | null> => {
     const parsed = parseFleetUrl(rawUrl, scheme);
     if (!parsed) return null;
     if (parsed.kind === 'win') return parsed.path;
+    if (process.platform !== 'win32') return parsed.posixPath;
     const distros = await wslService.listDistros();
     const distro = distros.find((d) => d.isDefault)?.name ?? distros[0]?.name;
     return distro ? toWslUncPath(distro, parsed.posixPath) : null;
