@@ -1,7 +1,7 @@
 // src/main/sessions/claude-source.ts
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { cwdToProjectDir, parseClaudeTranscript } from '../copilot/conversation-reader';
 import type { CopilotChatMessage } from '../../shared/types';
@@ -88,7 +88,11 @@ export async function readClaudeSession(
   id: string,
   cwd: string
 ): Promise<SessionTranscript | null> {
-  const full = join(claudeProjectsDir(), cwdToProjectDir(cwd), `${id}.jsonl`);
+  const dir = claudeProjectsDir();
+  const full = join(dir, cwdToProjectDir(cwd), `${id}.jsonl`);
+  // Guard against path traversal via a crafted id or cwd: the resolved path must
+  // stay inside the claude projects directory.
+  if (!resolve(full).startsWith(resolve(dir) + sep)) return null;
   let content: string;
   let updatedAt = 0;
   try {

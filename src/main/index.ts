@@ -66,6 +66,8 @@ import { RuneManager } from './rune-manager';
 import { RuneConfigManager } from './rune-config-manager';
 import { SessionsService } from './sessions/service';
 import { registerSessionsIpcHandlers } from './sessions/ipc-handlers';
+import { LearningsStore } from './learnings/learnings-store';
+import { registerLearningsIpcHandlers } from './learnings/ipc-handlers';
 import { RUNE_NOT_INSTALLED_MESSAGE } from '../shared/rune';
 import { registerKanbanIpc } from './kanban/kanban-ipc';
 import { KanbanCommands } from './kanban/kanban-commands';
@@ -79,6 +81,7 @@ const updaterLog = createLogger('auto-updater');
 let mainWindow: BrowserWindow | null = null;
 let socketSupervisor: SocketSupervisor | null = null;
 let sessionsService: SessionsService | null = null;
+let learningsStore: LearningsStore | undefined;
 let kanbanStore: KanbanStore | undefined;
 let kanbanMcp: KanbanMcpServer | undefined;
 let kanbanDispatcher: KanbanDispatcher | undefined;
@@ -1110,6 +1113,9 @@ void app.whenReady().then(async () => {
 
   sessionsService = new SessionsService();
   registerSessionsIpcHandlers(sessionsService);
+
+  learningsStore = new LearningsStore(join(homedir(), '.fleet', 'learnings', 'learnings.db'));
+  registerLearningsIpcHandlers(learningsStore, sessionsService);
   sessionsService.startWatching(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.SESSIONS_CHANGED);
