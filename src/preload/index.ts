@@ -145,7 +145,8 @@ import type {
   LearningSearchFilter,
   DistillRequest,
   DistillResult,
-  TagCount
+  TagCount,
+  LearningsStatus
 } from '../shared/learnings';
 
 type Unsubscribe = () => void;
@@ -782,7 +783,14 @@ const fleetApi = {
       typedInvoke<void>(IPC_CHANNELS.LEARNINGS_EXPORT, id),
     similar: async (text: string, limit?: number): Promise<Learning[]> =>
       typedInvoke<Learning[]>(IPC_CHANNELS.LEARNINGS_SIMILAR, text, limit),
-    tags: async (): Promise<TagCount[]> => typedInvoke<TagCount[]>(IPC_CHANNELS.LEARNINGS_TAGS)
+    tags: async (): Promise<TagCount[]> => typedInvoke<TagCount[]>(IPC_CHANNELS.LEARNINGS_TAGS),
+    status: async (): Promise<LearningsStatus> =>
+      typedInvoke<LearningsStatus>(IPC_CHANNELS.LEARNINGS_STATUS),
+    warmModel: async (): Promise<void> => typedInvoke<void>(IPC_CHANNELS.LEARNINGS_WARM_MODEL),
+    modelCacheSize: async (): Promise<number> =>
+      typedInvoke<number>(IPC_CHANNELS.LEARNINGS_MODEL_CACHE_SIZE),
+    clearModelCache: async (): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.LEARNINGS_CLEAR_MODEL_CACHE)
   }
 };
 

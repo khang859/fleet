@@ -239,6 +239,10 @@ export const IPC_CHANNELS = {
   LEARNINGS_EXPORT: 'learnings:export',
   LEARNINGS_SIMILAR: 'learnings:similar',
   LEARNINGS_TAGS: 'learnings:tags',
+  LEARNINGS_STATUS: 'learnings:status',
+  LEARNINGS_WARM_MODEL: 'learnings:warmModel',
+  LEARNINGS_MODEL_CACHE_SIZE: 'learnings:modelCacheSize',
+  LEARNINGS_CLEAR_MODEL_CACHE: 'learnings:clearModelCache',
   // Env Editor
   ENV_EDITOR_LIST: 'env-editor:list',
   ENV_EDITOR_READ: 'env-editor:read',

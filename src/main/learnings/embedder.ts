@@ -1,6 +1,7 @@
 // src/main/learnings/embedder.ts
 // The embedding seam. Production uses WorkerEmbedder (transformers.js in a worker
 // thread); tests use FakeEmbedder; NullEmbedder is the FTS-only degraded fallback.
+import type { EmbedderState } from '../../shared/learnings';
 
 /** Dimensionality of the all-MiniLM-L6-v2 model. */
 export const EMBED_DIM = 384;
@@ -21,6 +22,10 @@ export interface Embedder {
    * null for a single input (skip that input, keep going).
    */
   available(): boolean;
+  /** Lifecycle for the UI indicator. */
+  state(): EmbedderState;
+  /** Eagerly start loading the model (so first use isn't penalized). Optional. */
+  warmUp?(): void;
   /** Release resources (e.g. terminate the worker). Optional for stateless embedders. */
   close?(): Promise<void> | void;
 }
@@ -33,6 +38,9 @@ export class NullEmbedder implements Embedder {
   }
   available(): boolean {
     return false;
+  }
+  state(): EmbedderState {
+    return 'failed';
   }
 }
 
@@ -66,5 +74,9 @@ export class FakeEmbedder implements Embedder {
 
   available(): boolean {
     return true;
+  }
+
+  state(): EmbedderState {
+    return 'ready';
   }
 }

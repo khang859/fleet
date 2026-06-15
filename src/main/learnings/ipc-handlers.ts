@@ -1,6 +1,7 @@
 // src/main/learnings/ipc-handlers.ts
 import { ipcMain, dialog, BrowserWindow, type IpcMainInvokeEvent } from 'electron';
-import { writeFileSync } from 'fs';
+import { writeFileSync, rmSync, statSync, readdirSync, existsSync } from 'fs';
+import { join } from 'path';
 import { createLogger } from '../logger';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import {
@@ -12,7 +13,8 @@ import {
   type LearningSearchFilter,
   type DistillRequest,
   type DistillResult,
-  type TagCount
+  type TagCount,
+  type LearningsStatus
 } from '../../shared/learnings';
 import { pathMessagesToNode } from '../../shared/sessions';
 import type { LearningsStore } from './learnings-store';
@@ -81,11 +83,24 @@ function validateCreateInput(input: CreateLearningInput): CreateLearningInput {
   return input;
 }
 
+/** Total size (bytes) of a directory tree; 0 if it doesn't exist. */
+function dirSize(dir: string): number {
+  if (!existsSync(dir)) return 0;
+  let total = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) total += dirSize(full);
+    else if (entry.isFile()) total += statSync(full).size;
+  }
+  return total;
+}
+
 export function registerLearningsIpcHandlers(
   store: LearningsStore,
   sessions: SessionsService,
   search: LearningsSearchService,
-  embedder: Embedder
+  embedder: Embedder,
+  modelCacheDir: string
 ): void {
   // Embed a learning in the background after a write. Best-effort: a null vector
   // (model unavailable) just leaves the row pending for the backfill pass.
@@ -154,6 +169,22 @@ export function registerLearningsIpcHandlers(
     store.findSimilar(reqString(text, 'text'), limit)
   );
   handle(IPC_CHANNELS.LEARNINGS_TAGS, (): TagCount[] => store.allTags());
+  handle(
+    IPC_CHANNELS.LEARNINGS_STATUS,
+    (): LearningsStatus => ({
+      vectorSupport: store.hasVectorSupport(),
+      embedder: embedder.state()
+    })
+  );
+  handle(IPC_CHANNELS.LEARNINGS_WARM_MODEL, (): void => embedder.warmUp?.());
+  handle(IPC_CHANNELS.LEARNINGS_MODEL_CACHE_SIZE, (): number => dirSize(modelCacheDir));
+  handle(IPC_CHANNELS.LEARNINGS_CLEAR_MODEL_CACHE, async (): Promise<void> => {
+    // Stop the worker so its file handles are released, then drop the model files.
+    // The next embed re-creates the worker and re-downloads the model.
+    await embedder.close?.();
+    rmSync(modelCacheDir, { recursive: true, force: true });
+    log.info('cleared learnings model cache', { modelCacheDir });
+  });
   handle(IPC_CHANNELS.LEARNINGS_EXPORT, async (e, id: string): Promise<void> => {
     const learning = store.get(reqString(id, 'id'));
     if (!learning) return;

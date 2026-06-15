@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { LearningsStore } from '../learnings/learnings-store';
 import { runBackfill } from '../learnings/backfill';
 import { EMBED_DIM, type Embedder } from '../learnings/embedder';
+import type { EmbedderState } from '../../shared/learnings';
 
 const TEST_DIR = join(tmpdir(), `fleet-learnings-backfill-test-${Date.now()}`);
 
@@ -21,6 +22,9 @@ class StubEmbedder implements Embedder {
   }
   available(): boolean {
     return !this.opts.down;
+  }
+  state(): EmbedderState {
+    return this.opts.down ? 'failed' : 'ready';
   }
 }
 

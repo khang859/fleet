@@ -1241,8 +1241,9 @@ void app.whenReady().then(async () => {
   registerSessionsIpcHandlers(sessionsService);
 
   const learningsHome = join(homedir(), '.fleet', 'learnings');
+  const learningsModelDir = join(learningsHome, 'models');
   const learningsStoreRef = new LearningsStore(join(learningsHome, 'learnings.db'));
-  const learningsEmbedderRef = new WorkerEmbedder({ modelCacheDir: join(learningsHome, 'models') });
+  const learningsEmbedderRef = new WorkerEmbedder({ modelCacheDir: learningsModelDir });
   learningsStore = learningsStoreRef;
   learningsEmbedder = learningsEmbedderRef;
   const learningsSearch = new LearningsSearchService(learningsStoreRef, learningsEmbedderRef);
@@ -1250,7 +1251,8 @@ void app.whenReady().then(async () => {
     learningsStoreRef,
     sessionsService,
     learningsSearch,
-    learningsEmbedderRef
+    learningsEmbedderRef,
+    learningsModelDir
   );
   // Expose the KB to Rune + Claude Code over a loopback MCP server, then register it
   // in their global configs and backfill embeddings for existing learnings.

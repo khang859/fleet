@@ -2,6 +2,7 @@
 import { Worker } from 'worker_threads';
 import { createLogger } from '../logger';
 import { EMBED_DIM, type Embedder } from './embedder';
+import type { EmbedderState } from '../../shared/learnings';
 
 const log = createLogger('learnings-embed');
 
@@ -28,6 +29,7 @@ export class WorkerEmbedder implements Embedder {
   readonly dim = EMBED_DIM;
   private worker: Worker | null = null;
   private failed = false;
+  private modelReady = false;
   private seq = 0;
   private readonly pending = new Map<number, (vec: Float32Array | null) => void>();
   private readonly modelCacheDir: string;
@@ -60,6 +62,7 @@ export class WorkerEmbedder implements Embedder {
 
   private onMessage(msg: WorkerMessage): void {
     if (msg.type === 'ready') {
+      this.modelReady = true;
       log.info('embedding model ready', { model: EMBED_MODEL });
       return;
     }
@@ -97,6 +100,17 @@ export class WorkerEmbedder implements Embedder {
     return !this.failed;
   }
 
+  state(): EmbedderState {
+    if (this.failed) return 'failed';
+    if (this.modelReady) return 'ready';
+    return this.worker ? 'loading' : 'idle';
+  }
+
+  /** Start the worker (and thus the model download) without waiting for an embed. */
+  warmUp(): void {
+    this.ensureWorker();
+  }
+
   async embed(text: string): Promise<Float32Array | null> {
     const worker = this.ensureWorker();
     if (!worker) return null;
@@ -110,6 +124,7 @@ export class WorkerEmbedder implements Embedder {
   async close(): Promise<void> {
     for (const resolve of this.pending.values()) resolve(null);
     this.pending.clear();
+    this.modelReady = false;
     await this.worker?.terminate();
     this.worker = null;
   }

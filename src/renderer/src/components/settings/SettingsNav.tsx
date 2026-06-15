@@ -9,7 +9,8 @@ export type SettingsSection =
   | 'rune'
   | 'pi'
   | 'kanban'
-  | 'envSync';
+  | 'envSync'
+  | 'learnings';
 
 const ALL_SECTIONS: Array<{ id: SettingsSection; label: string; darwinOnly?: boolean }> = [
   { id: 'general', label: 'General' },
@@ -20,6 +21,7 @@ const ALL_SECTIONS: Array<{ id: SettingsSection; label: string; darwinOnly?: boo
   { id: 'rune', label: 'Rune' },
   { id: 'pi', label: 'Pi Agent' },
   { id: 'kanban', label: 'Kanban' },
+  { id: 'learnings', label: 'Learnings' },
   { id: 'envSync', label: 'Env Sync' },
   { id: 'annotate', label: 'Annotate' },
   { id: 'updates', label: 'Updates' } // Always keep at bottom
