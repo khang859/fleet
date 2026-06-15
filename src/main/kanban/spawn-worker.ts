@@ -10,6 +10,7 @@ import {
   agentHostFor
 } from './agent-context';
 import { renderProfileMarkdown } from './profile-file';
+import { learningsMcpEntry } from '../learnings/learnings-mcp-registrar';
 import { isValidProfileName, type WorkerProfile } from '../../shared/types';
 import type { RunMode, VerifyCommand } from '../../shared/kanban-types';
 import type { InlinedDoc } from './pm-paths';
@@ -215,10 +216,14 @@ export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation
   const mcpConfigPath = join(runeDir, 'mcp.json');
   const runeMcpConfig = loc ? agentMcpConfigPosixPath(loc) : mcpConfigPath;
   const url = agentMcpUrl(input.mcpPort, input.runToken, input.mcpHost ?? '127.0.0.1');
-  writeFileSync(
-    mcpConfigPath,
-    JSON.stringify({ servers: { kanban: { type: 'http', url } } }, null, 2)
-  );
+  // Workers always get the kanban server; also expose the cross-project Learnings KB
+  // when it's up so the worker can search past lessons before doing the task.
+  const learnings = learningsMcpEntry();
+  const servers: Record<string, { type: 'http'; url: string }> = {
+    kanban: { type: 'http', url },
+    ...(learnings ? { 'fleet-learnings': learnings } : {})
+  };
+  writeFileSync(mcpConfigPath, JSON.stringify({ servers }, null, 2));
 
   if (input.profile) {
     if (!isValidProfileName(input.profile.name)) {

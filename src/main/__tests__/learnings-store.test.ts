@@ -20,9 +20,9 @@ describe('LearningsStore', () => {
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
-  it('creates the db at v1', () => {
+  it('creates the db at the current schema version', () => {
     expect(existsSync(DB_PATH)).toBe(true);
-    expect(store.schemaVersion()).toBe(1);
+    expect(store.schemaVersion()).toBe(2);
   });
 
   it('creates and reads back a learning with provenance', () => {
@@ -170,5 +170,58 @@ describe('LearningsStore', () => {
       { tag: 'testing', count: 1 },
       { tag: 'ui', count: 1 }
     ]);
+  });
+
+  describe('vectors (sqlite-vec)', () => {
+    const vec = (fill: number): Float32Array => new Float32Array(384).fill(fill);
+
+    it('loads the sqlite-vec extension', () => {
+      expect(store.hasVectorSupport()).toBe(true);
+    });
+
+    it('new learnings start pending and leave the pending set once embedded', () => {
+      const a = store.create({ title: 'a', body: 'x' });
+      const b = store.create({ title: 'b', body: 'y' });
+      expect(
+        store
+          .pendingEmbeddings(10)
+          .map((p) => p.id)
+          .sort()
+      ).toEqual([a.id, b.id].sort());
+
+      store.setEmbedding(a.id, vec(0.1));
+      expect(store.pendingEmbeddings(10).map((p) => p.id)).toEqual([b.id]);
+    });
+
+    it('vectorSearch ranks the nearest learning first', () => {
+      const near = store.create({ title: 'near', body: 'x' });
+      const far = store.create({ title: 'far', body: 'y' });
+      store.setEmbedding(near.id, vec(1));
+      store.setEmbedding(far.id, vec(-1));
+
+      const hits = store.vectorSearch(vec(0.9), 2);
+      expect(hits.map((h) => h.id)).toEqual([near.id, far.id]);
+      expect(hits[0].distance).toBeLessThan(hits[1].distance);
+    });
+
+    it('editing the body marks the embedding stale; a tag-only edit does not', () => {
+      const l = store.create({ title: 't', body: 'b' });
+      store.setEmbedding(l.id, vec(0.5));
+      expect(store.pendingEmbeddings(10)).toHaveLength(0);
+
+      store.update(l.id, { tags: ['x'] });
+      expect(store.pendingEmbeddings(10)).toHaveLength(0); // tag-only: vector still fresh
+
+      store.update(l.id, { body: 'changed' });
+      expect(store.pendingEmbeddings(10).map((p) => p.id)).toEqual([l.id]);
+    });
+
+    it('delete removes the vector so it no longer matches', () => {
+      const l = store.create({ title: 'gone', body: 'x' });
+      store.setEmbedding(l.id, vec(1));
+      expect(store.vectorSearch(vec(1), 5)).toHaveLength(1);
+      store.delete(l.id);
+      expect(store.vectorSearch(vec(1), 5)).toHaveLength(0);
+    });
   });
 });

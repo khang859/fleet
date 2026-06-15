@@ -9,7 +9,10 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: 'src/main/index.ts',
-          'fleet-cli': 'src/main/fleet-cli.ts'
+          'fleet-cli': 'src/main/fleet-cli.ts',
+          // Worker-thread entry for transformers.js embeddings; loaded by
+          // embed-service.ts via new Worker(new URL('./embed-worker.mjs', ...)).
+          'embed-worker': 'src/main/learnings/embed-worker.ts'
         },
         output: { format: 'es' }
       }

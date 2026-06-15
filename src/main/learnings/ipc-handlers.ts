@@ -17,6 +17,8 @@ import {
 import { pathMessagesToNode } from '../../shared/sessions';
 import type { LearningsStore } from './learnings-store';
 import type { SessionsService } from '../sessions/service';
+import type { LearningsSearchService } from './search-service';
+import type { Embedder } from './embedder';
 import { distillLearning } from './distiller';
 
 const log = createLogger('learnings-ipc');
@@ -81,24 +83,48 @@ function validateCreateInput(input: CreateLearningInput): CreateLearningInput {
 
 export function registerLearningsIpcHandlers(
   store: LearningsStore,
-  sessions: SessionsService
+  sessions: SessionsService,
+  search: LearningsSearchService,
+  embedder: Embedder
 ): void {
-  handle(IPC_CHANNELS.LEARNINGS_SEARCH, (_e, filter?: LearningSearchFilter): Learning[] =>
-    store.search(filter ?? {})
+  // Embed a learning in the background after a write. Best-effort: a null vector
+  // (model unavailable) just leaves the row pending for the backfill pass.
+  const scheduleEmbed = (l: Learning): void => {
+    if (!store.hasVectorSupport()) return;
+    void Promise.resolve(embedder.embed(`${l.title}\n${l.body}`)).then(
+      (vec) => {
+        if (vec) store.setEmbedding(l.id, vec);
+      },
+      (err: unknown) => log.warn('embed-on-write failed', { error: String(err) })
+    );
+  };
+
+  handle(
+    IPC_CHANNELS.LEARNINGS_SEARCH,
+    async (_e, filter?: LearningSearchFilter): Promise<Learning[]> => {
+      const f = filter ?? {};
+      // A text query gets hybrid (semantic + keyword) ranking; plain listing/filtering
+      // stays on the synchronous store path.
+      if (f.query?.trim()) return search.hybridSearch(f.query, f);
+      return store.search(f);
+    }
   );
   handle(IPC_CHANNELS.LEARNINGS_GET, (_e, id: string): Learning | null =>
     store.get(reqString(id, 'id'))
   );
-  handle(
-    IPC_CHANNELS.LEARNINGS_CREATE,
-    (_e, input: CreateLearningInput): Learning => store.create(validateCreateInput(input))
-  );
+  handle(IPC_CHANNELS.LEARNINGS_CREATE, (_e, input: CreateLearningInput): Learning => {
+    const learning = store.create(validateCreateInput(input));
+    scheduleEmbed(learning);
+    return learning;
+  });
   handle(
     IPC_CHANNELS.LEARNINGS_UPDATE,
     (_e, id: string, fields: UpdateLearningInput): Learning | null => {
       reqString(id, 'id');
       if (!fields || typeof fields !== 'object') throw new IpcError('update fields are required');
-      return store.update(id, fields);
+      const updated = store.update(id, fields);
+      if (updated) scheduleEmbed(updated);
+      return updated;
     }
   );
   handle(IPC_CHANNELS.LEARNINGS_DELETE, (_e, id: string): void =>

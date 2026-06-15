@@ -77,6 +77,11 @@ import { SessionsService } from './sessions/service';
 import { registerSessionsIpcHandlers } from './sessions/ipc-handlers';
 import { LearningsStore } from './learnings/learnings-store';
 import { registerLearningsIpcHandlers } from './learnings/ipc-handlers';
+import { WorkerEmbedder } from './learnings/embed-service';
+import { LearningsSearchService } from './learnings/search-service';
+import { LearningsMcpServer } from './learnings/learnings-mcp-server';
+import { registerLearningsMcp } from './learnings/learnings-mcp-registrar';
+import { runBackfill } from './learnings/backfill';
 import { RUNE_NOT_INSTALLED_MESSAGE } from '../shared/rune';
 import { registerKanbanIpc } from './kanban/kanban-ipc';
 import { KanbanCommands } from './kanban/kanban-commands';
@@ -87,10 +92,17 @@ const { autoUpdater } = pkg;
 const log = createLogger('fleet-main');
 const updaterLog = createLogger('auto-updater');
 
+// Preferred loopback port for the Learnings KB MCP server. Fixed so the URL written
+// into ~/.claude.json and ~/.rune/mcp.json stays stable across restarts; falls back
+// to an OS-assigned port on conflict (the entry is then rewritten with the live port).
+const LEARNINGS_MCP_PORT = 49823;
+
 let mainWindow: BrowserWindow | null = null;
 let socketSupervisor: SocketSupervisor | null = null;
 let sessionsService: SessionsService | null = null;
 let learningsStore: LearningsStore | undefined;
+let learningsEmbedder: WorkerEmbedder | undefined;
+let learningsMcp: LearningsMcpServer | undefined;
 let kanbanStore: KanbanStore | undefined;
 let kanbanMcp: KanbanMcpServer | undefined;
 let kanbanDispatcher: KanbanDispatcher | undefined;
@@ -1224,8 +1236,32 @@ void app.whenReady().then(async () => {
   sessionsService = new SessionsService();
   registerSessionsIpcHandlers(sessionsService);
 
-  learningsStore = new LearningsStore(join(homedir(), '.fleet', 'learnings', 'learnings.db'));
-  registerLearningsIpcHandlers(learningsStore, sessionsService);
+  const learningsHome = join(homedir(), '.fleet', 'learnings');
+  const learningsStoreRef = new LearningsStore(join(learningsHome, 'learnings.db'));
+  const learningsEmbedderRef = new WorkerEmbedder({ modelCacheDir: join(learningsHome, 'models') });
+  learningsStore = learningsStoreRef;
+  learningsEmbedder = learningsEmbedderRef;
+  const learningsSearch = new LearningsSearchService(learningsStoreRef, learningsEmbedderRef);
+  registerLearningsIpcHandlers(
+    learningsStoreRef,
+    sessionsService,
+    learningsSearch,
+    learningsEmbedderRef
+  );
+  // Expose the KB to Rune + Claude Code over a loopback MCP server, then register it
+  // in their global configs and backfill embeddings for existing learnings.
+  learningsMcp = new LearningsMcpServer(learningsStoreRef, learningsSearch);
+  learningsMcp
+    .start(LEARNINGS_MCP_PORT)
+    .then(async (port) => {
+      registerLearningsMcp(port);
+      await runBackfill(learningsStoreRef, learningsEmbedderRef);
+    })
+    .catch((err: unknown) =>
+      log.error('learnings MCP startup failed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
+    );
   sessionsService.startWatching(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.SESSIONS_CHANGED);
@@ -1263,6 +1299,9 @@ function shutdownAll(): void {
   pmChat?.dispose();
   runeAssist?.dispose();
   void kanbanMcp?.stop();
+  void learningsMcp?.stop();
+  void learningsEmbedder?.close();
+  learningsStore?.close();
   kanbanStore?.close();
 }
 
