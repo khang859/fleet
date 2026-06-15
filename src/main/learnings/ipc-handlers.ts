@@ -179,9 +179,10 @@ export function registerLearningsIpcHandlers(
   handle(IPC_CHANNELS.LEARNINGS_WARM_MODEL, (): void => embedder.warmUp?.());
   handle(IPC_CHANNELS.LEARNINGS_MODEL_CACHE_SIZE, (): number => dirSize(modelCacheDir));
   handle(IPC_CHANNELS.LEARNINGS_CLEAR_MODEL_CACHE, async (): Promise<void> => {
-    // Stop the worker so its file handles are released, then drop the model files.
-    // The next embed re-creates the worker and re-downloads the model.
-    await embedder.close?.();
+    // Reset (don't permanently close) the worker so its file handles are released and
+    // any prior load failure is cleared, then drop the model files. The next embed
+    // re-creates the worker and re-downloads the model.
+    await embedder.reset?.();
     rmSync(modelCacheDir, { recursive: true, force: true });
     log.info('cleared learnings model cache', { modelCacheDir });
   });

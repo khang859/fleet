@@ -76,6 +76,32 @@ describe('registerLearningsMcp', () => {
     expect(readFileSync(claudeJsonPath, 'utf-8')).toBe('{ this is not json');
     expect(existsSync(runeMcpPath)).toBe(true);
   });
+
+  it('refuses to overwrite valid JSON that is not an object (array/scalar)', () => {
+    // A non-object top-level value must be treated like unparseable, not silently
+    // clobbered with `{}` — it could be a hand-rolled or other-tool config holding data.
+    const arrayConfig = '[{"keep":true}]';
+    writeFileSync(claudeJsonPath, arrayConfig);
+    registerLearningsMcp(49823, { claudeJsonPath, runeMcpPath });
+    expect(readFileSync(claudeJsonPath, 'utf-8')).toBe(arrayConfig);
+  });
+
+  it('preserves an existing secret when rewriting on a port change (atomic write)', () => {
+    mkdirSync(join(TEST_DIR, '.rune'), { recursive: true });
+    writeFileSync(
+      runeMcpPath,
+      JSON.stringify({
+        servers: { context7: { type: 'http', url: 'https://x', headers: { KEY: 'ctx7sk-real' } } }
+      })
+    );
+    registerLearningsMcp(49823, { claudeJsonPath, runeMcpPath });
+    registerLearningsMcp(50000, { claudeJsonPath, runeMcpPath });
+    const rune = readJson(runeMcpPath);
+    expect(rune.servers.context7.headers.KEY).toBe('ctx7sk-real');
+    expect(rune.servers['fleet-learnings'].url).toBe('http://127.0.0.1:50000/mcp');
+    // No temp file left behind by the atomic write.
+    expect(existsSync(`${runeMcpPath}.${process.pid}.tmp`)).toBe(false);
+  });
 });
 
 describe('port persistence', () => {

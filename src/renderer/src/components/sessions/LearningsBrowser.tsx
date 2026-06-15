@@ -60,20 +60,23 @@ export function LearningsBrowser({
   const [copied, setCopied] = useState(false);
   const [status, setStatus] = useState<LearningsStatus | null>(null);
 
-  // Warm the embedding model when the browser opens, and poll status until it
-  // settles (ready/failed) so the badge reflects download progress on first run.
+  // Warm the embedding model when the browser opens, then keep polling status while
+  // mounted: fast (1.5s) until the model settles so first-run download progress shows,
+  // then slow (5s) so the badge still reflects a later change — e.g. the model cache
+  // being cleared from Settings, a worker crash, or a re-download recovering. Polling
+  // stops only when there's no vector extension this session (an immutable state).
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     void window.fleet.learnings.warmModel();
     const tick = async (): Promise<void> => {
       const s = await window.fleet.learnings.status();
       if (cancelled) return;
       setStatus(s);
-      if (s.vectorSupport && (s.embedder === 'idle' || s.embedder === 'loading')) {
-        timer = setTimeout(() => void tick(), 1500);
-      }
+      if (!s.vectorSupport) return;
+      const settled = s.embedder === 'ready' || s.embedder === 'failed';
+      timer = setTimeout(() => void tick(), settled ? 5000 : 1500);
     };
-    let timer: ReturnType<typeof setTimeout> | undefined;
     void tick();
     return () => {
       cancelled = true;

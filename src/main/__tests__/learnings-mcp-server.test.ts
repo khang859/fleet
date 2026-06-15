@@ -85,4 +85,20 @@ describe('LearningsMcpServer', () => {
     const out = await rpc('tools/call', { name: 'nope', arguments: {} });
     expect(out.error.message).toContain('unknown tool');
   });
+
+  it('rejects an over-limit request body with 413 instead of buffering it', async () => {
+    // > 1 MiB body — must be refused before it can exhaust the main process heap.
+    const huge = 'a'.repeat(1024 * 1024 + 1);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', pad: huge })
+    });
+    expect(res.status).toBe(413);
+  });
+
+  it('rejects non-POST methods', async () => {
+    const res = await fetch(url, { method: 'GET' });
+    expect(res.status).toBe(405);
+  });
 });

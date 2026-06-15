@@ -223,5 +223,31 @@ describe('LearningsStore', () => {
       store.delete(l.id);
       expect(store.vectorSearch(vec(1), 5)).toHaveLength(0);
     });
+
+    it('pendingEmbeddings tolerates a large exclude set (no SQL variable-limit crash)', () => {
+      const a = store.create({ title: 'a', body: 'x' });
+      const b = store.create({ title: 'b', body: 'y' });
+      // > 999 ids would overflow a `NOT IN (?, ?, …)` clause; the JS-filter path must not.
+      const exclude = Array.from({ length: 1500 }, (_, i) => i + 1);
+      expect(() => store.pendingEmbeddings(10, exclude)).not.toThrow();
+
+      // And it still excludes the right rows: passing a's rowid leaves only b pending.
+      const aRowid = store.pendingEmbeddings(10).find((p) => p.id === a.id)?.rowid;
+      expect(aRowid).toBeDefined();
+      const pending = store.pendingEmbeddings(10, [aRowid as number]).map((p) => p.id);
+      expect(pending).toEqual([b.id]);
+    });
+
+    it('vectorSearch returns [] (no throw) when the vec table is empty', () => {
+      // KNN over an empty vec table can throw on some sqlite-vec builds; we degrade.
+      store.create({ title: 'unembedded', body: 'x' });
+      expect(() => store.vectorSearch(vec(1), 5)).not.toThrow();
+      expect(store.vectorSearch(vec(1), 5)).toHaveLength(0);
+    });
+  });
+
+  it('search caps results at the default limit', () => {
+    for (let i = 0; i < 5; i++) store.create({ title: `t${i}`, body: 'x' });
+    expect(store.search({}, 3)).toHaveLength(3);
   });
 });

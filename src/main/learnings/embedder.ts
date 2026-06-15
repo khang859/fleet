@@ -26,8 +26,18 @@ export interface Embedder {
   state(): EmbedderState;
   /** Eagerly start loading the model (so first use isn't penalized). Optional. */
   warmUp?(): void;
-  /** Release resources (e.g. terminate the worker). Optional for stateless embedders. */
+  /**
+   * Permanently release resources (e.g. terminate the worker) for app shutdown.
+   * After close() the embedder stays down. Optional for stateless embedders.
+   */
   close?(): Promise<void> | void;
+  /**
+   * Tear the worker down but return to a usable idle state, so the next embed/warmUp
+   * re-spawns it. Used when clearing the model cache: it releases the model files'
+   * handles (so they can be deleted) and clears a prior failure so a re-download is
+   * retried. Optional for stateless embedders.
+   */
+  reset?(): Promise<void> | void;
 }
 
 /** Always-null embedder: forces the FTS-only path. Used when the model can't load. */

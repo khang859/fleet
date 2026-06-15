@@ -3,7 +3,6 @@
 // Read-only, no auth token — the 127.0.0.1 bind is the security boundary. Mirrors the
 // JSON-RPC shape of KanbanMcpServer.
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http';
-import { text } from 'stream/consumers';
 import { z } from 'zod';
 import { createLogger } from '../logger';
 import { learningToMarkdown, type Learning } from '../../shared/learnings';
@@ -13,6 +12,29 @@ import type { LearningsSearchService } from './search-service';
 const log = createLogger('learnings-mcp');
 
 const PROTOCOL_VERSION = '2024-11-05';
+
+/** Cap on the JSON-RPC request body. Any local process can POST here; without a limit
+ *  a multi-GB body would exhaust the main process's heap. 1 MiB is far above any real
+ *  tools/call payload. */
+const MAX_BODY_BYTES = 1024 * 1024;
+
+/** Sentinel so the handler can answer an over-limit body with 413 specifically. */
+class BodyTooLargeError extends Error {}
+
+/** Read a request body into a string, aborting once it exceeds `max` bytes. */
+async function readBody(req: IncomingMessage, max: number): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    // IncomingMessage in binary mode (we never setEncoding) yields Buffers; the guard
+    // narrows the async-iterator's `any` without an unsafe assertion.
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    size += buf.length;
+    if (size > max) throw new BodyTooLargeError();
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks).toString('utf-8');
+}
 
 const TOOLS = [
   {
@@ -98,8 +120,13 @@ export class LearningsMcpServer {
           this.send(res, 500, { error: 'internal' });
         });
       });
-      server.once('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'EADDRINUSE') {
+      // Persistent (not once) so a failure of the fallback listen(0) is also caught —
+      // otherwise its error would be an unhandled 'error' event (process crash) or the
+      // promise would hang forever. `triedFallback` ensures we only retry once.
+      let triedFallback = false;
+      server.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE' && !triedFallback) {
+          triedFallback = true;
           log.warn('learnings MCP port in use; using an OS-assigned port', { preferredPort });
           server.listen(0, '127.0.0.1');
         } else {
@@ -149,7 +176,16 @@ export class LearningsMcpServer {
       this.send(res, 405, { error: 'method not allowed' });
       return;
     }
-    const raw = await text(req);
+    let raw: string;
+    try {
+      raw = await readBody(req, MAX_BODY_BYTES);
+    } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        this.send(res, 413, { error: 'request too large' });
+        return;
+      }
+      throw err;
+    }
     let parsedJson: unknown;
     try {
       parsedJson = JSON.parse(raw);

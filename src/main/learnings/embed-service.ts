@@ -29,6 +29,7 @@ export class WorkerEmbedder implements Embedder {
   readonly dim = EMBED_DIM;
   private worker: Worker | null = null;
   private failed = false;
+  private closed = false;
   private modelReady = false;
   private seq = 0;
   private readonly pending = new Map<number, (vec: Float32Array | null) => void>();
@@ -41,7 +42,7 @@ export class WorkerEmbedder implements Embedder {
   }
 
   private ensureWorker(): Worker | null {
-    if (this.failed) return null;
+    if (this.failed || this.closed) return null;
     if (this.worker) return this.worker;
     try {
       const worker = new Worker(this.workerUrl, {
@@ -121,11 +122,29 @@ export class WorkerEmbedder implements Embedder {
     });
   }
 
+  /** Permanent shutdown: tear down the worker and refuse to spawn another. */
   async close(): Promise<void> {
+    this.closed = true;
+    await this.teardown();
+  }
+
+  /**
+   * Tear the worker down but stay usable: clears any prior failure and the
+   * model-ready flag so the next embed()/warmUp() re-spawns the worker and (after a
+   * cache clear) re-downloads the model. No-op once permanently closed.
+   */
+  async reset(): Promise<void> {
+    if (this.closed) return;
+    await this.teardown();
+    this.failed = false;
+  }
+
+  private async teardown(): Promise<void> {
     for (const resolve of this.pending.values()) resolve(null);
     this.pending.clear();
     this.modelReady = false;
-    await this.worker?.terminate();
+    const w = this.worker;
     this.worker = null;
+    await w?.terminate();
   }
 }

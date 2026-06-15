@@ -18,6 +18,9 @@ const log = createLogger('learnings-store');
 
 const SCHEMA_VERSION = 2;
 
+/** Default cap on rows returned by `search()` — bounds IPC payloads and the FTS pool. */
+const SEARCH_LIMIT = 500;
+
 /** A learning row that still needs an embedding (backfill / re-embed-on-edit). */
 export type PendingEmbedding = { id: string; rowid: number; title: string; body: string };
 
@@ -226,14 +229,20 @@ export class LearningsStore {
   }
 
   delete(id: string): void {
-    // Drop the vector first (the join key is the learnings rowid, gone after delete).
-    if (this.vec) {
-      const row = this.db
-        .prepare<[string], { rowid: number }>('SELECT rowid FROM learnings WHERE id = ?')
-        .get(id);
-      if (row) this.db.prepare('DELETE FROM learnings_vec WHERE rowid = ?').run(BigInt(row.rowid));
-    }
-    this.db.prepare('DELETE FROM learnings WHERE id = ?').run(id);
+    // Drop the vector and the canonical row in one transaction so a crash between them
+    // can't orphan a learnings_vec row (or strand a learning invisible to vector search).
+    const tx = this.db.transaction(() => {
+      // Drop the vector first (the join key is the learnings rowid, gone after delete).
+      if (this.vec) {
+        const row = this.db
+          .prepare<[string], { rowid: number }>('SELECT rowid FROM learnings WHERE id = ?')
+          .get(id);
+        if (row)
+          this.db.prepare('DELETE FROM learnings_vec WHERE rowid = ?').run(BigInt(row.rowid));
+      }
+      this.db.prepare('DELETE FROM learnings WHERE id = ?').run(id);
+    });
+    tx();
   }
 
   get(id: string): Learning | null {
@@ -243,10 +252,14 @@ export class LearningsStore {
     return r ? this.rowToLearning(r) : null;
   }
 
-  /** List or full-text search. With `filter.query` set, ranks by FTS relevance. */
-  search(filter: LearningSearchFilter = {}): Learning[] {
+  /**
+   * List or full-text search. With `filter.query` set, ranks by FTS relevance. Capped
+   * at `limit` rows so a broad listing (or a common FTS term matching the whole store)
+   * can't serialize thousands of rows over IPC or balloon the hybrid-search FTS pool.
+   */
+  search(filter: LearningSearchFilter = {}, limit = SEARCH_LIMIT): Learning[] {
     const where: string[] = [];
-    const params: Record<string, unknown> = {};
+    const params: Record<string, unknown> = { limit };
 
     if (filter.project) {
       where.push('l.source_project = @project');
@@ -270,7 +283,8 @@ export class LearningsStore {
         SELECT l.* FROM learnings l
         JOIN learnings_fts f ON f.rowid = l.rowid
         WHERE ${where.join(' AND ')}
-        ORDER BY rank`;
+        ORDER BY rank
+        LIMIT @limit`;
       const rows = this.db.prepare(sql).all(params) as Array<Record<string, unknown>>;
       return rows.map((r) => this.rowToLearning(r));
     }
@@ -278,7 +292,8 @@ export class LearningsStore {
     const sql = `
       SELECT l.* FROM learnings l
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-      ORDER BY l.created_at DESC`;
+      ORDER BY l.created_at DESC
+      LIMIT @limit`;
     const rows = this.db.prepare(sql).all(params) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToLearning(r));
   }
@@ -329,25 +344,21 @@ export class LearningsStore {
    */
   pendingEmbeddings(limit: number, excludeRowids: number[] = []): PendingEmbedding[] {
     if (!this.vec) return [];
-    if (excludeRowids.length === 0) {
-      return this.db
-        .prepare<[number], PendingEmbedding>(
-          `SELECT rowid, id, title, body FROM learnings
-           WHERE embedding_updated_at IS NULL
-           ORDER BY created_at DESC
-           LIMIT ?`
-        )
-        .all(limit);
-    }
-    const placeholders = excludeRowids.map(() => '?').join(', ');
-    return this.db
-      .prepare<[...number[], number], PendingEmbedding>(
+    const exclude = new Set(excludeRowids);
+    // Over-fetch by the exclude count and drop excluded rows in JS, rather than a
+    // `NOT IN (?, ?, …)` clause — that would hit SQLite's 999-variable limit once a
+    // backfill accumulates many failed rows, and would recompile a new statement per
+    // distinct exclude-count. A single cached statement keeps this cheap.
+    const rows = this.db
+      .prepare<[number], PendingEmbedding>(
         `SELECT rowid, id, title, body FROM learnings
-         WHERE embedding_updated_at IS NULL AND rowid NOT IN (${placeholders})
+         WHERE embedding_updated_at IS NULL
          ORDER BY created_at DESC
          LIMIT ?`
       )
-      .all(...excludeRowids, limit);
+      .all(limit + exclude.size);
+    const kept = exclude.size ? rows.filter((r) => !exclude.has(r.rowid)) : rows;
+    return kept.slice(0, limit);
   }
 
   /**
@@ -379,15 +390,22 @@ export class LearningsStore {
   vectorSearch(queryVec: Float32Array, limit: number): VecHit[] {
     if (!this.vec) return [];
     const blob = Buffer.from(queryVec.buffer, queryVec.byteOffset, queryVec.byteLength);
-    return this.db
-      .prepare<[Buffer, number], VecHit>(
-        `SELECT l.id AS id, v.distance AS distance
-         FROM learnings_vec v
-         JOIN learnings l ON l.rowid = v.rowid
-         WHERE v.embedding MATCH ? AND k = ?
-         ORDER BY v.distance`
-      )
-      .all(blob, limit);
+    try {
+      return this.db
+        .prepare<[Buffer, number], VecHit>(
+          `SELECT l.id AS id, v.distance AS distance
+           FROM learnings_vec v
+           JOIN learnings l ON l.rowid = v.rowid
+           WHERE v.embedding MATCH ? AND k = ?
+           ORDER BY v.distance`
+        )
+        .all(blob, limit);
+    } catch (err) {
+      // KNN over an empty vec table (or other sqlite-vec quirks) can throw; degrade to
+      // the keyword-only path rather than failing the whole search.
+      log.warn('vector search failed; falling back to keyword-only', { error: String(err) });
+      return [];
+    }
   }
 
   schemaVersion(): number {

@@ -4,7 +4,7 @@
 // ~/.rune/mcp.json (key `servers`). Both honored by headless `claude -p` / `rune --prompt`.
 // Fleet-spawned Rune runs get it injected into their per-workspace mcp.json instead
 // (see spawn-worker.ts), which is why this exposes the current entry too.
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { z } from 'zod';
@@ -67,9 +67,23 @@ export function persistPort(port: number, portFilePath?: string): void {
 const ObjectSchema = z.record(z.string(), z.unknown());
 
 /**
- * Parse a JSON-object config file. Returns the object (or `{}` for a missing file /
- * non-object JSON), or `null` when the file exists but is unparseable — the signal to
- * leave the user's file untouched rather than clobber it.
+ * Atomically replace a file's contents: write a sibling temp file, then rename over the
+ * target (atomic on POSIX within one filesystem). A crash mid-write leaves either the
+ * old file or the new one intact — never a truncated file. Critical because these
+ * configs may hold other servers' API keys (e.g. Rune's CONTEXT7_API_KEY).
+ */
+function atomicWriteJson(path: string, data: unknown): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
+  renameSync(tmp, path);
+}
+
+/**
+ * Parse a JSON-object config file. Returns the object for a well-formed object (or `{}`
+ * for a missing file), or `null` when the file exists but is unparseable OR is valid
+ * JSON that isn't an object (e.g. an array/string) — the signal to leave the user's
+ * file untouched rather than clobber it.
  */
 function readConfig(path: string): Record<string, unknown> | null {
   if (!existsSync(path)) return {};
@@ -80,7 +94,7 @@ function readConfig(path: string): Record<string, unknown> | null {
     return null;
   }
   const result = ObjectSchema.safeParse(parsed);
-  return result.success ? result.data : {};
+  return result.success ? result.data : null;
 }
 
 /**
@@ -100,8 +114,7 @@ function mergeServerEntry(path: string, key: string, entry: McpHttpEntry): void 
   if (prev && JSON.stringify(prev) === JSON.stringify(entry)) return; // idempotent
   servers[SERVER_NAME] = entry;
   root[key] = servers;
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(root, null, 2), 'utf-8');
+  atomicWriteJson(path, root);
   log.info('registered learnings MCP server', { path, key });
 }
 
