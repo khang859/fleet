@@ -6,6 +6,7 @@
 // the session; claude is only a fallback when rune is not installed.
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
+import { StringDecoder } from 'string_decoder';
 import { createLogger } from '../logger';
 import type { SessionAgent, SessionTranscript } from '../../shared/sessions';
 import type { DistillResult } from '../../shared/learnings';
@@ -14,6 +15,9 @@ const log = createLogger('learnings-distiller');
 
 const MAX_TRANSCRIPT_CHARS = 48_000;
 const TIMEOUT_MS = 120_000;
+// Cap captured stdout: `claude -p` tool-use can stream MBs into a single in-memory
+// string. Past this we kill the run rather than buffer unboundedly.
+const MAX_STDOUT_CHARS = 256_000;
 const SENTINEL = 'NO_LEARNING';
 
 // Distill always runs on rune first (flagship); claude is a fallback only when rune
@@ -70,12 +74,10 @@ function stripCodeFence(text: string): string {
 
 export function parseDraft(raw: string): DistillResult {
   const out = stripCodeFence(raw.trim());
-  if (
-    !out ||
-    out === SENTINEL ||
-    out.startsWith(`${SENTINEL}\n`) ||
-    out.startsWith(`${SENTINEL} `)
-  ) {
+  // Treat any line that opens with the sentinel as nothing-to-record, regardless of
+  // what punctuation follows it ("NO_LEARNING.", "NO_LEARNING:", "NO_LEARNING—…").
+  // The \b boundary still excludes accidental words like "NO_LEARNINGS".
+  if (!out || new RegExp(`^${SENTINEL}\\b`).test(out)) {
     return { status: 'nothing' };
   }
   const lines = out.split('\n');
@@ -89,7 +91,9 @@ export function parseDraft(raw: string): DistillResult {
     title = titleIdx >= 0 ? lines[titleIdx].trim() : '';
   }
 
-  const tagIdx = lines.findIndex((l) => /^tags:/i.test(l.trim()));
+  // Scan from the END for the tags line: models often mention "Tags:" inline in
+  // the body, and the authoritative footer (if any) is the last such line.
+  const tagIdx = lines.findLastIndex((l) => /^tags:/i.test(l.trim()));
   const tags =
     tagIdx >= 0
       ? lines[tagIdx]
@@ -111,32 +115,73 @@ export function parseDraft(raw: string): DistillResult {
 async function runAgentOneShot(agent: SessionAgent, cwd: string, prompt: string): Promise<string> {
   const cmd = agent === 'rune' ? 'rune' : 'claude';
   const args = agent === 'rune' ? ['--prompt', prompt] : ['-p', prompt];
+  const isWindows = process.platform === 'win32';
   return new Promise<string>((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd, env: process.env });
+    // `detached` on POSIX puts the child in its own process group so we can signal
+    // the whole tree on timeout — rune/claude spawn their own children, and a bare
+    // child.kill() hits only the direct PID, re-parenting the rest to init (PID 1).
+    const child = spawn(cmd, args, { cwd, env: process.env, detached: !isWindows });
+    // Decode incrementally so a multibyte codepoint split across two chunks isn't
+    // mangled into U+FFFD (common with CJK/emoji in agent output).
+    const outDecoder = new StringDecoder('utf8');
+    const errDecoder = new StringDecoder('utf8');
     let stdout = '';
     let stderr = '';
-    const timer = setTimeout(() => {
+    let settled = false;
+
+    const killTree = (): void => {
+      if (!isWindows && child.pid) {
+        try {
+          process.kill(-child.pid, 'SIGKILL'); // negative pid → whole group
+          return;
+        } catch {
+          // group already gone; fall through to the direct child
+        }
+      }
       child.kill('SIGKILL');
-      reject(new Error('Distill timed out after 120s'));
-    }, TIMEOUT_MS);
-    child.stdout.on('data', (d: Buffer) => (stdout += d.toString()));
-    child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
-    child.on('error', (err: NodeJS.ErrnoException) => {
+    };
+    const finish = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      reject(err.code === 'ENOENT' ? new Error(`${cmd} ${NOT_INSTALLED}`) : err);
+      fn();
+    };
+
+    const timer = setTimeout(() => {
+      killTree();
+      finish(() => reject(new Error('Distill timed out after 120s')));
+    }, TIMEOUT_MS);
+
+    child.stdout.on('data', (d: Buffer) => {
+      stdout += outDecoder.write(d);
+      if (stdout.length > MAX_STDOUT_CHARS) {
+        killTree();
+        finish(() =>
+          reject(new Error(`${cmd} produced over ${Math.floor(MAX_STDOUT_CHARS / 1000)}KB of output`))
+        );
+      }
+    });
+    child.stderr.on('data', (d: Buffer) => (stderr += errDecoder.write(d)));
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      finish(() =>
+        reject(err.code === 'ENOENT' ? new Error(`${cmd} ${NOT_INSTALLED}`) : err)
+      );
     });
     child.on('close', (code) => {
-      clearTimeout(timer);
+      stdout += outDecoder.end();
+      stderr += errDecoder.end();
       // Any non-zero (or null, e.g. killed) exit is a failure. We must NOT fall
       // through to parsing stdout: agents print error text to stdout on failure,
       // and parseDraft would happily turn "Error: rate limit exceeded" into a
       // "learning". Report the failure instead.
-      if (code !== 0) {
-        const detail = stderr.slice(0, 300) || stdout.slice(0, 300) || 'no output';
-        reject(new Error(`${cmd} exited ${code ?? '?'}: ${detail}`));
-      } else {
-        resolve(stdout);
-      }
+      finish(() => {
+        if (code !== 0) {
+          const detail = stderr.slice(0, 300) || stdout.slice(0, 300) || 'no output';
+          reject(new Error(`${cmd} exited ${code ?? '?'}: ${detail}`));
+        } else {
+          resolve(stdout);
+        }
+      });
     });
   });
 }

@@ -12,6 +12,30 @@ describe('parseDraft', () => {
     expect(parseDraft('')).toEqual({ status: 'nothing' });
   });
 
+  it('matches sentinel variants with trailing punctuation but not lookalikes', () => {
+    expect(parseDraft('NO_LEARNING.')).toEqual({ status: 'nothing' });
+    expect(parseDraft('NO_LEARNING:')).toEqual({ status: 'nothing' });
+    expect(parseDraft('NO_LEARNING—nothing here')).toEqual({ status: 'nothing' });
+    // A real word that merely starts with the sentinel is still a draft.
+    expect(parseDraft('# NO_LEARNINGS were drawn\nbody').status).toBe('ok');
+  });
+
+  it('uses the LAST Tags: line, leaving an inline body mention intact', () => {
+    const raw = [
+      '# A lesson',
+      '',
+      'We added Tags: to the output format earlier in this note.',
+      'Tags: real, footer'
+    ].join('\n');
+    const r = parseDraft(raw);
+    expect(r.status).toBe('ok');
+    if (r.status !== 'ok') return;
+    expect(r.draft.tags).toEqual(['real', 'footer']);
+    // The inline mention stays in the body; only the footer line is consumed.
+    expect(r.draft.body).toContain('We added Tags: to the output');
+    expect(r.draft.body).not.toContain('real, footer');
+  });
+
   it('extracts title, body, and tags from a well-formed draft', () => {
     const raw = [
       '# better-sqlite3 ABI mismatch in tests',
