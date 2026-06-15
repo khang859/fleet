@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.72.0
+
+- **Learnings KB — distill sessions into reusable knowledge** — a new **Learnings** view in the Sessions tool turns finished agent sessions into durable, cross-project engineering notes. Hit **✨ Distill** on a session (or one Rune branch) and Fleet runs a headless one-shot pass (Rune, falling back to Claude) to draft a titled markdown learning — problem, root cause, fix, tags — which you can edit, dedup-merge against existing entries, and save into a Fleet-owned store (`~/.fleet/learnings/learnings.db`, separate from any repo). Browse, full-text search, edit, and export learnings as standalone `.md` into any project. Hardened across the board: FTS5 handles punctuation/CJK input, exact tag-membership filtering, agent-failure output is never saved as a "learning", orphaned distill processes are killed as a group, IPC inputs are validated and errors sanitized, exports avoid filename collisions and Windows reserved names, and titles are stripped of HTML before export.
+
 ## v2.71.2
 
 - **Fixed broken images, backgrounds & PDFs on macOS/Linux** — a regression from the WSL path work caused every locally-served file (`fleet-image://` / `fleet-pdf://`) to be routed through a WSL UNC bridge, which fails on non-Windows hosts. Backgrounds, the image viewer, image gallery, recent screenshots, slideshows, and the PDF viewer no longer come up blank on macOS and Linux. Native POSIX paths are now served directly; the WSL bridge only runs on Windows.
