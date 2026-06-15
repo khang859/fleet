@@ -138,6 +138,15 @@ import type {
   EnvTrashResult
 } from '../shared/env-editor-types';
 import type { SessionAgent, SessionSummary, SessionTranscript } from '../shared/sessions';
+import type {
+  Learning,
+  CreateLearningInput,
+  UpdateLearningInput,
+  LearningSearchFilter,
+  DistillRequest,
+  DistillResult,
+  TagCount
+} from '../shared/learnings';
 
 type Unsubscribe = () => void;
 
@@ -755,6 +764,25 @@ const fleetApi = {
     }): Promise<SessionTranscript | null> => typedInvoke(IPC_CHANNELS.SESSIONS_READ, args),
     onChanged: (callback: () => void): Unsubscribe =>
       onChannel<void>(IPC_CHANNELS.SESSIONS_CHANGED, () => callback())
+  },
+  learnings: {
+    search: async (filter?: LearningSearchFilter): Promise<Learning[]> =>
+      typedInvoke<Learning[]>(IPC_CHANNELS.LEARNINGS_SEARCH, filter),
+    get: async (id: string): Promise<Learning | null> =>
+      typedInvoke<Learning | null>(IPC_CHANNELS.LEARNINGS_GET, id),
+    create: async (input: CreateLearningInput): Promise<Learning> =>
+      typedInvoke<Learning>(IPC_CHANNELS.LEARNINGS_CREATE, input),
+    update: async (id: string, fields: UpdateLearningInput): Promise<Learning | null> =>
+      typedInvoke<Learning | null>(IPC_CHANNELS.LEARNINGS_UPDATE, id, fields),
+    delete: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.LEARNINGS_DELETE, id),
+    distill: async (req: DistillRequest): Promise<DistillResult> =>
+      typedInvoke<DistillResult>(IPC_CHANNELS.LEARNINGS_DISTILL, req),
+    export: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.LEARNINGS_EXPORT, id),
+    similar: async (text: string, limit?: number): Promise<Learning[]> =>
+      typedInvoke<Learning[]>(IPC_CHANNELS.LEARNINGS_SIMILAR, text, limit),
+    tags: async (): Promise<TagCount[]> => typedInvoke<TagCount[]>(IPC_CHANNELS.LEARNINGS_TAGS)
   }
 };
 

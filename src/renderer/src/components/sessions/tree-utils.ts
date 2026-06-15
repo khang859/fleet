@@ -1,6 +1,11 @@
 // src/renderer/src/components/sessions/tree-utils.ts
 // Pure helpers for navigating a Rune session's branch graph.
-import type { SessionTree, SessionTreeNode, TranscriptMessage } from '../../../../shared/sessions';
+import {
+  pathMessagesToNode,
+  type SessionTree,
+  type SessionTreeNode,
+  type TranscriptMessage
+} from '../../../../shared/sessions';
 
 /** Map of node id -> node for a tree. */
 function indexById(tree: SessionTree): Map<string, SessionTreeNode> {
@@ -21,16 +26,7 @@ export function pathIds(tree: SessionTree, nodeId: string | null): Set<string> {
 
 /** Messages on the path root -> nodeId, in chronological order. */
 export function pathToNode(tree: SessionTree, nodeId: string | null): TranscriptMessage[] {
-  const byId = indexById(tree);
-  const chain: SessionTreeNode[] = [];
-  const guard = new Set<string>();
-  let current = nodeId ? byId.get(nodeId) : undefined;
-  while (current && !guard.has(current.id)) {
-    guard.add(current.id);
-    chain.push(current);
-    current = current.parentId ? byId.get(current.parentId) : undefined;
-  }
-  return chain.reverse().map((n) => ({ role: n.role, blocks: n.blocks, createdAt: n.createdAt }));
+  return pathMessagesToNode(tree, nodeId);
 }
 
 export type TreeRow = {

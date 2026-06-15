@@ -9,6 +9,7 @@ import type {
 import { useSessionsStore } from '../../store/sessions-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { SessionTree } from './SessionTree';
+import { DistillModal } from './DistillModal';
 import { pathToNode } from './tree-utils';
 
 function resumeCommand(s: SessionSummary): string {
@@ -191,15 +192,25 @@ function SubagentList({ subagents }: { subagents: SubagentSummary[] }): React.JS
   );
 }
 
-export function TranscriptView(): React.JSX.Element {
+export function TranscriptView({
+  onDistilled
+}: {
+  /** Fired after a distill is saved, so the Learnings list can refresh. */
+  onDistilled?: () => void;
+} = {}): React.JSX.Element {
   const { selected, transcript, selectedNodeId, selectNode, isLoadingTranscript, transcriptError } =
     useSessionsStore();
   const openResumeTab = useWorkspaceStore((s) => s.openResumeTab);
   const [showRail, setShowRail] = useState(true);
+  const [distilling, setDistilling] = useState(false);
 
   const tree = transcript?.tree;
   const subagents = transcript?.subagents;
   const hasRail = Boolean(tree) || (subagents !== undefined && subagents.length > 0);
+
+  // When the session branches, distill the path the user is currently viewing.
+  const distillNodeId = tree ? (selectedNodeId ?? tree.activeId) : undefined;
+  const onBranch = Boolean(tree) && selectedNodeId !== null && selectedNodeId !== tree?.activeId;
 
   const messages = useMemo<TranscriptMessage[]>(() => {
     if (!transcript) return [];
@@ -253,6 +264,17 @@ export function TranscriptView(): React.JSX.Element {
             </button>
           ) : null}
           <button
+            onClick={() => setDistilling(true)}
+            className="rounded border border-fleet-border-strong px-2 py-1.5 text-xs text-fleet-text-subtle hover:bg-fleet-surface-2/50"
+            title={
+              onBranch
+                ? 'Distill a reusable learning from this branch'
+                : 'Distill a reusable learning from this session'
+            }
+          >
+            ✨ Distill {onBranch ? 'branch' : 'learning'}
+          </button>
+          <button
             onClick={() => openResumeTab(s.cwd, resumeCommand(s), s.title)}
             className="rounded bg-blue-600/80 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600"
           >
@@ -260,6 +282,13 @@ export function TranscriptView(): React.JSX.Element {
           </button>
         </div>
       </div>
+      <DistillModal
+        open={distilling}
+        session={s}
+        nodeId={distillNodeId}
+        onClose={() => setDistilling(false)}
+        onSaved={onDistilled}
+      />
       <div className="flex min-h-0 flex-1">
         {hasRail && showRail ? (
           <div className="flex w-64 flex-shrink-0 flex-col gap-3 overflow-y-auto border-r border-fleet-border px-2 py-3">

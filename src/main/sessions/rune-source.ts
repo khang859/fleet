@@ -1,7 +1,7 @@
 // src/main/sessions/rune-source.ts
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type {
   SessionSummary,
@@ -305,7 +305,13 @@ export async function listRuneSessions(): Promise<SessionSummary[]> {
 }
 
 export async function readRuneSession(id: string): Promise<SessionTranscript | null> {
-  const full = join(runeSessionsDir(), `${id}.json`);
+  const dir = runeSessionsDir();
+  const full = join(dir, `${id}.json`);
+  // Guard against path traversal via a crafted id (e.g. "../../.ssh/key"): the
+  // resolved path must stay inside the sessions directory.
+  if (resolve(full) !== resolve(dir) && !resolve(full).startsWith(resolve(dir) + sep)) {
+    return null;
+  }
   try {
     const [raw, st] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
     return readRuneTranscript(JSON.parse(raw), st.mtimeMs);

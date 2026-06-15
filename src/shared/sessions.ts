@@ -92,3 +92,20 @@ export type SessionGroup = {
   cwd: string;
   sessions: SessionSummary[];
 };
+
+/**
+ * Messages on the path root -> nodeId (chronological, root-first). Shared by the
+ * transcript view and the branch-node distill so both scope a tree the same way.
+ */
+export function pathMessagesToNode(tree: SessionTree, nodeId: string | null): TranscriptMessage[] {
+  const byId = new Map(tree.nodes.map((n) => [n.id, n]));
+  const chain: SessionTreeNode[] = [];
+  const guard = new Set<string>();
+  let current = nodeId ? byId.get(nodeId) : undefined;
+  while (current && !guard.has(current.id)) {
+    guard.add(current.id);
+    chain.push(current);
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  return chain.reverse().map((n) => ({ role: n.role, blocks: n.blocks, createdAt: n.createdAt }));
+}

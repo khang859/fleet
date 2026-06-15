@@ -229,6 +229,16 @@ export const IPC_CHANNELS = {
   SESSIONS_LIST: 'sessions:list',
   SESSIONS_READ: 'sessions:read',
   SESSIONS_CHANGED: 'sessions:changed',
+  // Learnings (cross-project knowledge base distilled from sessions)
+  LEARNINGS_SEARCH: 'learnings:search',
+  LEARNINGS_GET: 'learnings:get',
+  LEARNINGS_CREATE: 'learnings:create',
+  LEARNINGS_UPDATE: 'learnings:update',
+  LEARNINGS_DELETE: 'learnings:delete',
+  LEARNINGS_DISTILL: 'learnings:distill',
+  LEARNINGS_EXPORT: 'learnings:export',
+  LEARNINGS_SIMILAR: 'learnings:similar',
+  LEARNINGS_TAGS: 'learnings:tags',
   // Env Editor
   ENV_EDITOR_LIST: 'env-editor:list',
   ENV_EDITOR_READ: 'env-editor:read',
