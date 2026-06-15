@@ -46,14 +46,36 @@ export type LearningSearchFilter = {
 
 /** Render a learning as a self-contained markdown document (for copy/export). */
 export function learningToMarkdown(l: Pick<Learning, 'title' | 'body' | 'tags'>): string {
-  // Collapse newlines in the title: an embedded "\n" would split the H1 into a
-  // second heading (especially if the next line starts with "#"), corrupting the
-  // document structure for any downstream markdown parser.
-  const title = l.title.replace(/[\r\n]+/g, ' ').trim();
-  const parts = [`# ${title}`, '', l.body.trim()];
+  // Sanitize the title for export: strip HTML tags (a raw `<img onerror=…>` is a
+  // stored-XSS risk when the .md is viewed on GitHub/GitLab), and collapse newlines
+  // so an embedded "\n" can't split the H1 into a second heading.
+  const title = l.title
+    .replace(/<[^>]*>/g, '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim();
+  let body = l.body.trim();
+  if (l.tags.length > 0) {
+    // Drop any trailing "Tags:" footer the body already carries (e.g. one the
+    // distiller left behind) so the authoritative footer below isn't duplicated.
+    const lines = body.split('\n');
+    while (lines.length > 0 && /^\s*tags:/i.test(lines[lines.length - 1])) lines.pop();
+    body = lines.join('\n').trim();
+  }
+  const parts = [`# ${title}`, '', body];
   if (l.tags.length > 0) parts.push('', `Tags: ${l.tags.join(', ')}`);
   return parts.join('\n').trim() + '\n';
 }
+
+// Windows reserved device names: a file named exactly one of these (even with an
+// extension, e.g. NUL.md) maps to a device — writeFileSync silently discards data.
+const WINDOWS_RESERVED = new Set([
+  'con',
+  'prn',
+  'aux',
+  'nul',
+  ...Array.from({ length: 9 }, (_, i) => `com${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `lpt${i + 1}`)
+]);
 
 /** Filesystem-safe slug from a title, for default export filenames. */
 export function slugifyTitle(title: string): string {
@@ -62,7 +84,10 @@ export function slugifyTitle(title: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
-  return slug || 'learning';
+  if (!slug) return 'learning';
+  // Avoid Windows reserved device names, which would silently swallow the export.
+  if (WINDOWS_RESERVED.has(slug)) return `${slug}-file`;
+  return slug;
 }
 
 /** Which session to distill a learning from (a headless one-shot agent run). */

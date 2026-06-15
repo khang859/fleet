@@ -108,6 +108,15 @@ export class LearningsStore {
   }
 
   create(input: CreateLearningInput): Learning {
+    // Dedup gate: re-distilling the same session (the modal's similar-merge is only
+    // advisory) shouldn't pile up identical entries. If an entry with the same
+    // title already exists for this source session, return it instead of inserting.
+    if (input.sourceSessionId) {
+      const dup = this.db
+        .prepare('SELECT * FROM learnings WHERE source_session_id = ? AND title = ? LIMIT 1')
+        .get(input.sourceSessionId, input.title) as Record<string, unknown> | undefined;
+      if (dup) return this.rowToLearning(dup);
+    }
     const ts = this.now();
     const row: Learning = {
       id: randomUUID(),

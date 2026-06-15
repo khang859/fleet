@@ -44,6 +44,29 @@ describe('LearningsStore', () => {
     expect(got?.sourceProject).toBe('fleet');
   });
 
+  it('dedups re-creates of the same title for one source session', () => {
+    const first = store.create({
+      title: 'lesson from session',
+      body: 'v1',
+      sourceSessionId: 'sess-1'
+    });
+    const again = store.create({
+      title: 'lesson from session',
+      body: 'v2 (ignored)',
+      sourceSessionId: 'sess-1'
+    });
+    expect(again.id).toBe(first.id);
+    expect(again.body).toBe('v1'); // returns the existing row, no duplicate insert
+    expect(store.search({})).toHaveLength(1);
+
+    // Same title from a different session is NOT a duplicate.
+    store.create({ title: 'lesson from session', body: 'x', sourceSessionId: 'sess-2' });
+    // ...and hand-written entries (no source session) are never deduped.
+    store.create({ title: 'lesson from session', body: 'x' });
+    store.create({ title: 'lesson from session', body: 'x' });
+    expect(store.search({})).toHaveLength(4);
+  });
+
   it('full-text searches title and body, ignoring non-matches', () => {
     store.create({ title: 'xterm sizing inner div', body: 'fit addon miscalculates with padding' });
     store.create({ title: 'sqlite WAL mode', body: 'journal_mode improves concurrency' });

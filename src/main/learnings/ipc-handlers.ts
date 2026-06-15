@@ -130,7 +130,9 @@ export function registerLearningsIpcHandlers(
     if (!learning) return;
     const win = BrowserWindow.fromWebContents(e.sender);
     if (!win) return;
-    const defaultPath = `${dateStamp(learning.createdAt)}-${slugifyTitle(learning.title)}.md`;
+    // Include a short id so two learnings with the same title on the same day get
+    // distinct default filenames instead of silently overwriting each other.
+    const defaultPath = `${dateStamp(learning.createdAt)}-${slugifyTitle(learning.title)}-${learning.id.slice(0, 6)}.md`;
     // showOverwriteConfirmation is implicit on macOS/Windows but must be requested
     // explicitly on Linux/GTK, else an existing file (e.g. ~/.bashrc) is clobbered
     // silently.
