@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.72.2
+
+- **Fix Board PM chat hanging on "Thinking" forever** — the PM chat set its in-flight flag before running turn setup (config writes, `rune` spawn) and only ever cleared it from the child process's exit/error events. If setup threw, or `rune` ignored `SIGTERM`, the flag latched on and the panel showed "Thinking…" indefinitely with the input disabled, recoverable only by restarting Fleet. Every exit path now funnels through a single cleanup: setup failures clear the flag and surface an error, the turn timeout escalates `SIGTERM` → `SIGKILL`, and the transcript read-back can no longer strand the status transition.
+
 ## v2.72.1
 
 - **Fix Learnings distill noise from Rune** — headless `rune --prompt` runs now set `RUNE_NO_ATTACH=1`, so Rune no longer scans the prompt for file references and auto-attaches them. Previously, distilling a session (or running a Kanban worker / PM chat) fed Rune a prompt full of incidental file paths, which Rune inlined from the current directory and annotated with `(could not attach …)` lines on stdout — polluting the prompt and corrupting the distilled learning. Requires Rune v0.9.0+ (older Rune ignores the variable).
