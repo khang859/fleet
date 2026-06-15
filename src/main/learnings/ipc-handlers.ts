@@ -123,7 +123,10 @@ export function registerLearningsIpcHandlers(
       reqString(id, 'id');
       if (!fields || typeof fields !== 'object') throw new IpcError('update fields are required');
       const updated = store.update(id, fields);
-      if (updated) scheduleEmbed(updated);
+      // The embedding is built from title + body, so only re-embed when one of those
+      // is part of the edit — a tag-only change leaves the existing vector valid.
+      const contentEdited = fields.title !== undefined || fields.body !== undefined;
+      if (updated && contentEdited) scheduleEmbed(updated);
       return updated;
     }
   );

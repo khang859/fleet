@@ -322,17 +322,32 @@ export class LearningsStore {
       .all() as TagCount[];
   }
 
-  /** Learnings still needing an embedding (never embedded, or edited since). */
-  pendingEmbeddings(limit: number): PendingEmbedding[] {
+  /**
+   * Learnings still needing an embedding (never embedded, or edited since), most
+   * recent first. `excludeRowids` lets a backfill pass skip rows it already tried and
+   * failed this run, so one unembeddable row can't wedge the loop.
+   */
+  pendingEmbeddings(limit: number, excludeRowids: number[] = []): PendingEmbedding[] {
     if (!this.vec) return [];
+    if (excludeRowids.length === 0) {
+      return this.db
+        .prepare<[number], PendingEmbedding>(
+          `SELECT rowid, id, title, body FROM learnings
+           WHERE embedding_updated_at IS NULL
+           ORDER BY created_at DESC
+           LIMIT ?`
+        )
+        .all(limit);
+    }
+    const placeholders = excludeRowids.map(() => '?').join(', ');
     return this.db
-      .prepare<[number], PendingEmbedding>(
+      .prepare<[...number[], number], PendingEmbedding>(
         `SELECT rowid, id, title, body FROM learnings
-         WHERE embedding_updated_at IS NULL
+         WHERE embedding_updated_at IS NULL AND rowid NOT IN (${placeholders})
          ORDER BY created_at DESC
          LIMIT ?`
       )
-      .all(limit);
+      .all(...excludeRowids, limit);
   }
 
   /**

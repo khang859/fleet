@@ -15,6 +15,12 @@ export interface Embedder {
   embed(text: string): Promise<Float32Array | null> | Float32Array | null;
   /** Vector dimensionality this embedder produces. */
   readonly dim: number;
+  /**
+   * Whether the embedder can still produce vectors. Lets callers distinguish a
+   * permanent failure (model can't load → stop) from a one-off `embed` returning
+   * null for a single input (skip that input, keep going).
+   */
+  available(): boolean;
   /** Release resources (e.g. terminate the worker). Optional for stateless embedders. */
   close?(): Promise<void> | void;
 }
@@ -24,6 +30,9 @@ export class NullEmbedder implements Embedder {
   readonly dim = EMBED_DIM;
   embed(): null {
     return null;
+  }
+  available(): boolean {
+    return false;
   }
 }
 
@@ -53,5 +62,9 @@ export class FakeEmbedder implements Embedder {
     norm = Math.sqrt(norm) || 1;
     for (let i = 0; i < v.length; i++) v[i] /= norm;
     return v;
+  }
+
+  available(): boolean {
+    return true;
   }
 }

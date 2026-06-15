@@ -32,6 +32,38 @@ export function learningsMcpEntry(): McpHttpEntry | null {
   return currentEntry;
 }
 
+function defaultPortFile(): string {
+  return join(homedir(), '.fleet', 'learnings', 'mcp-port');
+}
+
+/**
+ * The port to try first: the last successfully-bound port (if recorded), else
+ * `fallback`. Preferring the previous port keeps the URL — and therefore the
+ * registered configs — stable across restarts even when the default port was taken
+ * and the server fell back to an OS-assigned one.
+ */
+export function loadPreferredPort(fallback: number, portFilePath?: string): number {
+  const path = portFilePath ?? defaultPortFile();
+  if (!existsSync(path)) return fallback;
+  try {
+    const n = Number.parseInt(readFileSync(path, 'utf-8').trim(), 10);
+    return Number.isInteger(n) && n > 0 && n < 65536 ? n : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Record the actually-bound port so the next launch prefers it. */
+export function persistPort(port: number, portFilePath?: string): void {
+  const path = portFilePath ?? defaultPortFile();
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, String(port), 'utf-8');
+  } catch (err) {
+    log.warn('failed to persist learnings MCP port', { error: String(err) });
+  }
+}
+
 const ObjectSchema = z.record(z.string(), z.unknown());
 
 /**

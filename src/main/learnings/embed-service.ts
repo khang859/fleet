@@ -92,6 +92,11 @@ export class WorkerEmbedder implements Embedder {
     void w?.terminate();
   }
 
+  /** False once a terminal failure (model load / worker crash) has disabled the worker. */
+  available(): boolean {
+    return !this.failed;
+  }
+
   async embed(text: string): Promise<Float32Array | null> {
     const worker = this.ensureWorker();
     if (!worker) return null;

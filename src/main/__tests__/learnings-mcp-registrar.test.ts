@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { registerLearningsMcp, learningsMcpEntry } from '../learnings/learnings-mcp-registrar';
+import {
+  registerLearningsMcp,
+  learningsMcpEntry,
+  loadPreferredPort,
+  persistPort
+} from '../learnings/learnings-mcp-registrar';
 
 const TEST_DIR = join(tmpdir(), `fleet-learnings-registrar-test-${Date.now()}`);
 const claudeJsonPath = join(TEST_DIR, '.claude.json');
@@ -70,5 +75,25 @@ describe('registerLearningsMcp', () => {
     // Left intact; rune (valid/missing) still gets written.
     expect(readFileSync(claudeJsonPath, 'utf-8')).toBe('{ this is not json');
     expect(existsSync(runeMcpPath)).toBe(true);
+  });
+});
+
+describe('port persistence', () => {
+  const portFile = join(TEST_DIR, 'mcp-port');
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('returns the fallback when no port has been persisted', () => {
+    expect(loadPreferredPort(49823, portFile)).toBe(49823);
+  });
+
+  it('round-trips the persisted port so it is preferred next launch', () => {
+    persistPort(51000, portFile);
+    expect(loadPreferredPort(49823, portFile)).toBe(51000);
+  });
+
+  it('falls back when the persisted value is not a valid port', () => {
+    writeFileSync(portFile, 'not-a-port');
+    expect(loadPreferredPort(49823, portFile)).toBe(49823);
   });
 });

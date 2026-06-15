@@ -80,7 +80,11 @@ import { registerLearningsIpcHandlers } from './learnings/ipc-handlers';
 import { WorkerEmbedder } from './learnings/embed-service';
 import { LearningsSearchService } from './learnings/search-service';
 import { LearningsMcpServer } from './learnings/learnings-mcp-server';
-import { registerLearningsMcp } from './learnings/learnings-mcp-registrar';
+import {
+  registerLearningsMcp,
+  loadPreferredPort,
+  persistPort
+} from './learnings/learnings-mcp-registrar';
 import { runBackfill } from './learnings/backfill';
 import { RUNE_NOT_INSTALLED_MESSAGE } from '../shared/rune';
 import { registerKanbanIpc } from './kanban/kanban-ipc';
@@ -1252,8 +1256,11 @@ void app.whenReady().then(async () => {
   // in their global configs and backfill embeddings for existing learnings.
   learningsMcp = new LearningsMcpServer(learningsStoreRef, learningsSearch);
   learningsMcp
-    .start(LEARNINGS_MCP_PORT)
+    .start(loadPreferredPort(LEARNINGS_MCP_PORT))
     .then(async (port) => {
+      // Remember the bound port so a forced OS-fallback (default port busy) stays
+      // stable next launch instead of rewriting the global configs each time.
+      persistPort(port);
       registerLearningsMcp(port);
       await runBackfill(learningsStoreRef, learningsEmbedderRef);
     })
