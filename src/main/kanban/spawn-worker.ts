@@ -259,7 +259,11 @@ export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation
     env: {
       RUNE_MCP_CONFIG: runeMcpConfig,
       FLEET_KANBAN_TASK: input.task.id,
-      FLEET_KANBAN_RUN: input.runToken
+      FLEET_KANBAN_RUN: input.runToken,
+      // The worker prompt is fully assembled by Fleet (task body, diffs, docs); rune
+      // must not auto-attach the path-like tokens it contains (it would silently inline
+      // the worktree's current files). Workers read files via tools instead.
+      RUNE_NO_ATTACH: '1'
     }
   };
 }

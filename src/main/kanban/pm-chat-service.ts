@@ -171,7 +171,9 @@ export class PmChatService {
     if (c.sessionId) args.push('--resume', c.sessionId);
     const child = spawn('rune', args, {
       cwd: dir,
-      env: { ...process.env, RUNE_MCP_CONFIG: mcpConfigPath },
+      // Treat the chat message as literal text — don't let rune auto-attach (and inline)
+      // files for path-like tokens the user happens to mention; the PM uses tools to read.
+      env: { ...process.env, RUNE_MCP_CONFIG: mcpConfigPath, RUNE_NO_ATTACH: '1' },
       stdio: ['ignore', 'pipe', 'pipe']
     });
 

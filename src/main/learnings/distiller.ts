@@ -120,7 +120,16 @@ async function runAgentOneShot(agent: SessionAgent, cwd: string, prompt: string)
     // `detached` on POSIX puts the child in its own process group so we can signal
     // the whole tree on timeout — rune/claude spawn their own children, and a bare
     // child.kill() hits only the direct PID, re-parenting the rest to init (PID 1).
-    const child = spawn(cmd, args, { cwd, env: process.env, detached: !isWindows });
+    // RUNE_NO_ATTACH stops rune from scanning the prompt for file references and
+    // inlining/warning on them: a serialized transcript is full of incidental path
+    // mentions, and auto-attach would inline current-cwd files (polluting the prompt)
+    // and print "(could not attach …)" onto stdout (corrupting the parsed draft).
+    // Older rune builds ignore the unknown env var, so this is backward-compatible.
+    const child = spawn(cmd, args, {
+      cwd,
+      env: { ...process.env, RUNE_NO_ATTACH: '1' },
+      detached: !isWindows
+    });
     // Decode incrementally so a multibyte codepoint split across two chunks isn't
     // mangled into U+FFFD (common with CJK/emoji in agent output).
     const outDecoder = new StringDecoder('utf8');
@@ -157,15 +166,15 @@ async function runAgentOneShot(agent: SessionAgent, cwd: string, prompt: string)
       if (stdout.length > MAX_STDOUT_CHARS) {
         killTree();
         finish(() =>
-          reject(new Error(`${cmd} produced over ${Math.floor(MAX_STDOUT_CHARS / 1000)}KB of output`))
+          reject(
+            new Error(`${cmd} produced over ${Math.floor(MAX_STDOUT_CHARS / 1000)}KB of output`)
+          )
         );
       }
     });
     child.stderr.on('data', (d: Buffer) => (stderr += errDecoder.write(d)));
     child.on('error', (err: NodeJS.ErrnoException) => {
-      finish(() =>
-        reject(err.code === 'ENOENT' ? new Error(`${cmd} ${NOT_INSTALLED}`) : err)
-      );
+      finish(() => reject(err.code === 'ENOENT' ? new Error(`${cmd} ${NOT_INSTALLED}`) : err));
     });
     child.on('close', (code) => {
       stdout += outDecoder.end();
