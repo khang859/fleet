@@ -23,6 +23,9 @@ extraResources:
     to: pi-skills/
 asarUnpack:
   - resources/**
+  - node_modules/onnxruntime-node/**
+  - node_modules/sqlite-vec/**
+  - node_modules/sqlite-vec-*/**
 mac:
   target:
     - target: dmg

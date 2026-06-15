@@ -11,10 +11,21 @@ import type {
   TagCount
 } from '../../shared/learnings';
 import type { SessionAgent } from '../../shared/sessions';
+import { loadVecExtension } from './vec-extension';
+import { EMBED_DIM } from './embedder';
 
 const log = createLogger('learnings-store');
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+
+/** Default cap on rows returned by `search()` — bounds IPC payloads and the FTS pool. */
+const SEARCH_LIMIT = 500;
+
+/** A learning row that still needs an embedding (backfill / re-embed-on-edit). */
+export type PendingEmbedding = { id: string; rowid: number; title: string; body: string };
+
+/** One vector-search hit: the learning id and its distance to the query (lower = nearer). */
+export type VecHit = { id: string; distance: number };
 
 // FTS5 external-content index over the canonical `learnings` table. Triggers keep
 // `learnings_fts` in sync on insert/update/delete, so store methods just do normal
@@ -80,6 +91,8 @@ export interface LearningsStoreOptions {
 export class LearningsStore {
   private db: Database.Database;
   private now: () => number;
+  /** True when the sqlite-vec extension loaded — gates all vector operations. */
+  private vec = false;
 
   constructor(dbPath: string, opts: LearningsStoreOptions = {}) {
     this.now = opts.now ?? Date.now;
@@ -89,8 +102,24 @@ export class LearningsStore {
     // Wait briefly instead of throwing SQLITE_BUSY when a second window/store
     // collides on a write while WAL is checkpointing.
     this.db.pragma('busy_timeout = 5000');
+    // Vector search is an enhancement, not a hard dependency: if the extension
+    // can't load (missing binary, unsupported platform) the store still works as a
+    // keyword (FTS5) KB and every vector method becomes a no-op.
+    try {
+      loadVecExtension(this.db);
+      this.vec = true;
+    } catch (err) {
+      log.warn('sqlite-vec unavailable; learnings KB will use keyword search only', {
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
     this.migrate();
-    log.info('learnings store opened', { dbPath });
+    log.info('learnings store opened', { dbPath, vectorSearch: this.vec });
+  }
+
+  /** Whether semantic (vector) search is available on this store. */
+  hasVectorSupport(): boolean {
+    return this.vec;
   }
 
   private migrate(): void {
@@ -100,10 +129,32 @@ export class LearningsStore {
     // idempotent DDL leaves behind, which would make the migration silently skip.
     const from = Number(this.db.pragma('user_version', { simple: true }));
     this.db.exec(SCHEMA_SQL);
-    // v1 is the initial schema. Future additive migrations go here, each guarded
-    // by `if (from < N) { ... }`, in ascending order.
+    // v2: semantic search. `embedding_updated_at` tracks embedding freshness
+    // (NULL = needs (re-)embedding); `learnings_vec` holds the vectors. The vec0
+    // table only exists when the extension loaded — guarded everywhere by `this.vec`.
+    if (from < 2) {
+      this.addColumnIfMissing('learnings', 'embedding_updated_at', 'INTEGER');
+    }
+    if (this.vec) {
+      this.db.exec(
+        `CREATE VIRTUAL TABLE IF NOT EXISTS learnings_vec USING vec0(embedding float[${EMBED_DIM}])`
+      );
+    }
     if (from !== SCHEMA_VERSION) {
       this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
+    }
+  }
+
+  /** Add a column only if it isn't already present (safe across partial migrations). */
+  private addColumnIfMissing(table: string, column: string, type: string): void {
+    const present = this.db
+      .prepare<
+        [string, string],
+        { n: number }
+      >('SELECT 1 AS n FROM pragma_table_info(?) WHERE name = ?')
+      .get(table, column);
+    if (!present) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
     }
   }
 
@@ -157,10 +208,14 @@ export class LearningsStore {
       tags: fields.tags ?? existing.tags,
       updatedAt: this.now()
     };
+    // The embedding is built from title + body; reset its freshness so the backfill
+    // pass re-embeds when either changed. A tag-only edit leaves the vector intact.
+    const contentChanged = next.title !== existing.title || next.body !== existing.body;
     this.db
       .prepare(
         `UPDATE learnings
          SET title = @title, body = @body, tags = @tags, updated_at = @updatedAt
+         ${contentChanged ? ', embedding_updated_at = NULL' : ''}
          WHERE id = @id`
       )
       .run({
@@ -174,7 +229,20 @@ export class LearningsStore {
   }
 
   delete(id: string): void {
-    this.db.prepare('DELETE FROM learnings WHERE id = ?').run(id);
+    // Drop the vector and the canonical row in one transaction so a crash between them
+    // can't orphan a learnings_vec row (or strand a learning invisible to vector search).
+    const tx = this.db.transaction(() => {
+      // Drop the vector first (the join key is the learnings rowid, gone after delete).
+      if (this.vec) {
+        const row = this.db
+          .prepare<[string], { rowid: number }>('SELECT rowid FROM learnings WHERE id = ?')
+          .get(id);
+        if (row)
+          this.db.prepare('DELETE FROM learnings_vec WHERE rowid = ?').run(BigInt(row.rowid));
+      }
+      this.db.prepare('DELETE FROM learnings WHERE id = ?').run(id);
+    });
+    tx();
   }
 
   get(id: string): Learning | null {
@@ -184,10 +252,14 @@ export class LearningsStore {
     return r ? this.rowToLearning(r) : null;
   }
 
-  /** List or full-text search. With `filter.query` set, ranks by FTS relevance. */
-  search(filter: LearningSearchFilter = {}): Learning[] {
+  /**
+   * List or full-text search. With `filter.query` set, ranks by FTS relevance. Capped
+   * at `limit` rows so a broad listing (or a common FTS term matching the whole store)
+   * can't serialize thousands of rows over IPC or balloon the hybrid-search FTS pool.
+   */
+  search(filter: LearningSearchFilter = {}, limit = SEARCH_LIMIT): Learning[] {
     const where: string[] = [];
-    const params: Record<string, unknown> = {};
+    const params: Record<string, unknown> = { limit };
 
     if (filter.project) {
       where.push('l.source_project = @project');
@@ -211,7 +283,8 @@ export class LearningsStore {
         SELECT l.* FROM learnings l
         JOIN learnings_fts f ON f.rowid = l.rowid
         WHERE ${where.join(' AND ')}
-        ORDER BY rank`;
+        ORDER BY rank
+        LIMIT @limit`;
       const rows = this.db.prepare(sql).all(params) as Array<Record<string, unknown>>;
       return rows.map((r) => this.rowToLearning(r));
     }
@@ -219,7 +292,8 @@ export class LearningsStore {
     const sql = `
       SELECT l.* FROM learnings l
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-      ORDER BY l.created_at DESC`;
+      ORDER BY l.created_at DESC
+      LIMIT @limit`;
     const rows = this.db.prepare(sql).all(params) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToLearning(r));
   }
@@ -261,6 +335,77 @@ export class LearningsStore {
          ORDER BY count DESC, tag ASC`
       )
       .all() as TagCount[];
+  }
+
+  /**
+   * Learnings still needing an embedding (never embedded, or edited since), most
+   * recent first. `excludeRowids` lets a backfill pass skip rows it already tried and
+   * failed this run, so one unembeddable row can't wedge the loop.
+   */
+  pendingEmbeddings(limit: number, excludeRowids: number[] = []): PendingEmbedding[] {
+    if (!this.vec) return [];
+    const exclude = new Set(excludeRowids);
+    // Over-fetch by the exclude count and drop excluded rows in JS, rather than a
+    // `NOT IN (?, ?, …)` clause — that would hit SQLite's 999-variable limit once a
+    // backfill accumulates many failed rows, and would recompile a new statement per
+    // distinct exclude-count. A single cached statement keeps this cheap.
+    const rows = this.db
+      .prepare<[number], PendingEmbedding>(
+        `SELECT rowid, id, title, body FROM learnings
+         WHERE embedding_updated_at IS NULL
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(limit + exclude.size);
+    const kept = exclude.size ? rows.filter((r) => !exclude.has(r.rowid)) : rows;
+    return kept.slice(0, limit);
+  }
+
+  /**
+   * Store (or replace) a learning's embedding and mark it fresh. `vec` length must
+   * equal EMBED_DIM. No-op when vector search is unavailable.
+   */
+  setEmbedding(id: string, vec: Float32Array): void {
+    if (!this.vec) return;
+    const row = this.db
+      .prepare<[string], { rowid: number }>('SELECT rowid FROM learnings WHERE id = ?')
+      .get(id);
+    if (!row) return;
+    const rowid = BigInt(row.rowid);
+    const blob = Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength);
+    const tx = this.db.transaction(() => {
+      // vec0 rowids must be bound as BigInt — a JS number binds as REAL and is
+      // rejected ("Only integers are allows for primary key").
+      this.db
+        .prepare('INSERT OR REPLACE INTO learnings_vec(rowid, embedding) VALUES (?, ?)')
+        .run(rowid, blob);
+      this.db
+        .prepare('UPDATE learnings SET embedding_updated_at = ? WHERE id = ?')
+        .run(this.now(), id);
+    });
+    tx();
+  }
+
+  /** K-nearest learnings to a query vector, nearest first. Empty when unavailable. */
+  vectorSearch(queryVec: Float32Array, limit: number): VecHit[] {
+    if (!this.vec) return [];
+    const blob = Buffer.from(queryVec.buffer, queryVec.byteOffset, queryVec.byteLength);
+    try {
+      return this.db
+        .prepare<[Buffer, number], VecHit>(
+          `SELECT l.id AS id, v.distance AS distance
+           FROM learnings_vec v
+           JOIN learnings l ON l.rowid = v.rowid
+           WHERE v.embedding MATCH ? AND k = ?
+           ORDER BY v.distance`
+        )
+        .all(blob, limit);
+    } catch (err) {
+      // KNN over an empty vec table (or other sqlite-vec quirks) can throw; degrade to
+      // the keyword-only path rather than failing the whole search.
+      log.warn('vector search failed; falling back to keyword-only', { error: String(err) });
+      return [];
+    }
   }
 
   schemaVersion(): number {

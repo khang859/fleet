@@ -9,6 +9,7 @@ import { RUNE_NOT_INSTALLED_MESSAGE } from '../../shared/rune';
 import { isAuthFailureText } from './spawn-worker';
 import { readRuneSession } from '../sessions/rune-source';
 import { buildPmAgentsMd } from './pm-agents';
+import { learningsMcpEntry } from '../learnings/learnings-mcp-registrar';
 import { pmBoardDir, pmDocsDir } from './pm-paths';
 import type { KanbanMcpServer } from './kanban-mcp-server';
 import type { TranscriptMessage } from '../../shared/sessions';
@@ -202,10 +203,12 @@ export class PmChatService {
       writeFileSync(join(dir, 'AGENTS.md'), buildPmAgentsMd({ projects, memory }));
       const mcpConfigPath = join(runeDir, 'mcp.json');
       const url = `http://127.0.0.1:${this.opts.mcpPort}/mcp?run=${token}`;
-      writeFileSync(
-        mcpConfigPath,
-        JSON.stringify({ servers: { kanban: { type: 'http', url } } }, null, 2)
-      );
+      const learnings = learningsMcpEntry();
+      const servers: Record<string, { type: 'http'; url: string }> = {
+        kanban: { type: 'http', url },
+        ...(learnings ? { 'fleet-learnings': learnings } : {})
+      };
+      writeFileSync(mcpConfigPath, JSON.stringify({ servers }, null, 2));
 
       const args = ['--prompt', body];
       if (c.sessionId) args.push('--resume', c.sessionId);

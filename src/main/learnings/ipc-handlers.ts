@@ -1,6 +1,7 @@
 // src/main/learnings/ipc-handlers.ts
 import { ipcMain, dialog, BrowserWindow, type IpcMainInvokeEvent } from 'electron';
-import { writeFileSync } from 'fs';
+import { writeFileSync, rmSync, statSync, readdirSync, existsSync } from 'fs';
+import { join } from 'path';
 import { createLogger } from '../logger';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import {
@@ -12,11 +13,14 @@ import {
   type LearningSearchFilter,
   type DistillRequest,
   type DistillResult,
-  type TagCount
+  type TagCount,
+  type LearningsStatus
 } from '../../shared/learnings';
 import { pathMessagesToNode } from '../../shared/sessions';
 import type { LearningsStore } from './learnings-store';
 import type { SessionsService } from '../sessions/service';
+import type { LearningsSearchService } from './search-service';
+import type { Embedder } from './embedder';
 import { distillLearning } from './distiller';
 
 const log = createLogger('learnings-ipc');
@@ -79,26 +83,66 @@ function validateCreateInput(input: CreateLearningInput): CreateLearningInput {
   return input;
 }
 
+/** Total size (bytes) of a directory tree; 0 if it doesn't exist. */
+function dirSize(dir: string): number {
+  if (!existsSync(dir)) return 0;
+  let total = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) total += dirSize(full);
+    else if (entry.isFile()) total += statSync(full).size;
+  }
+  return total;
+}
+
 export function registerLearningsIpcHandlers(
   store: LearningsStore,
-  sessions: SessionsService
+  sessions: SessionsService,
+  search: LearningsSearchService,
+  embedder: Embedder,
+  modelCacheDir: string
 ): void {
-  handle(IPC_CHANNELS.LEARNINGS_SEARCH, (_e, filter?: LearningSearchFilter): Learning[] =>
-    store.search(filter ?? {})
+  // Embed a learning in the background after a write. Best-effort: a null vector
+  // (model unavailable) just leaves the row pending for the backfill pass.
+  const scheduleEmbed = (l: Learning): void => {
+    if (!store.hasVectorSupport()) return;
+    void Promise.resolve(embedder.embed(`${l.title}\n${l.body}`)).then(
+      (vec) => {
+        if (vec) store.setEmbedding(l.id, vec);
+      },
+      (err: unknown) => log.warn('embed-on-write failed', { error: String(err) })
+    );
+  };
+
+  handle(
+    IPC_CHANNELS.LEARNINGS_SEARCH,
+    async (_e, filter?: LearningSearchFilter): Promise<Learning[]> => {
+      const f = filter ?? {};
+      // A text query gets hybrid (semantic + keyword) ranking; plain listing/filtering
+      // stays on the synchronous store path.
+      if (f.query?.trim()) return search.hybridSearch(f.query, f);
+      return store.search(f);
+    }
   );
   handle(IPC_CHANNELS.LEARNINGS_GET, (_e, id: string): Learning | null =>
     store.get(reqString(id, 'id'))
   );
-  handle(
-    IPC_CHANNELS.LEARNINGS_CREATE,
-    (_e, input: CreateLearningInput): Learning => store.create(validateCreateInput(input))
-  );
+  handle(IPC_CHANNELS.LEARNINGS_CREATE, (_e, input: CreateLearningInput): Learning => {
+    const learning = store.create(validateCreateInput(input));
+    scheduleEmbed(learning);
+    return learning;
+  });
   handle(
     IPC_CHANNELS.LEARNINGS_UPDATE,
     (_e, id: string, fields: UpdateLearningInput): Learning | null => {
       reqString(id, 'id');
       if (!fields || typeof fields !== 'object') throw new IpcError('update fields are required');
-      return store.update(id, fields);
+      const updated = store.update(id, fields);
+      // The embedding is built from title + body, so only re-embed when one of those
+      // is part of the edit — a tag-only change leaves the existing vector valid.
+      const contentEdited = fields.title !== undefined || fields.body !== undefined;
+      if (updated && contentEdited) scheduleEmbed(updated);
+      return updated;
     }
   );
   handle(IPC_CHANNELS.LEARNINGS_DELETE, (_e, id: string): void =>
@@ -125,6 +169,23 @@ export function registerLearningsIpcHandlers(
     store.findSimilar(reqString(text, 'text'), limit)
   );
   handle(IPC_CHANNELS.LEARNINGS_TAGS, (): TagCount[] => store.allTags());
+  handle(
+    IPC_CHANNELS.LEARNINGS_STATUS,
+    (): LearningsStatus => ({
+      vectorSupport: store.hasVectorSupport(),
+      embedder: embedder.state()
+    })
+  );
+  handle(IPC_CHANNELS.LEARNINGS_WARM_MODEL, (): void => embedder.warmUp?.());
+  handle(IPC_CHANNELS.LEARNINGS_MODEL_CACHE_SIZE, (): number => dirSize(modelCacheDir));
+  handle(IPC_CHANNELS.LEARNINGS_CLEAR_MODEL_CACHE, async (): Promise<void> => {
+    // Reset (don't permanently close) the worker so its file handles are released and
+    // any prior load failure is cleared, then drop the model files. The next embed
+    // re-creates the worker and re-downloads the model.
+    await embedder.reset?.();
+    rmSync(modelCacheDir, { recursive: true, force: true });
+    log.info('cleared learnings model cache', { modelCacheDir });
+  });
   handle(IPC_CHANNELS.LEARNINGS_EXPORT, async (e, id: string): Promise<void> => {
     const learning = store.get(reqString(id, 'id'));
     if (!learning) return;

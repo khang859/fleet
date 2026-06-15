@@ -2,7 +2,37 @@ import { useCallback, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { learningToMarkdown, type Learning } from '../../../../shared/learnings';
+import {
+  learningToMarkdown,
+  type Learning,
+  type LearningsStatus
+} from '../../../../shared/learnings';
+
+/** The search-mode badge: copy + tone derived from semantic-search availability. */
+function searchModeBadge(
+  status: LearningsStatus | null
+): { label: string; title: string; tone: string } | null {
+  if (!status) return null;
+  if (!status.vectorSupport || status.embedder === 'failed') {
+    return {
+      label: 'Keyword only',
+      title: 'Semantic search is unavailable; results use keyword matching.',
+      tone: 'text-fleet-text-subtle'
+    };
+  }
+  if (status.embedder === 'ready') {
+    return {
+      label: 'Semantic',
+      title: 'Searches rank by meaning (vector) + keywords.',
+      tone: 'text-blue-400'
+    };
+  }
+  return {
+    label: 'Preparing semantic search…',
+    title: 'Downloading/loading the embedding model. Keyword search works meanwhile.',
+    tone: 'text-fleet-text-subtle'
+  };
+}
 
 function relativeTime(ms: number): string {
   const diff = Date.now() - ms;
@@ -28,6 +58,31 @@ export function LearningsBrowser({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ title: '', body: '', tags: '' });
   const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState<LearningsStatus | null>(null);
+
+  // Warm the embedding model when the browser opens, then keep polling status while
+  // mounted: fast (1.5s) until the model settles so first-run download progress shows,
+  // then slow (5s) so the badge still reflects a later change — e.g. the model cache
+  // being cleared from Settings, a worker crash, or a re-download recovering. Polling
+  // stops only when there's no vector extension this session (an immutable state).
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    void window.fleet.learnings.warmModel();
+    const tick = async (): Promise<void> => {
+      const s = await window.fleet.learnings.status();
+      if (cancelled) return;
+      setStatus(s);
+      if (!s.vectorSupport) return;
+      const settled = s.embedder === 'ready' || s.embedder === 'failed';
+      timer = setTimeout(() => void tick(), settled ? 5000 : 1500);
+    };
+    void tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   const refresh = useCallback(async (q: string): Promise<Learning[]> => {
     const res = await window.fleet.learnings.search(q.trim() ? { query: q.trim() } : {});
@@ -108,6 +163,19 @@ export function LearningsBrowser({
             placeholder="Search learnings…"
             className="w-full rounded border border-fleet-border-strong bg-fleet-surface px-2 py-1 text-sm text-fleet-text"
           />
+          {(() => {
+            const badge = searchModeBadge(status);
+            if (!badge) return null;
+            return (
+              <div
+                title={badge.title}
+                className={`mt-1 inline-flex items-center gap-1 text-[10px] ${badge.tone}`}
+              >
+                <span aria-hidden>⌁</span>
+                {badge.label}
+              </div>
+            );
+          })()}
         </div>
         <div className="flex-1 overflow-y-auto">
           {items.length === 0 ? (

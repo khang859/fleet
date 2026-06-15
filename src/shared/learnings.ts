@@ -102,6 +102,21 @@ export type DistillRequest = {
 /** A tag and how many learnings carry it, for vocabulary suggestions. */
 export type TagCount = { tag: string; count: number };
 
+/**
+ * Embedding model lifecycle, surfaced to the UI:
+ * `idle` (not started), `loading` (downloading/initializing the model),
+ * `ready` (can embed), `failed` (model unavailable → keyword-only fallback).
+ */
+export type EmbedderState = 'idle' | 'loading' | 'ready' | 'failed';
+
+/** Semantic-search availability, for the Learnings UI indicator. */
+export type LearningsStatus = {
+  /** Whether the sqlite-vec extension loaded (semantic search possible at all). */
+  vectorSupport: boolean;
+  /** Embedding model lifecycle. */
+  embedder: EmbedderState;
+};
+
 export type DistillDraft = { title: string; body: string; tags: string[] };
 
 /**
