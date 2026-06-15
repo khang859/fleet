@@ -91,7 +91,12 @@ function SubagentList({ subagents }: { subagents: SubagentSummary[] }): React.JS
   );
 }
 
-export function TranscriptView(): React.JSX.Element {
+export function TranscriptView({
+  onDistilled
+}: {
+  /** Fired after a distill is saved, so the Learnings list can refresh. */
+  onDistilled?: () => void;
+} = {}): React.JSX.Element {
   const { selected, transcript, selectedNodeId, selectNode, isLoadingTranscript, transcriptError } =
     useSessionsStore();
   const openResumeTab = useWorkspaceStore((s) => s.openResumeTab);
@@ -177,6 +182,7 @@ export function TranscriptView(): React.JSX.Element {
         session={s}
         nodeId={distillNodeId}
         onClose={() => setDistilling(false)}
+        onSaved={onDistilled}
       />
       <div className="flex min-h-0 flex-1">
         {hasRail && showRail ? (

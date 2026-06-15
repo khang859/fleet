@@ -4,6 +4,7 @@ import { SessionList } from './SessionList';
 import { TranscriptView } from './TranscriptView';
 import { LearningsBrowser } from './LearningsBrowser';
 import { useSessionsStore } from '../../store/sessions-store';
+import { useToastStore } from '../../store/toast-store';
 import type { Learning } from '../../../../shared/learnings';
 
 type View = 'sessions' | 'learnings';
@@ -13,6 +14,9 @@ export function SessionsTab(): React.JSX.Element {
   const sessions = useSessionsStore((s) => s.sessions);
   const select = useSessionsStore((s) => s.select);
   const [view, setView] = useState<View>('sessions');
+  // Bumped after a distill saves so the (possibly already-mounted) Learnings list
+  // refetches instead of showing a stale list until the user types in search.
+  const [learningsRefreshKey, setLearningsRefreshKey] = useState(0);
 
   // Settings are loaded at app startup; the list refresh on `sessions:changed`
   // is owned by the always-mounted SessionsTabCard, so we only need an initial load here.
@@ -29,6 +33,8 @@ export function SessionsTab(): React.JSX.Element {
     if (match) {
       void select(match);
       setView('sessions');
+    } else {
+      useToastStore.getState().show('That source session no longer exists.');
     }
   }
 
@@ -56,10 +62,10 @@ export function SessionsTab(): React.JSX.Element {
             style={{ gridTemplateColumns: '320px 1fr', gridTemplateRows: 'minmax(0, 1fr)' }}
           >
             <SessionList />
-            <TranscriptView />
+            <TranscriptView onDistilled={() => setLearningsRefreshKey((k) => k + 1)} />
           </div>
         ) : (
-          <LearningsBrowser onOpenSource={openSource} />
+          <LearningsBrowser onOpenSource={openSource} refreshKey={learningsRefreshKey} />
         )}
       </div>
     </div>

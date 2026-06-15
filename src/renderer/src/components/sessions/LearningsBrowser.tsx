@@ -15,9 +15,12 @@ function relativeTime(ms: number): string {
 }
 
 export function LearningsBrowser({
-  onOpenSource
+  onOpenSource,
+  refreshKey = 0
 }: {
   onOpenSource?: (l: Learning) => void;
+  /** Bump to force a refetch (e.g. after a new learning is distilled elsewhere). */
+  refreshKey?: number;
 }): React.JSX.Element {
   const [items, setItems] = useState<Learning[]>([]);
   const [query, setQuery] = useState('');
@@ -32,9 +35,22 @@ export function LearningsBrowser({
     return res;
   }, []);
 
+  // Debounce the per-keystroke search and ignore out-of-order responses, so a slow
+  // earlier query can't overwrite the results of a newer one. Also re-runs when
+  // refreshKey changes (a learning was saved elsewhere).
   useEffect(() => {
-    void refresh(query);
-  }, [query, refresh]);
+    let ignore = false;
+    const q = query.trim();
+    const timer = setTimeout(() => {
+      void window.fleet.learnings.search(q ? { query: q } : {}).then((res) => {
+        if (!ignore) setItems(res);
+      });
+    }, 300);
+    return () => {
+      ignore = true;
+      clearTimeout(timer);
+    };
+  }, [query, refreshKey]);
 
   function open(l: Learning): void {
     setSelected(l);
@@ -57,16 +73,16 @@ export function LearningsBrowser({
 
   async function saveEdit(): Promise<void> {
     if (!selected) return;
-    const updated = await window.fleet.learnings.update(selected.id, {
-      title: draft.title.trim(),
-      body: draft.body.trim(),
-      tags: draft.tags
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-    });
+    const tags = draft.tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const fields = { title: draft.title.trim(), body: draft.body.trim(), tags };
+    const updated = await window.fleet.learnings.update(selected.id, fields);
     setEditing(false);
-    if (updated) setSelected(updated);
+    // Fall back to the edited draft if the IPC returns falsy, so the detail panel
+    // never keeps showing the pre-edit content.
+    setSelected(updated ?? { ...selected, ...fields, updatedAt: Date.now() });
     await refresh(query);
   }
 

@@ -194,7 +194,12 @@ export function DistillModal({
 
   return (
     <Overlay open={open} onClose={onClose}>
-      <div className="flex max-h-[80vh] w-[560px] flex-col rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Distill learning"
+        className="flex max-h-[80vh] w-[560px] flex-col rounded-lg border border-neutral-800 bg-neutral-900 p-4"
+      >
         <h2 className="mb-3 flex-shrink-0 text-sm font-semibold text-neutral-100">
           Distill learning
           {shown ? <span className="ml-2 text-neutral-500">· {shown.title}</span> : null}
