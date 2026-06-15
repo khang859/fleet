@@ -87,6 +87,19 @@ describe('LearningsStore', () => {
     expect(store.search({ project: 'fleet', tag: 'ui' })).toHaveLength(1);
   });
 
+  it('tag filter matches exact membership, not LIKE wildcards', () => {
+    store.create({ title: 'a', body: 'x', tags: ['ci'] });
+    store.create({ title: 'b', body: 'x', tags: ['cd'] });
+    store.create({ title: 'c', body: 'x', tags: [] });
+
+    // A literal "%" or "_" must match a tag named exactly that — never every row.
+    expect(store.search({ tag: '%' })).toHaveLength(0);
+    expect(store.search({ tag: '_' })).toHaveLength(0);
+    // Exact membership still works and doesn't leak across similar tags.
+    expect(store.search({ tag: 'ci' })).toHaveLength(1);
+    expect(store.search({ tag: 'c' })).toHaveLength(0);
+  });
+
   it('updates and keeps fts in sync', () => {
     const l = store.create({ title: 'original title', body: 'original body' });
     store.update(l.id, { title: 'renamed widget', body: 'fresh content', tags: ['t'] });

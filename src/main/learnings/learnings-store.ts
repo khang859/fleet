@@ -86,15 +86,23 @@ export class LearningsStore {
     mkdirSync(dirname(dbPath), { recursive: true });
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
+    // Wait briefly instead of throwing SQLITE_BUSY when a second window/store
+    // collides on a write while WAL is checkpointing.
+    this.db.pragma('busy_timeout = 5000');
     this.migrate();
     log.info('learnings store opened', { dbPath });
   }
 
   private migrate(): void {
+    // Read the schema version BEFORE any DDL. `CREATE ... IF NOT EXISTS` no-ops on
+    // an existing DB, so a future migration that alters the FTS table or adds a
+    // column must gate on the pre-DDL version (`from < N`) — not on whatever the
+    // idempotent DDL leaves behind, which would make the migration silently skip.
+    const from = Number(this.db.pragma('user_version', { simple: true }));
     this.db.exec(SCHEMA_SQL);
-    const current = Number(this.db.pragma('user_version', { simple: true }));
-    // v1 is the initial schema; future additive migrations gate on `current < N`.
-    if (current !== SCHEMA_VERSION) {
+    // v1 is the initial schema. Future additive migrations go here, each guarded
+    // by `if (from < N) { ... }`, in ascending order.
+    if (from !== SCHEMA_VERSION) {
       this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }
   }
@@ -177,9 +185,11 @@ export class LearningsStore {
       params.project = filter.project;
     }
     if (filter.tag) {
-      // tags is a JSON array string; match the exact quoted tag token.
-      where.push('l.tags LIKE @tag');
-      params.tag = `%"${filter.tag}"%`;
+      // Exact membership in the JSON tags array. LIKE on the raw JSON string would
+      // let `%`/`_` wildcards (e.g. tag = "%" → whole store) or an embedded quote
+      // match unintended rows; json_each compares the decoded values exactly.
+      where.push('EXISTS (SELECT 1 FROM json_each(l.tags) WHERE value = @tag)');
+      params.tag = filter.tag;
     }
 
     // A query that yields no searchable tokens (empty or punctuation-only) falls
@@ -232,17 +242,16 @@ export class LearningsStore {
 
   /** Distinct tags across the store with usage counts, most-used first. */
   allTags(): TagCount[] {
-    const rows = this.db.prepare('SELECT tags FROM learnings').all() as Array<
-      Record<string, unknown>
-    >;
-    const counts = new Map<string, number>();
-    for (const r of rows) {
-      const tags = JSON.parse((r.tags as string) || '[]') as string[];
-      for (const t of tags) counts.set(t, (counts.get(t) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .map(([tag, count]) => ({ tag, count }))
-      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+    // Aggregate in SQL via json_each rather than loading every row and JSON.parsing
+    // tags in JS on the synchronous main thread.
+    return this.db
+      .prepare(
+        `SELECT je.value AS tag, COUNT(*) AS count
+         FROM learnings l, json_each(l.tags) je
+         GROUP BY je.value
+         ORDER BY count DESC, tag ASC`
+      )
+      .all() as TagCount[];
   }
 
   schemaVersion(): number {
