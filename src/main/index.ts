@@ -1214,6 +1214,7 @@ void app.whenReady().then(async () => {
     mcpPort: kanbanMcpPort,
     kanbanHome: KANBAN_HOME,
     getProjects: (boardId) => requireKanbanCommands().listProjects(boardId),
+    isAutopilotEnabled: () => settingsStore.get().kanban.pm.autopilotEnabled,
     emitStatus: (payload) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.KANBAN_PM_STATUS, payload);

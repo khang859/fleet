@@ -65,6 +65,8 @@ export interface PmChatServiceOptions {
   emitTranscript: (payload: PmChatTranscriptPayload) => void;
   /** Board project registry, injected into the PM persona each turn. */
   getProjects: (boardId: string) => Project[];
+  /** Whether PM autopilot is on (read fresh each turn) — injected into the persona. */
+  isAutopilotEnabled?: () => boolean;
 }
 
 /**
@@ -299,7 +301,14 @@ export class PmChatService {
       } catch {
         // registry unavailable must never block the chat turn
       }
-      writeFileSync(join(dir, 'AGENTS.md'), buildPmAgentsMd({ projects, memory }));
+      writeFileSync(
+        join(dir, 'AGENTS.md'),
+        buildPmAgentsMd({
+          projects,
+          memory,
+          autopilotEnabled: this.opts.isAutopilotEnabled?.() ?? false
+        })
+      );
       const mcpConfigPath = join(runeDir, 'mcp.json');
       const url = `http://127.0.0.1:${this.opts.mcpPort}/mcp?run=${token}`;
       const learnings = learningsMcpEntry();
