@@ -44,14 +44,26 @@ export function PmChatPanel({ boardId, shiftLeft }: Props): React.JSX.Element {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    void window.fleet.kanban.getDigestConfig(boardId).then((c) => setDigestCron(c.digestCron));
+    let cancelled = false;
+    void window.fleet.kanban.getDigestConfig(boardId).then((c) => {
+      if (!cancelled) setDigestCron(c.digestCron);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [boardId]);
 
   const toggleDigest = useCallback(
     async (enabled: boolean) => {
       const next = enabled ? DAILY_9AM_CRON : null;
-      await window.fleet.kanban.setDigestCron(boardId, next);
-      setDigestCron(next);
+      try {
+        await window.fleet.kanban.setDigestCron(boardId, next);
+        setDigestCron(next);
+      } catch {
+        // re-sync the checkbox to the persisted value on failure
+        const c = await window.fleet.kanban.getDigestConfig(boardId).catch(() => null);
+        if (c) setDigestCron(c.digestCron);
+      }
     },
     [boardId]
   );
