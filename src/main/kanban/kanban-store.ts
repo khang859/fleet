@@ -1188,6 +1188,7 @@ export class KanbanStore {
     return rows.map((r) => this.rowToBoard(r));
   }
 
+  /** Digest config for a board. A missing/unknown slug yields the all-null config (same as an unconfigured board). */
   getDigestConfig(boardSlug: string): BoardDigestConfig {
     const row = this.db
       .prepare('SELECT digest_cron, last_digest_at FROM boards WHERE slug=?')
