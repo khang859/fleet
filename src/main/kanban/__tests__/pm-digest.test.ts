@@ -25,6 +25,26 @@ describe('buildDigestContext', () => {
     expect(ctx).toContain('2 proposal');
   });
 
+  it('counts human-blocked tasks (status_changed to blocked) in the Blocked bucket', () => {
+    const ctx = buildDigestContext({
+      events: [
+        evt('blocked', 'a'),
+        {
+          id: 2,
+          taskId: 'b',
+          runId: null,
+          kind: 'status_changed',
+          payload: { to: 'blocked' },
+          createdAt: 0
+        }
+      ],
+      pendingProposals: 0,
+      resolveTitle: (id) => `task ${id}`
+    });
+    expect(ctx).toContain('Blocked (2)');
+    expect(ctx).toContain('b "task b"');
+  });
+
   it('reports a quiet board', () => {
     const ctx = buildDigestContext({ events: [], pendingProposals: 0, resolveTitle: () => null });
     expect(ctx).toContain('No board activity');

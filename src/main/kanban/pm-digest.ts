@@ -1,7 +1,6 @@
 import type { TaskEvent } from '../../shared/kanban-types';
 
 const COMPLETED = new Set(['completed', 'merged', 'accepted']);
-const BLOCKED = new Set(['blocked']);
 const FAILURES = new Set(['verify_failed', 'gave_up', 'spawn_failed', 'merge_failed', 'pr_failed']);
 
 export interface DigestInput {
@@ -13,15 +12,24 @@ export interface DigestInput {
 /** Build the standup-digest prompt from activity since the last digest. */
 export function buildDigestContext(input: DigestInput): string {
   const { events, pendingProposals, resolveTitle } = input;
-  const pick = (set: Set<string>): string[] => {
-    const ids = new Set(events.filter((e) => set.has(e.kind)).map((e) => e.taskId));
-    return [...ids].map((id) => {
+  const labelIds = (ids: Set<string>): string[] =>
+    [...ids].map((id) => {
       const t = resolveTitle(id);
       return t ? `${id} "${t}"` : id;
     });
-  };
+  const pick = (set: Set<string>): string[] =>
+    labelIds(new Set(events.filter((e) => set.has(e.kind)).map((e) => e.taskId)));
   const completed = pick(COMPLETED);
-  const blocked = pick(BLOCKED);
+  const blocked = labelIds(
+    new Set(
+      events
+        .filter(
+          (e) =>
+            e.kind === 'blocked' || (e.kind === 'status_changed' && e.payload?.['to'] === 'blocked')
+        )
+        .map((e) => e.taskId)
+    )
+  );
   const failures = pick(FAILURES);
 
   if (events.length === 0 && pendingProposals === 0) {
