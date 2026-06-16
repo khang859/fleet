@@ -30,7 +30,9 @@ import type {
   PruneResult,
   Project,
   FeatureSuggestion,
-  VerifyCommand
+  VerifyCommand,
+  PmProposal,
+  PmProposalKind
 } from '../../shared/kanban-types';
 import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
@@ -1044,6 +1046,23 @@ export class KanbanCommands {
     const s = this.store.getSuggestion(id);
     if (!s) throw new CodedError(`suggestion not found: ${id}`, 'NOT_FOUND');
     this.store.updateSuggestionStatus(id, 'dismissed');
+  }
+
+  // ---- PM proposals (risky actions the human confirms) ----
+
+  /**
+   * Write a pending proposal for a risky/irreversible action; the human approves
+   * or dismisses it later (the executor lands separately). Validates the target as
+   * a task for every kind except ship_feature, whose target is a feature id.
+   */
+  proposeAction(
+    boardId: string,
+    kind: PmProposalKind,
+    targetId: string,
+    rationale: string
+  ): PmProposal {
+    if (kind !== 'ship_feature') this.requireTask(targetId);
+    return this.store.createProposal({ boardId, kind, targetId, rationale });
   }
 
   /** Shared guard: a feature with the repo + integration branch needed for git ops. */

@@ -14,6 +14,7 @@ import type {
   Task,
   VerifyCommand
 } from '../../shared/kanban-types';
+import { PM_PROPOSAL_KINDS } from '../../shared/kanban-types';
 import type { WorkerProfile } from '../../shared/types';
 import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-swarm';
 import { finalizeWorktree, reviewStat, checkMergeConflicts, headSha } from './workspace';
@@ -505,6 +506,23 @@ const PM_TOOLS: McpTool[] = [
       properties: { artifact_id: { type: 'string' } },
       required: ['artifact_id']
     }
+  },
+  {
+    name: 'kanban_propose',
+    description:
+      'Propose a risky or irreversible board action for the human to confirm (Approve/Dismiss). ' +
+      'Use for merges, opening PRs, completing, shipping a feature, or archiving — never act on these directly. ' +
+      'kind is one of: merge_review_task, create_pr_for_task, accept_review_task, ship_feature, complete_task, archive_task. ' +
+      'target_id is the task id (or feature id for ship_feature).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string' },
+        target_id: { type: 'string' },
+        rationale: { type: 'string' }
+      },
+      required: ['kind', 'target_id', 'rationale']
+    }
   }
 ];
 
@@ -513,7 +531,9 @@ const PM_SAFE_TOOLS = new Set([
   'kanban_arm_decompose',
   'kanban_arm_specify',
   'kanban_unblock',
-  'kanban_reassign'
+  'kanban_reassign',
+  'kanban_set_status',
+  'kanban_propose'
 ]);
 
 const REVIEW_TOOLS: McpTool[] = [
@@ -929,16 +949,6 @@ export class KanbanMcpServer {
           });
           return this.text(res, rpcReq.id, 'Task updated.');
         }
-        case 'kanban_set_status': {
-          const a = z
-            .object({ task_id: z.string(), status: z.enum(PM_SETTABLE_STATUSES) })
-            .parse(args);
-          if (!this.pmTask(scope, a.task_id)) {
-            return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
-          }
-          commands.setManualStatus(a.task_id, a.status);
-          return this.text(res, rpcReq.id, `Task ${a.task_id} moved to ${a.status}.`);
-        }
         case 'kanban_comment': {
           const a = z.object({ task_id: z.string(), body: z.string() }).parse(args);
           if (!this.pmTask(scope, a.task_id)) {
@@ -1111,6 +1121,36 @@ export class KanbanMcpServer {
         }
         commands.assign(a.task_id, profile);
         return `Reassigned ${a.task_id} to ${profile}.`;
+      }
+      case 'kanban_set_status': {
+        const a = z
+          .object({ task_id: z.string(), status: z.enum(PM_SETTABLE_STATUSES) })
+          .parse(args);
+        this.requirePmTask(scope, a.task_id);
+        // Guardrail: a worktree-backed task carries committed work that must merge
+        // (or be explicitly accepted) through a human-confirmed proposal — it can't
+        // skip the review gate by being marked done directly.
+        if (a.status === 'done') {
+          const task = this.store.getTask(a.task_id);
+          if (task && task.workspaceKind === 'worktree') {
+            throw new Error(
+              'worktree-backed tasks cannot be set done directly; use kanban_propose with merge_review_task or accept_review_task'
+            );
+          }
+        }
+        commands.setManualStatus(a.task_id, a.status);
+        return `Task ${a.task_id} moved to ${a.status}.`;
+      }
+      case 'kanban_propose': {
+        const a = z
+          .object({
+            kind: z.enum(PM_PROPOSAL_KINDS),
+            target_id: z.string().min(1),
+            rationale: z.string().min(1)
+          })
+          .parse(args);
+        const p = commands.proposeAction(scope.boardId, a.kind, a.target_id, a.rationale);
+        return `proposed ${a.kind} for ${a.target_id} (awaiting confirmation, id ${p.id})`;
       }
       default:
         throw new Error(`unknown tool: ${name}`);

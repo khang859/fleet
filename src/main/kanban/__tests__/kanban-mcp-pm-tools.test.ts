@@ -8,10 +8,12 @@ function makeServer() {
     requestSpecify: vi.fn(),
     unblock: vi.fn(),
     comment: vi.fn(),
-    assign: vi.fn()
+    assign: vi.fn(),
+    proposeAction: vi.fn(),
+    setManualStatus: vi.fn()
   };
   const store = {
-    getTask: () => ({ id: 't1', boardId: 'b1' }),
+    getTask: vi.fn(() => ({ id: 't1', boardId: 'b1' })),
     addComment: vi.fn(),
     appendEvent: vi.fn()
   };
@@ -89,5 +91,52 @@ describe('PM safe tools', () => {
     expect(() =>
       server.callPmToolForTest('kanban_arm_decompose', { task_id: 't1' }, otherBoard)
     ).toThrow(/task not found on this board/);
+  });
+});
+
+describe('PM propose + guardrail', () => {
+  it('kanban_propose writes a proposal via commands', () => {
+    const { server, commands } = makeServer();
+    commands.proposeAction = vi.fn(() => ({ id: 'p1' }));
+    server.callPmToolForTest(
+      'kanban_propose',
+      { kind: 'complete_task', target_id: 't1', rationale: 'done' },
+      scope
+    );
+    expect(commands.proposeAction).toHaveBeenCalledWith('b1', 'complete_task', 't1', 'done');
+  });
+
+  it('rejects an unknown proposal kind', () => {
+    const { server } = makeServer();
+    expect(() =>
+      server.callPmToolForTest(
+        'kanban_propose',
+        { kind: 'nuke', target_id: 't1', rationale: 'x' },
+        scope
+      )
+    ).toThrow();
+  });
+
+  it('set_status to done on a worktree task is rejected', () => {
+    const { server, store, commands } = makeServer();
+    store.getTask = vi.fn(() => ({ id: 't1', boardId: 'b1', workspaceKind: 'worktree' }));
+    expect(() =>
+      server.callPmToolForTest('kanban_set_status', { task_id: 't1', status: 'done' }, scope)
+    ).toThrow(/propose/);
+    expect(commands.setManualStatus).not.toHaveBeenCalled();
+  });
+
+  it('set_status to done on a scratch task is allowed', () => {
+    const { server, store, commands } = makeServer();
+    store.getTask = vi.fn(() => ({ id: 't1', boardId: 'b1', workspaceKind: 'scratch' }));
+    server.callPmToolForTest('kanban_set_status', { task_id: 't1', status: 'done' }, scope);
+    expect(commands.setManualStatus).toHaveBeenCalledWith('t1', 'done');
+  });
+
+  it('set_status to ready on a worktree task is allowed', () => {
+    const { server, store, commands } = makeServer();
+    store.getTask = vi.fn(() => ({ id: 't1', boardId: 'b1', workspaceKind: 'worktree' }));
+    server.callPmToolForTest('kanban_set_status', { task_id: 't1', status: 'ready' }, scope);
+    expect(commands.setManualStatus).toHaveBeenCalledWith('t1', 'ready');
   });
 });
