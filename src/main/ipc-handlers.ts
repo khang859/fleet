@@ -199,6 +199,8 @@ import {
   softDeleteEnvFile,
   restoreEnvFile
 } from './env-editor/env-editor-fs';
+import { listEnvFilesWsl } from './env-editor/env-editor-wsl';
+import type { EnvFileEntry } from '../shared/env-editor-types';
 import type {
   EnvSyncSetPassphraseRequest,
   EnvSyncClearPassphraseRequest,
@@ -1108,8 +1110,10 @@ export function registerIpcHandlers(
   // LIST/CREATE receive a pane cwd/dir (posix for a WSL pane) so they translate;
   // READ/WRITE/RENAME/DELETE/RESTORE only ever get an absPath that LIST/CREATE
   // already returned in Windows-accessible form, so they need no context.
-  ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_LIST, (_e, root: string, pathContext?: PathContext) =>
-    listEnvFiles(resolveCtxPath(pathContext, root))
+  ipcMain.handle(
+    IPC_CHANNELS.ENV_EDITOR_LIST,
+    (_e, root: string, pathContext?: PathContext): EnvFileEntry[] | Promise<EnvFileEntry[]> =>
+      isWslContext(pathContext) ? listEnvFilesWsl(pathContext, root) : listEnvFiles(root)
   );
 
   ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_READ, (_e, absPath: string) => readEnvFile(absPath));

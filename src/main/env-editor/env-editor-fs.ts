@@ -20,7 +20,9 @@ import type {
   EnvTrashResult
 } from '../../shared/env-editor-types';
 
-const EXCLUDE_DIRS = new Set([
+/** Directory names skipped when discovering .env files. Shared with the WSL
+ *  in-distro `find` path (env-editor-wsl.ts) so both walkers prune identically. */
+export const ENV_EXCLUDE_DIRS = [
   'node_modules',
   '.git',
   'dist',
@@ -29,7 +31,11 @@ const EXCLUDE_DIRS = new Set([
   '.turbo',
   'out',
   'coverage'
-]);
+];
+/** Max directory depth (root = 0) descended when discovering .env files. */
+export const ENV_MAX_DEPTH = 4;
+
+const EXCLUDE_DIRS = new Set(ENV_EXCLUDE_DIRS);
 const TEMPLATE_SUFFIXES = ['.example', '.sample', '.template', '.dist', '.defaults'];
 
 function isEnvName(name: string): boolean {
@@ -39,23 +45,27 @@ function isTemplateName(name: string): boolean {
   return TEMPLATE_SUFFIXES.some((s) => name.endsWith(s));
 }
 
-function toEntry(root: string, full: string): EnvFileEntry {
-  const name = basename(full);
-  const rel = relative(root, full).split(sep).join('/');
-  const slash = rel.lastIndexOf('/');
-  const dir = slash === -1 ? '' : rel.slice(0, slash);
+/**
+ * Build an entry from a forward-slash relative path, an OS-accessible absolute
+ * path, and the file's text (or null if it could not be read). Shared by the
+ * native walker and the WSL in-distro path so entry shaping stays identical.
+ */
+export function buildEnvEntry(relPath: string, absPath: string, text: string | null): EnvFileEntry {
+  const slash = relPath.lastIndexOf('/');
+  const name = slash === -1 ? relPath : relPath.slice(slash + 1);
+  const dir = slash === -1 ? '' : relPath.slice(0, slash);
   let varCount = 0;
-  let readable = true;
-  try {
-    varCount = parseEnvFile(readFileSync(full, 'utf8')).lines.filter(
-      (l) => l.kind === 'var'
-    ).length;
-  } catch {
-    readable = false;
+  let readable = text !== null;
+  if (text !== null) {
+    try {
+      varCount = parseEnvFile(text).lines.filter((l) => l.kind === 'var').length;
+    } catch {
+      readable = false;
+    }
   }
   return {
-    absPath: full,
-    relPath: rel,
+    absPath,
+    relPath,
     group: dir === '' ? '·root' : dir,
     name,
     isTemplate: isTemplateName(name),
@@ -64,7 +74,18 @@ function toEntry(root: string, full: string): EnvFileEntry {
   };
 }
 
-function sortEntries(entries: EnvFileEntry[]): EnvFileEntry[] {
+function toEntry(root: string, full: string): EnvFileEntry {
+  const rel = relative(root, full).split(sep).join('/');
+  let text: string | null;
+  try {
+    text = readFileSync(full, 'utf8');
+  } catch {
+    text = null;
+  }
+  return buildEnvEntry(rel, full, text);
+}
+
+export function sortEntries(entries: EnvFileEntry[]): EnvFileEntry[] {
   return [...entries].sort((a, b) => {
     if (a.group !== b.group) {
       if (a.group === '·root') return -1;
@@ -159,7 +180,7 @@ export function restoreEnvFile(trashPath: string, absPath: string): { ok: true }
 }
 
 /** Recursively find all .env* files under root (templates included). */
-export function listEnvFiles(root: string, maxDepth = 4): EnvFileEntry[] {
+export function listEnvFiles(root: string, maxDepth = ENV_MAX_DEPTH): EnvFileEntry[] {
   const out: EnvFileEntry[] = [];
   const walk = (dir: string, depth: number): void => {
     if (depth > maxDepth) return;
