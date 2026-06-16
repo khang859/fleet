@@ -150,9 +150,11 @@ validated) — the PM never touches the DB directly.
 
 **Confirmation-gated (risky / irreversible — propose only):**
 
-- `kanban_propose(kind, target_id, rationale)` where `kind ∈
-  { accept_review_and_merge, mark_feature_pr_ready, merge_feature,
-  complete_task, archive_task }`.
+- `kanban_propose(kind, target_id, rationale)` where each `kind` maps 1:1 to a
+  verified `KanbanCommands` method executed deterministically on Approve:
+  `merge_review_task` → `mergeReviewTask`, `create_pr_for_task` →
+  `createPrForTask`, `accept_review_task` → `acceptReviewTask`, `ship_feature` →
+  `shipFeature`, `complete_task` → `complete`, `archive_task` → `archive`.
 
 A proposal writes a row to a new **`pm_proposals`** table (mirroring the existing
 `feature_suggestions` `pending|accepted|dismissed` precedent, plus a `failed`
