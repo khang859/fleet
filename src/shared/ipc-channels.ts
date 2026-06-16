@@ -250,5 +250,9 @@ export const IPC_CHANNELS = {
   ENV_EDITOR_CREATE: 'env-editor:create',
   ENV_EDITOR_RENAME: 'env-editor:rename',
   ENV_EDITOR_DELETE: 'env-editor:delete',
-  ENV_EDITOR_RESTORE: 'env-editor:restore'
+  ENV_EDITOR_RESTORE: 'env-editor:restore',
+  // Diagnostics ("Report a Problem")
+  DIAGNOSTICS_GET_INFO: 'diagnostics:get-info',
+  DIAGNOSTICS_GET_LOG_TAIL: 'diagnostics:get-log-tail',
+  DIAGNOSTICS_OPEN_LOGS: 'diagnostics:open-logs'
 } as const;

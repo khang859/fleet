@@ -13,6 +13,7 @@ import { RuneSection } from './rune/RuneSection';
 import { KanbanSection } from './kanban/KanbanSection';
 import { EnvSyncSection } from './EnvSyncSection';
 import { LearningsSection } from './LearningsSection';
+import { DiagnosticsSection } from './DiagnosticsSection';
 
 const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   general: GeneralSection,
@@ -26,7 +27,8 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   pi: PiSection,
   kanban: KanbanSection,
   envSync: EnvSyncSection,
-  learnings: LearningsSection
+  learnings: LearningsSection,
+  diagnostics: DiagnosticsSection
 };
 
 export function SettingsTab(): React.JSX.Element {

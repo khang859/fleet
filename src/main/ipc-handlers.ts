@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, Menu, dialog, safeStorage } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { safeOpenExternal } from './safe-external';
+import { collectDiagnosticsInfo, readRedactedLogTail, openLogsFolder } from './diagnostics';
 import { createLogger, logger } from './logger';
 
 const log = createLogger('ipc');
@@ -462,6 +463,13 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
     await safeOpenExternal(url);
   });
+
+  // Diagnostics — "Report a Problem" gathers redacted logs + environment info
+  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_GET_INFO, () => collectDiagnosticsInfo());
+  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_GET_LOG_TAIL, async (_event, maxBytes?: number) =>
+    readRedactedLogTail(maxBytes)
+  );
+  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_OPEN_LOGS, async () => openLogsFolder());
 
   // Native right-click context menu for terminal panes.
   // Renderer passes { hasSelection } so Copy is disabled when nothing is selected;

@@ -62,14 +62,26 @@ function resolveMeta(meta?: MetaArg): Record<string, unknown> | undefined {
   return { ...meta };
 }
 
-// --- No-op logger for production ---
+// --- Production logger ---
+// debug/info stay no-ops for performance, but warn/error are forwarded through
+// the batch bridge so they land in ~/.fleet/logs/ — without this, production
+// renderer crashes (React errors, unhandled rejections) would be invisible.
 const noop = (): void => {};
-const noopLogger: RendererLogger = {
-  debug: noop,
-  info: noop,
-  warn: noop,
-  error: noop
-};
+
+function createProdLogger(tag: string): RendererLogger {
+  ensureFlushTimer();
+
+  function log(level: 'warn' | 'error', message: string, meta?: MetaArg): void {
+    enqueue({ tag, level, message, meta: resolveMeta(meta), timestamp: new Date().toISOString() });
+  }
+
+  return {
+    debug: noop,
+    info: noop,
+    warn: (message, meta?) => log('warn', message, meta),
+    error: (message, meta?) => log('error', message, meta)
+  };
+}
 
 function createDevLogger(tag: string): RendererLogger {
   ensureFlushTimer();
@@ -105,5 +117,5 @@ function createDevLogger(tag: string): RendererLogger {
 }
 
 export function createLogger(tag: string): RendererLogger {
-  return isDev ? createDevLogger(tag) : noopLogger;
+  return isDev ? createDevLogger(tag) : createProdLogger(tag);
 }

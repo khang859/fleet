@@ -66,6 +66,10 @@ const fileFormat = winston.format.combine(
 
 const logDir = join(electronApp ? electronApp.home : homedir(), '.fleet', 'logs');
 
+/** Absolute path to the daily log directory. Single source of truth for any
+ * module (e.g. diagnostics) that needs to read these logs back. */
+export const LOG_DIR = logDir;
+
 const transports: winston.transport[] = [
   new winston.transports.Console({
     format: isDev
