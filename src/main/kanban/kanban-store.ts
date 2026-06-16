@@ -21,6 +21,7 @@ import type {
   UpdateTaskFields,
   BoardCard,
   Board,
+  BoardDigestConfig,
   Project,
   RunMode,
   PendingMode,
@@ -246,6 +247,12 @@ export class KanbanStore {
       this.addColumnIfMissing('tasks', 'review_verdict', 'TEXT');
       this.addColumnIfMissing('tasks', 'review_attempts', 'INTEGER NOT NULL DEFAULT 0');
       this.addColumnIfMissing('tasks', 'review_head_sha', 'TEXT');
+    }
+    if (current < 17) {
+      // Per-board standup digest: cron schedule + last-run watermark. The columns
+      // are in SCHEMA_SQL for fresh installs; add them here for existing DBs.
+      this.addColumnIfMissing('boards', 'digest_cron', 'TEXT');
+      this.addColumnIfMissing('boards', 'last_digest_at', 'INTEGER');
     }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
@@ -1179,6 +1186,26 @@ export class KanbanStore {
       )
       .all() as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToBoard(r));
+  }
+
+  getDigestConfig(boardSlug: string): BoardDigestConfig {
+    const row = this.db
+      .prepare('SELECT digest_cron, last_digest_at FROM boards WHERE slug=?')
+      .get(boardSlug) as
+      | { digest_cron: string | null; last_digest_at: number | null }
+      | undefined;
+    return {
+      digestCron: row?.digest_cron ?? null,
+      lastDigestAt: row?.last_digest_at ?? null
+    };
+  }
+
+  setDigestCron(boardSlug: string, cron: string | null): void {
+    this.db.prepare('UPDATE boards SET digest_cron=? WHERE slug=?').run(cron, boardSlug);
+  }
+
+  stampLastDigest(boardSlug: string): void {
+    this.db.prepare('UPDATE boards SET last_digest_at=? WHERE slug=?').run(this.now(), boardSlug);
   }
 
   private rowToProject(r: Record<string, unknown>): Project {

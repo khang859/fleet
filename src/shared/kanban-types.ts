@@ -245,6 +245,13 @@ export interface Board {
   updatedAt: number;
 }
 
+export interface BoardDigestConfig {
+  /** Cron expression for the standup digest, or null = off. */
+  digestCron: string | null;
+  /** Epoch ms of the last successful digest, or null = never. */
+  lastDigestAt: number | null;
+}
+
 /** A project folder registered on a board. The PM reads code here; tickets route to it. */
 export interface Project {
   id: string;
