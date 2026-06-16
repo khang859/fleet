@@ -593,6 +593,26 @@ export class KanbanStore {
     }));
   }
 
+  /** All events for a board's tasks since `since` (epoch ms), oldest first. */
+  listBoardEventsSince(boardId: string, since: number): TaskEvent[] {
+    const rows = this.db
+      .prepare(
+        `SELECT e.* FROM task_events e
+           JOIN tasks t ON t.id = e.task_id
+          WHERE t.board_id = ? AND e.created_at >= ?
+          ORDER BY e.id ASC`
+      )
+      .all(boardId, since) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: Number(r.id),
+      taskId: String(r.task_id),
+      runId: (r.run_id as number | null) ?? null,
+      kind: String(r.kind),
+      payload: r.payload ? (JSON.parse(String(r.payload)) as Record<string, unknown>) : null,
+      createdAt: Number(r.created_at)
+    }));
+  }
+
   addComment(taskId: string, author: string, body: string): TaskComment {
     const ts = this.now();
     const info = this.db
