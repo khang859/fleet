@@ -53,6 +53,7 @@ import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { PmChatService } from './kanban/pm-chat-service';
+import { PmAutopilot, buildEventBriefing } from './kanban/pm-autopilot';
 import { RuneFileChatService } from './rune-assist/rune-file-chat-service';
 import { registerRuneAssistIpc } from './rune-assist/rune-assist-ipc';
 import {
@@ -114,6 +115,7 @@ let kanbanPrPoller: PrPoller | undefined;
 let kanbanCommands: KanbanCommands | undefined;
 let kanbanNotifier: KanbanNotifier | null = null;
 let pmChat: PmChatService | undefined;
+let pmAutopilot: PmAutopilot | undefined;
 let runeAssist: RuneFileChatService | null = null;
 
 function requireKanbanStore(): KanbanStore {
@@ -879,6 +881,7 @@ void app.whenReady().then(async () => {
       }
       socketSupervisor?.broadcastKanbanEvent(event);
       kanbanNotifier?.enqueue(event);
+      pmAutopilot?.onEvent(event);
     },
     onBoardsChanged: () => {
       for (const w of BrowserWindow.getAllWindows()) {
@@ -1220,6 +1223,17 @@ void app.whenReady().then(async () => {
       }
     }
   });
+  pmAutopilot = new PmAutopilot({
+    now: () => Date.now(),
+    getConfig: () => settingsStore.get().kanban.pm,
+    getBoardForTask: (taskId) => kanbanStore?.getTask(taskId)?.boardId ?? null,
+    runTurn: async (boardId, prompt, origin) => {
+      await pmChat?.runTurn(boardId, prompt, origin);
+    },
+    buildBriefing: (events) =>
+      buildEventBriefing(events, (id) => kanbanStore?.getTask(id)?.title ?? null),
+    log: (msg, meta) => log.warn(msg, meta ?? {})
+  });
   registerKanbanIpc(kanbanCommands, pmChat);
 
   runeAssist = new RuneFileChatService({
@@ -1308,6 +1322,7 @@ function shutdownAll(): void {
   annotateService.destroy();
   kanbanDispatcher?.stop();
   kanbanPrPoller?.stop();
+  pmAutopilot?.dispose();
   pmChat?.dispose();
   runeAssist?.dispose();
   void kanbanMcp?.stop();

@@ -117,3 +117,23 @@ export class PmAutopilot {
     });
   }
 }
+
+/** Build a compact, structured event-turn prompt from a coalesced batch. */
+export function buildEventBriefing(
+  events: TaskEvent[],
+  resolveTitle: (taskId: string) => string | null
+): string {
+  const lines = events.map((e) => {
+    const title = resolveTitle(e.taskId);
+    const label = title ? `${e.taskId} "${title}"` : e.taskId;
+    return `- ${e.kind}: ${label}`;
+  });
+  return [
+    'Board activity since your last turn (autopilot):',
+    ...lines,
+    '',
+    'Triage this: unblock or reassign stuck work, arm decompose/specify where',
+    'useful, and propose any merge/complete/archive that is clearly ready',
+    '(use kanban_propose — those need human confirmation). Keep it brief.'
+  ].join('\n');
+}
