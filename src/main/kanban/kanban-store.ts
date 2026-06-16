@@ -1697,7 +1697,11 @@ export class KanbanStore {
     return rows.map((r) => this.rowToProposal(r));
   }
 
-  resolveProposal(id: string, status: PmProposalStatus, error: string | null): void {
+  resolveProposal(
+    id: string,
+    status: 'accepted' | 'dismissed' | 'failed',
+    error: string | null
+  ): void {
     this.db
       .prepare('UPDATE pm_proposals SET status=?, error=?, resolved_at=? WHERE id=?')
       .run(status, error, this.now(), id);
