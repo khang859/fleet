@@ -69,7 +69,9 @@ describe('PmChatService turn lifecycle', () => {
       emitStatus
     });
 
-    expect(() => svc.sendMessage('default', 'hello')).toThrow('registry boom');
+    // sendMessage is now fire-and-forget (the turn runs through the queue); setup
+    // failures surface via emitStatus, not a synchronous throw.
+    expect(() => svc.sendMessage('default', 'hello')).not.toThrow();
 
     // inFlight is cleared synchronously by finish(), so the board never latches.
     expect((await svc.getState('default')).inFlight).toBe(false);
@@ -97,5 +99,32 @@ describe('PmChatService turn lifecycle', () => {
     // Child ignores SIGTERM (never emits 'exit') -> escalate to SIGKILL after the grace period.
     vi.advanceTimersByTime(10 * 1000);
     expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+  });
+});
+
+describe('PmChatService turn queue', () => {
+  it('serializes turns: a second turn waits for the first to finish', async () => {
+    const children: Array<ReturnType<typeof fakeChild>> = [];
+    spawnMock.mockImplementation(() => {
+      const c = fakeChild();
+      children.push(c);
+      return c;
+    });
+    const svc = makeService({});
+
+    void svc.runTurn('b1', 'first', 'user');
+    await Promise.resolve();
+    expect(children).toHaveLength(1); // first turn spawned
+
+    const second = svc.runTurn('b1', 'second', 'event');
+    await Promise.resolve();
+    expect(children).toHaveLength(1); // second is queued, NOT spawned yet
+
+    children[0].emit('exit', 0, null); // finish the first turn
+    await Promise.resolve();
+    expect(children).toHaveLength(2); // pump started the second turn
+
+    children[1].emit('exit', 0, null); // finish the second turn
+    await second; // runTurn resolves on turn completion
   });
 });

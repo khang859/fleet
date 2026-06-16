@@ -18,7 +18,7 @@ import type {
   PmChatStatusPayload,
   PmChatTranscriptPayload
 } from '../../shared/ipc-api';
-import type { Project } from '../../shared/kanban-types';
+import type { Project, PmTurnOrigin } from '../../shared/kanban-types';
 
 const log = createLogger('kanban-pm');
 
@@ -33,10 +33,27 @@ const MEMORY_INJECT_CAP = 16 * 1024;
 
 const sessionsFileSchema = z.record(z.string(), z.string());
 
+const originLogSchema = z.array(
+  z.object({
+    boardId: z.string(),
+    origin: z.enum(['user', 'event', 'digest']),
+    at: z.number()
+  })
+);
+
+/** A turn waiting (or running) in a board's single-flight queue. */
+interface QueuedTurn {
+  prompt: string;
+  origin: PmTurnOrigin;
+  resolve: () => void;
+  reject: (err: unknown) => void;
+}
+
 interface BoardChat {
   sessionId: string | null;
   inFlight: boolean;
   error: string | null;
+  queue: QueuedTurn[];
 }
 
 export interface PmChatServiceOptions {
@@ -76,6 +93,31 @@ export class PmChatService {
     return join(this.opts.kanbanHome, 'pm', 'pm-sessions.json');
   }
 
+  private originLogPath(): string {
+    return join(this.opts.kanbanHome, 'pm', 'pm-turn-origins.json');
+  }
+
+  /** Best-effort telemetry: record what drove each completed turn. Never blocks a turn. */
+  private appendOriginLog(boardId: string, origin: PmTurnOrigin): void {
+    try {
+      const path = this.originLogPath();
+      let entries: z.infer<typeof originLogSchema> = [];
+      try {
+        entries = originLogSchema.parse(JSON.parse(readFileSync(path, 'utf-8')));
+      } catch {
+        // first write or unreadable — start fresh
+      }
+      entries.push({ boardId, origin, at: Date.now() });
+      if (entries.length > 500) entries = entries.slice(-500); // bound the sidecar
+      mkdirSync(join(this.opts.kanbanHome, 'pm'), { recursive: true });
+      const tmp = `${path}.tmp`;
+      writeFileSync(tmp, JSON.stringify(entries));
+      renameSync(tmp, path);
+    } catch {
+      // origin log is best-effort telemetry; never block a turn
+    }
+  }
+
   /** Lazily hydrate persisted board→session ids so conversations survive restarts. */
   private chat(boardId: string): BoardChat {
     if (!this.sessionsLoaded) {
@@ -85,7 +127,7 @@ export class PmChatService {
           JSON.parse(readFileSync(this.sessionsPath(), 'utf-8'))
         );
         for (const [board, sessionId] of Object.entries(raw)) {
-          this.chats.set(board, { sessionId, inFlight: false, error: null });
+          this.chats.set(board, { sessionId, inFlight: false, error: null, queue: [] });
         }
       } catch {
         // first run or unreadable file — start fresh
@@ -93,7 +135,7 @@ export class PmChatService {
     }
     let c = this.chats.get(boardId);
     if (!c) {
-      c = { sessionId: null, inFlight: false, error: null };
+      c = { sessionId: null, inFlight: false, error: null, queue: [] };
       this.chats.set(boardId, c);
     }
     return c;
@@ -135,10 +177,45 @@ export class PmChatService {
   sendMessage(boardId: string, text: string): void {
     const body = text.trim();
     if (body === '') throw new CodedError('message is empty', 'BAD_REQUEST');
+    // User turns jump ahead of queued event/digest turns (human input is priority).
+    // The turn runs async; setup/run failures surface via emitStatus, so swallow the
+    // rejected promise here to avoid an unhandled rejection.
+    void this.enqueueTurn(boardId, body, 'user', /* front */ true).catch(() => {});
+  }
+
+  /** Public entry point for event- and digest-driven turns (PmAutopilot). */
+  async runTurn(boardId: string, prompt: string, origin: PmTurnOrigin): Promise<void> {
+    const body = prompt.trim();
+    if (body === '') return;
+    await this.enqueueTurn(boardId, body, origin, /* front */ false);
+  }
+
+  private async enqueueTurn(
+    boardId: string,
+    prompt: string,
+    origin: PmTurnOrigin,
+    front: boolean
+  ): Promise<void> {
     const c = this.chat(boardId);
-    if (c.inFlight) {
-      throw new CodedError('the PM is still responding', 'BAD_REQUEST');
-    }
+    return new Promise<void>((resolve, reject) => {
+      const item: QueuedTurn = { prompt, origin, resolve, reject };
+      if (front) c.queue.unshift(item);
+      else c.queue.push(item);
+      this.pump(boardId);
+    });
+  }
+
+  /** Start the next queued turn if nothing is in flight. */
+  private pump(boardId: string): void {
+    const c = this.chat(boardId);
+    if (c.inFlight) return;
+    const next = c.queue.shift();
+    if (!next) return;
+    this.startTurn(boardId, next);
+  }
+
+  private startTurn(boardId: string, turn: QueuedTurn): void {
+    const c = this.chat(boardId);
     c.inFlight = true;
     c.error = null;
     this.opts.emitStatus({ boardId, status: 'thinking' });
@@ -179,6 +256,11 @@ export class PmChatService {
             error ? { boardId, status: 'error', error } : { boardId, status: 'idle' }
           );
         });
+      this.appendOriginLog(boardId, turn.origin);
+      // Settle this turn's promise exactly once, then start the next queued turn.
+      if (error) turn.reject(new Error(error));
+      else turn.resolve();
+      this.pump(boardId);
     };
 
     try {
@@ -210,7 +292,7 @@ export class PmChatService {
       };
       writeFileSync(mcpConfigPath, JSON.stringify({ servers }, null, 2));
 
-      const args = ['--prompt', body];
+      const args = ['--prompt', turn.prompt];
       if (c.sessionId) args.push('--resume', c.sessionId);
       const spawned = spawn('rune', args, {
         cwd: dir,
@@ -271,10 +353,10 @@ export class PmChatService {
       });
     } catch (err) {
       // Synchronous setup failure (fs error, spawn throw, registry). Route through
-      // finish() so inFlight is cleared and the renderer leaves 'thinking', then
-      // surface the error to the caller as before.
+      // finish() so inFlight is cleared and the renderer leaves 'thinking'. finish()
+      // rejects this turn's promise (user turns swallow it; PmAutopilot .catch()es it)
+      // and pumps the next queued turn — the queue must not stall on a failed setup.
       finish(err instanceof Error ? err.message : String(err));
-      throw err;
     }
   }
 
