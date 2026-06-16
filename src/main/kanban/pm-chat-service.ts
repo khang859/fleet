@@ -100,19 +100,19 @@ export class PmChatService {
   /** Best-effort telemetry: record what drove each completed turn. Never blocks a turn. */
   private appendOriginLog(boardId: string, origin: PmTurnOrigin): void {
     try {
-      const path = this.originLogPath();
+      const logPath = this.originLogPath();
       let entries: z.infer<typeof originLogSchema> = [];
       try {
-        entries = originLogSchema.parse(JSON.parse(readFileSync(path, 'utf-8')));
+        entries = originLogSchema.parse(JSON.parse(readFileSync(logPath, 'utf-8')));
       } catch {
         // first write or unreadable — start fresh
       }
       entries.push({ boardId, origin, at: Date.now() });
       if (entries.length > 500) entries = entries.slice(-500); // bound the sidecar
       mkdirSync(join(this.opts.kanbanHome, 'pm'), { recursive: true });
-      const tmp = `${path}.tmp`;
+      const tmp = `${logPath}.tmp`;
       writeFileSync(tmp, JSON.stringify(entries));
-      renameSync(tmp, path);
+      renameSync(tmp, logPath);
     } catch {
       // origin log is best-effort telemetry; never block a turn
     }
@@ -190,19 +190,32 @@ export class PmChatService {
     await this.enqueueTurn(boardId, body, origin, /* front */ false);
   }
 
-  private async enqueueTurn(
+  // Intentionally NOT async: the queue mutation + pump() must run synchronously so a
+  // synchronous throw (e.g. this.chat()) surfaces to the caller instead of becoming a
+  // swallowed rejection.
+  // eslint-disable-next-line @typescript-eslint/promise-function-async
+  private enqueueTurn(
     boardId: string,
     prompt: string,
     origin: PmTurnOrigin,
     front: boolean
   ): Promise<void> {
     const c = this.chat(boardId);
-    return new Promise<void>((resolve, reject) => {
+    // A new event/digest turn supersedes any still-queued non-user turns: only the
+    // latest event context matters. Resolve the dropped ones cleanly (they were
+    // intentionally superseded, not failed). User turns are never dropped.
+    if (origin !== 'user') {
+      const stale = c.queue.filter((q) => q.origin !== 'user');
+      c.queue = c.queue.filter((q) => q.origin === 'user');
+      for (const s of stale) s.resolve();
+    }
+    const p = new Promise<void>((resolve, reject) => {
       const item: QueuedTurn = { prompt, origin, resolve, reject };
       if (front) c.queue.unshift(item);
       else c.queue.push(item);
-      this.pump(boardId);
     });
+    this.pump(boardId);
+    return p;
   }
 
   /** Start the next queued turn if nothing is in flight. */
@@ -244,6 +257,10 @@ export class PmChatService {
         c.sessionId = sessionId;
         this.persistSessions();
       }
+      this.appendOriginLog(boardId, turn.origin);
+      // Settle this turn's promise exactly once.
+      if (error) turn.reject(new Error(error));
+      else turn.resolve();
       void this.readMessages(c.sessionId)
         .then((messages) => {
           if (messages.length > 0) this.opts.emitTranscript({ boardId, messages });
@@ -252,15 +269,15 @@ export class PmChatService {
           // reading the transcript back is best-effort; never block the status transition
         })
         .finally(() => {
+          // This turn's terminal status MUST reach the renderer before pump() starts
+          // the next queued turn (whose synchronous 'thinking' emit would otherwise
+          // latch over a still-pending 'idle'/'error'). So pump from inside this
+          // .finally(), after the terminal emitStatus.
           this.opts.emitStatus(
             error ? { boardId, status: 'error', error } : { boardId, status: 'idle' }
           );
+          this.pump(boardId);
         });
-      this.appendOriginLog(boardId, turn.origin);
-      // Settle this turn's promise exactly once, then start the next queued turn.
-      if (error) turn.reject(new Error(error));
-      else turn.resolve();
-      this.pump(boardId);
     };
 
     try {

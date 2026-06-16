@@ -121,10 +121,42 @@ describe('PmChatService turn queue', () => {
     expect(children).toHaveLength(1); // second is queued, NOT spawned yet
 
     children[0].emit('exit', 0, null); // finish the first turn
-    await Promise.resolve();
-    expect(children).toHaveLength(2); // pump started the second turn
+    // pump() defers to after the finishing turn's terminal status (async readMessages
+    // .finally()), so the second turn spawns on a later tick.
+    await vi.waitFor(() => expect(children).toHaveLength(2));
 
     children[1].emit('exit', 0, null); // finish the second turn
     await second; // runTurn resolves on turn completion
+  });
+
+  it('a new event turn supersedes an already-queued event turn', async () => {
+    const children: Array<ReturnType<typeof fakeChild>> = [];
+    spawnMock.mockImplementation(() => {
+      const c = fakeChild();
+      children.push(c);
+      return c;
+    });
+    const svc = makeService({});
+
+    // A user turn is in flight...
+    void svc.runTurn('b1', 'user', 'user');
+    await Promise.resolve();
+    expect(children).toHaveLength(1);
+
+    // ...two event turns queue behind it; the second supersedes the first.
+    const firstEvent = svc.runTurn('b1', 'event-1', 'event');
+    const secondEvent = svc.runTurn('b1', 'event-2', 'event');
+    await Promise.resolve();
+    expect(children).toHaveLength(1); // still only the user turn spawned
+
+    // The superseded turn resolves cleanly (not rejected).
+    await firstEvent;
+
+    children[0].emit('exit', 0, null); // finish the user turn
+    await vi.waitFor(() => expect(children).toHaveLength(2)); // exactly one event turn ran
+
+    children[1].emit('exit', 0, null);
+    await secondEvent;
+    expect(children).toHaveLength(2);
   });
 });
