@@ -248,6 +248,10 @@ export class KanbanStore {
       this.addColumnIfMissing('tasks', 'review_attempts', 'INTEGER NOT NULL DEFAULT 0');
       this.addColumnIfMissing('tasks', 'review_head_sha', 'TEXT');
     }
+    if (current < 16) {
+      // v16 introduced the pm_proposals table; it is created via SCHEMA_SQL
+      // (CREATE TABLE IF NOT EXISTS) on every open, so no migration step is needed here.
+    }
     if (current < 17) {
       // Per-board standup digest: cron schedule + last-run watermark. The columns
       // are in SCHEMA_SQL for fresh installs; add them here for existing DBs.

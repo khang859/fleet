@@ -9,7 +9,13 @@ export interface DigestInput {
   resolveTitle: (taskId: string) => string | null;
 }
 
-/** Build the standup-digest prompt from activity since the last digest. */
+/**
+ * Build the standup-digest prompt from activity since the last digest.
+ *
+ * Scope: this summarizes task-level activity (completed/blocked/failure). Feature-level
+ * events (e.g. feature_pr_ready) are intentionally not bucketed here — they are surfaced
+ * via real-time PM event turns, not the standup digest.
+ */
 export function buildDigestContext(input: DigestInput): string {
   const { events, pendingProposals, resolveTitle } = input;
   const labelIds = (ids: Set<string>): string[] =>

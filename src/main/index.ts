@@ -1229,12 +1229,16 @@ void app.whenReady().then(async () => {
   pmAutopilot = new PmAutopilot({
     now: () => Date.now(),
     getConfig: () => settingsStore.get().kanban.pm,
-    getBoardForTask: (taskId) => kanbanStore?.getTask(taskId)?.boardId ?? null,
+    getBoardForTask: (id) =>
+      kanbanStore?.getTask(id)?.boardId ?? kanbanStore?.getFeature(id)?.boardId ?? null,
     runTurn: async (boardId, prompt, origin) => {
       await pmChat?.runTurn(boardId, prompt, origin);
     },
     buildBriefing: (events) =>
-      buildEventBriefing(events, (id) => kanbanStore?.getTask(id)?.title ?? null),
+      buildEventBriefing(
+        events,
+        (id) => kanbanStore?.getTask(id)?.title ?? kanbanStore?.getFeature(id)?.name ?? null
+      ),
     log: (msg, meta) => log.warn(msg, meta ?? {}),
     listDigestBoards: () =>
       (kanbanStore?.listBoards() ?? []).map((b) => {
@@ -1245,6 +1249,9 @@ void app.whenReady().then(async () => {
           lastDigestAt: cfg?.lastDigestAt ?? null
         };
       }),
+    // The standup digest summarizes task-level activity (completed/blocked/failure).
+    // Feature-level events (e.g. feature_pr_ready) are intentionally NOT bucketed here;
+    // they surface as real-time PM event turns via buildBriefing/getBoardForTask instead.
     buildDigest: (boardId, since) =>
       buildDigestContext({
         events: kanbanStore?.listBoardEventsSince(boardId, since) ?? [],
