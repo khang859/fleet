@@ -64,6 +64,7 @@ interface BoardBatch {
  */
 export class PmAutopilot {
   private batches = new Map<string, BoardBatch>();
+  private digestRunning = false;
 
   constructor(private readonly deps: PmAutopilotDeps) {}
 
@@ -84,6 +85,11 @@ export class PmAutopilot {
 
   /** Fire any due digests. Call from the dispatcher's periodic tick. */
   async checkDigests(): Promise<void> {
+    // Re-entrancy guard: a slow runTurn can outlast the tick interval, so skip
+    // overlapping calls. A skipped tick is harmless — a still-due board is
+    // processed on the next tick after this run settles (no missed digest).
+    if (this.digestRunning) return;
+    this.digestRunning = true;
     try {
       const { listDigestBoards, buildDigest, stampDigest } = this.deps;
       if (!listDigestBoards || !buildDigest || !stampDigest) return; // digest not wired
@@ -106,6 +112,8 @@ export class PmAutopilot {
       this.deps.log('checkDigests failed', {
         error: err instanceof Error ? err.message : String(err)
       });
+    } finally {
+      this.digestRunning = false;
     }
   }
 

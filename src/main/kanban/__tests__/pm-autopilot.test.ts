@@ -133,6 +133,31 @@ describe('PmAutopilot digest', () => {
     expect(runTurn).not.toHaveBeenCalled();
   });
 
+  it('skips overlapping ticks while a digest turn is in flight', async () => {
+    let resolve!: () => void;
+    const gate = new Promise<void>((r) => {
+      resolve = r;
+    });
+    const runTurn = vi.fn(async () => gate);
+    const pa = new PmAutopilot({
+      now: () => 0,
+      getConfig: () => ({ autopilotEnabled: true, eventMinGapMs: 30_000, coalesceWindowMs: 2_000 }),
+      getBoardForTask: () => 'b1',
+      runTurn,
+      buildBriefing: () => 'x',
+      log: () => {},
+      listDigestBoards: () => [{ boardId: 'b1', digestCron: '* * * * *', lastDigestAt: null }],
+      buildDigest: () => 'standup please',
+      stampDigest: () => {}
+    });
+    const first = pa.checkDigests(); // do not await — runTurn stays pending on the gate
+    await Promise.resolve();
+    await pa.checkDigests(); // no-ops while the first run is in flight
+    expect(runTurn).toHaveBeenCalledTimes(1);
+    resolve();
+    await first;
+  });
+
   describe('isCronDue', () => {
     it('treats a null watermark as due for an every-minute cron', () => {
       expect(isCronDue('* * * * *', null, 0)).toBe(true);
