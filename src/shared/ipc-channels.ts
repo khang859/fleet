@@ -204,6 +204,8 @@ export const IPC_CHANNELS = {
   KANBAN_LIST_PROPOSALS: 'kanban:list-proposals',
   KANBAN_APPROVE_PROPOSAL: 'kanban:approve-proposal',
   KANBAN_DISMISS_PROPOSAL: 'kanban:dismiss-proposal',
+  KANBAN_GET_DIGEST_CONFIG: 'kanban:get-digest-config',
+  KANBAN_SET_DIGEST_CRON: 'kanban:set-digest-cron',
   KANBAN_REDECOMPOSE: 'kanban:redecompose',
   KANBAN_SHIP_FEATURE: 'kanban:ship-feature',
   KANBAN_SYNC_FEATURE: 'kanban:sync-feature',

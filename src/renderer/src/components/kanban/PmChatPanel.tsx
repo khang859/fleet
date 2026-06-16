@@ -10,6 +10,9 @@ type Props = {
   shiftLeft: boolean;
 };
 
+/** Cron preset bound to the "Daily 9am standup digest" toggle. */
+const DAILY_9AM_CRON = '0 9 * * *';
+
 /** Compact one-line label for a tool call, e.g. "kanban_create". */
 function toolChips(msg: TranscriptMessage): string[] {
   return msg.blocks.flatMap((b) => (b.type === 'tool_use' ? [b.name] : []));
@@ -37,7 +40,21 @@ export function PmChatPanel({ boardId, shiftLeft }: Props): React.JSX.Element {
   const [draft, setDraft] = useState('');
   const [proposals, setProposals] = useState<PmProposal[]>([]);
   const [proposalError, setProposalError] = useState<string | null>(null);
+  const [digestCron, setDigestCron] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    void window.fleet.kanban.getDigestConfig(boardId).then((c) => setDigestCron(c.digestCron));
+  }, [boardId]);
+
+  const toggleDigest = useCallback(
+    async (enabled: boolean) => {
+      const next = enabled ? DAILY_9AM_CRON : null;
+      await window.fleet.kanban.setDigestCron(boardId, next);
+      setDigestCron(next);
+    },
+    [boardId]
+  );
 
   const refreshProposals = useCallback(async () => {
     setProposals(await window.fleet.kanban.listProposals(boardId));
@@ -217,6 +234,17 @@ export function PmChatPanel({ boardId, shiftLeft }: Props): React.JSX.Element {
           )}
         </div>
       )}
+
+      <div className="border-t border-neutral-800 px-3 py-2">
+        <label className="flex items-center gap-2 text-xs text-neutral-400">
+          <input
+            type="checkbox"
+            checked={digestCron === DAILY_9AM_CRON}
+            onChange={(e) => void toggleDigest(e.target.checked)}
+          />
+          Daily 9am standup digest
+        </label>
+      </div>
 
       <div className="border-t border-neutral-800 p-2">
         <textarea

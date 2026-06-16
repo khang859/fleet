@@ -33,7 +33,8 @@ import type {
   VerifyCommand,
   PmProposal,
   PmProposalKind,
-  PmProposalStatus
+  PmProposalStatus,
+  BoardDigestConfig
 } from '../../shared/kanban-types';
 import { executeProposal } from './proposal-executor';
 import { createSwarm as buildSwarm } from './kanban-swarm';
@@ -1102,6 +1103,16 @@ export class KanbanCommands {
     if (!p) throw new CodedError('proposal not found', 'NOT_FOUND');
     if (p.status !== 'pending') return; // already resolved — dismiss is a no-op
     this.store.resolveProposal(id, 'dismissed', null);
+  }
+
+  // ---- Standup digest config ----
+
+  getDigestConfig(boardId: string): BoardDigestConfig {
+    return this.store.getDigestConfig(boardId);
+  }
+
+  setDigestCron(boardId: string, cron: string | null): void {
+    this.store.setDigestCron(boardId, cron);
   }
 
   /** Shared guard: a feature with the repo + integration branch needed for git ops. */

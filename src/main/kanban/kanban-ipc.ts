@@ -19,7 +19,8 @@ import type {
   FeatureSuggestion,
   Project,
   VerifyCommand,
-  PmProposal
+  PmProposal,
+  BoardDigestConfig
 } from '../../shared/kanban-types';
 import type {
   KanbanUpdateTaskRequest,
@@ -324,6 +325,18 @@ export function registerKanbanIpc(commands: KanbanCommands, pmChat: PmChatServic
   ipcMain.handle(IPC_CHANNELS.KANBAN_DISMISS_PROPOSAL, (_e, id: string): void => {
     commands.dismissProposal(id);
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_GET_DIGEST_CONFIG,
+    (_e, boardId: string): BoardDigestConfig => commands.getDigestConfig(boardId)
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_SET_DIGEST_CRON,
+    (_e, boardId: string, cron: string | null) => {
+      commands.setDigestCron(boardId, cron);
+    }
+  );
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_REDECOMPOSE, (_e, featureId: string): Task =>
     commands.redecompose(featureId)
