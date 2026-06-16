@@ -90,7 +90,12 @@ function dirSize(dir: string): number {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) total += dirSize(full);
-    else if (entry.isFile()) total += statSync(full).size;
+    else if (entry.isFile()) {
+      // A concurrent clear-cache (rmSync) can delete a file between readdir and stat;
+      // skip a now-missing entry rather than throwing ENOENT.
+      const st = statSync(full, { throwIfNoEntry: false });
+      if (st) total += st.size;
+    }
   }
   return total;
 }

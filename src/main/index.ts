@@ -1260,10 +1260,13 @@ void app.whenReady().then(async () => {
   learningsMcp
     .start(loadPreferredPort(LEARNINGS_MCP_PORT))
     .then(async (port) => {
+      // Register first, then persist: the port file is what the next launch prefers,
+      // so only record it once the configs pointing at that port are written, keeping
+      // the port file and the registered configs from diverging.
+      registerLearningsMcp(port);
       // Remember the bound port so a forced OS-fallback (default port busy) stays
       // stable next launch instead of rewriting the global configs each time.
       persistPort(port);
-      registerLearningsMcp(port);
       await runBackfill(learningsStoreRef, learningsEmbedderRef);
     })
     .catch((err: unknown) =>

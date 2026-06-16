@@ -113,6 +113,9 @@ export class WorkerEmbedder implements Embedder {
   }
 
   async embed(text: string): Promise<Float32Array | null> {
+    // The model yields a degenerate embedding for empty/whitespace input; skip it so
+    // callers fall back to FTS-only rather than storing a meaningless vector.
+    if (!text.trim()) return null;
     const worker = this.ensureWorker();
     if (!worker) return null;
     const id = ++this.seq;

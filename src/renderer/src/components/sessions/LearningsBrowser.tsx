@@ -98,7 +98,13 @@ export function LearningsBrowser({
     const q = query.trim();
     const timer = setTimeout(() => {
       void window.fleet.learnings.search(q ? { query: q } : {}).then((res) => {
-        if (!ignore) setItems(res);
+        if (ignore) return;
+        setItems(res);
+        // Re-sync the open detail to its fresh copy so an edit elsewhere (or a
+        // refreshKey bump) doesn't keep showing stale content. Keep the prior value
+        // when the item isn't in the current (possibly filtered) results rather than
+        // blanking the panel.
+        setSelected((prev) => (prev ? (res.find((l) => l.id === prev.id) ?? prev) : prev));
       });
     }, 300);
     return () => {
