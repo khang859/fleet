@@ -32,8 +32,10 @@ import type {
   FeatureSuggestion,
   VerifyCommand,
   PmProposal,
-  PmProposalKind
+  PmProposalKind,
+  PmProposalStatus
 } from '../../shared/kanban-types';
+import { executeProposal } from './proposal-executor';
 import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
 import { createLogger } from '../logger';
@@ -1063,6 +1065,36 @@ export class KanbanCommands {
   ): PmProposal {
     if (kind !== 'ship_feature') this.requireTask(targetId);
     return this.store.createProposal({ boardId, kind, targetId, rationale });
+  }
+
+  listProposals(boardId: string, status?: PmProposalStatus): PmProposal[] {
+    return this.store.listProposals(boardId, status ? { status } : {});
+  }
+
+  /**
+   * Run an approved proposal through the deterministic executor. A failure (the
+   * executor throws, including review actions that return ok:false) marks the
+   * proposal 'failed' with the message rather than rethrowing — the renderer
+   * surfaces status==='failed' + error. Returns the updated proposal either way.
+   */
+  approveProposal(id: string): PmProposal {
+    const p = this.store.getProposal(id);
+    if (!p) throw new CodedError('proposal not found', 'NOT_FOUND');
+    if (p.status !== 'pending') throw new CodedError('proposal already resolved', 'BAD_REQUEST');
+    try {
+      executeProposal(this, p);
+      this.store.resolveProposal(id, 'accepted', null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.store.resolveProposal(id, 'failed', msg);
+    }
+    const after = this.store.getProposal(id);
+    if (!after) throw new Error('approveProposal: proposal vanished');
+    return after;
+  }
+
+  dismissProposal(id: string): void {
+    this.store.resolveProposal(id, 'dismissed', null);
   }
 
   /** Shared guard: a feature with the repo + integration branch needed for git ops. */

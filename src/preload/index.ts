@@ -88,6 +88,7 @@ import type {
   Feature,
   FeatureDetail,
   FeatureSuggestion,
+  PmProposal,
   WorktreeInfo,
   PruneResult,
   Project,
@@ -647,6 +648,12 @@ const fleetApi = {
       typedInvoke<Feature>(IPC_CHANNELS.KANBAN_ACCEPT_SUGGESTION, id),
     dismissSuggestion: async (id: string): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_DISMISS_SUGGESTION, id),
+    listProposals: async (boardId: string): Promise<PmProposal[]> =>
+      typedInvoke<PmProposal[]>(IPC_CHANNELS.KANBAN_LIST_PROPOSALS, boardId),
+    approveProposal: async (id: string): Promise<PmProposal> =>
+      typedInvoke<PmProposal>(IPC_CHANNELS.KANBAN_APPROVE_PROPOSAL, id),
+    dismissProposal: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_DISMISS_PROPOSAL, id),
     redecompose: async (featureId: string): Promise<Task> =>
       typedInvoke<Task>(IPC_CHANNELS.KANBAN_REDECOMPOSE, featureId),
     shipFeature: async (featureId: string): Promise<KanbanReviewActionResult> =>
