@@ -45,8 +45,25 @@ export function PmChatPanel({ boardId, shiftLeft }: Props): React.JSX.Element {
 
   const approve = useCallback(
     async (id: string) => {
-      const updated = await window.fleet.kanban.approveProposal(id);
-      setProposalError(updated.status === 'failed' ? (updated.error ?? 'action failed') : null);
+      try {
+        const updated = await window.fleet.kanban.approveProposal(id);
+        setProposalError(updated.status === 'failed' ? (updated.error ?? 'action failed') : null);
+      } catch {
+        // second click after the proposal already resolved — ignore
+      }
+      await refreshProposals();
+    },
+    [refreshProposals]
+  );
+
+  const dismiss = useCallback(
+    async (id: string) => {
+      try {
+        await window.fleet.kanban.dismissProposal(id);
+        setProposalError(null);
+      } catch {
+        // best-effort dismiss — ignore
+      }
       await refreshProposals();
     },
     [refreshProposals]
@@ -179,18 +196,13 @@ export function PmChatPanel({ boardId, shiftLeft }: Props): React.JSX.Element {
               <div className="text-[11px] text-neutral-500">{p.rationale}</div>
               <div className="mt-2 flex gap-2">
                 <button
-                  onClick={() => {
-                    void approve(p.id);
-                  }}
+                  onClick={() => void approve(p.id)}
                   className="rounded bg-blue-600 px-2 py-1 text-[11px] text-white transition active:scale-95 hover:bg-blue-500"
                 >
                   Approve
                 </button>
                 <button
-                  onClick={() => {
-                    setProposalError(null);
-                    void window.fleet.kanban.dismissProposal(p.id).then(refreshProposals);
-                  }}
+                  onClick={() => void dismiss(p.id)}
                   className="rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400 transition active:scale-95 hover:bg-neutral-800"
                 >
                   Dismiss
