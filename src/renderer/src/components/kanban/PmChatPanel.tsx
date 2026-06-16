@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Bot, RotateCcw, Wrench } from 'lucide-react';
 import { usePmChatStore } from '../../store/pm-chat-store';
 import type { TranscriptMessage } from '../../../../shared/sessions';
+import type { PmProposal } from '../../../../shared/kanban-types';
 
 type Props = {
   boardId: string;
@@ -34,21 +35,40 @@ export function PmChatPanel({ boardId, shiftLeft }: Props): React.JSX.Element {
     messages
   } = usePmChatStore();
   const [draft, setDraft] = useState('');
+  const [proposals, setProposals] = useState<PmProposal[]>([]);
+  const [proposalError, setProposalError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  const refreshProposals = useCallback(async () => {
+    setProposals(await window.fleet.kanban.listProposals(boardId));
+  }, [boardId]);
+
+  const approve = useCallback(
+    async (id: string) => {
+      const updated = await window.fleet.kanban.approveProposal(id);
+      setProposalError(updated.status === 'failed' ? (updated.error ?? 'action failed') : null);
+      await refreshProposals();
+    },
+    [refreshProposals]
+  );
 
   useEffect(() => {
     void loadState(boardId);
+    void refreshProposals();
     const offStatus = window.fleet.kanban.onPmStatus((p) => {
       if (p.boardId === boardId) applyStatus(p.status, p.error);
     });
     const offTranscript = window.fleet.kanban.onPmTranscript((p) => {
-      if (p.boardId === boardId) applyTranscript(p.messages);
+      if (p.boardId === boardId) {
+        applyTranscript(p.messages);
+        void refreshProposals();
+      }
     });
     return () => {
       offStatus();
       offTranscript();
     };
-  }, [boardId, loadState, applyStatus, applyTranscript]);
+  }, [boardId, loadState, applyStatus, applyTranscript, refreshProposals]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
@@ -145,6 +165,46 @@ export function PmChatPanel({ boardId, shiftLeft }: Props): React.JSX.Element {
         )}
         <div ref={bottomRef} />
       </div>
+
+      {(proposals.length > 0 || proposalError) && (
+        <div className="flex flex-col gap-2 border-t border-neutral-800 px-3 py-2">
+          {proposals.map((p) => (
+            <div
+              key={p.id}
+              className="rounded border border-neutral-700 bg-neutral-800/40 px-2.5 py-2 text-xs"
+            >
+              <div className="text-neutral-200">
+                <span className="font-medium">{p.kind.replace(/_/g, ' ')}</span> · {p.targetId}
+              </div>
+              <div className="text-[11px] text-neutral-500">{p.rationale}</div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={() => {
+                    void approve(p.id);
+                  }}
+                  className="rounded bg-blue-600 px-2 py-1 text-[11px] text-white transition active:scale-95 hover:bg-blue-500"
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={() => {
+                    setProposalError(null);
+                    void window.fleet.kanban.dismissProposal(p.id).then(refreshProposals);
+                  }}
+                  className="rounded border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400 transition active:scale-95 hover:bg-neutral-800"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ))}
+          {proposalError && (
+            <div className="rounded border border-red-900 bg-red-950/40 px-2 py-1.5 text-[11px] text-red-300">
+              {proposalError}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="border-t border-neutral-800 p-2">
         <textarea
