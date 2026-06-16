@@ -82,9 +82,10 @@ dispatcher/notifier and wired to the same store.
 
 - **Master gate.** A per-board `pmAutopilotEnabled` config (default **false**)
   gates both event turns and the digest. Off → `onEvent` is a no-op.
-- **Event filter.** Only a whitelist of board-meaningful event kinds trigger a
-  turn: `task_completed`, `task_blocked`, `review_ready`, `verify_failed`,
-  `feature_pr_ready`/`feature_shipped`. Noisy per-line run events are ignored.
+- **Event filter.** Only a whitelist of board-meaningful event kinds (the actual
+  `appendEvent` kind strings) trigger a turn: `completed`, `blocked`,
+  `review_ready`, `verify_failed`, `gave_up`, `feature_pr_ready`. Noisy per-line
+  run events (`heartbeat`, `comment`, `status_changed`, …) are ignored.
 - **Coalescing.** Events within `pmCoalesceWindowMs` (default **2000**) batch
   into a single turn, so a decompose that completes 8 subtasks at once yields
   one PM turn briefed on all 8, not 8 turns.
@@ -170,10 +171,10 @@ integrate autopilot and human confirmation aren't bypassed).
 A board-level scheduled PM turn — distinct from task-level schedules
 (`schedule.ts`); it is not a task.
 
-- **Config.** Each board carries an optional `digestCron` (nullable string),
-  gated by the same `pmAutopilotEnabled`. `PmAutopilot` owns the lightweight
-  cron check. Default **null** (off); settings offers a one-click "daily 9am"
-  preset.
+- **Config.** Each board carries an optional `digest_cron` column (nullable),
+  gated by the global `pmAutopilotEnabled`. `PmAutopilot` owns the lightweight
+  cron check. Default **null** (off); the board UI offers a one-click "daily
+  9am" preset.
 - **Digest context.** When due, build a summary by querying `task_events` /
   `task_runs` / `features` since `last_digest_at`: tasks completed, tasks
   blocked, features shipped, verify/review failure patterns, and any still
@@ -184,27 +185,42 @@ A board-level scheduled PM turn — distinct from task-level schedules
 - **Watermark.** `last_digest_at` is stamped after a *successful* digest turn so
   the next digest covers only new activity.
 
-## Config surface (per board)
+## Config surface
+
+The codebase has no per-board config mechanism — `kanban.dispatcher` settings
+are global (electron-store, `src/shared/types.ts`), and the only per-board
+storage is the `boards`/`projects` tables. We therefore split the config:
+**global tuning knobs** (a new `kanban.pm` settings block, reusing the existing
+Settings UI like the dispatcher knobs) and **per-board digest cadence** (which
+genuinely varies per board and needs a per-board watermark regardless).
+
+Global (`settingsStore.get().kanban.pm`):
 
 | Key                   | Default | Meaning                                      |
 |-----------------------|---------|----------------------------------------------|
 | `pmAutopilotEnabled`  | `false` | Master switch for event turns *and* digest.  |
 | `pmEventMinGapMs`     | `30000` | Minimum interval between event turns.         |
 | `pmCoalesceWindowMs`  | `2000`  | Batch window for events into one turn.        |
-| `digestCron`          | `null`  | Cron for the standup digest; null = off.      |
+
+Per-board (`boards` table columns):
+
+| Column           | Default | Meaning                                  |
+|------------------|---------|------------------------------------------|
+| `digest_cron`    | `null`  | Cron for the standup digest; null = off. |
+| `last_digest_at` | `null`  | Watermark; bounds the next digest's window. |
+
+The digest only runs when `pmAutopilotEnabled` (global) **and** a board's
+`digest_cron` is set.
 
 ## Data model
 
-Two additions; no migrations to existing tables.
-
-- **`pm_proposals`** table — `id`, `board_id`, `kind`, `target_id`, `rationale`,
-  `status (pending|accepted|dismissed|failed)`, `created_at`, `resolved_at`.
-  Mirrors the `feature_suggestions` lifecycle pattern.
+- **`pm_proposals`** table (new) — `id`, `board_id`, `kind`, `target_id`,
+  `rationale`, `status (pending|accepted|dismissed|failed)`, `created_at`,
+  `resolved_at`. Mirrors the `feature_suggestions` lifecycle pattern.
+- **`boards` table** — two additive columns: `digest_cron TEXT`,
+  `last_digest_at INTEGER` (via the store's `user_version` migration pattern).
 - **Turn-origin log** — sidecar JSON next to `pm-sessions.json` (not a DB
   table); the renderer overlays it on the chat transcript.
-
-`last_digest_at` is a per-board value stored alongside the board's existing
-config/state (no new table).
 
 ## Testing
 
