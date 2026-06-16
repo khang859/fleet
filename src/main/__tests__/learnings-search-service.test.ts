@@ -28,13 +28,22 @@ describe('reciprocalRankFusion', () => {
   });
 });
 
+describe('FakeEmbedder', () => {
+  it('returns null for empty/whitespace text rather than a degenerate zero vector', () => {
+    const e = new FakeEmbedder();
+    expect(e.embed('')).toBeNull();
+    expect(e.embed('   ')).toBeNull();
+    expect(e.embed('real')).toBeInstanceOf(Float32Array);
+  });
+});
+
 describe('LearningsSearchService.hybridSearch', () => {
   let store: LearningsStore;
 
   const embedAll = async (embedder: FakeEmbedder): Promise<void> => {
     for (const l of store.search({})) {
       const v = await embedder.embed(`${l.title}\n${l.body}`);
-      store.setEmbedding(l.id, v);
+      if (v) store.setEmbedding(l.id, v);
     }
   };
 
@@ -92,6 +101,15 @@ describe('LearningsSearchService.hybridSearch', () => {
     const results = await svc.hybridSearch('caching lru', { project: 'fleet' }, 5);
     expect(results).toHaveLength(1);
     expect(results[0].sourceProject).toBe('fleet');
+  });
+
+  it('clamps a non-positive limit to one result instead of returning none', async () => {
+    const embedder = new FakeEmbedder();
+    store.create({ title: 'react hooks deps', body: 'array' });
+    await embedAll(embedder);
+
+    const svc = new LearningsSearchService(store, embedder);
+    expect(await svc.hybridSearch('react hooks', {}, 0)).toHaveLength(1);
   });
 
   it('falls back to FTS-only when the embedder is unavailable', async () => {

@@ -41,24 +41,33 @@ export class LearningsSearchService {
     opts: LearningSearchFilter = {},
     limit = 10
   ): Promise<Learning[]> {
+    // A non-positive limit would otherwise yield `[]` via slice semantics; clamp it.
+    const safeLimit = Math.max(1, limit);
     const filter: LearningSearchFilter = { query, project: opts.project, tag: opts.tag };
     const fts = this.store.search(filter);
 
-    if (!query.trim() || !this.store.hasVectorSupport()) return fts.slice(0, limit);
+    if (!query.trim() || !this.store.hasVectorSupport()) return fts.slice(0, safeLimit);
 
     const vec = await this.embedder.embed(query);
-    if (!vec) return fts.slice(0, limit);
+    if (!vec) return fts.slice(0, safeLimit);
 
-    // Pull a candidate pool wider than `limit` so fusion has room to reorder.
-    const hits = this.store.vectorSearch(vec, Math.max(limit * 4, 20));
+    // Pull a candidate pool wider than `limit` so fusion has room to reorder. Vector
+    // neighbors ignore project/tag, so a selective filter discards most of them
+    // post-fusion — widen the pool when a filter is present to avoid starving results.
+    const filtered = Boolean(filter.project || filter.tag);
+    const poolSize = filtered ? Math.max(safeLimit * 20, 100) : Math.max(safeLimit * 4, 20);
+    const hits = this.store.vectorSearch(vec, poolSize);
     const fused = reciprocalRankFusion([fts.map((l) => l.id), hits.map((h) => h.id)]);
 
+    // Reuse the already-hydrated FTS rows instead of re-fetching every fused id from
+    // the store; only ids that came solely from the vector side need a `store.get`.
+    const byId = new Map(fts.map((l) => [l.id, l]));
     const out: Learning[] = [];
     for (const id of fused) {
-      const l = this.store.get(id);
+      const l = byId.get(id) ?? this.store.get(id);
       // Vector neighbors ignore project/tag — enforce the filter on the merged set.
       if (l && matchesFilter(l, filter)) out.push(l);
-      if (out.length >= limit) break;
+      if (out.length >= safeLimit) break;
     }
     return out;
   }

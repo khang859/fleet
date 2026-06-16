@@ -367,6 +367,12 @@ export class LearningsStore {
    */
   setEmbedding(id: string, vec: Float32Array): void {
     if (!this.vec) return;
+    // A wrong-length vector would be written verbatim into the vec0 table and surface
+    // later as a corrupt/cryptic KNN failure; reject it at the source instead.
+    if (vec.length !== EMBED_DIM) {
+      log.warn('refusing to store mis-sized embedding', { id, length: vec.length });
+      return;
+    }
     const row = this.db
       .prepare<[string], { rowid: number }>('SELECT rowid FROM learnings WHERE id = ?')
       .get(id);

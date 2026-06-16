@@ -62,7 +62,10 @@ export class NullEmbedder implements Embedder {
 export class FakeEmbedder implements Embedder {
   constructor(readonly dim: number = EMBED_DIM) {}
 
-  embed(text: string): Float32Array {
+  embed(text: string): Float32Array | null {
+    // Empty/whitespace text has no tokens → a non-unit zero vector; match the real
+    // embedder and return null so callers leave the row on the FTS-only path.
+    if (!text.trim()) return null;
     const v = new Float32Array(this.dim);
     for (const tok of text
       .toLowerCase()

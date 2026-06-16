@@ -179,6 +179,13 @@ describe('LearningsStore', () => {
       expect(store.hasVectorSupport()).toBe(true);
     });
 
+    it('refuses a mis-sized embedding instead of corrupting the vec table', () => {
+      const l = store.create({ title: 'sized', body: 'x' });
+      store.setEmbedding(l.id, new Float32Array(10).fill(1)); // wrong length
+      expect(store.pendingEmbeddings(10).map((p) => p.id)).toEqual([l.id]); // still pending
+      expect(store.vectorSearch(vec(1), 5)).toHaveLength(0); // nothing was written
+    });
+
     it('new learnings start pending and leave the pending set once embedded', () => {
       const a = store.create({ title: 'a', body: 'x' });
       const b = store.create({ title: 'b', body: 'y' });

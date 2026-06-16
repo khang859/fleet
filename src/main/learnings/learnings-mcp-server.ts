@@ -74,7 +74,7 @@ const SearchArgs = z.object({
   tag: z.string().optional(),
   project: z.string().optional()
 });
-const GetArgs = z.object({ id: z.string().min(1) });
+const GetArgs = z.object({ id: z.string().min(1).max(128) });
 
 // The JSON-RPC envelope is untrusted (loopback, but any local process can POST).
 // Parse it with zod so a malformed body is a clean 400, not a thrown cast.
@@ -219,7 +219,7 @@ export class LearningsMcpServer {
       case 'tools/call':
         return this.handleToolCall(res, rpc);
       default: {
-        this.rpcError(res, rpc.id, `unknown method: ${rpc.method}`);
+        this.rpcError(res, rpc.id, 'unknown method');
         return;
       }
     }
@@ -248,13 +248,14 @@ export class LearningsMcpServer {
         const a = GetArgs.parse(args);
         const l = this.store.get(a.id);
         if (!l) {
-          this.rpcError(res, rpc.id, `learning not found: ${a.id}`);
+          // Don't echo the (untrusted) id back in the message.
+          this.rpcError(res, rpc.id, 'learning not found');
           return;
         }
         this.text(res, rpc.id, learningToMarkdown(l));
         return;
       }
-      this.rpcError(res, rpc.id, `unknown tool: ${name}`);
+      this.rpcError(res, rpc.id, 'unknown tool');
       return;
     } catch (err) {
       this.rpcError(res, rpc.id, err instanceof Error ? err.message : String(err));
