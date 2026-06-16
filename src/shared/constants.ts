@@ -110,6 +110,11 @@ export const DEFAULT_SETTINGS: FleetSettings = {
       autoIntegrate: true,
       autoReview: true
     },
+    pm: {
+      autopilotEnabled: false,
+      eventMinGapMs: 30_000,
+      coalesceWindowMs: 2_000
+    },
     defaults: { workspaceKind: 'scratch', maxRuntimeSeconds: null },
     artifactRetentionDays: 14,
     notifications: {

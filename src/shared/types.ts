@@ -165,6 +165,14 @@ export type KanbanSettings = {
     autoIntegrate: boolean; // when true, auto-merges completed feature tasks into the integration branch; spawns resolve runs on conflict
     autoReview: boolean; // when true, runs an agent code-review gate before review/auto-merge
   };
+  pm: {
+    /** Master switch for event-driven turns AND the standup digest. */
+    autopilotEnabled: boolean;
+    /** Minimum ms between event-driven PM turns per board. */
+    eventMinGapMs: number;
+    /** Coalescing window (ms): events within this window batch into one turn. */
+    coalesceWindowMs: number;
+  };
   defaults: {
     workspaceKind: WorkspaceKind;
     maxRuntimeSeconds: number | null;

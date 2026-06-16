@@ -99,4 +99,21 @@ describe('SettingsStore settings merge', () => {
     expect(s.kanban.dispatcher.autoDecompose).toBe(false);
     expect(s.kanban.dispatcher.maxDecompose).toBe(1);
   });
+
+  it('returns kanban.pm defaults for a fresh store', () => {
+    const s = store.get();
+    expect(s.kanban.pm.autopilotEnabled).toBe(false);
+    expect(s.kanban.pm.eventMinGapMs).toBe(30_000);
+    expect(s.kanban.pm.coalesceWindowMs).toBe(2_000);
+  });
+
+  it('merges a partial pm change without dropping siblings', () => {
+    store.set({
+      kanban: { pm: { autopilotEnabled: true } }
+    });
+    const s = store.get();
+    expect(s.kanban.pm.autopilotEnabled).toBe(true);
+    expect(s.kanban.pm.eventMinGapMs).toBe(30_000); // sibling preserved
+    expect(s.kanban.dispatcher.intervalMs).toBe(5000); // dispatcher untouched
+  });
 });

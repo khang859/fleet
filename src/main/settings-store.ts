@@ -47,6 +47,7 @@ export class SettingsStore {
         ...DEFAULT_SETTINGS.kanban,
         ...saved.kanban,
         dispatcher: { ...DEFAULT_SETTINGS.kanban.dispatcher, ...saved.kanban?.dispatcher },
+        pm: { ...DEFAULT_SETTINGS.kanban.pm, ...saved.kanban?.pm },
         defaults: { ...DEFAULT_SETTINGS.kanban.defaults, ...saved.kanban?.defaults },
         notifications: {
           ...DEFAULT_SETTINGS.kanban.notifications,
@@ -92,6 +93,7 @@ export class SettingsStore {
         ...current.kanban,
         ...(partial.kanban ?? {}),
         dispatcher: { ...current.kanban.dispatcher, ...(partial.kanban?.dispatcher ?? {}) },
+        pm: { ...current.kanban.pm, ...(partial.kanban?.pm ?? {}) },
         defaults: { ...current.kanban.defaults, ...(partial.kanban?.defaults ?? {}) },
         notifications: {
           ...current.kanban.notifications,
