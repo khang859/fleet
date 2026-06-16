@@ -372,6 +372,43 @@ const PM_TOOLS: McpTool[] = [
     }
   },
   {
+    name: 'kanban_arm_decompose',
+    description: 'Flag a task for the dispatcher to break into subtasks on its next tick.',
+    inputSchema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' } },
+      required: ['task_id']
+    }
+  },
+  {
+    name: 'kanban_arm_specify',
+    description: 'Flag a task for the dispatcher to write a detailed spec on its next tick.',
+    inputSchema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' } },
+      required: ['task_id']
+    }
+  },
+  {
+    name: 'kanban_unblock',
+    description:
+      'Return a blocked task to ready. Optionally attach guidance as a comment for the next run.',
+    inputSchema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' }, guidance: { type: 'string' } },
+      required: ['task_id']
+    }
+  },
+  {
+    name: 'kanban_reassign',
+    description: 'Reassign a task to a different worker profile by name.',
+    inputSchema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' }, profile: { type: 'string' } },
+      required: ['task_id', 'profile']
+    }
+  },
+  {
     name: 'kanban_comment',
     description: 'Append a durable comment to a task thread.',
     inputSchema: {
@@ -466,6 +503,14 @@ const PM_TOOLS: McpTool[] = [
     }
   }
 ];
+
+/** PM tools that mutate via KanbanCommands and are safe for the autopilot to call. */
+const PM_SAFE_TOOLS = new Set([
+  'kanban_arm_decompose',
+  'kanban_arm_specify',
+  'kanban_unblock',
+  'kanban_reassign'
+]);
 
 const REVIEW_TOOLS: McpTool[] = [
   ...WORKER_TOOLS.filter((t) =>
@@ -700,6 +745,16 @@ export class KanbanMcpServer {
     if (!PM_TOOLS.some((t) => t.name === name)) {
       return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
     }
+    // Safe authority tools route through a synchronous, testable seam.
+    if (PM_SAFE_TOOLS.has(name)) {
+      try {
+        this.text(res, rpcReq.id, this.execPmTool(scope, name, args));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.rpcError(res, rpcReq.id, msg);
+      }
+      return;
+    }
     try {
       switch (name) {
         case 'kanban_list': {
@@ -908,7 +963,8 @@ export class KanbanMcpServer {
             .parse(args);
           let repoPath = a.repo_path ?? null;
           if (a.project !== undefined) {
-            if (repoPath) return this.rpcError(res, rpcReq.id, 'pass either project or repo_path, not both');
+            if (repoPath)
+              return this.rpcError(res, rpcReq.id, 'pass either project or repo_path, not both');
             const p = this.store.getProjectByName(scope.boardId, a.project);
             if (!p) return this.rpcError(res, rpcReq.id, `unknown project: ${a.project}`);
             repoPath = p.path;
@@ -966,7 +1022,8 @@ export class KanbanMcpServer {
         case 'kanban_project_remove': {
           const a = z.object({ name: z.string() }).parse(args);
           const p = this.store.getProjectByName(scope.boardId, a.name);
-          if (!p) return this.rpcError(res, rpcReq.id, `project not found on this board: ${a.name}`);
+          if (!p)
+            return this.rpcError(res, rpcReq.id, `project not found on this board: ${a.name}`);
           commands.removeProject(p.id);
           return this.text(res, rpcReq.id, `Project "${a.name}" removed.`);
         }
@@ -974,11 +1031,19 @@ export class KanbanMcpServer {
           const a = z.object({ artifact_id: z.string() }).parse(args);
           const art = this.store.getArtifact(a.artifact_id);
           if (!art || art.boardId !== scope.boardId) {
-            return this.rpcError(res, rpcReq.id, `artifact not found on this board: ${a.artifact_id}`);
+            return this.rpcError(
+              res,
+              rpcReq.id,
+              `artifact not found on this board: ${a.artifact_id}`
+            );
           }
           const preview = readArtifactPreview(art.storedPath, 64 * 1024);
           if (!preview.previewable) {
-            return this.rpcError(res, rpcReq.id, preview.reason ?? 'artifact is not readable as text');
+            return this.rpcError(
+              res,
+              rpcReq.id,
+              preview.reason ?? 'artifact is not readable as text'
+            );
           }
           const suffix = preview.truncated ? '\n\n…(truncated)' : '';
           return this.text(res, rpcReq.id, (preview.text ?? '') + suffix);
@@ -990,6 +1055,60 @@ export class KanbanMcpServer {
       const msg = err instanceof Error ? err.message : String(err);
       return this.rpcError(res, rpcReq.id, msg);
     }
+  }
+
+  /**
+   * Synchronous dispatch for the PM safe authority tools (arm/unblock/reassign).
+   * All mutations route through KanbanCommands so the autopilot obeys the same
+   * validation as the UI. Returns the result text or throws.
+   */
+  private execPmTool(scope: BoardScope, name: string, args: Record<string, unknown>): string {
+    const commands = this.commands;
+    if (!commands) throw new Error('kanban commands are not available');
+    switch (name) {
+      case 'kanban_arm_decompose': {
+        const a = z.object({ task_id: z.string() }).parse(args);
+        this.requirePmTask(scope, a.task_id);
+        commands.requestDecompose(a.task_id);
+        return `Armed decompose for ${a.task_id}.`;
+      }
+      case 'kanban_arm_specify': {
+        const a = z.object({ task_id: z.string() }).parse(args);
+        this.requirePmTask(scope, a.task_id);
+        commands.requestSpecify(a.task_id);
+        return `Armed specify for ${a.task_id}.`;
+      }
+      case 'kanban_unblock': {
+        const a = z.object({ task_id: z.string(), guidance: z.string().optional() }).parse(args);
+        this.requirePmTask(scope, a.task_id);
+        const guidance = a.guidance?.trim() ?? '';
+        if (guidance) commands.comment(a.task_id, `PM guidance: ${guidance}`);
+        commands.unblock(a.task_id);
+        return `Unblocked ${a.task_id}.`;
+      }
+      case 'kanban_reassign': {
+        const a = z.object({ task_id: z.string(), profile: z.string() }).parse(args);
+        this.requirePmTask(scope, a.task_id);
+        const profile = a.profile.trim();
+        if (!profile) throw new Error('profile is required');
+        commands.assign(a.task_id, profile);
+        return `Reassigned ${a.task_id} to ${profile}.`;
+      }
+      default:
+        throw new Error(`unknown tool: ${name}`);
+    }
+  }
+
+  /** Throws if the task does not exist on the PM scope's board. */
+  private requirePmTask(scope: BoardScope, id: string): void {
+    if (!this.pmTask(scope, id)) {
+      throw new Error(`task not found on this board: ${id}`);
+    }
+  }
+
+  /** Test-only: invoke a PM safe tool synchronously without the HTTP/RPC layer. */
+  callPmToolForTest(name: string, args: Record<string, unknown>, scope: BoardScope): string {
+    return this.execPmTool(scope, name, args);
   }
 
   private handleToolCall(res: ServerResponse, rpcReq: JsonRpcRequest, token: string): void {
@@ -1257,9 +1376,7 @@ export class KanbanMcpServer {
           return this.text(res, rpcReq.id, JSON.stringify(latestBlackboard(this.store, a.root)));
         }
         case 'kanban_swarm_post': {
-          const a = z
-            .object({ root: z.string(), key: z.string(), value: z.unknown() })
-            .parse(args);
+          const a = z.object({ root: z.string(), key: z.string(), value: z.unknown() }).parse(args);
           if (!isSwarmRoot(this.store, a.root)) {
             return this.rpcError(res, rpcReq.id, `${a.root} is not a swarm root`);
           }
