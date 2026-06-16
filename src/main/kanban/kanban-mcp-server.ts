@@ -526,8 +526,8 @@ const PM_TOOLS: McpTool[] = [
   }
 ];
 
-/** PM tools that mutate via KanbanCommands and are safe for the autopilot to call. */
-const PM_SAFE_TOOLS = new Set([
+/** PM tools routed through execPmTool (synchronous; testable via callPmToolForTest). */
+const PM_SYNC_TOOLS = new Set([
   'kanban_arm_decompose',
   'kanban_arm_specify',
   'kanban_unblock',
@@ -769,8 +769,8 @@ export class KanbanMcpServer {
     if (!PM_TOOLS.some((t) => t.name === name)) {
       return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
     }
-    // Safe authority tools route through a synchronous, testable seam.
-    if (PM_SAFE_TOOLS.has(name)) {
+    // These tools route through a synchronous, testable seam (execPmTool).
+    if (PM_SYNC_TOOLS.has(name)) {
       try {
         this.text(res, rpcReq.id, this.execPmTool(scope, name, args));
       } catch (err) {
@@ -1149,6 +1149,9 @@ export class KanbanMcpServer {
             rationale: z.string().min(1)
           })
           .parse(args);
+        // ship_feature targets a feature id; every other kind targets a task that
+        // must live on this board (proposeAction→requireTask only checks global existence).
+        if (a.kind !== 'ship_feature') this.requirePmTask(scope, a.target_id);
         const p = commands.proposeAction(scope.boardId, a.kind, a.target_id, a.rationale);
         return `proposed ${a.kind} for ${a.target_id} (awaiting confirmation, id ${p.id})`;
       }

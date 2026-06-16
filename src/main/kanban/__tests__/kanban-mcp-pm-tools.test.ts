@@ -98,12 +98,26 @@ describe('PM propose + guardrail', () => {
   it('kanban_propose writes a proposal via commands', () => {
     const { server, commands } = makeServer();
     commands.proposeAction = vi.fn(() => ({ id: 'p1' }));
-    server.callPmToolForTest(
+    const out = server.callPmToolForTest(
       'kanban_propose',
       { kind: 'complete_task', target_id: 't1', rationale: 'done' },
       scope
     );
     expect(commands.proposeAction).toHaveBeenCalledWith('b1', 'complete_task', 't1', 'done');
+    expect(out).toMatch(/p1/);
+  });
+
+  it('kanban_propose rejects a task on a different board', () => {
+    const { server, store, commands } = makeServer();
+    store.getTask = vi.fn(() => ({ id: 't1', boardId: 'b2' }));
+    expect(() =>
+      server.callPmToolForTest(
+        'kanban_propose',
+        { kind: 'complete_task', target_id: 't1', rationale: 'x' },
+        scope
+      )
+    ).toThrow(/task not found on this board/);
+    expect(commands.proposeAction).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown proposal kind', () => {
