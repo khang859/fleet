@@ -8,7 +8,7 @@ const db = () => join(tmpdir(), `fleet-review-${Math.random()}.db`);
 describe('review schema (migration 15)', () => {
   it('is at schema version 15 with review columns defaulting correctly', () => {
     const store = new KanbanStore(db(), { now: () => 1000 });
-    expect(store.schemaVersion()).toBe(15);
+    expect(store.schemaVersion()).toBe(17);
     const t = store.createTask({ title: 'x' });
     const got = store.getTask(t.id)!;
     expect(got.reviewVerdict).toBeNull();

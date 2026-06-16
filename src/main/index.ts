@@ -53,6 +53,8 @@ import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { PmChatService } from './kanban/pm-chat-service';
+import { PmAutopilot, buildEventBriefing } from './kanban/pm-autopilot';
+import { buildDigestContext } from './kanban/pm-digest';
 import { RuneFileChatService } from './rune-assist/rune-file-chat-service';
 import { registerRuneAssistIpc } from './rune-assist/rune-assist-ipc';
 import {
@@ -114,6 +116,8 @@ let kanbanPrPoller: PrPoller | undefined;
 let kanbanCommands: KanbanCommands | undefined;
 let kanbanNotifier: KanbanNotifier | null = null;
 let pmChat: PmChatService | undefined;
+let pmAutopilot: PmAutopilot | undefined;
+let pmDigestTimer: ReturnType<typeof setInterval> | undefined;
 let runeAssist: RuneFileChatService | null = null;
 
 function requireKanbanStore(): KanbanStore {
@@ -879,6 +883,7 @@ void app.whenReady().then(async () => {
       }
       socketSupervisor?.broadcastKanbanEvent(event);
       kanbanNotifier?.enqueue(event);
+      pmAutopilot?.onEvent(event);
     },
     onBoardsChanged: () => {
       for (const w of BrowserWindow.getAllWindows()) {
@@ -1209,6 +1214,7 @@ void app.whenReady().then(async () => {
     mcpPort: kanbanMcpPort,
     kanbanHome: KANBAN_HOME,
     getProjects: (boardId) => requireKanbanCommands().listProjects(boardId),
+    isAutopilotEnabled: () => settingsStore.get().kanban.pm.autopilotEnabled,
     emitStatus: (payload) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.KANBAN_PM_STATUS, payload);
@@ -1220,6 +1226,43 @@ void app.whenReady().then(async () => {
       }
     }
   });
+  pmAutopilot = new PmAutopilot({
+    now: () => Date.now(),
+    getConfig: () => settingsStore.get().kanban.pm,
+    getBoardForTask: (id) =>
+      kanbanStore?.getTask(id)?.boardId ?? kanbanStore?.getFeature(id)?.boardId ?? null,
+    runTurn: async (boardId, prompt, origin) => {
+      await pmChat?.runTurn(boardId, prompt, origin);
+    },
+    buildBriefing: (events) =>
+      buildEventBriefing(
+        events,
+        (id) => kanbanStore?.getTask(id)?.title ?? kanbanStore?.getFeature(id)?.name ?? null
+      ),
+    log: (msg, meta) => log.warn(msg, meta ?? {}),
+    listDigestBoards: () =>
+      (kanbanStore?.listBoards() ?? []).map((b) => {
+        const cfg = kanbanStore?.getDigestConfig(b.slug);
+        return {
+          boardId: b.slug,
+          digestCron: cfg?.digestCron ?? null,
+          lastDigestAt: cfg?.lastDigestAt ?? null
+        };
+      }),
+    // The standup digest summarizes task-level activity (completed/blocked/failure).
+    // Feature-level events (e.g. feature_pr_ready) are intentionally NOT bucketed here;
+    // they surface as real-time PM event turns via buildBriefing/getBoardForTask instead.
+    buildDigest: (boardId, since) =>
+      buildDigestContext({
+        events: kanbanStore?.listBoardEventsSince(boardId, since) ?? [],
+        pendingProposals: kanbanStore?.listProposals(boardId, { status: 'pending' }).length ?? 0,
+        resolveTitle: (id) => kanbanStore?.getTask(id)?.title ?? null
+      }),
+    stampDigest: (boardId) => kanbanStore?.stampLastDigest(boardId)
+  });
+  // Drive digest scheduling at cron's 1-minute granularity. stamp-before-run in
+  // checkDigests makes piggybacking on a coarse tick safe (no double-fire).
+  pmDigestTimer = setInterval(() => void pmAutopilot?.checkDigests(), 60_000);
   registerKanbanIpc(kanbanCommands, pmChat);
 
   runeAssist = new RuneFileChatService({
@@ -1308,6 +1351,8 @@ function shutdownAll(): void {
   annotateService.destroy();
   kanbanDispatcher?.stop();
   kanbanPrPoller?.stop();
+  if (pmDigestTimer) clearInterval(pmDigestTimer);
+  pmAutopilot?.dispose();
   pmChat?.dispose();
   runeAssist?.dispose();
   void kanbanMcp?.stop();

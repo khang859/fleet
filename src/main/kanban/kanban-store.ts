@@ -21,6 +21,7 @@ import type {
   UpdateTaskFields,
   BoardCard,
   Board,
+  BoardDigestConfig,
   Project,
   RunMode,
   PendingMode,
@@ -38,7 +39,10 @@ import type {
   SuggestionStatus,
   CreateSuggestionInput,
   VerifyCommand,
-  ReviewVerdict
+  ReviewVerdict,
+  PmProposal,
+  PmProposalKind,
+  PmProposalStatus
 } from '../../shared/kanban-types';
 import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
@@ -243,6 +247,16 @@ export class KanbanStore {
       this.addColumnIfMissing('tasks', 'review_verdict', 'TEXT');
       this.addColumnIfMissing('tasks', 'review_attempts', 'INTEGER NOT NULL DEFAULT 0');
       this.addColumnIfMissing('tasks', 'review_head_sha', 'TEXT');
+    }
+    if (current < 16) {
+      // v16 introduced the pm_proposals table; it is created via SCHEMA_SQL
+      // (CREATE TABLE IF NOT EXISTS) on every open, so no migration step is needed here.
+    }
+    if (current < 17) {
+      // Per-board standup digest: cron schedule + last-run watermark. The columns
+      // are in SCHEMA_SQL for fresh installs; add them here for existing DBs.
+      this.addColumnIfMissing('boards', 'digest_cron', 'TEXT');
+      this.addColumnIfMissing('boards', 'last_digest_at', 'INTEGER');
     }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
@@ -573,6 +587,26 @@ export class KanbanStore {
     const rows = this.db
       .prepare('SELECT * FROM task_events WHERE task_id=? ORDER BY id ASC')
       .all(taskId) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: Number(r.id),
+      taskId: String(r.task_id),
+      runId: (r.run_id as number | null) ?? null,
+      kind: String(r.kind),
+      payload: r.payload ? (JSON.parse(String(r.payload)) as Record<string, unknown>) : null,
+      createdAt: Number(r.created_at)
+    }));
+  }
+
+  /** All events for a board's tasks since `since` (epoch ms), oldest first. */
+  listBoardEventsSince(boardId: string, since: number): TaskEvent[] {
+    const rows = this.db
+      .prepare(
+        `SELECT e.* FROM task_events e
+           JOIN tasks t ON t.id = e.task_id
+          WHERE t.board_id = ? AND e.created_at >= ?
+          ORDER BY e.id ASC`
+      )
+      .all(boardId, since) as Array<Record<string, unknown>>;
     return rows.map((r) => ({
       id: Number(r.id),
       taskId: String(r.task_id),
@@ -1178,6 +1212,27 @@ export class KanbanStore {
     return rows.map((r) => this.rowToBoard(r));
   }
 
+  /** Digest config for a board. A missing/unknown slug yields the all-null config (same as an unconfigured board). */
+  getDigestConfig(boardSlug: string): BoardDigestConfig {
+    const row = this.db
+      .prepare('SELECT digest_cron, last_digest_at FROM boards WHERE slug=?')
+      .get(boardSlug) as
+      | { digest_cron: string | null; last_digest_at: number | null }
+      | undefined;
+    return {
+      digestCron: row?.digest_cron ?? null,
+      lastDigestAt: row?.last_digest_at ?? null
+    };
+  }
+
+  setDigestCron(boardSlug: string, cron: string | null): void {
+    this.db.prepare('UPDATE boards SET digest_cron=? WHERE slug=?').run(cron, boardSlug);
+  }
+
+  stampLastDigest(boardSlug: string): void {
+    this.db.prepare('UPDATE boards SET last_digest_at=? WHERE slug=?').run(this.now(), boardSlug);
+  }
+
   private rowToProject(r: Record<string, unknown>): Project {
     return {
       id: String(r.id),
@@ -1653,6 +1708,69 @@ export class KanbanStore {
     this.db
       .prepare('UPDATE feature_suggestions SET status=?, updated_at=? WHERE id=?')
       .run(status, this.now(), id);
+  }
+
+  createProposal(input: {
+    boardId: string;
+    kind: PmProposalKind;
+    targetId: string;
+    rationale: string;
+  }): PmProposal {
+    const id = randomUUID().slice(0, 8);
+    const ts = this.now();
+    this.db
+      .prepare(
+        `INSERT INTO pm_proposals (id, board_id, kind, target_id, rationale, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?)`
+      )
+      .run(id, input.boardId, input.kind, input.targetId, input.rationale, ts);
+    const p = this.getProposal(id);
+    if (!p) throw new Error('createProposal: failed to read back proposal');
+    return p;
+  }
+
+  getProposal(id: string): PmProposal | null {
+    const row = this.db.prepare('SELECT * FROM pm_proposals WHERE id=?').get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? this.rowToProposal(row) : null;
+  }
+
+  listProposals(boardId: string, filter: { status?: PmProposalStatus } = {}): PmProposal[] {
+    const where = ['board_id=@boardId'];
+    const params: Record<string, unknown> = { boardId };
+    if (filter.status) {
+      where.push('status=@status');
+      params.status = filter.status;
+    }
+    const rows = this.db
+      .prepare(`SELECT * FROM pm_proposals WHERE ${where.join(' AND ')} ORDER BY created_at DESC`)
+      .all(params) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToProposal(r));
+  }
+
+  resolveProposal(
+    id: string,
+    status: 'accepted' | 'dismissed' | 'failed',
+    error: string | null
+  ): void {
+    this.db
+      .prepare('UPDATE pm_proposals SET status=?, error=?, resolved_at=? WHERE id=?')
+      .run(status, error, this.now(), id);
+  }
+
+  private rowToProposal(r: Record<string, unknown>): PmProposal {
+    return {
+      id: String(r.id),
+      boardId: String(r.board_id),
+      kind: r.kind as PmProposalKind,
+      targetId: String(r.target_id),
+      rationale: String(r.rationale ?? ''),
+      status: r.status as PmProposalStatus,
+      error: (r.error as string | null) ?? null,
+      createdAt: Number(r.created_at),
+      resolvedAt: (r.resolved_at as number | null) ?? null
+    };
   }
 
   updateTask(id: string, fields: UpdateTaskFields): void {

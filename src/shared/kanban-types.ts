@@ -11,6 +11,9 @@ export type TaskStatus =
 
 export type WorkspaceKind = 'scratch' | 'dir' | 'worktree';
 
+/** What drove a PM chat turn: a human message, a board event, or a periodic digest. */
+export type PmTurnOrigin = 'user' | 'event' | 'digest';
+
 /** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign' | 'resolve' | 'suggest'; 'verify' is a deterministic (non-agent) verify-command run; 'review' is an agent code-review run (spec §232). */
 export type RunMode =
   | 'work'
@@ -245,6 +248,13 @@ export interface Board {
   updatedAt: number;
 }
 
+export interface BoardDigestConfig {
+  /** Cron expression for the standup digest, or null = off. */
+  digestCron: string | null;
+  /** Epoch ms of the last successful digest, or null = never. */
+  lastDigestAt: number | null;
+}
+
 /** A project folder registered on a board. The PM reads code here; tickets route to it. */
 export interface Project {
   id: string;
@@ -282,6 +292,39 @@ export interface TaskEvent {
   payload: Record<string, unknown> | null;
   createdAt: number;
 }
+
+export type PmProposalKind =
+  | 'merge_review_task'
+  | 'create_pr_for_task'
+  | 'accept_review_task'
+  | 'ship_feature'
+  | 'complete_task'
+  | 'archive_task';
+
+export type PmProposalStatus = 'pending' | 'accepted' | 'dismissed' | 'failed';
+
+export interface PmProposal {
+  id: string;
+  boardId: string;
+  kind: PmProposalKind;
+  /** Task id, or feature id for ship_feature. */
+  targetId: string;
+  rationale: string;
+  status: PmProposalStatus;
+  /** Set when status becomes 'failed': the executor error surfaced to the user. */
+  error: string | null;
+  createdAt: number;
+  resolvedAt: number | null;
+}
+
+export const PM_PROPOSAL_KINDS = [
+  'merge_review_task',
+  'create_pr_for_task',
+  'accept_review_task',
+  'ship_feature',
+  'complete_task',
+  'archive_task'
+] as const satisfies readonly PmProposalKind[];
 
 export interface TaskComment {
   id: number;

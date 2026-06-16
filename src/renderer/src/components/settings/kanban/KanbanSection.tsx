@@ -160,6 +160,18 @@ export function KanbanSection(): React.JSX.Element | null {
       </section>
 
       <section className="space-y-3">
+        <h3 className="text-sm font-semibold text-neutral-300">PM agent</h3>
+        <SettingRow label="PM autopilot (event-driven turns + digest)">
+          <input
+            type="checkbox"
+            checked={k.pm.autopilotEnabled}
+            onChange={(e) => patch({ pm: { ...k.pm, autopilotEnabled: e.target.checked } })}
+            className="h-4 w-4"
+          />
+        </SettingRow>
+      </section>
+
+      <section className="space-y-3">
         <h3 className="text-sm font-semibold text-neutral-300">New-task defaults</h3>
         <SettingRow label="Workspace kind">
           <select

@@ -43,6 +43,28 @@ Your working directory is this board's knowledge home:
   or the relevant doc.
 `;
 
+function autopilotSection(enabled: boolean): string {
+  if (!enabled) return '';
+  return `
+## Autopilot authority
+
+You run on autopilot: you also wake on board events (a task completes, blocks,
+fails verification, or a review is ready) and on a scheduled standup (when a
+daily digest is enabled for the board), not only when the user types.
+
+- Act directly on SAFE moves: kanban_unblock (add guidance if useful),
+  kanban_reassign, kanban_arm_decompose, kanban_arm_specify.
+- For RISKY or irreversible moves — merging, opening a PR, completing, shipping
+  a feature, archiving — never act directly. Call kanban_propose(kind,
+  target_id, rationale) with kind one of merge_review_task, create_pr_for_task,
+  accept_review_task, ship_feature, complete_task, archive_task; the human
+  approves or dismisses it.
+- Never set a worktree-backed task to done directly; propose merge_review_task
+  or accept_review_task instead.
+- On an event turn, triage what changed and stop — don't re-survey the whole board.
+`;
+}
+
 function projectsSection(projects: Project[]): string {
   if (projects.length === 0) return '';
   const lines = projects.map((p) => {
@@ -72,6 +94,15 @@ ${memory.trim()}
 `;
 }
 
-export function buildPmAgentsMd(input: { projects: Project[]; memory: string | null }): string {
-  return PM_BASE + projectsSection(input.projects) + memorySection(input.memory);
+export function buildPmAgentsMd(input: {
+  projects: Project[];
+  memory: string | null;
+  autopilotEnabled?: boolean;
+}): string {
+  return (
+    PM_BASE +
+    autopilotSection(input.autopilotEnabled ?? false) +
+    projectsSection(input.projects) +
+    memorySection(input.memory)
+  );
 }
