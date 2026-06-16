@@ -373,7 +373,9 @@ const PM_TOOLS: McpTool[] = [
   },
   {
     name: 'kanban_arm_decompose',
-    description: 'Flag a task for the dispatcher to break into subtasks on its next tick.',
+    description:
+      'Flag a task for the dispatcher to break into subtasks on its next tick. ' +
+      'Task must be in triage status.',
     inputSchema: {
       type: 'object',
       properties: { task_id: { type: 'string' } },
@@ -382,7 +384,9 @@ const PM_TOOLS: McpTool[] = [
   },
   {
     name: 'kanban_arm_specify',
-    description: 'Flag a task for the dispatcher to write a detailed spec on its next tick.',
+    description:
+      'Flag a task for the dispatcher to write a detailed spec on its next tick. ' +
+      'Task must be in triage status.',
     inputSchema: {
       type: 'object',
       properties: { task_id: { type: 'string' } },
@@ -1082,7 +1086,12 @@ export class KanbanMcpServer {
         const a = z.object({ task_id: z.string(), guidance: z.string().optional() }).parse(args);
         this.requirePmTask(scope, a.task_id);
         const guidance = a.guidance?.trim() ?? '';
-        if (guidance) commands.comment(a.task_id, `PM guidance: ${guidance}`);
+        // Author guidance as 'pm' (mirrors the legacy kanban_comment PM tool) so it
+        // doesn't masquerade as a human comment; commands.comment hardcodes 'human'.
+        if (guidance) {
+          this.store.addComment(a.task_id, 'pm', `PM guidance: ${guidance}`);
+          this.store.appendEvent(a.task_id, null, 'comment_added', { author: 'pm' });
+        }
         commands.unblock(a.task_id);
         return `Unblocked ${a.task_id}.`;
       }
@@ -1091,6 +1100,15 @@ export class KanbanMcpServer {
         this.requirePmTask(scope, a.task_id);
         const profile = a.profile.trim();
         if (!profile) throw new Error('profile is required');
+        // Same phantom-assignee guard as the PM kanban_create.
+        const workerNames = this.getProfiles()
+          .filter((p) => p.role === 'worker')
+          .map((p) => p.name);
+        if (workerNames.length > 0 && !workerNames.includes(profile)) {
+          throw new Error(
+            `unknown worker profile "${profile}". Valid profiles: ${workerNames.join(', ')}`
+          );
+        }
         commands.assign(a.task_id, profile);
         return `Reassigned ${a.task_id} to ${profile}.`;
       }
