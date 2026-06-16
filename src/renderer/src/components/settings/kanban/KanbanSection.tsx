@@ -141,14 +141,6 @@ export function KanbanSection(): React.JSX.Element | null {
             className="h-4 w-4"
           />
         </SettingRow>
-        <SettingRow label="PM autopilot (event-driven turns + digest)">
-          <input
-            type="checkbox"
-            checked={k.pm.autopilotEnabled}
-            onChange={(e) => patch({ pm: { ...k.pm, autopilotEnabled: e.target.checked } })}
-            className="h-4 w-4"
-          />
-        </SettingRow>
         <SettingRow label="Max concurrent orchestrator runs">
           <input
             type="number"
@@ -163,6 +155,18 @@ export function KanbanSection(): React.JSX.Element | null {
               })
             }
             className="w-28 rounded bg-neutral-800 px-2 py-1 text-sm border border-neutral-700"
+          />
+        </SettingRow>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold text-neutral-300">PM agent</h3>
+        <SettingRow label="PM autopilot (event-driven turns + digest)">
+          <input
+            type="checkbox"
+            checked={k.pm.autopilotEnabled}
+            onChange={(e) => patch({ pm: { ...k.pm, autopilotEnabled: e.target.checked } })}
+            className="h-4 w-4"
           />
         </SettingRow>
       </section>

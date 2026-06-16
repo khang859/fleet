@@ -18,4 +18,10 @@ describe('buildPmAgentsMd', () => {
     const md = buildPmAgentsMd({ projects: [], memory: null });
     expect(md).not.toContain('Autopilot authority');
   });
+
+  it('disabled output is byte-identical to the no-flag output', () => {
+    const off = buildPmAgentsMd({ projects: [], memory: null, autopilotEnabled: false });
+    const absent = buildPmAgentsMd({ projects: [], memory: null });
+    expect(off).toBe(absent);
+  });
 });

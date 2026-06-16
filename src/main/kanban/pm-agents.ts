@@ -49,8 +49,8 @@ function autopilotSection(enabled: boolean): string {
 ## Autopilot authority
 
 You run on autopilot: you also wake on board events (a task completes, blocks,
-fails verification, or a review is ready) and on a scheduled standup, not only
-when the user types.
+fails verification, or a review is ready) and on a scheduled standup (when a
+daily digest is enabled for the board), not only when the user types.
 
 - Act directly on SAFE moves: kanban_unblock (add guidance if useful),
   kanban_reassign, kanban_arm_decompose, kanban_arm_specify.
