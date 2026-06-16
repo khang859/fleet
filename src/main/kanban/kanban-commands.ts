@@ -1076,6 +1076,10 @@ export class KanbanCommands {
    * executor throws, including review actions that return ok:false) marks the
    * proposal 'failed' with the message rather than rethrowing — the renderer
    * surfaces status==='failed' + error. Returns the updated proposal either way.
+   *
+   * Executor side effects are NOT rolled back on failure: e.g. a conflicting
+   * mergeReviewTask still spawns a resolve run even though the proposal is marked
+   * 'failed'. The failure message explains what happened.
    */
   approveProposal(id: string): PmProposal {
     const p = this.store.getProposal(id);
@@ -1094,6 +1098,9 @@ export class KanbanCommands {
   }
 
   dismissProposal(id: string): void {
+    const p = this.store.getProposal(id);
+    if (!p) throw new CodedError('proposal not found', 'NOT_FOUND');
+    if (p.status !== 'pending') return; // already resolved — dismiss is a no-op
     this.store.resolveProposal(id, 'dismissed', null);
   }
 
