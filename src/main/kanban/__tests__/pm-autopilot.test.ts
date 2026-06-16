@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PmAutopilot, type PmAutopilotDeps } from '../pm-autopilot';
+import { PmAutopilot, isCronDue, type PmAutopilotDeps } from '../pm-autopilot';
 import type { TaskEvent } from '../../../shared/kanban-types';
 
 function evt(kind: string, taskId = 't1'): TaskEvent {
@@ -89,5 +89,65 @@ describe('PmAutopilot event turns', () => {
     await Promise.resolve();
     expect(runTurn).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
+  });
+});
+
+describe('PmAutopilot digest', () => {
+  it('fires a digest turn when cron is due and stamps the watermark', async () => {
+    const runTurn = vi.fn(async () => Promise.resolve());
+    const stamp = vi.fn();
+    const pa = new PmAutopilot({
+      now: () => 0,
+      getConfig: () => ({ autopilotEnabled: true, eventMinGapMs: 30_000, coalesceWindowMs: 2_000 }),
+      getBoardForTask: () => 'b1',
+      runTurn,
+      buildBriefing: () => 'x',
+      log: () => {},
+      listDigestBoards: () => [{ boardId: 'b1', digestCron: '* * * * *', lastDigestAt: null }],
+      buildDigest: () => 'standup please',
+      stampDigest: stamp
+    });
+    await pa.checkDigests();
+    expect(runTurn).toHaveBeenCalledWith('b1', 'standup please', 'digest');
+    expect(stamp).toHaveBeenCalledWith('b1');
+  });
+
+  it('does not fire when autopilot is disabled', async () => {
+    const runTurn = vi.fn(async () => Promise.resolve());
+    const pa = new PmAutopilot({
+      now: () => 0,
+      getConfig: () => ({
+        autopilotEnabled: false,
+        eventMinGapMs: 30_000,
+        coalesceWindowMs: 2_000
+      }),
+      getBoardForTask: () => 'b1',
+      runTurn,
+      buildBriefing: () => 'x',
+      log: () => {},
+      listDigestBoards: () => [{ boardId: 'b1', digestCron: '* * * * *', lastDigestAt: null }],
+      buildDigest: () => 'standup please',
+      stampDigest: () => {}
+    });
+    await pa.checkDigests();
+    expect(runTurn).not.toHaveBeenCalled();
+  });
+
+  describe('isCronDue', () => {
+    it('treats a null watermark as due for an every-minute cron', () => {
+      expect(isCronDue('* * * * *', null, 0)).toBe(true);
+    });
+
+    it('is not due when the next fire is still ahead of now', () => {
+      // last ran at t=0; an hourly cron next fires at +1h, which is after now=+1min.
+      const minute = 60_000;
+      expect(isCronDue('0 * * * *', 0, minute)).toBe(false);
+    });
+
+    it('is due once the cron boundary has passed since the watermark', () => {
+      const hour = 60 * 60 * 1000;
+      // last ran at t=0; an hourly cron next fires at +1h; now is +2h → due.
+      expect(isCronDue('0 * * * *', 0, 2 * hour)).toBe(true);
+    });
   });
 });

@@ -1,4 +1,5 @@
 import type { TaskEvent, PmTurnOrigin } from '../../shared/kanban-types';
+import { computeNextRun } from './schedule';
 
 /** Event kinds that warrant a PM event-turn (the actual appendEvent kind strings). */
 const TRIGGER_KINDS = new Set([
@@ -26,6 +27,26 @@ export interface PmAutopilotDeps {
   /** Build the turn prompt from a coalesced batch of events. */
   buildBriefing: (events: TaskEvent[]) => string;
   log: (msg: string, meta?: Record<string, unknown>) => void;
+  /** Boards with a digest schedule, plus their cron + last-fired watermark. */
+  listDigestBoards?: () => Array<{
+    boardId: string;
+    digestCron: string | null;
+    lastDigestAt: number | null;
+  }>;
+  /** Build the standup-digest prompt for a board from activity since `since`. */
+  buildDigest?: (boardId: string, since: number) => string;
+  /** Record that a board's digest fired (advances the watermark). */
+  stampDigest?: (boardId: string) => void;
+}
+
+/** Look back a day when a board has never run a digest, so a due cron fires. */
+const DIGEST_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
+/** True if `cron` should have fired between `lastAt` (exclusive) and `now`. */
+export function isCronDue(cron: string, lastAt: number | null, now: number): boolean {
+  const from = lastAt ?? now - DIGEST_LOOKBACK_MS; // never run before → look back a day
+  const next = computeNextRun({ kind: 'cron', expr: cron }, from);
+  return next <= now;
 }
 
 interface BoardBatch {
@@ -56,6 +77,33 @@ export class PmAutopilot {
       this.buffer(boardId, event);
     } catch (err) {
       this.deps.log('pm-autopilot onEvent failed', {
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
+  /** Fire any due digests. Call from the dispatcher's periodic tick. */
+  async checkDigests(): Promise<void> {
+    try {
+      const { listDigestBoards, buildDigest, stampDigest } = this.deps;
+      if (!listDigestBoards || !buildDigest || !stampDigest) return; // digest not wired
+      if (!this.deps.getConfig().autopilotEnabled) return;
+      const now = this.deps.now();
+      for (const b of listDigestBoards()) {
+        if (!b.digestCron) continue;
+        if (!isCronDue(b.digestCron, b.lastDigestAt, now)) continue;
+        const since = b.lastDigestAt ?? now - DIGEST_LOOKBACK_MS;
+        const prompt = buildDigest(b.boardId, since);
+        stampDigest(b.boardId); // stamp before the turn so a crash can't double-fire
+        await this.deps.runTurn(b.boardId, prompt, 'digest').catch((err) =>
+          this.deps.log('digest turn failed', {
+            boardId: b.boardId,
+            error: err instanceof Error ? err.message : String(err)
+          })
+        );
+      }
+    } catch (err) {
+      this.deps.log('checkDigests failed', {
         error: err instanceof Error ? err.message : String(err)
       });
     }

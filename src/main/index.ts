@@ -54,6 +54,7 @@ import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { PmChatService } from './kanban/pm-chat-service';
 import { PmAutopilot, buildEventBriefing } from './kanban/pm-autopilot';
+import { buildDigestContext } from './kanban/pm-digest';
 import { RuneFileChatService } from './rune-assist/rune-file-chat-service';
 import { registerRuneAssistIpc } from './rune-assist/rune-assist-ipc';
 import {
@@ -116,6 +117,7 @@ let kanbanCommands: KanbanCommands | undefined;
 let kanbanNotifier: KanbanNotifier | null = null;
 let pmChat: PmChatService | undefined;
 let pmAutopilot: PmAutopilot | undefined;
+let pmDigestTimer: ReturnType<typeof setInterval> | undefined;
 let runeAssist: RuneFileChatService | null = null;
 
 function requireKanbanStore(): KanbanStore {
@@ -1232,8 +1234,27 @@ void app.whenReady().then(async () => {
     },
     buildBriefing: (events) =>
       buildEventBriefing(events, (id) => kanbanStore?.getTask(id)?.title ?? null),
-    log: (msg, meta) => log.warn(msg, meta ?? {})
+    log: (msg, meta) => log.warn(msg, meta ?? {}),
+    listDigestBoards: () =>
+      (kanbanStore?.listBoards() ?? []).map((b) => {
+        const cfg = kanbanStore?.getDigestConfig(b.slug);
+        return {
+          boardId: b.slug,
+          digestCron: cfg?.digestCron ?? null,
+          lastDigestAt: cfg?.lastDigestAt ?? null
+        };
+      }),
+    buildDigest: (boardId, since) =>
+      buildDigestContext({
+        events: kanbanStore?.listBoardEventsSince(boardId, since) ?? [],
+        pendingProposals: kanbanStore?.listProposals(boardId, { status: 'pending' }).length ?? 0,
+        resolveTitle: (id) => kanbanStore?.getTask(id)?.title ?? null
+      }),
+    stampDigest: (boardId) => kanbanStore?.stampLastDigest(boardId)
   });
+  // Drive digest scheduling at cron's 1-minute granularity. stamp-before-run in
+  // checkDigests makes piggybacking on a coarse tick safe (no double-fire).
+  pmDigestTimer = setInterval(() => void pmAutopilot?.checkDigests(), 60_000);
   registerKanbanIpc(kanbanCommands, pmChat);
 
   runeAssist = new RuneFileChatService({
@@ -1322,6 +1343,7 @@ function shutdownAll(): void {
   annotateService.destroy();
   kanbanDispatcher?.stop();
   kanbanPrPoller?.stop();
+  if (pmDigestTimer) clearInterval(pmDigestTimer);
   pmAutopilot?.dispose();
   pmChat?.dispose();
   runeAssist?.dispose();
