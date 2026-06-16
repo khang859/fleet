@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tasks (
@@ -186,4 +186,18 @@ CREATE TABLE IF NOT EXISTS feature_suggestions (
 );
 CREATE INDEX IF NOT EXISTS idx_suggestions_board ON feature_suggestions(board_id);
 CREATE INDEX IF NOT EXISTS idx_suggestions_status ON feature_suggestions(status);
+
+CREATE TABLE IF NOT EXISTS pm_proposals (
+  id TEXT PRIMARY KEY,
+  board_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  rationale TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  error TEXT,
+  created_at INTEGER NOT NULL,
+  resolved_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_proposals_board ON pm_proposals(board_id);
+CREATE INDEX IF NOT EXISTS idx_proposals_status ON pm_proposals(status);
 `;

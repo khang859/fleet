@@ -38,7 +38,10 @@ import type {
   SuggestionStatus,
   CreateSuggestionInput,
   VerifyCommand,
-  ReviewVerdict
+  ReviewVerdict,
+  PmProposal,
+  PmProposalKind,
+  PmProposalStatus
 } from '../../shared/kanban-types';
 import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
@@ -1653,6 +1656,65 @@ export class KanbanStore {
     this.db
       .prepare('UPDATE feature_suggestions SET status=?, updated_at=? WHERE id=?')
       .run(status, this.now(), id);
+  }
+
+  createProposal(input: {
+    boardId: string;
+    kind: PmProposalKind;
+    targetId: string;
+    rationale: string;
+  }): PmProposal {
+    const id = randomUUID().slice(0, 8);
+    const ts = this.now();
+    this.db
+      .prepare(
+        `INSERT INTO pm_proposals (id, board_id, kind, target_id, rationale, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?)`
+      )
+      .run(id, input.boardId, input.kind, input.targetId, input.rationale, ts);
+    const p = this.getProposal(id);
+    if (!p) throw new Error('createProposal: failed to read back proposal');
+    return p;
+  }
+
+  getProposal(id: string): PmProposal | null {
+    const row = this.db.prepare('SELECT * FROM pm_proposals WHERE id=?').get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? this.rowToProposal(row) : null;
+  }
+
+  listProposals(boardId: string, filter: { status?: PmProposalStatus } = {}): PmProposal[] {
+    const where = ['board_id=@boardId'];
+    const params: Record<string, unknown> = { boardId };
+    if (filter.status) {
+      where.push('status=@status');
+      params.status = filter.status;
+    }
+    const rows = this.db
+      .prepare(`SELECT * FROM pm_proposals WHERE ${where.join(' AND ')} ORDER BY created_at DESC`)
+      .all(params) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToProposal(r));
+  }
+
+  resolveProposal(id: string, status: PmProposalStatus, error: string | null): void {
+    this.db
+      .prepare('UPDATE pm_proposals SET status=?, error=?, resolved_at=? WHERE id=?')
+      .run(status, error, this.now(), id);
+  }
+
+  private rowToProposal(r: Record<string, unknown>): PmProposal {
+    return {
+      id: String(r.id),
+      boardId: String(r.board_id),
+      kind: r.kind as PmProposalKind,
+      targetId: String(r.target_id),
+      rationale: String(r.rationale ?? ''),
+      status: r.status as PmProposalStatus,
+      error: (r.error as string | null) ?? null,
+      createdAt: Number(r.created_at),
+      resolvedAt: (r.resolved_at as number | null) ?? null
+    };
   }
 
   updateTask(id: string, fields: UpdateTaskFields): void {

@@ -283,6 +283,39 @@ export interface TaskEvent {
   createdAt: number;
 }
 
+export type PmProposalKind =
+  | 'merge_review_task'
+  | 'create_pr_for_task'
+  | 'accept_review_task'
+  | 'ship_feature'
+  | 'complete_task'
+  | 'archive_task';
+
+export type PmProposalStatus = 'pending' | 'accepted' | 'dismissed' | 'failed';
+
+export interface PmProposal {
+  id: string;
+  boardId: string;
+  kind: PmProposalKind;
+  /** Task id, or feature id for ship_feature. */
+  targetId: string;
+  rationale: string;
+  status: PmProposalStatus;
+  /** Set when status becomes 'failed': the executor error surfaced to the user. */
+  error: string | null;
+  createdAt: number;
+  resolvedAt: number | null;
+}
+
+export const PM_PROPOSAL_KINDS = [
+  'merge_review_task',
+  'create_pr_for_task',
+  'accept_review_task',
+  'ship_feature',
+  'complete_task',
+  'archive_task'
+] as const satisfies readonly PmProposalKind[];
+
 export interface TaskComment {
   id: number;
   taskId: string;
