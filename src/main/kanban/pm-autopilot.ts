@@ -86,6 +86,7 @@ export class PmAutopilot {
     const { coalesceWindowMs } = this.deps.getConfig();
     b.coalesceTimer = setTimeout(() => {
       b.coalesceTimer = null;
+      if (!this.batches.has(boardId)) return; // disposed; don't resurrect the entry
       this.maybeFlush(boardId);
     }, coalesceWindowMs);
   }
@@ -99,6 +100,7 @@ export class PmAutopilot {
       // Inside the min-gap: defer the flush to the watermark (once).
       b.gapTimer ??= setTimeout(() => {
         b.gapTimer = null;
+        if (!this.batches.has(boardId)) return; // disposed; don't resurrect the entry
         this.maybeFlush(boardId);
       }, b.nextAllowedAt - now);
       return;

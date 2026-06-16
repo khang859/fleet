@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PmAutopilot, type PmAutopilotDeps } from '../pm-autopilot';
 import type { TaskEvent } from '../../../shared/kanban-types';
 
@@ -21,6 +21,10 @@ function makeDeps(overrides: Partial<PmAutopilotDeps> = {}) {
 }
 
 describe('PmAutopilot event turns', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('ignores events when autopilot is disabled', () => {
     vi.useFakeTimers();
     const { deps, runTurn } = makeDeps({
@@ -76,7 +80,10 @@ describe('PmAutopilot event turns', () => {
     vi.advanceTimersByTime(2_000);
     expect(runTurn).toHaveBeenCalledTimes(1);
 
-    // after the gap elapses it fires
+    // after the gap elapses it fires. Both clocks must move: advance() moves the
+    // manual clock that deps.now() reads (the min-gap watermark), while
+    // vi.advanceTimersByTime() drives setTimeout scheduling — together they fire
+    // the deferred gap-timer AND satisfy the now() >= nextAllowedAt check.
     advance(30_000);
     vi.advanceTimersByTime(30_000);
     await Promise.resolve();
