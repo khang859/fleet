@@ -1985,6 +1985,14 @@ export class KanbanStore {
       .run(this.now(), taskId);
   }
 
+  /** Spec-stage tasks that have completed (status done), for approval-proposal raising. */
+  doneSpecTasks(): Task[] {
+    const rows = this.db
+      .prepare("SELECT * FROM tasks WHERE pipeline_stage='spec' AND status='done'")
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
   /** Review-status worktree tasks awaiting an agent verdict (candidates for reviewTasks()). */
   reviewPendingTasks(): Task[] {
     const rows = this.db

@@ -1764,3 +1764,101 @@ describe('KanbanDispatcher.detectFeatureGroups', () => {
     store.close();
   });
 });
+
+describe('KanbanDispatcher.raiseSpecApprovals', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('creates an approve_spec proposal when a done spec has children (autopilot OFF)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    const spec = store.createTask({ title: 'Spec', pipelineStage: 'spec', featureId: f.id });
+    store.completeTask(spec.id, 'plan summary'); // status='done' + result
+    const gate = store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      systemKind: 'pipeline_gate',
+      featureId: f.id
+    });
+    const child = store.createTask({
+      title: 'impl',
+      status: 'todo',
+      pipelineStage: 'implement',
+      featureId: f.id
+    });
+    store.addLink(spec.id, gate.id);
+    store.addLink(gate.id, child.id);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig }
+    });
+    disp['raiseSpecApprovals']();
+    const props = store.listProposals('default', { status: 'pending' });
+    expect(props.map((p) => p.kind)).toContain('approve_spec');
+    expect(props.find((p) => p.kind === 'approve_spec')?.targetId).toBe(gate.id);
+    store.close();
+  });
+
+  it('is idempotent: a second call raises no further proposal', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    const spec = store.createTask({ title: 'Spec', pipelineStage: 'spec', featureId: f.id });
+    store.completeTask(spec.id, 'plan summary');
+    const gate = store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      systemKind: 'pipeline_gate',
+      featureId: f.id
+    });
+    const child = store.createTask({
+      title: 'impl',
+      status: 'todo',
+      pipelineStage: 'implement',
+      featureId: f.id
+    });
+    store.addLink(spec.id, gate.id);
+    store.addLink(gate.id, child.id);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig }
+    });
+    disp['raiseSpecApprovals']();
+    disp['raiseSpecApprovals']();
+    expect(store.listProposals('default', { status: 'pending' })).toHaveLength(1);
+    store.close();
+  });
+
+  it('blocks the spec and raises no proposal on empty fan-out', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    const spec = store.createTask({ title: 'Spec', pipelineStage: 'spec', featureId: f.id });
+    store.completeTask(spec.id, null);
+    const gate = store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      systemKind: 'pipeline_gate',
+      featureId: f.id
+    });
+    store.addLink(spec.id, gate.id);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig }
+    });
+    disp['raiseSpecApprovals']();
+    expect(store.getTask(spec.id)?.status).toBe('blocked');
+    expect(store.listProposals('default', { status: 'pending' })).toHaveLength(0);
+    store.close();
+  });
+});

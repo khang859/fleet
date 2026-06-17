@@ -891,6 +891,43 @@ export class KanbanDispatcher {
     }
   }
 
+  /**
+   * For each freshly-done spec stage: with ≥1 implement child, create an approve_spec
+   * proposal targeting the gate task (PM-agent-independent — created at the store level).
+   * With zero children, block the spec ("architect produced no implementation tasks") and
+   * raise NO proposal. Idempotent via a one-shot 'spec_approval_raised' event.
+   */
+  private raiseSpecApprovals(): void {
+    for (const spec of this.store.doneSpecTasks()) {
+      if (this.store.listEvents(spec.id).some((e) => e.kind === 'spec_approval_raised')) continue;
+      const gateId = this.store
+        .childrenOf(spec.id)
+        .find((id) => this.store.getTask(id)?.pipelineStage === 'gate');
+      if (!gateId) continue;
+      const children = this.store
+        .childrenOf(gateId)
+        .filter((id) => this.store.getTask(id)?.pipelineStage === 'implement');
+      if (children.length === 0) {
+        this.store.blockTask(spec.id, 'architect produced no implementation tasks');
+        this.store.appendEvent(spec.id, null, 'spec_approval_raised', { empty: true });
+        continue;
+      }
+      const rationale =
+        `Architect plan: ${spec.result ?? spec.title}. ` +
+        `${children.length} implementation task(s). Review explore findings before approving.`;
+      this.store.createProposal({
+        boardId: spec.boardId,
+        kind: 'approve_spec',
+        targetId: gateId,
+        rationale
+      });
+      this.store.appendEvent(spec.id, null, 'spec_approval_raised', {
+        gateId,
+        children: children.length
+      });
+    }
+  }
+
   /** Auto-integrate completed feature tasks and sync completed features. Local git only — no push/PR (that is #229). */
   integrate(): void {
     if (!this.deps.config.autoIntegrate) return;
@@ -1212,6 +1249,7 @@ export class KanbanDispatcher {
     this.promote();
     this.claimAndSpawn();
     this.reviewTasks();
+    this.raiseSpecApprovals();
     this.integrate();
     this.sweepArtifacts();
     this.sweepMergedWorktrees();
