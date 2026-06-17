@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   Terminal,
@@ -146,6 +146,9 @@ export function App(): React.JSX.Element {
   );
   const settings = useSettingsStore((s) => s.settings);
   const focusedPaneCwd = useCwdStore((s) => (activePaneId ? s.cwds.get(activePaneId) : undefined));
+  // Stable per-pane reference so consumers can safely use it in effect deps
+  // (getPaneContextById returns a fresh object for WSL panes on every call).
+  const activePathContext = useMemo(() => getPaneContextById(activePaneId), [activePaneId]);
 
   // Track serialized pane content for restored tabs (consumed once on mount)
   const restoredPanesRef = useRef<Map<string, Map<string, string>>>(new Map());
@@ -1090,7 +1093,8 @@ export function App(): React.JSX.Element {
         isOpen={envEditorOpen}
         onClose={() => setEnvEditorOpen(false)}
         cwd={focusedPaneCwd}
-        pathContext={getPaneContextById(activePaneId)}
+        paneId={activePaneId}
+        pathContext={activePathContext}
       />
       <AnnotateModal open={false} onClose={() => {}} />
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />

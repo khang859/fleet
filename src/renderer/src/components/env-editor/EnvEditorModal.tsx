@@ -32,11 +32,13 @@ export function EnvEditorModal({
   isOpen,
   onClose,
   cwd,
+  paneId,
   pathContext
 }: {
   isOpen: boolean;
   onClose: () => void;
   cwd: string | undefined;
+  paneId: string | null;
   pathContext?: PathContext;
 }): React.JSX.Element | null {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -57,10 +59,6 @@ export function EnvEditorModal({
   const [newFileOpen, setNewFileOpen] = useState(false);
   const [newFileError, setNewFileError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isOpen) setRoot(cwd);
-  }, [isOpen, cwd]);
-
   const reload = useCallback(async () => {
     if (!root) {
       setFiles([]);
@@ -70,13 +68,29 @@ export function EnvEditorModal({
     setFiles(list);
   }, [root, pathContext]);
 
+  // On open, resolve the pane's live cwd (in case the folder was renamed/moved
+  // out from under the cached path), then list from it — one round-trip, no
+  // stale-root flash.
   useEffect(() => {
-    if (isOpen) {
-      setError(null);
-      setExternalChange(false);
-      void reload();
-    }
-  }, [isOpen, reload]);
+    if (!isOpen) return;
+    let cancelled = false;
+    setError(null);
+    setExternalChange(false);
+    void (async () => {
+      let activeRoot = cwd;
+      if (paneId) {
+        const live = await window.fleet.pty.resolveCwd(paneId, pathContext);
+        if (cancelled) return;
+        if (live) activeRoot = live;
+      }
+      setRoot(activeRoot);
+      const list = activeRoot ? await window.fleet.envEditor.list(activeRoot, pathContext) : [];
+      if (!cancelled) setFiles(list);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, cwd, paneId, pathContext]);
 
   useEffect(() => {
     if (isOpen) panelRef.current?.focus();
@@ -151,8 +165,10 @@ export function EnvEditorModal({
     if (dir !== null) {
       setSelected(null);
       setRoot(dir);
+      const list = await window.fleet.envEditor.list(dir, pathContext);
+      setFiles(list);
     }
-  }, []);
+  }, [pathContext]);
 
   const writeFile = useCallback(
     async (force: boolean) => {
@@ -168,6 +184,12 @@ export function EnvEditorModal({
         );
         if (!res.ok && res.externalChange) {
           setExternalChange(true);
+          return;
+        }
+        if (!res.ok && res.missingDir) {
+          showToast(
+            'This folder no longer exists — it may have been moved or deleted. Run `cd` in the terminal to refresh.'
+          );
           return;
         }
         setOriginalText(text);

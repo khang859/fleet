@@ -21,10 +21,15 @@ export const EnvReadResultSchema = z.object({
 });
 export type EnvReadResult = z.infer<typeof EnvReadResultSchema>;
 
-/** ok:false + externalChange:true means the file changed on disk since read. */
+/**
+ * ok:false + externalChange:true means the file changed on disk since read.
+ * ok:false + missingDir:true means the parent folder no longer exists (e.g. it
+ * was renamed or moved out from under a stale path).
+ */
 export const EnvWriteResultSchema = z.object({
   ok: z.boolean(),
   externalChange: z.boolean().optional(),
+  missingDir: z.boolean().optional(),
   mtimeMs: z.number()
 });
 export type EnvWriteResult = z.infer<typeof EnvWriteResultSchema>;

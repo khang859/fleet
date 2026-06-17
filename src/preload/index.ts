@@ -221,7 +221,9 @@ const fleetApi = {
     onExit: (callback: (payload: PtyExitPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.PTY_EXIT, callback),
     onCwd: (callback: (payload: PtyCwdPayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.PTY_CWD, callback)
+      onChannel(IPC_CHANNELS.PTY_CWD, callback),
+    resolveCwd: (paneId: string, pathContext?: PathContext): Promise<string | null> =>
+      typedInvoke(IPC_CHANNELS.PTY_RESOLVE_CWD, paneId, pathContext)
   },
   layout: {
     save: async (req: LayoutSaveRequest): Promise<void> =>

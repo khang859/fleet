@@ -66,6 +66,15 @@ describe('env-editor fs ops', () => {
     expect(res.externalChange).toBe(true);
   });
 
+  it('returns missingDir instead of throwing when the parent folder is gone', () => {
+    // Simulate a folder that was renamed/deleted out from under a stale path.
+    const goneDir = join(root, 'renamed-away');
+    const p = join(goneDir, '.env');
+    const res = writeEnvFile(p, 'A=2\n');
+    expect(res.ok).toBe(false);
+    expect(res.missingDir).toBe(true);
+  });
+
   it('creates a file, rejecting non-.env names and collisions', () => {
     const { absPath } = createEnvFile(root, '.env.local');
     expect(existsSync(absPath)).toBe(true);

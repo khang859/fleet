@@ -66,6 +66,52 @@ describe('CwdPoller', () => {
     expect(changes).toContain('/tmp/test-cwd');
   });
 
+  it('resolveNow returns the live cwd and emits cwd-changed when it differs', async () => {
+    const ptyManager = makeMockPtyManager('/old-cwd');
+    poller = new CwdPoller(eventBus, ptyManager);
+
+    const changes: string[] = [];
+    eventBus.on('cwd-changed', (e) => changes.push(e.cwd));
+
+    const live = await poller.resolveNow('pane-1');
+
+    expect(live).toBe('/tmp/test-cwd');
+    expect(changes).toContain('/tmp/test-cwd');
+  });
+
+  it('resolveNow does not emit when the cwd is unchanged', async () => {
+    const ptyManager = makeMockPtyManager('/tmp/test-cwd');
+    poller = new CwdPoller(eventBus, ptyManager);
+
+    const changes: string[] = [];
+    eventBus.on('cwd-changed', (e) => changes.push(e.cwd));
+
+    const live = await poller.resolveNow('pane-1');
+
+    expect(live).toBe('/tmp/test-cwd');
+    expect(changes).toHaveLength(0);
+  });
+
+  it('resolveNow returns null for WSL panes (pidCwd is unreliable there)', async () => {
+    const ptyManager = makeMockPtyManager('/old-cwd');
+    poller = new CwdPoller(eventBus, ptyManager);
+
+    const live = await poller.resolveNow('pane-wsl', { kind: 'wsl', distro: 'Ubuntu' });
+
+    expect(live).toBeNull();
+    expect(pidCwd).not.toHaveBeenCalled();
+  });
+
+  it('resolveNow returns null when the pane has no pid', async () => {
+    const ptyManager = makeMockPtyManager('/old-cwd');
+    (ptyManager.getPid as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+    poller = new CwdPoller(eventBus, ptyManager);
+
+    const live = await poller.resolveNow('pane-gone');
+
+    expect(live).toBeNull();
+  });
+
   it('stopPolling clears the timer', async () => {
     const ptyManager = makeMockPtyManager('/old-cwd');
     poller = new CwdPoller(eventBus, ptyManager);
