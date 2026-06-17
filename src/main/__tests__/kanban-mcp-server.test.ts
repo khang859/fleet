@@ -9,6 +9,7 @@ import { KanbanCommands } from '../kanban/kanban-commands';
 import { createSwarm } from '../kanban/kanban-swarm';
 import { expandTemplate } from '../kanban/template-expander';
 import { FULL_FEATURE, MAX_FANOUT } from '../kanban/pipeline-templates';
+import { LearningsStore } from '../learnings/learnings-store';
 
 const TEST_DIR = join(tmpdir(), `fleet-kanban-mcp-test-${Date.now()}`);
 
@@ -1110,5 +1111,91 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
     server.registerRun('tok-blk', { kind: 'task', taskId: sys.id, runId: run.id, mode: 'suggest' });
     await rpc(`${base}?run=tok-blk`, 'tools/call', { name: 'kanban_block', arguments: { reason: 'nothing related' } });
     expect(store.getTask(sys.id)).toBeNull();
+  });
+});
+
+describe('KanbanMcpServer kanban_learning_create', () => {
+  let store: KanbanStore;
+  let learnings: LearningsStore;
+  let server: KanbanMcpServer;
+  let base: string;
+  const dir = join(TEST_DIR, `learn-${Date.now()}`);
+
+  beforeEach(async () => {
+    mkdirSync(dir, { recursive: true });
+    store = new KanbanStore(join(dir, 'mcp.db'));
+    learnings = new LearningsStore(join(dir, 'learnings.db'));
+    const dispatcher = new KanbanDispatcher(store, {
+      now: () => 1,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: {
+        failureLimit: 2,
+        claimGraceMs: 0,
+        maxInProgress: 3,
+        claimTtlMs: 1000,
+        autoDecompose: false,
+        autoAssign: false,
+        autoIntegrate: false,
+        autoReview: false,
+        maxDecompose: 1,
+        artifactRetentionDays: 0
+      }
+    });
+    const commands = new KanbanCommands(store, dispatcher, () => ({
+      workspaceKind: 'scratch',
+      maxRuntimeSeconds: null
+    }));
+    server = new KanbanMcpServer(store);
+    server.setCommands(commands);
+    server.setLearningsStore(learnings);
+    server.registerRun('pmtok', { kind: 'board', boardId: 'default' });
+    const port = await server.start(0);
+    base = `http://127.0.0.1:${port}/mcp`;
+  });
+
+  afterEach(async () => {
+    await server.stop();
+    store.close();
+    learnings.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('lists kanban_learning_create for a board token', async () => {
+    const r = await rpc(`${base}?run=pmtok`, 'tools/list');
+    const names = r.result.tools.map((t: { name: string }) => t.name);
+    expect(names).toContain('kanban_learning_create');
+  });
+
+  it('writes a learning tagged retro', async () => {
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_learning_create',
+      arguments: {
+        title: 'better-sqlite3 WAL needs busy_timeout',
+        body: 'Set busy_timeout to avoid SQLITE_BUSY under concurrent writes.',
+        tags: ['sqlite'],
+        feature_id: 'f1'
+      }
+    });
+    expect(String(r.result.content[0].text)).toMatch(/Learning saved/);
+    const all = learnings.search({});
+    expect(all).toHaveLength(1);
+    expect(all[0].title).toBe('better-sqlite3 WAL needs busy_timeout');
+    expect(all[0].tags).toContain('retro');
+    expect(all[0].tags).toContain('sqlite');
+    expect(all[0].sourceSessionId).toBe('f1');
+  });
+
+  it('rejects kanban_learning_create from a worker token', async () => {
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
+    store.claimTask(t.id, 'L', 100000);
+    const run = store.startRun(t.id, 'r', 1);
+    server.registerRun('wtok', { kind: 'task', taskId: t.id, runId: run.id, mode: 'work' }, 'L');
+    const r = await rpc(`${base}?run=wtok`, 'tools/call', {
+      name: 'kanban_learning_create',
+      arguments: { title: 'nope', body: 'nope' }
+    });
+    expect(r.error).toBeTruthy();
+    expect(String(r.error.message)).toMatch(/unknown tool/i);
   });
 });

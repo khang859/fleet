@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
 import type { KanbanCommands } from './kanban-commands';
+import type { LearningsStore } from '../learnings/learnings-store';
 import type {
   CreateTaskInput,
   RunMode,
@@ -542,6 +543,25 @@ const PM_TOOLS: McpTool[] = [
       },
       required: ['kind', 'target_id', 'rationale']
     }
+  },
+  {
+    name: 'kanban_learning_create',
+    description:
+      'Save a durable, reusable learning to the cross-project knowledge base (semantically ' +
+      'searchable by future workers). Use during a retro to capture a technical gotcha, a ' +
+      'discovered constraint, or a pattern that worked. Pass feature_id (the shipped feature) ' +
+      'so a re-run does not duplicate. Board-process notes belong in MEMORY.md, not here.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        body: { type: 'string' },
+        tags: { type: 'array', items: { type: 'string' } },
+        project: { type: 'string' },
+        feature_id: { type: 'string' }
+      },
+      required: ['title', 'body']
+    }
   }
 ];
 
@@ -629,6 +649,7 @@ export class KanbanMcpServer {
   private commands: KanbanCommands | null = null;
   private verifyRunner: VerifyRunner | null = null;
   private kanbanHome: string | null = null;
+  private learningsStore: LearningsStore | null = null;
   private getProfiles: () => Array<Pick<WorkerProfile, 'name' | 'role'>>;
   constructor(
     store: KanbanStore,
@@ -656,6 +677,11 @@ export class KanbanMcpServer {
   /** Inject the kanban home so PM doc references can be validated against pm/<board>/docs. */
   setKanbanHome(home: string): void {
     this.kanbanHome = home;
+  }
+
+  /** Inject the learnings KB so the PM's retro turn can persist durable learnings. */
+  setLearningsStore(store: LearningsStore): void {
+    this.learningsStore = store;
   }
 
   /** Returns an error message, or null when every doc name is safe and present. */
@@ -1116,6 +1142,30 @@ export class KanbanMcpServer {
           }
           const suffix = preview.truncated ? '\n\n…(truncated)' : '';
           return this.text(res, rpcReq.id, (preview.text ?? '') + suffix);
+        }
+        case 'kanban_learning_create': {
+          const ls = this.learningsStore;
+          if (!ls) return this.rpcError(res, rpcReq.id, 'learnings store is not available');
+          const a = z
+            .object({
+              title: z.string().min(1),
+              body: z.string().min(1),
+              tags: z.array(z.string()).optional(),
+              project: z.string().optional(),
+              feature_id: z.string().optional()
+            })
+            .parse(args);
+          const defaultProject = this.store
+            .listProjects(scope.boardId)
+            .find((p) => p.isDefault)?.name;
+          const learning = ls.create({
+            title: a.title,
+            body: a.body,
+            tags: ['retro', ...(a.tags ?? [])],
+            sourceProject: a.project ?? defaultProject,
+            sourceSessionId: a.feature_id
+          });
+          return this.text(res, rpcReq.id, `Learning saved: ${learning.id}`);
         }
         default:
           return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
