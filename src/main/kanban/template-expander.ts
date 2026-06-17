@@ -52,7 +52,7 @@ export function expandTemplate(
     return; // root stays a triage task and runs today's flow
   }
 
-  store.transaction(() => {
+  const expanded = store.transaction(() => {
     // 1. Ensure the root has a feature so all stages ship as one unit.
     let featureId = root.featureId;
     if (!featureId) {
@@ -126,15 +126,20 @@ export function expandTemplate(
     });
     store.addLink(gate.id, qa.id);
 
-    // 6. Idempotency marker + audit record of the laid-down graph.
-    store.appendEvent(root.id, null, PIPELINE_EXPANDED_EVENT, {
+    // The root is the planning anchor; complete it so it doesn't sit in triage.
+    // (completeTask is a plain DB write — no onEvent — so it stays in the transaction.)
+    store.completeTask(root.id, 'Pipeline expanded; stages laid down.');
+
+    return {
       featureId,
       exploreId: explore.id,
       specId: spec.id,
       gateId: gate.id,
       qaId: qa.id
-    });
-    // The root is the planning anchor; complete it so it doesn't sit in triage.
-    store.completeTask(root.id, 'Pipeline expanded; stages laid down.');
+    };
   });
+
+  // Idempotency marker + audit record of the laid-down graph. Emitted after commit
+  // so onEvent observers never fire mid-transaction (matches createSwarm's caller).
+  store.appendEvent(root.id, null, PIPELINE_EXPANDED_EVENT, expanded);
 }
