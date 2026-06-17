@@ -95,6 +95,11 @@ export function writeEnvFile(
       return { ok: false, externalChange: true, mtimeMs: current };
     }
   }
+  // The folder may have been renamed/moved out from under a stale path; report
+  // it cleanly instead of letting writeFileSync throw a cryptic temp-file ENOENT.
+  if (!existsSync(dirname(absPath))) {
+    return { ok: false, missingDir: true, mtimeMs: 0 };
+  }
   const tmp = `${absPath}.fleet-tmp-${process.pid}-${Date.now()}-${tmpCounter++}`;
   writeFileSync(tmp, text, 'utf8');
   try {

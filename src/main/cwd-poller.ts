@@ -42,6 +42,27 @@ export class CwdPoller {
     this.timers.set(paneId, timer);
   }
 
+  /**
+   * Resolve a pane's live cwd on demand (e.g. before opening the Env Editor, in
+   * case the folder was renamed/moved out from under the cached path). Emits a
+   * `cwd-changed` event if it differs so the rest of the app stays in sync.
+   * Returns the resolved cwd, or null if it can't be determined (no pid, or a
+   * WSL pane where pidCwd is unreliable — those only update via OSC 7).
+   */
+  async resolveNow(paneId: string, pathContext: PathContext = 'posix'): Promise<string | null> {
+    if (typeof pathContext === 'object' && pathContext.kind === 'wsl') {
+      return null;
+    }
+    const pid = this.ptyManager.getPid(paneId);
+    if (pid === undefined) return null;
+    const cwd = await readProcCwd(pid);
+    if (!cwd) return null;
+    if (cwd !== this.ptyManager.getCwd(paneId)) {
+      this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd, source: 'poll' });
+    }
+    return cwd;
+  }
+
   markOsc7Seen(paneId: string): void {
     this.osc7Seen.add(paneId);
   }
