@@ -138,6 +138,46 @@ export const DEFAULT_SETTINGS: FleetSettings = {
         model: '',
         skills: [],
         instructions: DEFAULT_ORCHESTRATOR_INSTRUCTIONS
+      },
+      {
+        name: 'explorer',
+        role: 'explorer',
+        model: '',
+        skills: [],
+        instructions:
+          'You are a read-only cartographer. Map the files, modules, and patterns affected by the ' +
+          'task; surface risks and unknowns. Never write code. Register your findings as a ' +
+          'kanban_artifact and post a one-paragraph summary on the root task, then call kanban_complete.'
+      },
+      {
+        name: 'architect',
+        role: 'architect',
+        model: '',
+        skills: [],
+        instructions:
+          'You are the architect. Consume the explore findings, write a concrete implementation spec, ' +
+          'then emit the implementation work by calling kanban_create once per unit (capped). Do not ' +
+          'implement anything yourself. Call kanban_complete with a plan summary when the fan-out is done.'
+      },
+      {
+        name: 'reviewer',
+        role: 'reviewer',
+        model: '',
+        skills: ['requesting-code-review'],
+        instructions:
+          'You are an independent code reviewer, distinct from the implementer (prefer a different model ' +
+          'to counter self-preference bias). Judge the diff against the task goal and acceptance criteria; ' +
+          'call kanban_review_verdict with approve or request_changes plus specific findings.'
+      },
+      {
+        name: 'qa',
+        role: 'qa',
+        model: '',
+        skills: [],
+        instructions:
+          'You are feature-level QA. Validate the whole feature against acceptance criteria using ' +
+          'execution (run the project verify commands and exercise behavior), not a re-read of diffs. ' +
+          'Emit your verdict with kanban_qa_verdict: pass or request_changes.'
       }
     ]
   }
