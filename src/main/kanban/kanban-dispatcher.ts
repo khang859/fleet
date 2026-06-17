@@ -19,7 +19,7 @@ import {
 } from './workspace';
 import { readLogTail } from './spawn-worker';
 import { expandTemplate, PIPELINE_EXPANDED_EVENT } from './template-expander';
-import { getTemplate } from './pipeline-templates';
+import { getTemplate, QA_ATTEMPT_CAP } from './pipeline-templates';
 
 const log = createLogger('kanban-dispatcher');
 
@@ -931,6 +931,30 @@ export class KanbanDispatcher {
     }
   }
 
+  /**
+   * Handle QA request_changes: re-arm the feature's implement children for a fix run, once
+   * per qa_changes_requested event, bounded by QA_ATTEMPT_CAP. On cap exhaustion mark the
+   * qa task blocked and emit a 'blocked' event (the #233 autopilot trigger surfaces it).
+   */
+  private processQaChanges(): void {
+    for (const qa of this.store.qaTasksNeedingRearm()) {
+      if (!qa.featureId) continue;
+      const attempts = this.store.listEvents(qa.id).filter((e) => e.kind === 'qa_rearmed').length;
+      if (attempts >= QA_ATTEMPT_CAP) {
+        this.store.blockTask(qa.id, `QA still failing after ${QA_ATTEMPT_CAP} attempt(s)`);
+        this.store.appendEvent(qa.id, null, 'blocked', { reason: 'qa_attempt_cap' });
+        continue;
+      }
+      // Re-arm implement children: set them back to ready with the QA findings as guidance.
+      for (const childId of this.store.implementChildrenOf(qa.id)) {
+        this.store.setStatus(childId, 'ready');
+      }
+      this.store.setQaVerdict(qa.featureId, null); // clear so the next QA run can re-verdict
+      this.store.setStatus(qa.id, 'todo'); // qa re-gates on the children again
+      this.store.appendEvent(qa.id, null, 'qa_rearmed', { attempt: attempts + 1 });
+    }
+  }
+
   /** Auto-integrate completed feature tasks and sync completed features. Local git only — no push/PR (that is #229). */
   integrate(): void {
     if (!this.deps.config.autoIntegrate) return;
@@ -1076,6 +1100,11 @@ export class KanbanDispatcher {
    */
   private markFeaturePrReady(feature: Feature): void {
     if (feature.prState !== 'draft' || feature.prNumber == null || !feature.repoPath) return;
+    // Pipeline features gate PR-ready on a passing QA verdict. A feature that has been
+    // QA'd (verdict non-null) but not passed must wait; non-pipeline features (verdict
+    // null AND no qa task) are unaffected.
+    if (feature.qaVerdict !== null && feature.qaVerdict !== 'pass') return;
+    if (feature.qaVerdict === null && this.store.featureHasQaStage(feature.id)) return;
     const r = this.ops.markPrReady({ repoPath: feature.repoPath, prNumber: feature.prNumber });
     if (r.ok) {
       this.store.setFeaturePrState(feature.id, 'open');
@@ -1253,6 +1282,7 @@ export class KanbanDispatcher {
     this.claimAndSpawn();
     this.reviewTasks();
     this.raiseSpecApprovals();
+    this.processQaChanges();
     this.integrate();
     this.sweepArtifacts();
     this.sweepMergedWorktrees();

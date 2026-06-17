@@ -1978,6 +1978,34 @@ export class KanbanStore {
       .run({ id: featureId, v: verdict, ts: this.now() });
   }
 
+  /** True when a feature has a qa-stage task (it is a pipeline feature awaiting QA). */
+  featureHasQaStage(featureId: string): boolean {
+    const row = this.db
+      .prepare("SELECT 1 FROM tasks WHERE feature_id=? AND pipeline_stage='qa' LIMIT 1")
+      .get(featureId);
+    return row != null;
+  }
+
+  /**
+   * qa-stage tasks whose feature verdict is request_changes (need a re-arm cycle). Excludes
+   * already-blocked qa tasks: once a task is blocked at the cap its verdict stays
+   * request_changes, so without this filter it would be reselected and re-blocked every tick.
+   */
+  qaTasksNeedingRearm(): Task[] {
+    const rows = this.db
+      .prepare(
+        `SELECT t.* FROM tasks t JOIN features f ON f.id = t.feature_id
+          WHERE t.pipeline_stage='qa' AND f.qa_verdict='request_changes' AND t.status != 'blocked'`
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  /** Implement-stage tasks linked as parents of a qa task (the children QA waits on). */
+  implementChildrenOf(qaTaskId: string): string[] {
+    return this.parentsOf(qaTaskId).filter((id) => this.getTask(id)?.pipelineStage === 'implement');
+  }
+
   incrementReviewAttempts(taskId: string): void {
     this.db
       .prepare('UPDATE tasks SET review_attempts = review_attempts + 1, updated_at=? WHERE id=?')
