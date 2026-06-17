@@ -20,6 +20,7 @@ import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-sw
 import { finalizeWorktree, reviewStat, checkMergeConflicts, headSha } from './workspace';
 import { pmDocsDir } from './pm-paths';
 import { readArtifactPreview } from './artifact-files';
+import { MAX_FANOUT } from './pipeline-templates';
 
 const log = createLogger('kanban-mcp');
 
@@ -258,6 +259,23 @@ const RESOLVE_TOOLS: McpTool[] = WORKER_TOOLS.filter((t) =>
     t.name
   )
 );
+
+/**
+ * Spec-stage (architect) tools: read the task + explore artifact, fan out implement
+ * children via kanban_create (the create handler auto-wires links/feature), then finish.
+ */
+const SPEC_TOOLS: McpTool[] = [
+  ...WORKER_TOOLS.filter((t) =>
+    [
+      'kanban_show',
+      'kanban_comment',
+      'kanban_heartbeat',
+      'kanban_complete',
+      'kanban_block'
+    ].includes(t.name)
+  ),
+  ...ORCHESTRATOR_EXTRA_TOOLS.filter((t) => t.name === 'kanban_create')
+];
 
 const SUGGEST_TOOLS: McpTool[] = [
   ...WORKER_TOOLS.filter((t) => t.name === 'kanban_show'),
@@ -569,6 +587,7 @@ function toolsForMode(mode: RunMode): McpTool[] {
   if (mode === 'specify') return SPECIFY_TOOLS;
   if (mode === 'assign') return ASSIGN_TOOLS;
   if (mode === 'resolve') return RESOLVE_TOOLS;
+  if (mode === 'spec') return SPEC_TOOLS;
   if (mode === 'suggest') return SUGGEST_TOOLS;
   if (mode === 'review') return REVIEW_TOOLS;
   return WORKER_TOOLS;
@@ -748,6 +767,14 @@ export class KanbanMcpServer {
       return { workspaceKind: 'dir', workspacePath: task.workspacePath, ...feature };
     }
     return { ...feature };
+  }
+
+  /** For a spec-stage task, resolve the pipeline gate/qa task ids (feature-keyed; no parent walk). */
+  private pipelineAnchor(
+    specTask: Task
+  ): { gateId: string; qaId: string; featureId: string } | null {
+    if (specTask.pipelineStage !== 'spec' || !specTask.featureId) return null;
+    return this.store.pipelineAnchorForFeature(specTask.featureId);
   }
 
   /** A task resolved by id, only if it lives on the PM scope's board. */
@@ -1516,6 +1543,60 @@ export class KanbanMcpServer {
               rpcReq.id,
               `unknown worker profile "${assignee}". Valid profiles: ${workerNames.join(', ')}`
             );
+          }
+          const anchor = this.pipelineAnchor(task);
+          if (anchor) {
+            // Idempotency keyed on the RUN, not on existence of children. The first child a
+            // run creates stamps `children_emitted` with that runId. A reclaim re-run is a
+            // DIFFERENT run: if a children_emitted event from another run exists, this run's
+            // fan-out is a duplicate — reject it so the prior children stand. Within the same
+            // run, subsequent kanban_create calls share the runId and are allowed.
+            const emittedEvents = this.store
+              .listEvents(task.id)
+              .filter((e) => e.kind === 'children_emitted');
+            const priorRun = emittedEvents.find((e) => e.payload?.runId !== scope.runId);
+            if (priorRun) {
+              return this.rpcError(
+                res,
+                rpcReq.id,
+                'children already emitted by a prior run; call kanban_complete'
+              );
+            }
+            // Implement children link off the gate (not the spec task), so count the
+            // gate's implement-stage children to enforce the cap.
+            const existing = this.store
+              .childrenOf(anchor.gateId)
+              .filter((id) => this.store.getTask(id)?.pipelineStage === 'implement').length;
+            if (existing >= MAX_FANOUT) {
+              return this.rpcError(
+                res,
+                rpcReq.id,
+                `fan-out cap reached (${MAX_FANOUT}); stop creating children and call kanban_complete`
+              );
+            }
+            const child = this.store.createTask({
+              title: a.title,
+              body: a.body ?? '',
+              assignee,
+              priority: a.priority ?? 0,
+              status: 'todo',
+              boardId: task.boardId,
+              ...this.inheritWorkspace(task),
+              featureId: anchor.featureId,
+              pipelineStage: 'implement'
+            });
+            this.store.addLink(anchor.gateId, child.id); // held until approval
+            this.store.addLink(child.id, anchor.qaId); // QA waits for it
+            this.store.appendEvent(child.id, scope.runId, 'task_created', {
+              by: 'architect',
+              parent: task.id
+            });
+            if (emittedEvents.length === 0) {
+              this.store.appendEvent(task.id, scope.runId, 'children_emitted', {
+                runId: scope.runId
+              });
+            }
+            return this.text(res, rpcReq.id, child.id);
           }
           const inherit = this.inheritWorkspace(task);
           const child = this.store.createTask({

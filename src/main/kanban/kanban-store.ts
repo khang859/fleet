@@ -1487,6 +1487,29 @@ export class KanbanStore {
     return row ? this.rowToFeature(row) : null;
   }
 
+  /**
+   * Resolve a full_feature pipeline's gate/qa task ids from the root's pipeline_expanded
+   * event, keyed by feature id. Returns null for non-pipeline features or fallback
+   * expansions (which record `fallback` and no stage ids).
+   */
+  pipelineAnchorForFeature(
+    featureId: string
+  ): { gateId: string; qaId: string; featureId: string } | null {
+    const row = this.db
+      .prepare(
+        "SELECT payload FROM task_events WHERE kind='pipeline_expanded' " +
+          "AND json_extract(payload, '$.featureId')=@f " +
+          "AND json_extract(payload, '$.fallback') IS NULL LIMIT 1"
+      )
+      .get({ f: featureId }) as { payload: string } | undefined;
+    if (!row) return null;
+    const p = JSON.parse(row.payload) as Record<string, unknown>;
+    const gateId = p.gateId;
+    const qaId = p.qaId;
+    if (typeof gateId !== 'string' || typeof qaId !== 'string') return null;
+    return { gateId, qaId, featureId };
+  }
+
   listFeatures(filter: { boardId?: string; status?: FeatureStatus } = {}): Feature[] {
     const where: string[] = [];
     const params: Record<string, unknown> = {};

@@ -10,6 +10,7 @@ import {
   agentHostFor
 } from './agent-context';
 import { renderProfileMarkdown } from './profile-file';
+import { MAX_FANOUT } from './pipeline-templates';
 import { learningsMcpEntry } from '../learnings/learnings-mcp-registrar';
 import { isValidProfileName, type WorkerProfile } from '../../shared/types';
 import type { RunMode, VerifyCommand } from '../../shared/kanban-types';
@@ -148,6 +149,17 @@ function buildPrompt(input: BuildWorkerInput): string {
       `When done, call kanban_complete with a one-line summary.`
     );
   }
+  if (mode === 'spec') {
+    return (
+      `spec kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `You are the architect. Read the explore artifact and this task with kanban_show, then write ` +
+      `a concrete implementation spec. Decompose the work into independent units: call kanban_create ` +
+      `once per unit with a clear title and a body containing that unit's slice of the spec. Do NOT ` +
+      `set parents, feature_id, or links — the system wires them. Cap your fan-out at ${MAX_FANOUT} ` +
+      `children. Do not implement anything. When the fan-out is complete, call kanban_complete with a ` +
+      `one-line plan summary.`
+    );
+  }
   const verifyBlock = input.verifyFailure
     ? `Your previous completion failed the project's verify commands. Fix the cause and call ` +
       `kanban_complete again — it will re-run verification.\n\n\`\`\`\n${input.verifyFailure}\n\`\`\`\n\n`
@@ -199,6 +211,7 @@ function requireToolsForMode(mode: RunMode): string | null {
     case 'decompose':
     case 'resolve':
     case 'explore':
+    case 'spec':
       return 'kanban_complete,kanban_block';
     case 'specify':
       return 'kanban_update';

@@ -7,6 +7,8 @@ import { KanbanMcpServer } from '../kanban/kanban-mcp-server';
 import { KanbanDispatcher } from '../kanban/kanban-dispatcher';
 import { KanbanCommands } from '../kanban/kanban-commands';
 import { createSwarm } from '../kanban/kanban-swarm';
+import { expandTemplate } from '../kanban/template-expander';
+import { FULL_FEATURE, MAX_FANOUT } from '../kanban/pipeline-templates';
 
 const TEST_DIR = join(tmpdir(), `fleet-kanban-mcp-test-${Date.now()}`);
 
@@ -316,6 +318,96 @@ describe('KanbanMcpServer', () => {
     });
     const childId = String(r.result.content[0].text).trim();
     expect(store.parentsOf(childId).sort()).toEqual([dep.id, parent.id].sort());
+  });
+
+  // --- Spec-stage fan-out (full_feature pipeline) -------------------------------
+
+  /** Expand a fresh full_feature root and return its laid-down stage ids. */
+  function buildPipeline(): {
+    featureId: string;
+    specId: string;
+    gateId: string;
+    qaId: string;
+  } {
+    const root = store.createTask({
+      title: 'Big feature',
+      body: 'do a big thing',
+      status: 'triage',
+      pipelineTemplate: 'full_feature'
+    });
+    expandTemplate(root, FULL_FEATURE, store, { hasRole: () => true });
+    const ev = store.listEvents(root.id).find((e) => e.kind === 'pipeline_expanded');
+    const p = ev?.payload as Record<string, string>;
+    return { featureId: p.featureId, specId: p.specId, gateId: p.gateId, qaId: p.qaId };
+  }
+
+  it('spec-stage kanban_create makes an implement child auto-linked to gate and qa', async () => {
+    const { featureId, specId, gateId, qaId } = buildPipeline();
+    const run = store.startRun(specId, 'architect', 1, 'spec');
+    server.registerRun('spec1', { kind: 'task', taskId: specId, runId: run.id, mode: 'spec' }, 'L');
+
+    const r = await rpc(`${base}?run=spec1`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'unit A', body: 'slice of the spec' }
+    });
+    const childId = String(r.result.content[0].text).trim();
+    const child = store.getTask(childId);
+    expect(child?.pipelineStage).toBe('implement');
+    expect(child?.featureId).toBe(featureId);
+    expect(store.parentsOf(childId)).toContain(gateId);
+    expect(store.childrenOf(childId)).toContain(qaId);
+    expect(store.listEvents(childId).some((e) => e.kind === 'task_created')).toBe(true);
+    expect(store.listEvents(specId).filter((e) => e.kind === 'children_emitted')).toHaveLength(1);
+  });
+
+  it('spec-stage fan-out rejects a different run after children were emitted', async () => {
+    const { specId, gateId } = buildPipeline();
+    const run1 = store.startRun(specId, 'architect', 1, 'spec');
+    server.registerRun('specA', { kind: 'task', taskId: specId, runId: run1.id, mode: 'spec' }, 'L');
+    const first = await rpc(`${base}?run=specA`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'unit A' }
+    });
+    const firstChild = String(first.result.content[0].text).trim();
+    expect(store.getTask(firstChild)).toBeTruthy();
+
+    // A reclaim re-run is a DIFFERENT run on the same spec task.
+    const run2 = store.startRun(specId, 'architect', 1, 'spec');
+    server.registerRun('specB', { kind: 'task', taskId: specId, runId: run2.id, mode: 'spec' }, 'L');
+    const second = await rpc(`${base}?run=specB`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'duplicate unit' }
+    });
+    expect(String(second.error?.message ?? '')).toMatch(/already emitted/i);
+    // No duplicate fan-out: still exactly one children_emitted event and one implement child.
+    expect(store.listEvents(specId).filter((e) => e.kind === 'children_emitted')).toHaveLength(1);
+    const implementChildren = store
+      .childrenOf(gateId)
+      .filter((id) => store.getTask(id)?.pipelineStage === 'implement');
+    expect(implementChildren).toHaveLength(1);
+  });
+
+  it('spec-stage fan-out caps at MAX_FANOUT children within one run', async () => {
+    const { gateId, specId } = buildPipeline();
+    const run = store.startRun(specId, 'architect', 1, 'spec');
+    server.registerRun('specC', { kind: 'task', taskId: specId, runId: run.id, mode: 'spec' }, 'L');
+
+    for (let i = 0; i < MAX_FANOUT; i++) {
+      const r = await rpc(`${base}?run=specC`, 'tools/call', {
+        name: 'kanban_create',
+        arguments: { title: `unit ${i}` }
+      });
+      expect(r.error).toBeFalsy();
+    }
+    const r13 = await rpc(`${base}?run=specC`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'one too many' }
+    });
+    expect(String(r13.error?.message ?? '')).toMatch(/cap/i);
+    const implementChildren = store
+      .childrenOf(gateId)
+      .filter((id) => store.getTask(id)?.pipelineStage === 'implement');
+    expect(implementChildren).toHaveLength(MAX_FANOUT);
   });
 
   it('kanban_update (specify) rewrites the body and returns the task to todo', async () => {
