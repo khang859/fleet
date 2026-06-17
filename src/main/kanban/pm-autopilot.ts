@@ -11,6 +11,9 @@ const TRIGGER_KINDS = new Set([
   'feature_pr_ready'
 ]);
 
+/** The feature-level event that triggers a post-ship retro turn (#235). */
+const RETRO_KIND = 'feature_shipped';
+
 export interface PmAutopilotConfig {
   autopilotEnabled: boolean;
   eventMinGapMs: number;
@@ -26,6 +29,12 @@ export interface PmAutopilotDeps {
   runTurn: (boardId: string, prompt: string, origin: PmTurnOrigin) => Promise<void>;
   /** Build the turn prompt from a coalesced batch of events. */
   buildBriefing: (events: TaskEvent[]) => string;
+  /**
+   * Build the retro-turn prompt for a shipped feature, or null if it can't be
+   * resolved (then the retro is skipped). Wired in index.ts where the store is in
+   * scope, mirroring buildBriefing/buildDigest.
+   */
+  buildRetro?: (featureId: string) => string | null;
   log: (msg: string, meta?: Record<string, unknown>) => void;
   /** Boards with a digest schedule, plus their cron + last-fired watermark. */
   listDigestBoards?: () => Array<{
@@ -72,6 +81,10 @@ export class PmAutopilot {
   onEvent(event: TaskEvent): void {
     try {
       if (!this.deps.getConfig().autopilotEnabled) return;
+      if (event.kind === RETRO_KIND) {
+        this.fireRetro(event);
+        return;
+      }
       if (!TRIGGER_KINDS.has(event.kind)) return;
       const boardId = this.deps.getBoardForTask(event.taskId);
       if (!boardId) return;
@@ -124,6 +137,24 @@ export class PmAutopilot {
       if (b.gapTimer) clearTimeout(b.gapTimer);
     }
     this.batches.clear();
+  }
+
+  /**
+   * Dispatch a one-off retro turn for a shipped feature. Unlike triage events,
+   * a retro is not coalesced — it is feature-specific and rare. Skipped silently
+   * when the prompt builder is unwired or can't resolve the feature.
+   */
+  private fireRetro(event: TaskEvent): void {
+    const boardId = this.deps.getBoardForTask(event.taskId);
+    if (!boardId || !this.deps.buildRetro) return;
+    const prompt = this.deps.buildRetro(event.taskId);
+    if (!prompt) return;
+    void this.deps.runTurn(boardId, prompt, 'retro').catch((err) => {
+      this.deps.log('pm-autopilot retro turn failed', {
+        boardId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    });
   }
 
   private batch(boardId: string): BoardBatch {
