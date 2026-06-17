@@ -10,6 +10,7 @@ import {
   agentHostFor
 } from './agent-context';
 import { renderProfileMarkdown } from './profile-file';
+import { MAX_FANOUT } from './pipeline-templates';
 import { learningsMcpEntry } from '../learnings/learnings-mcp-registrar';
 import { isValidProfileName, type WorkerProfile } from '../../shared/types';
 import type { RunMode, VerifyCommand } from '../../shared/kanban-types';
@@ -138,6 +139,36 @@ function buildPrompt(input: BuildWorkerInput): string {
       `findings. Do not modify the code.\n\n## Diff\n\n\`\`\`diff\n${diff}\n\`\`\``
     );
   }
+  if (mode === 'explore') {
+    return (
+      `explore kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `You are a read-only cartographer. Map the codebase relevant to this task: affected ` +
+      `files, modules, and patterns; surface risks and unknowns. Write NO code and make NO ` +
+      `edits. Register your findings as a kanban_artifact (path relative to your working ` +
+      `directory) and post a one-paragraph summary comment on this task with kanban_comment. ` +
+      `When done, call kanban_complete with a one-line summary.`
+    );
+  }
+  if (mode === 'spec') {
+    return (
+      `spec kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `You are the architect. Read the explore artifact and this task with kanban_show, then write ` +
+      `a concrete implementation spec. Decompose the work into independent units: call kanban_create ` +
+      `once per unit with a clear title and a body containing that unit's slice of the spec. Do NOT ` +
+      `set parents, feature_id, or links — the system wires them. Cap your fan-out at ${MAX_FANOUT} ` +
+      `children. Do not implement anything. When the fan-out is complete, call kanban_complete with a ` +
+      `one-line plan summary.`
+    );
+  }
+  if (mode === 'qa') {
+    return (
+      `qa kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `You are QA for this feature. Validate the whole feature against the root task's acceptance ` +
+      `criteria. Run the project's verify commands and exercise end-to-end behavior (execution-based, ` +
+      `not a re-read of diffs). Re-check the risks the explore stage flagged. When done, call ` +
+      `kanban_qa_verdict with decision 'pass' or 'request_changes' and a one-line summary.`
+    );
+  }
   const verifyBlock = input.verifyFailure
     ? `Your previous completion failed the project's verify commands. Fix the cause and call ` +
       `kanban_complete again — it will re-run verification.\n\n\`\`\`\n${input.verifyFailure}\n\`\`\`\n\n`
@@ -188,6 +219,8 @@ function requireToolsForMode(mode: RunMode): string | null {
     case 'work':
     case 'decompose':
     case 'resolve':
+    case 'explore':
+    case 'spec':
       return 'kanban_complete,kanban_block';
     case 'specify':
       return 'kanban_update';
@@ -197,6 +230,8 @@ function requireToolsForMode(mode: RunMode): string | null {
       return 'kanban_suggest_feature,kanban_block';
     case 'review':
       return 'kanban_review_verdict';
+    case 'qa':
+      return 'kanban_qa_verdict';
     case 'verify':
       // A deterministic verify run has no agent and no terminal MCP tool.
       return null;

@@ -23,7 +23,16 @@ export type RunMode =
   | 'resolve'
   | 'suggest'
   | 'verify'
-  | 'review';
+  | 'review'
+  | 'explore'
+  | 'spec'
+  | 'qa';
+
+/** A pipeline template id carried on the root task. NULL ⇒ behaves as quick_fix. */
+export type PipelineTemplateId = 'full_feature' | 'quick_fix';
+
+/** Stage identity carried by generated pipeline tasks. NULL ⇒ ordinary non-pipeline task. */
+export type StageKind = 'explore' | 'spec' | 'gate' | 'implement' | 'review' | 'qa';
 
 /** A triage task can be flagged for an orchestrator run. */
 export type PendingMode = 'decompose' | 'specify';
@@ -95,6 +104,8 @@ export interface Feature {
   checksState: ChecksState | null;
   syncedAt: number | null;
   prSkipNotified: boolean;
+  /** Feature-level QA verdict (pipeline §8). NULL ⇒ not yet QA'd / non-pipeline. */
+  qaVerdict: 'pass' | 'request_changes' | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -237,6 +248,10 @@ export interface Task {
   worktreePruned: boolean;
   /** Non-null marks a dispatcher-created system task (e.g. 'feature_sync'); excluded from feature roll-ups. */
   systemKind: string | null;
+  /** Template carried by the root task (NULL ⇒ quick_fix / non-pipeline). */
+  pipelineTemplate: PipelineTemplateId | null;
+  /** Stage identity for a generated pipeline task (NULL ⇒ non-pipeline). */
+  pipelineStage: StageKind | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -299,7 +314,8 @@ export type PmProposalKind =
   | 'accept_review_task'
   | 'ship_feature'
   | 'complete_task'
-  | 'archive_task';
+  | 'archive_task'
+  | 'approve_spec';
 
 export type PmProposalStatus = 'pending' | 'accepted' | 'dismissed' | 'failed';
 
@@ -323,7 +339,8 @@ export const PM_PROPOSAL_KINDS = [
   'accept_review_task',
   'ship_feature',
   'complete_task',
-  'archive_task'
+  'archive_task',
+  'approve_spec'
 ] as const satisfies readonly PmProposalKind[];
 
 export interface TaskComment {
@@ -402,6 +419,8 @@ export interface CreateTaskInput {
   maxRetries?: number;
   scheduledFrom?: string | null;
   systemKind?: string | null;
+  pipelineTemplate?: PipelineTemplateId | null;
+  pipelineStage?: StageKind | null;
 }
 
 export interface UpdateTaskFields {

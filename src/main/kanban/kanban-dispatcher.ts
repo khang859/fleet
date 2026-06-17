@@ -18,6 +18,8 @@ import {
   updateIntegrationBranchFromMain
 } from './workspace';
 import { readLogTail } from './spawn-worker';
+import { expandTemplate, PIPELINE_EXPANDED_EVENT } from './template-expander';
+import { getTemplate, QA_ATTEMPT_CAP } from './pipeline-templates';
 
 const log = createLogger('kanban-dispatcher');
 
@@ -28,6 +30,9 @@ const WORKTREE_SWEEP_INTERVAL_MS = 300_000;
 
 /** Min gap between grouping-detection runs for the same repo (debounce; spec §4). */
 const SUGGEST_COOLDOWN_MS = 30 * 60_000;
+
+/** A pipeline whose current stage is idle longer than this is flagged stale (spec §12). */
+const PIPELINE_STALE_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Exit code rune returns from a `--require-tool` run that ended without the
@@ -137,6 +142,8 @@ export interface DispatcherDeps {
   verifyLogPath?: (runId: number) => string;
   /** Worker-role profile names (in profile order), for the auto-assign fast path and fallback. */
   workerProfileNames?: () => string[];
+  /** All profile role names present, for the pipeline expander's graceful-degradation check. */
+  profileRoles?: () => string[];
   /** Git ops for integrate(); injected in tests, defaults to real workspace.ts fns. */
   integration?: IntegrationOps;
 }
@@ -272,6 +279,31 @@ export class KanbanDispatcher {
         continue;
       }
 
+      // A terminal qa run that recorded request_changes: kanban_qa_verdict already finished the
+      // run + emitted qa_changes_requested, leaving the task parked 'running' (mirrors review).
+      // Park it WITHOUT recording a failure — processQaChanges() owns the re-arm/cap accounting,
+      // so reclaim must not let the generic failure path creep the task toward giveUp(). An
+      // inconclusive qa run (no verdict event) is NOT intercepted here; it falls through to the
+      // generic retry budget below.
+      if (reclaimMode === 'qa') {
+        const runId = task.currentRunId;
+        // A long qa run (heavy verify/e2e) can outlive its claim window. While alive, keep waiting.
+        if (exit == null && task.workerPid != null && this.deps.isAlive(task.workerPid)) {
+          if (task.claimLock) this.store.extendClaim(task.id, task.claimLock, VERIFY_CLAIM_TTL_MS);
+          continue;
+        }
+        const requestedChanges = this.store
+          .listEvents(task.id)
+          .some((e) => e.kind === 'qa_changes_requested' && e.runId === runId);
+        if (requestedChanges) {
+          // Park as todo and clear claim/run fields; processQaChanges() re-arms + caps it.
+          this.store.setStatusCleared(task.id, 'todo');
+          if (runId != null) this.deps.clearWorkerExit?.(runId);
+          continue;
+        }
+        // No verdict recorded — fall through to the generic failure/retry handling below.
+      }
+
       // Clean exit without a terminal tool: rune nudged to its cap and gave up
       // (exit 3). This is deterministic — retrying re-rolls the same wall — so
       // route to a deliberate review-required block, and do NOT count it as a
@@ -391,6 +423,14 @@ export class KanbanDispatcher {
     return `${this.deps.now()}-${this.genLock}`;
   }
 
+  /** The run mode for a ready pipeline-stage task; non-pipeline ready tasks are plain 'work'. */
+  private modeForReadyTask(task: Task): RunMode {
+    if (task.pipelineStage === 'explore') return 'explore';
+    if (task.pipelineStage === 'spec') return 'spec';
+    if (task.pipelineStage === 'qa') return 'qa';
+    return 'work';
+  }
+
   claimAndSpawn(): void {
     const cap = this.deps.config.maxInProgress;
     const ttl = this.deps.config.claimTtlMs;
@@ -411,9 +451,10 @@ export class KanbanDispatcher {
         const workspace = this.deps.prepareWorkspaceFn
           ? this.deps.prepareWorkspaceFn(task)
           : (task.workspacePath ?? '');
-        const run = this.store.startRun(task.id, task.assignee, null);
+        const mode = this.modeForReadyTask(task);
+        const run = this.store.startRun(task.id, task.assignee, null, mode);
         runId = run.id;
-        pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode: 'work' });
+        pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode });
         if (pid != null) {
           this.store.setWorkerPid(task.id, run.id, pid);
         }
@@ -444,6 +485,40 @@ export class KanbanDispatcher {
       if (slots <= 0) break;
       const mode = task.pendingMode;
       if (mode == null) continue;
+
+      // Full-feature pipeline roots are expanded deterministically (no orchestrator). A root
+      // that already carries the expansion marker was processed on a prior tick: a successful
+      // expansion would have completed the root (so it wouldn't be a pending triage task here),
+      // which means this one was degraded to quick_fix — fall through to the orchestrator so it
+      // runs today's flow instead of looping back into the expander forever.
+      const alreadyExpanded =
+        task.pipelineTemplate === 'full_feature' &&
+        this.store.listEvents(task.id).some((e) => e.kind === PIPELINE_EXPANDED_EVENT);
+      if (task.pipelineTemplate === 'full_feature' && !alreadyExpanded) {
+        const lock = this.nextLock();
+        if (!this.store.claimForDecompose(task.id, lock, ttl)) continue; // lost the race
+        const roles = new Set(this.deps.profileRoles?.() ?? []);
+        try {
+          expandTemplate(task, getTemplate(task.pipelineTemplate), this.store, {
+            hasRole: (r) => roles.has(r)
+          });
+          // A successful expansion completes the root (it leaves 'running'). If the root is
+          // still 'running', expansion was a graceful-degradation no-op (a required SDLC role
+          // was missing): release the claim back to triage so the next tick takes the
+          // fall-through orchestrator path above instead of reclaiming a dead work run.
+          if (this.store.getTask(task.id)?.status === 'running') {
+            this.store.setStatusCleared(task.id, 'triage');
+            this.store.setPendingMode(task.id, mode);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.store.blockTask(task.id, `pipeline expansion failed: ${msg}`);
+          log.error('pipeline expand failed', { taskId: task.id, error: msg });
+        }
+        slots -= 1;
+        continue;
+      }
+
       const lock = this.nextLock();
       if (!this.store.claimForDecompose(task.id, lock, ttl)) continue; // lost the race
       let runId: number | null = null;
@@ -844,6 +919,74 @@ export class KanbanDispatcher {
     }
   }
 
+  /**
+   * For each freshly-done spec stage: with ≥1 implement child, create an approve_spec
+   * proposal targeting the gate task (PM-agent-independent — created at the store level).
+   * With zero children, block the spec ("architect produced no implementation tasks") and
+   * raise NO proposal. Idempotent via a one-shot 'spec_approval_raised' event.
+   */
+  private raiseSpecApprovals(): void {
+    for (const spec of this.store.doneSpecTasks()) {
+      if (this.store.listEvents(spec.id).some((e) => e.kind === 'spec_approval_raised')) continue;
+      const gateId = this.store
+        .childrenOf(spec.id)
+        .find((id) => this.store.getTask(id)?.pipelineStage === 'gate');
+      if (!gateId) {
+        log.warn('raiseSpecApprovals: spec has no gate child; skipping', { specId: spec.id });
+        continue;
+      }
+      const children = this.store.childrenOf(gateId).filter((id) => {
+        const t = this.store.getTask(id);
+        // Exclude archived children: a prior dismiss re-arm archives the old implement
+        // fan-out, and counting those as evidence of a non-empty plan would raise a
+        // misleading approval targeting a gate with no runnable work.
+        return t?.pipelineStage === 'implement' && t.status !== 'archived';
+      });
+      if (children.length === 0) {
+        this.store.blockTask(spec.id, 'architect produced no implementation tasks');
+        this.store.appendEvent(spec.id, null, 'spec_approval_raised', { empty: true });
+        continue;
+      }
+      const rationale =
+        `Architect plan: ${spec.result ?? spec.title}. ` +
+        `${children.length} implementation task(s). Review explore findings before approving.`;
+      this.store.createProposal({
+        boardId: spec.boardId,
+        kind: 'approve_spec',
+        targetId: gateId,
+        rationale
+      });
+      this.store.appendEvent(spec.id, null, 'spec_approval_raised', {
+        gateId,
+        children: children.length
+      });
+    }
+  }
+
+  /**
+   * Handle QA request_changes: re-arm the feature's implement children for a fix run, once
+   * per qa_changes_requested event, bounded by QA_ATTEMPT_CAP. On cap exhaustion mark the
+   * qa task blocked and emit a 'blocked' event (the #233 autopilot trigger surfaces it).
+   */
+  private processQaChanges(): void {
+    for (const qa of this.store.qaTasksNeedingRearm()) {
+      if (!qa.featureId) continue;
+      const attempts = this.store.listEvents(qa.id).filter((e) => e.kind === 'qa_rearmed').length;
+      if (attempts >= QA_ATTEMPT_CAP) {
+        this.store.blockTask(qa.id, `QA still failing after ${QA_ATTEMPT_CAP} attempt(s)`);
+        this.store.appendEvent(qa.id, null, 'blocked', { reason: 'qa_attempt_cap' });
+        continue;
+      }
+      // Re-arm implement children: set them back to ready with the QA findings as guidance.
+      for (const childId of this.store.implementChildrenOf(qa.id)) {
+        this.store.setStatus(childId, 'ready');
+      }
+      this.store.setQaVerdict(qa.featureId, null); // clear so the next QA run can re-verdict
+      this.store.setStatus(qa.id, 'todo'); // qa re-gates on the children again
+      this.store.appendEvent(qa.id, null, 'qa_rearmed', { attempt: attempts + 1 });
+    }
+  }
+
   /** Auto-integrate completed feature tasks and sync completed features. Local git only — no push/PR (that is #229). */
   integrate(): void {
     if (!this.deps.config.autoIntegrate) return;
@@ -989,6 +1132,11 @@ export class KanbanDispatcher {
    */
   private markFeaturePrReady(feature: Feature): void {
     if (feature.prState !== 'draft' || feature.prNumber == null || !feature.repoPath) return;
+    // Pipeline features gate PR-ready on a passing QA verdict. A feature that has been
+    // QA'd (verdict non-null) but not passed must wait; non-pipeline features (verdict
+    // null AND no qa task) are unaffected.
+    if (feature.qaVerdict !== null && feature.qaVerdict !== 'pass') return;
+    if (feature.qaVerdict === null && this.store.featureHasQaStage(feature.id)) return;
     const r = this.ops.markPrReady({ repoPath: feature.repoPath, prNumber: feature.prNumber });
     if (r.ok) {
       this.store.setFeaturePrState(feature.id, 'open');
@@ -1105,6 +1253,34 @@ export class KanbanDispatcher {
     return task;
   }
 
+  /**
+   * Flag pipelines stalled at their current stage past PIPELINE_STALE_MS (gate never
+   * approved, QA looping, dead stage). There is no 'blocked' feature status, so the signal
+   * is a feature-level 'blocked' event (reason 'pipeline_stalled') that the #233 autopilot
+   * trigger surfaces — the same channel processQaChanges/reclaim emit blocks on. Fire-once
+   * per feature: a prior 'pipeline_stalled' event short-circuits the re-emit.
+   */
+  sweepStalePipelines(): void {
+    const cutoff = this.deps.now() - PIPELINE_STALE_MS;
+    for (const f of this.store.activePipelineFeatures()) {
+      const tasks = this.store.pipelineTasksForFeature(f.id);
+      if (tasks.length === 0) continue;
+      const live = tasks.some((t) => t.status === 'running' || t.status === 'ready');
+      if (live) continue;
+      const settled = tasks.every((t) => t.status === 'done' || t.status === 'archived');
+      if (settled) continue; // pipeline finished, not stalled
+      const lastUpdate = Math.max(...tasks.map((t) => t.updatedAt));
+      if (lastUpdate > cutoff) continue; // still within the idle window
+      // Fire-once: skip if we already flagged this feature as stalled.
+      const alreadyFlagged = this.store
+        .listEvents(f.id)
+        .some((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled');
+      if (alreadyFlagged) continue;
+      this.store.appendEvent(f.id, null, 'blocked', { reason: 'pipeline_stalled' });
+      log.warn('pipeline stalled', { featureId: f.id, lastUpdate });
+    }
+  }
+
   /** Purge discarded artifacts past the retention window; surface each deletion as an event. */
   sweepArtifacts(): void {
     const days = this.deps.config.artifactRetentionDays;
@@ -1165,9 +1341,12 @@ export class KanbanDispatcher {
     this.promote();
     this.claimAndSpawn();
     this.reviewTasks();
+    this.raiseSpecApprovals();
+    this.processQaChanges();
     this.integrate();
     this.sweepArtifacts();
     this.sweepMergedWorktrees();
+    this.sweepStalePipelines();
   }
 
   start(): void {

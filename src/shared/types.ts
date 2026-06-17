@@ -147,7 +147,7 @@ export type VisualizerEffects = {
 /** A named worker role materialized to `<workspace>/.rune/profiles/<name>.md`. */
 export type WorkerProfile = {
   name: string; // ^[a-z0-9][a-z0-9_-]*$ (rune's validName)
-  role: 'worker' | 'orchestrator' | 'reviewer'; // orchestrator drives decompose/specify; reviewer drives code-review runs
+  role: 'worker' | 'orchestrator' | 'reviewer' | 'explorer' | 'architect' | 'qa'; // orchestrator drives decompose/specify; reviewer drives code-review runs; explorer/architect/qa drive pipeline stages
   model: string; // '' → leave to rune's normal provider resolution
   skills: string[];
   instructions: string; // persona / system-prompt body

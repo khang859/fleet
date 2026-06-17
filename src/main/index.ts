@@ -947,6 +947,7 @@ void app.whenReady().then(async () => {
         .get()
         .kanban.profiles.filter((p) => p.role === 'worker')
         .map((p) => p.name),
+    profileRoles: () => settingsStore.get().kanban.profiles.map((p) => p.role),
     isAlive: (pid) => {
       try {
         process.kill(pid, 0);
@@ -1072,6 +1073,11 @@ void app.whenReady().then(async () => {
           instructions: DEFAULT_REVIEWER_INSTRUCTIONS
         };
         reviewDiff = worktreeDiff({ workspacePath: workspace, baseBranch: task.baseBranch });
+      } else if (mode === 'explore' || mode === 'spec' || mode === 'qa') {
+        // Pipeline stage roles run under their own persona, selected by the assignee the
+        // expander stamped on the task ('explorer'/'architect'/'qa'). NEVER overwrite the
+        // assignee and offer NO worker roster — these are single-role runs, not orchestrations.
+        profile = profiles.find((p) => p.name === task.assignee) ?? null;
       } else {
         // decompose/specify: run as an orchestrator profile; offer the worker roster.
         profile =

@@ -34,6 +34,9 @@ export function executeProposal(
     case 'archive_task':
       commands.archive(targetId);
       return;
+    case 'approve_spec':
+      expectOk(commands.approveSpec(targetId));
+      return;
     default: {
       const exhaustive: never = kind;
       throw new Error(`unknown proposal kind: ${String(exhaustive)}`);

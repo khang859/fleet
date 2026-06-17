@@ -1150,3 +1150,108 @@ describe('KanbanCommands verify commands', () => {
     expect(store.getProject(p.id)?.verifyCommands).toEqual([{ label: 'tests', command: 'npm test' }]);
   });
 });
+
+describe('approve_spec proposal', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  // Mirrors the real fan-out topology (template-expander + architect run):
+  // spec(done) → gate(blocked); implement child linked gate→child and child→qa; qa linked gate→qa.
+  function seedPipeline(store: KanbanStore): {
+    specId: string;
+    gateId: string;
+    childId: string;
+    qaId: string;
+  } {
+    const spec = store.createTask({ title: 'spec', status: 'done', pipelineStage: 'spec' });
+    const gate = store.createTask({ title: 'gate', status: 'blocked', pipelineStage: 'gate' });
+    const child = store.createTask({ title: 'impl', status: 'todo', pipelineStage: 'implement' });
+    const qa = store.createTask({ title: 'qa', status: 'todo', pipelineStage: 'qa' });
+    store.addLink(spec.id, gate.id);
+    store.addLink(gate.id, child.id);
+    store.addLink(gate.id, qa.id);
+    store.addLink(child.id, qa.id);
+    return { specId: spec.id, gateId: gate.id, childId: child.id, qaId: qa.id };
+  }
+
+  it('approve marks the gate done so children can promote; before approve they cannot', () => {
+    const { store, commands } = makeCommands();
+    const { gateId, childId } = seedPipeline(store);
+
+    // Gate is blocked: the implement child is gated and must NOT be promotable.
+    expect(store.promotableTodoTasks().map((t) => t.id)).not.toContain(childId);
+
+    // Mark the gate done directly and confirm the gating releases (the child becomes
+    // promotable) before the dispatcher tick consumes it.
+    store.setStatus(gateId, 'done');
+    expect(store.promotableTodoTasks().map((t) => t.id)).toContain(childId);
+    store.setStatus(gateId, 'blocked'); // reset for the real executor path below
+
+    // Drive the real executor path via an approve_spec proposal targeting the gate.
+    // approveSpec marks the gate done and ticks the dispatcher, which promotes the
+    // now-ungated implement child from 'todo' to 'ready'.
+    const proposal = commands.proposeAction('default', 'approve_spec', gateId, 'looks good');
+    const after = commands.approveProposal(proposal.id);
+    expect(after.status).toBe('accepted');
+
+    expect(store.getTask(gateId)?.status).toBe('done');
+    expect(store.getTask(childId)?.status).toBe('ready');
+    store.close();
+  });
+
+  it('dismiss re-arms the spec (ready), archives prior children, clears both guards', () => {
+    const { store, commands } = makeCommands();
+    const { specId, gateId, childId, qaId } = seedPipeline(store);
+    // Seed both guards the prior architect run + dispatcher would have stamped on the spec:
+    // the fan-out guard and the one-shot approval guard.
+    store.appendEvent(specId, null, 'children_emitted', { runId: 1 });
+    store.appendEvent(specId, null, 'spec_approval_raised', { gateId, children: 1 });
+
+    const proposal = commands.proposeAction('default', 'approve_spec', gateId, 'needs work');
+    commands.dismissProposal(proposal.id);
+
+    expect(store.getTask(specId)?.status).toBe('ready');
+    expect(store.getTask(childId)?.status).toBe('archived');
+    // The qa task is a direct child of the gate too, but the implement-only filter
+    // must leave it untouched so it can still gate QA after the re-armed fan-out.
+    expect(store.getTask(qaId)?.status).toBe('todo');
+    // Both guards must be cleared — leaving spec_approval_raised would permanently
+    // silence the dispatcher's raiseSpecApprovals so no second proposal could ever fire.
+    expect(store.listEvents(specId).some((e) => e.kind === 'children_emitted')).toBe(false);
+    expect(store.listEvents(specId).some((e) => e.kind === 'spec_approval_raised')).toBe(false);
+    expect(
+      store.listComments(specId).some((c) => c.body.includes('Spec dismissed'))
+    ).toBe(true);
+    store.close();
+  });
+
+  it('after dismiss, a re-armed spec that completes again raises a fresh approval proposal', () => {
+    const { store, commands } = makeCommands();
+    const { specId, gateId, childId, qaId } = seedPipeline(store);
+    void qaId;
+    store.appendEvent(specId, null, 'children_emitted', { runId: 1 });
+    store.appendEvent(specId, null, 'spec_approval_raised', { gateId, children: 1 });
+
+    const first = commands.proposeAction('default', 'approve_spec', gateId, 'needs work');
+    commands.dismissProposal(first.id);
+    expect(store.getTask(childId)?.status).toBe('archived'); // prior child settled
+
+    // Simulate the re-armed architect run: a fresh implement child off the gate, then the
+    // spec completes again. The dispatcher tick must raise a NEW approve_spec proposal
+    // (it would not if the spec_approval_raised guard had survived the dismiss).
+    const child2 = store.createTask({
+      title: 'impl-v2',
+      status: 'todo',
+      pipelineStage: 'implement'
+    });
+    store.addLink(gateId, child2.id);
+    store.setStatus(specId, 'done');
+    commands.dispatch();
+
+    const pending = store.listProposals('default', { status: 'pending' });
+    expect(pending.filter((p) => p.kind === 'approve_spec' && p.targetId === gateId)).toHaveLength(
+      1
+    );
+    store.close();
+  });
+});

@@ -258,6 +258,14 @@ export class KanbanStore {
       this.addColumnIfMissing('boards', 'digest_cron', 'TEXT');
       this.addColumnIfMissing('boards', 'last_digest_at', 'INTEGER');
     }
+    if (current < 18) {
+      // SDLC pipeline templates (#234): stage identity on tasks + a QA verdict on
+      // features. Additive, idempotent. The columns are in SCHEMA_SQL for fresh
+      // installs; add them here for existing DBs. No new indexes.
+      this.addColumnIfMissing('tasks', 'pipeline_template', 'TEXT');
+      this.addColumnIfMissing('tasks', 'pipeline_stage', 'TEXT');
+      this.addColumnIfMissing('features', 'qa_verdict', 'TEXT');
+    }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
     this.db
@@ -334,6 +342,8 @@ export class KanbanStore {
       conflictFiles: JSON.parse(String(r.conflict_files ?? '[]')) as string[],
       worktreePruned: Number(r.worktree_pruned ?? 0) === 1,
       systemKind: (r.system_kind as string | null) ?? null,
+      pipelineTemplate: (r.pipeline_template as Task['pipelineTemplate']) ?? null,
+      pipelineStage: (r.pipeline_stage as Task['pipelineStage']) ?? null,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
     };
@@ -346,10 +356,10 @@ export class KanbanStore {
       .prepare(
         `INSERT INTO tasks (id, title, body, assignee, status, priority, tenant,
           workspace_kind, workspace_path, repo_path, branch_name, base_branch, model_override, skills, docs, board_id, feature_id, idempotency_key,
-          scheduled_from, system_kind, max_runtime_seconds, max_retries, created_at, updated_at)
+          scheduled_from, system_kind, pipeline_template, pipeline_stage, max_runtime_seconds, max_retries, created_at, updated_at)
          VALUES (@id, @title, @body, @assignee, @status, @priority, @tenant,
           @workspace_kind, @workspace_path, @repo_path, @branch_name, @base_branch, @model_override, @skills, @docs, @board_id, @feature_id, @idempotency_key,
-          @scheduled_from, @system_kind, @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
+          @scheduled_from, @system_kind, @pipeline_template, @pipeline_stage, @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
       )
       .run({
         id,
@@ -372,6 +382,8 @@ export class KanbanStore {
         idempotency_key: input.idempotencyKey ?? null,
         scheduled_from: input.scheduledFrom ?? null,
         system_kind: input.systemKind ?? null,
+        pipeline_template: input.pipelineTemplate ?? null,
+        pipeline_stage: input.pipelineStage ?? null,
         max_runtime_seconds: input.maxRuntimeSeconds ?? null,
         max_retries: input.maxRetries ?? 1,
         created_at: ts,
@@ -581,6 +593,20 @@ export class KanbanStore {
     };
     this.onEvent?.(event);
     return event;
+  }
+
+  /**
+   * Drop a spec task's re-arm guards so a re-armed run may re-fan-out AND the dispatcher
+   * may raise a fresh approval proposal once it completes again (pipeline §6). Clears both
+   * the fan-out guard (`children_emitted`) and the one-shot approval guard
+   * (`spec_approval_raised`); leaving the latter would permanently silence raiseSpecApprovals.
+   */
+  clearSpecFanout(specTaskId: string): void {
+    this.db
+      .prepare(
+        "DELETE FROM task_events WHERE task_id=? AND kind IN ('children_emitted','spec_approval_raised')"
+      )
+      .run(specTaskId);
   }
 
   listEvents(taskId: string): TaskEvent[] {
@@ -1448,6 +1474,7 @@ export class KanbanStore {
       checksState: (r.checks_state as ChecksState | null) ?? null,
       syncedAt: (r.pr_synced_at as number | null) ?? null,
       prSkipNotified: Number(r.pr_skip_notified ?? 0) === 1,
+      qaVerdict: (r.qa_verdict as Feature['qaVerdict']) ?? null,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
     };
@@ -1474,6 +1501,29 @@ export class KanbanStore {
     return row ? this.rowToFeature(row) : null;
   }
 
+  /**
+   * Resolve a full_feature pipeline's gate/qa task ids from the root's pipeline_expanded
+   * event, keyed by feature id. Returns null for non-pipeline features or fallback
+   * expansions (which record `fallback` and no stage ids).
+   */
+  pipelineAnchorForFeature(
+    featureId: string
+  ): { gateId: string; qaId: string; featureId: string } | null {
+    const row = this.db
+      .prepare(
+        "SELECT payload FROM task_events WHERE kind='pipeline_expanded' " +
+          "AND json_extract(payload, '$.featureId')=@f " +
+          "AND json_extract(payload, '$.fallback') IS NULL LIMIT 1"
+      )
+      .get({ f: featureId }) as { payload: string } | undefined;
+    if (!row) return null;
+    const p = JSON.parse(row.payload) as Record<string, unknown>;
+    const gateId = p.gateId;
+    const qaId = p.qaId;
+    if (typeof gateId !== 'string' || typeof qaId !== 'string') return null;
+    return { gateId, qaId, featureId };
+  }
+
   listFeatures(filter: { boardId?: string; status?: FeatureStatus } = {}): Feature[] {
     const where: string[] = [];
     const params: Record<string, unknown> = {};
@@ -1492,6 +1542,25 @@ export class KanbanStore {
       )
       .all(params) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToFeature(r));
+  }
+
+  /** Active features that have at least one pipeline-stage task. */
+  activePipelineFeatures(): Feature[] {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT f.* FROM features f JOIN tasks t ON t.feature_id = f.id
+          WHERE f.status='active' AND t.pipeline_stage IS NOT NULL`
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToFeature(r));
+  }
+
+  /** All pipeline-stage tasks for a feature. */
+  pipelineTasksForFeature(featureId: string): Task[] {
+    const rows = this.db
+      .prepare('SELECT * FROM tasks WHERE feature_id=? AND pipeline_stage IS NOT NULL')
+      .all(featureId) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
   }
 
   updateFeature(id: string, fields: UpdateFeatureInput): void {
@@ -1800,6 +1869,13 @@ export class KanbanStore {
       .run(status, this.now(), taskId);
   }
 
+  /** Attach a task to a feature (pipeline expander backfills the root's feature). */
+  setFeatureId(taskId: string, featureId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET feature_id=?, updated_at=? WHERE id=?')
+      .run(featureId, this.now(), taskId);
+  }
+
   setWorkerPid(taskId: string, runId: number, pid: number): void {
     const ts = this.now();
     this.db.prepare('UPDATE tasks SET worker_pid=?, updated_at=? WHERE id=?').run(pid, ts, taskId);
@@ -1914,6 +1990,41 @@ export class KanbanStore {
       .run({ id: taskId, v: decision, sha: headSha ?? null, ts: this.now() });
   }
 
+  /** Record the feature-level QA verdict (pipeline §8). null clears it. */
+  setQaVerdict(featureId: string, verdict: 'pass' | 'request_changes' | null): void {
+    this.db
+      .prepare('UPDATE features SET qa_verdict=@v, updated_at=@ts WHERE id=@id')
+      .run({ id: featureId, v: verdict, ts: this.now() });
+  }
+
+  /** True when a feature has a qa-stage task (it is a pipeline feature awaiting QA). */
+  featureHasQaStage(featureId: string): boolean {
+    const row = this.db
+      .prepare("SELECT 1 FROM tasks WHERE feature_id=? AND pipeline_stage='qa' LIMIT 1")
+      .get(featureId);
+    return row != null;
+  }
+
+  /**
+   * qa-stage tasks whose feature verdict is request_changes (need a re-arm cycle). Excludes
+   * already-blocked qa tasks: once a task is blocked at the cap its verdict stays
+   * request_changes, so without this filter it would be reselected and re-blocked every tick.
+   */
+  qaTasksNeedingRearm(): Task[] {
+    const rows = this.db
+      .prepare(
+        `SELECT t.* FROM tasks t JOIN features f ON f.id = t.feature_id
+          WHERE t.pipeline_stage='qa' AND f.qa_verdict='request_changes' AND t.status != 'blocked'`
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  /** Implement-stage tasks linked as parents of a qa task (the children QA waits on). */
+  implementChildrenOf(qaTaskId: string): string[] {
+    return this.parentsOf(qaTaskId).filter((id) => this.getTask(id)?.pipelineStage === 'implement');
+  }
+
   incrementReviewAttempts(taskId: string): void {
     this.db
       .prepare('UPDATE tasks SET review_attempts = review_attempts + 1, updated_at=? WHERE id=?')
@@ -1933,6 +2044,16 @@ export class KanbanStore {
         'UPDATE tasks SET review_verdict=NULL, review_head_sha=NULL, updated_at=? WHERE id=?'
       )
       .run(this.now(), taskId);
+  }
+
+  /** Spec-stage tasks that have completed (status done), for approval-proposal raising. */
+  doneSpecTasks(): Task[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM tasks WHERE pipeline_stage='spec' AND status='done' ORDER BY priority DESC, created_at ASC"
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
   }
 
   /** Review-status worktree tasks awaiting an agent verdict (candidates for reviewTasks()). */

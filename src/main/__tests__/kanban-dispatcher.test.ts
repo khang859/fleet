@@ -324,6 +324,44 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
     store.close();
   });
 
+  it('routes an explore-stage ready task with mode explore (plain task stays work)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const exp = store.createTask({
+      title: 'map',
+      status: 'ready',
+      assignee: 'r',
+      pipelineStage: 'explore'
+    });
+    const plain = store.createTask({ title: 'do', status: 'ready', assignee: 'r' });
+    const spawned: Array<{ id: string; mode: string }> = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (args) => {
+        spawned.push({ id: args.task.id, mode: args.mode });
+        return 1;
+      },
+      config: {
+        failureLimit: 2,
+        claimGraceMs: 0,
+        maxInProgress: 3,
+        claimTtlMs: 1000,
+        autoDecompose: false,
+        autoAssign: false,
+        autoIntegrate: false,
+        autoReview: false,
+        maxDecompose: 1,
+        artifactRetentionDays: 0
+      },
+      prepareWorkspaceFn: () => '/tmp/ws'
+    });
+    disp.claimAndSpawn();
+    expect(spawned.find((s) => s.id === exp.id)?.mode).toBe('explore');
+    expect(spawned.find((s) => s.id === plain.id)?.mode).toBe('work');
+    store.close();
+  });
+
   it('respects the maxInProgress concurrency cap', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);
@@ -403,7 +441,7 @@ const baseConfig = {
   autoDecompose: false,
   autoAssign: false,
   autoIntegrate: false,
-        autoReview: false,
+  autoReview: false,
   maxDecompose: 1,
   artifactRetentionDays: 0
 };
@@ -563,6 +601,78 @@ describe('KanbanDispatcher.decompose', () => {
     expect(store.getTask(t.id)?.status).toBe('review');
     store.close();
   });
+
+  it('routes a full_feature triage root to the expander, not the orchestrator', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const root = store.createTask({
+      title: 'Add billing',
+      status: 'triage',
+      pipelineTemplate: 'full_feature'
+    });
+    store.setPendingMode(root.id, 'decompose');
+    let spawned = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => {
+        spawned += 1;
+        return 1;
+      },
+      profileRoles: () => ['explorer', 'architect', 'qa', 'worker'],
+      config: { ...baseConfig }
+    });
+    disp.decompose();
+    expect(spawned).toBe(0); // expander runs in-process; no orchestrator spawn
+    const stages = store
+      .listTasks()
+      .map((t) => t.pipelineStage)
+      .filter(Boolean)
+      .sort();
+    expect(stages).toEqual(['explore', 'gate', 'qa', 'spec']);
+    store.close();
+  });
+
+  it('degrades a full_feature root to the orchestrator when a required role is missing', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const root = store.createTask({
+      title: 'Add billing',
+      status: 'triage',
+      pipelineTemplate: 'full_feature'
+    });
+    store.setPendingMode(root.id, 'decompose');
+    const spawned: string[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (args) => {
+        spawned.push(args.mode);
+        return 1;
+      },
+      profileRoles: () => ['worker'], // missing explorer/architect/qa → expansion falls back
+      config: { ...baseConfig },
+      prepareWorkspaceFn: () => '/tmp/ws'
+    });
+
+    // First tick: expansion is a no-op fallback; no stages, no orchestrator spawn, root re-armed.
+    disp.decompose();
+    expect(spawned).toEqual([]);
+    expect(
+      store
+        .listTasks()
+        .map((t) => t.pipelineStage)
+        .filter(Boolean)
+    ).toEqual([]);
+    expect(store.getTask(root.id)?.status).toBe('triage');
+    expect(store.getTask(root.id)?.pendingMode).toBe('decompose');
+
+    // Next tick: the marker is present, so the root falls through to the orchestrator (today's flow).
+    disp.decompose();
+    expect(spawned).toEqual(['decompose']);
+    expect(store.getTask(root.id)?.status).toBe('running');
+    store.close();
+  });
 });
 
 describe('KanbanDispatcher.autoAssign', () => {
@@ -596,7 +706,10 @@ describe('KanbanDispatcher.autoAssign', () => {
     const disp = new KanbanDispatcher(store, {
       now: () => clock.t,
       isAlive: () => true,
-      spawnWorker: (args) => { spawned.push({ id: args.task.id, mode: args.mode }); return 4242; },
+      spawnWorker: (args) => {
+        spawned.push({ id: args.task.id, mode: args.mode });
+        return 4242;
+      },
       config: { ...baseConfig, autoAssign: true },
       prepareWorkspaceFn: () => '/tmp/ws',
       workerProfileNames: () => ['alpha', 'beta']
@@ -617,7 +730,10 @@ describe('KanbanDispatcher.autoAssign', () => {
     const disp = new KanbanDispatcher(store, {
       now: () => clock.t,
       isAlive: () => true,
-      spawnWorker: (args) => { spawned.push({ id: args.task.id, mode: args.mode }); return 4242; },
+      spawnWorker: (args) => {
+        spawned.push({ id: args.task.id, mode: args.mode });
+        return 4242;
+      },
       config: { ...baseConfig, autoAssign: true },
       prepareWorkspaceFn: () => '/tmp/ws',
       workerProfileNames: () => ['alpha', 'beta']
@@ -637,7 +753,8 @@ describe('KanbanDispatcher.autoAssign', () => {
     store.recordFailure(t.id, 'a2'); // consecutiveFailures = 2 == cap
     let spawned = 0;
     const disp = new KanbanDispatcher(store, {
-      now: () => clock.t, isAlive: () => true,
+      now: () => clock.t,
+      isAlive: () => true,
       spawnWorker: () => (spawned++, 1),
       config: { ...baseConfig, autoAssign: true },
       prepareWorkspaceFn: () => '/tmp/ws',
@@ -656,7 +773,9 @@ describe('KanbanDispatcher.autoAssign', () => {
     const store = makeStore(clock);
     const t = store.createTask({ title: 'x', status: 'ready' });
     const disp = new KanbanDispatcher(store, {
-      now: () => clock.t, isAlive: () => true, spawnWorker: () => 1,
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
       config: { ...baseConfig, autoAssign: false },
       workerProfileNames: () => ['alpha', 'beta']
     });
@@ -671,7 +790,9 @@ describe('KanbanDispatcher.autoAssign', () => {
     const store = makeStore(clock);
     const t = store.createTask({ title: 'x', status: 'ready' });
     const disp = new KanbanDispatcher(store, {
-      now: () => clock.t, isAlive: () => true, spawnWorker: () => 1,
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
       config: { ...baseConfig, autoAssign: true },
       workerProfileNames: () => []
     });
@@ -688,7 +809,9 @@ describe('KanbanDispatcher.autoAssign', () => {
     store.startRun(t.id, 'orchestrator', 9999, 'assign');
     clock.t = 2000; // claim expired
     const disp = new KanbanDispatcher(store, {
-      now: () => clock.t, isAlive: () => true, spawnWorker: () => 1,
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
       config: { ...baseConfig }
     });
     disp.reclaim();
@@ -903,7 +1026,7 @@ describe('KanbanDispatcher.reconfigure', () => {
           autoDecompose: false,
           autoAssign: false,
           autoIntegrate: false,
-        autoReview: false,
+          autoReview: false,
           maxDecompose: 1,
           artifactRetentionDays: 0
         },
@@ -918,7 +1041,7 @@ describe('KanbanDispatcher.reconfigure', () => {
           autoDecompose: false,
           autoAssign: false,
           autoIntegrate: false,
-        autoReview: false,
+          autoReview: false,
           maxDecompose: 1,
           artifactRetentionDays: 0
         },
@@ -1540,10 +1663,27 @@ describe('KanbanDispatcher.detectFeatureGroups', () => {
   it('spawns a suggest run for a repo with ≥2 ungrouped worktree tasks', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);
-    store.createTask({ title: 'a', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
-    store.createTask({ title: 'b', status: 'todo', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
+    store.createTask({
+      title: 'a',
+      status: 'ready',
+      workspaceKind: 'worktree',
+      repoPath: '/r',
+      baseBranch: 'main',
+      boardId: 'default'
+    });
+    store.createTask({
+      title: 'b',
+      status: 'todo',
+      workspaceKind: 'worktree',
+      repoPath: '/r',
+      baseBranch: 'main',
+      boardId: 'default'
+    });
     const spawned: SpawnWorkerArgs[] = [];
-    const disp = makeDisp(store, clock, (a) => { spawned.push(a); return 4321; });
+    const disp = makeDisp(store, clock, (a) => {
+      spawned.push(a);
+      return 4321;
+    });
     disp.detectFeatureGroups();
     expect(spawned).toHaveLength(1);
     expect(spawned[0].mode).toBe('suggest');
@@ -1555,13 +1695,33 @@ describe('KanbanDispatcher.detectFeatureGroups', () => {
   it('does not spawn twice for the same repo within the cooldown', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);
-    store.createTask({ title: 'a', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
-    store.createTask({ title: 'b', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
+    store.createTask({
+      title: 'a',
+      status: 'ready',
+      workspaceKind: 'worktree',
+      repoPath: '/r',
+      baseBranch: 'main',
+      boardId: 'default'
+    });
+    store.createTask({
+      title: 'b',
+      status: 'ready',
+      workspaceKind: 'worktree',
+      repoPath: '/r',
+      baseBranch: 'main',
+      boardId: 'default'
+    });
     let n = 0;
-    const disp = makeDisp(store, clock, () => { n++; return 1; });
+    const disp = makeDisp(store, clock, () => {
+      n++;
+      return 1;
+    });
     disp.detectFeatureGroups();
     // even after the first run's system task is gone, the cooldown blocks a re-spawn
-    store.listTasks().filter((t) => t.systemKind === 'suggest').forEach((t) => store.deleteTask(t.id));
+    store
+      .listTasks()
+      .filter((t) => t.systemKind === 'suggest')
+      .forEach((t) => store.deleteTask(t.id));
     clock.t = 1000 + 60_000;
     disp.detectFeatureGroups();
     expect(n).toBe(1);
@@ -1571,10 +1731,27 @@ describe('KanbanDispatcher.detectFeatureGroups', () => {
   it('preserves a repo path containing a space (no key-split truncation)', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);
-    store.createTask({ title: 'a', status: 'ready', workspaceKind: 'worktree', repoPath: '/repo with space', baseBranch: 'main', boardId: 'default' });
-    store.createTask({ title: 'b', status: 'ready', workspaceKind: 'worktree', repoPath: '/repo with space', baseBranch: 'main', boardId: 'default' });
+    store.createTask({
+      title: 'a',
+      status: 'ready',
+      workspaceKind: 'worktree',
+      repoPath: '/repo with space',
+      baseBranch: 'main',
+      boardId: 'default'
+    });
+    store.createTask({
+      title: 'b',
+      status: 'ready',
+      workspaceKind: 'worktree',
+      repoPath: '/repo with space',
+      baseBranch: 'main',
+      boardId: 'default'
+    });
     const spawned: SpawnWorkerArgs[] = [];
-    const disp = makeDisp(store, clock, (a) => { spawned.push(a); return 1; });
+    const disp = makeDisp(store, clock, (a) => {
+      spawned.push(a);
+      return 1;
+    });
     disp.detectFeatureGroups();
     expect(spawned).toHaveLength(1);
     // the un-truncated path reached the store
@@ -1585,11 +1762,28 @@ describe('KanbanDispatcher.detectFeatureGroups', () => {
   it('does not spawn when a pending suggestion already exists for the repo', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);
-    store.createTask({ title: 'a', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
-    store.createTask({ title: 'b', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
+    store.createTask({
+      title: 'a',
+      status: 'ready',
+      workspaceKind: 'worktree',
+      repoPath: '/r',
+      baseBranch: 'main',
+      boardId: 'default'
+    });
+    store.createTask({
+      title: 'b',
+      status: 'ready',
+      workspaceKind: 'worktree',
+      repoPath: '/r',
+      baseBranch: 'main',
+      boardId: 'default'
+    });
     store.createSuggestion({ boardId: 'default', repoPath: '/r', name: 'x', taskIds: [] });
     let n = 0;
-    const disp = makeDisp(store, clock, () => { n++; return 1; });
+    const disp = makeDisp(store, clock, () => {
+      n++;
+      return 1;
+    });
     disp.detectFeatureGroups();
     expect(n).toBe(0);
     store.close();
@@ -1598,13 +1792,24 @@ describe('KanbanDispatcher.detectFeatureGroups', () => {
   it('reclaim drops a dead suggest run (deletes the system task, no triage)', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);
-    const sys = store.createTask({ title: 'detect', status: 'review', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    const sys = store.createTask({
+      title: 'detect',
+      status: 'review',
+      boardId: 'default',
+      systemKind: 'suggest',
+      repoPath: '/r'
+    });
     store.claimForSuggest(sys.id, 'L', 100); // expires 1100
     const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
     store.setWorkerPid(sys.id, run.id, 999);
     clock.t = 5000;
     let alive = true;
-    const disp = makeDisp(store, clock, () => undefined, () => alive);
+    const disp = makeDisp(
+      store,
+      clock,
+      () => undefined,
+      () => alive
+    );
     // simulate a dead pid
     alive = false;
     disp.reclaim();
@@ -1615,7 +1820,13 @@ describe('KanbanDispatcher.detectFeatureGroups', () => {
   it('reclaim drops a suggest run that exited 3 (deleted, never parked as blocked)', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);
-    const sys = store.createTask({ title: 'detect', status: 'review', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    const sys = store.createTask({
+      title: 'detect',
+      status: 'review',
+      boardId: 'default',
+      systemKind: 'suggest',
+      repoPath: '/r'
+    });
     store.claimForSuggest(sys.id, 'L', 100000); // long ttl, not expired
     const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
     store.setWorkerPid(sys.id, run.id, 999);
@@ -1637,7 +1848,13 @@ describe('KanbanDispatcher.detectFeatureGroups', () => {
   it('reclaim drops a suggest run on the fatal blockNow path (deleted, never blocked)', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);
-    const sys = store.createTask({ title: 'detect', status: 'review', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    const sys = store.createTask({
+      title: 'detect',
+      status: 'review',
+      boardId: 'default',
+      systemKind: 'suggest',
+      repoPath: '/r'
+    });
     store.claimForSuggest(sys.id, 'L', 100000); // long ttl, not expired
     const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
     store.setWorkerPid(sys.id, run.id, 999);
@@ -1656,6 +1873,384 @@ describe('KanbanDispatcher.detectFeatureGroups', () => {
     disp.reclaim();
     expect(store.getTask(sys.id)).toBeNull();
     expect(cleared).toContain(run.id);
+    store.close();
+  });
+});
+
+describe('KanbanDispatcher.raiseSpecApprovals', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('creates an approve_spec proposal when a done spec has children (autopilot OFF)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    const spec = store.createTask({ title: 'Spec', pipelineStage: 'spec', featureId: f.id });
+    store.completeTask(spec.id, 'plan summary'); // status='done' + result
+    const gate = store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      systemKind: 'pipeline_gate',
+      featureId: f.id
+    });
+    const child = store.createTask({
+      title: 'impl',
+      status: 'todo',
+      pipelineStage: 'implement',
+      featureId: f.id
+    });
+    store.addLink(spec.id, gate.id);
+    store.addLink(gate.id, child.id);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig }
+    });
+    disp['raiseSpecApprovals']();
+    const props = store.listProposals('default', { status: 'pending' });
+    expect(props.map((p) => p.kind)).toContain('approve_spec');
+    expect(props.find((p) => p.kind === 'approve_spec')?.targetId).toBe(gate.id);
+    store.close();
+  });
+
+  it('is idempotent: a second call raises no further proposal', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    const spec = store.createTask({ title: 'Spec', pipelineStage: 'spec', featureId: f.id });
+    store.completeTask(spec.id, 'plan summary');
+    const gate = store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      systemKind: 'pipeline_gate',
+      featureId: f.id
+    });
+    const child = store.createTask({
+      title: 'impl',
+      status: 'todo',
+      pipelineStage: 'implement',
+      featureId: f.id
+    });
+    store.addLink(spec.id, gate.id);
+    store.addLink(gate.id, child.id);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig }
+    });
+    disp['raiseSpecApprovals']();
+    disp['raiseSpecApprovals']();
+    expect(store.listProposals('default', { status: 'pending' })).toHaveLength(1);
+    store.close();
+  });
+
+  it('blocks the spec and raises no proposal on empty fan-out', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    const spec = store.createTask({ title: 'Spec', pipelineStage: 'spec', featureId: f.id });
+    store.completeTask(spec.id, null);
+    const gate = store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      systemKind: 'pipeline_gate',
+      featureId: f.id
+    });
+    store.addLink(spec.id, gate.id);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig }
+    });
+    disp['raiseSpecApprovals']();
+    expect(store.getTask(spec.id)?.status).toBe('blocked');
+    expect(store.listProposals('default', { status: 'pending' })).toHaveLength(0);
+    store.close();
+  });
+});
+
+describe('KanbanDispatcher QA gating', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('request_changes re-arms implement children, then blocks the qa task at the cap', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    const qa = store.createTask({
+      title: 'QA',
+      status: 'todo',
+      pipelineStage: 'qa',
+      featureId: f.id
+    });
+    const child = store.createTask({
+      title: 'impl',
+      status: 'done',
+      pipelineStage: 'implement',
+      featureId: f.id
+    });
+    store.addLink(child.id, qa.id); // child -> qa (qa gates on the implement child)
+    store.setQaVerdict(f.id, 'request_changes');
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig }
+    });
+
+    disp['processQaChanges'](); // attempt 1
+    expect(store.getTask(child.id)?.status).toBe('ready');
+    expect(store.getFeature(f.id)?.qaVerdict).toBeNull();
+    expect(store.getTask(qa.id)?.status).toBe('todo');
+
+    store.setQaVerdict(f.id, 'request_changes');
+    disp['processQaChanges'](); // attempt 2 (== cap boundary)
+    expect(store.getTask(qa.id)?.status).toBe('todo');
+
+    store.setQaVerdict(f.id, 'request_changes');
+    disp['processQaChanges'](); // cap exhausted -> block
+    expect(store.getTask(qa.id)?.status).toBe('blocked');
+    expect(store.listEvents(qa.id).filter((e) => e.kind === 'blocked')).toHaveLength(1);
+
+    // A blocked qa task (verdict stays request_changes) must NOT be reselected on later ticks.
+    store.setQaVerdict(f.id, 'request_changes');
+    disp['processQaChanges'](); // no-op: the qa task is already blocked
+    expect(store.listEvents(qa.id).filter((e) => e.kind === 'blocked')).toHaveLength(1);
+    store.close();
+  });
+
+  it('reclaim parks a request_changes qa task as todo without recording a failure', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    const qa = store.createTask({
+      title: 'QA',
+      status: 'ready',
+      assignee: 'qa',
+      pipelineStage: 'qa',
+      featureId: f.id
+    });
+    // Drive the qa task into the parked-running state kanban_qa_verdict('request_changes')
+    // leaves behind: claimed → running, the qa run finished, and a qa_changes_requested event.
+    store.claimTask(qa.id, 'L', 100000);
+    const run = store.startRun(qa.id, 'qa', 4321, 'qa');
+    store.setWorkerPid(qa.id, run.id, 4321);
+    store.finishRun(run.id, 'completed', { summary: 'needs work' });
+    store.appendEvent(qa.id, run.id, 'qa_changes_requested', { summary: 'needs work' });
+    store.setQaVerdict(f.id, 'request_changes');
+
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => false,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig },
+      workerExit: (id) => (id === run.id ? { code: 0, signal: null } : undefined)
+    });
+
+    disp.reclaim();
+    const got = store.getTask(qa.id);
+    expect(got?.status).toBe('todo'); // parked for processQaChanges, NOT failed back to ready/triage
+    expect(got?.consecutiveFailures).toBe(0); // reclaim must not creep it toward giveUp
+    expect(store.listEvents(qa.id).filter((e) => e.kind === 'gave_up')).toHaveLength(0);
+    store.close();
+  });
+
+  it('markFeaturePrReady does NOT flip a pipeline feature whose verdict is request_changes', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({
+      boardId: 'default',
+      name: 'feat',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    store.setFeaturePr(f.id, 'https://x/pull/9', 9, 'draft');
+    store.createTask({ title: 'QA', status: 'todo', pipelineStage: 'qa', featureId: f.id });
+    store.setQaVerdict(f.id, 'request_changes');
+    const markPrReady = vi.fn(() => ({ ok: true as const }));
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig },
+      integration: fakeIntegration({ markPrReady })
+    });
+
+    disp['markFeaturePrReady'](store.getFeature(f.id)!);
+    expect(markPrReady).not.toHaveBeenCalled();
+    expect(store.getFeature(f.id)?.prState).toBe('draft');
+    store.close();
+  });
+
+  it('markFeaturePrReady flips a pipeline feature once QA passes', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({
+      boardId: 'default',
+      name: 'feat',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    store.setFeaturePr(f.id, 'https://x/pull/9', 9, 'draft');
+    store.createTask({ title: 'QA', status: 'done', pipelineStage: 'qa', featureId: f.id });
+    store.setQaVerdict(f.id, 'pass');
+    const markPrReady = vi.fn(() => ({ ok: true as const }));
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig },
+      integration: fakeIntegration({ markPrReady })
+    });
+
+    disp['markFeaturePrReady'](store.getFeature(f.id)!);
+    expect(markPrReady).toHaveBeenCalledTimes(1);
+    expect(store.getFeature(f.id)?.prState).toBe('open');
+    store.close();
+  });
+
+  it('markFeaturePrReady flips a non-pipeline feature (no qa task, null verdict)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({
+      boardId: 'default',
+      name: 'feat',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    store.setFeaturePr(f.id, 'https://x/pull/9', 9, 'draft'); // no qa task; qaVerdict stays null
+    const markPrReady = vi.fn(() => ({ ok: true as const }));
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig },
+      integration: fakeIntegration({ markPrReady })
+    });
+
+    disp['markFeaturePrReady'](store.getFeature(f.id)!);
+    expect(markPrReady).toHaveBeenCalledTimes(1);
+    expect(store.getFeature(f.id)?.prState).toBe('open');
+    store.close();
+  });
+});
+
+describe('KanbanDispatcher.sweepStalePipelines', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  function makeDisp(store: KanbanStore, clock: { t: number }): KanbanDispatcher {
+    return new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig }
+    });
+  }
+
+  it('flags an idle-past-threshold pipeline as blocked + emits the event', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    // A blocked gate (not running/ready, not settled), last updated at t=1000.
+    store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      systemKind: 'pipeline_gate',
+      featureId: f.id
+    });
+    clock.t = 1000 + 25 * 60 * 60 * 1000; // 25h later, past the 24h threshold
+    makeDisp(store, clock).sweepStalePipelines();
+    expect(
+      store
+        .listEvents(f.id)
+        .some((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled')
+    ).toBe(true);
+    store.close();
+  });
+
+  it('fires once: a second sweep does not re-emit the blocked event', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      systemKind: 'pipeline_gate',
+      featureId: f.id
+    });
+    clock.t = 1000 + 25 * 60 * 60 * 1000;
+    const disp = makeDisp(store, clock);
+    disp.sweepStalePipelines();
+    disp.sweepStalePipelines();
+    const blocked = store
+      .listEvents(f.id)
+      .filter((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled');
+    expect(blocked).toHaveLength(1);
+    store.close();
+  });
+
+  it('does not flag a pipeline with a live (ready) stage task', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    store.createTask({
+      title: 'Impl',
+      status: 'ready',
+      pipelineStage: 'implement',
+      featureId: f.id
+    });
+    clock.t = 1000 + 25 * 60 * 60 * 1000;
+    makeDisp(store, clock).sweepStalePipelines();
+    expect(
+      store
+        .listEvents(f.id)
+        .some((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled')
+    ).toBe(false);
+    store.close();
+  });
+
+  it('does not flag a fully-settled pipeline (all done)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    store.createTask({ title: 'Gate', status: 'done', pipelineStage: 'gate', featureId: f.id });
+    store.createTask({ title: 'QA', status: 'done', pipelineStage: 'qa', featureId: f.id });
+    clock.t = 1000 + 25 * 60 * 60 * 1000;
+    makeDisp(store, clock).sweepStalePipelines();
+    expect(
+      store
+        .listEvents(f.id)
+        .some((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled')
+    ).toBe(false);
+    store.close();
+  });
+
+  it('does not flag a pipeline still within the idle window', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      featureId: f.id
+    });
+    clock.t = 1000 + 23 * 60 * 60 * 1000; // 23h — under the 24h threshold
+    makeDisp(store, clock).sweepStalePipelines();
+    expect(
+      store
+        .listEvents(f.id)
+        .some((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled')
+    ).toBe(false);
     store.close();
   });
 });
