@@ -31,6 +31,9 @@ const WORKTREE_SWEEP_INTERVAL_MS = 300_000;
 /** Min gap between grouping-detection runs for the same repo (debounce; spec §4). */
 const SUGGEST_COOLDOWN_MS = 30 * 60_000;
 
+/** A pipeline whose current stage is idle longer than this is flagged stale (spec §12). */
+const PIPELINE_STALE_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Exit code rune returns from a `--require-tool` run that ended without the
  * model calling a completion tool (it was nudged to the cap and gave up). Kept
@@ -1221,6 +1224,34 @@ export class KanbanDispatcher {
     return task;
   }
 
+  /**
+   * Flag pipelines stalled at their current stage past PIPELINE_STALE_MS (gate never
+   * approved, QA looping, dead stage). There is no 'blocked' feature status, so the signal
+   * is a feature-level 'blocked' event (reason 'pipeline_stalled') that the #233 autopilot
+   * trigger surfaces — the same channel processQaChanges/reclaim emit blocks on. Fire-once
+   * per feature: a prior 'pipeline_stalled' event short-circuits the re-emit.
+   */
+  sweepStalePipelines(): void {
+    const cutoff = this.deps.now() - PIPELINE_STALE_MS;
+    for (const f of this.store.activePipelineFeatures()) {
+      const tasks = this.store.pipelineTasksForFeature(f.id);
+      if (tasks.length === 0) continue;
+      const live = tasks.some((t) => t.status === 'running' || t.status === 'ready');
+      if (live) continue;
+      const settled = tasks.every((t) => t.status === 'done' || t.status === 'archived');
+      if (settled) continue; // pipeline finished, not stalled
+      const lastUpdate = Math.max(...tasks.map((t) => t.updatedAt));
+      if (lastUpdate > cutoff) continue; // still within the idle window
+      // Fire-once: skip if we already flagged this feature as stalled.
+      const alreadyFlagged = this.store
+        .listEvents(f.id)
+        .some((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled');
+      if (alreadyFlagged) continue;
+      this.store.appendEvent(f.id, null, 'blocked', { reason: 'pipeline_stalled' });
+      log.warn('pipeline stalled', { featureId: f.id, lastUpdate });
+    }
+  }
+
   /** Purge discarded artifacts past the retention window; surface each deletion as an event. */
   sweepArtifacts(): void {
     const days = this.deps.config.artifactRetentionDays;
@@ -1286,6 +1317,7 @@ export class KanbanDispatcher {
     this.integrate();
     this.sweepArtifacts();
     this.sweepMergedWorktrees();
+    this.sweepStalePipelines();
   }
 
   start(): void {

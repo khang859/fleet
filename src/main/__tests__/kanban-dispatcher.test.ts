@@ -2104,3 +2104,117 @@ describe('KanbanDispatcher QA gating', () => {
     store.close();
   });
 });
+
+describe('KanbanDispatcher.sweepStalePipelines', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  function makeDisp(store: KanbanStore, clock: { t: number }): KanbanDispatcher {
+    return new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig }
+    });
+  }
+
+  it('flags an idle-past-threshold pipeline as blocked + emits the event', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    // A blocked gate (not running/ready, not settled), last updated at t=1000.
+    store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      systemKind: 'pipeline_gate',
+      featureId: f.id
+    });
+    clock.t = 1000 + 25 * 60 * 60 * 1000; // 25h later, past the 24h threshold
+    makeDisp(store, clock).sweepStalePipelines();
+    expect(
+      store
+        .listEvents(f.id)
+        .some((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled')
+    ).toBe(true);
+    store.close();
+  });
+
+  it('fires once: a second sweep does not re-emit the blocked event', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      systemKind: 'pipeline_gate',
+      featureId: f.id
+    });
+    clock.t = 1000 + 25 * 60 * 60 * 1000;
+    const disp = makeDisp(store, clock);
+    disp.sweepStalePipelines();
+    disp.sweepStalePipelines();
+    const blocked = store
+      .listEvents(f.id)
+      .filter((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled');
+    expect(blocked).toHaveLength(1);
+    store.close();
+  });
+
+  it('does not flag a pipeline with a live (ready) stage task', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    store.createTask({
+      title: 'Impl',
+      status: 'ready',
+      pipelineStage: 'implement',
+      featureId: f.id
+    });
+    clock.t = 1000 + 25 * 60 * 60 * 1000;
+    makeDisp(store, clock).sweepStalePipelines();
+    expect(
+      store
+        .listEvents(f.id)
+        .some((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled')
+    ).toBe(false);
+    store.close();
+  });
+
+  it('does not flag a fully-settled pipeline (all done)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    store.createTask({ title: 'Gate', status: 'done', pipelineStage: 'gate', featureId: f.id });
+    store.createTask({ title: 'QA', status: 'done', pipelineStage: 'qa', featureId: f.id });
+    clock.t = 1000 + 25 * 60 * 60 * 1000;
+    makeDisp(store, clock).sweepStalePipelines();
+    expect(
+      store
+        .listEvents(f.id)
+        .some((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled')
+    ).toBe(false);
+    store.close();
+  });
+
+  it('does not flag a pipeline still within the idle window', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    store.createTask({
+      title: 'Gate',
+      status: 'blocked',
+      pipelineStage: 'gate',
+      featureId: f.id
+    });
+    clock.t = 1000 + 23 * 60 * 60 * 1000; // 23h — under the 24h threshold
+    makeDisp(store, clock).sweepStalePipelines();
+    expect(
+      store
+        .listEvents(f.id)
+        .some((e) => e.kind === 'blocked' && e.payload?.reason === 'pipeline_stalled')
+    ).toBe(false);
+    store.close();
+  });
+});

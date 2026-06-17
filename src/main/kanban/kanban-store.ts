@@ -1544,6 +1544,25 @@ export class KanbanStore {
     return rows.map((r) => this.rowToFeature(r));
   }
 
+  /** Active features that have at least one pipeline-stage task. */
+  activePipelineFeatures(): Feature[] {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT f.* FROM features f JOIN tasks t ON t.feature_id = f.id
+          WHERE f.status='active' AND t.pipeline_stage IS NOT NULL`
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToFeature(r));
+  }
+
+  /** All pipeline-stage tasks for a feature. */
+  pipelineTasksForFeature(featureId: string): Task[] {
+    const rows = this.db
+      .prepare('SELECT * FROM tasks WHERE feature_id=? AND pipeline_stage IS NOT NULL')
+      .all(featureId) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
   updateFeature(id: string, fields: UpdateFeatureInput): void {
     const current = this.getFeature(id);
     if (!current) return;
