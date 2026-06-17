@@ -947,6 +947,7 @@ void app.whenReady().then(async () => {
         .get()
         .kanban.profiles.filter((p) => p.role === 'worker')
         .map((p) => p.name),
+    profileRoles: () => settingsStore.get().kanban.profiles.map((p) => p.role),
     isAlive: (pid) => {
       try {
         process.kill(pid, 0);

@@ -18,6 +18,8 @@ import {
   updateIntegrationBranchFromMain
 } from './workspace';
 import { readLogTail } from './spawn-worker';
+import { expandTemplate } from './template-expander';
+import { getTemplate } from './pipeline-templates';
 
 const log = createLogger('kanban-dispatcher');
 
@@ -137,6 +139,8 @@ export interface DispatcherDeps {
   verifyLogPath?: (runId: number) => string;
   /** Worker-role profile names (in profile order), for the auto-assign fast path and fallback. */
   workerProfileNames?: () => string[];
+  /** All profile role names present, for the pipeline expander's graceful-degradation check. */
+  profileRoles?: () => string[];
   /** Git ops for integrate(); injected in tests, defaults to real workspace.ts fns. */
   integration?: IntegrationOps;
 }
@@ -444,6 +448,25 @@ export class KanbanDispatcher {
       if (slots <= 0) break;
       const mode = task.pendingMode;
       if (mode == null) continue;
+
+      // Full-feature pipeline roots are expanded deterministically (no orchestrator).
+      if (task.pipelineTemplate === 'full_feature') {
+        const lock = this.nextLock();
+        if (!this.store.claimForDecompose(task.id, lock, ttl)) continue; // lost the race
+        const roles = new Set(this.deps.profileRoles?.() ?? []);
+        try {
+          expandTemplate(task, getTemplate(task.pipelineTemplate), this.store, {
+            hasRole: (r) => roles.has(r)
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.store.blockTask(task.id, `pipeline expansion failed: ${msg}`);
+          log.error('pipeline expand failed', { taskId: task.id, error: msg });
+        }
+        slots -= 1;
+        continue;
+      }
+
       const lock = this.nextLock();
       if (!this.store.claimForDecompose(task.id, lock, ttl)) continue; // lost the race
       let runId: number | null = null;

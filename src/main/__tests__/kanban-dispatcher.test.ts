@@ -563,6 +563,37 @@ describe('KanbanDispatcher.decompose', () => {
     expect(store.getTask(t.id)?.status).toBe('review');
     store.close();
   });
+
+  it('routes a full_feature triage root to the expander, not the orchestrator', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const root = store.createTask({
+      title: 'Add billing',
+      status: 'triage',
+      pipelineTemplate: 'full_feature'
+    });
+    store.setPendingMode(root.id, 'decompose');
+    let spawned = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => {
+        spawned += 1;
+        return 1;
+      },
+      profileRoles: () => ['explorer', 'architect', 'qa', 'worker'],
+      config: { ...baseConfig }
+    });
+    disp.decompose();
+    expect(spawned).toBe(0); // expander runs in-process; no orchestrator spawn
+    const stages = store
+      .listTasks()
+      .map((t) => t.pipelineStage)
+      .filter(Boolean)
+      .sort();
+    expect(stages).toEqual(['explore', 'gate', 'qa', 'spec']);
+    store.close();
+  });
 });
 
 describe('KanbanDispatcher.autoAssign', () => {
