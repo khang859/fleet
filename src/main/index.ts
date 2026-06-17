@@ -54,6 +54,7 @@ import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { PmChatService } from './kanban/pm-chat-service';
 import { PmAutopilot, buildEventBriefing } from './kanban/pm-autopilot';
+import { buildRetroBriefing } from './kanban/pm-retro';
 import { buildDigestContext } from './kanban/pm-digest';
 import { RuneFileChatService } from './rune-assist/rune-file-chat-service';
 import { registerRuneAssistIpc } from './rune-assist/rune-assist-ipc';
@@ -1245,6 +1246,19 @@ void app.whenReady().then(async () => {
         events,
         (id) => kanbanStore?.getTask(id)?.title ?? kanbanStore?.getFeature(id)?.name ?? null
       ),
+    buildRetro: (featureId) => {
+      const store = kanbanStore;
+      if (!store) return null;
+      const feature = store.getFeature(featureId);
+      if (!feature) return null;
+      const tasks = store.listFeatureTasks(featureId);
+      return buildRetroBriefing(
+        feature,
+        tasks,
+        (id) => store.listRuns(id),
+        (id) => store.listEvents(id)
+      );
+    },
     log: (msg, meta) => log.warn(msg, meta ?? {}),
     listDigestBoards: () =>
       (kanbanStore?.listBoards() ?? []).map((b) => {
@@ -1292,6 +1306,7 @@ void app.whenReady().then(async () => {
   const learningsHome = join(homedir(), '.fleet', 'learnings');
   const learningsModelDir = join(learningsHome, 'models');
   const learningsStoreRef = new LearningsStore(join(learningsHome, 'learnings.db'));
+  kanbanMcp?.setLearningsStore(learningsStoreRef);
   const learningsEmbedderRef = new WorkerEmbedder({ modelCacheDir: learningsModelDir });
   learningsStore = learningsStoreRef;
   learningsEmbedder = learningsEmbedderRef;
