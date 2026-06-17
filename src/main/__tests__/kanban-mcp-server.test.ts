@@ -738,6 +738,16 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
     expect(task?.workspaceKind).toBe('scratch');
   });
 
+  it('kanban_create carries a pipeline_template onto the created task', async () => {
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'templated', pipeline_template: 'full_feature' }
+    });
+    const id = String(r.result.content[0].text).trim();
+    const task = store.getTask(id);
+    expect(task?.pipelineTemplate).toBe('full_feature');
+  });
+
   it('kanban_create links listed parents', async () => {
     const parent = store.createTask({ title: 'parent', status: 'todo' });
     const r = await rpc(`${base}?run=pmtok`, 'tools/call', {

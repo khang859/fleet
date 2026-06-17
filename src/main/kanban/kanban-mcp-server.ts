@@ -355,7 +355,8 @@ const PM_TOOLS: McpTool[] = [
         parents: { type: 'array', items: { type: 'string' } },
         feature_id: { type: 'string' },
         project: { type: 'string' },
-        docs: { type: 'array', items: { type: 'string' } }
+        docs: { type: 'array', items: { type: 'string' } },
+        pipeline_template: { type: 'string', enum: ['full_feature', 'quick_fix'] }
       },
       required: ['title']
     }
@@ -884,7 +885,8 @@ export class KanbanMcpServer {
               parents: z.array(z.string()).optional(),
               feature_id: z.string().optional(),
               project: z.string().optional(),
-              docs: z.array(z.string()).optional()
+              docs: z.array(z.string()).optional(),
+              pipeline_template: z.enum(['full_feature', 'quick_fix']).optional()
             })
             .parse(args);
           if (a.docs && a.docs.length > 0) {
@@ -963,6 +965,7 @@ export class KanbanMcpServer {
             boardId: scope.boardId,
             featureId: a.feature_id ?? null,
             docs: a.docs ?? [],
+            pipelineTemplate: a.pipeline_template ?? null,
             ...workspace
           });
           for (const p of a.parents ?? []) commands.link(p, task.id);
