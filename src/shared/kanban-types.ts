@@ -11,8 +11,8 @@ export type TaskStatus =
 
 export type WorkspaceKind = 'scratch' | 'dir' | 'worktree';
 
-/** What drove a PM chat turn: a human message, a board event, or a periodic digest. */
-export type PmTurnOrigin = 'user' | 'event' | 'digest';
+/** What drove a PM chat turn: a human message, a board event, a periodic digest, or a post-ship retro. */
+export type PmTurnOrigin = 'user' | 'event' | 'digest' | 'retro';
 
 /** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign' | 'resolve' | 'suggest'; 'verify' is a deterministic (non-agent) verify-command run; 'review' is an agent code-review run (spec §232). */
 export type RunMode =

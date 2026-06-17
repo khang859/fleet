@@ -36,7 +36,7 @@ const sessionsFileSchema = z.record(z.string(), z.string());
 const originLogSchema = z.array(
   z.object({
     boardId: z.string(),
-    origin: z.enum(['user', 'event', 'digest']),
+    origin: z.enum(['user', 'event', 'digest', 'retro']),
     at: z.number()
   })
 );
