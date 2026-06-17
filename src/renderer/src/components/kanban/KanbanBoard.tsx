@@ -71,6 +71,7 @@ export function KanbanBoard(): React.JSX.Element {
   // null = not applicable / still checking; true/false = the picked folder's git-repo status.
   const [folderIsRepo, setFolderIsRepo] = useState<boolean | null>(null);
   const [newStatus, setNewStatus] = useState<TaskStatus>('triage');
+  const [newTemplate, setNewTemplate] = useState<'quick_fix' | 'full_feature'>('quick_fix');
   const draggingId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -188,6 +189,7 @@ export function KanbanBoard(): React.JSX.Element {
           boardId: activeBoardSlug,
           status: newStatus,
           featureId,
+          pipelineTemplate: newTemplate === 'full_feature' ? 'full_feature' : 'quick_fix',
           ...workspace
         });
       }
@@ -201,6 +203,7 @@ export function KanbanBoard(): React.JSX.Element {
     setNewMode('scratch');
     setNewIsolated(true);
     setNewStatus('triage');
+    setNewTemplate('quick_fix');
     setCreating(false);
     clearSeed();
   }
@@ -461,6 +464,19 @@ export function KanbanBoard(): React.JSX.Element {
                 >
                   <option value="triage">Triage</option>
                   <option value="todo">Todo</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] font-medium text-neutral-400">
+                Pipeline
+                <select
+                  value={newTemplate}
+                  onChange={(e) =>
+                    setNewTemplate(e.target.value === 'full_feature' ? 'full_feature' : 'quick_fix')
+                  }
+                  className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs font-normal text-neutral-200 outline-none focus:border-blue-500"
+                >
+                  <option value="quick_fix">Quick fix (default)</option>
+                  <option value="full_feature">Full feature (explore → spec → QA)</option>
                 </select>
               </div>
               <div className="text-[11px] font-medium text-neutral-400">

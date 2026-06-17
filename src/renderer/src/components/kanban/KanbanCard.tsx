@@ -55,6 +55,11 @@ export function KanbanCard({
       </div>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-neutral-400">
         <span className="font-mono text-neutral-500">{card.id}</span>
+        {card.pipelineStage && (
+          <span className="rounded bg-sky-500/20 px-1 text-sky-300" title="Pipeline stage">
+            {card.pipelineStage}
+          </span>
+        )}
         {card.assignee && (
           <span className="rounded bg-teal-500/20 px-1 text-teal-300">{card.assignee}</span>
         )}
