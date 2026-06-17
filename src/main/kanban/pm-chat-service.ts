@@ -203,12 +203,15 @@ export class PmChatService {
     front: boolean
   ): Promise<void> {
     const c = this.chat(boardId);
-    // A new event/digest turn supersedes any still-queued non-user turns: only the
-    // latest event context matters. Resolve the dropped ones cleanly (they were
-    // intentionally superseded, not failed). User turns are never dropped.
+    // A new event/digest turn supersedes any still-queued event/digest turns: only
+    // the latest event context matters. user and retro turns are durable — a human
+    // message must never be dropped, and a per-feature retro must survive event churn
+    // so every shipped feature gets its entry (#235). Resolve dropped turns cleanly
+    // (intentionally superseded, not failed).
     if (origin !== 'user') {
-      const stale = c.queue.filter((q) => q.origin !== 'user');
-      c.queue = c.queue.filter((q) => q.origin === 'user');
+      const durable = (o: PmTurnOrigin): boolean => o === 'user' || o === 'retro';
+      const stale = c.queue.filter((q) => !durable(q.origin));
+      c.queue = c.queue.filter((q) => durable(q.origin));
       for (const s of stale) s.resolve();
     }
     const p = new Promise<void>((resolve, reject) => {
