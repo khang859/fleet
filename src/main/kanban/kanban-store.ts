@@ -258,6 +258,14 @@ export class KanbanStore {
       this.addColumnIfMissing('boards', 'digest_cron', 'TEXT');
       this.addColumnIfMissing('boards', 'last_digest_at', 'INTEGER');
     }
+    if (current < 18) {
+      // SDLC pipeline templates (#234): stage identity on tasks + a QA verdict on
+      // features. Additive, idempotent. The columns are in SCHEMA_SQL for fresh
+      // installs; add them here for existing DBs. No new indexes.
+      this.addColumnIfMissing('tasks', 'pipeline_template', 'TEXT');
+      this.addColumnIfMissing('tasks', 'pipeline_stage', 'TEXT');
+      this.addColumnIfMissing('features', 'qa_verdict', 'TEXT');
+    }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
     this.db
@@ -334,6 +342,8 @@ export class KanbanStore {
       conflictFiles: JSON.parse(String(r.conflict_files ?? '[]')) as string[],
       worktreePruned: Number(r.worktree_pruned ?? 0) === 1,
       systemKind: (r.system_kind as string | null) ?? null,
+      pipelineTemplate: (r.pipeline_template as Task['pipelineTemplate']) ?? null,
+      pipelineStage: (r.pipeline_stage as Task['pipelineStage']) ?? null,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
     };
@@ -346,10 +356,10 @@ export class KanbanStore {
       .prepare(
         `INSERT INTO tasks (id, title, body, assignee, status, priority, tenant,
           workspace_kind, workspace_path, repo_path, branch_name, base_branch, model_override, skills, docs, board_id, feature_id, idempotency_key,
-          scheduled_from, system_kind, max_runtime_seconds, max_retries, created_at, updated_at)
+          scheduled_from, system_kind, pipeline_template, pipeline_stage, max_runtime_seconds, max_retries, created_at, updated_at)
          VALUES (@id, @title, @body, @assignee, @status, @priority, @tenant,
           @workspace_kind, @workspace_path, @repo_path, @branch_name, @base_branch, @model_override, @skills, @docs, @board_id, @feature_id, @idempotency_key,
-          @scheduled_from, @system_kind, @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
+          @scheduled_from, @system_kind, @pipeline_template, @pipeline_stage, @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
       )
       .run({
         id,
@@ -372,6 +382,8 @@ export class KanbanStore {
         idempotency_key: input.idempotencyKey ?? null,
         scheduled_from: input.scheduledFrom ?? null,
         system_kind: input.systemKind ?? null,
+        pipeline_template: input.pipelineTemplate ?? null,
+        pipeline_stage: input.pipelineStage ?? null,
         max_runtime_seconds: input.maxRuntimeSeconds ?? null,
         max_retries: input.maxRetries ?? 1,
         created_at: ts,
@@ -1448,6 +1460,7 @@ export class KanbanStore {
       checksState: (r.checks_state as ChecksState | null) ?? null,
       syncedAt: (r.pr_synced_at as number | null) ?? null,
       prSkipNotified: Number(r.pr_skip_notified ?? 0) === 1,
+      qaVerdict: (r.qa_verdict as Feature['qaVerdict']) ?? null,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
     };
@@ -1912,6 +1925,13 @@ export class KanbanStore {
         'UPDATE tasks SET review_verdict=@v, review_head_sha=@sha, updated_at=@ts WHERE id=@id'
       )
       .run({ id: taskId, v: decision, sha: headSha ?? null, ts: this.now() });
+  }
+
+  /** Record the feature-level QA verdict (pipeline §8). null clears it. */
+  setQaVerdict(featureId: string, verdict: 'pass' | 'request_changes' | null): void {
+    this.db
+      .prepare('UPDATE features SET qa_verdict=@v, updated_at=@ts WHERE id=@id')
+      .run({ id: featureId, v: verdict, ts: this.now() });
   }
 
   incrementReviewAttempts(taskId: string): void {

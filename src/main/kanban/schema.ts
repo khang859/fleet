@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tasks (
@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   review_attempts INTEGER NOT NULL DEFAULT 0,
   review_head_sha TEXT,
   system_kind TEXT,
+  pipeline_template TEXT,
+  pipeline_stage TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -135,6 +137,7 @@ CREATE TABLE IF NOT EXISTS features (
   checks_state TEXT,
   pr_synced_at INTEGER,
   pr_skip_notified INTEGER NOT NULL DEFAULT 0,
+  qa_verdict TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
