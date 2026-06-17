@@ -138,6 +138,16 @@ function buildPrompt(input: BuildWorkerInput): string {
       `findings. Do not modify the code.\n\n## Diff\n\n\`\`\`diff\n${diff}\n\`\`\``
     );
   }
+  if (mode === 'explore') {
+    return (
+      `explore kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `You are a read-only cartographer. Map the codebase relevant to this task: affected ` +
+      `files, modules, and patterns; surface risks and unknowns. Write NO code and make NO ` +
+      `edits. Register your findings as a kanban_artifact (path relative to your working ` +
+      `directory) and post a one-paragraph summary comment on this task with kanban_comment. ` +
+      `When done, call kanban_complete with a one-line summary.`
+    );
+  }
   const verifyBlock = input.verifyFailure
     ? `Your previous completion failed the project's verify commands. Fix the cause and call ` +
       `kanban_complete again — it will re-run verification.\n\n\`\`\`\n${input.verifyFailure}\n\`\`\`\n\n`
@@ -188,6 +198,7 @@ function requireToolsForMode(mode: RunMode): string | null {
     case 'work':
     case 'decompose':
     case 'resolve':
+    case 'explore':
       return 'kanban_complete,kanban_block';
     case 'specify':
       return 'kanban_update';

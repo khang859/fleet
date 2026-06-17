@@ -395,6 +395,14 @@ export class KanbanDispatcher {
     return `${this.deps.now()}-${this.genLock}`;
   }
 
+  /** The run mode for a ready pipeline-stage task; non-pipeline ready tasks are plain 'work'. */
+  private modeForReadyTask(task: Task): RunMode {
+    if (task.pipelineStage === 'explore') return 'explore';
+    if (task.pipelineStage === 'spec') return 'spec';
+    if (task.pipelineStage === 'qa') return 'qa';
+    return 'work';
+  }
+
   claimAndSpawn(): void {
     const cap = this.deps.config.maxInProgress;
     const ttl = this.deps.config.claimTtlMs;
@@ -417,7 +425,8 @@ export class KanbanDispatcher {
           : (task.workspacePath ?? '');
         const run = this.store.startRun(task.id, task.assignee, null);
         runId = run.id;
-        pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode: 'work' });
+        const mode = this.modeForReadyTask(task);
+        pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode });
         if (pid != null) {
           this.store.setWorkerPid(task.id, run.id, pid);
         }
