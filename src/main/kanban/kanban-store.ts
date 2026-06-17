@@ -595,6 +595,20 @@ export class KanbanStore {
     return event;
   }
 
+  /**
+   * Drop a spec task's re-arm guards so a re-armed run may re-fan-out AND the dispatcher
+   * may raise a fresh approval proposal once it completes again (pipeline §6). Clears both
+   * the fan-out guard (`children_emitted`) and the one-shot approval guard
+   * (`spec_approval_raised`); leaving the latter would permanently silence raiseSpecApprovals.
+   */
+  clearSpecFanout(specTaskId: string): void {
+    this.db
+      .prepare(
+        "DELETE FROM task_events WHERE task_id=? AND kind IN ('children_emitted','spec_approval_raised')"
+      )
+      .run(specTaskId);
+  }
+
   listEvents(taskId: string): TaskEvent[] {
     const rows = this.db
       .prepare('SELECT * FROM task_events WHERE task_id=? ORDER BY id ASC')

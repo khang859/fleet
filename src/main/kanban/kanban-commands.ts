@@ -737,6 +737,18 @@ export class KanbanCommands {
     return { ok: true, message: 'accepted; branch preserved' };
   }
 
+  /** Release a pipeline approval gate: mark the gate task done so its implement children promote. */
+  approveSpec(gateTaskId: string): KanbanReviewActionResult {
+    const gate = this.store.getTask(gateTaskId);
+    if (!gate) return { ok: false, error: 'gate task not found' };
+    if (gate.pipelineStage !== 'gate') return { ok: false, error: 'target is not a pipeline gate' };
+    this.store.setStatus(gateTaskId, 'done');
+    this.store.appendEvent(gateTaskId, null, 'spec_approved', {});
+    // Gate advanced to done — let gated implement children promote without waiting for the poll.
+    this.dispatcher.tick();
+    return { ok: true, message: 'spec approved; gate released' };
+  }
+
   /**
    * Predict whether a worktree task's branch will merge cleanly into its base
    * (the feature integration branch, for feature tasks) and persist the result so
@@ -1103,6 +1115,27 @@ export class KanbanCommands {
     if (!p) throw new CodedError('proposal not found', 'NOT_FOUND');
     if (p.status !== 'pending') return; // already resolved — dismiss is a no-op
     this.store.resolveProposal(id, 'dismissed', null);
+    if (p.kind === 'approve_spec') {
+      // Re-arm the spec stage. p.targetId is the gate task. First archive the prior
+      // fan-out's implement children (linked gate→child) so the re-armed architect run
+      // starts clean instead of piling a second set on top. Archived children count as
+      // settled, so they don't gate QA. (Don't touch the gate→qa link target.)
+      for (const childId of this.store.childrenOf(p.targetId)) {
+        if (this.store.getTask(childId)?.pipelineStage === 'implement') {
+          this.store.setStatus(childId, 'archived');
+        }
+      }
+      // Find the spec via the gate (gate's only parent is the spec), inject the dismissal
+      // as guidance, reset to ready, and clear the fan-out guard so it may re-fan-out.
+      const specId = this.store
+        .parentsOf(p.targetId)
+        .find((pid) => this.store.getTask(pid)?.pipelineStage === 'spec');
+      if (specId) {
+        this.store.addComment(specId, 'pm', `Spec dismissed: revise and re-fan-out. ${p.rationale}`);
+        this.store.clearSpecFanout(specId);
+        this.store.setStatus(specId, 'ready');
+      }
+    }
   }
 
   // ---- Standup digest config ----
