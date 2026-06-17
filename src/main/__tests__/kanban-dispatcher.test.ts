@@ -324,6 +324,44 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
     store.close();
   });
 
+  it('routes an explore-stage ready task with mode explore (plain task stays work)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const exp = store.createTask({
+      title: 'map',
+      status: 'ready',
+      assignee: 'r',
+      pipelineStage: 'explore'
+    });
+    const plain = store.createTask({ title: 'do', status: 'ready', assignee: 'r' });
+    const spawned: Array<{ id: string; mode: string }> = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (args) => {
+        spawned.push({ id: args.task.id, mode: args.mode });
+        return 1;
+      },
+      config: {
+        failureLimit: 2,
+        claimGraceMs: 0,
+        maxInProgress: 3,
+        claimTtlMs: 1000,
+        autoDecompose: false,
+        autoAssign: false,
+        autoIntegrate: false,
+        autoReview: false,
+        maxDecompose: 1,
+        artifactRetentionDays: 0
+      },
+      prepareWorkspaceFn: () => '/tmp/ws'
+    });
+    disp.claimAndSpawn();
+    expect(spawned.find((s) => s.id === exp.id)?.mode).toBe('explore');
+    expect(spawned.find((s) => s.id === plain.id)?.mode).toBe('work');
+    store.close();
+  });
+
   it('respects the maxInProgress concurrency cap', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);
