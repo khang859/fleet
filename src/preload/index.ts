@@ -25,6 +25,7 @@ import type {
   RecentImagesResponse,
   ClipboardHistoryResponse,
   LogEntry,
+  DiagnosticsInfo,
   ActivityStatePayload,
   RemoteStatePayload,
   WorktreeCreateRequest,
@@ -411,6 +412,12 @@ const fleetApi = {
   shell: {
     openExternal: async (url: string): Promise<void> =>
       typedInvoke(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, url)
+  },
+  diagnostics: {
+    getInfo: async (): Promise<DiagnosticsInfo> => typedInvoke(IPC_CHANNELS.DIAGNOSTICS_GET_INFO),
+    getLogTail: async (maxBytes?: number): Promise<string> =>
+      typedInvoke(IPC_CHANNELS.DIAGNOSTICS_GET_LOG_TAIL, maxBytes),
+    openLogsFolder: async (): Promise<void> => typedInvoke(IPC_CHANNELS.DIAGNOSTICS_OPEN_LOGS)
   },
   terminal: {
     showContextMenu: async (params: {

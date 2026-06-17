@@ -1390,3 +1390,20 @@ process.on('SIGINT', () => {
   shutdownAll();
   process.exit(0);
 });
+
+// Last-resort capture for errors that escape every try/catch so they land in
+// ~/.fleet/logs/ instead of only an OS crash dump. Registering this handler
+// overrides Electron's default (print stack + exit) — we deliberately log and
+// keep running rather than tearing down the user's running terminals/agents.
+process.on('uncaughtException', (err) => {
+  log.error('uncaughtException', {
+    error: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined
+  });
+});
+process.on('unhandledRejection', (reason) => {
+  log.error('unhandledRejection', {
+    error: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined
+  });
+});

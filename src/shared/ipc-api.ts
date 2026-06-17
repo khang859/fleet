@@ -239,6 +239,17 @@ export interface LogEntry {
   timestamp: string;
 }
 
+/** Environment snapshot included in a "Report a Problem" bundle. */
+export interface DiagnosticsInfo {
+  version: string;
+  platform: string;
+  arch: string;
+  osRelease: string;
+  electron: string;
+  chrome: string;
+  node: string;
+}
+
 export type WorktreeCreateRequest = {
   repoPath: string;
   /** Pane context; for a WSL pane the worktree is created inside the distro. */

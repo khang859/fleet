@@ -1,9 +1,13 @@
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { createLogger } from './logger';
 import './index.css';
 
+const log = createLogger('renderer');
+
 window.addEventListener('error', (event) => {
-  console.error('[renderer:error]', {
+  log.error('uncaught error', {
     message: event.message,
     filename: event.filename,
     lineno: event.lineno,
@@ -14,7 +18,7 @@ window.addEventListener('error', (event) => {
 
 window.addEventListener('unhandledrejection', (event) => {
   const reason: unknown = event.reason;
-  console.error('[renderer:unhandledrejection]', {
+  log.error('unhandled rejection', {
     message: reason instanceof Error ? reason.message : String(reason),
     stack: reason instanceof Error ? reason.stack : undefined
   });
@@ -67,6 +71,10 @@ const fontTimeout = new Promise<void>((resolve) => setTimeout(resolve, 3000));
 void Promise.race([Promise.allSettled(fontLoads), fontTimeout]).then(() => {
   const root = document.getElementById('root');
   if (root) {
-    createRoot(root).render(<App />);
+    createRoot(root).render(
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    );
   }
 });
