@@ -1988,7 +1988,9 @@ export class KanbanStore {
   /** Spec-stage tasks that have completed (status done), for approval-proposal raising. */
   doneSpecTasks(): Task[] {
     const rows = this.db
-      .prepare("SELECT * FROM tasks WHERE pipeline_stage='spec' AND status='done'")
+      .prepare(
+        "SELECT * FROM tasks WHERE pipeline_stage='spec' AND status='done' ORDER BY priority DESC, created_at ASC"
+      )
       .all() as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToTask(r));
   }

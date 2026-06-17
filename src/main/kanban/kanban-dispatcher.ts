@@ -903,7 +903,10 @@ export class KanbanDispatcher {
       const gateId = this.store
         .childrenOf(spec.id)
         .find((id) => this.store.getTask(id)?.pipelineStage === 'gate');
-      if (!gateId) continue;
+      if (!gateId) {
+        log.warn('raiseSpecApprovals: spec has no gate child; skipping', { specId: spec.id });
+        continue;
+      }
       const children = this.store
         .childrenOf(gateId)
         .filter((id) => this.store.getTask(id)?.pipelineStage === 'implement');
