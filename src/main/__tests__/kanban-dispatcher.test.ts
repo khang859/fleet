@@ -2025,6 +2025,42 @@ describe('KanbanDispatcher QA gating', () => {
     store.close();
   });
 
+  it('reclaim parks a request_changes qa task as todo without recording a failure', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'feat' });
+    const qa = store.createTask({
+      title: 'QA',
+      status: 'ready',
+      assignee: 'qa',
+      pipelineStage: 'qa',
+      featureId: f.id
+    });
+    // Drive the qa task into the parked-running state kanban_qa_verdict('request_changes')
+    // leaves behind: claimed → running, the qa run finished, and a qa_changes_requested event.
+    store.claimTask(qa.id, 'L', 100000);
+    const run = store.startRun(qa.id, 'qa', 4321, 'qa');
+    store.setWorkerPid(qa.id, run.id, 4321);
+    store.finishRun(run.id, 'completed', { summary: 'needs work' });
+    store.appendEvent(qa.id, run.id, 'qa_changes_requested', { summary: 'needs work' });
+    store.setQaVerdict(f.id, 'request_changes');
+
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => false,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig },
+      workerExit: (id) => (id === run.id ? { code: 0, signal: null } : undefined)
+    });
+
+    disp.reclaim();
+    const got = store.getTask(qa.id);
+    expect(got?.status).toBe('todo'); // parked for processQaChanges, NOT failed back to ready/triage
+    expect(got?.consecutiveFailures).toBe(0); // reclaim must not creep it toward giveUp
+    expect(store.listEvents(qa.id).filter((e) => e.kind === 'gave_up')).toHaveLength(0);
+    store.close();
+  });
+
   it('markFeaturePrReady does NOT flip a pipeline feature whose verdict is request_changes', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);

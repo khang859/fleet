@@ -279,6 +279,31 @@ export class KanbanDispatcher {
         continue;
       }
 
+      // A terminal qa run that recorded request_changes: kanban_qa_verdict already finished the
+      // run + emitted qa_changes_requested, leaving the task parked 'running' (mirrors review).
+      // Park it WITHOUT recording a failure — processQaChanges() owns the re-arm/cap accounting,
+      // so reclaim must not let the generic failure path creep the task toward giveUp(). An
+      // inconclusive qa run (no verdict event) is NOT intercepted here; it falls through to the
+      // generic retry budget below.
+      if (reclaimMode === 'qa') {
+        const runId = task.currentRunId;
+        // A long qa run (heavy verify/e2e) can outlive its claim window. While alive, keep waiting.
+        if (exit == null && task.workerPid != null && this.deps.isAlive(task.workerPid)) {
+          if (task.claimLock) this.store.extendClaim(task.id, task.claimLock, VERIFY_CLAIM_TTL_MS);
+          continue;
+        }
+        const requestedChanges = this.store
+          .listEvents(task.id)
+          .some((e) => e.kind === 'qa_changes_requested' && e.runId === runId);
+        if (requestedChanges) {
+          // Park as todo and clear claim/run fields; processQaChanges() re-arms + caps it.
+          this.store.setStatusCleared(task.id, 'todo');
+          if (runId != null) this.deps.clearWorkerExit?.(runId);
+          continue;
+        }
+        // No verdict recorded — fall through to the generic failure/retry handling below.
+      }
+
       // Clean exit without a terminal tool: rune nudged to its cap and gave up
       // (exit 3). This is deterministic — retrying re-rolls the same wall — so
       // route to a deliberate review-required block, and do NOT count it as a
@@ -426,9 +451,9 @@ export class KanbanDispatcher {
         const workspace = this.deps.prepareWorkspaceFn
           ? this.deps.prepareWorkspaceFn(task)
           : (task.workspacePath ?? '');
-        const run = this.store.startRun(task.id, task.assignee, null);
-        runId = run.id;
         const mode = this.modeForReadyTask(task);
+        const run = this.store.startRun(task.id, task.assignee, null, mode);
+        runId = run.id;
         pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode });
         if (pid != null) {
           this.store.setWorkerPid(task.id, run.id, pid);
@@ -910,9 +935,13 @@ export class KanbanDispatcher {
         log.warn('raiseSpecApprovals: spec has no gate child; skipping', { specId: spec.id });
         continue;
       }
-      const children = this.store
-        .childrenOf(gateId)
-        .filter((id) => this.store.getTask(id)?.pipelineStage === 'implement');
+      const children = this.store.childrenOf(gateId).filter((id) => {
+        const t = this.store.getTask(id);
+        // Exclude archived children: a prior dismiss re-arm archives the old implement
+        // fan-out, and counting those as evidence of a non-empty plan would raise a
+        // misleading approval targeting a gate with no runnable work.
+        return t?.pipelineStage === 'implement' && t.status !== 'archived';
+      });
       if (children.length === 0) {
         this.store.blockTask(spec.id, 'architect produced no implementation tasks');
         this.store.appendEvent(spec.id, null, 'spec_approval_raised', { empty: true });
