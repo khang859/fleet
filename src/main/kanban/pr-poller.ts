@@ -110,6 +110,16 @@ export class PrPoller {
           checks: res.checksState
         });
       }
+      // A merged PR is the terminal "shipped" signal (#235): flip status once and emit
+      // feature_shipped so the PM autopilot can run a retro. The status guard — plus
+      // featuresDuePrSync's open/draft-only filter, which drops a merged PR from the
+      // next sweep — makes this fire exactly once.
+      if (res.state === 'merged' && feature.status === 'active') {
+        this.store.updateFeature(feature.id, { status: 'shipped' });
+        this.store.appendEvent(feature.id, null, 'feature_shipped', {
+          prNumber: feature.prNumber ?? null
+        });
+      }
     }
   }
 

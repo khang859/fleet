@@ -85,4 +85,58 @@ describe('PrPoller feature sweep', () => {
     expect(store.listEvents(f.id).filter((e) => e.kind === 'feature_pr_synced')).toHaveLength(1);
     store.close();
   });
+
+  it('flips a merged feature to shipped and emits feature_shipped exactly once', () => {
+    const clock = 400_000;
+    const store = new KanbanStore(join(TEST_DIR, `feat-shipped-${Math.random()}.db`), {
+      now: () => clock
+    });
+    const f = store.createFeature({ boardId: 'default', name: 'F', repoPath: '/repo' });
+    store.setFeaturePr(f.id, 'https://x/pull/9', 9, 'open');
+    const fetchPrState = (): PrFetchResult => ({
+      ok: true,
+      state: 'merged',
+      checksState: 'passing',
+      mergeState: 'CLEAN',
+      url: 'https://x/pull/9',
+      number: 9
+    });
+    const poller = new PrPoller(store, { now: () => clock, fetchPrState });
+    poller.sweep();
+
+    const got = store.getFeature(f.id)!;
+    expect(got.status).toBe('shipped');
+    const shipped = store.listEvents(f.id).filter((e) => e.kind === 'feature_shipped');
+    expect(shipped).toHaveLength(1);
+    expect(shipped[0].payload).toEqual({ prNumber: 9 });
+
+    // A shipped feature is no longer open/draft, so featuresDuePrSync excludes it:
+    // a second sweep must not re-ship or re-emit.
+    poller.sweep();
+    expect(store.listEvents(f.id).filter((e) => e.kind === 'feature_shipped')).toHaveLength(1);
+    store.close();
+  });
+
+  it('does not ship a feature whose PR is merely open', () => {
+    const clock = 500_000;
+    const store = new KanbanStore(join(TEST_DIR, `feat-open-${Math.random()}.db`), {
+      now: () => clock
+    });
+    const f = store.createFeature({ boardId: 'default', name: 'F', repoPath: '/repo' });
+    store.setFeaturePr(f.id, 'https://x/pull/9', 9, 'draft');
+    const fetchPrState = (): PrFetchResult => ({
+      ok: true,
+      state: 'open',
+      checksState: 'passing',
+      mergeState: 'CLEAN',
+      url: 'https://x/pull/9',
+      number: 9
+    });
+    const poller = new PrPoller(store, { now: () => clock, fetchPrState });
+    poller.sweep();
+
+    expect(store.getFeature(f.id)!.status).toBe('active');
+    expect(store.listEvents(f.id).filter((e) => e.kind === 'feature_shipped')).toHaveLength(0);
+    store.close();
+  });
 });
