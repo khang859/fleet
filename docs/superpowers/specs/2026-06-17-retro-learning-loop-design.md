@@ -136,12 +136,15 @@ New tool in the **PM board scope** (not worker scope):
 ```ts
 kanban_learning_create({ title, body, tags?, project?, feature_id? })
   → learningsStore.create({
-      title, body, tags,
-      sourceAgent: 'retro',
-      sourceSessionId: feature_id ?? null,
+      title, body,
+      tags: ['retro', ...(tags ?? [])],   // provenance marker
+      sourceSessionId: feature_id,          // best-effort dedup
       sourceProject: project ?? <board default project name>
     })
 ```
+
+`CreateLearningInput.sourceAgent` is typed `'rune' | 'claude'`, so retro provenance
+is carried as a `'retro'` **tag**, not via `sourceAgent` (which is left unset).
 
 - **Idempotency** is primarily guaranteed by the fire-once trigger: a feature emits
   exactly one `feature_shipped` event (status guard), so the retro runs once per
