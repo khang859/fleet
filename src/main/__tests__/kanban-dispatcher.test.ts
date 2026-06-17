@@ -594,6 +594,42 @@ describe('KanbanDispatcher.decompose', () => {
     expect(stages).toEqual(['explore', 'gate', 'qa', 'spec']);
     store.close();
   });
+
+  it('degrades a full_feature root to the orchestrator when a required role is missing', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const root = store.createTask({
+      title: 'Add billing',
+      status: 'triage',
+      pipelineTemplate: 'full_feature'
+    });
+    store.setPendingMode(root.id, 'decompose');
+    const spawned: string[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (args) => {
+        spawned.push(args.mode);
+        return 1;
+      },
+      profileRoles: () => ['worker'], // missing explorer/architect/qa → expansion falls back
+      config: { ...baseConfig },
+      prepareWorkspaceFn: () => '/tmp/ws'
+    });
+
+    // First tick: expansion is a no-op fallback; no stages, no orchestrator spawn, root re-armed.
+    disp.decompose();
+    expect(spawned).toEqual([]);
+    expect(store.listTasks().map((t) => t.pipelineStage).filter(Boolean)).toEqual([]);
+    expect(store.getTask(root.id)?.status).toBe('triage');
+    expect(store.getTask(root.id)?.pendingMode).toBe('decompose');
+
+    // Next tick: the marker is present, so the root falls through to the orchestrator (today's flow).
+    disp.decompose();
+    expect(spawned).toEqual(['decompose']);
+    expect(store.getTask(root.id)?.status).toBe('running');
+    store.close();
+  });
 });
 
 describe('KanbanDispatcher.autoAssign', () => {

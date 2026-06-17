@@ -18,7 +18,7 @@ import {
   updateIntegrationBranchFromMain
 } from './workspace';
 import { readLogTail } from './spawn-worker';
-import { expandTemplate } from './template-expander';
+import { expandTemplate, PIPELINE_EXPANDED_EVENT } from './template-expander';
 import { getTemplate } from './pipeline-templates';
 
 const log = createLogger('kanban-dispatcher');
@@ -449,8 +449,15 @@ export class KanbanDispatcher {
       const mode = task.pendingMode;
       if (mode == null) continue;
 
-      // Full-feature pipeline roots are expanded deterministically (no orchestrator).
-      if (task.pipelineTemplate === 'full_feature') {
+      // Full-feature pipeline roots are expanded deterministically (no orchestrator). A root
+      // that already carries the expansion marker was processed on a prior tick: a successful
+      // expansion would have completed the root (so it wouldn't be a pending triage task here),
+      // which means this one was degraded to quick_fix — fall through to the orchestrator so it
+      // runs today's flow instead of looping back into the expander forever.
+      const alreadyExpanded =
+        task.pipelineTemplate === 'full_feature' &&
+        this.store.listEvents(task.id).some((e) => e.kind === PIPELINE_EXPANDED_EVENT);
+      if (task.pipelineTemplate === 'full_feature' && !alreadyExpanded) {
         const lock = this.nextLock();
         if (!this.store.claimForDecompose(task.id, lock, ttl)) continue; // lost the race
         const roles = new Set(this.deps.profileRoles?.() ?? []);
@@ -458,6 +465,14 @@ export class KanbanDispatcher {
           expandTemplate(task, getTemplate(task.pipelineTemplate), this.store, {
             hasRole: (r) => roles.has(r)
           });
+          // A successful expansion completes the root (it leaves 'running'). If the root is
+          // still 'running', expansion was a graceful-degradation no-op (a required SDLC role
+          // was missing): release the claim back to triage so the next tick takes the
+          // fall-through orchestrator path above instead of reclaiming a dead work run.
+          if (this.store.getTask(task.id)?.status === 'running') {
+            this.store.setStatusCleared(task.id, 'triage');
+            this.store.setPendingMode(task.id, mode);
+          }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           this.store.blockTask(task.id, `pipeline expansion failed: ${msg}`);
