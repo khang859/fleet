@@ -1813,6 +1813,13 @@ export class KanbanStore {
       .run(status, this.now(), taskId);
   }
 
+  /** Attach a task to a feature (pipeline expander backfills the root's feature). */
+  setFeatureId(taskId: string, featureId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET feature_id=?, updated_at=? WHERE id=?')
+      .run(featureId, this.now(), taskId);
+  }
+
   setWorkerPid(taskId: string, runId: number, pid: number): void {
     const ts = this.now();
     this.db.prepare('UPDATE tasks SET worker_pid=?, updated_at=? WHERE id=?').run(pid, ts, taskId);
