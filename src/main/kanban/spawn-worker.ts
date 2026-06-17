@@ -160,6 +160,15 @@ function buildPrompt(input: BuildWorkerInput): string {
       `one-line plan summary.`
     );
   }
+  if (mode === 'qa') {
+    return (
+      `qa kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `You are QA for this feature. Validate the whole feature against the root task's acceptance ` +
+      `criteria. Run the project's verify commands and exercise end-to-end behavior (execution-based, ` +
+      `not a re-read of diffs). Re-check the risks the explore stage flagged. When done, call ` +
+      `kanban_qa_verdict with decision 'pass' or 'request_changes' and a one-line summary.`
+    );
+  }
   const verifyBlock = input.verifyFailure
     ? `Your previous completion failed the project's verify commands. Fix the cause and call ` +
       `kanban_complete again — it will re-run verification.\n\n\`\`\`\n${input.verifyFailure}\n\`\`\`\n\n`
@@ -221,6 +230,8 @@ function requireToolsForMode(mode: RunMode): string | null {
       return 'kanban_suggest_feature,kanban_block';
     case 'review':
       return 'kanban_review_verdict';
+    case 'qa':
+      return 'kanban_qa_verdict';
     case 'verify':
       // A deterministic verify run has no agent and no terminal MCP tool.
       return null;

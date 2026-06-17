@@ -32,3 +32,20 @@ describe('buildWorkerInvocation explore mode', () => {
     expect(inv.args[inv.args.indexOf('--require-tool') + 1]).toBe('kanban_complete,kanban_block');
   });
 });
+
+describe('buildWorkerInvocation qa mode', () => {
+  it('emits a feature-validation prompt and the qa_verdict require-tool', () => {
+    const inv = buildWorkerInvocation({
+      task: baseTask,
+      workspace: ws(),
+      mcpPort: 1,
+      runToken: 'tok',
+      logPath: '/tmp/x.log',
+      mode: 'qa'
+    });
+    const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
+    expect(prompt).toContain('qa kanban task t1');
+    expect(prompt).toContain("Run the project's verify commands");
+    expect(inv.args[inv.args.indexOf('--require-tool') + 1]).toBe('kanban_qa_verdict');
+  });
+});

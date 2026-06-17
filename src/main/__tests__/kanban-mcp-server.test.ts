@@ -410,6 +410,42 @@ describe('KanbanMcpServer', () => {
     expect(implementChildren).toHaveLength(MAX_FANOUT);
   });
 
+  // --- QA-stage verdict (full_feature pipeline) ---------------------------------
+
+  /** Promote the qa-stage task to running with a current run, mirroring the dispatcher. */
+  function startQaRun(qaId: string, tok: string): void {
+    store.returnToReady(qaId);
+    store.claimTask(qaId, 'L', 15 * 60 * 1000);
+    const run = store.startRun(qaId, 'qa', 1, 'qa');
+    server.registerRun(tok, { kind: 'task', taskId: qaId, runId: run.id, mode: 'qa' }, 'L');
+  }
+
+  it('kanban_qa_verdict pass sets the feature verdict and completes the qa task', async () => {
+    const { featureId, qaId } = buildPipeline();
+    startQaRun(qaId, 'qaPass');
+
+    const r = await rpc(`${base}?run=qaPass`, 'tools/call', {
+      name: 'kanban_qa_verdict',
+      arguments: { decision: 'pass', summary: 'all green end-to-end' }
+    });
+    expect(r.error).toBeFalsy();
+    expect(store.getFeature(featureId)?.qaVerdict).toBe('pass');
+    expect(store.getTask(qaId)?.status).toBe('done');
+  });
+
+  it('kanban_qa_verdict request_changes sets the verdict without completing the qa task', async () => {
+    const { featureId, qaId } = buildPipeline();
+    startQaRun(qaId, 'qaChanges');
+
+    const r = await rpc(`${base}?run=qaChanges`, 'tools/call', {
+      name: 'kanban_qa_verdict',
+      arguments: { decision: 'request_changes', summary: 'login flow regressed' }
+    });
+    expect(r.error).toBeFalsy();
+    expect(store.getFeature(featureId)?.qaVerdict).toBe('request_changes');
+    expect(store.getTask(qaId)?.status).toBe('running');
+  });
+
   it('kanban_update (specify) rewrites the body and returns the task to todo', async () => {
     const t = store.createTask({ title: 'vague', body: 'old', status: 'running' });
     const run = store.startRun(t.id, 'orchestrator', 1, 'specify');

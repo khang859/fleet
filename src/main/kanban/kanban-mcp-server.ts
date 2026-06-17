@@ -582,6 +582,30 @@ const REVIEW_TOOLS: McpTool[] = [
   }
 ];
 
+/**
+ * QA-stage tools: read the task, run/exercise the feature, then record the
+ * feature-level verdict. kanban_qa_verdict is terminal — it ends the qa run.
+ */
+const QA_TOOLS: McpTool[] = [
+  ...WORKER_TOOLS.filter((t) =>
+    ['kanban_show', 'kanban_comment', 'kanban_heartbeat', 'kanban_artifact'].includes(t.name)
+  ),
+  {
+    name: 'kanban_qa_verdict',
+    description:
+      "Record the feature-level QA verdict. decision 'pass' lets the feature PR become ready; " +
+      "'request_changes' bounces the implement tasks for a fix.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        decision: { type: 'string', enum: ['pass', 'request_changes'] },
+        summary: { type: 'string' }
+      },
+      required: ['decision', 'summary']
+    }
+  }
+];
+
 function toolsForMode(mode: RunMode): McpTool[] {
   if (mode === 'decompose') return DECOMPOSE_TOOLS;
   if (mode === 'specify') return SPECIFY_TOOLS;
@@ -590,6 +614,7 @@ function toolsForMode(mode: RunMode): McpTool[] {
   if (mode === 'spec') return SPEC_TOOLS;
   if (mode === 'suggest') return SUGGEST_TOOLS;
   if (mode === 'review') return REVIEW_TOOLS;
+  if (mode === 'qa') return QA_TOOLS;
   return WORKER_TOOLS;
 }
 
@@ -1266,6 +1291,38 @@ export class KanbanMcpServer {
           this.store.finishRun(scope.runId, 'completed', { summary: a.summary });
           this.unregisterRun(token);
           return this.text(res, rpcReq.id, `Verdict recorded for task ${task.id}.`);
+        }
+        case 'kanban_qa_verdict': {
+          const a = z
+            .object({
+              decision: z.enum(['pass', 'request_changes']),
+              summary: z.string().min(1)
+            })
+            .parse(args);
+          if (scope.runId !== task.currentRunId || task.status !== 'running') {
+            this.unregisterRun(token);
+            return this.text(res, rpcReq.id, `Verdict ignored: task ${task.id} moved on.`);
+          }
+          if (!task.featureId) {
+            return this.rpcError(res, rpcReq.id, 'qa task has no feature');
+          }
+          this.store.setQaVerdict(task.featureId, a.decision);
+          this.store.addComment(task.id, 'qa', `qa ${a.decision}: ${a.summary}`);
+          this.store.appendEvent(
+            task.id,
+            scope.runId,
+            a.decision === 'pass' ? 'qa_passed' : 'qa_changes_requested',
+            { summary: a.summary }
+          );
+          // Close the run before mutating the task (mirrors kanban_review_verdict):
+          // 'pass' completes the qa task (it satisfies the rollup); 'request_changes'
+          // leaves re-arming to the dispatcher (Task 11).
+          this.store.finishRun(scope.runId, 'completed', { summary: a.summary });
+          if (a.decision === 'pass') {
+            this.store.completeTask(task.id, `QA pass: ${a.summary}`);
+          }
+          this.unregisterRun(token);
+          return this.text(res, rpcReq.id, `QA verdict recorded for feature ${task.featureId}.`);
         }
         case 'kanban_complete': {
           const a = z
