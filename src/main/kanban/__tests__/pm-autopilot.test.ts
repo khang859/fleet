@@ -15,7 +15,8 @@ function makeDeps(overrides: Partial<PmAutopilotDeps> = {}) {
     getBoardForTask: () => 'b1',
     runTurn,
     buildBriefing: (events: TaskEvent[]) => `events: ${events.map((e) => e.kind).join(',')}`,
-    log: () => {}
+    log: () => {},
+    buildRetro: (featureId: string) => `retro for ${featureId}`
   };
   return { deps: { ...deps, ...overrides }, runTurn, advance: (ms: number) => (t += ms) };
 }
@@ -88,6 +89,50 @@ describe('PmAutopilot event turns', () => {
     vi.advanceTimersByTime(30_000);
     await Promise.resolve();
     expect(runTurn).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+});
+
+describe('PmAutopilot retro turns', () => {
+  it('fires a retro turn for feature_shipped without coalescing', () => {
+    vi.useFakeTimers();
+    const { deps, runTurn } = makeDeps();
+    const pa = new PmAutopilot(deps);
+    pa.onEvent(evt('feature_shipped', 'f1'));
+    // No coalesce wait needed — retro dispatches immediately.
+    expect(runTurn).toHaveBeenCalledWith('b1', 'retro for f1', 'retro');
+    vi.useRealTimers();
+  });
+
+  it('does not fire a retro when autopilot is disabled', () => {
+    vi.useFakeTimers();
+    const { deps, runTurn } = makeDeps({
+      getConfig: () => ({ autopilotEnabled: false, eventMinGapMs: 30_000, coalesceWindowMs: 2_000 })
+    });
+    const pa = new PmAutopilot(deps);
+    pa.onEvent(evt('feature_shipped', 'f1'));
+    expect(runTurn).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('skips the retro when buildRetro returns null', () => {
+    vi.useFakeTimers();
+    const { deps, runTurn } = makeDeps({ buildRetro: () => null });
+    const pa = new PmAutopilot(deps);
+    pa.onEvent(evt('feature_shipped', 'f1'));
+    expect(runTurn).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('does not bucket feature_shipped into the triage briefing', () => {
+    vi.useFakeTimers();
+    const { deps, runTurn } = makeDeps();
+    const pa = new PmAutopilot(deps);
+    pa.onEvent(evt('feature_shipped', 'f1'));
+    vi.advanceTimersByTime(2_000);
+    // Exactly one call, and it is the retro — feature_shipped never reaches buildBriefing.
+    expect(runTurn).toHaveBeenCalledTimes(1);
+    expect(runTurn).toHaveBeenCalledWith('b1', 'retro for f1', 'retro');
     vi.useRealTimers();
   });
 });

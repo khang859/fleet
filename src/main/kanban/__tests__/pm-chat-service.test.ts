@@ -159,4 +159,32 @@ describe('PmChatService turn queue', () => {
     await secondEvent;
     expect(children).toHaveLength(2);
   });
+
+  it('a later event turn does not supersede a queued retro turn', async () => {
+    const children: Array<ReturnType<typeof fakeChild>> = [];
+    spawnMock.mockImplementation(() => {
+      const c = fakeChild();
+      children.push(c);
+      return c;
+    });
+    const svc = makeService({});
+
+    // A user turn is in flight...
+    void svc.runTurn('b1', 'user', 'user');
+    await Promise.resolve();
+    expect(children).toHaveLength(1);
+
+    // ...a retro queues behind it, then an event turn arrives.
+    const retro = svc.runTurn('b1', 'retro-1', 'retro');
+    void svc.runTurn('b1', 'event-1', 'event');
+    await Promise.resolve();
+    expect(children).toHaveLength(1); // still only the user turn spawned
+
+    children[0].emit('exit', 0, null); // finish the user turn
+    // The retro must have survived: it spawns next.
+    await vi.waitFor(() => expect(children).toHaveLength(2));
+
+    children[1].emit('exit', 0, null);
+    await retro; // the retro turn ran to completion (was never dropped)
+  });
 });
