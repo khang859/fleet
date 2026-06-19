@@ -15,3 +15,5 @@ export function clampSidebarWidth(rawWidth: number, viewportWidth: number): numb
   const max = viewportWidth * MAX_SIDEBAR_WIDTH_RATIO;
   return Math.max(MIN_SIDEBAR_WIDTH, Math.min(rawWidth, max));
 }
+
+export { USER_GROUP_COLORS, type UserGroupColor } from '../../../shared/group-colors';
