@@ -767,7 +767,7 @@ export function Sidebar({
           return;
         }
       } else if (dragType === 'userGroup') {
-        if (!isGroupHeader) {
+        if (!isGroupHeader || e.dataTransfer.getData('text/plain') !== 'userGroup') {
           setDropTarget(null);
           return;
         }
@@ -810,7 +810,11 @@ export function Sidebar({
     } else if (dragType === 'userGroup' && draggedTab?.userGroupId) {
       const userGroups = workspace.userGroups ?? [];
       const ugIndex = userGroups.findIndex((g) => g.id === draggedTab.userGroupId);
-      const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
+      const targetTab = workspace.tabs[dropTarget.index];
+      const targetUgIdx = targetTab?.userGroupId
+        ? userGroups.findIndex((g) => g.id === targetTab.userGroupId)
+        : userGroups.length;
+      const toIndex = dropTarget.position === 'below' ? targetUgIdx + 1 : targetUgIdx;
       reorderUserGroup(draggedTab.userGroupId, ugIndex !== toIndex ? toIndex : ugIndex);
       setDragIndex(null);
       setDropTarget(null);

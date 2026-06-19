@@ -44,7 +44,10 @@ describe('verify-gate store', () => {
     const store = makeStore();
     const dir = mkdtempSync(join(TEST_DIR, 'repo-'));
     const p = store.addProject({ boardId: 'default', name: 'app', path: dir });
-    store.rawDbForTest().prepare('UPDATE projects SET verify_commands=? WHERE id=?').run('not json', p.id);
+    store
+      .rawDbForTest()
+      .prepare('UPDATE projects SET verify_commands=? WHERE id=?')
+      .run('not json', p.id);
     expect(store.getProject(p.id)?.verifyCommands).toEqual([]);
     store.close();
   });

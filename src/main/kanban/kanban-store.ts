@@ -1242,9 +1242,7 @@ export class KanbanStore {
   getDigestConfig(boardSlug: string): BoardDigestConfig {
     const row = this.db
       .prepare('SELECT digest_cron, last_digest_at FROM boards WHERE slug=?')
-      .get(boardSlug) as
-      | { digest_cron: string | null; last_digest_at: number | null }
-      | undefined;
+      .get(boardSlug) as { digest_cron: string | null; last_digest_at: number | null } | undefined;
     return {
       digestCron: row?.digest_cron ?? null,
       lastDigestAt: row?.last_digest_at ?? null
@@ -1858,7 +1856,8 @@ export class KanbanStore {
         assignee: fields.assignee !== undefined ? fields.assignee : current.assignee,
         priority: fields.priority ?? current.priority,
         tenant: fields.tenant !== undefined ? fields.tenant : current.tenant,
-        docs: fields.docs !== undefined ? JSON.stringify(fields.docs) : JSON.stringify(current.docs),
+        docs:
+          fields.docs !== undefined ? JSON.stringify(fields.docs) : JSON.stringify(current.docs),
         ts
       });
   }

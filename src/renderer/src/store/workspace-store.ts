@@ -257,7 +257,6 @@ type WorkspaceStore = {
 
   // User group actions
   createUserGroup: (name: string, color: UserGroupColor, tabId: string) => void;
-  deleteUserGroup: (groupId: string) => void;
   renameUserGroup: (groupId: string, name: string) => void;
   recolorUserGroup: (groupId: string, color: UserGroupColor) => void;
   setTabUserGroup: (tabId: string, groupId: string | undefined) => void;
@@ -847,19 +846,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         userGroups: [...(state.workspace.userGroups ?? []), group],
         tabs: state.workspace.tabs.map((t) =>
           t.id === tabId ? { ...t, userGroupId: group.id } : t
-        )
-      },
-      isDirty: true
-    }));
-  },
-
-  deleteUserGroup: (groupId) => {
-    set((state) => ({
-      workspace: {
-        ...state.workspace,
-        userGroups: (state.workspace.userGroups ?? []).filter((g) => g.id !== groupId),
-        tabs: state.workspace.tabs.map((t) =>
-          t.userGroupId === groupId ? { ...t, userGroupId: undefined } : t
         )
       },
       isDirty: true

@@ -55,7 +55,12 @@ describe('review store methods', () => {
     const ok = store.createTask({ title: 'ok', status: 'review', workspaceKind: 'worktree' });
     store.setWorkspace(ok.id, '/tmp/wt', 'b', 'main');
     store.createTask({ title: 'scratch', status: 'review', workspaceKind: 'scratch' });
-    const sys = store.createTask({ title: 'sys', status: 'review', workspaceKind: 'worktree', systemKind: 'feature_sync' });
+    const sys = store.createTask({
+      title: 'sys',
+      status: 'review',
+      workspaceKind: 'worktree',
+      systemKind: 'feature_sync'
+    });
     store.setWorkspace(sys.id, '/tmp/wt2', 'b', 'main');
     const verdicted = store.createTask({ title: 'v', status: 'review', workspaceKind: 'worktree' });
     store.setWorkspace(verdicted.id, '/tmp/wt3', 'b', 'main');

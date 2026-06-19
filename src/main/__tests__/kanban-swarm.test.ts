@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { parseWorkerArg, swarmContext, BLACKBOARD_PREFIX, postBlackboardUpdate, latestBlackboard, createSwarm, isSwarmRoot } from '../kanban/kanban-swarm';
+import {
+  parseWorkerArg,
+  swarmContext,
+  BLACKBOARD_PREFIX,
+  postBlackboardUpdate,
+  latestBlackboard,
+  createSwarm,
+  isSwarmRoot
+} from '../kanban/kanban-swarm';
 import { KanbanStore } from '../kanban/kanban-store';
 import type { TaskComment } from '../../shared/kanban-types';
 import { mkdirSync, rmSync } from 'fs';

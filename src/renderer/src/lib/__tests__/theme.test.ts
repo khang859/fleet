@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  resolveAccentColor,
-  resolveTerminalTheme,
-  resolveXtermTheme
-} from '../theme';
+import { resolveAccentColor, resolveTerminalTheme, resolveXtermTheme } from '../theme';
 import { TERMINAL_THEMES } from '../../../../shared/theme-presets';
 
 describe('theme resolvers', () => {

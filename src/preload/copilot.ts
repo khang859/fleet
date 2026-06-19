@@ -8,7 +8,8 @@ import type {
 } from '../shared/types';
 
 const copilotApi = {
-  getSessions: (): Promise<CopilotSession[]> => ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SESSIONS),
+  getSessions: async (): Promise<CopilotSession[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SESSIONS),
 
   onSessions: (cb: (sessions: CopilotSession[]) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, sessions: CopilotSession[]): void => {
@@ -18,7 +19,7 @@ const copilotApi = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.COPILOT_SESSIONS, handler);
   },
 
-  respondPermission: (
+  respondPermission: async (
     toolUseId: string,
     decision: 'allow' | 'deny',
     reason?: string
@@ -29,25 +30,27 @@ const copilotApi = {
       reason
     }),
 
-  getSettings: (): Promise<CopilotSettings> =>
+  getSettings: async (): Promise<CopilotSettings> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_GET_SETTINGS),
 
-  setSettings: (partial: Partial<CopilotSettings>): Promise<void> =>
+  setSettings: async (partial: Partial<CopilotSettings>): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SET_SETTINGS, partial),
 
-  installHooks: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS),
+  installHooks: async (): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS),
 
-  uninstallHooks: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS),
+  uninstallHooks: async (): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS),
 
-  hookStatus: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS),
+  hookStatus: async (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS),
 
-  installHooksTo: (configDir: string): Promise<boolean> =>
+  installHooksTo: async (configDir: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS_TO, configDir),
 
-  uninstallHooksFrom: (configDir: string): Promise<boolean> =>
+  uninstallHooksFrom: async (configDir: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS_FROM, configDir),
 
-  hookStatusFor: (configDir: string): Promise<boolean> =>
+  hookStatusFor: async (configDir: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
 
   onActiveWorkspace: (
@@ -63,16 +66,16 @@ const copilotApi = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, handler);
   },
 
-  getActiveWorkspace: (): Promise<{ workspaceId: string; workspaceName: string } | null> =>
+  getActiveWorkspace: async (): Promise<{ workspaceId: string; workspaceName: string } | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_GET_ACTIVE_WORKSPACE),
 
-  serviceStatus: (): Promise<{ hookInstalled: boolean; claudeDetected: boolean }> =>
+  serviceStatus: async (): Promise<{ hookInstalled: boolean; claudeDetected: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SERVICE_STATUS),
 
-  getPosition: (): Promise<CopilotPosition | null> =>
+  getPosition: async (): Promise<CopilotPosition | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_POSITION_GET),
 
-  setPosition: (x: number, y: number): Promise<void> =>
+  setPosition: async (x: number, y: number): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_POSITION_SET, { x, y }),
 
   setExpanded: (expanded: boolean): void => ipcRenderer.send('copilot:set-expanded', expanded),
@@ -87,7 +90,7 @@ const copilotApi = {
     return () => ipcRenderer.removeListener('copilot:expanded-changed', handler);
   },
 
-  getChatHistory: (sessionId: string, cwd: string): Promise<CopilotChatMessage[]> =>
+  getChatHistory: async (sessionId: string, cwd: string): Promise<CopilotChatMessage[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_CHAT_HISTORY, { sessionId, cwd }),
 
   onChatUpdated: (
@@ -103,10 +106,10 @@ const copilotApi = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.COPILOT_CHAT_UPDATED, handler);
   },
 
-  sendMessage: (sessionId: string, message: string): Promise<boolean> =>
+  sendMessage: async (sessionId: string, message: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SEND_MESSAGE, { sessionId, message }),
 
-  focusTerminal: (sessionId: string): Promise<boolean> =>
+  focusTerminal: async (sessionId: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_FOCUS_TERMINAL, { sessionId })
 };
 

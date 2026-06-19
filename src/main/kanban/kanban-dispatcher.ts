@@ -204,7 +204,8 @@ export class KanbanDispatcher {
           // While the verify shell is still alive, keep waiting — re-extend the claim
           // rather than failing the gate open and orphaning the shell.
           if (task.workerPid != null && this.deps.isAlive(task.workerPid)) {
-            if (task.claimLock) this.store.extendClaim(task.id, task.claimLock, VERIFY_CLAIM_TTL_MS);
+            if (task.claimLock)
+              this.store.extendClaim(task.id, task.claimLock, VERIFY_CLAIM_TTL_MS);
             continue;
           }
           if (runId != null)
@@ -1092,7 +1093,7 @@ export class KanbanDispatcher {
   private ensureFeaturePr(featureId: string | null): void {
     if (!featureId) return;
     const f = this.store.getFeature(featureId);
-    if (!f || !f.repoPath || !f.baseBranch) return;
+    if (!f?.repoPath || !f.baseBranch) return;
     const integrationBranch = this.integrationBranchFor(featureId);
     if (!integrationBranch) return;
 

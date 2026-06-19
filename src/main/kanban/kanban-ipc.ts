@@ -271,9 +271,8 @@ export function registerKanbanIpc(commands: KanbanCommands, pmChat: PmChatServic
     (_e, filter: KanbanListFeaturesRequest = {}): Feature[] => commands.listFeatures(filter)
   );
 
-  ipcMain.handle(
-    IPC_CHANNELS.KANBAN_GET_FEATURE,
-    (_e, id: string): FeatureDetail | null => commands.showFeature(id)
+  ipcMain.handle(IPC_CHANNELS.KANBAN_GET_FEATURE, (_e, id: string): FeatureDetail | null =>
+    commands.showFeature(id)
   );
 
   ipcMain.handle(
@@ -338,8 +337,9 @@ export function registerKanbanIpc(commands: KanbanCommands, pmChat: PmChatServic
     }
   );
 
-  ipcMain.handle(IPC_CHANNELS.KANBAN_REDECOMPOSE, (_e, featureId: string): Task =>
-    commands.redecompose(featureId)
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_REDECOMPOSE,
+    (_e, featureId: string): Task => commands.redecompose(featureId)
   );
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_SHIP_FEATURE, (_e, featureId: string) =>
@@ -371,8 +371,9 @@ export function registerKanbanIpc(commands: KanbanCommands, pmChat: PmChatServic
   ipcMain.handle(IPC_CHANNELS.KANBAN_LIST_PROJECTS, (_e, boardId: string): Project[] =>
     commands.listProjects(boardId)
   );
-  ipcMain.handle(IPC_CHANNELS.KANBAN_ADD_PROJECT, (_e, req: KanbanAddProjectRequest): Project =>
-    commands.addProject(req)
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_ADD_PROJECT,
+    (_e, req: KanbanAddProjectRequest): Project => commands.addProject(req)
   );
   ipcMain.handle(IPC_CHANNELS.KANBAN_REMOVE_PROJECT, (_e, id: string) => {
     commands.removeProject(id);

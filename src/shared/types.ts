@@ -8,7 +8,7 @@ import type { UserGroupColor } from './group-colors';
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends Array<infer U>
-    ? Array<U>
+    ? U[]
     : T[K] extends object
       ? DeepPartial<T[K]>
       : T[K];
@@ -81,7 +81,16 @@ export type PaneLeaf = {
   ptyPid?: number;
   shell?: string;
   cwd: string;
-  paneType?: 'terminal' | 'file' | 'image' | 'images' | 'pi' | 'markdown' | 'kanban' | 'artifacts' | 'pdf';
+  paneType?:
+    | 'terminal'
+    | 'file'
+    | 'image'
+    | 'images'
+    | 'pi'
+    | 'markdown'
+    | 'kanban'
+    | 'artifacts'
+    | 'pdf';
   filePath?: string;
   isDirty?: boolean;
   serializedContent?: string;

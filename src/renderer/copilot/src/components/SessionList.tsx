@@ -1,4 +1,4 @@
-import React from 'react';
+import type React from 'react';
 import { useCopilotStore } from '../store/copilot-store';
 import type { CopilotSession } from '../../../../shared/types';
 import { Button } from './ui/button';
@@ -205,14 +205,14 @@ export function SessionList(): React.JSX.Element {
                       <Button
                         variant="success"
                         size="sm"
-                        onClick={() => respondPermission(perm.toolUseId, 'allow')}
+                        onClick={async () => respondPermission(perm.toolUseId, 'allow')}
                       >
                         Allow
                       </Button>
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => respondPermission(perm.toolUseId, 'deny')}
+                        onClick={async () => respondPermission(perm.toolUseId, 'deny')}
                       >
                         Deny
                       </Button>
