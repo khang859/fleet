@@ -35,7 +35,12 @@ import { getFileSave } from '../lib/file-save-registry';
 import { popperAnim, dialogFadeAnim } from '../lib/motion';
 import type { Workspace, PaneLeaf, Tab } from '../../../shared/types';
 import { SidebarResizeHandle } from './SidebarResizeHandle';
-import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH_RATIO } from './sidebar-constants';
+import {
+  DEFAULT_SIDEBAR_WIDTH,
+  MAX_SIDEBAR_WIDTH_RATIO,
+  type UserGroupColor
+} from './sidebar-constants';
+import { COLOR_MAP, ColorPalettePicker } from './ColorPalettePicker';
 import { EnvSyncBadge } from './env-sync/EnvSyncBadge';
 import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 import { SessionsTabCard } from './sessions/SessionsTabCard';
@@ -60,6 +65,148 @@ function getFirstLeaf(tab: Tab): PaneLeaf | null {
 }
 
 const AUTO_SAVE_DEBOUNCE_MS = 500;
+
+function UserGroupHeader({
+  group,
+  tabCount,
+  onToggle,
+  onRename,
+  onRecolor,
+  onUngroupAll,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  isDragOver
+}: {
+  group: { id: string; name: string; color: UserGroupColor; collapsed: boolean };
+  tabCount: number;
+  onToggle: () => void;
+  onRename: (name: string) => void;
+  onRecolor: (color: UserGroupColor) => void;
+  onUngroupAll: () => void;
+  onDragStart: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: () => void;
+  isDragOver: 'above' | 'below' | null;
+}): React.JSX.Element {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(group.name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const commitRename = useCallback(() => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== group.name) {
+      onRename(trimmed);
+    }
+    setIsEditing(false);
+  }, [editValue, group.name, onRename]);
+
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <div
+          className="group/ugroup flex items-center gap-1.5 px-2 py-2 mt-2 cursor-pointer rounded-md text-xs text-fleet-text-secondary hover:text-fleet-text hover:bg-fleet-surface-2/50 transition-colors relative select-none"
+          onClick={onToggle}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', 'userGroup');
+            onDragStart();
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            onDragOver(e);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDrop();
+          }}
+        >
+          {isDragOver === 'above' && (
+            <div className="absolute top-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full -translate-y-0.5" />
+          )}
+          {isDragOver === 'below' && (
+            <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full translate-y-0.5" />
+          )}
+          <span className={`w-2 h-2 rounded-full ${COLOR_MAP[group.color]} flex-shrink-0`} />
+          <ChevronRight
+            size={12}
+            className={`transition-transform flex-shrink-0 ${group.collapsed ? '' : 'rotate-90'}`}
+          />
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              className="flex-1 bg-fleet-surface-3 text-fleet-text text-xs rounded px-1 py-0 outline-none border border-blue-500 min-w-0"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') setIsEditing(false);
+              }}
+              onBlur={commitRename}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span
+              className="truncate"
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                setEditValue(group.name);
+                setIsEditing(true);
+              }}
+            >
+              {group.name}
+            </span>
+          )}
+          <span className="ml-auto text-[10px] text-fleet-text-subtle">
+            {group.collapsed ? `${tabCount} tabs` : ''}
+          </span>
+        </div>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content
+          className={`min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50 ${popperAnim}`}
+        >
+          <ContextMenu.Item
+            className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
+            onSelect={() => {
+              setEditValue(group.name);
+              setTimeout(() => setIsEditing(true), 0);
+            }}
+          >
+            Rename
+          </ContextMenu.Item>
+          <ContextMenu.Sub>
+            <ContextMenu.SubTrigger className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3 data-[state=open]:bg-fleet-surface-3 flex items-center justify-between">
+              Recolor
+            </ContextMenu.SubTrigger>
+            <ContextMenu.Portal>
+              <ContextMenu.SubContent className="min-w-[180px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 z-50">
+                <ColorPalettePicker selected={group.color} onSelect={onRecolor} />
+              </ContextMenu.SubContent>
+            </ContextMenu.Portal>
+          </ContextMenu.Sub>
+          <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
+          <ContextMenu.Item
+            className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-red-900/50 hover:bg-red-900/50 text-red-400"
+            onSelect={onUngroupAll}
+          >
+            Ungroup All
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
+  );
+}
 
 function GroupHeader({
   label,
@@ -523,7 +670,13 @@ export function Sidebar({
     renameWorktreeGroup,
     worktreeCloseConfirm,
     setWorktreeCloseConfirm,
-    setSidebarWidth
+    setSidebarWidth,
+    createUserGroup,
+    renameUserGroup,
+    recolorUserGroup,
+    setTabUserGroup,
+    toggleUserGroupCollapsed,
+    reorderUserGroup
   } = useWorkspaceStore(
     useShallow((s) => ({
       workspace: s.workspace,
@@ -547,7 +700,13 @@ export function Sidebar({
       renameWorktreeGroup: s.renameWorktreeGroup,
       worktreeCloseConfirm: s.worktreeCloseConfirm,
       setWorktreeCloseConfirm: s.setWorktreeCloseConfirm,
-      setSidebarWidth: s.setSidebarWidth
+      setSidebarWidth: s.setSidebarWidth,
+      createUserGroup: s.createUserGroup,
+      renameUserGroup: s.renameUserGroup,
+      recolorUserGroup: s.recolorUserGroup,
+      setTabUserGroup: s.setTabUserGroup,
+      toggleUserGroupCollapsed: s.toggleUserGroupCollapsed,
+      reorderUserGroup: s.reorderUserGroup
     }))
   );
   const { getTabBadge } = useNotificationStore();
@@ -561,12 +720,16 @@ export function Sidebar({
     : 0;
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dragType, setDragType] = useState<'tab' | 'group'>('tab');
+  const [dragType, setDragType] = useState<'tab' | 'group' | 'userGroup'>('tab');
   const [dropTarget, setDropTarget] = useState<{
     index: number;
     position: 'above' | 'below';
     isGroupHeader: boolean;
   } | null>(null);
+
+  const [newGroupState, setNewGroupState] = useState<{ tabId: string } | null>(null);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupColor, setNewGroupColor] = useState<UserGroupColor>('blue');
 
   // Map tab ID to its real index in workspace.tabs (not the filtered subset index)
   const realIndex = useCallback(
@@ -575,7 +738,7 @@ export function Sidebar({
   );
 
   const handleDragStart = useCallback(
-    (index: number, type: 'tab' | 'group' = 'tab') => {
+    (index: number, type: 'tab' | 'group' | 'userGroup' = 'tab') => {
       logDnd.debug('dragStart', { index, type, tabId: workspace.tabs[index]?.id });
       setDragIndex(index);
       setDragType(type);
@@ -599,6 +762,11 @@ export function Sidebar({
       if (dragType === 'group') {
         // Group drag: only allow targeting group headers or ungrouped tabs (between-group positions)
         if (!isGroupHeader && targetGroup) {
+          setDropTarget(null);
+          return;
+        }
+      } else if (dragType === 'userGroup') {
+        if (!isGroupHeader) {
           setDropTarget(null);
           return;
         }
@@ -638,6 +806,14 @@ export function Sidebar({
       const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
       logDnd.debug('drop group', { groupId: draggedTab.groupId, toIndex });
       reorderGroup(draggedTab.groupId, toIndex);
+    } else if (dragType === 'userGroup' && draggedTab?.userGroupId) {
+      const userGroups = workspace.userGroups ?? [];
+      const ugIndex = userGroups.findIndex((g) => g.id === draggedTab.userGroupId);
+      const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
+      reorderUserGroup(draggedTab.userGroupId, ugIndex !== toIndex ? toIndex : ugIndex);
+      setDragIndex(null);
+      setDropTarget(null);
+      return;
     } else {
       // Tab drag
       const targetTab = workspace.tabs[dropTarget.index];
@@ -679,7 +855,7 @@ export function Sidebar({
 
     setDragIndex(null);
     setDropTarget(null);
-  }, [dragIndex, dragType, dropTarget, reorderTab, reorderGroup, workspace.tabs]);
+  }, [dragIndex, dragType, dropTarget, reorderTab, reorderGroup, reorderUserGroup, workspace.tabs]);
 
   // --- Worktree creation ---
   const handleCreateWorktree = useCallback(
@@ -1222,12 +1398,23 @@ export function Sidebar({
             );
 
             const rendered: React.ReactNode[] = [];
-            const seenGroups = new Set<string>();
+            const seenWorktreeGroups = new Set<string>();
+            const userGroups = workspace.userGroups ?? [];
 
-            for (const tab of regularTabs) {
-              // If tab is in a group, render group header first (once)
-              if (tab.groupId && !seenGroups.has(tab.groupId)) {
-                seenGroups.add(tab.groupId);
+            const USER_GROUP_BORDER_CLASSES: Record<string, string> = {
+              blue: 'border-l-blue-500/50',
+              teal: 'border-l-teal-500/50',
+              green: 'border-l-green-500/50',
+              yellow: 'border-l-yellow-500/50',
+              orange: 'border-l-orange-500/50',
+              red: 'border-l-red-500/50',
+              pink: 'border-l-pink-500/50',
+              purple: 'border-l-purple-500/50'
+            };
+
+            const renderTabWithWorktreeGroups = (tab: (typeof regularTabs)[number]): void => {
+              if (tab.groupId && !seenWorktreeGroups.has(tab.groupId)) {
+                seenWorktreeGroups.add(tab.groupId);
                 const groupTabs = regularTabs.filter((t) => t.groupId === tab.groupId);
                 const parentTab = groupTabs.find((t) => t.groupRole === 'parent');
                 const isCollapsed = collapsedGroups.has(tab.groupId);
@@ -1243,7 +1430,6 @@ export function Sidebar({
                     onToggle={() => toggleGroupCollapsed(groupId)}
                     onRename={(newLabel) => renameWorktreeGroup(groupId, newLabel)}
                     onAddWorktree={() => {
-                      // Use any tab in the group to find the repo
                       const anyTab = groupTabs[0];
                       const firstPane = collectPaneIds(anyTab.splitRoot)[0];
                       const cwd = (firstPane ? liveCwds.get(firstPane) : undefined) ?? anyTab.cwd;
@@ -1261,8 +1447,7 @@ export function Sidebar({
                 );
               }
 
-              // Skip tabs in collapsed groups
-              if (tab.groupId && collapsedGroups.has(tab.groupId)) continue;
+              if (tab.groupId && collapsedGroups.has(tab.groupId)) return;
 
               const paneIds = collectPaneIds(tab.splitRoot);
               const isFile =
@@ -1301,6 +1486,15 @@ export function Sidebar({
               } else {
                 icon = <Terminal size={14} />;
               }
+
+              const ug = userGroups.find((g) => g.id === tab.userGroupId);
+              const userGroupBorder = ug ? USER_GROUP_BORDER_CLASSES[ug.color] : undefined;
+
+              const userGroupList = userGroups.map((g) => ({
+                id: g.id,
+                name: g.name,
+                color: g.color
+              }));
 
               rendered.push(
                 <TabItem
@@ -1367,12 +1561,111 @@ export function Sidebar({
                   onClose={() => handleCloseTab(tab.id)}
                   onRename={(newLabel) => renameTab(tab.id, newLabel)}
                   onResetLabel={(liveCwd) => resetTabLabel(tab.id, liveCwd)}
+                  userGroupColor={userGroupBorder}
+                  userGroupId={tab.userGroupId}
+                  userGroups={userGroupList}
+                  onCreateGroup={
+                    tab.userGroupId
+                      ? undefined
+                      : () => {
+                          setNewGroupState({ tabId: tab.id });
+                          setNewGroupName('');
+                          setNewGroupColor('blue');
+                        }
+                  }
+                  onAddToGroup={
+                    userGroups.length > 0 && !tab.userGroupId
+                      ? (groupId) => setTabUserGroup(tab.id, groupId)
+                      : undefined
+                  }
+                  onRemoveFromGroup={
+                    tab.userGroupId ? () => setTabUserGroup(tab.id, undefined) : undefined
+                  }
                 />
               );
+            };
+
+            // 1. Ungrouped tabs render first
+            for (const tab of regularTabs.filter((t) => !t.userGroupId)) {
+              renderTabWithWorktreeGroups(tab);
+            }
+
+            // 2. User groups
+            for (const ug of userGroups) {
+              const groupTabs = regularTabs.filter((t) => t.userGroupId === ug.id);
+              if (groupTabs.length === 0) continue;
+
+              const firstTabIdx = realIndex(groupTabs[0].id);
+
+              rendered.push(
+                <UserGroupHeader
+                  key={`ug-${ug.id}`}
+                  group={ug}
+                  tabCount={groupTabs.length}
+                  onToggle={() => toggleUserGroupCollapsed(ug.id)}
+                  onRename={(name) => renameUserGroup(ug.id, name)}
+                  onRecolor={(color) => recolorUserGroup(ug.id, color)}
+                  onUngroupAll={() => {
+                    for (const t of groupTabs) setTabUserGroup(t.id, undefined);
+                  }}
+                  onDragStart={() => handleDragStart(firstTabIdx, 'userGroup')}
+                  onDragOver={(e) => handleDragOver(e, firstTabIdx, true)}
+                  onDrop={() => handleDrop()}
+                  isDragOver={
+                    dropTarget?.index === firstTabIdx && dropTarget.isGroupHeader
+                      ? dropTarget.position
+                      : null
+                  }
+                />
+              );
+
+              if (ug.collapsed) continue;
+
+              for (const tab of groupTabs) {
+                renderTabWithWorktreeGroups(tab);
+              }
             }
 
             return rendered;
           })()}
+          {newGroupState && (
+            <div className="px-2 py-2 bg-fleet-surface-2 border border-fleet-border-strong rounded-md mx-1 mb-2">
+              <input
+                autoFocus
+                className="w-full bg-fleet-surface-3 text-fleet-text text-sm rounded px-2 py-1 outline-none border border-fleet-border-strong mb-2"
+                placeholder="Group name..."
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const name = newGroupName.trim() || 'Group';
+                    createUserGroup(name, newGroupColor, newGroupState.tabId);
+                    setNewGroupState(null);
+                  }
+                  if (e.key === 'Escape') setNewGroupState(null);
+                }}
+              />
+              <ColorPalettePicker selected={newGroupColor} onSelect={setNewGroupColor} />
+              <div className="flex justify-end gap-1.5 mt-1.5">
+                <button
+                  className="px-2 py-0.5 text-xs text-fleet-text-muted hover:text-fleet-text rounded transition"
+                  onClick={() => setNewGroupState(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="px-2 py-0.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition"
+                  onClick={() => {
+                    const name = newGroupName.trim() || 'Group';
+                    createUserGroup(name, newGroupColor, newGroupState.tabId);
+                    setNewGroupState(null);
+                  }}
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         {/* Scroll overflow shadow indicator */}
         {hasScrollOverflow && (
