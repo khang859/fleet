@@ -6,6 +6,7 @@ import { createLogger } from '../logger';
 const logDnd = createLogger('sidebar:dnd');
 import type { NotificationLevel } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
+import type { UserGroupColor } from './sidebar-constants';
 import { cwdBasename } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
 import { useRemoteStore } from '../store/remote-store';
@@ -52,7 +53,7 @@ type TabItemProps = {
   indentLevel?: number;
   userGroupColor?: string;
   userGroupId?: string;
-  userGroups?: Array<{ id: string; name: string; color: string }>;
+  userGroups?: Array<{ id: string; name: string; color: UserGroupColor }>;
   onCreateGroup?: () => void;
   onAddToGroup?: (groupId: string) => void;
   onRemoveFromGroup?: () => void;
@@ -339,9 +340,7 @@ export function TabItem({
           )}
           {worktreeDisabledReason !== undefined && (
             <>
-          {(onCreateGroup || (onAddToGroup && userGroups && userGroups.length > 0) || (onRemoveFromGroup && userGroupId)) && (
-            <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
-          )}
+              <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
               <ContextMenu.Item
                 className={`px-2 py-1.5 rounded outline-none ${
                   worktreeDisabledReason === null
@@ -365,7 +364,9 @@ export function TabItem({
               </ContextMenu.Item>
             </>
           )}
-          <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
+          {(onCreateGroup || (onAddToGroup && userGroups && userGroups.length > 0) || (onRemoveFromGroup && userGroupId)) && (
+            <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
+          )}
           {onCreateGroup && (
             <ContextMenu.Item
               className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
