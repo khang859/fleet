@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { Workspace, Tab, PaneNode, PaneLeaf } from '../../../shared/types';
+import type { Workspace, Tab, PaneNode, PaneLeaf, UserGroup } from '../../../shared/types';
+import type { UserGroupColor } from '../../../shared/group-colors';
 import type { ToolType, ToolVisibility } from '../../../shared/tools';
 import { DEFAULT_TOOL_VISIBILITY } from '../../../shared/tools';
 import { getPaneTypeForFilePath } from '../../../shared/file-open';
@@ -253,6 +254,15 @@ type WorkspaceStore = {
   reorderWithinGroup: (groupId: string, fromIndex: number, toIndex: number) => void;
   reorderGroup: (groupId: string, targetIndex: number) => void;
   renameWorktreeGroup: (groupId: string, label: string) => void;
+
+  // User group actions
+  createUserGroup: (name: string, color: UserGroupColor, tabId: string) => void;
+  deleteUserGroup: (groupId: string) => void;
+  renameUserGroup: (groupId: string, name: string) => void;
+  recolorUserGroup: (groupId: string, color: UserGroupColor) => void;
+  setTabUserGroup: (tabId: string, groupId: string | undefined) => void;
+  toggleUserGroupCollapsed: (groupId: string) => void;
+  reorderUserGroup: (groupId: string, toIndex: number) => void;
 
   // Pane actions
   splitPane: (paneId: string, direction: 'horizontal' | 'vertical') => string;
@@ -827,6 +837,107 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       },
       isDirty: true
     }));
+  },
+
+  createUserGroup: (name, color, tabId) => {
+    const group: UserGroup = { id: generateId(), name, color, collapsed: false };
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        userGroups: [...(state.workspace.userGroups ?? []), group],
+        tabs: state.workspace.tabs.map((t) =>
+          t.id === tabId ? { ...t, userGroupId: group.id } : t
+        )
+      },
+      isDirty: true
+    }));
+  },
+
+  deleteUserGroup: (groupId) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        userGroups: (state.workspace.userGroups ?? []).filter((g) => g.id !== groupId),
+        tabs: state.workspace.tabs.map((t) =>
+          t.userGroupId === groupId ? { ...t, userGroupId: undefined } : t
+        )
+      },
+      isDirty: true
+    }));
+  },
+
+  renameUserGroup: (groupId, name) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        userGroups: (state.workspace.userGroups ?? []).map((g) =>
+          g.id === groupId ? { ...g, name } : g
+        )
+      },
+      isDirty: true
+    }));
+  },
+
+  recolorUserGroup: (groupId, color) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        userGroups: (state.workspace.userGroups ?? []).map((g) =>
+          g.id === groupId ? { ...g, color } : g
+        )
+      },
+      isDirty: true
+    }));
+  },
+
+  setTabUserGroup: (tabId, groupId) => {
+    set((state) => {
+      const tabs = state.workspace.tabs.map((t) =>
+        t.id === tabId ? { ...t, userGroupId: groupId } : t
+      );
+      let userGroups = state.workspace.userGroups ?? [];
+      if (groupId === undefined) {
+        const oldTab = state.workspace.tabs.find((t) => t.id === tabId);
+        if (oldTab?.userGroupId) {
+          const stillHasMembers = tabs.some(
+            (t) => t.id !== tabId && t.userGroupId === oldTab.userGroupId
+          );
+          if (!stillHasMembers) {
+            userGroups = userGroups.filter((g) => g.id !== oldTab.userGroupId);
+          }
+        }
+      }
+      return {
+        workspace: { ...state.workspace, tabs, userGroups },
+        isDirty: true
+      };
+    });
+  },
+
+  toggleUserGroupCollapsed: (groupId) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        userGroups: (state.workspace.userGroups ?? []).map((g) =>
+          g.id === groupId ? { ...g, collapsed: !g.collapsed } : g
+        )
+      },
+      isDirty: true
+    }));
+  },
+
+  reorderUserGroup: (groupId, toIndex) => {
+    set((state) => {
+      const groups = [...(state.workspace.userGroups ?? [])];
+      const fromIndex = groups.findIndex((g) => g.id === groupId);
+      if (fromIndex === -1 || fromIndex === toIndex) return state;
+      const [moved] = groups.splice(fromIndex, 1);
+      groups.splice(toIndex, 0, moved);
+      return {
+        workspace: { ...state.workspace, userGroups: groups },
+        isDirty: true
+      };
+    });
   },
 
   splitPane: (paneId, direction) => {
