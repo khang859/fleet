@@ -40,7 +40,8 @@ import {
   MAX_SIDEBAR_WIDTH_RATIO,
   type UserGroupColor
 } from './sidebar-constants';
-import { COLOR_MAP, ColorPalettePicker } from './ColorPalettePicker';
+import { ColorPalettePicker } from './ColorPalettePicker';
+import { COLOR_MAP } from './sidebar-constants';
 import { EnvSyncBadge } from './env-sync/EnvSyncBadge';
 import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 import { SessionsTabCard } from './sessions/SessionsTabCard';
@@ -808,7 +809,7 @@ export function Sidebar({
       reorderGroup(draggedTab.groupId, toIndex);
     } else if (dragType === 'userGroup' && draggedTab?.userGroupId) {
       const userGroups = workspace.userGroups ?? [];
-      const ugIndex = userGroups.findIndex((g) => g.id === draggedTab!.userGroupId);
+      const ugIndex = userGroups.findIndex((g) => g.id === draggedTab.userGroupId);
       const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
       reorderUserGroup(draggedTab.userGroupId, ugIndex !== toIndex ? toIndex : ugIndex);
       setDragIndex(null);
@@ -855,7 +856,16 @@ export function Sidebar({
 
     setDragIndex(null);
     setDropTarget(null);
-  }, [dragIndex, dragType, dropTarget, reorderTab, reorderGroup, reorderUserGroup, workspace.tabs, workspace.userGroups]);
+  }, [
+    dragIndex,
+    dragType,
+    dropTarget,
+    reorderTab,
+    reorderGroup,
+    reorderUserGroup,
+    workspace.tabs,
+    workspace.userGroups
+  ]);
 
   // --- Worktree creation ---
   const handleCreateWorktree = useCallback(

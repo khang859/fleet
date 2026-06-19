@@ -13,7 +13,7 @@ import { useRemoteStore } from '../store/remote-store';
 import { useNotificationStore } from '../store/notification-store';
 import { shortenPath } from '../lib/shorten-path';
 import { popperAnim } from '../lib/motion';
-import { COLOR_MAP } from './ColorPalettePicker';
+import { COLOR_MAP } from './sidebar-constants';
 
 type TabItemProps = {
   id: string;
@@ -364,7 +364,9 @@ export function TabItem({
               </ContextMenu.Item>
             </>
           )}
-          {(onCreateGroup || (onAddToGroup && userGroups && userGroups.length > 0) || (onRemoveFromGroup && userGroupId)) && (
+          {(onCreateGroup ??
+            (onAddToGroup && userGroups && userGroups.length > 0) ??
+            (onRemoveFromGroup && userGroupId)) && (
             <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
           )}
           {onCreateGroup && (
@@ -379,7 +381,15 @@ export function TabItem({
             <ContextMenu.Sub>
               <ContextMenu.SubTrigger className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3 data-[state=open]:bg-fleet-surface-3 flex items-center justify-between">
                 Add to Group
-                <svg className="ml-2" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <svg
+                  className="ml-2"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
                   <path d="M4 2l4 4-4 4" />
                 </svg>
               </ContextMenu.SubTrigger>

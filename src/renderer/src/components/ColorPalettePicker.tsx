@@ -1,22 +1,14 @@
-import { USER_GROUP_COLORS, type UserGroupColor } from './sidebar-constants';
+import { USER_GROUP_COLORS, COLOR_MAP, type UserGroupColor } from './sidebar-constants';
 
 type ColorPalettePickerProps = {
   selected: UserGroupColor;
   onSelect: (color: UserGroupColor) => void;
 };
 
-export const COLOR_MAP: Record<UserGroupColor, string> = {
-  blue: 'bg-blue-500',
-  teal: 'bg-teal-500',
-  green: 'bg-green-500',
-  yellow: 'bg-yellow-500',
-  orange: 'bg-orange-500',
-  red: 'bg-red-500',
-  pink: 'bg-pink-500',
-  purple: 'bg-purple-500'
-};
-
-export function ColorPalettePicker({ selected, onSelect }: ColorPalettePickerProps): React.JSX.Element {
+export function ColorPalettePicker({
+  selected,
+  onSelect
+}: ColorPalettePickerProps): React.JSX.Element {
   return (
     <div className="flex gap-1.5 p-1.5">
       {USER_GROUP_COLORS.map((color) => (
