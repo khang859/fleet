@@ -12,6 +12,7 @@ import { useRemoteStore } from '../store/remote-store';
 import { useNotificationStore } from '../store/notification-store';
 import { shortenPath } from '../lib/shorten-path';
 import { popperAnim } from '../lib/motion';
+import { COLOR_MAP } from './ColorPalettePicker';
 
 type TabItemProps = {
   id: string;
@@ -338,7 +339,9 @@ export function TabItem({
           )}
           {worktreeDisabledReason !== undefined && (
             <>
-              <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
+          {(onCreateGroup || (onAddToGroup && userGroups && userGroups.length > 0) || (onRemoveFromGroup && userGroupId)) && (
+            <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
+          )}
               <ContextMenu.Item
                 className={`px-2 py-1.5 rounded outline-none ${
                   worktreeDisabledReason === null
@@ -387,7 +390,7 @@ export function TabItem({
                       className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3 flex items-center gap-2"
                       onSelect={() => onAddToGroup(g.id)}
                     >
-                      <span className={`w-2.5 h-2.5 rounded-full bg-${g.color}-500`} />
+                      <span className={`w-2.5 h-2.5 rounded-full ${COLOR_MAP[g.color]}`} />
                       {g.name}
                     </ContextMenu.Item>
                   ))}

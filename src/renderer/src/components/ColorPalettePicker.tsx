@@ -5,7 +5,7 @@ type ColorPalettePickerProps = {
   onSelect: (color: UserGroupColor) => void;
 };
 
-const COLOR_MAP: Record<UserGroupColor, string> = {
+export const COLOR_MAP: Record<UserGroupColor, string> = {
   blue: 'bg-blue-500',
   teal: 'bg-teal-500',
   green: 'bg-green-500',
