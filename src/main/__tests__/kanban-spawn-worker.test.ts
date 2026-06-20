@@ -342,7 +342,13 @@ describe('buildWorkerInvocation', () => {
     const workspace = join(ROOT, 'wsassign');
     mkdirSync(workspace, { recursive: true });
     const inv = buildWorkerInvocation({
-      task: { id: 'ta', title: 'pick worker', body: 'needs routing', assignee: null, modelOverride: null },
+      task: {
+        id: 'ta',
+        title: 'pick worker',
+        body: 'needs routing',
+        assignee: null,
+        modelOverride: null
+      },
       workspace,
       mcpPort: 1234,
       runToken: 'tok',
@@ -398,7 +404,13 @@ describe('buildWorkerInvocation', () => {
     const workspace = join(ROOT, 'wssuggest');
     mkdirSync(workspace, { recursive: true });
     const inv = buildWorkerInvocation({
-      task: { id: 't1', title: 'Suggest a feature grouping for /r', body: '- a: x\n- b: y', assignee: null, modelOverride: null },
+      task: {
+        id: 't1',
+        title: 'Suggest a feature grouping for /r',
+        body: '- a: x\n- b: y',
+        assignee: null,
+        modelOverride: null
+      },
       workspace,
       mcpPort: 1234,
       runToken: 'tok',

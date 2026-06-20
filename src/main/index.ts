@@ -17,7 +17,7 @@ import { SettingsStore } from './settings-store';
 import { IPC_CHANNELS, IS_FLEET_DEV, SOCKET_PATH } from '../shared/constants';
 import { SocketSupervisor } from './socket-supervisor';
 import { CwdPoller } from './cwd-poller';
-import { installFleetCLI, installSkillFile } from './install-fleet-cli';
+import { installFleetCLI, installSkillFile, installOpencodePlugin } from './install-fleet-cli';
 import { ImageService } from './image-service';
 import { AnnotateService } from './annotate-service';
 import { AnnotationStore } from './annotation-store';
@@ -432,6 +432,11 @@ void app.whenReady().then(async () => {
   void enrichProcessEnv();
   void installSkillFile().catch((err) => {
     log.warn('failed to install skill file', {
+      error: err instanceof Error ? err.message : String(err)
+    });
+  });
+  void installOpencodePlugin().catch((err) => {
+    log.warn('failed to install opencode plugin', {
       error: err instanceof Error ? err.message : String(err)
     });
   });

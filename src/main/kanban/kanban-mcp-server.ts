@@ -707,7 +707,7 @@ export class KanbanMcpServer {
     this.claimLocks.delete(token);
   }
 
-  start(port: number): Promise<number> {
+  async start(port: number): Promise<number> {
     return new Promise((resolve, reject) => {
       this.server = createServer((req, res) => {
         this.handle(req, res).catch((err) => {
@@ -726,9 +726,12 @@ export class KanbanMcpServer {
     });
   }
 
-  stop(): Promise<void> {
+  async stop(): Promise<void> {
     return new Promise((resolve) => {
-      if (!this.server) return resolve();
+      if (!this.server) {
+        resolve();
+        return;
+      }
       this.server.close(() => resolve());
       this.server = null;
     });
@@ -755,7 +758,10 @@ export class KanbanMcpServer {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method !== 'POST') return this.send(res, 405, { error: 'method not allowed' });
+    if (req.method !== 'POST') {
+      this.send(res, 405, { error: 'method not allowed' });
+      return;
+    }
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const token = url.searchParams.get('run') ?? '';
     const raw = await this.readBody(req);
@@ -763,28 +769,39 @@ export class KanbanMcpServer {
     try {
       rpcReq = JSON.parse(raw) as JsonRpcRequest;
     } catch {
-      return this.send(res, 400, { error: 'bad json' });
+      this.send(res, 400, { error: 'bad json' });
+      return;
     }
 
     switch (rpcReq.method) {
-      case 'initialize':
-        return this.rpcResult(res, rpcReq.id, {
+      case 'initialize': {
+        this.rpcResult(res, rpcReq.id, {
           protocolVersion: PROTOCOL_VERSION,
           capabilities: { tools: {} },
           serverInfo: { name: 'fleet-kanban', version: '1' }
         });
+        return;
+      }
       case 'notifications/initialized':
         res.writeHead(202).end();
         return;
       case 'tools/list': {
         const scope = this.runs.get(token);
-        if (scope?.kind === 'board') return this.rpcResult(res, rpcReq.id, { tools: PM_TOOLS });
-        return this.rpcResult(res, rpcReq.id, { tools: toolsForMode(scope?.mode ?? 'work') });
+        if (scope?.kind === 'board') {
+          this.rpcResult(res, rpcReq.id, { tools: PM_TOOLS });
+          return;
+        }
+        this.rpcResult(res, rpcReq.id, { tools: toolsForMode(scope?.mode ?? 'work') });
+        return;
       }
-      case 'tools/call':
-        return this.handleToolCall(res, rpcReq, token);
-      default:
-        return this.rpcError(res, rpcReq.id, `unknown method: ${rpcReq.method}`);
+      case 'tools/call': {
+        this.handleToolCall(res, rpcReq, token);
+        return;
+      }
+      default: {
+        this.rpcError(res, rpcReq.id, `unknown method: ${rpcReq.method}`);
+        return;
+      }
     }
   }
 
@@ -832,7 +849,7 @@ export class KanbanMcpServer {
   /** A task resolved by id, only if it lives on the PM scope's board. */
   private pmTask(scope: BoardScope, id: string): Task | null {
     const t = this.store.getTask(id);
-    return t && t.boardId === scope.boardId ? t : null;
+    return t?.boardId === scope.boardId ? t : null;
   }
 
   /** Board-scoped (PM chat) tool dispatch. Mutations route through KanbanCommands. */
@@ -844,9 +861,13 @@ export class KanbanMcpServer {
     args: Record<string, unknown>
   ): void {
     const commands = this.commands;
-    if (!commands) return this.rpcError(res, rpcReq.id, 'kanban commands are not available');
+    if (!commands) {
+      this.rpcError(res, rpcReq.id, 'kanban commands are not available');
+      return;
+    }
     if (!PM_TOOLS.some((t) => t.name === name)) {
-      return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
+      this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
+      return;
     }
     // These tools route through a synchronous, testable seam (execPmTool).
     if (PM_SYNC_TOOLS.has(name)) {
@@ -870,13 +891,15 @@ export class KanbanMcpServer {
           const lines = rows.map(
             (c) => `${c.id}\t${c.status}\tp${c.priority}\t${c.assignee ?? '-'}\t${c.title}`
           );
-          return this.text(res, rpcReq.id, lines.join('\n') || '(no tasks)');
+          this.text(res, rpcReq.id, lines.join('\n') || '(no tasks)');
+          return;
         }
         case 'kanban_show': {
           const a = z.object({ task_id: z.string() }).parse(args);
           const detail = commands.show(a.task_id);
-          if (!detail || detail.task.boardId !== scope.boardId) {
-            return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+          if (detail?.task.boardId !== scope.boardId) {
+            this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+            return;
           }
           const { task, comments, runs, artifacts } = detail;
           const summaries = runs.filter((r) => r.summary);
@@ -898,7 +921,8 @@ export class KanbanMcpServer {
                 `- ${x.id}: ${x.filename}${x.title ? ` — ${x.title}` : ''} (${x.kind}, ${x.size} bytes)`
             )
           ].filter(Boolean);
-          return this.text(res, rpcReq.id, lines.join('\n'));
+          this.text(res, rpcReq.id, lines.join('\n'));
+          return;
         }
         case 'kanban_create': {
           const a = z
@@ -917,7 +941,10 @@ export class KanbanMcpServer {
             .parse(args);
           if (a.docs && a.docs.length > 0) {
             const docErr = this.validateDocs(scope.boardId, a.docs);
-            if (docErr) return this.rpcError(res, rpcReq.id, docErr);
+            if (docErr) {
+              this.rpcError(res, rpcReq.id, docErr);
+              return;
+            }
           }
           // Same phantom-assignee guard as the orchestrator's kanban_create.
           const assignee = a.assignee?.trim() || null;
@@ -925,11 +952,12 @@ export class KanbanMcpServer {
             .filter((p) => p.role === 'worker')
             .map((p) => p.name);
           if (assignee && workerNames.length > 0 && !workerNames.includes(assignee)) {
-            return this.rpcError(
+            this.rpcError(
               res,
               rpcReq.id,
               `unknown worker profile "${assignee}". Valid profiles: ${workerNames.join(', ')}`
             );
+            return;
           }
           // Workspace routing precedence: feature repo (keeps the group integrable) >
           // explicit project > board default project > scratch.
@@ -939,12 +967,9 @@ export class KanbanMcpServer {
           let featureRepo: string | null = null;
           if (a.feature_id) {
             const feature = this.store.getFeature(a.feature_id);
-            if (!feature || feature.boardId !== scope.boardId) {
-              return this.rpcError(
-                res,
-                rpcReq.id,
-                `feature not found on this board: ${a.feature_id}`
-              );
+            if (feature?.boardId !== scope.boardId) {
+              this.rpcError(res, rpcReq.id, `feature not found on this board: ${a.feature_id}`);
+              return;
             }
             if (feature.repoPath) {
               featureRepo = feature.repoPath;
@@ -960,18 +985,16 @@ export class KanbanMcpServer {
             a.project !== undefined ? (projects.find((p) => p.name === a.project) ?? null) : null;
           if (a.project !== undefined && !proj) {
             const names = projects.map((p) => p.name).join(', ') || '(none registered)';
-            return this.rpcError(
-              res,
-              rpcReq.id,
-              `unknown project "${a.project}". Registered: ${names}`
-            );
+            this.rpcError(res, rpcReq.id, `unknown project "${a.project}". Registered: ${names}`);
+            return;
           }
           if (proj && featureRepo && proj.path !== featureRepo) {
-            return this.rpcError(
+            this.rpcError(
               res,
               rpcReq.id,
               `project "${proj.name}" conflicts with the feature repo (${featureRepo}); omit project or match it`
             );
+            return;
           }
           if (!proj && !featureRepo) proj = projects.find((p) => p.isDefault) ?? null;
           if (proj && !featureRepo) {
@@ -979,7 +1002,8 @@ export class KanbanMcpServer {
           }
           for (const p of a.parents ?? []) {
             if (!this.pmTask(scope, p)) {
-              return this.rpcError(res, rpcReq.id, `parent task not found on this board: ${p}`);
+              this.rpcError(res, rpcReq.id, `parent task not found on this board: ${p}`);
+              return;
             }
           }
           const task = commands.create({
@@ -995,7 +1019,8 @@ export class KanbanMcpServer {
             ...workspace
           });
           for (const p of a.parents ?? []) commands.link(p, task.id);
-          return this.text(res, rpcReq.id, task.id);
+          this.text(res, rpcReq.id, task.id);
+          return;
         }
         case 'kanban_update': {
           const a = z
@@ -1010,16 +1035,21 @@ export class KanbanMcpServer {
             .parse(args);
           const existing = this.pmTask(scope, a.task_id);
           if (!existing) {
-            return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+            this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+            return;
           }
           // A running worker reads its task via kanban_show mid-turn; editing it
           // out from under the worker is dispatcher territory, same as status.
           if (existing.status === 'running') {
-            return this.rpcError(res, rpcReq.id, 'cannot update a running task');
+            this.rpcError(res, rpcReq.id, 'cannot update a running task');
+            return;
           }
           if (a.docs && a.docs.length > 0) {
             const docErr = this.validateDocs(scope.boardId, a.docs);
-            if (docErr) return this.rpcError(res, rpcReq.id, docErr);
+            if (docErr) {
+              this.rpcError(res, rpcReq.id, docErr);
+              return;
+            }
           }
           commands.update(a.task_id, {
             title: a.title,
@@ -1028,24 +1058,29 @@ export class KanbanMcpServer {
             ...(a.assignee !== undefined ? { assignee: a.assignee.trim() || null } : {}),
             ...(a.docs !== undefined ? { docs: a.docs } : {})
           });
-          return this.text(res, rpcReq.id, 'Task updated.');
+          this.text(res, rpcReq.id, 'Task updated.');
+          return;
         }
         case 'kanban_comment': {
           const a = z.object({ task_id: z.string(), body: z.string() }).parse(args);
           if (!this.pmTask(scope, a.task_id)) {
-            return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+            this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+            return;
           }
           this.store.addComment(a.task_id, 'pm', a.body);
           this.store.appendEvent(a.task_id, null, 'comment_added', { author: 'pm' });
-          return this.text(res, rpcReq.id, 'Comment added.');
+          this.text(res, rpcReq.id, 'Comment added.');
+          return;
         }
         case 'kanban_link': {
           const a = z.object({ parent_id: z.string(), child_id: z.string() }).parse(args);
           if (!this.pmTask(scope, a.parent_id) || !this.pmTask(scope, a.child_id)) {
-            return this.rpcError(res, rpcReq.id, 'both tasks must exist on this board');
+            this.rpcError(res, rpcReq.id, 'both tasks must exist on this board');
+            return;
           }
           commands.link(a.parent_id, a.child_id);
-          return this.text(res, rpcReq.id, 'Linked.');
+          this.text(res, rpcReq.id, 'Linked.');
+          return;
         }
         case 'kanban_feature_create': {
           const a = z
@@ -1058,10 +1093,15 @@ export class KanbanMcpServer {
             .parse(args);
           let repoPath = a.repo_path ?? null;
           if (a.project !== undefined) {
-            if (repoPath)
-              return this.rpcError(res, rpcReq.id, 'pass either project or repo_path, not both');
+            if (repoPath) {
+              this.rpcError(res, rpcReq.id, 'pass either project or repo_path, not both');
+              return;
+            }
             const p = this.store.getProjectByName(scope.boardId, a.project);
-            if (!p) return this.rpcError(res, rpcReq.id, `unknown project: ${a.project}`);
+            if (!p) {
+              this.rpcError(res, rpcReq.id, `unknown project: ${a.project}`);
+              return;
+            }
             repoPath = p.path;
           }
           const feature = commands.createFeature({
@@ -1070,17 +1110,20 @@ export class KanbanMcpServer {
             repoPath,
             baseBranch: a.base_branch ?? null
           });
-          return this.text(res, rpcReq.id, feature.id);
+          this.text(res, rpcReq.id, feature.id);
+          return;
         }
         case 'kanban_assign_feature': {
           const a = z
             .object({ task_id: z.string(), feature_id: z.union([z.string(), z.null()]) })
             .parse(args);
           if (!this.pmTask(scope, a.task_id)) {
-            return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+            this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+            return;
           }
           commands.assignTaskToFeature(a.task_id, a.feature_id);
-          return this.text(res, rpcReq.id, 'Feature membership updated.');
+          this.text(res, rpcReq.id, 'Feature membership updated.');
+          return;
         }
         case 'kanban_project_list': {
           const projects = this.store.listProjects(scope.boardId);
@@ -1088,7 +1131,8 @@ export class KanbanMcpServer {
             const desc = p.description ? ` — ${p.description}` : '';
             return `- ${p.name} → ${p.path}${desc}${p.isDefault ? ' (default)' : ''}`;
           });
-          return this.text(res, rpcReq.id, lines.join('\n') || '(no projects registered)');
+          this.text(res, rpcReq.id, lines.join('\n') || '(no projects registered)');
+          return;
         }
         case 'kanban_project_add': {
           const a = z
@@ -1108,44 +1152,46 @@ export class KanbanMcpServer {
             description: a.description ?? null,
             verifyCommands: a.verify_commands
           });
-          return this.text(
+          this.text(
             res,
             rpcReq.id,
             `Project "${p.name}" registered${p.isDefault ? ' as the default' : ''}.`
           );
+          return;
         }
         case 'kanban_project_remove': {
           const a = z.object({ name: z.string() }).parse(args);
           const p = this.store.getProjectByName(scope.boardId, a.name);
-          if (!p)
-            return this.rpcError(res, rpcReq.id, `project not found on this board: ${a.name}`);
+          if (!p) {
+            this.rpcError(res, rpcReq.id, `project not found on this board: ${a.name}`);
+            return;
+          }
           commands.removeProject(p.id);
-          return this.text(res, rpcReq.id, `Project "${a.name}" removed.`);
+          this.text(res, rpcReq.id, `Project "${a.name}" removed.`);
+          return;
         }
         case 'kanban_artifact_read': {
           const a = z.object({ artifact_id: z.string() }).parse(args);
           const art = this.store.getArtifact(a.artifact_id);
-          if (!art || art.boardId !== scope.boardId) {
-            return this.rpcError(
-              res,
-              rpcReq.id,
-              `artifact not found on this board: ${a.artifact_id}`
-            );
+          if (art?.boardId !== scope.boardId) {
+            this.rpcError(res, rpcReq.id, `artifact not found on this board: ${a.artifact_id}`);
+            return;
           }
           const preview = readArtifactPreview(art.storedPath, 64 * 1024);
           if (!preview.previewable) {
-            return this.rpcError(
-              res,
-              rpcReq.id,
-              preview.reason ?? 'artifact is not readable as text'
-            );
+            this.rpcError(res, rpcReq.id, preview.reason ?? 'artifact is not readable as text');
+            return;
           }
           const suffix = preview.truncated ? '\n\n…(truncated)' : '';
-          return this.text(res, rpcReq.id, (preview.text ?? '') + suffix);
+          this.text(res, rpcReq.id, (preview.text ?? '') + suffix);
+          return;
         }
         case 'kanban_learning_create': {
           const ls = this.learningsStore;
-          if (!ls) return this.rpcError(res, rpcReq.id, 'learnings store is not available');
+          if (!ls) {
+            this.rpcError(res, rpcReq.id, 'learnings store is not available');
+            return;
+          }
           const a = z
             .object({
               title: z.string().min(1),
@@ -1165,14 +1211,18 @@ export class KanbanMcpServer {
             sourceProject: a.project ?? defaultProject,
             sourceSessionId: a.feature_id
           });
-          return this.text(res, rpcReq.id, `Learning saved: ${learning.id}`);
+          this.text(res, rpcReq.id, `Learning saved: ${learning.id}`);
+          return;
         }
-        default:
-          return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
+        default: {
+          this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
+          return;
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return this.rpcError(res, rpcReq.id, msg);
+      this.rpcError(res, rpcReq.id, msg);
+      return;
     }
   }
 
@@ -1237,7 +1287,7 @@ export class KanbanMcpServer {
         // skip the review gate by being marked done directly.
         if (a.status === 'done') {
           const task = this.store.getTask(a.task_id);
-          if (task && task.workspaceKind === 'worktree') {
+          if (task?.workspaceKind === 'worktree') {
             throw new Error(
               'worktree-backed tasks cannot be set done directly; use kanban_propose with merge_review_task or accept_review_task'
             );
@@ -1279,18 +1329,30 @@ export class KanbanMcpServer {
 
   private handleToolCall(res: ServerResponse, rpcReq: JsonRpcRequest, token: string): void {
     const scope = this.runs.get(token);
-    if (!scope) return this.rpcError(res, rpcReq.id, 'unknown or missing run token');
+    if (!scope) {
+      this.rpcError(res, rpcReq.id, 'unknown or missing run token');
+      return;
+    }
 
     const params = rpcReq.params ?? {};
     const name = String(params.name ?? '');
     const args = (params.arguments ?? {}) as Record<string, unknown>;
-    if (scope.kind === 'board') return this.handlePmToolCall(res, rpcReq, scope, name, args);
+    if (scope.kind === 'board') {
+      this.handlePmToolCall(res, rpcReq, scope, name, args);
+      return;
+    }
     const task = this.store.getTask(scope.taskId);
-    if (!task) return this.rpcError(res, rpcReq.id, `task ${scope.taskId} not found`);
+    if (!task) {
+      this.rpcError(res, rpcReq.id, `task ${scope.taskId} not found`);
+      return;
+    }
     const author = scope.mode === 'review' ? 'reviewer' : (task.assignee ?? 'worker');
 
     const allowed = toolsForMode(scope.mode).some((t) => t.name === name);
-    if (!allowed) return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
+    if (!allowed) {
+      this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
+      return;
+    }
 
     try {
       switch (name) {
@@ -1307,7 +1369,8 @@ export class KanbanMcpServer {
             runs.length ? '## Prior runs' : '',
             ...runs.map((r) => `- ${r.outcome}: ${r.summary ?? ''}`)
           ].filter(Boolean);
-          return this.text(res, rpcReq.id, lines.join('\n'));
+          this.text(res, rpcReq.id, lines.join('\n'));
+          return;
         }
         case 'kanban_review_verdict': {
           const a = z
@@ -1322,7 +1385,8 @@ export class KanbanMcpServer {
           // CAS guard: only the current review run on a still-running task may record.
           if (scope.runId !== task.currentRunId || task.status !== 'running') {
             this.unregisterRun(token);
-            return this.text(res, rpcReq.id, `Verdict ignored: task ${task.id} moved on.`);
+            this.text(res, rpcReq.id, `Verdict ignored: task ${task.id} moved on.`);
+            return;
           }
           const sha =
             a.decision === 'approve' && task.workspacePath ? headSha(task.workspacePath) : null;
@@ -1343,7 +1407,8 @@ export class KanbanMcpServer {
           );
           this.store.finishRun(scope.runId, 'completed', { summary: a.summary });
           this.unregisterRun(token);
-          return this.text(res, rpcReq.id, `Verdict recorded for task ${task.id}.`);
+          this.text(res, rpcReq.id, `Verdict recorded for task ${task.id}.`);
+          return;
         }
         case 'kanban_qa_verdict': {
           const a = z
@@ -1354,10 +1419,12 @@ export class KanbanMcpServer {
             .parse(args);
           if (scope.runId !== task.currentRunId || task.status !== 'running') {
             this.unregisterRun(token);
-            return this.text(res, rpcReq.id, `Verdict ignored: task ${task.id} moved on.`);
+            this.text(res, rpcReq.id, `Verdict ignored: task ${task.id} moved on.`);
+            return;
           }
           if (!task.featureId) {
-            return this.rpcError(res, rpcReq.id, 'qa task has no feature');
+            this.rpcError(res, rpcReq.id, 'qa task has no feature');
+            return;
           }
           this.store.setQaVerdict(task.featureId, a.decision);
           this.store.addComment(task.id, 'qa', `qa ${a.decision}: ${a.summary}`);
@@ -1375,7 +1442,8 @@ export class KanbanMcpServer {
             this.store.completeTask(task.id, `QA pass: ${a.summary}`);
           }
           this.unregisterRun(token);
-          return this.text(res, rpcReq.id, `QA verdict recorded for feature ${task.featureId}.`);
+          this.text(res, rpcReq.id, `QA verdict recorded for feature ${task.featureId}.`);
+          return;
         }
         case 'kanban_complete': {
           const a = z
@@ -1429,7 +1497,8 @@ export class KanbanMcpServer {
                 if (lock) this.store.extendClaim(task.id, lock, 15 * 60 * 1000);
                 this.store.addComment(task.id, author, `verifying: ${statText} on ${where}`);
                 this.unregisterRun(token);
-                return this.text(res, rpcReq.id, `Task ${task.id} committed; verifying.`);
+                this.text(res, rpcReq.id, `Task ${task.id} committed; verifying.`);
+                return;
               }
               // Spawn failed → close the orphaned verify run and fail open to review.
               this.store.finishRun(verify.id, 'spawn_failed');
@@ -1447,7 +1516,8 @@ export class KanbanMcpServer {
               });
               this.store.addComment(task.id, author, `review-required: ${statText} on ${where}`);
               this.unregisterRun(token);
-              return this.text(res, rpcReq.id, `Task ${task.id} ready for review.`);
+              this.text(res, rpcReq.id, `Task ${task.id} ready for review.`);
+              return;
             }
 
             // Ungated path (UNCHANGED behavior — must match the original exactly).
@@ -1469,7 +1539,8 @@ export class KanbanMcpServer {
             this.store.appendEvent(task.id, scope.runId, 'review_ready', { summary: a.summary });
             this.store.addComment(task.id, author, `review-required: ${statText} on ${where}`);
             this.unregisterRun(token);
-            return this.text(res, rpcReq.id, `Task ${task.id} ready for review.`);
+            this.text(res, rpcReq.id, `Task ${task.id} ready for review.`);
+            return;
           }
           this.store.completeTask(task.id, a.summary);
           this.store.finishRun(scope.runId, 'completed', {
@@ -1479,7 +1550,8 @@ export class KanbanMcpServer {
           this.store.appendEvent(task.id, scope.runId, 'completed', { summary: a.summary });
           if (scope.mode === 'decompose') this.commands?.enforceDecomposeGrouping(task.id);
           this.unregisterRun(token);
-          return this.text(res, rpcReq.id, `Task ${task.id} marked done.`);
+          this.text(res, rpcReq.id, `Task ${task.id} marked done.`);
+          return;
         }
         case 'kanban_block': {
           const a = z.object({ reason: z.string() }).parse(args);
@@ -1488,29 +1560,33 @@ export class KanbanMcpServer {
             this.store.finishRun(scope.runId, 'blocked', { summary: a.reason });
             this.store.deleteTask(task.id);
             this.unregisterRun(token);
-            return this.text(res, rpcReq.id, 'No grouping suggested.');
+            this.text(res, rpcReq.id, 'No grouping suggested.');
+            return;
           }
           this.store.blockTask(task.id, a.reason);
           this.store.finishRun(scope.runId, 'blocked', { summary: a.reason });
           this.store.appendEvent(task.id, scope.runId, 'blocked', { reason: a.reason });
           this.unregisterRun(token);
-          return this.text(res, rpcReq.id, `Task ${task.id} blocked.`);
+          this.text(res, rpcReq.id, `Task ${task.id} blocked.`);
+          return;
         }
         case 'kanban_assign': {
           const a = z.object({ profile: z.string() }).parse(args);
           const profile = a.profile.trim();
           if (!profile) {
-            return this.rpcError(res, rpcReq.id, 'profile is required');
+            this.rpcError(res, rpcReq.id, 'profile is required');
+            return;
           }
           const workerNames = this.getProfiles()
             .filter((p) => p.role === 'worker')
             .map((p) => p.name);
           if (workerNames.length > 0 && !workerNames.includes(profile)) {
-            return this.rpcError(
+            this.rpcError(
               res,
               rpcReq.id,
               `unknown worker profile "${profile}". Valid profiles: ${workerNames.join(', ')}`
             );
+            return;
           }
           this.store.updateTask(task.id, { assignee: profile });
           // assign phase done — reset failures so they don't eat the work phase's retry budget
@@ -1522,7 +1598,8 @@ export class KanbanMcpServer {
             by: 'orchestrator'
           });
           this.unregisterRun(token);
-          return this.text(res, rpcReq.id, `Assigned ${profile}.`);
+          this.text(res, rpcReq.id, `Assigned ${profile}.`);
+          return;
         }
         case 'kanban_suggest_feature': {
           const a = z
@@ -1535,7 +1612,7 @@ export class KanbanMcpServer {
           // Only keep ids that still exist and belong to this detection task's board.
           const validIds = a.task_ids.filter((tid) => {
             const t = this.store.getTask(tid);
-            return t != null && t.boardId === task.boardId;
+            return t?.boardId === task.boardId;
           });
           if (validIds.length === 0) {
             // Nothing real to group — don't write an empty pending row that would
@@ -1543,7 +1620,8 @@ export class KanbanMcpServer {
             this.store.finishRun(scope.runId, 'completed', { summary: 'no valid tasks to group' });
             this.store.deleteTask(task.id);
             this.unregisterRun(token);
-            return this.text(res, rpcReq.id, 'No grouping suggested.');
+            this.text(res, rpcReq.id, 'No grouping suggested.');
+            return;
           }
           this.store.createSuggestion({
             boardId: task.boardId,
@@ -1558,32 +1636,39 @@ export class KanbanMcpServer {
           // Drop the transient detection task — the suggestion lives in its own table now.
           this.store.deleteTask(task.id);
           this.unregisterRun(token);
-          return this.text(res, rpcReq.id, `Suggested feature "${a.name}".`);
+          this.text(res, rpcReq.id, `Suggested feature "${a.name}".`);
+          return;
         }
         case 'kanban_comment': {
           const a = z.object({ body: z.string() }).parse(args);
           this.store.addComment(task.id, author, a.body);
           this.store.appendEvent(task.id, scope.runId, 'comment', { author });
-          return this.text(res, rpcReq.id, 'Comment added.');
+          this.text(res, rpcReq.id, 'Comment added.');
+          return;
         }
         case 'kanban_swarm_read': {
           const a = z.object({ root: z.string() }).parse(args);
           if (!isSwarmRoot(this.store, a.root)) {
-            return this.rpcError(res, rpcReq.id, `${a.root} is not a swarm root`);
+            this.rpcError(res, rpcReq.id, `${a.root} is not a swarm root`);
+            return;
           }
-          return this.text(res, rpcReq.id, JSON.stringify(latestBlackboard(this.store, a.root)));
+          this.text(res, rpcReq.id, JSON.stringify(latestBlackboard(this.store, a.root)));
+          return;
         }
         case 'kanban_swarm_post': {
           const a = z.object({ root: z.string(), key: z.string(), value: z.unknown() }).parse(args);
           if (!isSwarmRoot(this.store, a.root)) {
-            return this.rpcError(res, rpcReq.id, `${a.root} is not a swarm root`);
+            this.rpcError(res, rpcReq.id, `${a.root} is not a swarm root`);
+            return;
           }
           if (a.key === '_authors') {
-            return this.rpcError(res, rpcReq.id, '"_authors" is a reserved blackboard key');
+            this.rpcError(res, rpcReq.id, '"_authors" is a reserved blackboard key');
+            return;
           }
           postBlackboardUpdate(this.store, a.root, author, a.key, a.value);
           this.store.appendEvent(a.root, null, 'blackboard_post', { author, key: a.key });
-          return this.text(res, rpcReq.id, 'Blackboard updated.');
+          this.text(res, rpcReq.id, 'Blackboard updated.');
+          return;
         }
         case 'kanban_artifact': {
           const a = z
@@ -1594,7 +1679,8 @@ export class KanbanMcpServer {
             })
             .parse(args);
           if (!task.workspacePath) {
-            return this.rpcError(res, rpcReq.id, 'workspace not ready');
+            this.rpcError(res, rpcReq.id, 'workspace not ready');
+            return;
           }
           const artifact = this.store.addArtifact({
             taskId: task.id,
@@ -1609,13 +1695,15 @@ export class KanbanMcpServer {
             id: artifact.id,
             filename: artifact.filename
           });
-          return this.text(res, rpcReq.id, artifact.id);
+          this.text(res, rpcReq.id, artifact.id);
+          return;
         }
         case 'kanban_heartbeat': {
           const lock = this.claimLocks.get(token);
           if (lock) this.store.extendClaim(task.id, lock, 15 * 60 * 1000);
           this.store.appendEvent(task.id, scope.runId, 'heartbeat', {});
-          return this.text(res, rpcReq.id, 'Heartbeat recorded.');
+          this.text(res, rpcReq.id, 'Heartbeat recorded.');
+          return;
         }
         case 'kanban_list': {
           const a = z
@@ -1625,7 +1713,8 @@ export class KanbanMcpServer {
           if (a.status) rows = rows.filter((c) => c.status === a.status);
           if (a.assignee) rows = rows.filter((c) => c.assignee === a.assignee);
           const lines = rows.map((c) => `${c.id}\t${c.status}\t${c.assignee ?? '-'}\t${c.title}`);
-          return this.text(res, rpcReq.id, lines.join('\n') || '(no tasks)');
+          this.text(res, rpcReq.id, lines.join('\n') || '(no tasks)');
+          return;
         }
         case 'kanban_create': {
           const a = z
@@ -1648,11 +1737,12 @@ export class KanbanMcpServer {
             .filter((p) => p.role === 'worker')
             .map((p) => p.name);
           if (assignee && workerNames.length > 0 && !workerNames.includes(assignee)) {
-            return this.rpcError(
+            this.rpcError(
               res,
               rpcReq.id,
               `unknown worker profile "${assignee}". Valid profiles: ${workerNames.join(', ')}`
             );
+            return;
           }
           const anchor = this.pipelineAnchor(task);
           if (anchor) {
@@ -1666,11 +1756,12 @@ export class KanbanMcpServer {
               .filter((e) => e.kind === 'children_emitted');
             const priorRun = emittedEvents.find((e) => e.payload?.runId !== scope.runId);
             if (priorRun) {
-              return this.rpcError(
+              this.rpcError(
                 res,
                 rpcReq.id,
                 'children already emitted by a prior run; call kanban_complete'
               );
+              return;
             }
             // Implement children link off the gate (not the spec task), so count the
             // gate's implement-stage children to enforce the cap.
@@ -1678,11 +1769,12 @@ export class KanbanMcpServer {
               .childrenOf(anchor.gateId)
               .filter((id) => this.store.getTask(id)?.pipelineStage === 'implement').length;
             if (existing >= MAX_FANOUT) {
-              return this.rpcError(
+              this.rpcError(
                 res,
                 rpcReq.id,
                 `fan-out cap reached (${MAX_FANOUT}); stop creating children and call kanban_complete`
               );
+              return;
             }
             const child = this.store.createTask({
               title: a.title,
@@ -1706,7 +1798,8 @@ export class KanbanMcpServer {
                 runId: scope.runId
               });
             }
-            return this.text(res, rpcReq.id, child.id);
+            this.text(res, rpcReq.id, child.id);
+            return;
           }
           const inherit = this.inheritWorkspace(task);
           const child = this.store.createTask({
@@ -1726,7 +1819,8 @@ export class KanbanMcpServer {
             by: 'orchestrator',
             parent: scope.taskId
           });
-          return this.text(res, rpcReq.id, child.id);
+          this.text(res, rpcReq.id, child.id);
+          return;
         }
         case 'kanban_feature_create': {
           const a = z.object({ name: z.string(), base_branch: z.string().optional() }).parse(args);
@@ -1741,13 +1835,15 @@ export class KanbanMcpServer {
             name: a.name,
             by: 'orchestrator'
           });
-          return this.text(res, rpcReq.id, feature.id);
+          this.text(res, rpcReq.id, feature.id);
+          return;
         }
         case 'kanban_link': {
           const a = z.object({ parent_id: z.string(), child_id: z.string() }).parse(args);
           this.store.addLink(a.parent_id, a.child_id);
           this.store.appendEvent(a.child_id, scope.runId, 'link_added', { parentId: a.parent_id });
-          return this.text(res, rpcReq.id, 'Linked.');
+          this.text(res, rpcReq.id, 'Linked.');
+          return;
         }
         case 'kanban_unblock': {
           const a = z.object({ task_id: z.string() }).parse(args);
@@ -1756,11 +1852,13 @@ export class KanbanMcpServer {
             to: 'ready',
             by: 'orchestrator'
           });
-          return this.text(res, rpcReq.id, 'Unblocked.');
+          this.text(res, rpcReq.id, 'Unblocked.');
+          return;
         }
         case 'kanban_swarm': {
           if (!this.swarmHandler) {
-            return this.rpcError(res, rpcReq.id, 'swarm creation is not available');
+            this.rpcError(res, rpcReq.id, 'swarm creation is not available');
+            return;
           }
           const a = z
             .object({
@@ -1792,7 +1890,8 @@ export class KanbanMcpServer {
             createdBy: author,
             ...inheritRepo
           });
-          return this.text(res, rpcReq.id, JSON.stringify(created));
+          this.text(res, rpcReq.id, JSON.stringify(created));
+          return;
         }
         case 'kanban_update': {
           const a = z.object({ title: z.string().optional(), body: z.string() }).parse(args);
@@ -1801,14 +1900,18 @@ export class KanbanMcpServer {
           this.store.setStatusCleared(task.id, 'todo');
           this.store.finishRun(scope.runId, 'completed', { summary: 'specified' });
           this.unregisterRun(token);
-          return this.text(res, rpcReq.id, `Task ${task.id} specified.`);
+          this.text(res, rpcReq.id, `Task ${task.id} specified.`);
+          return;
         }
-        default:
-          return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
+        default: {
+          this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
+          return;
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return this.rpcError(res, rpcReq.id, msg);
+      this.rpcError(res, rpcReq.id, msg);
+      return;
     }
   }
 }

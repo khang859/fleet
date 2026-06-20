@@ -277,7 +277,7 @@ describe('KanbanCommands comment/link/log/dispatch', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
-      autoReview: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -314,7 +314,7 @@ describe('KanbanCommands replyAndResume', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
-      autoReview: false,
+        autoReview: false,
         maxDecompose: 0,
         artifactRetentionDays: 0
       }
@@ -497,7 +497,7 @@ describe('KanbanCommands mergeReviewTask conflict', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
-      autoReview: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -702,7 +702,7 @@ describe('KanbanCommands.createSwarm', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
-      autoReview: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -960,8 +960,18 @@ describe('KanbanCommands.enforceDecomposeGrouping', () => {
       repoPath: '/repo',
       baseBranch: 'main'
     });
-    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
-    const c2 = store.createTask({ title: 'b', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const c1 = store.createTask({
+      title: 'a',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const c2 = store.createTask({
+      title: 'b',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
     store.addLink(parent.id, c1.id);
     store.addLink(parent.id, c2.id);
 
@@ -979,8 +989,19 @@ describe('KanbanCommands.enforceDecomposeGrouping', () => {
 
   it('is a no-op when fewer than 2 worktree children exist', () => {
     const { store, commands } = makeCommands();
-    const parent = store.createTask({ title: 'p', status: 'done', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
-    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const parent = store.createTask({
+      title: 'p',
+      status: 'done',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const c1 = store.createTask({
+      title: 'a',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
     const scratch = store.createTask({ title: 's' }); // scratch child does not count
     store.addLink(parent.id, c1.id);
     store.addLink(parent.id, scratch.id);
@@ -991,10 +1012,33 @@ describe('KanbanCommands.enforceDecomposeGrouping', () => {
 
   it('is a no-op when the children are already grouped (orchestrator grouped them)', () => {
     const { store, commands } = makeCommands();
-    const f = store.createFeature({ boardId: 'default', name: 'pre', repoPath: '/repo', baseBranch: 'main' });
-    const parent = store.createTask({ title: 'p', status: 'done', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
-    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main', featureId: f.id });
-    const c2 = store.createTask({ title: 'b', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main', featureId: f.id });
+    const f = store.createFeature({
+      boardId: 'default',
+      name: 'pre',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const parent = store.createTask({
+      title: 'p',
+      status: 'done',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const c1 = store.createTask({
+      title: 'a',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main',
+      featureId: f.id
+    });
+    const c2 = store.createTask({
+      title: 'b',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main',
+      featureId: f.id
+    });
     store.addLink(parent.id, c1.id);
     store.addLink(parent.id, c2.id);
     commands.enforceDecomposeGrouping(parent.id);
@@ -1004,10 +1048,32 @@ describe('KanbanCommands.enforceDecomposeGrouping', () => {
 
   it('is a no-op when the parent is already in a feature', () => {
     const { store, commands } = makeCommands();
-    const f = store.createFeature({ boardId: 'default', name: 'pre', repoPath: '/repo', baseBranch: 'main' });
-    const parent = store.createTask({ title: 'p', status: 'done', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main', featureId: f.id });
-    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
-    const c2 = store.createTask({ title: 'b', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const f = store.createFeature({
+      boardId: 'default',
+      name: 'pre',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const parent = store.createTask({
+      title: 'p',
+      status: 'done',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main',
+      featureId: f.id
+    });
+    const c1 = store.createTask({
+      title: 'a',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const c2 = store.createTask({
+      title: 'b',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
     store.addLink(parent.id, c1.id);
     store.addLink(parent.id, c2.id);
     commands.enforceDecomposeGrouping(parent.id);
@@ -1023,7 +1089,9 @@ describe('project commands', () => {
   it('addProject validates name, path existence, and duplicates', () => {
     const { commands } = makeCommands();
     const dir = TEST_DIR; // exists
-    expect(() => commands.addProject({ boardId: 'default', name: '  ', path: dir })).toThrow(/name/i);
+    expect(() => commands.addProject({ boardId: 'default', name: '  ', path: dir })).toThrow(
+      /name/i
+    );
     expect(() =>
       commands.addProject({ boardId: 'default', name: 'x', path: join(TEST_DIR, 'nope') })
     ).toThrow(/does not exist|not a directory/i);
@@ -1057,9 +1125,24 @@ describe('KanbanCommands suggestions', () => {
 
   it('accept creates a feature + assigns tasks + marks accepted', () => {
     const { store, commands } = makeCommands();
-    const t1 = store.createTask({ title: 'task 1', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
-    const t2 = store.createTask({ title: 'task 2', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
-    const s = store.createSuggestion({ boardId: 'default', name: 'My Feature', repoPath: '/repo', taskIds: [t1.id, t2.id] });
+    const t1 = store.createTask({
+      title: 'task 1',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const t2 = store.createTask({
+      title: 'task 2',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const s = store.createSuggestion({
+      boardId: 'default',
+      name: 'My Feature',
+      repoPath: '/repo',
+      taskIds: [t1.id, t2.id]
+    });
 
     const feature = commands.acceptSuggestion(s.id);
 
@@ -1074,7 +1157,12 @@ describe('KanbanCommands suggestions', () => {
   it('accept skips tasks that no longer exist', () => {
     const { store, commands } = makeCommands();
     const t1 = store.createTask({ title: 'existing', workspaceKind: 'scratch' });
-    const s = store.createSuggestion({ boardId: 'default', name: 'Partial', repoPath: null, taskIds: [t1.id, 'ghost-id'] });
+    const s = store.createSuggestion({
+      boardId: 'default',
+      name: 'Partial',
+      repoPath: null,
+      taskIds: [t1.id, 'ghost-id']
+    });
 
     const feature = commands.acceptSuggestion(s.id);
 
@@ -1086,7 +1174,12 @@ describe('KanbanCommands suggestions', () => {
 
   it('accept throws + dismisses (no feature) when all suggested tasks are gone', () => {
     const { store, commands } = makeCommands();
-    const s = store.createSuggestion({ boardId: 'default', name: 'All Gone', repoPath: '/repo', taskIds: ['ghost-1', 'ghost-2'] });
+    const s = store.createSuggestion({
+      boardId: 'default',
+      name: 'All Gone',
+      repoPath: '/repo',
+      taskIds: ['ghost-1', 'ghost-2']
+    });
 
     let code: string | undefined;
     try {
@@ -1101,7 +1194,12 @@ describe('KanbanCommands suggestions', () => {
 
   it('dismiss marks dismissed without creating a feature', () => {
     const { store, commands } = makeCommands();
-    const s = store.createSuggestion({ boardId: 'default', name: 'Ignore Me', repoPath: null, taskIds: [] });
+    const s = store.createSuggestion({
+      boardId: 'default',
+      name: 'Ignore Me',
+      repoPath: null,
+      taskIds: []
+    });
 
     commands.dismissSuggestion(s.id);
 
@@ -1147,7 +1245,9 @@ describe('KanbanCommands verify commands', () => {
     });
     expect(p.verifyCommands).toEqual([{ label: 'typecheck', command: 'npm run typecheck' }]);
     commands.setProjectVerifyCommands(p.id, [{ label: 'tests', command: 'npm test' }]);
-    expect(store.getProject(p.id)?.verifyCommands).toEqual([{ label: 'tests', command: 'npm test' }]);
+    expect(store.getProject(p.id)?.verifyCommands).toEqual([
+      { label: 'tests', command: 'npm test' }
+    ]);
   });
 });
 
@@ -1219,9 +1319,7 @@ describe('approve_spec proposal', () => {
     // silence the dispatcher's raiseSpecApprovals so no second proposal could ever fire.
     expect(store.listEvents(specId).some((e) => e.kind === 'children_emitted')).toBe(false);
     expect(store.listEvents(specId).some((e) => e.kind === 'spec_approval_raised')).toBe(false);
-    expect(
-      store.listComments(specId).some((c) => c.body.includes('Spec dismissed'))
-    ).toBe(true);
+    expect(store.listComments(specId).some((c) => c.body.includes('Spec dismissed'))).toBe(true);
     store.close();
   });
 

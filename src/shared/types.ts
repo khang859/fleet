@@ -4,10 +4,11 @@ import type { KanbanNotifySettings } from './kanban-notifications';
 import type { AccentColorId, AppThemeSelection, TerminalThemeId } from './theme-presets';
 import type { SessionAgentFilter } from './sessions';
 import type { ToolVisibility } from './tools';
+import type { UserGroupColor } from './group-colors';
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends Array<infer U>
-    ? Array<U>
+    ? U[]
     : T[K] extends object
       ? DeepPartial<T[K]>
       : T[K];
@@ -22,6 +23,14 @@ export type Workspace = {
   collapsedGroups?: string[];
   /** Pixel width of the expanded sidebar. Undefined = use DEFAULT_SIDEBAR_WIDTH. */
   sidebarWidth?: number;
+  userGroups?: UserGroup[];
+};
+
+export type UserGroup = {
+  id: string;
+  name: string;
+  color: UserGroupColor;
+  collapsed: boolean;
 };
 
 export type Tab = {
@@ -50,6 +59,7 @@ export type Tab = {
   groupLabel?: string;
   worktreeBranch?: string;
   worktreePath?: string;
+  userGroupId?: string;
   /** ShellProfile id used when this tab was created. Optional for legacy persisted tabs. */
   shellProfileId?: string;
   /** Path semantics for this tab (driven by the chosen shellProfile). Optional for legacy tabs. */
@@ -71,7 +81,16 @@ export type PaneLeaf = {
   ptyPid?: number;
   shell?: string;
   cwd: string;
-  paneType?: 'terminal' | 'file' | 'image' | 'images' | 'pi' | 'markdown' | 'kanban' | 'artifacts' | 'pdf';
+  paneType?:
+    | 'terminal'
+    | 'file'
+    | 'image'
+    | 'images'
+    | 'pi'
+    | 'markdown'
+    | 'kanban'
+    | 'artifacts'
+    | 'pdf';
   filePath?: string;
   isDirty?: boolean;
   serializedContent?: string;

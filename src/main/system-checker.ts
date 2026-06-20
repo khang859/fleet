@@ -5,7 +5,7 @@ import { SOCKET_PATH } from '../shared/constants';
 const SOCK_HINT =
   'Fleet socket is not running. The app may still be starting up — try clicking Retry in a moment.';
 
-function attemptFleetSock(): Promise<SystemDepResult> {
+async function attemptFleetSock(): Promise<SystemDepResult> {
   return new Promise((resolve) => {
     const socket = net.createConnection(SOCKET_PATH);
     let responded = false;

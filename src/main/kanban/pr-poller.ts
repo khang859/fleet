@@ -126,8 +126,7 @@ export class PrPoller {
   private writeBack(task: Task, res: Extract<ReturnType<typeof fetchPrState>, { ok: true }>): void {
     const prev = task.prInfo;
     const changed =
-      !prev ||
-      prev.state !== res.state ||
+      prev?.state !== res.state ||
       prev.checksState !== res.checksState ||
       prev.mergeState !== res.mergeState;
     this.store.setPrStatus(task.id, {

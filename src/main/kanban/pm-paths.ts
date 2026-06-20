@@ -34,7 +34,11 @@ export function loadTaskDocs(docsDir: string, names: string[]): InlinedDoc[] {
       continue;
     }
     const truncated = raw.length > DOC_INLINE_CAP;
-    out.push({ filename: name, content: truncated ? raw.slice(0, DOC_INLINE_CAP) : raw, truncated });
+    out.push({
+      filename: name,
+      content: truncated ? raw.slice(0, DOC_INLINE_CAP) : raw,
+      truncated
+    });
   }
   return out;
 }

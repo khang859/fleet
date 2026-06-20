@@ -1,4 +1,5 @@
-import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
+import type React from 'react';
+import { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { useCopilotStore } from '../store/copilot-store';
 import { getSpriteSheet } from '../assets/sprite-loader';
 import { MASCOT_REGISTRY, DEFAULT_ANIMATIONS } from '../../../../shared/mascots';

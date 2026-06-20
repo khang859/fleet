@@ -1126,8 +1126,10 @@ export function registerIpcHandlers(
 
   // Resolve a pane's live cwd on demand so the editor follows a renamed folder
   // instead of using the cached (possibly stale) path.
-  ipcMain.handle(IPC_CHANNELS.PTY_RESOLVE_CWD, (_e, paneId: string, pathContext?: PathContext) =>
-    cwdPoller.resolveNow(paneId, pathContext)
+  ipcMain.handle(
+    IPC_CHANNELS.PTY_RESOLVE_CWD,
+    async (_e, paneId: string, pathContext?: PathContext) =>
+      cwdPoller.resolveNow(paneId, pathContext)
   );
 
   ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_READ, (_e, absPath: string) => readEnvFile(absPath));

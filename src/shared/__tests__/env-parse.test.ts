@@ -51,7 +51,12 @@ describe('env-parse', () => {
   });
 
   it('creates a new var line', () => {
-    expect(newVarLine('NEW', 'v')).toMatchObject({ kind: 'var', key: 'NEW', value: 'v', raw: 'NEW=v' });
+    expect(newVarLine('NEW', 'v')).toMatchObject({
+      kind: 'var',
+      key: 'NEW',
+      value: 'v',
+      raw: 'NEW=v'
+    });
   });
 
   it('formatVarLine combines export prefix with quoting', () => {

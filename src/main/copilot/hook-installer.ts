@@ -51,7 +51,7 @@ function resolvePaths(configDir?: string): {
 
 type HookEntry = {
   matcher?: string;
-  hooks: { type: string; command: string; timeout?: number }[];
+  hooks: Array<{ type: string; command: string; timeout?: number }>;
 };
 
 type ClaudeSettings = {

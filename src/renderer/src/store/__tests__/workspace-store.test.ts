@@ -158,14 +158,12 @@ describe('switchWorkspace', () => {
     useWorkspaceStore.getState().switchWorkspace(emptyWs);
     // Enabling kanban adds its pinned tab...
     useWorkspaceStore.getState().setToolVisible('kanban', true);
-    expect(
-      useWorkspaceStore.getState().workspace.tabs.some((t) => t.type === 'kanban')
-    ).toBe(true);
+    expect(useWorkspaceStore.getState().workspace.tabs.some((t) => t.type === 'kanban')).toBe(true);
     // ...and disabling it strips the tab again.
     useWorkspaceStore.getState().setToolVisible('kanban', false);
-    expect(
-      useWorkspaceStore.getState().workspace.tabs.some((t) => t.type === 'kanban')
-    ).toBe(false);
+    expect(useWorkspaceStore.getState().workspace.tabs.some((t) => t.type === 'kanban')).toBe(
+      false
+    );
   });
 
   it('strips the now-defunct pinned Artifacts tab from a persisted workspace', () => {

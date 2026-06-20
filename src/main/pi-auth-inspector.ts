@@ -74,7 +74,9 @@ export class PiAuthInspector {
   async listAvailableModels(): Promise<ModelEntry[]> {
     if (!this.modelCatalogPath) return [];
     try {
-      const module = (await import(pathToFileURL(this.modelCatalogPath).href)) as PiModelCatalogModule;
+      const module = (await import(
+        pathToFileURL(this.modelCatalogPath).href
+      )) as PiModelCatalogModule;
       if (typeof module.getProviders !== 'function' || typeof module.getModels !== 'function') {
         return [];
       }
