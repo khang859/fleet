@@ -17,7 +17,7 @@ describe('buildVerifyScript', () => {
     expect(script).toContain('&&'); // failure short-circuits the chain
   });
 
-  it("escapes single quotes in labels", () => {
+  it('escapes single quotes in labels', () => {
     const script = buildVerifyScript([{ label: "it's quick", command: 'true' }]);
     expect(script).toContain(`'=== verify: it'\\''s quick ==='`);
   });

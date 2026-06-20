@@ -645,7 +645,11 @@ function ghPrCreate(input: {
   } catch (err) {
     const e = err as { code?: string; stderr?: Buffer; stdout?: Buffer };
     if (e.code === 'ENOENT') {
-      return { ok: false, noGh: true, error: 'gh CLI not found. Install GitHub CLI to create PRs.' };
+      return {
+        ok: false,
+        noGh: true,
+        error: 'gh CLI not found. Install GitHub CLI to create PRs.'
+      };
     }
     const msg = (e.stderr?.toString() || e.stdout?.toString() || (err as Error).message).trim();
     const existing = msg.match(/https?:\/\/\S+/)?.[0];
@@ -828,16 +832,34 @@ export function createFeaturePr(input: {
   title: string;
   body: string;
   draft?: boolean;
-}): { ok: boolean; url?: string; number?: number; noRemote?: boolean; noGh?: boolean; error?: string } {
+}): {
+  ok: boolean;
+  url?: string;
+  number?: number;
+  noRemote?: boolean;
+  noGh?: boolean;
+  error?: string;
+} {
   const { repoPath, integrationBranch, baseBranch, title, body, draft } = input;
   try {
     gitVoid(repoPath, ['push', '-u', 'origin', integrationBranch], {
       stdio: ['ignore', 'ignore', 'pipe']
     });
   } catch (err) {
-    return { ok: false, noRemote: true, error: `git push failed (no 'origin' remote?): ${gitStderr(err)}` };
+    return {
+      ok: false,
+      noRemote: true,
+      error: `git push failed (no 'origin' remote?): ${gitStderr(err)}`
+    };
   }
-  return ghPrCreate({ cwd: repoPath, base: baseBranch, head: integrationBranch, title, body, draft });
+  return ghPrCreate({
+    cwd: repoPath,
+    base: baseBranch,
+    head: integrationBranch,
+    title,
+    body,
+    draft
+  });
 }
 
 /**
@@ -845,25 +867,31 @@ export function createFeaturePr(input: {
  * updates itself from the pushed commits). Used for the 2nd+ task merge once the
  * draft PR already exists.
  */
-export function pushIntegrationBranch(input: {
-  repoPath: string;
-  integrationBranch: string;
-}): { ok: boolean; noRemote?: boolean; error?: string } {
+export function pushIntegrationBranch(input: { repoPath: string; integrationBranch: string }): {
+  ok: boolean;
+  noRemote?: boolean;
+  error?: string;
+} {
   try {
     gitVoid(input.repoPath, ['push', 'origin', input.integrationBranch], {
       stdio: ['ignore', 'ignore', 'pipe']
     });
     return { ok: true };
   } catch (err) {
-    return { ok: false, noRemote: true, error: `git push failed (no 'origin' remote?): ${gitStderr(err)}` };
+    return {
+      ok: false,
+      noRemote: true,
+      error: `git push failed (no 'origin' remote?): ${gitStderr(err)}`
+    };
   }
 }
 
 /** Flip a draft PR to "ready for review" via `gh pr ready <number>`, run in repoPath. */
-export function markPrReady(input: {
-  repoPath: string;
-  prNumber: number;
-}): { ok: boolean; noGh?: boolean; error?: string } {
+export function markPrReady(input: { repoPath: string; prNumber: number }): {
+  ok: boolean;
+  noGh?: boolean;
+  error?: string;
+} {
   try {
     ghVoid(input.repoPath, ['pr', 'ready', String(input.prNumber)], {
       stdio: ['ignore', 'ignore', 'pipe']

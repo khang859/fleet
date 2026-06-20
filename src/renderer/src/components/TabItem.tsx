@@ -6,12 +6,14 @@ import { createLogger } from '../logger';
 const logDnd = createLogger('sidebar:dnd');
 import type { NotificationLevel } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
+import type { UserGroupColor } from './sidebar-constants';
 import { cwdBasename } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
 import { useRemoteStore } from '../store/remote-store';
 import { useNotificationStore } from '../store/notification-store';
 import { shortenPath } from '../lib/shorten-path';
 import { popperAnim } from '../lib/motion';
+import { COLOR_MAP } from './sidebar-constants';
 
 type TabItemProps = {
   id: string;
@@ -49,6 +51,12 @@ type TabItemProps = {
   pathContext?: PathContext;
   /** Indentation level (0 = normal, 1 = inside a group) */
   indentLevel?: number;
+  userGroupColor?: string;
+  userGroupId?: string;
+  userGroups?: Array<{ id: string; name: string; color: UserGroupColor }>;
+  onCreateGroup?: () => void;
+  onAddToGroup?: (groupId: string) => void;
+  onRemoveFromGroup?: () => void;
 };
 
 // Multi-signal badge config: color + size + shape + animation per severity level
@@ -102,7 +110,13 @@ export function TabItem({
   worktreeDisabledReason,
   worktreeBranch,
   pathContext,
-  indentLevel = 0
+  indentLevel = 0,
+  userGroupColor,
+  userGroupId,
+  userGroups,
+  onCreateGroup,
+  onAddToGroup,
+  onRemoveFromGroup
 }: TabItemProps): React.JSX.Element {
   // Granular CWD subscription — only re-renders when THIS pane's CWD changes
   const liveCwd = useCwdStore((s) => (drivingPaneId ? s.cwds.get(drivingPaneId) : undefined));
@@ -188,8 +202,8 @@ export function TabItem({
             ${indentLevel > 0 ? 'ml-4 border-l-2 border-l-teal-500/50' : ''}
             ${
               isActive
-                ? `bg-fleet-surface-3 text-fleet-text ${indentLevel > 0 ? '' : `border-l-2 ${activeBorderColor}`}`
-                : `text-fleet-text-secondary hover:bg-fleet-surface-2 hover:text-fleet-text ${indentLevel > 0 ? '' : 'border-l-2 border-transparent'}`
+                ? `bg-fleet-surface-3 text-fleet-text ${indentLevel > 0 ? '' : `border-l-2 ${activeBorderColor}`} ${userGroupColor ?? ''}`
+                : `text-fleet-text-secondary hover:bg-fleet-surface-2 hover:text-fleet-text ${indentLevel > 0 ? '' : 'border-l-2 border-transparent'} ${userGroupColor ?? ''}`
             }
           `}
           onClick={onClick}
@@ -349,6 +363,59 @@ export function TabItem({
                 )}
               </ContextMenu.Item>
             </>
+          )}
+          {(onCreateGroup ??
+            (onAddToGroup && userGroups && userGroups.length > 0) ??
+            (onRemoveFromGroup && userGroupId)) && (
+            <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
+          )}
+          {onCreateGroup && (
+            <ContextMenu.Item
+              className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
+              onSelect={onCreateGroup}
+            >
+              New Group
+            </ContextMenu.Item>
+          )}
+          {onAddToGroup && userGroups && userGroups.length > 0 && (
+            <ContextMenu.Sub>
+              <ContextMenu.SubTrigger className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3 data-[state=open]:bg-fleet-surface-3 flex items-center justify-between">
+                Add to Group
+                <svg
+                  className="ml-2"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
+                  <path d="M4 2l4 4-4 4" />
+                </svg>
+              </ContextMenu.SubTrigger>
+              <ContextMenu.Portal>
+                <ContextMenu.SubContent className="min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50">
+                  {userGroups.map((g) => (
+                    <ContextMenu.Item
+                      key={g.id}
+                      className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3 flex items-center gap-2"
+                      onSelect={() => onAddToGroup(g.id)}
+                    >
+                      <span className={`w-2.5 h-2.5 rounded-full ${COLOR_MAP[g.color]}`} />
+                      {g.name}
+                    </ContextMenu.Item>
+                  ))}
+                </ContextMenu.SubContent>
+              </ContextMenu.Portal>
+            </ContextMenu.Sub>
+          )}
+          {onRemoveFromGroup && userGroupId && (
+            <ContextMenu.Item
+              className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
+              onSelect={onRemoveFromGroup}
+            >
+              Remove from Group
+            </ContextMenu.Item>
           )}
           <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
           <ContextMenu.Item

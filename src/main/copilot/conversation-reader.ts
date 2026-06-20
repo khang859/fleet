@@ -159,7 +159,7 @@ function parseMessageLine(
       blocks.push({ type: 'text', text: content });
     }
   } else if (Array.isArray(content)) {
-    for (const block of content as Record<string, unknown>[]) {
+    for (const block of content as Array<Record<string, unknown>>) {
       const blockType = block['type'] as string;
       switch (blockType) {
         case 'text': {
@@ -208,7 +208,7 @@ function parseMessageLine(
 
   return {
     id: uuid,
-    role: type as 'user' | 'assistant',
+    role: type,
     timestamp,
     blocks
   };

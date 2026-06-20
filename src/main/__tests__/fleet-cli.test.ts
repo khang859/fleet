@@ -485,7 +485,7 @@ describe('fleet kanban watch', () => {
       }
 
       const result = await Promise.race([
-        server.stop().then(() => watchPromise),
+        server.stop().then(async () => watchPromise),
         new Promise<string>((r) => setTimeout(() => r('__timeout__'), 2000))
       ]);
 

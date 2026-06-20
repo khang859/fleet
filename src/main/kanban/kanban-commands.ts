@@ -908,7 +908,7 @@ export class KanbanCommands {
 
   updateFeature(id: string, fields: UpdateFeatureInput): void {
     this.requireFeature(id);
-    if (fields.name !== undefined && fields.name.trim() === '') {
+    if (fields.name?.trim() === '') {
       throw new CodedError('feature requires a name', 'BAD_REQUEST');
     }
     this.store.updateFeature(id, {
@@ -961,7 +961,7 @@ export class KanbanCommands {
     const children = this.store
       .childrenOf(parentTaskId)
       .map((id) => this.store.getTask(id))
-      .filter((t): t is Task => t != null && t.workspaceKind === 'worktree');
+      .filter((t): t is Task => t?.workspaceKind === 'worktree');
     if (children.length < 2) return;
     // bail if ANY child is already grouped — never clobber an existing grouping
     if (children.some((c) => c.featureId)) return;
@@ -1002,9 +1002,7 @@ export class KanbanCommands {
       return existingTriage;
     }
     // None in triage — create a new orchestrator card listing the existing work.
-    const summary = tasks
-      .map((t) => `- ${t.id} [${t.status}] ${t.title}`)
-      .join('\n');
+    const summary = tasks.map((t) => `- ${t.id} [${t.status}] ${t.title}`).join('\n');
     const body = `Continue decomposing feature "${feature.name}". Existing tasks (avoid duplicates):\n\n${summary}`;
     const workspace =
       feature.repoPath != null
@@ -1131,7 +1129,11 @@ export class KanbanCommands {
         .parentsOf(p.targetId)
         .find((pid) => this.store.getTask(pid)?.pipelineStage === 'spec');
       if (specId) {
-        this.store.addComment(specId, 'pm', `Spec dismissed: revise and re-fan-out. ${p.rationale}`);
+        this.store.addComment(
+          specId,
+          'pm',
+          `Spec dismissed: revise and re-fan-out. ${p.rationale}`
+        );
         this.store.clearSpecFanout(specId);
         this.store.setStatus(specId, 'ready');
       }
@@ -1191,7 +1193,9 @@ export class KanbanCommands {
     });
     return {
       ok: true,
-      message: res.alreadyUpToDate ? `already up to date with ${baseBranch}` : `synced with ${baseBranch}`
+      message: res.alreadyUpToDate
+        ? `already up to date with ${baseBranch}`
+        : `synced with ${baseBranch}`
     };
   }
 
@@ -1285,7 +1289,12 @@ export class KanbanCommands {
       throw new CodedError(`this folder is already registered on this board`, 'BAD_REQUEST');
     }
     const description = input.description?.trim() || null;
-    const project = this.store.addProject({ boardId: input.boardId, name, path: input.path, description });
+    const project = this.store.addProject({
+      boardId: input.boardId,
+      name,
+      path: input.path,
+      description
+    });
     if (input.verifyCommands && input.verifyCommands.length > 0) {
       this.store.setProjectVerifyCommands(project.id, input.verifyCommands);
       return this.store.getProject(project.id) ?? project;

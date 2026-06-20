@@ -117,9 +117,15 @@ describe('kanban_review_verdict', () => {
     const t = store.createTask({ title: 'x', status: 'running', workspaceKind: 'worktree' });
     const run = store.startRun(t.id, 'reviewer', 1, 'review');
     const token = register(server, { kind: 'task', taskId: t.id, runId: run.id, mode: 'review' });
-    const r1 = await call(server, token, 'kanban_review_verdict', { decision: 'nope', summary: 'x' });
+    const r1 = await call(server, token, 'kanban_review_verdict', {
+      decision: 'nope',
+      summary: 'x'
+    });
     expect(r1.error ?? r1.isError).toBeTruthy();
-    const r2 = await call(server, token, 'kanban_review_verdict', { decision: 'approve', summary: '' });
+    const r2 = await call(server, token, 'kanban_review_verdict', {
+      decision: 'approve',
+      summary: ''
+    });
     expect(r2.error ?? r2.isError).toBeTruthy();
   });
 

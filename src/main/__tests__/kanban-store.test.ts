@@ -890,7 +890,12 @@ describe('KanbanStore artifacts', () => {
     writeFileSync(full, body);
   }
 
-  function register(taskId: string, boardId: string, relPath: string, opts: { title?: string } = {}) {
+  function register(
+    taskId: string,
+    boardId: string,
+    relPath: string,
+    opts: { title?: string } = {}
+  ) {
     return store.addArtifact({
       taskId,
       runId: 1,
@@ -1142,7 +1147,12 @@ describe('KanbanStore integrate/resolve (autopilot phase 2)', () => {
   it('featureRollup and listFeatureTasks exclude system tasks', () => {
     const f = store.createFeature({ boardId: 'default', name: 'F' });
     const a = store.createTask({ title: 'a', featureId: f.id, status: 'done' });
-    store.createTask({ title: 's', featureId: f.id, systemKind: 'feature_sync', status: 'running' });
+    store.createTask({
+      title: 's',
+      featureId: f.id,
+      systemKind: 'feature_sync',
+      status: 'running'
+    });
     expect(store.featureRollup(f.id).total).toBe(1);
     expect(store.featureRollup(f.id).done).toBe(1);
     expect(store.listFeatureTasks(f.id).map((t) => t.id)).toEqual([a.id]);
@@ -1179,7 +1189,7 @@ describe('KanbanStore schema v12 (draft PR lifecycle)', () => {
   });
 
   it('featuresDuePrSync returns features with a PR number past the cutoff; setFeaturePrStatus updates + stamps', () => {
-    let clock = 1000;
+    const clock = 1000;
     const s = new KanbanStore(join(TEST_DIR, `feat-due-${Math.random()}.db`), { now: () => clock });
     const f = s.createFeature({ boardId: 'default', name: 'F' });
     s.setFeaturePr(f.id, 'https://x/pull/9', 9, 'draft');
@@ -1206,10 +1216,21 @@ describe('KanbanStore feature suggestions (schema v14)', () => {
   });
 
   it('creates and lists feature suggestions, filtering by status and repo', () => {
-    const s1 = store.createSuggestion({ boardId: 'default', repoPath: '/r', name: 'Auth', taskIds: ['a', 'b'], reason: 'related' });
+    const s1 = store.createSuggestion({
+      boardId: 'default',
+      repoPath: '/r',
+      name: 'Auth',
+      taskIds: ['a', 'b'],
+      reason: 'related'
+    });
     expect(s1.status).toBe('pending');
     expect(s1.taskIds).toEqual(['a', 'b']);
-    store.createSuggestion({ boardId: 'default', repoPath: '/other', name: 'Other', taskIds: ['c', 'd'] });
+    store.createSuggestion({
+      boardId: 'default',
+      repoPath: '/other',
+      name: 'Other',
+      taskIds: ['c', 'd']
+    });
     expect(store.listSuggestions('default')).toHaveLength(2);
     expect(store.listSuggestions('default', { repoPath: '/r' })).toHaveLength(1);
     store.updateSuggestionStatus(s1.id, 'accepted');
@@ -1230,19 +1251,49 @@ describe('KanbanStore grouping detection primitives (Task 5)', () => {
   });
 
   it('ungroupedWorktreeReadyTodoTasks returns only ungrouped worktree todo/ready tasks with a repo', () => {
-    const a = store.createTask({ title: 'a', status: 'ready', workspaceKind: 'worktree', repoPath: '/r' });
-    const b = store.createTask({ title: 'b', status: 'todo', workspaceKind: 'worktree', repoPath: '/r' });
-    store.createTask({ title: 'grouped', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', featureId: 'f1' });
+    const a = store.createTask({
+      title: 'a',
+      status: 'ready',
+      workspaceKind: 'worktree',
+      repoPath: '/r'
+    });
+    const b = store.createTask({
+      title: 'b',
+      status: 'todo',
+      workspaceKind: 'worktree',
+      repoPath: '/r'
+    });
+    store.createTask({
+      title: 'grouped',
+      status: 'ready',
+      workspaceKind: 'worktree',
+      repoPath: '/r',
+      featureId: 'f1'
+    });
     store.createTask({ title: 'scratch', status: 'ready' }); // not worktree
     store.createTask({ title: 'norepo', status: 'ready', workspaceKind: 'worktree' }); // no repo
-    store.createTask({ title: 'running', status: 'running', workspaceKind: 'worktree', repoPath: '/r' }); // wrong status
-    const ids = store.ungroupedWorktreeReadyTodoTasks().map((t) => t.id).sort();
+    store.createTask({
+      title: 'running',
+      status: 'running',
+      workspaceKind: 'worktree',
+      repoPath: '/r'
+    }); // wrong status
+    const ids = store
+      .ungroupedWorktreeReadyTodoTasks()
+      .map((t) => t.id)
+      .sort();
     expect(ids).toEqual([a.id, b.id].sort());
   });
 
   it('hasOpenSuggestTask detects a non-terminal suggest system task for a repo', () => {
     expect(store.hasOpenSuggestTask('default', '/r')).toBe(false);
-    const sys = store.createTask({ title: 'detect', status: 'review', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    const sys = store.createTask({
+      title: 'detect',
+      status: 'review',
+      boardId: 'default',
+      systemKind: 'suggest',
+      repoPath: '/r'
+    });
     expect(store.hasOpenSuggestTask('default', '/r')).toBe(true);
     expect(store.hasOpenSuggestTask('default', '/other')).toBe(false);
     store.completeTask(sys.id, 'done');
@@ -1250,7 +1301,12 @@ describe('KanbanStore grouping detection primitives (Task 5)', () => {
   });
 
   it('claimForSuggest moves a review task to running once', () => {
-    const sys = store.createTask({ title: 'd', status: 'review', systemKind: 'suggest', repoPath: '/r' });
+    const sys = store.createTask({
+      title: 'd',
+      status: 'review',
+      systemKind: 'suggest',
+      repoPath: '/r'
+    });
     expect(store.claimForSuggest(sys.id, 'L', 1000)).toBe(true);
     expect(store.getTask(sys.id)?.status).toBe('running');
     expect(store.claimForSuggest(sys.id, 'L2', 1000)).toBe(false);

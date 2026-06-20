@@ -104,7 +104,12 @@ function event(kind: string, taskId = 't1'): TaskEvent {
 
 describe('buildRetroBriefing', () => {
   it('names the shipped feature and its QA verdict', () => {
-    const out = buildRetroBriefing(feature(), [task()], () => [run()], () => []);
+    const out = buildRetroBriefing(
+      feature(),
+      [task()],
+      () => [run()],
+      () => []
+    );
     expect(out).toContain('Dark mode');
     expect(out).toContain('qa: pass');
   });
@@ -121,7 +126,8 @@ describe('buildRetroBriefing', () => {
       feature(),
       [flaky],
       () => [run({ taskId: 't2', outcome: 'completed', summary: 'eventually green' })],
-      (id) => (id === 't2' ? [event('verify_failed', 't2'), event('review_changes_requested', 't2')] : [])
+      (id) =>
+        id === 't2' ? [event('verify_failed', 't2'), event('review_changes_requested', 't2')] : []
     );
     expect(out).toContain('Persist preference');
     expect(out).toContain('request_changes');
@@ -129,7 +135,12 @@ describe('buildRetroBriefing', () => {
   });
 
   it('instructs the PM to search prior memory, write learnings, and suggest improvements', () => {
-    const out = buildRetroBriefing(feature(), [task()], () => [run()], () => []);
+    const out = buildRetroBriefing(
+      feature(),
+      [task()],
+      () => [run()],
+      () => []
+    );
     expect(out).toMatch(/learnings_search/);
     expect(out).toMatch(/kanban_learning_create/);
     expect(out).toMatch(/MEMORY\.md/);

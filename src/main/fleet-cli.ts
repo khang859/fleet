@@ -346,10 +346,8 @@ export function validateCommand(command: string, args: Record<string, unknown>):
         return 'Error: kanban swarm requires a goal.\n\nUsage: fleet kanban swarm "<goal>" --worker <profile:title[:skillA,skillB]> [--worker ...] --verifier <profile> --synthesizer <profile>';
       if (!args.worker)
         return 'Error: kanban swarm requires at least one --worker.\n\nUsage: fleet kanban swarm "<goal>" --worker <profile:title> --verifier <profile> --synthesizer <profile>';
-      if (!args.verifier)
-        return 'Error: kanban swarm requires --verifier <profile>.';
-      if (!args.synthesizer)
-        return 'Error: kanban swarm requires --synthesizer <profile>.';
+      if (!args.verifier) return 'Error: kanban swarm requires --verifier <profile>.';
+      if (!args.synthesizer) return 'Error: kanban swarm requires --synthesizer <profile>.';
       return null;
 
     case 'kanban.show':

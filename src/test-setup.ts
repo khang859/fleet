@@ -34,8 +34,10 @@ if (typeof window === 'undefined') {
   });
 }
 
-// Polyfill localStorage for Node.js test environment (renderer stores use it)
-if (typeof localStorage === 'undefined') {
+// Polyfill localStorage for Node.js test environment (renderer stores use it).
+// Node 22+ has a global localStorage that requires --localstorage-file to work;
+// when not available, getItem is undefined. Always install our own.
+if (!globalThis.localStorage?.getItem) {
   const store: Record<string, string> = {};
   Object.assign(globalThis, {
     localStorage: {

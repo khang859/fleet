@@ -7,18 +7,28 @@ import { SocketServer } from '../socket-server';
 import type { KanbanCommands } from '../kanban/kanban-commands';
 
 function tmpSocket(): string {
-  return join(tmpdir(), `fleet-kanban-sock-${process.pid}-${Math.random().toString(36).slice(2)}.sock`);
+  return join(
+    tmpdir(),
+    `fleet-kanban-sock-${process.pid}-${Math.random().toString(36).slice(2)}.sock`
+  );
 }
 
 // Minimal KanbanCommands stub — only the methods the socket server calls.
 function stubKanban(): KanbanCommands {
   return {
     list: () => [{ id: 't1', title: 'hello', status: 'todo' }],
-    show: (id: string) => (id === 't1' ? { task: { id: 't1' }, comments: [], runs: [], events: [], parents: [], children: [] } : null)
+    show: (id: string) =>
+      id === 't1'
+        ? { task: { id: 't1' }, comments: [], runs: [], events: [], parents: [], children: [] }
+        : null
   } as unknown as KanbanCommands;
 }
 
-async function sendOne(sockPath: string, command: string, args: Record<string, unknown> = {}): Promise<unknown> {
+async function sendOne(
+  sockPath: string,
+  command: string,
+  args: Record<string, unknown> = {}
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const socket = createConnection(sockPath, () => {
       socket.write(JSON.stringify({ id: 'x', command, args }) + '\n');

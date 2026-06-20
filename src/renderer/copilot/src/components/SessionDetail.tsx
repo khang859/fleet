@@ -122,14 +122,14 @@ export function SessionDetail(): React.JSX.Element | null {
                     <Button
                       variant="success"
                       size="sm"
-                      onClick={() => respondPermission(perm.toolUseId, 'allow')}
+                      onClick={async () => respondPermission(perm.toolUseId, 'allow')}
                     >
                       Allow
                     </Button>
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => respondPermission(perm.toolUseId, 'deny')}
+                      onClick={async () => respondPermission(perm.toolUseId, 'deny')}
                     >
                       Deny
                     </Button>
