@@ -242,6 +242,146 @@ export async function installSkillFile(): Promise<void> {
   log.info('installed fleet skill file', { path: destPath });
 }
 
+// ── installOpencodePlugin ────────────────────────────────────────────────────
+//
+// Copies the Fleet opencode plugin and skill file into the opencode config
+// directory so the opencode agent can discover Fleet tools when running inside
+// a Fleet terminal. Overwrites on every launch to stay in sync with the app
+// version.
+//
+// Also ensures @opencode-ai/plugin is declared in the opencode package.json
+// (OpenCode runs bun install at startup to install deps). Only writes
+// package.json when something changed — never corrupts user content.
+//
+// The plugin self-guards: it checks process.env.FLEET_SESSION so Fleet tools
+// only register when opencode is running inside a Fleet PTY.
+
+export async function installOpencodePlugin(): Promise<void> {
+  const opencodeHome = join(homedir(), '.config', 'opencode');
+
+  if (!existsSync(opencodeHome)) {
+    log.debug('opencode not installed, skipping plugin install');
+    return;
+  }
+
+  // Locate the source files in the Fleet app bundle
+  const mainDir = dirname(fileURLToPath(import.meta.url));
+
+  const candidatePluginPaths = [
+    join(mainDir, '..', '..', 'resources', 'opencode-plugin', 'fleet.ts'),
+    join(process.resourcesPath ?? '', 'app.asar.unpacked', 'resources', 'opencode-plugin', 'fleet.ts')
+  ];
+
+  const candidateSkillPaths = [
+    join(mainDir, '..', '..', 'resources', 'opencode-plugin', 'SKILL.md'),
+    join(process.resourcesPath ?? '', 'app.asar.unpacked', 'resources', 'opencode-plugin', 'SKILL.md')
+  ];
+
+  // ── Install plugin file ──────────────────────────────────────────────────
+
+  let pluginContent: string | null = null;
+  for (const candidate of candidatePluginPaths) {
+    if (existsSync(candidate)) {
+      pluginContent = await readFile(candidate, 'utf8');
+      break;
+    }
+  }
+
+  if (pluginContent) {
+    const pluginsDir = join(opencodeHome, 'plugins');
+    try {
+      await mkdir(pluginsDir, { recursive: true });
+    } catch (err) {
+      log.warn('could not create opencode plugins directory', {
+        path: pluginsDir,
+        error: err instanceof Error ? err.message : String(err)
+      });
+      return;
+    }
+
+    const destPath = join(pluginsDir, 'fleet.ts');
+    await writeFile(destPath, pluginContent, 'utf8');
+    log.info('installed fleet opencode plugin', { path: destPath });
+  } else {
+    log.warn('opencode plugin source not found, skipping plugin install', {
+      candidates: candidatePluginPaths
+    });
+  }
+
+  // ── Install skill file ───────────────────────────────────────────────────
+
+  let skillContent: string | null = null;
+  for (const candidate of candidateSkillPaths) {
+    if (existsSync(candidate)) {
+      skillContent = await readFile(candidate, 'utf8');
+      break;
+    }
+  }
+
+  if (skillContent) {
+    const skillsDir = join(opencodeHome, 'skills', 'fleet');
+    try {
+      await mkdir(skillsDir, { recursive: true });
+      const destPath = join(skillsDir, 'SKILL.md');
+      await writeFile(destPath, skillContent, 'utf8');
+      log.info('installed fleet opencode skill', { path: destPath });
+    } catch (err) {
+      log.warn('could not create opencode skills directory', {
+        path: skillsDir,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  } else {
+    log.warn('opencode skill source not found, skipping skill install', {
+      candidates: candidateSkillPaths
+    });
+  }
+
+  // ── Ensure @opencode-ai/plugin dependency ─────────────────────────────────
+
+  const pkgJsonPath = join(opencodeHome, 'package.json');
+  let rawJson: string;
+  let pkgJson: { dependencies?: Record<string, string> };
+  let parsed = false;
+
+  if (existsSync(pkgJsonPath)) {
+    rawJson = await readFile(pkgJsonPath, 'utf8');
+    try {
+      pkgJson = JSON.parse(rawJson) as { dependencies?: Record<string, string> };
+      parsed = true;
+    } catch {
+      log.warn('could not parse opencode package.json, leaving unchanged');
+      return;
+    }
+  } else {
+    rawJson = '{}';
+    pkgJson = {};
+    parsed = true;
+  }
+
+  pkgJson.dependencies = pkgJson.dependencies ?? {};
+
+  if (pkgJson.dependencies['@opencode-ai/plugin'] === '*' || pkgJson.dependencies['@opencode-ai/plugin'] === 'latest') {
+    pkgJson.dependencies['@opencode-ai/plugin'] = '^1';
+  }
+
+  if (!pkgJson.dependencies['@opencode-ai/plugin']) {
+    pkgJson.dependencies['@opencode-ai/plugin'] = '^1';
+    const newRaw = JSON.stringify(pkgJson, null, 2) + '\n';
+    if (newRaw !== rawJson) {
+      await writeFile(pkgJsonPath, newRaw, 'utf8');
+      log.info('added @opencode-ai/plugin dependency to opencode package.json');
+    }
+  } else if (parsed) {
+    // Update formatting only if we successfully parsed and did add/change
+    const newRaw = JSON.stringify(pkgJson, null, 2) + '\n';
+    if (newRaw !== rawJson) {
+      await writeFile(pkgJsonPath, newRaw, 'utf8');
+      log.info('updated @opencode-ai/plugin to ^1 in opencode package.json');
+    }
+  }
+}
+
 // ── addFleetBinToShellProfile ─────────────────────────────────────────────────
 //
 // Appends `export PATH="$HOME/.fleet/bin:$PATH"` to every common shell profile
