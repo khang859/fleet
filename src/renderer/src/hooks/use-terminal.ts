@@ -47,6 +47,11 @@ export type RuneReadyMarkerState = {
 const MAX_RUNE_READY_MARKER_PENDING = RUNE_READY_MARKER.length - 1;
 const RUNE_READY_MARKER_FLUSH_DELAY_MS = 100;
 
+// While a pane is hidden (display:none background/inactive tab), coalesce PTY
+// output and write it to xterm at most this often instead of on every ~16ms PTY
+// flush. Cuts xterm parse+render work for terminals nobody is looking at.
+const HIDDEN_FLUSH_INTERVAL_MS = 250;
+
 // Track which panes already have PTYs created (survives StrictMode remounts)
 const createdPtys = new Set<string>();
 
@@ -312,14 +317,63 @@ function createTerminal(
     }
   };
 
+  // Hidden-pane write coalescing. Background-workspace (and inactive) tabs stay
+  // mounted but display:none so their PTYs remain warm. Feeding xterm on every
+  // ~16ms PTY flush forces escape-sequence parsing and rAF rendering for a
+  // redraw-heavy TUI nobody is looking at — the dominant renderer CPU cost when
+  // many background Claude sessions stream at once. While hidden we buffer output
+  // and write it in one batch at most every HIDDEN_FLUSH_INTERVAL_MS (keeping the
+  // buffer current and bounded), then flush immediately when the pane becomes
+  // visible. Permission/notification detection is unaffected — it runs in the
+  // main process before IPC.
+  let hiddenBuffer = '';
+  let hiddenFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  const flushHiddenBuffer = (): void => {
+    if (hiddenFlushTimer !== null) {
+      clearTimeout(hiddenFlushTimer);
+      hiddenFlushTimer = null;
+    }
+    if (hiddenBuffer) {
+      const data = hiddenBuffer;
+      hiddenBuffer = '';
+      writeToTerm(data);
+    }
+  };
+
   log.debug('registerPaneData', { paneId: options.paneId });
-  const ipcCleanup = window.fleet.pty.registerPaneData(options.paneId, (data) => {
+  const ipcUnsubscribe = window.fleet.pty.registerPaneData(options.paneId, (data) => {
     if (!attachResolved) {
       pendingLiveData.push(data);
       return;
     }
+    // offsetParent is null inside a display:none subtree — the idiom used
+    // throughout this file to detect a hidden pane.
+    if (container.offsetParent === null) {
+      // Take the data off the IPC path now (resumes the PTY if backpressure
+      // paused it) but defer the costly xterm write to the slow flush.
+      window.fleet.ptyDrain(options.paneId);
+      hiddenBuffer += data;
+      hiddenFlushTimer ??= setTimeout(flushHiddenBuffer, HIDDEN_FLUSH_INTERVAL_MS);
+      return;
+    }
+    // Visible: drain anything buffered while hidden first to preserve order.
+    if (hiddenBuffer) flushHiddenBuffer();
     writeToTerm(data);
   });
+
+  // Flush buffered output the instant a hidden pane becomes visible (e.g. tab or
+  // workspace switch), so it shows current content without waiting for new PTY
+  // output or the slow timer.
+  const visibilityObserver = new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting)) flushHiddenBuffer();
+  });
+  visibilityObserver.observe(container);
+
+  const ipcCleanup = (): void => {
+    visibilityObserver.disconnect();
+    if (hiddenFlushTimer !== null) clearTimeout(hiddenFlushTimer);
+    ipcUnsubscribe();
+  };
 
   term.onData((data) => {
     window.fleet.pty.input({ paneId: options.paneId, data });
