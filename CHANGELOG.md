@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.73.0
+
+- **Kanban SDLC pipeline templates** — full-feature tickets now expand into a staged pipeline (explore → spec → build → QA) with dedicated stage personas, read-only explore tooling, a spec-approval gate, and a QA stage that gates PR-readiness and re-arms `request_changes` within an attempt cap. A template dropdown, stage badges, and an approve-spec proposal card surface the pipeline on the board, and stale pipelines are swept and flagged as blocked.
+- **PM autopilot agent** — an event-driven PM coordinator runs board turns with safe authority tools (arm/unblock/reassign), raises Approve/Dismiss proposal cards, and posts an optional daily 9am standup digest. Guarded against board-switch races and concurrent ticks, with a per-board turn queue and persona mandate.
+- **User-created tab groups** — group tabs on the sidebar with custom colors (#277).
+- **Opencode plugin for Fleet tools** — exposes Fleet's tooling to opencode (#278).
+- **Learnings semantic search + MCP access** — the Learnings KB now supports semantic vector search and is reachable by Rune and Claude Code over MCP (#267), plus a post-ship retro/learning loop for shipped Kanban work (#235).
+- **Diagnostics & "Report a Problem"** — automatic error capture with a one-click problem report from settings (#273).
+- **Perf: coalesce xterm writes for hidden terminal panes** — batches output for off-screen terminals to cut overhead (#279).
+
 ## v2.72.2
 
 - **Fix Board PM chat hanging on "Thinking" forever** — the PM chat set its in-flight flag before running turn setup (config writes, `rune` spawn) and only ever cleared it from the child process's exit/error events. If setup threw, or `rune` ignored `SIGTERM`, the flag latched on and the panel showed "Thinking…" indefinitely with the input disabled, recoverable only by restarting Fleet. Every exit path now funnels through a single cleanup: setup failures clear the flag and surface an error, the turn timeout escalates `SIGTERM` → `SIGKILL`, and the transcript read-back can no longer strand the status transition.
