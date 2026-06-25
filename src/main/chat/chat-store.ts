@@ -1,7 +1,12 @@
 import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
-import type { ChatConversation, ChatImageRef, ChatMessage, ChatRole } from '../../shared/chat-types';
+import type {
+  ChatConversation,
+  ChatImageRef,
+  ChatMessage,
+  ChatRole
+} from '../../shared/chat-types';
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS conversations (
@@ -201,7 +206,7 @@ export class ChatStore {
     }
     for (const m of messages) {
       const imgs = byMessage.get(m.id);
-      if (imgs && imgs.length) m.images = imgs;
+      if (imgs?.length) m.images = imgs;
     }
     return messages;
   }
