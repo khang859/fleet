@@ -26,6 +26,7 @@ type ChatStoreState = {
   newConversation: () => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
+  setConversationModel: (id: string, model: string) => Promise<void>;
   send: (text: string, model: string) => Promise<void>;
   cancel: () => void;
   loadModels: () => Promise<void>;
@@ -119,6 +120,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       }));
     },
 
+    setConversationModel: async (id, model) => {
+      await window.fleet.chat.setConversationModel(id, model);
+      set((s) => ({
+        conversations: s.conversations.map((c) => (c.id === id ? { ...c, model } : c))
+      }));
+    },
+
     send: async (text, model) => {
       const activeId = get().activeId;
       if (!activeId) return;
@@ -133,9 +141,29 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     },
 
     cancel: () => {
-      const id = get().streamId;
-      if (id) void window.fleet.chat.cancel(id);
-      set({ status: 'idle', streamId: null, streamingText: null });
+      const { streamId, streamingText, activeId } = get();
+      if (streamId) void window.fleet.chat.cancel(streamId);
+      // Main persists whatever streamed so far; mirror it into the visible
+      // list so the partial reply doesn't vanish until the convo is reselected.
+      const partial = streamingText?.trim() ? streamingText : null;
+      set((s) => ({
+        status: 'idle',
+        streamId: null,
+        streamingText: null,
+        messages:
+          partial && activeId
+            ? [
+                ...s.messages,
+                {
+                  id: `local-${streamId}`,
+                  conversationId: activeId,
+                  role: 'assistant',
+                  content: partial,
+                  createdAt: Date.now()
+                }
+              ]
+            : s.messages
+      }));
     },
 
     loadModels: async () => {

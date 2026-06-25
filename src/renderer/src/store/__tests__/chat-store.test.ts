@@ -22,6 +22,7 @@ beforeEach(() => {
         updatedAt: 2
       }),
       renameConversation: vi.fn().mockResolvedValue(undefined),
+      setConversationModel: vi.fn().mockResolvedValue(undefined),
       deleteConversation: vi.fn().mockResolvedValue(undefined),
       getMessages: vi.fn().mockResolvedValue([]),
       send: vi.fn().mockResolvedValue({
@@ -86,6 +87,35 @@ describe('useChatStore', () => {
     expect(s.status).toBe('idle');
     expect(s.streamingText).toBeNull();
     expect(s.messages.at(-1)?.content).toBe('Hello');
+  });
+
+  it('cancel commits the partial reply into the visible message list', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().send('hi', 'x/y');
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_CHUNK)?.({ streamId: 's1', delta: 'Par' });
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_CHUNK)?.({ streamId: 's1', delta: 'tial' });
+    useChatStore.getState().cancel();
+    const s = useChatStore.getState();
+    expect(s.status).toBe('idle');
+    expect(s.streamId).toBeNull();
+    expect(s.streamingText).toBeNull();
+    expect(s.messages.at(-1)).toMatchObject({ role: 'assistant', content: 'Partial' });
+  });
+
+  it('cancel with no streamed text leaves the message list unchanged', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().send('hi', 'x/y');
+    const before = useChatStore.getState().messages.length;
+    useChatStore.getState().cancel();
+    expect(useChatStore.getState().messages.length).toBe(before);
+  });
+
+  it('setConversationModel persists and updates the conversation', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().setConversationModel('c1', 'anthropic/claude');
+    expect(window.fleet.chat.setConversationModel).toHaveBeenCalledWith('c1', 'anthropic/claude');
+    const conv = useChatStore.getState().conversations.find((c) => c.id === 'c1');
+    expect(conv?.model).toBe('anthropic/claude');
   });
 
   it('applies an error event with partial text', async () => {

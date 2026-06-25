@@ -7,10 +7,14 @@ type Props = { defaultModel: string };
 
 export function Composer({ defaultModel }: Props): React.JSX.Element {
   const [text, setText] = useState('');
-  const [model, setModel] = useState(defaultModel);
   const status = useChatStore((s) => s.status);
   const send = useChatStore((s) => s.send);
   const cancel = useChatStore((s) => s.cancel);
+  const activeId = useChatStore((s) => s.activeId);
+  const setConversationModel = useChatStore((s) => s.setConversationModel);
+  const model = useChatStore(
+    (s) => s.conversations.find((c) => c.id === s.activeId)?.model ?? defaultModel
+  );
   const streaming = status === 'streaming';
 
   const submit = (): void => {
@@ -23,7 +27,12 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
   return (
     <div className="border-t border-fleet-border p-2">
       <div className="mb-1 flex items-center gap-2">
-        <ModelPicker value={model} onChange={setModel} />
+        <ModelPicker
+          value={model}
+          onChange={(m) => {
+            if (activeId) void setConversationModel(activeId, m);
+          }}
+        />
       </div>
       <div className="flex items-end gap-2">
         <textarea

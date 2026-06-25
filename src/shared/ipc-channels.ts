@@ -265,6 +265,7 @@ export const IPC_CHANNELS = {
   CHAT_LIST_CONVERSATIONS: 'chat:list-conversations',
   CHAT_CREATE_CONVERSATION: 'chat:create-conversation',
   CHAT_RENAME_CONVERSATION: 'chat:rename-conversation',
+  CHAT_SET_CONVERSATION_MODEL: 'chat:set-conversation-model',
   CHAT_DELETE_CONVERSATION: 'chat:delete-conversation',
   CHAT_GET_MESSAGES: 'chat:get-messages',
   CHAT_SEND: 'chat:send',

@@ -62,7 +62,7 @@ Streaming uses the fire-and-forget event pattern (main → renderer), keyed by a
 | Event | Payload |
 |---|---|
 | `chat:stream-chunk` | `{ streamId, delta }` — append text |
-| `chat:stream-done` | `{ streamId, messageId }` — full assistant msg persisted |
+| `chat:stream-done` | `{ streamId, message }` — full assistant `ChatMessage` persisted |
 | `chat:stream-error` | `{ streamId, message, partial }` — error; partial text preserved |
 
 ### 2.3 Renderer — `src/renderer/src/`
