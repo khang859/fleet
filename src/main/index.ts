@@ -97,6 +97,8 @@ import { ChatSecrets } from './chat/chat-secrets';
 import { OpenRouterClient } from './chat/openrouter-client';
 import { ChatService } from './chat/chat-service';
 import { registerChatIpc } from './chat/chat-ipc';
+import { ChatImageStorage } from './chat/image/image-storage';
+import { OpenRouterImageProvider } from './chat/image/openrouter-image-provider';
 import { KanbanNotifier } from './kanban/kanban-notifier';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
@@ -1298,11 +1300,16 @@ void app.whenReady().then(async () => {
   const chatStore = new ChatStore(join(app.getPath('userData'), 'chat.db'));
   const chatSecrets = new ChatSecrets();
   const chatClient = new OpenRouterClient();
+  const chatImageStorage = new ChatImageStorage(join(app.getPath('userData'), 'chat-images'));
+  const chatImageProvider = new OpenRouterImageProvider(() => chatSecrets.getKey());
   const chatService = new ChatService({
     store: chatStore,
     client: chatClient,
     secrets: chatSecrets,
     getDefaultModel: () => settingsStore.get().ai.chat.defaultModel,
+    getImageModel: () => settingsStore.get().ai.chat.imageModel,
+    imageProvider: chatImageProvider,
+    imageStorage: chatImageStorage,
     emit: (channel, payload) => {
       const w = mainWindow;
       if (w && !w.isDestroyed()) w.webContents.send(channel, payload);

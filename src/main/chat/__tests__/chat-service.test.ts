@@ -7,6 +7,13 @@ import type { ChatSecrets } from '../chat-secrets';
 import { OpenRouterClient } from '../openrouter-client';
 import { ChatService } from '../chat-service';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
+import { ChatImageStorage } from '../image/image-storage';
+import type { ChatImageProvider } from '../image/types';
+
+const fakeProvider: ChatImageProvider = {
+  id: 'openrouter',
+  generate: vi.fn(async () => ({ data: Buffer.from('IMG'), mimeType: 'image/png' }))
+};
 
 const DIR = join(tmpdir(), `fleet-chat-service-test-${process.pid}`);
 
@@ -39,6 +46,9 @@ describe('ChatService.send', () => {
       client,
       secrets: fakeSecrets(),
       getDefaultModel: () => 'deepseek/deepseek-v4-flash',
+      getImageModel: () => null,
+      imageProvider: fakeProvider,
+      imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
     });
 
@@ -73,6 +83,9 @@ describe('ChatService.send', () => {
       client,
       secrets: fakeSecrets(),
       getDefaultModel: () => 'm',
+      getImageModel: () => null,
+      imageProvider: fakeProvider,
+      imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
     });
     service.send({ conversationId: conv.id, text: 'hi', model: 'x/y' });
@@ -84,4 +97,52 @@ describe('ChatService.send', () => {
     store.close();
     rmSync(DIR, { recursive: true, force: true });
   });
+});
+
+it('runs the image tool loop and persists a generated image', async () => {
+  const dir = join(tmpdir(), `fleet-chat-tool-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const store = new ChatStore(join(dir, 'tool.db'));
+  const conv = store.createConversation();
+  const client = new OpenRouterClient();
+  let round = 0;
+  vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+    round += 1;
+    if (round === 1) {
+      return {
+        content: 'Sure!',
+        toolCalls: [{ id: 'call_1', name: 'generate_image', arguments: '{"prompt":"a fox"}' }],
+        finishReason: 'tool_calls'
+      };
+    }
+    opts.onDelta('Done.');
+    return { content: 'Done.', toolCalls: [], finishReason: 'stop' };
+  });
+  const provider: ChatImageProvider = {
+    id: 'openrouter',
+    generate: vi.fn(async () => ({ data: Buffer.from('IMG'), mimeType: 'image/png' }))
+  };
+  const events: Array<{ channel: string; payload: unknown }> = [];
+  const service = new ChatService({
+    store,
+    client,
+    secrets: fakeSecrets(),
+    getDefaultModel: () => 'm',
+    getImageModel: () => 'google/gemini-2.5-flash-image',
+    imageProvider: provider,
+    imageStorage: new ChatImageStorage(dir),
+    emit: (channel, payload) => events.push({ channel, payload })
+  });
+
+  // model must support tools for the tool to be offered:
+  service.send({ conversationId: conv.id, text: 'draw a fox', model: 'm', supportsTools: true });
+  await vi.waitFor(() => {
+    expect(events.some((e) => e.channel === IPC_CHANNELS.CHAT_STREAM_DONE)).toBe(true);
+  });
+  expect(events.some((e) => e.channel === IPC_CHANNELS.CHAT_TOOL_STATUS)).toBe(true);
+  const msgs = store.getMessages(conv.id);
+  const assistant = msgs.find((m) => m.role === 'assistant');
+  expect(assistant?.images?.[0]?.kind).toBe('generated');
+  store.close();
+  rmSync(dir, { recursive: true, force: true });
 });
