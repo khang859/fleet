@@ -64,6 +64,7 @@ beforeEach(() => {
 
 describe('useChatStore', () => {
   it('send appends an optimistic user message and enters streaming', async () => {
+    await useChatStore.getState().init();
     await useChatStore.getState().send('hi', 'x/y');
     const s = useChatStore.getState();
     expect(s.messages.at(-1)?.content).toBe('hi');
@@ -72,6 +73,7 @@ describe('useChatStore', () => {
   });
 
   it('applies chunk then done events', async () => {
+    await useChatStore.getState().init();
     await useChatStore.getState().send('hi', 'x/y');
     listeners.get(IPC_CHANNELS.CHAT_STREAM_CHUNK)?.({ streamId: 's1', delta: 'Hel' });
     listeners.get(IPC_CHANNELS.CHAT_STREAM_CHUNK)?.({ streamId: 's1', delta: 'lo' });
@@ -87,6 +89,7 @@ describe('useChatStore', () => {
   });
 
   it('applies an error event with partial text', async () => {
+    await useChatStore.getState().init();
     await useChatStore.getState().send('hi', 'x/y');
     listeners.get(IPC_CHANNELS.CHAT_STREAM_ERROR)?.({
       streamId: 's1',

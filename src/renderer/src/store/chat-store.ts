@@ -120,7 +120,6 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     },
 
     send: async (text, model) => {
-      subscribeToStreamEvents();
       const activeId = get().activeId;
       if (!activeId) return;
       const res = await window.fleet.chat.send({ conversationId: activeId, text, model });
@@ -136,7 +135,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     cancel: () => {
       const id = get().streamId;
       if (id) void window.fleet.chat.cancel(id);
-      set({ status: 'idle', streamId: null });
+      set({ status: 'idle', streamId: null, streamingText: null });
     },
 
     loadModels: async () => {
