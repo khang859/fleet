@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import Database from 'better-sqlite3';
 import { ChatStore } from '../chat-store';
 
 const TEST_DIR = join(tmpdir(), `fleet-chat-store-test-${process.pid}`);
@@ -77,6 +78,12 @@ describe('ChatStore', () => {
     expect(msgs[0].images?.map((i) => i.ref)).toEqual(['/tmp/a.png', '/tmp/b.png']);
 
     store.deleteConversation(conv.id);
+
+    const raw = new Database(join(dir, 'imgs.db'));
+    const count = raw.prepare('SELECT COUNT(*) AS n FROM message_images').get() as { n: number };
+    expect(count.n).toBe(0);
+    raw.close();
+
     const reopened = new ChatStore(join(dir, 'imgs.db'));
     expect(reopened.getMessages(conv.id)).toEqual([]);
     store.close();

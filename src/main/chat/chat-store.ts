@@ -158,15 +158,28 @@ export class ChatStore {
   }
 
   addImages(input: { messageId: string; conversationId: string; images: ChatImageRef[] }): void {
+    if (!input.images.length) return;
     const now = Date.now();
     const stmt = this.db.prepare(
       `INSERT INTO message_images
          (id, message_id, conversation_id, ref, mime_type, position, kind, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
-    input.images.forEach((img, i) => {
-      stmt.run(randomUUID(), input.messageId, input.conversationId, img.ref, img.mimeType, i, img.kind, now);
+    const insertAll = this.db.transaction((images: ChatImageRef[]) => {
+      images.forEach((img, i) => {
+        stmt.run(
+          randomUUID(),
+          input.messageId,
+          input.conversationId,
+          img.ref,
+          img.mimeType,
+          i,
+          img.kind,
+          now
+        );
+      });
     });
+    insertAll(input.images);
   }
 
   getMessages(conversationId: string): ChatMessage[] {
