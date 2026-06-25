@@ -70,7 +70,14 @@ describe('OpenRouterClient.listModels', () => {
     const client = new OpenRouterClient(fakeFetch);
     const models = await client.listModels('sk-test');
     expect(models).toEqual([
-      { id: 'a/b', name: 'B', contextLength: 4096, supportsTools: false, inputImage: false, outputImage: false }
+      {
+        id: 'a/b',
+        name: 'B',
+        contextLength: 4096,
+        supportsTools: false,
+        inputImage: false,
+        outputImage: false
+      }
     ]);
     expect(fakeFetch).toHaveBeenCalledWith(
       'https://openrouter.ai/api/v1/models',
@@ -107,7 +114,7 @@ it('assembles streamed tool_calls and returns finishReason', async () => {
     }
   });
   const fakeFetch = (async () =>
-    new Response(body, { status: 200 })) as unknown as typeof fetch;
+    Promise.resolve(new Response(body, { status: 200 }))) as unknown as typeof fetch;
   const client = new OpenRouterClient(fakeFetch);
   const deltas: string[] = [];
   const result = await client.streamCompletion({
@@ -137,8 +144,41 @@ it('maps model capability flags from /models', async () => {
     ]
   };
   const fakeFetch = (async () =>
-    new Response(JSON.stringify(json), { status: 200 })) as unknown as typeof fetch;
+    Promise.resolve(
+      new Response(JSON.stringify(json), { status: 200 })
+    )) as unknown as typeof fetch;
   const client = new OpenRouterClient(fakeFetch);
   const models = await client.listModels('k');
   expect(models[0]).toMatchObject({ supportsTools: true, inputImage: true, outputImage: false });
+});
+
+it('listImageModels queries output_modalities=image and keeps only image-output models', async () => {
+  const json = {
+    data: [
+      {
+        id: 'img/model',
+        name: 'Imager',
+        context_length: 0,
+        architecture: { input_modalities: ['text'], output_modalities: ['image'] }
+      },
+      {
+        id: 'text/model',
+        name: 'Texter',
+        context_length: 0,
+        architecture: { input_modalities: ['text'], output_modalities: ['text'] }
+      }
+    ]
+  };
+  const fakeFetch = vi.fn(async () =>
+    Promise.resolve(new Response(JSON.stringify(json), { status: 200 }))
+  ) as unknown as typeof fetch;
+  const client = new OpenRouterClient(fakeFetch);
+  const models = await client.listImageModels('sk-img');
+  expect(models.map((m) => m.id)).toEqual(['img/model']);
+  expect(fakeFetch).toHaveBeenCalledWith(
+    'https://openrouter.ai/api/v1/models?output_modalities=image',
+    expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer sk-img' })
+    })
+  );
 });
