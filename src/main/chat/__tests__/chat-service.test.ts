@@ -31,6 +31,7 @@ describe('ChatService.send', () => {
     vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
       opts.onDelta('Hel');
       opts.onDelta('lo');
+      return { content: 'Hello', toolCalls: [], finishReason: null };
     });
     const events: Array<{ channel: string; payload: unknown }> = [];
     const service = new ChatService({
