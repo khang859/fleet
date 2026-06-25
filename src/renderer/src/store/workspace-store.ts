@@ -117,6 +117,21 @@ function ensureSessionsTab(workspace: Workspace): Workspace {
   return { ...workspace, tabs: [sessionsTab, ...workspace.tabs] };
 }
 
+/** Ensure workspace has a pinned Chat tab; returns the workspace */
+function ensureChatTab(workspace: Workspace): Workspace {
+  if (workspace.tabs.some((t) => t.type === 'chat')) return workspace;
+  const cwd = workspace.tabs[0]?.cwd ?? '/';
+  const chatTab: Tab = {
+    id: generateId(),
+    label: 'Chat',
+    labelIsCustom: true,
+    cwd,
+    type: 'chat',
+    splitRoot: createLeaf(cwd)
+  };
+  return { ...workspace, tabs: [chatTab, ...workspace.tabs] };
+}
+
 /** Ensure workspace has a pinned Annotate tab; mutates and returns the workspace */
 function ensureAnnotateTab(workspace: Workspace): Workspace {
   if (workspace.tabs.some((t) => t.type === 'annotate')) return workspace;
@@ -171,6 +186,7 @@ function applyToolVisibility(workspace: Workspace, vis: ToolVisibility): Workspa
   if (vis.images) ws = ensureImagesTab(ws);
   if (vis.annotate) ws = ensureAnnotateTab(ws);
   if (vis.kanban) ws = ensureKanbanTab(ws);
+  if (vis.chat) ws = ensureChatTab(ws);
   const tabs = ws.tabs.filter((t) => {
     switch (t.type) {
       case 'annotate':
@@ -181,6 +197,8 @@ function applyToolVisibility(workspace: Workspace, vis: ToolVisibility): Workspa
         return vis.images;
       case 'sessions':
         return vis.sessions;
+      case 'chat':
+        return vis.chat;
       default:
         return true;
     }
@@ -284,6 +302,7 @@ type WorkspaceStore = {
   ensureImagesTab: () => void;
   ensureKanbanTab: () => void;
   ensureSessionsTab: () => void;
+  ensureChatTab: () => void;
   setToolVisible: (type: ToolType, visible: boolean) => void;
   reconcileToolTabs: () => void;
 
@@ -412,7 +431,7 @@ export function collectPaneIds(node: PaneNode): string[] {
 }
 
 /** Special/pinned tabs that should not be auto-selected when normal tabs are closed */
-const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings', 'kanban', 'sessions']);
+const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings', 'kanban', 'sessions', 'chat']);
 
 function isNormalTab(tab: Tab): boolean {
   return !SPECIAL_TAB_TYPES.has(tab.type ?? '');
@@ -1090,7 +1109,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           t.type !== 'images' &&
           t.type !== 'annotate' &&
           t.type !== 'kanban' &&
-          t.type !== 'sessions'
+          t.type !== 'sessions' &&
+          t.type !== 'chat'
       ) ??
       migrated.tabs[0];
 
@@ -1135,6 +1155,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   ensureSessionsTab: () => {
     set((state) => {
       const updated = ensureSessionsTab(state.workspace);
+      if (updated === state.workspace) return state;
+      return { workspace: updated, isDirty: true };
+    });
+  },
+
+  ensureChatTab: () => {
+    set((state) => {
+      const updated = ensureChatTab(state.workspace);
       if (updated === state.workspace) return state;
       return { workspace: updated, isDirty: true };
     });
@@ -1206,7 +1234,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
             t.type !== 'images' &&
             t.type !== 'annotate' &&
             t.type !== 'kanban' &&
-            t.type !== 'sessions'
+            t.type !== 'sessions' &&
+            t.type !== 'chat'
         ) ??
         migrated.tabs[0];
 

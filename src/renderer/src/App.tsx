@@ -7,7 +7,8 @@ import {
   Crosshair,
   KanbanSquare,
   History,
-  SlidersHorizontal
+  SlidersHorizontal,
+  MessageSquare
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
@@ -51,6 +52,7 @@ import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
 import { KanbanBoard } from './components/kanban/KanbanBoard';
 import { SessionsTab } from './components/sessions/SessionsTab';
+import { ChatTab } from './components/chat/ChatTab';
 import { PiPlanModal } from './components/PiPlanModal';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
@@ -694,7 +696,8 @@ export function App(): React.JSX.Element {
                   t.type !== 'settings' &&
                   t.type !== 'annotate' &&
                   t.type !== 'kanban' &&
-                  t.type !== 'sessions'
+                  t.type !== 'sessions' &&
+                  t.type !== 'chat'
               )
               .map((tab) => {
                 const isActive = tab.id === activeTabId;
@@ -738,7 +741,8 @@ export function App(): React.JSX.Element {
                 t.type === 'images' ||
                 t.type === 'annotate' ||
                 t.type === 'kanban' ||
-                t.type === 'sessions'
+                t.type === 'sessions' ||
+                t.type === 'chat'
             ) && <div className="w-6 h-px bg-fleet-border my-0.5" />}
             {/* Kanban pinned icon */}
             {workspace.tabs
@@ -835,6 +839,29 @@ export function App(): React.JSX.Element {
                       <History
                         size={16}
                         className={isSessionsActive ? 'text-blue-400' : 'text-blue-400/40'}
+                      />
+                    </button>
+                  </MiniSidebarTooltip>
+                );
+              })}
+            {/* Chat pinned icon */}
+            {workspace.tabs
+              .filter((t) => t.type === 'chat')
+              .map((tab) => {
+                const isChatActive = tab.id === activeTabId;
+                return (
+                  <MiniSidebarTooltip label="Chat" key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1.5 rounded transition-colors active:scale-90 ${
+                        isChatActive
+                          ? 'bg-emerald-900/40 ring-1 ring-emerald-500/30'
+                          : 'hover:bg-fleet-surface-2'
+                      }`}
+                    >
+                      <MessageSquare
+                        size={16}
+                        className={isChatActive ? 'text-emerald-400' : 'text-emerald-400/40'}
                       />
                     </button>
                   </MiniSidebarTooltip>
@@ -956,6 +983,8 @@ export function App(): React.JSX.Element {
                       <KanbanBoard />
                     ) : tab.type === 'sessions' ? (
                       <SessionsTab />
+                    ) : tab.type === 'chat' ? (
+                      <ChatTab />
                     ) : (
                       <PaneGrid
                         root={tab.splitRoot}

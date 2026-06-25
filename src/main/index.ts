@@ -92,6 +92,11 @@ import { runBackfill } from './learnings/backfill';
 import { RUNE_NOT_INSTALLED_MESSAGE } from '../shared/rune';
 import { registerKanbanIpc } from './kanban/kanban-ipc';
 import { KanbanCommands } from './kanban/kanban-commands';
+import { ChatStore } from './chat/chat-store';
+import { ChatSecrets } from './chat/chat-secrets';
+import { OpenRouterClient } from './chat/openrouter-client';
+import { ChatService } from './chat/chat-service';
+import { registerChatIpc } from './chat/chat-ipc';
 import { KanbanNotifier } from './kanban/kanban-notifier';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
@@ -1289,6 +1294,21 @@ void app.whenReady().then(async () => {
   // checkDigests makes piggybacking on a coarse tick safe (no double-fire).
   pmDigestTimer = setInterval(() => void pmAutopilot?.checkDigests(), 60_000);
   registerKanbanIpc(kanbanCommands, pmChat);
+
+  const chatStore = new ChatStore(join(app.getPath('userData'), 'chat.db'));
+  const chatSecrets = new ChatSecrets();
+  const chatClient = new OpenRouterClient();
+  const chatService = new ChatService({
+    store: chatStore,
+    client: chatClient,
+    secrets: chatSecrets,
+    getDefaultModel: () => settingsStore.get().ai.chat.defaultModel,
+    emit: (channel, payload) => {
+      const w = mainWindow;
+      if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
+    }
+  });
+  registerChatIpc({ store: chatStore, secrets: chatSecrets, service: chatService, settingsStore });
 
   runeAssist = new RuneFileChatService({
     stateDir: app.getPath('userData'),

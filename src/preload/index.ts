@@ -142,6 +142,17 @@ import type {
 } from '../shared/env-editor-types';
 import type { SessionAgent, SessionSummary, SessionTranscript } from '../shared/sessions';
 import type {
+  ChatConversation,
+  ChatMessage,
+  ChatModel,
+  ChatSettings,
+  ChatSendRequest,
+  ChatSendResponse,
+  ChatStreamChunkPayload,
+  ChatStreamDonePayload,
+  ChatStreamErrorPayload
+} from '../shared/chat-types';
+import type {
   Learning,
   CreateLearningInput,
   UpdateLearningInput,
@@ -812,6 +823,34 @@ const fleetApi = {
       typedInvoke<number>(IPC_CHANNELS.LEARNINGS_MODEL_CACHE_SIZE),
     clearModelCache: async (): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.LEARNINGS_CLEAR_MODEL_CACHE)
+  },
+  chat: {
+    listConversations: async (): Promise<ChatConversation[]> =>
+      typedInvoke(IPC_CHANNELS.CHAT_LIST_CONVERSATIONS),
+    createConversation: async (): Promise<ChatConversation> =>
+      typedInvoke(IPC_CHANNELS.CHAT_CREATE_CONVERSATION),
+    renameConversation: async (id: string, title: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.CHAT_RENAME_CONVERSATION, { id, title }),
+    deleteConversation: async (id: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.CHAT_DELETE_CONVERSATION, id),
+    getMessages: async (conversationId: string): Promise<ChatMessage[]> =>
+      typedInvoke(IPC_CHANNELS.CHAT_GET_MESSAGES, conversationId),
+    send: async (req: ChatSendRequest): Promise<ChatSendResponse> =>
+      typedInvoke(IPC_CHANNELS.CHAT_SEND, req),
+    cancel: async (streamId: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.CHAT_CANCEL, streamId),
+    listModels: async (): Promise<ChatModel[]> => typedInvoke(IPC_CHANNELS.CHAT_LIST_MODELS),
+    getSettings: async (): Promise<ChatSettings> => typedInvoke(IPC_CHANNELS.CHAT_GET_SETTINGS),
+    patchSettings: async (patch: Partial<ChatSettings>): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.CHAT_PATCH_SETTINGS, patch),
+    setKey: async (key: string): Promise<void> => typedInvoke(IPC_CHANNELS.CHAT_SET_KEY, key),
+    hasKey: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.CHAT_HAS_KEY),
+    onStreamChunk: (cb: (p: ChatStreamChunkPayload) => void): Unsubscribe =>
+      onChannel<ChatStreamChunkPayload>(IPC_CHANNELS.CHAT_STREAM_CHUNK, cb),
+    onStreamDone: (cb: (p: ChatStreamDonePayload) => void): Unsubscribe =>
+      onChannel<ChatStreamDonePayload>(IPC_CHANNELS.CHAT_STREAM_DONE, cb),
+    onStreamError: (cb: (p: ChatStreamErrorPayload) => void): Unsubscribe =>
+      onChannel<ChatStreamErrorPayload>(IPC_CHANNELS.CHAT_STREAM_ERROR, cb)
   }
 };
 
