@@ -9,7 +9,8 @@ import {
   ChevronRight,
   Bot,
   KanbanSquare,
-  SlidersHorizontal
+  SlidersHorizontal,
+  MessageSquare
 } from 'lucide-react';
 import { getFileIcon } from '../lib/file-icons';
 import { TabItem } from './TabItem';
@@ -617,6 +618,45 @@ function KanbanTabCard({
             </span>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ChatTabCard({
+  isActive,
+  onClick
+}: {
+  isActive: boolean;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <div
+      onClick={onClick}
+      className="cursor-pointer rounded-md overflow-hidden relative transition-all"
+      style={{
+        background: isActive ? '#0a1a12' : 'rgba(10,26,18,0.4)',
+        border: isActive ? '1px solid rgba(52,211,153,0.35)' : '1px solid rgba(255,255,255,0.05)'
+      }}
+    >
+      <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
+        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-fleet-surface-2/50 flex items-center justify-center">
+          <MessageSquare
+            size={16}
+            className={isActive ? 'text-emerald-400' : 'text-emerald-400/40'}
+          />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div
+            className="font-mono uppercase tracking-widest leading-none"
+            style={{
+              fontSize: '9px',
+              color: isActive ? 'rgb(52,211,153)' : 'rgba(52,211,153,0.5)'
+            }}
+          >
+            Chat
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1408,7 +1448,8 @@ export function Sidebar({
                 t.type !== 'settings' &&
                 t.type !== 'annotate' &&
                 t.type !== 'kanban' &&
-                t.type !== 'sessions'
+                t.type !== 'sessions' &&
+                t.type !== 'chat'
             );
 
             const rendered: React.ReactNode[] = [];
@@ -1746,6 +1787,16 @@ export function Sidebar({
           .filter((tab) => tab.type === 'sessions')
           .map((tab) => (
             <SessionsTabCard
+              key={tab.id}
+              isActive={tab.id === activeTabId}
+              onClick={() => setActiveTab(tab.id)}
+            />
+          ))}
+        {/* Chat tab (pinned, not closeable) */}
+        {workspace.tabs
+          .filter((tab) => tab.type === 'chat')
+          .map((tab) => (
+            <ChatTabCard
               key={tab.id}
               isActive={tab.id === activeTabId}
               onClick={() => setActiveTab(tab.id)}
