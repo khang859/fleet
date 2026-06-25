@@ -134,7 +134,7 @@ export type AiSettings = {
 
 export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   provider: 'openrouter',
-  defaultModel: 'anthropic/claude-3.5-sonnet'
+  defaultModel: 'deepseek/deepseek-v4-flash'
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
@@ -262,7 +262,7 @@ describe('AI settings defaults', () => {
   it('DEFAULT_SETTINGS carries the chat defaults', () => {
     expect(DEFAULT_SETTINGS.ai.chat).toEqual(DEFAULT_CHAT_SETTINGS);
     expect(DEFAULT_SETTINGS.ai.chat.provider).toBe('openrouter');
-    expect(DEFAULT_SETTINGS.ai.chat.defaultModel).toBe('anthropic/claude-3.5-sonnet');
+    expect(DEFAULT_SETTINGS.ai.chat.defaultModel).toBe('deepseek/deepseek-v4-flash');
   });
 });
 ```
@@ -1035,7 +1035,7 @@ describe('ChatService.send', () => {
       store,
       client,
       secrets: fakeSecrets(),
-      getDefaultModel: () => 'anthropic/claude-3.5-sonnet',
+      getDefaultModel: () => 'deepseek/deepseek-v4-flash',
       emit: (channel, payload) => events.push({ channel, payload })
     });
 
@@ -1865,7 +1865,7 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
   const init = useChatStore((s) => s.init);
   const keyPresent = useChatStore((s) => s.keyPresent);
   const activeId = useChatStore((s) => s.activeId);
-  const [defaultModel, setDefaultModel] = useState('anthropic/claude-3.5-sonnet');
+  const [defaultModel, setDefaultModel] = useState('deepseek/deepseek-v4-flash');
 
   useEffect(() => {
     void init();
@@ -1951,7 +1951,7 @@ export function ChatSettingsView(): React.JSX.Element {
   const refreshKeyPresence = useChatStore((s) => s.refreshKeyPresence);
   const loadModels = useChatStore((s) => s.loadModels);
   const [keyInput, setKeyInput] = useState('');
-  const [defaultModel, setDefaultModel] = useState('anthropic/claude-3.5-sonnet');
+  const [defaultModel, setDefaultModel] = useState('deepseek/deepseek-v4-flash');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {

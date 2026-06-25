@@ -95,7 +95,7 @@ Chat settings live as a structured object in `FleetSettings`, namespaced by **ca
 // src/shared/types.ts
 export type ChatSettings = {
   provider: 'openrouter';        // only value in v1; widens later
-  defaultModel: string;          // e.g. 'anthropic/claude-3.5-sonnet'
+  defaultModel: string;          // e.g. 'deepseek/deepseek-v4-flash'
   // future fields slot here with safe defaults (no breaking change):
   // temperature?: number;
   // systemPrompt?: string;
@@ -104,7 +104,7 @@ export type ChatSettings = {
 
 export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   provider: 'openrouter',
-  defaultModel: 'anthropic/claude-3.5-sonnet',
+  defaultModel: 'deepseek/deepseek-v4-flash',
 };
 
 // Capability-namespaced container (future: image, video, etc.)
