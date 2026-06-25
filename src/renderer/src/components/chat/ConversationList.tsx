@@ -20,8 +20,16 @@ export function ConversationList(): React.JSX.Element {
         {conversations.map((c) => (
           <div
             key={c.id}
+            role="button"
+            tabIndex={0}
             onClick={() => void select(c.id)}
-            className={`group flex cursor-pointer items-center justify-between px-3 py-2 text-sm ${
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                void select(c.id);
+              }
+            }}
+            className={`group flex cursor-pointer items-center justify-between px-3 py-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-fleet-border-strong ${
               c.id === activeId
                 ? 'bg-fleet-surface-2 text-fleet-text'
                 : 'text-fleet-text-secondary hover:bg-fleet-surface-2'
@@ -29,6 +37,7 @@ export function ConversationList(): React.JSX.Element {
           >
             <span className="truncate">{c.title}</span>
             <button
+              aria-label="Delete conversation"
               onClick={(e) => {
                 e.stopPropagation();
                 void remove(c.id);

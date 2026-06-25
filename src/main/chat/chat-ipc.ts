@@ -35,6 +35,12 @@ export function registerChatIpc(deps: Deps): void {
       store.renameConversation(req.id, req.title);
     }
   );
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_SET_CONVERSATION_MODEL,
+    (_e, req: { id: string; model: string | null }) => {
+      store.setConversationModel(req.id, req.model);
+    }
+  );
   ipcMain.handle(IPC_CHANNELS.CHAT_DELETE_CONVERSATION, (_e, id: string) => {
     store.deleteConversation(id);
   });
