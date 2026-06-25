@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.74.0
+
+- **Chat (OpenRouter) tool** — a new pinned **Chat** tool brings a general-purpose AI assistant into Fleet (#280). Hold multiple SQLite-persisted conversations, pick any model live from OpenRouter's catalog, and watch replies stream in as rendered markdown. Your OpenRouter API key is entered in the tool's own Settings view and encrypted at rest via Electron `safeStorage` — it never crosses into the renderer. The picked model now persists per conversation, cancelling a stream keeps whatever streamed so far, and the conversation list is fully keyboard-navigable (#285).
+
 ## v2.73.0
 
 - **Kanban SDLC pipeline templates** — full-feature tickets now expand into a staged pipeline (explore → spec → build → QA) with dedicated stage personas, read-only explore tooling, a spec-approval gate, and a QA stage that gates PR-readiness and re-arms `request_changes` within an attempt cap. A template dropdown, stage badges, and an approve-spec proposal card surface the pipeline on the board, and stale pipelines are swept and flagged as blocked.
