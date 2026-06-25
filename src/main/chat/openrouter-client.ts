@@ -80,7 +80,10 @@ export class OpenRouterClient {
     return json.data.map((m) => ({
       id: m.id,
       name: m.name ?? m.id,
-      contextLength: m.context_length ?? 0
+      contextLength: m.context_length ?? 0,
+      supportsTools: false,
+      inputImage: false,
+      outputImage: false
     }));
   }
 

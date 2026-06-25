@@ -277,5 +277,7 @@ export const IPC_CHANNELS = {
   CHAT_HAS_KEY: 'chat:has-key',
   CHAT_STREAM_CHUNK: 'chat:stream-chunk',
   CHAT_STREAM_DONE: 'chat:stream-done',
-  CHAT_STREAM_ERROR: 'chat:stream-error'
+  CHAT_STREAM_ERROR: 'chat:stream-error',
+  CHAT_LIST_IMAGE_MODELS: 'chat:list-image-models',
+  CHAT_TOOL_STATUS: 'chat:tool-status'
 } as const;
