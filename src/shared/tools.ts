@@ -1,7 +1,7 @@
 // Registry of the pinned "Tools" that appear in the sidebar Tools section.
 // Visibility is a global preference stored in FleetSettings.tools.
 
-export type ToolType = 'annotate' | 'kanban' | 'images' | 'sessions';
+export type ToolType = 'annotate' | 'kanban' | 'images' | 'sessions' | 'chat';
 
 export type ToolVisibility = Record<ToolType, boolean>;
 
@@ -18,7 +18,8 @@ export const DEFAULT_TOOL_VISIBILITY: ToolVisibility = {
   annotate: true,
   kanban: false,
   images: false,
-  sessions: false
+  sessions: false,
+  chat: false
 };
 
 /** Render order in the Tools picker modal. */
@@ -31,5 +32,6 @@ export const TOGGLEABLE_TOOLS: readonly ToolDefinition[] = [
     experimental: true
   },
   { type: 'images', label: 'Images', description: 'Generate and browse images.' },
-  { type: 'sessions', label: 'Sessions', description: 'Browse and resume saved agent sessions.' }
+  { type: 'sessions', label: 'Sessions', description: 'Browse and resume saved agent sessions.' },
+  { type: 'chat', label: 'Chat', description: 'Chat with AI models via OpenRouter.' }
 ];

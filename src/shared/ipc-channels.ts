@@ -260,5 +260,21 @@ export const IPC_CHANNELS = {
   // Diagnostics ("Report a Problem")
   DIAGNOSTICS_GET_INFO: 'diagnostics:get-info',
   DIAGNOSTICS_GET_LOG_TAIL: 'diagnostics:get-log-tail',
-  DIAGNOSTICS_OPEN_LOGS: 'diagnostics:open-logs'
+  DIAGNOSTICS_OPEN_LOGS: 'diagnostics:open-logs',
+  // Chat (OpenRouter)
+  CHAT_LIST_CONVERSATIONS: 'chat:list-conversations',
+  CHAT_CREATE_CONVERSATION: 'chat:create-conversation',
+  CHAT_RENAME_CONVERSATION: 'chat:rename-conversation',
+  CHAT_DELETE_CONVERSATION: 'chat:delete-conversation',
+  CHAT_GET_MESSAGES: 'chat:get-messages',
+  CHAT_SEND: 'chat:send',
+  CHAT_CANCEL: 'chat:cancel',
+  CHAT_LIST_MODELS: 'chat:list-models',
+  CHAT_GET_SETTINGS: 'chat:get-settings',
+  CHAT_PATCH_SETTINGS: 'chat:patch-settings',
+  CHAT_SET_KEY: 'chat:set-key',
+  CHAT_HAS_KEY: 'chat:has-key',
+  CHAT_STREAM_CHUNK: 'chat:stream-chunk',
+  CHAT_STREAM_DONE: 'chat:stream-done',
+  CHAT_STREAM_ERROR: 'chat:stream-error'
 } as const;

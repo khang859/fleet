@@ -12,6 +12,7 @@ import {
   DEFAULT_TERMINAL_THEME_ID
 } from './theme-presets';
 import { DEFAULT_TOOL_VISIBILITY } from './tools';
+import { DEFAULT_AI_SETTINGS } from './chat-types';
 export { IPC_CHANNELS } from './ipc-channels';
 
 const DEFAULT_SCROLLBACK = 10_000;
@@ -180,5 +181,6 @@ export const DEFAULT_SETTINGS: FleetSettings = {
           'Emit your verdict with kanban_qa_verdict: pass or request_changes.'
       }
     ]
-  }
+  },
+  ai: DEFAULT_AI_SETTINGS
 };

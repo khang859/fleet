@@ -57,6 +57,11 @@ export class SettingsStore {
           ...p,
           role: p.role ?? 'worker'
         }))
+      },
+      ai: {
+        ...DEFAULT_SETTINGS.ai,
+        ...saved.ai,
+        chat: { ...DEFAULT_SETTINGS.ai.chat, ...saved.ai?.chat }
       }
     };
   }
@@ -100,6 +105,11 @@ export class SettingsStore {
           ...(partial.kanban?.notifications ?? {})
         },
         profiles: partial.kanban?.profiles ?? current.kanban.profiles
+      },
+      ai: {
+        ...current.ai,
+        ...(partial.ai ?? {}),
+        chat: { ...current.ai.chat, ...(partial.ai?.chat ?? {}) }
       }
     };
     this.store.set('settings', merged);

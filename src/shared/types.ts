@@ -5,6 +5,7 @@ import type { AccentColorId, AppThemeSelection, TerminalThemeId } from './theme-
 import type { SessionAgentFilter } from './sessions';
 import type { ToolVisibility } from './tools';
 import type { UserGroupColor } from './group-colors';
+import type { AiSettings } from './chat-types';
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends Array<infer U>
@@ -50,7 +51,8 @@ export type Tab = {
     | 'kanban'
     | 'artifacts'
     | 'pdf'
-    | 'sessions';
+    | 'sessions'
+    | 'chat';
   avatarVariant?: string;
   splitRoot: PaneNode;
   // Worktree group fields
@@ -341,6 +343,7 @@ export type FleetSettings = {
   /** Which sidebar Tools are visible. Disabled tools have no pinned tab. */
   tools: ToolVisibility;
   kanban: KanbanSettings;
+  ai: AiSettings;
 };
 
 export type FleetSettingsPatch = DeepPartial<FleetSettings>;
