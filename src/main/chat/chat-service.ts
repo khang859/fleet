@@ -94,6 +94,7 @@ export class ChatService {
       .map((m) => ({ role: m.role, content: m.content }));
 
     void (async () => {
+      // Accumulates streamed text across all tool rounds; the final (non-tool) streamCompletion delivers the human-readable reply.
       let partial = '';
       const generated: ChatImageRef[] = [];
       try {
@@ -184,6 +185,12 @@ export class ChatService {
               });
             }
           }
+        }
+
+        // If the model exhausted its tool rounds without producing any closing text
+        // and we have no image to show either, surface a fallback so the bubble isn't blank.
+        if (partial === '' && generated.length === 0) {
+          partial = "I couldn't finish that request — please try again.";
         }
 
         const message = store.addMessage({

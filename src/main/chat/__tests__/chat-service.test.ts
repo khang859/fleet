@@ -143,6 +143,12 @@ it('runs the image tool loop and persists a generated image', async () => {
   const msgs = store.getMessages(conv.id);
   const assistant = msgs.find((m) => m.role === 'assistant');
   expect(assistant?.images?.[0]?.kind).toBe('generated');
+  const done = events.find((e) => e.channel === IPC_CHANNELS.CHAT_STREAM_DONE);
+  const donePayload = done?.payload;
+  // narrow without an unsafe cast: assert shape via the persisted-message contract
+  expect(
+    (donePayload as { message: { images?: Array<{ kind: string }> } }).message.images?.[0]?.kind
+  ).toBe('generated');
   store.close();
   rmSync(dir, { recursive: true, force: true });
 });
