@@ -69,8 +69,8 @@ describe('ChatService.send', () => {
         mentionMaxKb: 64
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
-      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
-    getMcpToolDefs: () => [],
+      getPersonas: () => ({ presets: [], defaultId: null }),
+      getMcpToolDefs: () => [],
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
@@ -120,8 +120,8 @@ describe('ChatService.send', () => {
         mentionMaxKb: 64
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
-      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
-    getMcpToolDefs: () => [],
+      getPersonas: () => ({ presets: [], defaultId: null }),
+      getMcpToolDefs: () => [],
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
@@ -179,6 +179,7 @@ it('runs the image tool loop and persists a generated image', async () => {
       mentionMaxKb: 64
     }),
     getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+    getPersonas: () => ({ presets: [], defaultId: null }),
     getMcpToolDefs: () => [],
     skills: stubSkills,
     toolExecutor: stubExecutor,
@@ -249,6 +250,7 @@ it('passes the reference image to the provider as a base64 data URL when editing
       mentionMaxKb: 64
     }),
     getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+    getPersonas: () => ({ presets: [], defaultId: null }),
     getMcpToolDefs: () => [],
     skills: stubSkills,
     toolExecutor: stubExecutor,
@@ -298,8 +300,8 @@ describe('ChatService regenerate / edit', () => {
         mentionMaxKb: 64
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
-      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
-    getMcpToolDefs: () => [],
+      getPersonas: () => ({ presets: [], defaultId: null }),
+      getMcpToolDefs: () => [],
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
@@ -423,6 +425,7 @@ describe('ChatService usage accounting', () => {
         mentionMaxKb: 64
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+      getPersonas: () => ({ presets: [], defaultId: null }),
       getMcpToolDefs: () => [],
       skills,
       toolExecutor: stubExecutor,
@@ -479,6 +482,7 @@ describe('ChatService usage accounting', () => {
         mentionMaxKb: 64
       }),
       getUsage: () => ({ showMeter: true, promptCaching: true, budgetWarnUsd: null }),
+      getPersonas: () => ({ presets: [], defaultId: null }),
       getMcpToolDefs: () => [],
       skills,
       toolExecutor: stubExecutor,
@@ -493,6 +497,56 @@ describe('ChatService usage accounting', () => {
     expect(sys.role).toBe('system');
     expect(Array.isArray(sys.content)).toBe(true);
     expect(sys.content[0].cache_control).toEqual({ type: 'ephemeral' });
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('ChatService personas', () => {
+  it('injects the conversation persona as the first system message', async () => {
+    const dir = join(tmpdir(), `fleet-chat-persona-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'persona.db'));
+    const conv = store.createConversation();
+    store.setConversationPersona(conv.id, 'p1');
+    const client = new OpenRouterClient();
+    let seen: Array<{ role: string; content: string }> = [];
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      seen = opts.messages as Array<{ role: string; content: string }>;
+      opts.onDelta('ok');
+      return { content: 'ok', toolCalls: [], finishReason: null, usage: null };
+    });
+    const service = new ChatService({
+      store,
+      client,
+      secrets: fakeSecrets(),
+      getDefaultModel: () => 'm',
+      getImageModel: () => null,
+      getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getToolsMode: () => 'off',
+      getTools: () => ({
+        mode: 'off',
+        workspaceDir: null,
+        sandbox: false,
+        failClosed: false,
+        mentionMaxKb: 64
+      }),
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+      getPersonas: () => ({
+        presets: [{ id: 'p1', name: 'Pirate', prompt: 'Talk like a pirate.' }],
+        defaultId: null
+      }),
+      getMcpToolDefs: () => [],
+      skills: stubSkills,
+      toolExecutor: stubExecutor,
+      imageProvider: fakeProvider,
+      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      emit: () => {}
+    });
+
+    service.send({ conversationId: conv.id, text: 'hi', model: 'm' });
+    await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0));
+    expect(seen[0]).toMatchObject({ role: 'system', content: 'Talk like a pirate.' });
     store.close();
     rmSync(dir, { recursive: true, force: true });
   });
@@ -547,8 +601,8 @@ describe('ChatService skills', () => {
         mentionMaxKb: 64
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
-      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
-    getMcpToolDefs: () => [],
+      getPersonas: () => ({ presets: [], defaultId: null }),
+      getMcpToolDefs: () => [],
       skills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,

@@ -29,6 +29,11 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
   const cancel = useChatStore((s) => s.cancel);
   const activeId = useChatStore((s) => s.activeId);
   const setConversationModel = useChatStore((s) => s.setConversationModel);
+  const setConversationPersona = useChatStore((s) => s.setConversationPersona);
+  const personas = useChatStore((s) => s.personas);
+  const personaId = useChatStore(
+    (s) => s.conversations.find((c) => c.id === s.activeId)?.personaId ?? null
+  );
   const skillMenu = useChatStore((s) => s.skillMenu);
   const promptTemplates = useChatStore((s) => s.promptTemplates);
   const model = useChatStore(
@@ -181,6 +186,23 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
             if (m && activeId) void setConversationModel(activeId, m);
           }}
         />
+        {personas.length > 0 && (
+          <select
+            aria-label="Persona"
+            value={personaId ?? ''}
+            onChange={(e) => {
+              if (activeId) void setConversationPersona(activeId, e.target.value || null);
+            }}
+            className="rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
+          >
+            <option value="">No persona</option>
+            {personas.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       {attachment && (
         <div className="mb-2 flex items-center gap-2">

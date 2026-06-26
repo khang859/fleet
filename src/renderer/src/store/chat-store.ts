@@ -12,6 +12,7 @@ import type {
 import type { PermissionOutcome, PermissionRequestPayload } from '../../../shared/chat-permissions';
 import type { SkillMenuItem } from '../../../shared/skill-types';
 import type { PromptTemplate } from '../../../shared/prompt-types';
+import type { PersonaPreset } from '../../../shared/chat-types';
 
 type ChatStatus = 'idle' | 'streaming' | 'error';
 
@@ -32,6 +33,8 @@ type ChatStoreState = {
   skillMenu: SkillMenuItem[];
   /** Saved prompt templates, for the composer's `/` autocomplete. */
   promptTemplates: PromptTemplate[];
+  /** Named system-prompt personas, for the composer's persona selector. */
+  personas: PersonaPreset[];
 
   init: () => Promise<void>;
   loadSkillMenu: () => Promise<void>;
@@ -42,6 +45,7 @@ type ChatStoreState = {
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
   setConversationModel: (id: string, model: string) => Promise<void>;
+  setConversationPersona: (id: string, personaId: string | null) => Promise<void>;
   send: (
     text: string,
     model: string,
@@ -140,6 +144,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     permissionRequests: [],
     skillMenu: [],
     promptTemplates: [],
+    personas: [],
 
     init: async () => {
       subscribeToStreamEvents();
@@ -159,7 +164,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
 
     loadPromptTemplates: async () => {
       const settings = await window.fleet.chat.getSettings();
-      set({ promptTemplates: settings.prompts });
+      set({ promptTemplates: settings.prompts, personas: settings.personas });
     },
 
     decidePermission: async (requestId, outcome) => {
@@ -216,6 +221,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       await window.fleet.chat.setConversationModel(id, model);
       set((s) => ({
         conversations: s.conversations.map((c) => (c.id === id ? { ...c, model } : c))
+      }));
+    },
+
+    setConversationPersona: async (id, personaId) => {
+      await window.fleet.chat.setConversationPersona(id, personaId);
+      set((s) => ({
+        conversations: s.conversations.map((c) => (c.id === id ? { ...c, personaId } : c))
       }));
     },
 

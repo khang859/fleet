@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   active_head_id         TEXT,
   parent_conversation_id TEXT,
   fork_message_id        TEXT,
+  persona_id             TEXT,
   created_at             INTEGER NOT NULL,
   updated_at             INTEGER NOT NULL
 );
@@ -91,6 +92,7 @@ const ConversationRowSchema = z.object({
   active_head_id: z.string().nullable(),
   parent_conversation_id: z.string().nullable(),
   fork_message_id: z.string().nullable(),
+  persona_id: z.string().nullable(),
   created_at: z.number(),
   updated_at: z.number()
 });
@@ -130,6 +132,7 @@ function toConversation(r: ConversationRow): ChatConversation {
     model: r.model,
     titleLocked: r.title_locked !== 0,
     parentConversationId: r.parent_conversation_id,
+    personaId: r.persona_id,
     createdAt: r.created_at,
     updatedAt: r.updated_at
   };
@@ -197,6 +200,9 @@ export class ChatStore {
       this.db.exec('ALTER TABLE conversations ADD COLUMN parent_conversation_id TEXT');
       this.db.exec('ALTER TABLE conversations ADD COLUMN fork_message_id TEXT');
     }
+    if (!convCols.some((c) => c.name === 'persona_id')) {
+      this.db.exec('ALTER TABLE conversations ADD COLUMN persona_id TEXT');
+    }
 
     const msgCols = z
       .array(z.object({ name: z.string() }))
@@ -251,7 +257,9 @@ export class ChatStore {
     run(convs.map((c) => c.id));
   }
 
-  createConversation(input: { title?: string; model?: string | null } = {}): ChatConversation {
+  createConversation(
+    input: { title?: string; model?: string | null; personaId?: string | null } = {}
+  ): ChatConversation {
     const now = Date.now();
     const row: ConversationRow = {
       id: randomUUID(),
@@ -261,14 +269,23 @@ export class ChatStore {
       active_head_id: null,
       parent_conversation_id: null,
       fork_message_id: null,
+      persona_id: input.personaId ?? null,
       created_at: now,
       updated_at: now
     };
     this.db
       .prepare(
-        'INSERT INTO conversations (id, title, model, title_locked, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO conversations (id, title, model, title_locked, persona_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(row.id, row.title, row.model, row.title_locked, row.created_at, row.updated_at);
+      .run(
+        row.id,
+        row.title,
+        row.model,
+        row.title_locked,
+        row.persona_id,
+        row.created_at,
+        row.updated_at
+      );
     return toConversation(row);
   }
 
@@ -306,6 +323,12 @@ export class ChatStore {
     this.db
       .prepare('UPDATE conversations SET model = ?, updated_at = ? WHERE id = ?')
       .run(model, Date.now(), id);
+  }
+
+  setConversationPersona(id: string, personaId: string | null): void {
+    this.db
+      .prepare('UPDATE conversations SET persona_id = ?, updated_at = ? WHERE id = ?')
+      .run(personaId, Date.now(), id);
   }
 
   deleteConversation(id: string): void {
@@ -496,7 +519,8 @@ export class ChatStore {
     const fork = this.db.transaction((): ChatConversation => {
       const branch = this.createConversation({
         title: `${srcConv.title} (branch)`,
-        model: srcConv.model
+        model: srcConv.model,
+        personaId: srcConv.personaId
       });
       this.db
         .prepare(
