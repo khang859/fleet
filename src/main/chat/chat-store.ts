@@ -10,11 +10,12 @@ import type {
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS conversations (
-  id          TEXT PRIMARY KEY,
-  title       TEXT NOT NULL DEFAULT 'New chat',
-  model       TEXT,
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  id           TEXT PRIMARY KEY,
+  title        TEXT NOT NULL DEFAULT 'New chat',
+  model        TEXT,
+  title_locked INTEGER NOT NULL DEFAULT 0,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS messages (
   id              TEXT PRIMARY KEY,
@@ -42,6 +43,7 @@ const ConversationRowSchema = z.object({
   id: z.string(),
   title: z.string(),
   model: z.string().nullable(),
+  title_locked: z.number(),
   created_at: z.number(),
   updated_at: z.number()
 });
@@ -73,6 +75,7 @@ function toConversation(r: ConversationRow): ChatConversation {
     id: r.id,
     title: r.title,
     model: r.model,
+    titleLocked: r.title_locked !== 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at
   };
@@ -96,6 +99,17 @@ export class ChatStore {
     this.db.pragma('journal_mode = wal');
     this.db.pragma('foreign_keys = ON');
     this.db.exec(SCHEMA_SQL);
+    this.migrate();
+  }
+
+  /** Additive migrations for DBs created before a column existed. */
+  private migrate(): void {
+    const cols = z
+      .array(z.object({ name: z.string() }))
+      .parse(this.db.prepare('PRAGMA table_info(conversations)').all());
+    if (!cols.some((c) => c.name === 'title_locked')) {
+      this.db.exec('ALTER TABLE conversations ADD COLUMN title_locked INTEGER NOT NULL DEFAULT 0');
+    }
   }
 
   createConversation(input: { title?: string; model?: string | null } = {}): ChatConversation {
@@ -104,14 +118,15 @@ export class ChatStore {
       id: randomUUID(),
       title: input.title ?? 'New chat',
       model: input.model ?? null,
+      title_locked: 0,
       created_at: now,
       updated_at: now
     };
     this.db
       .prepare(
-        'INSERT INTO conversations (id, title, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO conversations (id, title, model, title_locked, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
       )
-      .run(row.id, row.title, row.model, row.created_at, row.updated_at);
+      .run(row.id, row.title, row.model, row.title_locked, row.created_at, row.updated_at);
     return toConversation(row);
   }
 
@@ -126,10 +141,23 @@ export class ChatStore {
     return toConversation(ConversationRowSchema.parse(row));
   }
 
+  /** Manual rename — locks the title so background auto-naming won't overwrite it. */
   renameConversation(id: string, title: string): void {
     this.db
-      .prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?')
+      .prepare('UPDATE conversations SET title = ?, title_locked = 1, updated_at = ? WHERE id = ?')
       .run(title, Date.now(), id);
+  }
+
+  /**
+   * Background auto-name. No-ops if the title is locked (user renamed it).
+   * Returns true if the title was written. Does not bump updated_at so a
+   * late-arriving title doesn't reorder the conversation list.
+   */
+  autoNameConversation(id: string, title: string): boolean {
+    const res = this.db
+      .prepare('UPDATE conversations SET title = ? WHERE id = ? AND title_locked = 0')
+      .run(title, id);
+    return res.changes > 0;
   }
 
   setConversationModel(id: string, model: string | null): void {

@@ -59,6 +59,43 @@ describe('ChatStore', () => {
     expect(store.getConversation(c.id)?.model).toBe('openai/gpt-4o');
   });
 
+  it('auto-names an unlocked conversation but not a locked one', () => {
+    const c = store.createConversation();
+    expect(c.titleLocked).toBe(false);
+    expect(store.autoNameConversation(c.id, 'Auto Title')).toBe(true);
+    expect(store.getConversation(c.id)?.title).toBe('Auto Title');
+
+    // A manual rename locks the title; further auto-naming is a no-op.
+    store.renameConversation(c.id, 'Manual Title');
+    expect(store.getConversation(c.id)?.titleLocked).toBe(true);
+    expect(store.autoNameConversation(c.id, 'Auto Again')).toBe(false);
+    expect(store.getConversation(c.id)?.title).toBe('Manual Title');
+  });
+
+  it('migrates a pre-title_locked db by adding the column', () => {
+    const dir = join(tmpdir(), `fleet-chat-store-migrate-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const p = join(dir, 'old.db');
+    // Simulate an old schema with no title_locked column.
+    const raw = new Database(p);
+    raw.exec(
+      `CREATE TABLE conversations (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT 'New chat',
+        model TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);`
+    );
+    raw
+      .prepare(
+        'INSERT INTO conversations (id, title, model, created_at, updated_at) VALUES (?,?,?,?,?)'
+      )
+      .run('old1', 'Legacy', null, 1, 1);
+    raw.close();
+
+    const migrated = new ChatStore(p);
+    expect(migrated.getConversation('old1')?.titleLocked).toBe(false);
+    expect(migrated.autoNameConversation('old1', 'Named')).toBe(true);
+    migrated.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it('persists and reads message images grouped per message, cascading on delete', () => {
     const dir = join(tmpdir(), `fleet-chat-store-img-${process.pid}`);
     mkdirSync(dir, { recursive: true });

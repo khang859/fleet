@@ -9,15 +9,21 @@ beforeEach(() => {
   listeners.clear();
   const fleet = {
     chat: {
-      listConversations: vi
-        .fn()
-        .mockResolvedValue([
-          { id: 'c1', title: 'New chat', model: null, createdAt: 1, updatedAt: 1 }
-        ]),
+      listConversations: vi.fn().mockResolvedValue([
+        {
+          id: 'c1',
+          title: 'New chat',
+          model: null,
+          titleLocked: false,
+          createdAt: 1,
+          updatedAt: 1
+        }
+      ]),
       createConversation: vi.fn().mockResolvedValue({
         id: 'c2',
         title: 'New chat',
         model: null,
+        titleLocked: false,
         createdAt: 2,
         updatedAt: 2
       }),
@@ -56,6 +62,10 @@ beforeEach(() => {
         return () => {};
       },
       decidePermission: vi.fn().mockResolvedValue(undefined),
+      onConversationRenamed: (cb: Listener) => {
+        listeners.set(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, cb);
+        return () => {};
+      },
       listImageModels: vi.fn().mockResolvedValue([])
     }
   };
@@ -154,6 +164,23 @@ describe('useChatStore', () => {
       command: 'rm -rf x'
     });
     expect(useChatStore.getState().permissionRequests).toHaveLength(0);
+  });
+
+  it('applies a background rename event to the sidebar', async () => {
+    await useChatStore.getState().init();
+    expect(useChatStore.getState().conversations[0]?.title).toBe('New chat');
+    listeners.get(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED)?.({ id: 'c1', title: 'Fix login bug' });
+    expect(useChatStore.getState().conversations.find((c) => c.id === 'c1')?.title).toBe(
+      'Fix login bug'
+    );
+  });
+
+  it('a manual rename locks the title', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().renameConversation('c1', 'My title');
+    const conv = useChatStore.getState().conversations.find((c) => c.id === 'c1');
+    expect(conv?.title).toBe('My title');
+    expect(conv?.titleLocked).toBe(true);
   });
 
   it('applies an error event with partial text', async () => {
