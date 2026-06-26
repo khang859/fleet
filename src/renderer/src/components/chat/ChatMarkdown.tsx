@@ -1,5 +1,6 @@
 import { Streamdown } from 'streamdown';
 import { code } from '@streamdown/code';
+import { sanitizeMarkdownUrl } from './markdown-url';
 
 /** Feature plugins for chat markdown. Code highlighting only — math/mermaid/cjk
  *  are intentionally omitted to keep the bundle lean. */
@@ -30,6 +31,11 @@ export function ChatMarkdown({ children, streaming = false }: Props): React.JSX.
       // Header bar shows the language (left) + copy button (right); the download
       // button is hidden to keep the header focused.
       controls={{ code: { download: false } }}
+      // Model output is untrusted: drop javascript:/data:/file:/relative URLs,
+      // allowing only http/https/mailto links and http/https image sources.
+      // External links open in the system browser via the main-process
+      // will-navigate / setWindowOpenHandler guards (never navigate the window).
+      urlTransform={sanitizeMarkdownUrl}
       className="chat-markdown text-sm"
     >
       {children}
