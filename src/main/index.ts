@@ -99,6 +99,7 @@ import { ChatService } from './chat/chat-service';
 import { registerChatIpc } from './chat/chat-ipc';
 import { PermissionManager } from './chat/permissions/permission-manager';
 import { ChatToolExecutor } from './chat/tools/tool-runner';
+import { McpManager } from './chat/mcp/manager';
 import { ChatImageStorage } from './chat/image/image-storage';
 import { OpenRouterImageProvider } from './chat/image/openrouter-image-provider';
 import { KanbanNotifier } from './kanban/kanban-notifier';
@@ -1319,10 +1320,13 @@ void app.whenReady().then(async () => {
     },
     emit: chatEmit
   });
+  const chatMcp = new McpManager(() => settingsStore.get().ai.chat.mcpServers);
+  void chatMcp.reload();
   const chatToolExecutor = new ChatToolExecutor(
     chatPermissions,
     () => settingsStore.get().ai.chat.tools,
-    chatEmit
+    chatEmit,
+    chatMcp
   );
   const chatService = new ChatService({
     store: chatStore,
@@ -1339,6 +1343,7 @@ void app.whenReady().then(async () => {
       };
     },
     getToolsMode: () => settingsStore.get().ai.chat.tools.mode,
+    getMcpToolDefs: () => chatMcp.getToolDefs(),
     toolExecutor: chatToolExecutor,
     imageProvider: chatImageProvider,
     imageStorage: chatImageStorage,
@@ -1349,7 +1354,8 @@ void app.whenReady().then(async () => {
     secrets: chatSecrets,
     service: chatService,
     settingsStore,
-    permissions: chatPermissions
+    permissions: chatPermissions,
+    mcp: chatMcp
   });
 
   runeAssist = new RuneFileChatService({

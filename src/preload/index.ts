@@ -155,6 +155,7 @@ import type {
   ChatConversationRenamedPayload
 } from '../shared/chat-types';
 import type { PermissionRequestPayload, PermissionOutcome } from '../shared/chat-permissions';
+import type { McpServersConfig, McpServerStatus } from '../shared/mcp-types';
 import type {
   Learning,
   CreateLearningInput,
@@ -865,7 +866,10 @@ const fleetApi = {
     decidePermission: async (requestId: string, outcome: PermissionOutcome): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_PERMISSION_DECIDE, { requestId, outcome }),
     onConversationRenamed: (cb: (p: ChatConversationRenamedPayload) => void): Unsubscribe =>
-      onChannel<ChatConversationRenamedPayload>(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, cb)
+      onChannel<ChatConversationRenamedPayload>(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, cb),
+    mcpGet: async (): Promise<McpServerStatus[]> => typedInvoke(IPC_CHANNELS.CHAT_MCP_GET),
+    mcpSet: async (config: McpServersConfig): Promise<McpServerStatus[]> =>
+      typedInvoke(IPC_CHANNELS.CHAT_MCP_SET, config)
   }
 };
 

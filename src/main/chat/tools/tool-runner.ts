@@ -8,6 +8,13 @@ import { runBash } from './bash-exec';
 import { makeSandboxWrap } from './sandbox';
 import { assertWritablePath } from './fs-safety';
 import { planWrite, planEdit, applyWrite } from './write-tools';
+import { isMcpToolName } from '../../../shared/mcp-types';
+
+/** The subset of McpManager the executor needs (kept narrow for testing). */
+export type McpRouter = {
+  hasTool: (name: string) => boolean;
+  callTool: (name: string, argsJson: string) => Promise<string>;
+};
 
 export const READ_FILE_TOOL = {
   type: 'function',
@@ -163,7 +170,8 @@ export class ChatToolExecutor {
   constructor(
     private readonly permissions: PermissionManager,
     private readonly getConfig: () => ChatToolsConfig,
-    private readonly emit: (channel: string, payload: unknown) => void
+    private readonly emit: (channel: string, payload: unknown) => void,
+    private readonly mcp: McpRouter | null = null
   ) {}
 
   /** Returns the tool result content fed back into the model loop. */
@@ -171,6 +179,7 @@ export class ChatToolExecutor {
     const cfg = this.getConfig();
     const cwd = defaultWorkspace(cfg.workspaceDir);
     try {
+      if (isMcpToolName(name)) return await this.runMcpGated(name, argsJson, ctx);
       switch (name) {
         case 'read_file': {
           const a = readArgs.parse(JSON.parse(argsJson));
@@ -334,5 +343,33 @@ export class ChatToolExecutor {
       label: `${planned.isNew ? 'Created' : 'Updated'} ${relPath}`
     } satisfies ChatToolStatusPayload);
     return `${planned.isNew ? 'Created' : 'Updated'} ${relPath}`;
+  }
+
+  /**
+   * Gate and run an MCP tool call. Approval reuses the permission engine + card
+   * (tool `Mcp`, the namespaced tool name as the value). Allow rules like
+   * `Mcp(mcp__server__*)` auto-approve trusted read-only tools.
+   */
+  private async runMcpGated(name: string, argsJson: string, ctx: ExecCtx): Promise<string> {
+    if (!this.mcp?.hasTool(name)) return `Unknown tool: ${name}`;
+    const grant = await this.permissions.request({
+      streamId: ctx.streamId,
+      tool: 'Mcp',
+      command: name,
+      signal: ctx.signal
+    });
+    if (grant !== 'allow') return 'The user denied this tool call.';
+    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
+      streamId: ctx.streamId,
+      state: 'generating',
+      label: `Calling ${name}…`
+    } satisfies ChatToolStatusPayload);
+    const out = await this.mcp.callTool(name, argsJson);
+    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
+      streamId: ctx.streamId,
+      state: 'done',
+      label: 'Tool finished'
+    } satisfies ChatToolStatusPayload);
+    return out;
   }
 }
