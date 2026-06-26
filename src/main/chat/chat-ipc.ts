@@ -49,7 +49,8 @@ export function registerChatIpc(deps: Deps): void {
   );
   ipcMain.handle(
     IPC_CHANNELS.CHAT_CREATE_CONVERSATION,
-    (): ChatConversation => store.createConversation()
+    (): ChatConversation =>
+      store.createConversation({ personaId: settingsStore.get().ai.chat.defaultPersonaId })
   );
   ipcMain.handle(
     IPC_CHANNELS.CHAT_RENAME_CONVERSATION,
@@ -61,6 +62,12 @@ export function registerChatIpc(deps: Deps): void {
     IPC_CHANNELS.CHAT_SET_CONVERSATION_MODEL,
     (_e, req: { id: string; model: string | null }) => {
       store.setConversationModel(req.id, req.model);
+    }
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_SET_CONVERSATION_PERSONA,
+    (_e, req: { id: string; personaId: string | null }) => {
+      store.setConversationPersona(req.id, req.personaId);
     }
   );
   ipcMain.handle(IPC_CHANNELS.CHAT_DELETE_CONVERSATION, (_e, id: string) => {

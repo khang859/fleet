@@ -843,6 +843,8 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CHAT_RENAME_CONVERSATION, { id, title }),
     setConversationModel: async (id: string, model: string | null): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_SET_CONVERSATION_MODEL, { id, model }),
+    setConversationPersona: async (id: string, personaId: string | null): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.CHAT_SET_CONVERSATION_PERSONA, { id, personaId }),
     deleteConversation: async (id: string): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_DELETE_CONVERSATION, id),
     getMessages: async (conversationId: string): Promise<ChatMessage[]> =>

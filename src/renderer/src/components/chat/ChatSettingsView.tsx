@@ -5,6 +5,7 @@ import { PermissionRulesEditor } from './PermissionRulesEditor';
 import { McpServersTab } from './McpServersTab';
 import { SkillsTab } from './SkillsTab';
 import { PromptLibraryTab } from './PromptLibraryTab';
+import { PersonaManager } from './PersonaManager';
 import {
   DEFAULT_PERMISSION_RULES,
   type PermissionRules
@@ -266,6 +267,13 @@ export function ChatSettingsView(): React.JSX.Element {
             </div>
           )}
         </Section>
+      </Group>
+
+      <Group
+        title="Personas"
+        description="Reusable system prompts you can switch between per conversation."
+      >
+        <PersonaManager />
       </Group>
 
       <Group

@@ -22,7 +22,8 @@ import { resolveTitle } from './chat-namer';
 import type {
   ChatConversationRenamedPayload,
   ChatToolsMode,
-  ChatToolsConfig
+  ChatToolsConfig,
+  PersonaPreset
 } from '../../shared/chat-types';
 import type { ChatToolExecutor } from './tools/tool-runner';
 import { buildFsToolDefs, FS_TOOL_NAMES } from './tools/tool-runner';
@@ -51,6 +52,7 @@ type Deps = {
   getToolsMode: () => ChatToolsMode;
   getTools: () => ChatToolsConfig;
   getUsage: () => ChatUsageConfig;
+  getPersonas: () => { presets: PersonaPreset[]; defaultId: string | null };
   getMcpToolDefs: () => unknown[];
   skills: SkillManager;
   toolExecutor: ChatToolExecutor;
@@ -148,6 +150,15 @@ export class ChatService {
       naming: isFirstExchange ? { firstUser: req.text } : undefined
     });
     return { streamId, userMessage };
+  }
+
+  /** The persona prompt for a conversation (its override, else the default); null if none. */
+  private resolvePersonaPrompt(conversationId: string): string | null {
+    const { presets, defaultId } = this.deps.getPersonas();
+    const personaId = this.deps.store.getConversation(conversationId)?.personaId ?? defaultId;
+    if (!personaId) return null;
+    const preset = presets.find((p) => p.id === personaId);
+    return preset?.prompt.trim() ? preset.prompt : null;
   }
 
   /** Read `@`-mentioned files/folders into a context block (truncated per setting). */
@@ -261,6 +272,9 @@ export class ChatService {
     // when the user explicitly invoked `/skill`, that skill's full body.
     const cachePrompt = this.deps.getUsage().promptCaching;
     const messages: unknown[] = [];
+    // Persona first: the highest-level instruction, part of the cacheable prefix.
+    const personaPrompt = this.resolvePersonaPrompt(conversationId);
+    if (personaPrompt) messages.push({ role: 'system', content: personaPrompt });
     if (supportsTools) {
       const skillsPrompt = this.deps.skills.systemPrompt();
       // Cache the stable prefix (tool defs + skills system prompt) when enabled.

@@ -41,11 +41,16 @@ export type ChatVariantInfo = {
   ids: string[];
 };
 
+/** A named, selectable system-prompt preset ("persona"). */
+export type PersonaPreset = { id: string; name: string; prompt: string };
+
 export type ChatConversation = {
   id: string;
   title: string;
   /** Per-conversation model override; null → use the default model. */
   model: string | null;
+  /** Per-conversation persona override; null → use the default persona (if any). */
+  personaId: string | null;
   /** A manual rename locks the title so background auto-naming never overwrites it. */
   titleLocked: boolean;
   /** Set when this conversation was forked from another; null otherwise. */
@@ -90,6 +95,10 @@ export type ChatSettings = {
   prompts: PromptTemplate[];
   /** Default format for the per-conversation export action. */
   exportFormat: 'markdown' | 'json';
+  /** Named system-prompt presets. */
+  personas: PersonaPreset[];
+  /** Persona applied to new conversations; null → none. */
+  defaultPersonaId: string | null;
 };
 
 /** Posture for the bash/filesystem tools. */
@@ -184,7 +193,9 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   mcpServers: {},
   skills: {},
   prompts: [],
-  exportFormat: 'markdown'
+  exportFormat: 'markdown',
+  personas: [],
+  defaultPersonaId: null
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
