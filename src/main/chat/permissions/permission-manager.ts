@@ -3,7 +3,8 @@ import { IPC_CHANNELS } from '../../../shared/ipc-channels';
 import type {
   PermissionOutcome,
   PermissionRequestPayload,
-  PermissionRules
+  PermissionRules,
+  PermissionVerdict
 } from '../../../shared/chat-permissions';
 import { evaluatePermission, suggestRememberRule } from './rule-evaluator';
 
@@ -46,6 +47,11 @@ export class PermissionManager {
 
   constructor(deps: Deps) {
     this.deps = deps;
+  }
+
+  /** Pure rule evaluation with no side effects (used by "auto" mode branching). */
+  evaluate(tool: string, command: string): PermissionVerdict {
+    return evaluatePermission(this.deps.getRules(), tool, command);
   }
 
   /**

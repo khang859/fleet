@@ -17,7 +17,9 @@ import type { ChatImageProvider } from './image/types';
 import type { ChatImageStorage } from './image/image-storage';
 import { GENERATE_IMAGE_TOOL, parseGenerateImageArgs, runGenerateImage } from './chat-tools';
 import { resolveTitle } from './chat-namer';
-import type { ChatConversationRenamedPayload } from '../../shared/chat-types';
+import type { ChatConversationRenamedPayload, ChatToolsMode } from '../../shared/chat-types';
+import type { ChatToolExecutor } from './tools/tool-runner';
+import { buildFsToolDefs, FS_TOOL_NAMES } from './tools/tool-runner';
 
 export type ChatEmitter = (channel: string, payload: unknown) => void;
 
@@ -37,6 +39,8 @@ type Deps = {
   getDefaultModel: () => string;
   getImageModel: () => string | null;
   getNaming: () => NamingConfig;
+  getToolsMode: () => ChatToolsMode;
+  toolExecutor: ChatToolExecutor;
   imageProvider: ChatImageProvider;
   imageStorage: ChatImageStorage;
   emit: ChatEmitter;
@@ -105,7 +109,11 @@ export class ChatService {
     const apiKey = secrets.getKey();
     const model = req.model || getDefaultModel();
     const imageModel = getImageModel();
-    const toolsEnabled = !!imageModel && !!req.supportsTools;
+    const supportsTools = !!req.supportsTools;
+    const imageToolEnabled = !!imageModel && supportsTools;
+    // fs/bash tools require a tool-capable model; gated by the tools mode setting.
+    const fsToolDefs = supportsTools ? buildFsToolDefs(this.deps.getToolsMode()) : [];
+    const toolDefs: unknown[] = [...(imageToolEnabled ? [GENERATE_IMAGE_TOOL] : []), ...fsToolDefs];
 
     // Build OpenRouter-shaped history from persisted messages.
     const messages: unknown[] = store
@@ -131,7 +139,7 @@ export class ChatService {
                 delta
               } satisfies ChatStreamChunkPayload);
             },
-            tools: toolsEnabled ? [GENERATE_IMAGE_TOOL] : undefined
+            tools: toolDefs.length ? toolDefs : undefined
           });
 
           if (result.finishReason !== 'tool_calls' || result.toolCalls.length === 0) break;
@@ -147,6 +155,15 @@ export class ChatService {
           });
 
           for (const call of result.toolCalls) {
+            // Native fs/bash tools run through the main-process executor (gated).
+            if (FS_TOOL_NAMES.has(call.name)) {
+              const content = await this.deps.toolExecutor.run(call.name, call.arguments, {
+                streamId,
+                signal: controller.signal
+              });
+              messages.push({ role: 'tool', tool_call_id: call.id, name: call.name, content });
+              continue;
+            }
             if (call.name !== 'generate_image' || !imageModel) {
               messages.push({
                 role: 'tool',

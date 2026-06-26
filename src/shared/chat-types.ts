@@ -48,6 +48,33 @@ export type ChatSettings = {
   namingTiming: 'after-response' | 'immediate';
   /** Permission rules gating tool calls (Bash, MCP). See chat-permissions.ts. */
   permissions: PermissionRules;
+  /** Bash / filesystem tool posture. */
+  tools: ChatToolsConfig;
+};
+
+/** Posture for the bash/filesystem tools. */
+export type ChatToolsMode = 'off' | 'read-only' | 'ask' | 'auto';
+
+export type ChatToolsConfig = {
+  /**
+   * off → no fs/bash tools. read-only → read_file/glob/search only (no prompt).
+   * ask → adds bash, gated through the permission engine. auto → bash runs
+   * sandboxed without a prompt where allowed.
+   */
+  mode: ChatToolsMode;
+  /** Default cwd / writable root for the tools; null → process cwd. */
+  workspaceDir: string | null;
+  /** Wrap bash in the OS sandbox (bubblewrap on Linux) when available. */
+  sandbox: boolean;
+  /** In auto mode, refuse bash when a required sandbox is unavailable. */
+  failClosed: boolean;
+};
+
+export const DEFAULT_CHAT_TOOLS: ChatToolsConfig = {
+  mode: 'read-only',
+  workspaceDir: null,
+  sandbox: true,
+  failClosed: false
 };
 
 /** Capability-namespaced AI settings. Future: image, video slot in here additively. */
@@ -62,7 +89,8 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   taskModel: null,
   autoName: true,
   namingTiming: 'after-response',
-  permissions: DEFAULT_PERMISSION_RULES
+  permissions: DEFAULT_PERMISSION_RULES,
+  tools: DEFAULT_CHAT_TOOLS
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
