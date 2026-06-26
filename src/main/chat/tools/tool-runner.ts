@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import { tmpdir } from 'os';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
-import type { ChatToolsConfig, ChatToolStatusPayload } from '../../../shared/chat-types';
+import type {
+  ChatToolsConfig,
+  ChatToolStatusPayload,
+  ChatAuditDecision,
+  ChatAuditStatus
+} from '../../../shared/chat-types';
 import type { PermissionManager } from '../permissions/permission-manager';
 import { readFileTool, globTool, searchTool, defaultWorkspace } from './fs-tools';
 import { runBash } from './bash-exec';
@@ -139,7 +144,26 @@ export const FS_TOOL_NAMES = new Set([
   'edit_file'
 ]);
 
-type ExecCtx = { streamId: string; signal: AbortSignal };
+type ExecCtx = { streamId: string; conversationId: string; signal: AbortSignal };
+
+/** What a tool did, for both the model (output) and the audit ledger. */
+type ToolOutcome = {
+  output: string;
+  detail: string;
+  decision: ChatAuditDecision;
+  status: ChatAuditStatus;
+};
+
+/** Sink for audit records; the conversationId/tool/cwd are added by run(). */
+export type AuditSink = (entry: {
+  conversationId: string;
+  tool: string;
+  detail: string;
+  cwd: string;
+  decision: ChatAuditDecision;
+  status: ChatAuditStatus;
+  result: string;
+}) => void;
 
 const readArgs = z.object({
   path: z.string(),
@@ -171,61 +195,99 @@ export class ChatToolExecutor {
     private readonly permissions: PermissionManager,
     private readonly getConfig: () => ChatToolsConfig,
     private readonly emit: (channel: string, payload: unknown) => void,
-    private readonly mcp: McpRouter | null = null
+    private readonly mcp: McpRouter | null = null,
+    private readonly onAudit: AuditSink | null = null
   ) {}
 
   /** Returns the tool result content fed back into the model loop. */
   async run(name: string, argsJson: string, ctx: ExecCtx): Promise<string> {
     const cfg = this.getConfig();
     const cwd = defaultWorkspace(cfg.workspaceDir);
+    let outcome: ToolOutcome;
     try {
-      if (isMcpToolName(name)) return await this.runMcpGated(name, argsJson, ctx);
-      switch (name) {
-        case 'read_file': {
-          const a = readArgs.parse(JSON.parse(argsJson));
-          return readFileTool({ ...a, cwd });
-        }
-        case 'glob': {
-          const a = globArgs.parse(JSON.parse(argsJson));
-          const files = globTool({ ...a, cwd });
-          return files.length ? files.join('\n') : 'No files matched.';
-        }
-        case 'search': {
-          const a = searchArgs.parse(JSON.parse(argsJson));
-          const hits = searchTool({ ...a, cwd });
-          return hits.length
-            ? hits.map((h) => `${h.file}:${h.line}: ${h.text}`).join('\n')
-            : 'No matches.';
-        }
-        case 'bash': {
-          const a = bashArgs.parse(JSON.parse(argsJson));
-          return await this.runBashGated(a.command, cwd, cfg, ctx);
-        }
-        case 'write_file': {
-          const a = writeArgs.parse(JSON.parse(argsJson));
-          return await this.runWriteGated(
-            a.path,
-            (abs) => planWrite(abs, a.content),
-            cwd,
-            cfg,
-            ctx
-          );
-        }
-        case 'edit_file': {
-          const a = editArgs.parse(JSON.parse(argsJson));
-          return await this.runWriteGated(
-            a.path,
-            (abs) => planEdit(abs, a.old_string, a.new_string),
-            cwd,
-            cfg,
-            ctx
-          );
-        }
-        default:
-          return `Unknown tool: ${name}`;
-      }
+      outcome = await this.dispatch(name, argsJson, cfg, cwd, ctx);
     } catch (err) {
-      return `Error: ${err instanceof Error ? err.message : String(err)}`;
+      const msg = err instanceof Error ? err.message : String(err);
+      outcome = { output: `Error: ${msg}`, detail: name, decision: 'error', status: 'error' };
+    }
+    // Audit every tool action — including denied/blocked/errored attempts.
+    this.onAudit?.({
+      conversationId: ctx.conversationId,
+      tool: name,
+      detail: outcome.detail,
+      cwd,
+      decision: outcome.decision,
+      status: outcome.status,
+      result: outcome.output
+    });
+    return outcome.output;
+  }
+
+  private async dispatch(
+    name: string,
+    argsJson: string,
+    cfg: ChatToolsConfig,
+    cwd: string,
+    ctx: ExecCtx
+  ): Promise<ToolOutcome> {
+    if (isMcpToolName(name)) return this.runMcpGated(name, argsJson, ctx);
+    switch (name) {
+      case 'read_file': {
+        const a = readArgs.parse(JSON.parse(argsJson));
+        return {
+          output: readFileTool({ ...a, cwd }),
+          detail: a.path,
+          decision: 'allowed',
+          status: 'ok'
+        };
+      }
+      case 'glob': {
+        const a = globArgs.parse(JSON.parse(argsJson));
+        const files = globTool({ ...a, cwd });
+        return {
+          output: files.length ? files.join('\n') : 'No files matched.',
+          detail: a.pattern,
+          decision: 'allowed',
+          status: 'ok'
+        };
+      }
+      case 'search': {
+        const a = searchArgs.parse(JSON.parse(argsJson));
+        const hits = searchTool({ ...a, cwd });
+        return {
+          output: hits.length
+            ? hits.map((h) => `${h.file}:${h.line}: ${h.text}`).join('\n')
+            : 'No matches.',
+          detail: a.regex,
+          decision: 'allowed',
+          status: 'ok'
+        };
+      }
+      case 'bash': {
+        const a = bashArgs.parse(JSON.parse(argsJson));
+        return this.runBashGated(a.command, cwd, cfg, ctx);
+      }
+      case 'write_file': {
+        const a = writeArgs.parse(JSON.parse(argsJson));
+        return this.runWriteGated(a.path, (abs) => planWrite(abs, a.content), cwd, cfg, ctx);
+      }
+      case 'edit_file': {
+        const a = editArgs.parse(JSON.parse(argsJson));
+        return this.runWriteGated(
+          a.path,
+          (abs) => planEdit(abs, a.old_string, a.new_string),
+          cwd,
+          cfg,
+          ctx
+        );
+      }
+      default:
+        return {
+          output: `Unknown tool: ${name}`,
+          detail: name,
+          decision: 'error',
+          status: 'error'
+        };
     }
   }
 
@@ -234,9 +296,23 @@ export class ChatToolExecutor {
     cwd: string,
     cfg: ChatToolsConfig,
     ctx: ExecCtx
-  ): Promise<string> {
+  ): Promise<ToolOutcome> {
+    const blocked = (output: string): ToolOutcome => ({
+      output,
+      detail: command,
+      decision: 'blocked',
+      status: 'denied'
+    });
+    const denied = (output: string): ToolOutcome => ({
+      output,
+      detail: command,
+      decision: 'denied',
+      status: 'denied'
+    });
     if (cfg.mode === 'off' || cfg.mode === 'read-only') {
-      return 'bash is disabled in read-only mode. The user must enable command execution in Chat settings.';
+      return blocked(
+        'bash is disabled in read-only mode. The user must enable command execution in Chat settings.'
+      );
     }
 
     const wrap = cfg.sandbox
@@ -244,30 +320,32 @@ export class ChatToolExecutor {
       : null;
     const sandboxRequestedButMissing = cfg.sandbox && wrap === null;
 
+    // How the command was authorized — recorded in the audit ledger.
+    let decision: ChatAuditDecision;
     if (cfg.mode === 'auto') {
       const verdict = this.permissions.evaluate('Bash', command);
-      if (verdict === 'deny') return 'This command is blocked by a deny rule.';
-      if (verdict !== 'allow') {
-        // Not explicitly allowed: auto-run only if provably sandboxed.
-        if (wrap) {
-          // sandboxed → skip prompt
-        } else if (cfg.failClosed) {
-          return 'Refused: sandbox unavailable and fail-closed is on.';
-        } else {
-          const grant = await this.permissions.request({
-            streamId: ctx.streamId,
-            tool: 'Bash',
-            command,
-            cwd,
-            signal: ctx.signal
-          });
-          if (grant !== 'allow') return 'The user denied this command.';
-        }
+      if (verdict === 'deny') return blocked('This command is blocked by a deny rule.');
+      if (verdict === 'allow') {
+        decision = 'auto';
+      } else if (wrap) {
+        decision = 'auto'; // sandboxed → skip prompt
+      } else if (cfg.failClosed) {
+        return blocked('Refused: sandbox unavailable and fail-closed is on.');
+      } else {
+        const grant = await this.permissions.request({
+          streamId: ctx.streamId,
+          tool: 'Bash',
+          command,
+          cwd,
+          signal: ctx.signal
+        });
+        if (grant !== 'allow') return denied('The user denied this command.');
+        decision = 'approved';
       }
     } else {
       // ask mode: deny → deny, allow → allow, otherwise prompt.
       if (sandboxRequestedButMissing && cfg.failClosed) {
-        return 'Refused: sandbox unavailable and fail-closed is on.';
+        return blocked('Refused: sandbox unavailable and fail-closed is on.');
       }
       const grant = await this.permissions.request({
         streamId: ctx.streamId,
@@ -276,7 +354,8 @@ export class ChatToolExecutor {
         cwd,
         signal: ctx.signal
       });
-      if (grant !== 'allow') return 'The user denied this command.';
+      if (grant !== 'allow') return denied('The user denied this command.');
+      decision = 'approved';
     }
 
     this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
@@ -297,7 +376,7 @@ export class ChatToolExecutor {
     if (result.stdout) parts.push(`stdout:\n${result.stdout}`);
     if (result.stderr) parts.push(`stderr:\n${result.stderr}`);
     if (result.truncated) parts.push('(output truncated)');
-    return parts.join('\n');
+    return { output: parts.join('\n'), detail: command, decision, status: 'ok' };
   }
 
   /**
@@ -312,18 +391,30 @@ export class ChatToolExecutor {
     cwd: string,
     cfg: ChatToolsConfig,
     ctx: ExecCtx
-  ): Promise<string> {
+  ): Promise<ToolOutcome> {
     if (cfg.mode === 'off' || cfg.mode === 'read-only') {
-      return 'File edits are disabled. The user must enable Ask or Auto mode in Chat settings.';
+      return {
+        output: 'File edits are disabled. The user must enable Ask or Auto mode in Chat settings.',
+        detail: relPath,
+        decision: 'blocked',
+        status: 'denied'
+      };
     }
     // Circuit-breakers + workspace confinement (throws → surfaced as Error by run()).
     const abs = assertWritablePath(relPath, cwd, [cwd]);
     const planned = plan(abs);
 
+    let decision: ChatAuditDecision;
     if (cfg.mode === 'auto') {
       if (this.permissions.evaluate('Edit', relPath) === 'deny') {
-        return 'This edit is blocked by a deny rule.';
+        return {
+          output: 'This edit is blocked by a deny rule.',
+          detail: relPath,
+          decision: 'blocked',
+          status: 'denied'
+        };
       }
+      decision = 'auto';
     } else {
       const grant = await this.permissions.request({
         streamId: ctx.streamId,
@@ -333,16 +424,25 @@ export class ChatToolExecutor {
         diff: planned.diff,
         signal: ctx.signal
       });
-      if (grant !== 'allow') return 'The user denied this edit.';
+      if (grant !== 'allow') {
+        return {
+          output: 'The user denied this edit.',
+          detail: relPath,
+          decision: 'denied',
+          status: 'denied'
+        };
+      }
+      decision = 'approved';
     }
 
     applyWrite(abs, planned.newContent);
+    const label = `${planned.isNew ? 'Created' : 'Updated'} ${relPath}`;
     this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
       streamId: ctx.streamId,
       state: 'done',
-      label: `${planned.isNew ? 'Created' : 'Updated'} ${relPath}`
+      label
     } satisfies ChatToolStatusPayload);
-    return `${planned.isNew ? 'Created' : 'Updated'} ${relPath}`;
+    return { output: label, detail: relPath, decision, status: 'ok' };
   }
 
   /**
@@ -350,15 +450,24 @@ export class ChatToolExecutor {
    * (tool `Mcp`, the namespaced tool name as the value). Allow rules like
    * `Mcp(mcp__server__*)` auto-approve trusted read-only tools.
    */
-  private async runMcpGated(name: string, argsJson: string, ctx: ExecCtx): Promise<string> {
-    if (!this.mcp?.hasTool(name)) return `Unknown tool: ${name}`;
+  private async runMcpGated(name: string, argsJson: string, ctx: ExecCtx): Promise<ToolOutcome> {
+    if (!this.mcp?.hasTool(name)) {
+      return { output: `Unknown tool: ${name}`, detail: name, decision: 'error', status: 'error' };
+    }
     const grant = await this.permissions.request({
       streamId: ctx.streamId,
       tool: 'Mcp',
       command: name,
       signal: ctx.signal
     });
-    if (grant !== 'allow') return 'The user denied this tool call.';
+    if (grant !== 'allow') {
+      return {
+        output: 'The user denied this tool call.',
+        detail: name,
+        decision: 'denied',
+        status: 'denied'
+      };
+    }
     this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
       streamId: ctx.streamId,
       state: 'generating',
@@ -370,6 +479,6 @@ export class ChatToolExecutor {
       state: 'done',
       label: 'Tool finished'
     } satisfies ChatToolStatusPayload);
-    return out;
+    return { output: out, detail: name, decision: 'approved', status: 'ok' };
   }
 }

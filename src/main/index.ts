@@ -1353,7 +1353,8 @@ void app.whenReady().then(async () => {
     chatPermissions,
     () => settingsStore.get().ai.chat.tools,
     chatEmit,
-    chatMcp
+    chatMcp,
+    (entry) => chatStore.addAudit(entry)
   );
   const chatService = new ChatService({
     store: chatStore,

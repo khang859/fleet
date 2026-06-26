@@ -25,6 +25,52 @@ describe('ChatStore', () => {
     expect(existsSync(DB_PATH)).toBe(true);
   });
 
+  it('records and lists audit entries newest-first, persisting across restart', () => {
+    const conv = store.createConversation();
+    store.addAudit({
+      conversationId: conv.id,
+      tool: 'read_file',
+      detail: 'a.txt',
+      cwd: '/w',
+      decision: 'allowed',
+      status: 'ok',
+      result: 'hi'
+    });
+    store.addAudit({
+      conversationId: 'other',
+      tool: 'bash',
+      detail: 'rm -rf /',
+      cwd: '/w',
+      decision: 'denied',
+      status: 'denied',
+      result: 'The user denied this command.'
+    });
+
+    const all = store.listAudit();
+    expect(all.map((a) => a.tool)).toEqual(['bash', 'read_file']); // newest first
+    expect(store.listAudit({ conversationId: conv.id }).map((a) => a.tool)).toEqual(['read_file']);
+
+    // Survives a reopen, and is independent of conversation deletion (durable ledger).
+    store.deleteConversation(conv.id);
+    store.close();
+    store = new ChatStore(DB_PATH);
+    expect(store.listAudit()).toHaveLength(2);
+  });
+
+  it('caps stored audit result text', () => {
+    const conv = store.createConversation();
+    store.addAudit({
+      conversationId: conv.id,
+      tool: 'bash',
+      detail: 'cat big',
+      cwd: '/w',
+      decision: 'approved',
+      status: 'ok',
+      result: 'x'.repeat(5000)
+    });
+    expect(store.listAudit()[0].result.length).toBe(2000);
+  });
+
   it('creates and lists conversations newest-first', () => {
     const a = store.createConversation({ title: 'First' });
     const b = store.createConversation({ title: 'Second' });
