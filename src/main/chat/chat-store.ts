@@ -13,13 +13,15 @@ import type {
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS conversations (
-  id             TEXT PRIMARY KEY,
-  title          TEXT NOT NULL DEFAULT 'New chat',
-  model          TEXT,
-  title_locked   INTEGER NOT NULL DEFAULT 0,
-  active_head_id TEXT,
-  created_at     INTEGER NOT NULL,
-  updated_at     INTEGER NOT NULL
+  id                     TEXT PRIMARY KEY,
+  title                  TEXT NOT NULL DEFAULT 'New chat',
+  model                  TEXT,
+  title_locked           INTEGER NOT NULL DEFAULT 0,
+  active_head_id         TEXT,
+  parent_conversation_id TEXT,
+  fork_message_id        TEXT,
+  created_at             INTEGER NOT NULL,
+  updated_at             INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS messages (
   id              TEXT PRIMARY KEY,
@@ -82,6 +84,8 @@ const ConversationRowSchema = z.object({
   model: z.string().nullable(),
   title_locked: z.number(),
   active_head_id: z.string().nullable(),
+  parent_conversation_id: z.string().nullable(),
+  fork_message_id: z.string().nullable(),
   created_at: z.number(),
   updated_at: z.number()
 });
@@ -116,6 +120,7 @@ function toConversation(r: ConversationRow): ChatConversation {
     title: r.title,
     model: r.model,
     titleLocked: r.title_locked !== 0,
+    parentConversationId: r.parent_conversation_id,
     createdAt: r.created_at,
     updatedAt: r.updated_at
   };
@@ -168,6 +173,10 @@ export class ChatStore {
     const hasActiveHead = convCols.some((c) => c.name === 'active_head_id');
     if (!hasActiveHead) {
       this.db.exec('ALTER TABLE conversations ADD COLUMN active_head_id TEXT');
+    }
+    if (!convCols.some((c) => c.name === 'parent_conversation_id')) {
+      this.db.exec('ALTER TABLE conversations ADD COLUMN parent_conversation_id TEXT');
+      this.db.exec('ALTER TABLE conversations ADD COLUMN fork_message_id TEXT');
     }
 
     const msgCols = z
@@ -225,6 +234,8 @@ export class ChatStore {
       model: input.model ?? null,
       title_locked: 0,
       active_head_id: null,
+      parent_conversation_id: null,
+      fork_message_id: null,
       created_at: now,
       updated_at: now
     };
@@ -422,6 +433,47 @@ export class ChatStore {
       });
     });
     insertAll(input.images);
+  }
+
+  /**
+   * Fork a new conversation seeded with the history up to (and including)
+   * `messageId`. The source conversation is left untouched; the branch records a
+   * parent link for discovery in the sidebar.
+   */
+  forkConversation(messageId: string): ChatConversation | null {
+    const src = this.getRow(messageId);
+    if (!src) return null;
+    const srcConv = this.getConversation(src.conversation_id);
+    if (!srcConv) return null;
+    const path = this.getPathTo(messageId);
+
+    const fork = this.db.transaction((): ChatConversation => {
+      const branch = this.createConversation({
+        title: `${srcConv.title} (branch)`,
+        model: srcConv.model
+      });
+      this.db
+        .prepare(
+          'UPDATE conversations SET parent_conversation_id = ?, fork_message_id = ? WHERE id = ?'
+        )
+        .run(src.conversation_id, messageId, branch.id);
+      let parentId: string | null = null;
+      for (const m of path) {
+        const copy = this.addMessage({
+          conversationId: branch.id,
+          role: m.role,
+          content: m.content,
+          parentId
+        });
+        if (m.images?.length) {
+          this.addImages({ messageId: copy.id, conversationId: branch.id, images: m.images });
+        }
+        parentId = copy.id;
+      }
+      return branch;
+    });
+    const branch = fork();
+    return this.getConversation(branch.id);
   }
 
   /** The active conversation thread (root → leaf), with images + variant pagers. */

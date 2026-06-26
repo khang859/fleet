@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { ChevronLeft, ChevronRight, Pencil, RotateCcw, X, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GitBranch, Pencil, RotateCcw, X, Check } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import type { ChatMessage } from '../../../../shared/chat-types';
 import { ChatImage } from './ChatImage';
@@ -50,6 +50,7 @@ function Bubble({ message, model }: { message: ChatMessage; model: string }): Re
   const streaming = useChatStore((s) => s.status === 'streaming');
   const regenerate = useChatStore((s) => s.regenerate);
   const editMessage = useChatStore((s) => s.editMessage);
+  const forkConversation = useChatStore((s) => s.forkConversation);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
 
@@ -135,6 +136,15 @@ function Bubble({ message, model }: { message: ChatMessage; model: string }): Re
               <RotateCcw size={12} />
             </button>
           )}
+          <button
+            aria-label="Fork conversation from here"
+            title="Branch from here"
+            disabled={streaming}
+            onClick={() => void forkConversation(message.id)}
+            className="rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
+          >
+            <GitBranch size={12} />
+          </button>
         </div>
       )}
     </div>

@@ -74,6 +74,10 @@ export function registerChatIpc(deps: Deps): void {
     store.selectVariant(messageId);
     return store.getMessages(store.getMessage(messageId)?.conversationId ?? '');
   });
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_FORK_CONVERSATION,
+    (_e, messageId: string): ChatConversation | null => store.forkConversation(messageId)
+  );
   ipcMain.handle(IPC_CHANNELS.CHAT_CANCEL, (_e, streamId: string) => {
     service.cancel(streamId);
   });

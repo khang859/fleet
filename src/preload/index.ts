@@ -853,6 +853,8 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CHAT_EDIT_MESSAGE, req),
     selectVariant: async (messageId: string): Promise<ChatMessage[]> =>
       typedInvoke(IPC_CHANNELS.CHAT_SELECT_VARIANT, messageId),
+    forkConversation: async (messageId: string): Promise<ChatConversation | null> =>
+      typedInvoke(IPC_CHANNELS.CHAT_FORK_CONVERSATION, messageId),
     cancel: async (streamId: string): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_CANCEL, streamId),
     listModels: async (): Promise<ChatModel[]> => typedInvoke(IPC_CHANNELS.CHAT_LIST_MODELS),

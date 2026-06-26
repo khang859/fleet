@@ -174,6 +174,46 @@ describe('ChatStore', () => {
     expect(store.activeLeafId(c.id)).toBe(msgs[1].id);
   });
 
+  it('forks a conversation with history up to a message, leaving the original intact', () => {
+    const c = store.createConversation({ title: 'Orig' });
+    const u1 = store.addMessage({ conversationId: c.id, role: 'user', content: 'q1' });
+    const a1 = store.addMessage({
+      conversationId: c.id,
+      role: 'assistant',
+      content: 'a1',
+      parentId: u1.id
+    });
+    const u2 = store.addMessage({
+      conversationId: c.id,
+      role: 'user',
+      content: 'q2',
+      parentId: a1.id
+    });
+    store.addMessage({ conversationId: c.id, role: 'assistant', content: 'a2', parentId: u2.id });
+
+    // Fork from a1 → branch carries [q1, a1] only.
+    const branch = store.forkConversation(a1.id);
+    expect(branch).not.toBeNull();
+    expect(branch?.parentConversationId).toBe(c.id);
+    expect(branch?.title).toBe('Orig (branch)');
+    expect(store.getMessages(branch!.id).map((m) => m.content)).toEqual(['q1', 'a1']);
+
+    // Original is unchanged, and its messages have distinct ids from the copies.
+    expect(store.getMessages(c.id).map((m) => m.content)).toEqual(['q1', 'a1', 'q2', 'a2']);
+    const branchIds = new Set(store.getMessages(branch!.id).map((m) => m.id));
+    expect(branchIds.has(a1.id)).toBe(false);
+
+    // Continuing the branch does not touch the original.
+    const bu = store.addMessage({
+      conversationId: branch!.id,
+      role: 'user',
+      content: 'branch-only',
+      parentId: store.activeLeafId(branch!.id)
+    });
+    expect(bu.conversationId).toBe(branch!.id);
+    expect(store.getMessages(c.id)).toHaveLength(4);
+  });
+
   it('getPathTo returns root→message ancestors for context', () => {
     const c = store.createConversation();
     const u = store.addMessage({ conversationId: c.id, role: 'user', content: 'q' });
