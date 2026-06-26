@@ -6,6 +6,7 @@ import { useChatStore } from '../../store/chat-store';
 import type { ChatImageRef } from '../../../../shared/chat-types';
 import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
+import { CodeBlock } from '../markdown/CodeBlock';
 
 function Bubble({
   role,
@@ -28,6 +29,7 @@ function Bubble({
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[[rehypeHighlight, { detect: true }]]}
+            components={{ pre: CodeBlock }}
           >
             {content}
           </ReactMarkdown>
