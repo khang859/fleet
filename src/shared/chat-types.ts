@@ -1,4 +1,5 @@
 import { DEFAULT_PERMISSION_RULES, type PermissionRules } from './chat-permissions';
+import type { McpServersConfig } from './mcp-types';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -50,6 +51,8 @@ export type ChatSettings = {
   permissions: PermissionRules;
   /** Bash / filesystem tool posture. */
   tools: ChatToolsConfig;
+  /** Attached MCP servers (standard `mcpServers` schema). */
+  mcpServers: McpServersConfig;
 };
 
 /** Posture for the bash/filesystem tools. */
@@ -90,7 +93,8 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   autoName: true,
   namingTiming: 'after-response',
   permissions: DEFAULT_PERMISSION_RULES,
-  tools: DEFAULT_CHAT_TOOLS
+  tools: DEFAULT_CHAT_TOOLS,
+  mcpServers: {}
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {

@@ -13,6 +13,8 @@ import type { ChatService } from './chat-service';
 import type { SettingsStore } from '../settings-store';
 import type { PermissionManager } from './permissions/permission-manager';
 import type { PermissionOutcome } from '../../shared/chat-permissions';
+import type { McpManager } from './mcp/manager';
+import type { McpServersConfig, McpServerStatus } from '../../shared/mcp-types';
 
 type Deps = {
   store: ChatStore;
@@ -20,10 +22,11 @@ type Deps = {
   service: ChatService;
   settingsStore: SettingsStore;
   permissions: PermissionManager;
+  mcp: McpManager;
 };
 
 export function registerChatIpc(deps: Deps): void {
-  const { store, secrets, service, settingsStore, permissions } = deps;
+  const { store, secrets, service, settingsStore, permissions, mcp } = deps;
 
   ipcMain.handle(IPC_CHANNELS.CHAT_LIST_CONVERSATIONS, (): ChatConversation[] =>
     store.listConversations()
@@ -73,6 +76,16 @@ export function registerChatIpc(deps: Deps): void {
     IPC_CHANNELS.CHAT_PERMISSION_DECIDE,
     (_e, req: { requestId: string; outcome: PermissionOutcome }) => {
       permissions.decide(req.requestId, req.outcome);
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.CHAT_MCP_GET, (): McpServerStatus[] => mcp.statuses());
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_MCP_SET,
+    async (_e, config: McpServersConfig): Promise<McpServerStatus[]> => {
+      settingsStore.set({ ai: { chat: { mcpServers: config } } });
+      await mcp.reload();
+      return mcp.statuses();
     }
   );
 

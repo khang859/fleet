@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useChatStore } from '../../store/chat-store';
 import { ModelPicker } from './ModelPicker';
 import { PermissionRulesEditor } from './PermissionRulesEditor';
+import { McpServersTab } from './McpServersTab';
 import {
   DEFAULT_PERMISSION_RULES,
   type PermissionRules
@@ -75,9 +76,7 @@ function ExtensionsCapabilities(): React.JSX.Element {
         </button>
       </div>
       {tab === 'mcp' ? (
-        <p className="text-xs text-fleet-text-muted">
-          No MCP servers configured yet. MCP adds <em>tools</em> (connectivity) the agent can call.
-        </p>
+        <McpServersTab />
       ) : (
         <p className="text-xs text-fleet-text-muted">
           No skills installed yet. Skills add <em>know-how</em> (procedures). MCP and Skills

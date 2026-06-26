@@ -52,7 +52,8 @@ describe('ChatService.send', () => {
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
       getToolsMode: () => 'off',
-      toolExecutor: stubExecutor,
+      getMcpToolDefs: () => [],
+toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
       imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
@@ -92,7 +93,8 @@ describe('ChatService.send', () => {
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
       getToolsMode: () => 'off',
-      toolExecutor: stubExecutor,
+      getMcpToolDefs: () => [],
+toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
       imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
@@ -140,7 +142,8 @@ it('runs the image tool loop and persists a generated image', async () => {
     getImageModel: () => 'google/gemini-2.5-flash-image',
     getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
     getToolsMode: () => 'off',
-    toolExecutor: stubExecutor,
+    getMcpToolDefs: () => [],
+toolExecutor: stubExecutor,
     imageProvider: provider,
     imageStorage: new ChatImageStorage(dir),
     emit: (channel, payload) => events.push({ channel, payload })
@@ -200,7 +203,8 @@ it('passes the reference image to the provider as a base64 data URL when editing
     getImageModel: () => 'google/gemini-2.5-flash-image',
     getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
     getToolsMode: () => 'off',
-    toolExecutor: stubExecutor,
+    getMcpToolDefs: () => [],
+toolExecutor: stubExecutor,
     imageProvider: provider,
     imageStorage: new ChatImageStorage(dir),
     emit: (channel, payload) => events.push({ channel, payload })

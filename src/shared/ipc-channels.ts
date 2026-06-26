@@ -284,5 +284,8 @@ export const IPC_CHANNELS = {
   CHAT_PERMISSION_REQUEST: 'chat:permission-request',
   CHAT_PERMISSION_DECIDE: 'chat:permission-decide',
   // Emitted when a conversation title changes out-of-band (background auto-naming).
-  CHAT_CONVERSATION_RENAMED: 'chat:conversation-renamed'
+  CHAT_CONVERSATION_RENAMED: 'chat:conversation-renamed',
+  // MCP servers: GET returns statuses; SET replaces the config and reconnects.
+  CHAT_MCP_GET: 'chat:mcp-get',
+  CHAT_MCP_SET: 'chat:mcp-set'
 } as const;

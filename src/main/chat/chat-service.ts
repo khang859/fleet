@@ -20,6 +20,7 @@ import { resolveTitle } from './chat-namer';
 import type { ChatConversationRenamedPayload, ChatToolsMode } from '../../shared/chat-types';
 import type { ChatToolExecutor } from './tools/tool-runner';
 import { buildFsToolDefs, FS_TOOL_NAMES } from './tools/tool-runner';
+import { isMcpToolName } from '../../shared/mcp-types';
 
 export type ChatEmitter = (channel: string, payload: unknown) => void;
 
@@ -40,6 +41,7 @@ type Deps = {
   getImageModel: () => string | null;
   getNaming: () => NamingConfig;
   getToolsMode: () => ChatToolsMode;
+  getMcpToolDefs: () => unknown[];
   toolExecutor: ChatToolExecutor;
   imageProvider: ChatImageProvider;
   imageStorage: ChatImageStorage;
@@ -113,7 +115,12 @@ export class ChatService {
     const imageToolEnabled = !!imageModel && supportsTools;
     // fs/bash tools require a tool-capable model; gated by the tools mode setting.
     const fsToolDefs = supportsTools ? buildFsToolDefs(this.deps.getToolsMode()) : [];
-    const toolDefs: unknown[] = [...(imageToolEnabled ? [GENERATE_IMAGE_TOOL] : []), ...fsToolDefs];
+    const mcpToolDefs = supportsTools ? this.deps.getMcpToolDefs() : [];
+    const toolDefs: unknown[] = [
+      ...(imageToolEnabled ? [GENERATE_IMAGE_TOOL] : []),
+      ...fsToolDefs,
+      ...mcpToolDefs
+    ];
 
     // Build OpenRouter-shaped history from persisted messages.
     const messages: unknown[] = store
@@ -155,8 +162,8 @@ export class ChatService {
           });
 
           for (const call of result.toolCalls) {
-            // Native fs/bash tools run through the main-process executor (gated).
-            if (FS_TOOL_NAMES.has(call.name)) {
+            // Native fs/bash and MCP tools run through the main-process executor (gated).
+            if (FS_TOOL_NAMES.has(call.name) || isMcpToolName(call.name)) {
               const content = await this.deps.toolExecutor.run(call.name, call.arguments, {
                 streamId,
                 signal: controller.signal
