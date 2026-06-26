@@ -8,6 +8,7 @@ import type {
   ChatStreamErrorPayload,
   ChatToolStatusPayload
 } from '../../../shared/chat-types';
+import type { PermissionOutcome, PermissionRequestPayload } from '../../../shared/chat-permissions';
 
 type ChatStatus = 'idle' | 'streaming' | 'error';
 
@@ -23,8 +24,10 @@ type ChatStoreState = {
   status: ChatStatus;
   error: string | null;
   toolStatus: ChatToolStatusPayload | null;
+  permissionRequests: PermissionRequestPayload[];
 
   init: () => Promise<void>;
+  decidePermission: (requestId: string, outcome: PermissionOutcome) => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
   newConversation: () => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
@@ -42,6 +45,7 @@ let unsubChunk: (() => void) | null = null;
 let unsubDone: (() => void) | null = null;
 let unsubError: (() => void) | null = null;
 let unsubTool: (() => void) | null = null;
+let unsubPerm: (() => void) | null = null;
 
 export const useChatStore = create<ChatStoreState>((set, get) => {
   function subscribeToStreamEvents(): void {
@@ -49,6 +53,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     unsubDone?.();
     unsubError?.();
     unsubTool?.();
+    unsubPerm?.();
     unsubChunk = window.fleet.chat.onStreamChunk((p: ChatStreamChunkPayload) => {
       if (p.streamId !== get().streamId) return;
       set((s) => ({ streamingText: (s.streamingText ?? '') + p.delta }));
@@ -60,7 +65,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         streamingText: null,
         streamId: null,
         status: 'idle',
-        toolStatus: null
+        toolStatus: null,
+        permissionRequests: []
       }));
     });
     unsubError = window.fleet.chat.onStreamError((p: ChatStreamErrorPayload) => {
@@ -70,12 +76,17 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         error: p.message,
         streamingText: null,
         streamId: null,
-        toolStatus: null
+        toolStatus: null,
+        permissionRequests: []
       });
     });
     unsubTool = window.fleet.chat.onToolStatus((p: ChatToolStatusPayload) => {
       if (p.streamId !== get().streamId) return;
       set({ toolStatus: p.state === 'done' ? null : p });
+    });
+    unsubPerm = window.fleet.chat.onPermissionRequest((p: PermissionRequestPayload) => {
+      if (p.streamId !== get().streamId) return;
+      set((s) => ({ permissionRequests: [...s.permissionRequests, p] }));
     });
   }
 
@@ -91,6 +102,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     status: 'idle',
     error: null,
     toolStatus: null,
+    permissionRequests: [],
 
     init: async () => {
       subscribeToStreamEvents();
@@ -101,6 +113,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       if (first) await get().selectConversation(first);
     },
 
+    decidePermission: async (requestId, outcome) => {
+      set((s) => ({
+        permissionRequests: s.permissionRequests.filter((r) => r.requestId !== requestId)
+      }));
+      await window.fleet.chat.decidePermission(requestId, outcome);
+    },
+
     selectConversation: async (id) => {
       set({
         activeId: id,
@@ -109,7 +128,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         streamId: null,
         status: 'idle',
         error: null,
-        toolStatus: null
+        toolStatus: null,
+        permissionRequests: []
       });
       const messages = await window.fleet.chat.getMessages(id);
       if (get().activeId !== id) return; // switched mid-load
@@ -179,6 +199,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         streamId: null,
         streamingText: null,
         toolStatus: null,
+        permissionRequests: [],
         messages:
           partial && activeId
             ? [

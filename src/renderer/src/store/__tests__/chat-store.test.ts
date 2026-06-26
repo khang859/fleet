@@ -51,6 +51,11 @@ beforeEach(() => {
         listeners.set(IPC_CHANNELS.CHAT_TOOL_STATUS, cb);
         return () => {};
       },
+      onPermissionRequest: (cb: Listener) => {
+        listeners.set(IPC_CHANNELS.CHAT_PERMISSION_REQUEST, cb);
+        return () => {};
+      },
+      decidePermission: vi.fn().mockResolvedValue(undefined),
       listImageModels: vi.fn().mockResolvedValue([])
     }
   };
@@ -121,6 +126,34 @@ describe('useChatStore', () => {
     expect(window.fleet.chat.setConversationModel).toHaveBeenCalledWith('c1', 'anthropic/claude');
     const conv = useChatStore.getState().conversations.find((c) => c.id === 'c1');
     expect(conv?.model).toBe('anthropic/claude');
+  });
+
+  it('queues a permission request for the active stream and clears it on decide', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().send('hi', 'x/y');
+    listeners.get(IPC_CHANNELS.CHAT_PERMISSION_REQUEST)?.({
+      requestId: 'r1',
+      streamId: 's1',
+      tool: 'Bash',
+      command: 'npm test',
+      rememberPrefix: 'npm test'
+    });
+    expect(useChatStore.getState().permissionRequests).toHaveLength(1);
+    await useChatStore.getState().decidePermission('r1', 'allow-once');
+    expect(useChatStore.getState().permissionRequests).toHaveLength(0);
+    expect(window.fleet.chat.decidePermission).toHaveBeenCalledWith('r1', 'allow-once');
+  });
+
+  it('ignores a permission request for a stale stream', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().send('hi', 'x/y');
+    listeners.get(IPC_CHANNELS.CHAT_PERMISSION_REQUEST)?.({
+      requestId: 'r2',
+      streamId: 'OTHER',
+      tool: 'Bash',
+      command: 'rm -rf x'
+    });
+    expect(useChatStore.getState().permissionRequests).toHaveLength(0);
   });
 
   it('applies an error event with partial text', async () => {

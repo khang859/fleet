@@ -6,6 +6,7 @@ import { useChatStore } from '../../store/chat-store';
 import type { ChatImageRef } from '../../../../shared/chat-types';
 import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
+import { ToolCallCard } from './ToolCallCard';
 import { CodeBlock } from '../markdown/CodeBlock';
 
 function Bubble({
@@ -52,6 +53,8 @@ export function MessageList(): React.JSX.Element {
   const status = useChatStore((s) => s.status);
   const error = useChatStore((s) => s.error);
   const toolStatus = useChatStore((s) => s.toolStatus);
+  const permissionRequests = useChatStore((s) => s.permissionRequests);
+  const decidePermission = useChatStore((s) => s.decidePermission);
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -76,6 +79,13 @@ export function MessageList(): React.JSX.Element {
         <Bubble key={m.id} role={m.role} content={m.content} images={m.images} />
       ))}
       {streamingText !== null && <Bubble role="assistant" content={streamingText || '…'} />}
+      {permissionRequests.map((req) => (
+        <ToolCallCard
+          key={req.requestId}
+          request={req}
+          onDecide={(outcome) => void decidePermission(req.requestId, outcome)}
+        />
+      ))}
       {status === 'streaming' && toolStatus?.state === 'generating' && (
         <GeneratingSkeleton label={toolStatus.label} />
       )}

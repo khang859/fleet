@@ -25,6 +25,13 @@ const MODELS_SCHEMA = z.object({
 export type ToolCall = { id: string; name: string; arguments: string };
 export type StreamResult = { content: string; toolCalls: ToolCall[]; finishReason: string | null };
 
+const COMPLETION_SCHEMA = z.object({
+  error: z.object({ message: z.string() }).optional(),
+  choices: z
+    .array(z.object({ message: z.object({ content: z.string().nullish() }).optional() }))
+    .optional()
+});
+
 const TOOLCALL_DELTA_SCHEMA = z.object({
   error: z.object({ message: z.string() }).optional(),
   choices: z
@@ -156,13 +163,53 @@ export class OpenRouterClient {
     return this.mapModels(MODELS_SCHEMA.parse(await res.json())).filter((m) => m.outputImage);
   }
 
+  /**
+   * One-shot, non-streaming completion. Used by the "task model" code path
+   * (auto-naming, query generation) — a cheap model decoupled from the chat
+   * model. Returns the assistant message text (trimmed); empty string if the
+   * model produced none.
+   */
+  async complete(opts: {
+    apiKey: string;
+    model: string;
+    messages: unknown[];
+    signal?: AbortSignal;
+    maxTokens?: number;
+    temperature?: number;
+  }): Promise<string> {
+    const body: Record<string, unknown> = {
+      model: opts.model,
+      messages: opts.messages,
+      stream: false
+    };
+    if (opts.maxTokens != null) body.max_tokens = opts.maxTokens;
+    if (opts.temperature != null) body.temperature = opts.temperature;
+    const res = await this.fetchImpl(`${BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${opts.apiKey}`,
+        'Content-Type': 'application/json',
+        ...APP_HEADERS
+      },
+      body: JSON.stringify(body),
+      signal: opts.signal
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`OpenRouter completion failed: ${res.status} ${detail}`.trim());
+    }
+    const parsed = COMPLETION_SCHEMA.parse(await res.json());
+    if (parsed.error) throw new Error(parsed.error.message);
+    return (parsed.choices?.[0]?.message?.content ?? '').trim();
+  }
+
   async streamCompletion(opts: StreamOpts): Promise<StreamResult> {
     const body: Record<string, unknown> = {
       model: opts.model,
       messages: opts.messages,
       stream: true
     };
-    if (opts.tools && opts.tools.length) {
+    if (opts.tools?.length) {
       body.tools = opts.tools;
       body.tool_choice = opts.toolChoice ?? 'auto';
     }

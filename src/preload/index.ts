@@ -153,6 +153,7 @@ import type {
   ChatStreamErrorPayload,
   ChatToolStatusPayload
 } from '../shared/chat-types';
+import type { PermissionRequestPayload, PermissionOutcome } from '../shared/chat-permissions';
 import type {
   Learning,
   CreateLearningInput,
@@ -857,7 +858,11 @@ const fleetApi = {
     onStreamError: (cb: (p: ChatStreamErrorPayload) => void): Unsubscribe =>
       onChannel<ChatStreamErrorPayload>(IPC_CHANNELS.CHAT_STREAM_ERROR, cb),
     onToolStatus: (cb: (p: ChatToolStatusPayload) => void): Unsubscribe =>
-      onChannel<ChatToolStatusPayload>(IPC_CHANNELS.CHAT_TOOL_STATUS, cb)
+      onChannel<ChatToolStatusPayload>(IPC_CHANNELS.CHAT_TOOL_STATUS, cb),
+    onPermissionRequest: (cb: (p: PermissionRequestPayload) => void): Unsubscribe =>
+      onChannel<PermissionRequestPayload>(IPC_CHANNELS.CHAT_PERMISSION_REQUEST, cb),
+    decidePermission: async (requestId: string, outcome: PermissionOutcome): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.CHAT_PERMISSION_DECIDE, { requestId, outcome })
   }
 };
 

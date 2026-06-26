@@ -11,16 +11,19 @@ import type { ChatStore } from './chat-store';
 import type { ChatSecrets } from './chat-secrets';
 import type { ChatService } from './chat-service';
 import type { SettingsStore } from '../settings-store';
+import type { PermissionManager } from './permissions/permission-manager';
+import type { PermissionOutcome } from '../../shared/chat-permissions';
 
 type Deps = {
   store: ChatStore;
   secrets: ChatSecrets;
   service: ChatService;
   settingsStore: SettingsStore;
+  permissions: PermissionManager;
 };
 
 export function registerChatIpc(deps: Deps): void {
-  const { store, secrets, service, settingsStore } = deps;
+  const { store, secrets, service, settingsStore, permissions } = deps;
 
   ipcMain.handle(IPC_CHANNELS.CHAT_LIST_CONVERSATIONS, (): ChatConversation[] =>
     store.listConversations()
@@ -65,6 +68,13 @@ export function registerChatIpc(deps: Deps): void {
   ipcMain.handle(IPC_CHANNELS.CHAT_PATCH_SETTINGS, (_e, patch: Partial<ChatSettings>) => {
     settingsStore.set({ ai: { chat: { ...settingsStore.get().ai.chat, ...patch } } });
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_PERMISSION_DECIDE,
+    (_e, req: { requestId: string; outcome: PermissionOutcome }) => {
+      permissions.decide(req.requestId, req.outcome);
+    }
+  );
 
   ipcMain.handle(IPC_CHANNELS.CHAT_SET_KEY, (_e, key: string) => {
     secrets.setKey(key);
