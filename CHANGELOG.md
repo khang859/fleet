@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.75.0
+
+- **Chat image generation & editing tool** — the Chat tool can now generate and edit images, with results rendered inline in the conversation (#287).
+- **Searchable model selector** — the Chat model picker is now a searchable combobox for quickly finding any model in OpenRouter's catalog (#286).
+
 ## v2.74.0
 
 - **Chat (OpenRouter) tool** — a new pinned **Chat** tool brings a general-purpose AI assistant into Fleet (#280). Hold multiple SQLite-persisted conversations, pick any model live from OpenRouter's catalog, and watch replies stream in as rendered markdown. Your OpenRouter API key is entered in the tool's own Settings view and encrypted at rest via Electron `safeStorage` — it never crosses into the renderer. The picked model now persists per conversation, cancelling a stream keeps whatever streamed so far, and the conversation list is fully keyboard-navigable (#285).
