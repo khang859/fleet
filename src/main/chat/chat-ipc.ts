@@ -9,7 +9,8 @@ import type {
   ChatMessage,
   ChatModel,
   ChatAuditEntry,
-  ChatMentionItem
+  ChatMentionItem,
+  ChatSearchHit
 } from '../../shared/chat-types';
 import { searchWorkspacePaths, defaultWorkspace } from './tools/fs-tools';
 import {
@@ -69,6 +70,21 @@ export function registerChatIpc(deps: Deps): void {
     (_e, req: { id: string; personaId: string | null }) => {
       store.setConversationPersona(req.id, req.personaId);
     }
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_SET_CONVERSATION_PINNED,
+    (_e, req: { id: string; pinned: boolean }) => {
+      store.setConversationPinned(req.id, req.pinned);
+    }
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_SET_CONVERSATION_FOLDER,
+    (_e, req: { id: string; folder: string | null }) => {
+      store.setConversationFolder(req.id, req.folder);
+    }
+  );
+  ipcMain.handle(IPC_CHANNELS.CHAT_SEARCH, (_e, query: string): ChatSearchHit[] =>
+    store.searchConversations(query)
   );
   ipcMain.handle(IPC_CHANNELS.CHAT_DELETE_CONVERSATION, (_e, id: string) => {
     store.deleteConversation(id);

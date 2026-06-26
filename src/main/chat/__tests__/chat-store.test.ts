@@ -310,4 +310,39 @@ describe('ChatStore', () => {
     reopened.close();
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it('full-text searches message bodies, not just titles', () => {
+    const a = store.createConversation({ title: 'Alpha' });
+    const b = store.createConversation({ title: 'Beta' });
+    store.addMessage({ conversationId: a.id, role: 'user', content: 'how do I configure webpack' });
+    store.addMessage({ conversationId: b.id, role: 'user', content: 'cooking pasta tonight' });
+
+    const hits = store.searchConversations('webpack');
+    expect(hits.map((h) => h.conversationId)).toEqual([a.id]);
+    expect(hits[0].snippet.toLowerCase()).toContain('webpack');
+    // A body term that is in neither title still matches by content.
+    expect(store.searchConversations('pasta').map((h) => h.conversationId)).toEqual([b.id]);
+    // No match → empty.
+    expect(store.searchConversations('zzznotpresent')).toEqual([]);
+  });
+
+  it('persists pin and folder state across restart', () => {
+    const dir = join(tmpdir(), `fleet-chat-org-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const s = new ChatStore(join(dir, 'org.db'));
+    const c = s.createConversation({ title: 'Z chat' });
+    const d = s.createConversation({ title: 'A chat' });
+    s.setConversationPinned(d.id, true);
+    s.setConversationFolder(c.id, 'Work');
+    s.close();
+
+    const reopened = new ChatStore(join(dir, 'org.db'));
+    const list = reopened.listConversations();
+    // Pinned floats first regardless of recency.
+    expect(list[0].id).toBe(d.id);
+    expect(list[0].pinned).toBe(true);
+    expect(list.find((x) => x.id === c.id)?.folder).toBe('Work');
+    reopened.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
 });

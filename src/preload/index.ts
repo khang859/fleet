@@ -156,7 +156,8 @@ import type {
   ChatStreamErrorPayload,
   ChatToolStatusPayload,
   ChatConversationRenamedPayload,
-  ChatAuditEntry
+  ChatAuditEntry,
+  ChatSearchHit
 } from '../shared/chat-types';
 import type { ChatExportFormat, ChatExportResult } from '../shared/chat-export';
 import type { PermissionRequestPayload, PermissionOutcome } from '../shared/chat-permissions';
@@ -845,6 +846,12 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CHAT_SET_CONVERSATION_MODEL, { id, model }),
     setConversationPersona: async (id: string, personaId: string | null): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_SET_CONVERSATION_PERSONA, { id, personaId }),
+    setConversationPinned: async (id: string, pinned: boolean): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.CHAT_SET_CONVERSATION_PINNED, { id, pinned }),
+    setConversationFolder: async (id: string, folder: string | null): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.CHAT_SET_CONVERSATION_FOLDER, { id, folder }),
+    search: async (query: string): Promise<ChatSearchHit[]> =>
+      typedInvoke(IPC_CHANNELS.CHAT_SEARCH, query),
     deleteConversation: async (id: string): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_DELETE_CONVERSATION, id),
     getMessages: async (conversationId: string): Promise<ChatMessage[]> =>

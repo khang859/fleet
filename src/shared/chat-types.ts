@@ -55,9 +55,16 @@ export type ChatConversation = {
   titleLocked: boolean;
   /** Set when this conversation was forked from another; null otherwise. */
   parentConversationId: string | null;
+  /** Pinned to the top of the sidebar. */
+  pinned: boolean;
+  /** Optional folder name for sidebar grouping; null → ungrouped. */
+  folder: string | null;
   createdAt: number;
   updatedAt: number;
 };
+
+/** One full-text search hit: a conversation matched by message-body content. */
+export type ChatSearchHit = { conversationId: string; title: string; snippet: string };
 
 export type ChatModel = {
   id: string;
@@ -103,6 +110,8 @@ export type ChatSettings = {
   webSearch: ChatWebSearchConfig;
   /** Attachment upload limits. */
   uploads: ChatUploadsConfig;
+  /** Sidebar default sort order for conversations. */
+  conversationSort: 'recent' | 'alphabetical';
 };
 
 /** Composer attachment limits. */
@@ -228,7 +237,8 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   personas: [],
   defaultPersonaId: null,
   webSearch: DEFAULT_CHAT_WEB_SEARCH,
-  uploads: DEFAULT_CHAT_UPLOADS
+  uploads: DEFAULT_CHAT_UPLOADS,
+  conversationSort: 'recent'
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {

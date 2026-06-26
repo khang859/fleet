@@ -116,6 +116,7 @@ export function ChatSettingsView(): React.JSX.Element {
   const [exportFormat, setExportFormat] = useState<'markdown' | 'json'>('markdown');
   const [webSearch, setWebSearch] = useState<ChatWebSearchConfig>(DEFAULT_CHAT_WEB_SEARCH);
   const [uploads, setUploads] = useState<ChatUploadsConfig>(DEFAULT_CHAT_UPLOADS);
+  const [conversationSort, setConversationSort] = useState<'recent' | 'alphabetical'>('recent');
   const [searchKeyPresent, setSearchKeyPresent] = useState(false);
   const [searchKeyInput, setSearchKeyInput] = useState('');
   const [saved, setSaved] = useState(false);
@@ -133,6 +134,7 @@ export function ChatSettingsView(): React.JSX.Element {
       setExportFormat(s.exportFormat);
       setWebSearch(s.webSearch);
       setUploads(s.uploads);
+      setConversationSort(s.conversationSort);
     });
     void window.fleet.chat.hasSearchKey().then(setSearchKeyPresent);
   }, []);
@@ -211,6 +213,11 @@ export function ChatSettingsView(): React.JSX.Element {
     const next = { ...uploads, ...patch };
     setUploads(next);
     await window.fleet.chat.patchSettings({ uploads: next });
+  };
+
+  const saveConversationSort = async (next: 'recent' | 'alphabetical'): Promise<void> => {
+    setConversationSort(next);
+    await window.fleet.chat.patchSettings({ conversationSort: next });
   };
 
   return (
@@ -437,6 +444,27 @@ export function ChatSettingsView(): React.JSX.Element {
             }
             className="w-24 rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
           />
+        </Section>
+      </Group>
+
+      <Group title="Conversations" description="How the sidebar lists and sorts conversations.">
+        <Section title="Default sort">
+          <select
+            value={conversationSort}
+            onChange={(e) =>
+              void saveConversationSort(
+                e.target.value === 'alphabetical' ? 'alphabetical' : 'recent'
+              )
+            }
+            className="rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
+          >
+            <option value="recent">Most recent</option>
+            <option value="alphabetical">Alphabetical</option>
+          </select>
+          <p className="mt-1 text-xs text-fleet-text-muted">
+            Pinned conversations always sort first. Type in the sidebar search to find conversations
+            by message content.
+          </p>
         </Section>
       </Group>
 

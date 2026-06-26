@@ -12,7 +12,7 @@ import type {
 import type { PermissionOutcome, PermissionRequestPayload } from '../../../shared/chat-permissions';
 import type { SkillMenuItem } from '../../../shared/skill-types';
 import type { PromptTemplate } from '../../../shared/prompt-types';
-import type { PersonaPreset, ChatUploadsConfig } from '../../../shared/chat-types';
+import type { PersonaPreset, ChatUploadsConfig, ChatSearchHit } from '../../../shared/chat-types';
 import { DEFAULT_CHAT_UPLOADS } from '../../../shared/chat-types';
 
 type ChatStatus = 'idle' | 'streaming' | 'error';
@@ -38,8 +38,18 @@ type ChatStoreState = {
   personas: PersonaPreset[];
   /** Attachment limits, for composer validation. */
   uploads: ChatUploadsConfig;
+  /** Default sidebar sort order. */
+  conversationSort: 'recent' | 'alphabetical';
+  /** Active full-text search query (empty = not searching). */
+  searchQuery: string;
+  /** Conversation ids matching the active search, or null when not searching. */
+  searchHits: ChatSearchHit[] | null;
 
   init: () => Promise<void>;
+  search: (query: string) => Promise<void>;
+  clearSearch: () => void;
+  setConversationPinned: (id: string, pinned: boolean) => Promise<void>;
+  setConversationFolder: (id: string, folder: string | null) => Promise<void>;
   loadSkillMenu: () => Promise<void>;
   loadPromptTemplates: () => Promise<void>;
   decidePermission: (requestId: string, outcome: PermissionOutcome) => Promise<void>;
@@ -149,6 +159,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     promptTemplates: [],
     personas: [],
     uploads: DEFAULT_CHAT_UPLOADS,
+    conversationSort: 'recent',
+    searchQuery: '',
+    searchHits: null,
 
     init: async () => {
       subscribeToStreamEvents();
@@ -171,8 +184,35 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       set({
         promptTemplates: settings.prompts,
         personas: settings.personas,
-        uploads: settings.uploads
+        uploads: settings.uploads,
+        conversationSort: settings.conversationSort
       });
+    },
+
+    search: async (query) => {
+      set({ searchQuery: query });
+      if (!query.trim()) {
+        set({ searchHits: null });
+        return;
+      }
+      const hits = await window.fleet.chat.search(query);
+      if (get().searchQuery === query) set({ searchHits: hits });
+    },
+
+    clearSearch: () => set({ searchQuery: '', searchHits: null }),
+
+    setConversationPinned: async (id, pinned) => {
+      await window.fleet.chat.setConversationPinned(id, pinned);
+      set((s) => ({
+        conversations: s.conversations.map((c) => (c.id === id ? { ...c, pinned } : c))
+      }));
+    },
+
+    setConversationFolder: async (id, folder) => {
+      await window.fleet.chat.setConversationFolder(id, folder);
+      set((s) => ({
+        conversations: s.conversations.map((c) => (c.id === id ? { ...c, folder } : c))
+      }));
     },
 
     decidePermission: async (requestId, outcome) => {
