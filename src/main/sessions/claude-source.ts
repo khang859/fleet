@@ -191,6 +191,40 @@ export function cwdFromTranscript(content: string): string {
   return '';
 }
 
+/** Build a session summary from raw transcript content, or null if it isn't a real session. */
+function buildClaudeSummary(id: string, content: string, mtimeMs: number): SessionSummary | null {
+  const cwd = cwdFromTranscript(content);
+  if (!cwd) return null;
+  const messages = parseClaudeTranscript(content);
+  if (messages.length === 0) return null;
+  const preview = claudePreview(messages);
+  return {
+    agent: 'claude',
+    id,
+    title: preview || '(untitled)',
+    project: basename(cwd),
+    cwd,
+    updatedAt: mtimeMs,
+    messageCount: messages.length,
+    preview: preview.slice(0, 140),
+    ...claudeCostFields(content)
+  };
+}
+
+type CachedSummary = { mtimeMs: number; size: number; summary: SessionSummary | null };
+
+// Cache the parsed summary per transcript path keyed by (mtime, size). The sessions
+// watcher fires on every transcript append, so a single active agent would otherwise
+// force a full re-read + double-parse of the entire ~/.claude/projects corpus
+// (hundreds of MB) every refresh. With this cache, an unchanged file costs one stat();
+// only files that actually grew are re-read and re-parsed.
+const summaryCache = new Map<string, CachedSummary>();
+
+/** Test-only: reset the module-level summary cache. */
+export function __clearClaudeSummaryCache(): void {
+  summaryCache.clear();
+}
+
 export async function listClaudeSessions(): Promise<SessionSummary[]> {
   const root = claudeProjectsDir();
   let projectDirs: string[];
@@ -200,6 +234,7 @@ export async function listClaudeSessions(): Promise<SessionSummary[]> {
     return [];
   }
   const out: SessionSummary[] = [];
+  const seen = new Set<string>();
   for (const projectDir of projectDirs) {
     const dirPath = join(root, projectDir);
     let files: string[];
@@ -211,30 +246,30 @@ export async function listClaudeSessions(): Promise<SessionSummary[]> {
     for (const file of files) {
       try {
         const full = join(dirPath, file);
+        seen.add(full);
+        const st = await stat(full);
+        const cached = summaryCache.get(full);
+        if (cached !== undefined) {
+          if (cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+            if (cached.summary) out.push(cached.summary);
+            continue;
+          }
+        }
+        // New or changed file: read and parse once, then memoize the result (including
+        // the "not a session" verdict) so unchanged files never get re-read.
         const id = basename(file, '.jsonl');
-        // Read each transcript once, asynchronously; parse without caching so a large
-        // history doesn't accumulate state or block the main thread on every refresh.
-        const [content, st] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
-        const cwd = cwdFromTranscript(content);
-        if (!cwd) continue;
-        const messages = parseClaudeTranscript(content);
-        if (messages.length === 0) continue;
-        const preview = claudePreview(messages);
-        out.push({
-          agent: 'claude',
-          id,
-          title: preview || '(untitled)',
-          project: basename(cwd),
-          cwd,
-          updatedAt: st.mtimeMs,
-          messageCount: messages.length,
-          preview: preview.slice(0, 140),
-          ...claudeCostFields(content)
-        });
+        const content = await readFile(full, 'utf8');
+        const summary = buildClaudeSummary(id, content, st.mtimeMs);
+        summaryCache.set(full, { mtimeMs: st.mtimeMs, size: st.size, summary });
+        if (summary) out.push(summary);
       } catch {
-        // skip malformed file
+        // skip malformed/unreadable file
       }
     }
+  }
+  // Drop cache entries for transcripts that no longer exist.
+  for (const key of summaryCache.keys()) {
+    if (!seen.has(key)) summaryCache.delete(key);
   }
   return out;
 }
