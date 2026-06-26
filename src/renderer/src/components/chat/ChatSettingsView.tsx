@@ -4,6 +4,7 @@ import { ModelPicker } from './ModelPicker';
 import { PermissionRulesEditor } from './PermissionRulesEditor';
 import { McpServersTab } from './McpServersTab';
 import { SkillsTab } from './SkillsTab';
+import { PromptLibraryTab } from './PromptLibraryTab';
 import {
   DEFAULT_PERMISSION_RULES,
   type PermissionRules
@@ -56,7 +57,7 @@ function asToolsMode(v: string): ChatToolsMode {
   return TOOL_MODES.find((m) => m === v) ?? 'read-only';
 }
 
-type ExtensionsTab = 'mcp' | 'skills';
+type ExtensionsTab = 'mcp' | 'skills' | 'prompts';
 
 function ExtensionsCapabilities(): React.JSX.Element {
   const [tab, setTab] = useState<ExtensionsTab>('mcp');
@@ -77,8 +78,17 @@ function ExtensionsCapabilities(): React.JSX.Element {
         >
           Skills
         </button>
+        <button
+          type="button"
+          onClick={() => setTab('prompts')}
+          className={tabClass(tab === 'prompts')}
+        >
+          Prompts
+        </button>
       </div>
-      {tab === 'mcp' ? <McpServersTab /> : <SkillsTab />}
+      {tab === 'mcp' && <McpServersTab />}
+      {tab === 'skills' && <SkillsTab />}
+      {tab === 'prompts' && <PromptLibraryTab />}
     </div>
   );
 }
