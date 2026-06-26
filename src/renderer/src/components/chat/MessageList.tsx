@@ -8,6 +8,7 @@ import {
   RotateCcw,
   X,
   Check,
+  Copy,
   FileCode,
   ArrowDown,
   AlertTriangle,
@@ -79,6 +80,20 @@ function Bubble({
   const activeArtifact = useChatStore((s) => s.activeArtifact);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<number | null>(null);
+  useEffect(() => () => window.clearTimeout(copyTimer.current ?? undefined), []);
+
+  const copy = (): void => {
+    void navigator.clipboard.writeText(content);
+    setCopied(true);
+    window.clearTimeout(copyTimer.current ?? undefined);
+    copyTimer.current = window.setTimeout(() => setCopied(false), 1500);
+  };
+  const sentAt = new Date(message.createdAt).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 
   const artifacts = isUser ? [] : extractArtifacts(content);
 
@@ -167,8 +182,15 @@ function Bubble({
         </div>
       )}
       {!editing && (
-        <div className="mt-1 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="chat-actions mt-1 flex items-center gap-2">
           <VariantPager message={message} />
+          <button
+            aria-label={copied ? 'Copied' : 'Copy message'}
+            onClick={copy}
+            className="rounded p-0.5 text-fleet-text-muted hover:text-fleet-text"
+          >
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+          </button>
           {isUser && (
             <button
               aria-label="Edit message"
@@ -198,6 +220,14 @@ function Bubble({
           >
             <GitBranch size={12} />
           </button>
+          {/* Quiet, non-distracting metadata: send time, plus the model on
+              assistant replies. Revealed with the action bar (hover/focus). */}
+          <span className="text-[11px] text-fleet-text-subtle">{sentAt}</span>
+          {!isUser && (
+            <span className="max-w-[180px] truncate text-[11px] text-fleet-text-subtle">
+              {model}
+            </span>
+          )}
         </div>
       )}
     </div>
