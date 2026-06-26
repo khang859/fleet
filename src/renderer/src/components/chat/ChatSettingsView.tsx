@@ -92,7 +92,8 @@ export function ChatSettingsView(): React.JSX.Element {
           onChange={(m) => void saveImageModel(m)}
         />
         <p className="mt-1 text-xs text-fleet-text-muted">
-          Enables the in-chat image generation tool. None = off.
+          Enables the in-chat image generation tool. None = off. Only offered when the active chat
+          model supports tools.
         </p>
       </Section>
     </div>
