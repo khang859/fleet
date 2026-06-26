@@ -5,7 +5,8 @@ import type {
   ChatModel,
   ChatStreamChunkPayload,
   ChatStreamDonePayload,
-  ChatStreamErrorPayload
+  ChatStreamErrorPayload,
+  ChatToolStatusPayload
 } from '../../../shared/chat-types';
 
 type ChatStatus = 'idle' | 'streaming' | 'error';
@@ -17,9 +18,11 @@ type ChatStoreState = {
   streamingText: string | null;
   streamId: string | null;
   models: ChatModel[];
+  imageModels: ChatModel[];
   keyPresent: boolean;
   status: ChatStatus;
   error: string | null;
+  toolStatus: ChatToolStatusPayload | null;
 
   init: () => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
@@ -27,22 +30,25 @@ type ChatStoreState = {
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
   setConversationModel: (id: string, model: string) => Promise<void>;
-  send: (text: string, model: string) => Promise<void>;
+  send: (text: string, model: string, attachments?: string[]) => Promise<void>;
   cancel: () => void;
   loadModels: () => Promise<void>;
+  loadImageModels: () => Promise<void>;
   refreshKeyPresence: () => Promise<void>;
 };
 
-/** Unsubscribers for the three stream event listeners. Replaced on each init(). */
+/** Unsubscribers for the stream event listeners. Replaced on each init(). */
 let unsubChunk: (() => void) | null = null;
 let unsubDone: (() => void) | null = null;
 let unsubError: (() => void) | null = null;
+let unsubTool: (() => void) | null = null;
 
 export const useChatStore = create<ChatStoreState>((set, get) => {
   function subscribeToStreamEvents(): void {
     unsubChunk?.();
     unsubDone?.();
     unsubError?.();
+    unsubTool?.();
     unsubChunk = window.fleet.chat.onStreamChunk((p: ChatStreamChunkPayload) => {
       if (p.streamId !== get().streamId) return;
       set((s) => ({ streamingText: (s.streamingText ?? '') + p.delta }));
@@ -53,12 +59,23 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         messages: [...s.messages, p.message],
         streamingText: null,
         streamId: null,
-        status: 'idle'
+        status: 'idle',
+        toolStatus: null
       }));
     });
     unsubError = window.fleet.chat.onStreamError((p: ChatStreamErrorPayload) => {
       if (p.streamId !== get().streamId) return;
-      set({ status: 'error', error: p.message, streamingText: null, streamId: null });
+      set({
+        status: 'error',
+        error: p.message,
+        streamingText: null,
+        streamId: null,
+        toolStatus: null
+      });
+    });
+    unsubTool = window.fleet.chat.onToolStatus((p: ChatToolStatusPayload) => {
+      if (p.streamId !== get().streamId) return;
+      set({ toolStatus: p.state === 'done' ? null : p });
     });
   }
 
@@ -69,9 +86,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     streamingText: null,
     streamId: null,
     models: [],
+    imageModels: [],
     keyPresent: false,
     status: 'idle',
     error: null,
+    toolStatus: null,
 
     init: async () => {
       subscribeToStreamEvents();
@@ -89,7 +108,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         streamingText: null,
         streamId: null,
         status: 'idle',
-        error: null
+        error: null,
+        toolStatus: null
       });
       const messages = await window.fleet.chat.getMessages(id);
       if (get().activeId !== id) return; // switched mid-load
@@ -127,16 +147,24 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       }));
     },
 
-    send: async (text, model) => {
+    send: async (text, model, attachments) => {
       const activeId = get().activeId;
       if (!activeId) return;
-      const res = await window.fleet.chat.send({ conversationId: activeId, text, model });
+      const supportsTools = get().models.find((m) => m.id === model)?.supportsTools ?? false;
+      const res = await window.fleet.chat.send({
+        conversationId: activeId,
+        text,
+        model,
+        attachments,
+        supportsTools
+      });
       set((s) => ({
         messages: [...s.messages, res.userMessage],
         streamId: res.streamId,
         streamingText: '',
         status: 'streaming',
-        error: null
+        error: null,
+        toolStatus: null
       }));
     },
 
@@ -150,6 +178,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         status: 'idle',
         streamId: null,
         streamingText: null,
+        toolStatus: null,
         messages:
           partial && activeId
             ? [
@@ -169,6 +198,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     loadModels: async () => {
       const models = await window.fleet.chat.listModels();
       set({ models });
+    },
+
+    loadImageModels: async () => {
+      const imageModels = await window.fleet.chat.listImageModels();
+      set({ imageModels });
     },
 
     refreshKeyPresence: async () => {

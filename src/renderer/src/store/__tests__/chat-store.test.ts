@@ -46,7 +46,12 @@ beforeEach(() => {
       onStreamError: (cb: Listener) => {
         listeners.set(IPC_CHANNELS.CHAT_STREAM_ERROR, cb);
         return () => {};
-      }
+      },
+      onToolStatus: (cb: Listener) => {
+        listeners.set(IPC_CHANNELS.CHAT_TOOL_STATUS, cb);
+        return () => {};
+      },
+      listImageModels: vi.fn().mockResolvedValue([])
     }
   };
   (globalThis as unknown as { window: { fleet: typeof fleet } }).window = { fleet };

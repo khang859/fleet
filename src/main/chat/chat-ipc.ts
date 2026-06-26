@@ -43,6 +43,7 @@ export function registerChatIpc(deps: Deps): void {
   );
   ipcMain.handle(IPC_CHANNELS.CHAT_DELETE_CONVERSATION, (_e, id: string) => {
     store.deleteConversation(id);
+    service.deleteConversationImages(id);
   });
   ipcMain.handle(IPC_CHANNELS.CHAT_GET_MESSAGES, (_e, conversationId: string): ChatMessage[] =>
     store.getMessages(conversationId)
@@ -54,6 +55,10 @@ export function registerChatIpc(deps: Deps): void {
   ipcMain.handle(
     IPC_CHANNELS.CHAT_LIST_MODELS,
     async (): Promise<ChatModel[]> => service.listModels()
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_LIST_IMAGE_MODELS,
+    async (): Promise<ChatModel[]> => service.listImageModels()
   );
 
   ipcMain.handle(IPC_CHANNELS.CHAT_GET_SETTINGS, (): ChatSettings => settingsStore.get().ai.chat);

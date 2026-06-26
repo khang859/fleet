@@ -69,7 +69,16 @@ describe('OpenRouterClient.listModels', () => {
     /* eslint-enable @typescript-eslint/require-await */
     const client = new OpenRouterClient(fakeFetch);
     const models = await client.listModels('sk-test');
-    expect(models).toEqual([{ id: 'a/b', name: 'B', contextLength: 4096 }]);
+    expect(models).toEqual([
+      {
+        id: 'a/b',
+        name: 'B',
+        contextLength: 4096,
+        supportsTools: false,
+        inputImage: false,
+        outputImage: false
+      }
+    ]);
     expect(fakeFetch).toHaveBeenCalledWith(
       'https://openrouter.ai/api/v1/models',
       expect.objectContaining({
@@ -87,4 +96,89 @@ describe('OpenRouterClient.listModels', () => {
     const client = new OpenRouterClient(fakeFetch);
     await expect(client.listModels('bad')).rejects.toThrow();
   });
+});
+
+it('assembles streamed tool_calls and returns finishReason', async () => {
+  const frames = [
+    'data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"generate_image","arguments":""}}]},"finish_reason":null}]}\n',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"prompt\\":\\"a fox"}}]},"finish_reason":null}]}\n',
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"}"}}]},"finish_reason":null}]}\n',
+    'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n',
+    'data: [DONE]\n'
+  ];
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      const enc = new TextEncoder();
+      for (const f of frames) c.enqueue(enc.encode(f));
+      c.close();
+    }
+  });
+  const fakeFetch = (async () =>
+    Promise.resolve(new Response(body, { status: 200 }))) as unknown as typeof fetch;
+  const client = new OpenRouterClient(fakeFetch);
+  const deltas: string[] = [];
+  const result = await client.streamCompletion({
+    apiKey: 'k',
+    model: 'm',
+    messages: [],
+    signal: new AbortController().signal,
+    onDelta: (d) => deltas.push(d),
+    tools: [{ type: 'function' }]
+  });
+  expect(result.finishReason).toBe('tool_calls');
+  expect(result.toolCalls).toEqual([
+    { id: 'call_1', name: 'generate_image', arguments: '{"prompt":"a fox"}' }
+  ]);
+});
+
+it('maps model capability flags from /models', async () => {
+  const json = {
+    data: [
+      {
+        id: 'a/b',
+        name: 'B',
+        context_length: 1000,
+        supported_parameters: ['tools', 'temperature'],
+        architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] }
+      }
+    ]
+  };
+  const fakeFetch = (async () =>
+    Promise.resolve(
+      new Response(JSON.stringify(json), { status: 200 })
+    )) as unknown as typeof fetch;
+  const client = new OpenRouterClient(fakeFetch);
+  const models = await client.listModels('k');
+  expect(models[0]).toMatchObject({ supportsTools: true, inputImage: true, outputImage: false });
+});
+
+it('listImageModels queries output_modalities=image and keeps only image-output models', async () => {
+  const json = {
+    data: [
+      {
+        id: 'img/model',
+        name: 'Imager',
+        context_length: 0,
+        architecture: { input_modalities: ['text'], output_modalities: ['image'] }
+      },
+      {
+        id: 'text/model',
+        name: 'Texter',
+        context_length: 0,
+        architecture: { input_modalities: ['text'], output_modalities: ['text'] }
+      }
+    ]
+  };
+  const fakeFetch = vi.fn(async () =>
+    Promise.resolve(new Response(JSON.stringify(json), { status: 200 }))
+  ) as unknown as typeof fetch;
+  const client = new OpenRouterClient(fakeFetch);
+  const models = await client.listImageModels('sk-img');
+  expect(models.map((m) => m.id)).toEqual(['img/model']);
+  expect(fakeFetch).toHaveBeenCalledWith(
+    'https://openrouter.ai/api/v1/models?output_modalities=image',
+    expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer sk-img' })
+    })
+  );
 });

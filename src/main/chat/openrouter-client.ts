@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ChatModel, ChatCompletionMessage } from '../../shared/chat-types';
+import type { ChatModel } from '../../shared/chat-types';
 
 const BASE = 'https://openrouter.ai/api/v1';
 // App-attribution headers per OpenRouter convention.
@@ -10,28 +10,63 @@ const MODELS_SCHEMA = z.object({
     z.object({
       id: z.string(),
       name: z.string().optional(),
-      context_length: z.number().optional()
+      context_length: z.number().optional(),
+      supported_parameters: z.array(z.string()).optional(),
+      architecture: z
+        .object({
+          input_modalities: z.array(z.string()).optional(),
+          output_modalities: z.array(z.string()).optional()
+        })
+        .optional()
     })
   )
 });
 
-const DELTA_SCHEMA = z.object({
+export type ToolCall = { id: string; name: string; arguments: string };
+export type StreamResult = { content: string; toolCalls: ToolCall[]; finishReason: string | null };
+
+const TOOLCALL_DELTA_SCHEMA = z.object({
   error: z.object({ message: z.string() }).optional(),
   choices: z
-    .array(z.object({ delta: z.object({ content: z.string().nullish() }).optional() }))
+    .array(
+      z.object({
+        delta: z
+          .object({
+            content: z.string().nullish(),
+            tool_calls: z
+              .array(
+                z.object({
+                  index: z.number(),
+                  id: z.string().optional(),
+                  function: z
+                    .object({ name: z.string().optional(), arguments: z.string().optional() })
+                    .optional()
+                })
+              )
+              .optional()
+          })
+          .optional(),
+        finish_reason: z.string().nullish()
+      })
+    )
     .optional()
 });
 
 /**
  * Parse an OpenRouter SSE stream. Calls onDelta for each content fragment.
- * Resolves when the [DONE] sentinel arrives. Throws if the body carries a
- * top-level `error` (OpenRouter delivers mid-stream errors with HTTP 200).
+ * Assembles tool_calls by index. Resolves with content, toolCalls, and finishReason
+ * when the [DONE] sentinel arrives or the stream ends.
+ * Throws if the body carries a top-level `error` (OpenRouter delivers mid-stream errors with HTTP 200).
  */
 export async function consumeSSE(
   chunks: AsyncIterable<string>,
   onDelta: (delta: string) => void
-): Promise<void> {
+): Promise<StreamResult> {
   let buffer = '';
+  let content = '';
+  let finishReason: string | null = null;
+  const calls: Array<{ id: string; name: string; args: string }> = [];
+
   for await (const chunk of chunks) {
     buffer += chunk;
     let nl: number;
@@ -41,26 +76,48 @@ export async function consumeSSE(
       if (line === '' || line.startsWith(':')) continue; // blank or keep-alive comment
       if (!line.startsWith('data: ')) continue;
       const data = line.slice(6);
-      if (data === '[DONE]') return;
-      let parsed: z.infer<typeof DELTA_SCHEMA>;
+      if (data === '[DONE]') {
+        return { content, toolCalls: toToolCalls(calls), finishReason };
+      }
+      let parsed: z.infer<typeof TOOLCALL_DELTA_SCHEMA>;
       try {
-        parsed = DELTA_SCHEMA.parse(JSON.parse(data));
+        parsed = TOOLCALL_DELTA_SCHEMA.parse(JSON.parse(data));
       } catch {
         continue; // tolerate non-JSON / unexpected shapes
       }
       if (parsed.error) throw new Error(parsed.error.message);
-      const content = parsed.choices?.[0]?.delta?.content;
-      if (content) onDelta(content);
+      const choice = parsed.choices?.[0];
+      const delta = choice?.delta;
+      if (delta?.content) {
+        content += delta.content;
+        onDelta(delta.content);
+      }
+      if (delta?.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          const slot = (calls[tc.index] ??= { id: '', name: '', args: '' });
+          if (tc.id) slot.id = tc.id;
+          if (tc.function?.name) slot.name = tc.function.name;
+          if (tc.function?.arguments) slot.args += tc.function.arguments;
+        }
+      }
+      if (choice?.finish_reason) finishReason = choice.finish_reason;
     }
   }
+  return { content, toolCalls: toToolCalls(calls), finishReason };
+}
+
+function toToolCalls(calls: Array<{ id: string; name: string; args: string }>): ToolCall[] {
+  return calls.filter((c) => c.name).map((c) => ({ id: c.id, name: c.name, arguments: c.args }));
 }
 
 export type StreamOpts = {
   apiKey: string;
   model: string;
-  messages: ChatCompletionMessage[];
+  messages: unknown[];
   signal: AbortSignal;
   onDelta: (delta: string) => void;
+  tools?: unknown[];
+  toolChoice?: 'auto' | 'none';
 };
 
 export class OpenRouterClient {
@@ -70,21 +127,45 @@ export class OpenRouterClient {
     this.fetchImpl = fetchImpl;
   }
 
+  private mapModels(json: z.infer<typeof MODELS_SCHEMA>): ChatModel[] {
+    return json.data.map((m) => ({
+      id: m.id,
+      name: m.name ?? m.id,
+      contextLength: m.context_length ?? 0,
+      supportsTools: m.supported_parameters?.includes('tools') ?? false,
+      inputImage: m.architecture?.input_modalities?.includes('image') ?? false,
+      outputImage: m.architecture?.output_modalities?.includes('image') ?? false
+    }));
+  }
+
   async listModels(apiKey: string): Promise<ChatModel[]> {
     const res = await this.fetchImpl(`${BASE}/models`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${apiKey}`, ...APP_HEADERS }
     });
     if (!res.ok) throw new Error(`OpenRouter /models failed: ${res.status}`);
-    const json = MODELS_SCHEMA.parse(await res.json());
-    return json.data.map((m) => ({
-      id: m.id,
-      name: m.name ?? m.id,
-      contextLength: m.context_length ?? 0
-    }));
+    return this.mapModels(MODELS_SCHEMA.parse(await res.json()));
   }
 
-  async streamCompletion(opts: StreamOpts): Promise<void> {
+  async listImageModels(apiKey: string): Promise<ChatModel[]> {
+    const res = await this.fetchImpl(`${BASE}/models?output_modalities=image`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}`, ...APP_HEADERS }
+    });
+    if (!res.ok) throw new Error(`OpenRouter image /models failed: ${res.status}`);
+    return this.mapModels(MODELS_SCHEMA.parse(await res.json())).filter((m) => m.outputImage);
+  }
+
+  async streamCompletion(opts: StreamOpts): Promise<StreamResult> {
+    const body: Record<string, unknown> = {
+      model: opts.model,
+      messages: opts.messages,
+      stream: true
+    };
+    if (opts.tools && opts.tools.length) {
+      body.tools = opts.tools;
+      body.tool_choice = opts.toolChoice ?? 'auto';
+    }
     const res = await this.fetchImpl(`${BASE}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -92,7 +173,7 @@ export class OpenRouterClient {
         'Content-Type': 'application/json',
         ...APP_HEADERS
       },
-      body: JSON.stringify({ model: opts.model, messages: opts.messages, stream: true }),
+      body: JSON.stringify(body),
       signal: opts.signal
     });
     if (!res.ok || !res.body) {
@@ -112,6 +193,6 @@ export class OpenRouterClient {
         reader.cancel().catch(() => {});
       }
     }
-    await consumeSSE(iterate(), opts.onDelta);
+    return consumeSSE(iterate(), opts.onDelta);
   }
 }

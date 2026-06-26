@@ -150,7 +150,8 @@ import type {
   ChatSendResponse,
   ChatStreamChunkPayload,
   ChatStreamDonePayload,
-  ChatStreamErrorPayload
+  ChatStreamErrorPayload,
+  ChatToolStatusPayload
 } from '../shared/chat-types';
 import type {
   Learning,
@@ -842,6 +843,8 @@ const fleetApi = {
     cancel: async (streamId: string): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_CANCEL, streamId),
     listModels: async (): Promise<ChatModel[]> => typedInvoke(IPC_CHANNELS.CHAT_LIST_MODELS),
+    listImageModels: async (): Promise<ChatModel[]> =>
+      typedInvoke(IPC_CHANNELS.CHAT_LIST_IMAGE_MODELS),
     getSettings: async (): Promise<ChatSettings> => typedInvoke(IPC_CHANNELS.CHAT_GET_SETTINGS),
     patchSettings: async (patch: Partial<ChatSettings>): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_PATCH_SETTINGS, patch),
@@ -852,7 +855,9 @@ const fleetApi = {
     onStreamDone: (cb: (p: ChatStreamDonePayload) => void): Unsubscribe =>
       onChannel<ChatStreamDonePayload>(IPC_CHANNELS.CHAT_STREAM_DONE, cb),
     onStreamError: (cb: (p: ChatStreamErrorPayload) => void): Unsubscribe =>
-      onChannel<ChatStreamErrorPayload>(IPC_CHANNELS.CHAT_STREAM_ERROR, cb)
+      onChannel<ChatStreamErrorPayload>(IPC_CHANNELS.CHAT_STREAM_ERROR, cb),
+    onToolStatus: (cb: (p: ChatToolStatusPayload) => void): Unsubscribe =>
+      onChannel<ChatToolStatusPayload>(IPC_CHANNELS.CHAT_TOOL_STATUS, cb)
   }
 };
 

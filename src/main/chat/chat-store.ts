@@ -1,7 +1,12 @@
 import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
-import type { ChatConversation, ChatMessage, ChatRole } from '../../shared/chat-types';
+import type {
+  ChatConversation,
+  ChatImageRef,
+  ChatMessage,
+  ChatRole
+} from '../../shared/chat-types';
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS conversations (
@@ -19,6 +24,18 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
+CREATE TABLE IF NOT EXISTS message_images (
+  id              TEXT PRIMARY KEY,
+  message_id      TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  ref             TEXT NOT NULL,
+  mime_type       TEXT NOT NULL,
+  position        INTEGER NOT NULL,
+  kind            TEXT NOT NULL,
+  created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_message_images_conversation
+  ON message_images(conversation_id, message_id, position);
 `;
 
 const ConversationRowSchema = z.object({
@@ -34,6 +51,17 @@ const MessageRowSchema = z.object({
   conversation_id: z.string(),
   role: z.enum(['user', 'assistant', 'system']),
   content: z.string(),
+  created_at: z.number()
+});
+
+const MessageImageRowSchema = z.object({
+  id: z.string(),
+  message_id: z.string(),
+  conversation_id: z.string(),
+  ref: z.string(),
+  mime_type: z.string(),
+  position: z.number(),
+  kind: z.enum(['generated', 'attachment']),
   created_at: z.number()
 });
 
@@ -134,11 +162,53 @@ export class ChatStore {
     return toMessage(row);
   }
 
+  addImages(input: { messageId: string; conversationId: string; images: ChatImageRef[] }): void {
+    if (!input.images.length) return;
+    const now = Date.now();
+    const stmt = this.db.prepare(
+      `INSERT INTO message_images
+         (id, message_id, conversation_id, ref, mime_type, position, kind, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    const insertAll = this.db.transaction((images: ChatImageRef[]) => {
+      images.forEach((img, i) => {
+        stmt.run(
+          randomUUID(),
+          input.messageId,
+          input.conversationId,
+          img.ref,
+          img.mimeType,
+          i,
+          img.kind,
+          now
+        );
+      });
+    });
+    insertAll(input.images);
+  }
+
   getMessages(conversationId: string): ChatMessage[] {
     const rows = this.db
       .prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC')
       .all(conversationId);
-    return z.array(MessageRowSchema).parse(rows).map(toMessage);
+    const messages = z.array(MessageRowSchema).parse(rows).map(toMessage);
+
+    const imgRows = this.db
+      .prepare(
+        'SELECT * FROM message_images WHERE conversation_id = ? ORDER BY message_id, position'
+      )
+      .all(conversationId);
+    const byMessage = new Map<string, ChatImageRef[]>();
+    for (const r of z.array(MessageImageRowSchema).parse(imgRows)) {
+      const list = byMessage.get(r.message_id) ?? [];
+      list.push({ ref: r.ref, mimeType: r.mime_type, kind: r.kind });
+      byMessage.set(r.message_id, list);
+    }
+    for (const m of messages) {
+      const imgs = byMessage.get(m.id);
+      if (imgs?.length) m.images = imgs;
+    }
+    return messages;
   }
 
   close(): void {
