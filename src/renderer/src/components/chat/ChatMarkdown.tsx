@@ -22,6 +22,11 @@ export function ChatMarkdown({ children, streaming = false }: Props): React.JSX.
   return (
     <Streamdown
       mode={streaming ? 'streaming' : 'static'}
+      // Blinking block caret at the live stream tip (CSS blink + reduced-motion
+      // gate live in index.css). Only active while streaming, so it vanishes the
+      // moment the turn finalizes into a static Bubble.
+      isAnimating={streaming}
+      caret="block"
       plugins={plugins}
       // Dual Atom-One themes (light/dark) — close to the app's prior atom-one-dark
       // highlighting. The code plugin highlights with both and switches via the
