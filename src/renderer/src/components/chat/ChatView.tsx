@@ -3,6 +3,8 @@ import { useChatStore } from '../../store/chat-store';
 import { ConversationList } from './ConversationList';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
+import { UsageMeter } from './UsageMeter';
+import { DEFAULT_CHAT_USAGE, type ChatUsageConfig } from '../../../../shared/chat-types';
 
 type Props = { onOpenSettings: () => void };
 
@@ -11,10 +13,14 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
   const keyPresent = useChatStore((s) => s.keyPresent);
   const activeId = useChatStore((s) => s.activeId);
   const [defaultModel, setDefaultModel] = useState('deepseek/deepseek-v4-flash');
+  const [usage, setUsage] = useState<ChatUsageConfig>(DEFAULT_CHAT_USAGE);
 
   useEffect(() => {
     void init();
-    void window.fleet.chat.getSettings().then((s) => setDefaultModel(s.defaultModel));
+    void window.fleet.chat.getSettings().then((s) => {
+      setDefaultModel(s.defaultModel);
+      setUsage(s.usage);
+    });
   }, [init]);
 
   return (
@@ -34,7 +40,8 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
         )}
         {activeId ? (
           <>
-            <MessageList defaultModel={defaultModel} />
+            <MessageList defaultModel={defaultModel} showUsage={usage.showMeter} />
+            {usage.showMeter && <UsageMeter budgetWarnUsd={usage.budgetWarnUsd} />}
             <Composer defaultModel={defaultModel} />
           </>
         ) : (

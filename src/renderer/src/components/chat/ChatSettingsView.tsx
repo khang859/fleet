@@ -10,8 +10,10 @@ import {
 } from '../../../../shared/chat-permissions';
 import {
   DEFAULT_CHAT_TOOLS,
+  DEFAULT_CHAT_USAGE,
   type ChatToolsConfig,
-  type ChatToolsMode
+  type ChatToolsMode,
+  type ChatUsageConfig
 } from '../../../../shared/chat-types';
 
 /** A top-level settings group with a heading and an optional description. */
@@ -95,6 +97,7 @@ export function ChatSettingsView(): React.JSX.Element {
   );
   const [permissions, setPermissions] = useState<PermissionRules>(DEFAULT_PERMISSION_RULES);
   const [tools, setTools] = useState<ChatToolsConfig>(DEFAULT_CHAT_TOOLS);
+  const [usage, setUsage] = useState<ChatUsageConfig>(DEFAULT_CHAT_USAGE);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -106,6 +109,7 @@ export function ChatSettingsView(): React.JSX.Element {
       setNamingTiming(s.namingTiming);
       setPermissions(s.permissions);
       setTools(s.tools);
+      setUsage(s.usage);
     });
   }, []);
 
@@ -153,6 +157,12 @@ export function ChatSettingsView(): React.JSX.Element {
     const next = { ...tools, ...patch };
     setTools(next);
     await window.fleet.chat.patchSettings({ tools: next });
+  };
+
+  const saveUsage = async (patch: Partial<ChatUsageConfig>): Promise<void> => {
+    const next = { ...usage, ...patch };
+    setUsage(next);
+    await window.fleet.chat.patchSettings({ usage: next });
   };
 
   return (
@@ -313,6 +323,57 @@ export function ChatSettingsView(): React.JSX.Element {
             rules={permissions}
             onChange={(next) => void savePermissions(next)}
           />
+        </Section>
+      </Group>
+
+      <Group
+        title="Usage & Cost"
+        description="Surface token counts and spend; cache the stable prompt prefix to cut input cost."
+      >
+        <Section title="Cost meter">
+          <label className="flex items-center gap-2 text-sm text-fleet-text">
+            <input
+              type="checkbox"
+              checked={usage.showMeter}
+              onChange={(e) => void saveUsage({ showMeter: e.target.checked })}
+            />
+            Show per-message usage and a per-conversation total
+          </label>
+        </Section>
+        <Section title="Prompt caching">
+          <label className="flex items-center gap-2 text-sm text-fleet-text">
+            <input
+              type="checkbox"
+              checked={usage.promptCaching}
+              onChange={(e) => void saveUsage({ promptCaching: e.target.checked })}
+            />
+            Cache the system prompt + tool definitions (cache hits ≈ 10% of input price)
+          </label>
+          <p className="mt-1 text-xs text-fleet-text-muted">
+            Applies where the provider supports it (e.g. Anthropic, Gemini). Cache hits appear in
+            the displayed token counts.
+          </p>
+        </Section>
+        <Section title="Budget warning">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-fleet-text-muted">$</span>
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={usage.budgetWarnUsd ?? ''}
+              placeholder="off"
+              onChange={(e) => {
+                const v = e.target.value.trim();
+                void saveUsage({ budgetWarnUsd: v === '' ? null : Math.max(0, Number(v) || 0) });
+              }}
+              className="w-28 rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
+            />
+            <span className="text-xs text-fleet-text-muted">per conversation</span>
+          </div>
+          <p className="mt-1 text-xs text-fleet-text-muted">
+            The meter turns amber once a conversation&apos;s cost passes this. Empty = no warning.
+          </p>
         </Section>
       </Group>
 

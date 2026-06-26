@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ChatModel } from '../../shared/chat-types';
+import type { ChatModel, ChatMessageUsage } from '../../shared/chat-types';
 
 const BASE = 'https://openrouter.ai/api/v1';
 // App-attribution headers per OpenRouter convention.
@@ -23,7 +23,30 @@ const MODELS_SCHEMA = z.object({
 });
 
 export type ToolCall = { id: string; name: string; arguments: string };
-export type StreamResult = { content: string; toolCalls: ToolCall[]; finishReason: string | null };
+export type StreamResult = {
+  content: string;
+  toolCalls: ToolCall[];
+  finishReason: string | null;
+  /** Accounting from the final SSE chunk (OpenRouter `usage: {include:true}`); null/absent otherwise. */
+  usage?: ChatMessageUsage | null;
+};
+
+/** OpenRouter usage block, present on the terminal SSE chunk when accounting is enabled. */
+const USAGE_SCHEMA = z.object({
+  prompt_tokens: z.number().optional(),
+  completion_tokens: z.number().optional(),
+  cost: z.number().optional(),
+  prompt_tokens_details: z.object({ cached_tokens: z.number().optional() }).nullish()
+});
+
+function toUsage(u: z.infer<typeof USAGE_SCHEMA>): ChatMessageUsage {
+  return {
+    promptTokens: u.prompt_tokens ?? 0,
+    completionTokens: u.completion_tokens ?? 0,
+    cachedTokens: u.prompt_tokens_details?.cached_tokens ?? 0,
+    cost: u.cost ?? null
+  };
+}
 
 const COMPLETION_SCHEMA = z.object({
   error: z.object({ message: z.string() }).optional(),
@@ -56,7 +79,8 @@ const TOOLCALL_DELTA_SCHEMA = z.object({
         finish_reason: z.string().nullish()
       })
     )
-    .optional()
+    .optional(),
+  usage: USAGE_SCHEMA.nullish()
 });
 
 /**
@@ -72,6 +96,7 @@ export async function consumeSSE(
   let buffer = '';
   let content = '';
   let finishReason: string | null = null;
+  let usage: ChatMessageUsage | null = null;
   const calls: Array<{ id: string; name: string; args: string }> = [];
 
   for await (const chunk of chunks) {
@@ -84,7 +109,7 @@ export async function consumeSSE(
       if (!line.startsWith('data: ')) continue;
       const data = line.slice(6);
       if (data === '[DONE]') {
-        return { content, toolCalls: toToolCalls(calls), finishReason };
+        return { content, toolCalls: toToolCalls(calls), finishReason, usage };
       }
       let parsed: z.infer<typeof TOOLCALL_DELTA_SCHEMA>;
       try {
@@ -93,6 +118,7 @@ export async function consumeSSE(
         continue; // tolerate non-JSON / unexpected shapes
       }
       if (parsed.error) throw new Error(parsed.error.message);
+      if (parsed.usage) usage = toUsage(parsed.usage);
       const choice = parsed.choices?.[0];
       const delta = choice?.delta;
       if (delta?.content) {
@@ -110,7 +136,7 @@ export async function consumeSSE(
       if (choice?.finish_reason) finishReason = choice.finish_reason;
     }
   }
-  return { content, toolCalls: toToolCalls(calls), finishReason };
+  return { content, toolCalls: toToolCalls(calls), finishReason, usage };
 }
 
 function toToolCalls(calls: Array<{ id: string; name: string; args: string }>): ToolCall[] {
@@ -207,7 +233,9 @@ export class OpenRouterClient {
     const body: Record<string, unknown> = {
       model: opts.model,
       messages: opts.messages,
-      stream: true
+      stream: true,
+      // Ask OpenRouter to include token counts + cost in the terminal SSE chunk.
+      usage: { include: true }
     };
     if (opts.tools?.length) {
       body.tools = opts.tools;
