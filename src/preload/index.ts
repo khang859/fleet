@@ -158,6 +158,7 @@ import type {
   ChatConversationRenamedPayload,
   ChatAuditEntry
 } from '../shared/chat-types';
+import type { ChatExportFormat, ChatExportResult } from '../shared/chat-export';
 import type { PermissionRequestPayload, PermissionOutcome } from '../shared/chat-permissions';
 import type { McpServersConfig, McpServerStatus } from '../shared/mcp-types';
 import type { SkillState, SkillsView } from '../shared/skill-types';
@@ -858,6 +859,8 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CHAT_FORK_CONVERSATION, messageId),
     mentionSearch: async (query: string): Promise<ChatMentionItem[]> =>
       typedInvoke(IPC_CHANNELS.CHAT_MENTION_SEARCH, query),
+    export: async (conversationId: string, format: ChatExportFormat): Promise<ChatExportResult> =>
+      typedInvoke(IPC_CHANNELS.CHAT_EXPORT, conversationId, format),
     cancel: async (streamId: string): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_CANCEL, streamId),
     listModels: async (): Promise<ChatModel[]> => typedInvoke(IPC_CHANNELS.CHAT_LIST_MODELS),

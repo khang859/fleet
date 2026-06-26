@@ -1,4 +1,4 @@
-import { Plus, Trash2, GitBranch } from 'lucide-react';
+import { Plus, Trash2, GitBranch, Download } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 
 export function ConversationList(): React.JSX.Element {
@@ -7,6 +7,7 @@ export function ConversationList(): React.JSX.Element {
   const select = useChatStore((s) => s.selectConversation);
   const create = useChatStore((s) => s.newConversation);
   const remove = useChatStore((s) => s.deleteConversation);
+  const exportConversation = useChatStore((s) => s.exportConversation);
 
   return (
     <div className="flex h-full w-56 flex-col border-r border-fleet-border bg-fleet-surface">
@@ -44,16 +45,27 @@ export function ConversationList(): React.JSX.Element {
               )}
               <span className="truncate">{c.title}</span>
             </span>
-            <button
-              aria-label="Delete conversation"
-              onClick={(e) => {
-                e.stopPropagation();
-                void remove(c.id);
-              }}
-              className="opacity-0 group-hover:opacity-100"
-            >
-              <Trash2 size={13} className="text-fleet-text-muted hover:text-fleet-text" />
-            </button>
+            <span className="flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100">
+              <button
+                aria-label="Export conversation"
+                title="Export conversation"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void exportConversation(c.id);
+                }}
+              >
+                <Download size={13} className="text-fleet-text-muted hover:text-fleet-text" />
+              </button>
+              <button
+                aria-label="Delete conversation"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void remove(c.id);
+                }}
+              >
+                <Trash2 size={13} className="text-fleet-text-muted hover:text-fleet-text" />
+              </button>
+            </span>
           </div>
         ))}
       </div>

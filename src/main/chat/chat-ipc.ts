@@ -12,6 +12,11 @@ import type {
   ChatMentionItem
 } from '../../shared/chat-types';
 import { searchWorkspacePaths, defaultWorkspace } from './tools/fs-tools';
+import {
+  exportConversation,
+  type ChatExportFormat,
+  type ChatExportResult
+} from '../../shared/chat-export';
 import type { ChatStore } from './chat-store';
 import type { ChatSecrets } from './chat-secrets';
 import type { ChatService } from './chat-service';
@@ -79,6 +84,14 @@ export function registerChatIpc(deps: Deps): void {
   ipcMain.handle(
     IPC_CHANNELS.CHAT_FORK_CONVERSATION,
     (_e, messageId: string): ChatConversation | null => store.forkConversation(messageId)
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_EXPORT,
+    (_e, conversationId: string, format: ChatExportFormat): ChatExportResult => {
+      const conv = store.getConversation(conversationId);
+      const messages = store.getMessages(conversationId);
+      return exportConversation(conv?.title ?? 'Conversation', messages, format);
+    }
   );
   ipcMain.handle(IPC_CHANNELS.CHAT_MENTION_SEARCH, (_e, query: string): ChatMentionItem[] => {
     const cwd = defaultWorkspace(settingsStore.get().ai.chat.tools.workspaceDir);

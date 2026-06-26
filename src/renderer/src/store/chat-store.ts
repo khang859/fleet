@@ -52,6 +52,7 @@ type ChatStoreState = {
   editMessage: (messageId: string, text: string, model: string) => Promise<void>;
   selectVariant: (messageId: string) => Promise<void>;
   forkConversation: (messageId: string) => Promise<void>;
+  exportConversation: (id: string) => Promise<void>;
   cancel: () => void;
   loadModels: () => Promise<void>;
   loadImageModels: () => Promise<void>;
@@ -287,6 +288,17 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       if (!branch) return;
       set((s) => ({ conversations: [branch, ...s.conversations] }));
       await get().selectConversation(branch.id);
+    },
+
+    exportConversation: async (id) => {
+      const settings = await window.fleet.chat.getSettings();
+      const res = await window.fleet.chat.export(id, settings.exportFormat);
+      const url = URL.createObjectURL(new Blob([res.content], { type: res.mime }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.filename;
+      a.click();
+      URL.revokeObjectURL(url);
     },
 
     cancel: () => {

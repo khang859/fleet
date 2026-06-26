@@ -88,6 +88,8 @@ export type ChatSettings = {
   skills: SkillsOverlay;
   /** Saved `/`-invokable prompt templates. See prompt-types.ts. */
   prompts: PromptTemplate[];
+  /** Default format for the per-conversation export action. */
+  exportFormat: 'markdown' | 'json';
 };
 
 /** Posture for the bash/filesystem tools. */
@@ -181,7 +183,8 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   usage: DEFAULT_CHAT_USAGE,
   mcpServers: {},
   skills: {},
-  prompts: []
+  prompts: [],
+  exportFormat: 'markdown'
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
