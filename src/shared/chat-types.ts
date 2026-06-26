@@ -101,6 +101,21 @@ export type ChatSettings = {
   defaultPersonaId: string | null;
   /** Web-search tool posture. */
   webSearch: ChatWebSearchConfig;
+  /** Attachment upload limits. */
+  uploads: ChatUploadsConfig;
+};
+
+/** Composer attachment limits. */
+export type ChatUploadsConfig = {
+  /** Max size per attached file, in MB. */
+  maxMb: number;
+  /** Allow attaching PDFs (in addition to images). */
+  pdf: boolean;
+};
+
+export const DEFAULT_CHAT_UPLOADS: ChatUploadsConfig = {
+  maxMb: 10,
+  pdf: true
 };
 
 /** Web-search tool configuration. The API key is stored separately (encrypted). */
@@ -212,7 +227,8 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   exportFormat: 'markdown',
   personas: [],
   defaultPersonaId: null,
-  webSearch: DEFAULT_CHAT_WEB_SEARCH
+  webSearch: DEFAULT_CHAT_WEB_SEARCH,
+  uploads: DEFAULT_CHAT_UPLOADS
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
@@ -228,6 +244,8 @@ export type ChatSendRequest = {
   model: string;
   attachments?: string[];
   supportsTools?: boolean;
+  /** The model accepts image/document input — send attachments as content parts. */
+  supportsImages?: boolean;
   /** Workspace-relative paths `@`-mentioned in the composer to pin into context. */
   contextPaths?: string[];
 };
@@ -241,6 +259,7 @@ export type ChatRegenerateRequest = {
   messageId: string;
   model: string;
   supportsTools?: boolean;
+  supportsImages?: boolean;
 };
 export type ChatEditRequest = {
   conversationId: string;
@@ -248,6 +267,7 @@ export type ChatEditRequest = {
   text: string;
   model: string;
   supportsTools?: boolean;
+  supportsImages?: boolean;
 };
 
 export type ChatStreamChunkPayload = { streamId: string; delta: string };

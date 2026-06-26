@@ -14,10 +14,12 @@ import {
   DEFAULT_CHAT_TOOLS,
   DEFAULT_CHAT_USAGE,
   DEFAULT_CHAT_WEB_SEARCH,
+  DEFAULT_CHAT_UPLOADS,
   type ChatToolsConfig,
   type ChatToolsMode,
   type ChatUsageConfig,
-  type ChatWebSearchConfig
+  type ChatWebSearchConfig,
+  type ChatUploadsConfig
 } from '../../../../shared/chat-types';
 
 /** A top-level settings group with a heading and an optional description. */
@@ -113,6 +115,7 @@ export function ChatSettingsView(): React.JSX.Element {
   const [usage, setUsage] = useState<ChatUsageConfig>(DEFAULT_CHAT_USAGE);
   const [exportFormat, setExportFormat] = useState<'markdown' | 'json'>('markdown');
   const [webSearch, setWebSearch] = useState<ChatWebSearchConfig>(DEFAULT_CHAT_WEB_SEARCH);
+  const [uploads, setUploads] = useState<ChatUploadsConfig>(DEFAULT_CHAT_UPLOADS);
   const [searchKeyPresent, setSearchKeyPresent] = useState(false);
   const [searchKeyInput, setSearchKeyInput] = useState('');
   const [saved, setSaved] = useState(false);
@@ -129,6 +132,7 @@ export function ChatSettingsView(): React.JSX.Element {
       setUsage(s.usage);
       setExportFormat(s.exportFormat);
       setWebSearch(s.webSearch);
+      setUploads(s.uploads);
     });
     void window.fleet.chat.hasSearchKey().then(setSearchKeyPresent);
   }, []);
@@ -201,6 +205,12 @@ export function ChatSettingsView(): React.JSX.Element {
     await window.fleet.chat.setSearchKey(searchKeyInput.trim());
     setSearchKeyInput('');
     setSearchKeyPresent(true);
+  };
+
+  const saveUploads = async (patch: Partial<ChatUploadsConfig>): Promise<void> => {
+    const next = { ...uploads, ...patch };
+    setUploads(next);
+    await window.fleet.chat.patchSettings({ uploads: next });
   };
 
   return (
@@ -427,6 +437,37 @@ export function ChatSettingsView(): React.JSX.Element {
             }
             className="w-24 rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
           />
+        </Section>
+      </Group>
+
+      <Group
+        title="Attachments"
+        description="Attach images and PDFs in the composer. Sent to vision-capable models as context."
+      >
+        <Section title="Allowed types">
+          <label className="flex items-center gap-2 text-sm text-fleet-text">
+            <input
+              type="checkbox"
+              checked={uploads.pdf}
+              onChange={(e) => void saveUploads({ pdf: e.target.checked })}
+            />
+            Allow PDF uploads (images are always allowed)
+          </label>
+        </Section>
+        <Section title="Max file size">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={uploads.maxMb}
+              onChange={(e) =>
+                void saveUploads({ maxMb: Math.min(50, Math.max(1, Number(e.target.value) || 1)) })
+              }
+              className="w-24 rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
+            />
+            <span className="text-xs text-fleet-text-muted">MB per file</span>
+          </div>
         </Section>
       </Group>
 

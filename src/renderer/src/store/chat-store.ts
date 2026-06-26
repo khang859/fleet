@@ -12,7 +12,8 @@ import type {
 import type { PermissionOutcome, PermissionRequestPayload } from '../../../shared/chat-permissions';
 import type { SkillMenuItem } from '../../../shared/skill-types';
 import type { PromptTemplate } from '../../../shared/prompt-types';
-import type { PersonaPreset } from '../../../shared/chat-types';
+import type { PersonaPreset, ChatUploadsConfig } from '../../../shared/chat-types';
+import { DEFAULT_CHAT_UPLOADS } from '../../../shared/chat-types';
 
 type ChatStatus = 'idle' | 'streaming' | 'error';
 
@@ -35,6 +36,8 @@ type ChatStoreState = {
   promptTemplates: PromptTemplate[];
   /** Named system-prompt personas, for the composer's persona selector. */
   personas: PersonaPreset[];
+  /** Attachment limits, for composer validation. */
+  uploads: ChatUploadsConfig;
 
   init: () => Promise<void>;
   loadSkillMenu: () => Promise<void>;
@@ -145,6 +148,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     skillMenu: [],
     promptTemplates: [],
     personas: [],
+    uploads: DEFAULT_CHAT_UPLOADS,
 
     init: async () => {
       subscribeToStreamEvents();
@@ -164,7 +168,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
 
     loadPromptTemplates: async () => {
       const settings = await window.fleet.chat.getSettings();
-      set({ promptTemplates: settings.prompts, personas: settings.personas });
+      set({
+        promptTemplates: settings.prompts,
+        personas: settings.personas,
+        uploads: settings.uploads
+      });
     },
 
     decidePermission: async (requestId, outcome) => {
@@ -234,14 +242,15 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     send: async (text, model, attachments, contextPaths) => {
       const activeId = get().activeId;
       if (!activeId) return;
-      const supportsTools = get().models.find((m) => m.id === model)?.supportsTools ?? false;
+      const m = get().models.find((x) => x.id === model);
       const res = await window.fleet.chat.send({
         conversationId: activeId,
         text,
         model,
         attachments,
         contextPaths,
-        supportsTools
+        supportsTools: m?.supportsTools ?? false,
+        supportsImages: m?.inputImage ?? false
       });
       set((s) => ({
         messages: [...s.messages, res.userMessage],
@@ -256,12 +265,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     regenerate: async (messageId, model) => {
       const activeId = get().activeId;
       if (!activeId || get().status === 'streaming') return;
-      const supportsTools = get().models.find((m) => m.id === model)?.supportsTools ?? false;
+      const m = get().models.find((x) => x.id === model);
       const res = await window.fleet.chat.regenerate({
         conversationId: activeId,
         messageId,
         model,
-        supportsTools
+        supportsTools: m?.supportsTools ?? false,
+        supportsImages: m?.inputImage ?? false
       });
       set({ streamId: res.streamId, streamingText: '', status: 'streaming', error: null });
     },
@@ -269,13 +279,14 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     editMessage: async (messageId, text, model) => {
       const activeId = get().activeId;
       if (!activeId || get().status === 'streaming') return;
-      const supportsTools = get().models.find((m) => m.id === model)?.supportsTools ?? false;
+      const m = get().models.find((x) => x.id === model);
       const res = await window.fleet.chat.editMessage({
         conversationId: activeId,
         messageId,
         text,
         model,
-        supportsTools
+        supportsTools: m?.supportsTools ?? false,
+        supportsImages: m?.inputImage ?? false
       });
       // Show the new user branch immediately, then stream the reply.
       const messages = await window.fleet.chat.getMessages(activeId);

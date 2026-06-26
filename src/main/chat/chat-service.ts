@@ -5,6 +5,7 @@ import type {
   ChatSendResponse,
   ChatModel,
   ChatImageRef,
+  ChatMessage,
   ChatMessageUsage,
   ChatStreamChunkPayload,
   ChatStreamDonePayload,
@@ -72,6 +73,11 @@ function parseDataUrl(url: string): { data: Buffer; mimeType: string } | null {
   const m = /^data:([^;]+);base64,(.+)$/.exec(url);
   if (!m) return null;
   return { mimeType: m[1], data: Buffer.from(m[2], 'base64') };
+}
+
+/** Is this multimodal content part an OpenRouter file (PDF) attachment? */
+function isFilePart(part: unknown): boolean {
+  return typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'file';
 }
 
 /** Sum per-round usage into a running total for the whole assistant turn. */
@@ -151,12 +157,36 @@ export class ChatService {
       assistantParentId: userMessage.id,
       model: req.model || this.deps.getDefaultModel(),
       supportsTools: !!req.supportsTools,
+      supportsImages: !!req.supportsImages,
       attachmentRefs,
       invocationText: req.text,
       contextBlock: this.buildContextBlock(req.contextPaths),
       naming: isFirstExchange ? { firstUser: req.text } : undefined
     });
     return { streamId, userMessage };
+  }
+
+  /**
+   * Build an OpenRouter content value for a history message. Plain text unless
+   * the message carries attachment images/PDFs and the model accepts them, in
+   * which case it becomes a multimodal content-parts array.
+   */
+  private buildMessageContent(m: ChatMessage, supportsImages: boolean): string | unknown[] {
+    const attachments = supportsImages
+      ? (m.images ?? []).filter((i) => i.kind === 'attachment')
+      : [];
+    if (attachments.length === 0) return m.content;
+    const parts: unknown[] = [];
+    if (m.content) parts.push({ type: 'text', text: m.content });
+    for (const a of attachments) {
+      const dataUrl = this.deps.imageStorage.readAsDataUrl(a.ref, a.mimeType);
+      if (a.mimeType === 'application/pdf') {
+        parts.push({ type: 'file', file: { filename: 'document.pdf', file_data: dataUrl } });
+      } else {
+        parts.push({ type: 'image_url', image_url: { url: dataUrl } });
+      }
+    }
+    return parts;
   }
 
   /** The persona prompt for a conversation (its override, else the default); null if none. */
@@ -183,6 +213,7 @@ export class ChatService {
     messageId: string;
     model: string;
     supportsTools?: boolean;
+    supportsImages?: boolean;
   }): { streamId: string } {
     const { store } = this.deps;
     const target = store.getMessage(req.messageId);
@@ -195,6 +226,7 @@ export class ChatService {
       assistantParentId: target.parentId,
       model: req.model || this.deps.getDefaultModel(),
       supportsTools: !!req.supportsTools,
+      supportsImages: !!req.supportsImages,
       attachmentRefs: [],
       invocationText: parentUser?.content ?? ''
     });
@@ -208,6 +240,7 @@ export class ChatService {
     text: string;
     model: string;
     supportsTools?: boolean;
+    supportsImages?: boolean;
   }): ChatSendResponse {
     const { store } = this.deps;
     const target = store.getMessage(req.messageId);
@@ -225,6 +258,7 @@ export class ChatService {
       assistantParentId: userMessage.id,
       model: req.model || this.deps.getDefaultModel(),
       supportsTools: !!req.supportsTools,
+      supportsImages: !!req.supportsImages,
       attachmentRefs: [],
       invocationText: req.text
     });
@@ -241,6 +275,7 @@ export class ChatService {
     assistantParentId: string;
     model: string;
     supportsTools: boolean;
+    supportsImages: boolean;
     attachmentRefs: ChatImageRef[];
     invocationText: string;
     contextBlock?: string;
@@ -252,6 +287,7 @@ export class ChatService {
       assistantParentId,
       model,
       supportsTools,
+      supportsImages,
       attachmentRefs,
       invocationText
     } = params;
@@ -300,9 +336,14 @@ export class ChatService {
     if (params.contextBlock) {
       messages.push({ role: 'system', content: params.contextBlock });
     }
+    let hasPdf = false;
     for (const m of store.getPathTo(assistantParentId)) {
-      messages.push({ role: m.role, content: m.content });
+      const content = this.buildMessageContent(m, supportsImages);
+      if (Array.isArray(content) && content.some((p) => isFilePart(p))) hasPdf = true;
+      messages.push({ role: m.role, content });
     }
+    // OpenRouter's free PDF text-extraction plugin; only needed when a PDF is attached.
+    const plugins = hasPdf ? [{ id: 'file-parser', pdf: { engine: 'pdf-text' } }] : undefined;
 
     void (async () => {
       // Accumulates streamed text across all tool rounds; the final (non-tool) streamCompletion delivers the human-readable reply.
@@ -324,7 +365,8 @@ export class ChatService {
                 delta
               } satisfies ChatStreamChunkPayload);
             },
-            tools: toolDefs.length ? toolDefs : undefined
+            tools: toolDefs.length ? toolDefs : undefined,
+            plugins
           });
           usage = addUsage(usage, result.usage ?? null);
 

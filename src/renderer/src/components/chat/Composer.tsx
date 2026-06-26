@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Paperclip, Send, Square, X, File, Folder, Wand2, Sparkles } from 'lucide-react';
+import { Paperclip, Send, Square, X, File, Folder, Wand2, Sparkles, FileText } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import type { ChatMentionItem } from '../../../../shared/chat-types';
 import type { PromptTemplate } from '../../../../shared/prompt-types';
@@ -15,16 +15,18 @@ type CommandItem =
 
 type Props = { defaultModel: string };
 
+type Attachment = { dataUrl: string; name: string; isPdf: boolean };
+
 export function Composer({ defaultModel }: Props): React.JSX.Element {
   const [text, setText] = useState('');
-  const [attachment, setAttachment] = useState<{ dataUrl: string; name: string } | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const MAX_BYTES = 10 * 1024 * 1024;
 
   const status = useChatStore((s) => s.status);
+  const uploads = useChatStore((s) => s.uploads);
   const send = useChatStore((s) => s.send);
   const cancel = useChatStore((s) => s.cancel);
   const activeId = useChatStore((s) => s.activeId);
@@ -125,36 +127,45 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
     setMentions((prev) => prev.filter((p) => p !== path));
   };
 
+  const imageTypes = ['image/png', 'image/jpeg', 'image/webp'];
+  const acceptAttr = uploads.pdf ? `${imageTypes.join(',')},application/pdf` : imageTypes.join(',');
+
   const acceptFile = (file: File): void => {
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      setAttachError('PNG, JPG, or WebP only');
+    const isPdf = file.type === 'application/pdf';
+    const allowed = imageTypes.includes(file.type) || (isPdf && uploads.pdf);
+    if (!allowed) {
+      setAttachError(uploads.pdf ? 'Images or PDF only' : 'PNG, JPG, or WebP only');
       return;
     }
-    if (file.size > MAX_BYTES) {
-      setAttachError('Image must be under 10 MB');
+    if (file.size > uploads.maxMb * 1024 * 1024) {
+      setAttachError(`File must be under ${uploads.maxMb} MB`);
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       setAttachError(null);
       const dataUrl = typeof reader.result === 'string' ? reader.result : '';
-      setAttachment({ dataUrl, name: file.name });
+      setAttachments((prev) => [...prev, { dataUrl, name: file.name, isPdf }]);
     };
-    reader.onerror = () => setAttachError("Couldn't read that image — try another file");
+    reader.onerror = () => setAttachError("Couldn't read that file — try another");
     reader.readAsDataURL(file);
+  };
+
+  const removeAttachment = (index: number): void => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const submit = (): void => {
     const trimmed = text.trim();
-    if ((!trimmed && !attachment) || streaming) return;
+    if ((!trimmed && attachments.length === 0) || streaming) return;
     void send(
       trimmed,
       model,
-      attachment ? [attachment.dataUrl] : undefined,
+      attachments.length ? attachments.map((a) => a.dataUrl) : undefined,
       mentions.length ? mentions : undefined
     );
     setText('');
-    setAttachment(null);
+    setAttachments([]);
     setAttachError(null);
     setMentions([]);
   };
@@ -170,13 +181,12 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
       onDrop={(e: React.DragEvent) => {
         e.preventDefault();
         setDragOver(false);
-        const file = e.dataTransfer.files.item(0);
-        if (file) acceptFile(file);
+        for (const file of Array.from(e.dataTransfer.files)) acceptFile(file);
       }}
     >
       {dragOver && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded border-2 border-dashed border-fleet-accent bg-fleet-surface-2/80">
-          <span className="text-sm text-fleet-text-muted">Drop image to attach</span>
+          <span className="text-sm text-fleet-text-muted">Drop file to attach</span>
         </div>
       )}
       <div className="mb-1 flex items-center gap-2">
@@ -204,27 +214,31 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
           </select>
         )}
       </div>
-      {attachment && (
-        <div className="mb-2 flex items-center gap-2">
-          <img
-            src={attachment.dataUrl}
-            alt={attachment.name}
-            className="h-10 w-10 rounded object-cover"
-          />
-          <span className="max-w-[160px] truncate text-xs text-fleet-text-muted">
-            {attachment.name}
-          </span>
-          <button
-            type="button"
-            aria-label="Remove attached image"
-            onClick={() => {
-              setAttachment(null);
-              textareaRef.current?.focus();
-            }}
-            className="rounded p-1 text-fleet-text-muted hover:text-fleet-text"
-          >
-            <X size={14} />
-          </button>
+      {attachments.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {attachments.map((a, i) => (
+            <div key={`${a.name}-${i}`} className="flex items-center gap-2">
+              {a.isPdf ? (
+                <span className="flex h-10 items-center gap-1 rounded bg-fleet-surface-3 px-2 text-xs text-fleet-text">
+                  <FileText size={14} className="text-fleet-text-muted" />
+                  <span className="max-w-[140px] truncate">{a.name}</span>
+                </span>
+              ) : (
+                <img src={a.dataUrl} alt={a.name} className="h-10 w-10 rounded object-cover" />
+              )}
+              <button
+                type="button"
+                aria-label={`Remove ${a.name}`}
+                onClick={() => {
+                  removeAttachment(i);
+                  textareaRef.current?.focus();
+                }}
+                className="rounded p-1 text-fleet-text-muted hover:text-fleet-text"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
       {formPrompt && (
@@ -408,10 +422,10 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
             }
           }}
           onPaste={(e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-            const files = e.clipboardData.files;
-            if (files.length > 0 && files[0].type.startsWith('image/')) {
+            const file = e.clipboardData.files.item(0);
+            if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
               e.preventDefault();
-              acceptFile(files[0]);
+              acceptFile(file);
             }
           }}
           placeholder="Message…"
@@ -434,7 +448,7 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
       <div className="mt-1 flex items-center gap-2">
         <button
           type="button"
-          aria-label="Attach image"
+          aria-label="Attach file"
           onClick={() => fileRef.current?.click()}
           className="rounded p-1 text-fleet-text-muted hover:text-fleet-text"
         >
@@ -443,15 +457,17 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
         <input
           ref={fileRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept={acceptAttr}
+          multiple
           className="hidden"
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            const file = e.target.files?.[0];
-            if (file) acceptFile(file);
+            for (const file of Array.from(e.target.files ?? [])) acceptFile(file);
             e.target.value = '';
           }}
         />
-        <span className="text-xs text-fleet-text-muted">PNG, JPG, WebP · up to 10 MB</span>
+        <span className="text-xs text-fleet-text-muted">
+          {uploads.pdf ? 'Images or PDF' : 'PNG, JPG, WebP'} · up to {uploads.maxMb} MB
+        </span>
         {attachError && <span className="text-xs text-red-400">{attachError}</span>}
       </div>
     </div>
