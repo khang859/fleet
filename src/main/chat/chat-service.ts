@@ -17,9 +17,14 @@ import type { ChatImageProvider } from './image/types';
 import type { ChatImageStorage } from './image/image-storage';
 import { GENERATE_IMAGE_TOOL, parseGenerateImageArgs, runGenerateImage } from './chat-tools';
 import { resolveTitle } from './chat-namer';
-import type { ChatConversationRenamedPayload, ChatToolsMode } from '../../shared/chat-types';
+import type {
+  ChatConversationRenamedPayload,
+  ChatToolsMode,
+  ChatToolsConfig
+} from '../../shared/chat-types';
 import type { ChatToolExecutor } from './tools/tool-runner';
 import { buildFsToolDefs, FS_TOOL_NAMES } from './tools/tool-runner';
+import { buildMentionContext, defaultWorkspace } from './tools/fs-tools';
 import { isMcpToolName } from '../../shared/mcp-types';
 import type { SkillManager } from './skills/skill-manager';
 
@@ -42,6 +47,7 @@ type Deps = {
   getImageModel: () => string | null;
   getNaming: () => NamingConfig;
   getToolsMode: () => ChatToolsMode;
+  getTools: () => ChatToolsConfig;
   getMcpToolDefs: () => unknown[];
   skills: SkillManager;
   toolExecutor: ChatToolExecutor;
@@ -106,9 +112,19 @@ export class ChatService {
       supportsTools: !!req.supportsTools,
       attachmentRefs,
       invocationText: req.text,
+      contextBlock: this.buildContextBlock(req.contextPaths),
       naming: isFirstExchange ? { firstUser: req.text } : undefined
     });
     return { streamId, userMessage };
+  }
+
+  /** Read `@`-mentioned files/folders into a context block (truncated per setting). */
+  private buildContextBlock(paths: string[] | undefined): string | undefined {
+    if (!paths?.length) return undefined;
+    const tools = this.deps.getTools();
+    const cwd = defaultWorkspace(tools.workspaceDir);
+    const block = buildMentionContext({ paths, cwd, maxBytes: tools.mentionMaxKb * 1024 });
+    return block || undefined;
   }
 
   /** Re-run an assistant turn as a new sibling attempt (preserves the old one). */
@@ -177,6 +193,7 @@ export class ChatService {
     supportsTools: boolean;
     attachmentRefs: ChatImageRef[];
     invocationText: string;
+    contextBlock?: string;
     naming?: { firstUser: string };
   }): string {
     const { store, secrets, client, getImageModel, imageProvider, imageStorage, emit } = this.deps;
@@ -221,6 +238,10 @@ export class ChatService {
           content: `The user invoked the "${invoked.name}" skill. Follow these instructions:\n\n${invoked.body}`
         });
       }
+    }
+    // `@`-mentioned file/folder context (ephemeral: not persisted to history).
+    if (params.contextBlock) {
+      messages.push({ role: 'system', content: params.contextBlock });
     }
     for (const m of store.getPathTo(assistantParentId)) {
       messages.push({ role: m.role, content: m.content });

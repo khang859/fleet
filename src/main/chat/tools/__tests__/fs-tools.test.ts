@@ -2,7 +2,14 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir, homedir } from 'os';
-import { globToRegExp, readFileTool, globTool, searchTool } from '../fs-tools';
+import {
+  globToRegExp,
+  readFileTool,
+  globTool,
+  searchTool,
+  searchWorkspacePaths,
+  buildMentionContext
+} from '../fs-tools';
 import { assertReadablePath } from '../fs-safety';
 
 const ROOT = join(tmpdir(), `fleet-fs-tools-${process.pid}`);
@@ -72,5 +79,44 @@ describe('assertReadablePath', () => {
   });
   it('allows ordinary files', () => {
     expect(assertReadablePath('src/a.ts', ROOT)).toContain('a.ts');
+  });
+});
+
+describe('searchWorkspacePaths', () => {
+  it('matches files and folders by substring, skipping ignored dirs', () => {
+    const hits = searchWorkspacePaths({ query: 'a.ts', cwd: ROOT });
+    expect(hits.some((h) => h.path === 'src/a.ts' && h.type === 'file')).toBe(true);
+    // node_modules is never surfaced.
+    expect(hits.every((h) => !h.path.includes('node_modules'))).toBe(true);
+  });
+
+  it('returns directories with a dir type', () => {
+    const hits = searchWorkspacePaths({ query: 'src', cwd: ROOT });
+    expect(hits.some((h) => h.path === 'src' && h.type === 'dir')).toBe(true);
+  });
+
+  it('respects the result limit', () => {
+    expect(searchWorkspacePaths({ query: '', cwd: ROOT, limit: 2 }).length).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('buildMentionContext', () => {
+  it('includes file contents and truncates past maxBytes', () => {
+    const out = buildMentionContext({ paths: ['src/a.ts'], cwd: ROOT, maxBytes: 1024 });
+    expect(out).toContain('File src/a.ts');
+    expect(out).toContain('const x = 42;');
+    const tiny = buildMentionContext({ paths: ['src/a.ts'], cwd: ROOT, maxBytes: 8 });
+    expect(tiny).toContain('truncated');
+  });
+
+  it('lists a folder’s files rather than dumping contents', () => {
+    const out = buildMentionContext({ paths: ['src'], cwd: ROOT, maxBytes: 1024 });
+    expect(out).toContain('Folder src');
+    expect(out).toContain('src/a.ts');
+  });
+
+  it('skips credential paths safely', () => {
+    const out = buildMentionContext({ paths: ['.env'], cwd: ROOT, maxBytes: 1024 });
+    expect(out).toContain('skipped');
   });
 });

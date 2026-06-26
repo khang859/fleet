@@ -272,6 +272,24 @@ export function ChatSettingsView(): React.JSX.Element {
             Default cwd for tools and the sandbox writable root.
           </p>
         </Section>
+        <Section title="@-mention file size limit">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              value={tools.mentionMaxKb}
+              onChange={(e) =>
+                void saveTools({ mentionMaxKb: Math.max(1, Number(e.target.value) || 1) })
+              }
+              className="w-24 rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
+            />
+            <span className="text-xs text-fleet-text-muted">KB per file</span>
+          </div>
+          <p className="mt-1 text-xs text-fleet-text-muted">
+            Type <code>@</code> in the composer to pin repo files/folders into context. Each file is
+            truncated to this size.
+          </p>
+        </Section>
         <Section title="Sandbox">
           <label className="flex items-center gap-2 text-sm text-fleet-text">
             <input
