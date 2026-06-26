@@ -55,6 +55,24 @@ export function ToolCallCard({ request, output, onDecide }: Props): React.JSX.El
           {request.cwd && (
             <p className="mt-1 font-mono text-[11px] text-fleet-text-muted">cwd: {request.cwd}</p>
           )}
+          {request.diff !== undefined && request.diff !== '' && (
+            <pre className="mt-2 max-h-64 overflow-auto rounded bg-fleet-surface-3 p-2 font-mono text-[11px] leading-snug">
+              {request.diff.split('\n').map((line, i) => (
+                <div
+                  key={i}
+                  className={
+                    line.startsWith('+')
+                      ? 'text-green-400'
+                      : line.startsWith('-')
+                        ? 'text-red-400'
+                        : 'text-fleet-text-secondary'
+                  }
+                >
+                  {line || ' '}
+                </div>
+              ))}
+            </pre>
+          )}
           {output !== undefined && output !== '' && (
             <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-fleet-surface-3 p-2 font-mono text-[11px] text-fleet-text-secondary">
               {output}

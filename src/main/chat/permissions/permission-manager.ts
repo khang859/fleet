@@ -31,6 +31,8 @@ export type PermissionRequest = {
   tool: string;
   command: string;
   cwd?: string;
+  /** Optional +/- diff preview shown on the card (file-mutating tools). */
+  diff?: string;
   /** Aborts a still-pending ask when the stream is cancelled. */
   signal?: AbortSignal;
 };
@@ -79,7 +81,8 @@ export class PermissionManager {
         tool: req.tool,
         command: req.command,
         cwd: req.cwd,
-        rememberPrefix: this.prefixOf(rememberRule)
+        rememberPrefix: this.prefixOf(rememberRule),
+        diff: req.diff
       };
       this.deps.emit(IPC_CHANNELS.CHAT_PERMISSION_REQUEST, payload);
     });

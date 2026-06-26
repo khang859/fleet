@@ -52,6 +52,8 @@ export type PermissionRequestPayload = {
    * can be derived.
    */
   rememberPrefix?: string;
+  /** A +/- diff preview, shown for file-mutating tools (write_file / edit_file). */
+  diff?: string;
 };
 
 /** Sent renderer → main when the user clicks an approval button. */
