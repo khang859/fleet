@@ -24,6 +24,7 @@ import { GeneratingSkeleton } from './GeneratingSkeleton';
 import { ToolCallCard } from './ToolCallCard';
 import { ChatMarkdown } from './ChatMarkdown';
 import { MessageUsage } from './UsageMeter';
+import { messageEnterAssistant, messageEnterUser } from '../../lib/motion';
 
 /** ‹ 2 / 3 › pager that switches between sibling attempts of a turn. */
 function VariantPager({ message }: { message: ChatMessage }): React.JSX.Element | null {
@@ -91,7 +92,11 @@ function Bubble({
   };
 
   return (
-    <div className={`group flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+    <div
+      className={`group flex flex-col ${
+        isUser ? `items-end ${messageEnterUser}` : `items-start ${messageEnterAssistant}`
+      }`}
+    >
       <div
         className={
           isUser
