@@ -9,8 +9,18 @@ import type {
   ChatRole,
   ChatAuditEntry,
   ChatAuditDecision,
-  ChatAuditStatus
+  ChatAuditStatus,
+  ChatSearchHit
 } from '../../shared/chat-types';
+
+/** Turn free text into a safe FTS5 prefix query: alnum tokens, each `token*`. */
+function toFtsQuery(input: string): string {
+  const tokens = input
+    .toLowerCase()
+    .split(/[^a-z0-9]+/i)
+    .filter((t) => t.length > 0);
+  return tokens.map((t) => `${t}*`).join(' ');
+}
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS conversations (
@@ -22,6 +32,8 @@ CREATE TABLE IF NOT EXISTS conversations (
   parent_conversation_id TEXT,
   fork_message_id        TEXT,
   persona_id             TEXT,
+  pinned                 INTEGER NOT NULL DEFAULT 0,
+  folder                 TEXT,
   created_at             INTEGER NOT NULL,
   updated_at             INTEGER NOT NULL
 );
@@ -93,6 +105,8 @@ const ConversationRowSchema = z.object({
   parent_conversation_id: z.string().nullable(),
   fork_message_id: z.string().nullable(),
   persona_id: z.string().nullable(),
+  pinned: z.number(),
+  folder: z.string().nullable(),
   created_at: z.number(),
   updated_at: z.number()
 });
@@ -133,6 +147,8 @@ function toConversation(r: ConversationRow): ChatConversation {
     titleLocked: r.title_locked !== 0,
     parentConversationId: r.parent_conversation_id,
     personaId: r.persona_id,
+    pinned: r.pinned !== 0,
+    folder: r.folder,
     createdAt: r.created_at,
     updatedAt: r.updated_at
   };
@@ -175,6 +191,8 @@ function toMessage(r: MessageRow): ChatMessage {
 
 export class ChatStore {
   private readonly db: Database.Database;
+  /** Whether the SQLite build has FTS5 (full-text search across message bodies). */
+  private ftsEnabled = false;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
@@ -182,6 +200,35 @@ export class ChatStore {
     this.db.pragma('foreign_keys = ON');
     this.db.exec(SCHEMA_SQL);
     this.migrate();
+    this.initFts();
+  }
+
+  /**
+   * Create the FTS5 index over message bodies and backfill it. FTS5 ships with
+   * better-sqlite3's bundled SQLite, but we guard so a build without it just
+   * disables search rather than failing to open the DB.
+   */
+  private initFts(): void {
+    try {
+      this.db.exec(
+        `CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+           content, message_id UNINDEXED, conversation_id UNINDEXED
+         )`
+      );
+      this.ftsEnabled = true;
+    } catch {
+      this.ftsEnabled = false;
+      return;
+    }
+    const count = z
+      .object({ n: z.number() })
+      .parse(this.db.prepare('SELECT COUNT(*) AS n FROM messages_fts').get());
+    if (count.n === 0) {
+      this.db.exec(
+        `INSERT INTO messages_fts (content, message_id, conversation_id)
+         SELECT content, id, conversation_id FROM messages`
+      );
+    }
   }
 
   /** Additive migrations for DBs created before a column existed. */
@@ -202,6 +249,10 @@ export class ChatStore {
     }
     if (!convCols.some((c) => c.name === 'persona_id')) {
       this.db.exec('ALTER TABLE conversations ADD COLUMN persona_id TEXT');
+    }
+    if (!convCols.some((c) => c.name === 'pinned')) {
+      this.db.exec('ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
+      this.db.exec('ALTER TABLE conversations ADD COLUMN folder TEXT');
     }
 
     const msgCols = z
@@ -270,6 +321,8 @@ export class ChatStore {
       parent_conversation_id: null,
       fork_message_id: null,
       persona_id: input.personaId ?? null,
+      pinned: 0,
+      folder: null,
       created_at: now,
       updated_at: now
     };
@@ -290,7 +343,10 @@ export class ChatStore {
   }
 
   listConversations(): ChatConversation[] {
-    const rows = this.db.prepare('SELECT * FROM conversations ORDER BY updated_at DESC').all();
+    // Pinned conversations float to the top; the rest are most-recent-first.
+    const rows = this.db
+      .prepare('SELECT * FROM conversations ORDER BY pinned DESC, updated_at DESC')
+      .all();
     return z.array(ConversationRowSchema).parse(rows).map(toConversation);
   }
 
@@ -332,7 +388,80 @@ export class ChatStore {
   }
 
   deleteConversation(id: string): void {
+    if (this.ftsEnabled) {
+      this.db.prepare('DELETE FROM messages_fts WHERE conversation_id = ?').run(id);
+    }
     this.db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
+  }
+
+  setConversationPinned(id: string, pinned: boolean): void {
+    this.db.prepare('UPDATE conversations SET pinned = ? WHERE id = ?').run(pinned ? 1 : 0, id);
+  }
+
+  setConversationFolder(id: string, folder: string | null): void {
+    this.db.prepare('UPDATE conversations SET folder = ? WHERE id = ?').run(folder, id);
+  }
+
+  /**
+   * Full-text search across message bodies. Returns one hit per matching
+   * conversation with a snippet. Falls back to a title/content LIKE scan when
+   * FTS5 is unavailable.
+   */
+  searchConversations(query: string): ChatSearchHit[] {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    if (this.ftsEnabled) {
+      const match = toFtsQuery(trimmed);
+      if (!match) return [];
+      try {
+        const rows = this.db
+          .prepare(
+            `SELECT m.conversation_id AS conversation_id,
+                    c.title AS title,
+                    snippet(messages_fts, 0, '[', ']', '…', 10) AS snippet
+             FROM messages_fts m
+             JOIN conversations c ON c.id = m.conversation_id
+             WHERE messages_fts MATCH ?
+             GROUP BY m.conversation_id
+             ORDER BY rank
+             LIMIT 50`
+          )
+          .all(match);
+        return z
+          .array(
+            z.object({
+              conversation_id: z.string(),
+              title: z.string(),
+              snippet: z.string()
+            })
+          )
+          .parse(rows)
+          .map((r) => ({ conversationId: r.conversation_id, title: r.title, snippet: r.snippet }));
+      } catch {
+        // Malformed FTS query — fall through to LIKE.
+      }
+    }
+    const like = `%${trimmed}%`;
+    const rows = this.db
+      .prepare(
+        `SELECT c.id AS conversation_id, c.title AS title,
+                COALESCE(MIN(m.content), '') AS snippet
+         FROM conversations c
+         LEFT JOIN messages m ON m.conversation_id = c.id AND m.content LIKE ?
+         WHERE c.title LIKE ? OR m.content LIKE ?
+         GROUP BY c.id
+         ORDER BY c.updated_at DESC
+         LIMIT 50`
+      )
+      .all(like, like, like);
+    return z
+      .array(z.object({ conversation_id: z.string(), title: z.string(), snippet: z.string() }))
+      .parse(rows)
+      .map((r) => ({
+        conversationId: r.conversation_id,
+        title: r.title,
+        snippet: r.snippet.slice(0, 160)
+      }));
   }
 
   /**
@@ -393,6 +522,11 @@ export class ChatStore {
     this.db
       .prepare('UPDATE conversations SET updated_at = ? WHERE id = ?')
       .run(now, input.conversationId);
+    if (this.ftsEnabled && input.content) {
+      this.db
+        .prepare('INSERT INTO messages_fts (content, message_id, conversation_id) VALUES (?, ?, ?)')
+        .run(row.content, row.id, row.conversation_id);
+    }
     return toMessage(row);
   }
 
