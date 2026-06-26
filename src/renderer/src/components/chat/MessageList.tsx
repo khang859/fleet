@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -10,9 +11,11 @@ import {
   RotateCcw,
   X,
   Check,
-  FileCode
+  FileCode,
+  ArrowDown
 } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
+import { useReducedMotion } from '../../hooks/use-reduced-motion';
 import type { ChatMessage } from '../../../../shared/chat-types';
 import { extractArtifacts } from '../../../../shared/chat-artifacts';
 import { ChatImage } from './ChatImage';
@@ -201,6 +204,32 @@ function Bubble({
   );
 }
 
+/** Floating "Jump to latest" pill — shown only when the user has scrolled away from the bottom. */
+function JumpToLatest(): React.JSX.Element | null {
+  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  if (isAtBottom) return null;
+  return (
+    <button
+      type="button"
+      aria-label="Jump to latest"
+      onClick={() => void scrollToBottom()}
+      className="absolute bottom-4 right-6 flex items-center gap-1 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow hover:bg-fleet-surface-2"
+    >
+      <ArrowDown size={12} /> Jump to latest
+    </button>
+  );
+}
+
+/** Re-engages stick-to-bottom whenever a new stream starts, even if the user had scrolled up. */
+function ReengageOnNewStream({ animation }: { animation: ScrollBehavior }): null {
+  const { scrollToBottom } = useStickToBottomContext();
+  const streamId = useChatStore((s) => s.streamId);
+  useEffect(() => {
+    if (streamId) void scrollToBottom(animation);
+  }, [streamId, scrollToBottom, animation]);
+  return null;
+}
+
 type Props = { defaultModel: string; showUsage: boolean };
 
 export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Element {
@@ -214,70 +243,53 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
   const toolStatus = useChatStore((s) => s.toolStatus);
   const permissionRequests = useChatStore((s) => s.permissionRequests);
   const decidePermission = useChatStore((s) => s.decidePermission);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const [atBottom, setAtBottom] = useState(true);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const onScroll = (): void => {
-      setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
-    };
-    el.addEventListener('scroll', onScroll);
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
-
-  useEffect(() => {
-    if (atBottom) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingText, atBottom]);
+  const reduced = useReducedMotion();
+  const animation: ScrollBehavior = reduced ? 'instant' : 'smooth';
 
   return (
-    <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto py-2">
-      {messages.map((m) => (
-        <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
-      ))}
-      {streamingText !== null && (
-        <div className="flex justify-start px-4 py-2">
-          <div className="max-w-[80%] rounded-lg bg-fleet-surface-2 px-3 py-2 text-sm text-fleet-text">
-            <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[[rehypeHighlight, { detect: true }]]}
-                components={{ pre: CodeBlock }}
-              >
-                {streamingText || '…'}
-              </ReactMarkdown>
+    <StickToBottom
+      className="relative min-h-0 flex-1"
+      resize={animation}
+      initial={animation}
+    >
+      <StickToBottom.Content className="py-2">
+        {messages.map((m) => (
+          <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
+        ))}
+        {streamingText !== null && (
+          <div className="flex justify-start px-4 py-2">
+            <div className="max-w-[80%] rounded-lg bg-fleet-surface-2 px-3 py-2 text-sm text-fleet-text">
+              <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[[rehypeHighlight, { detect: true }]]}
+                  components={{ pre: CodeBlock }}
+                >
+                  {streamingText || '…'}
+                </ReactMarkdown>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-      {permissionRequests.map((req) => (
-        <ToolCallCard
-          key={req.requestId}
-          request={req}
-          onDecide={(outcome) => void decidePermission(req.requestId, outcome)}
-        />
-      ))}
-      {status === 'streaming' && toolStatus?.state === 'generating' && (
-        <GeneratingSkeleton label={toolStatus.label} />
-      )}
-      {toolStatus?.state === 'error' && (
-        <div className="px-4 py-2 text-sm text-red-400">
-          Image error: {toolStatus.error ?? toolStatus.label}
-        </div>
-      )}
-      {status === 'error' && <div className="px-4 py-2 text-sm text-red-400">Error: {error}</div>}
-      {!atBottom && (
-        <button
-          type="button"
-          onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
-          className="fixed bottom-24 right-6 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow hover:bg-fleet-surface-2"
-        >
-          Jump to latest ↓
-        </button>
-      )}
-      <div ref={bottomRef} />
-    </div>
+        )}
+        {permissionRequests.map((req) => (
+          <ToolCallCard
+            key={req.requestId}
+            request={req}
+            onDecide={(outcome) => void decidePermission(req.requestId, outcome)}
+          />
+        ))}
+        {status === 'streaming' && toolStatus?.state === 'generating' && (
+          <GeneratingSkeleton label={toolStatus.label} />
+        )}
+        {toolStatus?.state === 'error' && (
+          <div className="px-4 py-2 text-sm text-red-400">
+            Image error: {toolStatus.error ?? toolStatus.label}
+          </div>
+        )}
+        {status === 'error' && <div className="px-4 py-2 text-sm text-red-400">Error: {error}</div>}
+      </StickToBottom.Content>
+      <ReengageOnNewStream animation={animation} />
+      <JumpToLatest />
+    </StickToBottom>
   );
 }

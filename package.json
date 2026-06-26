@@ -95,6 +95,7 @@
     "simple-git": "^3.33.0",
     "sqlite-vec": "^0.1.9",
     "tailwind-merge": "^3.5.0",
+    "use-stick-to-bottom": "^1.1.6",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0",
     "ws": "^8.20.0",
