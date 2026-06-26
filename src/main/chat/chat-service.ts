@@ -144,9 +144,14 @@ export class ChatService {
             } satisfies ChatToolStatusPayload);
             try {
               const { prompt, edit } = parseGenerateImageArgs(call.arguments);
-              const referenceImages = edit
+              // Reference images must be inlined as base64 data URLs — the
+              // remote image API cannot read on-disk paths.
+              const refs = edit
                 ? this.resolveReferenceImages(req.conversationId, attachmentRefs)
                 : undefined;
+              const referenceImages = refs?.map((r) =>
+                imageStorage.readAsDataUrl(r.ref, r.mimeType)
+              );
               const ref = await runGenerateImage(
                 { provider: imageProvider, storage: imageStorage },
                 {
@@ -262,13 +267,13 @@ export class ChatService {
   private resolveReferenceImages(
     conversationId: string,
     attachments: ChatImageRef[]
-  ): string[] | undefined {
-    if (attachments.length) return attachments.map((a) => a.ref);
+  ): ChatImageRef[] | undefined {
+    if (attachments.length) return attachments;
     // most-recent generated image in the conversation
     const msgs = this.deps.store.getMessages(conversationId);
     for (let i = msgs.length - 1; i >= 0; i--) {
       const gen = msgs[i].images?.filter((im) => im.kind === 'generated');
-      if (gen?.length) return [gen[gen.length - 1].ref];
+      if (gen?.length) return [gen[gen.length - 1]];
     }
     return undefined;
   }

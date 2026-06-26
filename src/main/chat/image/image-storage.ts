@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -22,6 +22,15 @@ export class ChatImageStorage {
     const ref = join(dir, `${randomUUID()}.${ext}`);
     writeFileSync(ref, data);
     return { ref, mimeType };
+  }
+
+  /**
+   * Read a stored image back as a base64 data URL. Reference images for edits
+   * must be inlined as data URLs — the remote image API cannot read local paths.
+   */
+  readAsDataUrl(ref: string, mimeType: string): string {
+    const b64 = readFileSync(ref).toString('base64');
+    return `data:${mimeType};base64,${b64}`;
   }
 
   deleteConversation(conversationId: string): void {

@@ -152,3 +152,64 @@ it('runs the image tool loop and persists a generated image', async () => {
   store.close();
   rmSync(dir, { recursive: true, force: true });
 });
+
+it('passes the reference image to the provider as a base64 data URL when editing', async () => {
+  const dir = join(tmpdir(), `fleet-chat-edit-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const store = new ChatStore(join(dir, 'edit.db'));
+  const conv = store.createConversation();
+  const client = new OpenRouterClient();
+  let round = 0;
+  vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+    round += 1;
+    if (round === 1) {
+      return {
+        content: '',
+        toolCalls: [
+          { id: 'call_1', name: 'generate_image', arguments: '{"prompt":"add a hat","edit":true}' }
+        ],
+        finishReason: 'tool_calls'
+      };
+    }
+    opts.onDelta('Done.');
+    return { content: 'Done.', toolCalls: [], finishReason: 'stop' };
+  });
+  const generate = vi.fn<ChatImageProvider['generate']>(async () => ({
+    data: Buffer.from('OUT'),
+    mimeType: 'image/png'
+  }));
+  const provider: ChatImageProvider = { id: 'openrouter', generate };
+  const events: Array<{ channel: string; payload: unknown }> = [];
+  const service = new ChatService({
+    store,
+    client,
+    secrets: fakeSecrets(),
+    getDefaultModel: () => 'm',
+    getImageModel: () => 'google/gemini-2.5-flash-image',
+    imageProvider: provider,
+    imageStorage: new ChatImageStorage(dir),
+    emit: (channel, payload) => events.push({ channel, payload })
+  });
+
+  // A 1x1 PNG supplied as a composer attachment (data URL).
+  const attachment =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  service.send({
+    conversationId: conv.id,
+    text: 'add a hat',
+    model: 'm',
+    supportsTools: true,
+    attachments: [attachment]
+  });
+  await vi.waitFor(() => {
+    expect(events.some((e) => e.channel === IPC_CHANNELS.CHAT_STREAM_DONE)).toBe(true);
+  });
+
+  expect(generate).toHaveBeenCalledTimes(1);
+  const req = generate.mock.calls[0][0];
+  // A data URL (the remote API contract) — NOT an on-disk path under tmpdir.
+  expect(req.referenceImages?.[0]).toMatch(/^data:image\/png;base64,/);
+  expect(req.referenceImages?.[0]).not.toContain(dir);
+  store.close();
+  rmSync(dir, { recursive: true, force: true });
+});
