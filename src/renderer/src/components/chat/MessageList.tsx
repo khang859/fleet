@@ -252,8 +252,22 @@ function ReengageOnNewStream({ animation }: { animation: ScrollBehavior }): null
  * throttled token updates re-render only this node — not MessageList or any
  * finalized history Bubble (which would otherwise re-parse all markdown).
  */
+/** Three-dot wave shown only in the gap between submit and the first token, so
+ *  the wait reads as "thinking" rather than a blank/finished reply. Static at
+ *  full opacity under prefers-reduced-motion (handled in index.css). */
+function ThinkingIndicator(): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-1 py-1 text-fleet-text-muted" aria-hidden="true">
+      <span className="chat-think-dot" />
+      <span className="chat-think-dot" />
+      <span className="chat-think-dot" />
+    </div>
+  );
+}
+
 function StreamingMessage(): React.JSX.Element {
   const streamingText = useChatStore((s) => s.streamingText) ?? '';
+  const hasTokens = streamingText.length > 0;
   return (
     // aria-live=off: streaming text mutates per flush and must NOT be announced
     // token-by-token; the role=status announcer speaks start/completion instead.
@@ -262,7 +276,11 @@ function StreamingMessage(): React.JSX.Element {
       className="w-full max-w-[68ch] text-sm leading-relaxed text-fleet-text"
       aria-live="off"
     >
-      <ChatMarkdown streaming>{streamingText || '…'}</ChatMarkdown>
+      {hasTokens ? (
+        <ChatMarkdown streaming>{streamingText}</ChatMarkdown>
+      ) : (
+        <ThinkingIndicator />
+      )}
     </div>
   );
 }
