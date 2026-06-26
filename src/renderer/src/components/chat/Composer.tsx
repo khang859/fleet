@@ -5,6 +5,7 @@ import type { ChatMentionItem } from '../../../../shared/chat-types';
 import type { PromptTemplate } from '../../../../shared/prompt-types';
 import { extractPromptVars, fillTemplate } from '../../../../shared/prompt-types';
 import { ModelPicker } from './ModelPicker';
+import { composerKeyAction } from './composer-keys';
 
 const MENTION_RE = /(?:^|\s)@([\w./-]*)$/;
 
@@ -168,6 +169,8 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
     setAttachments([]);
     setAttachError(null);
     setMentions([]);
+    // Keep focus in the composer after send for rapid-fire prompting.
+    textareaRef.current?.focus();
   };
 
   return (
@@ -416,9 +419,21 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
                 return;
               }
             }
-            if (e.key === 'Enter' && !e.shiftKey) {
+            const action = composerKeyAction({
+              key: e.key,
+              shiftKey: e.shiftKey,
+              metaKey: e.metaKey,
+              ctrlKey: e.ctrlKey,
+              isComposing: e.nativeEvent.isComposing,
+              keyCode: e.keyCode,
+              streaming
+            });
+            if (action === 'send') {
               e.preventDefault();
               submit();
+            } else if (action === 'stop') {
+              e.preventDefault();
+              cancel();
             }
           }}
           onPaste={(e: React.ClipboardEvent<HTMLTextAreaElement>) => {
