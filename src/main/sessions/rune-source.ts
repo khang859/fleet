@@ -282,6 +282,19 @@ export function runeSessionsDir(): string {
   return join(base, 'sessions');
 }
 
+type CachedSummary = { mtimeMs: number; size: number; summary: SessionSummary | null };
+
+// Cache the parsed summary per session file keyed by (mtime, size). The sessions
+// watcher fires on every transcript write, so without this an active agent would
+// force a full re-read + re-parse of every Rune session file (each holds the entire
+// node graph) on every refresh. Unchanged files now cost one stat().
+const summaryCache = new Map<string, CachedSummary>();
+
+/** Test-only: reset the module-level summary cache. */
+export function __clearRuneSummaryCache(): void {
+  summaryCache.clear();
+}
+
 export async function listRuneSessions(): Promise<SessionSummary[]> {
   const dir = runeSessionsDir();
   let files: string[];
@@ -291,15 +304,32 @@ export async function listRuneSessions(): Promise<SessionSummary[]> {
     return []; // dir may not exist
   }
   const out: SessionSummary[] = [];
+  const seen = new Set<string>();
   for (const file of files) {
     try {
       const full = join(dir, file);
-      const [raw, st] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
+      seen.add(full);
+      const st = await stat(full);
+      const cached = summaryCache.get(full);
+      if (cached !== undefined) {
+        if (cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
+          if (cached.summary) out.push(cached.summary);
+          continue;
+        }
+      }
+      // New or changed file: read and parse once, then memoize (including the
+      // "not a session" verdict) so unchanged files never get re-read.
+      const raw = await readFile(full, 'utf8');
       const summary = summarizeRune(JSON.parse(raw), st.mtimeMs);
+      summaryCache.set(full, { mtimeMs: st.mtimeMs, size: st.size, summary });
       if (summary) out.push(summary);
     } catch {
       // skip malformed file
     }
+  }
+  // Drop cache entries for sessions that no longer exist.
+  for (const key of summaryCache.keys()) {
+    if (!seen.has(key)) summaryCache.delete(key);
   }
   return out;
 }
