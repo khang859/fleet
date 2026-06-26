@@ -6,6 +6,8 @@ import type { PermissionManager } from '../permissions/permission-manager';
 import { readFileTool, globTool, searchTool, defaultWorkspace } from './fs-tools';
 import { runBash } from './bash-exec';
 import { makeSandboxWrap } from './sandbox';
+import { assertWritablePath } from './fs-safety';
+import { planWrite, planEdit, applyWrite } from './write-tools';
 
 export const READ_FILE_TOOL = {
   type: 'function',
@@ -76,15 +78,59 @@ export const BASH_TOOL = {
   }
 } as const;
 
+export const WRITE_FILE_TOOL = {
+  type: 'function',
+  function: {
+    name: 'write_file',
+    description:
+      'Create or overwrite a file with the given content. Gated: the user approves a diff before it is applied. Confined to the workspace.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'File path within the workspace.' },
+        content: { type: 'string', description: 'The full new file content.' }
+      },
+      required: ['path', 'content']
+    }
+  }
+} as const;
+
+export const EDIT_FILE_TOOL = {
+  type: 'function',
+  function: {
+    name: 'edit_file',
+    description:
+      'Replace an exact unique string in a file with a new string. Gated: the user approves a diff before it is applied. old_string must occur exactly once.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'File path within the workspace.' },
+        old_string: { type: 'string', description: 'Exact text to replace (must be unique).' },
+        new_string: { type: 'string', description: 'Replacement text.' }
+      },
+      required: ['path', 'old_string', 'new_string']
+    }
+  }
+} as const;
+
 /** Tool schemas exposed to the model for the given mode. */
 export function buildFsToolDefs(mode: ChatToolsConfig['mode']): unknown[] {
   if (mode === 'off') return [];
   const defs: unknown[] = [READ_FILE_TOOL, GLOB_TOOL, SEARCH_TOOL];
-  if (mode === 'ask' || mode === 'auto') defs.push(BASH_TOOL);
+  if (mode === 'ask' || mode === 'auto') {
+    defs.push(BASH_TOOL, WRITE_FILE_TOOL, EDIT_FILE_TOOL);
+  }
   return defs;
 }
 
-export const FS_TOOL_NAMES = new Set(['read_file', 'glob', 'search', 'bash']);
+export const FS_TOOL_NAMES = new Set([
+  'read_file',
+  'glob',
+  'search',
+  'bash',
+  'write_file',
+  'edit_file'
+]);
 
 type ExecCtx = { streamId: string; signal: AbortSignal };
 
@@ -100,6 +146,12 @@ const searchArgs = z.object({
   glob: z.string().optional()
 });
 const bashArgs = z.object({ command: z.string() });
+const writeArgs = z.object({ path: z.string(), content: z.string() });
+const editArgs = z.object({
+  path: z.string(),
+  old_string: z.string(),
+  new_string: z.string()
+});
 
 /**
  * Executes the native fs/bash tools. Read tools run directly (no prompt) with
@@ -139,6 +191,26 @@ export class ChatToolExecutor {
         case 'bash': {
           const a = bashArgs.parse(JSON.parse(argsJson));
           return await this.runBashGated(a.command, cwd, cfg, ctx);
+        }
+        case 'write_file': {
+          const a = writeArgs.parse(JSON.parse(argsJson));
+          return await this.runWriteGated(
+            a.path,
+            (abs) => planWrite(abs, a.content),
+            cwd,
+            cfg,
+            ctx
+          );
+        }
+        case 'edit_file': {
+          const a = editArgs.parse(JSON.parse(argsJson));
+          return await this.runWriteGated(
+            a.path,
+            (abs) => planEdit(abs, a.old_string, a.new_string),
+            cwd,
+            cfg,
+            ctx
+          );
         }
         default:
           return `Unknown tool: ${name}`;
@@ -217,5 +289,50 @@ export class ChatToolExecutor {
     if (result.stderr) parts.push(`stderr:\n${result.stderr}`);
     if (result.truncated) parts.push('(output truncated)');
     return parts.join('\n');
+  }
+
+  /**
+   * Gate and apply a file write/edit. Always confined to the workspace (never a
+   * .git internal or credential path — circuit-breakers that hold even in auto
+   * mode). In ask mode a diff is shown for approval; in auto mode it applies
+   * unless a deny rule blocks it.
+   */
+  private async runWriteGated(
+    relPath: string,
+    plan: (abs: string) => { newContent: string; diff: string; isNew: boolean },
+    cwd: string,
+    cfg: ChatToolsConfig,
+    ctx: ExecCtx
+  ): Promise<string> {
+    if (cfg.mode === 'off' || cfg.mode === 'read-only') {
+      return 'File edits are disabled. The user must enable Ask or Auto mode in Chat settings.';
+    }
+    // Circuit-breakers + workspace confinement (throws → surfaced as Error by run()).
+    const abs = assertWritablePath(relPath, cwd, [cwd]);
+    const planned = plan(abs);
+
+    if (cfg.mode === 'auto') {
+      if (this.permissions.evaluate('Edit', relPath) === 'deny') {
+        return 'This edit is blocked by a deny rule.';
+      }
+    } else {
+      const grant = await this.permissions.request({
+        streamId: ctx.streamId,
+        tool: 'Edit',
+        command: relPath,
+        cwd,
+        diff: planned.diff,
+        signal: ctx.signal
+      });
+      if (grant !== 'allow') return 'The user denied this edit.';
+    }
+
+    applyWrite(abs, planned.newContent);
+    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
+      streamId: ctx.streamId,
+      state: 'done',
+      label: `${planned.isNew ? 'Created' : 'Updated'} ${relPath}`
+    } satisfies ChatToolStatusPayload);
+    return `${planned.isNew ? 'Created' : 'Updated'} ${relPath}`;
   }
 }

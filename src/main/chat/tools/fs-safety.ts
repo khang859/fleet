@@ -41,3 +41,31 @@ export function assertReadablePath(target: string, cwd: string): string {
   }
   return abs;
 }
+
+function isUnder(child: string, parent: string): boolean {
+  const c = process.platform === 'win32' ? child.toLowerCase() : child;
+  const p = process.platform === 'win32' ? parent.toLowerCase() : parent;
+  return c === p || c.startsWith(p + sep);
+}
+
+/**
+ * Throw if `target` is not a safe write destination. Writes must land inside one
+ * of `writableRoots`, must not touch credential files, and hit hard
+ * circuit-breakers (`.git/` internals, the fork-bomb of write paths) that the
+ * agent can never bypass. Returns the resolved absolute path on success.
+ */
+export function assertWritablePath(target: string, cwd: string, writableRoots: string[]): string {
+  // Credential / sensitive-file denies apply to writes too.
+  const abs = assertReadablePath(target, cwd);
+
+  // Circuit-breakers: never write into a .git directory (e.g. .git/config).
+  if (abs.split(sep).includes('.git')) {
+    throw new Error('Access denied: writing inside a .git directory is not allowed');
+  }
+
+  const roots = writableRoots.map((r) => resolve(r));
+  if (!roots.some((r) => isUnder(abs, r))) {
+    throw new Error(`Access denied: ${target} is outside the writable workspace`);
+  }
+  return abs;
+}

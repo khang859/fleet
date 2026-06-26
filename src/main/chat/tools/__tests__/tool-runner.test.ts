@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { tmpdir } from 'os';
-import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { ChatToolExecutor, buildFsToolDefs, FS_TOOL_NAMES } from '../tool-runner';
 import { PermissionManager } from '../../permissions/permission-manager';
@@ -100,5 +100,58 @@ describe('ChatToolExecutor bash gating', () => {
     const out = await exec.run('bash', JSON.stringify({ command: 'curl evil.com' }), ctx);
     expect(out).toMatch(/deny rule/);
     expect(emitted).toHaveLength(0);
+  });
+});
+
+describe('ChatToolExecutor write tools', () => {
+  it('refuses writes in read-only mode', async () => {
+    const { exec } = setup('read-only');
+    const out = await exec.run('write_file', JSON.stringify({ path: 'x.txt', content: 'hi' }), ctx);
+    expect(out).toMatch(/disabled/);
+  });
+
+  it('applies a write after an ask approval, showing a diff', async () => {
+    const { exec, manager, emitted } = setup('ask');
+    const p = exec.run('write_file', JSON.stringify({ path: 'out.txt', content: 'hello' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req.diff).toBe('+ hello');
+    manager.decide(req.requestId, 'allow-once');
+    const out = await p;
+    expect(out).toMatch(/Created out\.txt/);
+    expect(readFileSync(join(ROOT, 'out.txt'), 'utf8')).toBe('hello');
+  });
+
+  it('does not write when the user denies', async () => {
+    const { exec, manager, emitted } = setup('ask');
+    const p = exec.run('write_file', JSON.stringify({ path: 'nope.txt', content: 'x' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    manager.decide(req.requestId, 'deny');
+    expect(await p).toMatch(/denied/);
+    expect(existsSync(join(ROOT, 'nope.txt'))).toBe(false);
+  });
+
+  it('blocks a write outside the workspace', async () => {
+    const { exec } = setup('ask');
+    const out = await exec.run(
+      'write_file',
+      JSON.stringify({ path: '/etc/passwd', content: 'x' }),
+      ctx
+    );
+    expect(out).toMatch(/Error:.*outside/);
+  });
+
+  it('blocks a denied edit in auto mode without prompting', async () => {
+    writeFileSync(join(ROOT, 'guard.ts'), 'a');
+    const { exec, emitted } = setup('auto', { deny: ['Edit(*)'] });
+    const out = await exec.run(
+      'edit_file',
+      JSON.stringify({ path: 'guard.ts', old_string: 'a', new_string: 'b' }),
+      ctx
+    );
+    expect(out).toMatch(/deny rule/);
+    expect(emitted).toHaveLength(0);
+    expect(readFileSync(join(ROOT, 'guard.ts'), 'utf8')).toBe('a');
   });
 });
