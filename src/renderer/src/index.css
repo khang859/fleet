@@ -4,6 +4,11 @@
 @import 'streamdown/styles.css';
 @plugin "@tailwindcss/typography";
 
+/* Drive the `dark:` variant off a root `.dark` class (toggled by the active app
+   theme in useAppThemeVars) instead of the OS color-scheme, so Streamdown's
+   dual Shiki themes follow the app theme rather than the OS. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Let Tailwind v4 scan Streamdown's dist for the utility classes its rendered
    markdown/code blocks reference, so they aren't tree-shaken away. */
 @source "../../../node_modules/streamdown/dist/*.js";
