@@ -60,6 +60,7 @@ describe('ChatService.send', () => {
       getDefaultModel: () => 'deepseek/deepseek-v4-flash',
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getAutoTag: () => ({ enabled: false, model: 'x' }),
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
@@ -112,6 +113,7 @@ describe('ChatService.send', () => {
       getDefaultModel: () => 'm',
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getAutoTag: () => ({ enabled: false, model: 'x' }),
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
@@ -295,6 +297,7 @@ describe('ChatService regenerate / edit', () => {
       getDefaultModel: () => 'm',
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getAutoTag: () => ({ enabled: false, model: 'x' }),
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
@@ -421,6 +424,7 @@ describe('ChatService usage accounting', () => {
       getDefaultModel: () => 'm',
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getAutoTag: () => ({ enabled: false, model: 'x' }),
       getToolsMode: () => 'read-only',
       getTools: () => ({
         mode: 'off',
@@ -479,6 +483,7 @@ describe('ChatService usage accounting', () => {
       getDefaultModel: () => 'm',
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getAutoTag: () => ({ enabled: false, model: 'x' }),
       getToolsMode: () => 'read-only',
       getTools: () => ({
         mode: 'off',
@@ -522,6 +527,7 @@ describe('ChatService attachments', () => {
       getDefaultModel: () => 'm',
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getAutoTag: () => ({ enabled: false, model: 'x' }),
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
@@ -652,6 +658,7 @@ describe('ChatService personas', () => {
       getDefaultModel: () => 'm',
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getAutoTag: () => ({ enabled: false, model: 'x' }),
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
@@ -722,6 +729,7 @@ describe('ChatService skills', () => {
       getDefaultModel: () => 'm',
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getAutoTag: () => ({ enabled: false, model: 'x' }),
       getToolsMode: () => 'read-only',
       getTools: () => ({
         mode: 'off',

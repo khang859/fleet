@@ -1390,6 +1390,10 @@ void app.whenReady().then(async () => {
         timing: c.namingTiming
       };
     },
+    getAutoTag: () => {
+      const c = settingsStore.get().ai.chat;
+      return { enabled: c.autoTag, model: c.taskModel ?? c.defaultModel };
+    },
     getToolsMode: () => settingsStore.get().ai.chat.tools.mode,
     getTools: () => settingsStore.get().ai.chat.tools,
     getUsage: () => settingsStore.get().ai.chat.usage,

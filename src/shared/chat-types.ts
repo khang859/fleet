@@ -59,6 +59,8 @@ export type ChatConversation = {
   pinned: boolean;
   /** Optional folder name for sidebar grouping; null → ungrouped. */
   folder: string | null;
+  /** Background-generated topical tags. */
+  tags: string[];
   createdAt: number;
   updatedAt: number;
 };
@@ -86,6 +88,8 @@ export type ChatSettings = {
   taskModel: string | null;
   /** Auto-name new conversations from the first exchange. */
   autoName: boolean;
+  /** Generate topical tags for new conversations in the background. */
+  autoTag: boolean;
   /** When to generate the title. */
   namingTiming: 'after-response' | 'immediate';
   /** Permission rules gating tool calls (Bash, MCP). See chat-permissions.ts. */
@@ -226,6 +230,7 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   imageModel: null,
   taskModel: null,
   autoName: true,
+  autoTag: true,
   namingTiming: 'after-response',
   permissions: DEFAULT_PERMISSION_RULES,
   tools: DEFAULT_CHAT_TOOLS,
@@ -293,3 +298,6 @@ export type ChatToolStatusPayload = {
 
 /** Emitted when a conversation's title changes out-of-band (background auto-naming). */
 export type ChatConversationRenamedPayload = { id: string; title: string };
+
+/** Emitted when a conversation's tags are generated in the background. */
+export type ChatConversationTaggedPayload = { id: string; tags: string[] };

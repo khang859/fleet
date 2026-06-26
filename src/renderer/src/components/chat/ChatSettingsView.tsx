@@ -107,6 +107,7 @@ export function ChatSettingsView(): React.JSX.Element {
   const [imageModel, setImageModel] = useState<string | null>(null);
   const [taskModel, setTaskModel] = useState<string | null>(null);
   const [autoName, setAutoName] = useState(true);
+  const [autoTag, setAutoTag] = useState(true);
   const [namingTiming, setNamingTiming] = useState<'after-response' | 'immediate'>(
     'after-response'
   );
@@ -127,6 +128,7 @@ export function ChatSettingsView(): React.JSX.Element {
       setImageModel(s.imageModel);
       setTaskModel(s.taskModel);
       setAutoName(s.autoName);
+      setAutoTag(s.autoTag);
       setNamingTiming(s.namingTiming);
       setPermissions(s.permissions);
       setTools(s.tools);
@@ -167,6 +169,11 @@ export function ChatSettingsView(): React.JSX.Element {
   const saveAutoName = async (next: boolean): Promise<void> => {
     setAutoName(next);
     await window.fleet.chat.patchSettings({ autoName: next });
+  };
+
+  const saveAutoTag = async (next: boolean): Promise<void> => {
+    setAutoTag(next);
+    await window.fleet.chat.patchSettings({ autoTag: next });
   };
 
   const saveTiming = async (next: 'after-response' | 'immediate'): Promise<void> => {
@@ -303,6 +310,14 @@ export function ChatSettingsView(): React.JSX.Element {
               </div>
             </div>
           )}
+          <label className="mt-3 flex items-center gap-2 text-sm text-fleet-text">
+            <input
+              type="checkbox"
+              checked={autoTag}
+              onChange={(e) => void saveAutoTag(e.target.checked)}
+            />
+            Auto-tag new chats with topical labels
+          </label>
         </Section>
       </Group>
 
