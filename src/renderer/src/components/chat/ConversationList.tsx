@@ -39,7 +39,7 @@ function Row({ c, indent }: { c: ChatConversation; indent: boolean }): React.JSX
           void select(c.id);
         }
       }}
-      className={`group flex cursor-pointer items-center justify-between py-2 pr-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-fleet-border-strong ${
+      className={`group flex cursor-pointer flex-col py-2 pr-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-fleet-border-strong ${
         indent || c.parentConversationId ? 'pl-6' : 'pl-3'
       } ${
         c.id === activeId
@@ -47,59 +47,73 @@ function Row({ c, indent }: { c: ChatConversation; indent: boolean }): React.JSX
           : 'text-fleet-text-secondary hover:bg-fleet-surface-2'
       }`}
     >
-      <span className="flex min-w-0 items-center gap-1.5">
-        {c.pinned && (
-          <Pin size={11} className="shrink-0 rotate-45 fill-current text-fleet-accent" />
-        )}
-        {c.parentConversationId && (
-          <GitBranch size={12} className="shrink-0 text-fleet-text-muted" />
-        )}
-        <span className="truncate">{c.title}</span>
-      </span>
-      <span className="flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100">
-        <button
-          aria-label={c.pinned ? 'Unpin conversation' : 'Pin conversation'}
-          title={c.pinned ? 'Unpin' : 'Pin'}
-          onClick={(e) => {
-            e.stopPropagation();
-            void setPinned(c.id, !c.pinned);
-          }}
-        >
-          <Pin
-            size={12}
-            className={`${c.pinned ? 'text-fleet-accent' : 'text-fleet-text-muted'} hover:text-fleet-text`}
-          />
-        </button>
-        <button
-          aria-label="Move to folder"
-          title="Move to folder"
-          onClick={(e) => {
-            e.stopPropagation();
-            assignFolder();
-          }}
-        >
-          <FolderInput size={12} className="text-fleet-text-muted hover:text-fleet-text" />
-        </button>
-        <button
-          aria-label="Export conversation"
-          title="Export conversation"
-          onClick={(e) => {
-            e.stopPropagation();
-            void exportConversation(c.id);
-          }}
-        >
-          <Download size={12} className="text-fleet-text-muted hover:text-fleet-text" />
-        </button>
-        <button
-          aria-label="Delete conversation"
-          onClick={(e) => {
-            e.stopPropagation();
-            void remove(c.id);
-          }}
-        >
-          <Trash2 size={12} className="text-fleet-text-muted hover:text-fleet-text" />
-        </button>
-      </span>
+      <div className="flex items-center justify-between">
+        <span className="flex min-w-0 items-center gap-1.5">
+          {c.pinned && (
+            <Pin size={11} className="shrink-0 rotate-45 fill-current text-fleet-accent" />
+          )}
+          {c.parentConversationId && (
+            <GitBranch size={12} className="shrink-0 text-fleet-text-muted" />
+          )}
+          <span className="truncate">{c.title}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100">
+          <button
+            aria-label={c.pinned ? 'Unpin conversation' : 'Pin conversation'}
+            title={c.pinned ? 'Unpin' : 'Pin'}
+            onClick={(e) => {
+              e.stopPropagation();
+              void setPinned(c.id, !c.pinned);
+            }}
+          >
+            <Pin
+              size={12}
+              className={`${c.pinned ? 'text-fleet-accent' : 'text-fleet-text-muted'} hover:text-fleet-text`}
+            />
+          </button>
+          <button
+            aria-label="Move to folder"
+            title="Move to folder"
+            onClick={(e) => {
+              e.stopPropagation();
+              assignFolder();
+            }}
+          >
+            <FolderInput size={12} className="text-fleet-text-muted hover:text-fleet-text" />
+          </button>
+          <button
+            aria-label="Export conversation"
+            title="Export conversation"
+            onClick={(e) => {
+              e.stopPropagation();
+              void exportConversation(c.id);
+            }}
+          >
+            <Download size={12} className="text-fleet-text-muted hover:text-fleet-text" />
+          </button>
+          <button
+            aria-label="Delete conversation"
+            onClick={(e) => {
+              e.stopPropagation();
+              void remove(c.id);
+            }}
+          >
+            <Trash2 size={12} className="text-fleet-text-muted hover:text-fleet-text" />
+          </button>
+        </span>
+      </div>
+      {c.tags.length > 0 && (
+        <span className="mt-1 flex flex-wrap gap-1">
+          {c.tags.map((t) => (
+            <span
+              key={t}
+              className="rounded bg-fleet-surface-3 px-1.5 py-0.5 text-[10px] leading-none text-fleet-text-muted"
+            >
+              {t}
+            </span>
+          ))}
+        </span>
+      )}
     </div>
   );
 }

@@ -20,8 +20,10 @@ import type { ChatImageProvider } from './image/types';
 import type { ChatImageStorage } from './image/image-storage';
 import { GENERATE_IMAGE_TOOL, parseGenerateImageArgs, runGenerateImage } from './chat-tools';
 import { resolveTitle } from './chat-namer';
+import { resolveTags } from './chat-tagger';
 import type {
   ChatConversationRenamedPayload,
+  ChatConversationTaggedPayload,
   ChatToolsMode,
   ChatToolsConfig,
   PersonaPreset
@@ -55,6 +57,8 @@ type Deps = {
   getDefaultModel: () => string;
   getImageModel: () => string | null;
   getNaming: () => NamingConfig;
+  /** Background topical tagging; `model` is already resolved (taskModel ?? default). */
+  getAutoTag: () => { enabled: boolean; model: string };
   getToolsMode: () => ChatToolsMode;
   getTools: () => ChatToolsConfig;
   getUsage: () => ChatUsageConfig;
@@ -501,6 +505,10 @@ export class ChatService {
         if (params.naming && this.deps.getNaming().timing === 'after-response') {
           this.maybeAutoName(conversationId, params.naming.firstUser, partial);
         }
+        // Background topical tagging always uses the completed first exchange.
+        if (params.naming) {
+          this.maybeAutoTag(conversationId, params.naming.firstUser, partial);
+        }
       } catch (err) {
         if (partial) {
           const m = store.addMessage({
@@ -563,6 +571,33 @@ export class ChatService {
           title
         } satisfies ChatConversationRenamedPayload);
       }
+    })();
+  }
+
+  /**
+   * Fire-and-forget background topical tagging. Never throws and never blocks the
+   * stream; no-ops when disabled or keyless. Reuses the task-model path.
+   */
+  private maybeAutoTag(conversationId: string, firstUser: string, firstAssistant: string): void {
+    const { store, client, secrets, emit } = this.deps;
+    const cfg = this.deps.getAutoTag();
+    if (!cfg.enabled) return;
+    const apiKey = secrets.getKey();
+    if (!apiKey) return;
+
+    void (async () => {
+      const tags = await resolveTags(client, {
+        apiKey,
+        model: cfg.model,
+        firstUser,
+        firstAssistant
+      });
+      if (tags.length === 0) return;
+      store.setConversationTags(conversationId, tags);
+      emit(IPC_CHANNELS.CHAT_CONVERSATION_TAGGED, {
+        id: conversationId,
+        tags
+      } satisfies ChatConversationTaggedPayload);
     })();
   }
 

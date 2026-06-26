@@ -66,6 +66,10 @@ beforeEach(() => {
         listeners.set(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, cb);
         return () => {};
       },
+      onConversationTagged: (cb: Listener) => {
+        listeners.set(IPC_CHANNELS.CHAT_CONVERSATION_TAGGED, cb);
+        return () => {};
+      },
       listImageModels: vi.fn().mockResolvedValue([]),
       skillsGet: vi.fn().mockResolvedValue({ skills: [], budget: { used: 0, cap: 8000 } })
     }

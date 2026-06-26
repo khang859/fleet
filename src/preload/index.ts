@@ -156,6 +156,7 @@ import type {
   ChatStreamErrorPayload,
   ChatToolStatusPayload,
   ChatConversationRenamedPayload,
+  ChatConversationTaggedPayload,
   ChatAuditEntry,
   ChatSearchHit
 } from '../shared/chat-types';
@@ -897,6 +898,8 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CHAT_PERMISSION_DECIDE, { requestId, outcome }),
     onConversationRenamed: (cb: (p: ChatConversationRenamedPayload) => void): Unsubscribe =>
       onChannel<ChatConversationRenamedPayload>(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, cb),
+    onConversationTagged: (cb: (p: ChatConversationTaggedPayload) => void): Unsubscribe =>
+      onChannel<ChatConversationTaggedPayload>(IPC_CHANNELS.CHAT_CONVERSATION_TAGGED, cb),
     mcpGet: async (): Promise<McpServerStatus[]> => typedInvoke(IPC_CHANNELS.CHAT_MCP_GET),
     mcpSet: async (config: McpServersConfig): Promise<McpServerStatus[]> =>
       typedInvoke(IPC_CHANNELS.CHAT_MCP_SET, config),

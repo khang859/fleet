@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   persona_id             TEXT,
   pinned                 INTEGER NOT NULL DEFAULT 0,
   folder                 TEXT,
+  tags                   TEXT,
   created_at             INTEGER NOT NULL,
   updated_at             INTEGER NOT NULL
 );
@@ -107,6 +108,7 @@ const ConversationRowSchema = z.object({
   persona_id: z.string().nullable(),
   pinned: z.number(),
   folder: z.string().nullable(),
+  tags: z.string().nullable(),
   created_at: z.number(),
   updated_at: z.number()
 });
@@ -149,9 +151,21 @@ function toConversation(r: ConversationRow): ChatConversation {
     personaId: r.persona_id,
     pinned: r.pinned !== 0,
     folder: r.folder,
+    tags: parseTags(r.tags),
     createdAt: r.created_at,
     updatedAt: r.updated_at
   };
+}
+
+/** Conversation tags are stored as a JSON string array; tolerate bad/legacy data. */
+function parseTags(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const v: unknown = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 function toAudit(r: z.infer<typeof AuditRowSchema>): ChatAuditEntry {
@@ -254,6 +268,9 @@ export class ChatStore {
       this.db.exec('ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
       this.db.exec('ALTER TABLE conversations ADD COLUMN folder TEXT');
     }
+    if (!convCols.some((c) => c.name === 'tags')) {
+      this.db.exec('ALTER TABLE conversations ADD COLUMN tags TEXT');
+    }
 
     const msgCols = z
       .array(z.object({ name: z.string() }))
@@ -323,6 +340,7 @@ export class ChatStore {
       persona_id: input.personaId ?? null,
       pinned: 0,
       folder: null,
+      tags: null,
       created_at: now,
       updated_at: now
     };
@@ -400,6 +418,13 @@ export class ChatStore {
 
   setConversationFolder(id: string, folder: string | null): void {
     this.db.prepare('UPDATE conversations SET folder = ? WHERE id = ?').run(folder, id);
+  }
+
+  /** Background auto-tagging writes the topical tags. No-ops if none. */
+  setConversationTags(id: string, tags: string[]): void {
+    this.db
+      .prepare('UPDATE conversations SET tags = ? WHERE id = ?')
+      .run(tags.length ? JSON.stringify(tags) : null, id);
   }
 
   /**

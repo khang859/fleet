@@ -7,7 +7,8 @@ import type {
   ChatStreamDonePayload,
   ChatStreamErrorPayload,
   ChatToolStatusPayload,
-  ChatConversationRenamedPayload
+  ChatConversationRenamedPayload,
+  ChatConversationTaggedPayload
 } from '../../../shared/chat-types';
 import type { PermissionOutcome, PermissionRequestPayload } from '../../../shared/chat-permissions';
 import type { SkillMenuItem } from '../../../shared/skill-types';
@@ -83,6 +84,7 @@ let unsubError: (() => void) | null = null;
 let unsubTool: (() => void) | null = null;
 let unsubPerm: (() => void) | null = null;
 let unsubRenamed: (() => void) | null = null;
+let unsubTagged: (() => void) | null = null;
 
 export const useChatStore = create<ChatStoreState>((set, get) => {
   function subscribeToStreamEvents(): void {
@@ -92,6 +94,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     unsubTool?.();
     unsubPerm?.();
     unsubRenamed?.();
+    unsubTagged?.();
     unsubChunk = window.fleet.chat.onStreamChunk((p: ChatStreamChunkPayload) => {
       if (p.streamId !== get().streamId) return;
       set((s) => ({ streamingText: (s.streamingText ?? '') + p.delta }));
@@ -138,6 +141,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     unsubRenamed = window.fleet.chat.onConversationRenamed((p: ChatConversationRenamedPayload) => {
       set((s) => ({
         conversations: s.conversations.map((c) => (c.id === p.id ? { ...c, title: p.title } : c))
+      }));
+    });
+    unsubTagged = window.fleet.chat.onConversationTagged((p: ChatConversationTaggedPayload) => {
+      set((s) => ({
+        conversations: s.conversations.map((c) => (c.id === p.id ? { ...c, tags: p.tags } : c))
       }));
     });
   }
