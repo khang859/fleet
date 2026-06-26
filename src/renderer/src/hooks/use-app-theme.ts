@@ -23,5 +23,11 @@ function useSystemPrefersDark(): boolean {
 export function useAppThemeVars(appTheme?: string, terminalTheme?: string): CSSProperties {
   const prefersDark = useSystemPrefersDark();
   const def = resolveAppThemeDefinition(appTheme, terminalTheme, prefersDark);
+  // Reflect the resolved theme's darkness onto the root `.dark` class so the
+  // Tailwind `dark:` variant (Streamdown's Shiki dual themes) tracks the app
+  // theme. Nothing else in the app uses `dark:`.
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', def.kind === 'dark');
+  }, [def.kind]);
   return getAppThemeCssVars(def);
 }
