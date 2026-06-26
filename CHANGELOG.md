@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.76.0
+
+- **Chat becomes an agentic workbench** — the Chat tool grows from a chat box into a full agent workspace. It can now run **bash and filesystem tools** with a permission engine and tool-call cards (#289, #291), **write and edit files** (#309), connect to **MCP servers** as a native client (#292), load **Agent Skills** (#293), and run a **web-search tool** (#303), with an **audit log / tool-activity view** over everything it does (#308).
+- **Conversation management** — search, folders, and pinning (#300), background **auto-naming** and topical **auto-tagging** of conversations (#290, #307), **branching/forking** (#296), per-conversation **Markdown/JSON export** (#304), and **message edit + regenerate** with a 1-of-N version pager (#295).
+- **Authoring & context** — **@-mention file/folder context** (#297), **slash-command prompt templates** (#299), **persona / system-prompt presets** (#301), and **image & PDF uploads** wired to vision models (#302).
+- **Artifacts panel** — html/svg/markdown results render in a dedicated side panel (#305).
+- **Cost & caching** — live **token/cost display** with prompt caching (#298).
+- **Settings restructure** — Chat settings reorganized into Models / Tools & Permissions / Extensions (#310), plus a **copy button** on code blocks in agent output (#288).
+
 ## v2.75.0
 
 - **Chat image generation & editing tool** — the Chat tool can now generate and edit images, with results rendered inline in the conversation (#287).
