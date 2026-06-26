@@ -2,8 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { ChatSecrets } from '../chat-secrets';
 
 function makeFakes() {
-  let data: { keyEnc?: string } = {};
-  const store = { get: () => data, set: (next: { keyEnc?: string }) => (data = next) };
+  let data: { keyEnc?: string; searchKeyEnc?: string } = {};
+  const store = {
+    get: () => data,
+    set: (next: { keyEnc?: string; searchKeyEnc?: string }) => (data = next)
+  };
   // Reversible fake "encryption": base64.
   const safe = {
     isEncryptionAvailable: () => true,
@@ -30,6 +33,19 @@ describe('ChatSecrets', () => {
     s.clearKey();
     expect(s.hasKey()).toBe(false);
     expect(s.getKey()).toBeNull();
+  });
+
+  it('keeps the search key in a separate slot from the chat key', () => {
+    const { store, safe } = makeFakes();
+    const s = new ChatSecrets({ store, safeStorage: safe });
+    s.setKey('sk-or-123');
+    s.setSearchKey('tvly-abc');
+    expect(s.hasSearchKey()).toBe(true);
+    expect(s.getSearchKey()).toBe('tvly-abc');
+    // Clearing the chat key leaves the search key intact.
+    s.clearKey();
+    expect(s.hasKey()).toBe(false);
+    expect(s.hasSearchKey()).toBe(true);
   });
 
   it('throws on setKey when encryption is unavailable', () => {

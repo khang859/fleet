@@ -281,6 +281,8 @@ export const IPC_CHANNELS = {
   CHAT_PATCH_SETTINGS: 'chat:patch-settings',
   CHAT_SET_KEY: 'chat:set-key',
   CHAT_HAS_KEY: 'chat:has-key',
+  CHAT_SET_SEARCH_KEY: 'chat:set-search-key',
+  CHAT_HAS_SEARCH_KEY: 'chat:has-search-key',
   CHAT_STREAM_CHUNK: 'chat:stream-chunk',
   CHAT_STREAM_DONE: 'chat:stream-done',
   CHAT_STREAM_ERROR: 'chat:stream-error',

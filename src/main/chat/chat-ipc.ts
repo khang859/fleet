@@ -165,4 +165,8 @@ export function registerChatIpc(deps: Deps): void {
     secrets.setKey(key);
   });
   ipcMain.handle(IPC_CHANNELS.CHAT_HAS_KEY, (): boolean => secrets.hasKey());
+  ipcMain.handle(IPC_CHANNELS.CHAT_SET_SEARCH_KEY, (_e, key: string) => {
+    secrets.setSearchKey(key);
+  });
+  ipcMain.handle(IPC_CHANNELS.CHAT_HAS_SEARCH_KEY, (): boolean => secrets.hasSearchKey());
 }

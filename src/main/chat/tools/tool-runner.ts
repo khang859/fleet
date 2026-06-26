@@ -21,6 +21,30 @@ export type McpRouter = {
   callTool: (name: string, argsJson: string) => Promise<string>;
 };
 
+/** Performs a web search; the provider, key, and result cap are bound by the caller. */
+export type WebSearchRunner = {
+  enabled: () => boolean;
+  search: (query: string, signal: AbortSignal) => Promise<string>;
+};
+
+export const WEB_SEARCH_TOOL_NAME = 'web_search';
+
+export const WEB_SEARCH_TOOL = {
+  type: 'function',
+  function: {
+    name: 'web_search',
+    description:
+      'Search the web for current information (docs, errors, recent facts). Gated: the user approves the query. Returns ranked results with titles, URLs, and snippets — cite the URLs in your answer.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The search query.' }
+      },
+      required: ['query']
+    }
+  }
+} as const;
+
 export const READ_FILE_TOOL = {
   type: 'function',
   function: {
@@ -177,6 +201,7 @@ const searchArgs = z.object({
   glob: z.string().optional()
 });
 const bashArgs = z.object({ command: z.string() });
+const webSearchArgs = z.object({ query: z.string() });
 const writeArgs = z.object({ path: z.string(), content: z.string() });
 const editArgs = z.object({
   path: z.string(),
@@ -196,7 +221,8 @@ export class ChatToolExecutor {
     private readonly getConfig: () => ChatToolsConfig,
     private readonly emit: (channel: string, payload: unknown) => void,
     private readonly mcp: McpRouter | null = null,
-    private readonly onAudit: AuditSink | null = null
+    private readonly onAudit: AuditSink | null = null,
+    private readonly webSearch: WebSearchRunner | null = null
   ) {}
 
   /** Returns the tool result content fed back into the model loop. */
@@ -231,6 +257,7 @@ export class ChatToolExecutor {
     ctx: ExecCtx
   ): Promise<ToolOutcome> {
     if (isMcpToolName(name)) return this.runMcpGated(name, argsJson, ctx);
+    if (name === WEB_SEARCH_TOOL_NAME) return this.runWebSearchGated(argsJson, ctx);
     switch (name) {
       case 'read_file': {
         const a = readArgs.parse(JSON.parse(argsJson));
@@ -480,5 +507,49 @@ export class ChatToolExecutor {
       label: 'Tool finished'
     } satisfies ChatToolStatusPayload);
     return { output: out, detail: name, decision: 'approved', status: 'ok' };
+  }
+
+  /**
+   * Gate and run a web search. Approval reuses the permission engine + card
+   * (tool `WebSearch`, the query as the value); an allow rule like
+   * `WebSearch(*)` auto-approves. The provider/key/result-cap are bound by the
+   * runner the caller injected.
+   */
+  private async runWebSearchGated(argsJson: string, ctx: ExecCtx): Promise<ToolOutcome> {
+    const { query } = webSearchArgs.parse(JSON.parse(argsJson));
+    if (!this.webSearch?.enabled()) {
+      return {
+        output: 'Web search is disabled. The user must enable it (and set an API key) in settings.',
+        detail: query,
+        decision: 'blocked',
+        status: 'denied'
+      };
+    }
+    const grant = await this.permissions.request({
+      streamId: ctx.streamId,
+      tool: 'WebSearch',
+      command: query,
+      signal: ctx.signal
+    });
+    if (grant !== 'allow') {
+      return {
+        output: 'The user denied this web search.',
+        detail: query,
+        decision: 'denied',
+        status: 'denied'
+      };
+    }
+    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
+      streamId: ctx.streamId,
+      state: 'generating',
+      label: `Searching: ${query}`
+    } satisfies ChatToolStatusPayload);
+    const output = await this.webSearch.search(query, ctx.signal);
+    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
+      streamId: ctx.streamId,
+      state: 'done',
+      label: 'Search finished'
+    } satisfies ChatToolStatusPayload);
+    return { output, detail: query, decision: 'approved', status: 'ok' };
   }
 }

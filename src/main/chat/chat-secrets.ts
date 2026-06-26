@@ -1,7 +1,7 @@
 import Store from 'electron-store';
 import { safeStorage } from 'electron';
 
-type SecretsData = { keyEnc?: string };
+type SecretsData = { keyEnc?: string; searchKeyEnc?: string };
 
 interface KeyStore {
   get(): SecretsData;
@@ -63,6 +63,29 @@ export class ChatSecrets {
   }
 
   clearKey(): void {
-    this.store.set({});
+    this.store.set({ ...this.store.get(), keyEnc: undefined });
+  }
+
+  /** Web-search provider API key — a separate encrypted slot from the chat key. */
+  setSearchKey(plain: string): void {
+    if (!this.safe.isEncryptionAvailable()) {
+      throw new Error('Secure storage is not available on this system');
+    }
+    const enc = this.safe.encryptString(plain).toString('base64');
+    this.store.set({ ...this.store.get(), searchKeyEnc: enc });
+  }
+
+  getSearchKey(): string | null {
+    const { searchKeyEnc } = this.store.get();
+    if (!searchKeyEnc) return null;
+    try {
+      return this.safe.decryptString(Buffer.from(searchKeyEnc, 'base64'));
+    } catch {
+      return null;
+    }
+  }
+
+  hasSearchKey(): boolean {
+    return Boolean(this.store.get().searchKeyEnc);
   }
 }

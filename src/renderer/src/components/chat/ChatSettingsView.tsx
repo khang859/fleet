@@ -13,9 +13,11 @@ import {
 import {
   DEFAULT_CHAT_TOOLS,
   DEFAULT_CHAT_USAGE,
+  DEFAULT_CHAT_WEB_SEARCH,
   type ChatToolsConfig,
   type ChatToolsMode,
-  type ChatUsageConfig
+  type ChatUsageConfig,
+  type ChatWebSearchConfig
 } from '../../../../shared/chat-types';
 
 /** A top-level settings group with a heading and an optional description. */
@@ -110,6 +112,9 @@ export function ChatSettingsView(): React.JSX.Element {
   const [tools, setTools] = useState<ChatToolsConfig>(DEFAULT_CHAT_TOOLS);
   const [usage, setUsage] = useState<ChatUsageConfig>(DEFAULT_CHAT_USAGE);
   const [exportFormat, setExportFormat] = useState<'markdown' | 'json'>('markdown');
+  const [webSearch, setWebSearch] = useState<ChatWebSearchConfig>(DEFAULT_CHAT_WEB_SEARCH);
+  const [searchKeyPresent, setSearchKeyPresent] = useState(false);
+  const [searchKeyInput, setSearchKeyInput] = useState('');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -123,7 +128,9 @@ export function ChatSettingsView(): React.JSX.Element {
       setTools(s.tools);
       setUsage(s.usage);
       setExportFormat(s.exportFormat);
+      setWebSearch(s.webSearch);
     });
+    void window.fleet.chat.hasSearchKey().then(setSearchKeyPresent);
   }, []);
 
   const saveKey = async (): Promise<void> => {
@@ -181,6 +188,19 @@ export function ChatSettingsView(): React.JSX.Element {
   const saveExportFormat = async (next: 'markdown' | 'json'): Promise<void> => {
     setExportFormat(next);
     await window.fleet.chat.patchSettings({ exportFormat: next });
+  };
+
+  const saveWebSearch = async (patch: Partial<ChatWebSearchConfig>): Promise<void> => {
+    const next = { ...webSearch, ...patch };
+    setWebSearch(next);
+    await window.fleet.chat.patchSettings({ webSearch: next });
+  };
+
+  const saveSearchKey = async (): Promise<void> => {
+    if (!searchKeyInput.trim()) return;
+    await window.fleet.chat.setSearchKey(searchKeyInput.trim());
+    setSearchKeyInput('');
+    setSearchKeyPresent(true);
   };
 
   return (
@@ -347,6 +367,65 @@ export function ChatSettingsView(): React.JSX.Element {
           <PermissionRulesEditor
             rules={permissions}
             onChange={(next) => void savePermissions(next)}
+          />
+        </Section>
+      </Group>
+
+      <Group
+        title="Web Search"
+        description="Let tool-capable models look things up on the web. Each search is approved via the tool-call card."
+      >
+        <Section title="Enable">
+          <label className="flex items-center gap-2 text-sm text-fleet-text">
+            <input
+              type="checkbox"
+              checked={webSearch.enabled}
+              onChange={(e) => void saveWebSearch({ enabled: e.target.checked })}
+            />
+            Offer the <code>web_search</code> tool (requires a provider API key)
+          </label>
+        </Section>
+        <Section title="Provider">
+          <select
+            value={webSearch.provider}
+            onChange={() => void saveWebSearch({ provider: 'tavily' })}
+            className="rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
+          >
+            <option value="tavily">Tavily</option>
+          </select>
+        </Section>
+        <Section title="Provider API key">
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              value={searchKeyInput}
+              onChange={(e) => setSearchKeyInput(e.target.value)}
+              placeholder={searchKeyPresent ? '•••••••• (saved)' : 'tvly-…'}
+              className="flex-1 rounded border border-fleet-border bg-fleet-surface-2 px-3 py-1.5 text-sm text-fleet-text outline-none"
+            />
+            <button
+              onClick={() => void saveSearchKey()}
+              className="rounded bg-fleet-accent/80 px-3 py-1.5 text-sm text-white"
+            >
+              Save
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-fleet-text-muted">
+            {searchKeyPresent ? 'A key is stored (encrypted).' : 'Not set.'}
+          </p>
+        </Section>
+        <Section title="Max results">
+          <input
+            type="number"
+            min={1}
+            max={20}
+            value={webSearch.maxResults}
+            onChange={(e) =>
+              void saveWebSearch({
+                maxResults: Math.min(20, Math.max(1, Number(e.target.value) || 1))
+              })
+            }
+            className="w-24 rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
           />
         </Section>
       </Group>

@@ -26,7 +26,12 @@ import type {
   PersonaPreset
 } from '../../shared/chat-types';
 import type { ChatToolExecutor } from './tools/tool-runner';
-import { buildFsToolDefs, FS_TOOL_NAMES } from './tools/tool-runner';
+import {
+  buildFsToolDefs,
+  FS_TOOL_NAMES,
+  WEB_SEARCH_TOOL,
+  WEB_SEARCH_TOOL_NAME
+} from './tools/tool-runner';
 import { buildMentionContext, defaultWorkspace } from './tools/fs-tools';
 import { isMcpToolName } from '../../shared/mcp-types';
 import type { SkillManager } from './skills/skill-manager';
@@ -53,6 +58,8 @@ type Deps = {
   getTools: () => ChatToolsConfig;
   getUsage: () => ChatUsageConfig;
   getPersonas: () => { presets: PersonaPreset[]; defaultId: string | null };
+  /** True when web search is enabled and a search API key is present. */
+  isWebSearchReady: () => boolean;
   getMcpToolDefs: () => unknown[];
   skills: SkillManager;
   toolExecutor: ChatToolExecutor;
@@ -260,9 +267,11 @@ export class ChatService {
     const fsToolDefs = supportsTools ? buildFsToolDefs(this.deps.getToolsMode()) : [];
     const mcpToolDefs = supportsTools ? this.deps.getMcpToolDefs() : [];
     const loadSkillDef = supportsTools ? this.deps.skills.toolDef() : null;
+    const webSearchEnabled = supportsTools && this.deps.isWebSearchReady();
     const toolDefs: unknown[] = [
       ...(imageToolEnabled ? [GENERATE_IMAGE_TOOL] : []),
       ...fsToolDefs,
+      ...(webSearchEnabled ? [WEB_SEARCH_TOOL] : []),
       ...mcpToolDefs,
       ...(loadSkillDef ? [loadSkillDef] : [])
     ];
@@ -342,8 +351,12 @@ export class ChatService {
               });
               continue;
             }
-            // Native fs/bash and MCP tools run through the main-process executor (gated).
-            if (FS_TOOL_NAMES.has(call.name) || isMcpToolName(call.name)) {
+            // Native fs/bash, web search, and MCP tools run through the main-process executor (gated).
+            if (
+              FS_TOOL_NAMES.has(call.name) ||
+              isMcpToolName(call.name) ||
+              call.name === WEB_SEARCH_TOOL_NAME
+            ) {
               const content = await this.deps.toolExecutor.run(call.name, call.arguments, {
                 streamId,
                 conversationId,
