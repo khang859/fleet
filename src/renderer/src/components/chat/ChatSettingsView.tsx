@@ -108,6 +108,7 @@ export function ChatSettingsView(): React.JSX.Element {
   const [permissions, setPermissions] = useState<PermissionRules>(DEFAULT_PERMISSION_RULES);
   const [tools, setTools] = useState<ChatToolsConfig>(DEFAULT_CHAT_TOOLS);
   const [usage, setUsage] = useState<ChatUsageConfig>(DEFAULT_CHAT_USAGE);
+  const [exportFormat, setExportFormat] = useState<'markdown' | 'json'>('markdown');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -120,6 +121,7 @@ export function ChatSettingsView(): React.JSX.Element {
       setPermissions(s.permissions);
       setTools(s.tools);
       setUsage(s.usage);
+      setExportFormat(s.exportFormat);
     });
   }, []);
 
@@ -173,6 +175,11 @@ export function ChatSettingsView(): React.JSX.Element {
     const next = { ...usage, ...patch };
     setUsage(next);
     await window.fleet.chat.patchSettings({ usage: next });
+  };
+
+  const saveExportFormat = async (next: 'markdown' | 'json'): Promise<void> => {
+    setExportFormat(next);
+    await window.fleet.chat.patchSettings({ exportFormat: next });
   };
 
   return (
@@ -383,6 +390,19 @@ export function ChatSettingsView(): React.JSX.Element {
           </div>
           <p className="mt-1 text-xs text-fleet-text-muted">
             The meter turns amber once a conversation&apos;s cost passes this. Empty = no warning.
+          </p>
+        </Section>
+        <Section title="Export format">
+          <select
+            value={exportFormat}
+            onChange={(e) => void saveExportFormat(e.target.value === 'json' ? 'json' : 'markdown')}
+            className="rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
+          >
+            <option value="markdown">Markdown (.md)</option>
+            <option value="json">JSON (.json)</option>
+          </select>
+          <p className="mt-1 text-xs text-fleet-text-muted">
+            Default format for the export action in the conversation list.
           </p>
         </Section>
       </Group>
