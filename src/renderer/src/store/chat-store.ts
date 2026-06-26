@@ -76,6 +76,8 @@ type ChatStoreState = {
     contextPaths?: string[]
   ) => Promise<void>;
   regenerate: (messageId: string, model: string) => Promise<void>;
+  /** Re-stream the response to the last user message after a failed turn. */
+  retryLastTurn: (model: string) => Promise<void>;
   editMessage: (messageId: string, text: string, model: string) => Promise<void>;
   selectVariant: (messageId: string) => Promise<void>;
   forkConversation: (messageId: string) => Promise<void>;
@@ -345,6 +347,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         supportsImages: m?.inputImage ?? false
       });
       set({ streamId: res.streamId, streamingText: '', status: 'streaming', error: null });
+    },
+
+    retryLastTurn: async (model) => {
+      const lastUser = [...get().messages].reverse().find((m) => m.role === 'user');
+      if (lastUser) await get().regenerate(lastUser.id, model);
     },
 
     editMessage: async (messageId, text, model) => {

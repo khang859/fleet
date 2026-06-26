@@ -221,18 +221,27 @@ export class ChatService {
   }): { streamId: string } {
     const { store } = this.deps;
     const target = store.getMessage(req.messageId);
-    if (target?.role !== 'assistant' || !target.parentId) {
+    // Re-roll an existing assistant turn (regenerate), OR produce the response
+    // to a user turn whose stream failed (scoped retry of a failed turn).
+    let assistantParentId: string;
+    let invocationText: string;
+    if (target?.role === 'assistant' && target.parentId) {
+      assistantParentId = target.parentId;
+      invocationText = store.getMessage(target.parentId)?.content ?? '';
+    } else if (target?.role === 'user') {
+      assistantParentId = target.id;
+      invocationText = target.content;
+    } else {
       throw new Error('Cannot regenerate this message');
     }
-    const parentUser = store.getMessage(target.parentId);
     const streamId = this.streamAssistant({
       conversationId: req.conversationId,
-      assistantParentId: target.parentId,
+      assistantParentId,
       model: req.model || this.deps.getDefaultModel(),
       supportsTools: !!req.supportsTools,
       supportsImages: !!req.supportsImages,
       attachmentRefs: [],
-      invocationText: parentUser?.content ?? ''
+      invocationText
     });
     return { streamId };
   }

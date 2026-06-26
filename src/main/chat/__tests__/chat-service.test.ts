@@ -347,6 +347,39 @@ describe('ChatService regenerate / edit', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('regenerate re-streams the response to a user turn whose stream failed', async () => {
+    const dir = join(tmpdir(), `fleet-chat-retry-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'retry.db'));
+    const conv = store.createConversation();
+    const client = new OpenRouterClient();
+    const seen: string[] = [];
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      const msgs = opts.messages as Array<{ role: string; content: string }>;
+      seen.push(msgs.map((m) => m.content).join('|'));
+      opts.onDelta('recovered');
+      return { content: 'recovered', toolCalls: [], finishReason: null };
+    });
+    const service = makeService(dir, store, client);
+
+    // Simulate a failed turn: a user message exists with no assistant reply.
+    const userMsg = store.addMessage({
+      conversationId: conv.id,
+      role: 'user',
+      content: 'hi',
+      parentId: null
+    });
+
+    service.regenerate({ conversationId: conv.id, messageId: userMsg.id, model: 'm' });
+    await vi.waitFor(() => expect(store.getMessages(conv.id).length).toBe(2));
+
+    const active = store.getMessages(conv.id);
+    expect(active.map((m) => m.content)).toEqual(['hi', 'recovered']);
+    expect(seen[0]).toContain('hi'); // the model saw the user's prompt
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it('editMessage re-runs from an edited user turn on a new branch', async () => {
     const dir = join(tmpdir(), `fleet-chat-edit2-${process.pid}`);
     mkdirSync(dir, { recursive: true });
