@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
 import {
   ChevronLeft,
   ChevronRight,
@@ -25,7 +22,7 @@ import { extractArtifacts } from '../../../../shared/chat-artifacts';
 import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
 import { ToolCallCard } from './ToolCallCard';
-import { CodeBlock } from '../markdown/CodeBlock';
+import { ChatMarkdown } from './ChatMarkdown';
 import { MessageUsage } from './UsageMeter';
 
 /** ‹ 2 / 3 › pager that switches between sibling attempts of a turn. */
@@ -125,15 +122,7 @@ function Bubble({
             </div>
           </div>
         ) : (
-          <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[[rehypeHighlight, { detect: true }]]}
-              components={{ pre: CodeBlock }}
-            >
-              {content}
-            </ReactMarkdown>
-          </div>
+          <ChatMarkdown>{content}</ChatMarkdown>
         )}
         {images !== undefined && images.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -268,15 +257,7 @@ function StreamingMessage(): React.JSX.Element {
     // token-by-token; the role=status announcer speaks start/completion instead.
     <div className="flex justify-start px-4 py-2" aria-live="off">
       <div className="max-w-[80%] rounded-lg bg-fleet-surface-2 px-3 py-2 text-sm text-fleet-text">
-        <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[[rehypeHighlight, { detect: true }]]}
-            components={{ pre: CodeBlock }}
-          >
-            {streamingText || '…'}
-          </ReactMarkdown>
-        </div>
+        <ChatMarkdown streaming>{streamingText || '…'}</ChatMarkdown>
       </div>
     </div>
   );
