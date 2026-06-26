@@ -23,10 +23,14 @@ export function ChatSettingsView(): React.JSX.Element {
   const loadModels = useChatStore((s) => s.loadModels);
   const [keyInput, setKeyInput] = useState('');
   const [defaultModel, setDefaultModel] = useState('deepseek/deepseek-v4-flash');
+  const [imageModel, setImageModel] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    void window.fleet.chat.getSettings().then((s) => setDefaultModel(s.defaultModel));
+    void window.fleet.chat.getSettings().then((s) => {
+      setDefaultModel(s.defaultModel);
+      setImageModel(s.imageModel);
+    });
   }, []);
 
   const saveKey = async (): Promise<void> => {
@@ -42,6 +46,11 @@ export function ChatSettingsView(): React.JSX.Element {
   const saveModel = async (modelId: string): Promise<void> => {
     setDefaultModel(modelId);
     await window.fleet.chat.patchSettings({ defaultModel: modelId });
+  };
+
+  const saveImageModel = async (modelId: string | null): Promise<void> => {
+    setImageModel(modelId);
+    await window.fleet.chat.patchSettings({ imageModel: modelId });
   };
 
   return (
@@ -67,8 +76,24 @@ export function ChatSettingsView(): React.JSX.Element {
         </p>
       </Section>
       <Section title="Default Model">
-        <ModelPicker value={defaultModel} onChange={(m) => void saveModel(m)} />
+        <ModelPicker
+          value={defaultModel}
+          onChange={(m) => {
+            if (m) void saveModel(m);
+          }}
+        />
         <p className="mt-1 text-xs text-fleet-text-muted">Used for new conversations.</p>
+      </Section>
+      <Section title="Image Model">
+        <ModelPicker
+          source="image"
+          allowNone
+          value={imageModel}
+          onChange={(m) => void saveImageModel(m)}
+        />
+        <p className="mt-1 text-xs text-fleet-text-muted">
+          Enables the in-chat image generation tool. None = off.
+        </p>
       </Section>
     </div>
   );

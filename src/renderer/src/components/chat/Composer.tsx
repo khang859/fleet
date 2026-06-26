@@ -76,7 +76,7 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
         <ModelPicker
           value={model}
           onChange={(m) => {
-            if (activeId) void setConversationModel(activeId, m);
+            if (m && activeId) void setConversationModel(activeId, m);
           }}
         />
       </div>
