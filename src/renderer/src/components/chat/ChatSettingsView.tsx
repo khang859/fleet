@@ -228,7 +228,7 @@ export function ChatSettingsView(): React.JSX.Element {
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="h-full overflow-y-auto">
       <Group title="Models" description="The models powering chat and image generation.">
         <Section title="OpenRouter API Key">
           <div className="flex items-center gap-2">
