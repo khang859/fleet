@@ -13,6 +13,19 @@ export type ChatMessage = {
   content: string;
   createdAt: number;
   images?: ChatImageRef[];
+  /** The message this one follows in the turn tree; null for the first turn. */
+  parentId: string | null;
+  /** Present only when this turn has sibling variants (regenerate / edit). */
+  variants?: ChatVariantInfo;
+};
+
+/** Pager metadata for a turn that has multiple attempts. */
+export type ChatVariantInfo = {
+  /** 1-based position of this message among its siblings (oldest → newest). */
+  index: number;
+  total: number;
+  /** Sibling message ids, oldest → newest (length === total). */
+  ids: string[];
 };
 
 export type ChatConversation = {
@@ -146,6 +159,20 @@ export type ChatSendRequest = {
   supportsTools?: boolean;
 };
 export type ChatSendResponse = { streamId: string; userMessage: ChatMessage };
+
+export type ChatRegenerateRequest = {
+  conversationId: string;
+  messageId: string;
+  model: string;
+  supportsTools?: boolean;
+};
+export type ChatEditRequest = {
+  conversationId: string;
+  messageId: string;
+  text: string;
+  model: string;
+  supportsTools?: boolean;
+};
 
 export type ChatStreamChunkPayload = { streamId: string; delta: string };
 export type ChatStreamDonePayload = { streamId: string; message: ChatMessage };

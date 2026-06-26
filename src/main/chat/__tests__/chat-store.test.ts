@@ -57,6 +57,47 @@ describe('ChatStore', () => {
     expect(store.listAudit()).toHaveLength(2);
   });
 
+  it('backfills a legacy flat message table into a linear active path', () => {
+    const dir = join(TEST_DIR, 'legacy');
+    mkdirSync(dir, { recursive: true });
+    const dbPath = join(dir, 'legacy.db');
+    // Build a pre-tree schema (no parent_id / active_child_id / active_head_id).
+    const raw = new Database(dbPath);
+    raw.exec(`
+      CREATE TABLE conversations (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT 'New chat',
+        model TEXT, title_locked INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+      CREATE TABLE messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL,
+        content TEXT NOT NULL, created_at INTEGER NOT NULL);
+    `);
+    raw
+      .prepare('INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?,?,?,?)')
+      .run('lc', 'Legacy', 1, 1);
+    raw
+      .prepare(
+        'INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?,?,?,?,?)'
+      )
+      .run('m1', 'lc', 'user', 'q1', 10);
+    raw
+      .prepare(
+        'INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?,?,?,?,?)'
+      )
+      .run('m2', 'lc', 'assistant', 'a1', 20);
+    raw
+      .prepare(
+        'INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?,?,?,?,?)'
+      )
+      .run('m3', 'lc', 'user', 'q2', 30);
+    raw.close();
+
+    const migrated = new ChatStore(dbPath);
+    const msgs = migrated.getMessages('lc');
+    expect(msgs.map((m) => m.content)).toEqual(['q1', 'a1', 'q2']);
+    expect(msgs[0].parentId).toBeNull();
+    expect(msgs[1].parentId).toBe('m1');
+    expect(migrated.activeLeafId('lc')).toBe('m3');
+    migrated.close();
+  });
+
   it('caps stored audit result text', () => {
     const conv = store.createConversation();
     store.addAudit({
@@ -81,13 +122,69 @@ describe('ChatStore', () => {
     void b;
   });
 
-  it('appends and reads messages oldest-first', () => {
+  it('appends and reads messages oldest-first along the active path', () => {
     const c = store.createConversation();
-    store.addMessage({ conversationId: c.id, role: 'user', content: 'hi' });
-    store.addMessage({ conversationId: c.id, role: 'assistant', content: 'hello' });
+    const u = store.addMessage({ conversationId: c.id, role: 'user', content: 'hi' });
+    store.addMessage({ conversationId: c.id, role: 'assistant', content: 'hello', parentId: u.id });
     const msgs = store.getMessages(c.id);
     expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant']);
     expect(msgs.map((m) => m.content)).toEqual(['hi', 'hello']);
+  });
+
+  it('pages sibling assistant variants and follows the selected one', () => {
+    const c = store.createConversation();
+    const u = store.addMessage({ conversationId: c.id, role: 'user', content: 'hi' });
+    const a1 = store.addMessage({
+      conversationId: c.id,
+      role: 'assistant',
+      content: 'v1',
+      parentId: u.id
+    });
+    const a2 = store.addMessage({
+      conversationId: c.id,
+      role: 'assistant',
+      content: 'v2',
+      parentId: u.id
+    });
+
+    // Newest variant is active by default.
+    let msgs = store.getMessages(c.id);
+    expect(msgs.map((m) => m.content)).toEqual(['hi', 'v2']);
+    const assistant = msgs[1];
+    expect(assistant.variants).toEqual({ index: 2, total: 2, ids: [a1.id, a2.id] });
+
+    // Selecting the older variant switches the active path.
+    store.selectVariant(a1.id);
+    msgs = store.getMessages(c.id);
+    expect(msgs.map((m) => m.content)).toEqual(['hi', 'v1']);
+    expect(msgs[1].variants?.index).toBe(1);
+  });
+
+  it('branches when an earlier user message is edited and uses the new branch downstream', () => {
+    const c = store.createConversation();
+    const u1 = store.addMessage({ conversationId: c.id, role: 'user', content: 'first' });
+    store.addMessage({ conversationId: c.id, role: 'assistant', content: 'r1', parentId: u1.id });
+    // Edit = a new user sibling under the same parent (here, root).
+    const u2 = store.addMessage({ conversationId: c.id, role: 'user', content: 'first (edited)' });
+    store.addMessage({ conversationId: c.id, role: 'assistant', content: 'r2', parentId: u2.id });
+
+    const msgs = store.getMessages(c.id);
+    expect(msgs.map((m) => m.content)).toEqual(['first (edited)', 'r2']);
+    expect(msgs[0].variants).toEqual({ index: 2, total: 2, ids: [u1.id, u2.id] });
+    expect(store.activeLeafId(c.id)).toBe(msgs[1].id);
+  });
+
+  it('getPathTo returns root→message ancestors for context', () => {
+    const c = store.createConversation();
+    const u = store.addMessage({ conversationId: c.id, role: 'user', content: 'q' });
+    const a = store.addMessage({
+      conversationId: c.id,
+      role: 'assistant',
+      content: 'ans',
+      parentId: u.id
+    });
+    expect(store.getPathTo(a.id).map((m) => m.content)).toEqual(['q', 'ans']);
+    expect(store.getPathTo(u.id).map((m) => m.content)).toEqual(['q']);
   });
 
   it('cascade-deletes messages with their conversation', () => {

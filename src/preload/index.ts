@@ -147,6 +147,8 @@ import type {
   ChatModel,
   ChatSettings,
   ChatSendRequest,
+  ChatRegenerateRequest,
+  ChatEditRequest,
   ChatSendResponse,
   ChatStreamChunkPayload,
   ChatStreamDonePayload,
@@ -845,6 +847,12 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CHAT_GET_MESSAGES, conversationId),
     send: async (req: ChatSendRequest): Promise<ChatSendResponse> =>
       typedInvoke(IPC_CHANNELS.CHAT_SEND, req),
+    regenerate: async (req: ChatRegenerateRequest): Promise<{ streamId: string }> =>
+      typedInvoke(IPC_CHANNELS.CHAT_REGENERATE, req),
+    editMessage: async (req: ChatEditRequest): Promise<ChatSendResponse> =>
+      typedInvoke(IPC_CHANNELS.CHAT_EDIT_MESSAGE, req),
+    selectVariant: async (messageId: string): Promise<ChatMessage[]> =>
+      typedInvoke(IPC_CHANNELS.CHAT_SELECT_VARIANT, messageId),
     cancel: async (streamId: string): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_CANCEL, streamId),
     listModels: async (): Promise<ChatModel[]> => typedInvoke(IPC_CHANNELS.CHAT_LIST_MODELS),

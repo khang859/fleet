@@ -2,6 +2,8 @@ import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type {
   ChatSendRequest,
+  ChatRegenerateRequest,
+  ChatEditRequest,
   ChatSettings,
   ChatConversation,
   ChatMessage,
@@ -62,6 +64,16 @@ export function registerChatIpc(deps: Deps): void {
     store.getMessages(conversationId)
   );
   ipcMain.handle(IPC_CHANNELS.CHAT_SEND, (_e, req: ChatSendRequest) => service.send(req));
+  ipcMain.handle(IPC_CHANNELS.CHAT_REGENERATE, (_e, req: ChatRegenerateRequest) =>
+    service.regenerate(req)
+  );
+  ipcMain.handle(IPC_CHANNELS.CHAT_EDIT_MESSAGE, (_e, req: ChatEditRequest) =>
+    service.editMessage(req)
+  );
+  ipcMain.handle(IPC_CHANNELS.CHAT_SELECT_VARIANT, (_e, messageId: string): ChatMessage[] => {
+    store.selectVariant(messageId);
+    return store.getMessages(store.getMessage(messageId)?.conversationId ?? '');
+  });
   ipcMain.handle(IPC_CHANNELS.CHAT_CANCEL, (_e, streamId: string) => {
     service.cancel(streamId);
   });
