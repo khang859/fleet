@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.76.2
+
+- **Fix: high CPU while agents are running** — the session list re-read and re-parsed the entire `~/.claude/projects` (and `~/.rune/sessions`) history on every transcript write, so an active agent could pin the main process. Session summaries are now cached by file mtime/size; only changed transcripts are re-parsed (#332).
+
 ## v2.76.1
 
 - **Fix: Chat settings now scrolls** — the Chat → Settings page couldn't scroll, hiding everything below the fold including the **Extensions & Capabilities** section (MCP Servers and Skills tabs). The settings view now inherits a bounded height so the full page is reachable.
