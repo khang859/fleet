@@ -1,7 +1,13 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'highlight.js/styles/atom-one-dark.css';
+@import 'streamdown/styles.css';
 @plugin "@tailwindcss/typography";
+
+/* Let Tailwind v4 scan Streamdown's dist for the utility classes its rendered
+   markdown/code blocks reference, so they aren't tree-shaken away. */
+@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/@streamdown/code/dist/*.js";
 
 /* Semantic app-chrome color tokens. `inline` makes utilities resolve var()
    at the element, so overriding --fleet-* on the root re-themes the app live. */
@@ -16,6 +22,28 @@
   --color-fleet-text-secondary: var(--fleet-text-secondary);
   --color-fleet-text-muted: var(--fleet-text-muted);
   --color-fleet-text-subtle: var(--fleet-text-subtle);
+
+  /* shadcn-style semantic tokens, bridged to the fleet palette. Streamdown's
+     rendered markdown references these utilities (bg-muted, text-muted-foreground,
+     border-border, …); mapping them to --fleet-* keeps chat markdown in sync with
+     the active app theme. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-ring: var(--ring);
 }
 
 /* --- Bundled Nerd Fonts --- */
@@ -75,6 +103,27 @@
   --fleet-text-secondary: #d4d4d4;
   --fleet-text-muted: #a3a3a3;
   --fleet-text-subtle: #737373;
+
+  /* shadcn semantic tokens consumed by Streamdown, aliased to the fleet
+     palette above so chat markdown re-themes live with the rest of the app. */
+  --background: var(--fleet-bg);
+  --foreground: var(--fleet-text);
+  --card: var(--fleet-surface);
+  --card-foreground: var(--fleet-text);
+  --popover: var(--fleet-surface);
+  --popover-foreground: var(--fleet-text);
+  --muted: var(--fleet-surface-2);
+  --muted-foreground: var(--fleet-text-muted);
+  --border: var(--fleet-border);
+  --input: var(--fleet-border);
+  --primary: var(--fleet-accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--fleet-surface-2);
+  --secondary-foreground: var(--fleet-text);
+  --accent: var(--fleet-surface-2);
+  --accent-foreground: var(--fleet-text);
+  --ring: var(--fleet-accent);
+  --radius: 0.5rem;
 }
 
 html,
