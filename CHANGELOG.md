@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.76.1
+
+- **Fix: Chat settings now scrolls** — the Chat → Settings page couldn't scroll, hiding everything below the fold including the **Extensions & Capabilities** section (MCP Servers and Skills tabs). The settings view now inherits a bounded height so the full page is reachable.
+
 ## v2.76.0
 
 - **Chat becomes an agentic workbench** — the Chat tool grows from a chat box into a full agent workspace. It can now run **bash and filesystem tools** with a permission engine and tool-call cards (#289, #291), **write and edit files** (#309), connect to **MCP servers** as a native client (#292), load **Agent Skills** (#293), and run a **web-search tool** (#303), with an **audit log / tool-activity view** over everything it does (#308).
