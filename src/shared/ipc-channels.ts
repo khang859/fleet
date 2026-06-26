@@ -287,5 +287,11 @@ export const IPC_CHANNELS = {
   CHAT_CONVERSATION_RENAMED: 'chat:conversation-renamed',
   // MCP servers: GET returns statuses; SET replaces the config and reconnects.
   CHAT_MCP_GET: 'chat:mcp-get',
-  CHAT_MCP_SET: 'chat:mcp-set'
+  CHAT_MCP_SET: 'chat:mcp-set',
+  // Skills: GET returns summaries+budget; SET_STATE flips one skill's overlay
+  // state; RESCAN re-reads the skill folders; REVEAL opens the personal folder.
+  CHAT_SKILLS_GET: 'chat:skills-get',
+  CHAT_SKILLS_SET_STATE: 'chat:skills-set-state',
+  CHAT_SKILLS_RESCAN: 'chat:skills-rescan',
+  CHAT_SKILLS_REVEAL: 'chat:skills-reveal'
 } as const;

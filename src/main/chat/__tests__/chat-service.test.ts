@@ -13,6 +13,15 @@ import type { ChatToolExecutor } from '../tools/tool-runner';
 
 const stubExecutor = { run: async () => Promise.resolve('') } as unknown as ChatToolExecutor;
 
+import type { SkillManager } from '../skills/skill-manager';
+const stubSkills = {
+  systemPrompt: () => null,
+  toolDef: () => null,
+  resolveInvocation: () => null,
+  hasLoadSkillTool: () => false,
+  runLoadSkill: () => ''
+} as unknown as SkillManager;
+
 const fakeProvider: ChatImageProvider = {
   id: 'openrouter',
   generate: vi.fn(async () => ({ data: Buffer.from('IMG'), mimeType: 'image/png' }))
@@ -53,7 +62,8 @@ describe('ChatService.send', () => {
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
       getToolsMode: () => 'off',
       getMcpToolDefs: () => [],
-toolExecutor: stubExecutor,
+      skills: stubSkills,
+      toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
       imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
@@ -94,7 +104,8 @@ toolExecutor: stubExecutor,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
       getToolsMode: () => 'off',
       getMcpToolDefs: () => [],
-toolExecutor: stubExecutor,
+      skills: stubSkills,
+      toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
       imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
@@ -143,7 +154,8 @@ it('runs the image tool loop and persists a generated image', async () => {
     getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
     getToolsMode: () => 'off',
     getMcpToolDefs: () => [],
-toolExecutor: stubExecutor,
+    skills: stubSkills,
+    toolExecutor: stubExecutor,
     imageProvider: provider,
     imageStorage: new ChatImageStorage(dir),
     emit: (channel, payload) => events.push({ channel, payload })
@@ -204,7 +216,8 @@ it('passes the reference image to the provider as a base64 data URL when editing
     getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
     getToolsMode: () => 'off',
     getMcpToolDefs: () => [],
-toolExecutor: stubExecutor,
+    skills: stubSkills,
+    toolExecutor: stubExecutor,
     imageProvider: provider,
     imageStorage: new ChatImageStorage(dir),
     emit: (channel, payload) => events.push({ channel, payload })
@@ -231,4 +244,73 @@ toolExecutor: stubExecutor,
   expect(req.referenceImages?.[0]).not.toContain(dir);
   store.close();
   rmSync(dir, { recursive: true, force: true });
+});
+
+describe('ChatService skills', () => {
+  it('injects the skills system prompt + /invoked body and routes load_skill', async () => {
+    const dir = join(tmpdir(), `fleet-chat-skills-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'skills.db'));
+    const conv = store.createConversation();
+    const client = new OpenRouterClient();
+
+    const skills = {
+      systemPrompt: () => 'Available skills:\n- deploy: Deploy the app',
+      toolDef: () => ({ type: 'function', function: { name: 'load_skill' } }),
+      resolveInvocation: (text: string) =>
+        text.startsWith('/deploy') ? { name: 'deploy', body: 'DEPLOY STEPS' } : null,
+      hasLoadSkillTool: (n: string) => n === 'load_skill',
+      runLoadSkill: () => 'DEPLOY STEPS'
+    } as unknown as SkillManager;
+
+    let round = 0;
+    const seen: unknown[][] = [];
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      seen.push(opts.messages);
+      round += 1;
+      if (round === 1) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'c1', name: 'load_skill', arguments: '{"name":"deploy"}' }],
+          finishReason: 'tool_calls'
+        };
+      }
+      opts.onDelta('done');
+      return { content: 'done', toolCalls: [], finishReason: 'stop' };
+    });
+
+    const service = new ChatService({
+      store,
+      client,
+      secrets: fakeSecrets(),
+      getDefaultModel: () => 'm',
+      getImageModel: () => null,
+      getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getToolsMode: () => 'read-only',
+      getMcpToolDefs: () => [],
+      skills,
+      toolExecutor: stubExecutor,
+      imageProvider: fakeProvider,
+      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      emit: () => {}
+    });
+
+    service.send({
+      conversationId: conv.id,
+      text: '/deploy prod',
+      model: 'm',
+      supportsTools: true
+    });
+    await vi.waitFor(() => expect(round).toBeGreaterThanOrEqual(2));
+
+    const firstRound = seen[0] as Array<{ role: string; content: string }>;
+    expect(firstRound[0]).toMatchObject({ role: 'system' });
+    expect(firstRound[0].content).toContain('deploy: Deploy the app');
+    expect(firstRound[1].content).toContain('DEPLOY STEPS'); // /deploy body injected
+    // load_skill result fed back as a tool message in round 2
+    const secondRound = seen[1] as Array<{ role: string; content: string }>;
+    expect(secondRound.some((m) => m.role === 'tool' && m.content === 'DEPLOY STEPS')).toBe(true);
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
 });

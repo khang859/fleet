@@ -1,6 +1,15 @@
-import { app, BrowserWindow, ipcMain, Notification, nativeImage, net, protocol } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Notification,
+  nativeImage,
+  net,
+  protocol,
+  shell
+} from 'electron';
 import { safeOpenExternal } from './safe-external';
-import { existsSync, statSync } from 'fs';
+import { existsSync, statSync, mkdirSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { join, dirname, resolve } from 'path';
@@ -100,6 +109,7 @@ import { registerChatIpc } from './chat/chat-ipc';
 import { PermissionManager } from './chat/permissions/permission-manager';
 import { ChatToolExecutor } from './chat/tools/tool-runner';
 import { McpManager } from './chat/mcp/manager';
+import { SkillManager, type SkillRoot } from './chat/skills/skill-manager';
 import { ChatImageStorage } from './chat/image/image-storage';
 import { OpenRouterImageProvider } from './chat/image/openrouter-image-provider';
 import { KanbanNotifier } from './kanban/kanban-notifier';
@@ -1322,6 +1332,23 @@ void app.whenReady().then(async () => {
   });
   const chatMcp = new McpManager(() => settingsStore.get().ai.chat.mcpServers);
   void chatMcp.reload();
+  const skillsResourcesDir = app.isPackaged
+    ? join(process.resourcesPath, 'resources')
+    : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources');
+  const personalSkillsDir = join(app.getPath('userData'), 'chat-skills');
+  const chatSkills = new SkillManager(
+    () => {
+      const roots: SkillRoot[] = [
+        { root: join(skillsResourcesDir, 'pi-skills'), scope: 'bundled' },
+        { root: personalSkillsDir, scope: 'personal' }
+      ];
+      const ws = settingsStore.get().ai.chat.tools.workspaceDir;
+      if (ws) roots.push({ root: join(ws, '.claude', 'skills'), scope: 'project' });
+      return roots;
+    },
+    () => settingsStore.get().ai.chat.skills
+  );
+  chatSkills.rescan();
   const chatToolExecutor = new ChatToolExecutor(
     chatPermissions,
     () => settingsStore.get().ai.chat.tools,
@@ -1344,6 +1371,7 @@ void app.whenReady().then(async () => {
     },
     getToolsMode: () => settingsStore.get().ai.chat.tools.mode,
     getMcpToolDefs: () => chatMcp.getToolDefs(),
+    skills: chatSkills,
     toolExecutor: chatToolExecutor,
     imageProvider: chatImageProvider,
     imageStorage: chatImageStorage,
@@ -1355,7 +1383,12 @@ void app.whenReady().then(async () => {
     service: chatService,
     settingsStore,
     permissions: chatPermissions,
-    mcp: chatMcp
+    mcp: chatMcp,
+    skills: chatSkills,
+    revealSkillsFolder: () => {
+      mkdirSync(personalSkillsDir, { recursive: true });
+      void shell.openPath(personalSkillsDir);
+    }
   });
 
   runeAssist = new RuneFileChatService({

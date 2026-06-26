@@ -10,6 +10,7 @@ import type {
   ChatConversationRenamedPayload
 } from '../../../shared/chat-types';
 import type { PermissionOutcome, PermissionRequestPayload } from '../../../shared/chat-permissions';
+import type { SkillMenuItem } from '../../../shared/skill-types';
 
 type ChatStatus = 'idle' | 'streaming' | 'error';
 
@@ -26,8 +27,11 @@ type ChatStoreState = {
   error: string | null;
   toolStatus: ChatToolStatusPayload | null;
   permissionRequests: PermissionRequestPayload[];
+  /** Non-off skills, for the composer's `/` autocomplete. */
+  skillMenu: SkillMenuItem[];
 
   init: () => Promise<void>;
+  loadSkillMenu: () => Promise<void>;
   decidePermission: (requestId: string, outcome: PermissionOutcome) => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
   newConversation: () => Promise<void>;
@@ -111,14 +115,21 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     error: null,
     toolStatus: null,
     permissionRequests: [],
+    skillMenu: [],
 
     init: async () => {
       subscribeToStreamEvents();
       const conversations = await window.fleet.chat.listConversations();
       set({ conversations });
       await get().refreshKeyPresence();
+      await get().loadSkillMenu();
       const first = conversations[0]?.id ?? null;
       if (first) await get().selectConversation(first);
+    },
+
+    loadSkillMenu: async () => {
+      const view = await window.fleet.chat.skillsGet();
+      set({ skillMenu: view.skills.filter((s) => s.state !== 'off') });
     },
 
     decidePermission: async (requestId, outcome) => {

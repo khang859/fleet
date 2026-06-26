@@ -19,10 +19,28 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
   const cancel = useChatStore((s) => s.cancel);
   const activeId = useChatStore((s) => s.activeId);
   const setConversationModel = useChatStore((s) => s.setConversationModel);
+  const skillMenu = useChatStore((s) => s.skillMenu);
   const model = useChatStore(
     (s) => s.conversations.find((c) => c.id === s.activeId)?.model ?? defaultModel
   );
   const streaming = status === 'streaming';
+
+  // `/` skill autocomplete: open while the whole input is a single slash token.
+  const [menuIndex, setMenuIndex] = useState(0);
+  const [menuDismissed, setMenuDismissed] = useState(false);
+  const slashMatch = /^\/([A-Za-z0-9_-]*)$/.exec(text);
+  const matches = slashMatch
+    ? skillMenu.filter((s) => s.name.toLowerCase().startsWith(slashMatch[1].toLowerCase()))
+    : [];
+  const menuOpen = matches.length > 0 && !menuDismissed;
+  const activeIndex = Math.min(menuIndex, matches.length - 1);
+
+  const pickSkill = (name: string): void => {
+    setText(`/${name} `);
+    setMenuIndex(0);
+    setMenuDismissed(true);
+    textareaRef.current?.focus();
+  };
 
   const acceptFile = (file: File): void => {
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
@@ -103,12 +121,61 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
           </button>
         </div>
       )}
-      <div className="flex items-end gap-2">
+      <div className="relative flex items-end gap-2">
+        {menuOpen && (
+          <ul className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg">
+            {matches.map((s, i) => (
+              <li key={s.name}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    pickSkill(s.name);
+                  }}
+                  onMouseEnter={() => setMenuIndex(i)}
+                  className={`block w-full px-3 py-1.5 text-left ${
+                    i === activeIndex ? 'bg-fleet-surface-3' : ''
+                  }`}
+                >
+                  <span className="font-mono text-xs text-fleet-text">/{s.name}</span>
+                  <span className="ml-2 line-clamp-1 text-[11px] text-fleet-text-muted">
+                    {s.description}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <textarea
           ref={textareaRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setMenuDismissed(false);
+          }}
           onKeyDown={(e) => {
+            if (menuOpen) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setMenuIndex((i) => (i + 1) % matches.length);
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setMenuIndex((i) => (i - 1 + matches.length) % matches.length);
+                return;
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                pickSkill(matches[activeIndex].name);
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setMenuDismissed(true);
+                return;
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               submit();
