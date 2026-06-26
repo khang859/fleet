@@ -6,7 +6,8 @@ import type {
   ChatStreamChunkPayload,
   ChatStreamDonePayload,
   ChatStreamErrorPayload,
-  ChatToolStatusPayload
+  ChatToolStatusPayload,
+  ChatConversationRenamedPayload
 } from '../../../shared/chat-types';
 import type { PermissionOutcome, PermissionRequestPayload } from '../../../shared/chat-permissions';
 
@@ -46,6 +47,7 @@ let unsubDone: (() => void) | null = null;
 let unsubError: (() => void) | null = null;
 let unsubTool: (() => void) | null = null;
 let unsubPerm: (() => void) | null = null;
+let unsubRenamed: (() => void) | null = null;
 
 export const useChatStore = create<ChatStoreState>((set, get) => {
   function subscribeToStreamEvents(): void {
@@ -54,6 +56,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     unsubError?.();
     unsubTool?.();
     unsubPerm?.();
+    unsubRenamed?.();
     unsubChunk = window.fleet.chat.onStreamChunk((p: ChatStreamChunkPayload) => {
       if (p.streamId !== get().streamId) return;
       set((s) => ({ streamingText: (s.streamingText ?? '') + p.delta }));
@@ -87,6 +90,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     unsubPerm = window.fleet.chat.onPermissionRequest((p: PermissionRequestPayload) => {
       if (p.streamId !== get().streamId) return;
       set((s) => ({ permissionRequests: [...s.permissionRequests, p] }));
+    });
+    unsubRenamed = window.fleet.chat.onConversationRenamed((p: ChatConversationRenamedPayload) => {
+      set((s) => ({
+        conversations: s.conversations.map((c) => (c.id === p.id ? { ...c, title: p.title } : c))
+      }));
     });
   }
 
@@ -155,8 +163,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
 
     renameConversation: async (id, title) => {
       await window.fleet.chat.renameConversation(id, title);
+      // A manual rename locks the title so background auto-naming won't overwrite it.
       set((s) => ({
-        conversations: s.conversations.map((c) => (c.id === id ? { ...c, title } : c))
+        conversations: s.conversations.map((c) =>
+          c.id === id ? { ...c, title, titleLocked: true } : c
+        )
       }));
     },
 

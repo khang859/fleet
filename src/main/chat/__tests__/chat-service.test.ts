@@ -47,6 +47,7 @@ describe('ChatService.send', () => {
       secrets: fakeSecrets(),
       getDefaultModel: () => 'deepseek/deepseek-v4-flash',
       getImageModel: () => null,
+      getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
       imageProvider: fakeProvider,
       imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
@@ -84,6 +85,7 @@ describe('ChatService.send', () => {
       secrets: fakeSecrets(),
       getDefaultModel: () => 'm',
       getImageModel: () => null,
+      getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
       imageProvider: fakeProvider,
       imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
@@ -129,6 +131,7 @@ it('runs the image tool loop and persists a generated image', async () => {
     secrets: fakeSecrets(),
     getDefaultModel: () => 'm',
     getImageModel: () => 'google/gemini-2.5-flash-image',
+    getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
     imageProvider: provider,
     imageStorage: new ChatImageStorage(dir),
     emit: (channel, payload) => events.push({ channel, payload })
@@ -186,6 +189,7 @@ it('passes the reference image to the provider as a base64 data URL when editing
     secrets: fakeSecrets(),
     getDefaultModel: () => 'm',
     getImageModel: () => 'google/gemini-2.5-flash-image',
+    getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
     imageProvider: provider,
     imageStorage: new ChatImageStorage(dir),
     emit: (channel, payload) => events.push({ channel, payload })

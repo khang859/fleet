@@ -10,13 +10,16 @@ type Props = {
   onChange: (modelId: string | null) => void;
   source?: 'chat' | 'image';
   allowNone?: boolean;
+  /** Subtitle for the "None" row; defaults to the image-tool wording. */
+  noneSubtitle?: string;
 };
 
 export function ModelPicker({
   value,
   onChange,
   source = 'chat',
-  allowNone = false
+  allowNone = false,
+  noneSubtitle = 'Image generation off'
 }: Props): React.JSX.Element {
   // Always call hooks unconditionally; derive active source after.
   const chatModels = useChatStore((s) => s.models);
@@ -146,7 +149,7 @@ export function ModelPicker({
                 <span className="min-w-0 flex-1">
                   <span className="block text-xs text-fleet-text">None</span>
                   <span className="block truncate text-[11px] text-fleet-text-muted">
-                    Image generation off
+                    {noneSubtitle}
                   </span>
                 </span>
               </button>

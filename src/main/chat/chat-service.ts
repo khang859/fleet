@@ -16,10 +16,19 @@ import type { OpenRouterClient } from './openrouter-client';
 import type { ChatImageProvider } from './image/types';
 import type { ChatImageStorage } from './image/image-storage';
 import { GENERATE_IMAGE_TOOL, parseGenerateImageArgs, runGenerateImage } from './chat-tools';
+import { resolveTitle } from './chat-namer';
+import type { ChatConversationRenamedPayload } from '../../shared/chat-types';
 
 export type ChatEmitter = (channel: string, payload: unknown) => void;
 
 const MAX_TOOL_ROUNDS = 4;
+
+export type NamingConfig = {
+  enabled: boolean;
+  /** Already resolved (taskModel ?? defaultModel) by the caller. */
+  model: string;
+  timing: 'after-response' | 'immediate';
+};
 
 type Deps = {
   store: ChatStore;
@@ -27,6 +36,7 @@ type Deps = {
   secrets: ChatSecrets;
   getDefaultModel: () => string;
   getImageModel: () => string | null;
+  getNaming: () => NamingConfig;
   imageProvider: ChatImageProvider;
   imageStorage: ChatImageStorage;
   emit: ChatEmitter;
@@ -57,6 +67,9 @@ export class ChatService {
       imageStorage,
       emit
     } = this.deps;
+    // Capture before we persist the user message: an empty history means this
+    // is the conversation's first exchange, which is what we auto-name from.
+    const isFirstExchange = store.getMessages(req.conversationId).length === 0;
     const userMessage = store.addMessage({
       conversationId: req.conversationId,
       role: 'user',
@@ -77,6 +90,12 @@ export class ChatService {
         conversationId: req.conversationId,
         images: attachmentRefs
       });
+    }
+
+    // "Immediate" auto-naming fires off the first user message alone, before the
+    // model responds, so the sidebar updates right away.
+    if (isFirstExchange && this.deps.getNaming().timing === 'immediate') {
+      this.maybeAutoName(req.conversationId, req.text, '');
     }
 
     const streamId = randomUUID();
@@ -215,6 +234,11 @@ export class ChatService {
           streamId,
           message: withImages
         } satisfies ChatStreamDonePayload);
+
+        // "After response" auto-naming (the default) uses the first exchange.
+        if (isFirstExchange && this.deps.getNaming().timing === 'after-response') {
+          this.maybeAutoName(req.conversationId, req.text, partial);
+        }
       } catch (err) {
         if (partial) {
           const m = store.addMessage({
@@ -246,6 +270,36 @@ export class ChatService {
   cancel(streamId: string): void {
     this.inflight.get(streamId)?.abort();
     this.inflight.delete(streamId);
+  }
+
+  /**
+   * Fire-and-forget background auto-naming. Never throws and never blocks the
+   * stream; no-ops when disabled, keyless, or the title is already locked.
+   */
+  private maybeAutoName(conversationId: string, firstUser: string, firstAssistant: string): void {
+    const { store, client, secrets, emit } = this.deps;
+    const naming = this.deps.getNaming();
+    if (!naming.enabled) return;
+    const apiKey = secrets.getKey();
+    if (!apiKey) return;
+    const conv = store.getConversation(conversationId);
+    if (!conv || conv.titleLocked) return;
+
+    void (async () => {
+      const title = await resolveTitle(client, {
+        apiKey,
+        model: naming.model,
+        firstUser,
+        firstAssistant
+      });
+      const changed = store.autoNameConversation(conversationId, title);
+      if (changed) {
+        emit(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, {
+          id: conversationId,
+          title
+        } satisfies ChatConversationRenamedPayload);
+      }
+    })();
   }
 
   async listModels(): Promise<ChatModel[]> {

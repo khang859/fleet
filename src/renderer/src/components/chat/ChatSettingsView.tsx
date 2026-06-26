@@ -85,6 +85,11 @@ export function ChatSettingsView(): React.JSX.Element {
   const [keyInput, setKeyInput] = useState('');
   const [defaultModel, setDefaultModel] = useState('deepseek/deepseek-v4-flash');
   const [imageModel, setImageModel] = useState<string | null>(null);
+  const [taskModel, setTaskModel] = useState<string | null>(null);
+  const [autoName, setAutoName] = useState(true);
+  const [namingTiming, setNamingTiming] = useState<'after-response' | 'immediate'>(
+    'after-response'
+  );
   const [permissions, setPermissions] = useState<PermissionRules>(DEFAULT_PERMISSION_RULES);
   const [saved, setSaved] = useState(false);
 
@@ -92,6 +97,9 @@ export function ChatSettingsView(): React.JSX.Element {
     void window.fleet.chat.getSettings().then((s) => {
       setDefaultModel(s.defaultModel);
       setImageModel(s.imageModel);
+      setTaskModel(s.taskModel);
+      setAutoName(s.autoName);
+      setNamingTiming(s.namingTiming);
       setPermissions(s.permissions);
     });
   }, []);
@@ -114,6 +122,21 @@ export function ChatSettingsView(): React.JSX.Element {
   const saveImageModel = async (modelId: string | null): Promise<void> => {
     setImageModel(modelId);
     await window.fleet.chat.patchSettings({ imageModel: modelId });
+  };
+
+  const saveTaskModel = async (modelId: string | null): Promise<void> => {
+    setTaskModel(modelId);
+    await window.fleet.chat.patchSettings({ taskModel: modelId });
+  };
+
+  const saveAutoName = async (next: boolean): Promise<void> => {
+    setAutoName(next);
+    await window.fleet.chat.patchSettings({ autoName: next });
+  };
+
+  const saveTiming = async (next: 'after-response' | 'immediate'): Promise<void> => {
+    setNamingTiming(next);
+    await window.fleet.chat.patchSettings({ namingTiming: next });
   };
 
   const savePermissions = async (next: PermissionRules): Promise<void> => {
@@ -164,6 +187,46 @@ export function ChatSettingsView(): React.JSX.Element {
             Enables the in-chat image generation tool. None = off. Only offered when the active chat
             model supports tools.
           </p>
+        </Section>
+        <Section title="Conversation naming">
+          <label className="flex items-center gap-2 text-sm text-fleet-text">
+            <input
+              type="checkbox"
+              checked={autoName}
+              onChange={(e) => void saveAutoName(e.target.checked)}
+            />
+            Auto-name new chats from the first exchange
+          </label>
+          {autoName && (
+            <div className="mt-3 space-y-3 pl-1">
+              <div>
+                <p className="mb-1 text-xs text-fleet-text-secondary">Naming model</p>
+                <ModelPicker
+                  allowNone
+                  noneSubtitle="Use the default model"
+                  value={taskModel}
+                  onChange={(m) => void saveTaskModel(m)}
+                />
+                <p className="mt-1 text-xs text-fleet-text-muted">
+                  A cheap model for background titling, separate from the chat model. None = use the
+                  default model.
+                </p>
+              </div>
+              <div>
+                <p className="mb-1 text-xs text-fleet-text-secondary">Timing</p>
+                <select
+                  value={namingTiming}
+                  onChange={(e) =>
+                    void saveTiming(e.target.value === 'immediate' ? 'immediate' : 'after-response')
+                  }
+                  className="rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
+                >
+                  <option value="after-response">After first response</option>
+                  <option value="immediate">Immediately from first message</option>
+                </select>
+              </div>
+            </div>
+          )}
         </Section>
       </Group>
 

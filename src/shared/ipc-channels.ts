@@ -282,5 +282,7 @@ export const IPC_CHANNELS = {
   CHAT_TOOL_STATUS: 'chat:tool-status',
   // Permission gate (tool-call approval). REQUEST is main→renderer; DECIDE is renderer→main.
   CHAT_PERMISSION_REQUEST: 'chat:permission-request',
-  CHAT_PERMISSION_DECIDE: 'chat:permission-decide'
+  CHAT_PERMISSION_DECIDE: 'chat:permission-decide',
+  // Emitted when a conversation title changes out-of-band (background auto-naming).
+  CHAT_CONVERSATION_RENAMED: 'chat:conversation-renamed'
 } as const;

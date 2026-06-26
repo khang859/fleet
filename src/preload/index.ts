@@ -151,7 +151,8 @@ import type {
   ChatStreamChunkPayload,
   ChatStreamDonePayload,
   ChatStreamErrorPayload,
-  ChatToolStatusPayload
+  ChatToolStatusPayload,
+  ChatConversationRenamedPayload
 } from '../shared/chat-types';
 import type { PermissionRequestPayload, PermissionOutcome } from '../shared/chat-permissions';
 import type {
@@ -862,7 +863,9 @@ const fleetApi = {
     onPermissionRequest: (cb: (p: PermissionRequestPayload) => void): Unsubscribe =>
       onChannel<PermissionRequestPayload>(IPC_CHANNELS.CHAT_PERMISSION_REQUEST, cb),
     decidePermission: async (requestId: string, outcome: PermissionOutcome): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_PERMISSION_DECIDE, { requestId, outcome })
+      typedInvoke(IPC_CHANNELS.CHAT_PERMISSION_DECIDE, { requestId, outcome }),
+    onConversationRenamed: (cb: (p: ChatConversationRenamedPayload) => void): Unsubscribe =>
+      onChannel<ChatConversationRenamedPayload>(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, cb)
   }
 };
 

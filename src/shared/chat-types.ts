@@ -18,6 +18,8 @@ export type ChatConversation = {
   title: string;
   /** Per-conversation model override; null → use the default model. */
   model: string | null;
+  /** A manual rename locks the title so background auto-naming never overwrites it. */
+  titleLocked: boolean;
   createdAt: number;
   updatedAt: number;
 };
@@ -40,6 +42,10 @@ export type ChatSettings = {
    * from the chat model. null → fall back to the default model.
    */
   taskModel: string | null;
+  /** Auto-name new conversations from the first exchange. */
+  autoName: boolean;
+  /** When to generate the title. */
+  namingTiming: 'after-response' | 'immediate';
   /** Permission rules gating tool calls (Bash, MCP). See chat-permissions.ts. */
   permissions: PermissionRules;
 };
@@ -54,6 +60,8 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   defaultModel: 'deepseek/deepseek-v4-flash',
   imageModel: null,
   taskModel: null,
+  autoName: true,
+  namingTiming: 'after-response',
   permissions: DEFAULT_PERMISSION_RULES
 };
 
@@ -83,3 +91,6 @@ export type ChatToolStatusPayload = {
   label: string;
   error?: string;
 };
+
+/** Emitted when a conversation's title changes out-of-band (background auto-naming). */
+export type ChatConversationRenamedPayload = { id: string; title: string };

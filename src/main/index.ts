@@ -1309,6 +1309,14 @@ void app.whenReady().then(async () => {
     secrets: chatSecrets,
     getDefaultModel: () => settingsStore.get().ai.chat.defaultModel,
     getImageModel: () => settingsStore.get().ai.chat.imageModel,
+    getNaming: () => {
+      const c = settingsStore.get().ai.chat;
+      return {
+        enabled: c.autoName,
+        model: c.taskModel ?? c.defaultModel,
+        timing: c.namingTiming
+      };
+    },
     imageProvider: chatImageProvider,
     imageStorage: chatImageStorage,
     emit: (channel, payload) => {
