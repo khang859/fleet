@@ -509,6 +509,128 @@ describe('ChatService usage accounting', () => {
   });
 });
 
+describe('ChatService attachments', () => {
+  const PNG =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const PDF = 'data:application/pdf;base64,JVBERi0xLjQK';
+
+  function buildService(dir: string, store: ChatStore, client: OpenRouterClient): ChatService {
+    return new ChatService({
+      store,
+      client,
+      secrets: fakeSecrets(),
+      getDefaultModel: () => 'm',
+      getImageModel: () => null,
+      getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getToolsMode: () => 'off',
+      getTools: () => ({
+        mode: 'off',
+        workspaceDir: null,
+        sandbox: false,
+        failClosed: false,
+        mentionMaxKb: 64
+      }),
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+      getPersonas: () => ({ presets: [], defaultId: null }),
+      isWebSearchReady: () => false,
+      getMcpToolDefs: () => [],
+      skills: stubSkills,
+      toolExecutor: stubExecutor,
+      imageProvider: fakeProvider,
+      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      emit: () => {}
+    });
+  }
+
+  it('sends image attachments as multimodal content to a vision model', async () => {
+    const dir = join(tmpdir(), `fleet-chat-att-img-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'att.db'));
+    const conv = store.createConversation();
+    const client = new OpenRouterClient();
+    let seen: { messages: unknown[]; plugins?: unknown[] } = { messages: [] };
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      seen = { messages: opts.messages, plugins: opts.plugins };
+      opts.onDelta('ok');
+      return { content: 'ok', toolCalls: [], finishReason: null, usage: null };
+    });
+    const service = buildService(dir, store, client);
+    service.send({
+      conversationId: conv.id,
+      text: 'describe',
+      model: 'm',
+      supportsImages: true,
+      attachments: [PNG]
+    });
+    await vi.waitFor(() => expect(seen.messages.length).toBeGreaterThan(0));
+    const user = seen.messages.find((m) => (m as { role: string }).role === 'user') as {
+      content: Array<{ type: string }>;
+    };
+    expect(Array.isArray(user.content)).toBe(true);
+    expect(user.content.some((p) => p.type === 'image_url')).toBe(true);
+    expect(seen.plugins).toBeUndefined(); // no PDF → no file-parser plugin
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('adds the file-parser plugin and a file part for PDF attachments', async () => {
+    const dir = join(tmpdir(), `fleet-chat-att-pdf-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'att.db'));
+    const conv = store.createConversation();
+    const client = new OpenRouterClient();
+    let seen: { messages: unknown[]; plugins?: unknown[] } = { messages: [] };
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      seen = { messages: opts.messages, plugins: opts.plugins };
+      opts.onDelta('ok');
+      return { content: 'ok', toolCalls: [], finishReason: null, usage: null };
+    });
+    const service = buildService(dir, store, client);
+    service.send({
+      conversationId: conv.id,
+      text: 'summarize',
+      model: 'm',
+      supportsImages: true,
+      attachments: [PDF]
+    });
+    await vi.waitFor(() => expect(seen.messages.length).toBeGreaterThan(0));
+    const user = seen.messages.find((m) => (m as { role: string }).role === 'user') as {
+      content: Array<{ type: string }>;
+    };
+    expect(user.content.some((p) => p.type === 'file')).toBe(true);
+    expect(seen.plugins).toBeTruthy();
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('omits attachments for a non-vision model (text content only)', async () => {
+    const dir = join(tmpdir(), `fleet-chat-att-novis-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'att.db'));
+    const conv = store.createConversation();
+    const client = new OpenRouterClient();
+    let seen: unknown[] = [];
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      seen = opts.messages;
+      opts.onDelta('ok');
+      return { content: 'ok', toolCalls: [], finishReason: null, usage: null };
+    });
+    const service = buildService(dir, store, client);
+    service.send({
+      conversationId: conv.id,
+      text: 'hi',
+      model: 'm',
+      supportsImages: false,
+      attachments: [PNG]
+    });
+    await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0));
+    const user = seen.find((m) => (m as { role: string }).role === 'user') as { content: unknown };
+    expect(typeof user.content).toBe('string');
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe('ChatService personas', () => {
   it('injects the conversation persona as the first system message', async () => {
     const dir = join(tmpdir(), `fleet-chat-persona-${process.pid}`);

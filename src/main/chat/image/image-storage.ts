@@ -5,7 +5,8 @@ import { randomUUID } from 'node:crypto';
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
-  'image/webp': 'webp'
+  'image/webp': 'webp',
+  'application/pdf': 'pdf'
 };
 
 export class ChatImageStorage {

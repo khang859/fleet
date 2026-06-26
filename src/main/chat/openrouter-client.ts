@@ -151,6 +151,8 @@ export type StreamOpts = {
   onDelta: (delta: string) => void;
   tools?: unknown[];
   toolChoice?: 'auto' | 'none';
+  /** OpenRouter plugins (e.g. the file-parser for PDF attachments). */
+  plugins?: unknown[];
 };
 
 export class OpenRouterClient {
@@ -241,6 +243,7 @@ export class OpenRouterClient {
       body.tools = opts.tools;
       body.tool_choice = opts.toolChoice ?? 'auto';
     }
+    if (opts.plugins?.length) body.plugins = opts.plugins;
     const res = await this.fetchImpl(`${BASE}/chat/completions`, {
       method: 'POST',
       headers: {

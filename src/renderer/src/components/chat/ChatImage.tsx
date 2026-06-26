@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Maximize2, Copy, RefreshCw, Pencil } from 'lucide-react';
+import { Maximize2, Copy, RefreshCw, Pencil, FileText } from 'lucide-react';
 import { toFleetImageUrl } from '../../../../shared/path-platform';
 import type { ChatImageRef } from '../../../../shared/chat-types';
 import { ChatImageLightbox } from './ChatImageLightbox';
@@ -18,6 +18,16 @@ export function ChatImage({
   const [zoom, setZoom] = useState(false);
   const [showFullPrompt, setShowFullPrompt] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // PDFs and other non-image attachments render as a file chip, not an <img>.
+  if (image.mimeType === 'application/pdf') {
+    return (
+      <span className="my-1 inline-flex items-center gap-1.5 rounded bg-fleet-surface-3 px-2 py-1 text-xs text-fleet-text">
+        <FileText size={14} className="text-fleet-text-muted" />
+        PDF document
+      </span>
+    );
+  }
 
   const src = toFleetImageUrl(image.ref);
   const alt = prompt ? prompt.slice(0, 100) : 'Generated image';
