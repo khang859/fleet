@@ -42,7 +42,7 @@ function VariantPager({ message }: { message: ChatMessage }): React.JSX.Element 
         aria-label="Previous version"
         disabled={v.index <= 1}
         onClick={() => go(-1)}
-        className="rounded p-0.5 hover:text-fleet-text disabled:opacity-30"
+        className="focus-ring rounded p-0.5 hover:text-fleet-text disabled:opacity-30"
       >
         <ChevronLeft size={12} />
       </button>
@@ -53,7 +53,7 @@ function VariantPager({ message }: { message: ChatMessage }): React.JSX.Element 
         aria-label="Next version"
         disabled={v.index >= v.total}
         onClick={() => go(1)}
-        className="rounded p-0.5 hover:text-fleet-text disabled:opacity-30"
+        className="focus-ring rounded p-0.5 hover:text-fleet-text disabled:opacity-30"
       >
         <ChevronRight size={12} />
       </button>
@@ -187,7 +187,7 @@ function Bubble({
           <button
             aria-label={copied ? 'Copied' : 'Copy message'}
             onClick={copy}
-            className="rounded p-0.5 text-fleet-text-muted hover:text-fleet-text"
+            className="focus-ring rounded p-0.5 text-fleet-text-muted hover:text-fleet-text"
           >
             {copied ? <Check size={12} /> : <Copy size={12} />}
           </button>
@@ -196,7 +196,7 @@ function Bubble({
               aria-label="Edit message"
               disabled={streaming}
               onClick={startEdit}
-              className="rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
+              className="focus-ring rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
             >
               <Pencil size={12} />
             </button>
@@ -206,7 +206,7 @@ function Bubble({
               aria-label="Regenerate response"
               disabled={streaming}
               onClick={() => void regenerate(message.id, model)}
-              className="rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
+              className="focus-ring rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
             >
               <RotateCcw size={12} />
             </button>
@@ -216,7 +216,7 @@ function Bubble({
             title="Branch from here"
             disabled={streaming}
             onClick={() => void forkConversation(message.id)}
-            className="rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
+            className="focus-ring rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
           >
             <GitBranch size={12} />
           </button>
@@ -243,7 +243,7 @@ function JumpToLatest(): React.JSX.Element | null {
       type="button"
       aria-label="Jump to latest"
       onClick={() => void scrollToBottom()}
-      className="absolute bottom-4 right-6 flex items-center gap-1 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow hover:bg-fleet-surface-2"
+      className="focus-ring absolute bottom-4 right-6 flex items-center gap-1 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow hover:bg-fleet-surface-2"
     >
       <ArrowDown size={12} /> Jump to latest
     </button>
