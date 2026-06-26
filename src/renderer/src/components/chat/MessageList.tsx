@@ -230,6 +230,30 @@ function ReengageOnNewStream({ animation }: { animation: ScrollBehavior }): null
   return null;
 }
 
+/**
+ * The in-flight assistant message. Isolated into its own component so that
+ * throttled token updates re-render only this node — not MessageList or any
+ * finalized history Bubble (which would otherwise re-parse all markdown).
+ */
+function StreamingMessage(): React.JSX.Element {
+  const streamingText = useChatStore((s) => s.streamingText) ?? '';
+  return (
+    <div className="flex justify-start px-4 py-2">
+      <div className="max-w-[80%] rounded-lg bg-fleet-surface-2 px-3 py-2 text-sm text-fleet-text">
+        <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[[rehypeHighlight, { detect: true }]]}
+            components={{ pre: CodeBlock }}
+          >
+            {streamingText || '…'}
+          </ReactMarkdown>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type Props = { defaultModel: string; showUsage: boolean };
 
 export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Element {
@@ -237,7 +261,9 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
   const model = useChatStore(
     (s) => s.conversations.find((c) => c.id === s.activeId)?.model ?? defaultModel
   );
-  const streamingText = useChatStore((s) => s.streamingText);
+  // Subscribe to a stable boolean, not the streaming text itself, so token
+  // updates don't re-render the whole list (see StreamingMessage).
+  const isStreaming = useChatStore((s) => s.streamingText !== null);
   const status = useChatStore((s) => s.status);
   const error = useChatStore((s) => s.error);
   const toolStatus = useChatStore((s) => s.toolStatus);
@@ -256,21 +282,7 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
         {messages.map((m) => (
           <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
         ))}
-        {streamingText !== null && (
-          <div className="flex justify-start px-4 py-2">
-            <div className="max-w-[80%] rounded-lg bg-fleet-surface-2 px-3 py-2 text-sm text-fleet-text">
-              <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[[rehypeHighlight, { detect: true }]]}
-                  components={{ pre: CodeBlock }}
-                >
-                  {streamingText || '…'}
-                </ReactMarkdown>
-              </div>
-            </div>
-          </div>
-        )}
+        {isStreaming && <StreamingMessage />}
         {permissionRequests.map((req) => (
           <ToolCallCard
             key={req.requestId}
