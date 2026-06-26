@@ -10,8 +10,10 @@ export function GeneratingSkeleton({ label }: { label: string }): React.JSX.Elem
   return (
     <div className="px-4 py-2">
       <div className="aspect-square w-64 max-w-full animate-pulse rounded-lg bg-fleet-surface-3" />
-      <div aria-live="polite" className="mt-1 text-xs text-fleet-text-muted">
-        {shown} ({elapsed}s)
+      <div className="mt-1 text-xs text-fleet-text-muted">
+        {/* Only the evolving label is announced; the per-second counter stays out
+            of the live region so screen readers don't read it every tick. */}
+        <span aria-live="polite">{shown}</span> <span aria-hidden="true">({elapsed}s)</span>
       </div>
     </div>
   );
