@@ -107,7 +107,8 @@ import { OpenRouterClient } from './chat/openrouter-client';
 import { ChatService } from './chat/chat-service';
 import { registerChatIpc } from './chat/chat-ipc';
 import { PermissionManager } from './chat/permissions/permission-manager';
-import { ChatToolExecutor } from './chat/tools/tool-runner';
+import { ChatToolExecutor, type WebSearchRunner } from './chat/tools/tool-runner';
+import { createWebSearchProvider, formatWebSearchResults } from './chat/web-search';
 import { McpManager } from './chat/mcp/manager';
 import { SkillManager, type SkillRoot } from './chat/skills/skill-manager';
 import { ChatImageStorage } from './chat/image/image-storage';
@@ -1349,12 +1350,31 @@ void app.whenReady().then(async () => {
     () => settingsStore.get().ai.chat.skills
   );
   chatSkills.rescan();
+  const isWebSearchReady = (): boolean =>
+    settingsStore.get().ai.chat.webSearch.enabled && chatSecrets.hasSearchKey();
+  const chatWebSearch: WebSearchRunner = {
+    enabled: isWebSearchReady,
+    search: async (query, signal) => {
+      const cfg = settingsStore.get().ai.chat.webSearch;
+      const key = chatSecrets.getSearchKey();
+      if (!key) throw new Error('No web-search API key configured');
+      const provider = createWebSearchProvider(cfg.provider);
+      const results = await provider.search({
+        query,
+        apiKey: key,
+        maxResults: cfg.maxResults,
+        signal
+      });
+      return formatWebSearchResults(query, results);
+    }
+  };
   const chatToolExecutor = new ChatToolExecutor(
     chatPermissions,
     () => settingsStore.get().ai.chat.tools,
     chatEmit,
     chatMcp,
-    (entry) => chatStore.addAudit(entry)
+    (entry) => chatStore.addAudit(entry),
+    chatWebSearch
   );
   const chatService = new ChatService({
     store: chatStore,
@@ -1377,6 +1397,7 @@ void app.whenReady().then(async () => {
       const c = settingsStore.get().ai.chat;
       return { presets: c.personas, defaultId: c.defaultPersonaId };
     },
+    isWebSearchReady,
     getMcpToolDefs: () => chatMcp.getToolDefs(),
     skills: chatSkills,
     toolExecutor: chatToolExecutor,

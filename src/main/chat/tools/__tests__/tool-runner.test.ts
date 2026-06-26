@@ -161,6 +161,61 @@ describe('ChatToolExecutor write tools', () => {
   });
 });
 
+describe('ChatToolExecutor web search', () => {
+  function setupSearch(opts: { enabled: boolean; rules?: Partial<PermissionRules> }) {
+    const emitted: Array<{ channel: string; payload: unknown }> = [];
+    const manager = new PermissionManager({
+      getRules: () => ({ allow: [], ask: [], deny: [], ...opts.rules }),
+      persistAllowRule: () => {},
+      emit: (channel, payload) => emitted.push({ channel, payload })
+    });
+    const cfg: ChatToolsConfig = {
+      mode: 'read-only',
+      workspaceDir: ROOT,
+      sandbox: false,
+      failClosed: false,
+      mentionMaxKb: 64
+    };
+    const exec = new ChatToolExecutor(
+      manager,
+      () => cfg,
+      () => {},
+      null,
+      null,
+      {
+        enabled: () => opts.enabled,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        search: async (query) => `RESULTS for ${query}`
+      }
+    );
+    return { exec, manager, emitted };
+  }
+
+  it('blocks web_search when disabled', async () => {
+    const { exec } = setupSearch({ enabled: false });
+    const out = await exec.run('web_search', JSON.stringify({ query: 'rust async' }), ctx);
+    expect(out).toMatch(/disabled/);
+  });
+
+  it('runs the search after the user approves the card', async () => {
+    const { exec, manager, emitted } = setupSearch({ enabled: true });
+    const p = exec.run('web_search', JSON.stringify({ query: 'rust async' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req.tool).toBe('WebSearch');
+    expect(req.command).toBe('rust async');
+    manager.decide(req.requestId, 'allow-once');
+    expect(await p).toBe('RESULTS for rust async');
+  });
+
+  it('auto-approves when an allow rule matches', async () => {
+    const { exec, emitted } = setupSearch({ enabled: true, rules: { allow: ['WebSearch(*)'] } });
+    const out = await exec.run('web_search', JSON.stringify({ query: 'q' }), ctx);
+    expect(out).toBe('RESULTS for q');
+    expect(emitted.some((e) => e.channel.endsWith('permission-request'))).toBe(false);
+  });
+});
+
 describe('ChatToolExecutor audit', () => {
   it('records a read with an allowed decision', async () => {
     const { exec, audits } = setup('read-only');

@@ -99,6 +99,22 @@ export type ChatSettings = {
   personas: PersonaPreset[];
   /** Persona applied to new conversations; null → none. */
   defaultPersonaId: string | null;
+  /** Web-search tool posture. */
+  webSearch: ChatWebSearchConfig;
+};
+
+/** Web-search tool configuration. The API key is stored separately (encrypted). */
+export type ChatWebSearchConfig = {
+  enabled: boolean;
+  provider: 'tavily';
+  /** Max results requested per search. */
+  maxResults: number;
+};
+
+export const DEFAULT_CHAT_WEB_SEARCH: ChatWebSearchConfig = {
+  enabled: false,
+  provider: 'tavily',
+  maxResults: 5
 };
 
 /** Posture for the bash/filesystem tools. */
@@ -195,7 +211,8 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   prompts: [],
   exportFormat: 'markdown',
   personas: [],
-  defaultPersonaId: null
+  defaultPersonaId: null,
+  webSearch: DEFAULT_CHAT_WEB_SEARCH
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
