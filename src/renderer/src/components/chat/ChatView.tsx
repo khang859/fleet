@@ -4,6 +4,7 @@ import { ConversationList } from './ConversationList';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { UsageMeter } from './UsageMeter';
+import { ArtifactPanel } from './ArtifactPanel';
 import { DEFAULT_CHAT_USAGE, type ChatUsageConfig } from '../../../../shared/chat-types';
 
 type Props = { onOpenSettings: () => void };
@@ -12,6 +13,7 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
   const init = useChatStore((s) => s.init);
   const keyPresent = useChatStore((s) => s.keyPresent);
   const activeId = useChatStore((s) => s.activeId);
+  const artifact = useChatStore((s) => s.activeArtifact);
   const [defaultModel, setDefaultModel] = useState('deepseek/deepseek-v4-flash');
   const [usage, setUsage] = useState<ChatUsageConfig>(DEFAULT_CHAT_USAGE);
 
@@ -50,6 +52,7 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
           </div>
         )}
       </div>
+      {artifact && <ArtifactPanel key={`${artifact.messageId}:${artifact.index}`} />}
     </div>
   );
 }

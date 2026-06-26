@@ -15,8 +15,12 @@ import type { SkillMenuItem } from '../../../shared/skill-types';
 import type { PromptTemplate } from '../../../shared/prompt-types';
 import type { PersonaPreset, ChatUploadsConfig, ChatSearchHit } from '../../../shared/chat-types';
 import { DEFAULT_CHAT_UPLOADS } from '../../../shared/chat-types';
+import type { Artifact } from '../../../shared/chat-artifacts';
 
 type ChatStatus = 'idle' | 'streaming' | 'error';
+
+/** An artifact opened in the side panel, tagged with its source message. */
+export type OpenArtifact = Artifact & { messageId: string };
 
 type ChatStoreState = {
   conversations: ChatConversation[];
@@ -45,8 +49,12 @@ type ChatStoreState = {
   searchQuery: string;
   /** Conversation ids matching the active search, or null when not searching. */
   searchHits: ChatSearchHit[] | null;
+  /** Artifact open in the side panel, or null when the panel is closed. */
+  activeArtifact: OpenArtifact | null;
 
   init: () => Promise<void>;
+  openArtifact: (artifact: OpenArtifact) => void;
+  closeArtifact: () => void;
   search: (query: string) => Promise<void>;
   clearSearch: () => void;
   setConversationPinned: (id: string, pinned: boolean) => Promise<void>;
@@ -170,6 +178,10 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     conversationSort: 'recent',
     searchQuery: '',
     searchHits: null,
+    activeArtifact: null,
+
+    openArtifact: (artifact: OpenArtifact) => set({ activeArtifact: artifact }),
+    closeArtifact: () => set({ activeArtifact: null }),
 
     init: async () => {
       subscribeToStreamEvents();
@@ -239,7 +251,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         status: 'idle',
         error: null,
         toolStatus: null,
-        permissionRequests: []
+        permissionRequests: [],
+        activeArtifact: null
       });
       const messages = await window.fleet.chat.getMessages(id);
       if (get().activeId !== id) return; // switched mid-load

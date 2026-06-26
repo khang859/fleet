@@ -2,9 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { ChevronLeft, ChevronRight, GitBranch, Pencil, RotateCcw, X, Check } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  GitBranch,
+  Pencil,
+  RotateCcw,
+  X,
+  Check,
+  FileCode
+} from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import type { ChatMessage } from '../../../../shared/chat-types';
+import { extractArtifacts } from '../../../../shared/chat-artifacts';
 import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
 import { ToolCallCard } from './ToolCallCard';
@@ -60,8 +70,12 @@ function Bubble({
   const regenerate = useChatStore((s) => s.regenerate);
   const editMessage = useChatStore((s) => s.editMessage);
   const forkConversation = useChatStore((s) => s.forkConversation);
+  const openArtifact = useChatStore((s) => s.openArtifact);
+  const activeArtifact = useChatStore((s) => s.activeArtifact);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
+
+  const artifacts = isUser ? [] : extractArtifacts(content);
 
   const startEdit = (): void => {
     setDraft(content);
@@ -122,6 +136,28 @@ function Bubble({
           </div>
         )}
       </div>
+      {!editing && artifacts.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {artifacts.map((a) => {
+            const open =
+              activeArtifact?.messageId === message.id && activeArtifact.index === a.index;
+            return (
+              <button
+                key={a.index}
+                onClick={() => openArtifact({ ...a, messageId: message.id })}
+                className={`flex items-center gap-1.5 rounded border px-2 py-1 text-xs ${
+                  open
+                    ? 'border-fleet-accent/60 bg-fleet-accent/15 text-fleet-text'
+                    : 'border-fleet-border bg-fleet-surface-2 text-fleet-text-secondary hover:text-fleet-text'
+                }`}
+              >
+                <FileCode size={13} className="text-fleet-text-muted" />
+                <span className="max-w-40 truncate">{a.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       {!editing && showUsage && message.usage && (
         <div className="mt-0.5">
           <MessageUsage usage={message.usage} />
