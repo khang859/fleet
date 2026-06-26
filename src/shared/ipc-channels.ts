@@ -279,5 +279,8 @@ export const IPC_CHANNELS = {
   CHAT_STREAM_DONE: 'chat:stream-done',
   CHAT_STREAM_ERROR: 'chat:stream-error',
   CHAT_LIST_IMAGE_MODELS: 'chat:list-image-models',
-  CHAT_TOOL_STATUS: 'chat:tool-status'
+  CHAT_TOOL_STATUS: 'chat:tool-status',
+  // Permission gate (tool-call approval). REQUEST is main→renderer; DECIDE is renderer→main.
+  CHAT_PERMISSION_REQUEST: 'chat:permission-request',
+  CHAT_PERMISSION_DECIDE: 'chat:permission-decide'
 } as const;

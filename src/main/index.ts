@@ -97,6 +97,7 @@ import { ChatSecrets } from './chat/chat-secrets';
 import { OpenRouterClient } from './chat/openrouter-client';
 import { ChatService } from './chat/chat-service';
 import { registerChatIpc } from './chat/chat-ipc';
+import { PermissionManager } from './chat/permissions/permission-manager';
 import { ChatImageStorage } from './chat/image/image-storage';
 import { OpenRouterImageProvider } from './chat/image/openrouter-image-provider';
 import { KanbanNotifier } from './kanban/kanban-notifier';
@@ -1315,7 +1316,27 @@ void app.whenReady().then(async () => {
       if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
     }
   });
-  registerChatIpc({ store: chatStore, secrets: chatSecrets, service: chatService, settingsStore });
+  const chatPermissions = new PermissionManager({
+    getRules: () => settingsStore.get().ai.chat.permissions,
+    persistAllowRule: (rule) => {
+      const current = settingsStore.get().ai.chat.permissions;
+      if (current.allow.includes(rule)) return;
+      settingsStore.set({
+        ai: { chat: { permissions: { ...current, allow: [...current.allow, rule] } } }
+      });
+    },
+    emit: (channel, payload) => {
+      const w = mainWindow;
+      if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
+    }
+  });
+  registerChatIpc({
+    store: chatStore,
+    secrets: chatSecrets,
+    service: chatService,
+    settingsStore,
+    permissions: chatPermissions
+  });
 
   runeAssist = new RuneFileChatService({
     stateDir: app.getPath('userData'),

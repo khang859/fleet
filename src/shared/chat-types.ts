@@ -1,3 +1,5 @@
+import { DEFAULT_PERMISSION_RULES, type PermissionRules } from './chat-permissions';
+
 export type ChatRole = 'user' | 'assistant' | 'system';
 
 export type ChatImageRef = { ref: string; mimeType: string; kind: 'generated' | 'attachment' };
@@ -33,6 +35,13 @@ export type ChatSettings = {
   provider: 'openrouter';
   defaultModel: string;
   imageModel: string | null;
+  /**
+   * Cheap model for background "task" calls (auto-naming, query gen), decoupled
+   * from the chat model. null → fall back to the default model.
+   */
+  taskModel: string | null;
+  /** Permission rules gating tool calls (Bash, MCP). See chat-permissions.ts. */
+  permissions: PermissionRules;
 };
 
 /** Capability-namespaced AI settings. Future: image, video slot in here additively. */
@@ -43,7 +52,9 @@ export type AiSettings = {
 export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   provider: 'openrouter',
   defaultModel: 'deepseek/deepseek-v4-flash',
-  imageModel: null
+  imageModel: null,
+  taskModel: null,
+  permissions: DEFAULT_PERMISSION_RULES
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {

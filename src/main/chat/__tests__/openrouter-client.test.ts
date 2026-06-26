@@ -131,6 +131,45 @@ it('assembles streamed tool_calls and returns finishReason', async () => {
   ]);
 });
 
+describe('OpenRouterClient.complete (task model)', () => {
+  it('returns the trimmed assistant content from a non-streaming completion', async () => {
+    const fakeFetch = vi.fn(async () =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: '  Fix login bug  ' } }] }),
+          { status: 200 }
+        )
+      )
+    ) as unknown as typeof fetch;
+    const client = new OpenRouterClient(fakeFetch);
+    const text = await client.complete({
+      apiKey: 'k',
+      model: 'cheap/model',
+      messages: [{ role: 'user', content: 'name this' }],
+      maxTokens: 16
+    });
+    expect(text).toBe('Fix login bug');
+    const body = JSON.parse((fakeFetch.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).toMatchObject({ model: 'cheap/model', stream: false, max_tokens: 16 });
+  });
+
+  it('returns empty string when the model produces no content', async () => {
+    const fakeFetch = (async () =>
+      Promise.resolve(
+        new Response(JSON.stringify({ choices: [{ message: {} }] }), { status: 200 })
+      )) as unknown as typeof fetch;
+    const client = new OpenRouterClient(fakeFetch);
+    expect(await client.complete({ apiKey: 'k', model: 'm', messages: [] })).toBe('');
+  });
+
+  it('throws on a non-200 response', async () => {
+    const fakeFetch = (async () =>
+      Promise.resolve(new Response('boom', { status: 500 }))) as unknown as typeof fetch;
+    const client = new OpenRouterClient(fakeFetch);
+    await expect(client.complete({ apiKey: 'k', model: 'm', messages: [] })).rejects.toThrow();
+  });
+});
+
 it('maps model capability flags from /models', async () => {
   const json = {
     data: [
