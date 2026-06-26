@@ -221,6 +221,14 @@ body,
   }
 }
 
+/* Chat code blocks: cap very long blocks so a huge paste can't dominate the
+   viewport. The Streamdown header is a sibling above <pre>, so it stays put
+   while the code body scrolls (both axes; code never wraps). */
+.chat-markdown pre {
+  max-height: 480px;
+  overflow: auto;
+}
+
 /* ── Markdown Preview Prose Styles ──────────────────────────────────── */
 
 .markdown-preview h1 {
