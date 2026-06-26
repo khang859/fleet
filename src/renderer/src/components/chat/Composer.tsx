@@ -1,10 +1,17 @@
 import { useRef, useState } from 'react';
-import { Paperclip, Send, Square, X, File, Folder } from 'lucide-react';
+import { Paperclip, Send, Square, X, File, Folder, Wand2, Sparkles } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import type { ChatMentionItem } from '../../../../shared/chat-types';
+import type { PromptTemplate } from '../../../../shared/prompt-types';
+import { extractPromptVars, fillTemplate } from '../../../../shared/prompt-types';
 import { ModelPicker } from './ModelPicker';
 
 const MENTION_RE = /(?:^|\s)@([\w./-]*)$/;
+
+/** A unified `/` menu entry: an installed skill or a saved prompt template. */
+type CommandItem =
+  | { kind: 'skill'; name: string; description: string }
+  | { kind: 'prompt'; name: string; description: string; template: PromptTemplate };
 
 type Props = { defaultModel: string };
 
@@ -23,25 +30,60 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
   const activeId = useChatStore((s) => s.activeId);
   const setConversationModel = useChatStore((s) => s.setConversationModel);
   const skillMenu = useChatStore((s) => s.skillMenu);
+  const promptTemplates = useChatStore((s) => s.promptTemplates);
   const model = useChatStore(
     (s) => s.conversations.find((c) => c.id === s.activeId)?.model ?? defaultModel
   );
   const streaming = status === 'streaming';
 
-  // `/` skill autocomplete: open while the whole input is a single slash token.
+  // `/` command autocomplete (skills + prompt templates): open while the whole
+  // input is a single slash token.
   const [menuIndex, setMenuIndex] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
-  const slashMatch = /^\/([A-Za-z0-9_-]*)$/.exec(text);
+  const commands: CommandItem[] = [
+    ...skillMenu.map((s) => ({ kind: 'skill' as const, name: s.name, description: s.description })),
+    ...promptTemplates.map((p) => ({
+      kind: 'prompt' as const,
+      name: p.name,
+      description: p.description,
+      template: p
+    }))
+  ];
+  const slashMatch = /^\/([A-Za-z0-9_.-]*)$/.exec(text);
   const matches = slashMatch
-    ? skillMenu.filter((s) => s.name.toLowerCase().startsWith(slashMatch[1].toLowerCase()))
+    ? commands.filter((c) => c.name.toLowerCase().startsWith(slashMatch[1].toLowerCase()))
     : [];
   const menuOpen = matches.length > 0 && !menuDismissed;
   const activeIndex = Math.min(menuIndex, matches.length - 1);
 
-  const pickSkill = (name: string): void => {
-    setText(`/${name} `);
+  // Prompt-template fill-in form, shown when a `/template` with `{{vars}}` is picked.
+  const [formPrompt, setFormPrompt] = useState<PromptTemplate | null>(null);
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
+
+  const pickCommand = (cmd: CommandItem): void => {
     setMenuIndex(0);
     setMenuDismissed(true);
+    if (cmd.kind === 'skill') {
+      setText(`/${cmd.name} `);
+      textareaRef.current?.focus();
+      return;
+    }
+    const vars = extractPromptVars(cmd.template.content);
+    if (vars.length > 0) {
+      setFormPrompt(cmd.template);
+      setFormValues(Object.fromEntries(vars.map((v) => [v, ''])));
+      setText('');
+    } else {
+      setText(cmd.template.content);
+      textareaRef.current?.focus();
+    }
+  };
+
+  const applyForm = (): void => {
+    if (!formPrompt) return;
+    setText(fillTemplate(formPrompt.content, formValues));
+    setFormPrompt(null);
+    setFormValues({});
     textareaRef.current?.focus();
   };
 
@@ -163,6 +205,56 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
           </button>
         </div>
       )}
+      {formPrompt && (
+        <div className="mb-2 rounded border border-fleet-border bg-fleet-surface-2 p-2">
+          <div className="mb-2 flex items-center gap-1.5 text-xs text-fleet-text">
+            <Wand2 size={13} className="text-fleet-text-muted" />
+            <span className="font-mono">/{formPrompt.name}</span>
+            <button
+              type="button"
+              aria-label="Cancel template"
+              onClick={() => {
+                setFormPrompt(null);
+                setFormValues({});
+                textareaRef.current?.focus();
+              }}
+              className="ml-auto rounded p-0.5 text-fleet-text-muted hover:text-fleet-text"
+            >
+              <X size={13} />
+            </button>
+          </div>
+          <div className="space-y-2">
+            {Object.keys(formValues).map((v) => (
+              <label key={v} className="block">
+                <span className="mb-0.5 block font-mono text-[11px] text-fleet-text-secondary">
+                  {v}
+                </span>
+                <textarea
+                  value={formValues[v]}
+                  onChange={(e) => setFormValues((prev) => ({ ...prev, [v]: e.target.value }))}
+                  rows={1}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      applyForm();
+                    }
+                  }}
+                  className="w-full resize-y rounded border border-fleet-border bg-fleet-surface-3 px-2 py-1 text-sm text-fleet-text outline-none"
+                />
+              </label>
+            ))}
+          </div>
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={applyForm}
+              className="rounded bg-fleet-accent/80 px-3 py-1 text-xs text-white hover:bg-fleet-accent"
+            >
+              Insert
+            </button>
+          </div>
+        </div>
+      )}
       {mentions.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
           {mentions.map((p) => (
@@ -213,20 +305,25 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
         {menuOpen && !mentionOpen && (
           <ul className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg">
             {matches.map((s, i) => (
-              <li key={s.name}>
+              <li key={`${s.kind}:${s.name}`}>
                 <button
                   type="button"
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    pickSkill(s.name);
+                    pickCommand(s);
                   }}
                   onMouseEnter={() => setMenuIndex(i)}
-                  className={`block w-full px-3 py-1.5 text-left ${
+                  className={`flex w-full items-center gap-1.5 px-3 py-1.5 text-left ${
                     i === activeIndex ? 'bg-fleet-surface-3' : ''
                   }`}
                 >
+                  {s.kind === 'prompt' ? (
+                    <Wand2 size={12} className="shrink-0 text-fleet-text-muted" />
+                  ) : (
+                    <Sparkles size={12} className="shrink-0 text-fleet-text-muted" />
+                  )}
                   <span className="font-mono text-xs text-fleet-text">/{s.name}</span>
-                  <span className="ml-2 line-clamp-1 text-[11px] text-fleet-text-muted">
+                  <span className="ml-1 line-clamp-1 text-[11px] text-fleet-text-muted">
                     {s.description}
                   </span>
                 </button>
@@ -274,7 +371,7 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
               }
               if (e.key === 'Enter' || e.key === 'Tab') {
                 e.preventDefault();
-                pickSkill(matches[activeIndex].name);
+                pickCommand(matches[activeIndex]);
                 return;
               }
               if (e.key === 'Escape') {

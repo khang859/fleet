@@ -1,6 +1,7 @@
 import { DEFAULT_PERMISSION_RULES, type PermissionRules } from './chat-permissions';
 import type { McpServersConfig } from './mcp-types';
 import type { SkillsOverlay } from './skill-types';
+import type { PromptTemplate } from './prompt-types';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -85,6 +86,8 @@ export type ChatSettings = {
   mcpServers: McpServersConfig;
   /** Per-skill state overrides (absent ⇒ `on`). See skill-types.ts. */
   skills: SkillsOverlay;
+  /** Saved `/`-invokable prompt templates. See prompt-types.ts. */
+  prompts: PromptTemplate[];
 };
 
 /** Posture for the bash/filesystem tools. */
@@ -177,7 +180,8 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   tools: DEFAULT_CHAT_TOOLS,
   usage: DEFAULT_CHAT_USAGE,
   mcpServers: {},
-  skills: {}
+  skills: {},
+  prompts: []
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {

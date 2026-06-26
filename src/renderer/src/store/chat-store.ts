@@ -11,6 +11,7 @@ import type {
 } from '../../../shared/chat-types';
 import type { PermissionOutcome, PermissionRequestPayload } from '../../../shared/chat-permissions';
 import type { SkillMenuItem } from '../../../shared/skill-types';
+import type { PromptTemplate } from '../../../shared/prompt-types';
 
 type ChatStatus = 'idle' | 'streaming' | 'error';
 
@@ -29,9 +30,12 @@ type ChatStoreState = {
   permissionRequests: PermissionRequestPayload[];
   /** Non-off skills, for the composer's `/` autocomplete. */
   skillMenu: SkillMenuItem[];
+  /** Saved prompt templates, for the composer's `/` autocomplete. */
+  promptTemplates: PromptTemplate[];
 
   init: () => Promise<void>;
   loadSkillMenu: () => Promise<void>;
+  loadPromptTemplates: () => Promise<void>;
   decidePermission: (requestId: string, outcome: PermissionOutcome) => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
   newConversation: () => Promise<void>;
@@ -134,6 +138,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     toolStatus: null,
     permissionRequests: [],
     skillMenu: [],
+    promptTemplates: [],
 
     init: async () => {
       subscribeToStreamEvents();
@@ -141,6 +146,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       set({ conversations });
       await get().refreshKeyPresence();
       await get().loadSkillMenu();
+      await get().loadPromptTemplates();
       const first = conversations[0]?.id ?? null;
       if (first) await get().selectConversation(first);
     },
@@ -148,6 +154,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     loadSkillMenu: async () => {
       const view = await window.fleet.chat.skillsGet();
       set({ skillMenu: view.skills.filter((s) => s.state !== 'off') });
+    },
+
+    loadPromptTemplates: async () => {
+      const settings = await window.fleet.chat.getSettings();
+      set({ promptTemplates: settings.prompts });
     },
 
     decidePermission: async (requestId, outcome) => {
