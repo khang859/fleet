@@ -5,10 +5,12 @@ import type {
   ChatSendResponse,
   ChatModel,
   ChatImageRef,
+  ChatMessageUsage,
   ChatStreamChunkPayload,
   ChatStreamDonePayload,
   ChatStreamErrorPayload,
-  ChatToolStatusPayload
+  ChatToolStatusPayload,
+  ChatUsageConfig
 } from '../../shared/chat-types';
 import type { ChatStore } from './chat-store';
 import type { ChatSecrets } from './chat-secrets';
@@ -48,6 +50,7 @@ type Deps = {
   getNaming: () => NamingConfig;
   getToolsMode: () => ChatToolsMode;
   getTools: () => ChatToolsConfig;
+  getUsage: () => ChatUsageConfig;
   getMcpToolDefs: () => unknown[];
   skills: SkillManager;
   toolExecutor: ChatToolExecutor;
@@ -60,6 +63,35 @@ function parseDataUrl(url: string): { data: Buffer; mimeType: string } | null {
   const m = /^data:([^;]+);base64,(.+)$/.exec(url);
   if (!m) return null;
   return { mimeType: m[1], data: Buffer.from(m[2], 'base64') };
+}
+
+/** Sum per-round usage into a running total for the whole assistant turn. */
+function addUsage(
+  acc: ChatMessageUsage | null,
+  next: ChatMessageUsage | null
+): ChatMessageUsage | null {
+  if (!next) return acc;
+  if (!acc) return { ...next };
+  return {
+    promptTokens: acc.promptTokens + next.promptTokens,
+    completionTokens: acc.completionTokens + next.completionTokens,
+    cachedTokens: acc.cachedTokens + next.cachedTokens,
+    cost: acc.cost == null && next.cost == null ? null : (acc.cost ?? 0) + (next.cost ?? 0)
+  };
+}
+
+/**
+ * A system message, optionally with a provider prompt-cache breakpoint. The
+ * breakpoint caches everything up to and including this block (tool defs +
+ * system prompt) on providers that support it (Anthropic/Gemini via OpenRouter);
+ * others ignore the annotation.
+ */
+function systemMessage(content: string, cache: boolean): unknown {
+  if (!cache) return { role: 'system', content };
+  return {
+    role: 'system',
+    content: [{ type: 'text', text: content, cache_control: { type: 'ephemeral' } }]
+  };
 }
 
 export class ChatService {
@@ -227,10 +259,12 @@ export class ChatService {
     // Build OpenRouter-shaped history from the active path, prefixed with the
     // skills system prompt (progressive disclosure: names+descriptions only) and,
     // when the user explicitly invoked `/skill`, that skill's full body.
+    const cachePrompt = this.deps.getUsage().promptCaching;
     const messages: unknown[] = [];
     if (supportsTools) {
       const skillsPrompt = this.deps.skills.systemPrompt();
-      if (skillsPrompt) messages.push({ role: 'system', content: skillsPrompt });
+      // Cache the stable prefix (tool defs + skills system prompt) when enabled.
+      if (skillsPrompt) messages.push(systemMessage(skillsPrompt, cachePrompt));
       const invoked = this.deps.skills.resolveInvocation(invocationText);
       if (invoked) {
         messages.push({
@@ -250,6 +284,7 @@ export class ChatService {
     void (async () => {
       // Accumulates streamed text across all tool rounds; the final (non-tool) streamCompletion delivers the human-readable reply.
       let partial = '';
+      let usage: ChatMessageUsage | null = null;
       const generated: ChatImageRef[] = [];
       try {
         if (!apiKey) throw new Error('No OpenRouter API key configured');
@@ -268,6 +303,7 @@ export class ChatService {
             },
             tools: toolDefs.length ? toolDefs : undefined
           });
+          usage = addUsage(usage, result.usage ?? null);
 
           if (result.finishReason !== 'tool_calls' || result.toolCalls.length === 0) break;
 
@@ -376,7 +412,8 @@ export class ChatService {
           conversationId,
           role: 'assistant',
           content: partial,
-          parentId: assistantParentId
+          parentId: assistantParentId,
+          usage
         });
         if (generated.length) {
           store.addImages({
@@ -401,7 +438,8 @@ export class ChatService {
             conversationId,
             role: 'assistant',
             content: partial,
-            parentId: assistantParentId
+            parentId: assistantParentId,
+            usage
           });
           if (generated.length) {
             store.addImages({

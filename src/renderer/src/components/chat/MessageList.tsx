@@ -9,6 +9,7 @@ import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
 import { ToolCallCard } from './ToolCallCard';
 import { CodeBlock } from '../markdown/CodeBlock';
+import { MessageUsage } from './UsageMeter';
 
 /** ‹ 2 / 3 › pager that switches between sibling attempts of a turn. */
 function VariantPager({ message }: { message: ChatMessage }): React.JSX.Element | null {
@@ -44,7 +45,15 @@ function VariantPager({ message }: { message: ChatMessage }): React.JSX.Element 
   );
 }
 
-function Bubble({ message, model }: { message: ChatMessage; model: string }): React.JSX.Element {
+function Bubble({
+  message,
+  model,
+  showUsage
+}: {
+  message: ChatMessage;
+  model: string;
+  showUsage: boolean;
+}): React.JSX.Element {
   const { role, content, images } = message;
   const isUser = role === 'user';
   const streaming = useChatStore((s) => s.status === 'streaming');
@@ -113,6 +122,11 @@ function Bubble({ message, model }: { message: ChatMessage; model: string }): Re
           </div>
         )}
       </div>
+      {!editing && showUsage && message.usage && (
+        <div className="mt-0.5">
+          <MessageUsage usage={message.usage} />
+        </div>
+      )}
       {!editing && (
         <div className="mt-1 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
           <VariantPager message={message} />
@@ -151,9 +165,9 @@ function Bubble({ message, model }: { message: ChatMessage; model: string }): Re
   );
 }
 
-type Props = { defaultModel: string };
+type Props = { defaultModel: string; showUsage: boolean };
 
-export function MessageList({ defaultModel }: Props): React.JSX.Element {
+export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Element {
   const messages = useChatStore((s) => s.messages);
   const model = useChatStore(
     (s) => s.conversations.find((c) => c.id === s.activeId)?.model ?? defaultModel
@@ -185,7 +199,7 @@ export function MessageList({ defaultModel }: Props): React.JSX.Element {
   return (
     <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto py-2">
       {messages.map((m) => (
-        <Bubble key={m.id} message={m} model={model} />
+        <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
       ))}
       {streamingText !== null && (
         <div className="flex justify-start px-4 py-2">

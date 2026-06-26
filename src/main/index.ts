@@ -1372,6 +1372,7 @@ void app.whenReady().then(async () => {
     },
     getToolsMode: () => settingsStore.get().ai.chat.tools.mode,
     getTools: () => settingsStore.get().ai.chat.tools,
+    getUsage: () => settingsStore.get().ai.chat.usage,
     getMcpToolDefs: () => chatMcp.getToolDefs(),
     skills: chatSkills,
     toolExecutor: chatToolExecutor,

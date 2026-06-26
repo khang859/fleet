@@ -43,6 +43,31 @@ describe('consumeSSE', () => {
     expect(out.join('')).toBe('hi');
   });
 
+  it('captures usage + cache hits from the terminal accounting chunk', async () => {
+    const res = await consumeSSE(
+      feed([
+        'data: {"choices":[{"delta":{"content":"hi"}}]}\n',
+        'data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":20,"cost":0.0012,"prompt_tokens_details":{"cached_tokens":80}}}\n',
+        'data: [DONE]\n'
+      ]),
+      () => {}
+    );
+    expect(res.usage).toEqual({
+      promptTokens: 100,
+      completionTokens: 20,
+      cachedTokens: 80,
+      cost: 0.0012
+    });
+  });
+
+  it('returns null usage when the stream carries no accounting chunk', async () => {
+    const res = await consumeSSE(
+      feed(['data: {"choices":[{"delta":{"content":"hi"}}]}\n', 'data: [DONE]\n']),
+      () => {}
+    );
+    expect(res.usage).toBeNull();
+  });
+
   it('throws on a mid-stream error event (HTTP 200 body error)', async () => {
     await expect(
       consumeSSE(

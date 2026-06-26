@@ -17,6 +17,18 @@ export type ChatMessage = {
   parentId: string | null;
   /** Present only when this turn has sibling variants (regenerate / edit). */
   variants?: ChatVariantInfo;
+  /** Token/cost accounting for an assistant turn; absent on user messages. */
+  usage?: ChatMessageUsage;
+};
+
+/** Token counts + cost for one assistant turn (summed across tool rounds). */
+export type ChatMessageUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  /** Input tokens served from the provider prompt cache (subset of promptTokens). */
+  cachedTokens: number;
+  /** Total cost in USD when OpenRouter accounting returns it; null otherwise. */
+  cost: number | null;
 };
 
 /** Pager metadata for a turn that has multiple attempts. */
@@ -67,6 +79,8 @@ export type ChatSettings = {
   permissions: PermissionRules;
   /** Bash / filesystem tool posture. */
   tools: ChatToolsConfig;
+  /** Token/cost display + prompt caching. */
+  usage: ChatUsageConfig;
   /** Attached MCP servers (standard `mcpServers` schema). */
   mcpServers: McpServersConfig;
   /** Per-skill state overrides (absent ⇒ `on`). See skill-types.ts. */
@@ -99,6 +113,22 @@ export const DEFAULT_CHAT_TOOLS: ChatToolsConfig = {
   sandbox: true,
   failClosed: false,
   mentionMaxKb: 64
+};
+
+/** Token/cost surfacing + prompt-cache posture. */
+export type ChatUsageConfig = {
+  /** Show the per-conversation cost meter and per-message usage captions. */
+  showMeter: boolean;
+  /** Add a provider prompt-cache breakpoint to the stable system prefix. */
+  promptCaching: boolean;
+  /** Warn once a conversation's spend exceeds this many USD; null disables. */
+  budgetWarnUsd: number | null;
+};
+
+export const DEFAULT_CHAT_USAGE: ChatUsageConfig = {
+  showMeter: true,
+  promptCaching: true,
+  budgetWarnUsd: null
 };
 
 /**
@@ -145,6 +175,7 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   namingTiming: 'after-response',
   permissions: DEFAULT_PERMISSION_RULES,
   tools: DEFAULT_CHAT_TOOLS,
+  usage: DEFAULT_CHAT_USAGE,
   mcpServers: {},
   skills: {}
 };

@@ -5,6 +5,7 @@ import type {
   ChatConversation,
   ChatImageRef,
   ChatMessage,
+  ChatMessageUsage,
   ChatRole,
   ChatAuditEntry,
   ChatAuditDecision,
@@ -30,6 +31,10 @@ CREATE TABLE IF NOT EXISTS messages (
   content         TEXT NOT NULL,
   parent_id       TEXT,
   active_child_id TEXT,
+  prompt_tokens     INTEGER,
+  completion_tokens INTEGER,
+  cached_tokens     INTEGER,
+  cost              REAL,
   created_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
@@ -97,6 +102,10 @@ const MessageRowSchema = z.object({
   content: z.string(),
   parent_id: z.string().nullable(),
   active_child_id: z.string().nullable(),
+  prompt_tokens: z.number().nullable(),
+  completion_tokens: z.number().nullable(),
+  cached_tokens: z.number().nullable(),
+  cost: z.number().nullable(),
   created_at: z.number()
 });
 
@@ -141,7 +150,7 @@ function toAudit(r: z.infer<typeof AuditRowSchema>): ChatAuditEntry {
 }
 
 function toMessage(r: MessageRow): ChatMessage {
-  return {
+  const msg: ChatMessage = {
     id: r.id,
     conversationId: r.conversation_id,
     role: r.role,
@@ -149,6 +158,16 @@ function toMessage(r: MessageRow): ChatMessage {
     parentId: r.parent_id,
     createdAt: r.created_at
   };
+  // Usage is recorded only on assistant turns that returned accounting.
+  if (r.prompt_tokens != null || r.completion_tokens != null || r.cost != null) {
+    msg.usage = {
+      promptTokens: r.prompt_tokens ?? 0,
+      completionTokens: r.completion_tokens ?? 0,
+      cachedTokens: r.cached_tokens ?? 0,
+      cost: r.cost
+    };
+  }
+  return msg;
 }
 
 export class ChatStore {
@@ -187,6 +206,12 @@ export class ChatStore {
       this.db.exec('ALTER TABLE messages ADD COLUMN parent_id TEXT');
       this.db.exec('ALTER TABLE messages ADD COLUMN active_child_id TEXT');
       this.backfillTurnTree();
+    }
+    if (!msgCols.some((c) => c.name === 'prompt_tokens')) {
+      this.db.exec('ALTER TABLE messages ADD COLUMN prompt_tokens INTEGER');
+      this.db.exec('ALTER TABLE messages ADD COLUMN completion_tokens INTEGER');
+      this.db.exec('ALTER TABLE messages ADD COLUMN cached_tokens INTEGER');
+      this.db.exec('ALTER TABLE messages ADD COLUMN cost REAL');
     }
     // Created here (not in SCHEMA_SQL) so it runs only after parent_id is
     // guaranteed to exist — legacy tables gain the column above first.
@@ -297,9 +322,11 @@ export class ChatStore {
     role: ChatRole;
     content: string;
     parentId?: string | null;
+    usage?: ChatMessageUsage | null;
   }): ChatMessage {
     const now = Date.now();
     const parentId = input.parentId ?? null;
+    const u = input.usage ?? null;
     const row: MessageRow = {
       id: randomUUID(),
       conversation_id: input.conversationId,
@@ -307,13 +334,32 @@ export class ChatStore {
       content: input.content,
       parent_id: parentId,
       active_child_id: null,
+      prompt_tokens: u ? u.promptTokens : null,
+      completion_tokens: u ? u.completionTokens : null,
+      cached_tokens: u ? u.cachedTokens : null,
+      cost: u ? u.cost : null,
       created_at: now
     };
     this.db
       .prepare(
-        'INSERT INTO messages (id, conversation_id, role, content, parent_id, active_child_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        `INSERT INTO messages
+           (id, conversation_id, role, content, parent_id, active_child_id,
+            prompt_tokens, completion_tokens, cached_tokens, cost, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(row.id, row.conversation_id, row.role, row.content, row.parent_id, null, row.created_at);
+      .run(
+        row.id,
+        row.conversation_id,
+        row.role,
+        row.content,
+        row.parent_id,
+        null,
+        row.prompt_tokens,
+        row.completion_tokens,
+        row.cached_tokens,
+        row.cost,
+        row.created_at
+      );
     if (parentId) {
       this.db.prepare('UPDATE messages SET active_child_id = ? WHERE id = ?').run(row.id, parentId);
     } else {

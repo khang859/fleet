@@ -68,7 +68,9 @@ describe('ChatService.send', () => {
         failClosed: false,
         mentionMaxKb: 64
       }),
-      getMcpToolDefs: () => [],
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+    getMcpToolDefs: () => [],
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
@@ -117,7 +119,9 @@ describe('ChatService.send', () => {
         failClosed: false,
         mentionMaxKb: 64
       }),
-      getMcpToolDefs: () => [],
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+    getMcpToolDefs: () => [],
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
@@ -174,6 +178,7 @@ it('runs the image tool loop and persists a generated image', async () => {
       failClosed: false,
       mentionMaxKb: 64
     }),
+    getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
     getMcpToolDefs: () => [],
     skills: stubSkills,
     toolExecutor: stubExecutor,
@@ -243,6 +248,7 @@ it('passes the reference image to the provider as a base64 data URL when editing
       failClosed: false,
       mentionMaxKb: 64
     }),
+    getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
     getMcpToolDefs: () => [],
     skills: stubSkills,
     toolExecutor: stubExecutor,
@@ -291,7 +297,9 @@ describe('ChatService regenerate / edit', () => {
         failClosed: false,
         mentionMaxKb: 64
       }),
-      getMcpToolDefs: () => [],
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+    getMcpToolDefs: () => [],
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
@@ -366,6 +374,130 @@ describe('ChatService regenerate / edit', () => {
   });
 });
 
+describe('ChatService usage accounting', () => {
+  it('sums per-round usage and persists it on the assistant message', async () => {
+    const dir = join(tmpdir(), `fleet-chat-usage-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'usage.db'));
+    const conv = store.createConversation();
+    const client = new OpenRouterClient();
+    let round = 0;
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      round += 1;
+      if (round === 1) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'c1', name: 'load_skill', arguments: '{"name":"x"}' }],
+          finishReason: 'tool_calls',
+          usage: { promptTokens: 100, completionTokens: 10, cachedTokens: 0, cost: 0.001 }
+        };
+      }
+      opts.onDelta('done');
+      return {
+        content: 'done',
+        toolCalls: [],
+        finishReason: 'stop',
+        usage: { promptTokens: 120, completionTokens: 30, cachedTokens: 80, cost: 0.0005 }
+      };
+    });
+    const skills = {
+      systemPrompt: () => null,
+      toolDef: () => ({ type: 'function', function: { name: 'load_skill' } }),
+      resolveInvocation: () => null,
+      hasLoadSkillTool: (n: string) => n === 'load_skill',
+      runLoadSkill: () => 'BODY'
+    } as unknown as SkillManager;
+    const service = new ChatService({
+      store,
+      client,
+      secrets: fakeSecrets(),
+      getDefaultModel: () => 'm',
+      getImageModel: () => null,
+      getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getToolsMode: () => 'read-only',
+      getTools: () => ({
+        mode: 'off',
+        workspaceDir: null,
+        sandbox: false,
+        failClosed: false,
+        mentionMaxKb: 64
+      }),
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+      getMcpToolDefs: () => [],
+      skills,
+      toolExecutor: stubExecutor,
+      imageProvider: fakeProvider,
+      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      emit: () => {}
+    });
+
+    service.send({ conversationId: conv.id, text: 'hi', model: 'm', supportsTools: true });
+    await vi.waitFor(() => expect(store.getMessages(conv.id)[1]?.content).toBe('done'));
+    const assistant = store.getMessages(conv.id)[1];
+    expect(assistant.usage).toEqual({
+      promptTokens: 220,
+      completionTokens: 40,
+      cachedTokens: 80,
+      cost: 0.0015
+    });
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('marks the system prompt with a cache_control breakpoint when caching is on', async () => {
+    const dir = join(tmpdir(), `fleet-chat-cache-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'cache.db'));
+    const conv = store.createConversation();
+    const client = new OpenRouterClient();
+    let seen: unknown[] = [];
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      seen = opts.messages;
+      opts.onDelta('ok');
+      return { content: 'ok', toolCalls: [], finishReason: 'stop', usage: null };
+    });
+    const skills = {
+      systemPrompt: () => 'Available skills:\n- deploy: Deploy',
+      toolDef: () => null,
+      resolveInvocation: () => null,
+      hasLoadSkillTool: () => false,
+      runLoadSkill: () => ''
+    } as unknown as SkillManager;
+    const service = new ChatService({
+      store,
+      client,
+      secrets: fakeSecrets(),
+      getDefaultModel: () => 'm',
+      getImageModel: () => null,
+      getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getToolsMode: () => 'read-only',
+      getTools: () => ({
+        mode: 'off',
+        workspaceDir: null,
+        sandbox: false,
+        failClosed: false,
+        mentionMaxKb: 64
+      }),
+      getUsage: () => ({ showMeter: true, promptCaching: true, budgetWarnUsd: null }),
+      getMcpToolDefs: () => [],
+      skills,
+      toolExecutor: stubExecutor,
+      imageProvider: fakeProvider,
+      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      emit: () => {}
+    });
+
+    service.send({ conversationId: conv.id, text: 'hi', model: 'm', supportsTools: true });
+    await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0));
+    const sys = seen[0] as { role: string; content: Array<{ cache_control?: unknown }> };
+    expect(sys.role).toBe('system');
+    expect(Array.isArray(sys.content)).toBe(true);
+    expect(sys.content[0].cache_control).toEqual({ type: 'ephemeral' });
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe('ChatService skills', () => {
   it('injects the skills system prompt + /invoked body and routes load_skill', async () => {
     const dir = join(tmpdir(), `fleet-chat-skills-${process.pid}`);
@@ -414,7 +546,9 @@ describe('ChatService skills', () => {
         failClosed: false,
         mentionMaxKb: 64
       }),
-      getMcpToolDefs: () => [],
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+    getMcpToolDefs: () => [],
       skills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
