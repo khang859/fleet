@@ -27,7 +27,10 @@ export function ChatMarkdown({ children, streaming = false }: Props): React.JSX.
       // `dark:` class variant (no re-highlight on theme change); unknown/missing
       // languages fall back to plain text.
       shikiTheme={['one-light', 'one-dark-pro']}
-      className="text-sm"
+      // Header bar shows the language (left) + copy button (right); the download
+      // button is hidden to keep the header focused.
+      controls={{ code: { download: false } }}
+      className="chat-markdown text-sm"
     >
       {children}
     </Streamdown>
