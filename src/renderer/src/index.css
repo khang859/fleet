@@ -262,6 +262,25 @@ body,
   animation: chat-caret-blink 1s steps(1, jump-none) infinite;
 }
 
+/* Per-message action bar. Visible by default so touch / no-hover environments
+   always expose the actions; on hover-capable devices it hides and reveals on
+   hover or keyboard focus. Opacity (not display) keeps its height reserved, so
+   messages never jump vertically. Gated on `hover: hover`, not a width
+   breakpoint, so narrow desktop windows still get the hover affordance. */
+.chat-actions {
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+@media (hover: hover) {
+  .chat-actions {
+    opacity: 0;
+  }
+  .group:hover .chat-actions,
+  .chat-actions:focus-within {
+    opacity: 1;
+  }
+}
+
 /* Pre-first-token "thinking" three-dot wave. */
 .chat-think-dot {
   display: inline-block;
