@@ -21,6 +21,7 @@ import type { ChatConversationRenamedPayload, ChatToolsMode } from '../../shared
 import type { ChatToolExecutor } from './tools/tool-runner';
 import { buildFsToolDefs, FS_TOOL_NAMES } from './tools/tool-runner';
 import { isMcpToolName } from '../../shared/mcp-types';
+import type { SkillManager } from './skills/skill-manager';
 
 export type ChatEmitter = (channel: string, payload: unknown) => void;
 
@@ -42,6 +43,7 @@ type Deps = {
   getNaming: () => NamingConfig;
   getToolsMode: () => ChatToolsMode;
   getMcpToolDefs: () => unknown[];
+  skills: SkillManager;
   toolExecutor: ChatToolExecutor;
   imageProvider: ChatImageProvider;
   imageStorage: ChatImageStorage;
@@ -116,16 +118,32 @@ export class ChatService {
     // fs/bash tools require a tool-capable model; gated by the tools mode setting.
     const fsToolDefs = supportsTools ? buildFsToolDefs(this.deps.getToolsMode()) : [];
     const mcpToolDefs = supportsTools ? this.deps.getMcpToolDefs() : [];
+    const loadSkillDef = supportsTools ? this.deps.skills.toolDef() : null;
     const toolDefs: unknown[] = [
       ...(imageToolEnabled ? [GENERATE_IMAGE_TOOL] : []),
       ...fsToolDefs,
-      ...mcpToolDefs
+      ...mcpToolDefs,
+      ...(loadSkillDef ? [loadSkillDef] : [])
     ];
 
-    // Build OpenRouter-shaped history from persisted messages.
-    const messages: unknown[] = store
-      .getMessages(req.conversationId)
-      .map((m) => ({ role: m.role, content: m.content }));
+    // Build OpenRouter-shaped history from persisted messages, prefixed with the
+    // skills system prompt (progressive disclosure: names+descriptions only) and,
+    // when the user explicitly invoked `/skill`, that skill's full body.
+    const messages: unknown[] = [];
+    if (supportsTools) {
+      const skillsPrompt = this.deps.skills.systemPrompt();
+      if (skillsPrompt) messages.push({ role: 'system', content: skillsPrompt });
+      const invoked = this.deps.skills.resolveInvocation(req.text);
+      if (invoked) {
+        messages.push({
+          role: 'system',
+          content: `The user invoked the "${invoked.name}" skill. Follow these instructions:\n\n${invoked.body}`
+        });
+      }
+    }
+    for (const m of store.getMessages(req.conversationId)) {
+      messages.push({ role: m.role, content: m.content });
+    }
 
     void (async () => {
       // Accumulates streamed text across all tool rounds; the final (non-tool) streamCompletion delivers the human-readable reply.
@@ -162,6 +180,16 @@ export class ChatService {
           });
 
           for (const call of result.toolCalls) {
+            // load_skill is an ungated read of an installed skill body.
+            if (this.deps.skills.hasLoadSkillTool(call.name)) {
+              messages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                name: call.name,
+                content: this.deps.skills.runLoadSkill(call.arguments)
+              });
+              continue;
+            }
             // Native fs/bash and MCP tools run through the main-process executor (gated).
             if (FS_TOOL_NAMES.has(call.name) || isMcpToolName(call.name)) {
               const content = await this.deps.toolExecutor.run(call.name, call.arguments, {

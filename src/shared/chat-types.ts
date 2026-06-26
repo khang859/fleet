@@ -1,5 +1,6 @@
 import { DEFAULT_PERMISSION_RULES, type PermissionRules } from './chat-permissions';
 import type { McpServersConfig } from './mcp-types';
+import type { SkillsOverlay } from './skill-types';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -53,6 +54,8 @@ export type ChatSettings = {
   tools: ChatToolsConfig;
   /** Attached MCP servers (standard `mcpServers` schema). */
   mcpServers: McpServersConfig;
+  /** Per-skill state overrides (absent ⇒ `on`). See skill-types.ts. */
+  skills: SkillsOverlay;
 };
 
 /** Posture for the bash/filesystem tools. */
@@ -94,7 +97,8 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   namingTiming: 'after-response',
   permissions: DEFAULT_PERMISSION_RULES,
   tools: DEFAULT_CHAT_TOOLS,
-  mcpServers: {}
+  mcpServers: {},
+  skills: {}
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {

@@ -3,6 +3,7 @@ import { useChatStore } from '../../store/chat-store';
 import { ModelPicker } from './ModelPicker';
 import { PermissionRulesEditor } from './PermissionRulesEditor';
 import { McpServersTab } from './McpServersTab';
+import { SkillsTab } from './SkillsTab';
 import {
   DEFAULT_PERMISSION_RULES,
   type PermissionRules
@@ -75,14 +76,7 @@ function ExtensionsCapabilities(): React.JSX.Element {
           Skills
         </button>
       </div>
-      {tab === 'mcp' ? (
-        <McpServersTab />
-      ) : (
-        <p className="text-xs text-fleet-text-muted">
-          No skills installed yet. Skills add <em>know-how</em> (procedures). MCP and Skills
-          compose.
-        </p>
-      )}
+      {tab === 'mcp' ? <McpServersTab /> : <SkillsTab />}
     </div>
   );
 }

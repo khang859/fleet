@@ -66,7 +66,8 @@ beforeEach(() => {
         listeners.set(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, cb);
         return () => {};
       },
-      listImageModels: vi.fn().mockResolvedValue([])
+      listImageModels: vi.fn().mockResolvedValue([]),
+      skillsGet: vi.fn().mockResolvedValue({ skills: [], budget: { used: 0, cap: 8000 } })
     }
   };
   (globalThis as unknown as { window: { fleet: typeof fleet } }).window = { fleet };

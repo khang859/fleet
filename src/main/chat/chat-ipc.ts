@@ -15,6 +15,8 @@ import type { PermissionManager } from './permissions/permission-manager';
 import type { PermissionOutcome } from '../../shared/chat-permissions';
 import type { McpManager } from './mcp/manager';
 import type { McpServersConfig, McpServerStatus } from '../../shared/mcp-types';
+import type { SkillManager } from './skills/skill-manager';
+import type { SkillState, SkillsView } from '../../shared/skill-types';
 
 type Deps = {
   store: ChatStore;
@@ -23,10 +25,14 @@ type Deps = {
   settingsStore: SettingsStore;
   permissions: PermissionManager;
   mcp: McpManager;
+  skills: SkillManager;
+  revealSkillsFolder: () => void;
 };
 
 export function registerChatIpc(deps: Deps): void {
-  const { store, secrets, service, settingsStore, permissions, mcp } = deps;
+  const { store, secrets, service, settingsStore, permissions, mcp, skills } = deps;
+
+  const skillsView = (): SkillsView => ({ skills: skills.statuses(), budget: skills.budget() });
 
   ipcMain.handle(IPC_CHANNELS.CHAT_LIST_CONVERSATIONS, (): ChatConversation[] =>
     store.listConversations()
@@ -78,6 +84,23 @@ export function registerChatIpc(deps: Deps): void {
       permissions.decide(req.requestId, req.outcome);
     }
   );
+
+  ipcMain.handle(IPC_CHANNELS.CHAT_SKILLS_GET, (): SkillsView => skillsView());
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_SKILLS_SET_STATE,
+    (_e, req: { name: string; state: SkillState }): SkillsView => {
+      const overlay = { ...settingsStore.get().ai.chat.skills, [req.name]: req.state };
+      settingsStore.set({ ai: { chat: { skills: overlay } } });
+      return skillsView();
+    }
+  );
+  ipcMain.handle(IPC_CHANNELS.CHAT_SKILLS_RESCAN, (): SkillsView => {
+    skills.rescan();
+    return skillsView();
+  });
+  ipcMain.handle(IPC_CHANNELS.CHAT_SKILLS_REVEAL, () => {
+    deps.revealSkillsFolder();
+  });
 
   ipcMain.handle(IPC_CHANNELS.CHAT_MCP_GET, (): McpServerStatus[] => mcp.statuses());
   ipcMain.handle(

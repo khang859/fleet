@@ -156,6 +156,7 @@ import type {
 } from '../shared/chat-types';
 import type { PermissionRequestPayload, PermissionOutcome } from '../shared/chat-permissions';
 import type { McpServersConfig, McpServerStatus } from '../shared/mcp-types';
+import type { SkillState, SkillsView } from '../shared/skill-types';
 import type {
   Learning,
   CreateLearningInput,
@@ -869,7 +870,12 @@ const fleetApi = {
       onChannel<ChatConversationRenamedPayload>(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, cb),
     mcpGet: async (): Promise<McpServerStatus[]> => typedInvoke(IPC_CHANNELS.CHAT_MCP_GET),
     mcpSet: async (config: McpServersConfig): Promise<McpServerStatus[]> =>
-      typedInvoke(IPC_CHANNELS.CHAT_MCP_SET, config)
+      typedInvoke(IPC_CHANNELS.CHAT_MCP_SET, config),
+    skillsGet: async (): Promise<SkillsView> => typedInvoke(IPC_CHANNELS.CHAT_SKILLS_GET),
+    skillsSetState: async (name: string, state: SkillState): Promise<SkillsView> =>
+      typedInvoke(IPC_CHANNELS.CHAT_SKILLS_SET_STATE, { name, state }),
+    skillsRescan: async (): Promise<SkillsView> => typedInvoke(IPC_CHANNELS.CHAT_SKILLS_RESCAN),
+    skillsReveal: async (): Promise<void> => typedInvoke(IPC_CHANNELS.CHAT_SKILLS_REVEAL)
   }
 };
 
