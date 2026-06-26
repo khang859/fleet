@@ -229,6 +229,12 @@ body,
   overflow: auto;
 }
 
+/* Zebra-stripe chat tables — Streamdown ships row dividers only. Uses the
+   bridged --muted token so it stays subtle in both light and dark themes. */
+.chat-markdown tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+
 /* ── Markdown Preview Prose Styles ──────────────────────────────────── */
 
 .markdown-preview h1 {
