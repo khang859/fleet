@@ -229,6 +229,10 @@ body,
     opacity: 1 !important;
     transform: none !important;
   }
+  /* Action-bar reveal: drop the opacity fade (snap in/out instead). */
+  .chat-actions {
+    transition: none !important;
+  }
 }
 
 /* Chat code blocks: cap very long blocks so a huge paste can't dominate the
@@ -260,6 +264,27 @@ body,
 }
 .chat-markdown [style*='--streamdown-caret']::after {
   animation: chat-caret-blink 1s steps(1, jump-none) infinite;
+}
+
+/* Standardized keyboard focus ring for chat icon buttons / toggles. Keyboard
+   users (focus-visible) get a clear accent ring; pointer clicks don't. */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fleet-accent) 65%, transparent);
+}
+
+/* prefers-contrast: more — strengthen separation between chat surfaces. The user
+   bubble and tool/permission cards lean on subtle fills; firm up their borders. */
+@media (prefers-contrast: more) {
+  .chat-actions {
+    opacity: 1 !important;
+  }
+  .chat-markdown table,
+  .chat-markdown th,
+  .chat-markdown td,
+  .chat-markdown blockquote {
+    border-color: var(--fleet-border-strong);
+  }
 }
 
 /* Per-message action bar. Visible by default so touch / no-hover environments

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type {
   PermissionOutcome,
   PermissionRequestPayload
@@ -31,9 +32,14 @@ export function ToolCallCard({ request, output, onDecide }: Props): React.JSX.El
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-fleet-text"
+        aria-expanded={expanded}
+        className="focus-ring flex w-full items-center gap-2 px-3 py-2 text-left text-fleet-text"
       >
-        <span className="text-fleet-text-muted">{expanded ? '▾' : '▸'}</span>
+        {expanded ? (
+          <ChevronDown size={14} className="shrink-0 text-fleet-text-muted" />
+        ) : (
+          <ChevronRight size={14} className="shrink-0 text-fleet-text-muted" />
+        )}
         <span className="font-medium">{request.tool}</span>
         <code className="min-w-0 flex-1 truncate font-mono text-xs text-fleet-text-secondary">
           {request.command}

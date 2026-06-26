@@ -469,7 +469,7 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
           <button
             onClick={cancel}
             aria-label="Stop generating"
-            className="rounded bg-fleet-surface-3 p-2 text-fleet-text hover:bg-fleet-surface-3/80"
+            className="focus-ring rounded bg-fleet-surface-3 p-2 text-fleet-text hover:bg-fleet-surface-3/80"
           >
             <Square size={16} />
           </button>
@@ -478,7 +478,7 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
             onClick={submit}
             disabled={!canSend}
             aria-label="Send message"
-            className="rounded bg-fleet-accent/80 p-2 text-white hover:bg-fleet-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-fleet-accent/80"
+            className="focus-ring rounded bg-fleet-accent/80 p-2 text-white hover:bg-fleet-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-fleet-accent/80"
           >
             <Send size={16} />
           </button>
@@ -490,7 +490,7 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
           aria-label="Attach file"
           disabled={noKey}
           onClick={() => fileRef.current?.click()}
-          className="rounded p-1 text-fleet-text-muted hover:text-fleet-text disabled:cursor-not-allowed disabled:opacity-40"
+          className="focus-ring rounded p-1 text-fleet-text-muted hover:text-fleet-text disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Paperclip size={14} />
         </button>
