@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import { useReducedMotion } from '../../hooks/use-reduced-motion';
+import { streamAnnouncement } from './stream-announce';
 import type { ChatMessage } from '../../../../shared/chat-types';
 import { extractArtifacts } from '../../../../shared/chat-artifacts';
 import { ChatImage } from './ChatImage';
@@ -220,6 +221,28 @@ function JumpToLatest(): React.JSX.Element | null {
   );
 }
 
+/**
+ * Single always-mounted polite live region. Announces only state transitions
+ * (start / completion / error) so a screen reader speaks them once each rather
+ * than re-reading streaming text on every token.
+ */
+function StreamAnnouncer(): React.JSX.Element {
+  const status = useChatStore((s) => s.status);
+  const error = useChatStore((s) => s.error);
+  const [message, setMessage] = useState('');
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    const next = streamAnnouncement(prevStatus.current, status, error);
+    prevStatus.current = status;
+    if (next !== null) setMessage(next);
+  }, [status, error]);
+  return (
+    <div role="status" aria-live="polite" className="sr-only">
+      {message}
+    </div>
+  );
+}
+
 /** Re-engages stick-to-bottom whenever a new stream starts, even if the user had scrolled up. */
 function ReengageOnNewStream({ animation }: { animation: ScrollBehavior }): null {
   const { scrollToBottom } = useStickToBottomContext();
@@ -238,7 +261,9 @@ function ReengageOnNewStream({ animation }: { animation: ScrollBehavior }): null
 function StreamingMessage(): React.JSX.Element {
   const streamingText = useChatStore((s) => s.streamingText) ?? '';
   return (
-    <div className="flex justify-start px-4 py-2">
+    // aria-live=off: streaming text mutates per flush and must NOT be announced
+    // token-by-token; the role=status announcer speaks start/completion instead.
+    <div className="flex justify-start px-4 py-2" aria-live="off">
       <div className="max-w-[80%] rounded-lg bg-fleet-surface-2 px-3 py-2 text-sm text-fleet-text">
         <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
           <ReactMarkdown
@@ -278,7 +303,12 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
       resize={animation}
       initial={animation}
     >
-      <StickToBottom.Content className="py-2">
+      <StickToBottom.Content
+        className="py-2"
+        role="log"
+        aria-label="Conversation"
+        aria-busy={isStreaming}
+      >
         {messages.map((m) => (
           <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
         ))}
@@ -301,6 +331,7 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
         {status === 'error' && <div className="px-4 py-2 text-sm text-red-400">Error: {error}</div>}
       </StickToBottom.Content>
       <ReengageOnNewStream animation={animation} />
+      <StreamAnnouncer />
       <JumpToLatest />
     </StickToBottom>
   );

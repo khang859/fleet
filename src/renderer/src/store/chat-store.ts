@@ -18,7 +18,7 @@ import { DEFAULT_CHAT_UPLOADS } from '../../../shared/chat-types';
 import type { Artifact } from '../../../shared/chat-artifacts';
 import { StreamBuffer } from './stream-buffer';
 
-type ChatStatus = 'idle' | 'streaming' | 'error';
+export type ChatStatus = 'idle' | 'streaming' | 'error';
 
 /** An artifact opened in the side panel, tagged with its source message. */
 export type OpenArtifact = Artifact & { messageId: string };
