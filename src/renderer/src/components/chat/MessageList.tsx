@@ -91,11 +91,13 @@ function Bubble({
   };
 
   return (
-    <div className={`group flex flex-col ${isUser ? 'items-end' : 'items-start'} px-4 py-2`}>
+    <div className={`group flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
       <div
-        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-          isUser ? 'bg-fleet-accent/20 text-fleet-text' : 'bg-fleet-surface-2 text-fleet-text'
-        }`}
+        className={
+          isUser
+            ? 'w-fit max-w-[85%] rounded-lg bg-fleet-surface-2 px-4 py-3 text-sm text-fleet-text'
+            : 'w-full max-w-[68ch] text-sm leading-relaxed text-fleet-text'
+        }
       >
         {editing ? (
           <div className="flex flex-col gap-2">
@@ -255,10 +257,12 @@ function StreamingMessage(): React.JSX.Element {
   return (
     // aria-live=off: streaming text mutates per flush and must NOT be announced
     // token-by-token; the role=status announcer speaks start/completion instead.
-    <div className="flex justify-start px-4 py-2" aria-live="off">
-      <div className="max-w-[80%] rounded-lg bg-fleet-surface-2 px-3 py-2 text-sm text-fleet-text">
-        <ChatMarkdown streaming>{streamingText || '…'}</ChatMarkdown>
-      </div>
+    // Flat full-width assistant prose — matches a finalized assistant Bubble.
+    <div
+      className="w-full max-w-[68ch] text-sm leading-relaxed text-fleet-text"
+      aria-live="off"
+    >
+      <ChatMarkdown streaming>{streamingText || '…'}</ChatMarkdown>
     </div>
   );
 }
@@ -273,22 +277,20 @@ function StreamError({ model }: { model: string }): React.JSX.Element {
   const retryLastTurn = useChatStore((s) => s.retryLastTurn);
   const info = classifyStreamError(error);
   return (
-    <div className="px-4 py-2">
-      <div className="flex max-w-[80%] items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm">
-        <AlertTriangle size={15} className="mt-0.5 shrink-0 text-red-400" />
-        <div className="min-w-0">
-          <div className="font-medium text-fleet-text">{info.title}</div>
-          <div className="mt-0.5 text-fleet-text-secondary">{info.detail}</div>
-          {info.retryable && (
-            <button
-              type="button"
-              onClick={() => void retryLastTurn(model)}
-              className="mt-1.5 flex items-center gap-1 rounded bg-fleet-surface-3 px-2 py-1 text-xs text-fleet-text hover:bg-fleet-surface-2"
-            >
-              <RefreshCw size={12} /> Try again
-            </button>
-          )}
-        </div>
+    <div className="flex max-w-[80%] items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm">
+      <AlertTriangle size={15} className="mt-0.5 shrink-0 text-red-400" />
+      <div className="min-w-0">
+        <div className="font-medium text-fleet-text">{info.title}</div>
+        <div className="mt-0.5 text-fleet-text-secondary">{info.detail}</div>
+        {info.retryable && (
+          <button
+            type="button"
+            onClick={() => void retryLastTurn(model)}
+            className="mt-1.5 flex items-center gap-1 rounded bg-fleet-surface-3 px-2 py-1 text-xs text-fleet-text hover:bg-fleet-surface-2"
+          >
+            <RefreshCw size={12} /> Try again
+          </button>
+        )}
       </div>
     </div>
   );
@@ -317,32 +319,31 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
       resize={animation}
       initial={animation}
     >
-      <StickToBottom.Content
-        className="py-2"
-        role="log"
-        aria-label="Conversation"
-        aria-busy={isStreaming}
-      >
-        {messages.map((m) => (
-          <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
-        ))}
-        {isStreaming && <StreamingMessage />}
-        {permissionRequests.map((req) => (
-          <ToolCallCard
-            key={req.requestId}
-            request={req}
-            onDecide={(outcome) => void decidePermission(req.requestId, outcome)}
-          />
-        ))}
-        {status === 'streaming' && toolStatus?.state === 'generating' && (
-          <GeneratingSkeleton label={toolStatus.label} />
-        )}
-        {toolStatus?.state === 'error' && (
-          <div className="px-4 py-2 text-sm text-red-400">
-            Image error: {toolStatus.error ?? toolStatus.label}
-          </div>
-        )}
-        {status === 'error' && <StreamError model={model} />}
+      <StickToBottom.Content role="log" aria-label="Conversation" aria-busy={isStreaming}>
+        {/* Centered reading column; turns separated by whitespace (no dividers),
+            generous bottom padding so the last reply clears the composer. */}
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+          {messages.map((m) => (
+            <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
+          ))}
+          {isStreaming && <StreamingMessage />}
+          {permissionRequests.map((req) => (
+            <ToolCallCard
+              key={req.requestId}
+              request={req}
+              onDecide={(outcome) => void decidePermission(req.requestId, outcome)}
+            />
+          ))}
+          {status === 'streaming' && toolStatus?.state === 'generating' && (
+            <GeneratingSkeleton label={toolStatus.label} />
+          )}
+          {toolStatus?.state === 'error' && (
+            <div className="text-sm text-red-400">
+              Image error: {toolStatus.error ?? toolStatus.label}
+            </div>
+          )}
+          {status === 'error' && <StreamError model={model} />}
+        </div>
       </StickToBottom.Content>
       <ReengageOnNewStream animation={animation} />
       <StreamAnnouncer />
