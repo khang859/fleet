@@ -159,12 +159,18 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
   const submit = (): void => {
     const trimmed = text.trim();
     if ((!trimmed && attachments.length === 0) || streaming) return;
+    const snapshot = { text, attachments, mentions };
     void send(
       trimmed,
       model,
       attachments.length ? attachments.map((a) => a.dataUrl) : undefined,
       mentions.length ? mentions : undefined
-    );
+    ).catch(() => {
+      // The send never started — restore what the user typed so it isn't lost.
+      setText(snapshot.text);
+      setAttachments(snapshot.attachments);
+      setMentions(snapshot.mentions);
+    });
     setText('');
     setAttachments([]);
     setAttachError(null);

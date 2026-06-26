@@ -12,11 +12,14 @@ import {
   X,
   Check,
   FileCode,
-  ArrowDown
+  ArrowDown,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import { useReducedMotion } from '../../hooks/use-reduced-motion';
 import { streamAnnouncement } from './stream-announce';
+import { classifyStreamError } from './stream-error';
 import type { ChatMessage } from '../../../../shared/chat-types';
 import { extractArtifacts } from '../../../../shared/chat-artifacts';
 import { ChatImage } from './ChatImage';
@@ -279,6 +282,37 @@ function StreamingMessage(): React.JSX.Element {
   );
 }
 
+/**
+ * Inline failed-turn error: plain-language, classified (network vs auth/quota),
+ * attached where the assistant reply would be. Offers a scoped "Try again" that
+ * re-streams the last user prompt — not a global retry.
+ */
+function StreamError({ model }: { model: string }): React.JSX.Element {
+  const error = useChatStore((s) => s.error);
+  const retryLastTurn = useChatStore((s) => s.retryLastTurn);
+  const info = classifyStreamError(error);
+  return (
+    <div className="px-4 py-2">
+      <div className="flex max-w-[80%] items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm">
+        <AlertTriangle size={15} className="mt-0.5 shrink-0 text-red-400" />
+        <div className="min-w-0">
+          <div className="font-medium text-fleet-text">{info.title}</div>
+          <div className="mt-0.5 text-fleet-text-secondary">{info.detail}</div>
+          {info.retryable && (
+            <button
+              type="button"
+              onClick={() => void retryLastTurn(model)}
+              className="mt-1.5 flex items-center gap-1 rounded bg-fleet-surface-3 px-2 py-1 text-xs text-fleet-text hover:bg-fleet-surface-2"
+            >
+              <RefreshCw size={12} /> Try again
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type Props = { defaultModel: string; showUsage: boolean };
 
 export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Element {
@@ -290,7 +324,6 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
   // updates don't re-render the whole list (see StreamingMessage).
   const isStreaming = useChatStore((s) => s.streamingText !== null);
   const status = useChatStore((s) => s.status);
-  const error = useChatStore((s) => s.error);
   const toolStatus = useChatStore((s) => s.toolStatus);
   const permissionRequests = useChatStore((s) => s.permissionRequests);
   const decidePermission = useChatStore((s) => s.decidePermission);
@@ -328,7 +361,7 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
             Image error: {toolStatus.error ?? toolStatus.label}
           </div>
         )}
-        {status === 'error' && <div className="px-4 py-2 text-sm text-red-400">Error: {error}</div>}
+        {status === 'error' && <StreamError model={model} />}
       </StickToBottom.Content>
       <ReengageOnNewStream animation={animation} />
       <StreamAnnouncer />
