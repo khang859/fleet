@@ -89,13 +89,16 @@ export type ChatToolsConfig = {
   sandbox: boolean;
   /** In auto mode, refuse bash when a required sandbox is unavailable. */
   failClosed: boolean;
+  /** Max KB read per `@`-mentioned file before truncation. */
+  mentionMaxKb: number;
 };
 
 export const DEFAULT_CHAT_TOOLS: ChatToolsConfig = {
   mode: 'read-only',
   workspaceDir: null,
   sandbox: true,
-  failClosed: false
+  failClosed: false,
+  mentionMaxKb: 64
 };
 
 /**
@@ -159,7 +162,12 @@ export type ChatSendRequest = {
   model: string;
   attachments?: string[];
   supportsTools?: boolean;
+  /** Workspace-relative paths `@`-mentioned in the composer to pin into context. */
+  contextPaths?: string[];
 };
+
+/** One `@`-mention autocomplete result. */
+export type ChatMentionItem = { path: string; type: 'file' | 'dir' };
 export type ChatSendResponse = { streamId: string; userMessage: ChatMessage };
 
 export type ChatRegenerateRequest = {

@@ -45,6 +45,116 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${re}$`);
 }
 
+/** Depth-first walk yielding absolute paths of files AND directories. */
+function* walkEntries(root: string): Generator<{ full: string; dir: boolean }> {
+  let count = 0;
+  const stack = [root];
+  for (let dir = stack.pop(); dir !== undefined; dir = stack.pop()) {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of entries) {
+      const full = join(dir, name);
+      let st: Stats;
+      try {
+        st = statSync(full);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        if (!IGNORED_DIRS.has(name) && !name.startsWith('.')) {
+          yield { full, dir: true };
+          stack.push(full);
+        }
+      } else if (st.isFile() && !name.startsWith('.')) {
+        yield { full, dir: false };
+      }
+      if (++count >= MAX_WALK_FILES) return;
+    }
+  }
+}
+
+/**
+ * Fuzzy-ish path search for the `@`-mention picker: substring match on the
+ * workspace-relative posix path, skipping ignored dirs/dotfiles. Basename and
+ * shorter-path matches rank first.
+ */
+export function searchWorkspacePaths(args: {
+  query: string;
+  cwd: string;
+  limit?: number;
+}): Array<{ path: string; type: 'file' | 'dir' }> {
+  const root = resolve(args.cwd);
+  const q = args.query.toLowerCase();
+  const limit = args.limit ?? 20;
+  const hits: Array<{ path: string; type: 'file' | 'dir'; score: number }> = [];
+  for (const { full, dir } of walkEntries(root)) {
+    const rel = toPosix(relative(root, full));
+    if (!rel) continue;
+    const lower = rel.toLowerCase();
+    if (q && !lower.includes(q)) continue;
+    const base = rel.split('/').pop() ?? rel;
+    const score = (base.toLowerCase().includes(q) ? 0 : 100) + rel.length;
+    hits.push({ path: rel, type: dir ? 'dir' : 'file', score });
+  }
+  hits.sort((a, b) => a.score - b.score);
+  return hits.slice(0, limit).map(({ path, type }) => ({ path, type }));
+}
+
+/**
+ * Build a context block from `@`-mentioned paths: truncated contents for files,
+ * a bounded file listing for directories. Each file is capped at `maxBytes`.
+ */
+export function buildMentionContext(args: {
+  paths: string[];
+  cwd: string;
+  maxBytes: number;
+}): string {
+  const blocks: string[] = [];
+  for (const p of args.paths) {
+    let abs: string;
+    try {
+      abs = assertReadablePath(p, args.cwd);
+    } catch (err) {
+      blocks.push(`${p}: (skipped — ${err instanceof Error ? err.message : 'unreadable'})`);
+      continue;
+    }
+    let st: Stats;
+    try {
+      st = statSync(abs);
+    } catch {
+      blocks.push(`${p}: (not found)`);
+      continue;
+    }
+    if (st.isDirectory()) {
+      const files = globTool({ pattern: '**/*', path: p, cwd: args.cwd }).slice(0, 100);
+      blocks.push(
+        `Folder ${p} (${files.length} files):\n${files.map((f) => `- ${p}/${f}`).join('\n')}`
+      );
+    } else {
+      try {
+        const buf = readFileSync(abs);
+        if (buf.includes(0)) {
+          blocks.push(`File ${p}: (binary, skipped)`);
+          continue;
+        }
+        const truncated = buf.length > args.maxBytes;
+        const text = buf.subarray(0, args.maxBytes).toString('utf8');
+        blocks.push(
+          `File ${p}:\n\`\`\`\n${text}${truncated ? `\n…(truncated, ${buf.length} bytes total)` : ''}\n\`\`\``
+        );
+      } catch (err) {
+        blocks.push(`File ${p}: (error — ${err instanceof Error ? err.message : 'unreadable'})`);
+      }
+    }
+  }
+  if (blocks.length === 0) return '';
+  return `The user attached the following files/folders as context:\n\n${blocks.join('\n\n')}`;
+}
+
 /** Depth-first file walk, skipping ignored dirs; yields absolute file paths. */
 function* walkFiles(root: string): Generator<string> {
   let count = 0;

@@ -8,8 +8,10 @@ import type {
   ChatConversation,
   ChatMessage,
   ChatModel,
-  ChatAuditEntry
+  ChatAuditEntry,
+  ChatMentionItem
 } from '../../shared/chat-types';
+import { searchWorkspacePaths, defaultWorkspace } from './tools/fs-tools';
 import type { ChatStore } from './chat-store';
 import type { ChatSecrets } from './chat-secrets';
 import type { ChatService } from './chat-service';
@@ -78,6 +80,10 @@ export function registerChatIpc(deps: Deps): void {
     IPC_CHANNELS.CHAT_FORK_CONVERSATION,
     (_e, messageId: string): ChatConversation | null => store.forkConversation(messageId)
   );
+  ipcMain.handle(IPC_CHANNELS.CHAT_MENTION_SEARCH, (_e, query: string): ChatMentionItem[] => {
+    const cwd = defaultWorkspace(settingsStore.get().ai.chat.tools.workspaceDir);
+    return searchWorkspacePaths({ query, cwd, limit: 20 });
+  });
   ipcMain.handle(IPC_CHANNELS.CHAT_CANCEL, (_e, streamId: string) => {
     service.cancel(streamId);
   });

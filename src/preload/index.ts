@@ -149,6 +149,7 @@ import type {
   ChatSendRequest,
   ChatRegenerateRequest,
   ChatEditRequest,
+  ChatMentionItem,
   ChatSendResponse,
   ChatStreamChunkPayload,
   ChatStreamDonePayload,
@@ -855,6 +856,8 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CHAT_SELECT_VARIANT, messageId),
     forkConversation: async (messageId: string): Promise<ChatConversation | null> =>
       typedInvoke(IPC_CHANNELS.CHAT_FORK_CONVERSATION, messageId),
+    mentionSearch: async (query: string): Promise<ChatMentionItem[]> =>
+      typedInvoke(IPC_CHANNELS.CHAT_MENTION_SEARCH, query),
     cancel: async (streamId: string): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_CANCEL, streamId),
     listModels: async (): Promise<ChatModel[]> => typedInvoke(IPC_CHANNELS.CHAT_LIST_MODELS),

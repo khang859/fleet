@@ -1,7 +1,10 @@
 import { useRef, useState } from 'react';
-import { Paperclip, Send, Square, X } from 'lucide-react';
+import { Paperclip, Send, Square, X, File, Folder } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
+import type { ChatMentionItem } from '../../../../shared/chat-types';
 import { ModelPicker } from './ModelPicker';
+
+const MENTION_RE = /(?:^|\s)@([\w./-]*)$/;
 
 type Props = { defaultModel: string };
 
@@ -42,6 +45,39 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
     textareaRef.current?.focus();
   };
 
+  // `@` file/folder mentions: end-anchored token → autocomplete → pinned chips.
+  const [mentions, setMentions] = useState<string[]>([]);
+  const [mentionResults, setMentionResults] = useState<ChatMentionItem[]>([]);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionDismissed, setMentionDismissed] = useState(false);
+  const mentionOpen = mentionResults.length > 0 && !mentionDismissed && MENTION_RE.test(text);
+  const mentionActive = Math.min(mentionIndex, mentionResults.length - 1);
+
+  const onTextChange = (value: string): void => {
+    setText(value);
+    setMenuDismissed(false);
+    const m = MENTION_RE.exec(value);
+    if (m) {
+      setMentionDismissed(false);
+      setMentionIndex(0);
+      void window.fleet.chat.mentionSearch(m[1]).then(setMentionResults);
+    } else {
+      setMentionResults([]);
+    }
+  };
+
+  const pickMention = (path: string): void => {
+    setText((t) => t.replace(MENTION_RE, (s) => (s.startsWith(' ') ? ' ' : '')));
+    setMentions((prev) => (prev.includes(path) ? prev : [...prev, path]));
+    setMentionResults([]);
+    setMentionDismissed(true);
+    textareaRef.current?.focus();
+  };
+
+  const removeMention = (path: string): void => {
+    setMentions((prev) => prev.filter((p) => p !== path));
+  };
+
   const acceptFile = (file: File): void => {
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       setAttachError('PNG, JPG, or WebP only');
@@ -64,10 +100,16 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
   const submit = (): void => {
     const trimmed = text.trim();
     if ((!trimmed && !attachment) || streaming) return;
-    void send(trimmed, model, attachment ? [attachment.dataUrl] : undefined);
+    void send(
+      trimmed,
+      model,
+      attachment ? [attachment.dataUrl] : undefined,
+      mentions.length ? mentions : undefined
+    );
     setText('');
     setAttachment(null);
     setAttachError(null);
+    setMentions([]);
   };
 
   return (
@@ -121,8 +163,54 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
           </button>
         </div>
       )}
+      {mentions.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1">
+          {mentions.map((p) => (
+            <span
+              key={p}
+              className="flex items-center gap-1 rounded bg-fleet-surface-3 px-2 py-0.5 text-[11px] text-fleet-text"
+            >
+              <span className="max-w-[200px] truncate font-mono">@{p}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${p}`}
+                onClick={() => removeMention(p)}
+                className="text-fleet-text-muted hover:text-fleet-text"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <div className="relative flex items-end gap-2">
-        {menuOpen && (
+        {mentionOpen && (
+          <ul className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg">
+            {mentionResults.map((r, i) => (
+              <li key={r.path}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    pickMention(r.path);
+                  }}
+                  onMouseEnter={() => setMentionIndex(i)}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${
+                    i === mentionActive ? 'bg-fleet-surface-3' : ''
+                  }`}
+                >
+                  {r.type === 'dir' ? (
+                    <Folder size={12} className="shrink-0 text-fleet-text-muted" />
+                  ) : (
+                    <File size={12} className="shrink-0 text-fleet-text-muted" />
+                  )}
+                  <span className="truncate font-mono text-xs text-fleet-text">{r.path}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {menuOpen && !mentionOpen && (
           <ul className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg">
             {matches.map((s, i) => (
               <li key={s.name}>
@@ -149,11 +237,30 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
         <textarea
           ref={textareaRef}
           value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            setMenuDismissed(false);
-          }}
+          onChange={(e) => onTextChange(e.target.value)}
           onKeyDown={(e) => {
+            if (mentionOpen) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setMentionIndex((i) => (i + 1) % mentionResults.length);
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setMentionIndex((i) => (i - 1 + mentionResults.length) % mentionResults.length);
+                return;
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                pickMention(mentionResults[mentionActive].path);
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setMentionDismissed(true);
+                return;
+              }
+            }
             if (menuOpen) {
               if (e.key === 'ArrowDown') {
                 e.preventDefault();

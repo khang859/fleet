@@ -61,6 +61,13 @@ describe('ChatService.send', () => {
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
       getToolsMode: () => 'off',
+      getTools: () => ({
+        mode: 'off',
+        workspaceDir: null,
+        sandbox: false,
+        failClosed: false,
+        mentionMaxKb: 64
+      }),
       getMcpToolDefs: () => [],
       skills: stubSkills,
       toolExecutor: stubExecutor,
@@ -103,6 +110,13 @@ describe('ChatService.send', () => {
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
       getToolsMode: () => 'off',
+      getTools: () => ({
+        mode: 'off',
+        workspaceDir: null,
+        sandbox: false,
+        failClosed: false,
+        mentionMaxKb: 64
+      }),
       getMcpToolDefs: () => [],
       skills: stubSkills,
       toolExecutor: stubExecutor,
@@ -153,6 +167,13 @@ it('runs the image tool loop and persists a generated image', async () => {
     getImageModel: () => 'google/gemini-2.5-flash-image',
     getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
     getToolsMode: () => 'off',
+    getTools: () => ({
+      mode: 'off',
+      workspaceDir: null,
+      sandbox: false,
+      failClosed: false,
+      mentionMaxKb: 64
+    }),
     getMcpToolDefs: () => [],
     skills: stubSkills,
     toolExecutor: stubExecutor,
@@ -215,6 +236,13 @@ it('passes the reference image to the provider as a base64 data URL when editing
     getImageModel: () => 'google/gemini-2.5-flash-image',
     getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
     getToolsMode: () => 'off',
+    getTools: () => ({
+      mode: 'off',
+      workspaceDir: null,
+      sandbox: false,
+      failClosed: false,
+      mentionMaxKb: 64
+    }),
     getMcpToolDefs: () => [],
     skills: stubSkills,
     toolExecutor: stubExecutor,
@@ -256,6 +284,13 @@ describe('ChatService regenerate / edit', () => {
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
       getToolsMode: () => 'off',
+      getTools: () => ({
+        mode: 'off',
+        workspaceDir: null,
+        sandbox: false,
+        failClosed: false,
+        mentionMaxKb: 64
+      }),
       getMcpToolDefs: () => [],
       skills: stubSkills,
       toolExecutor: stubExecutor,
@@ -372,6 +407,13 @@ describe('ChatService skills', () => {
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
       getToolsMode: () => 'read-only',
+      getTools: () => ({
+        mode: 'off',
+        workspaceDir: null,
+        sandbox: false,
+        failClosed: false,
+        mentionMaxKb: 64
+      }),
       getMcpToolDefs: () => [],
       skills,
       toolExecutor: stubExecutor,

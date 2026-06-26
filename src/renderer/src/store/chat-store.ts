@@ -38,7 +38,12 @@ type ChatStoreState = {
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
   setConversationModel: (id: string, model: string) => Promise<void>;
-  send: (text: string, model: string, attachments?: string[]) => Promise<void>;
+  send: (
+    text: string,
+    model: string,
+    attachments?: string[],
+    contextPaths?: string[]
+  ) => Promise<void>;
   regenerate: (messageId: string, model: string) => Promise<void>;
   editMessage: (messageId: string, text: string, model: string) => Promise<void>;
   selectVariant: (messageId: string) => Promise<void>;
@@ -202,7 +207,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       }));
     },
 
-    send: async (text, model, attachments) => {
+    send: async (text, model, attachments, contextPaths) => {
       const activeId = get().activeId;
       if (!activeId) return;
       const supportsTools = get().models.find((m) => m.id === model)?.supportsTools ?? false;
@@ -211,6 +216,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         text,
         model,
         attachments,
+        contextPaths,
         supportsTools
       });
       set((s) => ({
