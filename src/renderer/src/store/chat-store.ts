@@ -42,6 +42,7 @@ type ChatStoreState = {
   regenerate: (messageId: string, model: string) => Promise<void>;
   editMessage: (messageId: string, text: string, model: string) => Promise<void>;
   selectVariant: (messageId: string) => Promise<void>;
+  forkConversation: (messageId: string) => Promise<void>;
   cancel: () => void;
   loadModels: () => Promise<void>;
   loadImageModels: () => Promise<void>;
@@ -262,6 +263,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       if (get().status === 'streaming') return;
       const messages = await window.fleet.chat.selectVariant(messageId);
       set({ messages });
+    },
+
+    forkConversation: async (messageId) => {
+      const branch = await window.fleet.chat.forkConversation(messageId);
+      if (!branch) return;
+      set((s) => ({ conversations: [branch, ...s.conversations] }));
+      await get().selectConversation(branch.id);
     },
 
     cancel: () => {

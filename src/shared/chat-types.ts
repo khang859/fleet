@@ -35,6 +35,8 @@ export type ChatConversation = {
   model: string | null;
   /** A manual rename locks the title so background auto-naming never overwrites it. */
   titleLocked: boolean;
+  /** Set when this conversation was forked from another; null otherwise. */
+  parentConversationId: string | null;
   createdAt: number;
   updatedAt: number;
 };

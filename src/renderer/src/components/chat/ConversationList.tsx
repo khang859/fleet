@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, GitBranch } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 
 export function ConversationList(): React.JSX.Element {
@@ -29,13 +29,21 @@ export function ConversationList(): React.JSX.Element {
                 void select(c.id);
               }
             }}
-            className={`group flex cursor-pointer items-center justify-between px-3 py-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-fleet-border-strong ${
+            className={`group flex cursor-pointer items-center justify-between py-2 pr-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-fleet-border-strong ${
+              c.parentConversationId ? 'pl-6' : 'pl-3'
+            } ${
               c.id === activeId
                 ? 'bg-fleet-surface-2 text-fleet-text'
                 : 'text-fleet-text-secondary hover:bg-fleet-surface-2'
             }`}
+            title={c.parentConversationId ? 'Branched conversation' : undefined}
           >
-            <span className="truncate">{c.title}</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              {c.parentConversationId && (
+                <GitBranch size={12} className="shrink-0 text-fleet-text-muted" />
+              )}
+              <span className="truncate">{c.title}</span>
+            </span>
             <button
               aria-label="Delete conversation"
               onClick={(e) => {
