@@ -293,5 +293,7 @@ export const IPC_CHANNELS = {
   CHAT_SKILLS_GET: 'chat:skills-get',
   CHAT_SKILLS_SET_STATE: 'chat:skills-set-state',
   CHAT_SKILLS_RESCAN: 'chat:skills-rescan',
-  CHAT_SKILLS_REVEAL: 'chat:skills-reveal'
+  CHAT_SKILLS_REVEAL: 'chat:skills-reveal',
+  // Audit ledger: list recorded tool actions (optionally scoped to a conversation).
+  CHAT_AUDIT_LIST: 'chat:audit-list'
 } as const;

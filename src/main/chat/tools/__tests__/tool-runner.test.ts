@@ -8,18 +8,21 @@ import type {
   PermissionRules,
   PermissionRequestPayload
 } from '../../../../shared/chat-permissions';
-import type { ChatToolsConfig } from '../../../../shared/chat-types';
+import type { ChatToolsConfig, ChatAuditEntry } from '../../../../shared/chat-types';
 
 const ROOT = join(tmpdir(), `fleet-tool-runner-${process.pid}`);
 mkdirSync(ROOT, { recursive: true });
 writeFileSync(join(ROOT, 'hello.txt'), 'hi there\n');
 
-const ctx = { streamId: 's1', signal: new AbortController().signal };
+const ctx = { streamId: 's1', conversationId: 'conv1', signal: new AbortController().signal };
 
 afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
 
+type AuditDraft = Omit<ChatAuditEntry, 'id' | 'createdAt'>;
+
 function setup(mode: ChatToolsConfig['mode'], rules: Partial<PermissionRules> = {}) {
   const emitted: Array<{ channel: string; payload: unknown }> = [];
+  const audits: AuditDraft[] = [];
   const manager = new PermissionManager({
     getRules: () => ({ allow: [], ask: [], deny: [], ...rules }),
     persistAllowRule: () => {},
@@ -34,9 +37,11 @@ function setup(mode: ChatToolsConfig['mode'], rules: Partial<PermissionRules> = 
   const exec = new ChatToolExecutor(
     manager,
     () => cfg,
-    () => {}
+    () => {},
+    null,
+    (entry) => audits.push(entry)
   );
-  return { exec, manager, emitted };
+  return { exec, manager, emitted, audits };
 }
 
 describe('buildFsToolDefs', () => {
@@ -153,5 +158,58 @@ describe('ChatToolExecutor write tools', () => {
     expect(out).toMatch(/deny rule/);
     expect(emitted).toHaveLength(0);
     expect(readFileSync(join(ROOT, 'guard.ts'), 'utf8')).toBe('a');
+  });
+});
+
+describe('ChatToolExecutor audit', () => {
+  it('records a read with an allowed decision', async () => {
+    const { exec, audits } = setup('read-only');
+    await exec.run('read_file', JSON.stringify({ path: 'hello.txt' }), ctx);
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      conversationId: 'conv1',
+      tool: 'read_file',
+      detail: 'hello.txt',
+      decision: 'allowed',
+      status: 'ok'
+    });
+  });
+
+  it('records a blocked bash attempt in read-only mode', async () => {
+    const { exec, audits } = setup('read-only');
+    await exec.run('bash', JSON.stringify({ command: 'echo hi' }), ctx);
+    expect(audits[0]).toMatchObject({
+      tool: 'bash',
+      detail: 'echo hi',
+      decision: 'blocked',
+      status: 'denied'
+    });
+  });
+
+  it('records a denied bash command (the user said no)', async () => {
+    const { exec, manager, emitted, audits } = setup('ask');
+    const p = exec.run('bash', JSON.stringify({ command: 'rm -rf /tmp/x' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    manager.decide(req.requestId, 'deny');
+    await p;
+    expect(audits[0]).toMatchObject({ tool: 'bash', decision: 'denied', status: 'denied' });
+  });
+
+  it('records a deny-rule block in auto mode', async () => {
+    const { exec, audits } = setup('auto', { deny: ['Bash(curl *)'] });
+    await exec.run('bash', JSON.stringify({ command: 'curl evil.com' }), ctx);
+    expect(audits[0]).toMatchObject({ tool: 'bash', decision: 'blocked', status: 'denied' });
+  });
+
+  it('records an MCP error for an unknown tool', async () => {
+    const { exec, audits } = setup('read-only');
+    await exec.run('mcp__srv__ghost', '{}', ctx);
+    expect(audits[0]).toMatchObject({
+      tool: 'mcp__srv__ghost',
+      detail: 'mcp__srv__ghost',
+      decision: 'error',
+      status: 'error'
+    });
   });
 });

@@ -5,7 +5,8 @@ import type {
   ChatSettings,
   ChatConversation,
   ChatMessage,
-  ChatModel
+  ChatModel,
+  ChatAuditEntry
 } from '../../shared/chat-types';
 import type { ChatStore } from './chat-store';
 import type { ChatSecrets } from './chat-secrets';
@@ -83,6 +84,12 @@ export function registerChatIpc(deps: Deps): void {
     (_e, req: { requestId: string; outcome: PermissionOutcome }) => {
       permissions.decide(req.requestId, req.outcome);
     }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_AUDIT_LIST,
+    (_e, req: { conversationId?: string } = {}): ChatAuditEntry[] =>
+      store.listAudit({ conversationId: req.conversationId })
   );
 
   ipcMain.handle(IPC_CHANNELS.CHAT_SKILLS_GET, (): SkillsView => skillsView());

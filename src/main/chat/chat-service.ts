@@ -194,6 +194,7 @@ export class ChatService {
             if (FS_TOOL_NAMES.has(call.name) || isMcpToolName(call.name)) {
               const content = await this.deps.toolExecutor.run(call.name, call.arguments, {
                 streamId,
+                conversationId: req.conversationId,
                 signal: controller.signal
               });
               messages.push({ role: 'tool', tool_call_id: call.id, name: call.name, content });

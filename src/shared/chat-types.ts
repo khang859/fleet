@@ -83,6 +83,36 @@ export const DEFAULT_CHAT_TOOLS: ChatToolsConfig = {
   failClosed: false
 };
 
+/**
+ * Audit ledger of every gated/tool action the agent took on the local machine.
+ * Independent of conversation lifecycle (survives conversation deletion) so it
+ * stays useful for post-incident review.
+ */
+export type ChatAuditDecision =
+  | 'allowed' // read tool — never gated
+  | 'approved' // user approved a prompt, or an allow-rule matched
+  | 'auto' // ran without a prompt (auto mode: sandboxed or rule-allowed)
+  | 'denied' // user denied the prompt
+  | 'blocked' // a deny rule, circuit-breaker, or fail-closed refused it
+  | 'error'; // the tool threw
+
+export type ChatAuditStatus = 'ok' | 'denied' | 'error';
+
+export type ChatAuditEntry = {
+  id: string;
+  conversationId: string;
+  /** Tool name: read_file, glob, search, bash, write_file, edit_file, or an MCP tool. */
+  tool: string;
+  /** The salient argument: command, path, regex, or MCP tool name. */
+  detail: string;
+  cwd: string;
+  decision: ChatAuditDecision;
+  status: ChatAuditStatus;
+  /** Truncated result/output or denial reason. */
+  result: string;
+  createdAt: number;
+};
+
 /** Capability-namespaced AI settings. Future: image, video slot in here additively. */
 export type AiSettings = {
   chat: ChatSettings;

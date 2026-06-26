@@ -5,7 +5,10 @@ import type {
   ChatConversation,
   ChatImageRef,
   ChatMessage,
-  ChatRole
+  ChatRole,
+  ChatAuditEntry,
+  ChatAuditDecision,
+  ChatAuditStatus
 } from '../../shared/chat-types';
 
 const SCHEMA_SQL = `
@@ -37,7 +40,38 @@ CREATE TABLE IF NOT EXISTS message_images (
 );
 CREATE INDEX IF NOT EXISTS idx_message_images_conversation
   ON message_images(conversation_id, message_id, position);
+CREATE TABLE IF NOT EXISTS chat_audit (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  tool            TEXT NOT NULL,
+  detail          TEXT NOT NULL,
+  cwd             TEXT NOT NULL,
+  decision        TEXT NOT NULL,
+  status          TEXT NOT NULL,
+  result          TEXT NOT NULL,
+  created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_audit_created ON chat_audit(created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_audit_conversation ON chat_audit(conversation_id, created_at);
 `;
+
+const AUDIT_DECISIONS = ['allowed', 'approved', 'auto', 'denied', 'blocked', 'error'] as const;
+const AUDIT_STATUSES = ['ok', 'denied', 'error'] as const;
+
+const AuditRowSchema = z.object({
+  id: z.string(),
+  conversation_id: z.string(),
+  tool: z.string(),
+  detail: z.string(),
+  cwd: z.string(),
+  decision: z.enum(AUDIT_DECISIONS),
+  status: z.enum(AUDIT_STATUSES),
+  result: z.string(),
+  created_at: z.number()
+});
+
+/** Cap stored result text so a noisy tool can't bloat the ledger. */
+const AUDIT_RESULT_CAP = 2000;
 
 const ConversationRowSchema = z.object({
   id: z.string(),
@@ -78,6 +112,20 @@ function toConversation(r: ConversationRow): ChatConversation {
     titleLocked: r.title_locked !== 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at
+  };
+}
+
+function toAudit(r: z.infer<typeof AuditRowSchema>): ChatAuditEntry {
+  return {
+    id: r.id,
+    conversationId: r.conversation_id,
+    tool: r.tool,
+    detail: r.detail,
+    cwd: r.cwd,
+    decision: r.decision,
+    status: r.status,
+    result: r.result,
+    createdAt: r.created_at
   };
 }
 
@@ -237,6 +285,48 @@ export class ChatStore {
       if (imgs?.length) m.images = imgs;
     }
     return messages;
+  }
+
+  /** Append one audit record. Result text is capped; never throws on the hot path. */
+  addAudit(input: {
+    conversationId: string;
+    tool: string;
+    detail: string;
+    cwd: string;
+    decision: ChatAuditDecision;
+    status: ChatAuditStatus;
+    result: string;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO chat_audit
+           (id, conversation_id, tool, detail, cwd, decision, status, result, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        randomUUID(),
+        input.conversationId,
+        input.tool,
+        input.detail,
+        input.cwd,
+        input.decision,
+        input.status,
+        input.result.slice(0, AUDIT_RESULT_CAP),
+        Date.now()
+      );
+  }
+
+  /** Most-recent-first audit entries, optionally scoped to one conversation. */
+  listAudit(opts: { conversationId?: string; limit?: number } = {}): ChatAuditEntry[] {
+    const limit = opts.limit ?? 500;
+    const rows = opts.conversationId
+      ? this.db
+          .prepare(
+            'SELECT * FROM chat_audit WHERE conversation_id = ? ORDER BY created_at DESC LIMIT ?'
+          )
+          .all(opts.conversationId, limit)
+      : this.db.prepare('SELECT * FROM chat_audit ORDER BY created_at DESC LIMIT ?').all(limit);
+    return z.array(AuditRowSchema).parse(rows).map(toAudit);
   }
 
   close(): void {

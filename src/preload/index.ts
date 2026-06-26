@@ -152,7 +152,8 @@ import type {
   ChatStreamDonePayload,
   ChatStreamErrorPayload,
   ChatToolStatusPayload,
-  ChatConversationRenamedPayload
+  ChatConversationRenamedPayload,
+  ChatAuditEntry
 } from '../shared/chat-types';
 import type { PermissionRequestPayload, PermissionOutcome } from '../shared/chat-permissions';
 import type { McpServersConfig, McpServerStatus } from '../shared/mcp-types';
@@ -875,7 +876,9 @@ const fleetApi = {
     skillsSetState: async (name: string, state: SkillState): Promise<SkillsView> =>
       typedInvoke(IPC_CHANNELS.CHAT_SKILLS_SET_STATE, { name, state }),
     skillsRescan: async (): Promise<SkillsView> => typedInvoke(IPC_CHANNELS.CHAT_SKILLS_RESCAN),
-    skillsReveal: async (): Promise<void> => typedInvoke(IPC_CHANNELS.CHAT_SKILLS_REVEAL)
+    skillsReveal: async (): Promise<void> => typedInvoke(IPC_CHANNELS.CHAT_SKILLS_REVEAL),
+    auditList: async (conversationId?: string): Promise<ChatAuditEntry[]> =>
+      typedInvoke(IPC_CHANNELS.CHAT_AUDIT_LIST, { conversationId })
   }
 };
 
