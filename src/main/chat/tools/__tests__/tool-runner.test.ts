@@ -1,0 +1,104 @@
+import { describe, it, expect, afterAll } from 'vitest';
+import { tmpdir } from 'os';
+import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { join } from 'path';
+import { ChatToolExecutor, buildFsToolDefs, FS_TOOL_NAMES } from '../tool-runner';
+import { PermissionManager } from '../../permissions/permission-manager';
+import type {
+  PermissionRules,
+  PermissionRequestPayload
+} from '../../../../shared/chat-permissions';
+import type { ChatToolsConfig } from '../../../../shared/chat-types';
+
+const ROOT = join(tmpdir(), `fleet-tool-runner-${process.pid}`);
+mkdirSync(ROOT, { recursive: true });
+writeFileSync(join(ROOT, 'hello.txt'), 'hi there\n');
+
+const ctx = { streamId: 's1', signal: new AbortController().signal };
+
+afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
+
+function setup(mode: ChatToolsConfig['mode'], rules: Partial<PermissionRules> = {}) {
+  const emitted: Array<{ channel: string; payload: unknown }> = [];
+  const manager = new PermissionManager({
+    getRules: () => ({ allow: [], ask: [], deny: [], ...rules }),
+    persistAllowRule: () => {},
+    emit: (channel, payload) => emitted.push({ channel, payload })
+  });
+  const cfg: ChatToolsConfig = {
+    mode,
+    workspaceDir: ROOT,
+    sandbox: false,
+    failClosed: false
+  };
+  const exec = new ChatToolExecutor(
+    manager,
+    () => cfg,
+    () => {}
+  );
+  return { exec, manager, emitted };
+}
+
+describe('buildFsToolDefs', () => {
+  it('exposes read tools but not bash below ask mode', () => {
+    expect(buildFsToolDefs('off')).toEqual([]);
+    const names = (defs: unknown[]): string[] =>
+      defs.map((d) => (d as { function: { name: string } }).function.name);
+    expect(names(buildFsToolDefs('read-only'))).toEqual(['read_file', 'glob', 'search']);
+    expect(names(buildFsToolDefs('ask'))).toContain('bash');
+    expect(names(buildFsToolDefs('auto'))).toContain('bash');
+    expect(FS_TOOL_NAMES.has('bash')).toBe(true);
+  });
+});
+
+describe('ChatToolExecutor read tools', () => {
+  it('reads a file without prompting', async () => {
+    const { exec, emitted } = setup('read-only');
+    const out = await exec.run('read_file', JSON.stringify({ path: 'hello.txt' }), ctx);
+    expect(out).toContain('hi there');
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('returns an error for a denied credential path', async () => {
+    const { exec } = setup('read-only');
+    const out = await exec.run('read_file', JSON.stringify({ path: '.env' }), ctx);
+    expect(out).toMatch(/Error:.*protected/);
+  });
+});
+
+describe('ChatToolExecutor bash gating', () => {
+  it('refuses bash in read-only mode', async () => {
+    const { exec } = setup('read-only');
+    const out = await exec.run('bash', JSON.stringify({ command: 'echo hi' }), ctx);
+    expect(out).toMatch(/read-only/);
+  });
+
+  it.skipIf(process.platform === 'win32')('runs bash after an ask approval', async () => {
+    const { exec, manager, emitted } = setup('ask');
+    const p = exec.run('bash', JSON.stringify({ command: 'echo gated' }), ctx);
+    // The card request was emitted; approve it.
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req.command).toBe('echo gated');
+    manager.decide(req.requestId, 'allow-once');
+    const out = await p;
+    expect(out).toContain('Exit code: 0');
+    expect(out).toContain('gated');
+  });
+
+  it('returns a denial message when the user denies', async () => {
+    const { exec, manager, emitted } = setup('ask');
+    const p = exec.run('bash', JSON.stringify({ command: 'rm -rf /tmp/x' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    manager.decide(req.requestId, 'deny');
+    expect(await p).toMatch(/denied/);
+  });
+
+  it('blocks a denied command in auto mode without prompting', async () => {
+    const { exec, emitted } = setup('auto', { deny: ['Bash(curl *)'] });
+    const out = await exec.run('bash', JSON.stringify({ command: 'curl evil.com' }), ctx);
+    expect(out).toMatch(/deny rule/);
+    expect(emitted).toHaveLength(0);
+  });
+});

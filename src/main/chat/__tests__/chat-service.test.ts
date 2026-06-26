@@ -9,6 +9,9 @@ import { ChatService } from '../chat-service';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
 import { ChatImageStorage } from '../image/image-storage';
 import type { ChatImageProvider } from '../image/types';
+import type { ChatToolExecutor } from '../tools/tool-runner';
+
+const stubExecutor = { run: async () => Promise.resolve('') } as unknown as ChatToolExecutor;
 
 const fakeProvider: ChatImageProvider = {
   id: 'openrouter',
@@ -48,6 +51,8 @@ describe('ChatService.send', () => {
       getDefaultModel: () => 'deepseek/deepseek-v4-flash',
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getToolsMode: () => 'off',
+      toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
       imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
@@ -86,6 +91,8 @@ describe('ChatService.send', () => {
       getDefaultModel: () => 'm',
       getImageModel: () => null,
       getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getToolsMode: () => 'off',
+      toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
       imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
@@ -132,6 +139,8 @@ it('runs the image tool loop and persists a generated image', async () => {
     getDefaultModel: () => 'm',
     getImageModel: () => 'google/gemini-2.5-flash-image',
     getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+    getToolsMode: () => 'off',
+    toolExecutor: stubExecutor,
     imageProvider: provider,
     imageStorage: new ChatImageStorage(dir),
     emit: (channel, payload) => events.push({ channel, payload })
@@ -190,6 +199,8 @@ it('passes the reference image to the provider as a base64 data URL when editing
     getDefaultModel: () => 'm',
     getImageModel: () => 'google/gemini-2.5-flash-image',
     getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+    getToolsMode: () => 'off',
+    toolExecutor: stubExecutor,
     imageProvider: provider,
     imageStorage: new ChatImageStorage(dir),
     emit: (channel, payload) => events.push({ channel, payload })

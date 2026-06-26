@@ -6,6 +6,11 @@ import {
   DEFAULT_PERMISSION_RULES,
   type PermissionRules
 } from '../../../../shared/chat-permissions';
+import {
+  DEFAULT_CHAT_TOOLS,
+  type ChatToolsConfig,
+  type ChatToolsMode
+} from '../../../../shared/chat-types';
 
 /** A top-level settings group with a heading and an optional description. */
 function Group({
@@ -40,6 +45,11 @@ function Section({
       {children}
     </div>
   );
+}
+
+const TOOL_MODES: ChatToolsMode[] = ['off', 'read-only', 'ask', 'auto'];
+function asToolsMode(v: string): ChatToolsMode {
+  return TOOL_MODES.find((m) => m === v) ?? 'read-only';
 }
 
 type ExtensionsTab = 'mcp' | 'skills';
@@ -91,6 +101,7 @@ export function ChatSettingsView(): React.JSX.Element {
     'after-response'
   );
   const [permissions, setPermissions] = useState<PermissionRules>(DEFAULT_PERMISSION_RULES);
+  const [tools, setTools] = useState<ChatToolsConfig>(DEFAULT_CHAT_TOOLS);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -101,6 +112,7 @@ export function ChatSettingsView(): React.JSX.Element {
       setAutoName(s.autoName);
       setNamingTiming(s.namingTiming);
       setPermissions(s.permissions);
+      setTools(s.tools);
     });
   }, []);
 
@@ -142,6 +154,12 @@ export function ChatSettingsView(): React.JSX.Element {
   const savePermissions = async (next: PermissionRules): Promise<void> => {
     setPermissions(next);
     await window.fleet.chat.patchSettings({ permissions: next });
+  };
+
+  const saveTools = async (patch: Partial<ChatToolsConfig>): Promise<void> => {
+    const next = { ...tools, ...patch };
+    setTools(next);
+    await window.fleet.chat.patchSettings({ tools: next });
   };
 
   return (
@@ -234,10 +252,57 @@ export function ChatSettingsView(): React.JSX.Element {
         title="Tools & Permissions"
         description="Gate what the agent may run. Rules use Tool(pattern) syntax and are evaluated deny → ask → allow."
       >
-        <PermissionRulesEditor
-          rules={permissions}
-          onChange={(next) => void savePermissions(next)}
-        />
+        <Section title="Mode">
+          <select
+            value={tools.mode}
+            onChange={(e) => void saveTools({ mode: asToolsMode(e.target.value) })}
+            className="rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
+          >
+            <option value="off">Off — no file or shell tools</option>
+            <option value="read-only">Read-only — read/glob/search, no shell</option>
+            <option value="ask">Ask — shell commands prompt for approval</option>
+            <option value="auto">Auto — sandboxed shell runs without prompting</option>
+          </select>
+          <p className="mt-1 text-xs text-fleet-text-muted">
+            Read tools never prompt and never expose credential paths. Only <code>bash</code> is
+            gated.
+          </p>
+        </Section>
+        <Section title="Workspace directory">
+          <input
+            value={tools.workspaceDir ?? ''}
+            placeholder="Default: app working directory"
+            onChange={(e) => void saveTools({ workspaceDir: e.target.value.trim() || null })}
+            className="w-full rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 font-mono text-xs text-fleet-text outline-none placeholder:text-fleet-text-muted"
+          />
+          <p className="mt-1 text-xs text-fleet-text-muted">
+            Default cwd for tools and the sandbox writable root.
+          </p>
+        </Section>
+        <Section title="Sandbox">
+          <label className="flex items-center gap-2 text-sm text-fleet-text">
+            <input
+              type="checkbox"
+              checked={tools.sandbox}
+              onChange={(e) => void saveTools({ sandbox: e.target.checked })}
+            />
+            Run shell commands in an OS sandbox when available (bubblewrap on Linux)
+          </label>
+          <label className="mt-2 flex items-center gap-2 text-sm text-fleet-text">
+            <input
+              type="checkbox"
+              checked={tools.failClosed}
+              onChange={(e) => void saveTools({ failClosed: e.target.checked })}
+            />
+            In Auto mode, refuse commands when the sandbox is unavailable (fail closed)
+          </label>
+        </Section>
+        <Section title="Permission rules">
+          <PermissionRulesEditor
+            rules={permissions}
+            onChange={(next) => void savePermissions(next)}
+          />
+        </Section>
       </Group>
 
       <Group

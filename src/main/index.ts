@@ -98,6 +98,7 @@ import { OpenRouterClient } from './chat/openrouter-client';
 import { ChatService } from './chat/chat-service';
 import { registerChatIpc } from './chat/chat-ipc';
 import { PermissionManager } from './chat/permissions/permission-manager';
+import { ChatToolExecutor } from './chat/tools/tool-runner';
 import { ChatImageStorage } from './chat/image/image-storage';
 import { OpenRouterImageProvider } from './chat/image/openrouter-image-provider';
 import { KanbanNotifier } from './kanban/kanban-notifier';
@@ -1303,6 +1304,26 @@ void app.whenReady().then(async () => {
   const chatClient = new OpenRouterClient();
   const chatImageStorage = new ChatImageStorage(join(app.getPath('userData'), 'chat-images'));
   const chatImageProvider = new OpenRouterImageProvider(() => chatSecrets.getKey());
+  const chatEmit = (channel: string, payload: unknown): void => {
+    const w = mainWindow;
+    if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
+  };
+  const chatPermissions = new PermissionManager({
+    getRules: () => settingsStore.get().ai.chat.permissions,
+    persistAllowRule: (rule) => {
+      const current = settingsStore.get().ai.chat.permissions;
+      if (current.allow.includes(rule)) return;
+      settingsStore.set({
+        ai: { chat: { permissions: { ...current, allow: [...current.allow, rule] } } }
+      });
+    },
+    emit: chatEmit
+  });
+  const chatToolExecutor = new ChatToolExecutor(
+    chatPermissions,
+    () => settingsStore.get().ai.chat.tools,
+    chatEmit
+  );
   const chatService = new ChatService({
     store: chatStore,
     client: chatClient,
@@ -1317,26 +1338,11 @@ void app.whenReady().then(async () => {
         timing: c.namingTiming
       };
     },
+    getToolsMode: () => settingsStore.get().ai.chat.tools.mode,
+    toolExecutor: chatToolExecutor,
     imageProvider: chatImageProvider,
     imageStorage: chatImageStorage,
-    emit: (channel, payload) => {
-      const w = mainWindow;
-      if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
-    }
-  });
-  const chatPermissions = new PermissionManager({
-    getRules: () => settingsStore.get().ai.chat.permissions,
-    persistAllowRule: (rule) => {
-      const current = settingsStore.get().ai.chat.permissions;
-      if (current.allow.includes(rule)) return;
-      settingsStore.set({
-        ai: { chat: { permissions: { ...current, allow: [...current.allow, rule] } } }
-      });
-    },
-    emit: (channel, payload) => {
-      const w = mainWindow;
-      if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
-    }
+    emit: chatEmit
   });
   registerChatIpc({
     store: chatStore,
