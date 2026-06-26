@@ -13,18 +13,21 @@ import type {
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS conversations (
-  id           TEXT PRIMARY KEY,
-  title        TEXT NOT NULL DEFAULT 'New chat',
-  model        TEXT,
-  title_locked INTEGER NOT NULL DEFAULT 0,
-  created_at   INTEGER NOT NULL,
-  updated_at   INTEGER NOT NULL
+  id             TEXT PRIMARY KEY,
+  title          TEXT NOT NULL DEFAULT 'New chat',
+  model          TEXT,
+  title_locked   INTEGER NOT NULL DEFAULT 0,
+  active_head_id TEXT,
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS messages (
   id              TEXT PRIMARY KEY,
   conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   role            TEXT NOT NULL,
   content         TEXT NOT NULL,
+  parent_id       TEXT,
+  active_child_id TEXT,
   created_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
@@ -78,6 +81,7 @@ const ConversationRowSchema = z.object({
   title: z.string(),
   model: z.string().nullable(),
   title_locked: z.number(),
+  active_head_id: z.string().nullable(),
   created_at: z.number(),
   updated_at: z.number()
 });
@@ -87,6 +91,8 @@ const MessageRowSchema = z.object({
   conversation_id: z.string(),
   role: z.enum(['user', 'assistant', 'system']),
   content: z.string(),
+  parent_id: z.string().nullable(),
+  active_child_id: z.string().nullable(),
   created_at: z.number()
 });
 
@@ -135,6 +141,7 @@ function toMessage(r: MessageRow): ChatMessage {
     conversationId: r.conversation_id,
     role: r.role,
     content: r.content,
+    parentId: r.parent_id,
     createdAt: r.created_at
   };
 }
@@ -152,12 +159,62 @@ export class ChatStore {
 
   /** Additive migrations for DBs created before a column existed. */
   private migrate(): void {
-    const cols = z
+    const convCols = z
       .array(z.object({ name: z.string() }))
       .parse(this.db.prepare('PRAGMA table_info(conversations)').all());
-    if (!cols.some((c) => c.name === 'title_locked')) {
+    if (!convCols.some((c) => c.name === 'title_locked')) {
       this.db.exec('ALTER TABLE conversations ADD COLUMN title_locked INTEGER NOT NULL DEFAULT 0');
     }
+    const hasActiveHead = convCols.some((c) => c.name === 'active_head_id');
+    if (!hasActiveHead) {
+      this.db.exec('ALTER TABLE conversations ADD COLUMN active_head_id TEXT');
+    }
+
+    const msgCols = z
+      .array(z.object({ name: z.string() }))
+      .parse(this.db.prepare('PRAGMA table_info(messages)').all());
+    const hasParent = msgCols.some((c) => c.name === 'parent_id');
+    if (!hasParent) {
+      this.db.exec('ALTER TABLE messages ADD COLUMN parent_id TEXT');
+      this.db.exec('ALTER TABLE messages ADD COLUMN active_child_id TEXT');
+      this.backfillTurnTree();
+    }
+    // Created here (not in SCHEMA_SQL) so it runs only after parent_id is
+    // guaranteed to exist — legacy tables gain the column above first.
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id)');
+  }
+
+  /**
+   * Turn a legacy flat message list into a linear turn tree: chain each message
+   * to the previous one by creation order, and point each conversation's head at
+   * its first message. Existing chats then render as a single (un-paged) path.
+   */
+  private backfillTurnTree(): void {
+    const convs = z
+      .array(z.object({ id: z.string() }))
+      .parse(this.db.prepare('SELECT id FROM conversations').all());
+    const setParent = this.db.prepare('UPDATE messages SET parent_id = ? WHERE id = ?');
+    const setChild = this.db.prepare('UPDATE messages SET active_child_id = ? WHERE id = ?');
+    const setHead = this.db.prepare('UPDATE conversations SET active_head_id = ? WHERE id = ?');
+    const run = this.db.transaction((conversationIds: string[]) => {
+      for (const cid of conversationIds) {
+        const ids = z
+          .array(z.object({ id: z.string() }))
+          .parse(
+            this.db
+              .prepare('SELECT id FROM messages WHERE conversation_id = ? ORDER BY created_at ASC')
+              .all(cid)
+          )
+          .map((r) => r.id);
+        if (ids.length === 0) continue;
+        setHead.run(ids[0], cid);
+        for (let i = 0; i < ids.length; i++) {
+          if (i > 0) setParent.run(ids[i - 1], ids[i]);
+          if (i < ids.length - 1) setChild.run(ids[i + 1], ids[i]);
+        }
+      }
+    });
+    run(convs.map((c) => c.id));
   }
 
   createConversation(input: { title?: string; model?: string | null } = {}): ChatConversation {
@@ -167,6 +224,7 @@ export class ChatStore {
       title: input.title ?? 'New chat',
       model: input.model ?? null,
       title_locked: 0,
+      active_head_id: null,
       created_at: now,
       updated_at: now
     };
@@ -218,24 +276,127 @@ export class ChatStore {
     this.db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
   }
 
-  addMessage(input: { conversationId: string; role: ChatRole; content: string }): ChatMessage {
+  /**
+   * Append a message under `parentId` (or as a new root when null) and make it
+   * the active child of its parent — newest attempt wins by default. Returns the
+   * persisted message.
+   */
+  addMessage(input: {
+    conversationId: string;
+    role: ChatRole;
+    content: string;
+    parentId?: string | null;
+  }): ChatMessage {
     const now = Date.now();
+    const parentId = input.parentId ?? null;
     const row: MessageRow = {
       id: randomUUID(),
       conversation_id: input.conversationId,
       role: input.role,
       content: input.content,
+      parent_id: parentId,
+      active_child_id: null,
       created_at: now
     };
     this.db
       .prepare(
-        'INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO messages (id, conversation_id, role, content, parent_id, active_child_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(row.id, row.conversation_id, row.role, row.content, row.created_at);
+      .run(row.id, row.conversation_id, row.role, row.content, row.parent_id, null, row.created_at);
+    if (parentId) {
+      this.db.prepare('UPDATE messages SET active_child_id = ? WHERE id = ?').run(row.id, parentId);
+    } else {
+      this.db
+        .prepare('UPDATE conversations SET active_head_id = ? WHERE id = ?')
+        .run(row.id, input.conversationId);
+    }
     this.db
       .prepare('UPDATE conversations SET updated_at = ? WHERE id = ?')
       .run(now, input.conversationId);
     return toMessage(row);
+  }
+
+  private getRow(id: string): MessageRow | null {
+    const row = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(id);
+    return row == null ? null : MessageRowSchema.parse(row);
+  }
+
+  getMessage(id: string): ChatMessage | null {
+    const row = this.getRow(id);
+    return row ? toMessage(row) : null;
+  }
+
+  /** Children of a node, oldest → newest. Root children when parentId is null. */
+  private childrenOf(conversationId: string, parentId: string | null): MessageRow[] {
+    const rows = parentId
+      ? this.db
+          .prepare('SELECT * FROM messages WHERE parent_id = ? ORDER BY created_at ASC')
+          .all(parentId)
+      : this.db
+          .prepare(
+            'SELECT * FROM messages WHERE conversation_id = ? AND parent_id IS NULL ORDER BY created_at ASC'
+          )
+          .all(conversationId);
+    return z.array(MessageRowSchema).parse(rows);
+  }
+
+  /** The active root→leaf path: follow active_child, defaulting to newest child. */
+  private activePathRows(conversationId: string): MessageRow[] {
+    const conv = this.getConversation(conversationId);
+    if (!conv) return [];
+    const roots = this.childrenOf(conversationId, null);
+    if (roots.length === 0) return [];
+    const headId = this.headId(conversationId) ?? roots[roots.length - 1].id;
+    const path: MessageRow[] = [];
+    let current = this.getRow(headId);
+    while (current) {
+      path.push(current);
+      const kids = this.childrenOf(conversationId, current.id);
+      if (kids.length === 0) break;
+      const nextId = current.active_child_id ?? kids[kids.length - 1].id;
+      current = kids.find((k) => k.id === nextId) ?? kids[kids.length - 1];
+    }
+    return path;
+  }
+
+  private headId(conversationId: string): string | null {
+    const row = this.db
+      .prepare('SELECT active_head_id AS h FROM conversations WHERE id = ?')
+      .get(conversationId);
+    return z.object({ h: z.string().nullable() }).parse(row).h;
+  }
+
+  /** Ancestors of `messageId` plus itself, root → message. For regenerate/edit context. */
+  getPathTo(messageId: string): ChatMessage[] {
+    const chain: MessageRow[] = [];
+    let node = this.getRow(messageId);
+    while (node) {
+      chain.push(node);
+      node = node.parent_id ? this.getRow(node.parent_id) : null;
+    }
+    chain.reverse();
+    return this.withImagesAndVariants(chain);
+  }
+
+  /** The last message on the active path, or null for an empty conversation. */
+  activeLeafId(conversationId: string): string | null {
+    const path = this.activePathRows(conversationId);
+    return path.length ? path[path.length - 1].id : null;
+  }
+
+  /** Make `messageId` the active variant under its parent (pager selection). */
+  selectVariant(messageId: string): void {
+    const row = this.getRow(messageId);
+    if (!row) return;
+    if (row.parent_id) {
+      this.db
+        .prepare('UPDATE messages SET active_child_id = ? WHERE id = ?')
+        .run(messageId, row.parent_id);
+    } else {
+      this.db
+        .prepare('UPDATE conversations SET active_head_id = ? WHERE id = ?')
+        .run(messageId, row.conversation_id);
+    }
   }
 
   addImages(input: { messageId: string; conversationId: string; images: ChatImageRef[] }): void {
@@ -263,26 +424,38 @@ export class ChatStore {
     insertAll(input.images);
   }
 
+  /** The active conversation thread (root → leaf), with images + variant pagers. */
   getMessages(conversationId: string): ChatMessage[] {
-    const rows = this.db
-      .prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC')
-      .all(conversationId);
-    const messages = z.array(MessageRowSchema).parse(rows).map(toMessage);
+    return this.withImagesAndVariants(this.activePathRows(conversationId));
+  }
 
+  /** Attach images and sibling-variant pager info to a sequence of rows. */
+  private withImagesAndVariants(rows: MessageRow[]): ChatMessage[] {
+    const messages = rows.map(toMessage);
+    if (messages.length === 0) return messages;
+
+    const ids = rows.map((r) => r.id);
+    const placeholders = ids.map(() => '?').join(',');
     const imgRows = this.db
       .prepare(
-        'SELECT * FROM message_images WHERE conversation_id = ? ORDER BY message_id, position'
+        `SELECT * FROM message_images WHERE message_id IN (${placeholders}) ORDER BY message_id, position`
       )
-      .all(conversationId);
+      .all(...ids);
     const byMessage = new Map<string, ChatImageRef[]>();
     for (const r of z.array(MessageImageRowSchema).parse(imgRows)) {
       const list = byMessage.get(r.message_id) ?? [];
       list.push({ ref: r.ref, mimeType: r.mime_type, kind: r.kind });
       byMessage.set(r.message_id, list);
     }
+
     for (const m of messages) {
       const imgs = byMessage.get(m.id);
       if (imgs?.length) m.images = imgs;
+      const siblings = this.childrenOf(m.conversationId, m.parentId);
+      if (siblings.length > 1) {
+        const sibIds = siblings.map((s) => s.id);
+        m.variants = { index: sibIds.indexOf(m.id) + 1, total: sibIds.length, ids: sibIds };
+      }
     }
     return messages;
   }

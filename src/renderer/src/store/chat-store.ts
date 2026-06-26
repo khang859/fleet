@@ -39,6 +39,9 @@ type ChatStoreState = {
   renameConversation: (id: string, title: string) => Promise<void>;
   setConversationModel: (id: string, model: string) => Promise<void>;
   send: (text: string, model: string, attachments?: string[]) => Promise<void>;
+  regenerate: (messageId: string, model: string) => Promise<void>;
+  editMessage: (messageId: string, text: string, model: string) => Promise<void>;
+  selectVariant: (messageId: string) => Promise<void>;
   cancel: () => void;
   loadModels: () => Promise<void>;
   loadImageModels: () => Promise<void>;
@@ -67,6 +70,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     });
     unsubDone = window.fleet.chat.onStreamDone((p: ChatStreamDonePayload) => {
       if (p.streamId !== get().streamId) return;
+      const activeId = get().activeId;
       set((s) => ({
         messages: [...s.messages, p.message],
         streamingText: null,
@@ -75,6 +79,14 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         toolStatus: null,
         permissionRequests: []
       }));
+      // Reconcile with the authoritative active thread: regenerate/edit change
+      // which branch is active and refresh the variant pagers (the optimistic
+      // append above keeps the common send path instant).
+      if (activeId) {
+        void window.fleet.chat.getMessages(activeId).then((messages) => {
+          if (get().activeId === activeId && get().status === 'idle') set({ messages });
+        });
+      }
     });
     unsubError = window.fleet.chat.onStreamError((p: ChatStreamErrorPayload) => {
       if (p.streamId !== get().streamId) return;
@@ -210,6 +222,48 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       }));
     },
 
+    regenerate: async (messageId, model) => {
+      const activeId = get().activeId;
+      if (!activeId || get().status === 'streaming') return;
+      const supportsTools = get().models.find((m) => m.id === model)?.supportsTools ?? false;
+      const res = await window.fleet.chat.regenerate({
+        conversationId: activeId,
+        messageId,
+        model,
+        supportsTools
+      });
+      set({ streamId: res.streamId, streamingText: '', status: 'streaming', error: null });
+    },
+
+    editMessage: async (messageId, text, model) => {
+      const activeId = get().activeId;
+      if (!activeId || get().status === 'streaming') return;
+      const supportsTools = get().models.find((m) => m.id === model)?.supportsTools ?? false;
+      const res = await window.fleet.chat.editMessage({
+        conversationId: activeId,
+        messageId,
+        text,
+        model,
+        supportsTools
+      });
+      // Show the new user branch immediately, then stream the reply.
+      const messages = await window.fleet.chat.getMessages(activeId);
+      set({
+        messages,
+        streamId: res.streamId,
+        streamingText: '',
+        status: 'streaming',
+        error: null,
+        toolStatus: null
+      });
+    },
+
+    selectVariant: async (messageId) => {
+      if (get().status === 'streaming') return;
+      const messages = await window.fleet.chat.selectVariant(messageId);
+      set({ messages });
+    },
+
     cancel: () => {
       const { streamId, streamingText, activeId } = get();
       if (streamId) void window.fleet.chat.cancel(streamId);
@@ -231,6 +285,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
                   conversationId: activeId,
                   role: 'assistant',
                   content: partial,
+                  parentId: null,
                   createdAt: Date.now()
                 }
               ]

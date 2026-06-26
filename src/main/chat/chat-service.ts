@@ -65,23 +65,16 @@ export class ChatService {
   }
 
   send(req: ChatSendRequest): ChatSendResponse {
-    const {
-      store,
-      secrets,
-      client,
-      getDefaultModel,
-      getImageModel,
-      imageProvider,
-      imageStorage,
-      emit
-    } = this.deps;
-    // Capture before we persist the user message: an empty history means this
-    // is the conversation's first exchange, which is what we auto-name from.
+    const { store, imageStorage } = this.deps;
+    // Capture before we persist the user message: an empty thread means this is
+    // the conversation's first exchange, which is what we auto-name from.
     const isFirstExchange = store.getMessages(req.conversationId).length === 0;
+    const parentId = store.activeLeafId(req.conversationId);
     const userMessage = store.addMessage({
       conversationId: req.conversationId,
       role: 'user',
-      content: req.text
+      content: req.text,
+      parentId
     });
 
     // Persist attachments (data-URLs) to disk as 'attachment' images on the user message.
@@ -106,14 +99,102 @@ export class ChatService {
       this.maybeAutoName(req.conversationId, req.text, '');
     }
 
+    const streamId = this.streamAssistant({
+      conversationId: req.conversationId,
+      assistantParentId: userMessage.id,
+      model: req.model || this.deps.getDefaultModel(),
+      supportsTools: !!req.supportsTools,
+      attachmentRefs,
+      invocationText: req.text,
+      naming: isFirstExchange ? { firstUser: req.text } : undefined
+    });
+    return { streamId, userMessage };
+  }
+
+  /** Re-run an assistant turn as a new sibling attempt (preserves the old one). */
+  regenerate(req: {
+    conversationId: string;
+    messageId: string;
+    model: string;
+    supportsTools?: boolean;
+  }): { streamId: string } {
+    const { store } = this.deps;
+    const target = store.getMessage(req.messageId);
+    if (target?.role !== 'assistant' || !target.parentId) {
+      throw new Error('Cannot regenerate this message');
+    }
+    const parentUser = store.getMessage(target.parentId);
+    const streamId = this.streamAssistant({
+      conversationId: req.conversationId,
+      assistantParentId: target.parentId,
+      model: req.model || this.deps.getDefaultModel(),
+      supportsTools: !!req.supportsTools,
+      attachmentRefs: [],
+      invocationText: parentUser?.content ?? ''
+    });
+    return { streamId };
+  }
+
+  /** Edit a prior user message as a new sibling turn and re-run from there. */
+  editMessage(req: {
+    conversationId: string;
+    messageId: string;
+    text: string;
+    model: string;
+    supportsTools?: boolean;
+  }): ChatSendResponse {
+    const { store } = this.deps;
+    const target = store.getMessage(req.messageId);
+    if (target?.role !== 'user') {
+      throw new Error('Can only edit a user message');
+    }
+    const userMessage = store.addMessage({
+      conversationId: req.conversationId,
+      role: 'user',
+      content: req.text,
+      parentId: target.parentId
+    });
+    const streamId = this.streamAssistant({
+      conversationId: req.conversationId,
+      assistantParentId: userMessage.id,
+      model: req.model || this.deps.getDefaultModel(),
+      supportsTools: !!req.supportsTools,
+      attachmentRefs: [],
+      invocationText: req.text
+    });
+    return { streamId, userMessage };
+  }
+
+  /**
+   * Shared streaming core: builds context from the path ending at
+   * `assistantParentId`, runs the tool loop, and persists the assistant reply as
+   * a child of that parent. Used by send / regenerate / edit.
+   */
+  private streamAssistant(params: {
+    conversationId: string;
+    assistantParentId: string;
+    model: string;
+    supportsTools: boolean;
+    attachmentRefs: ChatImageRef[];
+    invocationText: string;
+    naming?: { firstUser: string };
+  }): string {
+    const { store, secrets, client, getImageModel, imageProvider, imageStorage, emit } = this.deps;
+    const {
+      conversationId,
+      assistantParentId,
+      model,
+      supportsTools,
+      attachmentRefs,
+      invocationText
+    } = params;
+
     const streamId = randomUUID();
     const controller = new AbortController();
     this.inflight.set(streamId, controller);
 
     const apiKey = secrets.getKey();
-    const model = req.model || getDefaultModel();
     const imageModel = getImageModel();
-    const supportsTools = !!req.supportsTools;
     const imageToolEnabled = !!imageModel && supportsTools;
     // fs/bash tools require a tool-capable model; gated by the tools mode setting.
     const fsToolDefs = supportsTools ? buildFsToolDefs(this.deps.getToolsMode()) : [];
@@ -126,14 +207,14 @@ export class ChatService {
       ...(loadSkillDef ? [loadSkillDef] : [])
     ];
 
-    // Build OpenRouter-shaped history from persisted messages, prefixed with the
+    // Build OpenRouter-shaped history from the active path, prefixed with the
     // skills system prompt (progressive disclosure: names+descriptions only) and,
     // when the user explicitly invoked `/skill`, that skill's full body.
     const messages: unknown[] = [];
     if (supportsTools) {
       const skillsPrompt = this.deps.skills.systemPrompt();
       if (skillsPrompt) messages.push({ role: 'system', content: skillsPrompt });
-      const invoked = this.deps.skills.resolveInvocation(req.text);
+      const invoked = this.deps.skills.resolveInvocation(invocationText);
       if (invoked) {
         messages.push({
           role: 'system',
@@ -141,7 +222,7 @@ export class ChatService {
         });
       }
     }
-    for (const m of store.getMessages(req.conversationId)) {
+    for (const m of store.getPathTo(assistantParentId)) {
       messages.push({ role: m.role, content: m.content });
     }
 
@@ -194,7 +275,7 @@ export class ChatService {
             if (FS_TOOL_NAMES.has(call.name) || isMcpToolName(call.name)) {
               const content = await this.deps.toolExecutor.run(call.name, call.arguments, {
                 streamId,
-                conversationId: req.conversationId,
+                conversationId,
                 signal: controller.signal
               });
               messages.push({ role: 'tool', tool_call_id: call.id, name: call.name, content });
@@ -219,7 +300,7 @@ export class ChatService {
               // Reference images must be inlined as base64 data URLs — the
               // remote image API cannot read on-disk paths.
               const refs = edit
-                ? this.resolveReferenceImages(req.conversationId, attachmentRefs)
+                ? this.resolveReferenceImages(conversationId, attachmentRefs)
                 : undefined;
               const referenceImages = refs?.map((r) =>
                 imageStorage.readAsDataUrl(r.ref, r.mimeType)
@@ -227,7 +308,7 @@ export class ChatService {
               const ref = await runGenerateImage(
                 { provider: imageProvider, storage: imageStorage },
                 {
-                  conversationId: req.conversationId,
+                  conversationId,
                   prompt,
                   referenceImages,
                   model: imageModel,
@@ -271,14 +352,15 @@ export class ChatService {
         }
 
         const message = store.addMessage({
-          conversationId: req.conversationId,
+          conversationId,
           role: 'assistant',
-          content: partial
+          content: partial,
+          parentId: assistantParentId
         });
         if (generated.length) {
           store.addImages({
             messageId: message.id,
-            conversationId: req.conversationId,
+            conversationId,
             images: generated
           });
         }
@@ -289,20 +371,21 @@ export class ChatService {
         } satisfies ChatStreamDonePayload);
 
         // "After response" auto-naming (the default) uses the first exchange.
-        if (isFirstExchange && this.deps.getNaming().timing === 'after-response') {
-          this.maybeAutoName(req.conversationId, req.text, partial);
+        if (params.naming && this.deps.getNaming().timing === 'after-response') {
+          this.maybeAutoName(conversationId, params.naming.firstUser, partial);
         }
       } catch (err) {
         if (partial) {
           const m = store.addMessage({
-            conversationId: req.conversationId,
+            conversationId,
             role: 'assistant',
-            content: partial
+            content: partial,
+            parentId: assistantParentId
           });
           if (generated.length) {
             store.addImages({
               messageId: m.id,
-              conversationId: req.conversationId,
+              conversationId,
               images: generated
             });
           }
@@ -317,7 +400,7 @@ export class ChatService {
       }
     })();
 
-    return { streamId, userMessage };
+    return streamId;
   }
 
   cancel(streamId: string): void {

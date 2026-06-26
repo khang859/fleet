@@ -246,6 +246,91 @@ it('passes the reference image to the provider as a base64 data URL when editing
   rmSync(dir, { recursive: true, force: true });
 });
 
+describe('ChatService regenerate / edit', () => {
+  function makeService(dir: string, store: ChatStore, client: OpenRouterClient): ChatService {
+    return new ChatService({
+      store,
+      client,
+      secrets: fakeSecrets(),
+      getDefaultModel: () => 'm',
+      getImageModel: () => null,
+      getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getToolsMode: () => 'off',
+      getMcpToolDefs: () => [],
+      skills: stubSkills,
+      toolExecutor: stubExecutor,
+      imageProvider: fakeProvider,
+      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      emit: () => {}
+    });
+  }
+
+  it('regenerate adds a sibling assistant attempt and pages between them', async () => {
+    const dir = join(tmpdir(), `fleet-chat-regen-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'r.db'));
+    const conv = store.createConversation();
+    const client = new OpenRouterClient();
+    let n = 0;
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      n += 1;
+      const text = `reply${n}`;
+      opts.onDelta(text);
+      return { content: text, toolCalls: [], finishReason: null };
+    });
+    const service = makeService(dir, store, client);
+
+    service.send({ conversationId: conv.id, text: 'hi', model: 'm' });
+    await vi.waitFor(() => expect(store.getMessages(conv.id).length).toBe(2));
+    const assistant = store.getMessages(conv.id)[1];
+
+    service.regenerate({ conversationId: conv.id, messageId: assistant.id, model: 'm' });
+    await vi.waitFor(() => expect(store.getMessages(conv.id)[1].content).toBe('reply2'));
+
+    const active = store.getMessages(conv.id);
+    expect(active.map((m) => m.content)).toEqual(['hi', 'reply2']); // newest attempt active
+    expect(active[1].variants).toMatchObject({ index: 2, total: 2 });
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('editMessage re-runs from an edited user turn on a new branch', async () => {
+    const dir = join(tmpdir(), `fleet-chat-edit2-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'e.db'));
+    const conv = store.createConversation();
+    const client = new OpenRouterClient();
+    const seen: string[] = [];
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      const msgs = opts.messages as Array<{ role: string; content: string }>;
+      seen.push(msgs.map((m) => m.content).join('|'));
+      opts.onDelta('ok');
+      return { content: 'ok', toolCalls: [], finishReason: null };
+    });
+    const service = makeService(dir, store, client);
+
+    service.send({ conversationId: conv.id, text: 'original', model: 'm' });
+    await vi.waitFor(() => expect(store.getMessages(conv.id).length).toBe(2));
+    const userMsg = store.getMessages(conv.id)[0];
+
+    service.editMessage({
+      conversationId: conv.id,
+      messageId: userMsg.id,
+      text: 'edited',
+      model: 'm'
+    });
+    await vi.waitFor(() => expect(seen.length).toBe(2));
+
+    // The regenerated turn saw the edited text, not the original.
+    expect(seen[1]).toContain('edited');
+    const active = store.getMessages(conv.id);
+    expect(active[0].content).toBe('edited');
+    expect(active[0].variants).toMatchObject({ index: 2, total: 2 });
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe('ChatService skills', () => {
   it('injects the skills system prompt + /invoked body and routes load_skill', async () => {
     const dir = join(tmpdir(), `fleet-chat-skills-${process.pid}`);

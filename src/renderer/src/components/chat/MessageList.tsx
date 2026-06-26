@@ -2,39 +2,108 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import { ChevronLeft, ChevronRight, Pencil, RotateCcw, X, Check } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
-import type { ChatImageRef } from '../../../../shared/chat-types';
+import type { ChatMessage } from '../../../../shared/chat-types';
 import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
 import { ToolCallCard } from './ToolCallCard';
 import { CodeBlock } from '../markdown/CodeBlock';
 
-function Bubble({
-  role,
-  content,
-  images
-}: {
-  role: string;
-  content: string;
-  images?: ChatImageRef[];
-}): React.JSX.Element {
-  const isUser = role === 'user';
+/** ‹ 2 / 3 › pager that switches between sibling attempts of a turn. */
+function VariantPager({ message }: { message: ChatMessage }): React.JSX.Element | null {
+  const selectVariant = useChatStore((s) => s.selectVariant);
+  const v = message.variants;
+  if (!v) return null;
+  const go = (delta: number): void => {
+    const next = v.ids[v.index - 1 + delta];
+    if (next) void selectVariant(next);
+  };
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} px-4 py-2`}>
+    <div className="flex items-center gap-1 text-[11px] text-fleet-text-muted">
+      <button
+        aria-label="Previous version"
+        disabled={v.index <= 1}
+        onClick={() => go(-1)}
+        className="rounded p-0.5 hover:text-fleet-text disabled:opacity-30"
+      >
+        <ChevronLeft size={12} />
+      </button>
+      <span>
+        {v.index} / {v.total}
+      </span>
+      <button
+        aria-label="Next version"
+        disabled={v.index >= v.total}
+        onClick={() => go(1)}
+        className="rounded p-0.5 hover:text-fleet-text disabled:opacity-30"
+      >
+        <ChevronRight size={12} />
+      </button>
+    </div>
+  );
+}
+
+function Bubble({ message, model }: { message: ChatMessage; model: string }): React.JSX.Element {
+  const { role, content, images } = message;
+  const isUser = role === 'user';
+  const streaming = useChatStore((s) => s.status === 'streaming');
+  const regenerate = useChatStore((s) => s.regenerate);
+  const editMessage = useChatStore((s) => s.editMessage);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(content);
+
+  const startEdit = (): void => {
+    setDraft(content);
+    setEditing(true);
+  };
+  const saveEdit = (): void => {
+    setEditing(false);
+    if (draft.trim() && draft !== content) void editMessage(message.id, draft, model);
+  };
+
+  return (
+    <div className={`group flex flex-col ${isUser ? 'items-end' : 'items-start'} px-4 py-2`}>
       <div
         className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
           isUser ? 'bg-fleet-accent/20 text-fleet-text' : 'bg-fleet-surface-2 text-fleet-text'
         }`}
       >
-        <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[[rehypeHighlight, { detect: true }]]}
-            components={{ pre: CodeBlock }}
-          >
-            {content}
-          </ReactMarkdown>
-        </div>
+        {editing ? (
+          <div className="flex flex-col gap-2">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={Math.min(10, draft.split('\n').length + 1)}
+              className="w-72 max-w-full resize-none rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-sm text-fleet-text outline-none"
+              autoFocus
+            />
+            <div className="flex justify-end gap-1">
+              <button
+                onClick={() => setEditing(false)}
+                className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-fleet-text-muted hover:text-fleet-text"
+              >
+                <X size={12} /> Cancel
+              </button>
+              <button
+                onClick={saveEdit}
+                className="flex items-center gap-1 rounded bg-fleet-accent/80 px-2 py-0.5 text-xs text-white"
+              >
+                <Check size={12} /> Save &amp; submit
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[[rehypeHighlight, { detect: true }]]}
+              components={{ pre: CodeBlock }}
+            >
+              {content}
+            </ReactMarkdown>
+          </div>
+        )}
         {images !== undefined && images.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
             {images.map((img) => (
@@ -43,12 +112,42 @@ function Bubble({
           </div>
         )}
       </div>
+      {!editing && (
+        <div className="mt-1 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+          <VariantPager message={message} />
+          {isUser && (
+            <button
+              aria-label="Edit message"
+              disabled={streaming}
+              onClick={startEdit}
+              className="rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
+            >
+              <Pencil size={12} />
+            </button>
+          )}
+          {!isUser && (
+            <button
+              aria-label="Regenerate response"
+              disabled={streaming}
+              onClick={() => void regenerate(message.id, model)}
+              className="rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
+            >
+              <RotateCcw size={12} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-export function MessageList(): React.JSX.Element {
+type Props = { defaultModel: string };
+
+export function MessageList({ defaultModel }: Props): React.JSX.Element {
   const messages = useChatStore((s) => s.messages);
+  const model = useChatStore(
+    (s) => s.conversations.find((c) => c.id === s.activeId)?.model ?? defaultModel
+  );
   const streamingText = useChatStore((s) => s.streamingText);
   const status = useChatStore((s) => s.status);
   const error = useChatStore((s) => s.error);
@@ -76,9 +175,23 @@ export function MessageList(): React.JSX.Element {
   return (
     <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto py-2">
       {messages.map((m) => (
-        <Bubble key={m.id} role={m.role} content={m.content} images={m.images} />
+        <Bubble key={m.id} message={m} model={model} />
       ))}
-      {streamingText !== null && <Bubble role="assistant" content={streamingText || '…'} />}
+      {streamingText !== null && (
+        <div className="flex justify-start px-4 py-2">
+          <div className="max-w-[80%] rounded-lg bg-fleet-surface-2 px-3 py-2 text-sm text-fleet-text">
+            <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[[rehypeHighlight, { detect: true }]]}
+                components={{ pre: CodeBlock }}
+              >
+                {streamingText || '…'}
+              </ReactMarkdown>
+            </div>
+          </div>
+        </div>
+      )}
       {permissionRequests.map((req) => (
         <ToolCallCard
           key={req.requestId}

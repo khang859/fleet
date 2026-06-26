@@ -34,7 +34,7 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
         )}
         {activeId ? (
           <>
-            <MessageList />
+            <MessageList defaultModel={defaultModel} />
             <Composer defaultModel={defaultModel} />
           </>
         ) : (
