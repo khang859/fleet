@@ -158,6 +158,12 @@ export function createWebSearchProvider(
       return new BraveProvider(fetchImpl);
     case 'tavily':
       return new TavilyProvider(fetchImpl);
+    default: {
+      // Compile-time exhaustiveness + a runtime guard against a corrupt/stale
+      // provider id persisted in settings (would otherwise return undefined).
+      const _exhaustive: never = id;
+      throw new Error(`Unknown web-search provider: ${String(_exhaustive)}`);
+    }
   }
 }
 
