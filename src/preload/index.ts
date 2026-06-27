@@ -868,8 +868,13 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CHAT_SELECT_VARIANT, messageId),
     forkConversation: async (messageId: string): Promise<ChatConversation | null> =>
       typedInvoke(IPC_CHANNELS.CHAT_FORK_CONVERSATION, messageId),
-    mentionSearch: async (query: string): Promise<ChatMentionItem[]> =>
-      typedInvoke(IPC_CHANNELS.CHAT_MENTION_SEARCH, query),
+    mentionSearch: async (
+      query: string,
+      conversationId: string | null
+    ): Promise<ChatMentionItem[]> =>
+      typedInvoke(IPC_CHANNELS.CHAT_MENTION_SEARCH, query, conversationId),
+    revealFolder: async (conversationId: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.CHAT_REVEAL_FOLDER, conversationId),
     export: async (conversationId: string, format: ChatExportFormat): Promise<ChatExportResult> =>
       typedInvoke(IPC_CHANNELS.CHAT_EXPORT, conversationId, format),
     cancel: async (streamId: string): Promise<void> =>

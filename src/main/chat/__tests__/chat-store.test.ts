@@ -4,6 +4,8 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import Database from 'better-sqlite3';
 import { ChatStore } from '../chat-store';
+import { ChatWorkspace } from '../chat-workspace';
+import { ChatImageStorage } from '../image/image-storage';
 
 const TEST_DIR = join(tmpdir(), `fleet-chat-store-test-${process.pid}`);
 const DB_PATH = join(TEST_DIR, 'chat.db');
@@ -212,6 +214,37 @@ describe('ChatStore', () => {
     });
     expect(bu.conversationId).toBe(branch!.id);
     expect(store.getMessages(c.id)).toHaveLength(4);
+  });
+
+  it('copies image files on fork so deleting the parent does not dangle the branch', () => {
+    const workspace = new ChatWorkspace(join(TEST_DIR, 'ws'), join(TEST_DIR, 'legacy'));
+    const storage = new ChatImageStorage(workspace);
+
+    const c = store.createConversation({ title: 'WithImage' });
+    const u = store.addMessage({ conversationId: c.id, role: 'user', content: 'draw a fox' });
+    const saved = storage.save(c.id, Buffer.from('FOXPNG'), 'image/png');
+    const a = store.addMessage({
+      conversationId: c.id,
+      role: 'assistant',
+      content: 'here',
+      parentId: u.id
+    });
+    store.addImages({
+      messageId: a.id,
+      conversationId: c.id,
+      images: [{ ref: saved.ref, mimeType: 'image/png', kind: 'generated' }]
+    });
+
+    const branch = store.forkConversation(a.id, (ref, cid) => storage.copyInto(ref, cid));
+    expect(branch).not.toBeNull();
+    const branchRef = store.getMessages(branch!.id).find((m) => m.images?.length)?.images?.[0].ref;
+    expect(branchRef).toBeDefined();
+    expect(branchRef).not.toBe(saved.ref); // branch owns its own copy
+
+    // Delete the parent's folder; the branch's image must survive.
+    workspace.delete(c.id);
+    expect(existsSync(saved.ref)).toBe(false);
+    expect(existsSync(branchRef!)).toBe(true);
   });
 
   it('getPathTo returns root→message ancestors for context', () => {

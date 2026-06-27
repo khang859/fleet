@@ -278,6 +278,7 @@ export const IPC_CHANNELS = {
   CHAT_SELECT_VARIANT: 'chat:select-variant',
   CHAT_FORK_CONVERSATION: 'chat:fork-conversation',
   CHAT_MENTION_SEARCH: 'chat:mention-search',
+  CHAT_REVEAL_FOLDER: 'chat:reveal-folder',
   CHAT_CANCEL: 'chat:cancel',
   CHAT_LIST_MODELS: 'chat:list-models',
   CHAT_GET_SETTINGS: 'chat:get-settings',

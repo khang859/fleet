@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir, homedir } from 'os';
 import {
@@ -10,7 +10,7 @@ import {
   searchWorkspacePaths,
   buildMentionContext
 } from '../fs-tools';
-import { assertReadablePath } from '../fs-safety';
+import { assertReadablePath, assertWritablePath } from '../fs-safety';
 
 const ROOT = join(tmpdir(), `fleet-fs-tools-${process.pid}`);
 
@@ -93,6 +93,52 @@ describe('assertReadablePath', () => {
   });
   it('allows ordinary files', () => {
     expect(assertReadablePath('src/a.ts', ROOT)).toContain('a.ts');
+  });
+  it('denies reads outside the workspace root', () => {
+    expect(() => assertReadablePath('../escape.txt', ROOT)).toThrow(
+      /outside the readable workspace/
+    );
+    expect(() => assertReadablePath(join(tmpdir(), 'elsewhere.txt'), ROOT)).toThrow(
+      /outside the readable workspace/
+    );
+  });
+  it('denies a symlink that points outside the workspace (read)', () => {
+    const linkRoot = join(tmpdir(), `fleet-fs-link-${process.pid}`);
+    mkdirSync(linkRoot, { recursive: true });
+    const secret = join(linkRoot, 'secret.txt');
+    writeFileSync(secret, 'top secret\n');
+    symlinkSync(secret, join(ROOT, 'leak.txt'));
+    try {
+      expect(() => assertReadablePath('leak.txt', ROOT)).toThrow(/outside the readable workspace/);
+      expect(() => readFileTool({ path: 'leak.txt', cwd: ROOT })).toThrow(
+        /outside the readable workspace/
+      );
+    } finally {
+      rmSync(join(ROOT, 'leak.txt'), { force: true });
+      rmSync(linkRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('assertWritablePath', () => {
+  it('allows writes inside the workspace and blocks ../ escapes', () => {
+    expect(assertWritablePath('out.txt', ROOT, [ROOT])).toContain('out.txt');
+    expect(() => assertWritablePath('../out.txt', ROOT, [ROOT])).toThrow(
+      /outside the (readable|writable) workspace/
+    );
+  });
+  it('blocks writing through a symlink that points outside the workspace', () => {
+    const linkRoot = join(tmpdir(), `fleet-fs-wlink-${process.pid}`);
+    mkdirSync(linkRoot, { recursive: true });
+    symlinkSync(linkRoot, join(ROOT, 'outdir'));
+    try {
+      expect(() => assertWritablePath('outdir/evil.txt', ROOT, [ROOT])).toThrow(
+        /outside the (readable|writable) workspace/
+      );
+    } finally {
+      rmSync(join(ROOT, 'outdir'), { force: true });
+      rmSync(linkRoot, { recursive: true, force: true });
+    }
   });
 });
 

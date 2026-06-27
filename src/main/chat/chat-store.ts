@@ -834,7 +834,16 @@ export class ChatStore {
    * `messageId`. The source conversation is left untouched; the branch records a
    * parent link for discovery in the sidebar.
    */
-  forkConversation(messageId: string): ChatConversation | null {
+  /**
+   * Branch a new conversation from `messageId`'s thread. `mapImageRef` (when
+   * given) is called per copied image to relocate its file into the branch's own
+   * folder and return the new ref — so deleting the parent can't dangle the
+   * branch's images.
+   */
+  forkConversation(
+    messageId: string,
+    mapImageRef?: (ref: string, conversationId: string) => string
+  ): ChatConversation | null {
     const src = this.getRow(messageId);
     if (!src) return null;
     const srcConv = this.getConversation(src.conversation_id);
@@ -861,7 +870,10 @@ export class ChatStore {
           parentId
         });
         if (m.images?.length) {
-          this.addImages({ messageId: copy.id, conversationId: branch.id, images: m.images });
+          const images = mapImageRef
+            ? m.images.map((img) => ({ ...img, ref: mapImageRef(img.ref, branch.id) }))
+            : m.images;
+          this.addImages({ messageId: copy.id, conversationId: branch.id, images });
         }
         parentId = copy.id;
       }

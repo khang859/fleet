@@ -8,7 +8,8 @@ import type {
   ChatAuditStatus
 } from '../../../shared/chat-types';
 import type { PermissionManager } from '../permissions/permission-manager';
-import { readFileTool, globTool, searchTool, defaultWorkspace } from './fs-tools';
+import { readFileTool, globTool, searchTool } from './fs-tools';
+import type { ChatWorkspace } from '../chat-workspace';
 import { runBash } from './bash-exec';
 import { makeSandboxWrap } from './sandbox';
 import { assertWritablePath } from './fs-safety';
@@ -220,6 +221,7 @@ export class ChatToolExecutor {
     private readonly permissions: PermissionManager,
     private readonly getConfig: () => ChatToolsConfig,
     private readonly emit: (channel: string, payload: unknown) => void,
+    private readonly workspace: ChatWorkspace,
     private readonly mcp: McpRouter | null = null,
     private readonly onAudit: AuditSink | null = null,
     private readonly webSearch: WebSearchRunner | null = null
@@ -228,9 +230,12 @@ export class ChatToolExecutor {
   /** Returns the tool result content fed back into the model loop. */
   async run(name: string, argsJson: string, ctx: ExecCtx): Promise<string> {
     const cfg = this.getConfig();
-    const cwd = defaultWorkspace(cfg.workspaceDir);
+    // Resolve (and lazily create) the workspace inside the boundary: a failing
+    // mkdir surfaces as a tool error instead of crashing the whole turn.
+    let cwd = '';
     let outcome: ToolOutcome;
     try {
+      cwd = this.workspace.resolve(cfg.workspaceDir, ctx.conversationId);
       outcome = await this.dispatch(name, argsJson, cfg, cwd, ctx);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

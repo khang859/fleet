@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type {
   ChatSendRequest,
@@ -13,7 +13,7 @@ import type {
   ChatSearchHit,
   WebSearchProviderId
 } from '../../shared/chat-types';
-import { searchWorkspacePaths, defaultWorkspace } from './tools/fs-tools';
+import { searchWorkspacePaths } from './tools/fs-tools';
 import {
   exportConversation,
   type ChatExportFormat,
@@ -30,6 +30,8 @@ import type { McpManager } from './mcp/manager';
 import type { McpServersConfig, McpServerStatus } from '../../shared/mcp-types';
 import type { SkillManager } from './skills/skill-manager';
 import type { SkillState, SkillsView } from '../../shared/skill-types';
+import type { ChatWorkspace } from './chat-workspace';
+import type { ChatImageStorage } from './image/image-storage';
 
 type Deps = {
   store: ChatStore;
@@ -40,11 +42,14 @@ type Deps = {
   permissions: PermissionManager;
   mcp: McpManager;
   skills: SkillManager;
+  workspace: ChatWorkspace;
+  imageStorage: ChatImageStorage;
   revealSkillsFolder: () => void;
 };
 
 export function registerChatIpc(deps: Deps): void {
-  const { store, search, secrets, service, settingsStore, permissions, mcp, skills } = deps;
+  const { store, search, secrets, service, settingsStore, permissions, mcp, skills, workspace } =
+    deps;
 
   const skillsView = (): SkillsView => ({ skills: skills.statuses(), budget: skills.budget() });
 
@@ -91,8 +96,13 @@ export function registerChatIpc(deps: Deps): void {
     async (_e, query: string): Promise<ChatSearchHit[]> => search.hybridSearch(query)
   );
   ipcMain.handle(IPC_CHANNELS.CHAT_DELETE_CONVERSATION, (_e, id: string) => {
+    // Remove the on-disk folder first so a crash can't strand it after the row
+    // (and its id) are gone.
+    workspace.delete(id);
     store.deleteConversation(id);
-    service.deleteConversationImages(id);
+  });
+  ipcMain.handle(IPC_CHANNELS.CHAT_REVEAL_FOLDER, (_e, conversationId: string) => {
+    void shell.openPath(workspace.sessionDir(conversationId));
   });
   ipcMain.handle(IPC_CHANNELS.CHAT_GET_MESSAGES, (_e, conversationId: string): ChatMessage[] =>
     store.getMessages(conversationId)
@@ -110,7 +120,10 @@ export function registerChatIpc(deps: Deps): void {
   });
   ipcMain.handle(
     IPC_CHANNELS.CHAT_FORK_CONVERSATION,
-    (_e, messageId: string): ChatConversation | null => store.forkConversation(messageId)
+    (_e, messageId: string): ChatConversation | null =>
+      store.forkConversation(messageId, (ref, conversationId) =>
+        deps.imageStorage.copyInto(ref, conversationId)
+      )
   );
   ipcMain.handle(
     IPC_CHANNELS.CHAT_EXPORT,
@@ -122,8 +135,9 @@ export function registerChatIpc(deps: Deps): void {
   );
   ipcMain.handle(
     IPC_CHANNELS.CHAT_MENTION_SEARCH,
-    async (_e, query: string): Promise<ChatMentionItem[]> => {
-      const cwd = defaultWorkspace(settingsStore.get().ai.chat.tools.workspaceDir);
+    async (_e, query: string, conversationId: string | null): Promise<ChatMentionItem[]> => {
+      if (!conversationId) return [];
+      const cwd = workspace.resolve(settingsStore.get().ai.chat.tools.workspaceDir, conversationId);
       return searchWorkspacePaths({ query, cwd, limit: 20 });
     }
   );
