@@ -10,7 +10,8 @@ import type {
   ChatModel,
   ChatAuditEntry,
   ChatMentionItem,
-  ChatSearchHit
+  ChatSearchHit,
+  WebSearchProviderId
 } from '../../shared/chat-types';
 import { searchWorkspacePaths, defaultWorkspace } from './tools/fs-tools';
 import {
@@ -181,8 +182,13 @@ export function registerChatIpc(deps: Deps): void {
     secrets.setKey(key);
   });
   ipcMain.handle(IPC_CHANNELS.CHAT_HAS_KEY, (): boolean => secrets.hasKey());
-  ipcMain.handle(IPC_CHANNELS.CHAT_SET_SEARCH_KEY, (_e, key: string) => {
-    secrets.setSearchKey(key);
-  });
-  ipcMain.handle(IPC_CHANNELS.CHAT_HAS_SEARCH_KEY, (): boolean => secrets.hasSearchKey());
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_SET_SEARCH_KEY,
+    (_e, req: { provider: WebSearchProviderId; key: string }) => {
+      secrets.setSearchKey(req.provider, req.key);
+    }
+  );
+  ipcMain.handle(IPC_CHANNELS.CHAT_HAS_SEARCH_KEY, (_e, provider: WebSearchProviderId): boolean =>
+    secrets.hasSearchKey(provider)
+  );
 }

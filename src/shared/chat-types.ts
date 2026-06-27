@@ -131,10 +131,27 @@ export const DEFAULT_CHAT_UPLOADS: ChatUploadsConfig = {
   pdf: true
 };
 
+/** The selectable web-search backends. Single source of truth for both processes. */
+export type WebSearchProviderId = 'tavily' | 'exa' | 'brave';
+
+/** UI metadata for one web-search provider (drives the settings dropdown). */
+export type WebSearchProviderMeta = {
+  id: WebSearchProviderId;
+  name: string;
+  /** Placeholder shown in the key field, hinting the key's format. */
+  keyPlaceholder: string;
+};
+
+export const WEB_SEARCH_PROVIDERS: WebSearchProviderMeta[] = [
+  { id: 'tavily', name: 'Tavily', keyPlaceholder: 'tvly-…' },
+  { id: 'exa', name: 'Exa', keyPlaceholder: 'exa_…' },
+  { id: 'brave', name: 'Brave', keyPlaceholder: 'BSA…' }
+];
+
 /** Web-search tool configuration. The API key is stored separately (encrypted). */
 export type ChatWebSearchConfig = {
   enabled: boolean;
-  provider: 'tavily';
+  provider: WebSearchProviderId;
   /** Max results requested per search. */
   maxResults: number;
 };

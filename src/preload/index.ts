@@ -158,7 +158,8 @@ import type {
   ChatConversationRenamedPayload,
   ChatConversationTaggedPayload,
   ChatAuditEntry,
-  ChatSearchHit
+  ChatSearchHit,
+  WebSearchProviderId
 } from '../shared/chat-types';
 import type { ChatExportFormat, ChatExportResult } from '../shared/chat-export';
 import type { PermissionRequestPayload, PermissionOutcome } from '../shared/chat-permissions';
@@ -881,9 +882,10 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CHAT_PATCH_SETTINGS, patch),
     setKey: async (key: string): Promise<void> => typedInvoke(IPC_CHANNELS.CHAT_SET_KEY, key),
     hasKey: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.CHAT_HAS_KEY),
-    setSearchKey: async (key: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_SET_SEARCH_KEY, key),
-    hasSearchKey: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.CHAT_HAS_SEARCH_KEY),
+    setSearchKey: async (provider: WebSearchProviderId, key: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.CHAT_SET_SEARCH_KEY, { provider, key }),
+    hasSearchKey: async (provider: WebSearchProviderId): Promise<boolean> =>
+      typedInvoke(IPC_CHANNELS.CHAT_HAS_SEARCH_KEY, provider),
     onStreamChunk: (cb: (p: ChatStreamChunkPayload) => void): Unsubscribe =>
       onChannel<ChatStreamChunkPayload>(IPC_CHANNELS.CHAT_STREAM_CHUNK, cb),
     onStreamDone: (cb: (p: ChatStreamDonePayload) => void): Unsubscribe =>

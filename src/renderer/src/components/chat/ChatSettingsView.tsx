@@ -15,11 +15,13 @@ import {
   DEFAULT_CHAT_USAGE,
   DEFAULT_CHAT_WEB_SEARCH,
   DEFAULT_CHAT_UPLOADS,
+  WEB_SEARCH_PROVIDERS,
   type ChatToolsConfig,
   type ChatToolsMode,
   type ChatUsageConfig,
   type ChatWebSearchConfig,
-  type ChatUploadsConfig
+  type ChatUploadsConfig,
+  type WebSearchProviderId
 } from '../../../../shared/chat-types';
 
 /** A top-level settings group with a heading and an optional description. */
@@ -60,6 +62,10 @@ function Section({
 const TOOL_MODES: ChatToolsMode[] = ['off', 'read-only', 'ask', 'auto'];
 function asToolsMode(v: string): ChatToolsMode {
   return TOOL_MODES.find((m) => m === v) ?? 'read-only';
+}
+
+function asProviderId(v: string): WebSearchProviderId {
+  return WEB_SEARCH_PROVIDERS.find((p) => p.id === v)?.id ?? 'tavily';
 }
 
 type ExtensionsTab = 'mcp' | 'skills' | 'prompts';
@@ -123,7 +129,7 @@ export function ChatSettingsView(): React.JSX.Element {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    void window.fleet.chat.getSettings().then((s) => {
+    void window.fleet.chat.getSettings().then(async (s) => {
       setDefaultModel(s.defaultModel);
       setImageModel(s.imageModel);
       setTaskModel(s.taskModel);
@@ -137,8 +143,8 @@ export function ChatSettingsView(): React.JSX.Element {
       setWebSearch(s.webSearch);
       setUploads(s.uploads);
       setConversationSort(s.conversationSort);
+      setSearchKeyPresent(await window.fleet.chat.hasSearchKey(s.webSearch.provider));
     });
-    void window.fleet.chat.hasSearchKey().then(setSearchKeyPresent);
   }, []);
 
   const saveKey = async (): Promise<void> => {
@@ -209,9 +215,15 @@ export function ChatSettingsView(): React.JSX.Element {
     await window.fleet.chat.patchSettings({ webSearch: next });
   };
 
+  const changeProvider = async (id: WebSearchProviderId): Promise<void> => {
+    await saveWebSearch({ provider: id });
+    setSearchKeyInput('');
+    setSearchKeyPresent(await window.fleet.chat.hasSearchKey(id));
+  };
+
   const saveSearchKey = async (): Promise<void> => {
     if (!searchKeyInput.trim()) return;
-    await window.fleet.chat.setSearchKey(searchKeyInput.trim());
+    await window.fleet.chat.setSearchKey(webSearch.provider, searchKeyInput.trim());
     setSearchKeyInput('');
     setSearchKeyPresent(true);
   };
@@ -420,10 +432,14 @@ export function ChatSettingsView(): React.JSX.Element {
         <Section title="Provider">
           <select
             value={webSearch.provider}
-            onChange={() => void saveWebSearch({ provider: 'tavily' })}
+            onChange={(e) => void changeProvider(asProviderId(e.target.value))}
             className="rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
           >
-            <option value="tavily">Tavily</option>
+            {WEB_SEARCH_PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
           </select>
         </Section>
         <Section title="Provider API key">
@@ -432,7 +448,12 @@ export function ChatSettingsView(): React.JSX.Element {
               type="password"
               value={searchKeyInput}
               onChange={(e) => setSearchKeyInput(e.target.value)}
-              placeholder={searchKeyPresent ? '•••••••• (saved)' : 'tvly-…'}
+              placeholder={
+                searchKeyPresent
+                  ? '•••••••• (saved)'
+                  : (WEB_SEARCH_PROVIDERS.find((p) => p.id === webSearch.provider)
+                      ?.keyPlaceholder ?? '')
+              }
               className="flex-1 rounded border border-fleet-border bg-fleet-surface-2 px-3 py-1.5 text-sm text-fleet-text outline-none"
             />
             <button

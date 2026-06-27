@@ -1,6 +1,5 @@
 import { z } from 'zod';
-
-export type WebSearchProviderId = 'tavily';
+import type { WebSearchProviderId } from '../../shared/chat-types';
 
 export type WebSearchResult = { title: string; url: string; snippet: string };
 
@@ -16,6 +15,21 @@ export interface WebSearchProvider {
   search(args: WebSearchArgs): Promise<WebSearchResult[]>;
 }
 
+const SNIPPET_CAP = 500;
+
+/** Throw a uniform error for a non-2xx provider response. */
+async function ensureOk(res: Response): Promise<void> {
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Web search failed: ${res.status} ${detail}`.trim());
+  }
+}
+
+/** Normalize one provider hit to the shared shape (title falls back to the URL). */
+function toResult(title: string | undefined, url: string, snippet: string): WebSearchResult {
+  return { title: title?.trim() || url, url, snippet: snippet.slice(0, SNIPPET_CAP) };
+}
+
 const TAVILY_SCHEMA = z.object({
   results: z
     .array(
@@ -27,8 +41,6 @@ const TAVILY_SCHEMA = z.object({
     )
     .optional()
 });
-
-const SNIPPET_CAP = 500;
 
 /** Tavily (https://tavily.com) — a simple LLM-oriented search JSON API. */
 export class TavilyProvider implements WebSearchProvider {
@@ -47,16 +59,91 @@ export class TavilyProvider implements WebSearchProvider {
       }),
       signal: args.signal
     });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      throw new Error(`Web search failed: ${res.status} ${detail}`.trim());
-    }
+    await ensureOk(res);
     const parsed = TAVILY_SCHEMA.parse(await res.json());
-    return (parsed.results ?? []).slice(0, args.maxResults).map((r) => ({
-      title: r.title?.trim() || r.url,
-      url: r.url,
-      snippet: (r.content ?? '').slice(0, SNIPPET_CAP)
-    }));
+    return (parsed.results ?? [])
+      .slice(0, args.maxResults)
+      .map((r) => toResult(r.title, r.url, r.content ?? ''));
+  }
+}
+
+const EXA_SCHEMA = z.object({
+  results: z
+    .array(
+      z.object({
+        title: z.string().optional(),
+        url: z.string(),
+        text: z.string().optional()
+      })
+    )
+    .optional()
+});
+
+/** Exa (https://exa.ai) — neural search; we request short text contents per hit. */
+export class ExaProvider implements WebSearchProvider {
+  readonly id = 'exa' as const;
+  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
+
+  async search(args: WebSearchArgs): Promise<WebSearchResult[]> {
+    const res = await this.fetchImpl('https://api.exa.ai/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': args.apiKey },
+      body: JSON.stringify({
+        query: args.query,
+        numResults: args.maxResults,
+        type: 'auto',
+        contents: { text: { maxCharacters: SNIPPET_CAP } }
+      }),
+      signal: args.signal
+    });
+    await ensureOk(res);
+    const parsed = EXA_SCHEMA.parse(await res.json());
+    return (parsed.results ?? [])
+      .slice(0, args.maxResults)
+      .map((r) => toResult(r.title, r.url, r.text ?? ''));
+  }
+}
+
+const BRAVE_SCHEMA = z.object({
+  web: z
+    .object({
+      results: z
+        .array(
+          z.object({
+            title: z.string().optional(),
+            url: z.string(),
+            description: z.string().optional()
+          })
+        )
+        .optional()
+    })
+    .optional()
+});
+
+/** Brave's `description` carries `<strong>` highlight tags around the matched terms. */
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]+>/g, '');
+}
+
+/** Brave Search (https://brave.com/search/api) — GET with a subscription token. */
+export class BraveProvider implements WebSearchProvider {
+  readonly id = 'brave' as const;
+  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
+
+  async search(args: WebSearchArgs): Promise<WebSearchResult[]> {
+    const url = new URL('https://api.search.brave.com/res/v1/web/search');
+    url.searchParams.set('q', args.query);
+    url.searchParams.set('count', String(args.maxResults));
+    const res = await this.fetchImpl(url.toString(), {
+      method: 'GET',
+      headers: { Accept: 'application/json', 'X-Subscription-Token': args.apiKey },
+      signal: args.signal
+    });
+    await ensureOk(res);
+    const parsed = BRAVE_SCHEMA.parse(await res.json());
+    return (parsed.web?.results ?? [])
+      .slice(0, args.maxResults)
+      .map((r) => toResult(r.title, r.url, stripHtml(r.description ?? '')));
   }
 }
 
@@ -64,8 +151,20 @@ export function createWebSearchProvider(
   id: WebSearchProviderId,
   fetchImpl: typeof fetch = fetch
 ): WebSearchProvider {
-  // Only Tavily is implemented today; the union keeps the surface pluggable.
-  return new TavilyProvider(fetchImpl);
+  switch (id) {
+    case 'exa':
+      return new ExaProvider(fetchImpl);
+    case 'brave':
+      return new BraveProvider(fetchImpl);
+    case 'tavily':
+      return new TavilyProvider(fetchImpl);
+    default: {
+      // Compile-time exhaustiveness + a runtime guard against a corrupt/stale
+      // provider id persisted in settings (would otherwise return undefined).
+      const _exhaustive: never = id;
+      throw new Error(`Unknown web-search provider: ${String(_exhaustive)}`);
+    }
+  }
 }
 
 /** Format results for the model: numbered entries with titles, URLs, snippets. */
