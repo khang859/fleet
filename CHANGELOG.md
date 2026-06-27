@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.77.0
+
+- **Chat message renderer overhaul** — the Chat tool adopts [Streamdown](https://streamdown.ai) for streaming Markdown (#341) with **Shiki dual-theme code highlighting** (#342), a focused code-block header with height cap (#343), hardened model-rendered links/images (#344), GFM **table zebra striping** and clean prose (#345), and an **asymmetric layout** — flat assistant text, user bubbles (#346).
+- **Streaming & motion** — throttled token→state updates for smoother streaming (#338), a **screen-reader announcer** architecture (#339), **stream error states with scoped retry** (#340), a **streaming caret** with pre-first-token thinking indicator (#347), and message-entrance motion tokens (#348).
+- **Composer, scroll & accessibility** — IME-safe keyboard contract in the composer (#336), **use-stick-to-bottom** message scrolling (#337), composer auto-grow with focus ring and empty/no-key states (#349), a **hover message action-bar** with quiet metadata (#350), and an **accessibility audit** covering icons, focus rings, reduced-motion, and contrast (#351).
+
 ## v2.76.2
 
 - **Fix: high CPU while agents are running** — the session list re-read and re-parsed the entire `~/.claude/projects` (and `~/.rune/sessions`) history on every transcript write, so an active agent could pin the main process. Session summaries are now cached by file mtime/size; only changed transcripts are re-parsed (#332).
