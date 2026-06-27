@@ -1,6 +1,9 @@
 import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
+import { loadVecExtension } from '../learnings/vec-extension';
+import { EMBED_DIM } from '../learnings/embedder';
+import { createLogger } from '../logger';
 import type {
   ChatConversation,
   ChatImageRef,
@@ -12,6 +15,14 @@ import type {
   ChatAuditStatus,
   ChatSearchHit
 } from '../../shared/chat-types';
+
+const log = createLogger('chat-store');
+
+/** A message row that still needs an embedding (backfill / embed-on-write). */
+export type PendingChatEmbedding = { id: string; rowid: number; content: string };
+
+/** One vector-search hit: the message, its conversation, and content for snippeting. */
+export type ChatVecHit = { messageId: string; conversationId: string; content: string };
 
 /** Turn free text into a safe FTS5 prefix query: alnum tokens, each `token*`. */
 function toFtsQuery(input: string): string {
@@ -138,6 +149,19 @@ const MessageImageRowSchema = z.object({
   created_at: z.number()
 });
 
+/** A bare `rowid` projection, for vector-table joins/cleanup. */
+const RowidRowSchema = z.object({ rowid: z.number() });
+const PendingChatEmbeddingSchema = z.object({
+  rowid: z.number(),
+  id: z.string(),
+  content: z.string()
+});
+const ChatVecRowSchema = z.object({
+  message_id: z.string(),
+  conversation_id: z.string(),
+  content: z.string()
+});
+
 type ConversationRow = z.infer<typeof ConversationRowSchema>;
 type MessageRow = z.infer<typeof MessageRowSchema>;
 
@@ -207,14 +231,51 @@ export class ChatStore {
   private readonly db: Database.Database;
   /** Whether the SQLite build has FTS5 (full-text search across message bodies). */
   private ftsEnabled = false;
+  /** True when the sqlite-vec extension loaded — gates all vector operations. */
+  private vec = false;
+  /** Fired after a message with embeddable content is persisted (embed-on-write). */
+  private onMessageWrite?: (msg: { id: string; content: string }) => void;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = wal');
     this.db.pragma('foreign_keys = ON');
+    // Vector search is an enhancement, not a hard dependency: if the extension can't
+    // load (missing binary, unsupported platform) the store still works as a keyword
+    // (FTS5) search and every vector method becomes a no-op.
+    try {
+      loadVecExtension(this.db);
+      this.vec = true;
+    } catch (err) {
+      log.warn('sqlite-vec unavailable; chat search will use keyword (FTS) only', {
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
     this.db.exec(SCHEMA_SQL);
     this.migrate();
     this.initFts();
+    this.initVec();
+  }
+
+  /**
+   * Register the embed-on-write hook. Called once at startup after the search
+   * service exists; fires for every freshly persisted message with content.
+   */
+  setMessageWriteHook(fn: (msg: { id: string; content: string }) => void): void {
+    this.onMessageWrite = fn;
+  }
+
+  /** Whether semantic (vector) search is available on this store. */
+  hasVectorSupport(): boolean {
+    return this.vec;
+  }
+
+  /** Create the per-message vector table (guarded — only when the extension loaded). */
+  private initVec(): void {
+    if (!this.vec) return;
+    this.db.exec(
+      `CREATE VIRTUAL TABLE IF NOT EXISTS messages_vec USING vec0(embedding float[${EMBED_DIM}])`
+    );
   }
 
   /**
@@ -286,6 +347,12 @@ export class ChatStore {
       this.db.exec('ALTER TABLE messages ADD COLUMN completion_tokens INTEGER');
       this.db.exec('ALTER TABLE messages ADD COLUMN cached_tokens INTEGER');
       this.db.exec('ALTER TABLE messages ADD COLUMN cost REAL');
+    }
+    // Semantic search: tracks embedding freshness (NULL = needs (re-)embedding). The
+    // backfill pass embeds existing rows; embed-on-write keeps new rows fresh. The
+    // vectors live in `messages_vec` (created in initVec, only when the extension loads).
+    if (!msgCols.some((c) => c.name === 'embedding_updated_at')) {
+      this.db.exec('ALTER TABLE messages ADD COLUMN embedding_updated_at INTEGER');
     }
     // Created here (not in SCHEMA_SQL) so it runs only after parent_id is
     // guaranteed to exist — legacy tables gain the column above first.
@@ -406,10 +473,24 @@ export class ChatStore {
   }
 
   deleteConversation(id: string): void {
-    if (this.ftsEnabled) {
-      this.db.prepare('DELETE FROM messages_fts WHERE conversation_id = ?').run(id);
-    }
-    this.db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
+    // One transaction so a crash can't leave the conversation visible while its FTS
+    // and vector rows are already gone (which no backfill could regenerate).
+    const tx = this.db.transaction(() => {
+      if (this.ftsEnabled) {
+        this.db.prepare('DELETE FROM messages_fts WHERE conversation_id = ?').run(id);
+      }
+      // messages_vec is joined by rowid (no FK cascade), so drop its rows for this
+      // conversation's messages before the cascade deletes the messages themselves.
+      if (this.vec) {
+        const rows = z
+          .array(RowidRowSchema)
+          .parse(this.db.prepare('SELECT rowid FROM messages WHERE conversation_id = ?').all(id));
+        const del = this.db.prepare('DELETE FROM messages_vec WHERE rowid = ?');
+        for (const r of rows) del.run(BigInt(r.rowid));
+      }
+      this.db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
+    });
+    tx();
   }
 
   setConversationPinned(id: string, pinned: boolean): void {
@@ -490,6 +571,85 @@ export class ChatStore {
   }
 
   /**
+   * Messages still needing an embedding (never embedded, from before this feature, or
+   * a row whose embed-on-write failed). Newest first. `excludeRowids` lets a backfill
+   * pass skip rows it already tried this run so one unembeddable row can't wedge it.
+   */
+  pendingEmbeddings(limit: number, excludeRowids: number[] = []): PendingChatEmbedding[] {
+    if (!this.vec) return [];
+    const exclude = new Set(excludeRowids);
+    // Over-fetch by the exclude count and filter in JS rather than a `NOT IN (…)`
+    // clause that would hit SQLite's 999-variable cap and recompile per exclude-count.
+    const rows = z.array(PendingChatEmbeddingSchema).parse(
+      this.db
+        .prepare(
+          `SELECT rowid, id, content FROM messages
+           WHERE embedding_updated_at IS NULL AND role != 'system' AND TRIM(content) != ''
+           ORDER BY created_at DESC
+           LIMIT ?`
+        )
+        .all(limit + exclude.size)
+    );
+    const kept = exclude.size ? rows.filter((r) => !exclude.has(r.rowid)) : rows;
+    return kept.slice(0, limit);
+  }
+
+  /**
+   * Store (or replace) a message's embedding and mark it fresh. `vec` length must
+   * equal EMBED_DIM. No-op when vector search is unavailable.
+   */
+  setEmbedding(id: string, vec: Float32Array): void {
+    if (!this.vec) return;
+    if (vec.length !== EMBED_DIM) {
+      log.warn('refusing to store mis-sized embedding', { id, length: vec.length });
+      return;
+    }
+    const raw = this.db.prepare('SELECT rowid FROM messages WHERE id = ?').get(id);
+    if (raw == null) return;
+    const rowid = BigInt(RowidRowSchema.parse(raw).rowid);
+    const blob = Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength);
+    const tx = this.db.transaction(() => {
+      // vec0 rowids must be bound as BigInt — a JS number binds as REAL and is rejected.
+      this.db
+        .prepare('INSERT OR REPLACE INTO messages_vec(rowid, embedding) VALUES (?, ?)')
+        .run(rowid, blob);
+      this.db
+        .prepare('UPDATE messages SET embedding_updated_at = ? WHERE id = ?')
+        .run(Date.now(), id);
+    });
+    tx();
+  }
+
+  /** K-nearest messages to a query vector, nearest first. Empty when unavailable. */
+  messageVectorSearch(queryVec: Float32Array, limit: number): ChatVecHit[] {
+    if (!this.vec) return [];
+    const blob = Buffer.from(queryVec.buffer, queryVec.byteOffset, queryVec.byteLength);
+    try {
+      const rows = z.array(ChatVecRowSchema).parse(
+        this.db
+          .prepare(
+            `SELECT m.id AS message_id, m.conversation_id AS conversation_id, m.content AS content
+             FROM messages_vec v
+             JOIN messages m ON m.rowid = v.rowid
+             WHERE v.embedding MATCH ? AND k = ?
+             ORDER BY v.distance`
+          )
+          .all(blob, limit)
+      );
+      return rows.map((r) => ({
+        messageId: r.message_id,
+        conversationId: r.conversation_id,
+        content: r.content
+      }));
+    } catch (err) {
+      // KNN over an empty vec table (or other sqlite-vec quirks) can throw; degrade to
+      // the keyword-only path rather than failing the whole search.
+      log.warn('chat vector search failed; falling back to keyword-only', { error: String(err) });
+      return [];
+    }
+  }
+
+  /**
    * Append a message under `parentId` (or as a new root when null) and make it
    * the active child of its parent — newest attempt wins by default. Returns the
    * persisted message.
@@ -551,6 +711,12 @@ export class ChatStore {
       this.db
         .prepare('INSERT INTO messages_fts (content, message_id, conversation_id) VALUES (?, ?, ?)')
         .run(row.content, row.id, row.conversation_id);
+    }
+    // Embed-on-write: queue this message for semantic indexing. The hook is
+    // fire-and-forget and a no-op when no embedder is wired (e.g. tests). System
+    // turns hold prompts, not searchable content, so skip them.
+    if (this.vec && input.role !== 'system' && input.content.trim()) {
+      this.onMessageWrite?.({ id: row.id, content: row.content });
     }
     return toMessage(row);
   }
