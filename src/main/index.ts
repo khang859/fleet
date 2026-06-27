@@ -1355,6 +1355,7 @@ void app.whenReady().then(async () => {
   const chatSkills = new SkillManager(
     () => {
       const roots: SkillRoot[] = [
+        { root: join(skillsResourcesDir, 'chat-skills'), scope: 'bundled' },
         { root: join(skillsResourcesDir, 'pi-skills'), scope: 'bundled' },
         { root: personalSkillsDir, scope: 'personal' }
       ];

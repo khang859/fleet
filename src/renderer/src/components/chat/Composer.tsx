@@ -6,13 +6,9 @@ import type { PromptTemplate } from '../../../../shared/prompt-types';
 import { extractPromptVars, fillTemplate } from '../../../../shared/prompt-types';
 import { ModelPicker } from './ModelPicker';
 import { composerKeyAction } from './composer-keys';
+import { slashMenu, type SlashCommand } from './composer-slash';
 
 const MENTION_RE = /(?:^|\s)@([\w./-]*)$/;
-
-/** A unified `/` menu entry: an installed skill or a saved prompt template. */
-type CommandItem =
-  | { kind: 'skill'; name: string; description: string }
-  | { kind: 'prompt'; name: string; description: string; template: PromptTemplate };
 
 type Props = { defaultModel: string };
 
@@ -55,7 +51,7 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
   // input is a single slash token.
   const [menuIndex, setMenuIndex] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
-  const commands: CommandItem[] = [
+  const commands: SlashCommand[] = [
     ...skillMenu.map((s) => ({ kind: 'skill' as const, name: s.name, description: s.description })),
     ...promptTemplates.map((p) => ({
       kind: 'prompt' as const,
@@ -64,18 +60,16 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
       template: p
     }))
   ];
-  const slashMatch = /^\/([A-Za-z0-9_.-]*)$/.exec(text);
-  const matches = slashMatch
-    ? commands.filter((c) => c.name.toLowerCase().startsWith(slashMatch[1].toLowerCase()))
-    : [];
-  const menuOpen = matches.length > 0 && !menuDismissed;
+  const menu = slashMenu(text, commands, menuDismissed);
+  const matches = menu.matches;
+  const menuOpen = menu.open;
   const activeIndex = Math.min(menuIndex, matches.length - 1);
 
   // Prompt-template fill-in form, shown when a `/template` with `{{vars}}` is picked.
   const [formPrompt, setFormPrompt] = useState<PromptTemplate | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
 
-  const pickCommand = (cmd: CommandItem): void => {
+  const pickCommand = (cmd: SlashCommand): void => {
     setMenuIndex(0);
     setMenuDismissed(true);
     if (cmd.kind === 'skill') {
@@ -400,6 +394,9 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
                 </button>
               </li>
             ))}
+            {menu.emptyLabel && (
+              <li className="px-3 py-1.5 text-[11px] text-fleet-text-muted">{menu.emptyLabel}</li>
+            )}
           </ul>
         )}
         <textarea
@@ -430,26 +427,29 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
               }
             }
             if (menuOpen) {
-              if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                setMenuIndex((i) => (i + 1) % matches.length);
-                return;
-              }
-              if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                setMenuIndex((i) => (i - 1 + matches.length) % matches.length);
-                return;
-              }
-              if (e.key === 'Enter' || e.key === 'Tab') {
-                e.preventDefault();
-                pickCommand(matches[activeIndex]);
-                return;
-              }
               if (e.key === 'Escape') {
                 e.preventDefault();
                 setMenuDismissed(true);
                 return;
               }
+              if (matches.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setMenuIndex((i) => (i + 1) % matches.length);
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setMenuIndex((i) => (i - 1 + matches.length) % matches.length);
+                  return;
+                }
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault();
+                  pickCommand(matches[activeIndex]);
+                  return;
+                }
+              }
+              // Empty menu: fall through so Enter sends and arrows move the caret.
             }
             const action = composerKeyAction({
               key: e.key,
