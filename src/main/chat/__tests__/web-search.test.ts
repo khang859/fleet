@@ -24,10 +24,10 @@ describe('TavilyProvider', () => {
         { url: 'https://c.example', content: 'third' }
       ]
     };
-    const fakeFetch = vi.fn(async () =>
+    const fakeFetch = vi.fn<typeof fetch>(async () =>
       Promise.resolve(new Response(JSON.stringify(json), { status: 200 }))
-    ) as unknown as typeof fetch;
-    const provider = new TavilyProvider(fakeFetch);
+    );
+    const provider = new TavilyProvider(fakeFetch as unknown as typeof fetch);
     const results = await provider.search({ query: 'q', apiKey: 'k', maxResults: 2 });
     expect(results).toEqual([
       { title: 'Docs', url: 'https://a.example', snippet: 'first' },

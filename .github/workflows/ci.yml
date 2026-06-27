@@ -25,6 +25,6 @@ jobs:
       - name: Test hook binary
         run: cd hooks/fleet-copilot-go && go test -v -count=1 ./...
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
       - name: Run tests
         run: npm test
