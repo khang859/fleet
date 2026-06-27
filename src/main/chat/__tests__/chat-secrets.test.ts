@@ -69,6 +69,28 @@ describe('ChatSecrets', () => {
     expect(s.getSearchKey('tavily')).toBe('tvly-abc');
   });
 
+  it('clears one provider key without touching the others', () => {
+    const { store, safe } = makeFakes();
+    const s = new ChatSecrets({ store, safeStorage: safe });
+    s.setSearchKey('tavily', 'tvly-abc');
+    s.setSearchKey('exa', 'exa-xyz');
+    s.clearSearchKey('exa');
+    expect(s.hasSearchKey('exa')).toBe(false);
+    expect(s.getSearchKey('exa')).toBeNull();
+    expect(s.hasSearchKey('tavily')).toBe(true);
+  });
+
+  it('clearing Tavily also drops the legacy search-key slot', () => {
+    const { store, safe } = makeFakes({
+      searchKeyEnc: Buffer.from('tvly-legacy').toString('base64')
+    });
+    const s = new ChatSecrets({ store, safeStorage: safe });
+    expect(s.hasSearchKey('tavily')).toBe(true);
+    s.clearSearchKey('tavily');
+    expect(s.hasSearchKey('tavily')).toBe(false);
+    expect(s.getSearchKey('tavily')).toBeNull();
+  });
+
   it('returns null/false for a provider with no key', () => {
     const { store, safe } = makeFakes();
     const s = new ChatSecrets({ store, safeStorage: safe });

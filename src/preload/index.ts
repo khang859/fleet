@@ -886,6 +886,9 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CHAT_SET_SEARCH_KEY, { provider, key }),
     hasSearchKey: async (provider: WebSearchProviderId): Promise<boolean> =>
       typedInvoke(IPC_CHANNELS.CHAT_HAS_SEARCH_KEY, provider),
+    clearKey: async (): Promise<void> => typedInvoke(IPC_CHANNELS.CHAT_CLEAR_KEY),
+    clearSearchKey: async (provider: WebSearchProviderId): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.CHAT_CLEAR_SEARCH_KEY, provider),
     onStreamChunk: (cb: (p: ChatStreamChunkPayload) => void): Unsubscribe =>
       onChannel<ChatStreamChunkPayload>(IPC_CHANNELS.CHAT_STREAM_CHUNK, cb),
     onStreamDone: (cb: (p: ChatStreamDonePayload) => void): Unsubscribe =>
