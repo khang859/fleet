@@ -105,6 +105,8 @@ import { ChatStore } from './chat/chat-store';
 import { ChatSecrets } from './chat/chat-secrets';
 import { OpenRouterClient } from './chat/openrouter-client';
 import { ChatService } from './chat/chat-service';
+import { ChatSearchService } from './chat/chat-search-service';
+import { runChatBackfill } from './chat/chat-backfill';
 import { registerChatIpc } from './chat/chat-ipc';
 import { PermissionManager } from './chat/permissions/permission-manager';
 import { ChatToolExecutor, type WebSearchRunner } from './chat/tools/tool-runner';
@@ -1311,6 +1313,14 @@ void app.whenReady().then(async () => {
   pmDigestTimer = setInterval(() => void pmAutopilot?.checkDigests(), 60_000);
   registerKanbanIpc(kanbanCommands, pmChat);
 
+  // One shared embedding worker (transformers.js model in a worker thread) powers
+  // both the learnings KB and chat semantic search — a single model download and a
+  // single inference thread. Constructed here so the chat store (below) and the
+  // learnings subsystem (further down) can share the instance.
+  const learningsHome = join(homedir(), '.fleet', 'learnings');
+  const learningsModelDir = join(learningsHome, 'models');
+  const sharedEmbedder = new WorkerEmbedder({ modelCacheDir: learningsModelDir });
+
   const chatStore = new ChatStore(join(app.getPath('userData'), 'chat.db'));
   const chatSecrets = new ChatSecrets();
   const chatClient = new OpenRouterClient();
@@ -1411,8 +1421,14 @@ void app.whenReady().then(async () => {
     imageStorage: chatImageStorage,
     emit: chatEmit
   });
+  // Hybrid keyword + semantic search over chat messages, sharing the embed worker.
+  // The write hook embeds each new message in the background as it's persisted.
+  const chatSearch = new ChatSearchService(chatStore, sharedEmbedder);
+  chatStore.setMessageWriteHook((m) => chatSearch.scheduleEmbed(m.id, m.content));
+
   registerChatIpc({
     store: chatStore,
+    search: chatSearch,
     secrets: chatSecrets,
     service: chatService,
     settingsStore,
@@ -1443,11 +1459,10 @@ void app.whenReady().then(async () => {
   sessionsService = new SessionsService();
   registerSessionsIpcHandlers(sessionsService);
 
-  const learningsHome = join(homedir(), '.fleet', 'learnings');
-  const learningsModelDir = join(learningsHome, 'models');
   const learningsStoreRef = new LearningsStore(join(learningsHome, 'learnings.db'));
   kanbanMcp?.setLearningsStore(learningsStoreRef);
-  const learningsEmbedderRef = new WorkerEmbedder({ modelCacheDir: learningsModelDir });
+  // Reuse the one shared embed worker constructed above (chat + learnings share it).
+  const learningsEmbedderRef = sharedEmbedder;
   learningsStore = learningsStoreRef;
   learningsEmbedder = learningsEmbedderRef;
   const learningsSearch = new LearningsSearchService(learningsStoreRef, learningsEmbedderRef);
@@ -1477,7 +1492,17 @@ void app.whenReady().then(async () => {
       log.error('learnings MCP startup failed', {
         error: err instanceof Error ? err.message : String(err)
       })
-    );
+    )
+    // Chat embedding backfill is independent of the learnings MCP — run it regardless
+    // of whether the MCP bound, but after (sequentially) so the two backfills don't
+    // contend for the shared inference thread at startup.
+    .finally(() => {
+      void runChatBackfill(chatStore, sharedEmbedder).catch((err: unknown) =>
+        log.error('chat embedding backfill failed', {
+          error: err instanceof Error ? err.message : String(err)
+        })
+      );
+    });
   sessionsService.startWatching(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.SESSIONS_CHANGED);

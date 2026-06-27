@@ -20,6 +20,7 @@ import {
   type ChatExportResult
 } from '../../shared/chat-export';
 import type { ChatStore } from './chat-store';
+import type { ChatSearchService } from './chat-search-service';
 import type { ChatSecrets } from './chat-secrets';
 import type { ChatService } from './chat-service';
 import type { SettingsStore } from '../settings-store';
@@ -32,6 +33,7 @@ import type { SkillState, SkillsView } from '../../shared/skill-types';
 
 type Deps = {
   store: ChatStore;
+  search: ChatSearchService;
   secrets: ChatSecrets;
   service: ChatService;
   settingsStore: SettingsStore;
@@ -42,7 +44,7 @@ type Deps = {
 };
 
 export function registerChatIpc(deps: Deps): void {
-  const { store, secrets, service, settingsStore, permissions, mcp, skills } = deps;
+  const { store, search, secrets, service, settingsStore, permissions, mcp, skills } = deps;
 
   const skillsView = (): SkillsView => ({ skills: skills.statuses(), budget: skills.budget() });
 
@@ -84,8 +86,9 @@ export function registerChatIpc(deps: Deps): void {
       store.setConversationFolder(req.id, req.folder);
     }
   );
-  ipcMain.handle(IPC_CHANNELS.CHAT_SEARCH, (_e, query: string): ChatSearchHit[] =>
-    store.searchConversations(query)
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_SEARCH,
+    async (_e, query: string): Promise<ChatSearchHit[]> => search.hybridSearch(query)
   );
   ipcMain.handle(IPC_CHANNELS.CHAT_DELETE_CONVERSATION, (_e, id: string) => {
     store.deleteConversation(id);
