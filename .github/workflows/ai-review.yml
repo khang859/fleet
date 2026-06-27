@@ -32,26 +32,39 @@ jobs:
     #   1. the comment is on a pull request (not a plain issue)
     #   2. the commenter is the repo owner — this is the "only me" gate
     #   3. the comment invokes the command
+    # author_association is the authoritative permission field in the event
+    # payload (it cannot be spoofed the way a login string comparison can be),
+    # so we gate on BOTH it and the owner login as defense-in-depth.
     if: >-
       ${{ github.event.issue.pull_request &&
           github.event.comment.user.login == 'khang859' &&
+          github.event.comment.author_association == 'OWNER' &&
           (contains(github.event.comment.body, '/oc') ||
            contains(github.event.comment.body, '/opencode')) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Least-privilege token: the runner ingests untrusted PR content while
+    # holding a write token + the OpenRouter key, so keep the blast radius
+    # small. No OIDC is used (OpenRouter auths via API key), so id-token is
+    # dropped. issues:write is required because PR conversation comments are
+    # posted through the issues API.
     permissions:
-      id-token: write
       contents: read
       pull-requests: write
       issues: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        # Pinned to a full commit SHA (not a mutable tag) to defend against
+        # supply-chain tag-repointing (cf. tj-actions/changed-files CVE-2025-30066).
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 1
           persist-credentials: false
 
       - name: Run reviewer
-        uses: anomalyco/opencode/github@latest
+        # Pinned to a SHA, not @latest. Note @latest currently points at a
+        # March-2026 commit and is STALE — github-v1.2.25 (Jun 2026) is newer.
+        uses: anomalyco/opencode/github@a3b97d9090ccf4aa9ac32268486283e3131e36b4 # github-v1.2.25
         env:
           # Add this in: Settings → Secrets and variables → Actions → New repository secret
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -66,32 +79,43 @@ jobs:
           # new variable named AI_REVIEW_MODEL) without editing this file.
           # Any OpenRouter model id, prefixed with "openrouter/".
           # Falls back to the default below if the variable is unset.
+          # Tip: an OpenRouter model-fallback array (comma-separated, max 3)
+          # gives free resilience — failover is on by default and failed
+          # requests are not billed.
           model: ${{ vars.AI_REVIEW_MODEL || 'openrouter/deepseek/deepseek-v4-flash' }}
           use_github_token: true
 
   verify:
     # Runs only after the reviewer succeeds, so it can read the posted findings.
+    # NOTE: the reviewer's posted findings are themselves attacker-influenceable
+    # (a prompt-injected reviewer could emit hostile text), so the verifier must
+    # treat them as untrusted data — never execute or act on instructions in them.
     needs: review
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
-      id-token: write
       contents: read
       pull-requests: write
       issues: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 1
           persist-credentials: false
 
       - name: Run verifier
-        uses: anomalyco/opencode/github@latest
+        uses: anomalyco/opencode/github@a3b97d9090ccf4aa9ac32268486283e3131e36b4 # github-v1.2.25
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENCODE_CONFIG: ${{ github.workspace }}/.github/ai-review-agents.json
         with:
           agent: verifier
-          model: ${{ vars.AI_REVIEW_MODEL || 'openrouter/deepseek/deepseek-v4-flash' }}
+          # Cross-family verification: research shows a same-model verifier
+          # under-flags its own family's mistakes, so set the AI_VERIFY_MODEL
+          # repo variable to a DIFFERENT model family than AI_REVIEW_MODEL
+          # (e.g. reviewer = deepseek/openai, verifier = an anthropic model).
+          # Defaults to the reviewer model only if AI_VERIFY_MODEL is unset.
+          model: ${{ vars.AI_VERIFY_MODEL || vars.AI_REVIEW_MODEL || 'openrouter/deepseek/deepseek-v4-flash' }}
           use_github_token: true
