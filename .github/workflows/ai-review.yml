@@ -1,0 +1,97 @@
+name: AI Review
+
+# On-demand AI code review, driven by opencode + OpenRouter.
+#
+# Trigger: comment "/oc <instructions>" (or "/opencode <instructions>") on a PR.
+# Gated so ONLY the repo owner (khang859) can fire it — nobody else's comment runs it,
+# so there is no way for a contributor to run up OpenRouter cost.
+#
+# Two stages run in sequence off a single comment:
+#   1. review  — the "reviewer" agent finds candidate issues and posts them.
+#   2. verify  — the "verifier" agent adversarially re-checks each finding against the
+#                real code and posts only the confirmed ones (false positives discarded).
+# Both agents are defined in opencode.json.
+#
+# Re-review: just comment again. The reviewer sees the full PR thread (your previous
+# review comments and findings), so e.g.
+#   /oc re-review — focus on the auth changes and confirm my earlier comments are addressed
+# works out of the box.
+
+on:
+  issue_comment:
+    types: [created]
+
+# If you comment twice quickly, cancel the older run so you only pay for the latest.
+concurrency:
+  group: ai-review-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Run only when ALL of these hold:
+    #   1. the comment is on a pull request (not a plain issue)
+    #   2. the commenter is the repo owner — this is the "only me" gate
+    #   3. the comment invokes the command
+    if: >-
+      ${{ github.event.issue.pull_request &&
+          github.event.comment.user.login == 'khang859' &&
+          (contains(github.event.comment.body, '/oc') ||
+           contains(github.event.comment.body, '/opencode')) }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run reviewer
+        uses: anomalyco/opencode/github@latest
+        env:
+          # Add this in: Settings → Secrets and variables → Actions → New repository secret
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # CI-only agent config. Lives at a non-default path so local opencode never
+          # auto-loads it — your personal opencode settings are untouched.
+          OPENCODE_CONFIG: ${{ github.workspace }}/.github/ai-review-agents.json
+        with:
+          agent: reviewer
+          # Model is set via a repository variable so you can change it in the
+          # GitHub UI (Settings → Secrets and variables → Actions → Variables tab →
+          # new variable named AI_REVIEW_MODEL) without editing this file.
+          # Any OpenRouter model id, prefixed with "openrouter/".
+          # Falls back to the default below if the variable is unset.
+          model: ${{ vars.AI_REVIEW_MODEL || 'openrouter/deepseek/deepseek-v4-flash' }}
+          use_github_token: true
+
+  verify:
+    # Runs only after the reviewer succeeds, so it can read the posted findings.
+    needs: review
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run verifier
+        uses: anomalyco/opencode/github@latest
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_CONFIG: ${{ github.workspace }}/.github/ai-review-agents.json
+        with:
+          agent: verifier
+          model: ${{ vars.AI_REVIEW_MODEL || 'openrouter/deepseek/deepseek-v4-flash' }}
+          use_github_token: true
