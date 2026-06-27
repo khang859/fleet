@@ -36,6 +36,12 @@ import {
   WEB_SEARCH_TOOL_NAME
 } from './tools/tool-runner';
 import { buildMentionContext, defaultWorkspace } from './tools/fs-tools';
+import {
+  CURRENT_TIME_TOOL,
+  GET_CURRENT_TIME_TOOL_NAME,
+  buildTimeContextBlock,
+  formatTimeContext
+} from './time-context';
 import { isMcpToolName } from '../../shared/mcp-types';
 import type { SkillManager } from './skills/skill-manager';
 
@@ -322,7 +328,9 @@ export class ChatService {
       ...fsToolDefs,
       ...(webSearchEnabled ? [WEB_SEARCH_TOOL] : []),
       ...mcpToolDefs,
-      ...(loadSkillDef ? [loadSkillDef] : [])
+      ...(loadSkillDef ? [loadSkillDef] : []),
+      // Ungated, instant: lets the model fetch the exact time mid-turn.
+      ...(supportsTools ? [CURRENT_TIME_TOOL] : [])
     ];
 
     // Build OpenRouter-shaped history from the active path, prefixed with the
@@ -349,6 +357,9 @@ export class ChatService {
     if (params.contextBlock) {
       messages.push({ role: 'system', content: params.contextBlock });
     }
+    // Current date/time, refreshed every turn. Placed AFTER any cache breakpoint
+    // (persona/skills) so the changing timestamp never busts the cached prefix.
+    messages.push({ role: 'system', content: buildTimeContextBlock(new Date()) });
     let hasPdf = false;
     for (const m of store.getPathTo(assistantParentId)) {
       const content = this.buildMessageContent(m, supportsImages);
@@ -396,6 +407,16 @@ export class ChatService {
           });
 
           for (const call of result.toolCalls) {
+            // get_current_time is a pure, instant lookup — no gating/audit needed.
+            if (call.name === GET_CURRENT_TIME_TOOL_NAME) {
+              messages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                name: call.name,
+                content: formatTimeContext(new Date())
+              });
+              continue;
+            }
             // load_skill is an ungated read of an installed skill body.
             if (this.deps.skills.hasLoadSkillTool(call.name)) {
               messages.push({
