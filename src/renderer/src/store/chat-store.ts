@@ -16,8 +16,9 @@ import type { PromptTemplate } from '../../../shared/prompt-types';
 import type { PersonaPreset, ChatUploadsConfig, ChatSearchHit } from '../../../shared/chat-types';
 import { DEFAULT_CHAT_UPLOADS } from '../../../shared/chat-types';
 import type { Artifact } from '../../../shared/chat-artifacts';
+import { StreamBuffer } from './stream-buffer';
 
-type ChatStatus = 'idle' | 'streaming' | 'error';
+export type ChatStatus = 'idle' | 'streaming' | 'error';
 
 /** An artifact opened in the side panel, tagged with its source message. */
 export type OpenArtifact = Artifact & { messageId: string };
@@ -75,6 +76,8 @@ type ChatStoreState = {
     contextPaths?: string[]
   ) => Promise<void>;
   regenerate: (messageId: string, model: string) => Promise<void>;
+  /** Re-stream the response to the last user message after a failed turn. */
+  retryLastTurn: (model: string) => Promise<void>;
   editMessage: (messageId: string, text: string, model: string) => Promise<void>;
   selectVariant: (messageId: string) => Promise<void>;
   forkConversation: (messageId: string) => Promise<void>;
@@ -95,6 +98,12 @@ let unsubRenamed: (() => void) | null = null;
 let unsubTagged: (() => void) | null = null;
 
 export const useChatStore = create<ChatStoreState>((set, get) => {
+  // Coalesce SSE tokens into ~50ms flushes so only the in-flight message
+  // re-renders (and re-parses markdown) ~20×/s instead of per token.
+  const streamBuffer = new StreamBuffer(50, (delta) => {
+    set((s) => ({ streamingText: (s.streamingText ?? '') + delta }));
+  });
+
   function subscribeToStreamEvents(): void {
     unsubChunk?.();
     unsubDone?.();
@@ -105,10 +114,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     unsubTagged?.();
     unsubChunk = window.fleet.chat.onStreamChunk((p: ChatStreamChunkPayload) => {
       if (p.streamId !== get().streamId) return;
-      set((s) => ({ streamingText: (s.streamingText ?? '') + p.delta }));
+      streamBuffer.push(p.delta);
     });
     unsubDone = window.fleet.chat.onStreamDone((p: ChatStreamDonePayload) => {
       if (p.streamId !== get().streamId) return;
+      streamBuffer.reset();
       const activeId = get().activeId;
       set((s) => ({
         messages: [...s.messages, p.message],
@@ -129,6 +139,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     });
     unsubError = window.fleet.chat.onStreamError((p: ChatStreamErrorPayload) => {
       if (p.streamId !== get().streamId) return;
+      streamBuffer.reset();
       set({
         status: 'error',
         error: p.message,
@@ -243,6 +254,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     },
 
     selectConversation: async (id) => {
+      streamBuffer.reset();
       set({
         activeId: id,
         messages: [],
@@ -337,6 +349,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       set({ streamId: res.streamId, streamingText: '', status: 'streaming', error: null });
     },
 
+    retryLastTurn: async (model) => {
+      const lastUser = [...get().messages].reverse().find((m) => m.role === 'user');
+      if (lastUser) await get().regenerate(lastUser.id, model);
+    },
+
     editMessage: async (messageId, text, model) => {
       const activeId = get().activeId;
       if (!activeId || get().status === 'streaming') return;
@@ -386,6 +403,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     },
 
     cancel: () => {
+      // Flush (not drop) the buffered tail so the mirrored partial reply below
+      // includes the last <50ms of tokens.
+      streamBuffer.flush();
       const { streamId, streamingText, activeId } = get();
       if (streamId) void window.fleet.chat.cancel(streamId);
       // Main persists whatever streamed so far; mirror it into the visible

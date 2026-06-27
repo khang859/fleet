@@ -101,8 +101,13 @@ describe('useChatStore', () => {
   it('applies chunk then done events', async () => {
     await useChatStore.getState().init();
     await useChatStore.getState().send('hi', 'x/y');
+    // Token deltas are coalesced into a ~50ms flush, so they land in
+    // streamingText only after the throttle window elapses.
+    vi.useFakeTimers();
     listeners.get(IPC_CHANNELS.CHAT_STREAM_CHUNK)?.({ streamId: 's1', delta: 'Hel' });
     listeners.get(IPC_CHANNELS.CHAT_STREAM_CHUNK)?.({ streamId: 's1', delta: 'lo' });
+    vi.advanceTimersByTime(50);
+    vi.useRealTimers();
     expect(useChatStore.getState().streamingText).toBe('Hello');
     listeners.get(IPC_CHANNELS.CHAT_STREAM_DONE)?.({
       streamId: 's1',

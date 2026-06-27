@@ -5,6 +5,7 @@ import type { ChatMentionItem } from '../../../../shared/chat-types';
 import type { PromptTemplate } from '../../../../shared/prompt-types';
 import { extractPromptVars, fillTemplate } from '../../../../shared/prompt-types';
 import { ModelPicker } from './ModelPicker';
+import { composerKeyAction } from './composer-keys';
 
 const MENTION_RE = /(?:^|\s)@([\w./-]*)$/;
 
@@ -42,6 +43,11 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
     (s) => s.conversations.find((c) => c.id === s.activeId)?.model ?? defaultModel
   );
   const streaming = status === 'streaming';
+  const keyPresent = useChatStore((s) => s.keyPresent);
+  const noKey = !keyPresent;
+  // Send is enabled only with real content and a configured key; Stop (shown
+  // while streaming) is always clickable.
+  const canSend = (text.trim().length > 0 || attachments.length > 0) && keyPresent;
 
   // `/` command autocomplete (skills + prompt templates): open while the whole
   // input is a single slash token.
@@ -158,16 +164,24 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
   const submit = (): void => {
     const trimmed = text.trim();
     if ((!trimmed && attachments.length === 0) || streaming) return;
+    const snapshot = { text, attachments, mentions };
     void send(
       trimmed,
       model,
       attachments.length ? attachments.map((a) => a.dataUrl) : undefined,
       mentions.length ? mentions : undefined
-    );
+    ).catch(() => {
+      // The send never started — restore what the user typed so it isn't lost.
+      setText(snapshot.text);
+      setAttachments(snapshot.attachments);
+      setMentions(snapshot.mentions);
+    });
     setText('');
     setAttachments([]);
     setAttachError(null);
     setMentions([]);
+    // Keep focus in the composer after send for rapid-fire prompting.
+    textareaRef.current?.focus();
   };
 
   return (
@@ -311,7 +325,11 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
           ))}
         </div>
       )}
-      <div className="relative flex items-end gap-2">
+      <div
+        className={`relative flex items-end gap-2 rounded-lg border border-fleet-border bg-fleet-surface-2 px-2 py-1.5 transition-shadow focus-within:border-fleet-border-strong focus-within:ring-2 focus-within:ring-fleet-accent/30 ${
+          noKey ? 'opacity-70' : ''
+        }`}
+      >
         {mentionOpen && (
           <ul className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg">
             {mentionResults.map((r, i) => (
@@ -416,9 +434,21 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
                 return;
               }
             }
-            if (e.key === 'Enter' && !e.shiftKey) {
+            const action = composerKeyAction({
+              key: e.key,
+              shiftKey: e.shiftKey,
+              metaKey: e.metaKey,
+              ctrlKey: e.ctrlKey,
+              isComposing: e.nativeEvent.isComposing,
+              keyCode: e.keyCode,
+              streaming
+            });
+            if (action === 'send') {
               e.preventDefault();
               submit();
+            } else if (action === 'stop') {
+              e.preventDefault();
+              cancel();
             }
           }}
           onPaste={(e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -428,18 +458,27 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
               acceptFile(file);
             }
           }}
-          placeholder="Message…"
-          rows={2}
-          className="min-h-0 flex-1 resize-none rounded border border-fleet-border bg-fleet-surface-2 px-3 py-2 text-sm text-fleet-text outline-none focus:border-fleet-border-strong"
+          disabled={noKey}
+          placeholder={keyPresent ? 'Message…' : 'Add an API key in Settings to start'}
+          rows={1}
+          // field-sizing:content auto-grows the textarea row-by-row (Chromium —
+          // we're Electron) from ~1 row to a 12rem cap, then scrolls. No JS resize.
+          className="max-h-48 min-h-[2.5rem] flex-1 resize-none overflow-y-auto bg-transparent px-1.5 py-1 text-sm text-fleet-text outline-none [field-sizing:content] placeholder:text-fleet-text-muted disabled:cursor-not-allowed disabled:opacity-60"
         />
         {streaming ? (
-          <button onClick={cancel} className="rounded bg-fleet-surface-3 p-2 text-fleet-text">
+          <button
+            onClick={cancel}
+            aria-label="Stop generating"
+            className="focus-ring rounded bg-fleet-surface-3 p-2 text-fleet-text hover:bg-fleet-surface-3/80"
+          >
             <Square size={16} />
           </button>
         ) : (
           <button
             onClick={submit}
-            className="rounded bg-fleet-accent/80 p-2 text-white hover:bg-fleet-accent"
+            disabled={!canSend}
+            aria-label="Send message"
+            className="focus-ring rounded bg-fleet-accent/80 p-2 text-white hover:bg-fleet-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-fleet-accent/80"
           >
             <Send size={16} />
           </button>
@@ -449,8 +488,9 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
         <button
           type="button"
           aria-label="Attach file"
+          disabled={noKey}
           onClick={() => fileRef.current?.click()}
-          className="rounded p-1 text-fleet-text-muted hover:text-fleet-text"
+          className="focus-ring rounded p-1 text-fleet-text-muted hover:text-fleet-text disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Paperclip size={14} />
         </button>

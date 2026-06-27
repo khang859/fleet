@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
+import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,16 +8,24 @@ import {
   RotateCcw,
   X,
   Check,
-  FileCode
+  Copy,
+  FileCode,
+  ArrowDown,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
+import { useReducedMotion } from '../../hooks/use-reduced-motion';
+import { streamAnnouncement } from './stream-announce';
+import { classifyStreamError } from './stream-error';
 import type { ChatMessage } from '../../../../shared/chat-types';
 import { extractArtifacts } from '../../../../shared/chat-artifacts';
 import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
 import { ToolCallCard } from './ToolCallCard';
-import { CodeBlock } from '../markdown/CodeBlock';
+import { ChatMarkdown } from './ChatMarkdown';
 import { MessageUsage } from './UsageMeter';
+import { messageEnterAssistant, messageEnterUser } from '../../lib/motion';
 
 /** ‹ 2 / 3 › pager that switches between sibling attempts of a turn. */
 function VariantPager({ message }: { message: ChatMessage }): React.JSX.Element | null {
@@ -36,7 +42,7 @@ function VariantPager({ message }: { message: ChatMessage }): React.JSX.Element 
         aria-label="Previous version"
         disabled={v.index <= 1}
         onClick={() => go(-1)}
-        className="rounded p-0.5 hover:text-fleet-text disabled:opacity-30"
+        className="focus-ring rounded p-0.5 hover:text-fleet-text disabled:opacity-30"
       >
         <ChevronLeft size={12} />
       </button>
@@ -47,7 +53,7 @@ function VariantPager({ message }: { message: ChatMessage }): React.JSX.Element 
         aria-label="Next version"
         disabled={v.index >= v.total}
         onClick={() => go(1)}
-        className="rounded p-0.5 hover:text-fleet-text disabled:opacity-30"
+        className="focus-ring rounded p-0.5 hover:text-fleet-text disabled:opacity-30"
       >
         <ChevronRight size={12} />
       </button>
@@ -74,6 +80,20 @@ function Bubble({
   const activeArtifact = useChatStore((s) => s.activeArtifact);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<number | null>(null);
+  useEffect(() => () => window.clearTimeout(copyTimer.current ?? undefined), []);
+
+  const copy = (): void => {
+    void navigator.clipboard.writeText(content);
+    setCopied(true);
+    window.clearTimeout(copyTimer.current ?? undefined);
+    copyTimer.current = window.setTimeout(() => setCopied(false), 1500);
+  };
+  const sentAt = new Date(message.createdAt).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 
   const artifacts = isUser ? [] : extractArtifacts(content);
 
@@ -87,11 +107,17 @@ function Bubble({
   };
 
   return (
-    <div className={`group flex flex-col ${isUser ? 'items-end' : 'items-start'} px-4 py-2`}>
+    <div
+      className={`group flex flex-col ${
+        isUser ? `items-end ${messageEnterUser}` : `items-start ${messageEnterAssistant}`
+      }`}
+    >
       <div
-        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-          isUser ? 'bg-fleet-accent/20 text-fleet-text' : 'bg-fleet-surface-2 text-fleet-text'
-        }`}
+        className={
+          isUser
+            ? 'w-fit max-w-[85%] rounded-lg bg-fleet-surface-2 px-4 py-3 text-sm text-fleet-text'
+            : 'w-full max-w-[68ch] text-sm leading-relaxed text-fleet-text'
+        }
       >
         {editing ? (
           <div className="flex flex-col gap-2">
@@ -118,15 +144,7 @@ function Bubble({
             </div>
           </div>
         ) : (
-          <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[[rehypeHighlight, { detect: true }]]}
-              components={{ pre: CodeBlock }}
-            >
-              {content}
-            </ReactMarkdown>
-          </div>
+          <ChatMarkdown>{content}</ChatMarkdown>
         )}
         {images !== undefined && images.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -164,14 +182,21 @@ function Bubble({
         </div>
       )}
       {!editing && (
-        <div className="mt-1 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="chat-actions mt-1 flex items-center gap-2">
           <VariantPager message={message} />
+          <button
+            aria-label={copied ? 'Copied' : 'Copy message'}
+            onClick={copy}
+            className="focus-ring rounded p-0.5 text-fleet-text-muted hover:text-fleet-text"
+          >
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+          </button>
           {isUser && (
             <button
               aria-label="Edit message"
               disabled={streaming}
               onClick={startEdit}
-              className="rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
+              className="focus-ring rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
             >
               <Pencil size={12} />
             </button>
@@ -181,7 +206,7 @@ function Bubble({
               aria-label="Regenerate response"
               disabled={streaming}
               onClick={() => void regenerate(message.id, model)}
-              className="rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
+              className="focus-ring rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
             >
               <RotateCcw size={12} />
             </button>
@@ -191,12 +216,135 @@ function Bubble({
             title="Branch from here"
             disabled={streaming}
             onClick={() => void forkConversation(message.id)}
-            className="rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
+            className="focus-ring rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
           >
             <GitBranch size={12} />
           </button>
+          {/* Quiet, non-distracting metadata: send time, plus the model on
+              assistant replies. Revealed with the action bar (hover/focus). */}
+          <span className="text-[11px] text-fleet-text-subtle">{sentAt}</span>
+          {!isUser && (
+            <span className="max-w-[180px] truncate text-[11px] text-fleet-text-subtle">
+              {model}
+            </span>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Floating "Jump to latest" pill — shown only when the user has scrolled away from the bottom. */
+function JumpToLatest(): React.JSX.Element | null {
+  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  if (isAtBottom) return null;
+  return (
+    <button
+      type="button"
+      aria-label="Jump to latest"
+      onClick={() => void scrollToBottom()}
+      className="focus-ring absolute bottom-4 right-6 flex items-center gap-1 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow hover:bg-fleet-surface-2"
+    >
+      <ArrowDown size={12} /> Jump to latest
+    </button>
+  );
+}
+
+/**
+ * Single always-mounted polite live region. Announces only state transitions
+ * (start / completion / error) so a screen reader speaks them once each rather
+ * than re-reading streaming text on every token.
+ */
+function StreamAnnouncer(): React.JSX.Element {
+  const status = useChatStore((s) => s.status);
+  const error = useChatStore((s) => s.error);
+  const [message, setMessage] = useState('');
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    const next = streamAnnouncement(prevStatus.current, status, error);
+    prevStatus.current = status;
+    if (next !== null) setMessage(next);
+  }, [status, error]);
+  return (
+    <div role="status" aria-live="polite" className="sr-only">
+      {message}
+    </div>
+  );
+}
+
+/** Re-engages stick-to-bottom whenever a new stream starts, even if the user had scrolled up. */
+function ReengageOnNewStream({ animation }: { animation: ScrollBehavior }): null {
+  const { scrollToBottom } = useStickToBottomContext();
+  const streamId = useChatStore((s) => s.streamId);
+  useEffect(() => {
+    if (streamId) void scrollToBottom(animation);
+  }, [streamId, scrollToBottom, animation]);
+  return null;
+}
+
+/**
+ * The in-flight assistant message. Isolated into its own component so that
+ * throttled token updates re-render only this node — not MessageList or any
+ * finalized history Bubble (which would otherwise re-parse all markdown).
+ */
+/** Three-dot wave shown only in the gap between submit and the first token, so
+ *  the wait reads as "thinking" rather than a blank/finished reply. Static at
+ *  full opacity under prefers-reduced-motion (handled in index.css). */
+function ThinkingIndicator(): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-1 py-1 text-fleet-text-muted" aria-hidden="true">
+      <span className="chat-think-dot" />
+      <span className="chat-think-dot" />
+      <span className="chat-think-dot" />
+    </div>
+  );
+}
+
+function StreamingMessage(): React.JSX.Element {
+  const streamingText = useChatStore((s) => s.streamingText) ?? '';
+  const hasTokens = streamingText.length > 0;
+  return (
+    // aria-live=off: streaming text mutates per flush and must NOT be announced
+    // token-by-token; the role=status announcer speaks start/completion instead.
+    // Flat full-width assistant prose — matches a finalized assistant Bubble.
+    <div
+      className="w-full max-w-[68ch] text-sm leading-relaxed text-fleet-text"
+      aria-live="off"
+    >
+      {hasTokens ? (
+        <ChatMarkdown streaming>{streamingText}</ChatMarkdown>
+      ) : (
+        <ThinkingIndicator />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Inline failed-turn error: plain-language, classified (network vs auth/quota),
+ * attached where the assistant reply would be. Offers a scoped "Try again" that
+ * re-streams the last user prompt — not a global retry.
+ */
+function StreamError({ model }: { model: string }): React.JSX.Element {
+  const error = useChatStore((s) => s.error);
+  const retryLastTurn = useChatStore((s) => s.retryLastTurn);
+  const info = classifyStreamError(error);
+  return (
+    <div className="flex max-w-[80%] items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm">
+      <AlertTriangle size={15} className="mt-0.5 shrink-0 text-red-400" />
+      <div className="min-w-0">
+        <div className="font-medium text-fleet-text">{info.title}</div>
+        <div className="mt-0.5 text-fleet-text-secondary">{info.detail}</div>
+        {info.retryable && (
+          <button
+            type="button"
+            onClick={() => void retryLastTurn(model)}
+            className="mt-1.5 flex items-center gap-1 rounded bg-fleet-surface-3 px-2 py-1 text-xs text-fleet-text hover:bg-fleet-surface-2"
+          >
+            <RefreshCw size={12} /> Try again
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -208,76 +356,51 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
   const model = useChatStore(
     (s) => s.conversations.find((c) => c.id === s.activeId)?.model ?? defaultModel
   );
-  const streamingText = useChatStore((s) => s.streamingText);
+  // Subscribe to a stable boolean, not the streaming text itself, so token
+  // updates don't re-render the whole list (see StreamingMessage).
+  const isStreaming = useChatStore((s) => s.streamingText !== null);
   const status = useChatStore((s) => s.status);
-  const error = useChatStore((s) => s.error);
   const toolStatus = useChatStore((s) => s.toolStatus);
   const permissionRequests = useChatStore((s) => s.permissionRequests);
   const decidePermission = useChatStore((s) => s.decidePermission);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const [atBottom, setAtBottom] = useState(true);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const onScroll = (): void => {
-      setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
-    };
-    el.addEventListener('scroll', onScroll);
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
-
-  useEffect(() => {
-    if (atBottom) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingText, atBottom]);
+  const reduced = useReducedMotion();
+  const animation: ScrollBehavior = reduced ? 'instant' : 'smooth';
 
   return (
-    <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto py-2">
-      {messages.map((m) => (
-        <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
-      ))}
-      {streamingText !== null && (
-        <div className="flex justify-start px-4 py-2">
-          <div className="max-w-[80%] rounded-lg bg-fleet-surface-2 px-3 py-2 text-sm text-fleet-text">
-            <div className="prose prose-invert max-w-[70ch] prose-pre:bg-fleet-surface-3">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[[rehypeHighlight, { detect: true }]]}
-                components={{ pre: CodeBlock }}
-              >
-                {streamingText || '…'}
-              </ReactMarkdown>
+    <StickToBottom
+      className="relative min-h-0 flex-1"
+      resize={animation}
+      initial={animation}
+    >
+      <StickToBottom.Content role="log" aria-label="Conversation" aria-busy={isStreaming}>
+        {/* Centered reading column; turns separated by whitespace (no dividers),
+            generous bottom padding so the last reply clears the composer. */}
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+          {messages.map((m) => (
+            <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
+          ))}
+          {isStreaming && <StreamingMessage />}
+          {permissionRequests.map((req) => (
+            <ToolCallCard
+              key={req.requestId}
+              request={req}
+              onDecide={(outcome) => void decidePermission(req.requestId, outcome)}
+            />
+          ))}
+          {status === 'streaming' && toolStatus?.state === 'generating' && (
+            <GeneratingSkeleton label={toolStatus.label} />
+          )}
+          {toolStatus?.state === 'error' && (
+            <div className="text-sm text-red-400">
+              Image error: {toolStatus.error ?? toolStatus.label}
             </div>
-          </div>
+          )}
+          {status === 'error' && <StreamError model={model} />}
         </div>
-      )}
-      {permissionRequests.map((req) => (
-        <ToolCallCard
-          key={req.requestId}
-          request={req}
-          onDecide={(outcome) => void decidePermission(req.requestId, outcome)}
-        />
-      ))}
-      {status === 'streaming' && toolStatus?.state === 'generating' && (
-        <GeneratingSkeleton label={toolStatus.label} />
-      )}
-      {toolStatus?.state === 'error' && (
-        <div className="px-4 py-2 text-sm text-red-400">
-          Image error: {toolStatus.error ?? toolStatus.label}
-        </div>
-      )}
-      {status === 'error' && <div className="px-4 py-2 text-sm text-red-400">Error: {error}</div>}
-      {!atBottom && (
-        <button
-          type="button"
-          onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
-          className="fixed bottom-24 right-6 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow hover:bg-fleet-surface-2"
-        >
-          Jump to latest ↓
-        </button>
-      )}
-      <div ref={bottomRef} />
-    </div>
+      </StickToBottom.Content>
+      <ReengageOnNewStream animation={animation} />
+      <StreamAnnouncer />
+      <JumpToLatest />
+    </StickToBottom>
   );
 }
