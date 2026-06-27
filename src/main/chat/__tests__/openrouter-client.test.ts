@@ -158,15 +158,14 @@ it('assembles streamed tool_calls and returns finishReason', async () => {
 
 describe('OpenRouterClient.complete (task model)', () => {
   it('returns the trimmed assistant content from a non-streaming completion', async () => {
-    const fakeFetch = vi.fn(async () =>
+    const fakeFetch = vi.fn<typeof fetch>(async () =>
       Promise.resolve(
-        new Response(
-          JSON.stringify({ choices: [{ message: { content: '  Fix login bug  ' } }] }),
-          { status: 200 }
-        )
+        new Response(JSON.stringify({ choices: [{ message: { content: '  Fix login bug  ' } }] }), {
+          status: 200
+        })
       )
-    ) as unknown as typeof fetch;
-    const client = new OpenRouterClient(fakeFetch);
+    );
+    const client = new OpenRouterClient(fakeFetch as unknown as typeof fetch);
     const text = await client.complete({
       apiKey: 'k',
       model: 'cheap/model',

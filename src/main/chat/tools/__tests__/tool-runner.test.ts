@@ -33,7 +33,8 @@ function setup(mode: ChatToolsConfig['mode'], rules: Partial<PermissionRules> = 
     mode,
     workspaceDir: ROOT,
     sandbox: false,
-    failClosed: false
+    failClosed: false,
+    mentionMaxKb: 64
   };
   const exec = new ChatToolExecutor(
     manager,

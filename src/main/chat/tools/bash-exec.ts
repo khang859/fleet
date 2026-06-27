@@ -85,7 +85,9 @@ export async function runBash(opts: {
       child.kill('SIGKILL');
     }, timeoutMs);
 
-    const onAbort = (): void => child.kill('SIGKILL');
+    const onAbort = (): void => {
+      child.kill('SIGKILL');
+    };
     opts.signal?.addEventListener('abort', onAbort, { once: true });
 
     const finish = (exitCode: number | null): void => {

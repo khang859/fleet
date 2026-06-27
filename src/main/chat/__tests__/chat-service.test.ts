@@ -174,6 +174,7 @@ it('runs the image tool loop and persists a generated image', async () => {
     getDefaultModel: () => 'm',
     getImageModel: () => 'google/gemini-2.5-flash-image',
     getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+    getAutoTag: () => ({ enabled: false, model: 'x' }),
     getToolsMode: () => 'off',
     getTools: () => ({
       mode: 'off',
@@ -246,6 +247,7 @@ it('passes the reference image to the provider as a base64 data URL when editing
     getDefaultModel: () => 'm',
     getImageModel: () => 'google/gemini-2.5-flash-image',
     getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+    getAutoTag: () => ({ enabled: false, model: 'x' }),
     getToolsMode: () => 'off',
     getTools: () => ({
       mode: 'off',
