@@ -1350,13 +1350,15 @@ void app.whenReady().then(async () => {
     () => settingsStore.get().ai.chat.skills
   );
   chatSkills.rescan();
-  const isWebSearchReady = (): boolean =>
-    settingsStore.get().ai.chat.webSearch.enabled && chatSecrets.hasSearchKey();
+  const isWebSearchReady = (): boolean => {
+    const cfg = settingsStore.get().ai.chat.webSearch;
+    return cfg.enabled && chatSecrets.hasSearchKey(cfg.provider);
+  };
   const chatWebSearch: WebSearchRunner = {
     enabled: isWebSearchReady,
     search: async (query, signal) => {
       const cfg = settingsStore.get().ai.chat.webSearch;
-      const key = chatSecrets.getSearchKey();
+      const key = chatSecrets.getSearchKey(cfg.provider);
       if (!key) throw new Error('No web-search API key configured');
       const provider = createWebSearchProvider(cfg.provider);
       const results = await provider.search({
