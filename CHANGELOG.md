@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.79.0
+
+- **Chat settings redesign** — the Chat settings screen is rebuilt with a left-nav rail and focused panes: progressive disclosure, instant-apply toggles with a save-status cue, search-to-jump, and an upgraded API-key field. All settings are preserved (#384).
+- **Conversation sidebar redesign + semantic search** — the Chat conversation sidebar now groups conversations by recency with a pinned section and polished rows, and search is upgraded from keyword-only to hybrid semantic search (per-message embeddings via sqlite-vec fused with FTS5 through reciprocal rank fusion, degrading silently to FTS when unavailable) (#383).
+- **Chat agent knows the current date/time** — the Chat agent's context now includes the current date and time, so it can answer time-relative questions and reason about recency accurately (#380).
+
 ## v2.78.0
 
 - **More web-search providers in Chat** — the pluggable web-search tool now supports **Exa** and **Brave** alongside Tavily. Keys are stored per-provider (encrypted) so switching providers keeps each key intact, and a settings dropdown drives the choice (#369).
