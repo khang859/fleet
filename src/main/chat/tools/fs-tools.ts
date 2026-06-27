@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync, statSync, type Stats } from 'fs';
+import { readdir, readFile, stat } from 'fs/promises';
 import { join, relative, resolve, sep } from 'path';
 import { assertReadablePath } from './fs-safety';
 
@@ -130,7 +131,13 @@ export function buildMentionContext(args: {
       continue;
     }
     if (st.isDirectory()) {
-      const files = globTool({ pattern: '**/*', path: p, cwd: args.cwd }).slice(0, 100);
+      // Bounded, synchronous listing — the mention picker runs on user action and
+      // is capped, so it stays sync (unlike the agentic glob tool).
+      const files: string[] = [];
+      for (const f of walkFiles(abs)) {
+        files.push(toPosix(relative(abs, f)));
+        if (files.length >= 100) break;
+      }
       blocks.push(
         `Folder ${p} (${files.length} files):\n${files.map((f) => `- ${p}/${f}`).join('\n')}`
       );
@@ -184,6 +191,41 @@ function* walkFiles(root: string): Generator<string> {
   }
 }
 
+/**
+ * Async twin of {@link walkFiles} for the agentic glob/search tools. Awaiting
+ * `readdir`/`stat` hands control back to the event loop between filesystem ops,
+ * so a large scan never freezes the Electron main process (and the PTYs that
+ * stream through it). The synchronous walker is kept for the bounded, one-shot
+ * `@`-mention context build.
+ */
+async function* walkFilesAsync(root: string): AsyncGenerator<string> {
+  let count = 0;
+  const stack = [root];
+  for (let dir = stack.pop(); dir !== undefined; dir = stack.pop()) {
+    let entries: string[];
+    try {
+      entries = await readdir(dir);
+    } catch {
+      continue; // unreadable dir — skip
+    }
+    for (const name of entries) {
+      const full = join(dir, name);
+      let st: Stats;
+      try {
+        st = await stat(full);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        if (!IGNORED_DIRS.has(name) && !name.startsWith('.')) stack.push(full);
+      } else if (st.isFile()) {
+        yield full;
+        if (++count >= MAX_WALK_FILES) return;
+      }
+    }
+  }
+}
+
 function toPosix(p: string): string {
   return sep === '\\' ? p.split(sep).join('/') : p;
 }
@@ -208,11 +250,15 @@ export function readFileTool(args: {
 }
 
 /** glob: list files whose relative posix path matches the pattern. */
-export function globTool(args: { pattern: string; path?: string; cwd: string }): string[] {
+export async function globTool(args: {
+  pattern: string;
+  path?: string;
+  cwd: string;
+}): Promise<string[]> {
   const root = assertReadablePath(args.path ?? '.', args.cwd);
   const re = globToRegExp(args.pattern);
   const matches: string[] = [];
-  for (const file of walkFiles(root)) {
+  for await (const file of walkFilesAsync(root)) {
     const rel = toPosix(relative(root, file));
     if (re.test(rel) || re.test(toPosix(relative(root, file).split(sep).pop() ?? ''))) {
       matches.push(rel);
@@ -223,24 +269,24 @@ export function globTool(args: { pattern: string; path?: string; cwd: string }):
 }
 
 /** search: regex content search across files, optionally filtered by glob. */
-export function searchTool(args: {
+export async function searchTool(args: {
   regex: string;
   path?: string;
   glob?: string;
   cwd: string;
-}): Array<{ file: string; line: number; text: string }> {
+}): Promise<Array<{ file: string; line: number; text: string }>> {
   const root = assertReadablePath(args.path ?? '.', args.cwd);
   const re = new RegExp(args.regex);
   const globRe = args.glob ? globToRegExp(args.glob) : null;
   const out: Array<{ file: string; line: number; text: string }> = [];
-  for (const file of walkFiles(root)) {
+  for await (const file of walkFilesAsync(root)) {
     const rel = toPosix(relative(root, file));
     if (globRe && !globRe.test(rel)) continue;
     let buf: Buffer;
     try {
-      const st = statSync(file);
+      const st = await stat(file);
       if (st.size > MAX_FILE_BYTES) continue;
-      buf = readFileSync(file);
+      buf = await readFile(file);
     } catch {
       continue;
     }

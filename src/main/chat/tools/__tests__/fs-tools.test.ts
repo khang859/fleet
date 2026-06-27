@@ -46,22 +46,22 @@ describe('readFileTool', () => {
 });
 
 describe('globTool', () => {
-  it('matches by relative path and skips node_modules', () => {
-    const ts = globTool({ pattern: '**/*.ts', cwd: ROOT });
+  it('matches by relative path and skips node_modules', async () => {
+    const ts = await globTool({ pattern: '**/*.ts', cwd: ROOT });
     expect(ts).toContain('src/a.ts');
-    const js = globTool({ pattern: '**/*.js', cwd: ROOT });
+    const js = await globTool({ pattern: '**/*.js', cwd: ROOT });
     expect(js).toContain('src/b.js');
     expect(js).not.toContain('node_modules/pkg/index.js');
   });
 });
 
 describe('searchTool', () => {
-  it('finds matching lines with file:line and skips node_modules', () => {
-    const hits = searchTool({ regex: 'const x', cwd: ROOT });
+  it('finds matching lines with file:line and skips node_modules', async () => {
+    const hits = await searchTool({ regex: 'const x', cwd: ROOT });
     expect(hits).toEqual([{ file: 'src/a.ts', line: 2, text: 'const x = 42;' }]);
   });
-  it('restricts by glob', () => {
-    const hits = searchTool({ regex: 'const', cwd: ROOT, glob: '**/*.js' });
+  it('restricts by glob', async () => {
+    const hits = await searchTool({ regex: 'const', cwd: ROOT, glob: '**/*.js' });
     expect(hits.map((h) => h.file)).toEqual(['src/b.js']);
   });
 });

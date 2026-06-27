@@ -311,6 +311,8 @@ export type ChatToolStatusPayload = {
   state: 'generating' | 'done' | 'error';
   label: string;
   error?: string;
+  /** 'image' renders the square image placeholder; absent → a compact tool pill. */
+  kind?: 'image';
 };
 
 /** Emitted when a conversation's title changes out-of-band (background auto-naming). */

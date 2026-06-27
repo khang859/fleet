@@ -22,6 +22,7 @@ import type { ChatMessage } from '../../../../shared/chat-types';
 import { extractArtifacts } from '../../../../shared/chat-artifacts';
 import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
+import { ToolStatusPill } from './ToolStatusPill';
 import { ToolCallCard } from './ToolCallCard';
 import { ChatMarkdown } from './ChatMarkdown';
 import { MessageUsage } from './UsageMeter';
@@ -307,15 +308,8 @@ function StreamingMessage(): React.JSX.Element {
     // aria-live=off: streaming text mutates per flush and must NOT be announced
     // token-by-token; the role=status announcer speaks start/completion instead.
     // Flat full-width assistant prose — matches a finalized assistant Bubble.
-    <div
-      className="w-full max-w-[68ch] text-sm leading-relaxed text-fleet-text"
-      aria-live="off"
-    >
-      {hasTokens ? (
-        <ChatMarkdown streaming>{streamingText}</ChatMarkdown>
-      ) : (
-        <ThinkingIndicator />
-      )}
+    <div className="w-full max-w-[68ch] text-sm leading-relaxed text-fleet-text" aria-live="off">
+      {hasTokens ? <ChatMarkdown streaming>{streamingText}</ChatMarkdown> : <ThinkingIndicator />}
     </div>
   );
 }
@@ -367,11 +361,7 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
   const animation: ScrollBehavior = reduced ? 'instant' : 'smooth';
 
   return (
-    <StickToBottom
-      className="relative min-h-0 flex-1"
-      resize={animation}
-      initial={animation}
-    >
+    <StickToBottom className="relative min-h-0 flex-1" resize={animation} initial={animation}>
       <StickToBottom.Content role="log" aria-label="Conversation" aria-busy={isStreaming}>
         {/* Centered reading column; turns separated by whitespace (no dividers),
             generous bottom padding so the last reply clears the composer. */}
@@ -387,12 +377,17 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
               onDecide={(outcome) => void decidePermission(req.requestId, outcome)}
             />
           ))}
-          {status === 'streaming' && toolStatus?.state === 'generating' && (
-            <GeneratingSkeleton label={toolStatus.label} />
-          )}
+          {status === 'streaming' &&
+            toolStatus?.state === 'generating' &&
+            (toolStatus.kind === 'image' ? (
+              <GeneratingSkeleton label={toolStatus.label} />
+            ) : (
+              <ToolStatusPill label={toolStatus.label} />
+            ))}
           {toolStatus?.state === 'error' && (
             <div className="text-sm text-red-400">
-              Image error: {toolStatus.error ?? toolStatus.label}
+              {toolStatus.kind === 'image' ? 'Image error' : 'Tool error'}:{' '}
+              {toolStatus.error ?? toolStatus.label}
             </div>
           )}
           {status === 'error' && <StreamError model={model} />}

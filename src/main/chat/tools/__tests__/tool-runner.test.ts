@@ -22,6 +22,7 @@ type AuditDraft = Omit<ChatAuditEntry, 'id' | 'createdAt'>;
 
 function setup(mode: ChatToolsConfig['mode'], rules: Partial<PermissionRules> = {}) {
   const emitted: Array<{ channel: string; payload: unknown }> = [];
+  const toolEmits: Array<{ channel: string; payload: unknown }> = [];
   const audits: AuditDraft[] = [];
   const manager = new PermissionManager({
     getRules: () => ({ allow: [], ask: [], deny: [], ...rules }),
@@ -37,11 +38,11 @@ function setup(mode: ChatToolsConfig['mode'], rules: Partial<PermissionRules> = 
   const exec = new ChatToolExecutor(
     manager,
     () => cfg,
-    () => {},
+    (channel, payload) => toolEmits.push({ channel, payload }),
     null,
     (entry) => audits.push(entry)
   );
-  return { exec, manager, emitted, audits };
+  return { exec, manager, emitted, toolEmits, audits };
 }
 
 describe('buildFsToolDefs', () => {
@@ -68,6 +69,16 @@ describe('ChatToolExecutor read tools', () => {
     const { exec } = setup('read-only');
     const out = await exec.run('read_file', JSON.stringify({ path: '.env' }), ctx);
     expect(out).toMatch(/Error:.*protected/);
+  });
+
+  it('emits a generating→done status pill around a glob walk', async () => {
+    const { exec, toolEmits } = setup('read-only');
+    await exec.run('glob', JSON.stringify({ pattern: '**/*' }), ctx);
+    const states = toolEmits.map((e) => (e.payload as { state: string }).state);
+    expect(states).toEqual(['generating', 'done']);
+    expect((toolEmits[0].payload as { label: string; kind?: string }).label).toBe('Finding **/*');
+    // No `kind` → the renderer shows the compact pill, not the image placeholder.
+    expect((toolEmits[0].payload as { kind?: string }).kind).toBeUndefined();
   });
 });
 

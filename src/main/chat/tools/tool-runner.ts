@@ -261,16 +261,16 @@ export class ChatToolExecutor {
     switch (name) {
       case 'read_file': {
         const a = readArgs.parse(JSON.parse(argsJson));
-        return {
-          output: readFileTool({ ...a, cwd }),
-          detail: a.path,
-          decision: 'allowed',
-          status: 'ok'
-        };
+        const output = await this.withProgress(ctx, `Reading ${a.path}`, () =>
+          readFileTool({ ...a, cwd })
+        );
+        return { output, detail: a.path, decision: 'allowed', status: 'ok' };
       }
       case 'glob': {
         const a = globArgs.parse(JSON.parse(argsJson));
-        const files = globTool({ ...a, cwd });
+        const files = await this.withProgress(ctx, `Finding ${a.pattern}`, async () =>
+          globTool({ ...a, cwd })
+        );
         return {
           output: files.length ? files.join('\n') : 'No files matched.',
           detail: a.pattern,
@@ -280,7 +280,9 @@ export class ChatToolExecutor {
       }
       case 'search': {
         const a = searchArgs.parse(JSON.parse(argsJson));
-        const hits = searchTool({ ...a, cwd });
+        const hits = await this.withProgress(ctx, `Searching ${a.regex}`, async () =>
+          searchTool({ ...a, cwd })
+        );
         return {
           output: hits.length
             ? hits.map((h) => `${h.file}:${h.line}: ${h.text}`).join('\n')
@@ -315,6 +317,29 @@ export class ChatToolExecutor {
           decision: 'error',
           status: 'error'
         };
+    }
+  }
+
+  /**
+   * Emit a `generating` status with `label`, run `fn`, then always clear it with
+   * `done` — even if `fn` throws (run() turns the throw into an error outcome).
+   * Used for the ungated read tools so a long folder walk shows a live pill
+   * instead of looking frozen.
+   */
+  private async withProgress<T>(ctx: ExecCtx, label: string, fn: () => T | Promise<T>): Promise<T> {
+    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
+      streamId: ctx.streamId,
+      state: 'generating',
+      label
+    } satisfies ChatToolStatusPayload);
+    try {
+      return await fn();
+    } finally {
+      this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
+        streamId: ctx.streamId,
+        state: 'done',
+        label: ''
+      } satisfies ChatToolStatusPayload);
     }
   }
 
