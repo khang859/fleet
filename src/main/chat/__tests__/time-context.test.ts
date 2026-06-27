@@ -22,8 +22,9 @@ describe('formatTimeContext', () => {
   it('includes a weekday, the IANA zone, and an offset-bearing local ISO', () => {
     const out = formatTimeContext(NOW);
     expect(out).toMatch(/Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday/);
-    // IANA zone like "America/Los_Angeles" or "UTC" in parentheses on line 1.
-    expect(out).toMatch(/\([A-Za-z]+(?:\/[A-Za-z_]+)?\)\.\n/);
+    // IANA zone in parentheses on line 1: "UTC", "America/Los_Angeles", or a
+    // three-part zone like "America/Argentina/Buenos_Aires".
+    expect(out).toMatch(/\([A-Za-z]+(?:\/[A-Za-z_]+)*\)\.\n/);
     // Local ISO carries an explicit offset (+/-HH:MM or Z-equivalent +00:00).
     expect(out).toMatch(/ISO 8601: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/);
   });
