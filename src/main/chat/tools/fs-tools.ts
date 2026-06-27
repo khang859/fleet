@@ -46,14 +46,20 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${re}$`);
 }
 
-/** Depth-first walk yielding absolute paths of files AND directories. */
-function* walkEntries(root: string): Generator<{ full: string; dir: boolean }> {
+/**
+ * Async twin of the file-and-directory walk for the `@`-mention picker. Awaiting
+ * `readdir`/`stat` hands control back to the event loop between filesystem ops,
+ * so a large workspace scan never blocks the Electron main process (and the PTYs
+ * that stream through it) on a mention keystroke. Mirrors {@link walkFilesAsync}
+ * but also yields directories.
+ */
+async function* walkEntriesAsync(root: string): AsyncGenerator<{ full: string; dir: boolean }> {
   let count = 0;
   const stack = [root];
   for (let dir = stack.pop(); dir !== undefined; dir = stack.pop()) {
     let entries: string[];
     try {
-      entries = readdirSync(dir);
+      entries = await readdir(dir);
     } catch {
       continue;
     }
@@ -61,7 +67,7 @@ function* walkEntries(root: string): Generator<{ full: string; dir: boolean }> {
       const full = join(dir, name);
       let st: Stats;
       try {
-        st = statSync(full);
+        st = await stat(full);
       } catch {
         continue;
       }
@@ -81,18 +87,19 @@ function* walkEntries(root: string): Generator<{ full: string; dir: boolean }> {
 /**
  * Fuzzy-ish path search for the `@`-mention picker: substring match on the
  * workspace-relative posix path, skipping ignored dirs/dotfiles. Basename and
- * shorter-path matches rank first.
+ * shorter-path matches rank first. Async so the keystroke-driven walk yields to
+ * the event loop instead of freezing the main process on a large workspace.
  */
-export function searchWorkspacePaths(args: {
+export async function searchWorkspacePaths(args: {
   query: string;
   cwd: string;
   limit?: number;
-}): Array<{ path: string; type: 'file' | 'dir' }> {
+}): Promise<Array<{ path: string; type: 'file' | 'dir' }>> {
   const root = resolve(args.cwd);
   const q = args.query.toLowerCase();
   const limit = args.limit ?? 20;
   const hits: Array<{ path: string; type: 'file' | 'dir'; score: number }> = [];
-  for (const { full, dir } of walkEntries(root)) {
+  for await (const { full, dir } of walkEntriesAsync(root)) {
     const rel = toPosix(relative(root, full));
     if (!rel) continue;
     const lower = rel.toLowerCase();

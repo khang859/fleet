@@ -25,6 +25,8 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
   const [attachError, setAttachError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mentionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mentionSeqRef = useRef(0);
 
   const status = useChatStore((s) => s.status);
   const uploads = useChatStore((s) => s.uploads);
@@ -108,6 +110,18 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
   const mentionOpen = mentionResults.length > 0 && !mentionDismissed && MENTION_RE.test(text);
   const mentionActive = Math.min(mentionIndex, mentionResults.length - 1);
 
+  // Debounced, latest-wins mention search: the walk runs in the main process, so
+  // coalesce keystrokes (~150ms) and drop stale responses that resolve out of order.
+  const queueMentionSearch = (query: string): void => {
+    if (mentionTimerRef.current) clearTimeout(mentionTimerRef.current);
+    const seq = ++mentionSeqRef.current;
+    mentionTimerRef.current = setTimeout(() => {
+      void window.fleet.chat.mentionSearch(query).then((results) => {
+        if (seq === mentionSeqRef.current) setMentionResults(results);
+      });
+    }, 150);
+  };
+
   const onTextChange = (value: string): void => {
     setText(value);
     setMenuDismissed(false);
@@ -115,8 +129,10 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
     if (m) {
       setMentionDismissed(false);
       setMentionIndex(0);
-      void window.fleet.chat.mentionSearch(m[1]).then(setMentionResults);
+      queueMentionSearch(m[1]);
     } else {
+      if (mentionTimerRef.current) clearTimeout(mentionTimerRef.current);
+      mentionSeqRef.current++;
       setMentionResults([]);
     }
   };

@@ -117,10 +117,13 @@ export function registerChatIpc(deps: Deps): void {
       return exportConversation(conv?.title ?? 'Conversation', messages, format);
     }
   );
-  ipcMain.handle(IPC_CHANNELS.CHAT_MENTION_SEARCH, (_e, query: string): ChatMentionItem[] => {
-    const cwd = defaultWorkspace(settingsStore.get().ai.chat.tools.workspaceDir);
-    return searchWorkspacePaths({ query, cwd, limit: 20 });
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.CHAT_MENTION_SEARCH,
+    async (_e, query: string): Promise<ChatMentionItem[]> => {
+      const cwd = defaultWorkspace(settingsStore.get().ai.chat.tools.workspaceDir);
+      return searchWorkspacePaths({ query, cwd, limit: 20 });
+    }
+  );
   ipcMain.handle(IPC_CHANNELS.CHAT_CANCEL, (_e, streamId: string) => {
     service.cancel(streamId);
   });

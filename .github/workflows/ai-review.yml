@@ -10,7 +10,11 @@ name: AI Review
 #   1. review  — the "reviewer" agent finds candidate issues and posts them.
 #   2. verify  — the "verifier" agent adversarially re-checks each finding against the
 #                real code and posts only the confirmed ones (false positives discarded).
-# Both agents are defined in opencode.json.
+# Each stage has its OWN config file (.github/ai-review-{reviewer,verifier}.json) and
+# selects its agent via `default_agent`. The action's `agent` input is silently dropped
+# by `opencode github run` (anomalyco/opencode#17934), so `default_agent` is the only
+# mechanism that actually works — without it both stages fall back to the built-in
+# `build` agent and just post a generic PR summary.
 #
 # Re-review: just comment again. The reviewer sees the full PR thread (your previous
 # review comments and findings), so e.g.
@@ -70,10 +74,12 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # CI-only agent config. Lives at a non-default path so local opencode never
-          # auto-loads it — your personal opencode settings are untouched.
-          OPENCODE_CONFIG: ${{ github.workspace }}/.github/ai-review-agents.json
+          # auto-loads it — your personal opencode settings are untouched. The reviewer
+          # agent is selected via `default_agent` inside this file (see note below).
+          OPENCODE_CONFIG: ${{ github.workspace }}/.github/ai-review-reviewer.json
         with:
-          agent: reviewer
+          # No `agent:` input — `opencode github run` ignores it (anomalyco/opencode#17934);
+          # the agent is chosen by `default_agent` in the OPENCODE_CONFIG file above.
           # Model is set via a repository variable so you can change it in the
           # GitHub UI (Settings → Secrets and variables → Actions → Variables tab →
           # new variable named AI_REVIEW_MODEL) without editing this file.
@@ -109,9 +115,11 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENCODE_CONFIG: ${{ github.workspace }}/.github/ai-review-agents.json
+          # Verifier's own config; selects the verifier agent via `default_agent`
+          # (the `agent` input is ignored — anomalyco/opencode#17934).
+          OPENCODE_CONFIG: ${{ github.workspace }}/.github/ai-review-verifier.json
         with:
-          agent: verifier
+          # No `agent:` input (anomalyco/opencode#17934) — see the reviewer job above.
           # Cross-family verification: research shows a same-model verifier
           # under-flags its own family's mistakes, so set the AI_VERIFY_MODEL
           # repo variable to a DIFFERENT model family than AI_REVIEW_MODEL

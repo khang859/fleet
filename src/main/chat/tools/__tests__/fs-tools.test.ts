@@ -83,20 +83,21 @@ describe('assertReadablePath', () => {
 });
 
 describe('searchWorkspacePaths', () => {
-  it('matches files and folders by substring, skipping ignored dirs', () => {
-    const hits = searchWorkspacePaths({ query: 'a.ts', cwd: ROOT });
+  it('matches files and folders by substring, skipping ignored dirs', async () => {
+    const hits = await searchWorkspacePaths({ query: 'a.ts', cwd: ROOT });
     expect(hits.some((h) => h.path === 'src/a.ts' && h.type === 'file')).toBe(true);
     // node_modules is never surfaced.
     expect(hits.every((h) => !h.path.includes('node_modules'))).toBe(true);
   });
 
-  it('returns directories with a dir type', () => {
-    const hits = searchWorkspacePaths({ query: 'src', cwd: ROOT });
+  it('returns directories with a dir type', async () => {
+    const hits = await searchWorkspacePaths({ query: 'src', cwd: ROOT });
     expect(hits.some((h) => h.path === 'src' && h.type === 'dir')).toBe(true);
   });
 
-  it('respects the result limit', () => {
-    expect(searchWorkspacePaths({ query: '', cwd: ROOT, limit: 2 }).length).toBeLessThanOrEqual(2);
+  it('respects the result limit', async () => {
+    const hits = await searchWorkspacePaths({ query: '', cwd: ROOT, limit: 2 });
+    expect(hits.length).toBeLessThanOrEqual(2);
   });
 });
 
