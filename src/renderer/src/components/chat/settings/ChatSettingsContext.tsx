@@ -20,6 +20,11 @@ export function ChatSettingsProvider({
   // rapid provider switch A→B→A) compare against the true current value rather
   // than a stale render closure.
   const settingsRef = useRef<ChatSettings | null>(null);
+  // Monotonic guard for async key-presence lookups. Every action that resolves
+  // `searchKeyPresent` (provider switch, save, clear) bumps it; a lookup only
+  // applies its result if it's still the latest, so out-of-order IPC responses
+  // from a rapid provider switch can't clobber a newer, correct value.
+  const searchKeySeq = useRef(0);
 
   const commit = (next: ChatSettings): void => {
     settingsRef.current = next;
@@ -51,12 +56,15 @@ export function ChatSettingsProvider({
     );
     // Assume the new provider has no key until hasSearchKey resolves, so the
     // remounted SecretInput never briefly shows the previous provider's state.
+    const seq = providerChanged ? (searchKeySeq.current += 1) : searchKeySeq.current;
     if (providerChanged) setSearchKeyPresent(false);
     setStatus('saving');
     try {
       await window.fleet.chat.patchSettings(partial);
       if (providerChanged && partial.webSearch) {
-        setSearchKeyPresent(await window.fleet.chat.hasSearchKey(partial.webSearch.provider));
+        const present = await window.fleet.chat.hasSearchKey(partial.webSearch.provider);
+        // Drop the result if a newer key-presence action superseded this one.
+        if (seq === searchKeySeq.current) setSearchKeyPresent(present);
       }
       flashSaved();
     } catch {
@@ -79,6 +87,7 @@ export function ChatSettingsProvider({
   const saveSearchKey = async (key: string): Promise<void> => {
     const current = settingsRef.current;
     if (!current) return;
+    searchKeySeq.current += 1; // supersede any in-flight provider-switch lookup
     await window.fleet.chat.setSearchKey(current.webSearch.provider, key);
     setSearchKeyPresent(true);
   };
@@ -86,6 +95,7 @@ export function ChatSettingsProvider({
   const clearSearchKey = async (): Promise<void> => {
     const current = settingsRef.current;
     if (!current) return;
+    searchKeySeq.current += 1; // supersede any in-flight provider-switch lookup
     await window.fleet.chat.clearSearchKey(current.webSearch.provider);
     setSearchKeyPresent(false);
   };
