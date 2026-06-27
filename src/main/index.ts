@@ -114,6 +114,7 @@ import { createWebSearchProvider, formatWebSearchResults } from './chat/web-sear
 import { McpManager } from './chat/mcp/manager';
 import { SkillManager, type SkillRoot } from './chat/skills/skill-manager';
 import { ChatImageStorage } from './chat/image/image-storage';
+import { ChatWorkspace } from './chat/chat-workspace';
 import { OpenRouterImageProvider } from './chat/image/openrouter-image-provider';
 import { KanbanNotifier } from './kanban/kanban-notifier';
 import pkg from 'electron-updater';
@@ -1324,7 +1325,11 @@ void app.whenReady().then(async () => {
   const chatStore = new ChatStore(join(app.getPath('userData'), 'chat.db'));
   const chatSecrets = new ChatSecrets();
   const chatClient = new OpenRouterClient();
-  const chatImageStorage = new ChatImageStorage(join(app.getPath('userData'), 'chat-images'));
+  const chatWorkspace = new ChatWorkspace(
+    join(homedir(), '.fleet', 'chat'),
+    join(app.getPath('userData'), 'chat-images')
+  );
+  const chatImageStorage = new ChatImageStorage(chatWorkspace);
   const chatImageProvider = new OpenRouterImageProvider(() => chatSecrets.getKey());
   const chatEmit = (channel: string, payload: unknown): void => {
     const w = mainWindow;
@@ -1384,6 +1389,7 @@ void app.whenReady().then(async () => {
     chatPermissions,
     () => settingsStore.get().ai.chat.tools,
     chatEmit,
+    chatWorkspace,
     chatMcp,
     (entry) => chatStore.addAudit(entry),
     chatWebSearch
@@ -1419,6 +1425,7 @@ void app.whenReady().then(async () => {
     toolExecutor: chatToolExecutor,
     imageProvider: chatImageProvider,
     imageStorage: chatImageStorage,
+    workspace: chatWorkspace,
     emit: chatEmit
   });
   // Hybrid keyword + semantic search over chat messages, sharing the embed worker.
@@ -1435,6 +1442,8 @@ void app.whenReady().then(async () => {
     permissions: chatPermissions,
     mcp: chatMcp,
     skills: chatSkills,
+    workspace: chatWorkspace,
+    imageStorage: chatImageStorage,
     revealSkillsFolder: () => {
       mkdirSync(personalSkillsDir, { recursive: true });
       void shell.openPath(personalSkillsDir);

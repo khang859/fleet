@@ -48,12 +48,12 @@ export function AgentToolsSection(): React.JSX.Element {
       <Disclosure label="Advanced">
         <Field
           label="Workspace directory"
-          description="Default cwd for tools and the sandbox writable root."
+          description="Absolute path the tools read, write, and run in. Leave empty to give each chat its own isolated folder under ~/.fleet/chat."
           layout="stack"
         >
           <input
             value={tools.workspaceDir ?? ''}
-            placeholder="Default: app working directory"
+            placeholder="Default: isolated per-chat folder"
             onChange={(e) =>
               void patch({ tools: { ...tools, workspaceDir: e.target.value.trim() || null } })
             }

@@ -116,7 +116,8 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
     if (mentionTimerRef.current) clearTimeout(mentionTimerRef.current);
     const seq = ++mentionSeqRef.current;
     mentionTimerRef.current = setTimeout(() => {
-      void window.fleet.chat.mentionSearch(query).then((results) => {
+      const conversationId = useChatStore.getState().activeId;
+      void window.fleet.chat.mentionSearch(query, conversationId).then((results) => {
         if (seq === mentionSeqRef.current) setMentionResults(results);
       });
     }, 150);
