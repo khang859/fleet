@@ -66,6 +66,20 @@ describe('searchTool', () => {
   });
 });
 
+describe('abort signal', () => {
+  it('globTool rejects when the signal is already aborted', async () => {
+    const ac = new AbortController();
+    ac.abort();
+    await expect(globTool({ pattern: '**/*', cwd: ROOT, signal: ac.signal })).rejects.toThrow();
+  });
+
+  it('searchTool rejects when the signal is already aborted', async () => {
+    const ac = new AbortController();
+    ac.abort();
+    await expect(searchTool({ regex: 'const', cwd: ROOT, signal: ac.signal })).rejects.toThrow();
+  });
+});
+
 describe('assertReadablePath', () => {
   it('denies credential roots like ~/.ssh and ~/.aws', () => {
     const home = homedir();

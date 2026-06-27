@@ -269,7 +269,7 @@ export class ChatToolExecutor {
       case 'glob': {
         const a = globArgs.parse(JSON.parse(argsJson));
         const files = await this.withProgress(ctx, `Finding ${a.pattern}`, async () =>
-          globTool({ ...a, cwd })
+          globTool({ ...a, cwd, signal: ctx.signal })
         );
         return {
           output: files.length ? files.join('\n') : 'No files matched.',
@@ -281,7 +281,7 @@ export class ChatToolExecutor {
       case 'search': {
         const a = searchArgs.parse(JSON.parse(argsJson));
         const hits = await this.withProgress(ctx, `Searching ${a.regex}`, async () =>
-          searchTool({ ...a, cwd })
+          searchTool({ ...a, cwd, signal: ctx.signal })
         );
         return {
           output: hits.length
