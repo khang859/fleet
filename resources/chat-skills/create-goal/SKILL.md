@@ -16,9 +16,9 @@ write to `docs/goals/`, tell the user and stop.
 
 ## Inputs
 
-- **The idea.** The text the user typed after the invocation (shown as
-  `User: <arg>` below). If it is empty, ask one question: "What's the goal?"
-  and wait for an answer before continuing.
+- **The idea.** The text the user typed after the invocation in their message.
+  If it is empty, ask one question: "What's the goal?" and wait for an answer
+  before continuing.
 
 ## Protocol
 
