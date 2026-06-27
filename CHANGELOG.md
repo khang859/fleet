@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.80.0
+
+- **Isolated workspace per conversation** — each Chat conversation now gets its own dedicated `~/.fleet/chat/{id}` folder, so file reads, writes, and generated images are scoped to that conversation instead of sharing one global workspace (#386).
+
 ## v2.79.0
 
 - **Chat settings redesign** — the Chat settings screen is rebuilt with a left-nav rail and focused panes: progressive disclosure, instant-apply toggles with a save-status cue, search-to-jump, and an upgraded API-key field. All settings are preserved (#384).
