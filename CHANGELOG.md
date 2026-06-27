@@ -3,6 +3,7 @@
 ## v2.80.0
 
 - **Isolated workspace per conversation** — each Chat conversation now gets its own dedicated `~/.fleet/chat/{id}` folder, so file reads, writes, and generated images are scoped to that conversation instead of sharing one global workspace (#386).
+- **Create-goal chat skill** — a bundled skill that writes structured goal docs to `docs/goals/`, plus a fix for the empty slash-command menu (#387).
 
 ## v2.79.0
 
