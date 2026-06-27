@@ -24,27 +24,46 @@ a `/` autocomplete menu. The relevant pieces:
 
 - **Skill discovery:** `src/main/chat/skills/skill-manager.ts` +
   `skill-loader.ts`. Scans roots by scope priority (project > personal > bundled).
-  Bundled root is `resources/pi-skills` (wired in `src/main/index.ts:1350-1361`).
+  Bundled root today is `resources/pi-skills` and personal is
+  `userData/chat-skills` (wired in `src/main/index.ts:1350-1361`).
 - **Existing bundled skill:** `resources/pi-skills/code-review/SKILL.md` — the
   exact template we mirror. It is bundled, default-`on`, invoked as
   `/skill:code-review` or `/code-review`, and writes a dated markdown report to
-  `docs/reviews/YYYY-MM-DD-<topic>.md`.
+  `docs/reviews/YYYY-MM-DD-<topic>.md`. It lives under `pi-skills` because the Pi
+  agent reads it by name from there.
 - **Slash menu:** `src/renderer/src/components/chat/Composer.tsx:54-95, 375-460`.
   Commands = installed skills (`skillMenu`) + saved prompt templates
   (`promptTemplates`). Loaded on chat init via `chat-store.init` →
   `loadSkillMenu` → `window.fleet.chat.skillsGet`.
-- **Pi isolation:** the Pi agent loads only `code-review` by name
-  (`pi-agent-manager.getSkillPaths` → `['code-review']`), so adding a second
-  folder under `resources/pi-skills` does **not** leak it to Pi.
+- **Pi isolation:** the Pi agent loads skills only from `resources/pi-skills` by
+  name (`pi-agent-manager.getSkillPaths` → `['code-review']`). Putting chat
+  skills under a separate `resources/chat-skills` keeps them entirely out of Pi.
 
 ## Part 1 — `create-goal` bundled skill
 
-### Location
+### Location & wiring
 
-`resources/pi-skills/create-goal/SKILL.md` — follows the existing bundled-skill
-convention, so no `index.ts` root wiring is needed. Default skill state is `on`
-(absent overlay entry ⇒ `on`), so it ships enabled and appears in the system
-prompt, the `/` menu, and is loadable.
+`resources/chat-skills/create-goal/SKILL.md`. Chat bundled skills get their own
+home (`resources/chat-skills`) rather than borrowing the Pi agent's `pi-skills`
+dir. This requires registering the new bundled root in `src/main/index.ts`
+alongside the existing one:
+
+```ts
+const roots: SkillRoot[] = [
+  { root: join(skillsResourcesDir, 'chat-skills'), scope: 'bundled' }, // NEW
+  { root: join(skillsResourcesDir, 'pi-skills'), scope: 'bundled' },   // keeps code-review in chat
+  { root: personalSkillsDir, scope: 'personal' }
+];
+```
+
+`pi-skills` stays wired so `code-review` continues to appear in chat (moving it
+would break the Pi agent or duplicate it). Bundled-vs-bundled name collisions are
+not a concern here (distinct skill names). Note the personal root is also named
+`chat-skills` but lives under `userData` — a different absolute path, so no
+collision with the new `resources/chat-skills` bundled root.
+
+Default skill state is `on` (absent overlay entry ⇒ `on`), so `create-goal` ships
+enabled and appears in the system prompt, the `/` menu, and is loadable.
 
 ### Frontmatter
 
@@ -142,14 +161,16 @@ never opens and the user gets no feedback.
 
 - No swarm/kanban integration; `create-goal` does **not** create a `SwarmInput`
   or kanban card.
-- No new agent tool, no `fleet` CLI command, no new skill root, no settings-UI
-  changes.
+- No new agent tool, no `fleet` CLI command, no settings-UI changes. (We do add
+  one bundled skill root, `resources/chat-skills`, but the SkillManager already
+  supports multiple roots — this is config wiring, not new machinery.)
 
 ## Testing / verification
 
 - **Skill loads:** add a unit assertion (or extend the existing skill-manager
-  tests) that `create-goal` is discovered from the bundled root and appears in
-  `menuItems()` / `statuses()` with state `on`.
+  tests) that `create-goal` is discovered from the new `resources/chat-skills`
+  bundled root and appears in `menuItems()` / `statuses()` with state `on`, and
+  that `code-review` still loads from `pi-skills`.
 - **Skill shape:** `create-goal/SKILL.md` parses (valid frontmatter with
   `name`/`description`); covered by the existing loader behavior.
 - **Slash menu:** component/unit coverage that (a) typing `/` with an empty
@@ -163,7 +184,9 @@ never opens and the user gets no feedback.
 
 ## Files touched
 
-- **New:** `resources/pi-skills/create-goal/SKILL.md`
+- **New:** `resources/chat-skills/create-goal/SKILL.md`
+- **Edit:** `src/main/index.ts` — register `resources/chat-skills` as a bundled
+  chat skill root.
 - **Edit:** `src/renderer/src/components/chat/Composer.tsx` (menu-open gate,
   empty-state row, keyboard guards)
 - **Test:** extend skill-manager and/or composer tests as above
