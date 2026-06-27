@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.78.0
+
+- **More web-search providers in Chat** — the pluggable web-search tool now supports **Exa** and **Brave** alongside Tavily. Keys are stored per-provider (encrypted) so switching providers keeps each key intact, and a settings dropdown drives the choice (#369).
+- **Chat tool-use feedback & responsiveness** — read-only tools (read_file, glob, search) now show a compact status pill instead of silent thinking dots, and folder scans no longer freeze the Electron main process: the glob/search and @-mention filesystem walks are now async and yield to the event loop (#374, #376). The @-mention picker is also debounced with a latest-wins guard.
+- **Stop interrupts scans promptly** — the agentic glob/search walk now honors the abort signal, so hitting Stop mid-scan interrupts the filesystem walk instead of running to completion (#377).
+
 ## v2.77.0
 
 - **Chat message renderer overhaul** — the Chat tool adopts [Streamdown](https://streamdown.ai) for streaming Markdown (#341) with **Shiki dual-theme code highlighting** (#342), a focused code-block header with height cap (#343), hardened model-rendered links/images (#344), GFM **table zebra striping** and clean prose (#345), and an **asymmetric layout** — flat assistant text, user bubbles (#346).
