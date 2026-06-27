@@ -194,4 +194,10 @@ export function registerChatIpc(deps: Deps): void {
   ipcMain.handle(IPC_CHANNELS.CHAT_HAS_SEARCH_KEY, (_e, provider: WebSearchProviderId): boolean =>
     secrets.hasSearchKey(provider)
   );
+  ipcMain.handle(IPC_CHANNELS.CHAT_CLEAR_KEY, () => {
+    secrets.clearKey();
+  });
+  ipcMain.handle(IPC_CHANNELS.CHAT_CLEAR_SEARCH_KEY, (_e, provider: WebSearchProviderId) => {
+    secrets.clearSearchKey(provider);
+  });
 }

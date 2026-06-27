@@ -97,6 +97,15 @@ export class ChatSecrets {
     return Boolean(this.searchKeyEnc(provider));
   }
 
+  clearSearchKey(provider: WebSearchProviderId): void {
+    const data = this.store.get();
+    const next = { ...data.searchKeysEnc };
+    delete next[provider];
+    // Also drop the legacy single-slot key so removing Tavily fully clears it.
+    const searchKeyEnc = provider === 'tavily' ? undefined : data.searchKeyEnc;
+    this.store.set({ ...data, searchKeysEnc: next, searchKeyEnc });
+  }
+
   /** The stored ciphertext for a provider; falls back to the legacy slot for Tavily. */
   private searchKeyEnc(provider: WebSearchProviderId): string | undefined {
     const data = this.store.get();
