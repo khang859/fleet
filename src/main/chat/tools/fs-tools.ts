@@ -198,7 +198,7 @@ function* walkFiles(root: string): Generator<string> {
  * stream through it). The synchronous walker is kept for the bounded, one-shot
  * `@`-mention context build.
  */
-async function* walkFilesAsync(root: string): AsyncGenerator<string> {
+async function* walkFilesAsync(root: string, signal?: AbortSignal): AsyncGenerator<string> {
   let count = 0;
   const stack = [root];
   for (let dir = stack.pop(); dir !== undefined; dir = stack.pop()) {
@@ -209,6 +209,7 @@ async function* walkFilesAsync(root: string): AsyncGenerator<string> {
       continue; // unreadable dir — skip
     }
     for (const name of entries) {
+      signal?.throwIfAborted(); // honor Stop mid-scan instead of walking to MAX_WALK_FILES
       const full = join(dir, name);
       let st: Stats;
       try {
@@ -254,11 +255,12 @@ export async function globTool(args: {
   pattern: string;
   path?: string;
   cwd: string;
+  signal?: AbortSignal;
 }): Promise<string[]> {
   const root = assertReadablePath(args.path ?? '.', args.cwd);
   const re = globToRegExp(args.pattern);
   const matches: string[] = [];
-  for await (const file of walkFilesAsync(root)) {
+  for await (const file of walkFilesAsync(root, args.signal)) {
     const rel = toPosix(relative(root, file));
     if (re.test(rel) || re.test(toPosix(relative(root, file).split(sep).pop() ?? ''))) {
       matches.push(rel);
@@ -274,12 +276,13 @@ export async function searchTool(args: {
   path?: string;
   glob?: string;
   cwd: string;
+  signal?: AbortSignal;
 }): Promise<Array<{ file: string; line: number; text: string }>> {
   const root = assertReadablePath(args.path ?? '.', args.cwd);
   const re = new RegExp(args.regex);
   const globRe = args.glob ? globToRegExp(args.glob) : null;
   const out: Array<{ file: string; line: number; text: string }> = [];
-  for await (const file of walkFilesAsync(root)) {
+  for await (const file of walkFilesAsync(root, args.signal)) {
     const rel = toPosix(relative(root, file));
     if (globRe && !globRe.test(rel)) continue;
     let buf: Buffer;
