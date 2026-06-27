@@ -432,7 +432,8 @@ export class ChatService {
             emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
               streamId,
               state: 'generating',
-              label: `Generating image with ${imageModel}…`
+              label: `Generating image with ${imageModel}…`,
+              kind: 'image'
             } satisfies ChatToolStatusPayload);
             try {
               const { prompt, edit } = parseGenerateImageArgs(call.arguments);
@@ -472,7 +473,8 @@ export class ChatService {
                 streamId,
                 state: 'error',
                 label: 'Image generation failed',
-                error: msg
+                error: msg,
+                kind: 'image'
               } satisfies ChatToolStatusPayload);
               messages.push({
                 role: 'tool',
