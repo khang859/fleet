@@ -37,10 +37,20 @@ making it async would force `ChatService.send()` async (breaks ~13 tests that
 read `.userMessage` off the synchronous return). A separate sync `walkFiles` is
 kept for it.
 
-**Follow-ups (not done):** the `@`-mention picker (`searchWorkspacePaths`) still
-walks synchronously on keystroke; and the agentic walk does not check
-`ctx.signal`, so a Stop mid-scan won't abort it early (bounded by
-`MAX_WALK_FILES`).
+**Follow-up (done, #372):** the `@`-mention picker (`searchWorkspacePaths`) now
+walks asynchronously via `walkEntriesAsync` (an async twin of `walkEntries`/
+`walkFilesAsync`), so a large-workspace scan on keystroke no longer blocks the
+main process. Its IPC handler (`CHAT_MENTION_SEARCH`) returns the promise, and
+the renderer debounces the search ~150ms with a latest-wins sequence guard so
+stale in-flight results can't overwrite newer ones. This path is independent of
+the `ChatService.send()` sync constraint, which only governs
+`buildMentionContext`.
+
+**Follow-up (not done):** the agentic walk does not check `ctx.signal`, so a Stop
+mid-scan won't abort it early (bounded by `MAX_WALK_FILES`). The mention picker's
+superseded walks likewise run to completion in the main process (the renderer
+just drops their late results); main-side cancellation would need a request-keyed
+cancel IPC since `AbortSignal` can't cross IPC directly.
 
 ## UI: GeneratingSkeleton was image-only
 
