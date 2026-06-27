@@ -16,10 +16,19 @@ export function ChatSettingsProvider({
   const [searchKeyPresent, setSearchKeyPresent] = useState(false);
   const [status, setStatus] = useState<SaveStatus>('idle');
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest settings, updated synchronously so back-to-back patch() calls (e.g. a
+  // rapid provider switch A→B→A) compare against the true current value rather
+  // than a stale render closure.
+  const settingsRef = useRef<ChatSettings | null>(null);
+
+  const commit = (next: ChatSettings): void => {
+    settingsRef.current = next;
+    setSettings(next);
+  };
 
   useEffect(() => {
     void window.fleet.chat.getSettings().then(async (s) => {
-      setSettings(s);
+      commit(s);
       setSearchKeyPresent(await window.fleet.chat.hasSearchKey(s.webSearch.provider));
     });
     return () => {
@@ -34,10 +43,12 @@ export function ChatSettingsProvider({
   };
 
   const patch = async (partial: Partial<ChatSettings>): Promise<void> => {
+    const prev = settingsRef.current;
+    if (!prev) return;
+    commit({ ...prev, ...partial });
     const providerChanged = Boolean(
-      partial.webSearch && settings && partial.webSearch.provider !== settings.webSearch.provider
+      partial.webSearch && partial.webSearch.provider !== prev.webSearch.provider
     );
-    setSettings((prev) => (prev ? { ...prev, ...partial } : prev));
     // Assume the new provider has no key until hasSearchKey resolves, so the
     // remounted SecretInput never briefly shows the previous provider's state.
     if (providerChanged) setSearchKeyPresent(false);
@@ -66,14 +77,16 @@ export function ChatSettingsProvider({
   };
 
   const saveSearchKey = async (key: string): Promise<void> => {
-    if (!settings) return;
-    await window.fleet.chat.setSearchKey(settings.webSearch.provider, key);
+    const current = settingsRef.current;
+    if (!current) return;
+    await window.fleet.chat.setSearchKey(current.webSearch.provider, key);
     setSearchKeyPresent(true);
   };
 
   const clearSearchKey = async (): Promise<void> => {
-    if (!settings) return;
-    await window.fleet.chat.clearSearchKey(settings.webSearch.provider);
+    const current = settingsRef.current;
+    if (!current) return;
+    await window.fleet.chat.clearSearchKey(current.webSearch.provider);
     setSearchKeyPresent(false);
   };
 
