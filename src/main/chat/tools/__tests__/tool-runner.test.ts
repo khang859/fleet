@@ -3,6 +3,7 @@ import { tmpdir } from 'os';
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { ChatToolExecutor, buildFsToolDefs, FS_TOOL_NAMES } from '../tool-runner';
+import { ChatWorkspace } from '../../chat-workspace';
 import { PermissionManager } from '../../permissions/permission-manager';
 import type {
   PermissionRules,
@@ -15,6 +16,7 @@ mkdirSync(ROOT, { recursive: true });
 writeFileSync(join(ROOT, 'hello.txt'), 'hi there\n');
 
 const ctx = { streamId: 's1', conversationId: 'conv1', signal: new AbortController().signal };
+const workspace = new ChatWorkspace(join(ROOT, '.base'), join(ROOT, '.legacy'));
 
 afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
 
@@ -40,6 +42,7 @@ function setup(mode: ChatToolsConfig['mode'], rules: Partial<PermissionRules> = 
     manager,
     () => cfg,
     (channel, payload) => toolEmits.push({ channel, payload }),
+    workspace,
     null,
     (entry) => audits.push(entry)
   );
@@ -192,6 +195,7 @@ describe('ChatToolExecutor web search', () => {
       manager,
       () => cfg,
       () => {},
+      workspace,
       null,
       null,
       {

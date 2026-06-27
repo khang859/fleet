@@ -8,8 +8,15 @@ import { OpenRouterClient } from '../openrouter-client';
 import { ChatService } from '../chat-service';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
 import { ChatImageStorage } from '../image/image-storage';
+import { ChatWorkspace } from '../chat-workspace';
 import type { ChatImageProvider } from '../image/types';
 import type { ChatToolExecutor } from '../tools/tool-runner';
+
+/** Build the workspace + image-storage pair a ChatService needs from a base dir. */
+function imgStack(base: string): { workspace: ChatWorkspace; imageStorage: ChatImageStorage } {
+  const workspace = new ChatWorkspace(base, `${base}-legacy`);
+  return { workspace, imageStorage: new ChatImageStorage(workspace) };
+}
 
 const stubExecutor = { run: async () => Promise.resolve('') } as unknown as ChatToolExecutor;
 
@@ -76,7 +83,7 @@ describe('ChatService.send', () => {
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
-      imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
+      ...imgStack(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
     });
 
@@ -129,7 +136,7 @@ describe('ChatService.send', () => {
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
-      imageStorage: new ChatImageStorage(join(DIR, 'imgs')),
+      ...imgStack(join(DIR, 'imgs')),
       emit: (channel, payload) => events.push({ channel, payload })
     });
     service.send({ conversationId: conv.id, text: 'hi', model: 'x/y' });
@@ -190,7 +197,7 @@ it('runs the image tool loop and persists a generated image', async () => {
     skills: stubSkills,
     toolExecutor: stubExecutor,
     imageProvider: provider,
-    imageStorage: new ChatImageStorage(dir),
+    ...imgStack(dir),
     emit: (channel, payload) => events.push({ channel, payload })
   });
 
@@ -263,7 +270,7 @@ it('passes the reference image to the provider as a base64 data URL when editing
     skills: stubSkills,
     toolExecutor: stubExecutor,
     imageProvider: provider,
-    imageStorage: new ChatImageStorage(dir),
+    ...imgStack(dir),
     emit: (channel, payload) => events.push({ channel, payload })
   });
 
@@ -315,7 +322,7 @@ describe('ChatService regenerate / edit', () => {
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
-      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      ...imgStack(join(dir, 'imgs')),
       emit: () => {}
     });
   }
@@ -475,7 +482,7 @@ describe('ChatService usage accounting', () => {
       skills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
-      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      ...imgStack(join(dir, 'imgs')),
       emit: () => {}
     });
 
@@ -534,7 +541,7 @@ describe('ChatService usage accounting', () => {
       skills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
-      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      ...imgStack(join(dir, 'imgs')),
       emit: () => {}
     });
 
@@ -578,7 +585,7 @@ describe('ChatService attachments', () => {
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
-      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      ...imgStack(join(dir, 'imgs')),
       emit: () => {}
     });
   }
@@ -712,7 +719,7 @@ describe('ChatService personas', () => {
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
-      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      ...imgStack(join(dir, 'imgs')),
       emit: () => {}
     });
 
@@ -749,7 +756,7 @@ describe('ChatService time context', () => {
       skills: stubSkills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
-      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      ...imgStack(join(dir, 'imgs')),
       emit: () => {}
     });
   }
@@ -880,7 +887,7 @@ describe('ChatService skills', () => {
       skills,
       toolExecutor: stubExecutor,
       imageProvider: fakeProvider,
-      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      ...imgStack(join(dir, 'imgs')),
       emit: () => {}
     });
 

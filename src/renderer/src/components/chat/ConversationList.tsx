@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Plus, Trash2, GitBranch, Download, Pin, Search, X } from 'lucide-react';
+import { Plus, Trash2, GitBranch, Download, Pin, Search, X, FolderOpen } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import type { ChatConversation } from '../../../../shared/chat-types';
 
@@ -108,6 +108,16 @@ function Row({ c }: { c: ChatConversation }): React.JSX.Element {
               }}
             >
               <Download size={12} className="text-fleet-text-muted hover:text-fleet-text" />
+            </button>
+            <button
+              aria-label="Reveal folder"
+              title="Reveal folder in file manager"
+              onClick={(e) => {
+                e.stopPropagation();
+                void window.fleet.chat.revealFolder(c.id);
+              }}
+            >
+              <FolderOpen size={12} className="text-fleet-text-muted hover:text-fleet-text" />
             </button>
             <button
               aria-label="Delete conversation"

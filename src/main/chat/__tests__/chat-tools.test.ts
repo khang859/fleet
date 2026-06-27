@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { parseGenerateImageArgs, runGenerateImage } from '../chat-tools';
 import type { ChatImageProvider } from '../image/types';
 import { ChatImageStorage } from '../image/image-storage';
+import { ChatWorkspace } from '../chat-workspace';
 import { mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -28,7 +29,7 @@ describe('chat-tools', () => {
       generate: vi.fn(async () => ({ data: Buffer.from('IMG'), mimeType: 'image/png' }))
     };
     /* eslint-enable @typescript-eslint/require-await */
-    const storage = new ChatImageStorage(base);
+    const storage = new ChatImageStorage(new ChatWorkspace(base, `${base}-legacy`));
     const ref = await runGenerateImage(
       { provider, storage },
       { conversationId: 'c1', prompt: 'a fox', model: 'm', signal: new AbortController().signal }

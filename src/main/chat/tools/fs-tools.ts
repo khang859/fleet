@@ -1,5 +1,5 @@
-import { readFileSync, readdirSync, statSync, type Stats } from 'fs';
-import { readdir, readFile, stat } from 'fs/promises';
+import { readFileSync, readdirSync, lstatSync, statSync, type Stats } from 'fs';
+import { readdir, readFile, lstat } from 'fs/promises';
 import { join, relative, resolve, sep } from 'path';
 import { assertReadablePath } from './fs-safety';
 
@@ -67,10 +67,11 @@ async function* walkEntriesAsync(root: string): AsyncGenerator<{ full: string; d
       const full = join(dir, name);
       let st: Stats;
       try {
-        st = await stat(full);
+        st = await lstat(full);
       } catch {
         continue;
       }
+      if (st.isSymbolicLink()) continue; // never traverse out of the workspace via a link
       if (st.isDirectory()) {
         if (!IGNORED_DIRS.has(name) && !name.startsWith('.')) {
           yield { full, dir: true };
@@ -184,10 +185,11 @@ function* walkFiles(root: string): Generator<string> {
       const full = join(dir, name);
       let st: Stats;
       try {
-        st = statSync(full);
+        st = lstatSync(full);
       } catch {
         continue;
       }
+      if (st.isSymbolicLink()) continue; // never traverse out of the workspace via a link
       if (st.isDirectory()) {
         if (!IGNORED_DIRS.has(name) && !name.startsWith('.')) stack.push(full);
       } else if (st.isFile()) {
@@ -220,10 +222,11 @@ async function* walkFilesAsync(root: string, signal?: AbortSignal): AsyncGenerat
       const full = join(dir, name);
       let st: Stats;
       try {
-        st = await stat(full);
+        st = await lstat(full);
       } catch {
         continue;
       }
+      if (st.isSymbolicLink()) continue; // never traverse out of the workspace via a link
       if (st.isDirectory()) {
         if (!IGNORED_DIRS.has(name) && !name.startsWith('.')) stack.push(full);
       } else if (st.isFile()) {
@@ -294,7 +297,7 @@ export async function searchTool(args: {
     if (globRe && !globRe.test(rel)) continue;
     let buf: Buffer;
     try {
-      const st = await stat(file);
+      const st = await lstat(file);
       if (st.size > MAX_FILE_BYTES) continue;
       buf = await readFile(file);
     } catch {
@@ -310,8 +313,4 @@ export async function searchTool(args: {
     }
   }
   return out;
-}
-
-export function defaultWorkspace(configured: string | null): string {
-  return configured ? resolve(configured) : process.cwd();
 }

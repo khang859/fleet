@@ -18,6 +18,7 @@ import type { ChatSecrets } from './chat-secrets';
 import type { OpenRouterClient } from './openrouter-client';
 import type { ChatImageProvider } from './image/types';
 import type { ChatImageStorage } from './image/image-storage';
+import type { ChatWorkspace } from './chat-workspace';
 import { GENERATE_IMAGE_TOOL, parseGenerateImageArgs, runGenerateImage } from './chat-tools';
 import { resolveTitle } from './chat-namer';
 import { resolveTags } from './chat-tagger';
@@ -35,7 +36,7 @@ import {
   WEB_SEARCH_TOOL,
   WEB_SEARCH_TOOL_NAME
 } from './tools/tool-runner';
-import { buildMentionContext, defaultWorkspace } from './tools/fs-tools';
+import { buildMentionContext } from './tools/fs-tools';
 import {
   CURRENT_TIME_TOOL,
   GET_CURRENT_TIME_TOOL_NAME,
@@ -76,6 +77,7 @@ type Deps = {
   toolExecutor: ChatToolExecutor;
   imageProvider: ChatImageProvider;
   imageStorage: ChatImageStorage;
+  workspace: ChatWorkspace;
   emit: ChatEmitter;
 };
 
@@ -170,7 +172,7 @@ export class ChatService {
       supportsImages: !!req.supportsImages,
       attachmentRefs,
       invocationText: req.text,
-      contextBlock: this.buildContextBlock(req.contextPaths),
+      contextBlock: this.buildContextBlock(req.contextPaths, req.conversationId),
       naming: isFirstExchange ? { firstUser: req.text } : undefined
     });
     return { streamId, userMessage };
@@ -209,10 +211,13 @@ export class ChatService {
   }
 
   /** Read `@`-mentioned files/folders into a context block (truncated per setting). */
-  private buildContextBlock(paths: string[] | undefined): string | undefined {
+  private buildContextBlock(
+    paths: string[] | undefined,
+    conversationId: string
+  ): string | undefined {
     if (!paths?.length) return undefined;
     const tools = this.deps.getTools();
-    const cwd = defaultWorkspace(tools.workspaceDir);
+    const cwd = this.deps.workspace.resolve(tools.workspaceDir, conversationId);
     const block = buildMentionContext({ paths, cwd, maxBytes: tools.mentionMaxKb * 1024 });
     return block || undefined;
   }
@@ -643,10 +648,6 @@ export class ChatService {
     const key = this.deps.secrets.getKey();
     if (!key) throw new Error('No OpenRouter API key configured');
     return this.deps.client.listImageModels(key);
-  }
-
-  deleteConversationImages(conversationId: string): void {
-    this.deps.imageStorage.deleteConversation(conversationId);
   }
 
   private resolveReferenceImages(
