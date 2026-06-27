@@ -724,6 +724,106 @@ describe('ChatService personas', () => {
   });
 });
 
+describe('ChatService time context', () => {
+  function makeService(dir: string, store: ChatStore, client: OpenRouterClient): ChatService {
+    return new ChatService({
+      store,
+      client,
+      secrets: fakeSecrets(),
+      getDefaultModel: () => 'm',
+      getImageModel: () => null,
+      getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+      getAutoTag: () => ({ enabled: false, model: 'x' }),
+      getToolsMode: () => 'off',
+      getTools: () => ({
+        mode: 'off',
+        workspaceDir: null,
+        sandbox: false,
+        failClosed: false,
+        mentionMaxKb: 64
+      }),
+      getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+      getPersonas: () => ({ presets: [], defaultId: null }),
+      isWebSearchReady: () => false,
+      getMcpToolDefs: () => [],
+      skills: stubSkills,
+      toolExecutor: stubExecutor,
+      imageProvider: fakeProvider,
+      imageStorage: new ChatImageStorage(join(dir, 'imgs')),
+      emit: () => {}
+    });
+  }
+
+  it('injects a current date/time system block on every turn, even without tools', async () => {
+    const dir = join(tmpdir(), `fleet-chat-time-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'time.db'));
+    const conv = store.createConversation();
+    const client = new OpenRouterClient();
+    let seen: Array<{ role: string; content: string }> = [];
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      seen = opts.messages as Array<{ role: string; content: string }>;
+      opts.onDelta('ok');
+      return { content: 'ok', toolCalls: [], finishReason: null, usage: null };
+    });
+    const service = makeService(dir, store, client);
+
+    // No persona, no skills, no tools — the time block must still be present.
+    service.send({ conversationId: conv.id, text: 'hi', model: 'm' });
+    await vi.waitFor(() => expect(seen.length).toBeGreaterThan(0));
+    const timeBlock = seen.find(
+      (m) => m.role === 'system' && m.content.startsWith('Current date and time:')
+    );
+    expect(timeBlock).toBeTruthy();
+    // It sits before the conversation history (the last entry is the user turn).
+    expect(seen[seen.length - 1]).toMatchObject({ role: 'user', content: 'hi' });
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('offers get_current_time to tool-capable models and resolves it inline', async () => {
+    const dir = join(tmpdir(), `fleet-chat-time-tool-${process.pid}`);
+    mkdirSync(dir, { recursive: true });
+    const store = new ChatStore(join(dir, 'timetool.db'));
+    const conv = store.createConversation();
+    const client = new OpenRouterClient();
+    let round = 0;
+    let offeredTools: Array<{ function: { name: string } }> = [];
+    const seen: unknown[][] = [];
+    vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+      seen.push(opts.messages);
+      round += 1;
+      if (round === 1) {
+        offeredTools = (opts.tools ?? []) as Array<{ function: { name: string } }>;
+        return {
+          content: '',
+          toolCalls: [{ id: 'c1', name: 'get_current_time', arguments: '{}' }],
+          finishReason: 'tool_calls'
+        };
+      }
+      opts.onDelta('it is now');
+      return { content: 'it is now', toolCalls: [], finishReason: 'stop' };
+    });
+    const service = makeService(dir, store, client);
+
+    service.send({
+      conversationId: conv.id,
+      text: 'what time is it',
+      model: 'm',
+      supportsTools: true
+    });
+    await vi.waitFor(() => expect(round).toBeGreaterThanOrEqual(2));
+
+    expect(offeredTools.some((t) => t.function.name === 'get_current_time')).toBe(true);
+    // Round 2 carries the tool result with a real timestamp.
+    const secondRound = seen[1] as Array<{ role: string; content: string }>;
+    const toolMsg = secondRound.find((m) => m.role === 'tool');
+    expect(toolMsg?.content).toContain('Current date and time:');
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe('ChatService skills', () => {
   it('injects the skills system prompt + /invoked body and routes load_skill', async () => {
     const dir = join(tmpdir(), `fleet-chat-skills-${process.pid}`);
