@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.82.0
+
+- **⌘K command palette** - a rebuilt command palette (cmdk) with grouped, contextual commands and a jump-to-needy action that surfaces items needing attention (#421).
+- **web_fetch tool for Chat** - the Chat agent can now fetch and read web pages (fetch, readability, turndown), with a hidden-BrowserWindow fallback for SPA pages (#419).
+
 ## v2.81.0
 
 - **Reasoning/thinking display panel** — the Chat agent's reasoning is now surfaced in a dedicated, collapsible thinking panel during streaming (#411).
