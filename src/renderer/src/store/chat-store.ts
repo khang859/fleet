@@ -384,10 +384,21 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       // The displayed thread is the linear active path, so a turn and its
       // descendants are the clicked message plus everything after it — slice
       // optimistically, then reconcile with the server's re-pointed path.
-      const idx = get().messages.findIndex((m) => m.id === messageId);
-      if (idx >= 0) set({ messages: get().messages.slice(0, idx) });
-      const messages = await window.fleet.chat.deleteMessage(messageId);
-      set({ messages });
+      const previous = get().messages;
+      const idx = previous.findIndex((m) => m.id === messageId);
+      if (idx >= 0) set({ messages: previous.slice(0, idx) });
+      try {
+        const messages = await window.fleet.chat.deleteMessage(messageId);
+        set({ messages });
+      } catch (err) {
+        // Roll back the optimistic slice so the UI doesn't show a wrongly
+        // truncated thread when the backend delete fails.
+        set({
+          messages: previous,
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Failed to delete message'
+        });
+      }
     },
 
     selectVariant: async (messageId) => {
