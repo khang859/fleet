@@ -71,10 +71,22 @@ export function ModelPicker({
   const reduced = useReducedMotion();
 
   useEffect(() => {
-    if (keyPresent && models.length === 0) {
-      setLoading(true);
-      void load().finally(() => setLoading(false));
+    // Models present (or no key) → never loading. Also clears a stuck spinner
+    // when switching to an already-loaded source.
+    if (!(keyPresent && models.length === 0)) {
+      setLoading(false);
+      return;
     }
+    // Guard the resolve: switching source re-runs this effect with a different
+    // `load`, and a stale fetch must not clear the new fetch's loading state.
+    let cancelled = false;
+    setLoading(true);
+    void load().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [keyPresent, models.length, load]);
 
   const selected = models.find((m) => m.id === value);
