@@ -435,12 +435,11 @@ function StreamingMessage(): React.JSX.Element {
         />
       )}
       {hasTokens ? (
-        // Fade the first text in (once, on mount) so the indicator→answer
-        // transition is a crossfade rather than a hard cut. Reduced-motion
-        // neutralizes `animate-in` in index.css.
-        <div className="animate-in fade-in duration-150">
-          <ChatMarkdown streaming>{streamingText}</ChatMarkdown>
-        </div>
+        // Streamdown fades each word in as it streams (the per-word `animated`
+        // prop in ChatMarkdown), which crossfades the indicator→answer handoff.
+        // No wrapper fade here — a parent opacity animation would stack
+        // multiplicatively with the per-word fades and dim the first tokens.
+        <ChatMarkdown streaming>{streamingText}</ChatMarkdown>
       ) : (
         !hasReasoning && <WaitingIndicator />
       )}
