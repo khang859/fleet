@@ -162,6 +162,55 @@ describe('ChatStore', () => {
     expect(msgs[1].variants?.index).toBe(1);
   });
 
+  it('deletes a turn and its descendants, re-pointing the active path', () => {
+    const c = store.createConversation();
+    const u1 = store.addMessage({ conversationId: c.id, role: 'user', content: 'q1' });
+    const a1 = store.addMessage({
+      conversationId: c.id,
+      role: 'assistant',
+      content: 'a1',
+      parentId: u1.id
+    });
+    const u2 = store.addMessage({
+      conversationId: c.id,
+      role: 'user',
+      content: 'q2',
+      parentId: a1.id
+    });
+    store.addMessage({ conversationId: c.id, role: 'assistant', content: 'a2', parentId: u2.id });
+
+    // Deleting q2 removes it and a2; the active leaf falls back to a1.
+    store.deleteMessage(u2.id);
+    expect(store.getMessages(c.id).map((m) => m.content)).toEqual(['q1', 'a1']);
+    expect(store.activeLeafId(c.id)).toBe(a1.id);
+    expect(store.getMessage(u2.id)).toBeNull();
+  });
+
+  it('deleting one assistant variant re-points the pager to its sibling', () => {
+    const c = store.createConversation();
+    const u = store.addMessage({ conversationId: c.id, role: 'user', content: 'hi' });
+    const a1 = store.addMessage({
+      conversationId: c.id,
+      role: 'assistant',
+      content: 'v1',
+      parentId: u.id
+    });
+    const a2 = store.addMessage({
+      conversationId: c.id,
+      role: 'assistant',
+      content: 'v2',
+      parentId: u.id
+    });
+
+    // v2 is active by default; deleting it falls back to v1 with no pager left.
+    store.deleteMessage(a2.id);
+    const msgs = store.getMessages(c.id);
+    expect(msgs.map((m) => m.content)).toEqual(['hi', 'v1']);
+    expect(msgs[1].variants).toBeUndefined();
+    expect(store.getMessage(a2.id)).toBeNull();
+    void a1;
+  });
+
   it('branches when an earlier user message is edited and uses the new branch downstream', () => {
     const c = store.createConversation();
     const u1 = store.addMessage({ conversationId: c.id, role: 'user', content: 'first' });

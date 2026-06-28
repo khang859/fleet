@@ -804,6 +804,76 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Delete a message and its entire descendant subtree, keeping the turn tree
+   * consistent. The deleted node's parent (or the conversation head, for a root)
+   * is re-pointed to the newest remaining sibling so the active path never
+   * references a removed node, and the FTS + vector indexes are pruned in the
+   * same transaction. No-op when the id is unknown.
+   */
+  deleteMessage(id: string): void {
+    const row = this.getRow(id);
+    if (!row) return;
+    const conversationId = row.conversation_id;
+
+    // Collect the node plus every descendant (the subtree to remove).
+    const subtree: string[] = [];
+    const stack: string[] = [id];
+    while (stack.length) {
+      const cur = stack.pop();
+      if (cur === undefined) break;
+      subtree.push(cur);
+      const kids = z
+        .array(z.object({ id: z.string() }))
+        .parse(this.db.prepare('SELECT id FROM messages WHERE parent_id = ?').all(cur));
+      for (const k of kids) stack.push(k.id);
+    }
+
+    const tx = this.db.transaction(() => {
+      // Re-point the active pointer that referenced the deleted node so the
+      // active path resolves to a surviving sibling (newest wins) or collapses.
+      const siblings = this.childrenOf(conversationId, row.parent_id).filter((s) => s.id !== id);
+      const replacement = siblings.length ? siblings[siblings.length - 1].id : null;
+      if (row.parent_id) {
+        const parent = this.getRow(row.parent_id);
+        if (parent?.active_child_id === id) {
+          this.db
+            .prepare('UPDATE messages SET active_child_id = ? WHERE id = ?')
+            .run(replacement, row.parent_id);
+        }
+      } else if (this.headId(conversationId) === id) {
+        this.db
+          .prepare('UPDATE conversations SET active_head_id = ? WHERE id = ?')
+          .run(replacement, conversationId);
+      }
+
+      // Prune the non-cascading search indexes for the whole subtree before the
+      // message rows go (message_images cascade via FK).
+      const placeholders = subtree.map(() => '?').join(',');
+      if (this.ftsEnabled) {
+        this.db
+          .prepare(`DELETE FROM messages_fts WHERE message_id IN (${placeholders})`)
+          .run(...subtree);
+      }
+      if (this.vec) {
+        const rows = z
+          .array(RowidRowSchema)
+          .parse(
+            this.db
+              .prepare(`SELECT rowid FROM messages WHERE id IN (${placeholders})`)
+              .all(...subtree)
+          );
+        const del = this.db.prepare('DELETE FROM messages_vec WHERE rowid = ?');
+        for (const r of rows) del.run(BigInt(r.rowid));
+      }
+      this.db.prepare(`DELETE FROM messages WHERE id IN (${placeholders})`).run(...subtree);
+      this.db
+        .prepare('UPDATE conversations SET updated_at = ? WHERE id = ?')
+        .run(Date.now(), conversationId);
+    });
+    tx();
+  }
+
   addImages(input: { messageId: string; conversationId: string; images: ChatImageRef[] }): void {
     if (!input.images.length) return;
     const now = Date.now();
