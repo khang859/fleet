@@ -160,6 +160,19 @@ function createThinkSplitter(cb: {
   };
 }
 
+/**
+ * Strip inline `<think>…</think>` reasoning out of assistant content before it
+ * re-enters the model's own message history on the next tool round. The live
+ * splitter keeps thinking out of the UI/persisted body, but the raw round
+ * `content` still carries the tags — feeding them back would pollute context.
+ */
+function stripThinkTags(s: string): string {
+  return s
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/<think>[\s\S]*$/g, '')
+    .trim();
+}
+
 /** Sum per-round usage into a running total for the whole assistant turn. */
 function addUsage(
   acc: ChatMessageUsage | null,
@@ -497,7 +510,7 @@ export class ChatService {
 
           messages.push({
             role: 'assistant',
-            content: result.content || null,
+            content: stripThinkTags(result.content) || null,
             tool_calls: result.toolCalls.map((c) => ({
               id: c.id,
               type: 'function',
@@ -651,7 +664,10 @@ export class ChatService {
         }
       } catch (err) {
         thinkSplitter.flush();
-        if (partial) {
+        // Persist when there's anything worth keeping — including reasoning that
+        // streamed before the error with no answer token yet, which would
+        // otherwise be discarded.
+        if (partial || reasoning) {
           const reasoningMs =
             reasoningAt.start !== null
               ? (reasoningAt.end ?? Date.now()) - reasoningAt.start
