@@ -223,4 +223,20 @@ describe('useChatStore', () => {
     expect(s.status).toBe('error');
     expect(s.error).toBe('boom');
   });
+
+  it('error commits a reasoning placeholder before the authoritative reload', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().send('hi', 'x/y');
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_REASONING)?.({ streamId: 's1', delta: 'thinking…' });
+    // Error before any content delta: reasoning streamed client-side must remain
+    // visible. Asserted synchronously, before the getMessages reload resolves.
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_ERROR)?.({
+      streamId: 's1',
+      message: 'boom',
+      partial: ''
+    });
+    const s = useChatStore.getState();
+    expect(s.status).toBe('error');
+    expect(s.messages.at(-1)).toMatchObject({ role: 'assistant', reasoning: 'thinking…' });
+  });
 });

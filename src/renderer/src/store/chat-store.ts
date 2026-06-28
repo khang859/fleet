@@ -155,22 +155,43 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     });
     unsubError = window.fleet.chat.onStreamError((p: ChatStreamErrorPayload) => {
       if (p.streamId !== get().streamId) return;
-      streamBuffer.reset();
-      reasoningBuffer.reset();
-      const activeId = get().activeId;
-      set({
+      // Flush (not drop) the buffered tails so the mirrored placeholder includes
+      // the last <50ms of answer and reasoning tokens.
+      streamBuffer.flush();
+      reasoningBuffer.flush();
+      const { streamId, streamingText, streamingReasoning, activeId } = get();
+      const partial = streamingText?.trim() ? streamingText : null;
+      const reasoning = streamingReasoning?.trim() ? streamingReasoning : null;
+      set((s) => ({
         status: 'error',
         error: p.message,
         streamingText: null,
         streamingReasoning: null,
         streamId: null,
         toolStatus: null,
-        permissionRequests: []
-      });
-      // Main persists whatever streamed before the failure (partial answer +
-      // reasoning) and writes it to the DB *before* emitting this error, so reload
-      // the authoritative thread — otherwise a turn that errored mid-thinking is
-      // invisible until the conversation is reselected.
+        permissionRequests: [],
+        // Mirror the partial answer + reasoning into the list synchronously so a
+        // turn that errored mid-thinking doesn't flicker out; the DB reload below
+        // then swaps in the authoritative message (real id + reasoningMs).
+        messages:
+          (partial || reasoning) && activeId
+            ? [
+                ...s.messages,
+                {
+                  id: `local-${streamId}`,
+                  conversationId: activeId,
+                  role: 'assistant',
+                  content: partial ?? '',
+                  reasoning: reasoning ?? undefined,
+                  parentId: null,
+                  createdAt: Date.now()
+                }
+              ]
+            : s.messages
+      }));
+      // Main persists whatever streamed before the failure to the DB *before*
+      // emitting this error, so reload the authoritative thread to replace the
+      // ephemeral placeholder above.
       if (activeId) {
         void window.fleet.chat.getMessages(activeId).then((messages) => {
           if (get().activeId === activeId && get().status === 'error') set({ messages });
