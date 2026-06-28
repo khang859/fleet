@@ -13,6 +13,7 @@ import {
   formatCommandShortcut,
   type Command as CommandDef
 } from '../lib/commands';
+import { formatShortcut, getShortcut } from '../lib/shortcuts';
 import {
   findPaneLocation,
   paneLabel,
@@ -28,6 +29,12 @@ type CommandPaletteProps = {
   isOpen: boolean;
   onClose: () => void;
 };
+
+// Computed once at module load - platform constant (Cmd+K on mac, Ctrl+K elsewhere).
+const paletteShortcut = (() => {
+  const def = getShortcut('command-palette');
+  return def ? formatShortcut(def) : 'Cmd+K';
+})();
 
 /** Map a static Command into a PaletteItem in the 'command' section. */
 function toCommandItem(cmd: CommandDef): PaletteItem {
@@ -60,7 +67,9 @@ function ItemRow({
           {item.badge}
         </span>
       )}
-      {item.hasActions && !item.badge && <span className="text-[10px] text-neutral-600">⌘K</span>}
+      {item.hasActions && !item.badge && (
+        <span className="text-[10px] text-neutral-600">{paletteShortcut}</span>
+      )}
       {item.shortcutLabel && (
         <kbd className="ml-2 rounded border border-neutral-700 bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-400">
           {item.shortcutLabel}
@@ -75,6 +84,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
   const [scopePaneId, setScopePaneId] = useState<string | null>(null);
   const [highlighted, setHighlighted] = useState('');
   const announcerRef = useRef<HTMLDivElement>(null);
+  const dismissByPointerRef = useRef(false);
   const record = useCommandFrecencyStore((s) => s.record);
 
   // Reactive subscriptions - every dep below is used inside the memo body.
@@ -169,6 +179,22 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
     return () => clearTimeout(t);
   }, [isOpen, search, needsYou.length]);
 
+  // Detect backdrop (outside) clicks via capture-phase pointerdown so we can
+  // distinguish them from Escape in onOpenChange. Capture phase runs before
+  // Radix's bubble-phase outside-pointer handler, ensuring the ref is set
+  // before onOpenChange reads it.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onPointerDown = (e: PointerEvent): void => {
+      const target = e.target;
+      if (target instanceof Element && target.closest('[cmdk-dialog]') === null) {
+        dismissByPointerRef.current = true;
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown, { capture: true });
+    return () => document.removeEventListener('pointerdown', onPointerDown, { capture: true });
+  }, [isOpen]);
+
   const scopedActions = (paneId: string): PaletteItem[] => {
     const ws = useWorkspaceStore.getState();
     const loc = findPaneLocation(ws.workspace.tabs, paneId);
@@ -244,8 +270,11 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
       open={isOpen}
       onOpenChange={(open) => {
         if (open) return;
-        // Esc while scoped pops the scope instead of closing the palette.
-        if (scopePaneId !== null) {
+        const byPointer = dismissByPointerRef.current;
+        dismissByPointerRef.current = false;
+        // Escape while scoped pops the scope (palette stays open, it's controlled).
+        // A backdrop click always closes, like every other dialog.
+        if (!byPointer && scopePaneId !== null) {
           setScopePaneId(null);
           setSearch('');
           return;
@@ -359,7 +388,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
             <span>esc Back</span>
           ) : (
             <>
-              <span>⌘K Actions</span>
+              <span>{paletteShortcut} Actions</span>
               <span>esc Close</span>
             </>
           )}
