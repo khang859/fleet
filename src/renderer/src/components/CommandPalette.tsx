@@ -152,6 +152,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
     if (isOpen) {
       setSearch('');
       setScopePaneId(null);
+      setHighlighted('');
     }
   }, [isOpen]);
 
@@ -222,8 +223,9 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
 
   const runItem = (item: PaletteItem): void => {
     onClose();
-    // Only static commands participate in frecency (stable ids); pane jumps do not.
-    if (item.section === 'command' || item.section === 'recent') record(item.id);
+    // Only top-level (non-scoped) static commands participate in frecency; scoped action ids are junk.
+    if (scopePaneId === null && (item.section === 'command' || item.section === 'recent'))
+      record(item.id);
     item.run();
   };
 
@@ -241,7 +243,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
     <CommandDialog
       open={isOpen}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (open) return;
+        // Esc while scoped pops the scope instead of closing the palette.
+        if (scopePaneId !== null) {
+          setScopePaneId(null);
+          setSearch('');
+          return;
+        }
+        onClose();
       }}
       label="Command palette"
       commandProps={{
@@ -264,11 +273,8 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
             }
             return;
           }
-          // Pop scope: Esc, or Backspace on empty input.
-          if (
-            scopePaneId !== null &&
-            (e.key === 'Escape' || (e.key === 'Backspace' && search === ''))
-          ) {
+          // Pop scope: Backspace on empty input (Esc is handled by onOpenChange).
+          if (scopePaneId !== null && e.key === 'Backspace' && search === '') {
             e.preventDefault();
             setScopePaneId(null);
             setSearch('');
