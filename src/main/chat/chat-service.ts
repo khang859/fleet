@@ -35,7 +35,9 @@ import {
   buildFsToolDefs,
   FS_TOOL_NAMES,
   WEB_SEARCH_TOOL,
-  WEB_SEARCH_TOOL_NAME
+  WEB_SEARCH_TOOL_NAME,
+  WEB_FETCH_TOOL,
+  WEB_FETCH_TOOL_NAME
 } from './tools/tool-runner';
 import { buildMentionContext } from './tools/fs-tools';
 import {
@@ -73,6 +75,8 @@ type Deps = {
   getPersonas: () => { presets: PersonaPreset[]; defaultId: string | null };
   /** True when web search is enabled and a search API key is present. */
   isWebSearchReady: () => boolean;
+  /** True when the web-fetch tool is enabled. */
+  isWebFetchReady: () => boolean;
   getMcpToolDefs: () => unknown[];
   skills: SkillManager;
   toolExecutor: ChatToolExecutor;
@@ -409,10 +413,12 @@ export class ChatService {
     const mcpToolDefs = supportsTools ? this.deps.getMcpToolDefs() : [];
     const loadSkillDef = supportsTools ? this.deps.skills.toolDef() : null;
     const webSearchEnabled = supportsTools && this.deps.isWebSearchReady();
+    const webFetchEnabled = supportsTools && this.deps.isWebFetchReady();
     const toolDefs: unknown[] = [
       ...(imageToolEnabled ? [GENERATE_IMAGE_TOOL] : []),
       ...fsToolDefs,
       ...(webSearchEnabled ? [WEB_SEARCH_TOOL] : []),
+      ...(webFetchEnabled ? [WEB_FETCH_TOOL] : []),
       ...mcpToolDefs,
       ...(loadSkillDef ? [loadSkillDef] : []),
       // Ungated, instant: lets the model fetch the exact time mid-turn.
@@ -546,7 +552,8 @@ export class ChatService {
             if (
               FS_TOOL_NAMES.has(call.name) ||
               isMcpToolName(call.name) ||
-              call.name === WEB_SEARCH_TOOL_NAME
+              call.name === WEB_SEARCH_TOOL_NAME ||
+              call.name === WEB_FETCH_TOOL_NAME
             ) {
               const content = await this.deps.toolExecutor.run(call.name, call.arguments, {
                 streamId,

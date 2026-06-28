@@ -232,6 +232,107 @@ describe('ChatToolExecutor web search', () => {
   });
 });
 
+describe('ChatToolExecutor web fetch', () => {
+  function setupFetch(opts: { enabled: boolean; rules?: Partial<PermissionRules> }) {
+    const emitted: Array<{ channel: string; payload: unknown }> = [];
+    const persisted: string[] = [];
+    const manager = new PermissionManager({
+      getRules: () => ({ allow: [], ask: [], deny: [], ...opts.rules }),
+      persistAllowRule: (rule) => persisted.push(rule),
+      emit: (channel, payload) => emitted.push({ channel, payload })
+    });
+    const cfg: ChatToolsConfig = {
+      mode: 'read-only',
+      workspaceDir: ROOT,
+      sandbox: false,
+      failClosed: false,
+      mentionMaxKb: 64
+    };
+    const exec = new ChatToolExecutor(
+      manager,
+      () => cfg,
+      () => {},
+      workspace,
+      null,
+      null,
+      null,
+      {
+        enabled: () => opts.enabled,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        fetch: async (url) => `CONTENT of ${url}`
+      }
+    );
+    return { exec, manager, emitted, persisted };
+  }
+
+  it('blocks web_fetch when disabled', async () => {
+    const { exec } = setupFetch({ enabled: false });
+    const out = await exec.run('web_fetch', JSON.stringify({ url: 'https://x.example' }), ctx);
+    expect(out).toMatch(/disabled/);
+  });
+
+  it('fetches the url after the user approves the card', async () => {
+    const { exec, manager, emitted } = setupFetch({ enabled: true });
+    const p = exec.run('web_fetch', JSON.stringify({ url: 'https://x.example/page' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req.tool).toBe('WebFetch');
+    expect(req.command).toBe('https://x.example/page');
+    // "Allow & remember" is offered the site origin (path-anchored), not the exact URL.
+    expect(req.rememberPrefix).toBe('https://x.example/');
+    manager.decide(req.requestId, 'allow-once');
+    expect(await p).toBe('CONTENT of https://x.example/page');
+  });
+
+  it('persists an origin allow-rule on "allow & remember"', async () => {
+    const { exec, manager, emitted, persisted } = setupFetch({ enabled: true });
+    const p = exec.run('web_fetch', JSON.stringify({ url: 'https://docs.example/a/b' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    manager.decide(req.requestId, 'allow-always');
+    await p;
+    expect(persisted).toEqual(['WebFetch(https://docs.example/*)']);
+  });
+
+  it('auto-approves a same-origin url when an origin allow rule matches', async () => {
+    const { exec, emitted } = setupFetch({
+      enabled: true,
+      rules: { allow: ['WebFetch(https://ok.example/*)'] }
+    });
+    const out = await exec.run(
+      'web_fetch',
+      JSON.stringify({ url: 'https://ok.example/deep' }),
+      ctx
+    );
+    expect(out).toBe('CONTENT of https://ok.example/deep');
+    expect(emitted.some((e) => e.channel.endsWith('permission-request'))).toBe(false);
+  });
+
+  it('does NOT auto-approve a look-alike host for an origin allow rule', async () => {
+    const { exec, manager, emitted } = setupFetch({
+      enabled: true,
+      rules: { allow: ['WebFetch(https://ok.example/*)'] }
+    });
+    // A host that merely starts with the allowed origin must still prompt.
+    const p = exec.run('web_fetch', JSON.stringify({ url: 'https://ok.example.evil.io/x' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req).toBeDefined();
+    expect(req.tool).toBe('WebFetch');
+    manager.decide(req.requestId, 'deny');
+    expect(await p).toMatch(/denied/);
+  });
+
+  it('denies the fetch when the user declines', async () => {
+    const { exec, manager, emitted } = setupFetch({ enabled: true });
+    const p = exec.run('web_fetch', JSON.stringify({ url: 'https://x.example' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    manager.decide(req.requestId, 'deny');
+    expect(await p).toMatch(/denied/);
+  });
+});
+
 describe('ChatToolExecutor audit', () => {
   it('records a read with an allowed decision', async () => {
     const { exec, audits } = setup('read-only');

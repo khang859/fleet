@@ -10,6 +10,7 @@ import { PersonasSection } from './settings/PersonasSection';
 import { ComposerSection } from './settings/ComposerSection';
 import { AgentToolsSection } from './settings/AgentToolsSection';
 import { WebSearchSection } from './settings/WebSearchSection';
+import { WebFetchSection } from './settings/WebFetchSection';
 import { UsageSection } from './settings/UsageSection';
 import { ExtensionsSection } from './settings/ExtensionsSection';
 import { DangerZoneSection } from './settings/DangerZoneSection';
@@ -21,6 +22,7 @@ const SECTION_COMPONENTS: Record<ChatSettingsSection, React.ComponentType> = {
   composer: ComposerSection,
   agent: AgentToolsSection,
   webSearch: WebSearchSection,
+  webFetch: WebFetchSection,
   usage: UsageSection,
   extensions: ExtensionsSection,
   danger: DangerZoneSection

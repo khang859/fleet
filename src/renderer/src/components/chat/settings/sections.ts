@@ -5,6 +5,7 @@ import {
   Paperclip,
   Wrench,
   Globe,
+  Link,
   Gauge,
   Blocks,
   TriangleAlert,
@@ -18,6 +19,7 @@ export type ChatSettingsSection =
   | 'composer'
   | 'agent'
   | 'webSearch'
+  | 'webFetch'
   | 'usage'
   | 'extensions'
   | 'danger';
@@ -37,6 +39,7 @@ export const CHAT_SETTINGS_SECTIONS: SectionMeta[] = [
   { id: 'composer', label: 'Composer', icon: Paperclip },
   { id: 'agent', label: 'Agent & Tools', icon: Wrench },
   { id: 'webSearch', label: 'Web Search', icon: Globe },
+  { id: 'webFetch', label: 'Web Fetch', icon: Link },
   { id: 'usage', label: 'Usage & Cost', icon: Gauge },
   { id: 'extensions', label: 'Extensions', icon: Blocks },
   { id: 'danger', label: 'Danger Zone', icon: TriangleAlert, danger: true }
@@ -79,6 +82,12 @@ export const CHAT_SETTINGS_INDEX: SettingsIndexEntry[] = [
   { sectionId: 'webSearch', label: 'Search provider', keywords: 'tavily exa brave' },
   { sectionId: 'webSearch', label: 'Search provider API key', keywords: 'credential secret' },
   { sectionId: 'webSearch', label: 'Max results', keywords: 'count limit' },
+  {
+    sectionId: 'webFetch',
+    label: 'Enable web fetch',
+    keywords: 'url page read browser render markdown scrape'
+  },
+  { sectionId: 'webFetch', label: 'Max characters', keywords: 'truncate length limit' },
   { sectionId: 'usage', label: 'Cost meter', keywords: 'tokens spend price usage' },
   { sectionId: 'usage', label: 'Prompt caching', keywords: 'cache cost anthropic' },
   { sectionId: 'usage', label: 'Budget warning', keywords: 'limit spend dollars usd' },

@@ -116,6 +116,8 @@ export type ChatSettings = {
   defaultPersonaId: string | null;
   /** Web-search tool posture. */
   webSearch: ChatWebSearchConfig;
+  /** Web-fetch tool posture. */
+  webFetch: ChatWebFetchConfig;
   /** Attachment upload limits. */
   uploads: ChatUploadsConfig;
   /** Sidebar default sort order for conversations. */
@@ -164,6 +166,22 @@ export const DEFAULT_CHAT_WEB_SEARCH: ChatWebSearchConfig = {
   enabled: false,
   provider: 'tavily',
   maxResults: 5
+};
+
+/**
+ * Web-fetch tool configuration. Unlike web search, it needs no API key: the
+ * page is fetched directly and (for JS-rendered pages) re-rendered in a hidden
+ * Chromium window, then sanitized to markdown for the model.
+ */
+export type ChatWebFetchConfig = {
+  enabled: boolean;
+  /** Max characters of cleaned markdown returned to the model before truncation. */
+  maxChars: number;
+};
+
+export const DEFAULT_CHAT_WEB_FETCH: ChatWebFetchConfig = {
+  enabled: false,
+  maxChars: 50000
 };
 
 /** Posture for the bash/filesystem tools. */
@@ -228,7 +246,7 @@ export type ChatAuditStatus = 'ok' | 'denied' | 'error';
 export type ChatAuditEntry = {
   id: string;
   conversationId: string;
-  /** Tool name: read_file, glob, search, bash, write_file, edit_file, or an MCP tool. */
+  /** Tool name: read_file, glob, search, bash, write_file, edit_file, web_search, web_fetch, or an MCP tool. */
   tool: string;
   /** The salient argument: command, path, regex, or MCP tool name. */
   detail: string;
@@ -263,6 +281,7 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   personas: [],
   defaultPersonaId: null,
   webSearch: DEFAULT_CHAT_WEB_SEARCH,
+  webFetch: DEFAULT_CHAT_WEB_FETCH,
   uploads: DEFAULT_CHAT_UPLOADS,
   conversationSort: 'recent'
 };
