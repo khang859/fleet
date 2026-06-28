@@ -394,17 +394,15 @@ function ReengageOnNewStream({ animation }: { animation: ScrollBehavior }): null
  * throttled token updates re-render only this node — not MessageList or any
  * finalized history Bubble (which would otherwise re-parse all markdown).
  */
-/** Pre-first-token waiting state: a shimmer label reading "Thinking…" or, when a
- *  tool phase is active, the live phase from `toolStatus.label` (Searching…,
- *  Reading file…, Generating image…). Static under prefers-reduced-motion (the
- *  shimmer is neutralized in index.css). Replaces the old three-dot wave. */
+/** Pre-first-token waiting state: a shimmer "Thinking…" label. Static under
+ *  prefers-reduced-motion (the shimmer is neutralized in index.css). Replaces the
+ *  old three-dot wave. The active tool phase (Searching…, Reading file…, etc.) is
+ *  surfaced by the sibling ToolStatusPill / GeneratingSkeleton below, so it is not
+ *  duplicated here. */
 function WaitingIndicator(): React.JSX.Element {
-  const toolStatus = useChatStore((s) => s.toolStatus);
-  const label =
-    toolStatus?.state === 'generating' && toolStatus.label ? toolStatus.label : 'Thinking…';
   return (
     <div className="py-1" aria-hidden="true">
-      <span className="chat-shimmer-text text-sm font-medium">{label}</span>
+      <span className="chat-shimmer-text text-sm font-medium">Thinking…</span>
     </div>
   );
 }
