@@ -25,6 +25,8 @@ const MODELS_SCHEMA = z.object({
 export type ToolCall = { id: string; name: string; arguments: string };
 export type StreamResult = {
   content: string;
+  /** Model chain-of-thought accumulated from the `reasoning`/`reasoning_content` deltas; '' when none. */
+  reasoning?: string;
   toolCalls: ToolCall[];
   finishReason: string | null;
   /** Accounting from the final SSE chunk (OpenRouter `usage: {include:true}`); null/absent otherwise. */
@@ -63,6 +65,10 @@ const TOOLCALL_DELTA_SCHEMA = z.object({
         delta: z
           .object({
             content: z.string().nullish(),
+            // Reasoning tokens: OpenRouter normalizes to `reasoning`; some providers
+            // pass through `reasoning_content`. Accept both, prefer `reasoning`.
+            reasoning: z.string().nullish(),
+            reasoning_content: z.string().nullish(),
             tool_calls: z
               .array(
                 z.object({
@@ -84,17 +90,20 @@ const TOOLCALL_DELTA_SCHEMA = z.object({
 });
 
 /**
- * Parse an OpenRouter SSE stream. Calls onDelta for each content fragment.
- * Assembles tool_calls by index. Resolves with content, toolCalls, and finishReason
- * when the [DONE] sentinel arrives or the stream ends.
+ * Parse an OpenRouter SSE stream. Calls onDelta for each content fragment and
+ * onReasoning for each chain-of-thought fragment. Assembles tool_calls by index.
+ * Resolves with content, reasoning, toolCalls, and finishReason when the [DONE]
+ * sentinel arrives or the stream ends.
  * Throws if the body carries a top-level `error` (OpenRouter delivers mid-stream errors with HTTP 200).
  */
 export async function consumeSSE(
   chunks: AsyncIterable<string>,
-  onDelta: (delta: string) => void
+  onDelta: (delta: string) => void,
+  onReasoning: (delta: string) => void = () => {}
 ): Promise<StreamResult> {
   let buffer = '';
   let content = '';
+  let reasoning = '';
   let finishReason: string | null = null;
   let usage: ChatMessageUsage | null = null;
   const calls: Array<{ id: string; name: string; args: string }> = [];
@@ -109,7 +118,7 @@ export async function consumeSSE(
       if (!line.startsWith('data: ')) continue;
       const data = line.slice(6);
       if (data === '[DONE]') {
-        return { content, toolCalls: toToolCalls(calls), finishReason, usage };
+        return { content, reasoning, toolCalls: toToolCalls(calls), finishReason, usage };
       }
       let parsed: z.infer<typeof TOOLCALL_DELTA_SCHEMA>;
       try {
@@ -121,6 +130,11 @@ export async function consumeSSE(
       if (parsed.usage) usage = toUsage(parsed.usage);
       const choice = parsed.choices?.[0];
       const delta = choice?.delta;
+      const reasoningDelta = delta?.reasoning ?? delta?.reasoning_content;
+      if (reasoningDelta) {
+        reasoning += reasoningDelta;
+        onReasoning(reasoningDelta);
+      }
       if (delta?.content) {
         content += delta.content;
         onDelta(delta.content);
@@ -136,7 +150,7 @@ export async function consumeSSE(
       if (choice?.finish_reason) finishReason = choice.finish_reason;
     }
   }
-  return { content, toolCalls: toToolCalls(calls), finishReason, usage };
+  return { content, reasoning, toolCalls: toToolCalls(calls), finishReason, usage };
 }
 
 function toToolCalls(calls: Array<{ id: string; name: string; args: string }>): ToolCall[] {
@@ -149,6 +163,8 @@ export type StreamOpts = {
   messages: unknown[];
   signal: AbortSignal;
   onDelta: (delta: string) => void;
+  /** Receives chain-of-thought fragments (the `reasoning` SSE field); optional. */
+  onReasoning?: (delta: string) => void;
   tools?: unknown[];
   toolChoice?: 'auto' | 'none';
   /** OpenRouter plugins (e.g. the file-parser for PDF attachments). */
@@ -271,6 +287,6 @@ export class OpenRouterClient {
         reader.cancel().catch(() => {});
       }
     }
-    return consumeSSE(iterate(), opts.onDelta);
+    return consumeSSE(iterate(), opts.onDelta, opts.onReasoning);
   }
 }

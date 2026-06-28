@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS messages (
   completion_tokens INTEGER,
   cached_tokens     INTEGER,
   cost              REAL,
+  reasoning         TEXT,
+  reasoning_ms      INTEGER,
   created_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
@@ -135,6 +137,8 @@ const MessageRowSchema = z.object({
   completion_tokens: z.number().nullable(),
   cached_tokens: z.number().nullable(),
   cost: z.number().nullable(),
+  reasoning: z.string().nullable(),
+  reasoning_ms: z.number().nullable(),
   created_at: z.number()
 });
 
@@ -223,6 +227,11 @@ function toMessage(r: MessageRow): ChatMessage {
       cachedTokens: r.cached_tokens ?? 0,
       cost: r.cost
     };
+  }
+  // Reasoning is recorded only on assistant turns where the model emitted some.
+  if (r.reasoning != null) {
+    msg.reasoning = r.reasoning;
+    if (r.reasoning_ms != null) msg.reasoningMs = r.reasoning_ms;
   }
   return msg;
 }
@@ -347,6 +356,11 @@ export class ChatStore {
       this.db.exec('ALTER TABLE messages ADD COLUMN completion_tokens INTEGER');
       this.db.exec('ALTER TABLE messages ADD COLUMN cached_tokens INTEGER');
       this.db.exec('ALTER TABLE messages ADD COLUMN cost REAL');
+    }
+    // Reasoning/chain-of-thought capture (#388): the text and the wall-clock spent.
+    if (!msgCols.some((c) => c.name === 'reasoning')) {
+      this.db.exec('ALTER TABLE messages ADD COLUMN reasoning TEXT');
+      this.db.exec('ALTER TABLE messages ADD COLUMN reasoning_ms INTEGER');
     }
     // Semantic search: tracks embedding freshness (NULL = needs (re-)embedding). The
     // backfill pass embeds existing rows; embed-on-write keeps new rows fresh. The
@@ -660,6 +674,8 @@ export class ChatStore {
     content: string;
     parentId?: string | null;
     usage?: ChatMessageUsage | null;
+    reasoning?: string | null;
+    reasoningMs?: number | null;
   }): ChatMessage {
     const now = Date.now();
     const parentId = input.parentId ?? null;
@@ -675,14 +691,16 @@ export class ChatStore {
       completion_tokens: u ? u.completionTokens : null,
       cached_tokens: u ? u.cachedTokens : null,
       cost: u ? u.cost : null,
+      reasoning: input.reasoning ?? null,
+      reasoning_ms: input.reasoningMs ?? null,
       created_at: now
     };
     this.db
       .prepare(
         `INSERT INTO messages
            (id, conversation_id, role, content, parent_id, active_child_id,
-            prompt_tokens, completion_tokens, cached_tokens, cost, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            prompt_tokens, completion_tokens, cached_tokens, cost, reasoning, reasoning_ms, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         row.id,
@@ -695,6 +713,8 @@ export class ChatStore {
         row.completion_tokens,
         row.cached_tokens,
         row.cost,
+        row.reasoning,
+        row.reasoning_ms,
         row.created_at
       );
     if (parentId) {

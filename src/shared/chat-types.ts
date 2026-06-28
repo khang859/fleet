@@ -20,6 +20,10 @@ export type ChatMessage = {
   variants?: ChatVariantInfo;
   /** Token/cost accounting for an assistant turn; absent on user messages. */
   usage?: ChatMessageUsage;
+  /** Model chain-of-thought for an assistant turn; absent when the model emits none. */
+  reasoning?: string;
+  /** Wall-clock the model spent reasoning, in ms; drives the "Thought for Xs" label. */
+  reasoningMs?: number;
 };
 
 /** Token counts + cost for one assistant turn (summed across tool rounds). */
@@ -303,6 +307,8 @@ export type ChatEditRequest = {
 };
 
 export type ChatStreamChunkPayload = { streamId: string; delta: string };
+/** A fragment of the model's reasoning/thinking stream, routed to the panel above the answer. */
+export type ChatStreamReasoningPayload = { streamId: string; delta: string };
 export type ChatStreamDonePayload = { streamId: string; message: ChatMessage };
 export type ChatStreamErrorPayload = { streamId: string; message: string; partial: string };
 

@@ -152,6 +152,7 @@ import type {
   ChatMentionItem,
   ChatSendResponse,
   ChatStreamChunkPayload,
+  ChatStreamReasoningPayload,
   ChatStreamDonePayload,
   ChatStreamErrorPayload,
   ChatToolStatusPayload,
@@ -896,6 +897,8 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CHAT_CLEAR_SEARCH_KEY, provider),
     onStreamChunk: (cb: (p: ChatStreamChunkPayload) => void): Unsubscribe =>
       onChannel<ChatStreamChunkPayload>(IPC_CHANNELS.CHAT_STREAM_CHUNK, cb),
+    onStreamReasoning: (cb: (p: ChatStreamReasoningPayload) => void): Unsubscribe =>
+      onChannel<ChatStreamReasoningPayload>(IPC_CHANNELS.CHAT_STREAM_REASONING, cb),
     onStreamDone: (cb: (p: ChatStreamDonePayload) => void): Unsubscribe =>
       onChannel<ChatStreamDonePayload>(IPC_CHANNELS.CHAT_STREAM_DONE, cb),
     onStreamError: (cb: (p: ChatStreamErrorPayload) => void): Unsubscribe =>
