@@ -209,6 +209,17 @@ function createTerminal(
   term.open(container);
   log.debug('xterm mounted', { paneId: options.paneId });
 
+  // Let the app-level Cmd/Ctrl+K command-palette shortcut win even when a
+  // terminal is focused. Returning false tells xterm to ignore the key (and
+  // crucially NOT send it to the PTY - Ctrl+K is readline kill-line on
+  // Linux/Windows). The window keydown listener then opens the palette.
+  term.attachCustomKeyEventHandler((event) => {
+    if (event.type === 'keydown' && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      return false;
+    }
+    return true;
+  });
+
   // Restore serialized content after open (before canvas addon — content is buffer-level)
   if (options.serializedContent) {
     term.write(options.serializedContent);
