@@ -343,6 +343,22 @@ function StreamError({ model }: { model: string }): React.JSX.Element {
   );
 }
 
+/** Pulsing placeholder shown during the brief async gap while a conversation's
+ *  messages load, so switching conversations never flashes an empty pane. */
+function MessagesSkeleton(): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-6" aria-hidden="true">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex flex-col gap-2">
+          <div className="h-3 w-24 animate-pulse rounded bg-fleet-surface-3" />
+          <div className="h-3 w-full animate-pulse rounded bg-fleet-surface-2" />
+          <div className="h-3 w-5/6 animate-pulse rounded bg-fleet-surface-2" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 type Props = { defaultModel: string; showUsage: boolean };
 
 export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Element {
@@ -353,6 +369,7 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
   // Subscribe to a stable boolean, not the streaming text itself, so token
   // updates don't re-render the whole list (see StreamingMessage).
   const isStreaming = useChatStore((s) => s.streamingText !== null);
+  const messagesLoading = useChatStore((s) => s.messagesLoading);
   const status = useChatStore((s) => s.status);
   const toolStatus = useChatStore((s) => s.toolStatus);
   const permissionRequests = useChatStore((s) => s.permissionRequests);
@@ -366,6 +383,7 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
         {/* Centered reading column; turns separated by whitespace (no dividers),
             generous bottom padding so the last reply clears the composer. */}
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+          {messagesLoading && messages.length === 0 && <MessagesSkeleton />}
           {messages.map((m) => (
             <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
           ))}
