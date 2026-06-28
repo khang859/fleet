@@ -157,6 +157,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       if (p.streamId !== get().streamId) return;
       streamBuffer.reset();
       reasoningBuffer.reset();
+      const activeId = get().activeId;
       set({
         status: 'error',
         error: p.message,
@@ -166,6 +167,15 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         toolStatus: null,
         permissionRequests: []
       });
+      // Main persists whatever streamed before the failure (partial answer +
+      // reasoning) and writes it to the DB *before* emitting this error, so reload
+      // the authoritative thread — otherwise a turn that errored mid-thinking is
+      // invisible until the conversation is reselected.
+      if (activeId) {
+        void window.fleet.chat.getMessages(activeId).then((messages) => {
+          if (get().activeId === activeId && get().status === 'error') set({ messages });
+        });
+      }
     });
     unsubTool = window.fleet.chat.onToolStatus((p: ChatToolStatusPayload) => {
       if (p.streamId !== get().streamId) return;

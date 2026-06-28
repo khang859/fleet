@@ -25,8 +25,6 @@ const MODELS_SCHEMA = z.object({
 export type ToolCall = { id: string; name: string; arguments: string };
 export type StreamResult = {
   content: string;
-  /** Model chain-of-thought accumulated from the `reasoning`/`reasoning_content` deltas; '' when none. */
-  reasoning?: string;
   toolCalls: ToolCall[];
   finishReason: string | null;
   /** Accounting from the final SSE chunk (OpenRouter `usage: {include:true}`); null/absent otherwise. */
@@ -92,8 +90,8 @@ const TOOLCALL_DELTA_SCHEMA = z.object({
 /**
  * Parse an OpenRouter SSE stream. Calls onDelta for each content fragment and
  * onReasoning for each chain-of-thought fragment. Assembles tool_calls by index.
- * Resolves with content, reasoning, toolCalls, and finishReason when the [DONE]
- * sentinel arrives or the stream ends.
+ * Resolves with content, toolCalls, and finishReason when the [DONE]
+ * sentinel arrives or the stream ends (reasoning is delivered only via onReasoning).
  * Throws if the body carries a top-level `error` (OpenRouter delivers mid-stream errors with HTTP 200).
  */
 export async function consumeSSE(
@@ -103,7 +101,6 @@ export async function consumeSSE(
 ): Promise<StreamResult> {
   let buffer = '';
   let content = '';
-  let reasoning = '';
   let finishReason: string | null = null;
   let usage: ChatMessageUsage | null = null;
   const calls: Array<{ id: string; name: string; args: string }> = [];
@@ -118,7 +115,7 @@ export async function consumeSSE(
       if (!line.startsWith('data: ')) continue;
       const data = line.slice(6);
       if (data === '[DONE]') {
-        return { content, reasoning, toolCalls: toToolCalls(calls), finishReason, usage };
+        return { content, toolCalls: toToolCalls(calls), finishReason, usage };
       }
       let parsed: z.infer<typeof TOOLCALL_DELTA_SCHEMA>;
       try {
@@ -131,10 +128,7 @@ export async function consumeSSE(
       const choice = parsed.choices?.[0];
       const delta = choice?.delta;
       const reasoningDelta = delta?.reasoning ?? delta?.reasoning_content;
-      if (reasoningDelta) {
-        reasoning += reasoningDelta;
-        onReasoning(reasoningDelta);
-      }
+      if (reasoningDelta) onReasoning(reasoningDelta);
       if (delta?.content) {
         content += delta.content;
         onDelta(delta.content);
@@ -150,7 +144,7 @@ export async function consumeSSE(
       if (choice?.finish_reason) finishReason = choice.finish_reason;
     }
   }
-  return { content, reasoning, toolCalls: toToolCalls(calls), finishReason, usage };
+  return { content, toolCalls: toToolCalls(calls), finishReason, usage };
 }
 
 function toToolCalls(calls: Array<{ id: string; name: string; args: string }>): ToolCall[] {

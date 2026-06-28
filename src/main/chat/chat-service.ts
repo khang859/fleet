@@ -469,7 +469,6 @@ export class ChatService {
       const reasoningAt: { start: number | null; end: number | null } = { start: null, end: null };
       const emitContent = (text: string): void => {
         if (!text) return;
-        if (reasoning && reasoningAt.end === null) reasoningAt.end = Date.now();
         partial += text;
         emit(IPC_CHANNELS.CHAT_STREAM_CHUNK, {
           streamId,
@@ -479,6 +478,10 @@ export class ChatService {
       const emitReasoning = (text: string): void => {
         if (!text) return;
         reasoningAt.start ??= Date.now();
+        // End-of-thinking tracks the latest reasoning token, so an error before
+        // any content delta reports the real duration instead of inflating to the
+        // stream-teardown time via the `Date.now()` fallback below.
+        reasoningAt.end = Date.now();
         reasoning += text;
         emit(IPC_CHANNELS.CHAT_STREAM_REASONING, {
           streamId,
