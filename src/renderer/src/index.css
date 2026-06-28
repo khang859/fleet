@@ -229,6 +229,13 @@ body,
     opacity: 1 !important;
     transform: none !important;
   }
+  /* Shimmer "Thinking…" label: hold static at a solid muted color (no sweep). */
+  .chat-shimmer-text {
+    animation: none !important;
+    background: none !important;
+    -webkit-text-fill-color: var(--fleet-text-muted) !important;
+    color: var(--fleet-text-muted) !important;
+  }
   /* Action-bar reveal: drop the opacity fade (snap in/out instead). */
   .chat-actions {
     transition: none !important;
@@ -331,6 +338,35 @@ body,
   30% {
     opacity: 1;
     transform: translateY(-2px);
+  }
+}
+
+/* Shared shimmer for "Thinking…" labels — sweeps a brighter band across the text
+   via a clipped moving gradient. Used by the reasoning panel (#388) and the
+   waiting-state indicator (#389). Reduced-motion holds it static (see the media
+   query above). */
+.chat-shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--fleet-text-muted) 0%,
+    var(--fleet-text-muted) 35%,
+    var(--fleet-text) 50%,
+    var(--fleet-text-muted) 65%,
+    var(--fleet-text-muted) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: chat-shimmer 1.6s linear infinite;
+}
+@keyframes chat-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
   }
 }
 

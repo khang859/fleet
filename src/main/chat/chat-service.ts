@@ -8,6 +8,7 @@ import type {
   ChatMessage,
   ChatMessageUsage,
   ChatStreamChunkPayload,
+  ChatStreamReasoningPayload,
   ChatStreamDonePayload,
   ChatStreamErrorPayload,
   ChatToolStatusPayload,
@@ -90,6 +91,86 @@ function parseDataUrl(url: string): { data: Buffer; mimeType: string } | null {
 /** Is this multimodal content part an OpenRouter file (PDF) attachment? */
 function isFilePart(part: unknown): boolean {
   return typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'file';
+}
+
+/** Longest suffix of `s` that is a proper prefix of `tag` — a possibly-incomplete tag tail. */
+function partialTagTail(s: string, tag: string): number {
+  const max = Math.min(s.length, tag.length - 1);
+  for (let n = max; n > 0; n--) {
+    if (tag.startsWith(s.slice(s.length - n))) return n;
+  }
+  return 0;
+}
+
+/**
+ * Routes a streamed content channel into answer text vs. inline `<think>…</think>`
+ * reasoning. Raw chain-of-thought models emit thinking inline in `content` (rather
+ * than the structured `reasoning` SSE field); this strips the tags so the thinking
+ * lands in the reasoning panel, never in the message body. Tolerates tags split
+ * across deltas by retaining a small tail buffer until it can be classified.
+ */
+function createThinkSplitter(cb: {
+  onContent: (text: string) => void;
+  onReasoning: (text: string) => void;
+}): { push: (delta: string) => void; flush: () => void } {
+  const OPEN = '<think>';
+  const CLOSE = '</think>';
+  let inThink = false;
+  let buf = '';
+
+  const drain = (): void => {
+    for (;;) {
+      if (!inThink) {
+        const i = buf.indexOf(OPEN);
+        if (i === -1) {
+          const keep = partialTagTail(buf, OPEN);
+          if (buf.length > keep) cb.onContent(buf.slice(0, buf.length - keep));
+          buf = keep ? buf.slice(buf.length - keep) : '';
+          return;
+        }
+        if (i > 0) cb.onContent(buf.slice(0, i));
+        buf = buf.slice(i + OPEN.length);
+        inThink = true;
+      } else {
+        const j = buf.indexOf(CLOSE);
+        if (j === -1) {
+          const keep = partialTagTail(buf, CLOSE);
+          if (buf.length > keep) cb.onReasoning(buf.slice(0, buf.length - keep));
+          buf = keep ? buf.slice(buf.length - keep) : '';
+          return;
+        }
+        if (j > 0) cb.onReasoning(buf.slice(0, j));
+        buf = buf.slice(j + CLOSE.length);
+        inThink = false;
+      }
+    }
+  };
+
+  return {
+    push: (delta: string) => {
+      buf += delta;
+      drain();
+    },
+    flush: () => {
+      if (!buf) return;
+      if (inThink) cb.onReasoning(buf);
+      else cb.onContent(buf);
+      buf = '';
+    }
+  };
+}
+
+/**
+ * Strip inline `<think>…</think>` reasoning out of assistant content before it
+ * re-enters the model's own message history on the next tool round. The live
+ * splitter keeps thinking out of the UI/persisted body, but the raw round
+ * `content` still carries the tags — feeding them back would pollute context.
+ */
+function stripThinkTags(s: string): string {
+  return s
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/<think>[\s\S]*$/g, '')
+    .trim();
 }
 
 /** Sum per-round usage into a running total for the whole assistant turn. */
@@ -379,6 +460,40 @@ export class ChatService {
       let partial = '';
       let usage: ChatMessageUsage | null = null;
       const generated: ChatImageRef[] = [];
+      // Reasoning channel: chain-of-thought streamed alongside (and before) the
+      // answer. Timed from the first reasoning token to the first answer token so
+      // the UI can show "Thought for Xs".
+      let reasoning = '';
+      // Reasoning timing held as object fields (not closure-mutated `let`s) so the
+      // duration math below reads `start`/`end` as genuinely nullable.
+      const reasoningAt: { start: number | null; end: number | null } = { start: null, end: null };
+      const emitContent = (text: string): void => {
+        if (!text) return;
+        partial += text;
+        emit(IPC_CHANNELS.CHAT_STREAM_CHUNK, {
+          streamId,
+          delta: text
+        } satisfies ChatStreamChunkPayload);
+      };
+      const emitReasoning = (text: string): void => {
+        if (!text) return;
+        reasoningAt.start ??= Date.now();
+        // End-of-thinking tracks the latest reasoning token, so an error before
+        // any content delta reports the real duration instead of inflating to the
+        // stream-teardown time via the `Date.now()` fallback below.
+        reasoningAt.end = Date.now();
+        reasoning += text;
+        emit(IPC_CHANNELS.CHAT_STREAM_REASONING, {
+          streamId,
+          delta: text
+        } satisfies ChatStreamReasoningPayload);
+      };
+      // Strips inline `<think>` tags out of the content channel into reasoning;
+      // structured `reasoning` deltas feed the same channel directly.
+      const thinkSplitter = createThinkSplitter({
+        onContent: emitContent,
+        onReasoning: emitReasoning
+      });
       try {
         if (!apiKey) throw new Error('No OpenRouter API key configured');
         for (let r = 0; r < MAX_TOOL_ROUNDS; r++) {
@@ -387,13 +502,8 @@ export class ChatService {
             model,
             messages,
             signal: controller.signal,
-            onDelta: (delta) => {
-              partial += delta;
-              emit(IPC_CHANNELS.CHAT_STREAM_CHUNK, {
-                streamId,
-                delta
-              } satisfies ChatStreamChunkPayload);
-            },
+            onDelta: (delta) => thinkSplitter.push(delta),
+            onReasoning: (delta) => emitReasoning(delta),
             tools: toolDefs.length ? toolDefs : undefined,
             plugins
           });
@@ -403,7 +513,7 @@ export class ChatService {
 
           messages.push({
             role: 'assistant',
-            content: result.content || null,
+            content: stripThinkTags(result.content) || null,
             tool_calls: result.toolCalls.map((c) => ({
               id: c.id,
               type: 'function',
@@ -512,18 +622,27 @@ export class ChatService {
           }
         }
 
+        // Emit any text held back in the splitter's tail buffer (incomplete tag).
+        thinkSplitter.flush();
+
         // If the model exhausted its tool rounds without producing any closing text
         // and we have no image to show either, surface a fallback so the bubble isn't blank.
         if (partial === '' && generated.length === 0) {
           partial = "I couldn't finish that request — please try again.";
         }
 
+        const reasoningMs =
+          reasoningAt.start !== null
+            ? (reasoningAt.end ?? Date.now()) - reasoningAt.start
+            : undefined;
         const message = store.addMessage({
           conversationId,
           role: 'assistant',
           content: partial,
           parentId: assistantParentId,
-          usage
+          usage,
+          reasoning: reasoning || undefined,
+          reasoningMs
         });
         if (generated.length) {
           store.addImages({
@@ -547,13 +666,23 @@ export class ChatService {
           this.maybeAutoTag(conversationId, params.naming.firstUser, partial);
         }
       } catch (err) {
-        if (partial) {
+        thinkSplitter.flush();
+        // Persist when there's anything worth keeping — including reasoning that
+        // streamed before the error with no answer token yet, which would
+        // otherwise be discarded.
+        if (partial || reasoning) {
+          const reasoningMs =
+            reasoningAt.start !== null
+              ? (reasoningAt.end ?? Date.now()) - reasoningAt.start
+              : undefined;
           const m = store.addMessage({
             conversationId,
             role: 'assistant',
             content: partial,
             parentId: assistantParentId,
-            usage
+            usage,
+            reasoning: reasoning || undefined,
+            reasoningMs
           });
           if (generated.length) {
             store.addImages({

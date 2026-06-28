@@ -64,6 +64,70 @@ function VariantPager({ message }: { message: ChatMessage }): React.JSX.Element 
   );
 }
 
+/** Format ms as a compact thought-time label ("X.Xs" under 10s, else "Xs"). */
+function formatThoughtTime(ms: number): string {
+  const s = ms / 1000;
+  return s < 10 ? `${s.toFixed(1)}s` : `${Math.round(s)}s`;
+}
+
+/**
+ * Collapsible chain-of-thought panel, always rendered ABOVE the answer (never
+ * inline in the body). While the model is thinking it auto-expands with a shimmer
+ * "Thinking…" label + live timer; once the answer starts — or on a finalized
+ * message — it collapses to a static "Thought for Xs" disclosure that can be
+ * re-expanded. Renders nothing for models that emit no reasoning.
+ */
+function ReasoningPanel({
+  text,
+  thinking,
+  startAt,
+  durationMs
+}: {
+  text: string;
+  thinking: boolean;
+  /** Epoch ms the reasoning began — drives the live timer while thinking. */
+  startAt?: number;
+  /** Final reasoning duration — shown once thinking has stopped. */
+  durationMs?: number;
+}): React.JSX.Element {
+  // null = follow the auto default (expanded while thinking); a boolean = the
+  // user took control via the disclosure toggle.
+  const [userToggled, setUserToggled] = useState<boolean | null>(null);
+  const expanded = userToggled ?? thinking;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!thinking || startAt == null) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [thinking, startAt]);
+  const elapsedMs = thinking && startAt != null ? now - startAt : (durationMs ?? 0);
+
+  return (
+    <div className="mb-2 w-full">
+      <button
+        type="button"
+        onClick={() => setUserToggled(!expanded)}
+        aria-expanded={expanded}
+        className="focus-ring flex items-center gap-1.5 rounded text-xs text-fleet-text-muted hover:text-fleet-text"
+      >
+        <ChevronRight size={12} className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
+        {thinking ? (
+          <span className="chat-shimmer-text font-medium">
+            Thinking… {formatThoughtTime(elapsedMs)}
+          </span>
+        ) : (
+          <span>Thought for {formatThoughtTime(elapsedMs)}</span>
+        )}
+      </button>
+      {expanded && (
+        <div className="mt-1.5 border-l-2 border-fleet-border pl-3 text-xs leading-relaxed whitespace-pre-wrap text-fleet-text-secondary">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Bubble({
   message,
   model,
@@ -140,6 +204,13 @@ function Bubble({
             : 'w-full max-w-[68ch] text-sm leading-relaxed text-fleet-text'
         }
       >
+        {!isUser && message.reasoning && (
+          <ReasoningPanel
+            text={message.reasoning}
+            thinking={false}
+            durationMs={message.reasoningMs ?? 0}
+          />
+        )}
         {editing ? (
           <div className="flex flex-col gap-2">
             <textarea
@@ -338,13 +409,36 @@ function ThinkingIndicator(): React.JSX.Element {
 
 function StreamingMessage(): React.JSX.Element {
   const streamingText = useChatStore((s) => s.streamingText) ?? '';
+  const streamingReasoning = useChatStore((s) => s.streamingReasoning);
   const hasTokens = streamingText.length > 0;
+  const hasReasoning = !!streamingReasoning && streamingReasoning.length > 0;
+  const thinking = hasReasoning && !hasTokens;
+  // Capture when reasoning began (live timer) and freeze its duration once the
+  // answer starts, so the collapsed "Thought for Xs" label stops climbing.
+  const startRef = useRef<number | null>(null);
+  if (hasReasoning && startRef.current === null) startRef.current = Date.now();
+  const frozenRef = useRef<number | null>(null);
+  if (hasTokens && hasReasoning && frozenRef.current === null && startRef.current !== null) {
+    frozenRef.current = Date.now() - startRef.current;
+  }
   return (
     // aria-live=off: streaming text mutates per flush and must NOT be announced
     // token-by-token; the role=status announcer speaks start/completion instead.
     // Flat full-width assistant prose — matches a finalized assistant Bubble.
     <div className="w-full max-w-[68ch] text-sm leading-relaxed text-fleet-text" aria-live="off">
-      {hasTokens ? <ChatMarkdown streaming>{streamingText}</ChatMarkdown> : <ThinkingIndicator />}
+      {hasReasoning && (
+        <ReasoningPanel
+          text={streamingReasoning}
+          thinking={thinking}
+          startAt={startRef.current ?? undefined}
+          durationMs={frozenRef.current ?? undefined}
+        />
+      )}
+      {hasTokens ? (
+        <ChatMarkdown streaming>{streamingText}</ChatMarkdown>
+      ) : (
+        !hasReasoning && <ThinkingIndicator />
+      )}
     </div>
   );
 }

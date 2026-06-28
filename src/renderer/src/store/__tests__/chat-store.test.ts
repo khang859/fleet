@@ -53,6 +53,10 @@ beforeEach(() => {
         listeners.set(IPC_CHANNELS.CHAT_STREAM_ERROR, cb);
         return () => {};
       },
+      onStreamReasoning: (cb: Listener) => {
+        listeners.set(IPC_CHANNELS.CHAT_STREAM_REASONING, cb);
+        return () => {};
+      },
       onToolStatus: (cb: Listener) => {
         listeners.set(IPC_CHANNELS.CHAT_TOOL_STATUS, cb);
         return () => {};
@@ -132,6 +136,20 @@ describe('useChatStore', () => {
     expect(s.messages.at(-1)).toMatchObject({ role: 'assistant', content: 'Partial' });
   });
 
+  it('cancel preserves streamed reasoning in the placeholder', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().send('hi', 'x/y');
+    // Only reasoning streamed (model still thinking) — the placeholder must still
+    // be committed so the reasoning is not lost until the convo is reselected.
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_REASONING)?.({ streamId: 's1', delta: 'Hmm ' });
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_REASONING)?.({ streamId: 's1', delta: 'let me think' });
+    useChatStore.getState().cancel();
+    expect(useChatStore.getState().messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      reasoning: 'Hmm let me think'
+    });
+  });
+
   it('cancel with no streamed text leaves the message list unchanged', async () => {
     await useChatStore.getState().init();
     await useChatStore.getState().send('hi', 'x/y');
@@ -204,5 +222,21 @@ describe('useChatStore', () => {
     const s = useChatStore.getState();
     expect(s.status).toBe('error');
     expect(s.error).toBe('boom');
+  });
+
+  it('error commits a reasoning placeholder before the authoritative reload', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().send('hi', 'x/y');
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_REASONING)?.({ streamId: 's1', delta: 'thinking…' });
+    // Error before any content delta: reasoning streamed client-side must remain
+    // visible. Asserted synchronously, before the getMessages reload resolves.
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_ERROR)?.({
+      streamId: 's1',
+      message: 'boom',
+      partial: ''
+    });
+    const s = useChatStore.getState();
+    expect(s.status).toBe('error');
+    expect(s.messages.at(-1)).toMatchObject({ role: 'assistant', reasoning: 'thinking…' });
   });
 });

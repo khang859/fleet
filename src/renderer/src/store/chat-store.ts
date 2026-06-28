@@ -4,6 +4,7 @@ import type {
   ChatMessage,
   ChatModel,
   ChatStreamChunkPayload,
+  ChatStreamReasoningPayload,
   ChatStreamDonePayload,
   ChatStreamErrorPayload,
   ChatToolStatusPayload,
@@ -30,6 +31,8 @@ type ChatStoreState = {
   /** True from when a conversation is selected until its messages resolve — gates the load skeleton. */
   messagesLoading: boolean;
   streamingText: string | null;
+  /** Live chain-of-thought for the in-flight turn; null until the model emits reasoning. */
+  streamingReasoning: string | null;
   streamId: string | null;
   models: ChatModel[];
   imageModels: ChatModel[];
@@ -93,6 +96,7 @@ type ChatStoreState = {
 
 /** Unsubscribers for the stream event listeners. Replaced on each init(). */
 let unsubChunk: (() => void) | null = null;
+let unsubReasoning: (() => void) | null = null;
 let unsubDone: (() => void) | null = null;
 let unsubError: (() => void) | null = null;
 let unsubTool: (() => void) | null = null;
@@ -106,9 +110,15 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
   const streamBuffer = new StreamBuffer(50, (delta) => {
     set((s) => ({ streamingText: (s.streamingText ?? '') + delta }));
   });
+  // Reasoning streams on its own channel and into its own buffer so thinking
+  // tokens never interleave with the answer body.
+  const reasoningBuffer = new StreamBuffer(50, (delta) => {
+    set((s) => ({ streamingReasoning: (s.streamingReasoning ?? '') + delta }));
+  });
 
   function subscribeToStreamEvents(): void {
     unsubChunk?.();
+    unsubReasoning?.();
     unsubDone?.();
     unsubError?.();
     unsubTool?.();
@@ -119,13 +129,19 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       if (p.streamId !== get().streamId) return;
       streamBuffer.push(p.delta);
     });
+    unsubReasoning = window.fleet.chat.onStreamReasoning((p: ChatStreamReasoningPayload) => {
+      if (p.streamId !== get().streamId) return;
+      reasoningBuffer.push(p.delta);
+    });
     unsubDone = window.fleet.chat.onStreamDone((p: ChatStreamDonePayload) => {
       if (p.streamId !== get().streamId) return;
       streamBuffer.reset();
+      reasoningBuffer.reset();
       const activeId = get().activeId;
       set((s) => ({
         messages: [...s.messages, p.message],
         streamingText: null,
+        streamingReasoning: null,
         streamId: null,
         status: 'idle',
         toolStatus: null,
@@ -142,15 +158,48 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     });
     unsubError = window.fleet.chat.onStreamError((p: ChatStreamErrorPayload) => {
       if (p.streamId !== get().streamId) return;
-      streamBuffer.reset();
-      set({
+      // Flush (not drop) the buffered tails so the mirrored placeholder includes
+      // the last <50ms of answer and reasoning tokens.
+      streamBuffer.flush();
+      reasoningBuffer.flush();
+      const { streamId, streamingText, streamingReasoning, activeId } = get();
+      const partial = streamingText?.trim() ? streamingText : null;
+      const reasoning = streamingReasoning?.trim() ? streamingReasoning : null;
+      set((s) => ({
         status: 'error',
         error: p.message,
         streamingText: null,
+        streamingReasoning: null,
         streamId: null,
         toolStatus: null,
-        permissionRequests: []
-      });
+        permissionRequests: [],
+        // Mirror the partial answer + reasoning into the list synchronously so a
+        // turn that errored mid-thinking doesn't flicker out; the DB reload below
+        // then swaps in the authoritative message (real id + reasoningMs).
+        messages:
+          (partial || reasoning) && activeId
+            ? [
+                ...s.messages,
+                {
+                  id: `local-${streamId}`,
+                  conversationId: activeId,
+                  role: 'assistant',
+                  content: partial ?? '',
+                  reasoning: reasoning ?? undefined,
+                  parentId: null,
+                  createdAt: Date.now()
+                }
+              ]
+            : s.messages
+      }));
+      // Main persists whatever streamed before the failure to the DB *before*
+      // emitting this error, so reload the authoritative thread to replace the
+      // ephemeral placeholder above.
+      if (activeId) {
+        void window.fleet.chat.getMessages(activeId).then((messages) => {
+          if (get().activeId === activeId && get().status === 'error') set({ messages });
+        });
+      }
     });
     unsubTool = window.fleet.chat.onToolStatus((p: ChatToolStatusPayload) => {
       if (p.streamId !== get().streamId) return;
@@ -178,6 +227,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     messages: [],
     messagesLoading: false,
     streamingText: null,
+    streamingReasoning: null,
     streamId: null,
     models: [],
     imageModels: [],
@@ -259,12 +309,14 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
 
     selectConversation: async (id) => {
       streamBuffer.reset();
+      reasoningBuffer.reset();
       set({
         activeId: id,
         messages: [],
         // Drive the skeleton instead of flashing an empty pane during the async load.
         messagesLoading: true,
         streamingText: null,
+        streamingReasoning: null,
         streamId: null,
         status: 'idle',
         error: null,
@@ -345,6 +397,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         messages: [...s.messages, res.userMessage],
         streamId: res.streamId,
         streamingText: '',
+        streamingReasoning: null,
         status: 'streaming',
         error: null,
         toolStatus: null
@@ -362,7 +415,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         supportsTools: m?.supportsTools ?? false,
         supportsImages: m?.inputImage ?? false
       });
-      set({ streamId: res.streamId, streamingText: '', status: 'streaming', error: null });
+      set({
+        streamId: res.streamId,
+        streamingText: '',
+        streamingReasoning: null,
+        status: 'streaming',
+        error: null
+      });
     },
 
     retryLastTurn: async (model) => {
@@ -388,6 +447,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         messages,
         streamId: res.streamId,
         streamingText: '',
+        streamingReasoning: null,
         status: 'streaming',
         error: null,
         toolStatus: null
@@ -441,29 +501,37 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     },
 
     cancel: () => {
-      // Flush (not drop) the buffered tail so the mirrored partial reply below
-      // includes the last <50ms of tokens.
+      // Flush (not drop) both buffered tails so the mirrored partial reply below
+      // includes the last <50ms of answer and reasoning tokens.
       streamBuffer.flush();
-      const { streamId, streamingText, activeId } = get();
+      reasoningBuffer.flush();
+      const { streamId, streamingText, streamingReasoning, activeId } = get();
       if (streamId) void window.fleet.chat.cancel(streamId);
-      // Main persists whatever streamed so far; mirror it into the visible
-      // list so the partial reply doesn't vanish until the convo is reselected.
+      // Main persists whatever streamed so far (including reasoning); mirror it
+      // into the visible list so the partial reply doesn't vanish until the convo
+      // is reselected. The main process's CHAT_STREAM_ERROR carrying the persisted
+      // message is dropped by the streamId guard (we null it here), so the
+      // placeholder must carry the reasoning itself — otherwise a cancelled
+      // thinking turn would show no reasoning until reselect.
       const partial = streamingText?.trim() ? streamingText : null;
+      const reasoning = streamingReasoning?.trim() ? streamingReasoning : null;
       set((s) => ({
         status: 'idle',
         streamId: null,
         streamingText: null,
+        streamingReasoning: null,
         toolStatus: null,
         permissionRequests: [],
         messages:
-          partial && activeId
+          (partial || reasoning) && activeId
             ? [
                 ...s.messages,
                 {
                   id: `local-${streamId}`,
                   conversationId: activeId,
                   role: 'assistant',
-                  content: partial,
+                  content: partial ?? '',
+                  reasoning: reasoning ?? undefined,
                   parentId: null,
                   createdAt: Date.now()
                 }
