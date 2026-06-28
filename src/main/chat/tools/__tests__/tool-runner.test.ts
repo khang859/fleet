@@ -278,8 +278,8 @@ describe('ChatToolExecutor web fetch', () => {
       ?.payload as PermissionRequestPayload;
     expect(req.tool).toBe('WebFetch');
     expect(req.command).toBe('https://x.example/page');
-    // "Allow & remember" is offered the site origin, not the exact URL.
-    expect(req.rememberPrefix).toBe('https://x.example');
+    // "Allow & remember" is offered the site origin (path-anchored), not the exact URL.
+    expect(req.rememberPrefix).toBe('https://x.example/');
     manager.decide(req.requestId, 'allow-once');
     expect(await p).toBe('CONTENT of https://x.example/page');
   });
@@ -291,13 +291,13 @@ describe('ChatToolExecutor web fetch', () => {
       ?.payload as PermissionRequestPayload;
     manager.decide(req.requestId, 'allow-always');
     await p;
-    expect(persisted).toEqual(['WebFetch(https://docs.example*)']);
+    expect(persisted).toEqual(['WebFetch(https://docs.example/*)']);
   });
 
-  it('auto-approves when an origin allow rule matches', async () => {
+  it('auto-approves a same-origin url when an origin allow rule matches', async () => {
     const { exec, emitted } = setupFetch({
       enabled: true,
-      rules: { allow: ['WebFetch(https://ok.example*)'] }
+      rules: { allow: ['WebFetch(https://ok.example/*)'] }
     });
     const out = await exec.run(
       'web_fetch',
@@ -306,6 +306,21 @@ describe('ChatToolExecutor web fetch', () => {
     );
     expect(out).toBe('CONTENT of https://ok.example/deep');
     expect(emitted.some((e) => e.channel.endsWith('permission-request'))).toBe(false);
+  });
+
+  it('does NOT auto-approve a look-alike host for an origin allow rule', async () => {
+    const { exec, manager, emitted } = setupFetch({
+      enabled: true,
+      rules: { allow: ['WebFetch(https://ok.example/*)'] }
+    });
+    // A host that merely starts with the allowed origin must still prompt.
+    const p = exec.run('web_fetch', JSON.stringify({ url: 'https://ok.example.evil.io/x' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req).toBeDefined();
+    expect(req.tool).toBe('WebFetch');
+    manager.decide(req.requestId, 'deny');
+    expect(await p).toMatch(/denied/);
   });
 
   it('denies the fetch when the user declines', async () => {
