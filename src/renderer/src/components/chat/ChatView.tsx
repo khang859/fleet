@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useChatStore } from '../../store/chat-store';
 import { ConversationList } from './ConversationList';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { UsageMeter } from './UsageMeter';
 import { ArtifactPanel } from './ArtifactPanel';
+import { usePresence } from '../../hooks/use-presence';
+import { useReducedMotion } from '../../hooks/use-reduced-motion';
 import { DEFAULT_CHAT_USAGE, type ChatUsageConfig } from '../../../../shared/chat-types';
 
 type Props = { onOpenSettings: () => void };
@@ -14,6 +16,12 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
   const keyPresent = useChatStore((s) => s.keyPresent);
   const activeId = useChatStore((s) => s.activeId);
   const artifact = useChatStore((s) => s.activeArtifact);
+  const reduced = useReducedMotion();
+  // Keep the panel mounted through its close animation; render the last shown
+  // artifact during the exit so it slides shut instead of vanishing.
+  const { mounted: panelMounted, state: panelState } = usePresence(!!artifact, reduced ? 0 : 220);
+  const shownArtifact = useRef(artifact);
+  if (artifact) shownArtifact.current = artifact;
   const [defaultModel, setDefaultModel] = useState('deepseek/deepseek-v4-flash');
   const [usage, setUsage] = useState<ChatUsageConfig>(DEFAULT_CHAT_USAGE);
 
@@ -52,7 +60,13 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
           </div>
         )}
       </div>
-      {artifact && <ArtifactPanel key={`${artifact.messageId}:${artifact.index}`} />}
+      {panelMounted && shownArtifact.current && (
+        <ArtifactPanel
+          key={`${shownArtifact.current.messageId}:${shownArtifact.current.index}`}
+          artifact={shownArtifact.current}
+          presenceOpen={panelState === 'open'}
+        />
+      )}
     </div>
   );
 }

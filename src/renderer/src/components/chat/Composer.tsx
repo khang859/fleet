@@ -342,7 +342,7 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
         }`}
       >
         {mentionOpen && (
-          <ul className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg">
+          <ul className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full animate-in overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg fade-in zoom-in-95 duration-100">
             {mentionResults.map((r, i) => (
               <li key={r.path}>
                 <button
@@ -368,7 +368,7 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
           </ul>
         )}
         {menuOpen && !mentionOpen && (
-          <ul className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg">
+          <ul className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full animate-in overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg fade-in zoom-in-95 duration-100">
             {matches.map((s, i) => (
               <li key={`${s.kind}:${s.name}`}>
                 <button
