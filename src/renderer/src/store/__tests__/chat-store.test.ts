@@ -53,6 +53,10 @@ beforeEach(() => {
         listeners.set(IPC_CHANNELS.CHAT_STREAM_ERROR, cb);
         return () => {};
       },
+      onStreamReasoning: (cb: Listener) => {
+        listeners.set(IPC_CHANNELS.CHAT_STREAM_REASONING, cb);
+        return () => {};
+      },
       onToolStatus: (cb: Listener) => {
         listeners.set(IPC_CHANNELS.CHAT_TOOL_STATUS, cb);
         return () => {};
