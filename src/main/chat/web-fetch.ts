@@ -13,6 +13,8 @@ const MAX_BYTES = 5_000_000;
  * char threshold, so short-but-real pages still extract instead of rendering.
  */
 const MIN_READABLE_CHARS = 200;
+/** Cap on redirect hops followed (each re-validated against isFetchableUrl). */
+const MAX_REDIRECTS = 5;
 
 /** Renders a URL in a real (headless) browser and returns the post-JS outerHTML. */
 export type PageRenderer = (url: string, signal: AbortSignal) => Promise<string>;
@@ -106,27 +108,53 @@ function concat(chunks: Uint8Array[]): Uint8Array {
   return out;
 }
 
-/** GET the URL with a timeout, a browser-like UA, and a byte cap. */
+/** Thrown when a URL (or a redirect target) is not a public http(s) address. */
+class BlockedUrlError extends Error {
+  constructor(url: string) {
+    super(`Refused to fetch ${url}: only public http(s) URLs are allowed.`);
+    this.name = 'BlockedUrlError';
+  }
+}
+
+/**
+ * GET the URL with a timeout, a browser-like UA, and a byte cap. Redirects are
+ * followed manually so every hop's host is re-checked against `isFetchableUrl`
+ * — `redirect: 'follow'` would let a public page bounce us to an internal IP
+ * (e.g. the cloud metadata endpoint) without re-validation.
+ */
 async function fetchPage(
   url: string,
   fetchImpl: typeof fetch,
   signal: AbortSignal
 ): Promise<FetchedPage> {
-  const res = await fetchImpl(url, {
-    redirect: 'follow',
-    signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]),
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+  // One deadline across all redirect hops, not per request.
+  const deadline = AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]);
+  let current = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    if (!isFetchableUrl(current)) throw new BlockedUrlError(current);
+    const res = await fetchImpl(current, {
+      redirect: 'manual',
+      signal: deadline,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      if (!location) break; // 3xx without a target — treat as the final response.
+      current = new URL(location, current).toString(); // resolve relative redirects
+      continue;
     }
-  });
-  if (!res.ok) {
-    throw new Error(`Fetch failed: ${res.status} ${res.statusText}`.trim());
+    if (!res.ok) {
+      throw new Error(`Fetch failed: ${res.status} ${res.statusText}`.trim());
+    }
+    const contentType = res.headers.get('content-type') ?? '';
+    const body = await readCapped(res);
+    return { contentType, body };
   }
-  const contentType = res.headers.get('content-type') ?? '';
-  const body = await readCapped(res);
-  return { contentType, body };
+  throw new Error(`Too many redirects fetching ${url}`);
 }
 
 const turndown = new TurndownService({
@@ -216,5 +244,10 @@ export async function extractContent(args: {
 /** Truncate the result to `maxChars`, appending a marker when content is cut. */
 export function capResult(content: string, maxChars: number): string {
   if (content.length <= maxChars) return content;
-  return `${content.slice(0, maxChars)}\n\n…[truncated to ${maxChars} characters]`;
+  // Back off one code unit if the cut lands between a surrogate pair, so we
+  // never emit a lone surrogate (slice works on UTF-16 units, not code points).
+  let end = maxChars;
+  const last = content.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return `${content.slice(0, end)}\n\n…[truncated to ${maxChars} characters]`;
 }

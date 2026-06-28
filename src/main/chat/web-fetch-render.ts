@@ -1,4 +1,5 @@
 import { BrowserWindow, session, type Session } from 'electron';
+import { isFetchableUrl } from './web-fetch';
 
 /** In-memory (non-persisted) partition isolates web-fetch browsing from the app. */
 const PARTITION = 'web-fetch';
@@ -8,6 +9,18 @@ const SETTLE_MS = 700;
 
 let configured: Session | null = null;
 
+/** Block http(s) requests to a private/loopback host (allow data:/blob:/about:). */
+function isPrivateHttpUrl(raw: string): boolean {
+  let protocol: string;
+  try {
+    protocol = new URL(raw).protocol;
+  } catch {
+    return false;
+  }
+  if (protocol !== 'http:' && protocol !== 'https:') return false;
+  return !isFetchableUrl(raw);
+}
+
 /** Lazily harden the shared fetch session once (no downloads, no permissions). */
 function getRenderSession(): Session {
   if (configured) return configured;
@@ -16,6 +29,11 @@ function getRenderSession(): Session {
     cb(false);
   });
   ses.on('will-download', (e) => e.preventDefault());
+  // Defense in depth: even a validated page can redirect or pull subresources
+  // to an internal IP. Cancel any request that resolves to a private host.
+  ses.webRequest.onBeforeRequest((details, cb) => {
+    cb({ cancel: isPrivateHttpUrl(details.url) });
+  });
   configured = ses;
   return ses;
 }

@@ -110,6 +110,57 @@ describe('extractContent', () => {
       extractContent({ url: 'https://example.com', deps: { fetchImpl: failing }, signal })
     ).rejects.toThrow(/Fetch failed/);
   });
+
+  it('refuses an SSRF target before any request is made', async () => {
+    const spy = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/require-await
+    const fetchImpl = (async (u: string) => {
+      spy(u);
+      return new Response('', { status: 200 });
+    }) as unknown as typeof fetch;
+    await expect(
+      extractContent({
+        url: 'http://169.254.169.254/latest/meta-data/',
+        deps: { fetchImpl },
+        signal
+      })
+    ).rejects.toThrow(/Refused to fetch/);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('re-validates redirect targets and blocks a bounce to an internal IP', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
+    const fetchImpl = (async (u: string) =>
+      u === 'https://safe.example/start'
+        ? new Response(null, {
+            status: 302,
+            headers: { location: 'http://169.254.169.254/latest/meta-data/' }
+          })
+        : new Response('secret', {
+            status: 200,
+            headers: { 'content-type': 'text/html' }
+          })) as unknown as typeof fetch;
+    await expect(
+      extractContent({ url: 'https://safe.example/start', deps: { fetchImpl }, signal })
+    ).rejects.toThrow(/Refused to fetch/);
+  });
+
+  it('follows a redirect to another public URL', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await
+    const fetchImpl = (async (u: string) =>
+      u === 'https://a.example/old'
+        ? new Response(null, { status: 301, headers: { location: 'https://a.example/new' } })
+        : new Response(ARTICLE_HTML, {
+            status: 200,
+            headers: { 'content-type': 'text/html' }
+          })) as unknown as typeof fetch;
+    const out = await extractContent({
+      url: 'https://a.example/old',
+      deps: { fetchImpl },
+      signal
+    });
+    expect(out).toContain('# Promises Explained');
+  });
 });
 
 describe('capResult', () => {
@@ -121,5 +172,15 @@ describe('capResult', () => {
     const out = capResult('a'.repeat(50), 10);
     expect(out.startsWith('aaaaaaaaaa')).toBe(true);
     expect(out).toMatch(/truncated to 10 characters/);
+  });
+
+  it('does not split a surrogate pair at the cut boundary', () => {
+    // '🌈' is a surrogate pair; the cut at maxChars lands between its halves.
+    const content = 'a'.repeat(9) + '🌈';
+    const out = capResult(content, 10);
+    const body = out.split('\n\n…')[0];
+    // The high surrogate is dropped rather than emitted alone.
+    expect(body).toBe('a'.repeat(9));
+    expect(/[\uD800-\uDBFF]/.test(body)).toBe(false);
   });
 });
