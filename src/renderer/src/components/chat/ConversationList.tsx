@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Plus, Trash2, GitBranch, Download, Pin, Search, X, FolderOpen } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import type { ChatConversation } from '../../../../shared/chat-types';
@@ -49,7 +49,23 @@ function Row({ c }: { c: ChatConversation }): React.JSX.Element {
   const remove = useChatStore((s) => s.deleteConversation);
   const exportConversation = useChatStore((s) => s.exportConversation);
   const setPinned = useChatStore((s) => s.setConversationPinned);
+  const rename = useChatStore((s) => s.renameConversation);
   const isSel = c.id === activeId;
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(c.title);
+
+  const startRename = (): void => {
+    setDraft(c.title);
+    setEditing(true);
+  };
+  // Enter/blur commit; an empty (or unchanged) name keeps the prior title. A
+  // manual rename locks the title so background auto-naming won't overwrite it.
+  const commitRename = (): void => {
+    setEditing(false);
+    const next = draft.trim();
+    if (next && next !== c.title) void rename(c.id, next);
+  };
 
   return (
     <div
@@ -74,11 +90,37 @@ function Row({ c }: { c: ChatConversation }): React.JSX.Element {
           {c.parentConversationId && (
             <GitBranch size={12} className="shrink-0 text-fleet-text-muted" />
           )}
-          <span
-            className={`truncate text-sm ${isSel ? 'text-fleet-text' : 'text-fleet-text-secondary'}`}
-          >
-            {c.title}
-          </span>
+          {editing ? (
+            <input
+              value={draft}
+              autoFocus
+              onFocus={(e) => e.currentTarget.select()}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitRename();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setEditing(false);
+                }
+              }}
+              className="w-full min-w-0 rounded border border-fleet-border bg-fleet-surface-2 px-1 py-0.5 text-sm text-fleet-text outline-none"
+            />
+          ) : (
+            <span
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                startRename();
+              }}
+              className={`truncate text-sm ${isSel ? 'text-fleet-text' : 'text-fleet-text-secondary'}`}
+            >
+              {c.title}
+            </span>
+          )}
         </span>
         {/* Recency shows at rest; the action cluster replaces it on hover/focus. */}
         <span className="shrink-0">
