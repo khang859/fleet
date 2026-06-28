@@ -27,6 +27,8 @@ type ChatStoreState = {
   conversations: ChatConversation[];
   activeId: string | null;
   messages: ChatMessage[];
+  /** True from when a conversation is selected until its messages resolve — gates the load skeleton. */
+  messagesLoading: boolean;
   streamingText: string | null;
   streamId: string | null;
   models: ChatModel[];
@@ -173,6 +175,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     conversations: [],
     activeId: null,
     messages: [],
+    messagesLoading: false,
     streamingText: null,
     streamId: null,
     models: [],
@@ -258,6 +261,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       set({
         activeId: id,
         messages: [],
+        // Drive the skeleton instead of flashing an empty pane during the async load.
+        messagesLoading: true,
         streamingText: null,
         streamId: null,
         status: 'idle',
@@ -266,9 +271,19 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         permissionRequests: [],
         activeArtifact: null
       });
-      const messages = await window.fleet.chat.getMessages(id);
-      if (get().activeId !== id) return; // switched mid-load
-      set({ messages });
+      try {
+        const messages = await window.fleet.chat.getMessages(id);
+        if (get().activeId !== id) return; // switched mid-load
+        set({ messages, messagesLoading: false });
+      } catch (err) {
+        if (get().activeId !== id) return; // switched mid-load
+        // Collapse the skeleton and surface the failure instead of pulsing forever.
+        set({
+          messagesLoading: false,
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Failed to load conversation'
+        });
+      }
     },
 
     newConversation: async () => {
@@ -284,7 +299,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       if (get().activeId === id) {
         const next = remaining[0]?.id ?? null;
         if (next) await get().selectConversation(next);
-        else set({ activeId: null, messages: [] });
+        else set({ activeId: null, messages: [], messagesLoading: false });
       }
     },
 
