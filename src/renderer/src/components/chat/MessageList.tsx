@@ -12,7 +12,8 @@ import {
   FileCode,
   ArrowDown,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import { useReducedMotion } from '../../hooks/use-reduced-motion';
@@ -77,13 +78,31 @@ function Bubble({
   const regenerate = useChatStore((s) => s.regenerate);
   const editMessage = useChatStore((s) => s.editMessage);
   const forkConversation = useChatStore((s) => s.forkConversation);
+  const deleteMessage = useChatStore((s) => s.deleteMessage);
   const openArtifact = useChatStore((s) => s.openArtifact);
   const activeArtifact = useChatStore((s) => s.activeArtifact);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
   const [copied, setCopied] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const copyTimer = useRef<number | null>(null);
+  const confirmTimer = useRef<number | null>(null);
   useEffect(() => () => window.clearTimeout(copyTimer.current ?? undefined), []);
+  useEffect(() => () => window.clearTimeout(confirmTimer.current ?? undefined), []);
+
+  // Two-click guard: the first click arms the delete (and disarms after 3s);
+  // the second within that window removes the turn and its replies.
+  const onDelete = (): void => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      window.clearTimeout(confirmTimer.current ?? undefined);
+      confirmTimer.current = window.setTimeout(() => setConfirmDelete(false), 3000);
+      return;
+    }
+    window.clearTimeout(confirmTimer.current ?? undefined);
+    setConfirmDelete(false);
+    void deleteMessage(message.id);
+  };
 
   const copy = (): void => {
     void navigator.clipboard.writeText(content);
@@ -220,6 +239,17 @@ function Bubble({
             className="focus-ring rounded p-0.5 text-fleet-text-muted hover:text-fleet-text disabled:opacity-30"
           >
             <GitBranch size={12} />
+          </button>
+          <button
+            aria-label={confirmDelete ? 'Confirm delete' : 'Delete message'}
+            title={confirmDelete ? 'Click again to delete' : 'Delete message and replies'}
+            disabled={streaming}
+            onClick={onDelete}
+            className={`focus-ring rounded p-0.5 disabled:opacity-30 ${
+              confirmDelete ? 'text-red-400' : 'text-fleet-text-muted hover:text-fleet-text'
+            }`}
+          >
+            <Trash2 size={12} />
           </button>
           {/* Quiet, non-distracting metadata: send time, plus the model on
               assistant replies. Revealed with the action bar (hover/focus). */}

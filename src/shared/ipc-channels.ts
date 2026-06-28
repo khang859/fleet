@@ -275,6 +275,7 @@ export const IPC_CHANNELS = {
   CHAT_SEND: 'chat:send',
   CHAT_REGENERATE: 'chat:regenerate',
   CHAT_EDIT_MESSAGE: 'chat:edit-message',
+  CHAT_DELETE_MESSAGE: 'chat:delete-message',
   CHAT_SELECT_VARIANT: 'chat:select-variant',
   CHAT_FORK_CONVERSATION: 'chat:fork-conversation',
   CHAT_MENTION_SEARCH: 'chat:mention-search',

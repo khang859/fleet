@@ -79,6 +79,7 @@ type ChatStoreState = {
   /** Re-stream the response to the last user message after a failed turn. */
   retryLastTurn: (model: string) => Promise<void>;
   editMessage: (messageId: string, text: string, model: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
   selectVariant: (messageId: string) => Promise<void>;
   forkConversation: (messageId: string) => Promise<void>;
   exportConversation: (id: string) => Promise<void>;
@@ -376,6 +377,17 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         error: null,
         toolStatus: null
       });
+    },
+
+    deleteMessage: async (messageId) => {
+      if (get().status === 'streaming') return;
+      // The displayed thread is the linear active path, so a turn and its
+      // descendants are the clicked message plus everything after it — slice
+      // optimistically, then reconcile with the server's re-pointed path.
+      const idx = get().messages.findIndex((m) => m.id === messageId);
+      if (idx >= 0) set({ messages: get().messages.slice(0, idx) });
+      const messages = await window.fleet.chat.deleteMessage(messageId);
+      set({ messages });
     },
 
     selectVariant: async (messageId) => {
