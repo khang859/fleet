@@ -106,8 +106,8 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
   {
     id: 'command-palette',
     label: 'Command palette',
-    mac: { key: 'P', meta: true, shift: true },
-    other: { key: 'P', ctrl: true, shift: true }
+    mac: { key: 'k', meta: true },
+    other: { key: 'k', ctrl: true }
   },
   {
     id: 'git-changes',

@@ -26,6 +26,7 @@ export function usePaneNavigation(): void {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent): void {
+      if (e.defaultPrevented) return;
       // Shift+F2 to rename active pane
       if (matchesShortcut(e, sc('rename-pane'))) {
         e.preventDefault();

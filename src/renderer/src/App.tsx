@@ -62,6 +62,7 @@ import { getAccentCssVars } from './lib/theme';
 import { tooltipAnim, popperAnim } from './lib/motion';
 import { useAppThemeVars } from './hooks/use-app-theme';
 import { useSlideshow } from './hooks/use-slideshow';
+import { findPaneLocation } from './lib/palette-items';
 
 type PiPlanModalEntry = PiPlanOpenPayload & { modalId: string };
 
@@ -267,6 +268,26 @@ export function App(): React.JSX.Element {
     const handler = (): void => setCommandPaletteOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-command-palette', handler);
     return () => document.removeEventListener('fleet:toggle-command-palette', handler);
+  }, []);
+
+  // Jump to first pane that needs input
+  useEffect(() => {
+    const handler = (): void => {
+      const activities = useNotificationStore.getState().activities;
+      const ws = useWorkspaceStore.getState();
+      for (const [paneId, rec] of activities) {
+        if (rec.state === 'needs_me') {
+          const loc = findPaneLocation(ws.workspace.tabs, paneId);
+          if (loc) {
+            ws.setActiveTab(loc.tabId);
+            ws.setActivePane(paneId);
+          }
+          break;
+        }
+      }
+    };
+    document.addEventListener('fleet:jump-needy-agent', handler);
+    return () => document.removeEventListener('fleet:jump-needy-agent', handler);
   }, []);
 
   // Git changes modal toggle
