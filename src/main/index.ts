@@ -109,8 +109,14 @@ import { ChatSearchService } from './chat/chat-search-service';
 import { runChatBackfill } from './chat/chat-backfill';
 import { registerChatIpc } from './chat/chat-ipc';
 import { PermissionManager } from './chat/permissions/permission-manager';
-import { ChatToolExecutor, type WebSearchRunner } from './chat/tools/tool-runner';
+import {
+  ChatToolExecutor,
+  type WebSearchRunner,
+  type WebFetchRunner
+} from './chat/tools/tool-runner';
 import { createWebSearchProvider, formatWebSearchResults } from './chat/web-search';
+import { extractContent, capResult } from './chat/web-fetch';
+import { renderPage } from './chat/web-fetch-render';
 import { McpManager } from './chat/mcp/manager';
 import { SkillManager, type SkillRoot } from './chat/skills/skill-manager';
 import { ChatImageStorage } from './chat/image/image-storage';
@@ -1386,6 +1392,19 @@ void app.whenReady().then(async () => {
       return formatWebSearchResults(query, results);
     }
   };
+  const isWebFetchReady = (): boolean => settingsStore.get().ai.chat.webFetch.enabled;
+  const chatWebFetch: WebFetchRunner = {
+    enabled: isWebFetchReady,
+    fetch: async (url, signal) => {
+      const cfg = settingsStore.get().ai.chat.webFetch;
+      const content = await extractContent({
+        url,
+        deps: { render: renderPage },
+        signal
+      });
+      return capResult(content, cfg.maxChars);
+    }
+  };
   const chatToolExecutor = new ChatToolExecutor(
     chatPermissions,
     () => settingsStore.get().ai.chat.tools,
@@ -1393,7 +1412,8 @@ void app.whenReady().then(async () => {
     chatWorkspace,
     chatMcp,
     (entry) => chatStore.addAudit(entry),
-    chatWebSearch
+    chatWebSearch,
+    chatWebFetch
   );
   const chatService = new ChatService({
     store: chatStore,
@@ -1421,6 +1441,7 @@ void app.whenReady().then(async () => {
       return { presets: c.personas, defaultId: c.defaultPersonaId };
     },
     isWebSearchReady,
+    isWebFetchReady,
     getMcpToolDefs: () => chatMcp.getToolDefs(),
     skills: chatSkills,
     toolExecutor: chatToolExecutor,
