@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.81.0
+
+- **Reasoning/thinking display panel** — the Chat agent's reasoning is now surfaced in a dedicated, collapsible thinking panel during streaming (#411).
+- **Streaming & waiting-state polish** — refined streaming output and waiting-state indicators for smoother, clearer feedback while the agent works (#412).
+- **Inline conversation rename** — rename a conversation directly in the sidebar without leaving the list (#417).
+- **Delete a single message/turn** — remove an individual message or turn from a conversation (#416).
+- **Model picker upgrades** — the model picker now shows a loading state and per-model capability badges (#418).
+- **Conversation-switch loading skeleton** — switching conversations shows a loading skeleton instead of a blank flash (#413).
+- **Persona picker as Radix popover** — the persona picker is rebuilt as a Radix popover for better keyboard and accessibility behavior (#415).
+- **Menu & panel micro-animations** — added subtle micro-animations to menus and panels for a more polished feel (#414).
+
 ## v2.80.0
 
 - **Isolated workspace per conversation** — each Chat conversation now gets its own dedicated `~/.fleet/chat/{id}` folder, so file reads, writes, and generated images are scoped to that conversation instead of sharing one global workspace (#386).
