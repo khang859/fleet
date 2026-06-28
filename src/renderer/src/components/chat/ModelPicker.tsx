@@ -1,9 +1,38 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronDown, Search } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  Search,
+  Loader2,
+  Wrench,
+  Eye,
+  Image as ImageIcon,
+  type LucideIcon
+} from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
+import { useReducedMotion } from '../../hooks/use-reduced-motion';
 import { fuzzyMatch } from '../../lib/commands';
 import { popperAnim } from '../../lib/motion';
+import type { ChatModel } from '../../../../shared/chat-types';
+
+/** Compact capability glyphs for a model row: tools / vision / image-gen. */
+function CapabilityBadges({ model }: { model: ChatModel }): React.JSX.Element | null {
+  const caps: Array<{ icon: LucideIcon; label: string }> = [];
+  if (model.supportsTools) caps.push({ icon: Wrench, label: 'Tools' });
+  if (model.inputImage) caps.push({ icon: Eye, label: 'Vision' });
+  if (model.outputImage) caps.push({ icon: ImageIcon, label: 'Image generation' });
+  if (caps.length === 0) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1 text-fleet-text-muted">
+      {caps.map(({ icon: Icon, label }) => (
+        <span key={label} title={label} aria-label={label}>
+          <Icon size={11} />
+        </span>
+      ))}
+    </span>
+  );
+}
 
 type Props = {
   value: string | null;
@@ -34,11 +63,30 @@ export function ModelPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  // Distinguish "still fetching" from "fetched and genuinely empty" so the empty
+  // copy doesn't read as an error during the initial load.
+  const [loading, setLoading] = useState(keyPresent && models.length === 0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotion();
 
   useEffect(() => {
-    if (keyPresent && models.length === 0) void load();
+    // Models present (or no key) → never loading. Also clears a stuck spinner
+    // when switching to an already-loaded source.
+    if (!(keyPresent && models.length === 0)) {
+      setLoading(false);
+      return;
+    }
+    // Guard the resolve: switching source re-runs this effect with a different
+    // `load`, and a stale fetch must not clear the new fetch's loading state.
+    let cancelled = false;
+    setLoading(true);
+    void load().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [keyPresent, models.length, load]);
 
   const selected = models.find((m) => m.id === value);
@@ -154,9 +202,13 @@ export function ModelPicker({
                 </span>
               </button>
             )}
-            {filtered.length === 0 ? (
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 px-3 py-4 text-xs text-fleet-text-muted">
+                <Loader2 size={13} className={reduced ? '' : 'animate-spin'} /> Loading models…
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="px-3 py-4 text-center text-xs text-fleet-text-muted">
-                {models.length === 0 ? 'No models loaded.' : 'No matching models.'}
+                {models.length === 0 ? 'No models available.' : 'No matching models.'}
               </div>
             ) : (
               filtered.map((m, i) => (
@@ -183,7 +235,10 @@ export function ModelPicker({
                         </span>
                       )}
                     </span>
-                    <span className="block truncate text-[11px] text-fleet-text-muted">{m.id}</span>
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[11px] text-fleet-text-muted">{m.id}</span>
+                      <CapabilityBadges model={m} />
+                    </span>
                   </span>
                 </button>
               ))
