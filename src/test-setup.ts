@@ -90,3 +90,24 @@ if (typeof OffscreenCanvas === 'undefined') {
 
   Object.assign(globalThis, { OffscreenCanvas: FakeOffscreenCanvas });
 }
+
+// Polyfill KeyboardEvent for Node.js test environment
+if (typeof KeyboardEvent === 'undefined') {
+  class FakeKeyboardEvent {
+    key: string;
+    metaKey: boolean;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+    altKey: boolean;
+
+    constructor(_type: string, init: Record<string, unknown> & { key: string }) {
+      this.key = init.key;
+      this.metaKey = Boolean(init.metaKey ?? false);
+      this.ctrlKey = Boolean(init.ctrlKey ?? false);
+      this.shiftKey = Boolean(init.shiftKey ?? false);
+      this.altKey = Boolean(init.altKey ?? false);
+    }
+  }
+
+  Object.assign(globalThis, { KeyboardEvent: FakeKeyboardEvent });
+}
