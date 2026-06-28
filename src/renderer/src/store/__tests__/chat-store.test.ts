@@ -136,6 +136,20 @@ describe('useChatStore', () => {
     expect(s.messages.at(-1)).toMatchObject({ role: 'assistant', content: 'Partial' });
   });
 
+  it('cancel preserves streamed reasoning in the placeholder', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().send('hi', 'x/y');
+    // Only reasoning streamed (model still thinking) — the placeholder must still
+    // be committed so the reasoning is not lost until the convo is reselected.
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_REASONING)?.({ streamId: 's1', delta: 'Hmm ' });
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_REASONING)?.({ streamId: 's1', delta: 'let me think' });
+    useChatStore.getState().cancel();
+    expect(useChatStore.getState().messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      reasoning: 'Hmm let me think'
+    });
+  });
+
   it('cancel with no streamed text leaves the message list unchanged', async () => {
     await useChatStore.getState().init();
     await useChatStore.getState().send('hi', 'x/y');

@@ -432,15 +432,20 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     },
 
     cancel: () => {
-      // Flush (not drop) the buffered tail so the mirrored partial reply below
-      // includes the last <50ms of tokens.
+      // Flush (not drop) both buffered tails so the mirrored partial reply below
+      // includes the last <50ms of answer and reasoning tokens.
       streamBuffer.flush();
-      reasoningBuffer.reset();
-      const { streamId, streamingText, activeId } = get();
+      reasoningBuffer.flush();
+      const { streamId, streamingText, streamingReasoning, activeId } = get();
       if (streamId) void window.fleet.chat.cancel(streamId);
-      // Main persists whatever streamed so far; mirror it into the visible
-      // list so the partial reply doesn't vanish until the convo is reselected.
+      // Main persists whatever streamed so far (including reasoning); mirror it
+      // into the visible list so the partial reply doesn't vanish until the convo
+      // is reselected. The main process's CHAT_STREAM_ERROR carrying the persisted
+      // message is dropped by the streamId guard (we null it here), so the
+      // placeholder must carry the reasoning itself — otherwise a cancelled
+      // thinking turn would show no reasoning until reselect.
       const partial = streamingText?.trim() ? streamingText : null;
+      const reasoning = streamingReasoning?.trim() ? streamingReasoning : null;
       set((s) => ({
         status: 'idle',
         streamId: null,
@@ -449,14 +454,15 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         toolStatus: null,
         permissionRequests: [],
         messages:
-          partial && activeId
+          (partial || reasoning) && activeId
             ? [
                 ...s.messages,
                 {
                   id: `local-${streamId}`,
                   conversationId: activeId,
                   role: 'assistant',
-                  content: partial,
+                  content: partial ?? '',
+                  reasoning: reasoning ?? undefined,
                   parentId: null,
                   createdAt: Date.now()
                 }
