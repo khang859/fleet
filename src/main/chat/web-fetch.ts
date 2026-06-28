@@ -25,9 +25,57 @@ export type WebFetchDeps = {
   render?: PageRenderer;
 };
 
+/** A literal IPv4 in a private / loopback / link-local / unspecified range. */
+function isBlockedIpv4(host: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  if (a === 127 || a === 10 || a === 0) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  return false;
+}
+
+/** Pull the embedded IPv4 out of an IPv4-mapped IPv6 (`::ffff:a.b.c.d` or `::ffff:aabb:ccdd`). */
+function mappedIpv4(addr: string): string | null {
+  const m = /^::ffff:([0-9a-f.:]+)$/.exec(addr);
+  if (!m) return null;
+  const rest = m[1];
+  if (rest.includes('.')) return rest; // already dotted-quad
+  const parts = rest.split(':');
+  if (parts.length !== 2) return null;
+  const hi = parseInt(parts[0], 16);
+  const lo = parseInt(parts[1], 16);
+  if (Number.isNaN(hi) || Number.isNaN(lo)) return null;
+  return `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`;
+}
+
 /**
- * SSRF / scheme guard: only http(s), and never a loopback or private-range host.
- * Blocks file://, localhost, 127.x, 10.x, 192.168.x, 169.254.x (link-local), etc.
+ * A literal IPv6 (bracketed, as `URL.hostname` returns it) in a loopback,
+ * unspecified, link-local (fe80::/10), unique-local (fc00::/7), or
+ * IPv4-mapped-private range. `URL` normalizes IPv6 to compressed lowercase.
+ */
+function isBlockedIpv6(host: string): boolean {
+  if (!host.startsWith('[') || !host.endsWith(']')) return false;
+  let addr = host.slice(1, -1);
+  const zone = addr.indexOf('%'); // strip a zone id like fe80::1%eth0
+  if (zone !== -1) addr = addr.slice(0, zone);
+  if (addr === '::' || addr === '::1') return true; // unspecified, loopback
+  const head = addr.split(':', 1)[0];
+  if (/^fe[89ab]/.test(head)) return true; // fe80::/10 link-local
+  if (/^f[cd]/.test(head)) return true; // fc00::/7 unique-local
+  const mapped = mappedIpv4(addr);
+  return mapped !== null && isBlockedIpv4(mapped);
+}
+
+/**
+ * SSRF / scheme guard: only http(s), and never a loopback or private-range host
+ * (IPv4 or IPv6). Blocks file://, localhost, 127.x, 10.x, 192.168.x, 169.254.x,
+ * ::1, fe80::/10, fc00::/7, and IPv4-mapped private addresses.
+ *
+ * NOTE: this validates the host *string* only. A hostname whose DNS resolves to
+ * a private IP still passes here — connect-time IP pinning is tracked in #420.
  */
 export function isFetchableUrl(raw: string): boolean {
   if (!isSafeExternalUrl(raw)) return false;
@@ -41,18 +89,9 @@ export function isFetchableUrl(raw: string): boolean {
     return false;
   }
   if (protocol !== 'http:' && protocol !== 'https:') return false;
-  if (host === 'localhost' || host.endsWith('.localhost') || host === '0.0.0.0') return false;
-  if (host === '::1' || host === '[::1]') return false;
-  // IPv4 private / loopback / link-local ranges.
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  if (m) {
-    const [a, b] = [Number(m[1]), Number(m[2])];
-    if (a === 127 || a === 10 || a === 0) return false;
-    if (a === 192 && b === 168) return false;
-    if (a === 169 && b === 254) return false;
-    if (a === 172 && b >= 16 && b <= 31) return false;
-  }
-  return true;
+  if (host === 'localhost' || host.endsWith('.localhost')) return false;
+  if (host.startsWith('[')) return !isBlockedIpv6(host);
+  return !isBlockedIpv4(host);
 }
 
 const HTML_TYPES = ['text/html', 'application/xhtml+xml'];

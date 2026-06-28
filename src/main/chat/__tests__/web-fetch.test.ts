@@ -36,15 +36,32 @@ describe('isFetchableUrl', () => {
     expect(isFetchableUrl('http://example.com')).toBe(true);
   });
 
-  it('rejects unsafe schemes and SSRF targets', () => {
+  it('rejects unsafe schemes and IPv4 SSRF targets', () => {
     expect(isFetchableUrl('file:///etc/passwd')).toBe(false);
     expect(isFetchableUrl('mailto:a@b.com')).toBe(false);
     expect(isFetchableUrl('http://localhost:3000')).toBe(false);
     expect(isFetchableUrl('http://127.0.0.1')).toBe(false);
     expect(isFetchableUrl('http://10.0.0.5')).toBe(false);
     expect(isFetchableUrl('http://192.168.1.1')).toBe(false);
+    expect(isFetchableUrl('http://172.16.0.1')).toBe(false);
     expect(isFetchableUrl('http://169.254.169.254')).toBe(false);
+    expect(isFetchableUrl('http://0')).toBe(false); // normalizes to 0.0.0.0
     expect(isFetchableUrl('not a url')).toBe(false);
+  });
+
+  it('rejects IPv6 loopback / link-local / unique-local / mapped targets', () => {
+    expect(isFetchableUrl('http://[::1]/')).toBe(false);
+    expect(isFetchableUrl('http://[::]/')).toBe(false);
+    expect(isFetchableUrl('http://[fe80::1]/')).toBe(false);
+    expect(isFetchableUrl('http://[fc00::1]/')).toBe(false);
+    expect(isFetchableUrl('http://[fd12:3456::1]/')).toBe(false);
+    // IPv4-mapped 169.254.169.254 (cloud metadata) in both hex and dotted forms.
+    expect(isFetchableUrl('http://[::ffff:a9fe:a9fe]/latest/meta-data')).toBe(false);
+    expect(isFetchableUrl('http://[::ffff:169.254.169.254]/')).toBe(false);
+  });
+
+  it('still accepts public IPv6 hosts', () => {
+    expect(isFetchableUrl('http://[2606:4700:4700::1111]/')).toBe(true); // Cloudflare DNS
   });
 });
 
