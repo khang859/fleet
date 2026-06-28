@@ -82,6 +82,17 @@ export function evaluatePermission(
  * Returns a rule string like `Bash(npm run *)`.
  */
 export function suggestRememberRule(tool: string, value: string): string {
+  // WebFetch: remember the whole site (origin), not the one exact URL. The
+  // trailing `/` before `*` anchors the wildcard at the path boundary so the
+  // rule can't over-match a look-alike host (origin* would match
+  // `https://example.com.evil.io`; origin/* does not).
+  if (tool === 'WebFetch') {
+    try {
+      return `${tool}(${new URL(value).origin}/*)`;
+    } catch {
+      return `${tool}(${value})`;
+    }
+  }
   if (tool !== 'Bash') return `${tool}(${value})`;
   const tokens = value.trim().split(/\s+/);
   const prefix: string[] = [];

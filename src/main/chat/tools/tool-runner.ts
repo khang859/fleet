@@ -28,7 +28,14 @@ export type WebSearchRunner = {
   search: (query: string, signal: AbortSignal) => Promise<string>;
 };
 
+/** Fetches a URL and returns cleaned markdown; the renderer + cap are bound by the caller. */
+export type WebFetchRunner = {
+  enabled: () => boolean;
+  fetch: (url: string, signal: AbortSignal) => Promise<string>;
+};
+
 export const WEB_SEARCH_TOOL_NAME = 'web_search';
+export const WEB_FETCH_TOOL_NAME = 'web_fetch';
 
 export const WEB_SEARCH_TOOL = {
   type: 'function',
@@ -42,6 +49,22 @@ export const WEB_SEARCH_TOOL = {
         query: { type: 'string', description: 'The search query.' }
       },
       required: ['query']
+    }
+  }
+} as const;
+
+export const WEB_FETCH_TOOL = {
+  type: 'function',
+  function: {
+    name: 'web_fetch',
+    description:
+      'Fetch a web page or text resource by URL and read its contents. Gated: the user approves the URL. JavaScript-rendered pages are rendered in a real browser; HTML is returned as cleaned markdown. Use this to read a specific page you already have the URL for (pair it with web_search to find URLs).',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'The absolute http(s) URL to fetch.' }
+      },
+      required: ['url']
     }
   }
 } as const;
@@ -203,6 +226,7 @@ const searchArgs = z.object({
 });
 const bashArgs = z.object({ command: z.string() });
 const webSearchArgs = z.object({ query: z.string() });
+const webFetchArgs = z.object({ url: z.string() });
 const writeArgs = z.object({ path: z.string(), content: z.string() });
 const editArgs = z.object({
   path: z.string(),
@@ -224,7 +248,8 @@ export class ChatToolExecutor {
     private readonly workspace: ChatWorkspace,
     private readonly mcp: McpRouter | null = null,
     private readonly onAudit: AuditSink | null = null,
-    private readonly webSearch: WebSearchRunner | null = null
+    private readonly webSearch: WebSearchRunner | null = null,
+    private readonly webFetch: WebFetchRunner | null = null
   ) {}
 
   /** Returns the tool result content fed back into the model loop. */
@@ -263,6 +288,7 @@ export class ChatToolExecutor {
   ): Promise<ToolOutcome> {
     if (isMcpToolName(name)) return this.runMcpGated(name, argsJson, ctx);
     if (name === WEB_SEARCH_TOOL_NAME) return this.runWebSearchGated(argsJson, ctx);
+    if (name === WEB_FETCH_TOOL_NAME) return this.runWebFetchGated(argsJson, ctx);
     switch (name) {
       case 'read_file': {
         const a = readArgs.parse(JSON.parse(argsJson));
@@ -581,5 +607,49 @@ export class ChatToolExecutor {
       label: 'Search finished'
     } satisfies ChatToolStatusPayload);
     return { output, detail: query, decision: 'approved', status: 'ok' };
+  }
+
+  /**
+   * Gate and run a web fetch. Approval reuses the permission engine + card
+   * (tool `WebFetch`, the URL as the value; the origin is offered as the
+   * remember-prefix so `WebFetch(https://example.com*)` auto-approves a site).
+   * The fetch/render/sanitize pipeline and char cap are bound by the runner.
+   */
+  private async runWebFetchGated(argsJson: string, ctx: ExecCtx): Promise<ToolOutcome> {
+    const { url } = webFetchArgs.parse(JSON.parse(argsJson));
+    if (!this.webFetch?.enabled()) {
+      return {
+        output: 'Web fetch is disabled. The user must enable it in Chat settings.',
+        detail: url,
+        decision: 'blocked',
+        status: 'denied'
+      };
+    }
+    const grant = await this.permissions.request({
+      streamId: ctx.streamId,
+      tool: 'WebFetch',
+      command: url,
+      signal: ctx.signal
+    });
+    if (grant !== 'allow') {
+      return {
+        output: 'The user denied this web fetch.',
+        detail: url,
+        decision: 'denied',
+        status: 'denied'
+      };
+    }
+    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
+      streamId: ctx.streamId,
+      state: 'generating',
+      label: `Fetching: ${url}`
+    } satisfies ChatToolStatusPayload);
+    const output = await this.webFetch.fetch(url, ctx.signal);
+    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
+      streamId: ctx.streamId,
+      state: 'done',
+      label: 'Fetch finished'
+    } satisfies ChatToolStatusPayload);
+    return { output, detail: url, decision: 'approved', status: 'ok' };
   }
 }
