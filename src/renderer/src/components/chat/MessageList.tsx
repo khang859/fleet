@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import { useReducedMotion } from '../../hooks/use-reduced-motion';
+import { usePresence } from '../../hooks/use-presence';
 import { streamAnnouncement } from './stream-announce';
 import { classifyStreamError } from './stream-error';
 import type { ChatMessage } from '../../../../shared/chat-types';
@@ -268,13 +269,17 @@ function Bubble({
 /** Floating "Jump to latest" pill — shown only when the user has scrolled away from the bottom. */
 function JumpToLatest(): React.JSX.Element | null {
   const { isAtBottom, scrollToBottom } = useStickToBottomContext();
-  if (isAtBottom) return null;
+  // Keep mounted through the fade-out so the pill doesn't blink in/out.
+  const { mounted, state } = usePresence(!isAtBottom, 150);
+  if (!mounted) return null;
   return (
     <button
       type="button"
       aria-label="Jump to latest"
       onClick={() => void scrollToBottom()}
-      className="focus-ring absolute bottom-4 right-6 flex items-center gap-1 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow hover:bg-fleet-surface-2"
+      className={`focus-ring absolute bottom-4 right-6 flex items-center gap-1 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow hover:bg-fleet-surface-2 ${
+        state === 'open' ? 'animate-in fade-in' : 'animate-out fade-out'
+      }`}
     >
       <ArrowDown size={12} /> Jump to latest
     </button>
