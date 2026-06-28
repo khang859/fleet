@@ -8,6 +8,7 @@ export type Command = {
   label: string;
   shortcut?: ShortcutDef;
   category: string;
+  keywords?: string[];
   execute: () => void;
 };
 
@@ -22,6 +23,7 @@ export function createCommandRegistry(): Command[] {
       label: 'New Tab',
       shortcut: sc('new-tab'),
       category: 'Tabs',
+      keywords: ['dispatch', 'agent', 'new agent'],
       execute: () => useWorkspaceStore.getState().addTab(undefined, window.fleet.homeDir)
     },
     {
@@ -159,6 +161,12 @@ export function createCommandRegistry(): Command[] {
           });
         }
       }
+    },
+    {
+      id: 'jump-needy-agent',
+      label: 'Jump to Agent That Needs Input',
+      category: 'Agent',
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:jump-needy-agent'))
     },
     {
       id: 'open-kanban',
