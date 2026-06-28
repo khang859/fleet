@@ -271,9 +271,19 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         permissionRequests: [],
         activeArtifact: null
       });
-      const messages = await window.fleet.chat.getMessages(id);
-      if (get().activeId !== id) return; // switched mid-load
-      set({ messages, messagesLoading: false });
+      try {
+        const messages = await window.fleet.chat.getMessages(id);
+        if (get().activeId !== id) return; // switched mid-load
+        set({ messages, messagesLoading: false });
+      } catch (err) {
+        if (get().activeId !== id) return; // switched mid-load
+        // Collapse the skeleton and surface the failure instead of pulsing forever.
+        set({
+          messagesLoading: false,
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Failed to load conversation'
+        });
+      }
     },
 
     newConversation: async () => {
