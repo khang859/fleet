@@ -394,15 +394,17 @@ function ReengageOnNewStream({ animation }: { animation: ScrollBehavior }): null
  * throttled token updates re-render only this node — not MessageList or any
  * finalized history Bubble (which would otherwise re-parse all markdown).
  */
-/** Three-dot wave shown only in the gap between submit and the first token, so
- *  the wait reads as "thinking" rather than a blank/finished reply. Static at
- *  full opacity under prefers-reduced-motion (handled in index.css). */
-function ThinkingIndicator(): React.JSX.Element {
+/** Pre-first-token waiting state: a shimmer label reading "Thinking…" or, when a
+ *  tool phase is active, the live phase from `toolStatus.label` (Searching…,
+ *  Reading file…, Generating image…). Static under prefers-reduced-motion (the
+ *  shimmer is neutralized in index.css). Replaces the old three-dot wave. */
+function WaitingIndicator(): React.JSX.Element {
+  const toolStatus = useChatStore((s) => s.toolStatus);
+  const label =
+    toolStatus?.state === 'generating' && toolStatus.label ? toolStatus.label : 'Thinking…';
   return (
-    <div className="flex items-center gap-1 py-1 text-fleet-text-muted" aria-hidden="true">
-      <span className="chat-think-dot" />
-      <span className="chat-think-dot" />
-      <span className="chat-think-dot" />
+    <div className="py-1" aria-hidden="true">
+      <span className="chat-shimmer-text text-sm font-medium">{label}</span>
     </div>
   );
 }
@@ -435,9 +437,14 @@ function StreamingMessage(): React.JSX.Element {
         />
       )}
       {hasTokens ? (
-        <ChatMarkdown streaming>{streamingText}</ChatMarkdown>
+        // Fade the first text in (once, on mount) so the indicator→answer
+        // transition is a crossfade rather than a hard cut. Reduced-motion
+        // neutralizes `animate-in` in index.css.
+        <div className="animate-in fade-in duration-150">
+          <ChatMarkdown streaming>{streamingText}</ChatMarkdown>
+        </div>
       ) : (
-        !hasReasoning && <ThinkingIndicator />
+        !hasReasoning && <WaitingIndicator />
       )}
     </div>
   );
