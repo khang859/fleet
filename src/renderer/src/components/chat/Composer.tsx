@@ -5,6 +5,7 @@ import type { ChatMentionItem } from '../../../../shared/chat-types';
 import type { PromptTemplate } from '../../../../shared/prompt-types';
 import { extractPromptVars, fillTemplate } from '../../../../shared/prompt-types';
 import { ModelPicker } from './ModelPicker';
+import { PersonaPicker } from './PersonaPicker';
 import { composerKeyAction } from './composer-keys';
 import { slashMenu, type SlashCommand } from './composer-slash';
 
@@ -222,21 +223,13 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
           }}
         />
         {personas.length > 0 && (
-          <select
-            aria-label="Persona"
-            value={personaId ?? ''}
-            onChange={(e) => {
-              if (activeId) void setConversationPersona(activeId, e.target.value || null);
+          <PersonaPicker
+            personas={personas}
+            value={personaId}
+            onChange={(id) => {
+              if (activeId) void setConversationPersona(activeId, id);
             }}
-            className="rounded border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text outline-none"
-          >
-            <option value="">No persona</option>
-            {personas.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          />
         )}
       </div>
       {attachments.length > 0 && (
