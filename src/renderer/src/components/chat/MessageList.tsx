@@ -394,15 +394,15 @@ function ReengageOnNewStream({ animation }: { animation: ScrollBehavior }): null
  * throttled token updates re-render only this node — not MessageList or any
  * finalized history Bubble (which would otherwise re-parse all markdown).
  */
-/** Three-dot wave shown only in the gap between submit and the first token, so
- *  the wait reads as "thinking" rather than a blank/finished reply. Static at
- *  full opacity under prefers-reduced-motion (handled in index.css). */
-function ThinkingIndicator(): React.JSX.Element {
+/** Pre-first-token waiting state: a shimmer "Thinking…" label. Static under
+ *  prefers-reduced-motion (the shimmer is neutralized in index.css). Replaces the
+ *  old three-dot wave. The active tool phase (Searching…, Reading file…, etc.) is
+ *  surfaced by the sibling ToolStatusPill / GeneratingSkeleton below, so it is not
+ *  duplicated here. */
+function WaitingIndicator(): React.JSX.Element {
   return (
-    <div className="flex items-center gap-1 py-1 text-fleet-text-muted" aria-hidden="true">
-      <span className="chat-think-dot" />
-      <span className="chat-think-dot" />
-      <span className="chat-think-dot" />
+    <div className="py-1" aria-hidden="true">
+      <span className="chat-shimmer-text text-sm font-medium">Thinking…</span>
     </div>
   );
 }
@@ -435,9 +435,13 @@ function StreamingMessage(): React.JSX.Element {
         />
       )}
       {hasTokens ? (
+        // Streamdown fades each word in as it streams (the per-word `animated`
+        // prop in ChatMarkdown), which crossfades the indicator→answer handoff.
+        // No wrapper fade here — a parent opacity animation would stack
+        // multiplicatively with the per-word fades and dim the first tokens.
         <ChatMarkdown streaming>{streamingText}</ChatMarkdown>
       ) : (
-        !hasReasoning && <ThinkingIndicator />
+        !hasReasoning && <WaitingIndicator />
       )}
     </div>
   );

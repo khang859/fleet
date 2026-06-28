@@ -26,6 +26,11 @@ export function ChatMarkdown({ children, streaming = false }: Props): React.JSX.
       // gate live in index.css). Only active while streaming, so it vanishes the
       // moment the turn finalizes into a static Bubble.
       isAnimating={streaming}
+      // Fade each freshly-arrived word in (~150ms) so tokens settle smoothly
+      // rather than snapping in. `mode="static"` suppresses this on finalize, so a
+      // finalized Bubble carries zero animation overhead. Reduced-motion users
+      // have `animate-*` neutralized globally in index.css.
+      animated={streaming ? { animation: 'fadeIn', duration: 150, sep: 'word' } : undefined}
       caret="block"
       plugins={plugins}
       // Dual Atom-One themes (light/dark) — close to the app's prior atom-one-dark
