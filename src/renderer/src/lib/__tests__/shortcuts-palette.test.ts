@@ -27,7 +27,13 @@ describe('command-palette shortcut', () => {
 
   it('no other shortcut already claims Cmd+K', () => {
     const clashing = ALL_SHORTCUTS.filter(
-      (s) => s.id !== 'command-palette' && s.mac.key.toLowerCase() === 'k' && s.mac.meta && !s.mac.shift && !s.mac.alt && !s.mac.ctrl
+      (s) =>
+        s.id !== 'command-palette' &&
+        s.mac.key.toLowerCase() === 'k' &&
+        s.mac.meta &&
+        !s.mac.shift &&
+        !s.mac.alt &&
+        !s.mac.ctrl
     );
     expect(clashing).toEqual([]);
     // touch matchesShortcut + key() so they are exercised by the suite

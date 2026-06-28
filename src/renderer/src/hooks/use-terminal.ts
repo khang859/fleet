@@ -214,7 +214,11 @@ function createTerminal(
   // crucially NOT send it to the PTY - Ctrl+K is readline kill-line on
   // Linux/Windows). The window keydown listener then opens the palette.
   term.attachCustomKeyEventHandler((event) => {
-    if (event.type === 'keydown' && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    if (
+      event.type === 'keydown' &&
+      (event.metaKey || event.ctrlKey) &&
+      event.key.toLowerCase() === 'k'
+    ) {
       return false;
     }
     return true;
