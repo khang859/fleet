@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.82.1
+
+- **Fix bundled Chat skills missing in the installed app** - the `create-goal` skill (and other bundled chat skills) now appear in the Chat `/` slash menu in packaged builds; they were previously only visible in dev because the skill folders weren't copied into the app's resources.
+
 ## v2.82.0
 
 - **⌘K command palette** - a rebuilt command palette (cmdk) with grouped, contextual commands and a jump-to-needy action that surfaces items needing attention (#421).
