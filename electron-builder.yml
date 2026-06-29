@@ -21,6 +21,13 @@ extraResources:
     to: pi-extensions/
   - from: resources/pi-skills/
     to: pi-skills/
+  # Chat's SkillManager loads bundled skills from <resourcesPath>/resources/*.
+  # pi-skills is copied here too (in addition to the top-level pi-skills/ that
+  # the Pi agent reads) so the chat slash menu sees them in packaged builds.
+  - from: resources/chat-skills/
+    to: resources/chat-skills/
+  - from: resources/pi-skills/
+    to: resources/pi-skills/
 asarUnpack:
   - resources/**
   - node_modules/onnxruntime-node/**
