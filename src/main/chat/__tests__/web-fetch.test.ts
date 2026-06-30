@@ -106,9 +106,56 @@ describe('extractContent', () => {
       deps: { fetchImpl: stubFetch(SHELL_HTML, 'text/html'), render },
       signal
     });
-    expect(render).toHaveBeenCalledWith('https://spa.example', signal);
+    // render receives the combined fetch+render deadline (not the raw signal).
+    expect(render).toHaveBeenCalledWith('https://spa.example', expect.any(AbortSignal));
     expect(out).toContain('# Promises Explained');
     expect(out).toContain('A Promise represents the eventual completion');
+  });
+
+  it('falls back to direct extraction when the renderer throws', async () => {
+    // Server HTML is real but just below the readability char threshold, so a
+    // render is attempted; the render rejects and must not discard `direct`.
+    const note =
+      'A short standalone note that readability can extract as an article but whose ' +
+      'text stays just under the readability threshold, forcing a render attempt.';
+    const THIN_HTML = `<!doctype html><html><head><title>Note</title></head>
+<body><article><h1>Note</h1><p>${note}</p></article></body></html>`;
+    // eslint-disable-next-line @typescript-eslint/require-await
+    const render = vi.fn(async () => {
+      throw new Error('Render timed out');
+    });
+    const out = await extractContent({
+      url: 'https://thin.example',
+      deps: { fetchImpl: stubFetch(THIN_HTML, 'text/html'), render },
+      signal
+    });
+    expect(render).toHaveBeenCalled();
+    expect(out).toContain('readability can extract as an article');
+    expect(out).not.toMatch(/no readable content/i);
+  });
+
+  it('invokes onRender when it falls back to the browser renderer', async () => {
+    const onRender = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/require-await
+    const render = vi.fn(async () => ARTICLE_HTML);
+    await extractContent({
+      url: 'https://spa.example',
+      deps: { fetchImpl: stubFetch(SHELL_HTML, 'text/html'), render },
+      signal,
+      onRender
+    });
+    expect(onRender).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not invoke onRender on the direct (no-render) fast path', async () => {
+    const onRender = vi.fn();
+    await extractContent({
+      url: 'https://example.com/promises',
+      deps: { fetchImpl: stubFetch(ARTICLE_HTML, 'text/html') },
+      signal,
+      onRender
+    });
+    expect(onRender).not.toHaveBeenCalled();
   });
 
   it('reports no readable content when a shell has no renderer', async () => {

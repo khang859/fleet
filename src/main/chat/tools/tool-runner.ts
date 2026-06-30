@@ -31,7 +31,8 @@ export type WebSearchRunner = {
 /** Fetches a URL and returns cleaned markdown; the renderer + cap are bound by the caller. */
 export type WebFetchRunner = {
   enabled: () => boolean;
-  fetch: (url: string, signal: AbortSignal) => Promise<string>;
+  /** `onRender` fires when the fetch falls back to a browser render (drives the status label). */
+  fetch: (url: string, signal: AbortSignal, onRender?: () => void) => Promise<string>;
 };
 
 export const WEB_SEARCH_TOOL_NAME = 'web_search';
@@ -644,7 +645,14 @@ export class ChatToolExecutor {
       state: 'generating',
       label: `Fetching: ${url}`
     } satisfies ChatToolStatusPayload);
-    const output = await this.webFetch.fetch(url, ctx.signal);
+    const output = await this.webFetch.fetch(url, ctx.signal, () => {
+      // Render fallback engaged — advance the pill so a slow page doesn't look frozen.
+      this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
+        streamId: ctx.streamId,
+        state: 'generating',
+        label: `Rendering: ${url}`
+      } satisfies ChatToolStatusPayload);
+    });
     this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
       streamId: ctx.streamId,
       state: 'done',

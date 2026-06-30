@@ -3,8 +3,12 @@ import { Readability } from '@mozilla/readability';
 import TurndownService from 'turndown';
 import { isSafeExternalUrl } from '../safe-external';
 
-/** Hard ceiling on a single fetch before it is aborted. */
-const FETCH_TIMEOUT_MS = 30_000;
+/**
+ * Hard ceiling across the whole fetch+render pipeline before it is aborted. One
+ * combined deadline (not a separate timeout per phase) so a slow page can't keep
+ * the status spinner frozen for ~60s (30s fetch + 30s render sequentially).
+ */
+const OVERALL_TIMEOUT_MS = 30_000;
 /** Max bytes read off the wire before we stop and treat the body as truncated. */
 const MAX_BYTES = 5_000_000;
 /**
@@ -164,10 +168,8 @@ class BlockedUrlError extends Error {
 async function fetchPage(
   url: string,
   fetchImpl: typeof fetch,
-  signal: AbortSignal
+  deadline: AbortSignal
 ): Promise<FetchedPage> {
-  // One deadline across all redirect hops, not per request.
-  const deadline = AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]);
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (!isFetchableUrl(current)) throw new BlockedUrlError(current);
@@ -244,10 +246,15 @@ export async function extractContent(args: {
   url: string;
   deps: WebFetchDeps;
   signal: AbortSignal;
+  /** Invoked once when the pipeline falls back to a browser render (for status UI). */
+  onRender?: () => void;
 }): Promise<string> {
-  const { url, deps, signal } = args;
+  const { url, deps, signal, onRender } = args;
   const fetchImpl = deps.fetchImpl ?? fetch;
-  const { contentType, body } = await fetchPage(url, fetchImpl, signal);
+  // One combined deadline shared by fetch + render so the total can't exceed
+  // OVERALL_TIMEOUT_MS (the spinner can't sit frozen for the old ~60s worst case).
+  const deadline = AbortSignal.any([signal, AbortSignal.timeout(OVERALL_TIMEOUT_MS)]);
+  const { contentType, body } = await fetchPage(url, fetchImpl, deadline);
 
   if (matchesType(contentType, TEXT_TYPES)) {
     return withHeader(url, '', body.trim());
@@ -263,16 +270,23 @@ export async function extractContent(args: {
     return withHeader(url, direct.title, direct.markdown);
   }
 
-  // JS shell (or thin page): render with a real browser, then re-extract.
+  // JS shell (or thin page): render with a real browser, then re-extract. A
+  // render failure/timeout must NOT discard content `direct` already extracted,
+  // so the whole render attempt falls through to the `direct` fallback below.
   if (deps.render) {
-    const rendered = await deps.render(url, signal);
-    const fromRender = htmlToMarkdown(rendered);
-    if (fromRender?.markdown) {
-      return withHeader(url, fromRender.title, fromRender.markdown);
+    onRender?.();
+    try {
+      const rendered = await deps.render(url, deadline);
+      const fromRender = htmlToMarkdown(rendered);
+      if (fromRender?.markdown) {
+        return withHeader(url, fromRender.title, fromRender.markdown);
+      }
+      // Last resort: strip the rendered DOM to plain text.
+      const text = parseHTML(rendered).document.body.textContent.trim();
+      if (text) return withHeader(url, '', scrubMarkdown(text));
+    } catch {
+      // Render failed/timed out — fall through to the direct extraction below.
     }
-    // Last resort: strip the rendered DOM to plain text.
-    const text = parseHTML(rendered).document.body.textContent.trim();
-    if (text) return withHeader(url, '', scrubMarkdown(text));
   }
 
   // No renderer or nothing extractable — return whatever direct extraction found.
