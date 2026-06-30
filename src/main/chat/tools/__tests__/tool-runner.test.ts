@@ -36,7 +36,8 @@ function setup(mode: ChatToolsConfig['mode'], rules: Partial<PermissionRules> = 
     workspaceDir: ROOT,
     sandbox: false,
     failClosed: false,
-    mentionMaxKb: 64
+    mentionMaxKb: 64,
+    maxToolRounds: 4
   };
   const exec = new ChatToolExecutor(
     manager,
@@ -197,7 +198,8 @@ describe('ChatToolExecutor web search', () => {
       workspaceDir: ROOT,
       sandbox: false,
       failClosed: false,
-      mentionMaxKb: 64
+      mentionMaxKb: 64,
+      maxToolRounds: 4
     };
     const exec = new ChatToolExecutor(
       manager,
@@ -258,7 +260,8 @@ describe('ChatToolExecutor web fetch', () => {
       workspaceDir: ROOT,
       sandbox: false,
       failClosed: false,
-      mentionMaxKb: 64
+      mentionMaxKb: 64,
+      maxToolRounds: 4
     };
     const exec = new ChatToolExecutor(
       manager,
@@ -360,7 +363,8 @@ describe('ChatToolExecutor web fetch', () => {
       workspaceDir: ROOT,
       sandbox: false,
       failClosed: false,
-      mentionMaxKb: 64
+      mentionMaxKb: 64,
+      maxToolRounds: 4
     };
     const exec = new ChatToolExecutor(
       manager,

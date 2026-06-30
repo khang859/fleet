@@ -116,4 +116,25 @@ describe('SettingsStore settings merge', () => {
     expect(s.kanban.pm.eventMinGapMs).toBe(30_000); // sibling preserved
     expect(s.kanban.dispatcher.intervalMs).toBe(5000); // dispatcher untouched
   });
+
+  it('returns the chat tools defaults for a fresh store', () => {
+    expect(store.get().ai.chat.tools.maxToolRounds).toBe(25);
+  });
+
+  it('backfills new chat.tools fields on a saved tools object missing them', () => {
+    // Simulate settings saved before `maxToolRounds` existed: a full tools
+    // object with the field absent. Without the deep-merge it would survive
+    // wholesale, leaving maxToolRounds undefined and breaking the tool loop.
+    store.set({
+      ai: {
+        chat: {
+          tools: { mode: 'auto', workspaceDir: '/w', sandbox: false, failClosed: true } as never
+        }
+      } as never
+    });
+    const tools = store.get().ai.chat.tools;
+    expect(tools.mode).toBe('auto'); // saved field preserved
+    expect(tools.workspaceDir).toBe('/w'); // saved field preserved
+    expect(tools.maxToolRounds).toBe(25); // new field backfilled from default
+  });
 });

@@ -47,6 +47,27 @@ export function AgentToolsSection(): React.JSX.Element {
 
       <Disclosure label="Advanced">
         <Field
+          label="Max tool rounds"
+          description="How many model⇄tool back-and-forth rounds one reply may take before stopping. Each round can run several tools, so this caps iterations, not individual tool calls. Raise it for deep multi-step work."
+        >
+          <input
+            type="number"
+            min={1}
+            max={100}
+            step={1}
+            value={tools.maxToolRounds}
+            onChange={(e) =>
+              void patch({
+                tools: {
+                  ...tools,
+                  maxToolRounds: Math.min(100, Math.max(1, Math.round(Number(e.target.value) || 1)))
+                }
+              })
+            }
+            className={`${inputCls} w-28`}
+          />
+        </Field>
+        <Field
           label="Workspace directory"
           description="Absolute path the tools read, write, and run in. Leave empty to give each chat its own isolated folder under ~/.fleet/chat."
           layout="stack"

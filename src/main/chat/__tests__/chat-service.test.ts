@@ -77,7 +77,8 @@ describe('ChatService.send', () => {
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
-        mentionMaxKb: 64
+        mentionMaxKb: 64,
+        maxToolRounds: 4
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
       getPersonas: () => ({ presets: [], defaultId: null }),
@@ -131,7 +132,8 @@ describe('ChatService.send', () => {
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
-        mentionMaxKb: 64
+        mentionMaxKb: 64,
+        maxToolRounds: 4
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
       getPersonas: () => ({ presets: [], defaultId: null }),
@@ -193,7 +195,8 @@ it('runs the image tool loop and persists a generated image', async () => {
       workspaceDir: null,
       sandbox: false,
       failClosed: false,
-      mentionMaxKb: 64
+      mentionMaxKb: 64,
+      maxToolRounds: 4
     }),
     getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
     getPersonas: () => ({ presets: [], defaultId: null }),
@@ -267,7 +270,8 @@ it('passes the reference image to the provider as a base64 data URL when editing
       workspaceDir: null,
       sandbox: false,
       failClosed: false,
-      mentionMaxKb: 64
+      mentionMaxKb: 64,
+      maxToolRounds: 4
     }),
     getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
     getPersonas: () => ({ presets: [], defaultId: null }),
@@ -342,7 +346,8 @@ it('persists tool calls onto the assistant message (#434)', async () => {
       workspaceDir: null,
       sandbox: false,
       failClosed: false,
-      mentionMaxKb: 64
+      mentionMaxKb: 64,
+      maxToolRounds: 4
     }),
     getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
     getPersonas: () => ({ presets: [], defaultId: null }),
@@ -383,7 +388,8 @@ describe('ChatService regenerate / edit', () => {
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
-        mentionMaxKb: 64
+        mentionMaxKb: 64,
+        maxToolRounds: 4
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
       getPersonas: () => ({ presets: [], defaultId: null }),
@@ -544,7 +550,8 @@ describe('ChatService usage accounting', () => {
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
-        mentionMaxKb: 64
+        mentionMaxKb: 64,
+        maxToolRounds: 4
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
       getPersonas: () => ({ presets: [], defaultId: null }),
@@ -604,7 +611,8 @@ describe('ChatService usage accounting', () => {
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
-        mentionMaxKb: 64
+        mentionMaxKb: 64,
+        maxToolRounds: 4
       }),
       getUsage: () => ({ showMeter: true, promptCaching: true, budgetWarnUsd: null }),
       getPersonas: () => ({ presets: [], defaultId: null }),
@@ -649,7 +657,8 @@ describe('ChatService attachments', () => {
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
-        mentionMaxKb: 64
+        mentionMaxKb: 64,
+        maxToolRounds: 4
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
       getPersonas: () => ({ presets: [], defaultId: null }),
@@ -781,7 +790,8 @@ describe('ChatService personas', () => {
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
-        mentionMaxKb: 64
+        mentionMaxKb: 64,
+        maxToolRounds: 4
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
       getPersonas: () => ({
@@ -822,7 +832,8 @@ describe('ChatService time context', () => {
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
-        mentionMaxKb: 64
+        mentionMaxKb: 64,
+        maxToolRounds: 4
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
       getPersonas: () => ({ presets: [], defaultId: null }),
@@ -954,7 +965,8 @@ describe('ChatService skills', () => {
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
-        mentionMaxKb: 64
+        mentionMaxKb: 64,
+        maxToolRounds: 4
       }),
       getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
       getPersonas: () => ({ presets: [], defaultId: null }),

@@ -220,6 +220,12 @@ export type ChatToolsConfig = {
   failClosed: boolean;
   /** Max KB read per `@`-mentioned file before truncation. */
   mentionMaxKb: number;
+  /**
+   * Max model⇄tool back-and-forth rounds per turn. Each round may fire several
+   * tool calls, so this bounds iterations, not individual tool calls. Acts as a
+   * runaway-loop backstop; raise it for deep multi-step work.
+   */
+  maxToolRounds: number;
 };
 
 export const DEFAULT_CHAT_TOOLS: ChatToolsConfig = {
@@ -227,7 +233,8 @@ export const DEFAULT_CHAT_TOOLS: ChatToolsConfig = {
   workspaceDir: null,
   sandbox: true,
   failClosed: false,
-  mentionMaxKb: 64
+  mentionMaxKb: 64,
+  maxToolRounds: 25
 };
 
 /** Token/cost surfacing + prompt-cache posture. */
