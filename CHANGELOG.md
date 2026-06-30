@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.82.2
+
+- **Tool calls now persist and re-render in Chat** - the tools an assistant turn ran (and their output) are saved on the message and shown as collapsible cards after reload, instead of vanishing when the turn ended (#434, #422).
+- **No more stuck tool spinners** - gated tools (`bash`, `mcp`, `web_search`, `web_fetch`) always emit a terminal status, so a thrown tool can no longer leave a spinner stuck on "generating"/"Fetching…" (#423).
+- **Tool errors and blocked/denied outcomes are visible** - execution errors and disabled/blocked tool outcomes now surface in the UI rather than being silently swallowed (#422, #427).
+- **Tool-round exhaustion no longer hides work** - hitting the tool-round limit now shows an explicit message and keeps the tool calls that ran, instead of replacing them with a canned line (#428).
+- **Permission cards are no longer removed optimistically** - Allow/Deny on a permission card is driven by authoritative stream events, so denied commands leave a visible trace (#424).
+- **Stream lifecycle fixes** - cancel/abort and conversation-switch reconcile against stream events; regenerate now replaces the turn instead of appending a duplicate (#429, #430, #436, #432).
+- **Renderer error surfacing** - streaming and tool errors are reflected in the UI consistently (#435, #438, #437, #439).
+- **Conversation switch & composer state** - switching conversations cancels the active stream and preserves composer state correctly (#431, #433).
+- **web_fetch resilience** - more robust fetching and error handling for the Chat `web_fetch` tool (#425, #426).
+
 ## v2.82.1
 
 - **Fix bundled Chat skills missing in the installed app** - the `create-goal` skill (and other bundled chat skills) now appear in the Chat `/` slash menu in packaged builds; they were previously only visible in dev because the skill folders weren't copied into the app's resources.
