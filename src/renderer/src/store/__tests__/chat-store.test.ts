@@ -92,7 +92,39 @@ beforeEach(() => {
   });
 });
 
+const conv = (id: string): unknown => ({
+  id,
+  title: 'New chat',
+  model: null,
+  titleLocked: false,
+  createdAt: 1,
+  updatedAt: 1
+});
+
 describe('useChatStore', () => {
+  it('init preserves a valid active conversation across remounts', async () => {
+    window.fleet.chat.listConversations = vi.fn().mockResolvedValue([conv('a'), conv('b')]);
+    // Simulate the user having selected the non-default conversation, then the
+    // ChatView remounting (tab switch away and back) which re-runs init().
+    useChatStore.setState({ activeId: 'b' });
+    await useChatStore.getState().init();
+    expect(useChatStore.getState().activeId).toBe('b');
+  });
+
+  it('init selects the most-recent conversation on first load', async () => {
+    window.fleet.chat.listConversations = vi.fn().mockResolvedValue([conv('a'), conv('b')]);
+    useChatStore.setState({ activeId: null });
+    await useChatStore.getState().init();
+    expect(useChatStore.getState().activeId).toBe('a');
+  });
+
+  it('init re-selects the first conversation when the active id no longer exists', async () => {
+    window.fleet.chat.listConversations = vi.fn().mockResolvedValue([conv('a'), conv('b')]);
+    useChatStore.setState({ activeId: 'gone' });
+    await useChatStore.getState().init();
+    expect(useChatStore.getState().activeId).toBe('a');
+  });
+
   it('send appends an optimistic user message and enters streaming', async () => {
     await useChatStore.getState().init();
     await useChatStore.getState().send('hi', 'x/y');
