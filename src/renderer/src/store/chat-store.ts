@@ -36,6 +36,10 @@ type ChatStoreState = {
   streamId: string | null;
   models: ChatModel[];
   imageModels: ChatModel[];
+  /** Set when the chat model list fails to load, so the picker can offer a retry. */
+  modelsError: string | null;
+  /** Set when the image model list fails to load, so the picker can offer a retry. */
+  imageModelsError: string | null;
   keyPresent: boolean;
   status: ChatStatus;
   error: string | null;
@@ -91,6 +95,8 @@ type ChatStoreState = {
   cancel: () => void;
   loadModels: () => Promise<void>;
   loadImageModels: () => Promise<void>;
+  /** Drop the cached model lists + errors (e.g. after the API key is removed). */
+  clearModels: () => void;
   refreshKeyPresence: () => Promise<void>;
 };
 
@@ -231,6 +237,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     streamId: null,
     models: [],
     imageModels: [],
+    modelsError: null,
+    imageModelsError: null,
     keyPresent: false,
     status: 'idle',
     error: null,
@@ -389,44 +397,62 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       const activeId = get().activeId;
       if (!activeId) return;
       const m = get().models.find((x) => x.id === model);
-      const res = await window.fleet.chat.send({
-        conversationId: activeId,
-        text,
-        model,
-        attachments,
-        contextPaths,
-        supportsTools: m?.supportsTools ?? false,
-        supportsImages: m?.inputImage ?? false
-      });
-      set((s) => ({
-        messages: [...s.messages, res.userMessage],
-        streamId: res.streamId,
-        streamingText: '',
-        streamingReasoning: null,
-        status: 'streaming',
-        error: null,
-        toolStatus: null
-      }));
+      try {
+        const res = await window.fleet.chat.send({
+          conversationId: activeId,
+          text,
+          model,
+          attachments,
+          contextPaths,
+          supportsTools: m?.supportsTools ?? false,
+          supportsImages: m?.inputImage ?? false
+        });
+        set((s) => ({
+          messages: [...s.messages, res.userMessage],
+          streamId: res.streamId,
+          streamingText: '',
+          streamingReasoning: null,
+          status: 'streaming',
+          error: null,
+          toolStatus: null
+        }));
+      } catch (err) {
+        // Surface the failure as an inline error bubble; rethrow so the composer
+        // restores the user's draft (it isn't lost on a failed send).
+        set({
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Could not send your message. Try again.'
+        });
+        throw err;
+      }
     },
 
     regenerate: async (messageId, model) => {
       const activeId = get().activeId;
       if (!activeId || get().status === 'streaming') return;
       const m = get().models.find((x) => x.id === model);
-      const res = await window.fleet.chat.regenerate({
-        conversationId: activeId,
-        messageId,
-        model,
-        supportsTools: m?.supportsTools ?? false,
-        supportsImages: m?.inputImage ?? false
-      });
-      set({
-        streamId: res.streamId,
-        streamingText: '',
-        streamingReasoning: null,
-        status: 'streaming',
-        error: null
-      });
+      try {
+        const res = await window.fleet.chat.regenerate({
+          conversationId: activeId,
+          messageId,
+          model,
+          supportsTools: m?.supportsTools ?? false,
+          supportsImages: m?.inputImage ?? false
+        });
+        set({
+          streamId: res.streamId,
+          streamingText: '',
+          streamingReasoning: null,
+          status: 'streaming',
+          error: null
+        });
+      } catch (err) {
+        // The void call sites can't surface this, so set the store error here.
+        set({
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Could not regenerate this reply. Try again.'
+        });
+      }
     },
 
     retryLastTurn: async (model) => {
@@ -438,25 +464,32 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       const activeId = get().activeId;
       if (!activeId || get().status === 'streaming') return;
       const m = get().models.find((x) => x.id === model);
-      const res = await window.fleet.chat.editMessage({
-        conversationId: activeId,
-        messageId,
-        text,
-        model,
-        supportsTools: m?.supportsTools ?? false,
-        supportsImages: m?.inputImage ?? false
-      });
-      // Show the new user branch immediately, then stream the reply.
-      const messages = await window.fleet.chat.getMessages(activeId);
-      set({
-        messages,
-        streamId: res.streamId,
-        streamingText: '',
-        streamingReasoning: null,
-        status: 'streaming',
-        error: null,
-        toolStatus: null
-      });
+      try {
+        const res = await window.fleet.chat.editMessage({
+          conversationId: activeId,
+          messageId,
+          text,
+          model,
+          supportsTools: m?.supportsTools ?? false,
+          supportsImages: m?.inputImage ?? false
+        });
+        // Show the new user branch immediately, then stream the reply.
+        const messages = await window.fleet.chat.getMessages(activeId);
+        set({
+          messages,
+          streamId: res.streamId,
+          streamingText: '',
+          streamingReasoning: null,
+          status: 'streaming',
+          error: null,
+          toolStatus: null
+        });
+      } catch (err) {
+        set({
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Could not edit this message. Try again.'
+        });
+      }
     },
 
     deleteMessage: async (messageId) => {
@@ -546,14 +579,32 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     },
 
     loadModels: async () => {
-      const models = await window.fleet.chat.listModels();
-      set({ models });
+      try {
+        const models = await window.fleet.chat.listModels();
+        set({ models, modelsError: null });
+      } catch (err) {
+        // Record the failure so the picker can show "couldn't load — retry"
+        // instead of an empty list that reads as "no models", then rethrow so
+        // callers (e.g. saveKey) can react.
+        set({ modelsError: err instanceof Error ? err.message : 'Failed to load models.' });
+        throw err;
+      }
     },
 
     loadImageModels: async () => {
-      const imageModels = await window.fleet.chat.listImageModels();
-      set({ imageModels });
+      try {
+        const imageModels = await window.fleet.chat.listImageModels();
+        set({ imageModels, imageModelsError: null });
+      } catch (err) {
+        set({
+          imageModelsError: err instanceof Error ? err.message : 'Failed to load image models.'
+        });
+        throw err;
+      }
     },
+
+    clearModels: () =>
+      set({ models: [], imageModels: [], modelsError: null, imageModelsError: null }),
 
     refreshKeyPresence: async () => {
       const keyPresent = await window.fleet.chat.hasKey();

@@ -45,7 +45,16 @@ export function SecretInput({
       setError(err);
       return;
     }
-    await onSave(key);
+    try {
+      await onSave(key);
+    } catch (e) {
+      // Surface a rejected save (e.g. the key failed validation against the
+      // provider) inline, and stay in the editable form so the message shows
+      // even though `present` may have flipped true.
+      setError(e instanceof Error ? e.message : 'Could not save. Try again.');
+      setEditing(true);
+      return;
+    }
     reset();
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 1500);

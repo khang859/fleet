@@ -11,6 +11,7 @@ export function ChatSettingsProvider({
   const keyPresent = useChatStore((s) => s.keyPresent);
   const refreshKeyPresence = useChatStore((s) => s.refreshKeyPresence);
   const loadModels = useChatStore((s) => s.loadModels);
+  const clearModels = useChatStore((s) => s.clearModels);
 
   const [settings, setSettings] = useState<ChatSettings | null>(null);
   const [searchKeyPresent, setSearchKeyPresent] = useState(false);
@@ -75,13 +76,20 @@ export function ChatSettingsProvider({
   const saveKey = async (key: string): Promise<void> => {
     await window.fleet.chat.setKey(key);
     await refreshKeyPresence();
-    await loadModels();
+    // Validate the key by loading models; on failure throw a friendly message so
+    // the key field surfaces it inline instead of silently leaving an empty picker.
+    try {
+      await loadModels();
+    } catch {
+      throw new Error("That key didn't load any models. Check it's valid and you're online.");
+    }
   };
 
   const clearKey = async (): Promise<void> => {
     await window.fleet.chat.clearKey();
     await refreshKeyPresence();
-    await loadModels();
+    // No key → drop the cached lists rather than firing a load that would fail.
+    clearModels();
   };
 
   const saveSearchKey = async (key: string): Promise<void> => {
