@@ -134,6 +134,52 @@ describe('useChatStore', () => {
     expect(s.streamId).toBe('s1');
   });
 
+  it('send surfaces an IPC rejection as an error state and rethrows', async () => {
+    await useChatStore.getState().init();
+    window.fleet.chat.send = vi.fn().mockRejectedValue(new Error('store write failed'));
+    await expect(useChatStore.getState().send('hi', 'x/y')).rejects.toThrow('store write failed');
+    const s = useChatStore.getState();
+    expect(s.status).toBe('error');
+    expect(s.error).toBe('store write failed');
+  });
+
+  it('regenerate surfaces an IPC rejection as an error state (no throw at call site)', async () => {
+    await useChatStore.getState().init();
+    window.fleet.chat.regenerate = vi
+      .fn()
+      .mockRejectedValue(new Error('Cannot regenerate this message'));
+    await useChatStore.getState().regenerate('m1', 'x/y');
+    const s = useChatStore.getState();
+    expect(s.status).toBe('error');
+    expect(s.error).toBe('Cannot regenerate this message');
+  });
+
+  it('loadModels records an error on failure and clears it on success', async () => {
+    window.fleet.chat.listModels = vi
+      .fn()
+      .mockRejectedValue(new Error('OpenRouter /models failed: 401'));
+    await expect(useChatStore.getState().loadModels()).rejects.toThrow(/401/);
+    expect(useChatStore.getState().modelsError).toMatch(/401/);
+
+    window.fleet.chat.listModels = vi
+      .fn()
+      .mockResolvedValue([{ id: 'a/b', name: 'B', contextLength: 1 }]);
+    await useChatStore.getState().loadModels();
+    expect(useChatStore.getState().modelsError).toBeNull();
+    expect(useChatStore.getState().models).toHaveLength(1);
+  });
+
+  it('clearModels drops cached lists and errors', () => {
+    useChatStore.setState({
+      models: [{ id: 'a/b', name: 'B', contextLength: 1 } as never],
+      modelsError: 'boom'
+    });
+    useChatStore.getState().clearModels();
+    const s = useChatStore.getState();
+    expect(s.models).toHaveLength(0);
+    expect(s.modelsError).toBeNull();
+  });
+
   it('applies chunk then done events', async () => {
     await useChatStore.getState().init();
     await useChatStore.getState().send('hi', 'x/y');

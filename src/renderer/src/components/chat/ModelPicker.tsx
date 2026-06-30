@@ -8,6 +8,8 @@ import {
   Wrench,
   Eye,
   Image as ImageIcon,
+  AlertCircle,
+  RefreshCw,
   type LucideIcon
 } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
@@ -55,10 +57,13 @@ export function ModelPicker({
   const imageModels = useChatStore((s) => s.imageModels);
   const loadChat = useChatStore((s) => s.loadModels);
   const loadImage = useChatStore((s) => s.loadImageModels);
+  const chatError = useChatStore((s) => s.modelsError);
+  const imageError = useChatStore((s) => s.imageModelsError);
   const keyPresent = useChatStore((s) => s.keyPresent);
 
   const models = source === 'image' ? imageModels : chatModels;
   const load = source === 'image' ? loadImage : loadChat;
+  const loadError = source === 'image' ? imageError : chatError;
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -79,15 +84,26 @@ export function ModelPicker({
     }
     // Guard the resolve: switching source re-runs this effect with a different
     // `load`, and a stale fetch must not clear the new fetch's loading state.
+    // load() records its own error in the store (read as `loadError`); catch the
+    // rejection here only so it isn't an unhandled promise.
     let cancelled = false;
     setLoading(true);
-    void load().finally(() => {
-      if (!cancelled) setLoading(false);
-    });
+    void load()
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [keyPresent, models.length, load]);
+
+  const retry = (): void => {
+    setLoading(true);
+    void load()
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
 
   const selected = models.find((m) => m.id === value);
   const triggerLabel =
@@ -205,6 +221,20 @@ export function ModelPicker({
             {loading ? (
               <div className="flex items-center justify-center gap-2 px-3 py-4 text-xs text-fleet-text-muted">
                 <Loader2 size={13} className={reduced ? '' : 'animate-spin'} /> Loading models…
+              </div>
+            ) : loadError && models.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 px-3 py-4 text-center text-xs text-fleet-text-muted">
+                <span className="flex items-center gap-1.5 text-red-400">
+                  <AlertCircle size={13} /> Couldn&apos;t load models
+                </span>
+                <span>Check your API key and network.</span>
+                <button
+                  type="button"
+                  onClick={retry}
+                  className="mt-0.5 flex items-center gap-1 rounded bg-fleet-surface-3 px-2 py-1 text-fleet-text hover:bg-fleet-surface-2"
+                >
+                  <RefreshCw size={12} /> Retry
+                </button>
               </div>
             ) : filtered.length === 0 ? (
               <div className="px-3 py-4 text-center text-xs text-fleet-text-muted">
