@@ -52,7 +52,10 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
           <>
             <MessageList defaultModel={defaultModel} showUsage={usage.showMeter} />
             {usage.showMeter && <UsageMeter budgetWarnUsd={usage.budgetWarnUsd} />}
-            <Composer defaultModel={defaultModel} />
+            {/* Key on activeId so the composer remounts on conversation switch —
+                its draft/attachments/mentions are local state and must not bleed
+                across conversations (a draft for A could otherwise send to B). */}
+            <Composer key={activeId} defaultModel={defaultModel} />
           </>
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-fleet-text-muted">

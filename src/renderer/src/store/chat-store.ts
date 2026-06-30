@@ -255,6 +255,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       await get().refreshKeyPresence();
       await get().loadSkillMenu();
       await get().loadPromptTemplates();
+      // Preserve the user's selection across ChatView remounts (e.g. a tab
+      // switch away and back). Only auto-select the most-recent conversation on
+      // a genuine first load, when no valid conversation is active yet.
+      const current = get().activeId;
+      if (current && conversations.some((c) => c.id === current)) return;
       const first = conversations[0]?.id ?? null;
       if (first) await get().selectConversation(first);
     },
