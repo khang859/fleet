@@ -1395,12 +1395,13 @@ void app.whenReady().then(async () => {
   const isWebFetchReady = (): boolean => settingsStore.get().ai.chat.webFetch.enabled;
   const chatWebFetch: WebFetchRunner = {
     enabled: isWebFetchReady,
-    fetch: async (url, signal) => {
+    fetch: async (url, signal, onRender) => {
       const cfg = settingsStore.get().ai.chat.webFetch;
       const content = await extractContent({
         url,
         deps: { render: renderPage },
-        signal
+        signal,
+        onRender
       });
       return capResult(content, cfg.maxChars);
     }
