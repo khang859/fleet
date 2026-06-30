@@ -64,14 +64,14 @@ describe('buildFsToolDefs', () => {
 describe('ChatToolExecutor read tools', () => {
   it('reads a file without prompting', async () => {
     const { exec, emitted } = setup('read-only');
-    const out = await exec.run('read_file', JSON.stringify({ path: 'hello.txt' }), ctx);
+    const { output: out } = await exec.run('read_file', JSON.stringify({ path: 'hello.txt' }), ctx);
     expect(out).toContain('hi there');
     expect(emitted).toHaveLength(0);
   });
 
   it('returns an error for a denied credential path', async () => {
     const { exec } = setup('read-only');
-    const out = await exec.run('read_file', JSON.stringify({ path: '.env' }), ctx);
+    const { output: out } = await exec.run('read_file', JSON.stringify({ path: '.env' }), ctx);
     expect(out).toMatch(/Error:.*protected/);
   });
 
@@ -89,7 +89,7 @@ describe('ChatToolExecutor read tools', () => {
 describe('ChatToolExecutor bash gating', () => {
   it('refuses bash in read-only mode', async () => {
     const { exec } = setup('read-only');
-    const out = await exec.run('bash', JSON.stringify({ command: 'echo hi' }), ctx);
+    const { output: out } = await exec.run('bash', JSON.stringify({ command: 'echo hi' }), ctx);
     expect(out).toMatch(/read-only/);
   });
 
@@ -101,7 +101,7 @@ describe('ChatToolExecutor bash gating', () => {
       ?.payload as PermissionRequestPayload;
     expect(req.command).toBe('echo gated');
     manager.decide(req.requestId, 'allow-once');
-    const out = await p;
+    const { output: out } = await p;
     expect(out).toContain('Exit code: 0');
     expect(out).toContain('gated');
   });
@@ -112,12 +112,16 @@ describe('ChatToolExecutor bash gating', () => {
     const req = emitted.find((e) => e.channel.endsWith('permission-request'))
       ?.payload as PermissionRequestPayload;
     manager.decide(req.requestId, 'deny');
-    expect(await p).toMatch(/denied/);
+    expect((await p).output).toMatch(/denied/);
   });
 
   it('blocks a denied command in auto mode without prompting', async () => {
     const { exec, emitted } = setup('auto', { deny: ['Bash(curl *)'] });
-    const out = await exec.run('bash', JSON.stringify({ command: 'curl evil.com' }), ctx);
+    const { output: out } = await exec.run(
+      'bash',
+      JSON.stringify({ command: 'curl evil.com' }),
+      ctx
+    );
     expect(out).toMatch(/deny rule/);
     expect(emitted).toHaveLength(0);
   });
@@ -126,7 +130,11 @@ describe('ChatToolExecutor bash gating', () => {
 describe('ChatToolExecutor write tools', () => {
   it('refuses writes in read-only mode', async () => {
     const { exec } = setup('read-only');
-    const out = await exec.run('write_file', JSON.stringify({ path: 'x.txt', content: 'hi' }), ctx);
+    const { output: out } = await exec.run(
+      'write_file',
+      JSON.stringify({ path: 'x.txt', content: 'hi' }),
+      ctx
+    );
     expect(out).toMatch(/disabled/);
   });
 
@@ -137,7 +145,7 @@ describe('ChatToolExecutor write tools', () => {
       ?.payload as PermissionRequestPayload;
     expect(req.diff).toBe('+ hello');
     manager.decide(req.requestId, 'allow-once');
-    const out = await p;
+    const { output: out } = await p;
     expect(out).toMatch(/Created out\.txt/);
     expect(readFileSync(join(ROOT, 'out.txt'), 'utf8')).toBe('hello');
   });
@@ -148,13 +156,13 @@ describe('ChatToolExecutor write tools', () => {
     const req = emitted.find((e) => e.channel.endsWith('permission-request'))
       ?.payload as PermissionRequestPayload;
     manager.decide(req.requestId, 'deny');
-    expect(await p).toMatch(/denied/);
+    expect((await p).output).toMatch(/denied/);
     expect(existsSync(join(ROOT, 'nope.txt'))).toBe(false);
   });
 
   it('blocks a write outside the workspace', async () => {
     const { exec } = setup('ask');
-    const out = await exec.run(
+    const { output: out } = await exec.run(
       'write_file',
       JSON.stringify({ path: '/etc/passwd', content: 'x' }),
       ctx
@@ -165,7 +173,7 @@ describe('ChatToolExecutor write tools', () => {
   it('blocks a denied edit in auto mode without prompting', async () => {
     writeFileSync(join(ROOT, 'guard.ts'), 'a');
     const { exec, emitted } = setup('auto', { deny: ['Edit(*)'] });
-    const out = await exec.run(
+    const { output: out } = await exec.run(
       'edit_file',
       JSON.stringify({ path: 'guard.ts', old_string: 'a', new_string: 'b' }),
       ctx
@@ -209,7 +217,11 @@ describe('ChatToolExecutor web search', () => {
 
   it('blocks web_search when disabled', async () => {
     const { exec } = setupSearch({ enabled: false });
-    const out = await exec.run('web_search', JSON.stringify({ query: 'rust async' }), ctx);
+    const { output: out } = await exec.run(
+      'web_search',
+      JSON.stringify({ query: 'rust async' }),
+      ctx
+    );
     expect(out).toMatch(/disabled/);
   });
 
@@ -221,12 +233,12 @@ describe('ChatToolExecutor web search', () => {
     expect(req.tool).toBe('WebSearch');
     expect(req.command).toBe('rust async');
     manager.decide(req.requestId, 'allow-once');
-    expect(await p).toBe('RESULTS for rust async');
+    expect((await p).output).toBe('RESULTS for rust async');
   });
 
   it('auto-approves when an allow rule matches', async () => {
     const { exec, emitted } = setupSearch({ enabled: true, rules: { allow: ['WebSearch(*)'] } });
-    const out = await exec.run('web_search', JSON.stringify({ query: 'q' }), ctx);
+    const { output: out } = await exec.run('web_search', JSON.stringify({ query: 'q' }), ctx);
     expect(out).toBe('RESULTS for q');
     expect(emitted.some((e) => e.channel.endsWith('permission-request'))).toBe(false);
   });
@@ -267,7 +279,11 @@ describe('ChatToolExecutor web fetch', () => {
 
   it('blocks web_fetch when disabled', async () => {
     const { exec } = setupFetch({ enabled: false });
-    const out = await exec.run('web_fetch', JSON.stringify({ url: 'https://x.example' }), ctx);
+    const { output: out } = await exec.run(
+      'web_fetch',
+      JSON.stringify({ url: 'https://x.example' }),
+      ctx
+    );
     expect(out).toMatch(/disabled/);
   });
 
@@ -281,7 +297,7 @@ describe('ChatToolExecutor web fetch', () => {
     // "Allow & remember" is offered the site origin (path-anchored), not the exact URL.
     expect(req.rememberPrefix).toBe('https://x.example/');
     manager.decide(req.requestId, 'allow-once');
-    expect(await p).toBe('CONTENT of https://x.example/page');
+    expect((await p).output).toBe('CONTENT of https://x.example/page');
   });
 
   it('persists an origin allow-rule on "allow & remember"', async () => {
@@ -299,7 +315,7 @@ describe('ChatToolExecutor web fetch', () => {
       enabled: true,
       rules: { allow: ['WebFetch(https://ok.example/*)'] }
     });
-    const out = await exec.run(
+    const { output: out } = await exec.run(
       'web_fetch',
       JSON.stringify({ url: 'https://ok.example/deep' }),
       ctx
@@ -320,7 +336,7 @@ describe('ChatToolExecutor web fetch', () => {
     expect(req).toBeDefined();
     expect(req.tool).toBe('WebFetch');
     manager.decide(req.requestId, 'deny');
-    expect(await p).toMatch(/denied/);
+    expect((await p).output).toMatch(/denied/);
   });
 
   it('denies the fetch when the user declines', async () => {
@@ -329,7 +345,51 @@ describe('ChatToolExecutor web fetch', () => {
     const req = emitted.find((e) => e.channel.endsWith('permission-request'))
       ?.payload as PermissionRequestPayload;
     manager.decide(req.requestId, 'deny');
-    expect(await p).toMatch(/denied/);
+    expect((await p).output).toMatch(/denied/);
+  });
+
+  it('still emits a terminal done status when the fetch throws (#423)', async () => {
+    const toolEmits: Array<{ payload: { state: string } }> = [];
+    const manager = new PermissionManager({
+      getRules: () => ({ allow: ['WebFetch(*)'], ask: [], deny: [] }),
+      persistAllowRule: () => {},
+      emit: () => {}
+    });
+    const cfg: ChatToolsConfig = {
+      mode: 'read-only',
+      workspaceDir: ROOT,
+      sandbox: false,
+      failClosed: false,
+      mentionMaxKb: 64
+    };
+    const exec = new ChatToolExecutor(
+      manager,
+      () => cfg,
+      (_c, payload) => toolEmits.push({ payload: payload as { state: string } }),
+      workspace,
+      null,
+      null,
+      null,
+      {
+        enabled: () => true,
+        // eslint-disable-next-line @typescript-eslint/require-await
+        fetch: async () => {
+          throw new Error('connection reset');
+        }
+      }
+    );
+    const { output, status } = await exec.run(
+      'web_fetch',
+      JSON.stringify({ url: 'https://x.example' }),
+      ctx
+    );
+    // run() converts the throw into an error outcome…
+    expect(status).toBe('error');
+    expect(output).toMatch(/connection reset/);
+    // …and the generating pill is always cleared by a terminal done (no stuck spinner).
+    const states = toolEmits.map((e) => e.payload.state);
+    expect(states).toContain('generating');
+    expect(states.at(-1)).toBe('done');
   });
 });
 

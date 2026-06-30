@@ -133,6 +133,33 @@ describe('ChatStore', () => {
     expect(msgs.map((m) => m.content)).toEqual(['hi', 'hello']);
   });
 
+  it('round-trips tool calls onto an assistant message', () => {
+    const c = store.createConversation();
+    const u = store.addMessage({ conversationId: c.id, role: 'user', content: 'run it' });
+    store.addMessage({
+      conversationId: c.id,
+      role: 'assistant',
+      content: 'done',
+      parentId: u.id,
+      toolCalls: [
+        { id: 't1', name: 'bash', title: 'ls -la', status: 'done', output: 'file.txt' },
+        { id: 't2', name: 'web_fetch', title: 'https://x.example', status: 'error', output: 'boom' }
+      ]
+    });
+    const a = store.getMessages(c.id).at(-1);
+    expect(a?.toolCalls).toEqual([
+      { id: 't1', name: 'bash', title: 'ls -la', status: 'done', output: 'file.txt' },
+      { id: 't2', name: 'web_fetch', title: 'https://x.example', status: 'error', output: 'boom' }
+    ]);
+  });
+
+  it('omits the toolCalls field when a turn ran no tools', () => {
+    const c = store.createConversation();
+    const u = store.addMessage({ conversationId: c.id, role: 'user', content: 'hi' });
+    store.addMessage({ conversationId: c.id, role: 'assistant', content: 'hello', parentId: u.id });
+    expect(store.getMessages(c.id).at(-1)?.toolCalls).toBeUndefined();
+  });
+
   it('pages sibling assistant variants and follows the selected one', () => {
     const c = store.createConversation();
     const u = store.addMessage({ conversationId: c.id, role: 'user', content: 'hi' });

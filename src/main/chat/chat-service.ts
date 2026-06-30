@@ -7,6 +7,8 @@ import type {
   ChatImageRef,
   ChatMessage,
   ChatMessageUsage,
+  ChatToolCall,
+  ChatToolCallStatus,
   ChatStreamChunkPayload,
   ChatStreamReasoningPayload,
   ChatStreamDonePayload,
@@ -30,7 +32,7 @@ import type {
   ChatToolsConfig,
   PersonaPreset
 } from '../../shared/chat-types';
-import type { ChatToolExecutor } from './tools/tool-runner';
+import type { ChatToolExecutor, ToolOutcome } from './tools/tool-runner';
 import {
   buildFsToolDefs,
   FS_TOOL_NAMES,
@@ -52,6 +54,25 @@ import type { SkillManager } from './skills/skill-manager';
 export type ChatEmitter = (channel: string, payload: unknown) => void;
 
 const MAX_TOOL_ROUNDS = 4;
+
+/** Cap on the result text persisted onto a tool-call card (the model gets the full output). */
+const TOOL_OUTPUT_CAP = 4000;
+
+/** Map an executor outcome to the terminal status shown on its transcript card. */
+function toToolCallStatus(o: ToolOutcome): ChatToolCallStatus {
+  if (o.status === 'error') return 'error';
+  if (o.decision === 'denied') return 'denied';
+  if (o.decision === 'blocked') return 'blocked';
+  return 'done';
+}
+
+function truncateToolOutput(output: string): string | undefined {
+  const trimmed = output.trim();
+  if (!trimmed) return undefined;
+  return trimmed.length > TOOL_OUTPUT_CAP
+    ? `${trimmed.slice(0, TOOL_OUTPUT_CAP)}\n… (truncated)`
+    : trimmed;
+}
 
 export type NamingConfig = {
   enabled: boolean;
@@ -466,6 +487,11 @@ export class ChatService {
       let partial = '';
       let usage: ChatMessageUsage | null = null;
       const generated: ChatImageRef[] = [];
+      // Tools invoked this turn, in call order — persisted onto the assistant
+      // message so the transcript shows what ran (#434).
+      const toolCalls: ChatToolCall[] = [];
+      // True when the model kept calling tools until MAX_TOOL_ROUNDS ran out.
+      let exhausted = false;
       // Reasoning channel: chain-of-thought streamed alongside (and before) the
       // answer. Timed from the first reasoning token to the first answer token so
       // the UI can show "Thought for Xs".
@@ -555,12 +581,24 @@ export class ChatService {
               call.name === WEB_SEARCH_TOOL_NAME ||
               call.name === WEB_FETCH_TOOL_NAME
             ) {
-              const content = await this.deps.toolExecutor.run(call.name, call.arguments, {
+              const outcome = await this.deps.toolExecutor.run(call.name, call.arguments, {
                 streamId,
                 conversationId,
                 signal: controller.signal
               });
-              messages.push({ role: 'tool', tool_call_id: call.id, name: call.name, content });
+              messages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                name: call.name,
+                content: outcome.output
+              });
+              toolCalls.push({
+                id: call.id,
+                name: call.name,
+                title: outcome.detail,
+                status: toToolCallStatus(outcome),
+                output: truncateToolOutput(outcome.output)
+              });
               continue;
             }
             if (call.name !== 'generate_image' || !imageModel) {
@@ -578,8 +616,10 @@ export class ChatService {
               label: `Generating image with ${imageModel}…`,
               kind: 'image'
             } satisfies ChatToolStatusPayload);
+            let imageTitle = 'Generate image';
             try {
               const { prompt, edit } = parseGenerateImageArgs(call.arguments);
+              if (prompt) imageTitle = prompt;
               // Reference images must be inlined as base64 data URLs — the
               // remote image API cannot read on-disk paths.
               const refs = edit
@@ -610,6 +650,7 @@ export class ChatService {
                 name: call.name,
                 content: '{"status":"ok","note":"image generated and shown to the user"}'
               });
+              toolCalls.push({ id: call.id, name: call.name, title: imageTitle, status: 'done' });
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
               emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
@@ -625,17 +666,31 @@ export class ChatService {
                 name: call.name,
                 content: JSON.stringify({ status: 'error', error: msg })
               });
+              toolCalls.push({
+                id: call.id,
+                name: call.name,
+                title: imageTitle,
+                status: 'error',
+                output: msg
+              });
             }
           }
+          // Reaching the last round with tools still pending means we ran out of
+          // rounds rather than finishing — note it so the fallback below is honest.
+          if (r === MAX_TOOL_ROUNDS - 1) exhausted = true;
         }
 
         // Emit any text held back in the splitter's tail buffer (incomplete tag).
         thinkSplitter.flush();
 
-        // If the model exhausted its tool rounds without producing any closing text
-        // and we have no image to show either, surface a fallback so the bubble isn't blank.
+        // If the model produced no closing text and no image, surface a fallback so
+        // the bubble isn't blank. The persisted tool cards (#434) still show the work
+        // that ran, so the round-limit case points the user at them instead of
+        // pretending nothing happened (#428).
         if (partial === '' && generated.length === 0) {
-          partial = "I couldn't finish that request — please try again.";
+          partial = exhausted
+            ? `I reached the tool-round limit (${MAX_TOOL_ROUNDS}) before finishing. The tool calls above show what ran.`
+            : "I couldn't finish that request — please try again.";
         }
 
         const reasoningMs =
@@ -649,7 +704,8 @@ export class ChatService {
           parentId: assistantParentId,
           usage,
           reasoning: reasoning || undefined,
-          reasoningMs
+          reasoningMs,
+          toolCalls: toolCalls.length ? toolCalls : undefined
         });
         if (generated.length) {
           store.addImages({
@@ -675,9 +731,9 @@ export class ChatService {
       } catch (err) {
         thinkSplitter.flush();
         // Persist when there's anything worth keeping — including reasoning that
-        // streamed before the error with no answer token yet, which would
-        // otherwise be discarded.
-        if (partial || reasoning) {
+        // streamed before the error with no answer token yet, or tool calls that
+        // already ran, all of which would otherwise be discarded.
+        if (partial || reasoning || toolCalls.length) {
           const reasoningMs =
             reasoningAt.start !== null
               ? (reasoningAt.end ?? Date.now()) - reasoningAt.start
@@ -689,7 +745,8 @@ export class ChatService {
             parentId: assistantParentId,
             usage,
             reasoning: reasoning || undefined,
-            reasoningMs
+            reasoningMs,
+            toolCalls: toolCalls.length ? toolCalls : undefined
           });
           if (generated.length) {
             store.addImages({

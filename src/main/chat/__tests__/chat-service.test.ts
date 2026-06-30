@@ -18,7 +18,10 @@ function imgStack(base: string): { workspace: ChatWorkspace; imageStorage: ChatI
   return { workspace, imageStorage: new ChatImageStorage(workspace) };
 }
 
-const stubExecutor = { run: async () => Promise.resolve('') } as unknown as ChatToolExecutor;
+const stubExecutor = {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  run: async () => ({ output: '', detail: '', decision: 'allowed', status: 'ok' })
+} as unknown as ChatToolExecutor;
 
 import type { SkillManager } from '../skills/skill-manager';
 const stubSkills = {
@@ -297,6 +300,69 @@ it('passes the reference image to the provider as a base64 data URL when editing
   // A data URL (the remote API contract) — NOT an on-disk path under tmpdir.
   expect(req.referenceImages?.[0]).toMatch(/^data:image\/png;base64,/);
   expect(req.referenceImages?.[0]).not.toContain(dir);
+  store.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+it('persists tool calls onto the assistant message (#434)', async () => {
+  const dir = join(tmpdir(), `fleet-chat-toolcalls-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const store = new ChatStore(join(dir, 'tc.db'));
+  const conv = store.createConversation();
+  const client = new OpenRouterClient();
+  let round = 0;
+  vi.spyOn(client, 'streamCompletion').mockImplementation(async (opts) => {
+    round += 1;
+    if (round === 1) {
+      return {
+        content: '',
+        toolCalls: [{ id: 'c1', name: 'bash', arguments: '{"command":"ls"}' }],
+        finishReason: 'tool_calls'
+      };
+    }
+    opts.onDelta('Listed the directory.');
+    return { content: 'Listed the directory.', toolCalls: [], finishReason: 'stop' };
+  });
+  const exec = {
+    // eslint-disable-next-line @typescript-eslint/require-await
+    run: async () => ({ output: 'file.txt', detail: 'ls', decision: 'approved', status: 'ok' })
+  } as unknown as ChatToolExecutor;
+  const events: Array<{ channel: string; payload: unknown }> = [];
+  const service = new ChatService({
+    store,
+    client,
+    secrets: fakeSecrets(),
+    getDefaultModel: () => 'm',
+    getImageModel: () => null,
+    getNaming: () => ({ enabled: false, model: 'x', timing: 'after-response' }),
+    getAutoTag: () => ({ enabled: false, model: 'x' }),
+    getToolsMode: () => 'auto',
+    getTools: () => ({
+      mode: 'auto',
+      workspaceDir: null,
+      sandbox: false,
+      failClosed: false,
+      mentionMaxKb: 64
+    }),
+    getUsage: () => ({ showMeter: true, promptCaching: false, budgetWarnUsd: null }),
+    getPersonas: () => ({ presets: [], defaultId: null }),
+    isWebSearchReady: () => false,
+    isWebFetchReady: () => false,
+    getMcpToolDefs: () => [],
+    skills: stubSkills,
+    toolExecutor: exec,
+    imageProvider: fakeProvider,
+    ...imgStack(dir),
+    emit: (channel, payload) => events.push({ channel, payload })
+  });
+  service.send({ conversationId: conv.id, text: 'list files', model: 'm', supportsTools: true });
+  await vi.waitFor(() => {
+    expect(events.some((e) => e.channel === IPC_CHANNELS.CHAT_STREAM_DONE)).toBe(true);
+  });
+  const assistant = store.getMessages(conv.id).at(-1);
+  expect(assistant?.toolCalls).toEqual([
+    { id: 'c1', name: 'bash', title: 'ls', status: 'done', output: 'file.txt' }
+  ]);
   store.close();
   rmSync(dir, { recursive: true, force: true });
 });
