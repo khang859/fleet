@@ -160,6 +160,24 @@ describe('ChatStore', () => {
     expect(store.getMessages(c.id).at(-1)?.toolCalls).toBeUndefined();
   });
 
+  it('preserves tool calls when forking a conversation', () => {
+    const c = store.createConversation();
+    const u = store.addMessage({ conversationId: c.id, role: 'user', content: 'run it' });
+    const a = store.addMessage({
+      conversationId: c.id,
+      role: 'assistant',
+      content: 'done',
+      parentId: u.id,
+      toolCalls: [{ id: 't1', name: 'bash', title: 'ls', status: 'done', output: 'file.txt' }]
+    });
+    const branch = store.forkConversation(a.id);
+    expect(branch).not.toBeNull();
+    const forked = store.getMessages(branch!.id).at(-1);
+    expect(forked?.toolCalls).toEqual([
+      { id: 't1', name: 'bash', title: 'ls', status: 'done', output: 'file.txt' }
+    ]);
+  });
+
   it('pages sibling assistant variants and follows the selected one', () => {
     const c = store.createConversation();
     const u = store.addMessage({ conversationId: c.id, role: 'user', content: 'hi' });

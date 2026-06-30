@@ -987,7 +987,8 @@ export class ChatStore {
           conversationId: branch.id,
           role: m.role,
           content: m.content,
-          parentId
+          parentId,
+          toolCalls: m.toolCalls
         });
         if (m.images?.length) {
           const images = mapImageRef
