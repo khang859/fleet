@@ -17,7 +17,9 @@ export type StreamErrorInfo = {
  */
 function sanitizeDetail(raw: string): string {
   const trimmed = raw.trim();
-  const looksRaw = /\b[1-5]\d\d\b/.test(trimmed) || trimmed.includes('{') || trimmed.length > 160;
+  // A status code, a JSON body (object `{` or array `[`), or an oversized blob
+  // all read as a raw dump and collapse to the generic line.
+  const looksRaw = /\b[1-5]\d\d\b/.test(trimmed) || /[{[]/.test(trimmed) || trimmed.length > 160;
   return looksRaw ? 'The response could not be completed. Try again.' : trimmed;
 }
 

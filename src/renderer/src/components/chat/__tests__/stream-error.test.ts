@@ -56,6 +56,13 @@ describe('classifyStreamError', () => {
     expect(info.detail).toMatch(/try again/i);
   });
 
+  it('sanitizes a generic JSON-array dump too', () => {
+    const info = classifyStreamError('weird failure ["error","details"]');
+    expect(info.kind).toBe('generic');
+    expect(info.detail).not.toContain('[');
+    expect(info.detail).toMatch(/try again/i);
+  });
+
   it('handles a null/empty message without leaking a raw code', () => {
     const info = classifyStreamError(null);
     expect(info.kind).toBe('generic');
