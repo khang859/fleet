@@ -116,10 +116,13 @@ export function registerChatIpc(deps: Deps): void {
   );
   ipcMain.handle(IPC_CHANNELS.CHAT_DELETE_MESSAGE, (_e, messageId: string): ChatMessage[] => {
     // Capture the conversation before the row is gone so we can return its
-    // refreshed active path for the renderer to reconcile against.
-    const conversationId = store.getMessage(messageId)?.conversationId ?? '';
+    // refreshed active path for the renderer to reconcile against. An unknown id
+    // (e.g. a stale synthetic placeholder) must NOT fall through to
+    // getMessages('') — that returns [] and wipes the visible conversation.
+    const target = store.getMessage(messageId);
+    if (!target) throw new Error(`Cannot delete unknown message: ${messageId}`);
     store.deleteMessage(messageId);
-    return store.getMessages(conversationId);
+    return store.getMessages(target.conversationId);
   });
   ipcMain.handle(IPC_CHANNELS.CHAT_SELECT_VARIANT, (_e, messageId: string): ChatMessage[] => {
     store.selectVariant(messageId);
