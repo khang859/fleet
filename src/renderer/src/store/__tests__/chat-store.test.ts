@@ -201,27 +201,70 @@ describe('useChatStore', () => {
     expect(s.messages.at(-1)?.content).toBe('Hello');
   });
 
-  it('cancel commits the partial reply into the visible message list', async () => {
+  it('cancel reconciles to the persisted turn (real id) via the aborted event', async () => {
     await useChatStore.getState().init();
     await useChatStore.getState().send('hi', 'x/y');
     listeners.get(IPC_CHANNELS.CHAT_STREAM_CHUNK)?.({ streamId: 's1', delta: 'Par' });
     listeners.get(IPC_CHANNELS.CHAT_STREAM_CHUNK)?.({ streamId: 's1', delta: 'tial' });
+    // Main persists the partial and returns the authoritative thread on reload.
+    const persisted = {
+      id: 'a1',
+      conversationId: 'c1',
+      role: 'assistant',
+      content: 'Partial',
+      parentId: 'm1',
+      createdAt: 4
+    };
+    window.fleet.chat.getMessages = vi
+      .fn()
+      .mockResolvedValue([
+        { id: 'm1', conversationId: 'c1', role: 'user', content: 'hi', createdAt: 3 },
+        persisted
+      ]);
     useChatStore.getState().cancel();
+    // cancel() asks main to abort but keeps streamId so the terminal event lands.
+    expect(window.fleet.chat.cancel).toHaveBeenCalledWith('s1');
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_ERROR)?.({
+      streamId: 's1',
+      message: 'aborted',
+      partial: 'Partial',
+      aborted: true
+    });
+    await new Promise((r) => setTimeout(r, 0));
     const s = useChatStore.getState();
     expect(s.status).toBe('idle');
+    expect(s.error).toBeNull();
     expect(s.streamId).toBeNull();
     expect(s.streamingText).toBeNull();
-    expect(s.messages.at(-1)).toMatchObject({ role: 'assistant', content: 'Partial' });
+    // Reconciled to the real persisted row — no synthetic local- placeholder.
+    expect(s.messages.at(-1)).toMatchObject({ id: 'a1', role: 'assistant', content: 'Partial' });
   });
 
-  it('cancel preserves streamed reasoning in the placeholder', async () => {
+  it('cancel reconciles a reasoning-only turn from the persisted thread', async () => {
     await useChatStore.getState().init();
     await useChatStore.getState().send('hi', 'x/y');
-    // Only reasoning streamed (model still thinking) — the placeholder must still
-    // be committed so the reasoning is not lost until the convo is reselected.
     listeners.get(IPC_CHANNELS.CHAT_STREAM_REASONING)?.({ streamId: 's1', delta: 'Hmm ' });
     listeners.get(IPC_CHANNELS.CHAT_STREAM_REASONING)?.({ streamId: 's1', delta: 'let me think' });
+    window.fleet.chat.getMessages = vi.fn().mockResolvedValue([
+      { id: 'm1', conversationId: 'c1', role: 'user', content: 'hi', createdAt: 3 },
+      {
+        id: 'a1',
+        conversationId: 'c1',
+        role: 'assistant',
+        content: '',
+        reasoning: 'Hmm let me think',
+        parentId: 'm1',
+        createdAt: 4
+      }
+    ]);
     useChatStore.getState().cancel();
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_ERROR)?.({
+      streamId: 's1',
+      message: 'aborted',
+      partial: '',
+      aborted: true
+    });
+    await new Promise((r) => setTimeout(r, 0));
     expect(useChatStore.getState().messages.at(-1)).toMatchObject({
       role: 'assistant',
       reasoning: 'Hmm let me think'
@@ -231,9 +274,100 @@ describe('useChatStore', () => {
   it('cancel with no streamed text leaves the message list unchanged', async () => {
     await useChatStore.getState().init();
     await useChatStore.getState().send('hi', 'x/y');
-    const before = useChatStore.getState().messages.length;
+    const userOnly = [
+      { id: 'm1', conversationId: 'c1', role: 'user', content: 'hi', createdAt: 3 }
+    ];
+    window.fleet.chat.getMessages = vi.fn().mockResolvedValue(userOnly);
     useChatStore.getState().cancel();
-    expect(useChatStore.getState().messages.length).toBe(before);
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_ERROR)?.({
+      streamId: 's1',
+      message: 'aborted',
+      partial: '',
+      aborted: true
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    const msgs = useChatStore.getState().messages;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({ role: 'user', content: 'hi' });
+  });
+
+  it('replays a terminal event that arrived before send() resolved (no stuck spinner)', async () => {
+    await useChatStore.getState().init();
+    // The main stream errors before the renderer learns its streamId: the event
+    // fires synchronously inside send(), while get().streamId is still null.
+    window.fleet.chat.send = vi.fn().mockImplementation(async () => {
+      listeners.get(IPC_CHANNELS.CHAT_STREAM_ERROR)?.({
+        streamId: 's9',
+        message: 'early boom',
+        partial: ''
+      });
+      return Promise.resolve({
+        streamId: 's9',
+        userMessage: { id: 'm1', conversationId: 'c1', role: 'user', content: 'hi', createdAt: 3 }
+      });
+    });
+    await useChatStore.getState().send('hi', 'x/y');
+    const s = useChatStore.getState();
+    // adoptStream replays the buffered error instead of leaving status 'streaming'.
+    expect(s.status).toBe('error');
+    expect(s.error).toBe('early boom');
+    expect(s.streamId).toBeNull();
+  });
+
+  it('regenerate replaces the active branch rather than appending a duplicate', async () => {
+    await useChatStore.getState().init();
+    useChatStore.setState({
+      messages: [
+        {
+          id: 'm1',
+          conversationId: 'c1',
+          role: 'user',
+          content: 'hi',
+          parentId: null,
+          createdAt: 3
+        },
+        {
+          id: 'a1',
+          conversationId: 'c1',
+          role: 'assistant',
+          content: 'old',
+          parentId: 'm1',
+          createdAt: 4
+        }
+      ]
+    });
+    window.fleet.chat.regenerate = vi.fn().mockResolvedValue({ streamId: 's2' });
+    const newThread = [
+      { id: 'm1', conversationId: 'c1', role: 'user', content: 'hi', createdAt: 3 },
+      {
+        id: 'a2',
+        conversationId: 'c1',
+        role: 'assistant',
+        content: 'new',
+        parentId: 'm1',
+        createdAt: 5
+      }
+    ];
+    window.fleet.chat.getMessages = vi.fn().mockResolvedValue(newThread);
+    await useChatStore.getState().regenerate('a1', 'x/y');
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_DONE)?.({
+      streamId: 's2',
+      message: {
+        id: 'a2',
+        conversationId: 'c1',
+        role: 'assistant',
+        content: 'new',
+        parentId: 'm1',
+        createdAt: 5
+      }
+    });
+    // Synchronously on DONE, the new answer must NOT be appended under the old one.
+    const sync = useChatStore.getState().messages;
+    expect(sync.filter((m) => m.role === 'assistant')).toHaveLength(1);
+    expect(sync.map((m) => m.id)).toEqual(['m1', 'a1']);
+    await new Promise((r) => setTimeout(r, 0));
+    // The reload swaps in the authoritative new branch.
+    expect(useChatStore.getState().messages).toEqual(newThread);
   });
 
   it('setConversationModel persists and updates the conversation', async () => {

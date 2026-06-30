@@ -122,6 +122,30 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     set((s) => ({ streamingReasoning: (s.streamingReasoning ?? '') + delta }));
   });
 
+  // Events for a stream the renderer hasn't adopted yet. The main-process stream
+  // can emit — even terminate — before send()/regenerate() resolves and sets our
+  // streamId; without buffering, that terminal event is dropped by the streamId
+  // guard and the spinner sticks forever (#436). adoptStream() replays them in
+  // order once we learn the id.
+  const earlyEvents = new Map<string, Array<() => void>>();
+  function onStreamEvent(streamId: string, apply: () => void): void {
+    if (streamId === get().streamId) {
+      apply();
+      return;
+    }
+    const buf = earlyEvents.get(streamId);
+    if (buf) buf.push(apply);
+    else earlyEvents.set(streamId, [apply]);
+  }
+  function adoptStream(streamId: string): void {
+    const buffered = earlyEvents.get(streamId);
+    earlyEvents.clear(); // a freshly adopted stream supersedes any stale buffers
+    buffered?.forEach((fn) => fn());
+  }
+  // streamId whose terminal DONE should replace (not append) the active branch —
+  // set by regenerate so the new variant doesn't briefly stack under the old (#432).
+  let replaceOnDone: string | null = null;
+
   function subscribeToStreamEvents(): void {
     unsubChunk?.();
     unsubReasoning?.();
@@ -131,90 +155,118 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     unsubPerm?.();
     unsubRenamed?.();
     unsubTagged?.();
-    unsubChunk = window.fleet.chat.onStreamChunk((p: ChatStreamChunkPayload) => {
-      if (p.streamId !== get().streamId) return;
-      streamBuffer.push(p.delta);
-    });
-    unsubReasoning = window.fleet.chat.onStreamReasoning((p: ChatStreamReasoningPayload) => {
-      if (p.streamId !== get().streamId) return;
-      reasoningBuffer.push(p.delta);
-    });
-    unsubDone = window.fleet.chat.onStreamDone((p: ChatStreamDonePayload) => {
-      if (p.streamId !== get().streamId) return;
-      streamBuffer.reset();
-      reasoningBuffer.reset();
-      const activeId = get().activeId;
-      set((s) => ({
-        messages: [...s.messages, p.message],
-        streamingText: null,
-        streamingReasoning: null,
-        streamId: null,
-        status: 'idle',
-        toolStatus: null,
-        permissionRequests: []
-      }));
-      // Reconcile with the authoritative active thread: regenerate/edit change
-      // which branch is active and refresh the variant pagers (the optimistic
-      // append above keeps the common send path instant).
-      if (activeId) {
-        void window.fleet.chat.getMessages(activeId).then((messages) => {
-          if (get().activeId === activeId && get().status === 'idle') set({ messages });
-        });
-      }
-    });
-    unsubError = window.fleet.chat.onStreamError((p: ChatStreamErrorPayload) => {
-      if (p.streamId !== get().streamId) return;
-      // Flush (not drop) the buffered tails so the mirrored placeholder includes
-      // the last <50ms of answer and reasoning tokens.
-      streamBuffer.flush();
-      reasoningBuffer.flush();
-      const { streamId, streamingText, streamingReasoning, activeId } = get();
-      const partial = streamingText?.trim() ? streamingText : null;
-      const reasoning = streamingReasoning?.trim() ? streamingReasoning : null;
-      set((s) => ({
-        status: 'error',
-        error: p.message,
-        streamingText: null,
-        streamingReasoning: null,
-        streamId: null,
-        toolStatus: null,
-        permissionRequests: [],
-        // Mirror the partial answer + reasoning into the list synchronously so a
-        // turn that errored mid-thinking doesn't flicker out; the DB reload below
-        // then swaps in the authoritative message (real id + reasoningMs).
-        messages:
-          (partial || reasoning) && activeId
-            ? [
-                ...s.messages,
-                {
-                  id: `local-${streamId}`,
-                  conversationId: activeId,
-                  role: 'assistant',
-                  content: partial ?? '',
-                  reasoning: reasoning ?? undefined,
-                  parentId: null,
-                  createdAt: Date.now()
-                }
-              ]
-            : s.messages
-      }));
-      // Main persists whatever streamed before the failure to the DB *before*
-      // emitting this error, so reload the authoritative thread to replace the
-      // ephemeral placeholder above.
-      if (activeId) {
-        void window.fleet.chat.getMessages(activeId).then((messages) => {
-          if (get().activeId === activeId && get().status === 'error') set({ messages });
-        });
-      }
-    });
-    unsubTool = window.fleet.chat.onToolStatus((p: ChatToolStatusPayload) => {
-      if (p.streamId !== get().streamId) return;
-      set({ toolStatus: p.state === 'done' ? null : p });
-    });
-    unsubPerm = window.fleet.chat.onPermissionRequest((p: PermissionRequestPayload) => {
-      if (p.streamId !== get().streamId) return;
-      set((s) => ({ permissionRequests: [...s.permissionRequests, p] }));
-    });
+    unsubChunk = window.fleet.chat.onStreamChunk((p: ChatStreamChunkPayload) =>
+      onStreamEvent(p.streamId, () => streamBuffer.push(p.delta))
+    );
+    unsubReasoning = window.fleet.chat.onStreamReasoning((p: ChatStreamReasoningPayload) =>
+      onStreamEvent(p.streamId, () => reasoningBuffer.push(p.delta))
+    );
+    unsubDone = window.fleet.chat.onStreamDone((p: ChatStreamDonePayload) =>
+      onStreamEvent(p.streamId, () => {
+        streamBuffer.reset();
+        reasoningBuffer.reset();
+        const activeId = get().activeId;
+        // Regenerate replaces the active branch via the reload below; appending
+        // here would briefly stack the new answer under the old one (#432).
+        const replace = replaceOnDone === p.streamId;
+        replaceOnDone = null;
+        set((s) => ({
+          messages: replace ? s.messages : [...s.messages, p.message],
+          streamingText: null,
+          streamingReasoning: null,
+          streamId: null,
+          status: 'idle',
+          toolStatus: null,
+          permissionRequests: []
+        }));
+        // Reconcile with the authoritative active thread: regenerate/edit change
+        // which branch is active and refresh the variant pagers (the optimistic
+        // append above keeps the common send path instant).
+        if (activeId) {
+          void window.fleet.chat.getMessages(activeId).then((messages) => {
+            if (get().activeId === activeId && get().status === 'idle') set({ messages });
+          });
+        }
+      })
+    );
+    unsubError = window.fleet.chat.onStreamError((p: ChatStreamErrorPayload) =>
+      onStreamEvent(p.streamId, () => {
+        // Flush (not drop) the buffered tails so a mirrored placeholder includes
+        // the last <50ms of answer and reasoning tokens.
+        streamBuffer.flush();
+        reasoningBuffer.flush();
+        replaceOnDone = null;
+        // User-initiated cancel: main aborted, persisted whatever streamed, and
+        // flagged it. Reconcile to that persisted turn (real DB id) with no error
+        // bubble — Stop is not a failure.
+        if (p.aborted) {
+          streamBuffer.reset();
+          reasoningBuffer.reset();
+          const activeId = get().activeId;
+          set({
+            status: 'idle',
+            error: null,
+            streamingText: null,
+            streamingReasoning: null,
+            streamId: null,
+            toolStatus: null,
+            permissionRequests: []
+          });
+          if (activeId) {
+            void window.fleet.chat.getMessages(activeId).then((messages) => {
+              if (get().activeId === activeId && get().status === 'idle') set({ messages });
+            });
+          }
+          return;
+        }
+        const { streamId, streamingText, streamingReasoning, activeId } = get();
+        const partial = streamingText?.trim() ? streamingText : null;
+        const reasoning = streamingReasoning?.trim() ? streamingReasoning : null;
+        set((s) => ({
+          status: 'error',
+          error: p.message,
+          streamingText: null,
+          streamingReasoning: null,
+          streamId: null,
+          toolStatus: null,
+          permissionRequests: [],
+          // Mirror the partial answer + reasoning into the list synchronously so a
+          // turn that errored mid-thinking doesn't flicker out; the DB reload below
+          // then swaps in the authoritative message (real id + reasoningMs).
+          messages:
+            (partial || reasoning) && activeId
+              ? [
+                  ...s.messages,
+                  {
+                    id: `local-${streamId}`,
+                    conversationId: activeId,
+                    role: 'assistant',
+                    content: partial ?? '',
+                    reasoning: reasoning ?? undefined,
+                    parentId: null,
+                    createdAt: Date.now()
+                  }
+                ]
+              : s.messages
+        }));
+        // Main persists whatever streamed before the failure to the DB *before*
+        // emitting this error, so reload the authoritative thread to replace the
+        // ephemeral placeholder above.
+        if (activeId) {
+          void window.fleet.chat.getMessages(activeId).then((messages) => {
+            if (get().activeId === activeId && get().status === 'error') set({ messages });
+          });
+        }
+      })
+    );
+    unsubTool = window.fleet.chat.onToolStatus((p: ChatToolStatusPayload) =>
+      onStreamEvent(p.streamId, () => set({ toolStatus: p.state === 'done' ? null : p }))
+    );
+    unsubPerm = window.fleet.chat.onPermissionRequest((p: PermissionRequestPayload) =>
+      onStreamEvent(p.streamId, () =>
+        set((s) => ({ permissionRequests: [...s.permissionRequests, p] }))
+      )
+    );
     unsubRenamed = window.fleet.chat.onConversationRenamed((p: ChatConversationRenamedPayload) => {
       set((s) => ({
         conversations: s.conversations.map((c) => (c.id === p.id ? { ...c, title: p.title } : c))
@@ -321,6 +373,12 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     },
 
     selectConversation: async (id) => {
+      // Switching away from a live stream must stop it — otherwise the model
+      // keeps generating (and billing) against a conversation no longer on
+      // screen (#430). Main persists the partial to the *old* thread, so it's
+      // there on return; we don't reconcile it here (we're nulling streamId).
+      const active = get().streamId;
+      if (active && id !== get().activeId) void window.fleet.chat.cancel(active);
       streamBuffer.reset();
       reasoningBuffer.reset();
       set({
@@ -416,6 +474,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           error: null,
           toolStatus: null
         }));
+        // Replay any events the main stream emitted before send() resolved (#436).
+        adoptStream(res.streamId);
       } catch (err) {
         // Surface the failure as an inline error bubble; rethrow so the composer
         // restores the user's draft (it isn't lost on a failed send).
@@ -439,6 +499,10 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           supportsTools: m?.supportsTools ?? false,
           supportsImages: m?.inputImage ?? false
         });
+        // The new variant arrives via the DB reload on DONE; mark this stream so
+        // the done handler reloads instead of appending the answer under the old
+        // one (which would briefly show duplicate replies — #432).
+        replaceOnDone = res.streamId;
         set({
           streamId: res.streamId,
           streamingText: '',
@@ -446,6 +510,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           status: 'streaming',
           error: null
         });
+        adoptStream(res.streamId); // replay any pre-resolve stream events (#436)
       } catch (err) {
         // The void call sites can't surface this, so set the store error here.
         set({
@@ -484,6 +549,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           error: null,
           toolStatus: null
         });
+        adoptStream(res.streamId); // replay any pre-resolve stream events (#436)
       } catch (err) {
         set({
           status: 'error',
@@ -539,43 +605,17 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     },
 
     cancel: () => {
-      // Flush (not drop) both buffered tails so the mirrored partial reply below
-      // includes the last <50ms of answer and reasoning tokens.
+      const { streamId } = get();
+      if (!streamId) return;
+      // Flush (not drop) the buffered tails so the live partial stays complete on
+      // screen until reconciliation swaps in the persisted turn.
       streamBuffer.flush();
       reasoningBuffer.flush();
-      const { streamId, streamingText, streamingReasoning, activeId } = get();
-      if (streamId) void window.fleet.chat.cancel(streamId);
-      // Main persists whatever streamed so far (including reasoning); mirror it
-      // into the visible list so the partial reply doesn't vanish until the convo
-      // is reselected. The main process's CHAT_STREAM_ERROR carrying the persisted
-      // message is dropped by the streamId guard (we null it here), so the
-      // placeholder must carry the reasoning itself — otherwise a cancelled
-      // thinking turn would show no reasoning until reselect.
-      const partial = streamingText?.trim() ? streamingText : null;
-      const reasoning = streamingReasoning?.trim() ? streamingReasoning : null;
-      set((s) => ({
-        status: 'idle',
-        streamId: null,
-        streamingText: null,
-        streamingReasoning: null,
-        toolStatus: null,
-        permissionRequests: [],
-        messages:
-          (partial || reasoning) && activeId
-            ? [
-                ...s.messages,
-                {
-                  id: `local-${streamId}`,
-                  conversationId: activeId,
-                  role: 'assistant',
-                  content: partial ?? '',
-                  reasoning: reasoning ?? undefined,
-                  parentId: null,
-                  createdAt: Date.now()
-                }
-              ]
-            : s.messages
-      }));
+      // Tell main to abort. It persists whatever streamed and emits
+      // CHAT_STREAM_ERROR{aborted:true}; we keep streamId set so that terminal
+      // event isn't dropped by the guard — it reconciles this turn to its real
+      // DB id (no synthetic local- placeholder that delete/regenerate can't use).
+      void window.fleet.chat.cancel(streamId);
     },
 
     loadModels: async () => {

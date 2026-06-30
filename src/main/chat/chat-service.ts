@@ -702,7 +702,10 @@ export class ChatService {
         emit(IPC_CHANNELS.CHAT_STREAM_ERROR, {
           streamId,
           message: err instanceof Error ? err.message : String(err),
-          partial
+          partial,
+          // A cancelled turn aborts its controller; flag it so the renderer
+          // reconciles to the persisted partial instead of showing an error.
+          aborted: controller.signal.aborted
         } satisfies ChatStreamErrorPayload);
       } finally {
         this.inflight.delete(streamId);

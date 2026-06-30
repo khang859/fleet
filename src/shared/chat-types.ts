@@ -329,7 +329,13 @@ export type ChatStreamChunkPayload = { streamId: string; delta: string };
 /** A fragment of the model's reasoning/thinking stream, routed to the panel above the answer. */
 export type ChatStreamReasoningPayload = { streamId: string; delta: string };
 export type ChatStreamDonePayload = { streamId: string; message: ChatMessage };
-export type ChatStreamErrorPayload = { streamId: string; message: string; partial: string };
+export type ChatStreamErrorPayload = {
+  streamId: string;
+  message: string;
+  partial: string;
+  /** True when the turn ended because the user cancelled it (not a real failure). */
+  aborted?: boolean;
+};
 
 export type ChatToolStatusPayload = {
   streamId: string;
