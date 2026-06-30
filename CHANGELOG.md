@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.83.0
+
+- **Configurable tool-round limit in Chat** - the agent's model⇄tool loop is no longer capped at a hardcoded 4 rounds. The default is now 25, and it's adjustable in Chat settings under Agent & Tools → Advanced, so multi-step requests no longer abort early with "I reached the tool-round limit" (#445).
+
 ## v2.82.2
 
 - **Tool calls now persist and re-render in Chat** - the tools an assistant turn ran (and their output) are saved on the message and shown as collapsible cards after reload, instead of vanishing when the turn ended (#434, #422).
