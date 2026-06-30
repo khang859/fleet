@@ -61,7 +61,13 @@ export class SettingsStore {
       ai: {
         ...DEFAULT_SETTINGS.ai,
         ...saved.ai,
-        chat: { ...DEFAULT_SETTINGS.ai.chat, ...saved.ai?.chat }
+        chat: {
+          ...DEFAULT_SETTINGS.ai.chat,
+          ...saved.ai?.chat,
+          // Deep-merge tools so fields added after a save (e.g. maxToolRounds)
+          // backfill from defaults instead of being undefined for existing users.
+          tools: { ...DEFAULT_SETTINGS.ai.chat.tools, ...saved.ai?.chat?.tools }
+        }
       }
     };
   }

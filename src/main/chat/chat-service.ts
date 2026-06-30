@@ -53,8 +53,6 @@ import type { SkillManager } from './skills/skill-manager';
 
 export type ChatEmitter = (channel: string, payload: unknown) => void;
 
-const MAX_TOOL_ROUNDS = 4;
-
 /** Cap on the result text persisted onto a tool-call card (the model gets the full output). */
 const TOOL_OUTPUT_CAP = 4000;
 
@@ -428,6 +426,7 @@ export class ChatService {
 
     const apiKey = secrets.getKey();
     const imageModel = getImageModel();
+    const maxToolRounds = this.deps.getTools().maxToolRounds;
     const imageToolEnabled = !!imageModel && supportsTools;
     // fs/bash tools require a tool-capable model; gated by the tools mode setting.
     const fsToolDefs = supportsTools ? buildFsToolDefs(this.deps.getToolsMode()) : [];
@@ -490,7 +489,7 @@ export class ChatService {
       // Tools invoked this turn, in call order — persisted onto the assistant
       // message so the transcript shows what ran (#434).
       const toolCalls: ChatToolCall[] = [];
-      // True when the model kept calling tools until MAX_TOOL_ROUNDS ran out.
+      // True when the model kept calling tools until maxToolRounds ran out.
       let exhausted = false;
       // Reasoning channel: chain-of-thought streamed alongside (and before) the
       // answer. Timed from the first reasoning token to the first answer token so
@@ -528,7 +527,7 @@ export class ChatService {
       });
       try {
         if (!apiKey) throw new Error('No OpenRouter API key configured');
-        for (let r = 0; r < MAX_TOOL_ROUNDS; r++) {
+        for (let r = 0; r < maxToolRounds; r++) {
           const result = await client.streamCompletion({
             apiKey,
             model,
@@ -677,7 +676,7 @@ export class ChatService {
           }
           // Reaching the last round with tools still pending means we ran out of
           // rounds rather than finishing — note it so the fallback below is honest.
-          if (r === MAX_TOOL_ROUNDS - 1) exhausted = true;
+          if (r === maxToolRounds - 1) exhausted = true;
         }
 
         // Emit any text held back in the splitter's tail buffer (incomplete tag).
@@ -689,7 +688,7 @@ export class ChatService {
         // pretending nothing happened (#428).
         if (partial === '' && generated.length === 0) {
           partial = exhausted
-            ? `I reached the tool-round limit (${MAX_TOOL_ROUNDS}) before finishing. The tool calls above show what ran.`
+            ? `I reached the tool-round limit (${maxToolRounds}) before finishing. The tool calls above show what ran.`
             : "I couldn't finish that request — please try again.";
         }
 
