@@ -7,6 +7,22 @@ export type ChatRole = 'user' | 'assistant' | 'system';
 
 export type ChatImageRef = { ref: string; mimeType: string; kind: 'generated' | 'attachment' };
 
+/** Terminal outcome of a tool call, persisted so the transcript shows what ran. */
+export type ChatToolCallStatus = 'done' | 'error' | 'denied' | 'blocked';
+
+/** A tool the assistant invoked during a turn, recorded onto the assistant message. */
+export type ChatToolCall = {
+  /** The model-assigned tool_call_id. */
+  id: string;
+  /** Tool name (e.g. 'bash', 'web_fetch', an MCP id, 'generate_image'). */
+  name: string;
+  /** Short human summary of the call (the command, URL, path, or query). */
+  title: string;
+  status: ChatToolCallStatus;
+  /** Truncated result text shown in the collapsible card; omitted when empty. */
+  output?: string;
+};
+
 export type ChatMessage = {
   id: string;
   conversationId: string;
@@ -24,6 +40,8 @@ export type ChatMessage = {
   reasoning?: string;
   /** Wall-clock the model spent reasoning, in ms; drives the "Thought for Xs" label. */
   reasoningMs?: number;
+  /** Tools invoked during this assistant turn, in call order; absent when none ran. */
+  toolCalls?: ChatToolCall[];
 };
 
 /** Token counts + cost for one assistant turn (summed across tool rounds). */

@@ -9,6 +9,7 @@ import type {
   ChatImageRef,
   ChatMessage,
   ChatMessageUsage,
+  ChatToolCall,
   ChatRole,
   ChatAuditEntry,
   ChatAuditDecision,
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS messages (
   cost              REAL,
   reasoning         TEXT,
   reasoning_ms      INTEGER,
+  tool_calls        TEXT,
   created_at      INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
@@ -139,6 +141,7 @@ const MessageRowSchema = z.object({
   cost: z.number().nullable(),
   reasoning: z.string().nullable(),
   reasoning_ms: z.number().nullable(),
+  tool_calls: z.string().nullable(),
   created_at: z.number()
 });
 
@@ -233,7 +236,27 @@ function toMessage(r: MessageRow): ChatMessage {
     msg.reasoning = r.reasoning;
     if (r.reasoning_ms != null) msg.reasoningMs = r.reasoning_ms;
   }
+  const toolCalls = parseToolCalls(r.tool_calls);
+  if (toolCalls.length) msg.toolCalls = toolCalls;
   return msg;
+}
+
+const ToolCallSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  title: z.string(),
+  status: z.enum(['done', 'error', 'denied', 'blocked']),
+  output: z.string().optional()
+});
+
+/** Tool calls are stored as a JSON array; tolerate bad/legacy/empty data. */
+function parseToolCalls(raw: string | null): ChatToolCall[] {
+  if (!raw) return [];
+  try {
+    return z.array(ToolCallSchema).parse(JSON.parse(raw));
+  } catch {
+    return [];
+  }
 }
 
 export class ChatStore {
@@ -361,6 +384,10 @@ export class ChatStore {
     if (!msgCols.some((c) => c.name === 'reasoning')) {
       this.db.exec('ALTER TABLE messages ADD COLUMN reasoning TEXT');
       this.db.exec('ALTER TABLE messages ADD COLUMN reasoning_ms INTEGER');
+    }
+    // Tool-call transcript (#434): JSON array of the tools an assistant turn ran.
+    if (!msgCols.some((c) => c.name === 'tool_calls')) {
+      this.db.exec('ALTER TABLE messages ADD COLUMN tool_calls TEXT');
     }
     // Semantic search: tracks embedding freshness (NULL = needs (re-)embedding). The
     // backfill pass embeds existing rows; embed-on-write keeps new rows fresh. The
@@ -676,6 +703,7 @@ export class ChatStore {
     usage?: ChatMessageUsage | null;
     reasoning?: string | null;
     reasoningMs?: number | null;
+    toolCalls?: ChatToolCall[] | null;
   }): ChatMessage {
     const now = Date.now();
     const parentId = input.parentId ?? null;
@@ -693,14 +721,15 @@ export class ChatStore {
       cost: u ? u.cost : null,
       reasoning: input.reasoning ?? null,
       reasoning_ms: input.reasoningMs ?? null,
+      tool_calls: input.toolCalls?.length ? JSON.stringify(input.toolCalls) : null,
       created_at: now
     };
     this.db
       .prepare(
         `INSERT INTO messages
            (id, conversation_id, role, content, parent_id, active_child_id,
-            prompt_tokens, completion_tokens, cached_tokens, cost, reasoning, reasoning_ms, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            prompt_tokens, completion_tokens, cached_tokens, cost, reasoning, reasoning_ms, tool_calls, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         row.id,
@@ -715,6 +744,7 @@ export class ChatStore {
         row.cost,
         row.reasoning,
         row.reasoning_ms,
+        row.tool_calls,
         row.created_at
       );
     if (parentId) {
@@ -957,7 +987,8 @@ export class ChatStore {
           conversationId: branch.id,
           role: m.role,
           content: m.content,
-          parentId
+          parentId,
+          toolCalls: m.toolCalls
         });
         if (m.images?.length) {
           const images = mapImageRef

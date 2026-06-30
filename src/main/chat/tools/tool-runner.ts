@@ -195,8 +195,8 @@ export const FS_TOOL_NAMES = new Set([
 
 type ExecCtx = { streamId: string; conversationId: string; signal: AbortSignal };
 
-/** What a tool did, for both the model (output) and the audit ledger. */
-type ToolOutcome = {
+/** What a tool did, for the model (output), the audit ledger, and the transcript. */
+export type ToolOutcome = {
   output: string;
   detail: string;
   decision: ChatAuditDecision;
@@ -253,8 +253,12 @@ export class ChatToolExecutor {
     private readonly webFetch: WebFetchRunner | null = null
   ) {}
 
-  /** Returns the tool result content fed back into the model loop. */
-  async run(name: string, argsJson: string, ctx: ExecCtx): Promise<string> {
+  /**
+   * Run a tool and return its full outcome — the model-facing `output` plus the
+   * decision/status the caller persists onto the assistant message (#434) and
+   * records in the audit ledger.
+   */
+  async run(name: string, argsJson: string, ctx: ExecCtx): Promise<ToolOutcome> {
     const cfg = this.getConfig();
     // Resolve (and lazily create) the workspace inside the boundary: a failing
     // mkdir surfaces as a tool error instead of crashing the whole turn.
@@ -277,7 +281,7 @@ export class ChatToolExecutor {
       status: outcome.status,
       result: outcome.output
     });
-    return outcome.output;
+    return outcome;
   }
 
   private async dispatch(
@@ -442,19 +446,11 @@ export class ChatToolExecutor {
       decision = 'approved';
     }
 
-    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
-      streamId: ctx.streamId,
-      state: 'generating',
-      label: `$ ${command}`
-    } satisfies ChatToolStatusPayload);
-
-    const result = await runBash({ command, cwd, signal: ctx.signal, wrap: wrap ?? undefined });
-
-    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
-      streamId: ctx.streamId,
-      state: 'done',
-      label: 'Command finished'
-    } satisfies ChatToolStatusPayload);
+    // try/finally (via withProgress) so a throw/timeout still clears the pill
+    // instead of leaving a stale "$ …" spinner for the rest of the turn (#423).
+    const result = await this.withProgress(ctx, `$ ${command}`, async () =>
+      runBash({ command, cwd, signal: ctx.signal, wrap: wrap ?? undefined })
+    );
 
     const parts = [`Exit code: ${result.timedOut ? 'timed out' : result.exitCode}`];
     if (result.stdout) parts.push(`stdout:\n${result.stdout}`);
@@ -535,7 +531,8 @@ export class ChatToolExecutor {
    * `Mcp(mcp__server__*)` auto-approve trusted read-only tools.
    */
   private async runMcpGated(name: string, argsJson: string, ctx: ExecCtx): Promise<ToolOutcome> {
-    if (!this.mcp?.hasTool(name)) {
+    const mcp = this.mcp;
+    if (!mcp?.hasTool(name)) {
       return { output: `Unknown tool: ${name}`, detail: name, decision: 'error', status: 'error' };
     }
     const grant = await this.permissions.request({
@@ -552,17 +549,10 @@ export class ChatToolExecutor {
         status: 'denied'
       };
     }
-    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
-      streamId: ctx.streamId,
-      state: 'generating',
-      label: `Calling ${name}…`
-    } satisfies ChatToolStatusPayload);
-    const out = await this.mcp.callTool(name, argsJson);
-    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
-      streamId: ctx.streamId,
-      state: 'done',
-      label: 'Tool finished'
-    } satisfies ChatToolStatusPayload);
+    // try/finally so a throwing MCP tool clears its pill (#423).
+    const out = await this.withProgress(ctx, `Calling ${name}…`, async () =>
+      mcp.callTool(name, argsJson)
+    );
     return { output: out, detail: name, decision: 'approved', status: 'ok' };
   }
 
@@ -574,7 +564,8 @@ export class ChatToolExecutor {
    */
   private async runWebSearchGated(argsJson: string, ctx: ExecCtx): Promise<ToolOutcome> {
     const { query } = webSearchArgs.parse(JSON.parse(argsJson));
-    if (!this.webSearch?.enabled()) {
+    const webSearch = this.webSearch;
+    if (!webSearch?.enabled()) {
       return {
         output: 'Web search is disabled. The user must enable it (and set an API key) in settings.',
         detail: query,
@@ -596,17 +587,10 @@ export class ChatToolExecutor {
         status: 'denied'
       };
     }
-    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
-      streamId: ctx.streamId,
-      state: 'generating',
-      label: `Searching: ${query}`
-    } satisfies ChatToolStatusPayload);
-    const output = await this.webSearch.search(query, ctx.signal);
-    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
-      streamId: ctx.streamId,
-      state: 'done',
-      label: 'Search finished'
-    } satisfies ChatToolStatusPayload);
+    // try/finally so a failed search clears its pill (#423).
+    const output = await this.withProgress(ctx, `Searching: ${query}`, async () =>
+      webSearch.search(query, ctx.signal)
+    );
     return { output, detail: query, decision: 'approved', status: 'ok' };
   }
 
@@ -618,7 +602,8 @@ export class ChatToolExecutor {
    */
   private async runWebFetchGated(argsJson: string, ctx: ExecCtx): Promise<ToolOutcome> {
     const { url } = webFetchArgs.parse(JSON.parse(argsJson));
-    if (!this.webFetch?.enabled()) {
+    const webFetch = this.webFetch;
+    if (!webFetch?.enabled()) {
       return {
         output: 'Web fetch is disabled. The user must enable it in Chat settings.',
         detail: url,
@@ -640,24 +625,18 @@ export class ChatToolExecutor {
         status: 'denied'
       };
     }
-    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
-      streamId: ctx.streamId,
-      state: 'generating',
-      label: `Fetching: ${url}`
-    } satisfies ChatToolStatusPayload);
-    const output = await this.webFetch.fetch(url, ctx.signal, () => {
-      // Render fallback engaged — advance the pill so a slow page doesn't look frozen.
-      this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
-        streamId: ctx.streamId,
-        state: 'generating',
-        label: `Rendering: ${url}`
-      } satisfies ChatToolStatusPayload);
-    });
-    this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
-      streamId: ctx.streamId,
-      state: 'done',
-      label: 'Fetch finished'
-    } satisfies ChatToolStatusPayload);
+    // try/finally so a failed/timed-out fetch clears its pill instead of leaving
+    // a stale "Fetching: …" spinner for the rest of the turn (#423).
+    const output = await this.withProgress(ctx, `Fetching: ${url}`, async () =>
+      webFetch.fetch(url, ctx.signal, () => {
+        // Render fallback engaged — advance the pill so a slow page doesn't look frozen.
+        this.emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
+          streamId: ctx.streamId,
+          state: 'generating',
+          label: `Rendering: ${url}`
+        } satisfies ChatToolStatusPayload);
+      })
+    );
     return { output, detail: url, decision: 'approved', status: 'ok' };
   }
 }

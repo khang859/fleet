@@ -88,7 +88,9 @@ beforeEach(() => {
     models: [],
     keyPresent: false,
     status: 'idle',
-    error: null
+    error: null,
+    toolStatus: null,
+    permissionRequests: []
   });
 });
 
@@ -390,8 +392,15 @@ describe('useChatStore', () => {
     });
     expect(useChatStore.getState().permissionRequests).toHaveLength(1);
     await useChatStore.getState().decidePermission('r1', 'allow-once');
-    expect(useChatStore.getState().permissionRequests).toHaveLength(0);
     expect(window.fleet.chat.decidePermission).toHaveBeenCalledWith('r1', 'allow-once');
+    // #424: the card is NOT dropped on decide (it resolves in place); it clears
+    // only when the turn ends.
+    expect(useChatStore.getState().permissionRequests).toHaveLength(1);
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_DONE)?.({
+      streamId: 's1',
+      message: { id: 'a1', conversationId: 'c1', role: 'assistant', content: 'ok', createdAt: 4 }
+    });
+    expect(useChatStore.getState().permissionRequests).toHaveLength(0);
   });
 
   it('ignores a permission request for a stale stream', async () => {

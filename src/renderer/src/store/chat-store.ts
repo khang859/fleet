@@ -366,9 +366,10 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     },
 
     decidePermission: async (requestId, outcome) => {
-      set((s) => ({
-        permissionRequests: s.permissionRequests.filter((r) => r.requestId !== requestId)
-      }));
+      // Don't optimistically drop the card — that unmounted it before its
+      // Allowed/Denied confirmation could show (#424). The card transitions to a
+      // decided state in place and is cleared (with the rest of the live tool UI)
+      // when the turn ends; a denied call still leaves a persisted tool-call card.
       await window.fleet.chat.decidePermission(requestId, outcome);
     },
 

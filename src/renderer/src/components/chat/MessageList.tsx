@@ -26,6 +26,7 @@ import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
 import { ToolStatusPill } from './ToolStatusPill';
 import { ToolCallCard } from './ToolCallCard';
+import { ToolCallView } from './ToolCallView';
 import { ChatMarkdown } from './ChatMarkdown';
 import { MessageUsage } from './UsageMeter';
 import { messageEnterAssistant, messageEnterUser } from '../../lib/motion';
@@ -210,6 +211,13 @@ function Bubble({
             thinking={false}
             durationMs={message.reasoningMs ?? 0}
           />
+        )}
+        {!isUser && message.toolCalls && message.toolCalls.length > 0 && (
+          <div className="mb-2 flex flex-col gap-1.5">
+            {message.toolCalls.map((call) => (
+              <ToolCallView key={call.id} call={call} />
+            ))}
+          </div>
         )}
         {editing ? (
           <div className="flex flex-col gap-2">
