@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { deriveAppTheme, resolveAccentColor, resolveTerminalTheme, resolveXtermTheme } from '../theme';
+import {
+  deriveAppTheme,
+  resolveAccentColor,
+  resolveTerminalTheme,
+  resolveXtermTheme
+} from '../theme';
 import { TERMINAL_THEMES } from '../../../../shared/theme-presets';
 import { contrastRatio } from '../contrast';
 
