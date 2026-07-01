@@ -169,6 +169,13 @@ export function createCommandRegistry(): Command[] {
       execute: () => document.dispatchEvent(new CustomEvent('fleet:jump-needy-agent'))
     },
     {
+      id: 'agent-overview',
+      label: 'Agent Overview',
+      shortcut: sc('agent-overview'),
+      category: 'Agent',
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-agent-overview'))
+    },
+    {
       id: 'open-kanban',
       label: 'Open Kanban Board',
       category: 'Tabs',
