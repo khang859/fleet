@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { ActivityState } from '../../../shared/types';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
-import { findPaneLocation, paneLabel } from '../lib/palette-items';
+import { findLeaf, paneLabel } from '../lib/palette-items';
 import { Overlay } from './Overlay';
 import { PaneStatusGlyph } from './PaneStatusGlyph';
 
@@ -35,13 +35,17 @@ export function AgentOverview({ isOpen, onClose }: AgentOverviewProps): React.JS
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showAllDone, setShowAllDone] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const listboxRef = useRef<HTMLDivElement>(null);
 
   const tabs = useWorkspaceStore((s) => s.workspace.tabs);
   const activePaneId = useWorkspaceStore((s) => s.activePaneId);
   const activities = useNotificationStore((s) => s.activities);
 
   useEffect(() => {
-    if (isOpen) setShowAllDone(false);
+    if (isOpen) {
+      setShowAllDone(false);
+      requestAnimationFrame(() => listboxRef.current?.focus());
+    }
   }, [isOpen]);
 
   // Every terminal pane across every tab that the activity tracker knows
@@ -54,12 +58,12 @@ export function AgentOverview({ isOpen, onClose }: AgentOverviewProps): React.JS
       for (const paneId of collectPaneIds(tab.splitRoot)) {
         const state = activities.get(paneId)?.state;
         if (!state) continue;
-        const loc = findPaneLocation(tabs, paneId);
-        if (!loc) continue;
+        const leaf = findLeaf(tab.splitRoot, paneId);
+        if (!leaf) continue;
         out.push({
           paneId,
           tabId: tab.id,
-          label: paneLabel(loc),
+          label: paneLabel({ tabId: tab.id, tab, leaf }),
           branch: tab.worktreeBranch,
           state
         });
@@ -118,10 +122,12 @@ export function AgentOverview({ isOpen, onClose }: AgentOverviewProps): React.JS
     <Overlay
       open={isOpen}
       onClose={onClose}
+      closeOnEscape={false}
       containerClassName="justify-center"
       panelClassName="mt-[12vh] w-[480px] max-h-[65vh] flex flex-col bg-fleet-surface-2 border border-fleet-border-strong rounded-lg shadow-xl overflow-hidden"
     >
       <div
+        ref={listboxRef}
         role="listbox"
         aria-label="Agents"
         tabIndex={0}
