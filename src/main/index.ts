@@ -247,7 +247,7 @@ function createWindow(): void {
     titleBarStyle: 'hidden',
     ...(process.platform === 'darwin'
       ? { trafficLightPosition: { x: 12, y: 10 } }
-      : { titleBarOverlay: { color: '#0a0a0a', symbolColor: '#a3a3a3', height: 36 } })
+      : { titleBarOverlay: { color: '#090a0d', symbolColor: '#a1a3a7', height: 36 } })
   });
 
   // Log renderer console messages and errors to main process stdout.
