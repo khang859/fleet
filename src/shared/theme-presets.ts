@@ -105,16 +105,17 @@ export const TERMINAL_THEMES: Record<TerminalThemeId, TerminalThemeDefinition> =
       brightWhite: '#f1f1f0'
     },
     appOverrides: {
-      bg: '#0a0a0a',
-      surface: '#171717',
-      surface2: '#262626',
-      surface3: '#404040',
-      border: '#262626',
-      borderStrong: '#404040',
-      text: '#fafafa',
-      textSecondary: '#d4d4d4',
-      textMuted: '#a3a3a3',
-      textSubtle: '#737373'
+      // Cool-gray tint (OKLCH hue 260, chroma 0.006) instead of flat neutral-*
+      // gray, same lightness as before. border/borderStrong are intentionally
+      // omitted so they fall through to deriveAppTheme's universal hairline formula.
+      bg: '#090a0d',
+      surface: '#15171a',
+      surface2: '#242629',
+      surface3: '#3e4043',
+      text: '#f8fafe',
+      textSecondary: '#d2d4d8',
+      textMuted: '#a1a3a7',
+      textSubtle: '#717377'
     }
   },
   'fleet-light': {
@@ -147,16 +148,17 @@ export const TERMINAL_THEMES: Record<TerminalThemeId, TerminalThemeDefinition> =
       brightWhite: '#ffffff'
     },
     appOverrides: {
-      bg: '#f5f7fa',
-      surface: '#ffffff',
-      surface2: '#eef2f7',
-      surface3: '#e2e8f0',
-      border: '#dce3ec',
-      borderStrong: '#cbd5e1',
-      text: '#0f172a',
-      textSecondary: '#334155',
-      textMuted: '#64748b',
-      textSubtle: '#94a3b8'
+      // Cool-gray tint (OKLCH hue 260, chroma 0.006) instead of flat neutral-*
+      // gray, same lightness as before. border/borderStrong are intentionally
+      // omitted so they fall through to deriveAppTheme's universal hairline formula.
+      bg: '#f5f7fb',
+      surface: '#fdffff',
+      surface2: '#eff2f6',
+      surface3: '#e5e8eb',
+      text: '#16181b',
+      textSecondary: '#3e4043',
+      textMuted: '#717376',
+      textSubtle: '#9fa2a5'
     }
   },
   dracula: {

@@ -85,13 +85,17 @@ export function deriveAppTheme(def: TerminalThemeDefinition): AppThemeTokens {
   const bg = dark
     ? mixHex(def.background, '#000000', 0.25)
     : mixHex(def.background, '#000000', 0.02);
+  // Translucent hairline borders (Raycast/Linear-style): a white or black
+  // overlay at low alpha reads correctly against any surface underneath,
+  // so this is universal across all 14 themes rather than per-theme mixed hex.
+  const borderOverlay = dark ? '1 0 0' : '0 0 0';
   const derived: AppThemeTokens = {
     bg,
     surface: mixHex(bg, fg, 0.05),
     surface2: mixHex(bg, fg, 0.1),
     surface3: mixHex(bg, fg, 0.16),
-    border: mixHex(bg, fg, 0.14),
-    borderStrong: mixHex(bg, fg, 0.24),
+    border: `oklch(${borderOverlay} / 0.08)`,
+    borderStrong: `oklch(${borderOverlay} / 0.16)`,
     text: fg,
     textSecondary: mixHex(fg, bg, 0.18),
     textMuted: mixHex(fg, bg, 0.4),
