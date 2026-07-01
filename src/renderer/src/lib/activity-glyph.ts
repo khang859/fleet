@@ -42,7 +42,7 @@ const HUE_BORDER: Record<Hue, string> = {
   neutral: 'border-fleet-text-subtle'
 };
 
-/** Pane border ring — reserved for states that warrant attention; `working`/`idle` stay neutral so a busy pane isn't visually loud. */
+/** Pane border ring - reserved for states that warrant attention; `working`/`idle` stay neutral so a busy pane isn't visually loud. */
 const RING_CLASS: Record<Hue, string> = {
   amber: 'ring-2 ring-amber-400',
   red: 'ring-2 ring-red-500/70',

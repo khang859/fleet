@@ -1561,7 +1561,7 @@ export function Sidebar({
                   drivingPaneId={drivingPaneId}
                   isActive={tab.id === activeTabId}
                   badge={getTabBadge(paneIds)}
-                  activityState={getTabActivity(paneIds)?.state}
+                  activity={getTabActivity(paneIds)}
                   icon={icon}
                   disableReset={isFile}
                   index={idx}

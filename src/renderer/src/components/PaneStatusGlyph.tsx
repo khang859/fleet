@@ -9,7 +9,7 @@ type PaneStatusGlyphProps = {
 /**
  * Two-axis status glyph: color encodes semantic state (needs-input/error/
  * done/working/idle, per `activity-glyph`'s universal color rule), shape
- * encodes process liveness — filled circle = alive & active, hollow ring =
+ * encodes process liveness - filled circle = alive & active, hollow ring =
  * alive & at rest (sleeping), filled square = exited (done/error).
  */
 export function PaneStatusGlyph({

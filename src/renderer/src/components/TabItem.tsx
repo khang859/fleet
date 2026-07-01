@@ -10,7 +10,7 @@ import type { UserGroupColor } from './sidebar-constants';
 import { cwdBasename } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
 import { useRemoteStore } from '../store/remote-store';
-import { useNotificationStore, activityToBadge, PRIORITY } from '../store/notification-store';
+import { activityToBadge, PRIORITY } from '../store/notification-store';
 import { shortenPath } from '../lib/shorten-path';
 import { popperAnim } from '../lib/motion';
 import { PaneStatusGlyph } from './PaneStatusGlyph';
@@ -27,8 +27,8 @@ type TabItemProps = {
   drivingPaneId?: string;
   isActive: boolean;
   badge: NotificationLevel | null;
-  /** Terminal panes' live activity state — drives the two-axis status glyph. Undefined for non-terminal tabs (file/image/pdf), which fall back to `badge`. */
-  activityState?: ActivityState;
+  /** Tab-wide activity (the most recent across every pane in the tab, via `getTabActivity`) - drives both the status glyph and the freshness subtitle, so they always agree. Undefined for non-terminal tabs (file/image/pdf), which fall back to `badge`. */
+  activity?: { state: ActivityState; lastOutputAt: number };
   icon?: React.ReactNode;
   onClick: () => void;
   onDuplicate?: () => void;
@@ -96,7 +96,7 @@ export function TabItem({
   drivingPaneId,
   isActive,
   badge,
-  activityState,
+  activity,
   icon,
   onClick,
   onDuplicate,
@@ -127,18 +127,15 @@ export function TabItem({
   const cwd = liveCwd ?? fallbackCwd;
   // Granular subscription — only re-renders when THIS pane's remote state changes
   const isRemote = useRemoteStore((s) => (drivingPaneId ? s.remotes.has(drivingPaneId) : false));
-  const activity = useNotificationStore((s) =>
-    drivingPaneId ? s.getActivity(drivingPaneId) : undefined
-  );
 
   // The two-axis glyph is richer than the plain notification dot, but a raw
   // IPC notification (e.g. a terminal bell) can outrank the activity state it
-  // arrived alongside — show whichever signal is more urgent, never the glyph
+  // arrived alongside - show whichever signal is more urgent, never the glyph
   // if it would hide a higher-priority notification.
-  const activityBadgeLevel = activityState !== undefined ? activityToBadge(activityState) : null;
+  const activityBadgeLevel = activity ? activityToBadge(activity.state) : null;
   const activityPriority = activityBadgeLevel ? PRIORITY[activityBadgeLevel] : -1;
   const badgePriority = badge ? PRIORITY[badge] : -1;
-  const showActivityGlyph = activityState !== undefined && activityPriority >= badgePriority;
+  const showActivityGlyph = activity !== undefined && activityPriority >= badgePriority;
 
   const [freshness, setFreshness] = useState<string | null>(null);
 
@@ -250,7 +247,7 @@ export function TabItem({
           )}
 
           {!isActive && showActivityGlyph && (
-            <PaneStatusGlyph state={activityState} className="flex-shrink-0" />
+            <PaneStatusGlyph state={activity.state} className="flex-shrink-0" />
           )}
           {!isActive && !showActivityGlyph && badge && (
             <span

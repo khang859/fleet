@@ -124,13 +124,13 @@ function rectStyle(rect: Rect): React.CSSProperties {
 type PaneFrameProps = {
   paneId: string;
   isActive: boolean;
-  /** Non-terminal panes (file/markdown/image/pdf) have no activity tracking and aren't "agents" — they still get the focus/status ring, but not the status glyph. */
+  /** Non-terminal panes (file/markdown/image/pdf) have no activity tracking and aren't "agents" - they still get the focus/status ring, but not the status glyph. */
   showGlyph?: boolean;
   children: React.ReactNode;
 };
 
 /**
- * Wraps a leaf pane so it can subscribe to its own activity state — the
+ * Wraps a leaf pane so it can subscribe to its own activity state - the
  * border ring reflects state color when unfocused (the focused pane keeps
  * its accent ring instead, so focus and status don't fight for the same
  * outline), and a corner glyph encodes state + process liveness always.
