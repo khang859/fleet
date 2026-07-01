@@ -124,6 +124,8 @@ function rectStyle(rect: Rect): React.CSSProperties {
 type PaneFrameProps = {
   paneId: string;
   isActive: boolean;
+  /** Non-terminal panes (file/markdown/image/pdf) have no activity tracking and aren't "agents" — they still get the focus/status ring, but not the status glyph. */
+  showGlyph?: boolean;
   children: React.ReactNode;
 };
 
@@ -133,13 +135,20 @@ type PaneFrameProps = {
  * its accent ring instead, so focus and status don't fight for the same
  * outline), and a corner glyph encodes state + process liveness always.
  */
-function PaneFrame({ paneId, isActive, children }: PaneFrameProps): React.JSX.Element {
+function PaneFrame({
+  paneId,
+  isActive,
+  showGlyph = true,
+  children
+}: PaneFrameProps): React.JSX.Element {
   const activityState = useNotificationStore((s) => s.activities.get(paneId)?.state);
   const ringClass = isActive ? 'fleet-accent-ring-pane' : activityRingClass(activityState);
 
   return (
     <div className={`relative flex flex-col h-full ${ringClass}`}>
-      <PaneStatusGlyph state={activityState} className="absolute top-1 right-1 z-10" />
+      {showGlyph && (
+        <PaneStatusGlyph state={activityState} className="absolute top-1 right-1 z-10" />
+      )}
       {children}
     </div>
   );
@@ -188,42 +197,50 @@ export function PaneGrid({
         if (leaf.node.paneType === 'file') {
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
-              <FileEditorPane
-                paneId={leaf.id}
-                filePath={leaf.node.filePath ?? ''}
-                pathContext={leaf.node.pathContext}
-              />
+              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
+                <FileEditorPane
+                  paneId={leaf.id}
+                  filePath={leaf.node.filePath ?? ''}
+                  pathContext={leaf.node.pathContext}
+                />
+              </PaneFrame>
             </div>
           );
         }
         if (leaf.node.paneType === 'markdown') {
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
-              <MarkdownPane
-                paneId={leaf.id}
-                filePath={leaf.node.filePath ?? ''}
-                pathContext={leaf.node.pathContext}
-              />
+              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
+                <MarkdownPane
+                  paneId={leaf.id}
+                  filePath={leaf.node.filePath ?? ''}
+                  pathContext={leaf.node.pathContext}
+                />
+              </PaneFrame>
             </div>
           );
         }
         if (leaf.node.paneType === 'image') {
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
-              <ImageViewerPane
-                filePath={leaf.node.filePath ?? ''}
-                pathContext={leaf.node.pathContext}
-              />
+              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
+                <ImageViewerPane
+                  filePath={leaf.node.filePath ?? ''}
+                  pathContext={leaf.node.pathContext}
+                />
+              </PaneFrame>
             </div>
           );
         }
         if (leaf.node.paneType === 'pdf') {
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
-              <PdfViewerPane
-                filePath={leaf.node.filePath ?? ''}
-                pathContext={leaf.node.pathContext}
-              />
+              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
+                <PdfViewerPane
+                  filePath={leaf.node.filePath ?? ''}
+                  pathContext={leaf.node.pathContext}
+                />
+              </PaneFrame>
             </div>
           );
         }

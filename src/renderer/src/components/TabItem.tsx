@@ -10,7 +10,7 @@ import type { UserGroupColor } from './sidebar-constants';
 import { cwdBasename } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
 import { useRemoteStore } from '../store/remote-store';
-import { useNotificationStore } from '../store/notification-store';
+import { useNotificationStore, activityToBadge, PRIORITY } from '../store/notification-store';
 import { shortenPath } from '../lib/shorten-path';
 import { popperAnim } from '../lib/motion';
 import { PaneStatusGlyph } from './PaneStatusGlyph';
@@ -131,6 +131,15 @@ export function TabItem({
     drivingPaneId ? s.getActivity(drivingPaneId) : undefined
   );
 
+  // The two-axis glyph is richer than the plain notification dot, but a raw
+  // IPC notification (e.g. a terminal bell) can outrank the activity state it
+  // arrived alongside — show whichever signal is more urgent, never the glyph
+  // if it would hide a higher-priority notification.
+  const activityBadgeLevel = activityState !== undefined ? activityToBadge(activityState) : null;
+  const activityPriority = activityBadgeLevel ? PRIORITY[activityBadgeLevel] : -1;
+  const badgePriority = badge ? PRIORITY[badge] : -1;
+  const showActivityGlyph = activityState !== undefined && activityPriority >= badgePriority;
+
   const [freshness, setFreshness] = useState<string | null>(null);
 
   useEffect(() => {
@@ -240,10 +249,10 @@ export function TabItem({
             <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full translate-y-0.5" />
           )}
 
-          {!isActive && activityState !== undefined && (
+          {!isActive && showActivityGlyph && (
             <PaneStatusGlyph state={activityState} className="flex-shrink-0" />
           )}
-          {!isActive && activityState === undefined && badge && (
+          {!isActive && !showActivityGlyph && badge && (
             <span
               className={`rounded-full flex-shrink-0 flex items-center justify-center ${BADGE_CONFIG[badge].color} ${BADGE_CONFIG[badge].size} ${BADGE_CONFIG[badge].animate}`}
               aria-label={`${badge} notification`}

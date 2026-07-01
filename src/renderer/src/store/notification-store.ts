@@ -28,7 +28,7 @@ type NotificationStore = {
   getTabActivity: (paneIds: string[]) => ActivityRecord | undefined;
 };
 
-const PRIORITY: Record<NotificationLevel, number> = {
+export const PRIORITY: Record<NotificationLevel, number> = {
   permission: 3,
   error: 2,
   info: 1,
@@ -36,7 +36,7 @@ const PRIORITY: Record<NotificationLevel, number> = {
 };
 
 /** Map activity states to notification badge levels for the tab sidebar. */
-function activityToBadge(state: ActivityState): NotificationLevel | null {
+export function activityToBadge(state: ActivityState): NotificationLevel | null {
   switch (state) {
     case 'needs_me':
       return 'permission';
