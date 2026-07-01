@@ -1,9 +1,9 @@
+import { overlayTiming } from '../lib/motion';
 import { useToastStore } from '../store/toast-store';
 
 // Slide up + fade on enter, reverse on exit. `closing` drives the data-state;
 // the store keeps the toast mounted long enough for the exit to play.
-const toastAnim =
-  'duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom-2';
+const toastAnim = `${overlayTiming} data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom-2`;
 
 export function ToastContainer(): React.JSX.Element | null {
   const toasts = useToastStore((s) => s.toasts);
