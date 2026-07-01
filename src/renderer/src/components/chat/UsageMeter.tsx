@@ -10,7 +10,7 @@ export function MessageUsage({ usage }: { usage: ChatMessageUsage }): React.JSX.
   ];
   if (usage.cachedTokens > 0) parts.push(`${formatTokens(usage.cachedTokens)} cached`);
   if (usage.cost != null) parts.push(formatUsd(usage.cost));
-  return <span className="text-[10px] text-fleet-text-muted">{parts.join(' · ')}</span>;
+  return <span className="fleet-tnum text-[10px] text-fleet-text-muted">{parts.join(' · ')}</span>;
 }
 
 /** Per-conversation running total + optional budget warning, shown above the composer. */
@@ -26,7 +26,7 @@ export function UsageMeter({
   const over = budgetWarnUsd != null && total.hasCost && total.cost > budgetWarnUsd;
   return (
     <div
-      className={`flex items-center justify-end gap-2 border-t border-fleet-border px-3 py-1 text-[11px] ${
+      className={`fleet-tnum flex items-center justify-end gap-2 border-t border-fleet-border px-3 py-1 text-[11px] ${
         over ? 'text-amber-400' : 'text-fleet-text-muted'
       }`}
     >

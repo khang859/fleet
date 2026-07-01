@@ -286,7 +286,9 @@ export function TabItem({
                 {worktreeBranch ? (
                   <span className="text-teal-400/60">{worktreeBranch}</span>
                 ) : freshness ? (
-                  <span className={activity?.state === 'needs_me' ? 'text-amber-400' : ''}>
+                  <span
+                    className={`fleet-tnum ${activity?.state === 'needs_me' ? 'text-amber-400' : ''}`}
+                  >
                     {freshness}
                   </span>
                 ) : (

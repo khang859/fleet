@@ -234,6 +234,10 @@ body,
   box-shadow: var(--fleet-shadow-overlay);
 }
 
+.fleet-tnum {
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
 /* Global scrollbar — dark sci-fi theme */
 *::-webkit-scrollbar {
   width: 6px;

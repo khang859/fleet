@@ -111,7 +111,7 @@ export function SessionList(): React.JSX.Element {
                       <span>· {s.messageCount} msgs</span>
                       {s.agent === 'claude' && (
                         <span
-                          className="ml-auto flex-shrink-0 font-mono text-fleet-text"
+                          className="ml-auto flex-shrink-0 font-mono fleet-tnum text-fleet-text"
                           title={
                             s.costUsd === undefined
                               ? 'Cost unavailable — a model in this session is not in the pricing table'
