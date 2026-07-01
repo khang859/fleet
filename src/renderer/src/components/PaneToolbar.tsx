@@ -35,10 +35,10 @@ function ToolbarTooltip({
         <Tooltip.Content
           side="bottom"
           sideOffset={6}
-          className={`px-2 py-1 text-xs text-white bg-neutral-800 border border-neutral-700 rounded shadow-lg z-50 ${tooltipAnim}`}
+          className={`px-2 py-1 text-xs text-fleet-text bg-fleet-surface-2 border border-fleet-border rounded shadow-lg z-50 ${tooltipAnim}`}
         >
           {label}
-          <Tooltip.Arrow className="fill-neutral-800" />
+          <Tooltip.Arrow className="fill-fleet-surface-2" />
         </Tooltip.Content>
       </Tooltip.Portal>
     </Tooltip.Root>
@@ -81,7 +81,7 @@ export function PaneToolbar({
   return (
     <Tooltip.Provider delayDuration={300}>
       <div
-        className={`absolute top-2 right-2 z-20 transition-opacity flex items-center gap-0.5 bg-neutral-800/80 backdrop-blur-sm rounded-md border border-neutral-700/50 p-0.5 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`absolute top-2 right-2 z-20 transition-opacity flex items-center gap-0.5 bg-fleet-surface-2/80 backdrop-blur-sm rounded-md border border-fleet-border/50 p-0.5 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         {onSplitHorizontal && (
@@ -91,7 +91,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onSplitHorizontal();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
+              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
             >
               <Columns2 size={14} />
             </button>
@@ -104,7 +104,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onSplitVertical();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
+              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
             >
               <Rows2 size={14} />
             </button>
@@ -117,7 +117,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onGitChanges();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
+              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
             >
               <GitBranch size={14} />
             </button>
@@ -130,7 +130,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onFileSearch();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
+              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
             >
               <FileSearch size={14} />
             </button>
@@ -143,7 +143,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onClipboardHistory();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
+              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
             >
               <Clipboard size={14} />
             </button>
@@ -156,7 +156,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onInjectSkills();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
+              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
             >
               <BookOpen size={14} />
             </button>
@@ -169,7 +169,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onAnnotate();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
+              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
             >
               <Crosshair size={14} />
             </button>
@@ -182,7 +182,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onTelescope();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
+              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
             >
               <Telescope size={14} />
             </button>
@@ -195,7 +195,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onEnvSync();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
+              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
             >
               <FolderSync size={14} />
             </button>
@@ -208,7 +208,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onEnvEditor();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors active:scale-90"
+              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition-colors active:scale-90"
             >
               <FilePenLine size={14} />
             </button>
@@ -220,7 +220,7 @@ export function PaneToolbar({
               e.stopPropagation();
               onSearch();
             }}
-            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
+            className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
           >
             <Search size={14} />
           </button>
@@ -231,7 +231,7 @@ export function PaneToolbar({
               e.stopPropagation();
               onClose();
             }}
-            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
+            className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
           >
             <X size={14} />
           </button>
