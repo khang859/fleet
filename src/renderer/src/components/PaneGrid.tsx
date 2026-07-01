@@ -4,11 +4,14 @@ import type { TerminalThemeId } from '../../../shared/theme-presets';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
 import { TerminalPane } from './TerminalPane';
 import { PaneHeader } from './PaneHeader';
+import { PaneStatusGlyph } from './PaneStatusGlyph';
 import { ImageViewerPane } from './ImageViewerPane';
 import { PdfViewerPane } from './PdfViewerPane';
 import { FileEditorPane } from './FileEditorPane';
 import { MarkdownPane } from './MarkdownPane';
 import { useWorkspaceStore } from '../store/workspace-store';
+import { useNotificationStore } from '../store/notification-store';
+import { activityRingClass } from '../lib/activity-glyph';
 import { createLogger } from '../logger';
 
 const log = createLogger('layout:panes');
@@ -118,6 +121,30 @@ function rectStyle(rect: Rect): React.CSSProperties {
 
 // --- Components ---
 
+type PaneFrameProps = {
+  paneId: string;
+  isActive: boolean;
+  children: React.ReactNode;
+};
+
+/**
+ * Wraps a leaf pane so it can subscribe to its own activity state — the
+ * border ring reflects state color when unfocused (the focused pane keeps
+ * its accent ring instead, so focus and status don't fight for the same
+ * outline), and a corner glyph encodes state + process liveness always.
+ */
+function PaneFrame({ paneId, isActive, children }: PaneFrameProps): React.JSX.Element {
+  const activityState = useNotificationStore((s) => s.activities.get(paneId)?.state);
+  const ringClass = isActive ? 'fleet-accent-ring-pane' : activityRingClass(activityState);
+
+  return (
+    <div className={`relative flex flex-col h-full ${ringClass}`}>
+      <PaneStatusGlyph state={activityState} className="absolute top-1 right-1 z-10" />
+      {children}
+    </div>
+  );
+}
+
 type PaneGridProps = {
   root: PaneNode;
   activePaneId: string | null;
@@ -201,37 +228,35 @@ export function PaneGrid({
           );
         }
         return (
-          <div
-            key={leaf.id}
-            style={rectStyle(leaf.rect)}
-            className={`flex flex-col ${leaf.id === activePaneId ? 'fleet-accent-ring-pane' : 'ring-1 ring-fleet-border/50'}`}
-          >
-            {root.type === 'split' && (
-              <PaneHeader
-                paneId={leaf.id}
-                label={leaf.node.label}
-                labelIsCustom={leaf.node.labelIsCustom}
-              />
-            )}
-            <div className="flex-1 min-h-0">
-              <TerminalPane
-                paneId={leaf.id}
-                cwd={leaf.node.cwd}
-                isActive={leaf.id === activePaneId}
-                onFocus={() => onPaneFocus(leaf.id)}
-                serializedContent={serializedPanes?.get(leaf.id) ?? leaf.node.serializedContent}
-                fontFamily={fontFamily}
-                fontSize={fontSize}
-                terminalTheme={terminalTheme}
-                terminalBackground={terminalBackground}
-                slideshowFrame={slideshowFrame}
-                onSplitHorizontal={() => splitPane(leaf.id, 'horizontal')}
-                onSplitVertical={() => splitPane(leaf.id, 'vertical')}
-                onClose={() => closePane(leaf.id)}
-                shellProfileId={leaf.node.shellProfileId}
-                cmd={leaf.node.cmd}
-              />
-            </div>
+          <div key={leaf.id} style={rectStyle(leaf.rect)}>
+            <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId}>
+              {root.type === 'split' && (
+                <PaneHeader
+                  paneId={leaf.id}
+                  label={leaf.node.label}
+                  labelIsCustom={leaf.node.labelIsCustom}
+                />
+              )}
+              <div className="flex-1 min-h-0">
+                <TerminalPane
+                  paneId={leaf.id}
+                  cwd={leaf.node.cwd}
+                  isActive={leaf.id === activePaneId}
+                  onFocus={() => onPaneFocus(leaf.id)}
+                  serializedContent={serializedPanes?.get(leaf.id) ?? leaf.node.serializedContent}
+                  fontFamily={fontFamily}
+                  fontSize={fontSize}
+                  terminalTheme={terminalTheme}
+                  terminalBackground={terminalBackground}
+                  slideshowFrame={slideshowFrame}
+                  onSplitHorizontal={() => splitPane(leaf.id, 'horizontal')}
+                  onSplitVertical={() => splitPane(leaf.id, 'vertical')}
+                  onClose={() => closePane(leaf.id)}
+                  shellProfileId={leaf.node.shellProfileId}
+                  cmd={leaf.node.cmd}
+                />
+              </div>
+            </PaneFrame>
           </div>
         );
       })}

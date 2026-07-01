@@ -4,7 +4,7 @@ import { GitBranch } from 'lucide-react';
 import { createLogger } from '../logger';
 
 const logDnd = createLogger('sidebar:dnd');
-import type { NotificationLevel } from '../../../shared/types';
+import type { NotificationLevel, ActivityState } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { UserGroupColor } from './sidebar-constants';
 import { cwdBasename } from '../store/workspace-store';
@@ -13,6 +13,7 @@ import { useRemoteStore } from '../store/remote-store';
 import { useNotificationStore } from '../store/notification-store';
 import { shortenPath } from '../lib/shorten-path';
 import { popperAnim } from '../lib/motion';
+import { PaneStatusGlyph } from './PaneStatusGlyph';
 import { COLOR_MAP } from './sidebar-constants';
 
 type TabItemProps = {
@@ -26,6 +27,8 @@ type TabItemProps = {
   drivingPaneId?: string;
   isActive: boolean;
   badge: NotificationLevel | null;
+  /** Terminal panes' live activity state — drives the two-axis status glyph. Undefined for non-terminal tabs (file/image/pdf), which fall back to `badge`. */
+  activityState?: ActivityState;
   icon?: React.ReactNode;
   onClick: () => void;
   onDuplicate?: () => void;
@@ -93,6 +96,7 @@ export function TabItem({
   drivingPaneId,
   isActive,
   badge,
+  activityState,
   icon,
   onClick,
   onDuplicate,
@@ -236,7 +240,10 @@ export function TabItem({
             <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full translate-y-0.5" />
           )}
 
-          {badge && !isActive && (
+          {!isActive && activityState !== undefined && (
+            <PaneStatusGlyph state={activityState} className="flex-shrink-0" />
+          )}
+          {!isActive && activityState === undefined && badge && (
             <span
               className={`rounded-full flex-shrink-0 flex items-center justify-center ${BADGE_CONFIG[badge].color} ${BADGE_CONFIG[badge].size} ${BADGE_CONFIG[badge].animate}`}
               aria-label={`${badge} notification`}

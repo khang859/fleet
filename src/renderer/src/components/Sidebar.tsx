@@ -750,7 +750,7 @@ export function Sidebar({
       reorderUserGroup: s.reorderUserGroup
     }))
   );
-  const { getTabBadge } = useNotificationStore();
+  const { getTabBadge, getTabActivity } = useNotificationStore();
 
   const currentSidebarWidth = workspace.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH;
 
@@ -1561,6 +1561,7 @@ export function Sidebar({
                   drivingPaneId={drivingPaneId}
                   isActive={tab.id === activeTabId}
                   badge={getTabBadge(paneIds)}
+                  activityState={getTabActivity(paneIds)?.state}
                   icon={icon}
                   disableReset={isFile}
                   index={idx}
