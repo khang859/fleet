@@ -68,11 +68,11 @@ export function PaneHeader({ paneId, label, labelIsCustom }: PaneHeaderProps): R
   );
 
   return (
-    <div className="flex items-center h-6 px-2 bg-neutral-800/80 border-b border-neutral-700 text-xs text-neutral-300 select-none shrink-0">
+    <div className="flex items-center h-6 px-2 bg-fleet-surface-2/80 border-b border-fleet-border text-xs text-fleet-text-secondary select-none shrink-0">
       {isEditing ? (
         <input
           ref={inputRef}
-          className="flex-1 bg-transparent text-neutral-200 text-xs font-mono outline-none border-none px-0"
+          className="flex-1 bg-transparent text-fleet-text text-xs font-mono outline-none border-none px-0"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={commitRename}
@@ -89,7 +89,7 @@ export function PaneHeader({ paneId, label, labelIsCustom }: PaneHeaderProps): R
       )}
       {labelIsCustom && !isEditing && (
         <button
-          className="ml-1 text-neutral-500 hover:text-neutral-300 transition-colors active:scale-[0.97]"
+          className="ml-1 text-fleet-text-subtle hover:text-fleet-text-secondary transition-colors active:scale-[0.97]"
           onClick={() => resetPaneLabel(paneId)}
           title="Clear custom title and show path"
           aria-label="Clear pane title"
