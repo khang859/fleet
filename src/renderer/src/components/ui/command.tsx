@@ -32,8 +32,8 @@ export function CommandDialog({
       label={label}
       // cmdk applies data-state on the dialog; reuse the app's fade convention.
       // Reduced-motion is neutralized globally in index.css.
-      overlayClassName={`fixed inset-0 z-50 bg-black/60 duration-150 ${dialogFadeAnim}`}
-      contentClassName={`fixed left-1/2 top-[18vh] z-50 w-[640px] max-w-[90vw] -translate-x-1/2 overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl duration-150 ${dialogFadeAnim} motion-reduce:transition-none`}
+      overlayClassName={`fixed inset-0 z-50 bg-black/60 ${dialogFadeAnim}`}
+      contentClassName={`fixed left-1/2 top-[18vh] z-50 w-[640px] max-w-[90vw] -translate-x-1/2 overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl ${dialogFadeAnim} motion-reduce:transition-none`}
       {...commandProps}
     >
       {children}
