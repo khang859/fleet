@@ -412,6 +412,71 @@ describe('closeTab — live CWD for undo', () => {
   });
 });
 
+describe('closeWorktreeTab — dissolved group', () => {
+  const DISSOLVED_WORKTREE_TAB = {
+    id: 'tab-wt1',
+    label: 'feature-branch',
+    labelIsCustom: true,
+    cwd: '/repo-wt',
+    worktreeBranch: 'feature-branch',
+    worktreePath: '/repo-wt',
+    splitRoot: { type: 'leaf' as const, id: 'pane-wt1', cwd: '/repo-wt' }
+  };
+
+  beforeEach(() => {
+    useWorkspaceStore.setState({
+      workspace: { ...WS_A, tabs: [...WS_A.tabs, DISSOLVED_WORKTREE_TAB] },
+      activeTabId: 'tab-wt1',
+      activePaneId: 'pane-wt1'
+    });
+  });
+
+  it('closes a worktree tab whose group already dissolved (no groupId)', () => {
+    useWorkspaceStore.getState().closeWorktreeTab('tab-wt1');
+
+    const { workspace, lastClosedTab } = useWorkspaceStore.getState();
+    expect(workspace.tabs.some((t) => t.id === 'tab-wt1')).toBe(false);
+    expect(lastClosedTab?.tab.id).toBe('tab-wt1');
+  });
+});
+
+describe('closePane — worktree tab last pane', () => {
+  const WORKTREE_TAB = {
+    id: 'tab-wt2',
+    label: 'feature-branch',
+    labelIsCustom: true,
+    cwd: '/repo-wt2',
+    worktreeBranch: 'feature-branch',
+    worktreePath: '/repo-wt2',
+    splitRoot: { type: 'leaf' as const, id: 'pane-wt2', cwd: '/repo-wt2' }
+  };
+
+  beforeEach(() => {
+    useWorkspaceStore.setState({
+      workspace: { ...WS_A, tabs: [...WS_A.tabs, WORKTREE_TAB] },
+      activeTabId: 'tab-wt2',
+      activePaneId: 'pane-wt2',
+      worktreeCloseConfirm: null
+    });
+  });
+
+  it('routes to the worktree close confirmation instead of silently dropping the tab', () => {
+    useWorkspaceStore.getState().closePane('pane-wt2');
+
+    const state = useWorkspaceStore.getState();
+    expect(state.workspace.tabs.some((t) => t.id === 'tab-wt2')).toBe(true);
+    expect(state.worktreeCloseConfirm).toEqual({ tabId: 'tab-wt2', label: 'feature-branch' });
+  });
+
+  it('leaves non-worktree panes closeable as before', () => {
+    useWorkspaceStore.getState().closePane('pane-a1');
+
+    const state = useWorkspaceStore.getState();
+    expect(state.workspace.tabs.some((t) => t.id === 'tab-a1')).toBe(false);
+    expect(state.worktreeCloseConfirm).toBeNull();
+  });
+});
+
 describe('splitPane — live CWD', () => {
   it('uses the live CWD from cwd-store for the new pane', () => {
     // Prime cwd-store with a different CWD than what's in the tab
