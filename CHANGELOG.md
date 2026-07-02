@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.84.1
+
+- **Fix orphaned Git worktree tab that couldn't be closed** - closing a worktree tab's group down to a single remaining tab left it permanently stuck; both the tab's close button and Cmd+W now correctly close it, including the on-disk worktree cleanup (#458).
+
 ## v2.84.0
 
 - **UI modernization pass** - re-tuned design tokens, bundled Inter UI font with tabular figures, and unified motion tokens across menus/panels with ease-out-expo overlays and faster exits (#398, #399, #400).
