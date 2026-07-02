@@ -129,6 +129,17 @@ export class ActivityTracker {
     return this.panes.get(paneId)?.state;
   }
 
+  /** Live counts of panes awaiting attention, for OS chrome (window title, dock badge). */
+  getCounts(): { needsMe: number; error: number } {
+    let needsMe = 0;
+    let error = 0;
+    for (const [, pane] of this.panes) {
+      if (pane.state === 'needs_me') needsMe++;
+      else if (pane.state === 'error') error++;
+    }
+    return { needsMe, error };
+  }
+
   dispose(): void {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNotificationStore } from '../store/notification-store';
+import { useSettingsStore } from '../store/settings-store';
 
 export function useNotifications(): void {
   const { setNotification, setActivity } = useNotificationStore();
@@ -47,20 +48,19 @@ export function useNotifications(): void {
         level: payload.level,
         timestamp: payload.timestamp
       });
-
-      // Play sound for permission notifications (default behavior)
-      if (payload.level === 'permission' && audioRef.current) {
-        audioRef.current.play().catch(() => {
-          // Audio play may be blocked by browser autoplay policy — ignore
-        });
-      }
     });
     return () => {
       cleanup();
     };
   }, [setNotification]);
 
-  // Subscribe to activity state changes (new)
+  // Subscribe to activity state changes (new). This is the single source of
+  // truth for the in-app chime: main only emits a state change on an actual
+  // transition (see ActivityTracker.setState's dedup), so `needs_me`/`error`
+  // here already mean "just became blocked/failed", not "still is". A
+  // permission prompt bridges to `needs_me` via the same underlying event in
+  // main, so chiming here (instead of also on the raw `notification` event
+  // above) avoids a double beep for one occurrence.
   useEffect(() => {
     const cleanup = window.fleet.activity.onStateChange((payload) => {
       setActivity({
@@ -70,8 +70,11 @@ export function useNotifications(): void {
         timestamp: payload.timestamp
       });
 
-      // Play sound for needs_me state (agent blocked on permission)
-      if (payload.state === 'needs_me' && audioRef.current) {
+      const notifications = useSettingsStore.getState().settings?.notifications;
+      const shouldChime =
+        (payload.state === 'needs_me' && notifications?.needsPermission.sound) ||
+        (payload.state === 'error' && notifications?.processExitError.sound);
+      if (shouldChime && audioRef.current) {
         audioRef.current.play().catch(() => {
           // Audio play may be blocked by browser autoplay policy — ignore
         });
