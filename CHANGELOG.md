@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.84.0
+
+- **UI modernization pass** - re-tuned design tokens, bundled Inter UI font with tabular figures, and unified motion tokens across menus/panels with ease-out-expo overlays and faster exits (#398, #399, #400).
+- **Agent overview improvements** - a two-axis per-pane status glyph, an urgency-sorted overview surface, a peek panel to glance and reply to a non-focused agent, and cheap AI-generated one-line pane summaries (#401, #402, #403, #454).
+- **Awaiting-input visibility** - the count of agents awaiting input now surfaces in the window title and dock badge (#453).
+- **Terminal and chrome polish** - a modern, focus-aware xterm surface, tightened row heights/buttons, tokens unified across PaneHeader/PaneToolbar/SearchBar, and chrome that recedes versus focused content (#446, #455, #457).
+- **Interactive-state gaps filled** - skeleton loaders, focus rings, and aria-labels added across the app (#456).
+
 ## v2.83.0
 
 - **Configurable tool-round limit in Chat** - the agent's model⇄tool loop is no longer capped at a hardcoded 4 rounds. The default is now 25, and it's adjustable in Chat settings under Agent & Tools → Advanced, so multi-step requests no longer abort early with "I reached the tool-round limit" (#445).
