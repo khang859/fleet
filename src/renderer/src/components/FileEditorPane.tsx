@@ -18,6 +18,8 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { getLanguageForPath } from '../../../shared/languages';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { registerFileSave, unregisterFileSave } from '../lib/file-save-registry';
+import { useDelayedFlag } from '../hooks/use-delayed-flag';
+import { Skeleton } from './Skeleton';
 import { PathChromeHeader } from './PathChromeHeader';
 import {
   registerEditorHandle,
@@ -176,6 +178,7 @@ export function FileEditorPane({
   showPathChrome = true
 }: Props): React.JSX.Element {
   const [loading, setLoading] = useState(true);
+  const showLoadingSkeleton = useDelayedFlag(loading);
   const [error, setError] = useState<string | null>(null);
   const [tooLarge, setTooLarge] = useState(false);
   const [fileSize, setFileSize] = useState(0);
@@ -484,10 +487,14 @@ export function FileEditorPane({
   }, [paneId, setPaneDirty]);
 
   if (loading) {
-    return (
-      <div className="h-full w-full flex items-center justify-center bg-[#282c34] text-neutral-400 text-sm">
-        Loading…
+    return showLoadingSkeleton ? (
+      <div className="h-full w-full flex flex-col gap-2 bg-[#282c34] p-4">
+        {['w-2/3', 'w-1/2', 'w-5/6', 'w-1/3', 'w-3/4', 'w-1/2', 'w-2/5'].map((w, i) => (
+          <Skeleton key={i} className={`h-3.5 ${w}`} />
+        ))}
       </div>
+    ) : (
+      <div className="h-full w-full bg-[#282c34]" />
     );
   }
 

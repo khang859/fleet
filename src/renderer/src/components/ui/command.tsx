@@ -48,7 +48,7 @@ export function CommandInput(
     <div className="flex items-center border-b border-neutral-800 px-4">
       <CommandPrimitive.Input
         {...props}
-        className="h-12 w-full bg-transparent text-[15px] text-white outline-none placeholder:text-neutral-500"
+        className="h-12 w-full bg-transparent text-[15px] text-white outline-none placeholder:text-neutral-500 focus-ring"
       />
     </div>
   );

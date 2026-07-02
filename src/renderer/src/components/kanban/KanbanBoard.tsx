@@ -27,6 +27,8 @@ import { FeaturesView } from './FeaturesView';
 import { FeaturePrRollup } from './FeaturePrRollup';
 import { FeatureSuggestionsPrompt } from './FeatureSuggestionsPrompt';
 import { WorktreeManager } from './WorktreeManager';
+import { useDelayedFlag } from '../../hooks/use-delayed-flag';
+import { Skeleton } from '../Skeleton';
 
 export function KanbanBoard(): React.JSX.Element {
   const {
@@ -73,6 +75,7 @@ export function KanbanBoard(): React.JSX.Element {
   const [newStatus, setNewStatus] = useState<TaskStatus>('triage');
   const [newTemplate, setNewTemplate] = useState<'quick_fix' | 'full_feature'>('quick_fix');
   const draggingId = useRef<string | null>(null);
+  const showBoardSkeleton = useDelayedFlag(!loaded);
 
   useEffect(() => {
     if (!loaded) void loadBoard();
@@ -589,31 +592,39 @@ export function KanbanBoard(): React.JSX.Element {
           )}
 
           <div className="flex flex-1 gap-3 overflow-x-auto p-3">
-            {columns.map((col) => (
-              <KanbanColumn
-                key={col.status}
-                status={col.status}
-                label={col.label}
-                cards={visible.filter((c) => c.status === col.status)}
-                onOpen={(id) => void openTask(id)}
-                onDragStart={(id) => {
-                  draggingId.current = id;
-                }}
-                onDragEnd={() => {
-                  draggingId.current = null;
-                }}
-                onDropCard={(status) => {
-                  const id = draggingId.current;
-                  draggingId.current = null;
-                  if (!id) return;
-                  const card = cards.find((c) => c.id === id);
-                  if (!card || card.status === status) return;
-                  // Review is worktree-only (the command layer rejects it too).
-                  if (status === 'review' && card.workspaceKind !== 'worktree') return;
-                  void setStatus(id, status);
-                }}
-              />
-            ))}
+            {showBoardSkeleton
+              ? columns.map((col) => (
+                  <div key={col.status} className="flex w-64 shrink-0 flex-col gap-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-20 w-full" />
+                    <Skeleton className="h-20 w-full" />
+                  </div>
+                ))
+              : columns.map((col) => (
+                  <KanbanColumn
+                    key={col.status}
+                    status={col.status}
+                    label={col.label}
+                    cards={visible.filter((c) => c.status === col.status)}
+                    onOpen={(id) => void openTask(id)}
+                    onDragStart={(id) => {
+                      draggingId.current = id;
+                    }}
+                    onDragEnd={() => {
+                      draggingId.current = null;
+                    }}
+                    onDropCard={(status) => {
+                      const id = draggingId.current;
+                      draggingId.current = null;
+                      if (!id) return;
+                      const card = cards.find((c) => c.id === id);
+                      if (!card || card.status === status) return;
+                      // Review is worktree-only (the command layer rejects it too).
+                      if (status === 'review' && card.workspaceKind !== 'worktree') return;
+                      void setStatus(id, status);
+                    }}
+                  />
+                ))}
           </div>
 
           {openTaskId && <KanbanDrawer />}

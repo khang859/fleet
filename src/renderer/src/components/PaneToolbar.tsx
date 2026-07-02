@@ -45,6 +45,9 @@ function ToolbarTooltip({
   );
 }
 
+const BUTTON_CLASS =
+  'p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90 focus-ring';
+
 type PaneToolbarProps = {
   visible: boolean;
   isGitRepo: boolean;
@@ -91,7 +94,8 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onSplitHorizontal();
               }}
-              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
+              className={BUTTON_CLASS}
+              aria-label="Split right"
             >
               <Columns2 size={14} />
             </button>
@@ -104,7 +108,8 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onSplitVertical();
               }}
-              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
+              className={BUTTON_CLASS}
+              aria-label="Split down"
             >
               <Rows2 size={14} />
             </button>
@@ -117,7 +122,8 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onGitChanges();
               }}
-              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
+              className={BUTTON_CLASS}
+              aria-label="Git changes"
             >
               <GitBranch size={14} />
             </button>
@@ -130,7 +136,8 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onFileSearch();
               }}
-              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
+              className={BUTTON_CLASS}
+              aria-label="Search files"
             >
               <FileSearch size={14} />
             </button>
@@ -143,7 +150,8 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onClipboardHistory();
               }}
-              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
+              className={BUTTON_CLASS}
+              aria-label="Clipboard history"
             >
               <Clipboard size={14} />
             </button>
@@ -156,7 +164,8 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onInjectSkills();
               }}
-              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
+              className={BUTTON_CLASS}
+              aria-label="Inject Fleet skills"
             >
               <BookOpen size={14} />
             </button>
@@ -169,7 +178,8 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onAnnotate();
               }}
-              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
+              className={BUTTON_CLASS}
+              aria-label="Annotate webpage"
             >
               <Crosshair size={14} />
             </button>
@@ -182,7 +192,8 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onTelescope();
               }}
-              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
+              className={BUTTON_CLASS}
+              aria-label="Telescope"
             >
               <Telescope size={14} />
             </button>
@@ -195,7 +206,8 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onEnvSync();
               }}
-              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
+              className={BUTTON_CLASS}
+              aria-label="Env sync"
             >
               <FolderSync size={14} />
             </button>
@@ -208,7 +220,8 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onEnvEditor();
               }}
-              className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition-colors active:scale-90"
+              className={`${BUTTON_CLASS.replace('transition ', 'transition-colors ')}`}
+              aria-label="Edit .env"
             >
               <FilePenLine size={14} />
             </button>
@@ -220,7 +233,8 @@ export function PaneToolbar({
               e.stopPropagation();
               onSearch();
             }}
-            className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
+            className={BUTTON_CLASS}
+            aria-label="Search in pane"
           >
             <Search size={14} />
           </button>
@@ -231,7 +245,8 @@ export function PaneToolbar({
               e.stopPropagation();
               onClose();
             }}
-            className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90"
+            className={BUTTON_CLASS}
+            aria-label="Close pane"
           >
             <X size={14} />
           </button>

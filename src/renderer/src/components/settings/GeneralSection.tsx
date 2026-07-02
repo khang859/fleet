@@ -189,7 +189,7 @@ export function GeneralSection(): React.JSX.Element {
             debouncedSaveShell(e.target.value);
           }}
           placeholder="(auto-detect)"
-          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-48 border border-fleet-border-strong"
+          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-48 border border-fleet-border-strong focus-ring"
         />
       </SettingRow>
       {shellProfiles.length > 0 && (
@@ -199,7 +199,7 @@ export function GeneralSection(): React.JSX.Element {
             onChange={(e) => {
               void handleDefaultProfileChange(e.target.value);
             }}
-            className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong"
+            className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong focus-ring"
           >
             <option value="">(auto-detect)</option>
             {shellProfiles.map((profile) => (
@@ -218,7 +218,7 @@ export function GeneralSection(): React.JSX.Element {
             setLocalFontSize(e.target.value);
             debouncedSaveFontSize(e.target.value);
           }}
-          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-20 border border-fleet-border-strong"
+          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-20 border border-fleet-border-strong focus-ring"
         />
       </SettingRow>
       <FontFamilyPicker
@@ -235,7 +235,7 @@ export function GeneralSection(): React.JSX.Element {
             setLocalScrollback(e.target.value);
             debouncedSaveScrollback(e.target.value);
           }}
-          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-24 border border-fleet-border-strong"
+          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-24 border border-fleet-border-strong focus-ring"
         />
       </SettingRow>
       <SettingRow label="App Theme">
@@ -247,7 +247,7 @@ export function GeneralSection(): React.JSX.Element {
               void updateSettings({ general: { theme: value } });
             }
           }}
-          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong"
+          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong focus-ring"
         >
           <optgroup label="Mode">
             <option value="system">System (follow OS)</option>
@@ -278,7 +278,7 @@ export function GeneralSection(): React.JSX.Element {
               void updateSettings({ general: { terminalTheme: value } });
             }
           }}
-          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong"
+          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong focus-ring"
         >
           <optgroup label="Dark">
             {DARK_THEME_OPTIONS.map((theme) => (
