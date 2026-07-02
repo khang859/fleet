@@ -4,8 +4,15 @@ import type { ActivityState } from '../../../shared/types';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
 import { findLeaf, paneLabel } from '../lib/palette-items';
+import { getPaneTailText } from '../hooks/use-terminal';
 import { Overlay } from './Overlay';
 import { PaneStatusGlyph } from './PaneStatusGlyph';
+
+// States worth summarizing: an idle/done pane has no ongoing narrative, so
+// skip the model call entirely rather than describe "nothing is happening".
+const SUMMARIZABLE_STATES = new Set<ActivityState>(['needs_me', 'error', 'working']);
+const SUMMARY_REFRESH_MS = 15_000;
+const SUMMARY_TAIL_LINES = 20;
 
 type AgentOverviewProps = {
   isOpen: boolean;
@@ -41,6 +48,7 @@ export function AgentOverview({
 }: AgentOverviewProps): React.JSX.Element | null {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showAllDone, setShowAllDone] = useState(false);
+  const [summaries, setSummaries] = useState<Record<string, string>>({});
   const listRef = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
 
@@ -88,6 +96,32 @@ export function AgentOverview({
   useEffect(() => {
     setSelectedIndex(0);
   }, [visibleRows.length]);
+
+  // Read via a ref inside the interval so the fetch loop doesn't need to
+  // restart every time `visibleRows` gets a new identity (activity ticks).
+  const visibleRowsRef = useRef(visibleRows);
+  visibleRowsRef.current = visibleRows;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const fetchSummaries = (): void => {
+      for (const row of visibleRowsRef.current) {
+        if (!SUMMARIZABLE_STATES.has(row.state)) continue;
+        const tailText = getPaneTailText(row.paneId, SUMMARY_TAIL_LINES) ?? '';
+        void window.fleet.ai.summarizePane(row.paneId, tailText).then((summary) => {
+          if (!summary) return;
+          setSummaries((prev) =>
+            prev[row.paneId] === summary ? prev : { ...prev, [row.paneId]: summary }
+          );
+        });
+      }
+    };
+
+    fetchSummaries();
+    const interval = setInterval(fetchSummaries, SUMMARY_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [isOpen]);
 
   useEffect(() => {
     const child = listRef.current?.children[selectedIndex];
@@ -178,10 +212,17 @@ export function AgentOverview({
                   onClick={() => jumpTo(row)}
                 >
                   <PaneStatusGlyph state={row.state} className="shrink-0" />
-                  <span
-                    className={`flex-1 truncate text-sm ${isFocusedPane ? 'text-fleet-text' : 'text-fleet-text-secondary'}`}
-                  >
-                    {row.label}
+                  <span className="flex-1 min-w-0 flex flex-col">
+                    <span
+                      className={`truncate text-sm ${isFocusedPane ? 'text-fleet-text' : 'text-fleet-text-secondary'}`}
+                    >
+                      {row.label}
+                    </span>
+                    {summaries[row.paneId] && (
+                      <span className="truncate text-[10px] text-fleet-text-subtle">
+                        {summaries[row.paneId]}
+                      </span>
+                    )}
                   </span>
                   {row.branch && (
                     <span className="shrink-0 truncate max-w-[100px] text-[10px] text-teal-400/60">
