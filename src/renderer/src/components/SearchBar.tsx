@@ -47,7 +47,7 @@ export function SearchBar({
           }
         }}
         placeholder="Search..."
-        className="bg-transparent text-sm text-fleet-text outline-none w-48 placeholder-fleet-text-subtle"
+        className="bg-transparent text-sm text-fleet-text outline-none w-48 rounded placeholder-fleet-text-subtle focus-ring"
       />
       <button
         onClick={() => onSearchPrevious(query)}

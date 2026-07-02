@@ -282,7 +282,9 @@ body,
   .animate-out {
     animation: none !important;
   }
-  [class*='active:scale-']:active {
+  [class*='active:scale-']:active,
+  input[type='radio']:active,
+  input[type='checkbox']:active {
     transform: none !important;
   }
   /* Streaming caret and thinking dots: hold static at full opacity rather than
@@ -339,11 +341,29 @@ body,
   animation: chat-caret-blink 1s steps(1, jump-none) infinite;
 }
 
-/* Standardized keyboard focus ring for chat icon buttons / toggles. Keyboard
-   users (focus-visible) get a clear accent ring; pointer clicks don't. */
+/* Standardized keyboard focus ring for icon buttons, toggles, and form inputs.
+   Keyboard users (focus-visible) get a clear accent ring; pointer clicks don't. */
 .focus-ring:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--fleet-accent) 65%, transparent);
+}
+
+/* Radios/checkboxes are styled via the `accent-color` (.fleet-accent-input)
+   rather than custom markup, so state styling applies globally by selector
+   instead of per-usage className. */
+input[type='radio']:focus-visible,
+input[type='checkbox']:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fleet-accent) 65%, transparent);
+}
+input[type='radio']:disabled,
+input[type='checkbox']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+input[type='radio']:active:not(:disabled),
+input[type='checkbox']:active:not(:disabled) {
+  transform: scale(0.9);
 }
 
 /* prefers-contrast: more — strengthen separation between chat surfaces. The user

@@ -3,6 +3,8 @@ import { useImageStore } from '../../store/image-store';
 import { ImageGrid } from './ImageGrid';
 import { ImageDetail } from './ImageDetail';
 import { ImageSettings } from './ImageSettings';
+import { useDelayedFlag } from '../../hooks/use-delayed-flag';
+import { Skeleton } from '../Skeleton';
 
 type View = 'grid' | 'detail' | 'settings';
 
@@ -10,6 +12,7 @@ export function ImageGallery(): React.JSX.Element {
   const { generations, isLoaded, loadGenerations } = useImageStore();
   const [view, setView] = useState<View>('grid');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const showLoadingSkeleton = useDelayedFlag(!isLoaded);
 
   useEffect(() => {
     void loadGenerations();
@@ -27,7 +30,18 @@ export function ImageGallery(): React.JSX.Element {
 
   if (!isLoaded)
     return (
-      <div className="flex-1 flex items-center justify-center text-neutral-500">Loading...</div>
+      <div className="flex-1">
+        <span className="sr-only" role="status" aria-live="polite">
+          Loading images…
+        </span>
+        {showLoadingSkeleton && (
+          <div className="grid grid-cols-3 gap-2 p-3 content-start">
+            {Array.from({ length: 9 }, (_, i) => (
+              <Skeleton key={i} className="aspect-square w-full" />
+            ))}
+          </div>
+        )}
+      </div>
     );
 
   const inProgressCount = generations.filter(
