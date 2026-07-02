@@ -742,7 +742,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   closeWorktreeTab: (tabId) => {
     set((state) => {
       const tab = state.workspace.tabs.find((t) => t.id === tabId);
-      if (!tab?.groupId) return state;
+      // A worktree tab whose group has already dissolved (down to 1 tab) has no
+      // groupId anymore but still needs closing via this action for on-disk cleanup.
+      if (!tab || (!tab.groupId && !tab.worktreePath)) return state;
 
       const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
       // Inject live CWDs so undo-close restores the PTY at the correct directory
@@ -994,6 +996,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       // Don't let the close-pane action destroy a pinned tab via its sole leaf.
       const owner = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
       if (owner && SPECIAL_TAB_TYPES.has(owner.type ?? '')) return state;
+
+      // Closing a worktree tab's last pane would otherwise drop the tab silently,
+      // skipping the confirmation dialog and the on-disk worktree cleanup. Route it
+      // through the same confirmation flow as a regular tab close instead.
+      if (owner?.worktreePath && !removePaneFromTree(owner.splitRoot, paneId)) {
+        return { worktreeCloseConfirm: { tabId: owner.id, label: owner.label } };
+      }
+
       const tabs = state.workspace.tabs
         .map((tab) => {
           const newRoot = removePaneFromTree(tab.splitRoot, paneId);
