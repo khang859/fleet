@@ -156,6 +156,12 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     label: 'Agent overview',
     mac: { key: 'A', meta: true, shift: true },
     other: { key: 'A', ctrl: true, shift: true }
+  },
+  {
+    id: 'peek-needy-agent',
+    label: 'Peek at agent that needs input',
+    mac: { key: 'P', meta: true, shift: true },
+    other: { key: 'P', ctrl: true, shift: true }
   }
 ];
 

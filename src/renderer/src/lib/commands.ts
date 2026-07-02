@@ -169,6 +169,13 @@ export function createCommandRegistry(): Command[] {
       execute: () => document.dispatchEvent(new CustomEvent('fleet:jump-needy-agent'))
     },
     {
+      id: 'peek-needy-agent',
+      label: 'Peek at Agent That Needs Input',
+      shortcut: sc('peek-needy-agent'),
+      category: 'Agent',
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:peek-needy-agent'))
+    },
+    {
       id: 'agent-overview',
       label: 'Agent Overview',
       shortcut: sc('agent-overview'),

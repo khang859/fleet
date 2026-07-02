@@ -46,6 +46,7 @@ import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
 import { ToolsConfigModal } from './components/ToolsConfigModal';
 import { TelescopeModal } from './components/Telescope/TelescopeModal';
 import { AgentOverview } from './components/AgentOverview';
+import { PeekPanel } from './components/PeekPanel';
 import { EnvSyncModal } from './components/env-sync/EnvSyncModal';
 import { EnvEditorModal } from './components/env-editor/EnvEditorModal';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
@@ -173,6 +174,7 @@ export function App(): React.JSX.Element {
   const [toolsConfigOpen, setToolsConfigOpen] = useState(false);
   const [telescopeOpen, setTelescopeOpen] = useState(false);
   const [agentOverviewOpen, setAgentOverviewOpen] = useState(false);
+  const [peekPaneId, setPeekPaneId] = useState<string | null>(null);
   const [envSyncOpen, setEnvSyncOpen] = useState(false);
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
   const [planModalQueue, setPlanModalQueue] = useState<PiPlanModalEntry[]>([]);
@@ -290,6 +292,21 @@ export function App(): React.JSX.Element {
     };
     document.addEventListener('fleet:jump-needy-agent', handler);
     return () => document.removeEventListener('fleet:jump-needy-agent', handler);
+  }, []);
+
+  // Peek at the first pane that needs input, without switching to it
+  useEffect(() => {
+    const handler = (): void => {
+      const activities = useNotificationStore.getState().activities;
+      for (const [paneId, rec] of activities) {
+        if (rec.state === 'needs_me') {
+          setPeekPaneId(paneId);
+          break;
+        }
+      }
+    };
+    document.addEventListener('fleet:peek-needy-agent', handler);
+    return () => document.removeEventListener('fleet:peek-needy-agent', handler);
   }, []);
 
   // Git changes modal toggle
@@ -1142,7 +1159,12 @@ export function App(): React.JSX.Element {
         onClose={() => setTelescopeOpen(false)}
         cwd={focusedPaneCwd ?? window.fleet.homeDir}
       />
-      <AgentOverview isOpen={agentOverviewOpen} onClose={() => setAgentOverviewOpen(false)} />
+      <AgentOverview
+        isOpen={agentOverviewOpen}
+        onClose={() => setAgentOverviewOpen(false)}
+        onPeek={setPeekPaneId}
+      />
+      <PeekPanel paneId={peekPaneId} onClose={() => setPeekPaneId(null)} />
       <EnvSyncModal
         isOpen={envSyncOpen}
         onClose={() => setEnvSyncOpen(false)}

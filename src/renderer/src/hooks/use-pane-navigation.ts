@@ -179,6 +179,12 @@ export function usePaneNavigation(): void {
         return;
       }
 
+      if (matchesShortcut(e, sc('peek-needy-agent'))) {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('fleet:peek-needy-agent'));
+        return;
+      }
+
       if (matchesShortcut(e, sc('inject-skills'))) {
         e.preventDefault();
         if (activePaneId) {
