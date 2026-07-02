@@ -1340,7 +1340,7 @@ export function Sidebar({
   return (
     <div
       ref={sidebarRootRef}
-      className="relative flex flex-col h-full bg-fleet-surface border-r border-fleet-border shrink-0"
+      className="relative flex flex-col h-full bg-fleet-bg border-r border-fleet-border shrink-0"
       style={{ width: currentSidebarWidth }}
     >
       {/* Drag region + workspace label with add button */}
