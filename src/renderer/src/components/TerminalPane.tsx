@@ -133,7 +133,7 @@ export function TerminalPane({
 
   return (
     <div
-      className="relative h-full w-full overflow-hidden p-3 transition-[box-shadow] duration-0"
+      className="relative h-full w-full overflow-hidden p-4 transition-[box-shadow] duration-0"
       style={{
         backgroundColor: isActive
           ? terminalThemeDef.background
