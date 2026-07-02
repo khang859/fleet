@@ -134,6 +134,10 @@ type PaneFrameProps = {
  * border ring reflects state color when unfocused (the focused pane keeps
  * its accent ring instead, so focus and status don't fight for the same
  * outline), and a corner glyph encodes state + process liveness always.
+ *
+ * The dim is applied to an inner wrapper (not this outer div) so the ring and
+ * status glyph stay at full strength even on a dimmed, unfocused pane - an
+ * urgent status ring shouldn't recede along with the content behind it.
  */
 function PaneFrame({
   paneId,
@@ -149,7 +153,11 @@ function PaneFrame({
       {showGlyph && (
         <PaneStatusGlyph state={activityState} className="absolute top-1 right-1 z-10" />
       )}
-      {children}
+      <div
+        className={`flex flex-1 min-h-0 flex-col transition-opacity duration-150 ${isActive ? 'opacity-100' : 'opacity-[0.85]'}`}
+      >
+        {children}
+      </div>
     </div>
   );
 }

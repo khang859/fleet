@@ -68,7 +68,7 @@ export function PaneHeader({ paneId, label, labelIsCustom }: PaneHeaderProps): R
   );
 
   return (
-    <div className="flex items-center h-6 px-2 bg-fleet-surface-2/80 border-b border-fleet-border text-xs text-fleet-text-secondary select-none shrink-0">
+    <div className="flex items-center h-7 px-2 bg-fleet-surface-2/80 border-b border-fleet-border text-xs text-fleet-text-secondary select-none shrink-0">
       {isEditing ? (
         <input
           ref={inputRef}

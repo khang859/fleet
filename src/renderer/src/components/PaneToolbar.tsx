@@ -46,7 +46,7 @@ function ToolbarTooltip({
 }
 
 const BUTTON_CLASS =
-  'p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90 focus-ring';
+  'p-1.5 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90 focus-ring';
 
 type PaneToolbarProps = {
   visible: boolean;
