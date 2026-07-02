@@ -190,6 +190,7 @@ export function AgentOverview({
                   )}
                   <button
                     type="button"
+                    tabIndex={-1}
                     aria-label="Peek without switching panes"
                     onClick={(e) => {
                       e.stopPropagation();
