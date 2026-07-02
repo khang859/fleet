@@ -108,6 +108,7 @@ import { ChatService } from './chat/chat-service';
 import { ChatSearchService } from './chat/chat-search-service';
 import { runChatBackfill } from './chat/chat-backfill';
 import { registerChatIpc } from './chat/chat-ipc';
+import { resolveSummary } from './chat/pane-summarizer';
 import { PermissionManager } from './chat/permissions/permission-manager';
 import {
   ChatToolExecutor,
@@ -1499,6 +1500,49 @@ void app.whenReady().then(async () => {
       mkdirSync(personalSkillsDir, { recursive: true });
       void shell.openPath(personalSkillsDir);
     }
+  });
+
+  // Cheap AI one-line pane summaries for the agent overview, throttled per pane
+  // so the overview polling on an interval doesn't re-call the model every tick.
+  const paneSummaryCache = new Map<string, { summary: string; at: number }>();
+  // Guards against a slow model response overlapping the next poll tick for the
+  // same pane (renderer interval fires again before the first call resolves).
+  const paneSummaryInFlight = new Map<string, Promise<string>>();
+  const PANE_SUMMARY_MIN_INTERVAL_MS = 15_000;
+
+  ipcMain.handle(
+    IPC_CHANNELS.AI_SUMMARIZE_PANE,
+    async (_e, req: { paneId: string; tailText: string }): Promise<string> => {
+      const cached = paneSummaryCache.get(req.paneId);
+      if (cached && Date.now() - cached.at < PANE_SUMMARY_MIN_INTERVAL_MS) {
+        return cached.summary;
+      }
+      const inFlight = paneSummaryInFlight.get(req.paneId);
+      if (inFlight) return inFlight;
+
+      const apiKey = chatSecrets.getKey();
+      if (!apiKey) return '';
+      const c = settingsStore.get().ai.chat;
+      const request = (async (): Promise<string> => {
+        const summary = await resolveSummary(chatClient, {
+          apiKey,
+          model: c.taskModel ?? c.defaultModel,
+          tailText: req.tailText
+        });
+        if (summary) paneSummaryCache.set(req.paneId, { summary, at: Date.now() });
+        return summary || cached?.summary || '';
+      })();
+      paneSummaryInFlight.set(req.paneId, request);
+      try {
+        return await request;
+      } finally {
+        paneSummaryInFlight.delete(req.paneId);
+      }
+    }
+  );
+  eventBus.on('pane-closed', (event) => {
+    paneSummaryCache.delete(event.paneId);
+    paneSummaryInFlight.delete(event.paneId);
   });
 
   runeAssist = new RuneFileChatService({

@@ -272,6 +272,10 @@ const fleetApi = {
     onStateChange: (callback: (payload: ActivityStatePayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.ACTIVITY_STATE, callback)
   },
+  ai: {
+    summarizePane: async (paneId: string, tailText: string): Promise<string> =>
+      typedInvoke(IPC_CHANNELS.AI_SUMMARIZE_PANE, { paneId, tailText })
+  },
   remote: {
     onStateChange: (callback: (payload: RemoteStatePayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.REMOTE_STATE, callback)
