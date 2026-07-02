@@ -173,6 +173,12 @@ export function usePaneNavigation(): void {
         return;
       }
 
+      if (matchesShortcut(e, sc('agent-overview'))) {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('fleet:toggle-agent-overview'));
+        return;
+      }
+
       if (matchesShortcut(e, sc('inject-skills'))) {
         e.preventDefault();
         if (activePaneId) {

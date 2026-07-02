@@ -150,6 +150,12 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     label: 'Telescope finder',
     mac: { key: 'T', meta: true, shift: true },
     other: { key: 'T', ctrl: true, shift: true }
+  },
+  {
+    id: 'agent-overview',
+    label: 'Agent overview',
+    mac: { key: 'A', meta: true, shift: true },
+    other: { key: 'A', ctrl: true, shift: true }
   }
 ];
 

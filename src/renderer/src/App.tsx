@@ -45,6 +45,7 @@ import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
 import { ToolsConfigModal } from './components/ToolsConfigModal';
 import { TelescopeModal } from './components/Telescope/TelescopeModal';
+import { AgentOverview } from './components/AgentOverview';
 import { EnvSyncModal } from './components/env-sync/EnvSyncModal';
 import { EnvEditorModal } from './components/env-editor/EnvEditorModal';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
@@ -171,6 +172,7 @@ export function App(): React.JSX.Element {
   const [clipboardHistoryOpen, setClipboardHistoryOpen] = useState(false);
   const [toolsConfigOpen, setToolsConfigOpen] = useState(false);
   const [telescopeOpen, setTelescopeOpen] = useState(false);
+  const [agentOverviewOpen, setAgentOverviewOpen] = useState(false);
   const [envSyncOpen, setEnvSyncOpen] = useState(false);
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
   const [planModalQueue, setPlanModalQueue] = useState<PiPlanModalEntry[]>([]);
@@ -295,6 +297,13 @@ export function App(): React.JSX.Element {
     const handler = (): void => setGitChangesOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-git-changes', handler);
     return () => document.removeEventListener('fleet:toggle-git-changes', handler);
+  }, []);
+
+  // Agent overview toggle
+  useEffect(() => {
+    const handler = (): void => setAgentOverviewOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-agent-overview', handler);
+    return () => document.removeEventListener('fleet:toggle-agent-overview', handler);
   }, []);
 
   // Env sync modal toggle
@@ -1133,6 +1142,7 @@ export function App(): React.JSX.Element {
         onClose={() => setTelescopeOpen(false)}
         cwd={focusedPaneCwd ?? window.fleet.homeDir}
       />
+      <AgentOverview isOpen={agentOverviewOpen} onClose={() => setAgentOverviewOpen(false)} />
       <EnvSyncModal
         isOpen={envSyncOpen}
         onClose={() => setEnvSyncOpen(false)}

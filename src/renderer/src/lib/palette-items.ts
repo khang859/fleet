@@ -19,7 +19,7 @@ export type PaletteItem = {
 
 export type PaneLocation = { tabId: string; tab: Tab; leaf: PaneLeaf };
 
-function findLeaf(node: PaneNode, paneId: string): PaneLeaf | null {
+export function findLeaf(node: PaneNode, paneId: string): PaneLeaf | null {
   if (node.type === 'leaf') return node.id === paneId ? node : null;
   return findLeaf(node.children[0], paneId) ?? findLeaf(node.children[1], paneId);
 }
