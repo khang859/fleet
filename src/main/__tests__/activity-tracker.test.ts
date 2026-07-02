@@ -213,4 +213,24 @@ describe('ActivityTracker', () => {
 
     expect(callback).toHaveBeenCalledWith(expect.objectContaining({ state: 'idle' }));
   });
+
+  it('counts panes needing attention across needs_me and error states', () => {
+    tracker.trackPane('pane-1');
+    tracker.trackPane('pane-2');
+    tracker.trackPane('pane-3');
+
+    tracker.onNeedsMe('pane-1');
+    tracker.onNeedsMe('pane-2');
+    tracker.onExit('pane-3', 1);
+
+    expect(tracker.getCounts()).toEqual({ needsMe: 2, error: 1 });
+  });
+
+  it('excludes untracked panes from counts', () => {
+    tracker.trackPane('pane-1');
+    tracker.onNeedsMe('pane-1');
+    tracker.untrackPane('pane-1');
+
+    expect(tracker.getCounts()).toEqual({ needsMe: 0, error: 0 });
+  });
 });

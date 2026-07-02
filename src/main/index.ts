@@ -626,10 +626,37 @@ void app.whenReady().then(async () => {
     }
   }
 
+  // Reflect aggregate "awaiting input" state in OS chrome (window title, dock
+  // badge). Each half is independently gated by that state's existing `badge`
+  // notification setting, so users can opt a category out the same way they
+  // already opt out of its OS notification/sound.
+  function updateChrome(): void {
+    const settings = settingsStore.get();
+    const counts = activityTracker.getCounts();
+    const needsMe = settings.notifications.needsPermission.badge ? counts.needsMe : 0;
+    const errorCount = settings.notifications.processExitError.badge ? counts.error : 0;
+    const total = needsMe + errorCount;
+
+    const parts: string[] = [];
+    if (needsMe > 0) parts.push(`${needsMe} awaiting input`);
+    if (errorCount > 0) parts.push(`${errorCount} error${errorCount > 1 ? 's' : ''}`);
+    const title = parts.length > 0 ? `${parts.join(', ')} · Fleet` : 'Fleet';
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitle(title);
+    }
+    if (process.platform === 'darwin') {
+      app.dock?.setBadge(total > 0 ? String(total) : '');
+    } else {
+      app.setBadgeCount(total);
+    }
+  }
+
   // Clean up CWD polling and activity tracking when panes close
   eventBus.on('pane-closed', (event) => {
     cwdPoller.stopPolling(event.paneId);
     activityTracker.untrackPane(event.paneId);
+    updateChrome();
     // Give child processes time to die after PTY shell is killed, then prune
     setTimeout(() => pruneDeadCopilotSessions(), 500);
   });
@@ -686,6 +713,7 @@ void app.whenReady().then(async () => {
         timestamp: event.timestamp
       });
     }
+    updateChrome();
   });
 
   // Forward remote-session changes (ssh/mosh/…) to renderer via IPC
