@@ -29,14 +29,19 @@ export function ImageGallery(): React.JSX.Element {
     : null;
 
   if (!isLoaded)
-    return showLoadingSkeleton ? (
-      <div className="flex-1 grid grid-cols-3 gap-2 p-3 content-start">
-        {Array.from({ length: 9 }, (_, i) => (
-          <Skeleton key={i} className="aspect-square w-full" />
-        ))}
+    return (
+      <div className="flex-1">
+        <span className="sr-only" role="status" aria-live="polite">
+          Loading images…
+        </span>
+        {showLoadingSkeleton && (
+          <div className="grid grid-cols-3 gap-2 p-3 content-start">
+            {Array.from({ length: 9 }, (_, i) => (
+              <Skeleton key={i} className="aspect-square w-full" />
+            ))}
+          </div>
+        )}
       </div>
-    ) : (
-      <div className="flex-1" />
     );
 
   const inProgressCount = generations.filter(

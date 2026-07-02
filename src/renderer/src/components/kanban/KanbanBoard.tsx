@@ -592,6 +592,11 @@ export function KanbanBoard(): React.JSX.Element {
           )}
 
           <div className="flex flex-1 gap-3 overflow-x-auto p-3">
+            {!loaded && (
+              <span className="sr-only" role="status" aria-live="polite">
+                Loading board…
+              </span>
+            )}
             {showBoardSkeleton
               ? columns.map((col) => (
                   <div key={col.status} className="flex w-64 shrink-0 flex-col gap-2">

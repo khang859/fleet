@@ -487,14 +487,19 @@ export function FileEditorPane({
   }, [paneId, setPaneDirty]);
 
   if (loading) {
-    return showLoadingSkeleton ? (
-      <div className="h-full w-full flex flex-col gap-2 bg-[#282c34] p-4">
-        {['w-2/3', 'w-1/2', 'w-5/6', 'w-1/3', 'w-3/4', 'w-1/2', 'w-2/5'].map((w, i) => (
-          <Skeleton key={i} className={`h-3.5 ${w}`} />
-        ))}
+    return (
+      <div className="h-full w-full bg-[#282c34]">
+        <span className="sr-only" role="status" aria-live="polite">
+          Loading file…
+        </span>
+        {showLoadingSkeleton && (
+          <div className="h-full w-full flex flex-col gap-2 p-4">
+            {['w-2/3', 'w-1/2', 'w-5/6', 'w-1/3', 'w-3/4', 'w-1/2', 'w-2/5'].map((w, i) => (
+              <Skeleton key={i} className={`h-3.5 ${w}`} />
+            ))}
+          </div>
+        )}
       </div>
-    ) : (
-      <div className="h-full w-full bg-[#282c34]" />
     );
   }
 
