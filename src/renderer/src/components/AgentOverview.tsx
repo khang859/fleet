@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Eye } from 'lucide-react';
 import type { ActivityState } from '../../../shared/types';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
@@ -9,6 +10,8 @@ import { PaneStatusGlyph } from './PaneStatusGlyph';
 type AgentOverviewProps = {
   isOpen: boolean;
   onClose: () => void;
+  /** Glance at a row's output and reply without switching to it. */
+  onPeek: (paneId: string) => void;
 };
 
 type Row = {
@@ -31,7 +34,11 @@ const URGENCY: Record<ActivityState, number> = {
 
 const COLLAPSE_DONE_AFTER = 3;
 
-export function AgentOverview({ isOpen, onClose }: AgentOverviewProps): React.JSX.Element | null {
+export function AgentOverview({
+  isOpen,
+  onClose,
+  onPeek
+}: AgentOverviewProps): React.JSX.Element | null {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showAllDone, setShowAllDone] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -102,6 +109,14 @@ export function AgentOverview({ isOpen, onClose }: AgentOverviewProps): React.JS
     [onClose]
   );
 
+  const peek = useCallback(
+    (row: Row) => {
+      onClose();
+      onPeek(row.paneId);
+    },
+    [onClose, onPeek]
+  );
+
   const handleKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -112,6 +127,9 @@ export function AgentOverview({ isOpen, onClose }: AgentOverviewProps): React.JS
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (visibleRows[selectedIndex]) jumpTo(visibleRows[selectedIndex]);
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      if (visibleRows[selectedIndex]) peek(visibleRows[selectedIndex]);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       onClose();
@@ -149,11 +167,11 @@ export function AgentOverview({ isOpen, onClose }: AgentOverviewProps): React.JS
             visibleRows.map((row, i) => {
               const isFocusedPane = row.paneId === activePaneId;
               return (
-                <button
+                <div
                   key={row.paneId}
                   role="option"
                   aria-selected={i === selectedIndex}
-                  className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors active:scale-[0.97] ${
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors cursor-pointer active:scale-[0.97] ${
                     i === selectedIndex ? 'bg-fleet-surface-3' : 'hover:bg-fleet-surface-3/60'
                   } ${isFocusedPane ? 'fleet-accent-ring-pane' : ''}`}
                   onMouseEnter={() => setSelectedIndex(i)}
@@ -170,7 +188,19 @@ export function AgentOverview({ isOpen, onClose }: AgentOverviewProps): React.JS
                       {row.branch}
                     </span>
                   )}
-                </button>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-label="Peek without switching panes"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      peek(row);
+                    }}
+                    className="shrink-0 p-1 rounded text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2"
+                  >
+                    <Eye size={12} />
+                  </button>
+                </div>
               );
             })
           )}
@@ -186,6 +216,7 @@ export function AgentOverview({ isOpen, onClose }: AgentOverviewProps): React.JS
         <div className="px-3 py-1.5 border-t border-fleet-border flex items-center gap-3 text-xs text-fleet-text-subtle">
           <span>↑↓ navigate</span>
           <span>↵ jump to pane</span>
+          <span>space peek</span>
           <span>esc dismiss</span>
         </div>
       </div>

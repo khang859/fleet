@@ -107,6 +107,22 @@ export function serializePane(paneId: string, scrollback?: number): string | und
   return serializeRegistry.get(paneId)?.serialize(scrollback != null ? { scrollback } : undefined);
 }
 
+/** Plain-text (no ANSI) tail of a pane's terminal buffer, for read-only glance UI. */
+export function getPaneTailText(paneId: string, lines = 40): string | undefined {
+  const term = terminalRegistry.get(paneId);
+  if (!term) return undefined;
+  const buf = term.buffer.active;
+  const end = buf.baseY + term.rows;
+  const start = Math.max(0, end - lines);
+  const out: string[] = [];
+  for (let i = start; i < end; i++) {
+    const line = buf.getLine(i);
+    if (line) out.push(line.translateToString(true));
+  }
+  while (out.length > 0 && out[out.length - 1] === '') out.pop();
+  return out.join('\n');
+}
+
 export type RuneReadyMarkerResult = {
   output: string;
   readySeen: boolean;
