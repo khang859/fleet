@@ -31,6 +31,13 @@ export function resolveXtermTheme(
   transparentBackground = false
 ): TerminalThemeColors {
   const theme = { ...resolveTerminalTheme(id).xterm };
+  // Dim the selection toward the pane background so an unfocused pane's
+  // selection reads as "not live" (xterm swaps to this automatically when the
+  // terminal's DOM element blurs). Computed here rather than authored per
+  // theme so all 14 presets stay consistent.
+  if (theme.selectionBackground && theme.background) {
+    theme.selectionInactiveBackground = mixHex(theme.selectionBackground, theme.background, 0.6);
+  }
   // When a terminal background image is active, render xterm's default cell
   // background transparently so the image layer behind it shows through.
   if (transparentBackground) {

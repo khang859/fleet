@@ -14,10 +14,27 @@ describe('theme resolvers', () => {
     expect(resolveTerminalTheme(undefined).id).toBe('fleet-dark');
   });
 
-  it('returns a fresh xterm theme object', () => {
+  it('returns a fresh xterm theme object with a derived inactive-selection color', () => {
     const resolved = resolveXtermTheme('fleet-dark');
-    expect(resolved).toEqual(TERMINAL_THEMES['fleet-dark'].xterm);
+    expect(resolved).toEqual({
+      ...TERMINAL_THEMES['fleet-dark'].xterm,
+      selectionInactiveBackground: resolved.selectionInactiveBackground
+    });
+    expect(resolved.selectionInactiveBackground).toMatch(/^#[0-9a-f]{6}$/i);
     expect(resolved).not.toBe(TERMINAL_THEMES['fleet-dark'].xterm);
+  });
+
+  it('dims selectionInactiveBackground toward the pane background, not toward the selection color', () => {
+    const resolved = resolveXtermTheme('fleet-dark');
+    const { background, selectionBackground, selectionInactiveBackground } = resolved;
+    expect(selectionInactiveBackground).not.toBe(selectionBackground);
+    expect(selectionInactiveBackground).not.toBe(background);
+  });
+
+  it('computes selectionInactiveBackground from the opaque background, not the transparent override', () => {
+    const resolved = resolveXtermTheme('fleet-dark', true);
+    expect(resolved.background).toBe('rgba(0, 0, 0, 0)');
+    expect(resolved.selectionInactiveBackground).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
   it('falls back to the default accent color for unknown ids', () => {

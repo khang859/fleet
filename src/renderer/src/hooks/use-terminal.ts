@@ -191,7 +191,8 @@ function createTerminal(
     fontFamily: options.fontFamily ?? 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace',
     scrollback: options.scrollback ?? 3000,
     cursorBlink: true,
-    cursorInactiveStyle: 'none',
+    cursorStyle: 'bar',
+    cursorInactiveStyle: 'outline',
     allowProposedApi: true,
     // Always allow transparency (negligible cost on the DOM renderer) so a
     // background image can be toggled on/off live without recreating the term.
