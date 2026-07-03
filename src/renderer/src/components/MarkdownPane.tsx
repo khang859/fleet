@@ -13,6 +13,7 @@ import { useMarkdownFind } from '../hooks/use-markdown-find';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useToastStore } from '../store/toast-store';
 import { dirname, resolve } from '../lib/path-utils';
+import { toFleetImageUrl } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -190,6 +191,19 @@ export function MarkdownPane({ paneId, filePath, pathContext }: Props): React.JS
   const markdownComponents = useMemo<Components>(
     () => ({
       pre: CodeBlock,
+      // Local image links (`![alt](./foo.png)`) resolve against the markdown
+      // file's directory and load through the fleet-image protocol — the app's
+      // HTML base can't resolve a path relative to the document on disk, and a
+      // bare file:// path is not loadable from the renderer. Remote (http/https)
+      // and inline (data:) images, and already-resolved fleet-image URLs, pass
+      // through untouched.
+      img: ({ src, alt, ...props }) => {
+        const resolvedSrc =
+          src && !/^(https?:|data:|fleet-image:)/i.test(src)
+            ? toFleetImageUrl(resolve(baseDir, src.replace(/^file:\/\//i, '')))
+            : src;
+        return <img src={resolvedSrc} alt={alt ?? ''} {...props} />;
+      },
       a: ({ href, children, ...props }) => {
         if (!href) return <span {...props}>{children}</span>;
 
