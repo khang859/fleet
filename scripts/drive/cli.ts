@@ -1,4 +1,10 @@
 import { attach } from './core';
+import { screenshot, snapshot } from './verbs';
+
+function flag(args: string[], name: string): string | undefined {
+  const i = args.indexOf(`--${name}`);
+  return i !== -1 ? args[i + 1] : undefined;
+}
 
 async function main(): Promise<void> {
   const [verb] = process.argv.slice(2);
@@ -13,6 +19,19 @@ async function main(): Promise<void> {
     switch (verb) {
       case 'status': {
         console.log(`Attached to: ${page.url()} (title: ${await page.title()})`);
+        break;
+      }
+      case 'screenshot': {
+        const rest = process.argv.slice(3);
+        const out = await screenshot(page, {
+          selector: flag(rest, 'selector'),
+          out: flag(rest, 'out')
+        });
+        console.log(out);
+        break;
+      }
+      case 'snapshot': {
+        console.log(await snapshot(page));
         break;
       }
       default:
