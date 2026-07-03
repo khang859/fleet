@@ -22,6 +22,8 @@ import { streamAnnouncement } from './stream-announce';
 import { classifyStreamError } from './stream-error';
 import type { ChatMessage } from '../../../../shared/chat-types';
 import { extractArtifacts } from '../../../../shared/chat-artifacts';
+import { resolveRenderParts } from './message-parts';
+import type { StreamingPart } from './streaming-parts';
 import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
 import { ToolStatusPill } from './ToolStatusPill';
@@ -129,6 +131,29 @@ function ReasoningPanel({
   );
 }
 
+/**
+ * A finalized assistant turn's text and tool cards, rendered in true
+ * chronological order (#458). Turns recorded with the interleave fix carry
+ * `parts`; legacy turns fall back to grouped order (tools then text) via
+ * `resolveRenderParts`, so old conversations render exactly as before.
+ */
+function MessageBlocks({ message }: { message: ChatMessage }): React.JSX.Element {
+  const parts = resolveRenderParts(message);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.type === 'text' ? (
+          <ChatMarkdown key={`text-${i}`}>{part.text}</ChatMarkdown>
+        ) : (
+          <div key={part.call.id} className="my-1.5">
+            <ToolCallView call={part.call} />
+          </div>
+        )
+      )}
+    </>
+  );
+}
+
 function Bubble({
   message,
   model,
@@ -212,13 +237,6 @@ function Bubble({
             durationMs={message.reasoningMs ?? 0}
           />
         )}
-        {!isUser && message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="mb-2 flex flex-col gap-1.5">
-            {message.toolCalls.map((call) => (
-              <ToolCallView key={call.id} call={call} />
-            ))}
-          </div>
-        )}
         {editing ? (
           <div className="flex flex-col gap-2">
             <textarea
@@ -243,8 +261,10 @@ function Bubble({
               </button>
             </div>
           </div>
-        ) : (
+        ) : isUser ? (
           <ChatMarkdown>{content}</ChatMarkdown>
+        ) : (
+          <MessageBlocks message={message} />
         )}
         {images !== undefined && images.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -415,18 +435,52 @@ function WaitingIndicator(): React.JSX.Element {
   );
 }
 
+/**
+ * One live block of the in-flight turn (#458): streaming prose, or a tool's
+ * ephemeral status pill/skeleton, rendered inline at its true position so tools
+ * appear between prose blocks — the same order the finalized `parts` will show.
+ */
+function StreamingPartView({ part }: { part: StreamingPart }): React.JSX.Element {
+  if (part.type === 'text') {
+    // Streamdown fades each word in as it streams (the per-word `animated` prop
+    // in ChatMarkdown), which crossfades the indicator→answer handoff.
+    return <ChatMarkdown streaming>{part.text}</ChatMarkdown>;
+  }
+  if (part.state === 'error') {
+    return (
+      <div className="py-1 text-sm text-red-400">
+        {part.kind === 'image' ? 'Image error' : 'Tool error'}: {part.error ?? part.label}
+      </div>
+    );
+  }
+  if (part.kind === 'image' && part.state === 'generating') {
+    return <GeneratingSkeleton label={part.label} />;
+  }
+  if (part.state === 'done') {
+    // A finished tool that stays visible while later text streams — a static
+    // check, not the spinner, so it doesn't read as still-working.
+    return (
+      <div className="flex items-center gap-2 py-1 text-xs text-fleet-text-muted">
+        <Check size={13} className="shrink-0" />
+        <span className="truncate">{part.label}</span>
+      </div>
+    );
+  }
+  return <ToolStatusPill label={part.label} />;
+}
+
 function StreamingMessage(): React.JSX.Element {
-  const streamingText = useChatStore((s) => s.streamingText) ?? '';
+  const streamingParts = useChatStore((s) => s.streamingParts);
   const streamingReasoning = useChatStore((s) => s.streamingReasoning);
-  const hasTokens = streamingText.length > 0;
+  const hasContent = streamingParts.length > 0;
   const hasReasoning = !!streamingReasoning && streamingReasoning.length > 0;
-  const thinking = hasReasoning && !hasTokens;
+  const thinking = hasReasoning && !hasContent;
   // Capture when reasoning began (live timer) and freeze its duration once the
   // answer starts, so the collapsed "Thought for Xs" label stops climbing.
   const startRef = useRef<number | null>(null);
   if (hasReasoning && startRef.current === null) startRef.current = Date.now();
   const frozenRef = useRef<number | null>(null);
-  if (hasTokens && hasReasoning && frozenRef.current === null && startRef.current !== null) {
+  if (hasContent && hasReasoning && frozenRef.current === null && startRef.current !== null) {
     frozenRef.current = Date.now() - startRef.current;
   }
   return (
@@ -442,15 +496,11 @@ function StreamingMessage(): React.JSX.Element {
           durationMs={frozenRef.current ?? undefined}
         />
       )}
-      {hasTokens ? (
-        // Streamdown fades each word in as it streams (the per-word `animated`
-        // prop in ChatMarkdown), which crossfades the indicator→answer handoff.
-        // No wrapper fade here — a parent opacity animation would stack
-        // multiplicatively with the per-word fades and dim the first tokens.
-        <ChatMarkdown streaming>{streamingText}</ChatMarkdown>
-      ) : (
-        !hasReasoning && <WaitingIndicator />
-      )}
+      {hasContent
+        ? streamingParts.map((part, i) => (
+            <StreamingPartView key={part.type === 'tool' ? `tool-${i}` : `text-${i}`} part={part} />
+          ))
+        : !hasReasoning && <WaitingIndicator />}
     </div>
   );
 }
@@ -512,7 +562,6 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
   const isStreaming = useChatStore((s) => s.streamingText !== null);
   const messagesLoading = useChatStore((s) => s.messagesLoading);
   const status = useChatStore((s) => s.status);
-  const toolStatus = useChatStore((s) => s.toolStatus);
   const permissionRequests = useChatStore((s) => s.permissionRequests);
   const decidePermission = useChatStore((s) => s.decidePermission);
   const reduced = useReducedMotion();
@@ -536,19 +585,6 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
               onDecide={(outcome) => void decidePermission(req.requestId, outcome)}
             />
           ))}
-          {status === 'streaming' &&
-            toolStatus?.state === 'generating' &&
-            (toolStatus.kind === 'image' ? (
-              <GeneratingSkeleton label={toolStatus.label} />
-            ) : (
-              <ToolStatusPill label={toolStatus.label} />
-            ))}
-          {toolStatus?.state === 'error' && (
-            <div className="text-sm text-red-400">
-              {toolStatus.kind === 'image' ? 'Image error' : 'Tool error'}:{' '}
-              {toolStatus.error ?? toolStatus.label}
-            </div>
-          )}
           {status === 'error' && <StreamError model={model} />}
         </div>
       </StickToBottom.Content>

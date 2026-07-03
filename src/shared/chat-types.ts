@@ -23,6 +23,14 @@ export type ChatToolCall = {
   output?: string;
 };
 
+/**
+ * One block of an assistant turn, in the order it occurred. Recording an ordered
+ * list of blocks (rather than a flat `content` string beside a flat `toolCalls`
+ * array) is what lets the transcript show the true interleave — text, then a tool
+ * call, then more text — identically while streaming and once finalized.
+ */
+export type ChatMessagePart = { type: 'text'; text: string } | { type: 'tool'; call: ChatToolCall };
+
 export type ChatMessage = {
   id: string;
   conversationId: string;
@@ -42,6 +50,12 @@ export type ChatMessage = {
   reasoningMs?: number;
   /** Tools invoked during this assistant turn, in call order; absent when none ran. */
   toolCalls?: ChatToolCall[];
+  /**
+   * Ordered text/tool blocks for the turn, preserving the true chronological
+   * interleave. Present on turns recorded after the interleave fix; absent on
+   * legacy turns (which fall back to grouped rendering: tools then text).
+   */
+  parts?: ChatMessagePart[];
 };
 
 /** Token counts + cost for one assistant turn (summed across tool rounds). */

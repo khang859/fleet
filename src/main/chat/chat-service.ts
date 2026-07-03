@@ -9,6 +9,7 @@ import type {
   ChatMessageUsage,
   ChatToolCall,
   ChatToolCallStatus,
+  ChatMessagePart,
   ChatStreamChunkPayload,
   ChatStreamReasoningPayload,
   ChatStreamDonePayload,
@@ -489,6 +490,21 @@ export class ChatService {
       // Tools invoked this turn, in call order — persisted onto the assistant
       // message so the transcript shows what ran (#434).
       const toolCalls: ChatToolCall[] = [];
+      // The turn's text and tool blocks in the exact order they occurred, so the
+      // finalized transcript renders the same interleave it streamed (#458). Text
+      // deltas extend the trailing text block; each completed tool appends a tool
+      // block. `content`/`toolCalls` above are the flattened views of this list.
+      const parts: ChatMessagePart[] = [];
+      const appendTextPart = (text: string): void => {
+        if (!text) return;
+        const last = parts.length > 0 ? parts[parts.length - 1] : undefined;
+        if (last?.type === 'text') last.text += text;
+        else parts.push({ type: 'text', text });
+      };
+      const recordToolCall = (call: ChatToolCall): void => {
+        toolCalls.push(call);
+        parts.push({ type: 'tool', call });
+      };
       // True when the model kept calling tools until maxToolRounds ran out.
       let exhausted = false;
       // Reasoning channel: chain-of-thought streamed alongside (and before) the
@@ -501,6 +517,7 @@ export class ChatService {
       const emitContent = (text: string): void => {
         if (!text) return;
         partial += text;
+        appendTextPart(text);
         emit(IPC_CHANNELS.CHAT_STREAM_CHUNK, {
           streamId,
           delta: text
@@ -591,7 +608,7 @@ export class ChatService {
                 name: call.name,
                 content: outcome.output
               });
-              toolCalls.push({
+              recordToolCall({
                 id: call.id,
                 name: call.name,
                 title: outcome.detail,
@@ -649,7 +666,7 @@ export class ChatService {
                 name: call.name,
                 content: '{"status":"ok","note":"image generated and shown to the user"}'
               });
-              toolCalls.push({ id: call.id, name: call.name, title: imageTitle, status: 'done' });
+              recordToolCall({ id: call.id, name: call.name, title: imageTitle, status: 'done' });
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
               emit(IPC_CHANNELS.CHAT_TOOL_STATUS, {
@@ -665,7 +682,7 @@ export class ChatService {
                 name: call.name,
                 content: JSON.stringify({ status: 'error', error: msg })
               });
-              toolCalls.push({
+              recordToolCall({
                 id: call.id,
                 name: call.name,
                 title: imageTitle,
@@ -690,6 +707,7 @@ export class ChatService {
           partial = exhausted
             ? `I reached the tool-round limit (${maxToolRounds}) before finishing. The tool calls above show what ran.`
             : "I couldn't finish that request — please try again.";
+          appendTextPart(partial);
         }
 
         const reasoningMs =
@@ -704,7 +722,8 @@ export class ChatService {
           usage,
           reasoning: reasoning || undefined,
           reasoningMs,
-          toolCalls: toolCalls.length ? toolCalls : undefined
+          toolCalls: toolCalls.length ? toolCalls : undefined,
+          parts: parts.length ? parts : undefined
         });
         if (generated.length) {
           store.addImages({
@@ -745,7 +764,8 @@ export class ChatService {
             usage,
             reasoning: reasoning || undefined,
             reasoningMs,
-            toolCalls: toolCalls.length ? toolCalls : undefined
+            toolCalls: toolCalls.length ? toolCalls : undefined,
+            parts: parts.length ? parts : undefined
           });
           if (generated.length) {
             store.addImages({
