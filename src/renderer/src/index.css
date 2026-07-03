@@ -241,6 +241,7 @@ body,
 /* Global scrollbar — dark sci-fi theme */
 *::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
@@ -251,6 +252,15 @@ body,
 }
 *::-webkit-scrollbar-thumb:hover {
   background: #2dd4bf66;
+}
+
+/* Opt-out for horizontal carousels (thumbnail strips) that scroll but
+   shouldn't show a track eating into their bottom edge. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Terminal background slideshow crossfade. The layers' max opacity is the

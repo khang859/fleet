@@ -102,11 +102,11 @@ function FontFamilyPicker({
             }}
             className="fleet-accent-input"
           />
-          <span className="text-sm text-fleet-text-secondary">Custom:</span>
+          <span className="text-sm text-fleet-text-secondary">Custom</span>
           <input
             type="text"
             value={parsed.mode === 'custom' ? customValue : ''}
-            placeholder="System font name..."
+            placeholder="System font name…"
             onFocus={() => {
               if (parsed.mode !== 'custom') {
                 const val = customValue || 'monospace';
@@ -183,12 +183,12 @@ export function GeneralSection(): React.JSX.Element {
       <SettingRow label="Default Shell">
         <input
           type="text"
-          value={localShell || '(auto-detect)'}
+          value={localShell}
           onChange={(e) => {
             setLocalShell(e.target.value);
             debouncedSaveShell(e.target.value);
           }}
-          placeholder="(auto-detect)"
+          placeholder="Auto-detect"
           className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-48 border border-fleet-border-strong focus-ring"
         />
       </SettingRow>
@@ -201,7 +201,7 @@ export function GeneralSection(): React.JSX.Element {
             }}
             className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong focus-ring"
           >
-            <option value="">(auto-detect)</option>
+            <option value="">Auto-detect</option>
             {shellProfiles.map((profile) => (
               <option key={profile.id} value={profile.id}>
                 {profile.label}

@@ -6,9 +6,9 @@ export function SettingRow({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <div className="flex items-center justify-between">
+    <div className="grid grid-cols-[180px_1fr] items-center gap-4">
       <span className="text-sm text-fleet-text-secondary">{label}</span>
-      {children}
+      <div className="flex min-w-0 items-center">{children}</div>
     </div>
   );
 }

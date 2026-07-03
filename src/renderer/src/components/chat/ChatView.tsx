@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { MessageSquarePlus, Plus } from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import { ConversationList } from './ConversationList';
 import { MessageList } from './MessageList';
@@ -15,6 +16,7 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
   const init = useChatStore((s) => s.init);
   const keyPresent = useChatStore((s) => s.keyPresent);
   const activeId = useChatStore((s) => s.activeId);
+  const newConversation = useChatStore((s) => s.newConversation);
   const artifact = useChatStore((s) => s.activeArtifact);
   const reduced = useReducedMotion();
   // Keep the panel mounted through its close animation; render the last shown
@@ -58,8 +60,20 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
             <Composer key={activeId} defaultModel={defaultModel} />
           </>
         ) : (
-          <div className="flex flex-1 items-center justify-center text-sm text-fleet-text-muted">
-            Start a new chat from the left.
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+            <MessageSquarePlus size={32} className="text-fleet-text-subtle" strokeWidth={1.5} />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-fleet-text">No conversation selected</p>
+              <p className="text-xs text-fleet-text-muted">
+                Ask about your code, generate images, or fetch docs.
+              </p>
+            </div>
+            <button
+              onClick={() => void newConversation()}
+              className="fleet-accent-bg fleet-accent-bg-hover flex items-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium text-white transition-colors focus-ring"
+            >
+              <Plus size={15} /> New chat
+            </button>
           </div>
         )}
       </div>

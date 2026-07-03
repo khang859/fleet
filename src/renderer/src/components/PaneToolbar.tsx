@@ -46,7 +46,12 @@ function ToolbarTooltip({
 }
 
 const BUTTON_CLASS =
-  'p-1.5 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90 focus-ring';
+  'p-1.5 text-fleet-text-secondary hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90 focus-ring';
+
+// Destructive action: telegraph danger on hover so a mis-click near Search
+// reads as risky before it happens.
+const CLOSE_BUTTON_CLASS =
+  'p-1.5 text-fleet-text-secondary hover:text-red-400 rounded hover:bg-red-500/10 transition active:scale-90 focus-ring';
 
 type PaneToolbarProps = {
   visible: boolean;
@@ -84,7 +89,7 @@ export function PaneToolbar({
   return (
     <Tooltip.Provider delayDuration={300}>
       <div
-        className={`absolute top-2 right-2 z-20 transition-opacity flex items-center gap-0.5 bg-fleet-surface-2/80 backdrop-blur-sm rounded-md border border-fleet-border/50 p-0.5 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`absolute top-2 right-2 z-20 transition-opacity flex items-center gap-0.5 bg-fleet-surface-2/90 backdrop-blur-md rounded-md border border-fleet-border/70 shadow-sm p-0.5 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         {onSplitHorizontal && (
@@ -239,13 +244,16 @@ export function PaneToolbar({
             <Search size={14} />
           </button>
         </ToolbarTooltip>
+        {/* Separate the destructive Close from Search so a slightly-off click
+            can't kill a running pane. */}
+        <div className="mx-0.5 h-4 w-px bg-fleet-border/70" aria-hidden />
         <ToolbarTooltip label={`Close Pane (${shortcutLabel('close-pane')})`}>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onClose();
             }}
-            className={BUTTON_CLASS}
+            className={CLOSE_BUTTON_CLASS}
             aria-label="Close pane"
           >
             <X size={14} />

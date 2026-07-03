@@ -34,9 +34,21 @@ export function SessionsTabCard({
           <History size={16} className={isActive ? 'text-blue-400' : 'text-blue-400/50'} />
         </div>
         <div className="flex-1 min-w-0">
-          <div style={{ fontSize: '9px' }}>Sessions</div>
-          <span className="text-[9px]">
-            {sessions.length > 0 ? `${sessions.length} saved` : 'none yet'}
+          <div
+            className="font-mono uppercase tracking-widest leading-none mb-1"
+            style={{
+              fontSize: '9px',
+              color: isActive ? 'rgb(96,165,250)' : 'rgba(96,165,250,0.5)'
+            }}
+          >
+            Sessions
+          </div>
+          <span className="text-[9px] font-mono text-fleet-text-subtle">
+            {sessions.length > 0 ? (
+              <span className="text-blue-300/70">{sessions.length} saved</span>
+            ) : (
+              <span>none yet</span>
+            )}
           </span>
         </div>
       </div>

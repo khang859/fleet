@@ -219,7 +219,7 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
         </button>
       </div>
 
-      <SettingRow label="Background">
+      <SettingRow label="Mode">
         <SegmentedControl
           ariaLabel="Background mode"
           value={mode}
