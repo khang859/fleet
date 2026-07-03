@@ -87,6 +87,7 @@ export function ShellEnvModal({
         e.preventDefault();
         setSelected((i) => Math.max(i - 1, 0));
       } else if (e.key === 'Enter') {
+        if (e.target !== inputRef.current) return;
         e.preventDefault();
         const v = visible[selected];
         if (v) copyValue(v);
@@ -125,6 +126,7 @@ export function ShellEnvModal({
           )}
           <button
             onClick={() => setRevealAll((v) => !v)}
+            onMouseDown={(e) => e.preventDefault()}
             className="ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 active:scale-95"
           >
             {revealAll ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -150,6 +152,7 @@ export function ShellEnvModal({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter variables…"
+            aria-label="Filter environment variables"
             className="h-8 w-full rounded-md border border-neutral-800 bg-neutral-950 pl-8 pr-3 font-mono text-xs text-neutral-200 placeholder:font-sans placeholder:text-neutral-600 focus-visible:border-neutral-600 focus-visible:outline-none"
           />
         </div>
@@ -207,7 +210,10 @@ export function ShellEnvModal({
                           {isSecret(v) && (
                             <button
                               onClick={() => toggleReveal(v.key)}
+                              onMouseDown={(e) => e.preventDefault()}
                               title={reveal ? 'Hide value' : 'Reveal value'}
+                              aria-label={reveal ? 'Hide value' : 'Reveal value'}
+                              aria-pressed={reveal}
                               className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
                             >
                               {reveal ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -215,7 +221,9 @@ export function ShellEnvModal({
                           )}
                           <button
                             onClick={() => copyValue(v)}
+                            onMouseDown={(e) => e.preventDefault()}
                             title="Copy value"
+                            aria-label="Copy value"
                             className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
                           >
                             {copiedKey === v.key ? (
