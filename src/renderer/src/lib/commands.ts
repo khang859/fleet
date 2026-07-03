@@ -89,6 +89,13 @@ export function createCommandRegistry(): Command[] {
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-shortcuts'))
     },
     {
+      id: 'shell-env',
+      label: 'Shell Environment',
+      category: 'View',
+      keywords: ['env', 'environment', 'variables', 'shell', 'export'],
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-shell-env'))
+    },
+    {
       id: 'rename-tab',
       label: 'Rename Tab',
       shortcut: sc('rename-tab'),
