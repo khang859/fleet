@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.85.0
+
+- **Auto-inject the Fleet skill into Claude Code** - Claude Code running inside Fleet now learns the `fleet` CLI automatically via the `SessionStart` hook, so agents can drive Fleet (open files/images, annotate pages, generate images) with no manual step; the "Inject Fleet Skills" toolbar button and shortcut are removed (#463).
+- **Render local images in the Markdown preview** - `file://` and relative image paths now display in the Markdown preview instead of showing a broken image (#462).
+- **UX polish sweep** - refinements across tabs, sidebar, settings, chat, and the pane toolbar (#461).
+- **fleet-drive** - a CDP-based driver for the live dev UI that can screenshot, snapshot, click, type, and eval against the running dev window (#460).
+
 ## v2.84.2
 
 - **Fix Chat transcript reordering tool calls when a turn finished** - assistant turns now record the true chronological order of text and tool-call blocks, so a reply that goes text → tool → text renders identically while streaming and once complete, instead of grouping all tool cards above the text on completion (#459).
