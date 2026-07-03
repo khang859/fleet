@@ -18,6 +18,11 @@ import type { PersonaPreset, ChatUploadsConfig, ChatSearchHit } from '../../../s
 import { DEFAULT_CHAT_UPLOADS } from '../../../shared/chat-types';
 import type { Artifact } from '../../../shared/chat-artifacts';
 import { StreamBuffer } from './stream-buffer';
+import {
+  appendTextPart,
+  applyToolStatus,
+  type StreamingPart
+} from '../components/chat/streaming-parts';
 
 export type ChatStatus = 'idle' | 'streaming' | 'error';
 
@@ -33,6 +38,12 @@ type ChatStoreState = {
   streamingText: string | null;
   /** Live chain-of-thought for the in-flight turn; null until the model emits reasoning. */
   streamingReasoning: string | null;
+  /**
+   * The in-flight turn's text/tool blocks in streamed order (#458). Drives the
+   * live transcript so tool activity renders inline between prose blocks, in the
+   * same order the finalized `message.parts` will show.
+   */
+  streamingParts: StreamingPart[];
   streamId: string | null;
   models: ChatModel[];
   imageModels: ChatModel[];
@@ -43,7 +54,6 @@ type ChatStoreState = {
   keyPresent: boolean;
   status: ChatStatus;
   error: string | null;
-  toolStatus: ChatToolStatusPayload | null;
   permissionRequests: PermissionRequestPayload[];
   /** Non-off skills, for the composer's `/` autocomplete. */
   skillMenu: SkillMenuItem[];
@@ -114,7 +124,10 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
   // Coalesce SSE tokens into ~50ms flushes so only the in-flight message
   // re-renders (and re-parses markdown) ~20×/s instead of per token.
   const streamBuffer = new StreamBuffer(50, (delta) => {
-    set((s) => ({ streamingText: (s.streamingText ?? '') + delta }));
+    set((s) => ({
+      streamingText: (s.streamingText ?? '') + delta,
+      streamingParts: appendTextPart(s.streamingParts, delta)
+    }));
   });
   // Reasoning streams on its own channel and into its own buffer so thinking
   // tokens never interleave with the answer body.
@@ -174,9 +187,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           messages: replace ? s.messages : [...s.messages, p.message],
           streamingText: null,
           streamingReasoning: null,
+          streamingParts: [],
           streamId: null,
           status: 'idle',
-          toolStatus: null,
           permissionRequests: []
         }));
         // Reconcile with the authoritative active thread: regenerate/edit change
@@ -208,8 +221,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
             error: null,
             streamingText: null,
             streamingReasoning: null,
+            streamingParts: [],
             streamId: null,
-            toolStatus: null,
             permissionRequests: []
           });
           if (activeId) {
@@ -227,8 +240,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           error: p.message,
           streamingText: null,
           streamingReasoning: null,
+          streamingParts: [],
           streamId: null,
-          toolStatus: null,
           permissionRequests: [],
           // Mirror the partial answer + reasoning into the list synchronously so a
           // turn that errored mid-thinking doesn't flicker out; the DB reload below
@@ -260,7 +273,12 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
       })
     );
     unsubTool = window.fleet.chat.onToolStatus((p: ChatToolStatusPayload) =>
-      onStreamEvent(p.streamId, () => set({ toolStatus: p.state === 'done' ? null : p }))
+      onStreamEvent(p.streamId, () => {
+        // Land any buffered text before the tool block so the interleave stays in
+        // true chronological order (the tool fired after that text streamed).
+        streamBuffer.flush();
+        set((s) => ({ streamingParts: applyToolStatus(s.streamingParts, p) }));
+      })
     );
     unsubPerm = window.fleet.chat.onPermissionRequest((p: PermissionRequestPayload) =>
       onStreamEvent(p.streamId, () =>
@@ -286,6 +304,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     messagesLoading: false,
     streamingText: null,
     streamingReasoning: null,
+    streamingParts: [],
     streamId: null,
     models: [],
     imageModels: [],
@@ -294,7 +313,6 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     keyPresent: false,
     status: 'idle',
     error: null,
-    toolStatus: null,
     permissionRequests: [],
     skillMenu: [],
     promptTemplates: [],
@@ -389,10 +407,10 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         messagesLoading: true,
         streamingText: null,
         streamingReasoning: null,
+        streamingParts: [],
         streamId: null,
         status: 'idle',
         error: null,
-        toolStatus: null,
         permissionRequests: [],
         activeArtifact: null
       });
@@ -471,9 +489,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           streamId: res.streamId,
           streamingText: '',
           streamingReasoning: null,
+          streamingParts: [],
           status: 'streaming',
-          error: null,
-          toolStatus: null
+          error: null
         }));
         // Replay any events the main stream emitted before send() resolved (#436).
         adoptStream(res.streamId);
@@ -508,6 +526,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           streamId: res.streamId,
           streamingText: '',
           streamingReasoning: null,
+          streamingParts: [],
           status: 'streaming',
           error: null
         });
@@ -546,9 +565,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           streamId: res.streamId,
           streamingText: '',
           streamingReasoning: null,
+          streamingParts: [],
           status: 'streaming',
-          error: null,
-          toolStatus: null
+          error: null
         });
         adoptStream(res.streamId); // replay any pre-resolve stream events (#436)
       } catch (err) {

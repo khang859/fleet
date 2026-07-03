@@ -84,12 +84,12 @@ beforeEach(() => {
     activeId: 'c1',
     messages: [],
     streamingText: null,
+    streamingParts: [],
     streamId: null,
     models: [],
     keyPresent: false,
     status: 'idle',
     error: null,
-    toolStatus: null,
     permissionRequests: []
   });
 });
@@ -201,6 +201,63 @@ describe('useChatStore', () => {
     expect(s.status).toBe('idle');
     expect(s.streamingText).toBeNull();
     expect(s.messages.at(-1)?.content).toBe('Hello');
+  });
+
+  it('builds streamingParts in true text→tool→text order (#458)', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().send('hi', 'x/y');
+    vi.useFakeTimers();
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_CHUNK)?.({ streamId: 's1', delta: 'Let me check. ' });
+    // The tool status arrives after the preceding text — it must land AFTER that
+    // text in the ordered list, not before or merged into it.
+    listeners.get(IPC_CHANNELS.CHAT_TOOL_STATUS)?.({
+      streamId: 's1',
+      state: 'generating',
+      label: 'Running bash'
+    });
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_CHUNK)?.({ streamId: 's1', delta: 'Done.' });
+    vi.advanceTimersByTime(50);
+    vi.useRealTimers();
+    const parts = useChatStore.getState().streamingParts;
+    expect(parts.map((p) => p.type)).toEqual(['text', 'tool', 'text']);
+    expect(parts).toEqual([
+      { type: 'text', text: 'Let me check. ' },
+      { type: 'tool', label: 'Running bash', state: 'generating' },
+      { type: 'text', text: 'Done.' }
+    ]);
+  });
+
+  it('resolves the in-flight streaming tool block to done in place (#458)', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().send('hi', 'x/y');
+    listeners.get(IPC_CHANNELS.CHAT_TOOL_STATUS)?.({
+      streamId: 's1',
+      state: 'generating',
+      label: 'Running bash'
+    });
+    listeners.get(IPC_CHANNELS.CHAT_TOOL_STATUS)?.({
+      streamId: 's1',
+      state: 'done',
+      label: 'Done'
+    });
+    const parts = useChatStore.getState().streamingParts;
+    expect(parts).toEqual([{ type: 'tool', label: 'Running bash', state: 'done' }]);
+  });
+
+  it('clears streamingParts when the turn finishes', async () => {
+    await useChatStore.getState().init();
+    await useChatStore.getState().send('hi', 'x/y');
+    listeners.get(IPC_CHANNELS.CHAT_TOOL_STATUS)?.({
+      streamId: 's1',
+      state: 'generating',
+      label: 'Running bash'
+    });
+    expect(useChatStore.getState().streamingParts).toHaveLength(1);
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_DONE)?.({
+      streamId: 's1',
+      message: { id: 'a1', conversationId: 'c1', role: 'assistant', content: 'ok', createdAt: 4 }
+    });
+    expect(useChatStore.getState().streamingParts).toEqual([]);
   });
 
   it('cancel reconciles to the persisted turn (real id) via the aborted event', async () => {
