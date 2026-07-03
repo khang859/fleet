@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Terminal, Search, SearchX, Eye, EyeOff, Copy, Check, X } from 'lucide-react';
 import type { ShellEnvSnapshot, ShellEnvVar } from '../../../../shared/shell-env-types';
-import { SECTIONS, isSecret, filterVars, varsForSection, formatSpawnTime } from './shell-env-view';
+import {
+  SECTIONS,
+  isSecret,
+  filterVars,
+  varsForSection,
+  formatSpawnTime,
+  clampSelection
+} from './shell-env-view';
 
 export function ShellEnvModal({
   isOpen,
@@ -59,7 +66,7 @@ export function ShellEnvModal({
   }, [snapshot, query]);
 
   useEffect(() => {
-    setSelected((i) => Math.min(i, Math.max(0, visible.length - 1)));
+    setSelected((i) => clampSelection(i, visible.length));
   }, [visible.length]);
 
   useEffect(() => {
@@ -88,10 +95,10 @@ export function ShellEnvModal({
         onClose();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelected((i) => Math.min(i + 1, visible.length - 1));
+        setSelected((i) => clampSelection(i + 1, visible.length));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setSelected((i) => Math.max(i - 1, 0));
+        setSelected((i) => clampSelection(i - 1, visible.length));
       } else if (e.key === 'Enter') {
         if (e.target !== inputRef.current) return;
         e.preventDefault();

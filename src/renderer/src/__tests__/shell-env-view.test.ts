@@ -4,6 +4,7 @@ import {
   matchesQuery,
   filterVars,
   varsForSection,
+  clampSelection,
   SECTIONS
 } from '../components/shell-env/shell-env-view';
 import type { ShellEnvVar } from '../../../shared/shell-env-types';
@@ -43,6 +44,25 @@ describe('varsForSection', () => {
   it('returns only vars of the given source', () => {
     const vars = [v('A', '1', 'env-sync'), v('B', '2', 'login-shell')];
     expect(varsForSection(vars, 'env-sync').map((x) => x.key)).toEqual(['A']);
+  });
+});
+
+describe('clampSelection', () => {
+  it('clamps into [0, length-1]', () => {
+    expect(clampSelection(5, 3)).toBe(2);
+    expect(clampSelection(1, 3)).toBe(1);
+    expect(clampSelection(0, 3)).toBe(0);
+  });
+  it('returns 0 and never a negative index for an empty list', () => {
+    expect(clampSelection(0, 0)).toBe(0);
+    expect(clampSelection(1, 0)).toBe(0);
+    expect(clampSelection(-1, 0)).toBe(0);
+  });
+  it('recovers a stale negative selection once rows reappear (regression: stuck at -1)', () => {
+    // ArrowDown on an empty filtered list must not produce a negative index...
+    expect(clampSelection(0 + 1, 0)).toBe(0);
+    // ...and even a stale -1 recovers to 0 when the filter clears to N rows.
+    expect(clampSelection(-1, 42)).toBe(0);
   });
 });
 

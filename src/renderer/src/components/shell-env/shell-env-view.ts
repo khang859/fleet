@@ -28,6 +28,17 @@ export function varsForSection(vars: ShellEnvVar[], source: EnvSource): ShellEnv
   return vars.filter((v) => v.source === source);
 }
 
+/**
+ * Clamp a keyboard-selection index into the valid range for `length` rows.
+ * Returns 0 for an empty list and never a negative index, so a stale negative
+ * (e.g. ArrowDown past the end of an empty filtered list) recovers to 0 once
+ * rows reappear rather than getting stuck with nothing highlighted.
+ */
+export function clampSelection(index: number, length: number): number {
+  if (length <= 0) return 0;
+  return Math.min(Math.max(index, 0), length - 1);
+}
+
 /** Format epoch ms as a short local time, e.g. "12:34 PM". */
 export function formatSpawnTime(epochMs: number): string {
   return new Date(epochMs).toLocaleTimeString(undefined, {
