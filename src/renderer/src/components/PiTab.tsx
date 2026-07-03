@@ -5,7 +5,6 @@ import { useWorkspaceStore, getPaneContextById } from '../store/workspace-store'
 import { PaneToolbar } from './PaneToolbar';
 import { SearchBar } from './SearchBar';
 import { openAnnotateModal } from '../lib/annotate-modal-bridge';
-import { getFleetSkillContentInput } from '../lib/fleet-skill-prompt';
 import type { Tab } from '../../../shared/types';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
 import { resolveTerminalTheme } from '../lib/theme';
@@ -178,12 +177,6 @@ function PiTerminal({
         onClipboardHistory={() =>
           document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))
         }
-        onInjectSkills={() => {
-          void getFleetSkillContentInput().then((data) => {
-            window.fleet.pty.input({ paneId, data });
-          });
-          focus();
-        }}
         onAnnotate={() => openAnnotateModal()}
         onTelescope={() => document.dispatchEvent(new CustomEvent('fleet:toggle-telescope'))}
         onEnvSync={() => document.dispatchEvent(new CustomEvent('fleet:toggle-env-sync'))}

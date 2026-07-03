@@ -1,5 +1,4 @@
 import { ALL_SHORTCUTS, formatShortcut, type ShortcutDef } from './shortcuts';
-import { getFleetSkillContentInput } from './fleet-skill-prompt';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useVisualizerStore } from '../store/visualizer-store';
 
@@ -147,20 +146,6 @@ export function createCommandRegistry(): Command[] {
       shortcut: sc('clipboard-history'),
       category: 'Edit',
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))
-    },
-    {
-      id: 'inject-skills',
-      label: 'Inject Fleet Skills',
-      shortcut: sc('inject-skills'),
-      category: 'Agent',
-      execute: () => {
-        const { activePaneId } = useWorkspaceStore.getState();
-        if (activePaneId) {
-          void getFleetSkillContentInput().then((data) => {
-            window.fleet.pty.input({ paneId: activePaneId, data });
-          });
-        }
-      }
     },
     {
       id: 'jump-needy-agent',

@@ -6,7 +6,6 @@ import {
   GitBranch,
   FileSearch,
   Clipboard,
-  BookOpen,
   Crosshair,
   Telescope,
   FolderSync,
@@ -63,7 +62,6 @@ type PaneToolbarProps = {
   onGitChanges: () => void;
   onFileSearch?: () => void;
   onClipboardHistory?: () => void;
-  onInjectSkills?: () => void;
   onAnnotate?: () => void;
   onTelescope?: () => void;
   onEnvSync?: () => void;
@@ -80,7 +78,6 @@ export function PaneToolbar({
   onGitChanges,
   onFileSearch,
   onClipboardHistory,
-  onInjectSkills,
   onAnnotate,
   onTelescope,
   onEnvSync,
@@ -159,20 +156,6 @@ export function PaneToolbar({
               aria-label="Clipboard history"
             >
               <Clipboard size={14} />
-            </button>
-          </ToolbarTooltip>
-        )}
-        {onInjectSkills && (
-          <ToolbarTooltip label={`Inject Fleet Skills (${shortcutLabel('inject-skills')})`}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onInjectSkills();
-              }}
-              className={BUTTON_CLASS}
-              aria-label="Inject Fleet skills"
-            >
-              <BookOpen size={14} />
             </button>
           </ToolbarTooltip>
         )}
