@@ -258,6 +258,9 @@ export const IPC_CHANNELS = {
   ENV_EDITOR_RENAME: 'env-editor:rename',
   ENV_EDITOR_DELETE: 'env-editor:delete',
   ENV_EDITOR_RESTORE: 'env-editor:restore',
+  // Project Notes
+  NOTES_READ: 'notes:read',
+  NOTES_WRITE: 'notes:write',
   // Diagnostics ("Report a Problem")
   DIAGNOSTICS_GET_INFO: 'diagnostics:get-info',
   DIAGNOSTICS_GET_LOG_TAIL: 'diagnostics:get-log-tail',

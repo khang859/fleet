@@ -8,6 +8,12 @@ export function dirname(filePath: string): string {
   return lastSlash === -1 ? '.' : filePath.slice(0, lastSlash);
 }
 
+/** Last path segment, tolerant of both `/` and `\` separators and trailing slashes. */
+export function basename(filePath: string): string {
+  const parts = filePath.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? filePath;
+}
+
 export function resolve(base: string, relative: string): string {
   if (relative.startsWith('/')) return relative;
   const parts = `${base}/${relative}`.split('/');
