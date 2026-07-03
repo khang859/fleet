@@ -1179,6 +1179,13 @@ export function registerIpcHandlers(
     (_e, scopePath: string, text: string, expectedMtimeMs?: number, pathContext?: PathContext) =>
       writeNote(notesBaseDir, noteKey(scopePath, pathContext), text, scopePath, expectedMtimeMs)
   );
+
+  // ── Shell Environment ─────────────────────────────────────────────────────
+  // Read-only: returns the env snapshot captured for a pane's PTY at spawn time,
+  // or null if the pane has no live PTY (e.g. a non-terminal pane).
+  ipcMain.handle(IPC_CHANNELS.SHELL_ENV_GET, (_e, paneId: string) =>
+    ptyManager.getEnvSnapshot(paneId)
+  );
 }
 
 // Exported for testing

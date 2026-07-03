@@ -141,6 +141,7 @@ import type {
   EnvTrashResult
 } from '../shared/env-editor-types';
 import type { NoteReadResult, NoteWriteResult } from '../shared/notes-types';
+import type { ShellEnvSnapshot } from '../shared/shell-env-types';
 import type { SessionAgent, SessionSummary, SessionTranscript } from '../shared/sessions';
 import type {
   ChatConversation,
@@ -823,6 +824,10 @@ const fleetApi = {
         expectedMtimeMs,
         pathContext
       )
+  },
+  shellEnv: {
+    get: async (paneId: string): Promise<ShellEnvSnapshot | null> =>
+      typedInvoke<ShellEnvSnapshot | null>(IPC_CHANNELS.SHELL_ENV_GET, paneId)
   },
   sessions: {
     list: async (): Promise<SessionSummary[]> => typedInvoke(IPC_CHANNELS.SESSIONS_LIST),
