@@ -1,5 +1,5 @@
 import { attach } from './core';
-import { screenshot, snapshot } from './verbs';
+import { screenshot, snapshot, click, type, keys, evalExpr } from './verbs';
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(`--${name}`);
@@ -32,6 +32,34 @@ async function main(): Promise<void> {
       }
       case 'snapshot': {
         console.log(await snapshot(page));
+        break;
+      }
+      case 'click': {
+        const sel = process.argv[3];
+        if (!sel) throw new Error('click requires a selector');
+        await click(page, sel);
+        console.log(`clicked: ${sel}`);
+        break;
+      }
+      case 'type': {
+        const sel = process.argv[3];
+        const text = process.argv[4];
+        if (!sel || text === undefined) throw new Error('type requires <selector> <text>');
+        await type(page, sel, text);
+        console.log(`typed into: ${sel}`);
+        break;
+      }
+      case 'keys': {
+        const chord = process.argv[3];
+        if (!chord) throw new Error('keys requires a chord, e.g. Meta+K');
+        await keys(page, chord);
+        console.log(`pressed: ${chord}`);
+        break;
+      }
+      case 'eval': {
+        const expr = process.argv[3];
+        if (!expr) throw new Error('eval requires a JS expression');
+        console.log(await evalExpr(page, expr));
         break;
       }
       default:

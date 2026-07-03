@@ -40,3 +40,26 @@ export async function screenshot(
 export async function snapshot(page: Page): Promise<string> {
   return page.locator('body').ariaSnapshot();
 }
+
+export async function click(page: Page, sel: string): Promise<void> {
+  await resolveLocator(page, sel).click();
+}
+
+export async function type(page: Page, sel: string, text: string): Promise<void> {
+  await resolveLocator(page, sel).fill(text);
+}
+
+export async function keys(page: Page, chord: string): Promise<void> {
+  await page.keyboard.press(chord);
+}
+
+export async function evalExpr(page: Page, expr: string): Promise<string> {
+  return page.evaluate((e) => {
+    const value: unknown = (0, eval)(e);
+    try {
+      return JSON.stringify(value, null, 2) ?? String(value);
+    } catch {
+      return String(value);
+    }
+  }, expr);
+}
