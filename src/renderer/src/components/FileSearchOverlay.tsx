@@ -273,34 +273,6 @@ export function FileSearchOverlay({
 
   const recentGenerations = useMemo(() => completedGenerations.slice(0, 5), [completedGenerations]);
 
-  const allGeneratedFiles = useMemo(
-    () =>
-      completedGenerations.flatMap((g) =>
-        g.images
-          .filter((img) => img.filename)
-          .map((img) => ({
-            path: `${window.fleet.homeDir}/.fleet/images/generations/${g.id}/${img.filename}`,
-            name: img.filename!,
-            parentDir: `${window.fleet.homeDir}/.fleet/images/generations/${g.id}`,
-            modifiedAt: new Date(g.createdAt).getTime(),
-            size: 0
-          }))
-      ),
-    [completedGenerations]
-  );
-
-  // Result counts for scope tabs
-  const fileResultCount = useMemo(() => {
-    if (!query.trim()) return getRecentFiles().length;
-    return results.length;
-  }, [query, results]);
-
-  const generatedResultCount = useMemo(() => {
-    if (!query.trim()) return allGeneratedFiles.length;
-    const q = query.trim().toLowerCase();
-    return allGeneratedFiles.filter((f) => f.name.toLowerCase().includes(q)).length;
-  }, [query, allGeneratedFiles]);
-
   // Time-grouped generations for the Generated scope
   const groupedGenerations = useMemo(
     () => groupByTime(completedGenerations, (g) => new Date(g.createdAt).getTime()),
@@ -607,7 +579,7 @@ export function FileSearchOverlay({
                 </button>
               )}
             </div>
-            <div className="relative flex gap-2 px-3 py-2 border-b border-fleet-border overflow-x-auto">
+            <div className="no-scrollbar relative flex gap-2 px-3 py-2 border-b border-fleet-border overflow-x-auto">
               {recentGenerations.map((gen) => (
                 <GeneratedThumbnail key={gen.id} generation={gen} onSelect={handleSelect} />
               ))}
@@ -620,7 +592,7 @@ export function FileSearchOverlay({
             <div className="px-3 py-1 text-[10px] text-fleet-text-subtle uppercase tracking-wider">
               Recent Images
             </div>
-            <div className="relative flex gap-2 px-3 py-2 border-b border-fleet-border overflow-x-auto">
+            <div className="no-scrollbar relative flex gap-2 px-3 py-2 border-b border-fleet-border overflow-x-auto">
               {recentImages.map((img) => (
                 <button
                   key={img.path}
@@ -682,12 +654,6 @@ export function FileSearchOverlay({
       {/* Scope tabs */}
       <div className="px-3 py-1.5 border-b border-fleet-border flex items-center gap-1">
         {SCOPE_OPTIONS.map(({ id, label, icon: Icon }) => {
-          const count =
-            id === 'generated'
-              ? generatedResultCount
-              : id === 'files'
-                ? fileResultCount
-                : undefined;
           return (
             <button
               key={id}
@@ -700,9 +666,6 @@ export function FileSearchOverlay({
             >
               <Icon size={11} />
               {label}
-              {count !== undefined && count > 0 && (
-                <span className="text-[10px] text-fleet-text-subtle ml-0.5">({count})</span>
-              )}
             </button>
           );
         })}
@@ -729,7 +692,7 @@ export function FileSearchOverlay({
       </div>
 
       {/* Results */}
-      <div ref={listRef} className="overflow-y-auto py-1">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pt-1 pb-2">
         {scope === 'generated' && renderGeneratedScope()}
         {scope === 'files' && renderFileResults()}
         {scope === 'all' && renderAllScope()}

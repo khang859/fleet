@@ -246,7 +246,10 @@ export function TabItem({
             <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full translate-y-0.5" />
           )}
 
-          {!isActive && showActivityGlyph && (
+          {/* Show the status glyph in both active and inactive states so the
+              label never shifts when a tab is selected (the glyph slot stays
+              filled), and the focused tab still shows live activity. */}
+          {showActivityGlyph && (
             <PaneStatusGlyph state={activity.state} className="flex-shrink-0" />
           )}
           {!isActive && !showActivityGlyph && badge && (
@@ -313,7 +316,7 @@ export function TabItem({
 
           {/* Always-visible close button (dimmed when not hovered) */}
           <button
-            className="opacity-40 group-hover:opacity-100 px-1 text-fleet-text-muted hover:text-red-400 hover:border-2 hover:border-red-500 rounded transition-opacity active:scale-90"
+            className="opacity-40 group-hover:opacity-100 px-1 text-fleet-text-muted hover:text-red-400 hover:bg-red-500/10 rounded transition-opacity active:scale-90"
             onClick={(e) => {
               e.stopPropagation();
               onClose();

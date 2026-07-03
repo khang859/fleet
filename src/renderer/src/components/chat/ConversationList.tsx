@@ -1,5 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Plus, Trash2, GitBranch, Download, Pin, Search, X, FolderOpen } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  GitBranch,
+  Download,
+  Pin,
+  Search,
+  X,
+  FolderOpen,
+  MessageSquare
+} from 'lucide-react';
 import { useChatStore } from '../../store/chat-store';
 import type { ChatConversation } from '../../../../shared/chat-types';
 
@@ -234,20 +244,24 @@ export function ConversationList(): React.JSX.Element {
       >
         <Plus size={15} /> New chat
       </button>
-      <div className="mx-2 mb-1 flex items-center gap-1.5 rounded-md border border-fleet-border bg-fleet-surface-2 px-2.5 transition-colors focus-within:border-fleet-border-strong">
-        <Search size={13} className="shrink-0 text-fleet-text-muted" />
-        <input
-          value={searchQuery}
-          onChange={(e) => void search(e.target.value)}
-          placeholder="Search chats…"
-          className="min-w-0 flex-1 bg-transparent py-2 text-xs text-fleet-text outline-none placeholder:text-fleet-text-muted"
-        />
-        {searchQuery && (
-          <button aria-label="Clear search" onClick={clearSearch}>
-            <X size={13} className="text-fleet-text-muted hover:text-fleet-text" />
-          </button>
-        )}
-      </div>
+      {/* Nothing to search when there are no conversations - hide the field so the
+          zero state isn't an input that filters an empty list. */}
+      {conversations.length > 0 && (
+        <div className="mx-2 mb-1 flex items-center gap-1.5 rounded-md border border-fleet-border bg-fleet-surface-2 px-2.5 transition-colors focus-within:border-fleet-border-strong">
+          <Search size={13} className="shrink-0 text-fleet-text-muted" />
+          <input
+            value={searchQuery}
+            onChange={(e) => void search(e.target.value)}
+            placeholder="Search chats…"
+            className="min-w-0 flex-1 bg-transparent py-2 text-xs text-fleet-text outline-none placeholder:text-fleet-text-muted"
+          />
+          {searchQuery && (
+            <button aria-label="Clear search" onClick={clearSearch}>
+              <X size={13} className="text-fleet-text-muted hover:text-fleet-text" />
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {searchHits !== null ? (
@@ -268,7 +282,10 @@ export function ConversationList(): React.JSX.Element {
             ))
           )
         ) : conversations.length === 0 ? (
-          <p className="px-3 py-6 text-center text-xs text-fleet-text-subtle">No chats yet.</p>
+          <div className="flex flex-col items-center gap-2 px-3 py-10 text-center">
+            <MessageSquare size={22} className="text-fleet-text-subtle" strokeWidth={1.5} />
+            <p className="text-xs text-fleet-text-subtle">No chats yet. Start one above.</p>
+          </div>
         ) : (
           <>
             {pinned.length > 0 && (

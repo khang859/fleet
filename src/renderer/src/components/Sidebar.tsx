@@ -1741,7 +1741,10 @@ export function Sidebar({
             Tools
           </span>
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-medium tabular-nums text-fleet-text-subtle">
+            <span
+              className="text-[10px] font-medium tabular-nums text-fleet-text-subtle"
+              title={`${enabledToolCount} of ${TOGGLEABLE_TOOLS.length} tools enabled`}
+            >
               {enabledToolCount}/{TOGGLEABLE_TOOLS.length}
             </span>
             <button
