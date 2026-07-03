@@ -20,6 +20,7 @@ export function ShellEnvModal({
   const [selected, setSelected] = useState(0);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const selectedRowRef = useRef<HTMLDivElement>(null);
 
   // Load the snapshot each time the modal opens for the focused pane.
   useEffect(() => {
@@ -30,6 +31,7 @@ export function ShellEnvModal({
     setSelected(0);
     if (!paneId) {
       setSnapshot(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -51,7 +53,7 @@ export function ShellEnvModal({
 
   // Flat list of currently-visible rows, in section order, for keyboard nav.
   const visible = useMemo(() => {
-    if (!snapshot) return [] as ShellEnvVar[];
+    if (!snapshot) return [];
     const filtered = filterVars(snapshot.vars, query);
     return SECTIONS.flatMap((s) => varsForSection(filtered, s.source));
   }, [snapshot, query]);
@@ -59,6 +61,10 @@ export function ShellEnvModal({
   useEffect(() => {
     setSelected((i) => Math.min(i, Math.max(0, visible.length - 1)));
   }, [visible.length]);
+
+  useEffect(() => {
+    selectedRowRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [selected]);
 
   const copyValue = useCallback((v: ShellEnvVar) => {
     void navigator.clipboard.writeText(v.value);
@@ -193,6 +199,7 @@ export function ShellEnvModal({
                     return (
                       <div
                         key={v.key}
+                        ref={isSelected ? selectedRowRef : undefined}
                         style={{ gridTemplateColumns: `minmax(0, ${keyCh}ch) minmax(0, 1fr) auto` }}
                         className={`group mx-2 grid h-8 items-center rounded-md px-3 font-mono ${
                           isSelected
@@ -209,7 +216,7 @@ export function ShellEnvModal({
                         </span>
                         <span
                           title={masked ? undefined : v.value}
-                          className="truncate font-mono text-xs text-neutral-400"
+                          className={`truncate font-mono text-xs ${masked ? 'text-neutral-500' : 'text-neutral-400'}`}
                         >
                           {masked ? '••••••••' : v.value}
                         </span>
