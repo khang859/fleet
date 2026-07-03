@@ -2,6 +2,11 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { createLogger } from './logger';
+import { useWorkspaceStore } from './store/workspace-store';
+import { useChatStore } from './store/chat-store';
+import { useSettingsStore } from './store/settings-store';
+import { useKanbanStore } from './store/kanban-store';
+import { useSessionsStore } from './store/sessions-store';
 import './index.css';
 
 const log = createLogger('renderer');
@@ -65,6 +70,21 @@ const fontLoads = fontFamilies.flatMap((family) =>
     document.fonts.load(`${style} ${weight} 16px "${family}"`)
   )
 );
+
+// fleet-drive: expose store state to `npm run drive -- eval` in dev only.
+// Note: theme is React state (see hooks/use-app-theme.ts), not a store — read
+// it from the DOM instead. Never present in a packaged build.
+if (import.meta.env.DEV) {
+  window.__FLEET__ = {
+    stores: {
+      workspace: useWorkspaceStore,
+      chat: useChatStore,
+      settings: useSettingsStore,
+      kanban: useKanbanStore,
+      sessions: useSessionsStore
+    }
+  };
+}
 
 const fontTimeout = new Promise<void>((resolve) => setTimeout(resolve, 3000));
 

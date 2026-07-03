@@ -9,7 +9,7 @@ import {
   shell
 } from 'electron';
 import { safeOpenExternal } from './safe-external';
-import { existsSync, statSync, mkdirSync } from 'fs';
+import { existsSync, statSync, mkdirSync, writeFileSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { join, dirname, resolve } from 'path';
@@ -24,6 +24,7 @@ import { registerIpcHandlers } from './ipc-handlers';
 import { GitService } from './git-service';
 import { SettingsStore } from './settings-store';
 import { IPC_CHANNELS, IS_FLEET_DEV, SOCKET_PATH } from '../shared/constants';
+import { deriveDebugPort, sessionFilePath, type DriveSession } from '../shared/drive-session';
 import { SocketSupervisor } from './socket-supervisor';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile, installOpencodePlugin } from './install-fleet-cli';
@@ -243,7 +244,8 @@ function createWindow(): void {
       preload: preloadPath,
       contextIsolation: true,
       sandbox: false,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: !IS_FLEET_DEV
     },
     titleBarStyle: 'hidden',
     ...(process.platform === 'darwin'
@@ -312,9 +314,31 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(fileURLToPath(new URL('../renderer/index.html', import.meta.url)));
   }
+
+  if (IS_FLEET_DEV && process.env.ELECTRON_RENDERER_URL) {
+    const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+    mainWindow.webContents.once('did-finish-load', () => {
+      try {
+        const file = sessionFilePath(process.cwd());
+        mkdirSync(dirname(file), { recursive: true });
+        const session: DriveSession = { port: fleetDrivePort, rendererUrl, pid: process.pid };
+        writeFileSync(file, JSON.stringify(session, null, 2));
+      } catch (err) {
+        log.warn('failed to write fleet-drive session', { error: String(err) });
+      }
+    });
+  }
 }
 
 app.setName('Fleet');
+
+// fleet-drive: enable CDP so `npm run drive` can attach to this dev window.
+// Dev-only, loopback-only, per-checkout port. Never present in packaged builds.
+let fleetDrivePort = 0;
+if (IS_FLEET_DEV) {
+  fleetDrivePort = deriveDebugPort(process.cwd(), process.env.FLEET_DEBUG_PORT);
+  app.commandLine.appendSwitch('remote-debugging-port', String(fleetDrivePort));
+}
 
 // Single instance lock — prevent multiple Fleet instances from fighting over fleet.sock
 // In dev mode (FLEET_DEV=1), skip the lock so dev and production can coexist.
