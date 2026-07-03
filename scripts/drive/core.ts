@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs';
+import { z } from 'zod';
 import { chromium, type Browser, type Page } from 'playwright';
 import { sessionFilePath, type DriveSession } from '../../src/shared/drive-session';
 
@@ -6,6 +7,12 @@ export interface Attached {
   browser: Browser;
   page: Page;
 }
+
+const sessionSchema = z.object({
+  port: z.number(),
+  rendererUrl: z.string(),
+  pid: z.number()
+});
 
 function readSession(): DriveSession {
   const file = sessionFilePath(process.cwd());
@@ -17,16 +24,11 @@ function readSession(): DriveSession {
       `No fleet-drive session at ${file}. Start \`npm run dev\` in this checkout first.`
     );
   }
-  const parsed: unknown = JSON.parse(raw);
-  if (
-    typeof parsed !== 'object' ||
-    parsed === null ||
-    typeof (parsed as Record<string, unknown>).port !== 'number' ||
-    typeof (parsed as Record<string, unknown>).rendererUrl !== 'string'
-  ) {
+  const result = sessionSchema.safeParse(JSON.parse(raw));
+  if (!result.success) {
     throw new Error(`Malformed session file at ${file}`);
   }
-  return parsed as DriveSession;
+  return result.data;
 }
 
 /**

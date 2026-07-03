@@ -1,16 +1,20 @@
 import { attach } from './core';
 import { screenshot, snapshot, click, type, keys, evalExpr } from './verbs';
 
+function print(msg: string): void {
+  process.stdout.write(`${msg}\n`);
+}
+
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(`--${name}`);
   return i !== -1 ? args[i + 1] : undefined;
 }
 
 async function main(): Promise<void> {
-  const [verb] = process.argv.slice(2);
+  const verb = process.argv.at(2);
 
   if (!verb || verb === 'help') {
-    console.log('Usage: npm run drive -- <status|screenshot|snapshot|click|type|keys|eval> [args]');
+    print('Usage: npm run drive -- <status|screenshot|snapshot|click|type|keys|eval> [args]');
     return;
   }
 
@@ -18,7 +22,7 @@ async function main(): Promise<void> {
   try {
     switch (verb) {
       case 'status': {
-        console.log(`Attached to: ${page.url()} (title: ${await page.title()})`);
+        print(`Attached to: ${page.url()} (title: ${await page.title()})`);
         break;
       }
       case 'screenshot': {
@@ -27,39 +31,39 @@ async function main(): Promise<void> {
           selector: flag(rest, 'selector'),
           out: flag(rest, 'out')
         });
-        console.log(out);
+        print(out);
         break;
       }
       case 'snapshot': {
-        console.log(await snapshot(page));
+        print(await snapshot(page));
         break;
       }
       case 'click': {
-        const sel = process.argv[3];
+        const sel = process.argv.at(3);
         if (!sel) throw new Error('click requires a selector');
         await click(page, sel);
-        console.log(`clicked: ${sel}`);
+        print(`clicked: ${sel}`);
         break;
       }
       case 'type': {
-        const sel = process.argv[3];
-        const text = process.argv[4];
+        const sel = process.argv.at(3);
+        const text = process.argv.at(4);
         if (!sel || text === undefined) throw new Error('type requires <selector> <text>');
         await type(page, sel, text);
-        console.log(`typed into: ${sel}`);
+        print(`typed into: ${sel}`);
         break;
       }
       case 'keys': {
-        const chord = process.argv[3];
+        const chord = process.argv.at(3);
         if (!chord) throw new Error('keys requires a chord, e.g. Meta+K');
         await keys(page, chord);
-        console.log(`pressed: ${chord}`);
+        print(`pressed: ${chord}`);
         break;
       }
       case 'eval': {
-        const expr = process.argv[3];
+        const expr = process.argv.at(3);
         if (!expr) throw new Error('eval requires a JS expression');
-        console.log(await evalExpr(page, expr));
+        print(await evalExpr(page, expr));
         break;
       }
       default:
@@ -71,6 +75,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  console.error(err instanceof Error ? err.message : String(err));
+  process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(1);
 });

@@ -13,7 +13,9 @@ async function solidPng(): Promise<Buffer> {
 async function noisyPng(): Promise<Buffer> {
   const pixels = Buffer.alloc(32 * 32 * 3);
   for (let i = 0; i < pixels.length; i++) pixels[i] = (i * 97) % 256;
-  return sharp(pixels, { raw: { width: 32, height: 32, channels: 3 } }).png().toBuffer();
+  return sharp(pixels, { raw: { width: 32, height: 32, channels: 3 } })
+    .png()
+    .toBuffer();
 }
 
 describe('isLikelyBlank', () => {

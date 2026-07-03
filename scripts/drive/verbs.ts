@@ -54,10 +54,14 @@ export async function keys(page: Page, chord: string): Promise<void> {
 }
 
 export async function evalExpr(page: Page, expr: string): Promise<string> {
+  // No named function inside the callback: tsx/esbuild keepNames would inject a
+  // __name() helper that is undefined in the browser context. The try/catch
+  // handles circular references; JSON.stringify yields "undefined" for
+  // functions/undefined values, which prints acceptably.
   return page.evaluate((e) => {
     const value: unknown = (0, eval)(e);
     try {
-      return JSON.stringify(value, null, 2) ?? String(value);
+      return JSON.stringify(value, null, 2);
     } catch {
       return String(value);
     }

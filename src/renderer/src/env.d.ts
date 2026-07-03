@@ -11,5 +11,10 @@ declare module 'react' {
 declare global {
   interface Window {
     fleet: FleetApi;
+    // fleet-drive dev bridge: exposes zustand stores to `npm run drive -- eval`.
+    // Present only in dev builds (see main.tsx). Never in packaged builds.
+    __FLEET__?: {
+      stores: Record<string, { getState: () => unknown }>;
+    };
   }
 }
