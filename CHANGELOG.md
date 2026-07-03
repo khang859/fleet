@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.84.2
+
+- **Fix Chat transcript reordering tool calls when a turn finished** - assistant turns now record the true chronological order of text and tool-call blocks, so a reply that goes text → tool → text renders identically while streaming and once complete, instead of grouping all tool cards above the text on completion (#459).
+
 ## v2.84.1
 
 - **Fix orphaned Git worktree tab that couldn't be closed** - closing a worktree tab's group down to a single remaining tab left it permanently stuck; both the tab's close button and Cmd+W now correctly close it, including the on-disk worktree cleanup (#458).
