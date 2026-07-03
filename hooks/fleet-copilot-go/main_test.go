@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -163,7 +165,7 @@ func TestSendEvent_SurvivesSIGINT(t *testing.T) {
 			t.Errorf("expected status waiting_for_input, got %s", got.Status)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("event not received after SIGINT — binary was killed by signal")
+		t.Fatal("event not received after SIGINT - binary was killed by signal")
 	}
 }
 
@@ -220,5 +222,26 @@ func TestStatusMapping(t *testing.T) {
 				t.Errorf("%s: expected status %s, got %s", tc.event, tc.expected, state.Status)
 			}
 		})
+	}
+}
+
+func TestEmitSessionStartContext(t *testing.T) {
+	var buf bytes.Buffer
+	emitSessionStartContext(&buf)
+
+	var out SessionStartOutput
+	if err := json.Unmarshal(buf.Bytes(), &out); err != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput was: %q", err, buf.String())
+	}
+	if out.HookSpecificOutput.HookEventName != "SessionStart" {
+		t.Errorf("expected hookEventName SessionStart, got %q", out.HookSpecificOutput.HookEventName)
+	}
+	if out.HookSpecificOutput.AdditionalContext == "" {
+		t.Error("expected non-empty additionalContext")
+	}
+	wantPath := filepath.Join(homeDir(), ".fleet", "skills", "fleet.md")
+	if !strings.Contains(out.HookSpecificOutput.AdditionalContext, wantPath) {
+		t.Errorf("expected additionalContext to contain skill path %q, got %q",
+			wantPath, out.HookSpecificOutput.AdditionalContext)
 	}
 }

@@ -74,6 +74,31 @@ type SocketResponse struct {
 	Reason   string `json:"reason"`
 }
 
+const fleetSkillContextTemplate = "You're running inside Fleet. A `fleet` CLI is available (open files/images in Fleet tabs, annotate web pages, generate/edit AI images). Read %s for the full command reference before using it."
+
+type SessionStartOutput struct {
+	HookSpecificOutput struct {
+		HookEventName     string `json:"hookEventName"`
+		AdditionalContext string `json:"additionalContext"`
+	} `json:"hookSpecificOutput"`
+}
+
+// emitSessionStartContext writes the Fleet skill pointer as SessionStart hook
+// output. Claude Code reads this JSON from stdout and injects additionalContext
+// into the session. The skill path is absolute (via homeDir) so Claude's Read
+// tool can open it on any platform.
+func emitSessionStartContext(w io.Writer) {
+	skillPath := filepath.Join(homeDir(), ".fleet", "skills", "fleet.md")
+	var out SessionStartOutput
+	out.HookSpecificOutput.HookEventName = "SessionStart"
+	out.HookSpecificOutput.AdditionalContext = fmt.Sprintf(fleetSkillContextTemplate, skillPath)
+	data, err := json.Marshal(out)
+	if err != nil {
+		return
+	}
+	fmt.Fprintln(w, string(data))
+}
+
 func getTTY() *string {
 	if runtime.GOOS == "windows" {
 		return nil
@@ -228,6 +253,7 @@ func main() {
 
 	case "SessionStart":
 		state.Status = "waiting_for_input"
+		emitSessionStartContext(os.Stdout)
 
 	case "SessionEnd":
 		state.Status = "ended"
