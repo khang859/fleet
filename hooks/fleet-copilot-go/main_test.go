@@ -165,7 +165,7 @@ func TestSendEvent_SurvivesSIGINT(t *testing.T) {
 			t.Errorf("expected status waiting_for_input, got %s", got.Status)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("event not received after SIGINT — binary was killed by signal")
+		t.Fatal("event not received after SIGINT - binary was killed by signal")
 	}
 }
 
