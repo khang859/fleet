@@ -10,7 +10,8 @@ export default defineConfig({
       'src/main/**/__tests__/**/*.test.ts',
       'src/shared/__tests__/**/*.test.ts',
       'src/renderer/src/**/__tests__/**/*.test.ts',
-      'src/renderer/copilot/src/**/__tests__/**/*.test.ts'
+      'src/renderer/copilot/src/**/__tests__/**/*.test.ts',
+      'scripts/**/__tests__/**/*.test.ts'
     ],
     setupFiles: ['src/test-setup.ts'],
     clearMocks: true,
