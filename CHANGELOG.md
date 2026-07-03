@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.86.0
+
+- **Project Notes** - a new pane-toolbar tool (next to Telescope) that gives every project a Markdown scratchpad. Notes are scoped to the git repo root (folder fallback) so the same note shows from any subfolder, stored centrally under `~/.fleet/notes` to keep your repos pristine. Features a split live editor+preview, debounced autosave with ⌘S, and an external-change conflict guard (#464).
+
 ## v2.85.0
 
 - **Auto-inject the Fleet skill into Claude Code** - Claude Code running inside Fleet now learns the `fleet` CLI automatically via the `SessionStart` hook, so agents can drive Fleet (open files/images, annotate pages, generate images) with no manual step; the "Inject Fleet Skills" toolbar button and shortcut are removed (#463).
