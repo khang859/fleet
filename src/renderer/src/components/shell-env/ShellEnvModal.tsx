@@ -121,7 +121,7 @@ export function ShellEnvModal({
               title={snapshot.cwd}
               className="flex items-center gap-1.5 rounded-md bg-neutral-800 px-2.5 py-1 text-xs text-neutral-300"
             >
-              <span className="max-w-[260px] truncate">{snapshot.cwd}</span>
+              <span className="max-w-[260px] truncate font-mono">{snapshot.cwd}</span>
             </div>
           )}
           <button
@@ -153,7 +153,7 @@ export function ShellEnvModal({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter variables…"
             aria-label="Filter environment variables"
-            className="h-8 w-full rounded-md border border-neutral-800 bg-neutral-950 pl-8 pr-3 font-mono text-xs text-neutral-200 placeholder:font-sans placeholder:text-neutral-600 focus-visible:border-neutral-600 focus-visible:outline-none"
+            className="h-8 w-full rounded-md border border-white/10 bg-neutral-950 pl-8 pr-3 font-mono text-xs text-neutral-200 placeholder:font-sans placeholder:text-neutral-600 focus-visible:border-neutral-600 focus-visible:outline-none"
           />
         </div>
 
@@ -173,9 +173,13 @@ export function ShellEnvModal({
             SECTIONS.map((section) => {
               const rows = varsForSection(filterVars(snapshot.vars, query), section.source);
               if (rows.length === 0) return null;
+              // Share one key-column width across every row in the section so
+              // values line up in a scannable column (capped so one long key
+              // can't blow the column out; longer keys truncate).
+              const keyCh = Math.min(40, Math.max(...rows.map((r) => r.key.length)));
               return (
                 <div key={section.source}>
-                  <div className="sticky top-0 z-10 flex items-center gap-2 bg-neutral-900/95 px-5 pb-1.5 pt-4 backdrop-blur-sm">
+                  <div className="sticky top-0 z-10 flex items-center gap-2 bg-neutral-900/95 px-5 pb-2 pt-5 backdrop-blur-sm">
                     <span className={`h-2 w-2 rounded-full ${section.dotClass}`} />
                     <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">
                       {section.label}
@@ -189,8 +193,11 @@ export function ShellEnvModal({
                     return (
                       <div
                         key={v.key}
-                        className={`group mx-2 grid h-8 grid-cols-[minmax(140px,max-content)_1fr_auto] items-center rounded-md px-3 ${
-                          isSelected ? 'bg-neutral-800/60' : 'hover:bg-neutral-800/50'
+                        style={{ gridTemplateColumns: `minmax(0, ${keyCh}ch) minmax(0, 1fr) auto` }}
+                        className={`group mx-2 grid h-8 items-center rounded-md px-3 font-mono ${
+                          isSelected
+                            ? 'bg-neutral-800/60 ring-1 ring-inset ring-white/10'
+                            : 'hover:bg-neutral-800/50'
                         }`}
                       >
                         <span
@@ -206,7 +213,11 @@ export function ShellEnvModal({
                         >
                           {masked ? '••••••••' : v.value}
                         </span>
-                        <span className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+                        <span
+                          className={`flex items-center gap-0.5 transition group-hover:opacity-100 focus-within:opacity-100 ${
+                            isSelected ? 'opacity-100' : 'opacity-0'
+                          }`}
+                        >
                           {isSecret(v) && (
                             <button
                               onClick={() => toggleReveal(v.key)}
