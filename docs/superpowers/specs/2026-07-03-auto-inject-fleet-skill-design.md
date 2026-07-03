@@ -42,9 +42,9 @@ The old fallback prompt did the same (it built the path from `window.fleet.homeD
 
 ### Injection timing
 
-`SessionStart` fires with a `source` field.
-Inject on `startup`, `resume`, and `clear` (every time the agent's context is initialized or reset).
-Skip `compact` (prior context is summarized, not wiped, so the pointer is still present).
+`SessionStart` fires with a `source` field whose only values are `startup`, `resume`, `clear`, and `compact`.
+We inject on all of them: every time the agent's context is initialized, reset, or compacted (a compaction summary is not guaranteed to preserve the pointer, so re-injecting on `compact` keeps it present).
+Because those are the only source values, the hook emits unconditionally on `SessionStart` with no source-gating and no need to read the `source` field.
 
 ## Data flow
 
@@ -52,8 +52,7 @@ Skip `compact` (prior context is summarized, not wiped, so the pointer is still 
 Fleet spawns PTY (FLEET_SESSION=1) -> user runs `claude`
   -> Claude Code fires SessionStart hook (fleet-copilot binary)
       -> binary forwards the event to Fleet's unix socket (unchanged)
-      -> if source in {startup, resume, clear}:
-           print to stdout:
+      -> print to stdout (all SessionStart sources):
            {"hookSpecificOutput":{"hookEventName":"SessionStart",
             "additionalContext":"<pointer>"}}
       -> Claude Code injects the pointer into session context
@@ -66,11 +65,9 @@ Fleet spawns PTY (FLEET_SESSION=1) -> user runs `claude`
 
 Additive change only.
 
-- Add a `Source` field (`string`, json tag `source,omitempty`) to the `HookInput` struct.
 - In the `SessionStart` case, keep the existing socket `sendEvent(state, false)` call at the bottom of `main` (event forwarding is unchanged).
-  Additionally, when `Source` is `startup`, `resume`, or `clear`, print the `additionalContext` JSON to stdout.
-  Do nothing extra when `Source` is `compact`.
-- Add a helper with a testable signature, `emitSessionStartContext(w io.Writer, source string)`, that writes the JSON to `w` (the `SessionStart` case passes `os.Stdout`).
+  Additionally, print the `additionalContext` JSON to stdout unconditionally (all `SessionStart` sources inject).
+- Add a helper with a testable signature, `emitSessionStartContext(w io.Writer)`, that writes the JSON to `w` (the `SessionStart` case passes `os.Stdout`).
   Taking an `io.Writer` lets the test assert the output without invoking `main()` (see the test section).
   The pointer text lives as a constant template; the helper fills in the absolute skill-file path from `homeDir()`.
 
@@ -92,12 +89,11 @@ Rebuild locally only so the dev app picks up the change.
 ### 3. `hooks/fleet-copilot-go/main_test.go`
 
 The existing tests do not invoke `main()`; they test `sendEvent` and a simulated status-mapping switch (`TestStatusMapping`).
-The new helper follows the same pattern: because `emitSessionStartContext(w io.Writer, source string)` takes a writer, the test passes a `bytes.Buffer` and asserts on its contents.
+The new helper follows the same pattern: because `emitSessionStartContext(w io.Writer)` takes a writer, the test passes a `bytes.Buffer` and asserts on its contents.
 
 Add a test covering the new behavior:
 
-- `source` = `startup` / `resume` / `clear` each write valid `additionalContext` JSON (correct `hookEventName`, non-empty `additionalContext` containing the absolute skill path) to the buffer.
-- `source` = `compact` writes nothing to the buffer.
+- `emitSessionStartContext` writes valid JSON to the buffer: it parses back to an object with `hookSpecificOutput.hookEventName` == `SessionStart` and a non-empty `additionalContext` containing the absolute skill path.
 - Extend `TestStatusMapping` (or add a case) so the `SessionStart` status mapping stays covered; the socket-event path is already exercised in the existing simulated style.
 
 ### 4. Renderer removal (delete the manual path entirely)
@@ -124,8 +120,8 @@ Add a test covering the new behavior:
   This is accepted: Claude Code is the primary target, and opencode is covered by its own plugin path.
 - PiTab is slated for removal anyway, so cleaning up its wiring now is harmless.
 - Per-session context cost stays near zero (a one-line pointer, not the full file).
-- Injection re-fires on `/clear` and resume.
-  Claude Code re-runs SessionStart hooks fresh on resume (it does not replay injected context from the transcript), so injecting on `resume` is necessary to keep the pointer present, not duplicative.
+- Injection re-fires on `/clear`, resume, and compaction.
+  Claude Code re-runs SessionStart hooks fresh on resume (it does not replay injected context from the transcript), so re-injecting is necessary to keep the pointer present, not duplicative.
 
 ## Verification
 
