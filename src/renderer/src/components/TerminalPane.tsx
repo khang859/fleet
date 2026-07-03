@@ -164,6 +164,7 @@ export function TerminalPane({
         }
         onAnnotate={() => openAnnotateModal()}
         onTelescope={() => document.dispatchEvent(new CustomEvent('fleet:toggle-telescope'))}
+        onNotes={() => document.dispatchEvent(new CustomEvent('fleet:toggle-notes'))}
         onEnvSync={() => document.dispatchEvent(new CustomEvent('fleet:toggle-env-sync'))}
         onEnvEditor={() => document.dispatchEvent(new CustomEvent('fleet:toggle-env-editor'))}
       />

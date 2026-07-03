@@ -8,6 +8,7 @@ import {
   Clipboard,
   Crosshair,
   Telescope,
+  NotebookPen,
   FolderSync,
   FilePenLine
 } from 'lucide-react';
@@ -64,6 +65,7 @@ type PaneToolbarProps = {
   onClipboardHistory?: () => void;
   onAnnotate?: () => void;
   onTelescope?: () => void;
+  onNotes?: () => void;
   onEnvSync?: () => void;
   onEnvEditor?: () => void;
 };
@@ -80,6 +82,7 @@ export function PaneToolbar({
   onClipboardHistory,
   onAnnotate,
   onTelescope,
+  onNotes,
   onEnvSync,
   onEnvEditor
 }: PaneToolbarProps): React.JSX.Element {
@@ -184,6 +187,20 @@ export function PaneToolbar({
               aria-label="Telescope"
             >
               <Telescope size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
+        {onNotes && (
+          <ToolbarTooltip label="Project Notes">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onNotes();
+              }}
+              className={BUTTON_CLASS}
+              aria-label="Project notes"
+            >
+              <NotebookPen size={14} />
             </button>
           </ToolbarTooltip>
         )}

@@ -140,6 +140,7 @@ import type {
   EnvPathResult,
   EnvTrashResult
 } from '../shared/env-editor-types';
+import type { NoteReadResult, NoteWriteResult } from '../shared/notes-types';
 import type { SessionAgent, SessionSummary, SessionTranscript } from '../shared/sessions';
 import type {
   ChatConversation,
@@ -805,6 +806,23 @@ const fleetApi = {
       typedInvoke<EnvTrashResult>(IPC_CHANNELS.ENV_EDITOR_DELETE, absPath),
     restore: async (trashPath: string, absPath: string): Promise<{ ok: true }> =>
       typedInvoke<{ ok: true }>(IPC_CHANNELS.ENV_EDITOR_RESTORE, trashPath, absPath)
+  },
+  notes: {
+    read: async (scopePath: string, pathContext?: PathContext): Promise<NoteReadResult> =>
+      typedInvoke<NoteReadResult>(IPC_CHANNELS.NOTES_READ, scopePath, pathContext),
+    write: async (
+      scopePath: string,
+      text: string,
+      expectedMtimeMs?: number,
+      pathContext?: PathContext
+    ): Promise<NoteWriteResult> =>
+      typedInvoke<NoteWriteResult>(
+        IPC_CHANNELS.NOTES_WRITE,
+        scopePath,
+        text,
+        expectedMtimeMs,
+        pathContext
+      )
   },
   sessions: {
     list: async (): Promise<SessionSummary[]> => typedInvoke(IPC_CHANNELS.SESSIONS_LIST),

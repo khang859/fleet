@@ -8,6 +8,7 @@ const log = createLogger('ipc');
 import { readFile, writeFile, stat, readdir } from 'fs/promises';
 import type { Dirent } from 'fs';
 import { extname, join, relative, posix as posixPath } from 'path';
+import { homedir } from 'node:os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { execInContext } from './run-in-context';
@@ -201,6 +202,7 @@ import {
   restoreEnvFile
 } from './env-editor/env-editor-fs';
 import { listEnvFilesWsl } from './env-editor/env-editor-wsl';
+import { noteKey, readNote, writeNote } from './notes/notes-fs';
 import type { EnvFileEntry } from '../shared/env-editor-types';
 import type {
   EnvSyncSetPassphraseRequest,
@@ -1156,6 +1158,20 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_RESTORE, (_e, trashPath: string, absPath: string) =>
     restoreEnvFile(trashPath, absPath)
+  );
+
+  // ── Project Notes ─────────────────────────────────────────────────────────
+  // A per-project markdown note, keyed by scope path (repo root, or the folder
+  // itself when not a repo). The renderer resolves the scope path; main derives
+  // the storage key and reads/writes under ~/.fleet/notes/.
+  const notesBaseDir = join(homedir(), '.fleet', 'notes');
+  ipcMain.handle(IPC_CHANNELS.NOTES_READ, (_e, scopePath: string, pathContext?: PathContext) =>
+    readNote(notesBaseDir, noteKey(scopePath, pathContext))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.NOTES_WRITE,
+    (_e, scopePath: string, text: string, expectedMtimeMs?: number, pathContext?: PathContext) =>
+      writeNote(notesBaseDir, noteKey(scopePath, pathContext), text, scopePath, expectedMtimeMs)
   );
 }
 

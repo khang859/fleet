@@ -49,6 +49,7 @@ import { AgentOverview } from './components/AgentOverview';
 import { PeekPanel } from './components/PeekPanel';
 import { EnvSyncModal } from './components/env-sync/EnvSyncModal';
 import { EnvEditorModal } from './components/env-editor/EnvEditorModal';
+import { NotesModal } from './components/notes/NotesModal';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
@@ -177,6 +178,7 @@ export function App(): React.JSX.Element {
   const [peekPaneId, setPeekPaneId] = useState<string | null>(null);
   const [envSyncOpen, setEnvSyncOpen] = useState(false);
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [planModalQueue, setPlanModalQueue] = useState<PiPlanModalEntry[]>([]);
   const [updateReady, setUpdateReady] = useState(false);
 
@@ -335,6 +337,13 @@ export function App(): React.JSX.Element {
     const handler = (): void => setEnvEditorOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-env-editor', handler);
     return () => document.removeEventListener('fleet:toggle-env-editor', handler);
+  }, []);
+
+  // Project notes modal toggle
+  useEffect(() => {
+    const handler = (): void => setNotesOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-notes', handler);
+    return () => document.removeEventListener('fleet:toggle-notes', handler);
   }, []);
 
   // Quick open toggle (Cmd+P)
@@ -1174,6 +1183,13 @@ export function App(): React.JSX.Element {
       <EnvEditorModal
         isOpen={envEditorOpen}
         onClose={() => setEnvEditorOpen(false)}
+        cwd={focusedPaneCwd}
+        paneId={activePaneId}
+        pathContext={activePathContext}
+      />
+      <NotesModal
+        isOpen={notesOpen}
+        onClose={() => setNotesOpen(false)}
         cwd={focusedPaneCwd}
         paneId={activePaneId}
         pathContext={activePathContext}

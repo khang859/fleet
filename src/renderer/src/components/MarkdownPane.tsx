@@ -1,19 +1,13 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
-import type { Components } from 'react-markdown';
 import { FileEditorPane } from './FileEditorPane';
 import { PathChromeHeader } from './PathChromeHeader';
-import { CodeBlock } from './markdown/CodeBlock';
+import { MarkdownPreview } from './markdown/MarkdownPreview';
 import { CopyDocMenu } from './markdown/CopyDocMenu';
 import { MarkdownFindBar } from './markdown/MarkdownFindBar';
 import { MarkdownContextMenu } from './markdown/MarkdownContextMenu';
 import { useMarkdownFind } from '../hooks/use-markdown-find';
-import { useWorkspaceStore } from '../store/workspace-store';
 import { useToastStore } from '../store/toast-store';
-import { dirname, resolve } from '../lib/path-utils';
-import { toFleetImageUrl } from '../../../shared/path-platform';
+import { dirname } from '../lib/path-utils';
 import type { PathContext } from '../../../shared/shell-profiles';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -26,22 +20,6 @@ type Props = {
 
 type ViewMode = 'preview' | 'raw';
 
-const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
-
-function stripFragmentAndQuery(href: string): string {
-  return href.split(/[?#]/)[0];
-}
-
-function isMarkdownPath(href: string): boolean {
-  const clean = stripFragmentAndQuery(href);
-  const ext = clean.split('.').pop()?.toLowerCase() ?? '';
-  return MARKDOWN_EXTENSIONS.has(`.${ext}`);
-}
-
-function isExternalUrl(href: string): boolean {
-  return /^https?:\/\//.test(href);
-}
-
 export function MarkdownPane({ paneId, filePath, pathContext }: Props): React.JSX.Element {
   const [activeView, setActiveView] = useState<ViewMode>('preview');
   const [loading, setLoading] = useState(true);
@@ -51,7 +29,6 @@ export function MarkdownPane({ paneId, filePath, pathContext }: Props): React.JS
   const [previewContent, setPreviewContent] = useState<string>('');
   const contentRef = useRef<string>('');
   const previewRef = useRef<HTMLDivElement>(null);
-  const openFileInTab = useWorkspaceStore((s) => s.openFileInTab);
 
   // Find-in-document (preview only)
   const [searchOpen, setSearchOpen] = useState(false);
@@ -185,86 +162,8 @@ export function MarkdownPane({ paneId, filePath, pathContext }: Props): React.JS
     [closeSearch]
   );
 
-  // Custom link renderer for Fleet-aware navigation
+  // Relative images/links in the preview resolve against the file's directory.
   const baseDir = useMemo(() => dirname(filePath), [filePath]);
-
-  const markdownComponents = useMemo<Components>(
-    () => ({
-      pre: CodeBlock,
-      // Local image links (`![alt](./foo.png)`) resolve against the markdown
-      // file's directory and load through the fleet-image protocol — the app's
-      // HTML base can't resolve a path relative to the document on disk, and a
-      // bare file:// path is not loadable from the renderer. Remote (http/https)
-      // and inline (data:) images, and already-resolved fleet-image URLs, pass
-      // through untouched.
-      img: ({ src, alt, ...props }) => {
-        const resolvedSrc =
-          src && !/^(https?:|data:|fleet-image:)/i.test(src)
-            ? toFleetImageUrl(resolve(baseDir, src.replace(/^file:\/\//i, '')))
-            : src;
-        return <img src={resolvedSrc} alt={alt ?? ''} {...props} />;
-      },
-      a: ({ href, children, ...props }) => {
-        if (!href) return <span {...props}>{children}</span>;
-
-        // Anchor links — scroll within preview
-        if (href.startsWith('#')) {
-          return (
-            <a
-              href={href}
-              className="text-blue-400 hover:underline cursor-pointer"
-              onClick={(e) => {
-                e.preventDefault();
-                const target = document.getElementById(href.slice(1));
-                target?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              {...props}
-            >
-              {children}
-            </a>
-          );
-        }
-
-        // External URLs — open in system browser
-        if (isExternalUrl(href)) {
-          return (
-            <a
-              href={href}
-              className="text-blue-400 hover:underline cursor-pointer"
-              onClick={(e) => {
-                e.preventDefault();
-                void window.fleet.shell.openExternal(href);
-              }}
-              {...props}
-            >
-              {children}
-            </a>
-          );
-        }
-
-        // Relative links — open in Fleet
-        const cleanHref = stripFragmentAndQuery(href);
-        const resolvedPath = resolve(baseDir, cleanHref);
-        const paneType = isMarkdownPath(href) ? 'markdown' : 'file';
-        const label = href.split('/').pop() ?? href;
-
-        return (
-          <a
-            href={href}
-            className="text-blue-400 hover:underline cursor-pointer"
-            onClick={(e) => {
-              e.preventDefault();
-              openFileInTab([{ path: resolvedPath, paneType, label }]);
-            }}
-            {...props}
-          >
-            {children}
-          </a>
-        );
-      }
-    }),
-    [baseDir, openFileInTab]
-  );
 
   if (loading) {
     return (
@@ -348,18 +247,12 @@ export function MarkdownPane({ paneId, filePath, pathContext }: Props): React.JS
             onMouseUp={handlePreviewMouseUp}
             onCopy={handlePreviewCopy}
           >
-            <div
+            <MarkdownPreview
               ref={previewRef}
+              content={previewContent}
+              baseDir={baseDir}
               className="max-w-3xl mx-auto px-8 py-6 text-neutral-300 leading-relaxed markdown-preview"
-            >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
-                components={markdownComponents}
-              >
-                {previewContent}
-              </ReactMarkdown>
-            </div>
+            />
           </div>
         </MarkdownContextMenu>
         <div className={`h-full ${activeView === 'raw' ? '' : 'hidden'}`}>
