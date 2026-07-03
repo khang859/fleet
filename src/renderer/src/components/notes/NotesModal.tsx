@@ -177,9 +177,14 @@ export function NotesModal({
     setExternalChange(false);
   }, [pathContext, applyLoadedNote]);
 
-  const requestClose = useCallback(() => {
-    // Autosave means there's nothing to confirm — just flush any pending edit.
-    if (textRef.current !== originalTextRef.current) void save(false);
+  const requestClose = useCallback(async () => {
+    // Flush any pending edit before closing. If the save fails (an external-change
+    // conflict or a write error), stay open so its banner is visible rather than
+    // closing over silently-lost edits — save() leaves the note dirty on failure.
+    if (textRef.current !== originalTextRef.current) {
+      await save(false);
+      if (textRef.current !== originalTextRef.current) return;
+    }
     onClose();
   }, [save, onClose]);
 
@@ -208,7 +213,7 @@ export function NotesModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 duration-150 animate-in fade-in-0"
-      onClick={requestClose}
+      onClick={() => void requestClose()}
     >
       <div
         ref={panelRef}
@@ -216,7 +221,7 @@ export function NotesModal({
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.preventDefault();
-            requestClose();
+            void requestClose();
           }
         }}
         onClick={(e) => e.stopPropagation()}
@@ -276,7 +281,7 @@ export function NotesModal({
           </div>
 
           <button
-            onClick={requestClose}
+            onClick={() => void requestClose()}
             className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-white active:scale-90"
             aria-label="Close notes"
           >
