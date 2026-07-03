@@ -261,6 +261,8 @@ export const IPC_CHANNELS = {
   // Project Notes
   NOTES_READ: 'notes:read',
   NOTES_WRITE: 'notes:write',
+  // Shell Environment (read-only spawn-time snapshot)
+  SHELL_ENV_GET: 'shell-env:get',
   // Diagnostics ("Report a Problem")
   DIAGNOSTICS_GET_INFO: 'diagnostics:get-info',
   DIAGNOSTICS_GET_LOG_TAIL: 'diagnostics:get-log-tail',

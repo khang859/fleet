@@ -50,6 +50,7 @@ import { PeekPanel } from './components/PeekPanel';
 import { EnvSyncModal } from './components/env-sync/EnvSyncModal';
 import { EnvEditorModal } from './components/env-editor/EnvEditorModal';
 import { NotesModal } from './components/notes/NotesModal';
+import { ShellEnvModal } from './components/shell-env/ShellEnvModal';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
@@ -179,6 +180,7 @@ export function App(): React.JSX.Element {
   const [envSyncOpen, setEnvSyncOpen] = useState(false);
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [shellEnvOpen, setShellEnvOpen] = useState(false);
   const [planModalQueue, setPlanModalQueue] = useState<PiPlanModalEntry[]>([]);
   const [updateReady, setUpdateReady] = useState(false);
 
@@ -344,6 +346,13 @@ export function App(): React.JSX.Element {
     const handler = (): void => setNotesOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-notes', handler);
     return () => document.removeEventListener('fleet:toggle-notes', handler);
+  }, []);
+
+  // Shell environment modal toggle
+  useEffect(() => {
+    const handler = (): void => setShellEnvOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-shell-env', handler);
+    return () => document.removeEventListener('fleet:toggle-shell-env', handler);
   }, []);
 
   // Quick open toggle (Cmd+P)
@@ -1193,6 +1202,11 @@ export function App(): React.JSX.Element {
         cwd={focusedPaneCwd}
         paneId={activePaneId}
         pathContext={activePathContext}
+      />
+      <ShellEnvModal
+        isOpen={shellEnvOpen}
+        onClose={() => setShellEnvOpen(false)}
+        paneId={activePaneId}
       />
       <AnnotateModal open={false} onClose={() => {}} />
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />

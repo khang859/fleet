@@ -210,6 +210,7 @@ import type {
   EnvSyncSetAuthRequest,
   EnvSyncClearAuthRequest
 } from '../shared/ipc-api';
+import type { EnvSource } from '../shared/shell-env-types';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -263,8 +264,10 @@ export function registerIpcHandlers(
     const claudeConfigDir = wsOverride?.claudeConfigDir || settings.copilot.claudeConfigDir || '';
 
     const extraEnv: Record<string, string> = {};
+    const envSources: Record<string, EnvSource> = {};
     if (claudeConfigDir) {
       extraEnv.CLAUDE_CONFIG_DIR = claudeConfigDir;
+      envSources.CLAUDE_CONFIG_DIR = 'fleet-builtin';
     }
 
     // Resolve the ShellProfile (defaulting to the registry's default if not provided).
@@ -279,7 +282,9 @@ export function registerIpcHandlers(
     if (req.cwd) {
       try {
         const cwd = resolveCtxPath(profile?.pathContext, req.cwd);
-        Object.assign(extraEnv, await envSyncManager.getEnvForCwd(cwd));
+        const syncVars = await envSyncManager.getEnvForCwd(cwd);
+        Object.assign(extraEnv, syncVars);
+        for (const k of Object.keys(syncVars)) envSources[k] = 'env-sync';
       } catch (err) {
         log.warn('env-sync inject failed; continuing without injected vars', {
           error: err instanceof Error ? err.message : String(err)
@@ -291,7 +296,8 @@ export function registerIpcHandlers(
     const result = ptyManager.create({
       ...req,
       profile,
-      env: Object.keys(extraEnv).length > 0 ? { ...process.env, ...extraEnv } : undefined
+      env: Object.keys(extraEnv).length > 0 ? { ...process.env, ...extraEnv } : undefined,
+      envSources
     });
 
     // Skip re-registering listeners on idempotent path (HMR reloads) to prevent
@@ -1172,6 +1178,13 @@ export function registerIpcHandlers(
     IPC_CHANNELS.NOTES_WRITE,
     (_e, scopePath: string, text: string, expectedMtimeMs?: number, pathContext?: PathContext) =>
       writeNote(notesBaseDir, noteKey(scopePath, pathContext), text, scopePath, expectedMtimeMs)
+  );
+
+  // ── Shell Environment ─────────────────────────────────────────────────────
+  // Read-only: returns the env snapshot captured for a pane's PTY at spawn time,
+  // or null if the pane has no live PTY (e.g. a non-terminal pane).
+  ipcMain.handle(IPC_CHANNELS.SHELL_ENV_GET, (_e, paneId: string) =>
+    ptyManager.getEnvSnapshot(paneId)
   );
 }
 

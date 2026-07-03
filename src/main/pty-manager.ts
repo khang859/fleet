@@ -1,8 +1,11 @@
 import * as pty from 'node-pty';
+import { basename } from 'node:path';
 import { getDefaultShell } from './shell-detection';
 import { wslExePath } from './wsl-service';
 import { createLogger } from './logger';
+import { buildEnvSnapshot } from '../shared/shell-env-snapshot';
 import type { ShellProfile } from '../shared/shell-profiles';
+import type { EnvSource, ShellEnvSnapshot } from '../shared/shell-env-types';
 
 const log = createLogger('pty');
 
@@ -21,6 +24,8 @@ export type PtyCreateOptions = {
   workspaceId?: string;
   /** Optional resolved profile. When present, drives WSL arg construction. */
   profile?: ShellProfile;
+  /** Per-key provenance for env vars Fleet injected (Env Sync / Fleet built-ins). */
+  envSources?: Record<string, EnvSource>;
 };
 
 export type PtyCreateResult = {
@@ -36,6 +41,7 @@ type PtyEntry = {
   paused: boolean;
   dataDisposable: pty.IDisposable | null;
   exitDisposable: pty.IDisposable | null;
+  snapshot: ShellEnvSnapshot | null;
 };
 
 const FLUSH_INTERVAL_MS = 16;
@@ -103,12 +109,13 @@ export class PtyManager {
       profileId: opts.profile?.id,
       pathPrefix: process.env.PATH?.substring(0, 80)
     });
+    const finalEnv = { ...(opts.env ?? process.env), FLEET_SESSION: '1' };
     const proc = pty.spawn(shell, args, {
       name: 'xterm-256color',
       cols: opts.cols ?? 80,
       rows: opts.rows ?? 24,
       cwd: opts.cwd,
-      env: { ...(opts.env ?? process.env), FLEET_SESSION: '1' }
+      env: finalEnv
     });
 
     const entry: PtyEntry = {
@@ -118,7 +125,14 @@ export class PtyManager {
       outputBuffer: '',
       paused: false,
       dataDisposable: null,
-      exitDisposable: null
+      exitDisposable: null,
+      snapshot: buildEnvSnapshot({
+        finalEnv,
+        sources: opts.envSources ?? {},
+        shellName: basename(shell),
+        cwd: opts.cwd,
+        spawnedAt: Date.now()
+      })
     };
 
     // Register the internal buffering callback immediately at create time so
@@ -198,6 +212,10 @@ export class PtyManager {
 
   getCwd(paneId: string): string | undefined {
     return this.ptys.get(paneId)?.cwd;
+  }
+
+  getEnvSnapshot(paneId: string): ShellEnvSnapshot | null {
+    return this.ptys.get(paneId)?.snapshot ?? null;
   }
 
   updateCwd(paneId: string, cwd: string): void {
