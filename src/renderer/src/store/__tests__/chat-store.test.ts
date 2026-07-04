@@ -65,6 +65,10 @@ beforeEach(() => {
         listeners.set(IPC_CHANNELS.CHAT_PERMISSION_REQUEST, cb);
         return () => {};
       },
+      onPermissionResolved: (cb: Listener) => {
+        listeners.set(IPC_CHANNELS.CHAT_PERMISSION_RESOLVED, cb);
+        return () => {};
+      },
       decidePermission: vi.fn().mockResolvedValue(undefined),
       onConversationRenamed: (cb: Listener) => {
         listeners.set(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, cb);
@@ -516,5 +520,48 @@ describe('useChatStore', () => {
     const s = useChatStore.getState();
     expect(s.status).toBe('error');
     expect(s.messages.at(-1)).toMatchObject({ role: 'assistant', reasoning: 'thinking…' });
+  });
+});
+
+describe('permission bar store wiring', () => {
+  it('decidePermission marks the request decided and calls the IPC', async () => {
+    await useChatStore.getState().decidePermission('r1', 'allow-once');
+    expect(useChatStore.getState().decidedRequests.r1).toBe('allow-once');
+    expect(window.fleet.chat.decidePermission).toHaveBeenCalledWith('r1', 'allow-once');
+  });
+
+  it('allowAllPermissions decides only the undecided pending requests as allow-once', async () => {
+    useChatStore.setState({
+      permissionRequests: [
+        { requestId: 'a', streamId: 's', tool: 'WebSearch', command: 'q1' },
+        { requestId: 'b', streamId: 's', tool: 'WebSearch', command: 'q2' },
+        { requestId: 'c', streamId: 's', tool: 'WebSearch', command: 'q3' }
+      ],
+      decidedRequests: { b: 'allow-once' }
+    });
+    useChatStore.getState().allowAllPermissions();
+    expect(window.fleet.chat.decidePermission).toHaveBeenCalledWith('a', 'allow-once');
+    expect(window.fleet.chat.decidePermission).toHaveBeenCalledWith('c', 'allow-once');
+    expect(window.fleet.chat.decidePermission).not.toHaveBeenCalledWith('b', 'allow-once');
+    expect(useChatStore.getState().decidedRequests).toMatchObject({
+      a: 'allow-once',
+      b: 'allow-once',
+      c: 'allow-once'
+    });
+  });
+
+  it('a stream-done event clears decidedRequests', async () => {
+    await useChatStore.getState().init();
+    useChatStore.setState({
+      streamId: 's1',
+      permissionRequests: [{ requestId: 'a', streamId: 's1', tool: 'WebSearch', command: 'q' }],
+      decidedRequests: { a: 'allow-once' }
+    });
+    listeners.get(IPC_CHANNELS.CHAT_STREAM_DONE)?.({
+      streamId: 's1',
+      message: { id: 'm', conversationId: 'c1', role: 'assistant', content: 'done', createdAt: 9 }
+    });
+    expect(useChatStore.getState().permissionRequests).toEqual([]);
+    expect(useChatStore.getState().decidedRequests).toEqual({});
   });
 });

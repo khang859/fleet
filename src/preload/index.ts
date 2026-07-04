@@ -165,7 +165,11 @@ import type {
   WebSearchProviderId
 } from '../shared/chat-types';
 import type { ChatExportFormat, ChatExportResult } from '../shared/chat-export';
-import type { PermissionRequestPayload, PermissionOutcome } from '../shared/chat-permissions';
+import type {
+  PermissionRequestPayload,
+  PermissionOutcome,
+  PermissionResolvedPayload
+} from '../shared/chat-permissions';
 import type { McpServersConfig, McpServerStatus } from '../shared/mcp-types';
 import type { SkillState, SkillsView } from '../shared/skill-types';
 import type {
@@ -938,6 +942,8 @@ const fleetApi = {
       onChannel<PermissionRequestPayload>(IPC_CHANNELS.CHAT_PERMISSION_REQUEST, cb),
     decidePermission: async (requestId: string, outcome: PermissionOutcome): Promise<void> =>
       typedInvoke(IPC_CHANNELS.CHAT_PERMISSION_DECIDE, { requestId, outcome }),
+    onPermissionResolved: (cb: (p: PermissionResolvedPayload) => void): Unsubscribe =>
+      onChannel<PermissionResolvedPayload>(IPC_CHANNELS.CHAT_PERMISSION_RESOLVED, cb),
     onConversationRenamed: (cb: (p: ChatConversationRenamedPayload) => void): Unsubscribe =>
       onChannel<ChatConversationRenamedPayload>(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, cb),
     onConversationTagged: (cb: (p: ChatConversationTaggedPayload) => void): Unsubscribe =>
