@@ -4,6 +4,7 @@ import { useChatStore } from '../../store/chat-store';
 import { ConversationList } from './ConversationList';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
+import { PermissionBar } from './PermissionBar';
 import { UsageMeter } from './UsageMeter';
 import { ArtifactPanel } from './ArtifactPanel';
 import { usePresence } from '../../hooks/use-presence';
@@ -52,7 +53,10 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
         )}
         {activeId ? (
           <>
-            <MessageList defaultModel={defaultModel} showUsage={usage.showMeter} />
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              <MessageList defaultModel={defaultModel} showUsage={usage.showMeter} />
+              <PermissionBar />
+            </div>
             {usage.showMeter && <UsageMeter budgetWarnUsd={usage.budgetWarnUsd} />}
             {/* Key on activeId so the composer remounts on conversation switch —
                 its draft/attachments/mentions are local state and must not bleed

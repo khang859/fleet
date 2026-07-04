@@ -27,7 +27,6 @@ import type { StreamingPart } from './streaming-parts';
 import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
 import { ToolStatusPill } from './ToolStatusPill';
-import { ToolCallCard } from './ToolCallCard';
 import { ToolCallView } from './ToolCallView';
 import { ChatMarkdown } from './ChatMarkdown';
 import { MessageUsage } from './UsageMeter';
@@ -562,8 +561,6 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
   const isStreaming = useChatStore((s) => s.streamingText !== null);
   const messagesLoading = useChatStore((s) => s.messagesLoading);
   const status = useChatStore((s) => s.status);
-  const permissionRequests = useChatStore((s) => s.permissionRequests);
-  const decidePermission = useChatStore((s) => s.decidePermission);
   const reduced = useReducedMotion();
   const animation: ScrollBehavior = reduced ? 'instant' : 'smooth';
 
@@ -578,13 +575,6 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
             <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
           ))}
           {isStreaming && <StreamingMessage />}
-          {permissionRequests.map((req) => (
-            <ToolCallCard
-              key={req.requestId}
-              request={req}
-              onDecide={(outcome) => void decidePermission(req.requestId, outcome)}
-            />
-          ))}
           {status === 'error' && <StreamError model={model} />}
         </div>
       </StickToBottom.Content>
