@@ -18,7 +18,9 @@ const LINGER_MS = 700;
  * briefly (showing Allowed/Denied) then the bar fades out. All timing is local
  * so it can't race the turn-end store reset.
  */
-export function PermissionBar(): React.JSX.Element | null {
+type Props = { hostRef: React.RefObject<HTMLDivElement | null> };
+
+export function PermissionBar({ hostRef }: Props): React.JSX.Element | null {
   const permissionRequests = useChatStore((s) => s.permissionRequests);
   const decidedRequests = useChatStore((s) => s.decidedRequests);
   const decidePermission = useChatStore((s) => s.decidePermission);
@@ -49,6 +51,7 @@ export function PermissionBar(): React.JSX.Element | null {
   }, [targetId, renderId, reduced]);
 
   const lastShownRef = useRef<PermissionRequestPayload | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const shown = renderId
     ? (permissionRequests.find((r) => r.requestId === renderId) ?? null)
     : null;
@@ -74,6 +77,25 @@ export function PermissionBar(): React.JSX.Element | null {
     return () => window.removeEventListener('keydown', onKey);
   }, [view.active, decidePermission]);
 
+  // Publish the bar's live height to the shared overlay host as a CSS var so the
+  // sibling "Jump to latest" pill can lift itself clear of the bar. Keyed to the
+  // bar's mounted lifecycle (through the linger + fade), so the pill stays raised
+  // until the bar is actually gone. Writing a custom property recalcs style only
+  // for the elements reading it - no React re-render, no layout thrash.
+  useEffect(() => {
+    const host = hostRef.current;
+    const card = cardRef.current;
+    if (!mounted || !host || !card) return;
+    const ro = new ResizeObserver(() => {
+      host.style.setProperty('--permission-bar-h', `${card.offsetHeight + 8}px`); // +8 = pb-2
+    });
+    ro.observe(card);
+    return () => {
+      ro.disconnect();
+      host.style.removeProperty('--permission-bar-h');
+    };
+  }, [mounted, hostRef]);
+
   if (!mounted) return null;
   const display = shown ?? lastShownRef.current;
   if (!display) return null;
@@ -83,6 +105,7 @@ export function PermissionBar(): React.JSX.Element | null {
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 pb-2">
       <div
+        ref={cardRef}
         role="region"
         aria-label="Pending tool approval"
         aria-live="polite"

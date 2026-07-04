@@ -375,7 +375,10 @@ function JumpToLatest(): React.JSX.Element | null {
       type="button"
       aria-label="Jump to latest"
       onClick={() => void scrollToBottom()}
-      className={`focus-ring absolute bottom-4 right-6 flex items-center gap-1 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow hover:bg-fleet-surface-2 ${
+      // Lift clear of the PermissionBar when it is shown; --permission-bar-h is
+      // published by that bar on the shared overlay host (0px fallback = bottom-4).
+      style={{ bottom: 'calc(var(--permission-bar-h, 0px) + 1rem)' }}
+      className={`focus-ring absolute right-6 flex items-center gap-1 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow transition-[bottom] duration-150 hover:bg-fleet-surface-2 ${
         state === 'open' ? 'animate-in fade-in' : 'animate-out fade-out'
       }`}
     >
