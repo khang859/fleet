@@ -3,6 +3,7 @@ import { PermissionManager } from '../permission-manager';
 import { IPC_CHANNELS } from '../../../../shared/ipc-channels';
 import type {
   PermissionRequestPayload,
+  PermissionResolvedPayload,
   PermissionRules
 } from '../../../../shared/chat-permissions';
 
@@ -18,6 +19,29 @@ function makeManager(overrides: Partial<PermissionRules> = {}) {
     emit: (channel, payload) => emitted.push({ channel, payload })
   });
   return { mgr, rules, persisted, emitted };
+}
+
+// Like makeManager, but persistAllowRule mutates the live rule set (as the real
+// settings-backed persist does), so retro-apply can see the newly added rule.
+function makeMutableManager(overrides: Partial<PermissionRules> = {}) {
+  const rules: PermissionRules = { allow: [], ask: [], deny: [], ...overrides };
+  const emitted: Array<{ channel: string; payload: unknown }> = [];
+  const mgr = new PermissionManager({
+    getRules: () => rules,
+    persistAllowRule: (rule) => {
+      if (!rules.allow.includes(rule)) rules.allow.push(rule);
+    },
+    emit: (channel, payload) => emitted.push({ channel, payload })
+  });
+  const reqPayloads = (): PermissionRequestPayload[] =>
+    emitted
+      .filter((e) => e.channel === IPC_CHANNELS.CHAT_PERMISSION_REQUEST)
+      .map((e) => e.payload as PermissionRequestPayload);
+  const resolvedPayloads = (): PermissionResolvedPayload[] =>
+    emitted
+      .filter((e) => e.channel === IPC_CHANNELS.CHAT_PERMISSION_RESOLVED)
+      .map((e) => e.payload as PermissionResolvedPayload);
+  return { mgr, rules, emitted, reqPayloads, resolvedPayloads };
 }
 
 describe('PermissionManager', () => {
@@ -102,4 +126,51 @@ it('decide is idempotent after settling', async () => {
   await pending;
   expect(resolved).toHaveBeenCalledTimes(1);
   expect(resolved).toHaveBeenCalledWith('allow');
+});
+
+describe('PermissionManager retro-apply', () => {
+  it('allow-always resolves other queued requests the new rule now covers', async () => {
+    const { mgr, reqPayloads, resolvedPayloads } = makeMutableManager();
+    const p1 = mgr.request({ streamId: 's', tool: 'Bash', command: 'npm run build' });
+    const p2 = mgr.request({ streamId: 's', tool: 'Bash', command: 'npm run test' });
+    const [first, second] = reqPayloads();
+
+    mgr.decide(first.requestId, 'allow-always'); // persists Bash(npm run *)
+
+    expect(await p1).toBe('allow');
+    expect(await p2).toBe('allow'); // auto-resolved, never re-prompted
+    const resolved = resolvedPayloads();
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0].requestId).toBe(second.requestId);
+    expect(resolved[0].streamId).toBe('s');
+  });
+
+  it('leaves queued requests the new rule does not cover still pending', async () => {
+    const { mgr, reqPayloads, resolvedPayloads } = makeMutableManager();
+    const p1 = mgr.request({ streamId: 's', tool: 'Bash', command: 'npm run build' });
+    const p2 = mgr.request({ streamId: 's', tool: 'Bash', command: 'git push' });
+    const [first, second] = reqPayloads();
+
+    mgr.decide(first.requestId, 'allow-always'); // Bash(npm run *) does not cover git push
+
+    expect(await p1).toBe('allow');
+    expect(resolvedPayloads()).toHaveLength(0);
+    // p2 is still pending: deciding it explicitly still works.
+    mgr.decide(second.requestId, 'deny');
+    expect(await p2).toBe('deny');
+  });
+
+  it('allow-once does not retro-apply to the queue', async () => {
+    const { mgr, reqPayloads, resolvedPayloads } = makeMutableManager();
+    const p1 = mgr.request({ streamId: 's', tool: 'Bash', command: 'npm run build' });
+    const p2 = mgr.request({ streamId: 's', tool: 'Bash', command: 'npm run test' });
+    const [first, second] = reqPayloads();
+
+    mgr.decide(first.requestId, 'allow-once'); // persists nothing
+
+    expect(await p1).toBe('allow');
+    expect(resolvedPayloads()).toHaveLength(0);
+    mgr.decide(second.requestId, 'deny');
+    expect(await p2).toBe('deny');
+  });
 });

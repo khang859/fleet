@@ -61,3 +61,15 @@ export type PermissionDecisionPayload = {
   requestId: string;
   outcome: PermissionOutcome;
 };
+
+/**
+ * Sent main → renderer when a queued request is auto-resolved because a rule
+ * the user just remembered now covers it. The renderer marks it decided so its
+ * card drops from the pending bar. `outcome` is always an allow variant today.
+ */
+export type PermissionResolvedPayload = {
+  requestId: string;
+  /** Stream the request belonged to, so the renderer can gate to the right convo. */
+  streamId: string;
+  outcome: PermissionOutcome;
+};
