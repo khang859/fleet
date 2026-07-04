@@ -51,11 +51,19 @@ export function PermissionBar({ hostRef }: Props): React.JSX.Element | null {
   }, [targetId, renderId, reduced]);
 
   const lastShownRef = useRef<PermissionRequestPayload | null>(null);
+  // The decided outcome captured alongside the shown card. Read during render
+  // instead of re-deriving from decidedRequests, so the card keeps its
+  // "Allowed"/"Denied" badge if a turn-end store reset wipes decidedRequests
+  // mid-linger (otherwise the approval buttons flash back during the fade).
+  const lastDecidedRef = useRef<PermissionOutcome | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const shown = renderId
     ? (permissionRequests.find((r) => r.requestId === renderId) ?? null)
     : null;
-  if (shown) lastShownRef.current = shown;
+  if (shown) {
+    lastShownRef.current = shown;
+    lastDecidedRef.current = decidedRequests[shown.requestId] ?? null;
+  }
   const { mounted, state } = usePresence(shown !== null, reduced ? 0 : 150);
 
   const [peekOpen, setPeekOpen] = useState(false);
@@ -100,7 +108,7 @@ export function PermissionBar({ hostRef }: Props): React.JSX.Element | null {
   const display = shown ?? lastShownRef.current;
   if (!display) return null;
 
-  const decided: PermissionOutcome | null = decidedRequests[display.requestId] ?? null;
+  const decided: PermissionOutcome | null = lastDecidedRef.current;
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 pb-2">
