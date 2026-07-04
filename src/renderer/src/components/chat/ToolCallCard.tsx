@@ -9,6 +9,9 @@ type Props = {
   request: PermissionRequestPayload;
   /** Live stdout/stderr once a call is approved and running (Phase 2 feeds this). */
   output?: string;
+  /** When set, the parent controls the decided state (used by the pending bar so a
+   *  lingering card keeps its Allowed/Denied label). Omit for internal click state. */
+  decided?: PermissionOutcome | null;
   onDecide: (outcome: PermissionOutcome) => void;
 };
 
@@ -18,12 +21,18 @@ type Props = {
  * output, and the three approval actions. This is the shared approval surface
  * for every gated tool (Bash today, MCP tools later).
  */
-export function ToolCallCard({ request, output, onDecide }: Props): React.JSX.Element {
+export function ToolCallCard({
+  request,
+  output,
+  decided: decidedProp,
+  onDecide
+}: Props): React.JSX.Element {
   const [expanded, setExpanded] = useState(true);
-  const [decided, setDecided] = useState<PermissionOutcome | null>(null);
+  const [internalDecided, setInternalDecided] = useState<PermissionOutcome | null>(null);
+  const decided = decidedProp !== undefined ? decidedProp : internalDecided;
 
   const decide = (outcome: PermissionOutcome): void => {
-    setDecided(outcome);
+    setInternalDecided(outcome);
     onDecide(outcome);
   };
 
@@ -55,7 +64,7 @@ export function ToolCallCard({ request, output, onDecide }: Props): React.JSX.El
 
       {expanded && (
         <div className="border-t border-fleet-border px-3 py-2">
-          <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs text-fleet-text">
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-fleet-text">
             {request.command}
           </pre>
           {request.cwd && (
