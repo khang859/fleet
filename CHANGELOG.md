@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.88.0
+
+- **Chat permission bar** - tool-approval prompts (Allow once / Allow & remember / Deny) now appear in a pinned bar just above the composer instead of piling up inside the message stream, detached from the reply that triggered them. It shows one request at a time with a click-to-expand "+N more" peek and an "Allow all" batch action, and retro-applies a remembered rule to matching pending requests so approving the first of several identical calls clears the rest. A decided card lingers briefly as "Allowed"/"Denied" then fades (#466).
+
 ## v2.87.0
 
 - **Shell Environment viewer** - a read-only ⌘K viewer that shows the environment variables a Fleet terminal is spawned with, snapshotted at spawn time and grouped by provenance, with secret values masked (#465).
