@@ -27,7 +27,6 @@ import type { StreamingPart } from './streaming-parts';
 import { ChatImage } from './ChatImage';
 import { GeneratingSkeleton } from './GeneratingSkeleton';
 import { ToolStatusPill } from './ToolStatusPill';
-import { ToolCallCard } from './ToolCallCard';
 import { ToolCallView } from './ToolCallView';
 import { ChatMarkdown } from './ChatMarkdown';
 import { MessageUsage } from './UsageMeter';
@@ -376,7 +375,10 @@ function JumpToLatest(): React.JSX.Element | null {
       type="button"
       aria-label="Jump to latest"
       onClick={() => void scrollToBottom()}
-      className={`focus-ring absolute bottom-4 right-6 flex items-center gap-1 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow hover:bg-fleet-surface-2 ${
+      // Lift clear of the PermissionBar when it is shown; --permission-bar-h is
+      // published by that bar on the shared overlay host (0px fallback = bottom-4).
+      style={{ bottom: 'calc(var(--permission-bar-h, 0px) + 1rem)' }}
+      className={`focus-ring absolute right-6 flex items-center gap-1 rounded-full bg-fleet-surface-3 px-3 py-1.5 text-xs text-fleet-text shadow transition-[bottom] duration-150 hover:bg-fleet-surface-2 ${
         state === 'open' ? 'animate-in fade-in' : 'animate-out fade-out'
       }`}
     >
@@ -562,8 +564,6 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
   const isStreaming = useChatStore((s) => s.streamingText !== null);
   const messagesLoading = useChatStore((s) => s.messagesLoading);
   const status = useChatStore((s) => s.status);
-  const permissionRequests = useChatStore((s) => s.permissionRequests);
-  const decidePermission = useChatStore((s) => s.decidePermission);
   const reduced = useReducedMotion();
   const animation: ScrollBehavior = reduced ? 'instant' : 'smooth';
 
@@ -578,13 +578,6 @@ export function MessageList({ defaultModel, showUsage }: Props): React.JSX.Eleme
             <Bubble key={m.id} message={m} model={model} showUsage={showUsage} />
           ))}
           {isStreaming && <StreamingMessage />}
-          {permissionRequests.map((req) => (
-            <ToolCallCard
-              key={req.requestId}
-              request={req}
-              onDecide={(outcome) => void decidePermission(req.requestId, outcome)}
-            />
-          ))}
           {status === 'error' && <StreamError model={model} />}
         </div>
       </StickToBottom.Content>

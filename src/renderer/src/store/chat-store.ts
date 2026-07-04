@@ -11,7 +11,11 @@ import type {
   ChatConversationRenamedPayload,
   ChatConversationTaggedPayload
 } from '../../../shared/chat-types';
-import type { PermissionOutcome, PermissionRequestPayload } from '../../../shared/chat-permissions';
+import type {
+  PermissionOutcome,
+  PermissionRequestPayload,
+  PermissionResolvedPayload
+} from '../../../shared/chat-permissions';
 import type { SkillMenuItem } from '../../../shared/skill-types';
 import type { PromptTemplate } from '../../../shared/prompt-types';
 import type { PersonaPreset, ChatUploadsConfig, ChatSearchHit } from '../../../shared/chat-types';
@@ -55,6 +59,9 @@ type ChatStoreState = {
   status: ChatStatus;
   error: string | null;
   permissionRequests: PermissionRequestPayload[];
+  /** Request ids already decided this turn, mapped to their outcome. Drives the
+   *  pending bar's "first undecided" selection and the Allowed/Denied label. */
+  decidedRequests: Record<string, PermissionOutcome>;
   /** Non-off skills, for the composer's `/` autocomplete. */
   skillMenu: SkillMenuItem[];
   /** Saved prompt templates, for the composer's `/` autocomplete. */
@@ -82,6 +89,8 @@ type ChatStoreState = {
   loadSkillMenu: () => Promise<void>;
   loadPromptTemplates: () => Promise<void>;
   decidePermission: (requestId: string, outcome: PermissionOutcome) => Promise<void>;
+  /** Batch-approve every still-undecided pending request as allow-once. */
+  allowAllPermissions: () => void;
   selectConversation: (id: string) => Promise<void>;
   newConversation: () => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
@@ -117,6 +126,7 @@ let unsubDone: (() => void) | null = null;
 let unsubError: (() => void) | null = null;
 let unsubTool: (() => void) | null = null;
 let unsubPerm: (() => void) | null = null;
+let unsubResolved: (() => void) | null = null;
 let unsubRenamed: (() => void) | null = null;
 let unsubTagged: (() => void) | null = null;
 
@@ -166,6 +176,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     unsubError?.();
     unsubTool?.();
     unsubPerm?.();
+    unsubResolved?.();
     unsubRenamed?.();
     unsubTagged?.();
     unsubChunk = window.fleet.chat.onStreamChunk((p: ChatStreamChunkPayload) =>
@@ -190,7 +201,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           streamingParts: [],
           streamId: null,
           status: 'idle',
-          permissionRequests: []
+          permissionRequests: [],
+          decidedRequests: {}
         }));
         // Reconcile with the authoritative active thread: regenerate/edit change
         // which branch is active and refresh the variant pagers (the optimistic
@@ -223,7 +235,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
             streamingReasoning: null,
             streamingParts: [],
             streamId: null,
-            permissionRequests: []
+            permissionRequests: [],
+            decidedRequests: {}
           });
           if (activeId) {
             void window.fleet.chat.getMessages(activeId).then((messages) => {
@@ -243,6 +256,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
           streamingParts: [],
           streamId: null,
           permissionRequests: [],
+          decidedRequests: {},
           // Mirror the partial answer + reasoning into the list synchronously so a
           // turn that errored mid-thinking doesn't flicker out; the DB reload below
           // then swaps in the authoritative message (real id + reasoningMs).
@@ -285,6 +299,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         set((s) => ({ permissionRequests: [...s.permissionRequests, p] }))
       )
     );
+    unsubResolved = window.fleet.chat.onPermissionResolved((p: PermissionResolvedPayload) =>
+      onStreamEvent(p.streamId, () =>
+        set((s) => ({ decidedRequests: { ...s.decidedRequests, [p.requestId]: p.outcome } }))
+      )
+    );
     unsubRenamed = window.fleet.chat.onConversationRenamed((p: ChatConversationRenamedPayload) => {
       set((s) => ({
         conversations: s.conversations.map((c) => (c.id === p.id ? { ...c, title: p.title } : c))
@@ -314,6 +333,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     status: 'idle',
     error: null,
     permissionRequests: [],
+    decidedRequests: {},
     skillMenu: [],
     promptTemplates: [],
     personas: [],
@@ -384,11 +404,18 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
     },
 
     decidePermission: async (requestId, outcome) => {
-      // Don't optimistically drop the card — that unmounted it before its
-      // Allowed/Denied confirmation could show (#424). The card transitions to a
-      // decided state in place and is cleared (with the rest of the live tool UI)
-      // when the turn ends; a denied call still leaves a persisted tool-call card.
+      // Mark decided so the pending bar advances to the next request (or empties)
+      // and the card shows its Allowed/Denied confirmation; the whole map is
+      // cleared with permissionRequests when the turn ends.
+      set((s) => ({ decidedRequests: { ...s.decidedRequests, [requestId]: outcome } }));
       await window.fleet.chat.decidePermission(requestId, outcome);
+    },
+
+    allowAllPermissions: () => {
+      const { permissionRequests, decidedRequests } = get();
+      for (const r of permissionRequests) {
+        if (!decidedRequests[r.requestId]) void get().decidePermission(r.requestId, 'allow-once');
+      }
     },
 
     selectConversation: async (id) => {
@@ -412,6 +439,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => {
         status: 'idle',
         error: null,
         permissionRequests: [],
+        decidedRequests: {},
         activeArtifact: null
       });
       try {

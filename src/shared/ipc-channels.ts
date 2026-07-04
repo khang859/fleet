@@ -305,6 +305,9 @@ export const IPC_CHANNELS = {
   // Permission gate (tool-call approval). REQUEST is main→renderer; DECIDE is renderer→main.
   CHAT_PERMISSION_REQUEST: 'chat:permission-request',
   CHAT_PERMISSION_DECIDE: 'chat:permission-decide',
+  // Main→renderer: a still-pending request was auto-resolved (a remembered rule
+  // now covers it), so the renderer drops its card without a second prompt.
+  CHAT_PERMISSION_RESOLVED: 'chat:permission-resolved',
   // Emitted when a conversation title changes out-of-band (background auto-naming).
   CHAT_CONVERSATION_RENAMED: 'chat:conversation-renamed',
   // Emitted when a conversation's tags are generated (background auto-tagging).

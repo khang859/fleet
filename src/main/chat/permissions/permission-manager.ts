@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '../../../shared/ipc-channels';
 import type {
   PermissionOutcome,
   PermissionRequestPayload,
+  PermissionResolvedPayload,
   PermissionRules,
   PermissionVerdict
 } from '../../../shared/chat-permissions';
@@ -22,6 +23,9 @@ type Deps = {
 type Pending = {
   resolve: (verdict: 'allow' | 'deny') => void;
   rememberRule: string;
+  tool: string;
+  command: string;
+  streamId: string;
 };
 
 export type PermissionGrant = 'allow' | 'deny';
@@ -72,7 +76,13 @@ export class PermissionManager {
         resolve('deny');
         return;
       }
-      this.pending.set(requestId, { resolve, rememberRule });
+      this.pending.set(requestId, {
+        resolve,
+        rememberRule,
+        tool: req.tool,
+        command: req.command,
+        streamId: req.streamId
+      });
       req.signal?.addEventListener('abort', () => this.settle(requestId, 'deny'), { once: true });
 
       const payload: PermissionRequestPayload = {
@@ -94,6 +104,24 @@ export class PermissionManager {
     if (!entry) return;
     if (outcome === 'allow-always') this.deps.persistAllowRule(entry.rememberRule);
     this.settle(requestId, outcome === 'deny' ? 'deny' : 'allow');
+    // A freshly persisted allow rule may now cover other queued requests; resolve
+    // them without a second prompt so a fanned-out batch clears in one click.
+    if (outcome === 'allow-always') this.resolveNewlyAllowed();
+  }
+
+  /** Settle every still-pending request the current rules now auto-allow. */
+  private resolveNewlyAllowed(): void {
+    const rules = this.deps.getRules();
+    for (const [id, entry] of [...this.pending]) {
+      if (evaluatePermission(rules, entry.tool, entry.command) !== 'allow') continue;
+      this.settle(id, 'allow');
+      const payload: PermissionResolvedPayload = {
+        requestId: id,
+        streamId: entry.streamId,
+        outcome: 'allow-once'
+      };
+      this.deps.emit(IPC_CHANNELS.CHAT_PERMISSION_RESOLVED, payload);
+    }
   }
 
   private settle(requestId: string, grant: PermissionGrant): void {

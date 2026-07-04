@@ -4,6 +4,7 @@ import { useChatStore } from '../../store/chat-store';
 import { ConversationList } from './ConversationList';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
+import { PermissionBar } from './PermissionBar';
 import { UsageMeter } from './UsageMeter';
 import { ArtifactPanel } from './ArtifactPanel';
 import { usePresence } from '../../hooks/use-presence';
@@ -19,6 +20,10 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
   const newConversation = useChatStore((s) => s.newConversation);
   const artifact = useChatStore((s) => s.activeArtifact);
   const reduced = useReducedMotion();
+  // Shared positioning host for the two bottom-anchored overlays (MessageList's
+  // "Jump to latest" pill and the PermissionBar). The bar publishes its measured
+  // height here as a CSS var so the pill can lift itself clear of the bar.
+  const overlayHostRef = useRef<HTMLDivElement>(null);
   // Keep the panel mounted through its close animation; render the last shown
   // artifact during the exit so it slides shut instead of vanishing.
   const { mounted: panelMounted, state: panelState } = usePresence(!!artifact, reduced ? 0 : 220);
@@ -52,7 +57,10 @@ export function ChatView({ onOpenSettings }: Props): React.JSX.Element {
         )}
         {activeId ? (
           <>
-            <MessageList defaultModel={defaultModel} showUsage={usage.showMeter} />
+            <div ref={overlayHostRef} className="relative flex min-h-0 flex-1 flex-col">
+              <MessageList defaultModel={defaultModel} showUsage={usage.showMeter} />
+              <PermissionBar hostRef={overlayHostRef} />
+            </div>
             {usage.showMeter && <UsageMeter budgetWarnUsd={usage.budgetWarnUsd} />}
             {/* Key on activeId so the composer remounts on conversation switch —
                 its draft/attachments/mentions are local state and must not bleed
