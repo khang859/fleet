@@ -7,7 +7,11 @@ import type {
   PermissionRules,
   PermissionVerdict
 } from '../../../shared/chat-permissions';
-import { evaluatePermission, suggestRememberRule } from './rule-evaluator';
+import {
+  evaluateExplicitPermission,
+  evaluatePermission,
+  suggestRememberRule
+} from './rule-evaluator';
 
 export type PermissionEmitter = (channel: string, payload: unknown) => void;
 
@@ -55,9 +59,13 @@ export class PermissionManager {
     this.deps = deps;
   }
 
-  /** Pure rule evaluation with no side effects (used by "auto" mode branching). */
-  evaluate(tool: string, command: string): PermissionVerdict {
-    return evaluatePermission(this.deps.getRules(), tool, command);
+  /**
+   * Pure rule evaluation with no side effects (used by "auto" mode branching).
+   * Returns null when no rule matches, so auto mode can tell "nothing said
+   * ask" (auto-approve) apart from an explicit ask rule (forced prompt).
+   */
+  evaluateExplicit(tool: string, command: string): PermissionVerdict | null {
+    return evaluateExplicitPermission(this.deps.getRules(), tool, command);
   }
 
   /**

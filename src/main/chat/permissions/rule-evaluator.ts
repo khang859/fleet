@@ -62,9 +62,24 @@ export function evaluatePermission(
   tool: string,
   value: string
 ): PermissionVerdict {
+  // No explicit rule match (or an empty/unparseable bash line) → approval needed.
+  return evaluateExplicitPermission(rules, tool, value) ?? 'ask';
+}
+
+/**
+ * Like {@link evaluatePermission}, but distinguishes "an ask rule matched"
+ * from "no rule matched at all": returns null when the rule set is silent.
+ * Auto mode branches on this — an unmatched call may auto-approve, while an
+ * explicit ask rule still forces a prompt.
+ */
+export function evaluateExplicitPermission(
+  rules: PermissionRules,
+  tool: string,
+  value: string
+): PermissionVerdict | null {
   const parts = tool === 'Bash' ? splitShellCommand(value) : [value];
-  // An empty/unparseable bash line is treated as needing approval.
-  if (parts.length === 0) return 'ask';
+  // An empty/unparseable bash line never earns an explicit verdict.
+  if (parts.length === 0) return null;
 
   // Deny wins if ANY part is denied.
   if (parts.some((p) => matchesAny(rules.deny, tool, p))) return 'deny';
@@ -72,7 +87,7 @@ export function evaluatePermission(
   if (parts.some((p) => matchesAny(rules.ask, tool, p))) return 'ask';
   // Allow only if EVERY part is explicitly allowed.
   if (parts.every((p) => matchesAny(rules.allow, tool, p))) return 'allow';
-  return 'ask';
+  return null;
 }
 
 /**

@@ -66,7 +66,14 @@ export class SettingsStore {
           ...saved.ai?.chat,
           // Deep-merge tools so fields added after a save (e.g. maxToolRounds)
           // backfill from defaults instead of being undefined for existing users.
-          tools: { ...DEFAULT_SETTINGS.ai.chat.tools, ...saved.ai?.chat?.tools }
+          tools: {
+            ...DEFAULT_SETTINGS.ai.chat.tools,
+            ...saved.ai?.chat?.tools,
+            autoApprove: {
+              ...DEFAULT_SETTINGS.ai.chat.tools.autoApprove,
+              ...saved.ai?.chat?.tools?.autoApprove
+            }
+          }
         }
       }
     };

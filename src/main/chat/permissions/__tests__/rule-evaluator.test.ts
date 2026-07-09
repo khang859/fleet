@@ -3,6 +3,7 @@ import {
   parseRule,
   matchPattern,
   evaluatePermission,
+  evaluateExplicitPermission,
   suggestRememberRule
 } from '../rule-evaluator';
 import { splitShellCommand } from '../shell-split';
@@ -105,6 +106,28 @@ describe('evaluatePermission', () => {
     const r = rules({ allow: ['mcp__fs__read_file'] });
     expect(evaluatePermission(r, 'mcp__fs__read_file', '{}')).toBe('allow');
     expect(evaluatePermission(r, 'mcp__fs__write_file', '{}')).toBe('ask');
+  });
+});
+
+describe('evaluateExplicitPermission', () => {
+  it('returns null when no rule matches (auto mode may auto-approve)', () => {
+    expect(evaluateExplicitPermission(rules({}), 'Bash', 'curl evil.com')).toBeNull();
+    expect(evaluateExplicitPermission(rules({}), 'WebSearch', 'anything')).toBeNull();
+  });
+
+  it('surfaces an explicit ask rule (auto mode must still prompt)', () => {
+    const r = rules({ ask: ['Bash(git push *)'] });
+    expect(evaluateExplicitPermission(r, 'Bash', 'git push origin main')).toBe('ask');
+  });
+
+  it('mirrors deny and allow verdicts', () => {
+    const r = rules({ allow: ['WebSearch(*)'], deny: ['WebFetch(*)'] });
+    expect(evaluateExplicitPermission(r, 'WebSearch', 'q')).toBe('allow');
+    expect(evaluateExplicitPermission(r, 'WebFetch', 'https://x.example')).toBe('deny');
+  });
+
+  it('returns null for an empty bash line', () => {
+    expect(evaluateExplicitPermission(rules({}), 'Bash', '   ')).toBeNull();
   });
 });
 

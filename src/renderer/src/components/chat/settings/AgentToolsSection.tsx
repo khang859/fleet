@@ -17,10 +17,13 @@ export function AgentToolsSection(): React.JSX.Element {
   return (
     <SectionShell
       title="Agent & Tools"
-      description="Gate what the agent may run. Read tools never prompt; only bash is gated."
+      description="Gate what the agent may run. Read tools never prompt; shell, edits, web, and MCP calls are gated."
     >
       <FieldGroup>
-        <Field label="Mode" description="Controls file and shell tool access.">
+        <Field
+          label="Mode"
+          description="Controls tool access and when the agent asks for approval. Also switchable from the composer."
+        >
           <select
             value={tools.mode}
             onChange={(e) => void patch({ tools: { ...tools, mode: asToolsMode(e.target.value) } })}
@@ -28,9 +31,51 @@ export function AgentToolsSection(): React.JSX.Element {
           >
             <option value="off">Off — no file or shell tools</option>
             <option value="read-only">Read-only — read/glob/search</option>
-            <option value="ask">Ask — shell prompts for approval</option>
-            <option value="auto">Auto — sandboxed shell, no prompt</option>
+            <option value="ask">Ask — every gated tool prompts</option>
+            <option value="auto">Auto — safe tools run without prompts</option>
           </select>
+        </Field>
+
+        <Field
+          label="Auto-approve safe shell"
+          description="In Auto mode, run known read-only commands (ls, cat, git status, …) without a prompt."
+          htmlFor="auto-safe-bash"
+        >
+          <Toggle
+            id="auto-safe-bash"
+            checked={tools.autoApprove.safeBash}
+            onChange={(v) =>
+              void patch({
+                tools: { ...tools, autoApprove: { ...tools.autoApprove, safeBash: v } }
+              })
+            }
+          />
+        </Field>
+        <Field
+          label="Auto-approve web"
+          description="In Auto mode, run web search and web fetch without a prompt."
+          htmlFor="auto-web"
+        >
+          <Toggle
+            id="auto-web"
+            checked={tools.autoApprove.web}
+            onChange={(v) =>
+              void patch({ tools: { ...tools, autoApprove: { ...tools.autoApprove, web: v } } })
+            }
+          />
+        </Field>
+        <Field
+          label="Auto-approve edits"
+          description="In Auto mode, apply file writes confined to the workspace without a prompt."
+          htmlFor="auto-edits"
+        >
+          <Toggle
+            id="auto-edits"
+            checked={tools.autoApprove.edits}
+            onChange={(v) =>
+              void patch({ tools: { ...tools, autoApprove: { ...tools.autoApprove, edits: v } } })
+            }
+          />
         </Field>
 
         <Field

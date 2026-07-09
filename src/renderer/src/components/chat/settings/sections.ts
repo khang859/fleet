@@ -74,7 +74,16 @@ export const CHAT_SETTINGS_INDEX: SettingsIndexEntry[] = [
   { sectionId: 'composer', label: 'Allowed attachments', keywords: 'pdf image upload file' },
   { sectionId: 'composer', label: 'Max attachment size', keywords: 'upload limit mb file' },
   { sectionId: 'composer', label: '@-mention file size limit', keywords: 'context pin repo kb' },
-  { sectionId: 'agent', label: 'Tools mode', keywords: 'bash shell read-only ask auto permission' },
+  {
+    sectionId: 'agent',
+    label: 'Tools mode',
+    keywords: 'bash shell web read-only ask auto permission prompt'
+  },
+  {
+    sectionId: 'agent',
+    label: 'Auto-approve',
+    keywords: 'auto mode safe shell web edits no prompt'
+  },
   { sectionId: 'agent', label: 'Permission rules', keywords: 'allow ask deny gate tool' },
   { sectionId: 'agent', label: 'Workspace directory', keywords: 'cwd sandbox root path' },
   { sectionId: 'agent', label: 'Sandbox', keywords: 'bubblewrap isolate shell fail closed' },
