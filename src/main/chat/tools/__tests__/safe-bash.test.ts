@@ -69,6 +69,7 @@ describe('isReadOnlyBashCommand', () => {
     expect(isReadOnlyBashCommand('cat .env')).toBe(false);
     expect(isReadOnlyBashCommand('grep key ~/.aws/credentials')).toBe(false);
     expect(isReadOnlyBashCommand('cat cert.pem')).toBe(false);
+    expect(isReadOnlyBashCommand('cat ~/.config/gh/hosts.yml')).toBe(false);
   });
 
   it('rejects find with delete/exec flags but accepts plain find', () => {

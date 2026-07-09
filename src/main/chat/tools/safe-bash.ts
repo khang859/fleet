@@ -76,7 +76,7 @@ const FIND_MUTATING_FLAGS = new Set([
  * A match only forces a prompt, so over-matching is acceptable.
  */
 const SENSITIVE_ARG =
-  /\.ssh|\.aws|\.gnupg|\.netrc|\.npmrc|\.env\b|id_rsa|id_ed25519|id_ecdsa|\.pem\b/;
+  /\.ssh|\.aws|\.gnupg|\.config[/\\]gh|\.netrc|\.npmrc|\.env\b|id_rsa|id_ed25519|id_ecdsa|\.pem\b/;
 
 /**
  * Whether `raw` is a purely read-only command line: every piped/chained
