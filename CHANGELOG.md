@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.89.0
+
+- **Auto tools mode for Chat** - a new default tool-permission mode that auto-approves safe actions using static safety tiers: a safe-bash command classifier, plus automatic approval for web fetches and file edits, with per-category auto-approve toggles and a tool-mode picker in the composer (#467).
+
 ## v2.88.0
 
 - **Chat permission bar** - tool-approval prompts (Allow once / Allow & remember / Deny) now appear in a pinned bar just above the composer instead of piling up inside the message stream, detached from the reply that triggered them. It shows one request at a time with a click-to-expand "+N more" peek and an "Allow all" batch action, and retro-applies a remembered rule to matching pending requests so approving the first of several identical calls clears the rest. A decided card lingers briefly as "Allowed"/"Denied" then fades (#466).
