@@ -108,6 +108,7 @@ describe('Chat streaming vs. finalized ordering (#458 tool-call reorder)', () =>
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
+        autoApprove: { safeBash: true, web: true, edits: true },
         workspaceDir: null,
         sandbox: false,
         failClosed: false,

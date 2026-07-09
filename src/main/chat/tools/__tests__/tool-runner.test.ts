@@ -22,7 +22,11 @@ afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
 
 type AuditDraft = Omit<ChatAuditEntry, 'id' | 'createdAt'>;
 
-function setup(mode: ChatToolsConfig['mode'], rules: Partial<PermissionRules> = {}) {
+function setup(
+  mode: ChatToolsConfig['mode'],
+  rules: Partial<PermissionRules> = {},
+  autoApprove: Partial<ChatToolsConfig['autoApprove']> = {}
+) {
   const emitted: Array<{ channel: string; payload: unknown }> = [];
   const toolEmits: Array<{ channel: string; payload: unknown }> = [];
   const audits: AuditDraft[] = [];
@@ -33,6 +37,7 @@ function setup(mode: ChatToolsConfig['mode'], rules: Partial<PermissionRules> = 
   });
   const cfg: ChatToolsConfig = {
     mode,
+    autoApprove: { safeBash: true, web: true, edits: true, ...autoApprove },
     workspaceDir: ROOT,
     sandbox: false,
     failClosed: false,
@@ -126,6 +131,52 @@ describe('ChatToolExecutor bash gating', () => {
     expect(out).toMatch(/deny rule/);
     expect(emitted).toHaveLength(0);
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'runs a read-only command in auto mode without prompting (no sandbox)',
+    async () => {
+      const { exec, emitted, audits } = setup('auto');
+      const { output: out } = await exec.run('bash', JSON.stringify({ command: 'echo safe' }), ctx);
+      expect(out).toContain('Exit code: 0');
+      expect(out).toContain('safe');
+      expect(emitted).toHaveLength(0);
+      expect(audits[0]).toMatchObject({ tool: 'bash', decision: 'auto', status: 'ok' });
+    }
+  );
+
+  it('still prompts for a mutating command in auto mode without a sandbox', async () => {
+    const { exec, manager, emitted } = setup('auto');
+    const p = exec.run('bash', JSON.stringify({ command: 'touch pwned.txt' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req).toBeDefined();
+    expect(req.command).toBe('touch pwned.txt');
+    manager.decide(req.requestId, 'deny');
+    expect((await p).output).toMatch(/denied/);
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'an explicit ask rule forces a prompt in auto mode even for a safe command',
+    async () => {
+      const { exec, manager, emitted } = setup('auto', { ask: ['Bash(echo *)'] });
+      const p = exec.run('bash', JSON.stringify({ command: 'echo hi' }), ctx);
+      const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+        ?.payload as PermissionRequestPayload;
+      expect(req).toBeDefined();
+      manager.decide(req.requestId, 'allow-once');
+      expect((await p).output).toContain('Exit code: 0');
+    }
+  );
+
+  it('prompts for a read-only command when safe-bash auto-approval is off', async () => {
+    const { exec, manager, emitted } = setup('auto', {}, { safeBash: false });
+    const p = exec.run('bash', JSON.stringify({ command: 'echo hi' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req).toBeDefined();
+    manager.decide(req.requestId, 'deny');
+    expect((await p).output).toMatch(/denied/);
+  });
 });
 
 describe('ChatToolExecutor write tools', () => {
@@ -183,10 +234,51 @@ describe('ChatToolExecutor write tools', () => {
     expect(emitted).toHaveLength(0);
     expect(readFileSync(join(ROOT, 'guard.ts'), 'utf8')).toBe('a');
   });
+
+  it('applies a workspace write in auto mode without prompting', async () => {
+    const { exec, emitted, audits } = setup('auto');
+    const { output: out } = await exec.run(
+      'write_file',
+      JSON.stringify({ path: 'auto.txt', content: 'hi' }),
+      ctx
+    );
+    expect(out).toMatch(/Created auto\.txt/);
+    expect(emitted).toHaveLength(0);
+    expect(audits[0]).toMatchObject({ tool: 'write_file', decision: 'auto', status: 'ok' });
+    expect(readFileSync(join(ROOT, 'auto.txt'), 'utf8')).toBe('hi');
+  });
+
+  it('prompts for a write when edits auto-approval is off', async () => {
+    const { exec, manager, emitted } = setup('auto', {}, { edits: false });
+    const p = exec.run('write_file', JSON.stringify({ path: 'gated.txt', content: 'x' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req).toBeDefined();
+    manager.decide(req.requestId, 'deny');
+    expect((await p).output).toMatch(/denied/);
+    expect(existsSync(join(ROOT, 'gated.txt'))).toBe(false);
+  });
+
+  it('an explicit ask rule forces a diff prompt for a write in auto mode', async () => {
+    const { exec, manager, emitted } = setup('auto', { ask: ['Edit(*)'] });
+    const p = exec.run('write_file', JSON.stringify({ path: 'asked.txt', content: 'x' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req).toBeDefined();
+    expect(req.diff).toBe('+ x');
+    manager.decide(req.requestId, 'deny');
+    expect((await p).output).toMatch(/denied/);
+    expect(existsSync(join(ROOT, 'asked.txt'))).toBe(false);
+  });
 });
 
 describe('ChatToolExecutor web search', () => {
-  function setupSearch(opts: { enabled: boolean; rules?: Partial<PermissionRules> }) {
+  function setupSearch(opts: {
+    enabled: boolean;
+    mode?: ChatToolsConfig['mode'];
+    autoWeb?: boolean;
+    rules?: Partial<PermissionRules>;
+  }) {
     const emitted: Array<{ channel: string; payload: unknown }> = [];
     const manager = new PermissionManager({
       getRules: () => ({ allow: [], ask: [], deny: [], ...opts.rules }),
@@ -194,7 +286,8 @@ describe('ChatToolExecutor web search', () => {
       emit: (channel, payload) => emitted.push({ channel, payload })
     });
     const cfg: ChatToolsConfig = {
-      mode: 'read-only',
+      mode: opts.mode ?? 'read-only',
+      autoApprove: { safeBash: true, web: opts.autoWeb ?? true, edits: true },
       workspaceDir: ROOT,
       sandbox: false,
       failClosed: false,
@@ -244,10 +337,56 @@ describe('ChatToolExecutor web search', () => {
     expect(out).toBe('RESULTS for q');
     expect(emitted.some((e) => e.channel.endsWith('permission-request'))).toBe(false);
   });
+
+  it('runs without a prompt in auto mode', async () => {
+    const { exec, emitted } = setupSearch({ enabled: true, mode: 'auto' });
+    const { output: out } = await exec.run('web_search', JSON.stringify({ query: 'q' }), ctx);
+    expect(out).toBe('RESULTS for q');
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('blocks a deny-rule query in auto mode without prompting', async () => {
+    const { exec, emitted } = setupSearch({
+      enabled: true,
+      mode: 'auto',
+      rules: { deny: ['WebSearch(*)'] }
+    });
+    const { output: out } = await exec.run('web_search', JSON.stringify({ query: 'q' }), ctx);
+    expect(out).toMatch(/deny rule/);
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('an explicit ask rule still prompts in auto mode', async () => {
+    const { exec, manager, emitted } = setupSearch({
+      enabled: true,
+      mode: 'auto',
+      rules: { ask: ['WebSearch(*)'] }
+    });
+    const p = exec.run('web_search', JSON.stringify({ query: 'q' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req).toBeDefined();
+    manager.decide(req.requestId, 'allow-once');
+    expect((await p).output).toBe('RESULTS for q');
+  });
+
+  it('prompts in auto mode when web auto-approval is off', async () => {
+    const { exec, manager, emitted } = setupSearch({ enabled: true, mode: 'auto', autoWeb: false });
+    const p = exec.run('web_search', JSON.stringify({ query: 'q' }), ctx);
+    const req = emitted.find((e) => e.channel.endsWith('permission-request'))
+      ?.payload as PermissionRequestPayload;
+    expect(req).toBeDefined();
+    manager.decide(req.requestId, 'allow-once');
+    expect((await p).output).toBe('RESULTS for q');
+  });
 });
 
 describe('ChatToolExecutor web fetch', () => {
-  function setupFetch(opts: { enabled: boolean; rules?: Partial<PermissionRules> }) {
+  function setupFetch(opts: {
+    enabled: boolean;
+    mode?: ChatToolsConfig['mode'];
+    rules?: Partial<PermissionRules>;
+  }) {
     const emitted: Array<{ channel: string; payload: unknown }> = [];
     const persisted: string[] = [];
     const manager = new PermissionManager({
@@ -256,7 +395,8 @@ describe('ChatToolExecutor web fetch', () => {
       emit: (channel, payload) => emitted.push({ channel, payload })
     });
     const cfg: ChatToolsConfig = {
-      mode: 'read-only',
+      mode: opts.mode ?? 'read-only',
+      autoApprove: { safeBash: true, web: true, edits: true },
       workspaceDir: ROOT,
       sandbox: false,
       failClosed: false,
@@ -342,6 +482,32 @@ describe('ChatToolExecutor web fetch', () => {
     expect((await p).output).toMatch(/denied/);
   });
 
+  it('fetches without a prompt in auto mode', async () => {
+    const { exec, emitted } = setupFetch({ enabled: true, mode: 'auto' });
+    const { output: out } = await exec.run(
+      'web_fetch',
+      JSON.stringify({ url: 'https://x.example/page' }),
+      ctx
+    );
+    expect(out).toBe('CONTENT of https://x.example/page');
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('blocks a denied origin in auto mode without prompting', async () => {
+    const { exec, emitted } = setupFetch({
+      enabled: true,
+      mode: 'auto',
+      rules: { deny: ['WebFetch(https://evil.example/*)'] }
+    });
+    const { output: out } = await exec.run(
+      'web_fetch',
+      JSON.stringify({ url: 'https://evil.example/payload' }),
+      ctx
+    );
+    expect(out).toMatch(/deny rule/);
+    expect(emitted).toHaveLength(0);
+  });
+
   it('denies the fetch when the user declines', async () => {
     const { exec, manager, emitted } = setupFetch({ enabled: true });
     const p = exec.run('web_fetch', JSON.stringify({ url: 'https://x.example' }), ctx);
@@ -360,6 +526,7 @@ describe('ChatToolExecutor web fetch', () => {
     });
     const cfg: ChatToolsConfig = {
       mode: 'read-only',
+      autoApprove: { safeBash: true, web: true, edits: true },
       workspaceDir: ROOT,
       sandbox: false,
       failClosed: false,

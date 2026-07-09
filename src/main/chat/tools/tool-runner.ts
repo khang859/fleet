@@ -14,6 +14,7 @@ import { runBash } from './bash-exec';
 import { makeSandboxWrap } from './sandbox';
 import { assertWritablePath } from './fs-safety';
 import { planWrite, planEdit, applyWrite } from './write-tools';
+import { isReadOnlyBashCommand } from './safe-bash';
 import { isMcpToolName } from '../../../shared/mcp-types';
 
 /** The subset of McpManager the executor needs (kept narrow for testing). */
@@ -292,8 +293,8 @@ export class ChatToolExecutor {
     ctx: ExecCtx
   ): Promise<ToolOutcome> {
     if (isMcpToolName(name)) return this.runMcpGated(name, argsJson, ctx);
-    if (name === WEB_SEARCH_TOOL_NAME) return this.runWebSearchGated(argsJson, ctx);
-    if (name === WEB_FETCH_TOOL_NAME) return this.runWebFetchGated(argsJson, ctx);
+    if (name === WEB_SEARCH_TOOL_NAME) return this.runWebSearchGated(argsJson, cfg, ctx);
+    if (name === WEB_FETCH_TOOL_NAME) return this.runWebFetchGated(argsJson, cfg, ctx);
     switch (name) {
       case 'read_file': {
         const a = readArgs.parse(JSON.parse(argsJson));
@@ -411,12 +412,27 @@ export class ChatToolExecutor {
     // How the command was authorized — recorded in the audit ledger.
     let decision: ChatAuditDecision;
     if (cfg.mode === 'auto') {
-      const verdict = this.permissions.evaluate('Bash', command);
+      const verdict = this.permissions.evaluateExplicit('Bash', command);
       if (verdict === 'deny') return blocked('This command is blocked by a deny rule.');
       if (verdict === 'allow') {
         decision = 'auto';
+      } else if (verdict === 'ask') {
+        // An explicit ask rule forces a prompt in every mode, sandbox or not.
+        const grant = await this.permissions.request({
+          streamId: ctx.streamId,
+          tool: 'Bash',
+          command,
+          cwd,
+          signal: ctx.signal
+        });
+        if (grant !== 'allow') return denied('The user denied this command.');
+        decision = 'approved';
       } else if (wrap) {
         decision = 'auto'; // sandboxed → skip prompt
+      } else if (cfg.autoApprove.safeBash && isReadOnlyBashCommand(command)) {
+        // Observe-only commands can't mutate, so they need no confinement.
+        // Like an explicit allow rule, this outranks fail-closed.
+        decision = 'auto';
       } else if (cfg.failClosed) {
         return blocked('Refused: sandbox unavailable and fail-closed is on.');
       } else {
@@ -485,17 +501,20 @@ export class ChatToolExecutor {
     const planned = plan(abs);
 
     let decision: ChatAuditDecision;
-    if (cfg.mode === 'auto') {
-      if (this.permissions.evaluate('Edit', relPath) === 'deny') {
-        return {
-          output: 'This edit is blocked by a deny rule.',
-          detail: relPath,
-          decision: 'blocked',
-          status: 'denied'
-        };
-      }
+    const verdict = cfg.mode === 'auto' ? this.permissions.evaluateExplicit('Edit', relPath) : null;
+    if (cfg.mode === 'auto' && verdict === 'deny') {
+      return {
+        output: 'This edit is blocked by a deny rule.',
+        detail: relPath,
+        decision: 'blocked',
+        status: 'denied'
+      };
+    }
+    // An explicit allow rule outranks the per-category toggle.
+    if (cfg.mode === 'auto' && (verdict === 'allow' || (!verdict && cfg.autoApprove.edits))) {
       decision = 'auto';
     } else {
+      // Ask mode, an explicit ask rule, or edits toggled off in auto mode.
       const grant = await this.permissions.request({
         streamId: ctx.streamId,
         tool: 'Edit',
@@ -559,10 +578,15 @@ export class ChatToolExecutor {
   /**
    * Gate and run a web search. Approval reuses the permission engine + card
    * (tool `WebSearch`, the query as the value); an allow rule like
-   * `WebSearch(*)` auto-approves. The provider/key/result-cap are bound by the
-   * runner the caller injected.
+   * `WebSearch(*)` auto-approves. In auto mode a search runs without a prompt
+   * (it's a read-only network call) unless a deny/ask rule matches. The
+   * provider/key/result-cap are bound by the runner the caller injected.
    */
-  private async runWebSearchGated(argsJson: string, ctx: ExecCtx): Promise<ToolOutcome> {
+  private async runWebSearchGated(
+    argsJson: string,
+    cfg: ChatToolsConfig,
+    ctx: ExecCtx
+  ): Promise<ToolOutcome> {
     const { query } = webSearchArgs.parse(JSON.parse(argsJson));
     const webSearch = this.webSearch;
     if (!webSearch?.enabled()) {
@@ -573,34 +597,58 @@ export class ChatToolExecutor {
         status: 'denied'
       };
     }
-    const grant = await this.permissions.request({
-      streamId: ctx.streamId,
-      tool: 'WebSearch',
-      command: query,
-      signal: ctx.signal
-    });
-    if (grant !== 'allow') {
+    const verdict =
+      cfg.mode === 'auto' ? this.permissions.evaluateExplicit('WebSearch', query) : null;
+    if (cfg.mode === 'auto' && verdict === 'deny') {
       return {
-        output: 'The user denied this web search.',
+        output: 'This web search is blocked by a deny rule.',
         detail: query,
-        decision: 'denied',
+        decision: 'blocked',
         status: 'denied'
       };
+    }
+    let decision: ChatAuditDecision;
+    // An explicit allow rule outranks the per-category toggle.
+    if (cfg.mode === 'auto' && (verdict === 'allow' || (!verdict && cfg.autoApprove.web))) {
+      decision = 'auto';
+    } else {
+      // Non-auto modes, an explicit ask rule, or web toggled off in auto mode.
+      const grant = await this.permissions.request({
+        streamId: ctx.streamId,
+        tool: 'WebSearch',
+        command: query,
+        signal: ctx.signal
+      });
+      if (grant !== 'allow') {
+        return {
+          output: 'The user denied this web search.',
+          detail: query,
+          decision: 'denied',
+          status: 'denied'
+        };
+      }
+      decision = 'approved';
     }
     // try/finally so a failed search clears its pill (#423).
     const output = await this.withProgress(ctx, `Searching: ${query}`, async () =>
       webSearch.search(query, ctx.signal)
     );
-    return { output, detail: query, decision: 'approved', status: 'ok' };
+    return { output, detail: query, decision, status: 'ok' };
   }
 
   /**
    * Gate and run a web fetch. Approval reuses the permission engine + card
    * (tool `WebFetch`, the URL as the value; the origin is offered as the
-   * remember-prefix so `WebFetch(https://example.com*)` auto-approves a site).
-   * The fetch/render/sanitize pipeline and char cap are bound by the runner.
+   * remember-prefix so `WebFetch(https://example.com/*)` auto-approves a site).
+   * In auto mode a fetch runs without a prompt (it's a read-only network call)
+   * unless a deny/ask rule matches. The fetch/render/sanitize pipeline and
+   * char cap are bound by the runner.
    */
-  private async runWebFetchGated(argsJson: string, ctx: ExecCtx): Promise<ToolOutcome> {
+  private async runWebFetchGated(
+    argsJson: string,
+    cfg: ChatToolsConfig,
+    ctx: ExecCtx
+  ): Promise<ToolOutcome> {
     const { url } = webFetchArgs.parse(JSON.parse(argsJson));
     const webFetch = this.webFetch;
     if (!webFetch?.enabled()) {
@@ -611,19 +659,36 @@ export class ChatToolExecutor {
         status: 'denied'
       };
     }
-    const grant = await this.permissions.request({
-      streamId: ctx.streamId,
-      tool: 'WebFetch',
-      command: url,
-      signal: ctx.signal
-    });
-    if (grant !== 'allow') {
+    const verdict = cfg.mode === 'auto' ? this.permissions.evaluateExplicit('WebFetch', url) : null;
+    if (cfg.mode === 'auto' && verdict === 'deny') {
       return {
-        output: 'The user denied this web fetch.',
+        output: 'This web fetch is blocked by a deny rule.',
         detail: url,
-        decision: 'denied',
+        decision: 'blocked',
         status: 'denied'
       };
+    }
+    let decision: ChatAuditDecision;
+    // An explicit allow rule outranks the per-category toggle.
+    if (cfg.mode === 'auto' && (verdict === 'allow' || (!verdict && cfg.autoApprove.web))) {
+      decision = 'auto';
+    } else {
+      // Non-auto modes, an explicit ask rule, or web toggled off in auto mode.
+      const grant = await this.permissions.request({
+        streamId: ctx.streamId,
+        tool: 'WebFetch',
+        command: url,
+        signal: ctx.signal
+      });
+      if (grant !== 'allow') {
+        return {
+          output: 'The user denied this web fetch.',
+          detail: url,
+          decision: 'denied',
+          status: 'denied'
+        };
+      }
+      decision = 'approved';
     }
     // try/finally so a failed/timed-out fetch clears its pill instead of leaving
     // a stale "Fetching: …" spinner for the rest of the turn (#423).
@@ -637,6 +702,6 @@ export class ChatToolExecutor {
         } satisfies ChatToolStatusPayload);
       })
     );
-    return { output, detail: url, decision: 'approved', status: 'ok' };
+    return { output, detail: url, decision, status: 'ok' };
   }
 }

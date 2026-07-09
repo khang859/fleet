@@ -74,6 +74,7 @@ describe('ChatService.send', () => {
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
+        autoApprove: { safeBash: true, web: true, edits: true },
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
@@ -129,6 +130,7 @@ describe('ChatService.send', () => {
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
+        autoApprove: { safeBash: true, web: true, edits: true },
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
@@ -192,6 +194,7 @@ it('runs the image tool loop and persists a generated image', async () => {
     getToolsMode: () => 'off',
     getTools: () => ({
       mode: 'off',
+      autoApprove: { safeBash: true, web: true, edits: true },
       workspaceDir: null,
       sandbox: false,
       failClosed: false,
@@ -267,6 +270,7 @@ it('passes the reference image to the provider as a base64 data URL when editing
     getToolsMode: () => 'off',
     getTools: () => ({
       mode: 'off',
+      autoApprove: { safeBash: true, web: true, edits: true },
       workspaceDir: null,
       sandbox: false,
       failClosed: false,
@@ -343,6 +347,7 @@ it('persists tool calls onto the assistant message (#434)', async () => {
     getToolsMode: () => 'auto',
     getTools: () => ({
       mode: 'auto',
+      autoApprove: { safeBash: true, web: true, edits: true },
       workspaceDir: null,
       sandbox: false,
       failClosed: false,
@@ -385,6 +390,7 @@ describe('ChatService regenerate / edit', () => {
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
+        autoApprove: { safeBash: true, web: true, edits: true },
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
@@ -547,6 +553,7 @@ describe('ChatService usage accounting', () => {
       getToolsMode: () => 'read-only',
       getTools: () => ({
         mode: 'off',
+        autoApprove: { safeBash: true, web: true, edits: true },
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
@@ -608,6 +615,7 @@ describe('ChatService usage accounting', () => {
       getToolsMode: () => 'read-only',
       getTools: () => ({
         mode: 'off',
+        autoApprove: { safeBash: true, web: true, edits: true },
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
@@ -654,6 +662,7 @@ describe('ChatService attachments', () => {
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
+        autoApprove: { safeBash: true, web: true, edits: true },
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
@@ -787,6 +796,7 @@ describe('ChatService personas', () => {
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
+        autoApprove: { safeBash: true, web: true, edits: true },
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
@@ -829,6 +839,7 @@ describe('ChatService time context', () => {
       getToolsMode: () => 'off',
       getTools: () => ({
         mode: 'off',
+        autoApprove: { safeBash: true, web: true, edits: true },
         workspaceDir: null,
         sandbox: false,
         failClosed: false,
@@ -962,6 +973,7 @@ describe('ChatService skills', () => {
       getToolsMode: () => 'read-only',
       getTools: () => ({
         mode: 'off',
+        autoApprove: { safeBash: true, web: true, edits: true },
         workspaceDir: null,
         sandbox: false,
         failClosed: false,

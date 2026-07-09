@@ -6,6 +6,7 @@ import type { PromptTemplate } from '../../../../shared/prompt-types';
 import { extractPromptVars, fillTemplate } from '../../../../shared/prompt-types';
 import { ModelPicker } from './ModelPicker';
 import { PersonaPicker } from './PersonaPicker';
+import { ToolModePicker } from './ToolModePicker';
 import { composerKeyAction } from './composer-keys';
 import { slashMenu, type SlashCommand } from './composer-slash';
 
@@ -231,6 +232,7 @@ export function Composer({ defaultModel }: Props): React.JSX.Element {
             }}
           />
         )}
+        <ToolModePicker />
       </div>
       {attachments.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">

@@ -219,13 +219,30 @@ export const DEFAULT_CHAT_WEB_FETCH: ChatWebFetchConfig = {
 /** Posture for the bash/filesystem tools. */
 export type ChatToolsMode = 'off' | 'read-only' | 'ask' | 'auto';
 
+/**
+ * What auto mode may run without a prompt, per category. Ignored in other
+ * modes. Explicit allow/deny rules always outrank these toggles; a category
+ * turned off just falls back to a prompt.
+ */
+export type ChatToolsAutoApprove = {
+  /** Known read-only shell commands (ls, cat, git status, …) — safe unsandboxed. */
+  safeBash: boolean;
+  /** web_search and web_fetch (read-only network calls). */
+  web: boolean;
+  /** File writes/edits confined to the workspace. */
+  edits: boolean;
+};
+
 export type ChatToolsConfig = {
   /**
    * off → no fs/bash tools. read-only → read_file/glob/search only (no prompt).
-   * ask → adds bash, gated through the permission engine. auto → bash runs
-   * sandboxed without a prompt where allowed.
+   * ask → adds bash/write/edit, every gated call prompts. auto → safe calls
+   * (read-only bash, web search/fetch, workspace writes, sandboxed shell) run
+   * without a prompt; deny/ask rules and risky commands still gate.
    */
   mode: ChatToolsMode;
+  /** Per-category no-prompt grants applied in auto mode. */
+  autoApprove: ChatToolsAutoApprove;
   /** Default cwd / writable root for the tools; null → process cwd. */
   workspaceDir: string | null;
   /** Wrap bash in the OS sandbox (bubblewrap on Linux) when available. */
@@ -243,7 +260,8 @@ export type ChatToolsConfig = {
 };
 
 export const DEFAULT_CHAT_TOOLS: ChatToolsConfig = {
-  mode: 'read-only',
+  mode: 'auto',
+  autoApprove: { safeBash: true, web: true, edits: true },
   workspaceDir: null,
   sandbox: true,
   failClosed: false,
@@ -275,7 +293,7 @@ export const DEFAULT_CHAT_USAGE: ChatUsageConfig = {
 export type ChatAuditDecision =
   | 'allowed' // read tool — never gated
   | 'approved' // user approved a prompt, or an allow-rule matched
-  | 'auto' // ran without a prompt (auto mode: sandboxed or rule-allowed)
+  | 'auto' // ran without a prompt (auto mode: safe, sandboxed, or rule-allowed)
   | 'denied' // user denied the prompt
   | 'blocked' // a deny rule, circuit-breaker, or fail-closed refused it
   | 'error'; // the tool threw
