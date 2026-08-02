@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.90.0
+
+- **Remote file browsing over SSH** - a new tileable pane that browses folders on a remote host, with hosts either auto-detected from a pane you are already SSH'd into or saved in Settings. Files open in Fleet's existing viewers (images, text/code, PDF, rendered Markdown), text files can be edited and saved back atomically with a stale-write guard, files can be downloaded and drag-dropped in to upload with live progress, and entries can be renamed, deleted, or created as new folders. Connections reuse a single multiplexed SSH session and all mutations go over SFTP, so no remote shell ever interprets a filename (#479).
+
 ## v2.89.0
 
 - **Auto tools mode for Chat** - a new default tool-permission mode that auto-approves safe actions using static safety tiers: a safe-bash command classifier, plus automatic approval for web fetches and file edits, with per-category auto-approve toggles and a tool-mode picker in the composer (#467).
