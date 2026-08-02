@@ -31,9 +31,8 @@ const FILE_LIST_IGNORE_DIRS = [
   '.svelte-kit'
 ];
 
-// The only object variant of PathContext is the WSL one.
 function isWslContext(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
-  return typeof ctx === 'object';
+  return typeof ctx === 'object' && ctx.kind === 'wsl';
 }
 
 /** Native (non-WSL) host coordinate system for the running process. */
@@ -548,6 +547,20 @@ export function registerIpcHandlers(
         filters: filters ?? undefined
       });
       return result.canceled ? [] : result.filePaths;
+    }
+  );
+
+  // Save file dialog - picks a destination path, creates nothing itself
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_SAVE_DIALOG,
+    async (event, { defaultName, defaultPath }: { defaultName?: string; defaultPath?: string }) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return null;
+      const result = await dialog.showSaveDialog(win, {
+        defaultPath: defaultPath ?? defaultName,
+        properties: ['createDirectory', 'showOverwriteConfirmation']
+      });
+      return result.canceled ? null : (result.filePath ?? null);
     }
   );
 

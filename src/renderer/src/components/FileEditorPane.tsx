@@ -28,8 +28,10 @@ import {
 } from '../lib/editor-context-registry';
 import { useRuneAssistStore } from '../store/rune-assist-store';
 import { RuneAssistLayer } from './rune-assist/RuneAssistLayer';
+import { useToastStore } from '../store/toast-store';
 import type { PaneNode } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
+import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
@@ -161,6 +163,35 @@ function getLanguageName(filePath: string): string {
   return getLanguageForPath(filePath)?.label ?? 'Plain Text';
 }
 
+/**
+ * Save back over SSH. Refuses (rather than clobbers) when the remote file has
+ * moved on since it was fetched - the user is told and the buffer stays dirty,
+ * so nothing is lost on either side.
+ */
+async function writeRemote(
+  remote: RemoteFileRef,
+  content: string,
+  mtimeRef: React.MutableRefObject<number | undefined>,
+  showToast: (message: string) => void
+): Promise<{ success: boolean }> {
+  const result = await window.fleet.remoteSsh.writeText(
+    remote.host,
+    remote.path,
+    content,
+    mtimeRef.current
+  );
+  if (!result.success) {
+    showToast(`Save failed: ${result.error}`);
+    return { success: false };
+  }
+  if (!result.data.ok) {
+    showToast('Not saved - the file changed on the server since it was opened');
+    return { success: false };
+  }
+  mtimeRef.current = result.data.mtimeMs;
+  return { success: true };
+}
+
 type Props = {
   paneId: string;
   filePath: string;
@@ -168,6 +199,12 @@ type Props = {
   onContentChange?: (content: string) => void;
   /** When false, hides the built-in path header + footer path — used when the host pane renders its own chrome. */
   showPathChrome?: boolean;
+  /**
+   * Set when `filePath` is a local cache copy of a remote file. Reads still come
+   * from the cache (it is byte-identical and already fetched), but saves go back
+   * over SSH, guarded by the remote mtime observed at fetch time.
+   */
+  remote?: RemoteFileRef;
 };
 
 export function FileEditorPane({
@@ -175,7 +212,8 @@ export function FileEditorPane({
   filePath,
   pathContext,
   onContentChange,
-  showPathChrome = true
+  showPathChrome = true,
+  remote
 }: Props): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const showLoadingSkeleton = useDelayedFlag(loading);
@@ -207,14 +245,27 @@ export function FileEditorPane({
     const tab = s.workspace.tabs.find((t) => treeContainsPane(t.splitRoot, paneId));
     return tab?.cwd ?? '/';
   });
-  openRuneOverlayRef.current = (anchor, anchorPos) =>
+  // Rune is a local agent operating on a local checkout; pointed at a remote
+  // file it would edit the cache copy, whose changes never reach the server.
+  // Rather than offer a silently-useless action, ⌘I is inert on remote panes.
+  openRuneOverlayRef.current = (anchor, anchorPos) => {
+    if (remote) return;
     openOverlay(paneId, { cwd, contextFile: filePath, anchor, anchorPos });
+  };
+
+  // Advances on every successful remote save so consecutive saves keep passing
+  // the concurrency check instead of tripping on their own previous write.
+  const remoteMtimeRef = useRef(remote?.mtimeMs);
+  remoteMtimeRef.current ??= remote?.mtimeMs;
+  const showToast = useToastStore((s) => s.show);
 
   const save = useCallback(async () => {
     if (!viewRef.current) return;
     setIsSaving(true);
     const content = viewRef.current.state.doc.toString();
-    const result = await window.fleet.file.write(filePath, content, pathContext);
+    const result = remote
+      ? await writeRemote(remote, content, remoteMtimeRef, showToast)
+      : await window.fleet.file.write(filePath, content, pathContext);
     setIsSaving(false);
     if (result.success) {
       savedContentRef.current = content;
@@ -230,7 +281,7 @@ export function FileEditorPane({
         }
       }
     }
-  }, [filePath, pathContext, paneId, setPaneDirty]);
+  }, [filePath, pathContext, paneId, setPaneDirty, remote, showToast]);
 
   // Keep saveRef current so closures in EditorView always call the latest save
   const saveRef = useRef(save);
@@ -378,6 +429,7 @@ export function FileEditorPane({
 
   // Register editor handle so Rune overlay can read selection, flash lines, and sync content
   useEffect(() => {
+    if (remote) return;
     const handle: EditorHandle = {
       getSelection: () => {
         const view = viewRef.current;
@@ -450,7 +502,7 @@ export function FileEditorPane({
       unregisterEditorHandle(paneId);
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     };
-  }, [paneId, filePath, pathContext]);
+  }, [paneId, filePath, pathContext, remote]);
 
   // Rune IPC events are subscribed once at the app level (see useRuneAssistEvents) and
   // routed into the store by paneId — NOT here, because this pane unmounts on tab switch
@@ -460,6 +512,7 @@ export function FileEditorPane({
   // process for this pane. Re-attach a working pill so its terminal event isn't dropped (the
   // pre-turn snapshot for Revert isn't recoverable across a reload — reload+idle still work).
   useEffect(() => {
+    if (remote) return;
     let cancelled = false;
     void window.fleet.runeAssist.getState({ filePath }).then((state) => {
       if (cancelled) return;
@@ -476,7 +529,7 @@ export function FileEditorPane({
     return () => {
       cancelled = true;
     };
-  }, [paneId, filePath]);
+  }, [paneId, filePath, remote]);
 
   // Cleanup dirty state on unmount
   useEffect(() => {
@@ -523,6 +576,8 @@ export function FileEditorPane({
     );
   }
 
+  // Users think in terms of the remote path, not the cache copy backing it.
+  const displayPath = remote ? `${remote.host.label}:${remote.path}` : filePath;
   const langLabel = getLanguageName(filePath);
   const saveStatus = isSaving
     ? { label: 'Saving...', className: 'text-neutral-500' }
@@ -532,7 +587,7 @@ export function FileEditorPane({
 
   return (
     <div ref={wrapperRef} className="relative h-full w-full flex flex-col overflow-hidden">
-      {showPathChrome && <PathChromeHeader filePath={filePath} />}
+      {showPathChrome && <PathChromeHeader filePath={displayPath} />}
       <div ref={containerRef} className="flex-1 min-h-0" />
       <div className="flex-shrink-0 flex items-center gap-3 px-3 h-7 bg-neutral-950/80 border-t border-neutral-800 text-xs text-neutral-400">
         <span className="text-neutral-300 shrink-0">{langLabel}</span>
@@ -540,8 +595,8 @@ export function FileEditorPane({
           Ln {cursorPos.line}, Col {cursorPos.col}
         </span>
         {showPathChrome && (
-          <span className="text-neutral-500 font-mono truncate min-w-0 flex-1" title={filePath}>
-            {filePath}
+          <span className="text-neutral-500 font-mono truncate min-w-0 flex-1" title={displayPath}>
+            {displayPath}
           </span>
         )}
         <span
@@ -553,7 +608,7 @@ export function FileEditorPane({
           {saveStatus.label}
         </span>
       </div>
-      <RuneAssistLayer paneId={paneId} />
+      {!remote && <RuneAssistLayer paneId={paneId} />}
     </div>
   );
 }

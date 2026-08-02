@@ -6,6 +6,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import './pdf-text-layer.css';
 import { toFleetPdfUrl } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
+import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -35,9 +36,16 @@ function formatSize(bytes: number): string {
 type PdfViewerPaneProps = {
   filePath: string;
   pathContext?: PathContext;
+  /** Set when `filePath` is the local cache copy of a remote PDF - the document
+   *  renders from the cache, but the name shown must be the remote one. */
+  remote?: RemoteFileRef;
 };
 
-export function PdfViewerPane({ filePath, pathContext }: PdfViewerPaneProps): React.JSX.Element {
+export function PdfViewerPane({
+  filePath,
+  pathContext,
+  remote
+}: PdfViewerPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -52,7 +60,7 @@ export function PdfViewerPane({ filePath, pathContext }: PdfViewerPaneProps): Re
   const [zoom, setZoom] = useState(1);
   const [fileSize, setFileSize] = useState<number | null>(null);
 
-  const filename = getBasename(filePath);
+  const filename = getBasename(remote?.path ?? filePath);
 
   // Load the document (stat first so missing files give a clear error rather
   // than an opaque pdf.js failure).

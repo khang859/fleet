@@ -10,6 +10,7 @@ import {
 } from './ui/command';
 import {
   createCommandRegistry,
+  createRemoteHostCommands,
   formatCommandShortcut,
   type Command as CommandDef
 } from '../lib/commands';
@@ -24,6 +25,7 @@ import { rankIds } from '../lib/frecency';
 import { useCommandFrecencyStore } from '../store/command-frecency-store';
 import { useNotificationStore } from '../store/notification-store';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
+import { useSettingsStore } from '../store/settings-store';
 
 type CommandPaletteProps = {
   isOpen: boolean;
@@ -58,7 +60,10 @@ function ItemRow({
   return (
     <CommandItem
       value={`${item.section}:${item.id}`}
-      keywords={item.keywords}
+      // `value` is a stable id (cmdk uses it for highlight state), so the label
+      // has to ride along as a keyword - otherwise typing what you can read on
+      // the row only matches when the id slug happens to spell it out.
+      keywords={[item.label, ...(item.keywords ?? [])]}
       onSelect={() => onRun(item)}
     >
       <span className="flex-1 truncate">{item.label}</span>
@@ -92,7 +97,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
   const activities = useNotificationStore((s) => s.activities);
   const frecencyMap = useCommandFrecencyStore((s) => s.map);
 
-  const staticCommands = useMemo(() => createCommandRegistry(), []);
+  const remoteHosts = useSettingsStore((s) => s.settings?.remoteSsh.hosts);
+
+  const staticCommands = useMemo(
+    () => [...createCommandRegistry(), ...createRemoteHostCommands(remoteHosts ?? [])],
+    [remoteHosts]
+  );
 
   const { needsYou, recent, commands, destinations } = useMemo(() => {
     const needsYouItems: PaletteItem[] = selectNeedsMePaneIds(activities)

@@ -75,6 +75,13 @@ export class SettingsStore {
             }
           }
         }
+      },
+      remoteSsh: {
+        ...DEFAULT_SETTINGS.remoteSsh,
+        ...saved.remoteSsh,
+        // Whole-array replace, like kanban.profiles - a saved host list is
+        // authoritative, not something to merge element-wise with defaults.
+        hosts: saved.remoteSsh?.hosts ?? DEFAULT_SETTINGS.remoteSsh.hosts
       }
     };
   }
@@ -123,6 +130,11 @@ export class SettingsStore {
         ...current.ai,
         ...(partial.ai ?? {}),
         chat: { ...current.ai.chat, ...(partial.ai?.chat ?? {}) }
+      },
+      remoteSsh: {
+        ...current.remoteSsh,
+        ...(partial.remoteSsh ?? {}),
+        hosts: partial.remoteSsh?.hosts ?? current.remoteSsh.hosts
       }
     };
     this.store.set('settings', merged);

@@ -12,9 +12,8 @@ const log = createLogger('worktree');
 // A WSL distro can be cold-booting; give worktree git operations a wide timeout.
 const WSL_GIT_TIMEOUT_MS = 30_000;
 
-// The only object variant of PathContext is the WSL one.
 function isWslCtx(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
-  return typeof ctx === 'object';
+  return typeof ctx === 'object' && ctx.kind === 'wsl';
 }
 
 function getHomeDir(): string {

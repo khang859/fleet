@@ -109,6 +109,7 @@ import { ChatService } from './chat/chat-service';
 import { ChatSearchService } from './chat/chat-search-service';
 import { runChatBackfill } from './chat/chat-backfill';
 import { registerChatIpc } from './chat/chat-ipc';
+import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
 import { resolveSummary } from './chat/pane-summarizer';
 import { PermissionManager } from './chat/permissions/permission-manager';
 import {
@@ -1586,6 +1587,8 @@ void app.whenReady().then(async () => {
 
   sessionsService = new SessionsService();
   registerSessionsIpcHandlers(sessionsService);
+
+  registerRemoteSshIpcHandlers(ptyManager);
 
   const learningsStoreRef = new LearningsStore(join(learningsHome, 'learnings.db'));
   kanbanMcp?.setLearningsStore(learningsStoreRef);

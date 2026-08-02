@@ -18,9 +18,8 @@ import { wslExePath } from './wsl-service';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024;
 
-// The only object variant of PathContext is the WSL one.
 function isWslContext(ctx: PathContext): ctx is { kind: 'wsl'; distro: string } {
-  return typeof ctx === 'object';
+  return typeof ctx === 'object' && ctx.kind === 'wsl';
 }
 
 /**

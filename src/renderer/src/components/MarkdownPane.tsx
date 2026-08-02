@@ -9,6 +9,7 @@ import { useMarkdownFind } from '../hooks/use-markdown-find';
 import { useToastStore } from '../store/toast-store';
 import { dirname } from '../lib/path-utils';
 import type { PathContext } from '../../../shared/shell-profiles';
+import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -16,11 +17,13 @@ type Props = {
   paneId: string;
   filePath: string;
   pathContext?: PathContext;
+  /** Set when `filePath` is the local cache copy of a remote file - see FileEditorPane. */
+  remote?: RemoteFileRef;
 };
 
 type ViewMode = 'preview' | 'raw';
 
-export function MarkdownPane({ paneId, filePath, pathContext }: Props): React.JSX.Element {
+export function MarkdownPane({ paneId, filePath, pathContext, remote }: Props): React.JSX.Element {
   const [activeView, setActiveView] = useState<ViewMode>('preview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -163,7 +166,12 @@ export function MarkdownPane({ paneId, filePath, pathContext }: Props): React.JS
   );
 
   // Relative images/links in the preview resolve against the file's directory.
+  // For a remote doc that is the cache directory, so siblings won't resolve -
+  // a known limitation of viewing a single fetched file rather than a tree.
   const baseDir = useMemo(() => dirname(filePath), [filePath]);
+
+  // Users think in terms of the remote path, not the cache copy backing it.
+  const displayPath = remote ? `${remote.host.label}:${remote.path}` : filePath;
 
   if (loading) {
     return (
@@ -195,7 +203,7 @@ export function MarkdownPane({ paneId, filePath, pathContext }: Props): React.JS
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden bg-[#282c34]">
-      <PathChromeHeader filePath={filePath} />
+      <PathChromeHeader filePath={displayPath} />
 
       {/* Sub-tab bar */}
       <div className="flex-shrink-0 flex items-center gap-0 border-b border-neutral-800 bg-neutral-950/60 px-2">
@@ -260,6 +268,7 @@ export function MarkdownPane({ paneId, filePath, pathContext }: Props): React.JS
             paneId={paneId}
             filePath={filePath}
             pathContext={pathContext}
+            remote={remote}
             onContentChange={handleContentChange}
             showPathChrome={false}
           />
@@ -280,8 +289,8 @@ export function MarkdownPane({ paneId, filePath, pathContext }: Props): React.JS
 
       {/* Footer with path */}
       <div className="flex-shrink-0 flex items-center px-3 h-7 bg-neutral-950/80 border-t border-neutral-800 text-xs text-neutral-500">
-        <span className="font-mono truncate min-w-0" title={filePath}>
-          {filePath}
+        <span className="font-mono truncate min-w-0" title={displayPath}>
+          {displayPath}
         </span>
       </div>
     </div>

@@ -43,7 +43,7 @@ function contextTag(ctx?: PathContext): string {
  * normalized by string only.
  */
 function normalizeScope(scopePath: string, ctx?: PathContext): string {
-  const isWsl = typeof ctx === 'object';
+  const isWsl = typeof ctx === 'object' && ctx.kind === 'wsl';
   if (!isWsl) {
     try {
       return realpathSync.native(scopePath);

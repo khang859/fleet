@@ -29,6 +29,7 @@ import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, restartingPanes, serializePane } from './hooks/use-terminal';
 import { initCwdListener, useCwdStore } from './store/cwd-store';
 import { initRemoteListener } from './store/remote-store';
+import { initRemoteTransferListener } from './store/remote-ssh-store';
 import { useSettingsStore } from './store/settings-store';
 import { useShellProfilesStore } from './store/shell-profiles-store';
 import { useHomesStore } from './store/homes-store';
@@ -221,6 +222,11 @@ export function App(): React.JSX.Element {
   // Subscribe to remote-session (ssh/mosh) state from main process
   useEffect(() => {
     return initRemoteListener();
+  }, []);
+
+  // Subscribe to SSH file transfer progress
+  useEffect(() => {
+    return initRemoteTransferListener();
   }, []);
 
   // Listen for focus-pane from main process (copilot "Go to Terminal", OS notifications)

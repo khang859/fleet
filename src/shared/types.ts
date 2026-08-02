@@ -6,6 +6,7 @@ import type { SessionAgentFilter } from './sessions';
 import type { ToolVisibility } from './tools';
 import type { UserGroupColor } from './group-colors';
 import type { AiSettings } from './chat-types';
+import type { RemoteHost } from './remote-ssh-types';
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends Array<infer U>
@@ -52,7 +53,8 @@ export type Tab = {
     | 'artifacts'
     | 'pdf'
     | 'sessions'
-    | 'chat';
+    | 'chat'
+    | 'ssh-browser';
   avatarVariant?: string;
   splitRoot: PaneNode;
   // Worktree group fields
@@ -92,8 +94,18 @@ export type PaneLeaf = {
     | 'markdown'
     | 'kanban'
     | 'artifacts'
-    | 'pdf';
+    | 'pdf'
+    | 'ssh-browser';
   filePath?: string;
+  /**
+   * The SSH target this pane's content lives on. Deliberately orthogonal to
+   * `pathContext`: that field answers "how do I reach this path with local fs /
+   * local process spawning", which a remote path never satisfies. When set, the
+   * pane reads through `window.fleet.remoteSsh` instead of `window.fleet.file`.
+   */
+  remoteHost?: RemoteHost;
+  /** Current directory for an `ssh-browser` pane. */
+  remotePath?: string;
   isDirty?: boolean;
   serializedContent?: string;
   /** One-shot startup command for this pane (e.g. resuming a session). Runs on first PTY create. */
@@ -344,6 +356,10 @@ export type FleetSettings = {
   tools: ToolVisibility;
   kanban: KanbanSettings;
   ai: AiSettings;
+  remoteSsh: {
+    /** Saved SSH targets. Connection coordinates only - never key material. */
+    hosts: RemoteHost[];
+  };
 };
 
 export type FleetSettingsPatch = DeepPartial<FleetSettings>;
