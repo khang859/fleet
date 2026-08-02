@@ -10,7 +10,8 @@ import {
   Bot,
   KanbanSquare,
   SlidersHorizontal,
-  MessageSquare
+  MessageSquare,
+  Server
 } from 'lucide-react';
 import { getFileIcon } from '../lib/file-icons';
 import { TabItem } from './TabItem';
@@ -1516,8 +1517,13 @@ export function Sidebar({
               let drivingPaneId: string | undefined;
               if (isFile) {
                 const leafs = collectPaneLeafs(tab.splitRoot);
-                const filePath = leafs[0]?.filePath ?? '';
+                // Remote panes have no local filePath - their location is the
+                // remote path, which is also what the user recognises.
+                const filePath = leafs[0]?.remotePath ?? leafs[0]?.filePath ?? '';
                 displayCwd = filePath ? filePath.split('/').slice(0, -1).join('/') || '/' : '/';
+              } else if (tab.type === 'ssh-browser') {
+                const leafs = collectPaneLeafs(tab.splitRoot);
+                displayCwd = leafs[0]?.remoteHost?.host ?? tab.cwd;
               } else {
                 drivingPaneId =
                   tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId)
@@ -1533,9 +1539,12 @@ export function Sidebar({
               let icon: React.ReactNode;
               if (tab.type === 'pi') {
                 icon = <Bot size={14} />;
+              } else if (tab.type === 'ssh-browser') {
+                icon = <Server size={14} />;
               } else if (isFile) {
                 const leafs2 = collectPaneLeafs(tab.splitRoot);
-                const fileBasename = leafs2[0]?.filePath?.split('/').pop() ?? tab.label;
+                const fileBasename =
+                  (leafs2[0]?.remotePath ?? leafs2[0]?.filePath)?.split('/').pop() ?? tab.label;
                 icon =
                   tab.type === 'image' ? <ImageIcon size={14} /> : getFileIcon(fileBasename, 14);
               } else {

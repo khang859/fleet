@@ -182,5 +182,6 @@ export const DEFAULT_SETTINGS: FleetSettings = {
       }
     ]
   },
-  ai: DEFAULT_AI_SETTINGS
+  ai: DEFAULT_AI_SETTINGS,
+  remoteSsh: { hosts: [] }
 };

@@ -13,6 +13,7 @@ import { RuneSection } from './rune/RuneSection';
 import { KanbanSection } from './kanban/KanbanSection';
 import { EnvSyncSection } from './EnvSyncSection';
 import { LearningsSection } from './LearningsSection';
+import { RemoteHostsSection } from './RemoteHostsSection';
 import { DiagnosticsSection } from './DiagnosticsSection';
 
 const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
@@ -27,6 +28,7 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   pi: PiSection,
   kanban: KanbanSection,
   envSync: EnvSyncSection,
+  remoteHosts: RemoteHostsSection,
   learnings: LearningsSection,
   diagnostics: DiagnosticsSection
 };

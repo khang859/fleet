@@ -12,6 +12,7 @@ import { createLogger } from '../logger';
 import { clampSidebarWidth } from '../components/sidebar-constants';
 import { basename as pathBasename } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
+import type { RemoteHost } from '../../../shared/remote-ssh-types';
 import { useShellProfilesStore } from './shell-profiles-store';
 
 const logTabs = createLogger('sidebar:tabs');
@@ -312,6 +313,11 @@ type WorkspaceStore = {
     files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf'; label: string }>
   ) => void;
   addRecentFile: (filePath: string) => void;
+
+  // Remote (SSH) helpers
+  openSshBrowser: (host: RemoteHost, initialPath?: string) => string;
+  openRemoteFile: (host: RemoteHost, remotePath: string) => string;
+
   removeRecentFiles: (filePaths: string[]) => void;
   addRecentFolder: (folderPath: string) => void;
   setFileDirty: (paneId: string, isDirty: boolean) => void;
@@ -1389,6 +1395,62 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       isDirty: true
     }));
     get().addRecentFile(filePath);
+    return leaf.id;
+  },
+
+  openSshBrowser: (host, initialPath) => {
+    const leaf: PaneLeaf = {
+      type: 'leaf',
+      id: generateId(),
+      cwd: '/',
+      paneType: 'ssh-browser',
+      remoteHost: host,
+      remotePath: initialPath ?? host.defaultPath
+    };
+    const tab: Tab = {
+      id: generateId(),
+      label: host.label,
+      labelIsCustom: true,
+      cwd: '/',
+      type: 'ssh-browser',
+      splitRoot: leaf
+    };
+    set((state) => ({
+      workspace: { ...state.workspace, tabs: [...state.workspace.tabs, tab] },
+      activeTabId: tab.id,
+      activePaneId: leaf.id,
+      isDirty: true
+    }));
+    return leaf.id;
+  },
+
+  openRemoteFile: (host, remotePath) => {
+    const paneType = getPaneTypeForFilePath(remotePath);
+    const fileName = remotePath.split('/').pop() ?? remotePath;
+    // No `pathContext` and no `filePath`: a remote path is not reachable by the
+    // local `fs`, so the pane resolves it through the remote cache instead.
+    const leaf: PaneLeaf = {
+      type: 'leaf',
+      id: generateId(),
+      cwd: '/',
+      paneType,
+      remoteHost: host,
+      remotePath
+    };
+    const tab: Tab = {
+      id: generateId(),
+      label: fileName,
+      labelIsCustom: true,
+      cwd: '/',
+      type: paneType,
+      splitRoot: leaf
+    };
+    set((state) => ({
+      workspace: { ...state.workspace, tabs: [...state.workspace.tabs, tab] },
+      activeTabId: tab.id,
+      activePaneId: leaf.id,
+      isDirty: true
+    }));
     return leaf.id;
   },
 

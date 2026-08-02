@@ -10,9 +10,8 @@ import { execInContext, type ExecResult } from './run-in-context';
 
 const GIT_TIMEOUT_MS = 20_000;
 
-// The only object variant of PathContext is the WSL one.
 function isWslCtx(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
-  return typeof ctx === 'object';
+  return typeof ctx === 'object' && ctx.kind === 'wsl';
 }
 
 export class GitService {

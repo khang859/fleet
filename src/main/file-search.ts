@@ -10,9 +10,8 @@ import { toWslUncPath } from '../shared/path-platform';
 
 let activeProcess: ChildProcess | null = null;
 
-// The only object variant of PathContext is the WSL one.
 function isWslContext(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
-  return typeof ctx === 'object';
+  return typeof ctx === 'object' && ctx.kind === 'wsl';
 }
 
 function killActive(): void {

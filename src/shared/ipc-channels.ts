@@ -44,6 +44,7 @@ export const IPC_CHANNELS = {
   FILE_WRITE: 'file:write',
   FILE_STAT: 'file:stat',
   FILE_OPEN_DIALOG: 'file:open-dialog',
+  FILE_SAVE_DIALOG: 'file:save-dialog',
   FILE_LIST: 'file:list',
   FILE_READ_BINARY: 'file:read-binary',
   FILE_OPEN_IN_TAB: 'file:open-in-tab',
@@ -324,5 +325,30 @@ export const IPC_CHANNELS = {
   // Audit ledger: list recorded tool actions (optionally scoped to a conversation).
   CHAT_AUDIT_LIST: 'chat:audit-list',
   // Export one conversation's active thread to Markdown or JSON.
-  CHAT_EXPORT: 'chat:export'
+  CHAT_EXPORT: 'chat:export',
+
+  // ── Remote (SSH) file browser ──────────────────────────────────────────────
+  // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's
+  // foreground process a remote shell" boolean.
+  REMOTE_SSH_TEST: 'remote-ssh:test',
+  REMOTE_SSH_HOME: 'remote-ssh:home',
+  REMOTE_SSH_LIST: 'remote-ssh:list',
+  REMOTE_SSH_STAT: 'remote-ssh:stat',
+  // Materialises a remote file into the local cache and returns its local path,
+  // which is what lets the existing viewer panes and fleet-image:// /
+  // fleet-pdf:// protocols work on remote files unchanged.
+  REMOTE_SSH_FETCH: 'remote-ssh:fetch',
+  REMOTE_SSH_READ_TEXT: 'remote-ssh:read-text',
+  REMOTE_SSH_WRITE_TEXT: 'remote-ssh:write-text',
+  REMOTE_SSH_MKDIR: 'remote-ssh:mkdir',
+  REMOTE_SSH_RENAME: 'remote-ssh:rename',
+  REMOTE_SSH_REMOVE: 'remote-ssh:remove',
+  REMOTE_SSH_UPLOAD: 'remote-ssh:upload',
+  REMOTE_SSH_DOWNLOAD: 'remote-ssh:download',
+  REMOTE_SSH_TRANSFER_CANCEL: 'remote-ssh:transfer-cancel',
+  // Renderer-bound event carrying a RemoteTransfer snapshot on every poll tick.
+  REMOTE_SSH_TRANSFER_PROGRESS: 'remote-ssh:transfer-progress',
+  REMOTE_SSH_DISCONNECT: 'remote-ssh:disconnect',
+  // Best-effort: resolve the ssh destination a terminal pane is connected to.
+  REMOTE_SSH_DETECT_HOST: 'remote-ssh:detect-host'
 } as const;

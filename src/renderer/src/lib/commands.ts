@@ -1,6 +1,8 @@
 import { ALL_SHORTCUTS, formatShortcut, type ShortcutDef } from './shortcuts';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useVisualizerStore } from '../store/visualizer-store';
+import { useToastStore } from '../store/toast-store';
+import type { RemoteHost } from '../../../shared/remote-ssh-types';
 
 export type Command = {
   id: string;
@@ -13,6 +15,52 @@ export type Command = {
 
 function sc(id: string): ShortcutDef | undefined {
   return ALL_SHORTCUTS.find((s) => s.id === id);
+}
+
+/**
+ * Open a browser on whatever host the active pane is already SSH'd into.
+ *
+ * The detected destination is used for this pane only and is deliberately not
+ * persisted - saving hosts is an explicit act in Settings, so a one-off `ssh`
+ * in a terminal never quietly accumulates entries in the user's host list.
+ */
+async function browseDetectedHost(): Promise<void> {
+  const { activePaneId, openSshBrowser } = useWorkspaceStore.getState();
+  const show = useToastStore.getState().show;
+  if (!activePaneId) return;
+
+  const result = await window.fleet.remoteSsh.detectHost(activePaneId);
+  if (!result.success) {
+    show(result.error);
+    return;
+  }
+  if (result.data === null) {
+    show('This pane is not connected to a remote host over SSH');
+    return;
+  }
+  const detected = result.data;
+  openSshBrowser({
+    id: crypto.randomUUID(),
+    // Saved hosts carry a short human label; a detected one only has a
+    // destination, so shorten it the way people say it out loud - the first
+    // segment of the hostname, not the full user@fqdn.
+    label: detected.host.split('.')[0] || detected.host,
+    host: detected.host,
+    user: detected.user,
+    port: detected.port,
+    identityFile: detected.identityFile
+  });
+}
+
+/** One "Browse <host>" command per saved host, so the palette reaches them directly. */
+export function createRemoteHostCommands(hosts: RemoteHost[]): Command[] {
+  return hosts.map((host) => ({
+    id: `browse-remote:${host.id}`,
+    label: `Browse ${host.label}`,
+    category: 'File',
+    keywords: ['ssh', 'remote', 'sftp', 'server', host.host, host.user ?? ''],
+    execute: () => useWorkspaceStore.getState().openSshBrowser(host)
+  }));
 }
 
 export function createCommandRegistry(): Command[] {
@@ -125,6 +173,13 @@ export function createCommandRegistry(): Command[] {
       shortcut: sc('git-changes'),
       category: 'View',
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes'))
+    },
+    {
+      id: 'browse-remote-here',
+      label: 'Browse Files on This Remote Host',
+      category: 'File',
+      keywords: ['ssh', 'remote', 'sftp', 'server'],
+      execute: () => void browseDetectedHost()
     },
     {
       id: 'open-file',

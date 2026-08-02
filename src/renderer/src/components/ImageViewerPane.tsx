@@ -2,6 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { useImageStore } from '../store/image-store';
 import { toFleetImageUrl } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
+import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
 
 function getBasename(filePath: string): string {
   return filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
@@ -20,11 +21,19 @@ const ZOOM_STEP = 0.15;
 type ImageViewerPaneProps = {
   filePath: string;
   pathContext?: PathContext;
+  /**
+   * Set when `filePath` is the local cache copy of a remote image. Rendering is
+   * unaffected - the cache copy is byte-identical - but the name shown must be
+   * the remote one, and the image actions are hidden because they would write
+   * their output into the cache where it could never reach the server.
+   */
+  remote?: RemoteFileRef;
 };
 
 export function ImageViewerPane({
   filePath,
-  pathContext
+  pathContext,
+  remote
 }: ImageViewerPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -54,7 +63,7 @@ export function ImageViewerPane({
     zoomRef.current = zoom;
   }, [zoom]);
 
-  const filename = getBasename(filePath);
+  const filename = getBasename(remote?.path ?? filePath);
 
   // Load image via custom protocol (avoids base64 IPC overhead)
   useEffect(() => {
@@ -287,7 +296,7 @@ export function ImageViewerPane({
             </ToolbarButton>
           </div>
         )}
-        {imageSrc && actions.length > 0 && (
+        {imageSrc && !remote && actions.length > 0 && (
           <div className="flex items-center gap-0.5 ml-2">
             <div className="w-px h-3.5 bg-neutral-700 mx-1" />
             {actions.map((action) => (

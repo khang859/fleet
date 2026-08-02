@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import type { PaneNode, PaneLeaf, TerminalBackground } from '../../../shared/types';
+import type { PathContext } from '../../../shared/shell-profiles';
+import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
 import { TerminalPane } from './TerminalPane';
@@ -9,6 +11,8 @@ import { ImageViewerPane } from './ImageViewerPane';
 import { PdfViewerPane } from './PdfViewerPane';
 import { FileEditorPane } from './FileEditorPane';
 import { MarkdownPane } from './MarkdownPane';
+import { SshBrowserPane } from './ssh/SshBrowserPane';
+import { RemoteFileGate } from './ssh/RemoteFileGate';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
 import { activityRingClass } from '../lib/activity-glyph';
@@ -162,6 +166,60 @@ function PaneFrame({
   );
 }
 
+type ViewerPaneType = 'file' | 'markdown' | 'image' | 'pdf';
+
+function isViewerPaneType(paneType: PaneLeaf['paneType']): paneType is ViewerPaneType {
+  return (
+    paneType === 'file' || paneType === 'markdown' || paneType === 'image' || paneType === 'pdf'
+  );
+}
+
+/**
+ * Dispatches to the right viewer for a file-backed pane. `filePath` is always a
+ * path the local `fs` can reach - for remote panes that is the cache copy, and
+ * `remote` carries the origin so writes go back over SSH instead of into it.
+ */
+function ViewerPane({
+  paneType,
+  paneId,
+  filePath,
+  pathContext,
+  remote
+}: {
+  paneType: ViewerPaneType;
+  paneId: string;
+  filePath: string;
+  pathContext?: PathContext;
+  remote?: RemoteFileRef;
+}): React.JSX.Element {
+  switch (paneType) {
+    // The image and PDF viewers are read-only - they render straight from the
+    // cache copy and only need `remote` to name the file the user asked for.
+    case 'image':
+      return <ImageViewerPane filePath={filePath} pathContext={pathContext} remote={remote} />;
+    case 'pdf':
+      return <PdfViewerPane filePath={filePath} pathContext={pathContext} remote={remote} />;
+    case 'markdown':
+      return (
+        <MarkdownPane
+          paneId={paneId}
+          filePath={filePath}
+          pathContext={pathContext}
+          remote={remote}
+        />
+      );
+    case 'file':
+      return (
+        <FileEditorPane
+          paneId={paneId}
+          filePath={filePath}
+          pathContext={pathContext}
+          remote={remote}
+        />
+      );
+  }
+}
+
 type PaneGridProps = {
   root: PaneNode;
   activePaneId: string | null;
@@ -202,52 +260,47 @@ export function PaneGrid({
     <div ref={gridRef} className="h-full w-full" style={{ position: 'relative' }}>
       {/* Terminal panes — flat keyed siblings, never unmounted by tree changes */}
       {layout.leaves.map((leaf) => {
-        if (leaf.node.paneType === 'file') {
+        if (leaf.node.paneType === 'ssh-browser' && leaf.node.remoteHost) {
+          const host = leaf.node.remoteHost;
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
               <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                <FileEditorPane
-                  paneId={leaf.id}
-                  filePath={leaf.node.filePath ?? ''}
-                  pathContext={leaf.node.pathContext}
-                />
+                <SshBrowserPane paneId={leaf.id} host={host} initialPath={leaf.node.remotePath} />
               </PaneFrame>
             </div>
           );
         }
-        if (leaf.node.paneType === 'markdown') {
+        const viewerType = leaf.node.paneType;
+        if (isViewerPaneType(viewerType)) {
+          const node = leaf.node;
+          const remote =
+            node.remoteHost && node.remotePath
+              ? { host: node.remoteHost, path: node.remotePath }
+              : null;
+          // Remote files are materialised into the local cache first, so every
+          // viewer below sees an ordinary local path and needs no SSH awareness.
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
               <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                <MarkdownPane
-                  paneId={leaf.id}
-                  filePath={leaf.node.filePath ?? ''}
-                  pathContext={leaf.node.pathContext}
-                />
-              </PaneFrame>
-            </div>
-          );
-        }
-        if (leaf.node.paneType === 'image') {
-          return (
-            <div key={leaf.id} style={rectStyle(leaf.rect)}>
-              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                <ImageViewerPane
-                  filePath={leaf.node.filePath ?? ''}
-                  pathContext={leaf.node.pathContext}
-                />
-              </PaneFrame>
-            </div>
-          );
-        }
-        if (leaf.node.paneType === 'pdf') {
-          return (
-            <div key={leaf.id} style={rectStyle(leaf.rect)}>
-              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                <PdfViewerPane
-                  filePath={leaf.node.filePath ?? ''}
-                  pathContext={leaf.node.pathContext}
-                />
+                {remote ? (
+                  <RemoteFileGate host={remote.host} remotePath={remote.path}>
+                    {(fetched) => (
+                      <ViewerPane
+                        paneType={viewerType}
+                        paneId={leaf.id}
+                        filePath={fetched.localPath}
+                        remote={{ ...remote, mtimeMs: fetched.mtimeMs }}
+                      />
+                    )}
+                  </RemoteFileGate>
+                ) : (
+                  <ViewerPane
+                    paneType={viewerType}
+                    paneId={leaf.id}
+                    filePath={node.filePath ?? ''}
+                    pathContext={node.pathContext}
+                  />
+                )}
               </PaneFrame>
             </div>
           );

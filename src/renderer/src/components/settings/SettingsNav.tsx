@@ -10,6 +10,7 @@ export type SettingsSection =
   | 'pi'
   | 'kanban'
   | 'envSync'
+  | 'remoteHosts'
   | 'learnings'
   | 'diagnostics';
 
@@ -44,6 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     heading: 'Advanced',
     items: [
+      { id: 'remoteHosts', label: 'Remote Hosts' },
       { id: 'socket', label: 'Socket API' },
       { id: 'diagnostics', label: 'Diagnostics' },
       { id: 'updates', label: 'Updates' }

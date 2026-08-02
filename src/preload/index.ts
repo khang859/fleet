@@ -141,6 +141,17 @@ import type {
   EnvTrashResult
 } from '../shared/env-editor-types';
 import type { NoteReadResult, NoteWriteResult } from '../shared/notes-types';
+import type {
+  DetectedSshHost,
+  RemoteDirEntry,
+  RemoteFetchResult,
+  RemoteHost,
+  RemoteListResult,
+  RemoteResult,
+  RemoteTextResult,
+  RemoteTransfer,
+  RemoteTransferRequest
+} from '../shared/remote-ssh-types';
 import type { ShellEnvSnapshot } from '../shared/shell-env-types';
 import type { SessionAgent, SessionSummary, SessionTranscript } from '../shared/sessions';
 import type {
@@ -346,6 +357,10 @@ const fleetApi = {
         multi?: boolean;
       } = {}
     ): Promise<string[]> => typedInvoke(IPC_CHANNELS.FILE_OPEN_DIALOG, opts),
+    /** Picks a destination path. Returns null if the user cancelled. */
+    saveDialog: async (
+      opts: { defaultName?: string; defaultPath?: string } = {}
+    ): Promise<string | null> => typedInvoke(IPC_CHANNELS.FILE_SAVE_DIALOG, opts),
     list: async (
       dirPath: string,
       pathContext?: PathContext
@@ -828,6 +843,57 @@ const fleetApi = {
         expectedMtimeMs,
         pathContext
       )
+  },
+
+  /**
+   * Remote (SSH) file browser. Every call returns a `RemoteResult`, so a dropped
+   * connection or a permission error arrives as data rather than a rejection.
+   */
+  remoteSsh: {
+    test: async (host: RemoteHost): Promise<RemoteResult<{ ok: boolean; error?: string }>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_TEST, host),
+    home: async (host: RemoteHost): Promise<RemoteResult<string>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_HOME, host),
+    list: async (host: RemoteHost, path: string): Promise<RemoteResult<RemoteListResult>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_LIST, host, path),
+    stat: async (host: RemoteHost, path: string): Promise<RemoteResult<RemoteDirEntry | null>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_STAT, host, path),
+    /** Returns a *local* cache path, which is what viewer panes and the
+     *  fleet-image:// / fleet-pdf:// protocols consume unchanged. */
+    fetch: async (host: RemoteHost, path: string): Promise<RemoteResult<RemoteFetchResult>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_FETCH, host, path),
+    readText: async (host: RemoteHost, path: string): Promise<RemoteResult<RemoteTextResult>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_READ_TEXT, host, path),
+    writeText: async (
+      host: RemoteHost,
+      path: string,
+      content: string,
+      expectedMtimeMs?: number
+    ): Promise<RemoteResult<{ ok: true; mtimeMs: number } | { ok: false; externalChange: true }>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_WRITE_TEXT, host, path, content, expectedMtimeMs),
+    mkdir: async (host: RemoteHost, path: string): Promise<RemoteResult<void>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_MKDIR, host, path),
+    rename: async (host: RemoteHost, from: string, to: string): Promise<RemoteResult<void>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_RENAME, host, from, to),
+    remove: async (
+      host: RemoteHost,
+      path: string,
+      isDirectory: boolean
+    ): Promise<RemoteResult<void>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_REMOVE, host, path, isDirectory),
+    /** Resolves when the bytes have landed; watch `onTransfer` for progress. */
+    upload: async (request: RemoteTransferRequest): Promise<RemoteResult<void>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_UPLOAD, request),
+    download: async (request: RemoteTransferRequest): Promise<RemoteResult<void>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_DOWNLOAD, request),
+    cancelTransfer: async (id: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_TRANSFER_CANCEL, id),
+    onTransfer: (callback: (transfer: RemoteTransfer) => void): Unsubscribe =>
+      onChannel<RemoteTransfer>(IPC_CHANNELS.REMOTE_SSH_TRANSFER_PROGRESS, callback),
+    disconnect: async (host: RemoteHost): Promise<RemoteResult<void>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_DISCONNECT, host),
+    detectHost: async (paneId: string): Promise<RemoteResult<DetectedSshHost | null>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_DETECT_HOST, paneId)
   },
   shellEnv: {
     get: async (paneId: string): Promise<ShellEnvSnapshot | null> =>
