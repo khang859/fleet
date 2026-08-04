@@ -54,6 +54,7 @@ export type Tab = {
     | 'pdf'
     | 'sessions'
     | 'chat'
+    | 'agent'
     | 'ssh-browser';
   avatarVariant?: string;
   splitRoot: PaneNode;
@@ -95,6 +96,7 @@ export type PaneLeaf = {
     | 'kanban'
     | 'artifacts'
     | 'pdf'
+    | 'agent'
     | 'ssh-browser';
   filePath?: string;
   /**

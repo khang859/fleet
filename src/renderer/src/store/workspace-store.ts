@@ -314,6 +314,9 @@ type WorkspaceStore = {
   ) => void;
   addRecentFile: (filePath: string) => void;
 
+  /** Open a native agent pane in a new tab. Returns the new pane id. */
+  openAgentPane: () => string;
+
   // Remote (SSH) helpers
   openSshBrowser: (host: RemoteHost, initialPath?: string) => string;
   openRemoteFile: (host: RemoteHost, remotePath: string) => string;
@@ -1395,6 +1398,35 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       isDirty: true
     }));
     get().addRecentFile(filePath);
+    return leaf.id;
+  },
+
+  openAgentPane: () => {
+    const state = get();
+    // The agent will eventually run against a project, so start it where the
+    // user already is rather than in an arbitrary directory.
+    const cwd = state.workspace.tabs.find((t) => t.id === state.activeTabId)?.cwd ?? '/';
+    const leaf: PaneLeaf = {
+      type: 'leaf',
+      id: generateId(),
+      cwd,
+      paneType: 'agent',
+      pathContext: getPaneContextById(state.activePaneId)
+    };
+    const tab: Tab = {
+      id: generateId(),
+      label: 'Agent',
+      labelIsCustom: true,
+      cwd,
+      type: 'agent',
+      splitRoot: leaf
+    };
+    set((s) => ({
+      workspace: { ...s.workspace, tabs: [...s.workspace.tabs, tab] },
+      activeTabId: tab.id,
+      activePaneId: leaf.id,
+      isDirty: true
+    }));
     return leaf.id;
   },
 

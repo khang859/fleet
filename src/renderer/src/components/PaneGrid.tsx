@@ -12,6 +12,7 @@ import { PdfViewerPane } from './PdfViewerPane';
 import { FileEditorPane } from './FileEditorPane';
 import { MarkdownPane } from './MarkdownPane';
 import { SshBrowserPane } from './ssh/SshBrowserPane';
+import { AgentPane } from './agent/AgentPane';
 import { RemoteFileGate } from './ssh/RemoteFileGate';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
@@ -260,6 +261,17 @@ export function PaneGrid({
     <div ref={gridRef} className="h-full w-full" style={{ position: 'relative' }}>
       {/* Terminal panes — flat keyed siblings, never unmounted by tree changes */}
       {layout.leaves.map((leaf) => {
+        if (leaf.node.paneType === 'agent') {
+          return (
+            <div key={leaf.id} style={rectStyle(leaf.rect)}>
+              {/* No PaneHeader: like the other non-terminal panes, the agent
+                  pane owns its own chrome and has no live cwd to show. */}
+              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
+                <AgentPane />
+              </PaneFrame>
+            </div>
+          );
+        }
         if (leaf.node.paneType === 'ssh-browser' && leaf.node.remoteHost) {
           const host = leaf.node.remoteHost;
           return (

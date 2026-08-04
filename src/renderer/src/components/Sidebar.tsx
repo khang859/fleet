@@ -1537,7 +1537,7 @@ export function Sidebar({
               const displayLabel = isFile && isFileDirty ? tab.label + ' *' : tab.label;
 
               let icon: React.ReactNode;
-              if (tab.type === 'pi') {
+              if (tab.type === 'pi' || tab.type === 'agent') {
                 icon = <Bot size={14} />;
               } else if (tab.type === 'ssh-browser') {
                 icon = <Server size={14} />;

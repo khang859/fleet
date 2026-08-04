@@ -8,7 +8,8 @@ import {
   KanbanSquare,
   History,
   SlidersHorizontal,
-  MessageSquare
+  MessageSquare,
+  Bot
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
@@ -792,6 +793,11 @@ export function App(): React.JSX.Element {
                         </span>
                       ) : tab.type === 'image' ? (
                         <ImageIcon
+                          size={16}
+                          className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}
+                        />
+                      ) : tab.type === 'agent' ? (
+                        <Bot
                           size={16}
                           className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}
                         />

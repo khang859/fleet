@@ -230,6 +230,13 @@ export function createCommandRegistry(): Command[] {
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-agent-overview'))
     },
     {
+      id: 'open-agent',
+      label: 'New Agent Pane',
+      category: 'Agent',
+      keywords: ['agent', 'ai', 'assistant', 'code'],
+      execute: () => useWorkspaceStore.getState().openAgentPane()
+    },
+    {
       id: 'open-kanban',
       label: 'Open Kanban Board',
       category: 'Tabs',
