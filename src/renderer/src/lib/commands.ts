@@ -234,7 +234,9 @@ export function createCommandRegistry(): Command[] {
       label: 'New Agent Pane',
       category: 'Agent',
       keywords: ['agent', 'ai', 'assistant', 'code'],
-      execute: () => useWorkspaceStore.getState().openAgentPane()
+      // The pane needs a folder to work in, so the dialog runs first and opens
+      // the pane itself once the user has chosen one.
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:new-agent'))
     },
     {
       id: 'open-kanban',
