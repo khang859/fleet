@@ -17,14 +17,26 @@ import type { AgentMessage } from './agent-types';
  */
 
 /** Bumped when the event shape changes in a way a reader has to know about. */
-export const SESSION_LOG_VERSION = 1;
+export const SESSION_LOG_VERSION = 2;
+
+const ToolCallSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  args: z.string(),
+  result: z.string().nullable(),
+  error: z.string().nullable(),
+  summary: z.string().nullable()
+});
 
 const MessageSchema = z.object({
   id: z.string(),
   role: z.enum(['user', 'assistant', 'summary']),
   content: z.string(),
   reasoning: z.string(),
-  reasoningMs: z.number().nullable()
+  reasoningMs: z.number().nullable(),
+  // Version 1 wrote no tool calls at all. Defaulted rather than required so a
+  // session recorded before there were tools still replays as what it was.
+  toolCalls: z.array(ToolCallSchema).default([])
 });
 
 const EventSchema = z.discriminatedUnion('t', [

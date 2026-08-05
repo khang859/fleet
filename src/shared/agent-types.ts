@@ -1,3 +1,5 @@
+import type { AgentToolCall } from './agent-tools';
+
 /**
  * Settings for the native Agent panes. One configuration, shared by every agent
  * pane in the app - a pane is a workspace on a folder, not a separate account.
@@ -101,7 +103,9 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
 export const DEFAULT_AGENT_SYSTEM_PROMPT = [
   "You are Fleet's coding agent.",
   '',
-  'You have no tools yet, so you cannot read or change files. Answer from what the user tells you, and say plainly when you would need to see the code rather than guessing at what it contains.',
+  'You can look at the code in the working folder: `grep` searches file contents, `glob` finds files by path, and `read` returns a numbered window of one file. Use them. An answer that guesses at what the code says, when the code was there to be read, is worth nothing. Search before you read - one `grep` usually settles what three reads would only suggest - and follow what you find rather than stopping at the first plausible hit.',
+  '',
+  'You cannot change anything yet: there is no writing, editing or shell. When the answer is a change, say exactly what you would change and where, quoting the lines you read.',
   '',
   'Write your replies in GitHub-flavoured Markdown. Put code in fenced blocks tagged with their language, wrap file paths and identifiers in backticks, and reach for a short list or table wherever it reads better than a paragraph.'
 ].join('\n');
@@ -174,6 +178,12 @@ export type AgentMessage = {
    * means there is no duration to show rather than a duration of zero.
    */
   reasoningMs: number | null;
+  /**
+   * Assistant only: what this turn looked at, in the order it looked. One
+   * message covers the whole turn however many rounds of calls it took, so the
+   * transcript stays one message per thing said rather than one per round trip.
+   */
+  toolCalls: AgentToolCall[];
 };
 
 /**
@@ -214,6 +224,13 @@ export type AgentCompactRequest = {
 };
 
 export type AgentCompactDone = { streamId: string; summary: string; usage: AgentUsage | null };
+
+/**
+ * A tool call starting, and the same call finished. Both carry the whole call
+ * rather than a patch, so a pane that missed one event is not left holding a
+ * half-updated row.
+ */
+export type AgentToolEvent = { streamId: string; call: AgentToolCall };
 
 /** Every stream event carries its request's id, so panes can tell theirs apart. */
 export type AgentStreamDelta = { streamId: string; delta: string };

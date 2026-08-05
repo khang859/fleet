@@ -20,7 +20,8 @@ const msg = (id: string, role: AgentMessage['role'], content: string): AgentMess
   role,
   content,
   reasoning: '',
-  reasoningMs: null
+  reasoningMs: null,
+  toolCalls: []
 });
 
 const log = (...events: AgentSessionEvent[]): string => events.map(encodeEvent).join('');
@@ -152,6 +153,37 @@ describe('replaySession', () => {
 
       expect(replay.skipped).toBe(0);
     });
+  });
+
+  // Version 1 files were written before the agent had tools, so their messages
+  // carry no `toolCalls` at all. They are ordinary sessions and have to open.
+  it('replays a session written before there were tools', () => {
+    const replay = replaySession(
+      '{"t":"session","version":1,"id":"s-1","cwd":"/repo","createdAt":"2026-08-05T10:00:00.000Z"}\n' +
+        '{"t":"message","message":{"id":"a","role":"user","content":"hi","reasoning":"","reasoningMs":null}}\n'
+    );
+
+    expect(replay.skipped).toBe(0);
+    expect(replay.messages[0]).toMatchObject({ id: 'a', toolCalls: [] });
+  });
+
+  it('keeps the tool calls a turn made', () => {
+    const message = {
+      ...msg('a', 'assistant', 'here'),
+      toolCalls: [
+        {
+          id: 'call_1',
+          name: 'read',
+          args: '{"path":"a.ts"}',
+          result: 'a.ts lines 1-1',
+          error: null,
+          summary: '1 line'
+        }
+      ]
+    };
+    const replay = replaySession(log(HEADER, { t: 'message', message }));
+
+    expect(replay.messages[0]).toEqual(message);
   });
 
   it('round-trips through the encoder', () => {

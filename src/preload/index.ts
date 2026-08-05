@@ -148,7 +148,8 @@ import type {
   AgentSendRequest,
   AgentStreamDelta,
   AgentStreamDone,
-  AgentStreamError
+  AgentStreamError,
+  AgentToolEvent
 } from '../shared/agent-types';
 import type { AgentSessionAppend, AgentSessionReplay } from '../shared/agent-session';
 import type {
@@ -876,6 +877,10 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.AGENT_STREAM_ERROR, cb),
     onCompactDone: (cb: (p: AgentCompactDone) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_COMPACT_DONE, cb),
+    onToolStart: (cb: (p: AgentToolEvent) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_TOOL_START, cb),
+    onToolEnd: (cb: (p: AgentToolEvent) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_TOOL_END, cb),
     /** Fire-and-forget: a failed write must not stall the turn that caused it. */
     appendSession: (req: AgentSessionAppend): void =>
       ipcRenderer.send(IPC_CHANNELS.AGENT_SESSION_APPEND, req),

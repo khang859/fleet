@@ -4,6 +4,7 @@ import type { AgentMessage } from '../../../../shared/agent-types';
 import { canCompact } from '../../../../shared/agent-context';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentActivity } from './AgentActivity';
+import { AgentToolRow } from './AgentToolRow';
 import { reasoningLabel } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
 import { useAgentStore } from '../../store/agent-store';
@@ -11,8 +12,8 @@ import { useSettingsStore } from '../../store/settings-store';
 import { shortenPath } from '../../lib/shorten-path';
 
 /**
- * The agent's transcript and composer. One streamed turn at a time, no tools -
- * the thread lives in the renderer and is gone when the pane closes.
+ * The agent's transcript and composer. One streamed turn at a time, which may
+ * read its way around the folder before it answers.
  */
 export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): React.JSX.Element {
   const thread = useAgentStore((s) => s.threads[paneId]);
@@ -105,7 +106,7 @@ function Transcript({
   // Follow the stream. Keyed on the growing text so every delta scrolls.
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages.length, last?.content, last?.reasoning]);
+  }, [messages.length, last?.content, last?.reasoning, last?.toolCalls]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -156,6 +157,13 @@ function Message({
           // happening; the moment an answer starts, the answer is the point.
           live={streaming && message.content === ''}
         />
+      )}
+      {message.toolCalls.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {message.toolCalls.map((call) => (
+            <AgentToolRow key={call.id} call={call} />
+          ))}
+        </div>
       )}
       {message.content !== '' && (
         <div className="text-fleet-text">

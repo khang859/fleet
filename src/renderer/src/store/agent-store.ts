@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AgentCatalog, AgentMessage, AgentUsage } from '../../../shared/agent-types';
+import type { AgentToolCall } from '../../../shared/agent-tools';
 import type { AgentSessionEvent } from '../../../shared/agent-session';
 import {
   canCompact,
@@ -162,14 +163,16 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       role: 'user',
       content: text,
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      toolCalls: []
     };
     const assistant: AgentMessage = {
       id: streamId,
       role: 'assistant',
       content: '',
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      toolCalls: []
     };
     // The placeholder goes in before the request leaves, so the first delta
     // always has somewhere to land.
@@ -273,6 +276,32 @@ function appendToAssistant(streamId: string, field: 'content' | 'reasoning', del
   }));
 }
 
+/**
+ * Put a tool call on the assistant message this turn is writing, or replace it
+ * when the same call comes back finished.
+ *
+ * Matched by the call's own id rather than by position: the pane shows the
+ * calls in the order the model asked for them, and an end event that arrived
+ * late must land on its own row rather than append a second one.
+ */
+function recordToolCall(streamId: string, call: AgentToolCall): void {
+  const found = threadOf(streamId);
+  if (found === null) return;
+
+  const messages = found.thread.messages.map((m) => {
+    if (m.id !== streamId) return m;
+    const existing = m.toolCalls.findIndex((c) => c.id === call.id);
+    const toolCalls =
+      existing === -1
+        ? [...m.toolCalls, call]
+        : m.toolCalls.map((c, i) => (i === existing ? call : c));
+    return { ...m, toolCalls };
+  });
+  useAgentStore.setState((s) => ({
+    threads: { ...s.threads, [found.paneId]: { ...found.thread, messages } }
+  }));
+}
+
 function endTurn(streamId: string, error: string | null, usage: AgentUsage | null): void {
   const found = threadOf(streamId);
   if (found === null) return;
@@ -304,7 +333,9 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
   // produced nothing at all leaves no trace.
   if (!wasCompacting) {
     const reply = thread.messages.find((m) => m.id === streamId);
-    if (reply && (reply.content !== '' || reply.reasoning !== '')) {
+    // A turn that only looked at things and then failed still leaves what it
+    // looked at behind, since that is what the pane shows.
+    if (reply && (reply.content !== '' || reply.reasoning !== '' || reply.toolCalls.length > 0)) {
       record(thread, { t: 'message', message: reply });
     }
     if (contextTokens !== null) record(thread, { t: 'context', tokens: contextTokens });
@@ -350,7 +381,8 @@ function applySummary(streamId: string, summary: string): void {
     role: 'summary',
     content: summary,
     reasoning: '',
-    reasoningMs: null
+    reasoningMs: null,
+    toolCalls: []
   };
   const messages = [message, ...pending.keep];
   const contextTokens = estimateTranscriptTokens(messages);
@@ -393,4 +425,6 @@ window.fleet.agent.onStreamError(({ streamId, message }) => {
   log.warn('stream error', { message });
   endTurn(streamId, message, null);
 });
+window.fleet.agent.onToolStart(({ streamId, call }) => recordToolCall(streamId, call));
+window.fleet.agent.onToolEnd(({ streamId, call }) => recordToolCall(streamId, call));
 window.fleet.agent.onCompactDone(({ streamId, summary }) => applySummary(streamId, summary));

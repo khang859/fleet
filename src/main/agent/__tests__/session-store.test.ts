@@ -10,7 +10,8 @@ const msg = (id: string, content: string): AgentMessage => ({
   role: 'user',
   content,
   reasoning: '',
-  reasoningMs: null
+  reasoningMs: null,
+  toolCalls: []
 });
 
 let dir: string;

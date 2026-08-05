@@ -1199,7 +1199,6 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.SHELL_ENV_GET, (_e, paneId: string) =>
     ptyManager.getEnvSnapshot(paneId)
   );
-
 }
 
 // Exported for testing

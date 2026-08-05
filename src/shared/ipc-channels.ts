@@ -344,6 +344,8 @@ export const IPC_CHANNELS = {
   AGENT_STREAM_REASONING: 'agent:stream-reasoning',
   AGENT_STREAM_DONE: 'agent:stream-done',
   AGENT_STREAM_ERROR: 'agent:stream-error',
+  AGENT_TOOL_START: 'agent:tool-start',
+  AGENT_TOOL_END: 'agent:tool-end',
   // The thread on disk: an append-only event log per session, replayed when a
   // pane opens. The renderer decides what happened; main only writes it down.
   AGENT_SESSION_APPEND: 'agent:session-append',

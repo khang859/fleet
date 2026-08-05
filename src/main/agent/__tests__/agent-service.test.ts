@@ -1,4 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
 import {
   buildSystemPrompt,
@@ -8,20 +11,29 @@ import {
   type AgentSendRequest
 } from '../../../shared/agent-types';
 import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../../shared/agent-context';
+import { AgentService, toCompactMessages, toReasoningParam, toWireHistory } from '../agent-service';
 import {
-  AgentService,
-  toCompactMessages,
-  toReasoningParam,
-  toWireMessages
-} from '../agent-service';
-import { parseStreamLine, type StreamRequest } from '../openrouter';
+  collectToolCalls,
+  parseStreamLine,
+  type StreamOutcome,
+  type StreamRequest,
+  type ToolCallDelta,
+  type WireToolCall
+} from '../openrouter';
 
 const REQUEST: AgentSendRequest = {
   streamId: 'stream-1',
   cwd: '/repo',
   history: [
-    { id: 'a', role: 'user', content: 'hi', reasoning: '', reasoningMs: null },
-    { id: 'b', role: 'assistant', content: 'hello', reasoning: 'thinking', reasoningMs: 1200 }
+    { id: 'a', role: 'user', content: 'hi', reasoning: '', reasoningMs: null, toolCalls: [] },
+    {
+      id: 'b',
+      role: 'assistant',
+      content: 'hello',
+      reasoning: 'thinking',
+      reasoningMs: 1200,
+      toolCalls: []
+    }
   ],
   text: 'what does this do?'
 };
@@ -69,11 +81,13 @@ describe('parseStreamLine', () => {
     expect(parseStreamLine('data: {"choices":[{"delta":{"content":"he"}}]}')).toEqual({
       content: 'he',
       reasoning: '',
+      toolCalls: [],
       usage: null
     });
     expect(parseStreamLine('data: {"choices":[{"delta":{"reasoning":"hm"}}]}')).toEqual({
       content: '',
       reasoning: 'hm',
+      toolCalls: [],
       usage: null
     });
   });
@@ -84,6 +98,7 @@ describe('parseStreamLine', () => {
     expect(parseStreamLine(`data: {"choices":[{"delta":{"content":""}}],${usage}}`)).toEqual({
       content: '',
       reasoning: '',
+      toolCalls: [],
       usage: { promptTokens: 194, completionTokens: 2, totalTokens: 196 }
     });
   });
@@ -98,6 +113,7 @@ describe('parseStreamLine', () => {
     ).toEqual({
       content: '',
       reasoning: '',
+      toolCalls: [],
       usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 }
     });
   });
@@ -164,9 +180,9 @@ describe('buildSystemPrompt', () => {
   });
 });
 
-describe('toWireMessages', () => {
+describe('toWireHistory', () => {
   it('puts the system prompt ahead of the transcript', () => {
-    const messages = toWireMessages(REQUEST, 'be brief');
+    const messages = toWireHistory(REQUEST, 'be brief');
 
     expect(messages[0]).toEqual({ role: 'system', content: 'be brief' });
     expect(messages.slice(1)).toEqual([
@@ -182,9 +198,10 @@ describe('toWireMessages', () => {
       role: 'summary' as const,
       content: 'we chose zod',
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      toolCalls: []
     };
-    const messages = toWireMessages({ ...REQUEST, history: [summary] }, 'be brief');
+    const messages = toWireHistory({ ...REQUEST, history: [summary] }, 'be brief');
 
     expect(messages[1].role).toBe('user');
     expect(messages[1].content).toContain(SUMMARY_WIRE_PREFIX);
@@ -216,7 +233,7 @@ describe('AgentService', () => {
       req.onReasoning('thinking');
       req.onDelta('an ');
       req.onDelta('answer');
-      return Promise.resolve();
+      return Promise.resolve({ toolCalls: [] });
     });
 
     new AgentService({
@@ -238,7 +255,7 @@ describe('AgentService', () => {
 
   it('passes the configured model and inference settings through', async () => {
     const { emit, ended } = collector();
-    const stream = vi.fn(async () => Promise.resolve());
+    const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
 
     new AgentService({
       getSettings: () => ({
@@ -263,7 +280,7 @@ describe('AgentService', () => {
 
   it('sends the configured system prompt instead of the default', async () => {
     const { emit, ended } = collector();
-    const stream = vi.fn(async () => Promise.resolve());
+    const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
 
     new AgentService({
       getSettings: () => ({ ...SETTINGS, systemPrompt: 'Answer only in haiku.' }),
@@ -297,7 +314,7 @@ describe('AgentService', () => {
       stream: async (req) => {
         req.onDelta('an answer');
         req.onUsage?.(usage);
-        return Promise.resolve();
+        return Promise.resolve({ toolCalls: [] });
       }
     }).send(REQUEST);
     await ended;
@@ -315,7 +332,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
-      stream: vi.fn(async () => Promise.resolve())
+      stream: vi.fn(async () => Promise.resolve({ toolCalls: [] }))
     }).send(REQUEST);
     await ended;
 
@@ -369,7 +386,7 @@ describe('AgentService', () => {
         req.onDelta('  They chose zod ');
         req.onDelta('over casts.  ');
         req.onUsage?.({ promptTokens: 500, completionTokens: 20, totalTokens: 520 });
-        return Promise.resolve();
+        return Promise.resolve({ toolCalls: [] });
       }
     }).compact(COMPACT_REQUEST);
     await ended;
@@ -389,7 +406,7 @@ describe('AgentService', () => {
 
   it('does not spend the configured thinking budget on a summary', async () => {
     const { emit, ended } = collector();
-    const stream = vi.fn(async () => Promise.resolve());
+    const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
 
     new AgentService({
       getSettings: () => ({
@@ -418,7 +435,7 @@ describe('AgentService', () => {
       emit,
       stream: async (req) => {
         req.onDelta('   \n ');
-        return Promise.resolve();
+        return Promise.resolve({ toolCalls: [] });
       }
     }).compact(COMPACT_REQUEST);
     await ended;
@@ -478,5 +495,209 @@ describe('AgentService', () => {
       IPC_CHANNELS.AGENT_STREAM_CHUNK,
       IPC_CHANNELS.AGENT_STREAM_DONE
     ]);
+  });
+});
+
+describe('collectToolCalls', () => {
+  const frag = (
+    index: number,
+    over: Partial<{ id: string | null; name: string | null; args: string }> = {}
+  ): ToolCallDelta => ({ index, id: null, name: null, args: '', ...over });
+
+  it('reassembles a call streamed a few characters at a time', () => {
+    const calls = collectToolCalls([
+      frag(0, { id: 'call_1', name: 'read' }),
+      frag(0, { args: '{"path":' }),
+      frag(0, { args: '"a.ts"}' })
+    ]);
+
+    expect(calls).toEqual([
+      { id: 'call_1', type: 'function', function: { name: 'read', arguments: '{"path":"a.ts"}' } }
+    ]);
+  });
+
+  it('keeps two calls apart by their index, in the order asked for', () => {
+    const calls = collectToolCalls([
+      frag(0, { id: 'a', name: 'grep' }),
+      frag(1, { id: 'b', name: 'glob' }),
+      frag(1, { args: '{"pattern":"*.ts"}' }),
+      frag(0, { args: '{"pattern":"x"}' })
+    ]);
+
+    expect(calls.map((c) => c.function.name)).toEqual(['grep', 'glob']);
+    expect(calls[1].function.arguments).toBe('{"pattern":"*.ts"}');
+  });
+
+  it('gives a call an id when the provider streamed none', () => {
+    expect(collectToolCalls([frag(0, { name: 'read', args: '{}' })])[0].id).toBe('call_0');
+  });
+
+  it('ignores a fragment that never named a tool', () => {
+    expect(collectToolCalls([frag(0, { args: '{}' })])).toEqual([]);
+  });
+});
+
+describe('the tool loop', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'fleet-agent-loop-'));
+    writeFileSync(join(dir, 'answer.txt'), 'the answer is 42');
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const call = (name: string, args: object): WireToolCall => ({
+    id: 'call_1',
+    type: 'function',
+    function: { name, arguments: JSON.stringify(args) }
+  });
+
+  /** A stream that asks for `calls` on its first round and answers on its second. */
+  function twoRounds(calls: WireToolCall[]): {
+    stream: (req: StreamRequest) => Promise<StreamOutcome>;
+    rounds: StreamRequest[];
+  } {
+    const rounds: StreamRequest[] = [];
+    return {
+      rounds,
+      stream: async (req) => {
+        rounds.push(req);
+        if (rounds.length === 1) return Promise.resolve({ toolCalls: calls });
+        req.onDelta('42');
+        return Promise.resolve({ toolCalls: [] });
+      }
+    };
+  }
+
+  it('runs what the model asked for and sends the result back', async () => {
+    const { emit, ended } = collector();
+    const { stream, rounds } = twoRounds([call('read', { path: 'answer.txt' })]);
+
+    new AgentService({
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send({ ...REQUEST, cwd: dir });
+    await ended;
+
+    // The second round sees its own request and the answer to it.
+    const sent = rounds[1].messages;
+    expect(sent.at(-2)).toMatchObject({
+      role: 'assistant',
+      tool_calls: [{ id: 'call_1', function: { name: 'read' } }]
+    });
+    expect(sent.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'call_1' });
+    expect(sent.at(-1)).toHaveProperty('content', expect.stringContaining('the answer is 42'));
+  });
+
+  it('tells the pane a call started and how it ended', async () => {
+    const { emit, events, ended } = collector();
+    const { stream } = twoRounds([call('read', { path: 'answer.txt' })]);
+
+    new AgentService({
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send({ ...REQUEST, cwd: dir });
+    await ended;
+
+    expect(events.map((e) => e.channel)).toEqual([
+      IPC_CHANNELS.AGENT_TOOL_START,
+      IPC_CHANNELS.AGENT_TOOL_END,
+      IPC_CHANNELS.AGENT_STREAM_CHUNK,
+      IPC_CHANNELS.AGENT_STREAM_DONE
+    ]);
+    expect(events[0].payload).toMatchObject({
+      call: { id: 'call_1', name: 'read', result: null, summary: null }
+    });
+    expect(events[1].payload).toMatchObject({ call: { summary: '1 line', error: null } });
+  });
+
+  // The failure that must not end the turn: the model asked for something it
+  // cannot have, and the only way it can fix that is by being told.
+  it('hands a refused call back to the model as its result', async () => {
+    const { emit, events, ended } = collector();
+    const { stream, rounds } = twoRounds([call('read', { path: '../../../etc/passwd' })]);
+
+    new AgentService({
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send({ ...REQUEST, cwd: dir });
+    await ended;
+
+    expect(rounds[1].messages.at(-1)).toHaveProperty(
+      'content',
+      expect.stringContaining('outside the working folder')
+    );
+    expect(events.at(-1)?.channel).toBe(IPC_CHANNELS.AGENT_STREAM_DONE);
+    const end = events.find((e) => e.channel === IPC_CHANNELS.AGENT_TOOL_END);
+    expect(end?.payload).toMatchObject({ call: { summary: 'failed' } });
+  });
+
+  it('offers the tools to the model', async () => {
+    const { emit, ended } = collector();
+    const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
+
+    new AgentService({
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send({ ...REQUEST, cwd: dir });
+    await ended;
+
+    expect(stream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: expect.arrayContaining([
+          expect.objectContaining({ function: expect.objectContaining({ name: 'read' }) })
+        ])
+      })
+    );
+  });
+
+  // The loop this cannot have: a model that keeps calling tools forever costs
+  // money on every lap.
+  it('stops after a fixed number of rounds', async () => {
+    const { emit, events, ended } = collector();
+    const stream = vi.fn(async () =>
+      Promise.resolve({ toolCalls: [call('read', { path: 'answer.txt' })] })
+    );
+
+    new AgentService({
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send({ ...REQUEST, cwd: dir });
+    await ended;
+
+    expect(stream).toHaveBeenCalledTimes(12);
+    expect(events.at(-1)?.channel).toBe(IPC_CHANNELS.AGENT_STREAM_ERROR);
+    expect(events.at(-1)?.payload).toMatchObject({ message: expect.stringContaining('12 rounds') });
+  });
+
+  it('does not offer tools when summarizing', async () => {
+    const { emit, ended } = collector();
+    const stream = vi.fn(async (req: StreamRequest) => {
+      req.onDelta('a summary');
+      return Promise.resolve({ toolCalls: [] });
+    });
+
+    new AgentService({
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).compact(COMPACT_REQUEST);
+    await ended;
+
+    expect(stream.mock.calls[0][0].tools).toBeUndefined();
   });
 });

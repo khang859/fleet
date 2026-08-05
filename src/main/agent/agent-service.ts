@@ -12,13 +12,22 @@ import type {
   AgentUsage
 } from '../../shared/agent-types';
 import { buildSystemPrompt } from '../../shared/agent-types';
+import { AGENT_TOOL_SPECS, type AgentToolCall } from '../../shared/agent-tools';
+import type { AgentToolEvent } from '../../shared/agent-types';
 import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../shared/agent-context';
-import { streamCompletion, type AgentWireMessage, type ReasoningParam } from './openrouter';
+import {
+  streamCompletion,
+  type AgentWireMessage,
+  type ReasoningParam,
+  type StreamOutcome
+} from './openrouter';
+import { runAgentTool } from './tools/run';
 
 /**
- * One turn of the agent: take the pane's transcript, stream a reply, emit the
- * deltas. No tools, no persistence - the transcript lives in the renderer and
- * arrives whole with each request, so nothing here survives a restart.
+ * One turn of the agent: take the pane's transcript, stream a reply, run
+ * whatever the model asks to look at, and go back for more until it has an
+ * answer. No persistence here - the transcript lives in the renderer and
+ * arrives whole with each request, so nothing in this class survives a restart.
  *
  * Compaction runs through the same client but is not streamed: the pane gets
  * the finished summary in one piece, since watching one being written is noise.
@@ -46,6 +55,16 @@ type CallContext = {
 const COMPACT_MAX_TOKENS = 4096;
 
 /**
+ * How many times one turn may call tools and go back to the model.
+ *
+ * A cap rather than a trust in the model to stop: a loop that reads the same
+ * file forever costs money on every lap, and the number that ends it has to be
+ * one nothing can talk its way past. Twelve is well past what an honest
+ * question takes and well short of an afternoon.
+ */
+const MAX_TOOL_ROUNDS = 12;
+
+/**
  * The reasoning parameter this config asks for, in the one form the user set.
  * All unset means no parameter at all, so the model's own default applies.
  */
@@ -60,19 +79,45 @@ export function toReasoningParam(config: AgentModelConfig): ReasoningParam | nul
  * One transcript message as the wire wants it. A summary goes back as a
  * labelled user message: it is not something the assistant said, and a
  * mid-conversation system message is handled inconsistently across providers.
+ *
+ * A turn that used tools becomes several wire messages: what the assistant
+ * said and asked for, then one message per answer. The API requires every
+ * tool_call to be followed by its result, so a call whose result was never
+ * recorded is given one saying so rather than left dangling.
  */
-function toWireMessage(message: AgentMessage): AgentWireMessage {
+function toWireMessages(message: AgentMessage): AgentWireMessage[] {
   if (message.role === 'summary') {
-    return { role: 'user', content: `${SUMMARY_WIRE_PREFIX}\n\n${message.content}` };
+    return [{ role: 'user', content: `${SUMMARY_WIRE_PREFIX}\n\n${message.content}` }];
   }
-  return { role: message.role, content: message.content };
+  if (message.role === 'user' || message.toolCalls.length === 0) {
+    return [{ role: message.role, content: message.content }];
+  }
+
+  return [
+    {
+      role: 'assistant',
+      content: message.content,
+      tool_calls: message.toolCalls.map((call) => ({
+        id: call.id,
+        type: 'function' as const,
+        function: { name: call.name, arguments: call.args }
+      }))
+    },
+    ...message.toolCalls.map(
+      (call): AgentWireMessage => ({
+        role: 'tool',
+        tool_call_id: call.id,
+        content: call.result ?? call.error ?? 'This call did not finish.'
+      })
+    )
+  ];
 }
 
 /** Transcript plus the new message, as the wire wants it. */
-export function toWireMessages(req: AgentSendRequest, systemPrompt: string): AgentWireMessage[] {
+export function toWireHistory(req: AgentSendRequest, systemPrompt: string): AgentWireMessage[] {
   return [
     { role: 'system', content: systemPrompt },
-    ...req.history.map(toWireMessage),
+    ...req.history.flatMap(toWireMessages),
     { role: 'user', content: req.text }
   ];
 }
@@ -85,7 +130,10 @@ export function toWireMessages(req: AgentSendRequest, systemPrompt: string): Age
 export function toCompactMessages(req: AgentCompactRequest): AgentWireMessage[] {
   return [
     { role: 'system', content: `${COMPACT_SYSTEM_PROMPT}\n\nWorking folder: ${req.cwd}` },
-    ...req.messages.map(toWireMessage),
+    // Only what was said, not what was looked at: the summary is about the
+    // conversation, and a page of tool output would crowd out the part of it
+    // worth keeping.
+    ...req.messages.map((m) => toWireMessages({ ...m, toolCalls: [] })).flat(),
     { role: 'user', content: 'Write the summary now, following the instructions above.' }
   ];
 }
@@ -151,30 +199,110 @@ export class AgentService {
     }
   }
 
+  /**
+   * One turn: rounds of model call and tool run, until the model answers
+   * without asking for anything else.
+   *
+   * The messages accumulate across rounds so each call sees what the last one
+   * asked for and what came back. Usage is taken from the last round, since
+   * that is the one whose prompt is the whole conversation.
+   */
   private async turn(req: AgentSendRequest, ctx: CallContext): Promise<void> {
     const { streamId } = req;
     const emit = this.deps.emit;
     const config = ctx.settings.coding;
-    // A holder rather than a local: the assignment happens inside a callback,
-    // where narrowing cannot follow it.
+    const messages = toWireHistory(req, buildSystemPrompt(req.cwd, ctx.settings.systemPrompt));
+    // Holders rather than locals: they are written inside callbacks, where
+    // narrowing cannot follow them.
     const reported: { usage: AgentUsage | null } = { usage: null };
+    const round = { content: '' };
 
-    await this.call(ctx, {
-      messages: toWireMessages(req, buildSystemPrompt(req.cwd, ctx.settings.systemPrompt)),
-      maxTokens: config.maxTokens,
-      reasoning: toReasoningParam(config),
-      onDelta: (delta) =>
-        emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta } satisfies AgentStreamDelta),
-      onReasoning: (delta) =>
-        emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta } satisfies AgentStreamDelta),
-      onUsage: (usage) => {
-        reported.usage = usage;
+    for (let attempt = 0; attempt < MAX_TOOL_ROUNDS; attempt++) {
+      round.content = '';
+
+      const outcome: StreamOutcome = await this.call(ctx, {
+        messages,
+        maxTokens: config.maxTokens,
+        reasoning: toReasoningParam(config),
+        tools: AGENT_TOOL_SPECS,
+        onDelta: (delta) => {
+          round.content += delta;
+          emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta } satisfies AgentStreamDelta);
+        },
+        onReasoning: (delta) =>
+          emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta } satisfies AgentStreamDelta),
+        onUsage: (usage) => {
+          reported.usage = usage;
+        }
+      });
+
+      if (outcome.toolCalls.length === 0) {
+        emit(IPC_CHANNELS.AGENT_STREAM_DONE, {
+          streamId,
+          usage: reported.usage
+        } satisfies AgentStreamDone);
+        return;
       }
-    });
-    emit(IPC_CHANNELS.AGENT_STREAM_DONE, {
+
+      messages.push({
+        role: 'assistant',
+        content: round.content,
+        tool_calls: outcome.toolCalls
+      });
+      for (const call of outcome.toolCalls) {
+        if (ctx.signal.aborted) return;
+        const done = await this.runTool(streamId, call, req.cwd);
+        messages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: done.result ?? `Error: ${done.error ?? 'the tool failed'}`
+        });
+      }
+    }
+
+    throw new Error(
+      `Stopped after ${MAX_TOOL_ROUNDS} rounds of tool calls without an answer. Ask again, more narrowly.`
+    );
+  }
+
+  /**
+   * Run one call and tell the pane about it, before and after.
+   *
+   * A tool that throws is not a failed turn: what it threw is a sentence the
+   * model can read and act on, so it becomes the result of the call and the
+   * conversation carries on.
+   */
+  private async runTool(
+    streamId: string,
+    call: { id: string; function: { name: string; arguments: string } },
+    cwd: string
+  ): Promise<AgentToolCall> {
+    const started: AgentToolCall = {
+      id: call.id,
+      name: call.function.name,
+      args: call.function.arguments,
+      result: null,
+      error: null,
+      summary: null
+    };
+    this.deps.emit(IPC_CHANNELS.AGENT_TOOL_START, {
       streamId,
-      usage: reported.usage
-    } satisfies AgentStreamDone);
+      call: started
+    } satisfies AgentToolEvent);
+
+    let finished: AgentToolCall;
+    try {
+      const output = await runAgentTool(call.function.name, call.function.arguments, cwd);
+      finished = { ...started, result: output.text, summary: output.summary };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      finished = { ...started, error: message, summary: 'failed' };
+    }
+    this.deps.emit(IPC_CHANNELS.AGENT_TOOL_END, {
+      streamId,
+      call: finished
+    } satisfies AgentToolEvent);
+    return finished;
   }
 
   private async summarize(req: AgentCompactRequest, ctx: CallContext): Promise<void> {
@@ -215,13 +343,14 @@ export class AgentService {
       messages: AgentWireMessage[];
       maxTokens: number | null;
       reasoning: ReasoningParam | null;
+      tools?: typeof AGENT_TOOL_SPECS;
       onDelta: (text: string) => void;
       onReasoning: (text: string) => void;
       onUsage: (usage: AgentUsage) => void;
     }
-  ): Promise<void> {
+  ): Promise<StreamOutcome> {
     const stream = this.deps.stream ?? streamCompletion;
-    await stream({
+    return stream({
       apiKey: ctx.apiKey,
       model: ctx.model,
       temperature: ctx.settings.coding.temperature,

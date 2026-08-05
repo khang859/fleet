@@ -8,12 +8,13 @@ import type { AgentMessage } from '../../../../shared/agent-types';
  * distinctions the pane can actually observe: nothing back yet, reasoning
  * arriving, answer arriving, or folding the transcript up.
  */
-export type AgentPhase = 'waiting' | 'reasoning' | 'writing' | 'compacting';
+export type AgentPhase = 'waiting' | 'reasoning' | 'writing' | 'tooling' | 'compacting';
 
 export const PHASE_LABEL: Record<AgentPhase, string> = {
   waiting: 'Thinking',
   reasoning: 'Reasoning',
   writing: 'Writing',
+  tooling: 'Working',
   compacting: 'Compacting context'
 };
 
@@ -22,10 +23,14 @@ export const PHASE_LABEL: Record<AgentPhase, string> = {
  *
  * `compacting` is not derivable from the transcript - it is the one case where
  * the work is not writing into any message - so it is passed in.
+ *
+ * A running tool outranks whatever the model wrote on its way to asking for
+ * it: the text has stopped, and the wait is now the tool's.
  */
 export function agentPhase(last: AgentMessage | undefined, compacting: boolean): AgentPhase {
   if (compacting) return 'compacting';
   if (last?.role !== 'assistant') return 'waiting';
+  if (last.toolCalls.some((c) => c.result === null && c.error === null)) return 'tooling';
   if (last.content !== '') return 'writing';
   return last.reasoning === '' ? 'waiting' : 'reasoning';
 }
@@ -33,7 +38,8 @@ export function agentPhase(last: AgentMessage | undefined, compacting: boolean):
 /**
  * Whether the label should shimmer. Only while there is nothing else moving:
  * once text is streaming in, the text is the animation, and two things moving
- * for one event is one too many.
+ * for one event is one too many. A running tool has its own shimmering row,
+ * which is the more specific of the two, so this one stays still.
  */
 export function phaseShimmers(phase: AgentPhase): boolean {
   return phase === 'waiting' || phase === 'compacting';

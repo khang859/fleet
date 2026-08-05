@@ -3,7 +3,15 @@ import type { AgentMessage } from '../../../../../shared/agent-types';
 import { agentPhase, formatElapsed, phaseShimmers, reasoningLabel } from '../activity';
 
 function message(over: Partial<AgentMessage> = {}): AgentMessage {
-  return { id: 'm1', role: 'assistant', content: '', reasoning: '', reasoningMs: null, ...over };
+  return {
+    id: 'm1',
+    role: 'assistant',
+    content: '',
+    reasoning: '',
+    reasoningMs: null,
+    toolCalls: [],
+    ...over
+  };
 }
 
 describe('agentPhase', () => {
@@ -27,6 +35,35 @@ describe('agentPhase', () => {
     expect(agentPhase(undefined, true)).toBe('compacting');
   });
 
+  // The model writes "let me look at that" and then calls a tool. What the
+  // user is waiting on from that moment is the tool, not the sentence.
+  it('reports working while a tool call is still running', () => {
+    const running = {
+      id: 'c1',
+      name: 'read',
+      args: '{}',
+      result: null,
+      error: null,
+      summary: null
+    };
+    expect(agentPhase(message({ content: 'Let me look.', toolCalls: [running] }), false)).toBe(
+      'tooling'
+    );
+  });
+
+  it('goes back to the answer once every call has come back', () => {
+    const done = {
+      id: 'c1',
+      name: 'read',
+      args: '{}',
+      result: 'x',
+      error: null,
+      summary: '1 line'
+    };
+    expect(agentPhase(message({ content: 'It says', toolCalls: [done] }), false)).toBe('writing');
+    expect(agentPhase(message({ toolCalls: [done] }), false)).toBe('waiting');
+  });
+
   it('waits on an empty transcript, and when the last word was the user’s', () => {
     expect(agentPhase(undefined, false)).toBe('waiting');
     expect(agentPhase(message({ role: 'user', content: 'hi' }), false)).toBe('waiting');
@@ -41,6 +78,8 @@ describe('phaseShimmers', () => {
     expect(phaseShimmers('compacting')).toBe(true);
     expect(phaseShimmers('reasoning')).toBe(false);
     expect(phaseShimmers('writing')).toBe(false);
+    // The tool's own row is shimmering instead.
+    expect(phaseShimmers('tooling')).toBe(false);
   });
 });
 

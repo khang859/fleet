@@ -137,7 +137,9 @@ beforeEach(async () => {
       onStreamReasoning: listen(IPC_CHANNELS.AGENT_STREAM_REASONING),
       onStreamDone: listen(IPC_CHANNELS.AGENT_STREAM_DONE),
       onStreamError: listen(IPC_CHANNELS.AGENT_STREAM_ERROR),
-      onCompactDone: listen(IPC_CHANNELS.AGENT_COMPACT_DONE)
+      onCompactDone: listen(IPC_CHANNELS.AGENT_COMPACT_DONE),
+      onToolStart: listen(IPC_CHANNELS.AGENT_TOOL_START),
+      onToolEnd: listen(IPC_CHANNELS.AGENT_TOOL_END)
     },
     chat: {
       hasKey: vi.fn().mockResolvedValue(true),
@@ -540,8 +542,22 @@ describe('session log', () => {
   it('replays a session into the thread when the pane opens', async () => {
     replay = {
       messages: [
-        { id: 'a', role: 'user', content: 'earlier', reasoning: '', reasoningMs: null },
-        { id: 'b', role: 'assistant', content: 'answer', reasoning: '', reasoningMs: null }
+        {
+          id: 'a',
+          role: 'user',
+          content: 'earlier',
+          reasoning: '',
+          reasoningMs: null,
+          toolCalls: []
+        },
+        {
+          id: 'b',
+          role: 'assistant',
+          content: 'answer',
+          reasoning: '',
+          reasoningMs: null,
+          toolCalls: []
+        }
       ],
       contextTokens: 4_000,
       cwd: '/repo',
@@ -572,5 +588,88 @@ describe('session log', () => {
 
     expect(thread().messages).toHaveLength(2);
     expect(agentApi.appendSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('tool calls', () => {
+  const CALL = {
+    id: 'call_1',
+    name: 'read',
+    args: '{"path":"a.ts"}',
+    result: null,
+    error: null,
+    summary: null
+  };
+
+  const start = (streamId: string): void => {
+    emit(IPC_CHANNELS.AGENT_TOOL_START, { streamId, call: CALL });
+  };
+
+  const finish = (streamId: string): void => {
+    emit(IPC_CHANNELS.AGENT_TOOL_END, {
+      streamId,
+      call: { ...CALL, result: 'a.ts lines 1-1', summary: '1 line' }
+    });
+  };
+
+  it('shows a call on the reply it belongs to', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'what is in a.ts?');
+    start(liveStreamId());
+
+    expect(thread().messages.at(-1)?.toolCalls).toEqual([CALL]);
+  });
+
+  // The same call twice, not two calls: the row on screen fills in rather than
+  // being joined by a second copy of itself.
+  it('replaces the call in place when it finishes', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'what is in a.ts?');
+    const streamId = liveStreamId();
+    start(streamId);
+    finish(streamId);
+
+    expect(thread().messages.at(-1)?.toolCalls).toEqual([
+      { ...CALL, result: 'a.ts lines 1-1', summary: '1 line' }
+    ]);
+  });
+
+  it('keeps two calls in the order they were made', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'look around');
+    const streamId = liveStreamId();
+    start(streamId);
+    emit(IPC_CHANNELS.AGENT_TOOL_START, {
+      streamId,
+      call: { ...CALL, id: 'call_2', name: 'glob' }
+    });
+
+    expect(
+      thread()
+        .messages.at(-1)
+        ?.toolCalls.map((c) => c.name)
+    ).toEqual(['read', 'glob']);
+  });
+
+  it('ignores a call for a pane that has no thread', () => {
+    expect(() => start('stream-nobody-is-waiting-for')).not.toThrow();
+  });
+
+  it('records a turn that only ran tools', async () => {
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'look around');
+    const streamId = liveStreamId();
+    start(streamId);
+    finish(streamId);
+    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, { streamId, message: 'connection lost' });
+
+    const events = agentApi.appendSession.mock.calls.map(
+      ([req]) => (req as AgentSessionAppend).event
+    );
+    expect(events).toContainEqual({
+      t: 'message',
+      message: expect.objectContaining({
+        role: 'assistant',
+        content: '',
+        toolCalls: [expect.objectContaining({ summary: '1 line' })]
+      })
+    });
   });
 });
