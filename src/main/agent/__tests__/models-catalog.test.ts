@@ -39,9 +39,41 @@ const API_RESPONSE = {
   }
 };
 
-function fakeFetch(body: unknown, ok = true): typeof fetch {
-  return vi.fn(async () =>
-    Promise.resolve({ ok, status: ok ? 200 : 500, json: async () => Promise.resolve(body) })
+// OpenRouter's own list, the source of the per-model defaults. models.dev
+// publishes none of these.
+const OPENROUTER_RESPONSE = {
+  data: [
+    {
+      id: 'anthropic/claude-sonnet-4.5',
+      default_parameters: { temperature: 1, top_p: 1, top_k: null },
+      reasoning: { default_enabled: true, mandatory: false }
+    },
+    {
+      id: 'nvidia/nemotron-3-ultra',
+      default_parameters: { temperature: null },
+      reasoning: { default_enabled: false, default_effort: 'high' }
+    },
+    {
+      id: 'google/gemini-3-pro-image',
+      default_parameters: { temperature: null, top_p: null }
+    }
+  ]
+};
+
+/** Routes by URL, since a download reads models.dev and OpenRouter together. */
+function fakeFetch(
+  body: unknown,
+  {
+    ok = true,
+    openrouter = OPENROUTER_RESPONSE as unknown
+  }: { ok?: boolean; openrouter?: unknown } = {}
+): typeof fetch {
+  return vi.fn(async (url: string) =>
+    Promise.resolve({
+      ok,
+      status: ok ? 200 : 500,
+      json: async () => Promise.resolve(url.includes('openrouter.ai') ? openrouter : body)
+    })
   ) as unknown as typeof fetch;
 }
 
@@ -94,6 +126,58 @@ describe('AgentModelCatalog', () => {
     ]);
   });
 
+  it('annotates models with the defaults OpenRouter publishes', async () => {
+    const catalog = new AgentModelCatalog(await cacheFile(), fakeFetch(API_RESPONSE));
+    const { models } = await catalog.list();
+
+    const sonnet = models.find((m) => m.id === 'anthropic/claude-sonnet-4.5');
+    expect(sonnet?.defaultTemperature).toBe(1);
+    expect(sonnet?.defaultReasoningEnabled).toBe(true);
+
+    const nemotron = models.find((m) => m.id === 'nvidia/nemotron-3-ultra');
+    expect(nemotron?.defaultTemperature).toBeNull();
+    expect(nemotron?.defaultReasoningEnabled).toBe(false);
+    expect(nemotron?.defaultReasoningEffort).toBe('high');
+
+    // Most models publish nothing, which has to stay distinguishable from a
+    // value we made up.
+    const gemini = models.find((m) => m.id === 'google/gemini-3-pro-image');
+    expect(gemini?.defaultTemperature).toBeNull();
+    expect(gemini?.defaultReasoningEnabled).toBeNull();
+    expect(gemini?.defaultReasoningEffort).toBeNull();
+  });
+
+  it('drops a default effort the capability catalog does not offer', async () => {
+    const mismatched = {
+      data: [
+        {
+          id: 'nvidia/nemotron-3-ultra',
+          reasoning: { default_effort: 'xhigh' }
+        }
+      ]
+    };
+    const { models } = await new AgentModelCatalog(
+      await cacheFile(),
+      fakeFetch(API_RESPONSE, { openrouter: mismatched })
+    ).list();
+
+    // models.dev lists only medium and high for this model.
+    expect(
+      models.find((m) => m.id === 'nvidia/nemotron-3-ultra')?.defaultReasoningEffort
+    ).toBeNull();
+  });
+
+  it('still returns the catalog when the defaults list is unavailable', async () => {
+    const { models, error } = await new AgentModelCatalog(
+      await cacheFile(),
+      fakeFetch(API_RESPONSE, { openrouter: { unexpected: true } })
+    ).list();
+
+    expect(error).toBeNull();
+    expect(models).toHaveLength(3);
+    expect(models.every((m) => m.defaultTemperature === null)).toBe(true);
+  });
+
   it('skips malformed entries instead of failing the whole catalog', async () => {
     const withJunk = {
       openrouter: {
@@ -129,14 +213,15 @@ describe('AgentModelCatalog', () => {
     const file = await cacheFile();
     const fetchImpl = fakeFetch(API_RESPONSE);
     await new AgentModelCatalog(file, fetchImpl).list();
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    // One request each to models.dev and OpenRouter.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
 
     // A fresh instance reads the file rather than downloading.
     const second = new AgentModelCatalog(file, fetchImpl);
     const result = await second.list();
     expect(result.source).toBe('cache');
     expect(result.models).toHaveLength(3);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('falls back to the cached list when the refresh fails', async () => {

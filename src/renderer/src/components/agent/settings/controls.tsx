@@ -2,14 +2,17 @@ import { useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 
 /**
- * A numeric inference parameter. Unset means "let the provider decide", which
- * is a real state and not the same as any particular number - so the readout
- * says so, and a reset arrow puts it back once the user has picked a value.
+ * A numeric inference parameter. Unset is a distinct state - the parameter is
+ * left out of the request - but the readout still shows the number that will
+ * actually be used rather than a vague "default", so the setting is never a
+ * mystery. The reset arrow returns to that default.
  */
 export function ParamSlider({
   label,
   hint,
   value,
+  defaultValue,
+  defaultNote = 'default',
   onChange,
   min,
   max,
@@ -19,6 +22,10 @@ export function ParamSlider({
   label: string;
   hint?: string;
   value: number | null;
+  /** What the model does when the parameter is omitted. Shown as the readout. */
+  defaultValue: number;
+  /** Where that default comes from, e.g. "model default", "provider default". */
+  defaultNote?: string;
   onChange: (next: number | null) => void;
   min: number;
   max: number;
@@ -28,10 +35,8 @@ export function ParamSlider({
   // Dragging emits a change per pixel, so the slider tracks locally and only
   // persists when the user lets go.
   const [dragging, setDragging] = useState<number | null>(null);
-  // The thumb needs a position even when nothing is set; park it at the low end
-  // rather than inventing a value the agent would not actually send.
-  const sliderValue = dragging ?? value ?? min;
-  const shown = dragging ?? value;
+  const shown = dragging ?? value ?? defaultValue;
+  const isDefault = dragging === null && value === null;
 
   const commit = (): void => {
     if (dragging === null) return;
@@ -47,19 +52,19 @@ export function ParamSlider({
           {hint && <p className="mt-0.5 text-xs text-fleet-text-muted">{hint}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <span
-            className={`text-sm tabular-nums ${shown === null ? 'text-fleet-text-subtle' : 'text-fleet-text'}`}
-          >
-            {shown === null ? 'Provider default' : format(shown)}
-          </span>
-          {shown !== null && (
+          <span className="text-sm tabular-nums text-fleet-text">{format(shown)}</span>
+          {isDefault ? (
+            <span className="text-[10px] uppercase tracking-wider text-fleet-text-subtle">
+              {defaultNote}
+            </span>
+          ) : (
             <button
               type="button"
               onClick={() => {
                 setDragging(null);
                 onChange(null);
               }}
-              title="Reset to provider default"
+              title={`Reset to ${format(defaultValue)}`}
               aria-label={`Reset ${label}`}
               className="rounded p-0.5 text-fleet-text-subtle transition-colors hover:text-fleet-text-secondary focus-ring"
             >
@@ -73,7 +78,7 @@ export function ParamSlider({
         min={min}
         max={max}
         step={step}
-        value={sliderValue}
+        value={shown}
         aria-label={label}
         onChange={(e) => setDragging(Number(e.target.value))}
         onPointerUp={commit}

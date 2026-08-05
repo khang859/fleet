@@ -1,4 +1,10 @@
-import type { AgentCatalogModel, AgentModelConfig } from '../../../../../shared/agent-types';
+import {
+  FALLBACK_REASONING_EFFORT,
+  FALLBACK_TEMPERATURE,
+  defaultThinkingBudget,
+  type AgentCatalogModel,
+  type AgentModelConfig
+} from '../../../../../shared/agent-types';
 import { Toggle } from '../../chat/settings/Toggle';
 import { ModelSelect } from './ModelSelect';
 import { ParamSlider, OptionPills, RoleCard } from './controls';
@@ -37,6 +43,21 @@ export function AgentRoleSettings({
   const budget = model?.reasoning.find((r) => r.type === 'budget_tokens');
   const toggle = model?.reasoning.some((r) => r.type === 'toggle') ?? false;
 
+  // Every control below falls back to what the model itself does when the
+  // parameter is omitted, so an untouched setting is shown as a real number.
+  const reasoningOn = config.reasoningEnabled ?? model?.defaultReasoningEnabled ?? !toggle;
+  const defaultEffort =
+    model?.defaultReasoningEffort ??
+    (effort?.values.includes(FALLBACK_REASONING_EFFORT) === true
+      ? FALLBACK_REASONING_EFFORT
+      : null);
+  const budgetDefault = budget
+    ? Math.min(
+        Math.max(defaultThinkingBudget(config.maxTokens ?? outputLimit), budget.min),
+        budget.max
+      )
+    : 0;
+
   return (
     <RoleCard title={title} description={description} icon={icon}>
       <ModelSelect
@@ -53,8 +74,10 @@ export function AgentRoleSettings({
 
           <ParamSlider
             label="Max output tokens"
-            hint={`Up to ${formatTokens(outputLimit)} for this model.`}
+            hint="Left alone, a reply may run to the model's full output limit."
             value={config.maxTokens === null ? null : Math.min(config.maxTokens, outputLimit)}
+            defaultValue={outputLimit}
+            defaultNote="model max"
             onChange={(v) => onChange({ maxTokens: v })}
             min={1024}
             max={outputLimit}
@@ -67,6 +90,8 @@ export function AgentRoleSettings({
               label="Temperature"
               hint="Lower is more deterministic. Coding usually wants the low end."
               value={config.temperature}
+              defaultValue={model.defaultTemperature ?? FALLBACK_TEMPERATURE}
+              defaultNote={model.defaultTemperature === null ? 'provider default' : 'model default'}
               onChange={(v) => onChange({ temperature: v })}
               min={0}
               max={2}
@@ -84,7 +109,7 @@ export function AgentRoleSettings({
                 </p>
               </div>
               <Toggle
-                checked={config.reasoningEnabled ?? false}
+                checked={reasoningOn}
                 onChange={(next) => onChange({ reasoningEnabled: next })}
                 ariaLabel="Reasoning"
               />
@@ -94,18 +119,24 @@ export function AgentRoleSettings({
           {effort && (
             <OptionPills
               label="Reasoning effort"
-              hint="How much thinking the model budgets per turn."
+              hint={
+                defaultEffort === null
+                  ? 'How much thinking the model budgets per turn.'
+                  : `How much thinking the model budgets per turn. Default is ${defaultEffort}.`
+              }
               options={effort.values}
               value={config.reasoningEffort}
               onChange={(v) => onChange({ reasoningEffort: v })}
             />
           )}
 
-          {budget && (config.reasoningEnabled ?? !toggle) && (
+          {budget && reasoningOn && (
             <ParamSlider
               label="Thinking budget"
               hint="Tokens the model may spend reasoning before it replies."
               value={config.reasoningTokens}
+              defaultValue={budgetDefault}
+              defaultNote="medium effort"
               onChange={(v) => onChange({ reasoningTokens: v })}
               min={budget.min}
               max={budget.max}

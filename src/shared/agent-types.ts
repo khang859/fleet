@@ -4,8 +4,9 @@
  *
  * Models come from the models.dev catalog (openrouter provider), which carries
  * the per-model limits and capabilities the settings UI needs to offer only the
- * controls a model actually supports. The OpenRouter API key itself is the same
- * key Chat stores (see ChatSecrets) - one key per install.
+ * controls a model actually supports, merged with the defaults OpenRouter
+ * publishes for its own models. The OpenRouter API key itself is the same key
+ * Chat stores (see ChatSecrets) - one key per install.
  */
 
 /** How a model exposes its reasoning budget, straight from models.dev. */
@@ -33,9 +34,21 @@ export type AgentCatalogModel = {
   /** USD per million tokens. */
   cost: { input: number; output: number } | null;
   releaseDate: string | null;
+  /**
+   * What OpenRouter says it applies when we omit the parameter. Published for
+   * only some models, so `null` is common and means "the provider decides".
+   */
+  defaultTemperature: number | null;
+  defaultReasoningEnabled: boolean | null;
+  defaultReasoningEffort: string | null;
 };
 
-/** Inference settings for one agent. `null` ⇒ leave it to the provider. */
+export type AgentRole = 'coding' | 'image';
+
+/**
+ * Inference settings for one agent. `null` ⇒ the parameter is left out of the
+ * request, so the model's own default applies (see the fallbacks below).
+ */
 export type AgentModelConfig = {
   model: string | null;
   maxTokens: number | null;
@@ -70,6 +83,29 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   coding: { ...EMPTY_AGENT_MODEL_CONFIG, model: 'anthropic/claude-sonnet-4.5' },
   image: { ...EMPTY_AGENT_MODEL_CONFIG }
 };
+
+/*
+ * Fallbacks for the models that publish no default of their own. Every value
+ * below is OpenRouter's documented behaviour for an omitted parameter, not a
+ * Fleet preference: an absent sampling parameter is left out of the upstream
+ * request entirely, and the provider applies its own default.
+ * See https://openrouter.ai/docs/api-reference/parameters and
+ * https://openrouter.ai/docs/use-cases/reasoning-tokens.
+ */
+
+/** Temperature OpenRouter documents for an omitted `temperature`. */
+export const FALLBACK_TEMPERATURE = 1;
+
+/** Effort applied when reasoning is on and no budget or effort is given. */
+export const FALLBACK_REASONING_EFFORT = 'medium';
+
+/**
+ * Thinking budget that "medium" effort works out to: half the output budget,
+ * bounded the way OpenRouter bounds it for Anthropic models.
+ */
+export function defaultThinkingBudget(maxTokens: number): number {
+  return Math.max(Math.min(Math.round(maxTokens * 0.5), 128_000), 1024);
+}
 
 export type AgentCatalog = {
   models: AgentCatalogModel[];
