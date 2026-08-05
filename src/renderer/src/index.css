@@ -358,6 +358,16 @@ body,
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--fleet-accent) 65%, transparent);
 }
 
+/* The same ring held off the element by a gap, for buttons filled with the
+   accent itself - where the ring above is drawn in the color it sits on and so
+   cannot be seen at all. The gap is what makes it read as a ring. */
+.focus-ring-offset:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--fleet-bg),
+    0 0 0 4px color-mix(in srgb, var(--fleet-accent) 65%, transparent);
+}
+
 /* Radios/checkboxes are styled via the `accent-color` (.fleet-accent-input)
    rather than custom markup, so state styling applies globally by selector
    instead of per-usage className. */

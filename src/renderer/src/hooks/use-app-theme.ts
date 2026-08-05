@@ -24,8 +24,10 @@ export function useAppThemeVars(appTheme?: string, terminalTheme?: string): CSSP
   const prefersDark = useSystemPrefersDark();
   const def = resolveAppThemeDefinition(appTheme, terminalTheme, prefersDark);
   // Reflect the resolved theme's darkness onto the root `.dark` class so the
-  // Tailwind `dark:` variant (Streamdown's Shiki dual themes) tracks the app
-  // theme. Nothing else in the app uses `dark:`.
+  // Tailwind `dark:` variant tracks the app theme rather than the OS. Used by
+  // Streamdown's Shiki dual themes, and by the few places that state a literal
+  // color - the amber the agent pane warns in - which the --fleet-* tokens
+  // cannot carry because they only describe the neutral chrome.
   useEffect(() => {
     document.documentElement.classList.toggle('dark', def.kind === 'dark');
   }, [def.kind]);

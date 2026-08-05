@@ -17,11 +17,40 @@ import {
   splitForCompaction
 } from '../../../shared/agent-context';
 import { useSettingsStore } from './settings-store';
+import { useNotificationStore } from './notification-store';
 import { registerPaneDisposer, useWorkspaceStore } from './workspace-store';
 import { draftInto } from '../hooks/use-terminal';
+import { playChime } from '../lib/chime';
 import { createLogger } from '../logger';
+import type { ActivityState } from '../../../shared/types';
 
 const log = createLogger('store:agent');
+
+/**
+ * Tell the rest of the app what this pane is doing.
+ *
+ * Everything that answers "which pane wants me?" - the sidebar glyph, the tab
+ * badge, the agent overview, and both palette commands - reads the one
+ * activity map. Terminals are put there by main, which watches their process;
+ * an agent pane has no process to watch, so it says so itself. Without this a
+ * turn stopped on a permission question is visible only to whoever is already
+ * looking at that pane, which is the one person who does not need telling.
+ */
+function reportActivity(paneId: string, state: ActivityState): void {
+  const now = Date.now();
+  const store = useNotificationStore.getState();
+  const previous = store.getActivity(paneId)?.state;
+  if (previous === state) return;
+
+  store.setActivity({ paneId, state, lastOutputAt: now, timestamp: now });
+  // Only on the way in, and only if the user asked to hear about it. Main
+  // dedupes its own transitions for the same reason: a question that is still
+  // waiting is not a new question.
+  if (state !== 'needs_me') return;
+  if (useSettingsStore.getState().settings?.notifications.needsPermission.sound === true) {
+    playChime();
+  }
+}
 
 /**
  * One pane's transcript. The live copy is here; the durable one is the pane's
@@ -200,6 +229,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
         }
       }
     });
+    reportActivity(paneId, 'working');
     // Written before the request leaves: what the user said is worth keeping
     // whether or not the turn that follows ever comes back.
     record(thread, { t: 'message', message: user });
@@ -238,6 +268,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       }
     });
     log.debug('compact', { paneId, older: older.length, keep: recent.length });
+    reportActivity(paneId, 'working');
     window.fleet.agent.compact({ streamId, cwd: thread.cwd, messages: older });
   },
 
@@ -254,6 +285,9 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     // answered, and leaving the buttons up while the command starts reads as
     // though the click was missed.
     set({ threads: { ...get().threads, [paneId]: { ...thread, pendingPermission: null } } });
+    // Answered, so the turn is the agent's again and the pane stops asking for
+    // attention it no longer needs.
+    reportActivity(paneId, 'working');
     window.fleet.agent.decidePermission({ requestId: ask.requestId, outcome });
   },
 
@@ -264,6 +298,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
    */
   disposePane: (paneId) => {
     get().cancel(paneId);
+    useNotificationStore.getState().clearActivity(paneId);
     set((s) => {
       if (!s.threads[paneId]) return { threads: s.threads };
       const next = { ...s.threads };
@@ -376,6 +411,7 @@ function askPermission(ask: AgentPermissionAsk): void {
   useAgentStore.setState((s) => ({
     threads: { ...s.threads, [found.paneId]: { ...found.thread, pendingPermission: ask } }
   }));
+  reportActivity(found.paneId, 'needs_me');
 }
 
 function handOff(streamId: string, command: string): void {
@@ -414,6 +450,11 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
       }
     }
   }));
+
+  // The turn is over however it ended, so the pane is no longer waiting on
+  // anyone. A failure keeps a badge, since the pane has something to say that
+  // nobody watching another tab has seen.
+  reportActivity(paneId, error === null ? 'idle' : 'error');
 
   // The reply is only written down once it has stopped changing. A turn that
   // was cancelled or failed part-way is recorded as far as it got, since that

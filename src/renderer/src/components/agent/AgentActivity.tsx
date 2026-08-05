@@ -40,7 +40,9 @@ export function AgentActivity({
         aria-live="polite"
         className={`truncate ${
           phase === 'asking'
-            ? 'text-amber-400/90'
+            ? // Amber carries the meaning here, so it has to survive the light
+              // themes too - amber-400 on a near-white pane is about 1.6:1.
+              'text-amber-700 dark:text-amber-400/90'
             : phaseShimmers(phase)
               ? 'fleet-shimmer-text'
               : 'text-fleet-text-muted'

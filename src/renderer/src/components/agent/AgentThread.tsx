@@ -52,7 +52,7 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
       )}
 
       {thread?.error != null && (
-        <div className="mx-auto flex w-full max-w-2xl items-start gap-2 px-4 pb-2 text-xs text-amber-400/90">
+        <div className="mx-auto flex w-full max-w-2xl items-start gap-2 px-4 pb-2 text-xs text-amber-700 dark:text-amber-400/90">
           <TriangleAlert size={13} className="mt-px shrink-0" />
           <span>{thread.error}</span>
         </div>
@@ -88,6 +88,7 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
       <Composer
         disabled={model === null}
         streaming={streaming}
+        asking={ask !== null}
         onSend={(text) => send(paneId, cwd, text)}
         onStop={() => cancel(paneId)}
       />
@@ -318,15 +319,19 @@ function SummaryCard({ summary }: { summary: string }): React.JSX.Element {
 function Composer({
   disabled,
   streaming,
+  asking,
   onSend,
   onStop
 }: {
   disabled: boolean;
   streaming: boolean;
+  /** Stopped on a question, which is the one thing typing here cannot answer. */
+  asking: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
 }): React.JSX.Element {
   const [text, setText] = useState('');
+  const [refused, setRefused] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   // Grow with the content up to the max height the class caps it at.
@@ -337,15 +342,35 @@ function Composer({
     el.style.height = `${el.scrollHeight}px`;
   }, [text]);
 
+  // The turn is over, so the message that could not go while it ran can go
+  // now, and saying otherwise would be stale.
+  useEffect(() => {
+    if (!streaming) setRefused(false);
+  }, [streaming]);
+
   const submit = (): void => {
     const trimmed = text.trim();
-    if (trimmed === '' || streaming || disabled) return;
+    if (trimmed === '' || disabled) return;
+    // Not sent, and not thrown away either: the draft stays exactly where it
+    // was typed. Silently doing nothing is what makes this feel like a message
+    // that vanished, so it is worth a line saying what happened.
+    if (streaming) {
+      setRefused(true);
+      return;
+    }
     onSend(trimmed);
     setText('');
   };
 
   return (
     <div className="mx-auto w-full max-w-2xl shrink-0 px-4 pb-4">
+      {refused && (
+        <p role="status" className="px-1 pb-1.5 text-[11px] text-fleet-text-subtle">
+          {asking
+            ? 'Answer the question above first - your message is still here.'
+            : 'The agent is still working - your message is still here.'}
+        </p>
+      )}
       <div className="flex items-end gap-2 rounded-xl border border-fleet-border bg-fleet-surface p-2 focus-within:border-fleet-border-strong">
         <textarea
           ref={ref}
@@ -359,7 +384,16 @@ function Composer({
               submit();
             }
           }}
-          placeholder={disabled ? 'Choose a coding model in Settings first' : 'Ask the agent…'}
+          // The turn is not listening here until the question above is
+          // answered, and Enter doing nothing at all reads as a dropped
+          // message. The draft is left alone - it is still worth sending after.
+          placeholder={
+            disabled
+              ? 'Choose a coding model in Settings first'
+              : asking
+                ? 'Answer the question above to carry on'
+                : 'Ask the agent…'
+          }
           aria-label="Message the agent"
           className="max-h-48 min-h-6 flex-1 resize-none bg-transparent px-1.5 py-1 text-sm text-fleet-text outline-none placeholder:text-fleet-text-subtle disabled:cursor-not-allowed"
         />
@@ -380,7 +414,7 @@ function Composer({
             disabled={text.trim() === '' || disabled}
             aria-label="Send"
             title="Send"
-            className="flex size-7 shrink-0 items-center justify-center rounded-lg fleet-accent-bg text-white transition-opacity disabled:opacity-30 focus-ring"
+            className="flex size-7 shrink-0 items-center justify-center rounded-lg fleet-accent-bg text-white transition-opacity disabled:opacity-30 focus-ring-offset"
           >
             <ArrowUp size={14} />
           </button>

@@ -303,7 +303,13 @@ export function TabItem({
                   <span className="text-teal-400/60">{worktreeBranch}</span>
                 ) : freshness ? (
                   <span
-                    className={`fleet-tnum ${activity?.state === 'needs_me' ? 'text-amber-400' : ''}`}
+                    className={`fleet-tnum ${
+                      activity?.state === 'needs_me'
+                        ? // "waiting" is the whole point of the row turning
+                          // amber, so it has to be legible on light themes too.
+                          'text-amber-700 dark:text-amber-400'
+                        : ''
+                    }`}
                   >
                     {freshness}
                   </span>

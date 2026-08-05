@@ -8,6 +8,8 @@ import type { AgentPermissionAsk, AgentPermissionOutcome } from '../../../../sha
  * it, because until this is answered there is nothing else that row could be
  * saying. The command is shown whole and wrapped: it is the thing being agreed
  * to, and a truncated one asks the user to approve something they cannot read.
+ * Whole, but not unbounded - a command long enough to fill the pane would push
+ * the buttons that answer it off the bottom, so past a few lines it scrolls.
  *
  * "Always allow" is missing on the commands that always ask - the handful where
  * being wrong is expensive - so the answer there is only ever about this one
@@ -21,10 +23,24 @@ export function AgentPermissionRow({
   onDecide: (outcome: AgentPermissionOutcome) => void;
 }): React.JSX.Element {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
+    <div
+      role="group"
+      aria-label="Permission needed"
+      className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5"
+    >
+      {/* The card is not announced by being drawn, and a question nobody hears
+          is a turn that looks hung. Said once, politely, in full: the command
+          on its own is not a question. */}
+      <p role="status" className="sr-only">
+        {`The agent is asking to run ${ask.command}.${ask.reason === null ? '' : ` ${ask.reason}`}`}
+      </p>
       <div className="flex items-start gap-1.5">
-        <CircleQuestionMark size={13} className="mt-px shrink-0 text-amber-400/90" />
-        <span className="font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-fleet-text">
+        <CircleQuestionMark
+          size={13}
+          aria-hidden="true"
+          className="mt-px shrink-0 text-amber-700 dark:text-amber-400/90"
+        />
+        <span className="max-h-32 overflow-y-auto font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-fleet-text">
           {ask.command}
         </span>
       </div>
@@ -33,7 +49,10 @@ export function AgentPermissionRow({
         <button
           type="button"
           onClick={() => onDecide('once')}
-          className="rounded-md fleet-accent-bg px-2.5 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90 focus-ring"
+          // Not `focus-ring`: that draws the accent directly against this
+          // button's own accent fill, where it cannot be seen. The gap is what
+          // makes it a ring rather than a slightly larger button.
+          className="rounded-md fleet-accent-bg px-2.5 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90 focus-ring-offset"
         >
           Run once
         </button>

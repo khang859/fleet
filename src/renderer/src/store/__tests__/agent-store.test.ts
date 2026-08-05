@@ -12,6 +12,12 @@ import type {
 import type * as AgentStore from '../agent-store';
 import type * as SettingsStore from '../settings-store';
 import type * as WorkspaceStore from '../workspace-store';
+import type * as NotificationStore from '../notification-store';
+
+// The chime builds an Audio element from a Blob URL, neither of which exists in
+// a Node test environment. What matters here is whether it was rung.
+const chimed = vi.fn();
+vi.mock('../../lib/chime', () => ({ playChime: () => chimed() }));
 
 /**
  * Compaction, from the pane's side: when it fires on its own, when it must not,
@@ -43,6 +49,7 @@ let replay: AgentSessionReplay;
 // on import, so the bridge has to exist first.
 let agentStore: typeof AgentStore;
 let settingsStore: typeof SettingsStore;
+let notificationStore: typeof NotificationStore;
 
 const catalogModel: AgentCatalogModel = {
   id: MODEL,
@@ -170,6 +177,8 @@ beforeEach(async () => {
   // module first loads.
   agentStore = await import('../agent-store');
   settingsStore = await import('../settings-store');
+  notificationStore = await import('../notification-store');
+  chimed.mockClear();
   agentStore.useAgentStore.setState({
     catalog: { models: [catalogModel], fetchedAt: 1, source: 'cache', error: null },
     threads: {}
@@ -823,5 +832,107 @@ describe('disposing a pane', () => {
     agentStore.useAgentStore.getState().disposePane('never-opened');
 
     expect(agentApi.cancel).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A turn stopped on a question is the one moment the pane has something to say
+ * to someone who is not looking at it. Everything that answers "which pane
+ * wants me?" reads the activity map, and an agent pane has no process for main
+ * to watch, so what it puts there is all anybody outside the pane ever sees.
+ */
+describe('telling the rest of the app it is blocked', () => {
+  /** The state the sidebar, the tab badge and both palette commands would read. */
+  const activityOf = (paneId = PANE): string | undefined =>
+    notificationStore.useNotificationStore.getState().getActivity(paneId)?.state;
+
+  function ask(requestId = 'req-1'): void {
+    emit(IPC_CHANNELS.AGENT_PERMISSION_ASK, {
+      streamId: liveStreamId(),
+      requestId,
+      callId: 'call-1',
+      command: 'rm -rf /tmp/x',
+      reason: 'Deletes a folder outside the working folder.',
+      rule: null
+    });
+  }
+
+  it('marks the pane as wanting the user, and says so out loud', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
+    ask();
+
+    expect(activityOf()).toBe('needs_me');
+    expect(chimed).toHaveBeenCalledTimes(1);
+  });
+
+  it('is working, not waiting, while the turn runs', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
+
+    expect(activityOf()).toBe('working');
+    expect(chimed).not.toHaveBeenCalled();
+  });
+
+  it('stops asking once the question is answered', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
+    ask();
+
+    agentStore.useAgentStore.getState().decidePermission(PANE, 'once');
+
+    expect(activityOf()).toBe('working');
+  });
+
+  it('rings once for one question, however often the pane re-renders', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
+    ask();
+    ask();
+
+    expect(chimed).toHaveBeenCalledTimes(1);
+  });
+
+  it('goes quiet when the turn ends', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
+    const streamId = liveStreamId();
+    ask();
+
+    emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
+
+    expect(activityOf()).toBe('idle');
+  });
+
+  it('keeps a badge on a turn that failed', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
+    const streamId = liveStreamId();
+
+    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, { streamId, message: 'no key' });
+
+    expect(activityOf()).toBe('error');
+  });
+
+  it('stays silent when the user has turned the sound off', () => {
+    settingsStore.useSettingsStore.setState({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        notifications: {
+          ...DEFAULT_SETTINGS.notifications,
+          needsPermission: { ...DEFAULT_SETTINGS.notifications.needsPermission, sound: false }
+        }
+      }
+    });
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
+    ask();
+
+    expect(activityOf()).toBe('needs_me');
+    expect(chimed).not.toHaveBeenCalled();
+  });
+
+  // Otherwise "jump to the agent that needs input" has somewhere to send the
+  // user that no longer exists, and silently does nothing when it gets there.
+  it('forgets a closed pane rather than leaving it asking forever', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
+    ask();
+
+    agentStore.useAgentStore.getState().disposePane(PANE);
+
+    expect(activityOf()).toBeUndefined();
   });
 });
