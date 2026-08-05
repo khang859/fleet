@@ -42,8 +42,19 @@ describe('toolLabel', () => {
     expect(toolLabel(call('read', ''))).toEqual({ verb: 'Read', target: '' });
   });
 
+  it('names the file a change is about', () => {
+    expect(toolLabel(call('edit', '{"path":"src/a.ts"}'))).toEqual({
+      verb: 'Edit',
+      target: 'src/a.ts'
+    });
+    expect(toolLabel(call('write', '{"path":"src/a.ts"}'))).toEqual({
+      verb: 'Write',
+      target: 'src/a.ts'
+    });
+  });
+
   it('falls back to the tool name for anything it does not know', () => {
-    expect(toolLabel(call('write', '{"path":"a.ts"}'))).toEqual({ verb: 'write', target: '' });
+    expect(toolLabel(call('bash', '{"command":"ls"}'))).toEqual({ verb: 'bash', target: '' });
   });
 });
 

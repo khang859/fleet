@@ -40,6 +40,10 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       return { verb: 'Find', target: joinScope(args.pattern ?? '', args.path) };
     case 'grep':
       return { verb: 'Search', target: joinScope(args.pattern ?? '', args.glob ?? args.path) };
+    case 'edit':
+      return { verb: 'Edit', target: args.path ?? '' };
+    case 'write':
+      return { verb: 'Write', target: args.path ?? '' };
     default:
       return { verb: call.name, target: '' };
   }

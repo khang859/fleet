@@ -3,10 +3,10 @@ import { z } from 'zod';
 /**
  * The tools the agent can call, and the limits they answer within.
  *
- * Read-only, and deliberately three: find files by name, find them by content,
- * then look at one. Everything an agent does before it can change anything is
- * some composition of those, and a fourth tool that overlaps the first three
- * only gives the model a decision to get wrong.
+ * Deliberately few: find files by name, find them by content, look at one,
+ * change part of one, write a whole one. Everything an agent does is some
+ * composition of those, and a sixth tool that overlaps the other five only
+ * gives the model a decision to get wrong.
  *
  * Every limit here is a promise about the size of a tool result, because a tool
  * result is context the user pays for and never sees. The rule they follow: cut
@@ -14,7 +14,7 @@ import { z } from 'zod';
  * result the model believes is complete is worse than no result at all.
  */
 
-export const AGENT_TOOL_NAMES = ['read', 'glob', 'grep'] as const;
+export const AGENT_TOOL_NAMES = ['read', 'glob', 'grep', 'edit', 'write'] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
 /**
@@ -38,6 +38,16 @@ export const GREP_MAX_MATCHES = 50;
 
 /** Files one `grep` will open before it stops looking. */
 export const GREP_MAX_FILES = 20_000;
+
+/**
+ * Largest file `edit` or `write` will touch. Editing means holding the whole
+ * file in memory twice, and a file this size is generated, minified or data -
+ * none of which a model should be rewriting through a string match.
+ */
+export const EDIT_MAX_FILE_BYTES = 2_000_000;
+
+/** Lines of diff a change reports back. Past this the change is its own review. */
+export const DIFF_MAX_LINES = 200;
 
 export const ReadArgs = z.object({
   path: z.string().min(1),
@@ -64,9 +74,25 @@ export const GrepArgs = z.object({
   mode: z.enum(['content', 'files']).optional()
 });
 
+export const EditArgs = z.object({
+  path: z.string().min(1),
+  /** Text to find, exactly as it appears in the file. */
+  oldString: z.string().min(1),
+  newString: z.string(),
+  /** Change every occurrence instead of refusing an ambiguous one. */
+  replaceAll: z.boolean().optional()
+});
+
+export const WriteArgs = z.object({
+  path: z.string().min(1),
+  content: z.string()
+});
+
 export type ReadArgs = z.infer<typeof ReadArgs>;
 export type GlobArgs = z.infer<typeof GlobArgs>;
 export type GrepArgs = z.infer<typeof GrepArgs>;
+export type EditArgs = z.infer<typeof EditArgs>;
+export type WriteArgs = z.infer<typeof WriteArgs>;
 
 /** The JSON Schema for one tool, as the completions API wants it. */
 export type AgentToolSpec = {
@@ -96,6 +122,19 @@ const GREP_DESCRIPTION = [
   'Returns matching lines with their file and line number, or just the file paths in `files` mode.',
   'Narrow with `glob` (e.g. `**/*.ts`) or `path` rather than searching everything twice.',
   'Files ignored by git and anything under `.git` are never searched.'
+].join(' ');
+
+const EDIT_DESCRIPTION = [
+  'Change part of a file by replacing exact text.',
+  'Read the file first and copy `oldString` out of what `read` returned, without the line numbers.',
+  'It must match the file character for character, including indentation, and must appear exactly once - include the lines around it to pin down which occurrence you mean, or set `replaceAll` to change every one.',
+  'Returns a diff of what changed.'
+].join(' ');
+
+const WRITE_DESCRIPTION = [
+  'Create a file, or replace everything in one that already exists.',
+  'Use `edit` for a change to an existing file: a rewrite silently drops whatever you did not repeat.',
+  'Overwriting requires having read the file first. Missing parent folders are created.'
 ].join(' ');
 
 /**
@@ -168,6 +207,43 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
           }
         },
         required: ['pattern'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'edit',
+      description: EDIT_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File to change.' },
+          oldString: { type: 'string', description: 'Text to replace, exactly as it appears.' },
+          newString: { type: 'string', description: 'What to put in its place. May be empty.' },
+          replaceAll: {
+            type: 'boolean',
+            description: 'Replace every occurrence rather than requiring exactly one.'
+          }
+        },
+        required: ['path', 'oldString', 'newString'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'write',
+      description: WRITE_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File to create or replace.' },
+          content: { type: 'string', description: 'The complete contents of the file.' }
+        },
+        required: ['path', 'content'],
         additionalProperties: false
       }
     }

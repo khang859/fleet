@@ -1,8 +1,17 @@
 import type { z } from 'zod';
-import { GlobArgs, GrepArgs, ReadArgs, type AgentToolResult } from '../../../shared/agent-tools';
+import {
+  EditArgs,
+  GlobArgs,
+  GrepArgs,
+  ReadArgs,
+  WriteArgs,
+  type AgentToolResult
+} from '../../../shared/agent-tools';
+import { runEdit } from './edit';
 import { runGlob } from './glob';
 import { runGrep } from './grep';
 import { runRead } from './read';
+import { runWrite } from './write';
 
 /**
  * Run one tool call.
@@ -28,6 +37,10 @@ export async function runAgentTool(
       return runGlob(checked(GlobArgs, args, name), cwd);
     case 'grep':
       return runGrep(checked(GrepArgs, args, name), cwd);
+    case 'edit':
+      return runEdit(checked(EditArgs, args, name), cwd);
+    case 'write':
+      return runWrite(checked(WriteArgs, args, name), cwd);
     default:
       throw new Error(`There is no tool called ${name}`);
   }

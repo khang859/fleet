@@ -8,6 +8,7 @@ import {
   type ReadArgs
 } from '../../../shared/agent-tools';
 import { displayPath, resolveInsideCwd } from './paths';
+import { remember } from './freshness';
 
 /**
  * Read a window of a file, with line numbers.
@@ -52,6 +53,10 @@ export async function runRead(args: ReadArgs, cwd: string): Promise<AgentToolRes
   } finally {
     input.destroy();
   }
+
+  // What the file looked like when it was read, so a later edit can tell
+  // whether it is still editing the file the model actually saw.
+  remember(abs, info);
 
   if (lineNumber === 0) return { text: `${shown} is empty`, summary: 'empty file' };
   if (lines.length === 0) {

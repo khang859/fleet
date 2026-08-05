@@ -1,8 +1,17 @@
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync, utimesSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+  utimesSync
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runAgentTool } from '../run';
+import { forgetAllFiles } from '../freshness';
 import { globMatcher } from '../glob-match';
 import { ignoreDecision, parseIgnoreRules } from '../ignore';
 
@@ -30,6 +39,9 @@ const run = async (name: string, args: object): Promise<{ text: string; summary:
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'fleet-agent-tools-'));
+  // Which files have been read is process-wide, so each test starts as though
+  // the app had just opened and the agent had looked at nothing.
+  forgetAllFiles();
 });
 
 afterEach(() => {
@@ -339,5 +351,252 @@ describe('ignore rules', () => {
 
   it('matches an unanchored name at any depth', () => {
     expect(decide('node_modules', 'a/b/node_modules', true)).toBe(true);
+  });
+});
+
+describe('edit', () => {
+  /** An edit is only allowed on a file the agent has read, so read it first. */
+  const readThen = async (
+    rel: string,
+    args: object
+  ): Promise<{ text: string; summary: string }> => {
+    await run('read', { path: rel });
+    return run('edit', { path: rel, ...args });
+  };
+
+  it('replaces an exact match and reports a diff', async () => {
+    file('a.ts', 'const a = 1;\nconst b = 2;\nconst c = 3;\n');
+
+    const { text, summary } = await readThen('a.ts', {
+      oldString: 'const b = 2;',
+      newString: 'const b = 22;'
+    });
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe(
+      'const a = 1;\nconst b = 22;\nconst c = 3;\n'
+    );
+    expect(summary).toBe('+1 -1');
+    expect(text).toContain('Edited a.ts (+1 -1)');
+    expect(text).toContain('-const b = 2;');
+    expect(text).toContain('+const b = 22;');
+  });
+
+  it('refuses to edit a file it has not read', async () => {
+    file('a.ts', 'const a = 1;\n');
+
+    await expect(
+      run('edit', { path: 'a.ts', oldString: 'const a = 1;', newString: 'const a = 2;' })
+    ).rejects.toThrow(/Read a.ts before changing it/);
+  });
+
+  it('refuses to edit a file that changed since it was read', async () => {
+    file('a.ts', 'const a = 1;\n');
+    await run('read', { path: 'a.ts' });
+    file('a.ts', 'const a = 1;\nconst b = 2;\n');
+
+    await expect(
+      run('edit', { path: 'a.ts', oldString: 'const a = 1;', newString: 'const a = 2;' })
+    ).rejects.toThrow(/changed on disk since you read it/);
+  });
+
+  it('allows a second edit to a file it just edited', async () => {
+    file('a.ts', 'one\ntwo\n');
+
+    await readThen('a.ts', { oldString: 'one', newString: '1' });
+    await run('edit', { path: 'a.ts', oldString: 'two', newString: '2' });
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('1\n2\n');
+  });
+
+  it('refuses an ambiguous match and names where it matched', async () => {
+    file('a.ts', 'x = 1;\ny = 2;\nx = 1;\n');
+
+    await expect(readThen('a.ts', { oldString: 'x = 1;', newString: 'x = 9;' })).rejects.toThrow(
+      /appears 2 times \(lines 1, 3\)/
+    );
+  });
+
+  it('changes every occurrence when asked to', async () => {
+    file('a.ts', 'x = 1;\ny = 2;\nx = 1;\n');
+
+    const { summary } = await readThen('a.ts', {
+      oldString: 'x = 1;',
+      newString: 'x = 9;',
+      replaceAll: true
+    });
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('x = 9;\ny = 2;\nx = 9;\n');
+    expect(summary).toBe('+2 -2');
+  });
+
+  it('matches lines whose indentation the model got wrong, and re-indents the replacement', async () => {
+    file('a.ts', 'function f() {\n    if (x) {\n        go();\n    }\n}\n');
+
+    const { text } = await readThen('a.ts', {
+      oldString: 'if (x) {\n    go();\n}',
+      newString: 'if (y) {\n    stop();\n}'
+    });
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe(
+      'function f() {\n    if (y) {\n        stop();\n    }\n}\n'
+    );
+    expect(text).toContain('ignoring indentation');
+  });
+
+  it('refuses when ignoring indentation makes the match ambiguous', async () => {
+    // The same two lines twice, at two different indentations - so neither is
+    // an exact match for what the model wrote, and both match once trimmed.
+    file('a.ts', 'if (a) {\n    go();\n}\n  if (a) {\n      go();\n  }\n');
+
+    await expect(
+      readThen('a.ts', { oldString: 'if (a) {\n  go();\n}', newString: 'if (b) {\n  stop();\n}' })
+    ).rejects.toThrow(/matches 2 places \(lines 1, 4\)/);
+  });
+
+  it('points at where the first line is when the rest does not match', async () => {
+    file('a.ts', 'const a = 1;\nconst b = 2;\n');
+
+    await expect(
+      readThen('a.ts', { oldString: 'const a = 1;\nconst z = 9;', newString: 'nope' })
+    ).rejects.toThrow(/first line is at line 1/);
+  });
+
+  it('says so when the text is nowhere in the file', async () => {
+    file('a.ts', 'const a = 1;\n');
+
+    await expect(
+      readThen('a.ts', { oldString: 'const q = 7;', newString: 'nope' })
+    ).rejects.toThrow(/neither is its first line/);
+  });
+
+  it('refuses an edit that changes nothing', async () => {
+    file('a.ts', 'const a = 1;\n');
+
+    await expect(
+      readThen('a.ts', { oldString: 'const a = 1;', newString: 'const a = 1;' })
+    ).rejects.toThrow(/identical/);
+  });
+
+  it('keeps the line endings the file already had', async () => {
+    file('crlf.ts', 'one\r\ntwo\r\nthree\r\n');
+
+    await readThen('crlf.ts', { oldString: 'two', newString: 'TWO' });
+
+    expect(readFileSync(join(dir, 'crlf.ts'), 'utf8')).toBe('one\r\nTWO\r\nthree\r\n');
+  });
+
+  it('refuses a file that does not exist, and a folder', async () => {
+    mkdirSync(join(dir, 'sub'));
+
+    await expect(run('edit', { path: 'nope.ts', oldString: 'a', newString: 'b' })).rejects.toThrow(
+      /does not exist - use write to create it/
+    );
+    await expect(run('edit', { path: 'sub', oldString: 'a', newString: 'b' })).rejects.toThrow(
+      /is a folder/
+    );
+  });
+
+  it('stays inside the working folder', async () => {
+    await expect(
+      run('edit', { path: '../../../etc/hosts', oldString: 'a', newString: 'b' })
+    ).rejects.toThrow(/outside the working folder/);
+  });
+});
+
+describe('write', () => {
+  it('creates a file and the folders above it', async () => {
+    const { text, summary } = await run('write', {
+      path: 'src/deep/new.ts',
+      content: 'export const a = 1;\n'
+    });
+
+    expect(readFileSync(join(dir, 'src/deep/new.ts'), 'utf8')).toBe('export const a = 1;\n');
+    expect(text).toContain('Created src/deep/new.ts (1 line)');
+    expect(summary).toBe('1 line');
+  });
+
+  it('refuses to overwrite a file it has not read', async () => {
+    file('a.ts', 'work in progress\n');
+
+    await expect(run('write', { path: 'a.ts', content: 'gone\n' })).rejects.toThrow(
+      /Read a.ts before changing it/
+    );
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('work in progress\n');
+  });
+
+  it('overwrites a file it has read, and reports what that did', async () => {
+    file('a.ts', 'one\ntwo\n');
+    await run('read', { path: 'a.ts' });
+
+    const { text, summary } = await run('write', { path: 'a.ts', content: 'one\nTWO\n' });
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('one\nTWO\n');
+    expect(text).toContain('Rewrote a.ts (+1 -1)');
+    expect(summary).toBe('+1 -1');
+  });
+
+  it('does not write a file that already says that', async () => {
+    file('a.ts', 'same\n');
+    await run('read', { path: 'a.ts' });
+
+    const { summary } = await run('write', { path: 'a.ts', content: 'same\n' });
+
+    expect(summary).toBe('no change');
+  });
+
+  it('refuses a folder and anything outside the working folder', async () => {
+    mkdirSync(join(dir, 'sub'));
+
+    await expect(run('write', { path: 'sub', content: 'x' })).rejects.toThrow(/is a folder/);
+    await expect(run('write', { path: '../escape.ts', content: 'x' })).rejects.toThrow(
+      /outside the working folder/
+    );
+  });
+
+  it('refuses a path that holds secrets', async () => {
+    await expect(run('write', { path: '.env', content: 'KEY=1' })).rejects.toThrow(
+      /may hold secrets/
+    );
+  });
+});
+
+describe('what a change tells the model', () => {
+  // The reminders exist because the system prompt alone does not hold up over a
+  // long turn on every model. They are worth their tokens only while they stay
+  // attached to a change and out of every other result.
+  it('reminds the model that the user can already see the change', async () => {
+    file('a.ts', 'one\n');
+    await run('read', { path: 'a.ts' });
+
+    const edited = await run('edit', { path: 'a.ts', oldString: 'one', newString: 'two' });
+    const created = await run('write', { path: 'b.ts', content: 'hello\n' });
+
+    expect(edited.text).toContain('do not repeat the new code');
+    expect(created.text).toContain('do not repeat its contents');
+  });
+
+  it('says why edit was the better tool, but only after a rewrite', async () => {
+    file('a.ts', 'one\ntwo\n');
+    await run('read', { path: 'a.ts' });
+
+    const rewrote = await run('write', { path: 'a.ts', content: 'one\nTWO\n' });
+    const read = await run('read', { path: 'a.ts' });
+
+    expect(rewrote.text).toContain('Use edit to change part of one');
+    expect(read.text).not.toContain('Use edit');
+  });
+
+  it('keeps everything it tells the model above the diff', async () => {
+    file('a.ts', 'one\ntwo\nthree\n');
+    await run('read', { path: 'a.ts' });
+
+    const { text } = await run('edit', { path: 'a.ts', oldString: 'two', newString: 'TWO' });
+    const lines = text.split('\n');
+
+    // The pane shows the diff and drops what comes before it, so nothing the
+    // model is told may appear after the first hunk header.
+    const firstHunk = lines.findIndex((line) => line.startsWith('@@'));
+    expect(firstHunk).toBeGreaterThan(0);
+    expect(lines.slice(firstHunk).some((line) => line.includes('do not repeat'))).toBe(false);
   });
 });
