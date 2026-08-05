@@ -20,8 +20,8 @@ const REQUEST: AgentSendRequest = {
   streamId: 'stream-1',
   cwd: '/repo',
   history: [
-    { id: 'a', role: 'user', content: 'hi', reasoning: '' },
-    { id: 'b', role: 'assistant', content: 'hello', reasoning: 'thinking' }
+    { id: 'a', role: 'user', content: 'hi', reasoning: '', reasoningMs: null },
+    { id: 'b', role: 'assistant', content: 'hello', reasoning: 'thinking', reasoningMs: 1200 }
   ],
   text: 'what does this do?'
 };
@@ -177,7 +177,13 @@ describe('toWireMessages', () => {
   });
 
   it('sends a summary as a labelled user message, not as the assistant speaking', () => {
-    const summary = { id: 's', role: 'summary' as const, content: 'we chose zod', reasoning: '' };
+    const summary = {
+      id: 's',
+      role: 'summary' as const,
+      content: 'we chose zod',
+      reasoning: '',
+      reasoningMs: null
+    };
     const messages = toWireMessages({ ...REQUEST, history: [summary] }, 'be brief');
 
     expect(messages[1].role).toBe('user');

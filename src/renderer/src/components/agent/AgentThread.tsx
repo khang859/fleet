@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, FoldVertical, Square, TriangleAlert } from 'lucide-react';
+import { ArrowUp, ChevronRight, FoldVertical, Square, TriangleAlert } from 'lucide-react';
 import type { AgentMessage } from '../../../../shared/agent-types';
 import { canCompact } from '../../../../shared/agent-context';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentActivity } from './AgentActivity';
+import { formatElapsed } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
 import { useAgentStore } from '../../store/agent-store';
 import { useSettingsStore } from '../../store/settings-store';
@@ -148,13 +149,70 @@ function Message({
   return (
     <div className="flex flex-col gap-2">
       {message.reasoning !== '' && (
-        <div className="border-l-2 border-fleet-border pl-3 text-xs leading-relaxed whitespace-pre-wrap text-fleet-text-muted">
-          {message.reasoning}
-        </div>
+        <ReasoningBlock
+          text={message.reasoning}
+          durationMs={message.reasoningMs}
+          // Thinking is worth watching only while it is the sole thing
+          // happening; the moment an answer starts, the answer is the point.
+          live={streaming && message.content === ''}
+        />
       )}
       {message.content !== '' && (
         <div className="text-fleet-text">
           <AgentMarkdown streaming={streaming}>{message.content}</AgentMarkdown>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The model's reasoning: open while it is thinking, folded away to a single
+ * line once the answer arrives.
+ *
+ * This is where every AI product has landed - Mistral, Grok and Pi all show
+ * the chain of thought live and then collapse it to "Thought for 1m 8s" - and
+ * the reason is that the two moments want opposite things. While the model is
+ * thinking, the reasoning is the only thing on screen worth reading. Once the
+ * answer exists, the reasoning is a wall of text between the question and it.
+ * The duration is what survives, because it is the part still worth knowing.
+ *
+ * A click either way sticks, and from then on the block stops second-guessing
+ * the user.
+ */
+function ReasoningBlock({
+  text,
+  durationMs,
+  live
+}: {
+  text: string;
+  durationMs: number | null;
+  live: boolean;
+}): React.JSX.Element {
+  const [override, setOverride] = useState<boolean | null>(null);
+  const open = override ?? live;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOverride(!open)}
+        aria-expanded={open}
+        className="flex w-fit items-center gap-1 text-xs text-fleet-text-subtle transition-colors hover:text-fleet-text-muted focus-ring"
+      >
+        <ChevronRight
+          size={12}
+          className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+        />
+        {live
+          ? 'Thinking…'
+          : durationMs === null
+            ? 'Thought'
+            : `Thought for ${formatElapsed(durationMs)}`}
+      </button>
+      {open && (
+        <div className="border-l-2 border-fleet-border pl-3 text-xs leading-relaxed whitespace-pre-wrap text-fleet-text-muted">
+          {text}
         </div>
       )}
     </div>

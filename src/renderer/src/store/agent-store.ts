@@ -116,13 +116,15 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       id: crypto.randomUUID(),
       role: 'user',
       content: text,
-      reasoning: ''
+      reasoning: '',
+      reasoningMs: null
     };
     const assistant: AgentMessage = {
       id: streamId,
       role: 'assistant',
       content: '',
-      reasoning: ''
+      reasoning: '',
+      reasoningMs: null
     };
     // The placeholder goes in before the request leaves, so the first delta
     // always has somewhere to land.
@@ -192,9 +194,16 @@ function threadOf(streamId: string): { paneId: string; thread: PaneThread } | nu
 function appendToAssistant(streamId: string, field: 'content' | 'reasoning', delta: string): void {
   const found = threadOf(streamId);
   if (found === null) return;
-  const messages = found.thread.messages.map((m) =>
-    m.id === streamId ? { ...m, [field]: m[field] + delta } : m
-  );
+  const startedAt = found.thread.startedAt;
+  const messages = found.thread.messages.map((m) => {
+    if (m.id !== streamId) return m;
+    const next = { ...m, [field]: m[field] + delta };
+    // The first answer token ends the thinking. Measured from the send rather
+    // than from the first reasoning token, so the number the block settles on
+    // is the one the live clock was showing the moment it settled.
+    const stamp = field === 'content' && m.content === '' && m.reasoning !== '';
+    return stamp && startedAt !== null ? { ...next, reasoningMs: Date.now() - startedAt } : next;
+  });
   useAgentStore.setState((s) => ({
     threads: { ...s.threads, [found.paneId]: { ...found.thread, messages } }
   }));
@@ -263,7 +272,8 @@ function applySummary(streamId: string, summary: string): void {
     id: crypto.randomUUID(),
     role: 'summary',
     content: summary,
-    reasoning: ''
+    reasoning: '',
+    reasoningMs: null
   };
   const messages = [message, ...pending.keep];
 

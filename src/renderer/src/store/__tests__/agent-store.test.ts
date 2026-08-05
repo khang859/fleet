@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IPC_CHANNELS } from '../../../../shared/ipc-channels';
 import { DEFAULT_SETTINGS } from '../../../../shared/constants';
-import type { AgentCatalogModel, AgentUsage } from '../../../../shared/agent-types';
+import type { AgentCatalogModel, AgentMessage, AgentUsage } from '../../../../shared/agent-types';
 import type * as AgentStore from '../agent-store';
 import type * as SettingsStore from '../settings-store';
 
@@ -371,5 +371,68 @@ describe('compacting on request', () => {
 
     expect(agentApi.compact).toHaveBeenCalledTimes(1);
     expect(thread().pendingCompact).not.toBeNull();
+  });
+});
+
+/**
+ * The number the collapsed reasoning block shows for itself. Getting it wrong
+ * is quiet: a plausible duration on the wrong message reads as fact.
+ */
+describe('reasoning duration', () => {
+  const send = (): string => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'why?');
+    return liveStreamId();
+  };
+  const assistant = (): AgentMessage => {
+    const last = thread().messages.at(-1);
+    if (!last) throw new Error('no messages');
+    return last;
+  };
+
+  it('stamps the wait when the first answer token follows reasoning', () => {
+    vi.useFakeTimers();
+    try {
+      const streamId = send();
+      emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta: 'let me think' });
+      vi.advanceTimersByTime(4_000);
+      emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: 'because' });
+
+      expect(assistant().reasoningMs).toBe(4_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the first stamp as the rest of the answer streams in', () => {
+    vi.useFakeTimers();
+    try {
+      const streamId = send();
+      emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta: 'hm' });
+      vi.advanceTimersByTime(2_000);
+      emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: 'be' });
+      vi.advanceTimersByTime(9_000);
+      emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: 'cause' });
+
+      expect(assistant().reasoningMs).toBe(2_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // No reasoning means there is nothing to label, and a duration would turn
+  // ordinary latency into a claim the model was thinking.
+  it('leaves a reply with no reasoning unstamped', () => {
+    const streamId = send();
+    emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: 'sure' });
+
+    expect(assistant().reasoningMs).toBeNull();
+  });
+
+  it('leaves reasoning that never reached an answer unstamped', () => {
+    const streamId = send();
+    emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta: 'thinking…' });
+    emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
+
+    expect(assistant().reasoningMs).toBeNull();
   });
 });

@@ -167,6 +167,13 @@ export type AgentMessage = {
   content: string;
   /** Assistant only: the reasoning channel, when the model streams one. */
   reasoning: string;
+  /**
+   * How long the wait for the answer lasted, stamped when the first answer
+   * token lands. It is what the collapsed reasoning block has to say for
+   * itself, so `null` (no reasoning, or none that ever gave way to an answer)
+   * means there is no duration to show rather than a duration of zero.
+   */
+  reasoningMs: number | null;
 };
 
 /**

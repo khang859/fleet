@@ -14,7 +14,8 @@ const msg = (role: AgentMessage['role'], content: string, reasoning = ''): Agent
   id: `${role}-${content}`,
   role,
   content,
-  reasoning
+  reasoning,
+  reasoningMs: null
 });
 
 /** A transcript of `turns` complete exchanges, oldest first. */
