@@ -6,7 +6,7 @@ import type { AgentModelCatalog } from './models-catalog';
 import type { AgentService } from './agent-service';
 import type { AgentSessionStore } from './session-store';
 import type { PermissionGate } from './permissions/gate';
-import type { AgentPermissionDecision } from '../../shared/agent-types';
+import { AgentPermissionDecision } from '../../shared/agent-types';
 
 /**
  * Everything the Agent pane calls into main. Agent settings themselves ride on
@@ -38,8 +38,12 @@ export function registerAgentIpc(deps: {
   });
 
   // The renderer relays a click; whether the command runs was decided in main.
-  ipcMain.on(IPC_CHANNELS.AGENT_PERMISSION_DECIDE, (_e, req: AgentPermissionDecision) => {
-    deps.gate.decide(req.requestId, req.outcome);
+  // A payload that does not parse is dropped, which leaves the request pending
+  // and the command unrun - the gate settles it when the turn ends.
+  ipcMain.on(IPC_CHANNELS.AGENT_PERMISSION_DECIDE, (_e, req: unknown) => {
+    const parsed = AgentPermissionDecision.safeParse(req);
+    if (!parsed.success) return;
+    deps.gate.decide(parsed.data.requestId, parsed.data.outcome);
   });
 
   ipcMain.on(IPC_CHANNELS.AGENT_SESSION_APPEND, (_e, req: AgentSessionAppend) => {

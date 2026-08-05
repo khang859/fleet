@@ -39,13 +39,17 @@ function file(rel: string, contents: string): string {
 /** Commands handed to the user this test, oldest first. */
 let handedOff: string[];
 
+/** Commands the turn has been told no about, for the tests that set one. */
+let refused: string[];
+
 /** The conversation every test runs in unless it says otherwise. */
 const ctx = (threadId = 'thread-1', signal = new AbortController().signal): AgentToolContext => ({
   cwd: dir,
   threadId,
   signal,
   handOff: (command) => handedOff.push(command),
-  approve: async () => Promise.resolve(true)
+  approve: async () => Promise.resolve(true),
+  wasRefused: (command) => refused.includes(command)
 });
 
 const run = async (name: string, args: object): Promise<{ text: string; summary: string }> =>
@@ -61,6 +65,7 @@ const runIn = async (
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'fleet-agent-tools-'));
   handedOff = [];
+  refused = [];
   // What a conversation has read outlives the conversation's own turns, so each
   // test starts as though the app had just opened and nothing had been read.
   forgetAllFiles();
@@ -804,5 +809,27 @@ describe('terminal', () => {
       /one line/
     );
     expect(handedOff).toEqual([]);
+  });
+
+  /*
+   * A carriage return is not a character a terminal displays - it is the Enter
+   * key, as far as the tty is concerned. Blocking `\n` alone left the one thing
+   * this tool promises never to do one character away.
+   */
+  it('refuses a command carrying any control character', async () => {
+    for (const command of ['sudo rm -rf ~\r', 'echo a\x07b', 'echo a\x1b[2Jb']) {
+      await expect(run('terminal', { command })).rejects.toThrow(/one line/);
+    }
+    expect(handedOff).toEqual([]);
+  });
+
+  it('will not hand over a command the user already turned down', async () => {
+    refused.push('sudo rm -rf /');
+
+    const { text, summary } = await run('terminal', { command: 'sudo rm -rf /' });
+
+    expect(handedOff).toEqual([]);
+    expect(summary).toBe('not allowed');
+    expect(text).toContain('already turned this command down');
   });
 });

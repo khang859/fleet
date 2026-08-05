@@ -309,7 +309,8 @@ export class AgentService {
               callId: call.id,
               command,
               signal: ctx.signal
-            })) === 'run'
+            })) === 'run',
+          wasRefused: (command) => this.deps.gate.wasRefused(streamId, command)
         });
         messages.push({
           role: 'tool',

@@ -140,12 +140,25 @@ export const BashArgs = z.object({
   timeoutMs: z.number().int().min(BASH_MIN_TIMEOUT_MS).max(BASH_MAX_TIMEOUT_MS).optional()
 });
 
+/**
+ * A character a terminal acts on rather than shows. Written as a comparison
+ * rather than a character class because the class would be a regex full of
+ * literal control characters, which is its own kind of unreadable.
+ */
+function isControlChar(c: string): boolean {
+  return c < ' ' || c === '\u007f';
+}
+
 export const TerminalArgs = z.object({
   command: z
     .string()
     .min(1)
-    .refine((command) => !command.includes('\n'), {
-      message: 'has to be one line - it is typed into a terminal for someone to read and run'
+    // Every control character, not just the newline. What is typed into a
+    // terminal is not read by the terminal - a carriage return is the Enter
+    // key to the tty's line discipline, and the promise this tool makes is
+    // that the user presses that themselves.
+    .refine((command) => ![...command].some(isControlChar), {
+      message: 'has to be one line of plain text - it is typed into a terminal for someone to run'
     })
 });
 
@@ -422,6 +435,14 @@ export type AgentToolContext = {
    * the user's rules answer them - and the rest wait here until the user does.
    */
   approve: (command: string) => Promise<boolean>;
+  /**
+   * Whether this turn has already been told no about a command.
+   *
+   * A refusal is about the command rather than the tool that offered it, so it
+   * has to hold for the tool that does not ask. Otherwise the shortest way past
+   * a "don't run" is to hand the same line to the user's own terminal.
+   */
+  wasRefused: (command: string) => boolean;
 };
 
 /** A finished tool run: what goes to the model, and what the pane shows. */

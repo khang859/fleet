@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { AgentToolCall } from './agent-tools';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
 
@@ -303,12 +304,21 @@ export type AgentPermissionAsk = {
 };
 
 /** `once` runs it, `always` runs it and remembers the rule, `no` refuses. */
-export type AgentPermissionOutcome = 'once' | 'always' | 'no';
+export const AgentPermissionOutcome = z.enum(['once', 'always', 'no']);
+export type AgentPermissionOutcome = z.infer<typeof AgentPermissionOutcome>;
 
-export type AgentPermissionDecision = {
-  requestId: string;
-  outcome: AgentPermissionOutcome;
-};
+/**
+ * A click, on its way back to the gate that asked.
+ *
+ * Parsed rather than trusted on arrival: this is the one message whose whole
+ * job is to say whether something dangerous may run, so a malformed one has to
+ * be recognisable as malformed rather than land somewhere by default.
+ */
+export const AgentPermissionDecision = z.object({
+  requestId: z.string().min(1),
+  outcome: AgentPermissionOutcome
+});
+export type AgentPermissionDecision = z.infer<typeof AgentPermissionDecision>;
 
 /** Every stream event carries its request's id, so panes can tell theirs apart. */
 export type AgentStreamDelta = { streamId: string; delta: string };

@@ -56,7 +56,7 @@ export class PermissionGate {
   constructor(private readonly deps: Deps) {}
 
   async check(req: PermissionRequest): Promise<PermissionGrant> {
-    if (this.refused.get(req.streamId)?.has(req.command)) return 'refuse';
+    if (this.wasRefused(req.streamId, req.command)) return 'refuse';
 
     const verdict = decideCommand(this.deps.getRules(), req.command);
     if (verdict.kind === 'allow') return 'run';
@@ -78,7 +78,20 @@ export class PermissionGate {
       already.add(entry.command);
       this.refused.set(entry.streamId, already);
     }
-    this.settle(requestId, outcome === 'no' ? 'refuse' : 'run');
+    // Only the two answers that mean yes mean yes. Anything else - a payload
+    // that arrived malformed, an outcome added later and not handled here -
+    // leaves the command unrun, which is the direction to be wrong in.
+    this.settle(requestId, outcome === 'once' || outcome === 'always' ? 'run' : 'refuse');
+  }
+
+  /**
+   * Whether this turn has already been told no about a command.
+   *
+   * A refusal is about the command, so it holds however the command is next
+   * offered - including by a tool that does not ask.
+   */
+  wasRefused(streamId: string, command: string): boolean {
+    return this.refused.get(streamId)?.has(command) ?? false;
   }
 
   /** Called when a turn ends, however it ended: nothing here outlives it. */

