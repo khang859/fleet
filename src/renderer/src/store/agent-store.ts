@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AgentCatalog, AgentMessage, AgentUsage } from '../../../shared/agent-types';
+import type { AgentSessionEvent } from '../../../shared/agent-session';
 import {
   canCompact,
   contextUsed,
@@ -12,11 +13,21 @@ import { createLogger } from '../logger';
 
 const log = createLogger('store:agent');
 
-/** One pane's transcript. In memory only - it dies with the pane, by design. */
+/**
+ * One pane's transcript. The live copy is here; the durable one is the pane's
+ * session log, which this store appends to as the transcript changes and reads
+ * back when the pane opens.
+ */
 type PaneThread = {
   messages: AgentMessage[];
   /** The folder the pane works in, remembered so compaction can run unprompted. */
   cwd: string;
+  /**
+   * The session file this thread is written to. `null` before the pane has
+   * told the store which one it is, which is the only state in which nothing
+   * is recorded - a turn is never written to a file we cannot name.
+   */
+  sessionId: string | null;
   /** Set while a turn or a compaction is in flight; the id main tags its events with. */
   streamId: string | null;
   /**
@@ -44,6 +55,7 @@ type PaneThread = {
 const EMPTY_THREAD: PaneThread = {
   messages: [],
   cwd: '',
+  sessionId: null,
   streamId: null,
   pendingCompact: null,
   startedAt: null,
@@ -67,6 +79,13 @@ type AgentStoreState = {
   loadKey: () => Promise<void>;
   saveKey: (key: string) => Promise<void>;
   clearKey: () => Promise<void>;
+  /**
+   * Adopt a pane's session: replay whatever it left on disk into the thread.
+   * Called when the pane mounts, and safe to call again - a thread that has
+   * already been opened is left alone rather than reloaded over the top of a
+   * live conversation.
+   */
+  openSession: (paneId: string, sessionId: string, cwd: string) => Promise<void>;
   send: (paneId: string, cwd: string, text: string) => void;
   /** Folds the older half of the transcript into a summary. Ignored while busy. */
   compact: (paneId: string) => void;
@@ -107,6 +126,32 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     set({ keyPresent: false });
   },
 
+  openSession: async (paneId, sessionId, cwd) => {
+    // Already adopted: the pane remounts on every layout change, and reloading
+    // here would drop a live conversation on the floor.
+    if (get().threads[paneId]) return;
+    // Claimed before the read, not after, so a turn started in the meantime is
+    // recorded against the right session rather than going unwritten.
+    set({ threads: { ...get().threads, [paneId]: { ...EMPTY_THREAD, sessionId, cwd } } });
+
+    const replay = await window.fleet.agent.loadSession(sessionId);
+    log.debug('openSession', { paneId, sessionId, messages: replay.messages.length });
+    const thread = get().threads[paneId];
+    if (!thread) return;
+    set({
+      threads: {
+        ...get().threads,
+        [paneId]: {
+          ...thread,
+          // Prepended rather than assigned: anything already here was said
+          // while the file was being read, so it belongs after the history.
+          messages: [...replay.messages, ...thread.messages],
+          contextTokens: thread.contextTokens ?? replay.contextTokens
+        }
+      }
+    });
+  },
+
   send: (paneId, cwd, text) => {
     const thread = get().threads[paneId] ?? EMPTY_THREAD;
     if (thread.streamId !== null) return;
@@ -141,6 +186,9 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
         }
       }
     });
+    // Written before the request leaves: what the user said is worth keeping
+    // whether or not the turn that follows ever comes back.
+    record(thread, { t: 'message', message: user });
     window.fleet.agent.send({ streamId, cwd, history: thread.messages, text });
   },
 
@@ -182,6 +230,22 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   }
 }));
 
+/**
+ * Write one event to the thread's session log.
+ *
+ * A thread with no session id records nothing: that only happens to a thread
+ * this store made up on the spot (a `send` for a pane that never announced
+ * itself), and inventing a file for it would scatter orphan sessions on disk.
+ */
+function record(thread: PaneThread, event: AgentSessionEvent): void {
+  if (thread.sessionId === null) return;
+  window.fleet.agent.appendSession({
+    sessionId: thread.sessionId,
+    cwd: thread.cwd,
+    event
+  });
+}
+
 /** The pane whose turn `streamId` belongs to, or null once the turn has ended. */
 function threadOf(streamId: string): { paneId: string; thread: PaneThread } | null {
   for (const [paneId, thread] of Object.entries(useAgentStore.getState().threads)) {
@@ -216,6 +280,9 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
   // A compaction that ended here rather than on its own channel was cancelled
   // or failed, so the transcript is untouched and so is what we know about it.
   const wasCompacting = thread.pendingCompact !== null;
+  const contextTokens = wasCompacting
+    ? thread.contextTokens
+    : contextUsed(usage, estimateTranscriptTokens(thread.messages));
 
   useAgentStore.setState((s) => ({
     threads: {
@@ -226,12 +293,22 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
         pendingCompact: null,
         startedAt: null,
         error,
-        contextTokens: wasCompacting
-          ? thread.contextTokens
-          : contextUsed(usage, estimateTranscriptTokens(thread.messages))
+        contextTokens
       }
     }
   }));
+
+  // The reply is only written down once it has stopped changing. A turn that
+  // was cancelled or failed part-way is recorded as far as it got, since that
+  // is what the transcript shows and what the next turn will send; one that
+  // produced nothing at all leaves no trace.
+  if (!wasCompacting) {
+    const reply = thread.messages.find((m) => m.id === streamId);
+    if (reply && (reply.content !== '' || reply.reasoning !== '')) {
+      record(thread, { t: 'message', message: reply });
+    }
+    if (contextTokens !== null) record(thread, { t: 'context', tokens: contextTokens });
+  }
 
   // Only a completed turn can trigger compaction. A failed one leaves the
   // transcript where it was, and a compaction triggering another compaction is
@@ -276,6 +353,13 @@ function applySummary(streamId: string, summary: string): void {
     reasoningMs: null
   };
   const messages = [message, ...pending.keep];
+  const contextTokens = estimateTranscriptTokens(messages);
+
+  // One line saying what replaced what, rather than a rewrite: the turns the
+  // summary folded up stay in the file, and replay reaches the same transcript
+  // the pane is showing.
+  record(found.thread, { t: 'compact', summary: message, keep: pending.keep.map((m) => m.id) });
+  record(found.thread, { t: 'context', tokens: contextTokens });
 
   useAgentStore.setState((s) => ({
     threads: {
@@ -290,7 +374,7 @@ function applySummary(streamId: string, summary: string): void {
         // The provider's count for the summarizing call describes that call,
         // not this transcript, so the new size is estimated until a real turn
         // reports on it.
-        contextTokens: estimateTranscriptTokens(messages)
+        contextTokens
       }
     }
   }));

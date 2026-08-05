@@ -267,7 +267,11 @@ export function PaneGrid({
               {/* No PaneHeader: like the other non-terminal panes, the agent
                   pane owns its own chrome and has no live cwd to show. */}
               <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                <AgentPane paneId={leaf.id} cwd={leaf.node.cwd} />
+                <AgentPane
+                  paneId={leaf.id}
+                  cwd={leaf.node.cwd}
+                  sessionId={leaf.node.agentSessionId}
+                />
               </PaneFrame>
             </div>
           );

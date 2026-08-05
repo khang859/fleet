@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentMessage } from '../../../../../shared/agent-types';
-import { agentPhase, formatElapsed, phaseShimmers } from '../activity';
+import { agentPhase, formatElapsed, phaseShimmers, reasoningLabel } from '../activity';
 
 function message(over: Partial<AgentMessage> = {}): AgentMessage {
   return { id: 'm1', role: 'assistant', content: '', reasoning: '', reasoningMs: null, ...over };
@@ -60,5 +60,23 @@ describe('formatElapsed', () => {
   // A clock jumping backwards past zero would be a worse lie than showing none.
   it('never goes negative when the clock moves under it', () => {
     expect(formatElapsed(-5_000)).toBe('0s');
+  });
+});
+
+describe('reasoningLabel', () => {
+  it('names the duration once there is one worth naming', () => {
+    expect(reasoningLabel(5_355)).toBe('Thought for 5s');
+    expect(reasoningLabel(68_000)).toBe('Thought for 1:08');
+  });
+
+  // "Thought for 0s" reads as a broken clock. A reply that came back in half a
+  // second still thought - there is just no number worth putting on it.
+  it('drops the number when the thinking was under a second', () => {
+    expect(reasoningLabel(635)).toBe('Thought');
+    expect(reasoningLabel(0)).toBe('Thought');
+  });
+
+  it('says only that it thought when nothing was measured', () => {
+    expect(reasoningLabel(null)).toBe('Thought');
   });
 });

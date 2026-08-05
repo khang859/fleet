@@ -112,6 +112,7 @@ import { registerChatIpc } from './chat/chat-ipc';
 import { registerAgentIpc } from './agent/agent-ipc';
 import { AgentModelCatalog } from './agent/models-catalog';
 import { AgentService } from './agent/agent-service';
+import { AgentSessionStore } from './agent/session-store';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
 import { resolveSummary } from './chat/pane-summarizer';
 import { PermissionManager } from './chat/permissions/permission-manager';
@@ -1541,7 +1542,8 @@ void app.whenReady().then(async () => {
         const w = mainWindow;
         if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
       }
-    })
+    }),
+    sessions: new AgentSessionStore()
   });
 
   // Cheap AI one-line pane summaries for the agent overview, throttled per pane

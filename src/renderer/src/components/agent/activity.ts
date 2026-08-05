@@ -39,6 +39,18 @@ export function phaseShimmers(phase: AgentPhase): boolean {
   return phase === 'waiting' || phase === 'compacting';
 }
 
+/**
+ * The line a finished reasoning block collapses to.
+ *
+ * Anything under a second gets no number: "Thought for 0s" reads as a broken
+ * clock rather than as a fast answer, and the duration is only worth showing
+ * when it is long enough to have been worth waiting for.
+ */
+export function reasoningLabel(durationMs: number | null): string {
+  if (durationMs === null || durationMs < 1000) return 'Thought';
+  return `Thought for ${formatElapsed(durationMs)}`;
+}
+
 /** Elapsed time as a clock: `9s`, `45s`, `1:12`, `10:05`. */
 export function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));

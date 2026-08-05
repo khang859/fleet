@@ -16,9 +16,19 @@ const TABS = [
  * agent pane shares - they run on the same provider and models and differ only
  * in the folder they work in.
  */
-export function AgentPane({ paneId, cwd }: { paneId: string; cwd: string }): React.JSX.Element {
+export function AgentPane({
+  paneId,
+  cwd,
+  sessionId
+}: {
+  paneId: string;
+  cwd: string;
+  /** Absent on panes created before sessions existed; those stay in memory. */
+  sessionId?: string;
+}): React.JSX.Element {
   const [view, setView] = useState<AgentView>('agent');
   const loadModels = useAgentStore((s) => s.loadModels);
+  const openSession = useAgentStore((s) => s.openSession);
 
   // Not only for the settings screen: the catalog carries the context limits,
   // and without them the pane cannot tell how full it is or compact on its own.
@@ -26,6 +36,13 @@ export function AgentPane({ paneId, cwd }: { paneId: string; cwd: string }): Rea
   useEffect(() => {
     void loadModels();
   }, [loadModels]);
+
+  // The thread this pane left behind. Reading it is what makes the pane the
+  // same conversation after a restart rather than a new one in the same folder.
+  useEffect(() => {
+    if (sessionId === undefined) return;
+    void openSession(paneId, sessionId, cwd);
+  }, [openSession, paneId, sessionId, cwd]);
 
   return (
     <div className="flex h-full w-full flex-col bg-fleet-bg">

@@ -1410,7 +1410,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       id: generateId(),
       cwd: folderPath,
       paneType: 'agent',
-      pathContext: ctx
+      pathContext: ctx,
+      // Minted here rather than on the first message so it is in the layout
+      // before anything can be said; the file itself waits for a first event.
+      agentSessionId: crypto.randomUUID()
     };
     const tab: Tab = {
       id: generateId(),

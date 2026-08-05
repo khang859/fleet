@@ -150,6 +150,7 @@ import type {
   AgentStreamDone,
   AgentStreamError
 } from '../shared/agent-types';
+import type { AgentSessionAppend, AgentSessionReplay } from '../shared/agent-session';
 import type {
   DetectedSshHost,
   RemoteDirEntry,
@@ -874,7 +875,12 @@ const fleetApi = {
     onStreamError: (cb: (p: AgentStreamError) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_STREAM_ERROR, cb),
     onCompactDone: (cb: (p: AgentCompactDone) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.AGENT_COMPACT_DONE, cb)
+      onChannel(IPC_CHANNELS.AGENT_COMPACT_DONE, cb),
+    /** Fire-and-forget: a failed write must not stall the turn that caused it. */
+    appendSession: (req: AgentSessionAppend): void =>
+      ipcRenderer.send(IPC_CHANNELS.AGENT_SESSION_APPEND, req),
+    loadSession: async (sessionId: string): Promise<AgentSessionReplay> =>
+      typedInvoke<AgentSessionReplay>(IPC_CHANNELS.AGENT_SESSION_LOAD, sessionId)
   },
 
   /**

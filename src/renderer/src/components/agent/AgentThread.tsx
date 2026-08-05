@@ -4,7 +4,7 @@ import type { AgentMessage } from '../../../../shared/agent-types';
 import { canCompact } from '../../../../shared/agent-context';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentActivity } from './AgentActivity';
-import { formatElapsed } from './activity';
+import { reasoningLabel } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
 import { useAgentStore } from '../../store/agent-store';
 import { useSettingsStore } from '../../store/settings-store';
@@ -204,11 +204,7 @@ function ReasoningBlock({
           size={12}
           className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
         />
-        {live
-          ? 'Thinking…'
-          : durationMs === null
-            ? 'Thought'
-            : `Thought for ${formatElapsed(durationMs)}`}
+        {live ? 'Thinking…' : reasoningLabel(durationMs)}
       </button>
       {open && (
         <div className="border-l-2 border-fleet-border pl-3 text-xs leading-relaxed whitespace-pre-wrap text-fleet-text-muted">

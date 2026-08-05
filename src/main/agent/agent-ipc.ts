@@ -1,8 +1,10 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type { AgentCatalog, AgentCompactRequest, AgentSendRequest } from '../../shared/agent-types';
+import type { AgentSessionAppend, AgentSessionReplay } from '../../shared/agent-session';
 import type { AgentModelCatalog } from './models-catalog';
 import type { AgentService } from './agent-service';
+import type { AgentSessionStore } from './session-store';
 
 /**
  * Everything the Agent pane calls into main. Agent settings themselves ride on
@@ -12,6 +14,7 @@ import type { AgentService } from './agent-service';
 export function registerAgentIpc(deps: {
   catalog: AgentModelCatalog;
   service: AgentService;
+  sessions: AgentSessionStore;
 }): void {
   ipcMain.handle(
     IPC_CHANNELS.AGENT_LIST_MODELS,
@@ -30,4 +33,13 @@ export function registerAgentIpc(deps: {
   ipcMain.on(IPC_CHANNELS.AGENT_CANCEL, (_e, streamId: string) => {
     deps.service.cancel(streamId);
   });
+
+  ipcMain.on(IPC_CHANNELS.AGENT_SESSION_APPEND, (_e, req: AgentSessionAppend) => {
+    deps.sessions.append(req.sessionId, req.cwd, req.event);
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_SESSION_LOAD,
+    (_e, sessionId: string): AgentSessionReplay => deps.sessions.load(sessionId)
+  );
 }

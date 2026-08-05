@@ -2,6 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IPC_CHANNELS } from '../../../../shared/ipc-channels';
 import { DEFAULT_SETTINGS } from '../../../../shared/constants';
 import type { AgentCatalogModel, AgentMessage, AgentUsage } from '../../../../shared/agent-types';
+import type {
+  AgentSessionAppend,
+  AgentSessionEvent,
+  AgentSessionReplay
+} from '../../../../shared/agent-session';
 import type * as AgentStore from '../agent-store';
 import type * as SettingsStore from '../settings-store';
 
@@ -23,8 +28,12 @@ const listeners = new Map<string, Listener>();
 const agentApi = {
   send: vi.fn(),
   compact: vi.fn(),
-  cancel: vi.fn()
+  cancel: vi.fn(),
+  appendSession: vi.fn()
 };
+
+/** What `loadSession` hands back; set per test to stand in for a file. */
+let replay: AgentSessionReplay;
 
 // Loaded per test rather than at the top: the store installs its IPC listeners
 // on import, so the bridge has to exist first.
@@ -112,6 +121,7 @@ function setThreshold(compactThreshold: number | null): void {
 beforeEach(async () => {
   vi.resetModules();
   listeners.clear();
+  replay = { messages: [], contextTokens: null, cwd: null, skipped: 0 };
 
   Object.assign(window.fleet, {
     agent: {
@@ -121,6 +131,8 @@ beforeEach(async () => {
       send: agentApi.send,
       compact: agentApi.compact,
       cancel: agentApi.cancel,
+      appendSession: agentApi.appendSession,
+      loadSession: vi.fn().mockImplementation(async () => Promise.resolve(replay)),
       onStreamChunk: listen(IPC_CHANNELS.AGENT_STREAM_CHUNK),
       onStreamReasoning: listen(IPC_CHANNELS.AGENT_STREAM_REASONING),
       onStreamDone: listen(IPC_CHANNELS.AGENT_STREAM_DONE),
@@ -434,5 +446,131 @@ describe('reasoning duration', () => {
     emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
 
     expect(assistant().reasoningMs).toBeNull();
+  });
+});
+
+/**
+ * What ends up in the session log. The transcript on screen and the transcript
+ * on disk have to be the same conversation - a missing or mis-ordered event is
+ * invisible until a restart, when it turns into a conversation the user did not
+ * have.
+ */
+describe('session log', () => {
+  const SESSION = 'session-1';
+
+  /** Every event written so far, in order. */
+  const written = (): AgentSessionEvent[] =>
+    agentApi.appendSession.mock.calls.map(([req]) => (req as AgentSessionAppend).event);
+
+  const open = async (): Promise<void> => {
+    await agentStore.useAgentStore.getState().openSession(PANE, SESSION, '/repo');
+  };
+
+  it('writes the question before the answer comes back', async () => {
+    await open();
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
+
+    expect(written()).toEqual([
+      { t: 'message', message: expect.objectContaining({ role: 'user', content: 'hello' }) }
+    ]);
+  });
+
+  it('writes the reply once, when it stops changing', async () => {
+    await open();
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
+    const streamId = liveStreamId();
+    emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: 'hi ' });
+    emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: 'there' });
+    emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: usageOf(500) });
+
+    expect(written()).toEqual([
+      { t: 'message', message: expect.objectContaining({ role: 'user' }) },
+      {
+        t: 'message',
+        message: expect.objectContaining({ role: 'assistant', content: 'hi there' })
+      },
+      { t: 'context', tokens: 500 }
+    ]);
+  });
+
+  // Whatever the pane is showing is what the next turn will send, so it is
+  // also what the file has to say.
+  it('keeps the part of a failed turn that reached the screen', async () => {
+    await open();
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
+    const streamId = liveStreamId();
+    emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: 'half an ans' });
+    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, { streamId, message: 'connection lost' });
+
+    expect(written()).toContainEqual({
+      t: 'message',
+      message: expect.objectContaining({ content: 'half an ans' })
+    });
+  });
+
+  it('writes nothing for a turn that produced no reply at all', async () => {
+    await open();
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
+    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, { streamId: liveStreamId(), message: 'no api key' });
+
+    expect(written().filter((e) => e.t === 'message')).toHaveLength(1);
+  });
+
+  it('records a compaction as what replaced what', async () => {
+    setThreshold(null);
+    await open();
+    turn('one');
+    turn('two');
+    turn('three');
+    agentStore.useAgentStore.getState().compact(PANE);
+    const keptIds = thread().pendingCompact?.keep.map((m) => m.id);
+    emit(IPC_CHANNELS.AGENT_COMPACT_DONE, {
+      streamId: liveStreamId(),
+      summary: 'we talked about one',
+      usage: null
+    });
+
+    expect(written()).toContainEqual({
+      t: 'compact',
+      summary: expect.objectContaining({ role: 'summary', content: 'we talked about one' }),
+      keep: keptIds
+    });
+  });
+
+  it('replays a session into the thread when the pane opens', async () => {
+    replay = {
+      messages: [
+        { id: 'a', role: 'user', content: 'earlier', reasoning: '', reasoningMs: null },
+        { id: 'b', role: 'assistant', content: 'answer', reasoning: '', reasoningMs: null }
+      ],
+      contextTokens: 4_000,
+      cwd: '/repo',
+      skipped: 0
+    };
+
+    await open();
+
+    expect(thread().messages.map((m) => m.id)).toEqual(['a', 'b']);
+    expect(thread().contextTokens).toBe(4_000);
+  });
+
+  // The pane remounts on every layout change; a reload there would replace a
+  // live conversation with whatever was last flushed.
+  it('does not re-read the session over a thread that is already open', async () => {
+    await open();
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
+
+    await open();
+
+    expect(thread().messages).toHaveLength(2);
+  });
+
+  // Nothing is recorded against a file we cannot name, and a turn in a pane
+  // that never announced a session still works - it is just not written down.
+  it('writes nothing for a pane that never announced a session', () => {
+    turn('hello', usageOf(500));
+
+    expect(thread().messages).toHaveLength(2);
+    expect(agentApi.appendSession).not.toHaveBeenCalled();
   });
 });
