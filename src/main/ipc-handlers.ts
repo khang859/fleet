@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, Menu, dialog, safeStorage } from 'electron';
+import { ipcMain, BrowserWindow, Menu, dialog, safeStorage, app } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { safeOpenExternal } from './safe-external';
 import { collectDiagnosticsInfo, readRedactedLogTail, openLogsFolder } from './diagnostics';
@@ -202,6 +202,7 @@ import {
 } from './env-editor/env-editor-fs';
 import { listEnvFilesWsl } from './env-editor/env-editor-wsl';
 import { noteKey, readNote, writeNote } from './notes/notes-fs';
+import { AgentModelCatalog } from './agent/models-catalog';
 import type { EnvFileEntry } from '../shared/env-editor-types';
 import type {
   EnvSyncSetPassphraseRequest,
@@ -1198,6 +1199,16 @@ export function registerIpcHandlers(
   // or null if the pane has no live PTY (e.g. a non-terminal pane).
   ipcMain.handle(IPC_CHANNELS.SHELL_ENV_GET, (_e, paneId: string) =>
     ptyManager.getEnvSnapshot(paneId)
+  );
+
+  // ── Agent panes ───────────────────────────────────────────────────────────
+  // Model catalog for the agent settings tab. Cached on disk so the tab opens
+  // instantly and keeps working offline; `refresh` forces a re-download.
+  const agentModelCatalog = new AgentModelCatalog(
+    join(app.getPath('userData'), 'agent-models-dev.json')
+  );
+  ipcMain.handle(IPC_CHANNELS.AGENT_LIST_MODELS, (_e, refresh?: boolean) =>
+    agentModelCatalog.list(refresh ?? false)
   );
 }
 

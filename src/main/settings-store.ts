@@ -74,6 +74,12 @@ export class SettingsStore {
               ...saved.ai?.chat?.tools?.autoApprove
             }
           }
+        },
+        agent: {
+          ...DEFAULT_SETTINGS.ai.agent,
+          ...saved.ai?.agent,
+          coding: { ...DEFAULT_SETTINGS.ai.agent.coding, ...saved.ai?.agent?.coding },
+          image: { ...DEFAULT_SETTINGS.ai.agent.image, ...saved.ai?.agent?.image }
         }
       },
       remoteSsh: {
@@ -129,7 +135,13 @@ export class SettingsStore {
       ai: {
         ...current.ai,
         ...(partial.ai ?? {}),
-        chat: { ...current.ai.chat, ...(partial.ai?.chat ?? {}) }
+        chat: { ...current.ai.chat, ...(partial.ai?.chat ?? {}) },
+        agent: {
+          ...current.ai.agent,
+          ...(partial.ai?.agent ?? {}),
+          coding: { ...current.ai.agent.coding, ...(partial.ai?.agent?.coding ?? {}) },
+          image: { ...current.ai.agent.image, ...(partial.ai?.agent?.image ?? {}) }
+        }
       },
       remoteSsh: {
         ...current.remoteSsh,

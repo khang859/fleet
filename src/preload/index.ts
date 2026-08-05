@@ -141,6 +141,7 @@ import type {
   EnvTrashResult
 } from '../shared/env-editor-types';
 import type { NoteReadResult, NoteWriteResult } from '../shared/notes-types';
+import type { AgentCatalog } from '../shared/agent-types';
 import type {
   DetectedSshHost,
   RemoteDirEntry,
@@ -843,6 +844,15 @@ const fleetApi = {
         expectedMtimeMs,
         pathContext
       )
+  },
+
+  /**
+   * Agent panes. Settings live in `settings.ai.agent` and the OpenRouter key is
+   * the one under `chat`, so the only agent-specific call is the model catalog.
+   */
+  agent: {
+    listModels: async (refresh = false): Promise<AgentCatalog> =>
+      typedInvoke<AgentCatalog>(IPC_CHANNELS.AGENT_LIST_MODELS, refresh)
   },
 
   /**

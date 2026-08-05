@@ -1,0 +1,217 @@
+import { readFile, writeFile, mkdir } from 'fs/promises';
+import { dirname } from 'path';
+import { z } from 'zod';
+import type {
+  AgentCatalog,
+  AgentCatalogModel,
+  AgentReasoningOption
+} from '../../shared/agent-types';
+
+const CATALOG_URL = 'https://models.dev/api.json';
+const REFRESH_AFTER_MS = 24 * 60 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 20_000;
+
+/**
+ * models.dev publishes one record per provider. We only read the `openrouter`
+ * block, and only the fields the settings UI needs - everything else is
+ * stripped so the cached copy stays small.
+ */
+/**
+ * Reasoning metadata is the least uniform part of the feed: some entries name a
+ * `budget_tokens` option without saying what the bounds are. Everything past
+ * `type` is therefore optional here and normalized in `toCatalogModel`.
+ */
+const reasoningOptionSchema = z.union([
+  z.object({ type: z.literal('toggle') }),
+  z.object({ type: z.literal('effort'), values: z.array(z.string()).optional() }),
+  z.object({
+    type: z.literal('budget_tokens'),
+    min: z.number().optional(),
+    max: z.number().optional()
+  })
+]);
+
+const modelSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  tool_call: z.boolean().optional(),
+  temperature: z.boolean().optional(),
+  reasoning: z.boolean().optional(),
+  reasoning_options: z.array(reasoningOptionSchema).optional(),
+  modalities: z
+    .object({ input: z.array(z.string()).optional(), output: z.array(z.string()).optional() })
+    .optional(),
+  limit: z.object({ context: z.number().optional(), output: z.number().optional() }).optional(),
+  cost: z.object({ input: z.number().optional(), output: z.number().optional() }).optional(),
+  release_date: z.string().optional()
+});
+
+// Entries are validated one at a time (see `download`) so a single odd model
+// costs us that model rather than the whole catalog.
+const catalogResponseSchema = z.object({
+  openrouter: z.object({ models: z.record(z.string(), z.unknown()) })
+});
+
+const cacheSchema = z.object({
+  fetchedAt: z.number(),
+  models: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().nullable(),
+      contextLimit: z.number().nullable(),
+      outputLimit: z.number().nullable(),
+      supportsTools: z.boolean(),
+      supportsTemperature: z.boolean(),
+      inputImage: z.boolean(),
+      outputImage: z.boolean(),
+      reasoning: z.array(
+        z.union([
+          z.object({ type: z.literal('toggle') }),
+          z.object({ type: z.literal('effort'), values: z.array(z.string()) }),
+          z.object({ type: z.literal('budget_tokens'), min: z.number(), max: z.number() })
+        ])
+      ),
+      cost: z.object({ input: z.number(), output: z.number() }).nullable(),
+      releaseDate: z.string().nullable()
+    })
+  )
+});
+
+/** Default floor for a thinking budget the feed leaves unbounded. */
+const MIN_THINKING_BUDGET = 1024;
+
+/**
+ * Fills in the bounds the feed omits, and drops options it cannot describe -
+ * a slider with no range is worse than no slider.
+ */
+function toReasoningOptions(
+  raw: z.infer<typeof modelSchema>,
+  outputLimit: number | null
+): AgentReasoningOption[] {
+  if (!raw.reasoning) return [];
+  const options: AgentReasoningOption[] = [];
+  for (const option of raw.reasoning_options ?? []) {
+    if (option.type === 'toggle') {
+      options.push(option);
+    } else if (option.type === 'effort') {
+      if (option.values && option.values.length > 0) {
+        options.push({ type: 'effort', values: option.values });
+      }
+    } else {
+      const min = option.min ?? MIN_THINKING_BUDGET;
+      // Thinking tokens come out of the same budget as the answer, so the
+      // model's output ceiling is the natural bound when none is published.
+      const max = option.max ?? outputLimit;
+      if (max !== null && max > min) options.push({ type: 'budget_tokens', min, max });
+    }
+  }
+  return options;
+}
+
+function toCatalogModel(raw: z.infer<typeof modelSchema>): AgentCatalogModel {
+  const outputLimit = raw.limit?.output ?? null;
+  const reasoning = toReasoningOptions(raw, outputLimit);
+  const cost =
+    raw.cost?.input !== undefined && raw.cost.output !== undefined
+      ? { input: raw.cost.input, output: raw.cost.output }
+      : null;
+  return {
+    id: raw.id,
+    name: raw.name ?? raw.id,
+    description: raw.description ?? null,
+    contextLimit: raw.limit?.context ?? null,
+    outputLimit,
+    supportsTools: raw.tool_call ?? false,
+    supportsTemperature: raw.temperature ?? false,
+    inputImage: raw.modalities?.input?.includes('image') ?? false,
+    outputImage: raw.modalities?.output?.includes('image') ?? false,
+    reasoning,
+    cost,
+    releaseDate: raw.release_date ?? null
+  };
+}
+
+/**
+ * The OpenRouter slice of the models.dev catalog, cached on disk so the agent
+ * settings tab opens instantly and still works offline. Refreshed in the
+ * background once a day, or on demand when the user asks.
+ */
+export class AgentModelCatalog {
+  private memo: { fetchedAt: number; models: AgentCatalogModel[] } | null = null;
+
+  constructor(
+    private readonly cacheFile: string,
+    private readonly fetchImpl: typeof fetch = fetch
+  ) {}
+
+  /** Cached models, refreshed when stale or when `force` is set. */
+  async list(force = false): Promise<AgentCatalog> {
+    const cached = this.memo ?? (await this.readCache());
+    if (cached) this.memo = cached;
+
+    const fresh = cached !== null && Date.now() - cached.fetchedAt < REFRESH_AFTER_MS;
+    if (fresh && !force) {
+      return { models: cached.models, fetchedAt: cached.fetchedAt, source: 'cache', error: null };
+    }
+
+    try {
+      const models = await this.download();
+      const fetchedAt = Date.now();
+      this.memo = { fetchedAt, models };
+      await this.writeCache(this.memo);
+      return { models, fetchedAt, source: 'network', error: null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // A failed refresh must not take the settings tab down with it - serve
+      // whatever was cached and let the UI mention the staleness.
+      if (cached) {
+        return {
+          models: cached.models,
+          fetchedAt: cached.fetchedAt,
+          source: 'cache',
+          error: message
+        };
+      }
+      return { models: [], fetchedAt: 0, source: 'none', error: message };
+    }
+  }
+
+  private async download(): Promise<AgentCatalogModel[]> {
+    const res = await this.fetchImpl(CATALOG_URL, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+    });
+    if (!res.ok) throw new Error(`models.dev responded ${res.status}`);
+    const parsed = catalogResponseSchema.safeParse(await res.json());
+    if (!parsed.success) throw new Error('Unexpected response shape from models.dev');
+    const models: AgentCatalogModel[] = [];
+    for (const entry of Object.values(parsed.data.openrouter.models)) {
+      const model = modelSchema.safeParse(entry);
+      if (model.success) models.push(toCatalogModel(model.data));
+    }
+    if (models.length === 0) throw new Error('models.dev returned no usable OpenRouter models');
+    return models.sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  private async readCache(): Promise<{ fetchedAt: number; models: AgentCatalogModel[] } | null> {
+    try {
+      const parsed = cacheSchema.safeParse(JSON.parse(await readFile(this.cacheFile, 'utf8')));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async writeCache(data: {
+    fetchedAt: number;
+    models: AgentCatalogModel[];
+  }): Promise<void> {
+    try {
+      await mkdir(dirname(this.cacheFile), { recursive: true });
+      await writeFile(this.cacheFile, JSON.stringify(data), 'utf8');
+    } catch {
+      // A cache we cannot write is a slower settings tab, not a failure.
+    }
+  }
+}

@@ -327,6 +327,12 @@ export const IPC_CHANNELS = {
   // Export one conversation's active thread to Markdown or JSON.
   CHAT_EXPORT: 'chat:export',
 
+  // ── Agent panes ────────────────────────────────────────────────────────────
+  // The OpenRouter slice of the models.dev catalog, disk-cached in main. Agent
+  // settings themselves ride on SETTINGS_GET/SET under `ai.agent`, and the API
+  // key is the one Chat already stores.
+  AGENT_LIST_MODELS: 'agent:list-models',
+
   // ── Remote (SSH) file browser ──────────────────────────────────────────────
   // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's
   // foreground process a remote shell" boolean.
