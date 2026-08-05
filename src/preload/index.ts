@@ -146,6 +146,8 @@ import type {
   AgentCompactDone,
   AgentCompactRequest,
   AgentHandOff,
+  AgentPermissionAsk,
+  AgentPermissionDecision,
   AgentSendRequest,
   AgentStreamDelta,
   AgentStreamDone,
@@ -884,6 +886,10 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.AGENT_TOOL_END, cb),
     onHandOff: (cb: (p: AgentHandOff) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_HAND_OFF, cb),
+    onPermissionAsk: (cb: (p: AgentPermissionAsk) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_PERMISSION_ASK, cb),
+    decidePermission: (req: AgentPermissionDecision): void =>
+      ipcRenderer.send(IPC_CHANNELS.AGENT_PERMISSION_DECIDE, req),
     /** Fire-and-forget: a failed write must not stall the turn that caused it. */
     appendSession: (req: AgentSessionAppend): void =>
       ipcRenderer.send(IPC_CHANNELS.AGENT_SESSION_APPEND, req),

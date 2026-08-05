@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, ChevronRight, FoldVertical, Square, TriangleAlert } from 'lucide-react';
-import type { AgentMessage } from '../../../../shared/agent-types';
+import type {
+  AgentMessage,
+  AgentPermissionAsk,
+  AgentPermissionOutcome
+} from '../../../../shared/agent-types';
 import { messageText } from '../../../../shared/agent-types';
 import { canCompact } from '../../../../shared/agent-context';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentActivity } from './AgentActivity';
 import { AgentToolRow } from './AgentToolRow';
+import { AgentPermissionRow } from './AgentPermissionRow';
 import { reasoningLabel } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
 import { useAgentStore } from '../../store/agent-store';
@@ -25,17 +30,25 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
   const agent = useSettingsStore((s) => s.settings?.ai.agent ?? null);
   const model = agent?.coding.model ?? null;
 
+  const decidePermission = useAgentStore((s) => s.decidePermission);
+
   const messages = thread?.messages ?? [];
   const compacting = (thread?.pendingCompact ?? null) !== null;
   const streaming = (thread?.streamId ?? null) !== null;
   const contextTokens = thread?.contextTokens ?? null;
+  const ask = thread?.pendingPermission ?? null;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       {messages.length === 0 ? (
         <EmptyState cwd={cwd} />
       ) : (
-        <Transcript messages={messages} streaming={streaming && !compacting} />
+        <Transcript
+          messages={messages}
+          streaming={streaming && !compacting}
+          ask={ask}
+          onDecide={(outcome) => decidePermission(paneId, outcome)}
+        />
       )}
 
       {thread?.error != null && (
@@ -54,6 +67,7 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
             <AgentActivity
               last={messages.at(-1)}
               compacting={compacting}
+              asking={ask !== null}
               startedAt={thread?.startedAt ?? null}
             />
           )}
@@ -96,10 +110,14 @@ function EmptyState({ cwd }: { cwd: string }): React.JSX.Element {
 
 function Transcript({
   messages,
-  streaming
+  streaming,
+  ask,
+  onDecide
 }: {
   messages: AgentMessage[];
   streaming: boolean;
+  ask: AgentPermissionAsk | null;
+  onDecide: (outcome: AgentPermissionOutcome) => void;
 }): React.JSX.Element {
   const endRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -141,6 +159,8 @@ function Transcript({
             key={message.id}
             message={message}
             streaming={streaming && i === messages.length - 1}
+            ask={ask}
+            onDecide={onDecide}
           />
         ))}
         <div ref={endRef} />
@@ -157,10 +177,14 @@ function Transcript({
  */
 function Message({
   message,
-  streaming
+  streaming,
+  ask,
+  onDecide
 }: {
   message: AgentMessage;
   streaming: boolean;
+  ask: AgentPermissionAsk | null;
+  onDecide: (outcome: AgentPermissionOutcome) => void;
 }): React.JSX.Element {
   if (message.role === 'summary') return <SummaryCard summary={messageText(message)} />;
   if (message.role === 'user') {
@@ -190,7 +214,13 @@ function Message({
           distinguishable by where they fall. */}
       {message.parts.map((part, i) =>
         part.type === 'tool' ? (
-          <AgentToolRow key={i} call={part.call} />
+          // The question takes the row's place: until it is answered there is
+          // nothing else that row could be saying.
+          ask?.callId === part.call.id ? (
+            <AgentPermissionRow key={i} ask={ask} onDecide={onDecide} />
+          ) : (
+            <AgentToolRow key={i} call={part.call} />
+          )
         ) : (
           <div key={i} className="text-fleet-text">
             <AgentMarkdown streaming={streaming && i === lastPart}>{part.text}</AgentMarkdown>

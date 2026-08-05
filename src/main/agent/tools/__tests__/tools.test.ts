@@ -44,7 +44,8 @@ const ctx = (threadId = 'thread-1', signal = new AbortController().signal): Agen
   cwd: dir,
   threadId,
   signal,
-  handOff: (command) => handedOff.push(command)
+  handOff: (command) => handedOff.push(command),
+  approve: async () => Promise.resolve(true)
 });
 
 const run = async (name: string, args: object): Promise<{ text: string; summary: string }> =>

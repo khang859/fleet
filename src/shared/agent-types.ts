@@ -1,4 +1,5 @@
 import type { AgentToolCall } from './agent-tools';
+import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
 
 /**
  * Settings for the native Agent panes. One configuration, shared by every agent
@@ -76,6 +77,8 @@ export type AgentSettings = {
    * automatically. `null` ⇒ only ever compact when the user asks.
    */
   compactThreshold: number | null;
+  /** Which shell commands run without stopping to ask. */
+  permissions: AgentPermissionRules;
 };
 
 export const EMPTY_AGENT_MODEL_CONFIG: AgentModelConfig = {
@@ -92,7 +95,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   coding: { ...EMPTY_AGENT_MODEL_CONFIG, model: 'anthropic/claude-sonnet-4.5' },
   image: { ...EMPTY_AGENT_MODEL_CONFIG },
   systemPrompt: null,
-  compactThreshold: 0.8
+  compactThreshold: 0.8,
+  permissions: DEFAULT_AGENT_PERMISSION_RULES
 };
 
 /**
@@ -111,7 +115,7 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT = [
   '',
   'Nothing can be typed into that shell, so a command that needs a person - a login, a password, an interactive picker, a dev server they should watch - goes to `terminal` instead. It types the command into a terminal beside you and leaves it for the user to run. Never try to answer a prompt yourself, and never put a secret on a command line.',
   '',
-  'A change is written to disk the moment you make it, a command runs the moment you call it, and there is no confirmation step. So do what was asked and no more, and stop to ask when the request has more than one reasonable reading.',
+  'A change is written to disk the moment you make it, and most commands run the moment you call them - some stop for the user to approve first. One they turn down is a decision rather than an obstacle: say what you were trying to do and leave it with them, instead of looking for another way to do the same thing. Nothing else asks, so do what was asked and no more, and stop to ask when the request has more than one reasonable reading.',
   '',
   'Every change is shown to the user as a diff, so do not paste the new code back into your reply. Say what you changed and why.',
   '',
@@ -279,6 +283,32 @@ export type AgentToolEvent = { streamId: string; call: AgentToolCall };
  * the renderer is the only side that knows which pane that stream belongs to.
  */
 export type AgentHandOff = { streamId: string; command: string };
+
+/**
+ * A command waiting on the user before it runs.
+ *
+ * Like the hand-off, it carries the turn rather than the pane, and the call it
+ * belongs to so the question is asked on that row rather than somewhere general.
+ */
+export type AgentPermissionAsk = {
+  streamId: string;
+  /** What a decision is sent back against. */
+  requestId: string;
+  callId: string;
+  command: string;
+  /** Why this one is being asked about, when there is something to say. */
+  reason: string | null;
+  /** The rule "always allow" would leave behind. `null` ⇒ do not offer it. */
+  rule: string | null;
+};
+
+/** `once` runs it, `always` runs it and remembers the rule, `no` refuses. */
+export type AgentPermissionOutcome = 'once' | 'always' | 'no';
+
+export type AgentPermissionDecision = {
+  requestId: string;
+  outcome: AgentPermissionOutcome;
+};
 
 /** Every stream event carries its request's id, so panes can tell theirs apart. */
 export type AgentStreamDelta = { streamId: string; delta: string };

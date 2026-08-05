@@ -27,6 +27,7 @@ import {
   type StreamOutcome
 } from './openrouter';
 import { runAgentTool } from './tools/run';
+import type { PermissionGate } from './permissions/gate';
 
 /**
  * One turn of the agent: take the pane's transcript, stream a reply, run
@@ -44,6 +45,8 @@ type Deps = {
   getSettings: () => AgentSettings;
   getApiKey: () => string | null;
   emit: AgentEmitter;
+  /** Decides whether a shell command runs. Only `bash` consults it. */
+  gate: PermissionGate;
   /** Injectable for tests; defaults to the real OpenRouter call. */
   stream?: typeof streamCompletion;
 };
@@ -233,6 +236,8 @@ export class AgentService {
       }
     } finally {
       this.inflight.delete(streamId);
+      // A question nobody answered does not outlive the turn that asked it.
+      this.deps.gate.endTurn(streamId);
     }
   }
 
@@ -295,7 +300,16 @@ export class AgentService {
           // Which pane to open the terminal beside is a question only the
           // renderer can answer, so the turn is what goes over the wire.
           handOff: (command) =>
-            emit(IPC_CHANNELS.AGENT_HAND_OFF, { streamId, command } satisfies AgentHandOff)
+            emit(IPC_CHANNELS.AGENT_HAND_OFF, { streamId, command } satisfies AgentHandOff),
+          // The row is already on screen by the time this is asked, so the
+          // question lands on the call it is about.
+          approve: async (command) =>
+            (await this.deps.gate.check({
+              streamId,
+              callId: call.id,
+              command,
+              signal: ctx.signal
+            })) === 'run'
         });
         messages.push({
           role: 'tool',

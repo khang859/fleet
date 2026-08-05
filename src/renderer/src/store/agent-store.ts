@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { AgentCatalog, AgentMessage, AgentUsage } from '../../../shared/agent-types';
+import type {
+  AgentCatalog,
+  AgentMessage,
+  AgentPermissionAsk,
+  AgentPermissionOutcome,
+  AgentUsage
+} from '../../../shared/agent-types';
 import { messageText, textMessage } from '../../../shared/agent-types';
 import type { AgentToolCall } from '../../../shared/agent-tools';
 import type { AgentSessionEvent } from '../../../shared/agent-session';
@@ -42,6 +48,12 @@ type PaneThread = {
    */
   pendingCompact: { keep: AgentMessage[] } | null;
   /**
+   * A command waiting on the user, drawn on the row of the call that asked.
+   * Never more than one: the turn runs its tools in order and this one is
+   * stopped until it is answered.
+   */
+  pendingPermission: AgentPermissionAsk | null;
+  /**
    * When the in-flight work started, for the elapsed clock. Kept here rather
    * than in the component so switching to the Settings tab and back shows how
    * long the turn has really been running.
@@ -62,6 +74,7 @@ const EMPTY_THREAD: PaneThread = {
   sessionId: null,
   streamId: null,
   pendingCompact: null,
+  pendingPermission: null,
   startedAt: null,
   error: null,
   contextTokens: null
@@ -94,6 +107,8 @@ type AgentStoreState = {
   /** Folds the older half of the transcript into a summary. Ignored while busy. */
   compact: (paneId: string) => void;
   cancel: (paneId: string) => void;
+  /** Answer the command waiting on this pane. Nothing is decided here: main is. */
+  decidePermission: (paneId: string, outcome: AgentPermissionOutcome) => void;
   clearThread: (paneId: string) => void;
 };
 
@@ -230,6 +245,17 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     if (streamId) window.fleet.agent.cancel(streamId);
   },
 
+  decidePermission: (paneId, outcome) => {
+    const thread = get().threads[paneId];
+    const ask = thread?.pendingPermission;
+    if (!thread || !ask) return;
+    // Cleared here rather than on an answer from main: the question has been
+    // answered, and leaving the buttons up while the command starts reads as
+    // though the click was missed.
+    set({ threads: { ...get().threads, [paneId]: { ...thread, pendingPermission: null } } });
+    window.fleet.agent.decidePermission({ requestId: ask.requestId, outcome });
+  },
+
   clearThread: (paneId) => {
     get().cancel(paneId);
     const cwd = get().threads[paneId]?.cwd ?? '';
@@ -332,6 +358,16 @@ function recordToolCall(streamId: string, call: AgentToolCall): void {
  * here: the turn says which agent pane asked, the workspace says which terminal
  * is beside it, and the command is typed there for the user to run.
  */
+/** Put a command's fate in front of the user, on the row of the call that made it. */
+function askPermission(ask: AgentPermissionAsk): void {
+  const found = threadOf(ask.streamId);
+  if (found === null) return;
+  log.debug('permission ask', { command: ask.command, reason: ask.reason });
+  useAgentStore.setState((s) => ({
+    threads: { ...s.threads, [found.paneId]: { ...found.thread, pendingPermission: ask } }
+  }));
+}
+
 function handOff(streamId: string, command: string): void {
   const found = threadOf(streamId);
   if (found === null) return;
@@ -359,6 +395,9 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
         ...thread,
         streamId: null,
         pendingCompact: null,
+        // A question the turn did not live to hear the answer to. Main refuses
+        // it on its side when the turn ends, so the row must not keep asking.
+        pendingPermission: null,
         startedAt: null,
         error,
         contextTokens
@@ -454,6 +493,7 @@ window.fleet.agent.onStreamError(({ streamId, message }) => {
   endTurn(streamId, message, null);
 });
 window.fleet.agent.onHandOff(({ streamId, command }) => handOff(streamId, command));
+window.fleet.agent.onPermissionAsk((ask) => askPermission(ask));
 window.fleet.agent.onToolStart(({ streamId, call }) => recordToolCall(streamId, call));
 window.fleet.agent.onToolEnd(({ streamId, call }) => recordToolCall(streamId, call));
 window.fleet.agent.onCompactDone(({ streamId, summary }) => applySummary(streamId, summary));

@@ -113,6 +113,7 @@ import { registerAgentIpc } from './agent/agent-ipc';
 import { AgentModelCatalog } from './agent/models-catalog';
 import { AgentService } from './agent/agent-service';
 import { AgentSessionStore } from './agent/session-store';
+import { PermissionGate } from './agent/permissions/gate';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
 import { resolveSummary } from './chat/pane-summarizer';
 import { PermissionManager } from './chat/permissions/permission-manager';
@@ -1533,16 +1534,30 @@ void app.whenReady().then(async () => {
 
   // Agent panes. Separate from Chat by design: it shares only the OpenRouter key
   // and the settings store, both of which are app-wide.
+  const agentEmit = (channel: string, payload: unknown): void => {
+    const w = mainWindow;
+    if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
+  };
+  const agentGate = new PermissionGate({
+    getRules: () => settingsStore.get().ai.agent.permissions,
+    persistAllow: (rule) => {
+      const { permissions } = settingsStore.get().ai.agent;
+      if (permissions.allow.includes(rule)) return;
+      settingsStore.set({
+        ai: { agent: { permissions: { ...permissions, allow: [...permissions.allow, rule] } } }
+      });
+    },
+    emit: agentEmit
+  });
   registerAgentIpc({
     catalog: new AgentModelCatalog(join(app.getPath('userData'), 'agent-models-dev.json')),
     service: new AgentService({
       getSettings: () => settingsStore.get().ai.agent,
       getApiKey: () => chatSecrets.getKey(),
-      emit: (channel, payload) => {
-        const w = mainWindow;
-        if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
-      }
+      gate: agentGate,
+      emit: agentEmit
     }),
+    gate: agentGate,
     sessions: new AgentSessionStore()
   });
 

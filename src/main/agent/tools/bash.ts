@@ -25,6 +25,8 @@ import { splitLines } from '../../../shared/agent-diff';
  * somewhere else.
  */
 export async function runBash(args: BashArgs, ctx: AgentToolContext): Promise<AgentToolResult> {
+  if (!(await ctx.approve(args.command))) return REFUSED;
+
   const timeoutMs = args.timeoutMs ?? BASH_DEFAULT_TIMEOUT_MS;
   const run = await execute(args.command, ctx, timeoutMs);
 
@@ -39,6 +41,18 @@ export async function runBash(args: BashArgs, ctx: AgentToolContext): Promise<Ag
     summary: summarize(run)
   };
 }
+
+/**
+ * What comes back when the user says no.
+ *
+ * Not an error: nothing went wrong, and a model told a call failed will try it
+ * again a different way, which is the one response a refusal must not produce.
+ * It is told what happened and what to do with that instead.
+ */
+const REFUSED: AgentToolResult = {
+  text: 'The user did not allow this command to run. Do not run it another way and do not work around it - say what you were trying to do, and leave the decision with them.',
+  summary: 'not allowed'
+};
 
 /** How a command ended, which is not the same question as what it printed. */
 type Ending = 'ok' | 'failed' | 'timeout' | 'stopped';

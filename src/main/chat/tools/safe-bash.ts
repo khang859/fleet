@@ -1,4 +1,4 @@
-import { splitShellCommand } from '../permissions/shell-split';
+import { splitShellCommand } from '../../../shared/shell-split';
 
 // Conservative read-only classifier for auto mode. `true` means every
 // subcommand is a known observe-only program with no way to write files,

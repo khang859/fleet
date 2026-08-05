@@ -32,7 +32,8 @@ const agentApi = {
   send: vi.fn(),
   compact: vi.fn(),
   cancel: vi.fn(),
-  appendSession: vi.fn()
+  appendSession: vi.fn(),
+  decidePermission: vi.fn()
 };
 
 /** What `loadSession` hands back; set per test to stand in for a file. */
@@ -153,7 +154,9 @@ beforeEach(async () => {
       onCompactDone: listen(IPC_CHANNELS.AGENT_COMPACT_DONE),
       onToolStart: listen(IPC_CHANNELS.AGENT_TOOL_START),
       onToolEnd: listen(IPC_CHANNELS.AGENT_TOOL_END),
-      onHandOff: listen(IPC_CHANNELS.AGENT_HAND_OFF)
+      onHandOff: listen(IPC_CHANNELS.AGENT_HAND_OFF),
+      onPermissionAsk: listen(IPC_CHANNELS.AGENT_PERMISSION_ASK),
+      decidePermission: agentApi.decidePermission
     },
     pty: { input: vi.fn() },
     chat: {
@@ -726,5 +729,59 @@ describe('handing a command to the user', () => {
 
     const tab = workspace.useWorkspaceStore.getState().workspace.tabs[0];
     expect(workspace.collectPaneLeafs(tab.splitRoot)).toHaveLength(1);
+  });
+});
+
+describe('asking the user about a command', () => {
+  const ask = (streamId: string, command = 'npm test'): void =>
+    emit(IPC_CHANNELS.AGENT_PERMISSION_ASK, {
+      streamId,
+      requestId: 'req-1',
+      callId: 'call-1',
+      command,
+      reason: null,
+      rule: 'npm test'
+    });
+
+  it('puts the question on the pane whose turn it is', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'run the tests');
+
+    ask(liveStreamId());
+
+    expect(thread().pendingPermission).toMatchObject({ command: 'npm test' });
+  });
+
+  it('ignores a question from a turn that has already ended', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'run the tests');
+
+    ask('over-and-done');
+
+    expect(thread().pendingPermission).toBeNull();
+  });
+
+  // Nothing is decided here: the click is relayed and main does the rest.
+  it('relays the answer and takes the question down', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'run the tests');
+    ask(liveStreamId());
+
+    agentStore.useAgentStore.getState().decidePermission(PANE, 'always');
+
+    expect(agentApi.decidePermission).toHaveBeenCalledWith({
+      requestId: 'req-1',
+      outcome: 'always'
+    });
+    expect(thread().pendingPermission).toBeNull();
+  });
+
+  // Main refuses it on its side when the turn ends, so the row must not be
+  // left offering to run something nothing is waiting for any more.
+  it('takes the question down when the turn ends without an answer', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'run the tests');
+    const streamId = liveStreamId();
+    ask(streamId);
+
+    emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
+
+    expect(thread().pendingPermission).toBeNull();
   });
 });

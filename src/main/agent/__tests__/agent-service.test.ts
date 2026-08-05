@@ -15,6 +15,7 @@ import {
 import type { AgentToolCall } from '../../../shared/agent-tools';
 import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../../shared/agent-context';
 import { AgentService, toCompactMessages, toReasoningParam, toWireHistory } from '../agent-service';
+import { PermissionGate } from '../permissions/gate';
 import {
   collectToolCalls,
   parseStreamLine,
@@ -23,6 +24,16 @@ import {
   type ToolCallDelta,
   type WireToolCall
 } from '../openrouter';
+
+/**
+ * A gate that lets everything through. Whether a command is allowed is its own
+ * file's business; these tests are about what a turn does with the answer.
+ */
+const PASS_GATE = new PermissionGate({
+  getRules: () => ({ allow: ['*'], deny: [] }),
+  persistAllow: () => {},
+  emit: () => {}
+});
 
 const REQUEST: AgentSendRequest = {
   streamId: 'stream-1',
@@ -313,6 +324,7 @@ describe('AgentService', () => {
     });
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -334,6 +346,7 @@ describe('AgentService', () => {
     const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => ({
         ...SETTINGS,
         coding: { ...SETTINGS.coding, maxTokens: 8192, temperature: 0.2, reasoningEffort: 'high' }
@@ -359,6 +372,7 @@ describe('AgentService', () => {
     const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => ({ ...SETTINGS, systemPrompt: 'Answer only in haiku.' }),
       getApiKey: () => 'sk-or-test',
       emit,
@@ -384,6 +398,7 @@ describe('AgentService', () => {
     const usage = { promptTokens: 900, completionTokens: 100, totalTokens: 1000 };
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -405,6 +420,7 @@ describe('AgentService', () => {
     const { emit, events, ended } = collector();
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -419,6 +435,7 @@ describe('AgentService', () => {
     const { emit, events, ended } = collector();
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => null,
       emit,
@@ -438,6 +455,7 @@ describe('AgentService', () => {
     const { emit, events, ended } = collector();
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => ({ ...SETTINGS, coding: { ...SETTINGS.coding, model: null } }),
       getApiKey: () => 'sk-or-test',
       emit,
@@ -455,6 +473,7 @@ describe('AgentService', () => {
     const { emit, events, ended } = collector();
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -485,6 +504,7 @@ describe('AgentService', () => {
     const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => ({
         ...SETTINGS,
         coding: { ...SETTINGS.coding, reasoningEffort: 'high', maxTokens: 64_000 }
@@ -506,6 +526,7 @@ describe('AgentService', () => {
     const { emit, events, ended } = collector();
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -527,6 +548,7 @@ describe('AgentService', () => {
   it('leaves the transcript alone when a compaction is cancelled', async () => {
     const { emit, events, ended } = collector();
     const service = new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -552,6 +574,7 @@ describe('AgentService', () => {
   it('treats a cancel as a normal ending, keeping the partial reply', async () => {
     const { emit, events, ended } = collector();
     const service = new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -653,6 +676,7 @@ describe('the tool loop', () => {
     const { stream, rounds } = twoRounds([call('read', { path: 'answer.txt' })]);
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -675,6 +699,7 @@ describe('the tool loop', () => {
     const { stream } = twoRounds([call('read', { path: 'answer.txt' })]);
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -701,6 +726,7 @@ describe('the tool loop', () => {
     const { stream, rounds } = twoRounds([call('read', { path: '../../../etc/passwd' })]);
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -722,6 +748,7 @@ describe('the tool loop', () => {
     const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -747,6 +774,7 @@ describe('the tool loop', () => {
     );
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
@@ -767,6 +795,7 @@ describe('the tool loop', () => {
     });
 
     new AgentService({
+      gate: PASS_GATE,
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,

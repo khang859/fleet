@@ -8,14 +8,15 @@ import type { AgentMessage } from '../../../../shared/agent-types';
  * distinctions the pane can actually observe: nothing back yet, reasoning
  * arriving, answer arriving, or folding the transcript up.
  */
-export type AgentPhase = 'waiting' | 'reasoning' | 'writing' | 'tooling' | 'compacting';
+export type AgentPhase = 'waiting' | 'reasoning' | 'writing' | 'tooling' | 'compacting' | 'asking';
 
 export const PHASE_LABEL: Record<AgentPhase, string> = {
   waiting: 'Thinking',
   reasoning: 'Reasoning',
   writing: 'Writing',
   tooling: 'Working',
-  compacting: 'Compacting context'
+  compacting: 'Compacting context',
+  asking: 'Waiting for you'
 };
 
 /**
@@ -29,7 +30,14 @@ export const PHASE_LABEL: Record<AgentPhase, string> = {
  * means the wait is the tool's, and a finished call means the model has what it
  * asked for and is deciding what to do with it.
  */
-export function agentPhase(last: AgentMessage | undefined, compacting: boolean): AgentPhase {
+export function agentPhase(
+  last: AgentMessage | undefined,
+  compacting: boolean,
+  asking = false
+): AgentPhase {
+  // The most specific of the three, and the only one nothing else can end: the
+  // turn is stopped on a question until the user answers it.
+  if (asking) return 'asking';
   if (compacting) return 'compacting';
   if (last?.role !== 'assistant') return 'waiting';
 

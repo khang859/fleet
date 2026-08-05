@@ -350,6 +350,11 @@ export const IPC_CHANNELS = {
   // interactive picker - passed to the renderer to type into a terminal pane
   // beside the agent, where there is a person and a real tty.
   AGENT_HAND_OFF: 'agent:hand-off',
+  // A command the rules do not settle on their own. Main asks, the pane renders
+  // the question on the call's row, and the answer comes back on DECIDE. The
+  // renderer never decides anything itself - it relays a click.
+  AGENT_PERMISSION_ASK: 'agent:permission-ask',
+  AGENT_PERMISSION_DECIDE: 'agent:permission-decide',
   // The thread on disk: an append-only event log per session, replayed when a
   // pane opens. The renderer decides what happened; main only writes it down.
   AGENT_SESSION_APPEND: 'agent:session-append',

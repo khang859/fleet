@@ -17,24 +17,33 @@ import { agentPhase, formatElapsed, phaseShimmers, PHASE_LABEL } from './activit
 export function AgentActivity({
   last,
   compacting,
+  asking,
   startedAt
 }: {
   /** The message being streamed into, which is what says how far the turn got. */
   last: AgentMessage | undefined;
   compacting: boolean;
+  /** Stopped on a command the user has to decide about. */
+  asking: boolean;
   startedAt: number | null;
 }): React.JSX.Element {
-  const phase = agentPhase(last, compacting);
+  const phase = agentPhase(last, compacting, asking);
   const elapsed = useElapsed(startedAt);
 
   return (
     <span className="flex min-w-0 items-center gap-1.5">
       {/* Only the label is announced. The clock ticks every second and would
           otherwise be read out every second with it. */}
+      {/* Nothing shimmers while it is the user who is being waited on: a
+          sweeping word would say work is happening when none is. */}
       <span
         aria-live="polite"
         className={`truncate ${
-          phaseShimmers(phase) ? 'fleet-shimmer-text' : 'text-fleet-text-muted'
+          phase === 'asking'
+            ? 'text-amber-400/90'
+            : phaseShimmers(phase)
+              ? 'fleet-shimmer-text'
+              : 'text-fleet-text-muted'
         }`}
       >
         {PHASE_LABEL[phase]}…

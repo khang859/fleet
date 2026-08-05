@@ -414,6 +414,14 @@ export type AgentToolContext = {
    * and the user, and the model finds out by asking afterwards.
    */
   handOff: (command: string) => void;
+  /**
+   * Whether a shell command may run.
+   *
+   * Only `bash` asks, because it is the only tool that can reach outside the
+   * working folder. Most calls come back true without anyone being disturbed -
+   * the user's rules answer them - and the rest wait here until the user does.
+   */
+  approve: (command: string) => Promise<boolean>;
 };
 
 /** A finished tool run: what goes to the model, and what the pane shows. */

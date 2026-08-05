@@ -5,6 +5,8 @@ import type { AgentSessionAppend, AgentSessionReplay } from '../../shared/agent-
 import type { AgentModelCatalog } from './models-catalog';
 import type { AgentService } from './agent-service';
 import type { AgentSessionStore } from './session-store';
+import type { PermissionGate } from './permissions/gate';
+import type { AgentPermissionDecision } from '../../shared/agent-types';
 
 /**
  * Everything the Agent pane calls into main. Agent settings themselves ride on
@@ -14,6 +16,7 @@ import type { AgentSessionStore } from './session-store';
 export function registerAgentIpc(deps: {
   catalog: AgentModelCatalog;
   service: AgentService;
+  gate: PermissionGate;
   sessions: AgentSessionStore;
 }): void {
   ipcMain.handle(
@@ -32,6 +35,11 @@ export function registerAgentIpc(deps: {
 
   ipcMain.on(IPC_CHANNELS.AGENT_CANCEL, (_e, streamId: string) => {
     deps.service.cancel(streamId);
+  });
+
+  // The renderer relays a click; whether the command runs was decided in main.
+  ipcMain.on(IPC_CHANNELS.AGENT_PERMISSION_DECIDE, (_e, req: AgentPermissionDecision) => {
+    deps.gate.decide(req.requestId, req.outcome);
   });
 
   ipcMain.on(IPC_CHANNELS.AGENT_SESSION_APPEND, (_e, req: AgentSessionAppend) => {

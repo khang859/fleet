@@ -91,7 +91,7 @@ export function AgentToolRow({ call }: { call: AgentToolCall }): React.JSX.Eleme
  * still the line in the transcript the user needs to notice, and so is the one
  * that is waiting on them to do something.
  */
-const TROUBLE = /^(exit [1-9]|timed out|killed|stopped|waiting on you)/;
+const TROUBLE = /^(exit [1-9]|timed out|killed|stopped|waiting on you|not allowed)/;
 
 /** `+12 -3` in the colours those numbers have everywhere else. */
 function Summary({ text }: { text: string | null }): React.JSX.Element | null {
