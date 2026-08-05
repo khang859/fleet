@@ -16,8 +16,15 @@ import type { AgentMessage } from './agent-types';
  * rather than half of a JSON document.
  */
 
-/** Bumped when the event shape changes in a way a reader has to know about. */
-export const SESSION_LOG_VERSION = 2;
+/**
+ * What wrote the file, stamped in the header when it is created.
+ *
+ * Informational: a file opened today and appended to tomorrow has lines from
+ * two versions in it, and the header still names the first. So every line
+ * carries its own shape and the reader accepts the older ones (see
+ * `LegacyMessage`) rather than branching on this number.
+ */
+export const SESSION_LOG_VERSION = 3;
 
 const ToolCallSchema = z.object({
   id: z.string(),
@@ -28,16 +35,42 @@ const ToolCallSchema = z.object({
   summary: z.string().nullable()
 });
 
-const MessageSchema = z.object({
+const PartSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string() }),
+  z.object({ type: z.literal('tool'), call: ToolCallSchema })
+]);
+
+const CommonMessageFields = {
   id: z.string(),
   role: z.enum(['user', 'assistant', 'summary']),
-  content: z.string(),
   reasoning: z.string(),
-  reasoningMs: z.number().nullable(),
-  // Version 1 wrote no tool calls at all. Defaulted rather than required so a
-  // session recorded before there were tools still replays as what it was.
-  toolCalls: z.array(ToolCallSchema).default([])
-});
+  reasoningMs: z.number().nullable()
+};
+
+const CurrentMessage = z.object({ ...CommonMessageFields, parts: z.array(PartSchema) });
+
+/**
+ * How messages were written before they had parts: one text field, and (in
+ * version 2) a separate list of calls that came after it. Read as the same
+ * thing an old pane would have shown, which is text first and calls after.
+ */
+const LegacyMessage = z
+  .object({
+    ...CommonMessageFields,
+    content: z.string(),
+    toolCalls: z.array(ToolCallSchema).default([])
+  })
+  .transform(
+    ({ content, toolCalls, ...rest }): z.infer<typeof CurrentMessage> => ({
+      ...rest,
+      parts: [
+        ...(content === '' ? [] : [{ type: 'text' as const, text: content }]),
+        ...toolCalls.map((call) => ({ type: 'tool' as const, call }))
+      ]
+    })
+  );
+
+const MessageSchema = z.union([CurrentMessage, LegacyMessage]);
 
 const EventSchema = z.discriminatedUnion('t', [
   /** Always the first line: what this session is, and what wrote it. */

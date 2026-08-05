@@ -7,9 +7,12 @@ import {
   buildSystemPrompt,
   DEFAULT_AGENT_SETTINGS,
   DEFAULT_AGENT_SYSTEM_PROMPT,
+  textMessage,
   type AgentCompactRequest,
+  type AgentMessage,
   type AgentSendRequest
 } from '../../../shared/agent-types';
+import type { AgentToolCall } from '../../../shared/agent-tools';
 import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../../shared/agent-context';
 import { AgentService, toCompactMessages, toReasoningParam, toWireHistory } from '../agent-service';
 import {
@@ -25,15 +28,8 @@ const REQUEST: AgentSendRequest = {
   streamId: 'stream-1',
   cwd: '/repo',
   history: [
-    { id: 'a', role: 'user', content: 'hi', reasoning: '', reasoningMs: null, toolCalls: [] },
-    {
-      id: 'b',
-      role: 'assistant',
-      content: 'hello',
-      reasoning: 'thinking',
-      reasoningMs: 1200,
-      toolCalls: []
-    }
+    textMessage('a', 'user', 'hi'),
+    { ...textMessage('b', 'assistant', 'hello'), reasoning: 'thinking', reasoningMs: 1200 }
   ],
   text: 'what does this do?'
 };
@@ -193,19 +189,98 @@ describe('toWireHistory', () => {
   });
 
   it('sends a summary as a labelled user message, not as the assistant speaking', () => {
-    const summary = {
-      id: 's',
-      role: 'summary' as const,
-      content: 'we chose zod',
-      reasoning: '',
-      reasoningMs: null,
-      toolCalls: []
-    };
+    const summary = textMessage('s', 'summary', 'we chose zod');
     const messages = toWireHistory({ ...REQUEST, history: [summary] }, 'be brief');
 
     expect(messages[1].role).toBe('user');
     expect(messages[1].content).toContain(SUMMARY_WIRE_PREFIX);
     expect(messages[1].content).toContain('we chose zod');
+  });
+
+  // The ordering the parts exist for. A model handed its own closing sentence
+  // as though it were written before the search it was reacting to is being
+  // told a small lie about how it got there.
+  it('rebuilds a turn that used tools round by round, in order', () => {
+    const call: AgentToolCall = {
+      id: 'call_1',
+      name: 'read',
+      args: '{"path":"a.ts"}',
+      result: 'a.ts lines 1-1',
+      error: null,
+      summary: '1 line'
+    };
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Let me look.' },
+        { type: 'tool', call },
+        { type: 'text', text: 'It says 42.' }
+      ],
+      reasoning: '',
+      reasoningMs: null
+    };
+
+    const messages = toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+
+    expect(messages.slice(1, -1)).toEqual([
+      {
+        role: 'assistant',
+        content: 'Let me look.',
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'read', arguments: '{"path":"a.ts"}' }
+          }
+        ]
+      },
+      { role: 'tool', tool_call_id: 'call_1', content: 'a.ts lines 1-1' },
+      { role: 'assistant', content: 'It says 42.' }
+    ]);
+  });
+
+  it('answers a call that never came back, so none is left dangling', () => {
+    const pending: AgentToolCall = {
+      id: 'call_1',
+      name: 'read',
+      args: '{}',
+      result: null,
+      error: null,
+      summary: null
+    };
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [{ type: 'tool', call: pending }],
+      reasoning: '',
+      reasoningMs: null
+    };
+
+    const messages = toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+
+    expect(messages[1]).toMatchObject({ role: 'assistant', content: '' });
+    expect(messages[2]).toEqual({
+      role: 'tool',
+      tool_call_id: 'call_1',
+      content: 'This call did not finish.'
+    });
+  });
+
+  // A cancelled turn can leave a message with nothing in it at all. Dropping it
+  // would put two user messages back to back.
+  it('sends an empty assistant turn rather than no turn', () => {
+    const empty: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [],
+      reasoning: '',
+      reasoningMs: null
+    };
+
+    const messages = toWireHistory({ ...REQUEST, history: [empty] }, 'be brief');
+
+    expect(messages[1]).toEqual({ role: 'assistant', content: '' });
   });
 });
 

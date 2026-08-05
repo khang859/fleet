@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { AgentMessage } from '../agent-types';
+import { textMessage, type AgentMessage } from '../agent-types';
 import {
   COMPACT_MIN_OLDER,
   canCompact,
@@ -11,12 +11,8 @@ import {
 } from '../agent-context';
 
 const msg = (role: AgentMessage['role'], content: string, reasoning = ''): AgentMessage => ({
-  id: `${role}-${content}`,
-  role,
-  content,
-  reasoning,
-  reasoningMs: null,
-  toolCalls: []
+  ...textMessage(`${role}-${content}`, role, content),
+  reasoning
 });
 
 /** A transcript of `turns` complete exchanges, oldest first. */

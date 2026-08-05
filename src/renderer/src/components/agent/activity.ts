@@ -24,15 +24,19 @@ export const PHASE_LABEL: Record<AgentPhase, string> = {
  * `compacting` is not derivable from the transcript - it is the one case where
  * the work is not writing into any message - so it is passed in.
  *
- * A running tool outranks whatever the model wrote on its way to asking for
- * it: the text has stopped, and the wait is now the tool's.
+ * The last part is what says which phase this is, because it is the thing that
+ * most recently happened: text means the answer is arriving, a running call
+ * means the wait is the tool's, and a finished call means the model has what it
+ * asked for and is deciding what to do with it.
  */
 export function agentPhase(last: AgentMessage | undefined, compacting: boolean): AgentPhase {
   if (compacting) return 'compacting';
   if (last?.role !== 'assistant') return 'waiting';
-  if (last.toolCalls.some((c) => c.result === null && c.error === null)) return 'tooling';
-  if (last.content !== '') return 'writing';
-  return last.reasoning === '' ? 'waiting' : 'reasoning';
+
+  const part = last.parts.at(-1);
+  if (part === undefined) return last.reasoning === '' ? 'waiting' : 'reasoning';
+  if (part.type === 'text') return 'writing';
+  return part.call.result === null && part.call.error === null ? 'tooling' : 'waiting';
 }
 
 /**

@@ -111,7 +111,9 @@ export function AgentFolderDialog({
   }, [entries, filter]);
 
   const choices = useMemo(() => [...recents, ...folders], [recents, folders]);
-  const selected = choices[selectedIndex];
+  // `at` rather than an index, so the type says what is true: there is nothing
+  // selected when the filter matches nothing, and every use here guards for it.
+  const selected = choices.at(selectedIndex);
   const parent = parentDir(dir);
 
   useEffect(() => {

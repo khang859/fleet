@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, ChevronRight, FoldVertical, Square, TriangleAlert } from 'lucide-react';
 import type { AgentMessage } from '../../../../shared/agent-types';
+import { messageText } from '../../../../shared/agent-types';
 import { canCompact } from '../../../../shared/agent-context';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentActivity } from './AgentActivity';
@@ -106,7 +107,7 @@ function Transcript({
   // Follow the stream. Keyed on the growing text so every delta scrolls.
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages.length, last?.content, last?.reasoning, last?.toolCalls]);
+  }, [messages.length, last?.parts, last?.reasoning]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -137,16 +138,17 @@ function Message({
   message: AgentMessage;
   streaming: boolean;
 }): React.JSX.Element {
-  if (message.role === 'summary') return <SummaryCard summary={message.content} />;
+  if (message.role === 'summary') return <SummaryCard summary={messageText(message)} />;
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-fleet-surface-2 px-3.5 py-2 text-sm text-fleet-text">
-          {message.content}
+          {messageText(message)}
         </div>
       </div>
     );
   }
+  const lastPart = message.parts.length - 1;
   return (
     <div className="flex flex-col gap-2">
       {message.reasoning !== '' && (
@@ -155,20 +157,21 @@ function Message({
           durationMs={message.reasoningMs}
           // Thinking is worth watching only while it is the sole thing
           // happening; the moment an answer starts, the answer is the point.
-          live={streaming && message.content === ''}
+          live={streaming && message.parts.length === 0}
         />
       )}
-      {message.toolCalls.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          {message.toolCalls.map((call) => (
-            <AgentToolRow key={call.id} call={call} />
-          ))}
-        </div>
-      )}
-      {message.content !== '' && (
-        <div className="text-fleet-text">
-          <AgentMarkdown streaming={streaming}>{message.content}</AgentMarkdown>
-        </div>
+      {/* In the order the turn happened: what it said, what it looked at, and
+          what it said about what it found. Keyed by position because that is
+          what a part is - text parts have no id, and two of them are only
+          distinguishable by where they fall. */}
+      {message.parts.map((part, i) =>
+        part.type === 'tool' ? (
+          <AgentToolRow key={i} call={part.call} />
+        ) : (
+          <div key={i} className="text-fleet-text">
+            <AgentMarkdown streaming={streaming && i === lastPart}>{part.text}</AgentMarkdown>
+          </div>
+        )
       )}
     </div>
   );

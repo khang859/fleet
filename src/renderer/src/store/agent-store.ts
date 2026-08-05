@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AgentCatalog, AgentMessage, AgentUsage } from '../../../shared/agent-types';
+import { messageText, textMessage } from '../../../shared/agent-types';
 import type { AgentToolCall } from '../../../shared/agent-tools';
 import type { AgentSessionEvent } from '../../../shared/agent-session';
 import {
@@ -158,21 +159,13 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     if (thread.streamId !== null) return;
 
     const streamId = crypto.randomUUID();
-    const user: AgentMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: text,
-      reasoning: '',
-      reasoningMs: null,
-      toolCalls: []
-    };
+    const user = textMessage(crypto.randomUUID(), 'user', text);
     const assistant: AgentMessage = {
       id: streamId,
       role: 'assistant',
-      content: '',
+      parts: [],
       reasoning: '',
-      reasoningMs: null,
-      toolCalls: []
+      reasoningMs: null
     };
     // The placeholder goes in before the request leaves, so the first delta
     // always has somewhere to land.
@@ -257,20 +250,46 @@ function threadOf(streamId: string): { paneId: string; thread: PaneThread } | nu
   return null;
 }
 
-/** Append to the streaming assistant message, which carries the stream's id. */
-function appendToAssistant(streamId: string, field: 'content' | 'reasoning', delta: string): void {
-  const found = threadOf(streamId);
-  if (found === null) return;
-  const startedAt = found.thread.startedAt;
-  const messages = found.thread.messages.map((m) => {
-    if (m.id !== streamId) return m;
-    const next = { ...m, [field]: m[field] + delta };
+/**
+ * Append answer text to the streaming assistant message.
+ *
+ * Onto the last part when that is text, as a new part when it is a call: text
+ * written after a tool ran is a separate paragraph of the turn, and joining it
+ * to what was written before the call is exactly the ordering this avoids.
+ */
+function appendText(streamId: string, delta: string): void {
+  updateStreaming(streamId, (m, startedAt) => {
+    const last = m.parts.at(-1);
+    const parts =
+      last?.type === 'text'
+        ? [...m.parts.slice(0, -1), { type: 'text' as const, text: last.text + delta }]
+        : [...m.parts, { type: 'text' as const, text: delta }];
     // The first answer token ends the thinking. Measured from the send rather
     // than from the first reasoning token, so the number the block settles on
     // is the one the live clock was showing the moment it settled.
-    const stamp = field === 'content' && m.content === '' && m.reasoning !== '';
-    return stamp && startedAt !== null ? { ...next, reasoningMs: Date.now() - startedAt } : next;
+    const stamp = m.reasoningMs === null && m.reasoning !== '' && messageText(m) === '';
+    return {
+      ...m,
+      parts,
+      ...(stamp && startedAt !== null ? { reasoningMs: Date.now() - startedAt } : {})
+    };
   });
+}
+
+function appendReasoning(streamId: string, delta: string): void {
+  updateStreaming(streamId, (m) => ({ ...m, reasoning: m.reasoning + delta }));
+}
+
+/** Rewrite the message this stream is writing into, leaving the rest alone. */
+function updateStreaming(
+  streamId: string,
+  change: (message: AgentMessage, startedAt: number | null) => AgentMessage
+): void {
+  const found = threadOf(streamId);
+  if (found === null) return;
+  const messages = found.thread.messages.map((m) =>
+    m.id === streamId ? change(m, found.thread.startedAt) : m
+  );
   useAgentStore.setState((s) => ({
     threads: { ...s.threads, [found.paneId]: { ...found.thread, messages } }
   }));
@@ -285,21 +304,14 @@ function appendToAssistant(streamId: string, field: 'content' | 'reasoning', del
  * late must land on its own row rather than append a second one.
  */
 function recordToolCall(streamId: string, call: AgentToolCall): void {
-  const found = threadOf(streamId);
-  if (found === null) return;
-
-  const messages = found.thread.messages.map((m) => {
-    if (m.id !== streamId) return m;
-    const existing = m.toolCalls.findIndex((c) => c.id === call.id);
-    const toolCalls =
-      existing === -1
-        ? [...m.toolCalls, call]
-        : m.toolCalls.map((c, i) => (i === existing ? call : c));
-    return { ...m, toolCalls };
+  updateStreaming(streamId, (m) => {
+    const at = m.parts.findIndex((p) => p.type === 'tool' && p.call.id === call.id);
+    const parts =
+      at === -1
+        ? [...m.parts, { type: 'tool' as const, call }]
+        : m.parts.map((p, i) => (i === at ? { type: 'tool' as const, call } : p));
+    return { ...m, parts };
   });
-  useAgentStore.setState((s) => ({
-    threads: { ...s.threads, [found.paneId]: { ...found.thread, messages } }
-  }));
 }
 
 function endTurn(streamId: string, error: string | null, usage: AgentUsage | null): void {
@@ -335,7 +347,7 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
     const reply = thread.messages.find((m) => m.id === streamId);
     // A turn that only looked at things and then failed still leaves what it
     // looked at behind, since that is what the pane shows.
-    if (reply && (reply.content !== '' || reply.reasoning !== '' || reply.toolCalls.length > 0)) {
+    if (reply && (reply.parts.length > 0 || reply.reasoning !== '')) {
       record(thread, { t: 'message', message: reply });
     }
     if (contextTokens !== null) record(thread, { t: 'context', tokens: contextTokens });
@@ -376,14 +388,7 @@ function applySummary(streamId: string, summary: string): void {
   // already moved on, which must not be allowed to rewrite the transcript.
   if (!found || !pending) return;
 
-  const message: AgentMessage = {
-    id: crypto.randomUUID(),
-    role: 'summary',
-    content: summary,
-    reasoning: '',
-    reasoningMs: null,
-    toolCalls: []
-  };
+  const message = textMessage(crypto.randomUUID(), 'summary', summary);
   const messages = [message, ...pending.keep];
   const contextTokens = estimateTranscriptTokens(messages);
 
@@ -414,12 +419,8 @@ function applySummary(streamId: string, summary: string): void {
 
 // Installed once: there is a single main→renderer channel per event, and every
 // event carries the id of the turn that produced it.
-window.fleet.agent.onStreamChunk(({ streamId, delta }) =>
-  appendToAssistant(streamId, 'content', delta)
-);
-window.fleet.agent.onStreamReasoning(({ streamId, delta }) =>
-  appendToAssistant(streamId, 'reasoning', delta)
-);
+window.fleet.agent.onStreamChunk(({ streamId, delta }) => appendText(streamId, delta));
+window.fleet.agent.onStreamReasoning(({ streamId, delta }) => appendReasoning(streamId, delta));
 window.fleet.agent.onStreamDone(({ streamId, usage }) => endTurn(streamId, null, usage));
 window.fleet.agent.onStreamError(({ streamId, message }) => {
   log.warn('stream error', { message });

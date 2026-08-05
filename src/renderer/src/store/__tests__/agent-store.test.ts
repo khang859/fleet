@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IPC_CHANNELS } from '../../../../shared/ipc-channels';
 import { DEFAULT_SETTINGS } from '../../../../shared/constants';
+import { messageText, textMessage } from '../../../../shared/agent-types';
 import type { AgentCatalogModel, AgentMessage, AgentUsage } from '../../../../shared/agent-types';
+import type { AgentToolCall } from '../../../../shared/agent-tools';
 import type {
   AgentSessionAppend,
   AgentSessionEvent,
@@ -78,6 +80,16 @@ function thread(
   const found = agentStore.useAgentStore.getState().threads[paneId];
   if (!found) throw new Error(`no thread for ${paneId}`);
   return found;
+}
+
+/** A message that is only words, as an assertion. */
+const said = (role: AgentMessage['role'], text: string): unknown =>
+  expect.objectContaining({ role, parts: [{ type: 'text', text }] });
+
+/** The calls on the message the pane is streaming into. */
+function calls(paneId = PANE): AgentToolCall[] {
+  const last = thread(paneId).messages.at(-1);
+  return (last?.parts ?? []).flatMap((p) => (p.type === 'tool' ? [p.call] : []));
 }
 
 /** The id main would be tagging this pane's events with right now. */
@@ -196,7 +208,7 @@ describe('automatic compaction', () => {
     expect(req).toMatchObject({ cwd: '/repo' });
     // The oldest exchanges go; the recent tail is not sent to be summarized.
     expect(req.messages).toHaveLength(4);
-    expect(req.messages[0].content).toBe('one');
+    expect(messageText(req.messages[0])).toBe('one');
     expect(thread().pendingCompact?.keep).toHaveLength(4);
   });
 
@@ -272,8 +284,9 @@ describe('applying a compaction', () => {
 
     const { messages } = thread();
     expect(messages).toHaveLength(5);
-    expect(messages[0]).toMatchObject({ role: 'summary', content: 'They chose zod over casts.' });
-    expect(messages.slice(1).map((m) => m.content)).toEqual([
+    expect(messages[0].role).toBe('summary');
+    expect(messageText(messages[0])).toBe('They chose zod over casts.');
+    expect(messages.slice(1).map(messageText)).toEqual([
       'three',
       'reply to three',
       'four',
@@ -472,9 +485,7 @@ describe('session log', () => {
     await open();
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
 
-    expect(written()).toEqual([
-      { t: 'message', message: expect.objectContaining({ role: 'user', content: 'hello' }) }
-    ]);
+    expect(written()).toEqual([{ t: 'message', message: said('user', 'hello') }]);
   });
 
   it('writes the reply once, when it stops changing', async () => {
@@ -489,7 +500,7 @@ describe('session log', () => {
       { t: 'message', message: expect.objectContaining({ role: 'user' }) },
       {
         t: 'message',
-        message: expect.objectContaining({ role: 'assistant', content: 'hi there' })
+        message: said('assistant', 'hi there')
       },
       { t: 'context', tokens: 500 }
     ]);
@@ -506,7 +517,7 @@ describe('session log', () => {
 
     expect(written()).toContainEqual({
       t: 'message',
-      message: expect.objectContaining({ content: 'half an ans' })
+      message: expect.objectContaining({ parts: [{ type: 'text', text: 'half an ans' }] })
     });
   });
 
@@ -534,31 +545,14 @@ describe('session log', () => {
 
     expect(written()).toContainEqual({
       t: 'compact',
-      summary: expect.objectContaining({ role: 'summary', content: 'we talked about one' }),
+      summary: said('summary', 'we talked about one'),
       keep: keptIds
     });
   });
 
   it('replays a session into the thread when the pane opens', async () => {
     replay = {
-      messages: [
-        {
-          id: 'a',
-          role: 'user',
-          content: 'earlier',
-          reasoning: '',
-          reasoningMs: null,
-          toolCalls: []
-        },
-        {
-          id: 'b',
-          role: 'assistant',
-          content: 'answer',
-          reasoning: '',
-          reasoningMs: null,
-          toolCalls: []
-        }
-      ],
+      messages: [textMessage('a', 'user', 'earlier'), textMessage('b', 'assistant', 'answer')],
       contextTokens: 4_000,
       cwd: '/repo',
       skipped: 0
@@ -616,7 +610,7 @@ describe('tool calls', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'what is in a.ts?');
     start(liveStreamId());
 
-    expect(thread().messages.at(-1)?.toolCalls).toEqual([CALL]);
+    expect(calls()).toEqual([CALL]);
   });
 
   // The same call twice, not two calls: the row on screen fills in rather than
@@ -627,9 +621,7 @@ describe('tool calls', () => {
     start(streamId);
     finish(streamId);
 
-    expect(thread().messages.at(-1)?.toolCalls).toEqual([
-      { ...CALL, result: 'a.ts lines 1-1', summary: '1 line' }
-    ]);
+    expect(calls()).toEqual([{ ...CALL, result: 'a.ts lines 1-1', summary: '1 line' }]);
   });
 
   it('keeps two calls in the order they were made', () => {
@@ -641,11 +633,25 @@ describe('tool calls', () => {
       call: { ...CALL, id: 'call_2', name: 'glob' }
     });
 
-    expect(
-      thread()
-        .messages.at(-1)
-        ?.toolCalls.map((c) => c.name)
-    ).toEqual(['read', 'glob']);
+    expect(calls().map((c) => c.name)).toEqual(['read', 'glob']);
+  });
+
+  // The whole point of parts: what the model said before it looked stays
+  // above the row, and what it said afterwards stays below it.
+  it('keeps text on either side of a call in the order it arrived', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'what is in a.ts?');
+    const streamId = liveStreamId();
+    emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: 'Let me look.' });
+    start(streamId);
+    finish(streamId);
+    emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: 'It says ' });
+    emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: '42.' });
+
+    expect(thread().messages.at(-1)?.parts).toEqual([
+      { type: 'text', text: 'Let me look.' },
+      { type: 'tool', call: expect.objectContaining({ id: 'call_1', summary: '1 line' }) },
+      { type: 'text', text: 'It says 42.' }
+    ]);
   });
 
   it('ignores a call for a pane that has no thread', () => {
@@ -667,8 +673,7 @@ describe('tool calls', () => {
       t: 'message',
       message: expect.objectContaining({
         role: 'assistant',
-        content: '',
-        toolCalls: [expect.objectContaining({ summary: '1 line' })]
+        parts: [{ type: 'tool', call: expect.objectContaining({ summary: '1 line' }) }]
       })
     });
   });

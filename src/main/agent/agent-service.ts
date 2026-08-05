@@ -11,7 +11,7 @@ import type {
   AgentStreamError,
   AgentUsage
 } from '../../shared/agent-types';
-import { buildSystemPrompt } from '../../shared/agent-types';
+import { buildSystemPrompt, messageText } from '../../shared/agent-types';
 import { AGENT_TOOL_SPECS, type AgentToolCall } from '../../shared/agent-tools';
 import type { AgentToolEvent } from '../../shared/agent-types';
 import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../shared/agent-context';
@@ -80,37 +80,67 @@ export function toReasoningParam(config: AgentModelConfig): ReasoningParam | nul
  * labelled user message: it is not something the assistant said, and a
  * mid-conversation system message is handled inconsistently across providers.
  *
- * A turn that used tools becomes several wire messages: what the assistant
- * said and asked for, then one message per answer. The API requires every
- * tool_call to be followed by its result, so a call whose result was never
- * recorded is given one saying so rather than left dangling.
+ * A turn that used tools becomes several wire messages, rebuilt round by round
+ * from the parts: what the assistant said before it called anything, the calls,
+ * then their results, then whatever it said next. Rebuilding it in order
+ * matters - a model handed its own closing sentence as though it had been
+ * written before the search it was reacting to is being told a small lie about
+ * its own reasoning.
+ *
+ * The API requires every tool_call to be followed by its result, so a call
+ * whose result was never recorded is given one saying so rather than left
+ * dangling.
  */
 function toWireMessages(message: AgentMessage): AgentWireMessage[] {
   if (message.role === 'summary') {
-    return [{ role: 'user', content: `${SUMMARY_WIRE_PREFIX}\n\n${message.content}` }];
+    return [{ role: 'user', content: `${SUMMARY_WIRE_PREFIX}\n\n${messageText(message)}` }];
   }
-  if (message.role === 'user' || message.toolCalls.length === 0) {
-    return [{ role: message.role, content: message.content }];
-  }
+  if (message.role === 'user') return [{ role: 'user', content: messageText(message) }];
 
-  return [
-    {
+  const wire: AgentWireMessage[] = [];
+  let text = '';
+  let calls: AgentToolCall[] = [];
+
+  /** One round: what was said, what it asked for, and what came back. */
+  const flush = (): void => {
+    if (text === '' && calls.length === 0) return;
+    wire.push({
       role: 'assistant',
-      content: message.content,
-      tool_calls: message.toolCalls.map((call) => ({
-        id: call.id,
-        type: 'function' as const,
-        function: { name: call.name, arguments: call.args }
-      }))
-    },
-    ...message.toolCalls.map(
-      (call): AgentWireMessage => ({
+      content: text,
+      ...(calls.length > 0
+        ? {
+            tool_calls: calls.map((call) => ({
+              id: call.id,
+              type: 'function' as const,
+              function: { name: call.name, arguments: call.args }
+            }))
+          }
+        : {})
+    });
+    for (const call of calls) {
+      wire.push({
         role: 'tool',
         tool_call_id: call.id,
         content: call.result ?? call.error ?? 'This call did not finish.'
-      })
-    )
-  ];
+      });
+    }
+    text = '';
+    calls = [];
+  };
+
+  for (const part of message.parts) {
+    // Text after a call opens the next round, so the round that just ended goes
+    // out before it rather than swallowing it.
+    if (part.type === 'text' && calls.length > 0) flush();
+    if (part.type === 'text') text += part.text;
+    else calls.push(part.call);
+  }
+  flush();
+
+  // An assistant turn that produced nothing at all still has to be something:
+  // a gap in the transcript would leave the next user message following the
+  // previous one as though this turn never happened.
+  return wire.length > 0 ? wire : [{ role: 'assistant', content: '' }];
 }
 
 /** Transcript plus the new message, as the wire wants it. */
@@ -133,7 +163,9 @@ export function toCompactMessages(req: AgentCompactRequest): AgentWireMessage[] 
     // Only what was said, not what was looked at: the summary is about the
     // conversation, and a page of tool output would crowd out the part of it
     // worth keeping.
-    ...req.messages.map((m) => toWireMessages({ ...m, toolCalls: [] })).flat(),
+    ...req.messages.flatMap((m) =>
+      toWireMessages({ ...m, parts: [{ type: 'text', text: messageText(m) }] })
+    ),
     { role: 'user', content: 'Write the summary now, following the instructions above.' }
   ];
 }

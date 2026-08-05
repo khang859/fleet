@@ -3,16 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AgentSessionStore } from '../session-store';
-import type { AgentMessage } from '../../../shared/agent-types';
+import { textMessage, type AgentMessage } from '../../../shared/agent-types';
 
-const msg = (id: string, content: string): AgentMessage => ({
-  id,
-  role: 'user',
-  content,
-  reasoning: '',
-  reasoningMs: null,
-  toolCalls: []
-});
+const msg = (id: string, content: string): AgentMessage => textMessage(id, 'user', content);
 
 let dir: string;
 let store: AgentSessionStore;

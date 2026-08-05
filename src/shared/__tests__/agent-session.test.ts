@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentMessage } from '../agent-types';
+import { textMessage, type AgentMessage } from '../agent-types';
 import {
   encodeEvent,
   replaySession,
@@ -15,14 +15,8 @@ import {
  * than in a thrown error or a silently wrong conversation.
  */
 
-const msg = (id: string, role: AgentMessage['role'], content: string): AgentMessage => ({
-  id,
-  role,
-  content,
-  reasoning: '',
-  reasoningMs: null,
-  toolCalls: []
-});
+const msg = (id: string, role: AgentMessage['role'], content: string): AgentMessage =>
+  textMessage(id, role, content);
 
 const log = (...events: AgentSessionEvent[]): string => events.map(encodeEvent).join('');
 
@@ -155,31 +149,65 @@ describe('replaySession', () => {
     });
   });
 
-  // Version 1 files were written before the agent had tools, so their messages
-  // carry no `toolCalls` at all. They are ordinary sessions and have to open.
-  it('replays a session written before there were tools', () => {
-    const replay = replaySession(
+  // Files written by earlier versions are ordinary sessions and have to open.
+  // Version 1 knew nothing about tools; version 2 wrote the text in one field
+  // and the calls in another, which is the ordering this replaces.
+  describe('older files', () => {
+    const V1 =
       '{"t":"session","version":1,"id":"s-1","cwd":"/repo","createdAt":"2026-08-05T10:00:00.000Z"}\n' +
-        '{"t":"message","message":{"id":"a","role":"user","content":"hi","reasoning":"","reasoningMs":null}}\n'
-    );
+      '{"t":"message","message":{"id":"a","role":"user","content":"hi","reasoning":"","reasoningMs":null}}\n';
 
-    expect(replay.skipped).toBe(0);
-    expect(replay.messages[0]).toMatchObject({ id: 'a', toolCalls: [] });
+    const V2 =
+      '{"t":"session","version":2,"id":"s-1","cwd":"/repo","createdAt":"2026-08-05T10:00:00.000Z"}\n' +
+      '{"t":"message","message":{"id":"a","role":"assistant","content":"here","reasoning":"","reasoningMs":null,' +
+      '"toolCalls":[{"id":"call_1","name":"read","args":"{}","result":"a.ts lines 1-1","error":null,"summary":"1 line"}]}}\n';
+
+    it('replays one written before there were tools', () => {
+      const replay = replaySession(V1);
+
+      expect(replay.skipped).toBe(0);
+      expect(replay.messages[0]).toEqual(textMessage('a', 'user', 'hi'));
+    });
+
+    it('replays one written before messages had parts, text first', () => {
+      const replay = replaySession(V2);
+
+      expect(replay.skipped).toBe(0);
+      expect(replay.messages[0].parts).toEqual([
+        { type: 'text', text: 'here' },
+        { type: 'tool', call: expect.objectContaining({ id: 'call_1' }) }
+      ]);
+    });
+
+    // An empty content field was how a turn that only ran tools was written.
+    it('leaves out the empty text of a turn that only used tools', () => {
+      const replay = replaySession(V2.replace('"content":"here"', '"content":""'));
+
+      expect(replay.messages[0].parts).toEqual([
+        { type: 'tool', call: expect.objectContaining({ id: 'call_1' }) }
+      ]);
+    });
   });
 
-  it('keeps the tool calls a turn made', () => {
-    const message = {
-      ...msg('a', 'assistant', 'here'),
-      toolCalls: [
-        {
-          id: 'call_1',
-          name: 'read',
-          args: '{"path":"a.ts"}',
-          result: 'a.ts lines 1-1',
-          error: null,
-          summary: '1 line'
-        }
-      ]
+  it('keeps what a turn said and did in the order it happened', () => {
+    const call = {
+      id: 'call_1',
+      name: 'read',
+      args: '{"path":"a.ts"}',
+      result: 'a.ts lines 1-1',
+      error: null,
+      summary: '1 line'
+    };
+    const message: AgentMessage = {
+      id: 'a',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Let me look.' },
+        { type: 'tool', call },
+        { type: 'text', text: 'It says 42.' }
+      ],
+      reasoning: '',
+      reasoningMs: null
     };
     const replay = replaySession(log(HEADER, { t: 'message', message }));
 

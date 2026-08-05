@@ -31,12 +31,29 @@ const PER_MESSAGE_OVERHEAD = 4;
 /**
  * What the transcript would cost to send. Reasoning is left out because Fleet
  * does not send it back - it is shown in the pane, not replayed to the model.
+ *
+ * Tool output is counted, and is usually most of it: two hundred numbered lines
+ * of a file dwarf the sentence that asked for them, and they go back on the
+ * wire with every subsequent turn.
  */
 export function estimateTranscriptTokens(messages: AgentMessage[], systemPrompt = ''): number {
   return messages.reduce(
-    (total, m) => total + estimateTokens(m.content) + PER_MESSAGE_OVERHEAD,
+    (total, m) => total + estimatePartsTokens(m) + PER_MESSAGE_OVERHEAD,
     estimateTokens(systemPrompt)
   );
+}
+
+function estimatePartsTokens(message: AgentMessage): number {
+  return message.parts.reduce((total, part) => {
+    if (part.type === 'text') return total + estimateTokens(part.text);
+    const { call } = part;
+    return (
+      total +
+      estimateTokens(call.args) +
+      estimateTokens(call.result ?? call.error ?? '') +
+      PER_MESSAGE_OVERHEAD
+    );
+  }, 0);
 }
 
 /**

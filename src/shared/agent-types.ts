@@ -160,6 +160,18 @@ export type AgentCatalog = {
  * half-built store here would be in the way of designing one properly.
  */
 
+/**
+ * A piece of a message, in the order it happened.
+ *
+ * A turn is not one thing the model said - it is prose, then a look at the
+ * code, then more prose in light of what it found. Holding the text in one
+ * field and the calls in another loses the only thing that makes the turn
+ * readable: which came first. "Let me check the value" belongs above the
+ * search, not below it, and the same is true of the copy that goes back to the
+ * model on the next turn.
+ */
+export type AgentPart = { type: 'text'; text: string } | { type: 'tool'; call: AgentToolCall };
+
 export type AgentMessage = {
   id: string;
   /**
@@ -168,7 +180,8 @@ export type AgentMessage = {
    * conversation, and rendering it as the assistant's own words would be a lie.
    */
   role: 'user' | 'assistant' | 'summary';
-  content: string;
+  /** What the message is made of, oldest first. One turn, however many rounds. */
+  parts: AgentPart[];
   /** Assistant only: the reasoning channel, when the model streams one. */
   reasoning: string;
   /**
@@ -178,13 +191,25 @@ export type AgentMessage = {
    * means there is no duration to show rather than a duration of zero.
    */
   reasoningMs: number | null;
-  /**
-   * Assistant only: what this turn looked at, in the order it looked. One
-   * message covers the whole turn however many rounds of calls it took, so the
-   * transcript stays one message per thing said rather than one per round trip.
-   */
-  toolCalls: AgentToolCall[];
 };
+
+/** A message that is only words: what the user typed, or a summary. */
+export function textMessage(id: string, role: AgentMessage['role'], text: string): AgentMessage {
+  return { id, role, parts: [{ type: 'text', text }], reasoning: '', reasoningMs: null };
+}
+
+/** Everything the message said, with what it looked at left out. */
+export function messageText(message: AgentMessage): string {
+  return message.parts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join('');
+}
+
+/** The calls the message made, in the order it made them. */
+export function messageToolCalls(message: AgentMessage): AgentToolCall[] {
+  return message.parts.filter((part) => part.type === 'tool').map((part) => part.call);
+}
 
 /**
  * What a turn cost, counted by the model's own tokenizer and reported by
