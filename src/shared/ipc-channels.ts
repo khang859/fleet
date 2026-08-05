@@ -332,6 +332,14 @@ export const IPC_CHANNELS = {
   // settings themselves ride on SETTINGS_GET/SET under `ai.agent`, and the API
   // key is the one Chat already stores.
   AGENT_LIST_MODELS: 'agent:list-models',
+  // One turn: SEND starts a stream and returns its id, CANCEL aborts it. The
+  // transcript is renderer-side, so the request carries the whole history.
+  AGENT_SEND: 'agent:send',
+  AGENT_CANCEL: 'agent:cancel',
+  AGENT_STREAM_CHUNK: 'agent:stream-chunk',
+  AGENT_STREAM_REASONING: 'agent:stream-reasoning',
+  AGENT_STREAM_DONE: 'agent:stream-done',
+  AGENT_STREAM_ERROR: 'agent:stream-error',
 
   // ── Remote (SSH) file browser ──────────────────────────────────────────────
   // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's

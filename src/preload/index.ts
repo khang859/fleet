@@ -141,7 +141,13 @@ import type {
   EnvTrashResult
 } from '../shared/env-editor-types';
 import type { NoteReadResult, NoteWriteResult } from '../shared/notes-types';
-import type { AgentCatalog } from '../shared/agent-types';
+import type {
+  AgentCatalog,
+  AgentSendRequest,
+  AgentStreamDelta,
+  AgentStreamDone,
+  AgentStreamError
+} from '../shared/agent-types';
 import type {
   DetectedSshHost,
   RemoteDirEntry,
@@ -848,11 +854,22 @@ const fleetApi = {
 
   /**
    * Agent panes. Settings live in `settings.ai.agent` and the OpenRouter key is
-   * the one under `chat`, so the only agent-specific call is the model catalog.
+   * the one under `chat`, so what is agent-specific is the model catalog and
+   * the turn itself. The caller mints the stream id and every event carries it.
    */
   agent: {
     listModels: async (refresh = false): Promise<AgentCatalog> =>
-      typedInvoke<AgentCatalog>(IPC_CHANNELS.AGENT_LIST_MODELS, refresh)
+      typedInvoke<AgentCatalog>(IPC_CHANNELS.AGENT_LIST_MODELS, refresh),
+    send: (req: AgentSendRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_SEND, req),
+    cancel: (streamId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_CANCEL, streamId),
+    onStreamChunk: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_STREAM_CHUNK, cb),
+    onStreamReasoning: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_STREAM_REASONING, cb),
+    onStreamDone: (cb: (p: AgentStreamDone) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_STREAM_DONE, cb),
+    onStreamError: (cb: (p: AgentStreamError) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_STREAM_ERROR, cb)
   },
 
   /**

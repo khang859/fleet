@@ -109,6 +109,9 @@ import { ChatService } from './chat/chat-service';
 import { ChatSearchService } from './chat/chat-search-service';
 import { runChatBackfill } from './chat/chat-backfill';
 import { registerChatIpc } from './chat/chat-ipc';
+import { registerAgentIpc } from './agent/agent-ipc';
+import { AgentModelCatalog } from './agent/models-catalog';
+import { AgentService } from './agent/agent-service';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
 import { resolveSummary } from './chat/pane-summarizer';
 import { PermissionManager } from './chat/permissions/permission-manager';
@@ -1525,6 +1528,20 @@ void app.whenReady().then(async () => {
       mkdirSync(personalSkillsDir, { recursive: true });
       void shell.openPath(personalSkillsDir);
     }
+  });
+
+  // Agent panes. Separate from Chat by design: it shares only the OpenRouter key
+  // and the settings store, both of which are app-wide.
+  registerAgentIpc({
+    catalog: new AgentModelCatalog(join(app.getPath('userData'), 'agent-models-dev.json')),
+    service: new AgentService({
+      getSettings: () => settingsStore.get().ai.agent,
+      getApiKey: () => chatSecrets.getKey(),
+      emit: (channel, payload) => {
+        const w = mainWindow;
+        if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
+      }
+    })
   });
 
   // Cheap AI one-line pane summaries for the agent overview, throttled per pane

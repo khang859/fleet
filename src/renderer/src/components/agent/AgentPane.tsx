@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Bot, SlidersHorizontal } from 'lucide-react';
-import { shortenPath } from '../../lib/shorten-path';
+import { AgentThread } from './AgentThread';
 import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
 
 type AgentView = 'agent' | 'settings';
@@ -11,25 +11,18 @@ const TABS = [
 ] as const satisfies ReadonlyArray<{ value: AgentView; label: string; Icon: typeof Bot }>;
 
 /**
- * Native agent pane. The agent view is still a placeholder; the settings view
- * is live and app-wide, since every agent pane runs on the same provider and
- * models and differs only in the folder it is rooted in.
+ * Native agent pane: a thread rooted in one folder, plus the settings every
+ * agent pane shares - they run on the same provider and models and differ only
+ * in the folder they work in.
  */
-export function AgentPane({ cwd }: { cwd: string }): React.JSX.Element {
+export function AgentPane({ paneId, cwd }: { paneId: string; cwd: string }): React.JSX.Element {
   const [view, setView] = useState<AgentView>('agent');
 
   return (
     <div className="flex h-full w-full flex-col bg-fleet-bg">
       <AgentTabs value={view} onChange={setView} />
       {view === 'agent' ? (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
-          <span className="text-sm font-medium uppercase tracking-[0.3em] text-fleet-text-subtle">
-            Agent
-          </span>
-          <span className="max-w-full truncate px-4 text-xs text-fleet-text-subtle/70">
-            {shortenPath(cwd)}
-          </span>
-        </div>
+        <AgentThread paneId={paneId} cwd={cwd} />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <AgentSettingsPanel />

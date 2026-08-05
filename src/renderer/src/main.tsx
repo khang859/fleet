@@ -8,6 +8,7 @@ import { useSettingsStore } from './store/settings-store';
 import { useKanbanStore } from './store/kanban-store';
 import { useSessionsStore } from './store/sessions-store';
 import { useRemoteSshStore } from './store/remote-ssh-store';
+import { useAgentStore } from './store/agent-store';
 import './index.css';
 
 const log = createLogger('renderer');
@@ -83,7 +84,8 @@ if (import.meta.env.DEV) {
       settings: useSettingsStore,
       kanban: useKanbanStore,
       sessions: useSessionsStore,
-      remoteSsh: useRemoteSshStore
+      remoteSsh: useRemoteSshStore,
+      agent: useAgentStore
     }
   };
 }

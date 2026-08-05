@@ -116,3 +116,36 @@ export type AgentCatalog = {
   /** Set when the refresh failed; models may still be present from cache. */
   error: string | null;
 };
+
+/*
+ * The transcript. It lives in the renderer for now and is sent whole with each
+ * turn, which keeps main stateless: sessions on disk are their own step, and a
+ * half-built store here would be in the way of designing one properly.
+ */
+
+export type AgentMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  /** Assistant only: the reasoning channel, when the model streams one. */
+  reasoning: string;
+};
+
+export type AgentSendRequest = {
+  /**
+   * Minted by the renderer, not main: the pane has to be ready to route deltas
+   * before the first one can arrive, and it cannot be if it is still waiting to
+   * be told the id.
+   */
+  streamId: string;
+  /** The folder the pane was opened on. The agent's working directory. */
+  cwd: string;
+  /** Prior turns, oldest first. The new user message is `text`, not part of it. */
+  history: AgentMessage[];
+  text: string;
+};
+
+/** Every stream event carries its request's id, so panes can tell theirs apart. */
+export type AgentStreamDelta = { streamId: string; delta: string };
+export type AgentStreamDone = { streamId: string };
+export type AgentStreamError = { streamId: string; message: string };
