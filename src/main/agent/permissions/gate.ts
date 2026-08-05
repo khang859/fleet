@@ -31,6 +31,8 @@ type Pending = {
   command: string;
   /** What "always" would remember, or null when that was not offered. */
   rule: string | null;
+  /** Detaches this question's abort listener once it has been answered. */
+  release: () => void;
 };
 
 export type PermissionRequest = {
@@ -114,15 +116,20 @@ export class PermissionGate {
       }
 
       const requestId = randomUUID();
+      // A turn stopped while the question is on screen answers it: the command
+      // must not start after the user has already walked away from the turn.
+      // Detached once answered - one turn asks many questions, and a signal
+      // that outlives them collects a listener for every one.
+      const onAbort = (): void => this.settle(requestId, 'refuse');
+      req.signal.addEventListener('abort', onAbort, { once: true });
+
       this.pending.set(requestId, {
         resolve,
         streamId: req.streamId,
         command: req.command,
-        rule
+        rule,
+        release: () => req.signal.removeEventListener('abort', onAbort)
       });
-      // A turn stopped while the question is on screen answers it: the command
-      // must not start after the user has already walked away from the turn.
-      req.signal.addEventListener('abort', () => this.settle(requestId, 'refuse'), { once: true });
 
       this.deps.emit(IPC_CHANNELS.AGENT_PERMISSION_ASK, {
         streamId: req.streamId,
@@ -139,6 +146,7 @@ export class PermissionGate {
     const entry = this.pending.get(requestId);
     if (entry === undefined) return;
     this.pending.delete(requestId);
+    entry.release();
     entry.resolve(grant);
   }
 }

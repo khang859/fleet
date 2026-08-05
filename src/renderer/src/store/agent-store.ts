@@ -17,7 +17,7 @@ import {
   splitForCompaction
 } from '../../../shared/agent-context';
 import { useSettingsStore } from './settings-store';
-import { useWorkspaceStore } from './workspace-store';
+import { registerPaneDisposer, useWorkspaceStore } from './workspace-store';
 import { draftInto } from '../hooks/use-terminal';
 import { createLogger } from '../logger';
 
@@ -109,7 +109,8 @@ type AgentStoreState = {
   cancel: (paneId: string) => void;
   /** Answer the command waiting on this pane. Nothing is decided here: main is. */
   decidePermission: (paneId: string, outcome: AgentPermissionOutcome) => void;
-  clearThread: (paneId: string) => void;
+  /** The pane is gone: stop its turn and forget it. */
+  disposePane: (paneId: string) => void;
 };
 
 export const useAgentStore = create<AgentStoreState>((set, get) => ({
@@ -256,10 +257,19 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     window.fleet.agent.decidePermission({ requestId: ask.requestId, outcome });
   },
 
-  clearThread: (paneId) => {
+  /*
+   * Cancelling is the point, not the tidying. A turn stopped on a permission
+   * question has no other way to end - main is waiting on a click that can no
+   * longer be made, and the pane that would have made it is the one closing.
+   */
+  disposePane: (paneId) => {
     get().cancel(paneId);
-    const cwd = get().threads[paneId]?.cwd ?? '';
-    set({ threads: { ...get().threads, [paneId]: { ...EMPTY_THREAD, cwd } } });
+    set((s) => {
+      if (!s.threads[paneId]) return { threads: s.threads };
+      const next = { ...s.threads };
+      delete next[paneId];
+      return { threads: next };
+    });
   }
 }));
 
@@ -497,3 +507,9 @@ window.fleet.agent.onPermissionAsk((ask) => askPermission(ask));
 window.fleet.agent.onToolStart(({ streamId, call }) => recordToolCall(streamId, call));
 window.fleet.agent.onToolEnd(({ streamId, call }) => recordToolCall(streamId, call));
 window.fleet.agent.onCompactDone(({ streamId, summary }) => applySummary(streamId, summary));
+
+// A pane closing mid-turn is the one case a turn cannot end on its own: main is
+// waiting on a click, and the pane that would have made it is the one going.
+registerPaneDisposer((paneId) => {
+  useAgentStore.getState().disposePane(paneId);
+});

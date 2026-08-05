@@ -785,3 +785,43 @@ describe('asking the user about a command', () => {
     expect(thread().pendingPermission).toBeNull();
   });
 });
+
+/*
+ * A pane that goes away while its turn is running is the one case the turn
+ * cannot end by itself: main is waiting on a click, and the thing that would
+ * have clicked is what is being closed.
+ */
+describe('disposing a pane', () => {
+  it('stops the turn and forgets the thread', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'run the tests');
+    const streamId = liveStreamId();
+
+    agentStore.useAgentStore.getState().disposePane(PANE);
+
+    expect(agentApi.cancel).toHaveBeenCalledWith(streamId);
+    expect(agentStore.useAgentStore.getState().threads[PANE]).toBeUndefined();
+  });
+
+  it('stops a turn that is stopped on a question', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'run the tests');
+    const streamId = liveStreamId();
+    emit(IPC_CHANNELS.AGENT_PERMISSION_ASK, {
+      streamId,
+      requestId: 'req-1',
+      callId: 'call-1',
+      command: 'npm test',
+      reason: null,
+      rule: 'npm test'
+    });
+
+    agentStore.useAgentStore.getState().disposePane(PANE);
+
+    expect(agentApi.cancel).toHaveBeenCalledWith(streamId);
+  });
+
+  it('says nothing to main about a pane that was never used', () => {
+    agentStore.useAgentStore.getState().disposePane('never-opened');
+
+    expect(agentApi.cancel).not.toHaveBeenCalled();
+  });
+});

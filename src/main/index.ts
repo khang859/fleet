@@ -148,6 +148,7 @@ let sessionsService: SessionsService | null = null;
 let learningsStore: LearningsStore | undefined;
 let learningsEmbedder: WorkerEmbedder | undefined;
 let learningsMcp: LearningsMcpServer | undefined;
+let agentService: AgentService | null = null;
 let kanbanStore: KanbanStore | undefined;
 let kanbanMcp: KanbanMcpServer | undefined;
 let kanbanDispatcher: KanbanDispatcher | undefined;
@@ -273,6 +274,16 @@ function createWindow(): void {
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     log.error('renderer failed to load', { errorCode, errorDescription });
+  });
+
+  /*
+   * A reload throws away everything the renderer knew, including which panes
+   * were mid-turn. An agent turn parked on a permission question is waiting on
+   * a click from a window that no longer exists, and the fresh renderer has no
+   * thread to deliver the question to, so nothing would ever answer it.
+   */
+  mainWindow.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame) agentService?.cancelAll();
   });
 
   // Intercept navigation away from app (e.g. <a href> without target)
@@ -1549,14 +1560,15 @@ void app.whenReady().then(async () => {
     },
     emit: agentEmit
   });
+  agentService = new AgentService({
+    getSettings: () => settingsStore.get().ai.agent,
+    getApiKey: () => chatSecrets.getKey(),
+    gate: agentGate,
+    emit: agentEmit
+  });
   registerAgentIpc({
     catalog: new AgentModelCatalog(join(app.getPath('userData'), 'agent-models-dev.json')),
-    service: new AgentService({
-      getSettings: () => settingsStore.get().ai.agent,
-      getApiKey: () => chatSecrets.getKey(),
-      gate: agentGate,
-      emit: agentEmit
-    }),
+    service: agentService,
     gate: agentGate,
     sessions: new AgentSessionStore()
   });
@@ -1698,6 +1710,9 @@ function shutdownAll(): void {
     })
   );
   imageService.shutdown();
+  // Kills the running command and settles any permission question still on
+  // screen as a refusal, so nothing starts on the way out.
+  agentService?.cancelAll();
   sessionsService?.dispose();
   annotateService.destroy();
   kanbanDispatcher?.stop();

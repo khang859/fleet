@@ -468,6 +468,22 @@ export function collectPaneLeafs(node: PaneNode): PaneLeaf[] {
   return [...collectPaneLeafs(node.children[0]), ...collectPaneLeafs(node.children[1])];
 }
 
+/**
+ * Per-pane state that lives in another store, told when its pane goes away.
+ *
+ * A callback rather than an import because the agent store installs its
+ * main-to-renderer listeners the moment it is imported, and this store is
+ * imported by plenty of code that has no bridge for them to attach to. So it
+ * registers itself, and where it was never loaded there is no turn to end.
+ * `disposePane` on the Rune store is the same job done the direct way, which
+ * works only because that store imports nothing back.
+ */
+let disposePaneElsewhere: (paneId: string) => void = () => {};
+
+export function registerPaneDisposer(dispose: (paneId: string) => void): void {
+  disposePaneElsewhere = dispose;
+}
+
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   workspace: { id: 'default', label: 'Default', tabs: [] },
   backgroundWorkspaces: new Map(),
@@ -591,11 +607,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closeTab: (tabId, serializedPanes) => {
     logTabs.debug('closeTab', { tabId });
-    // Cancel any in-flight Rune Quick-Assist turns for panes in this tab and drop their state.
+    // Cancel any in-flight Rune Quick-Assist or Agent turns for panes in this
+    // tab and drop their state.
     const closing = get().workspace.tabs.find((t) => t.id === tabId);
     if (closing) {
       const rune = useRuneAssistStore.getState();
-      for (const pid of collectPaneIds(closing.splitRoot)) rune.disposePane(pid);
+      for (const pid of collectPaneIds(closing.splitRoot)) {
+        rune.disposePane(pid);
+        disposePaneElsewhere(pid);
+      }
     }
     set((state) => {
       const target = state.workspace.tabs.find((t) => t.id === tabId);
@@ -1007,8 +1027,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closePane: (paneId) => {
     logLayout.debug('closePane', { paneId });
-    // Cancel any in-flight Rune Quick-Assist turn for this pane and drop its state.
+    // Cancel any in-flight Rune Quick-Assist or Agent turn for this pane and
+    // drop its state. The agent matters most: a turn parked on a permission
+    // question is waiting on a click from the pane being closed, and nothing
+    // else would ever end it.
     useRuneAssistStore.getState().disposePane(paneId);
+    disposePaneElsewhere(paneId);
     set((state) => {
       // Don't let the close-pane action destroy a pinned tab via its sole leaf.
       const owner = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
