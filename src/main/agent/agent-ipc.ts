@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
-import type { AgentCatalog, AgentSendRequest } from '../../shared/agent-types';
+import type { AgentCatalog, AgentCompactRequest, AgentSendRequest } from '../../shared/agent-types';
 import type { AgentModelCatalog } from './models-catalog';
 import type { AgentService } from './agent-service';
 
@@ -21,6 +21,10 @@ export function registerAgentIpc(deps: {
   // Fire-and-forget: the reply, and any failure, come back as stream events.
   ipcMain.on(IPC_CHANNELS.AGENT_SEND, (_e, req: AgentSendRequest) => {
     deps.service.send(req);
+  });
+
+  ipcMain.on(IPC_CHANNELS.AGENT_COMPACT, (_e, req: AgentCompactRequest) => {
+    deps.service.compact(req);
   });
 
   ipcMain.on(IPC_CHANNELS.AGENT_CANCEL, (_e, streamId: string) => {

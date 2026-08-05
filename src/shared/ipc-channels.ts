@@ -336,6 +336,10 @@ export const IPC_CHANNELS = {
   // transcript is renderer-side, so the request carries the whole history.
   AGENT_SEND: 'agent:send',
   AGENT_CANCEL: 'agent:cancel',
+  // Fold older messages into one summary. Shares CANCEL and the error channel,
+  // and reports only the finished summary - nothing is streamed to the pane.
+  AGENT_COMPACT: 'agent:compact',
+  AGENT_COMPACT_DONE: 'agent:compact-done',
   AGENT_STREAM_CHUNK: 'agent:stream-chunk',
   AGENT_STREAM_REASONING: 'agent:stream-reasoning',
   AGENT_STREAM_DONE: 'agent:stream-done',

@@ -10,6 +10,7 @@ import { SectionShell, FieldGroup, Field } from '../../chat/settings/primitives'
 import { SecretInput } from '../../chat/settings/SecretInput';
 import { AgentRoleSettings } from './AgentRoleSettings';
 import { SystemPromptField } from './SystemPromptField';
+import { CompactionField } from './CompactionField';
 
 function validateOpenRouterKey(key: string): string | null {
   if (/\s/.test(key)) return 'Keys cannot contain spaces.';
@@ -87,6 +88,15 @@ export function AgentSettingsPanel(): React.JSX.Element {
           <SystemPromptField
             value={agent.systemPrompt}
             onChange={(systemPrompt) => void updateSettings({ ai: { agent: { systemPrompt } } })}
+          />
+        </FieldGroup>
+
+        <FieldGroup title="Context">
+          <CompactionField
+            value={agent.compactThreshold}
+            onChange={(compactThreshold) =>
+              void updateSettings({ ai: { agent: { compactThreshold } } })
+            }
           />
         </FieldGroup>
 

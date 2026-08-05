@@ -4,9 +4,16 @@ import {
   buildSystemPrompt,
   DEFAULT_AGENT_SETTINGS,
   DEFAULT_AGENT_SYSTEM_PROMPT,
+  type AgentCompactRequest,
   type AgentSendRequest
 } from '../../../shared/agent-types';
-import { AgentService, toReasoningParam, toWireMessages } from '../agent-service';
+import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../../shared/agent-context';
+import {
+  AgentService,
+  toCompactMessages,
+  toReasoningParam,
+  toWireMessages
+} from '../agent-service';
 import { parseStreamLine, type StreamRequest } from '../openrouter';
 
 const REQUEST: AgentSendRequest = {
@@ -17,6 +24,12 @@ const REQUEST: AgentSendRequest = {
     { id: 'b', role: 'assistant', content: 'hello', reasoning: 'thinking' }
   ],
   text: 'what does this do?'
+};
+
+const COMPACT_REQUEST: AgentCompactRequest = {
+  streamId: 'compact-1',
+  cwd: '/repo',
+  messages: REQUEST.history
 };
 
 const SETTINGS = {
@@ -42,7 +55,8 @@ function collector(): {
       events.push({ channel, payload });
       if (
         channel === IPC_CHANNELS.AGENT_STREAM_DONE ||
-        channel === IPC_CHANNELS.AGENT_STREAM_ERROR
+        channel === IPC_CHANNELS.AGENT_STREAM_ERROR ||
+        channel === IPC_CHANNELS.AGENT_COMPACT_DONE
       ) {
         finish();
       }
@@ -54,11 +68,37 @@ describe('parseStreamLine', () => {
   it('reads content and reasoning deltas', () => {
     expect(parseStreamLine('data: {"choices":[{"delta":{"content":"he"}}]}')).toEqual({
       content: 'he',
-      reasoning: ''
+      reasoning: '',
+      usage: null
     });
     expect(parseStreamLine('data: {"choices":[{"delta":{"reasoning":"hm"}}]}')).toEqual({
       content: '',
-      reasoning: 'hm'
+      reasoning: 'hm',
+      usage: null
+    });
+  });
+
+  it('reads the token usage the last message carries', () => {
+    const usage = '"usage":{"prompt_tokens":194,"completion_tokens":2,"total_tokens":196}';
+
+    expect(parseStreamLine(`data: {"choices":[{"delta":{"content":""}}],${usage}}`)).toEqual({
+      content: '',
+      reasoning: '',
+      usage: { promptTokens: 194, completionTokens: 2, totalTokens: 196 }
+    });
+  });
+
+  it('still reads usage from a final message that carries no delta', () => {
+    // Some upstreams send the usage on a message with an empty choices array,
+    // which would otherwise be discarded along with the keep-alives.
+    expect(
+      parseStreamLine(
+        'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11}}'
+      )
+    ).toEqual({
+      content: '',
+      reasoning: '',
+      usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 }
     });
   });
 
@@ -134,6 +174,32 @@ describe('toWireMessages', () => {
       { role: 'assistant', content: 'hello' },
       { role: 'user', content: 'what does this do?' }
     ]);
+  });
+
+  it('sends a summary as a labelled user message, not as the assistant speaking', () => {
+    const summary = { id: 's', role: 'summary' as const, content: 'we chose zod', reasoning: '' };
+    const messages = toWireMessages({ ...REQUEST, history: [summary] }, 'be brief');
+
+    expect(messages[1].role).toBe('user');
+    expect(messages[1].content).toContain(SUMMARY_WIRE_PREFIX);
+    expect(messages[1].content).toContain('we chose zod');
+  });
+});
+
+describe('toCompactMessages', () => {
+  it('hands the messages over as a transcript under the compaction instructions', () => {
+    const messages = toCompactMessages(COMPACT_REQUEST);
+
+    expect(messages[0].role).toBe('system');
+    expect(messages[0].content).toContain(COMPACT_SYSTEM_PROMPT);
+    expect(messages[0].content).toContain('/repo');
+    expect(messages.slice(1, -1)).toEqual([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello' }
+    ]);
+    // Ends on a user turn: a transcript that stops on an assistant message is
+    // an invalid request for some providers.
+    expect(messages.at(-1)?.role).toBe('user');
   });
 });
 
@@ -214,6 +280,42 @@ describe('AgentService', () => {
     );
   });
 
+  it('reports the token usage the provider counted, so context can be measured', async () => {
+    const { emit, events, ended } = collector();
+    const usage = { promptTokens: 900, completionTokens: 100, totalTokens: 1000 };
+
+    new AgentService({
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream: async (req) => {
+        req.onDelta('an answer');
+        req.onUsage?.(usage);
+        return Promise.resolve();
+      }
+    }).send(REQUEST);
+    await ended;
+
+    expect(events.at(-1)).toEqual({
+      channel: IPC_CHANNELS.AGENT_STREAM_DONE,
+      payload: { streamId: 'stream-1', usage }
+    });
+  });
+
+  it('reports no usage rather than a zero when the provider sends none', async () => {
+    const { emit, events, ended } = collector();
+
+    new AgentService({
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream: vi.fn(async () => Promise.resolve())
+    }).send(REQUEST);
+    await ended;
+
+    expect(events.at(-1)?.payload).toEqual({ streamId: 'stream-1', usage: null });
+  });
+
   it('reports a missing key as a stream error rather than throwing', async () => {
     const { emit, events, ended } = collector();
 
@@ -248,6 +350,104 @@ describe('AgentService', () => {
       streamId: 'stream-2',
       message: 'No coding model selected'
     });
+  });
+
+  it('compacts by returning the finished summary in one piece', async () => {
+    const { emit, events, ended } = collector();
+
+    new AgentService({
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream: async (req) => {
+        req.onDelta('  They chose zod ');
+        req.onDelta('over casts.  ');
+        req.onUsage?.({ promptTokens: 500, completionTokens: 20, totalTokens: 520 });
+        return Promise.resolve();
+      }
+    }).compact(COMPACT_REQUEST);
+    await ended;
+
+    // Nothing streams to the pane: one event, carrying the whole summary.
+    expect(events).toEqual([
+      {
+        channel: IPC_CHANNELS.AGENT_COMPACT_DONE,
+        payload: {
+          streamId: 'compact-1',
+          summary: 'They chose zod over casts.',
+          usage: { promptTokens: 500, completionTokens: 20, totalTokens: 520 }
+        }
+      }
+    ]);
+  });
+
+  it('does not spend the configured thinking budget on a summary', async () => {
+    const { emit, ended } = collector();
+    const stream = vi.fn(async () => Promise.resolve());
+
+    new AgentService({
+      getSettings: () => ({
+        ...SETTINGS,
+        coding: { ...SETTINGS.coding, reasoningEffort: 'high', maxTokens: 64_000 }
+      }),
+      getApiKey: () => 'sk-or-test',
+      emit,
+      // An empty stream fails the compaction, which is fine: the request has
+      // already been made by then, and the request is what this asserts on.
+      stream
+    }).compact(COMPACT_REQUEST);
+    await ended;
+
+    expect(stream).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoning: null, maxTokens: 4096 })
+    );
+  });
+
+  it('fails rather than replacing a transcript with an empty summary', async () => {
+    const { emit, events, ended } = collector();
+
+    new AgentService({
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream: async (req) => {
+        req.onDelta('   \n ');
+        return Promise.resolve();
+      }
+    }).compact(COMPACT_REQUEST);
+    await ended;
+
+    expect(events).toEqual([
+      {
+        channel: IPC_CHANNELS.AGENT_STREAM_ERROR,
+        payload: { streamId: 'compact-1', message: 'The model returned an empty summary' }
+      }
+    ]);
+  });
+
+  it('leaves the transcript alone when a compaction is cancelled', async () => {
+    const { emit, events, ended } = collector();
+    const service = new AgentService({
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream: async () => {
+        service.cancel('compact-1');
+        await Promise.resolve();
+        throw new Error('The operation was aborted.');
+      }
+    });
+
+    service.compact(COMPACT_REQUEST);
+    await ended;
+
+    // Ends on the ordinary done channel, with no summary to apply.
+    expect(events).toEqual([
+      {
+        channel: IPC_CHANNELS.AGENT_STREAM_DONE,
+        payload: { streamId: 'compact-1', usage: null }
+      }
+    ]);
   });
 
   it('treats a cancel as a normal ending, keeping the partial reply', async () => {

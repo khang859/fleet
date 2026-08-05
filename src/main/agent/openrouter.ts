@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import type { AgentUsage } from '../../shared/agent-types';
 
 /**
  * Minimal streaming client for OpenRouter's chat completions endpoint - just
  * enough for one turn of the agent: send messages, receive content and
- * reasoning deltas. Tool calls, images and usage accounting are not here yet.
+ * reasoning deltas, and the token usage the last message carries. Tool calls
+ * and images are not here yet.
  */
 
 const COMPLETIONS_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -25,6 +27,8 @@ export type StreamRequest = {
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onReasoning: (text: string) => void;
+  /** Fires at most once, from the last message of the stream. */
+  onUsage?: (usage: AgentUsage) => void;
 };
 
 const chunkSchema = z.object({
@@ -36,13 +40,25 @@ const chunkSchema = z.object({
           .nullish()
       })
     )
+    .nullish(),
+  // OpenRouter puts usage on the final message, counted with the model's own
+  // tokenizer. It used to need asking for; it is now always sent.
+  usage: z
+    .object({
+      prompt_tokens: z.number(),
+      completion_tokens: z.number(),
+      total_tokens: z.number()
+    })
     .nullish()
 });
 
 const errorSchema = z.object({ error: z.object({ message: z.string() }) });
 
 /** What one SSE line carries: deltas, the end-of-stream marker, or nothing. */
-export type StreamLine = { content: string; reasoning: string } | 'done' | null;
+export type StreamLine =
+  | { content: string; reasoning: string; usage: AgentUsage | null }
+  | 'done'
+  | null;
 
 /**
  * Parse a single line of the SSE body. OpenRouter interleaves `: comment`
@@ -66,9 +82,21 @@ export function parseStreamLine(line: string): StreamLine {
   const parsed = chunkSchema.safeParse(json);
   if (!parsed.success) return null;
 
+  const raw = parsed.data.usage;
+  const usage: AgentUsage | null =
+    raw == null
+      ? null
+      : {
+          promptTokens: raw.prompt_tokens,
+          completionTokens: raw.completion_tokens,
+          totalTokens: raw.total_tokens
+        };
+
+  // The usage message carries no delta of its own on some providers, so it is
+  // read before the choices are checked rather than dropped with them.
   const delta = parsed.data.choices?.[0]?.delta;
-  if (!delta) return null;
-  return { content: delta.content ?? '', reasoning: delta.reasoning ?? '' };
+  if (!delta) return usage === null ? null : { content: '', reasoning: '', usage };
+  return { content: delta.content ?? '', reasoning: delta.reasoning ?? '', usage };
 }
 
 /** The error body OpenRouter returns on a non-2xx, or a bare status line. */
@@ -122,6 +150,7 @@ export async function streamCompletion(req: StreamRequest): Promise<void> {
       if (parsed === null) continue;
       if (parsed.content) req.onDelta(parsed.content);
       if (parsed.reasoning) req.onReasoning(parsed.reasoning);
+      if (parsed.usage) req.onUsage?.(parsed.usage);
     }
   }
 }

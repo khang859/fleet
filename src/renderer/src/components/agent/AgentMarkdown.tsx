@@ -14,10 +14,13 @@ const plugins = { code };
  */
 export function AgentMarkdown({
   children,
-  streaming
+  streaming,
+  className = 'text-sm leading-relaxed'
 }: {
   children: string;
   streaming: boolean;
+  /** Replaces the type scale, for the smaller muted places a summary appears in. */
+  className?: string;
 }): React.JSX.Element {
   return (
     <Streamdown
@@ -34,7 +37,7 @@ export function AgentMarkdown({
       // Model output is untrusted: only http/https/mailto survive, so a
       // javascript: or file: link can never reach the DOM.
       urlTransform={sanitizeMarkdownUrl}
-      className="fleet-markdown text-sm leading-relaxed"
+      className={`fleet-markdown ${className}`}
     >
       {children}
     </Streamdown>

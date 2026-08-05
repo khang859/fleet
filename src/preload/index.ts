@@ -143,6 +143,8 @@ import type {
 import type { NoteReadResult, NoteWriteResult } from '../shared/notes-types';
 import type {
   AgentCatalog,
+  AgentCompactDone,
+  AgentCompactRequest,
   AgentSendRequest,
   AgentStreamDelta,
   AgentStreamDone,
@@ -861,6 +863,7 @@ const fleetApi = {
     listModels: async (refresh = false): Promise<AgentCatalog> =>
       typedInvoke<AgentCatalog>(IPC_CHANNELS.AGENT_LIST_MODELS, refresh),
     send: (req: AgentSendRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_SEND, req),
+    compact: (req: AgentCompactRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_COMPACT, req),
     cancel: (streamId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_CANCEL, streamId),
     onStreamChunk: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_STREAM_CHUNK, cb),
@@ -869,7 +872,9 @@ const fleetApi = {
     onStreamDone: (cb: (p: AgentStreamDone) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_STREAM_DONE, cb),
     onStreamError: (cb: (p: AgentStreamError) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.AGENT_STREAM_ERROR, cb)
+      onChannel(IPC_CHANNELS.AGENT_STREAM_ERROR, cb),
+    onCompactDone: (cb: (p: AgentCompactDone) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_COMPACT_DONE, cb)
   },
 
   /**

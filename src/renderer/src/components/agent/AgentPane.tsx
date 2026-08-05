@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bot, SlidersHorizontal } from 'lucide-react';
 import { AgentThread } from './AgentThread';
 import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
+import { useAgentStore } from '../../store/agent-store';
 
 type AgentView = 'agent' | 'settings';
 
@@ -17,6 +18,14 @@ const TABS = [
  */
 export function AgentPane({ paneId, cwd }: { paneId: string; cwd: string }): React.JSX.Element {
   const [view, setView] = useState<AgentView>('agent');
+  const loadModels = useAgentStore((s) => s.loadModels);
+
+  // Not only for the settings screen: the catalog carries the context limits,
+  // and without them the pane cannot tell how full it is or compact on its own.
+  // Loading it is idempotent and cached in main, so opening a pane is cheap.
+  useEffect(() => {
+    void loadModels();
+  }, [loadModels]);
 
   return (
     <div className="flex h-full w-full flex-col bg-fleet-bg">

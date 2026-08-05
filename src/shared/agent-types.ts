@@ -69,6 +69,11 @@ export type AgentSettings = {
   image: AgentModelConfig;
   /** Replaces the built-in instructions. `null` ⇒ use the default below. */
   systemPrompt: string | null;
+  /**
+   * Fraction of the model's context window at which a transcript is compacted
+   * automatically. `null` ⇒ only ever compact when the user asks.
+   */
+  compactThreshold: number | null;
 };
 
 export const EMPTY_AGENT_MODEL_CONFIG: AgentModelConfig = {
@@ -84,7 +89,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   provider: 'openrouter',
   coding: { ...EMPTY_AGENT_MODEL_CONFIG, model: 'anthropic/claude-sonnet-4.5' },
   image: { ...EMPTY_AGENT_MODEL_CONFIG },
-  systemPrompt: null
+  systemPrompt: null,
+  compactThreshold: 0.8
 };
 
 /**
@@ -152,10 +158,26 @@ export type AgentCatalog = {
 
 export type AgentMessage = {
   id: string;
-  role: 'user' | 'assistant';
+  /**
+   * `summary` is what compaction leaves behind: one message standing in for the
+   * turns it replaced. It is a distinct role because it is neither side of the
+   * conversation, and rendering it as the assistant's own words would be a lie.
+   */
+  role: 'user' | 'assistant' | 'summary';
   content: string;
   /** Assistant only: the reasoning channel, when the model streams one. */
   reasoning: string;
+};
+
+/**
+ * What a turn cost, counted by the model's own tokenizer and reported by
+ * OpenRouter in the last message of the stream. Absent when a provider does not
+ * send it, which is why nothing here may depend on having it.
+ */
+export type AgentUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
 };
 
 export type AgentSendRequest = {
@@ -172,7 +194,21 @@ export type AgentSendRequest = {
   text: string;
 };
 
+/**
+ * Ask the model to fold `messages` into one summary. Compaction runs through
+ * the same client as a turn, but nothing is streamed to the pane: a summary
+ * appearing word by word is noise, so only the finished text comes back.
+ */
+export type AgentCompactRequest = {
+  streamId: string;
+  cwd: string;
+  /** The older messages being replaced. The tail kept verbatim stays in the pane. */
+  messages: AgentMessage[];
+};
+
+export type AgentCompactDone = { streamId: string; summary: string; usage: AgentUsage | null };
+
 /** Every stream event carries its request's id, so panes can tell theirs apart. */
 export type AgentStreamDelta = { streamId: string; delta: string };
-export type AgentStreamDone = { streamId: string };
+export type AgentStreamDone = { streamId: string; usage: AgentUsage | null };
 export type AgentStreamError = { streamId: string; message: string };

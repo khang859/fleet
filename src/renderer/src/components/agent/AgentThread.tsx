@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Square, TriangleAlert } from 'lucide-react';
+import { ArrowUp, FoldVertical, Square, TriangleAlert } from 'lucide-react';
 import type { AgentMessage } from '../../../../shared/agent-types';
+import { canCompact } from '../../../../shared/agent-context';
 import { AgentMarkdown } from './AgentMarkdown';
+import { AgentContextMeter } from './AgentContextMeter';
 import { useAgentStore } from '../../store/agent-store';
 import { useSettingsStore } from '../../store/settings-store';
 import { shortenPath } from '../../lib/shorten-path';
@@ -14,17 +16,22 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
   const thread = useAgentStore((s) => s.threads[paneId]);
   const send = useAgentStore((s) => s.send);
   const cancel = useAgentStore((s) => s.cancel);
-  const model = useSettingsStore((s) => s.settings?.ai.agent.coding.model ?? null);
+  const compact = useAgentStore((s) => s.compact);
+  const catalog = useAgentStore((s) => s.catalog);
+  const agent = useSettingsStore((s) => s.settings?.ai.agent ?? null);
+  const model = agent?.coding.model ?? null;
 
   const messages = thread?.messages ?? [];
+  const compacting = (thread?.pendingCompact ?? null) !== null;
   const streaming = (thread?.streamId ?? null) !== null;
+  const contextTokens = thread?.contextTokens ?? null;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       {messages.length === 0 ? (
         <EmptyState cwd={cwd} />
       ) : (
-        <Transcript messages={messages} streaming={streaming} />
+        <Transcript messages={messages} streaming={streaming && !compacting} />
       )}
 
       {thread?.error != null && (
@@ -32,6 +39,17 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
           <TriangleAlert size={13} className="mt-px shrink-0" />
           <span>{thread.error}</span>
         </div>
+      )}
+
+      {contextTokens !== null && (
+        <AgentContextMeter
+          used={contextTokens}
+          limit={catalog?.models.find((m) => m.id === model)?.contextLimit ?? null}
+          threshold={agent?.compactThreshold ?? null}
+          compacting={compacting}
+          canCompact={!streaming && canCompact(messages)}
+          onCompact={() => compact(paneId)}
+        />
       )}
 
       <Composer
@@ -93,9 +111,9 @@ function Transcript({
 
 /**
  * User turns are a bubble, the agent's answer is flat on the page - the reply is
- * the content, not one side of a conversation. Only the answer is Markdown; what
- * the user typed and the reasoning channel stay verbatim, since neither is
- * written to be formatted.
+ * the content, not one side of a conversation. Model prose is Markdown, whether
+ * it is an answer or a summary; what the user typed and the reasoning channel
+ * stay verbatim, since neither is written to be formatted.
  */
 function Message({
   message,
@@ -104,6 +122,7 @@ function Message({
   message: AgentMessage;
   streaming: boolean;
 }): React.JSX.Element {
+  if (message.role === 'summary') return <SummaryCard summary={message.content} />;
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -123,6 +142,41 @@ function Message({
       {message.content !== '' && (
         <div className="text-fleet-text">
           <AgentMarkdown streaming={streaming}>{message.content}</AgentMarkdown>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What is left of the messages compaction replaced. Collapsed by default: it is
+ * background the model reads, not something the user should have to scroll
+ * past, but hiding it entirely would mean the transcript quietly lost turns.
+ */
+function SummaryCard({ summary }: { summary: string }): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-dashed border-fleet-border px-3 py-2">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 text-left text-[11px] uppercase tracking-wider text-fleet-text-subtle transition-colors hover:text-fleet-text-muted focus-ring"
+      >
+        <FoldVertical size={12} className="shrink-0" />
+        Earlier conversation compacted
+        <span className="ml-auto normal-case tracking-normal">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="mt-2">
+          {/* The summary is model prose like any other, lists and quotes included. */}
+          <AgentMarkdown
+            streaming={false}
+            className="text-xs leading-relaxed text-fleet-text-muted"
+          >
+            {summary}
+          </AgentMarkdown>
         </div>
       )}
     </div>
