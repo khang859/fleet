@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Square, TriangleAlert } from 'lucide-react';
 import type { AgentMessage } from '../../../../shared/agent-types';
+import { AgentMarkdown } from './AgentMarkdown';
 import { useAgentStore } from '../../store/agent-store';
 import { useSettingsStore } from '../../store/settings-store';
 import { shortenPath } from '../../lib/shorten-path';
@@ -76,8 +77,12 @@ function Transcript({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5">
-        {messages.map((message) => (
-          <Message key={message.id} message={message} />
+        {messages.map((message, i) => (
+          <Message
+            key={message.id}
+            message={message}
+            streaming={streaming && i === messages.length - 1}
+          />
         ))}
         {awaitingFirstToken && <span className="text-sm text-fleet-text-muted">Thinking…</span>}
         <div ref={endRef} />
@@ -88,10 +93,17 @@ function Transcript({
 
 /**
  * User turns are a bubble, the agent's answer is flat on the page - the reply is
- * the content, not one side of a conversation. Text is rendered verbatim;
- * markdown is its own step.
+ * the content, not one side of a conversation. Only the answer is Markdown; what
+ * the user typed and the reasoning channel stay verbatim, since neither is
+ * written to be formatted.
  */
-function Message({ message }: { message: AgentMessage }): React.JSX.Element {
+function Message({
+  message,
+  streaming
+}: {
+  message: AgentMessage;
+  streaming: boolean;
+}): React.JSX.Element {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -109,8 +121,8 @@ function Message({ message }: { message: AgentMessage }): React.JSX.Element {
         </div>
       )}
       {message.content !== '' && (
-        <div className="text-sm leading-relaxed whitespace-pre-wrap text-fleet-text">
-          {message.content}
+        <div className="text-fleet-text">
+          <AgentMarkdown streaming={streaming}>{message.content}</AgentMarkdown>
         </div>
       )}
     </div>

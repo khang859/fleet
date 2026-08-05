@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
-import { DEFAULT_AGENT_SETTINGS, type AgentSendRequest } from '../../../shared/agent-types';
+import {
+  buildSystemPrompt,
+  DEFAULT_AGENT_SETTINGS,
+  DEFAULT_AGENT_SYSTEM_PROMPT,
+  type AgentSendRequest
+} from '../../../shared/agent-types';
 import { AgentService, toReasoningParam, toWireMessages } from '../agent-service';
 import { parseStreamLine, type StreamRequest } from '../openrouter';
 
@@ -94,12 +99,36 @@ describe('toReasoningParam', () => {
   });
 });
 
-describe('toWireMessages', () => {
-  it('puts a system prompt naming the folder ahead of the transcript', () => {
-    const messages = toWireMessages(REQUEST);
+describe('buildSystemPrompt', () => {
+  it('uses the built-in instructions, which ask for Markdown', () => {
+    const prompt = buildSystemPrompt('/repo', null);
 
-    expect(messages[0].role).toBe('system');
-    expect(messages[0].content).toContain('/repo');
+    expect(prompt).toContain(DEFAULT_AGENT_SYSTEM_PROMPT);
+    expect(prompt).toContain('Markdown');
+  });
+
+  it('replaces the instructions with the user override', () => {
+    const prompt = buildSystemPrompt('/repo', 'Answer only in haiku.');
+
+    expect(prompt).toContain('Answer only in haiku.');
+    expect(prompt).not.toContain(DEFAULT_AGENT_SYSTEM_PROMPT);
+  });
+
+  it('keeps the working folder whatever the prompt says', () => {
+    expect(buildSystemPrompt('/repo', null)).toContain('/repo');
+    expect(buildSystemPrompt('/repo', 'Answer only in haiku.')).toContain('/repo');
+  });
+
+  it('treats a blank override as no override, so the field can be cleared', () => {
+    expect(buildSystemPrompt('/repo', '   \n ')).toContain(DEFAULT_AGENT_SYSTEM_PROMPT);
+  });
+});
+
+describe('toWireMessages', () => {
+  it('puts the system prompt ahead of the transcript', () => {
+    const messages = toWireMessages(REQUEST, 'be brief');
+
+    expect(messages[0]).toEqual({ role: 'system', content: 'be brief' });
     expect(messages.slice(1)).toEqual([
       { role: 'user', content: 'hi' },
       { role: 'assistant', content: 'hello' },
@@ -156,6 +185,31 @@ describe('AgentService', () => {
         maxTokens: 8192,
         temperature: 0.2,
         reasoning: { effort: 'high' }
+      })
+    );
+  });
+
+  it('sends the configured system prompt instead of the default', async () => {
+    const { emit, ended } = collector();
+    const stream = vi.fn(async () => Promise.resolve());
+
+    new AgentService({
+      getSettings: () => ({ ...SETTINGS, systemPrompt: 'Answer only in haiku.' }),
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send(REQUEST);
+    await ended;
+
+    expect(stream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          {
+            role: 'system',
+            // The override, then the folder Fleet always appends.
+            content: expect.stringMatching(/Answer only in haiku[\s\S]*\/repo/)
+          }
+        ])
       })
     );
   });

@@ -299,7 +299,7 @@ body,
   }
   /* Streaming caret and thinking dots: hold static at full opacity rather than
      blink/wave. The caret still shows (no animation); dots stay visible. */
-  .chat-markdown [style*='--streamdown-caret']::after,
+  .fleet-markdown [style*='--streamdown-caret']::after,
   .chat-think-dot {
     animation: none !important;
   }
@@ -320,17 +320,17 @@ body,
   }
 }
 
-/* Chat code blocks: cap very long blocks so a huge paste can't dominate the
+/* Rendered-markdown code blocks: cap very long blocks so a huge paste can't dominate the
    viewport. The Streamdown header is a sibling above <pre>, so it stays put
    while the code body scrolls (both axes; code never wraps). */
-.chat-markdown pre {
+.fleet-markdown pre {
   max-height: 480px;
   overflow: auto;
 }
 
-/* Zebra-stripe chat tables — Streamdown ships row dividers only. Uses the
+/* Zebra-stripe markdown tables — Streamdown ships row dividers only. Uses the
    bridged --muted token so it stays subtle in both light and dark themes. */
-.chat-markdown tbody tr:nth-child(even) {
+.fleet-markdown tbody tr:nth-child(even) {
   background: color-mix(in srgb, var(--muted) 40%, transparent);
 }
 
@@ -347,7 +347,7 @@ body,
     opacity: 0;
   }
 }
-.chat-markdown [style*='--streamdown-caret']::after {
+.fleet-markdown [style*='--streamdown-caret']::after {
   animation: chat-caret-blink 1s steps(1, jump-none) infinite;
 }
 
@@ -382,10 +382,10 @@ input[type='checkbox']:active:not(:disabled) {
   .chat-actions {
     opacity: 1 !important;
   }
-  .chat-markdown table,
-  .chat-markdown th,
-  .chat-markdown td,
-  .chat-markdown blockquote {
+  .fleet-markdown table,
+  .fleet-markdown th,
+  .fleet-markdown td,
+  .fleet-markdown blockquote {
     border-color: var(--fleet-border-strong);
   }
 }

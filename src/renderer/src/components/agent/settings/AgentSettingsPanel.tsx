@@ -9,6 +9,7 @@ import { useSettingsStore } from '../../../store/settings-store';
 import { SectionShell, FieldGroup, Field } from '../../chat/settings/primitives';
 import { SecretInput } from '../../chat/settings/SecretInput';
 import { AgentRoleSettings } from './AgentRoleSettings';
+import { SystemPromptField } from './SystemPromptField';
 
 function validateOpenRouterKey(key: string): string | null {
   if (/\s/.test(key)) return 'Keys cannot contain spaces.';
@@ -79,6 +80,13 @@ export function AgentSettingsPanel(): React.JSX.Element {
             onChange={(patch) => patchRole('image', patch)}
             allowNone
             noneLabel="None - image generation off"
+          />
+        </FieldGroup>
+
+        <FieldGroup title="Instructions">
+          <SystemPromptField
+            value={agent.systemPrompt}
+            onChange={(systemPrompt) => void updateSettings({ ai: { agent: { systemPrompt } } })}
           />
         </FieldGroup>
 

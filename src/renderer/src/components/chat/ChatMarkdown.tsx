@@ -1,6 +1,6 @@
 import { Streamdown } from 'streamdown';
 import { code } from '@streamdown/code';
-import { sanitizeMarkdownUrl } from './markdown-url';
+import { sanitizeMarkdownUrl } from '../../lib/markdown-url';
 
 /** Feature plugins for chat markdown. Code highlighting only — math/mermaid/cjk
  *  are intentionally omitted to keep the bundle lean. */
@@ -46,7 +46,7 @@ export function ChatMarkdown({ children, streaming = false }: Props): React.JSX.
       // External links open in the system browser via the main-process
       // will-navigate / setWindowOpenHandler guards (never navigate the window).
       urlTransform={sanitizeMarkdownUrl}
-      className="chat-markdown text-sm"
+      className="fleet-markdown text-sm"
     >
       {children}
     </Streamdown>

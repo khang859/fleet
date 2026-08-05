@@ -67,6 +67,8 @@ export type AgentSettings = {
   coding: AgentModelConfig;
   /** The model behind image generation. `model: null` ⇒ image generation off. */
   image: AgentModelConfig;
+  /** Replaces the built-in instructions. `null` ⇒ use the default below. */
+  systemPrompt: string | null;
 };
 
 export const EMPTY_AGENT_MODEL_CONFIG: AgentModelConfig = {
@@ -81,8 +83,33 @@ export const EMPTY_AGENT_MODEL_CONFIG: AgentModelConfig = {
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   provider: 'openrouter',
   coding: { ...EMPTY_AGENT_MODEL_CONFIG, model: 'anthropic/claude-sonnet-4.5' },
-  image: { ...EMPTY_AGENT_MODEL_CONFIG }
+  image: { ...EMPTY_AGENT_MODEL_CONFIG },
+  systemPrompt: null
 };
+
+/**
+ * The instructions the agent runs with unless the user replaces them. The
+ * Markdown paragraph is not decoration: the transcript renders Markdown, so a
+ * model answering in plain prose is the one that looks wrong.
+ */
+export const DEFAULT_AGENT_SYSTEM_PROMPT = [
+  "You are Fleet's coding agent.",
+  '',
+  'You have no tools yet, so you cannot read or change files. Answer from what the user tells you, and say plainly when you would need to see the code rather than guessing at what it contains.',
+  '',
+  'Write your replies in GitHub-flavoured Markdown. Put code in fenced blocks tagged with their language, wrap file paths and identifiers in backticks, and reach for a short list or table wherever it reads better than a paragraph.'
+].join('\n');
+
+/**
+ * The system message for a turn. The working folder is appended by Fleet rather
+ * than left to the prompt text, so a custom prompt cannot accidentally drop the
+ * one fact the agent has no other way to learn.
+ */
+export function buildSystemPrompt(cwd: string, override: string | null): string {
+  const custom = override?.trim() ?? '';
+  const base = custom === '' ? DEFAULT_AGENT_SYSTEM_PROMPT : custom;
+  return `${base}\n\nWorking folder: ${cwd}`;
+}
 
 /*
  * Fallbacks for the models that publish no default of their own. Every value

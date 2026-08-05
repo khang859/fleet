@@ -7,6 +7,7 @@ import type {
   AgentStreamDone,
   AgentStreamError
 } from '../../shared/agent-types';
+import { buildSystemPrompt } from '../../shared/agent-types';
 import { streamCompletion, type AgentWireMessage, type ReasoningParam } from './openrouter';
 
 /**
@@ -25,15 +26,6 @@ type Deps = {
   stream?: typeof streamCompletion;
 };
 
-function systemPrompt(cwd: string): string {
-  return [
-    "You are Fleet's coding agent, working in the folder " + cwd + '.',
-    'You have no tools yet, so you cannot read or change files.',
-    'Answer from what the user tells you, and say plainly when you would need to',
-    'see the code rather than guessing at what it contains.'
-  ].join('\n');
-}
-
 /**
  * The reasoning parameter this config asks for, in the one form the user set.
  * All unset means no parameter at all, so the model's own default applies.
@@ -46,9 +38,9 @@ export function toReasoningParam(config: AgentModelConfig): ReasoningParam | nul
 }
 
 /** Transcript plus the new message, as the wire wants it. */
-export function toWireMessages(req: AgentSendRequest): AgentWireMessage[] {
+export function toWireMessages(req: AgentSendRequest, systemPrompt: string): AgentWireMessage[] {
   return [
-    { role: 'system', content: systemPrompt(req.cwd) },
+    { role: 'system', content: systemPrompt },
     ...req.history.map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: req.text }
   ];
@@ -81,14 +73,15 @@ export class AgentService {
     try {
       const apiKey = this.deps.getApiKey();
       if (!apiKey) throw new Error('No OpenRouter API key configured');
-      const config = this.deps.getSettings().coding;
+      const settings = this.deps.getSettings();
+      const config = settings.coding;
       if (config.model === null) throw new Error('No coding model selected');
 
       const stream = this.deps.stream ?? streamCompletion;
       await stream({
         apiKey,
         model: config.model,
-        messages: toWireMessages(req),
+        messages: toWireMessages(req, buildSystemPrompt(req.cwd, settings.systemPrompt)),
         maxTokens: config.maxTokens,
         temperature: config.temperature,
         reasoning: toReasoningParam(config),
