@@ -102,6 +102,7 @@ function Transcript({
   streaming: boolean;
 }): React.JSX.Element {
   const endRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const last = messages.at(-1);
 
   // Follow the stream. Keyed on the growing text so every delta scrolls.
@@ -109,9 +110,32 @@ function Transcript({
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [messages.length, last?.parts, last?.reasoning]);
 
+  // A reply keeps growing after React has finished with it: a code block is
+  // highlighted asynchronously and lands taller than the space held for it,
+  // which is enough to push the end of the answer below the fold - and an
+  // answer that finishes on a code block is most of them. So the tail follows
+  // the content itself rather than the render that started it.
+  useEffect(() => {
+    const content = contentRef.current;
+    if (content === null) return;
+
+    let height = content.getBoundingClientRect().height;
+    const observer = new ResizeObserver(() => {
+      const grown = content.getBoundingClientRect().height;
+      if (grown <= height) {
+        height = grown;
+        return;
+      }
+      height = grown;
+      endRef.current?.scrollIntoView({ block: 'end' });
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5">
+      <div ref={contentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5">
         {messages.map((message, i) => (
           <Message
             key={message.id}
