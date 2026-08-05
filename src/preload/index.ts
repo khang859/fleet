@@ -145,6 +145,7 @@ import type {
   AgentCatalog,
   AgentCompactDone,
   AgentCompactRequest,
+  AgentHandOff,
   AgentSendRequest,
   AgentStreamDelta,
   AgentStreamDone,
@@ -881,6 +882,8 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.AGENT_TOOL_START, cb),
     onToolEnd: (cb: (p: AgentToolEvent) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_TOOL_END, cb),
+    onHandOff: (cb: (p: AgentHandOff) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_HAND_OFF, cb),
     /** Fire-and-forget: a failed write must not stall the turn that caused it. */
     appendSession: (req: AgentSessionAppend): void =>
       ipcRenderer.send(IPC_CHANNELS.AGENT_SESSION_APPEND, req),

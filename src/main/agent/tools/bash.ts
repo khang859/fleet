@@ -32,6 +32,7 @@ export async function runBash(args: BashArgs, ctx: AgentToolContext): Promise<Ag
     text: [
       headline(run, timeoutMs),
       ...instead(args.command),
+      ...askedForATerminal(run.output),
       OUTPUT_SEPARATOR,
       run.output === '' ? 'No output.' : run.output
     ].join('\n'),
@@ -256,6 +257,26 @@ function instead(command: string): string[] {
 
   return [
     `The shell was the long way round here: ${pairs.join(', ')}. Those tools respect the ignore rules, number their lines and stop at a size worth reading - use them for looking at code, and the shell for what only a shell can do.`
+  ];
+}
+
+/**
+ * How a command says it wanted a person.
+ *
+ * Closing stdin means these fail in milliseconds instead of hanging until the
+ * timeout, which is the right trade - but the model is left holding an error
+ * and no idea what to do with it, and the improvisation that follows is the
+ * dangerous one: a password piped into `sudo -S`, a token written to a file to
+ * be `cat` into a prompt. So the way out is named at the moment it is needed.
+ */
+const WANTED_A_TERMINAL =
+  /a terminal is required|could not read (Username|Password)|Device not configured|no tty present|not a (tty|terminal)|Inappropriate ioctl for device|input device is not a TTY/i;
+
+function askedForATerminal(output: string): string[] {
+  if (!WANTED_A_TERMINAL.test(output)) return [];
+
+  return [
+    'That command wanted a terminal, and this one has nothing to type into it. Hand it to the user with the terminal tool rather than trying to answer the prompt yourself - never pipe a password into a command, and never put a secret on a command line.'
   ];
 }
 

@@ -109,6 +109,8 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT = [
   '',
   '`bash` runs a command in the working folder, and it is the last tool to reach for rather than the first. Use it for what only a shell can do: running tests, builds, linters, git, package managers, scripts. Do not use it to look at code - `read`, `glob` and `grep` do that better than `cat`, `find` and `grep` do there, and they keep the output to a size worth reading. Each command runs on its own, so a `cd` is gone by the next call; chain with `&&` when it matters.',
   '',
+  'Nothing can be typed into that shell, so a command that needs a person - a login, a password, an interactive picker, a dev server they should watch - goes to `terminal` instead. It types the command into a terminal beside you and leaves it for the user to run. Never try to answer a prompt yourself, and never put a secret on a command line.',
+  '',
   'A change is written to disk the moment you make it, a command runs the moment you call it, and there is no confirmation step. So do what was asked and no more, and stop to ask when the request has more than one reasonable reading.',
   '',
   'Every change is shown to the user as a diff, so do not paste the new code back into your reply. Say what you changed and why.',
@@ -269,6 +271,14 @@ export type AgentCompactDone = { streamId: string; summary: string; usage: Agent
  * half-updated row.
  */
 export type AgentToolEvent = { streamId: string; call: AgentToolCall };
+
+/**
+ * A command for the user to run, on its way to a terminal pane.
+ *
+ * It carries the turn rather than the pane: main knows which stream asked, and
+ * the renderer is the only side that knows which pane that stream belongs to.
+ */
+export type AgentHandOff = { streamId: string; command: string };
 
 /** Every stream event carries its request's id, so panes can tell theirs apart. */
 export type AgentStreamDelta = { streamId: string; delta: string };

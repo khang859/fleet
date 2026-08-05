@@ -16,7 +16,15 @@ import { z } from 'zod';
  * result the model believes is complete is worse than no result at all.
  */
 
-export const AGENT_TOOL_NAMES = ['read', 'glob', 'grep', 'edit', 'write', 'bash'] as const;
+export const AGENT_TOOL_NAMES = [
+  'read',
+  'glob',
+  'grep',
+  'edit',
+  'write',
+  'bash',
+  'terminal'
+] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
 /**
@@ -132,12 +140,22 @@ export const BashArgs = z.object({
   timeoutMs: z.number().int().min(BASH_MIN_TIMEOUT_MS).max(BASH_MAX_TIMEOUT_MS).optional()
 });
 
+export const TerminalArgs = z.object({
+  command: z
+    .string()
+    .min(1)
+    .refine((command) => !command.includes('\n'), {
+      message: 'has to be one line - it is typed into a terminal for someone to read and run'
+    })
+});
+
 export type ReadArgs = z.infer<typeof ReadArgs>;
 export type GlobArgs = z.infer<typeof GlobArgs>;
 export type GrepArgs = z.infer<typeof GrepArgs>;
 export type EditArgs = z.infer<typeof EditArgs>;
 export type WriteArgs = z.infer<typeof WriteArgs>;
 export type BashArgs = z.infer<typeof BashArgs>;
+export type TerminalArgs = z.infer<typeof TerminalArgs>;
 
 /** The JSON Schema for one tool, as the completions API wants it. */
 export type AgentToolSpec = {
@@ -188,6 +206,14 @@ const BASH_DESCRIPTION = [
   'Use the shell for what only the shell can do - running tests, builds, linters, git, package managers and scripts.',
   'Each command runs on its own, so a `cd` or an exported variable is gone by the next call; chain with `&&` in one command when that matters.',
   `Nothing can be typed into it, so avoid anything interactive. Output is cut at ${BASH_MAX_OUTPUT_CHARS.toLocaleString('en-US')} characters and the command is killed after ${BASH_DEFAULT_TIMEOUT_MS / 1000} seconds unless \`timeoutMs\` says otherwise.`
+].join(' ');
+
+const TERMINAL_DESCRIPTION = [
+  'Hand a command to the user to run in a terminal, for the ones you cannot run yourself.',
+  'Use it when a command needs a person at a real terminal: a login, a password or passphrase prompt, an interactive picker, a confirmation you cannot answer. Use it too for something the user should watch rather than wait on, like a dev server.',
+  'The command is typed into a terminal beside this pane and left unrun, so they read it before it happens and press Enter themselves.',
+  'Nothing comes back here. Say what the command is for and what they will be asked, and check the outcome yourself with `bash` once they say it is done.',
+  'Never work around a prompt instead: no piping a password into `sudo -S`, and no secret on a command line.'
 ].join(' ');
 
 /**
@@ -319,6 +345,24 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
         additionalProperties: false
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'terminal',
+      description: TERMINAL_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: 'The command line to put in front of the user. One line.'
+          }
+        },
+        required: ['command'],
+        additionalProperties: false
+      }
+    }
   }
 ];
 
@@ -361,6 +405,15 @@ export type AgentToolContext = {
    * "stop" has to mean the command stops rather than that the pane looks away.
    */
   signal: AbortSignal;
+  /**
+   * Put a command in front of the user, in a terminal beside the pane.
+   *
+   * The way out of every command the agent's own shell cannot finish - a login,
+   * a password, a picker - because the pane it runs in has no terminal and
+   * nobody to answer. One way only: what happens there is between the command
+   * and the user, and the model finds out by asking afterwards.
+   */
+  handOff: (command: string) => void;
 };
 
 /** A finished tool run: what goes to the model, and what the pane shows. */

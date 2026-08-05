@@ -2,6 +2,7 @@ import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type {
   AgentCompactDone,
   AgentCompactRequest,
+  AgentHandOff,
   AgentMessage,
   AgentModelConfig,
   AgentSendRequest,
@@ -290,7 +291,11 @@ export class AgentService {
         const done = await this.runTool(streamId, call, {
           cwd: req.cwd,
           threadId: req.threadId,
-          signal: ctx.signal
+          signal: ctx.signal,
+          // Which pane to open the terminal beside is a question only the
+          // renderer can answer, so the turn is what goes over the wire.
+          handOff: (command) =>
+            emit(IPC_CHANNELS.AGENT_HAND_OFF, { streamId, command } satisfies AgentHandOff)
         });
         messages.push({
           role: 'tool',

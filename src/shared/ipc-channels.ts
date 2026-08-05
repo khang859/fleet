@@ -346,6 +346,10 @@ export const IPC_CHANNELS = {
   AGENT_STREAM_ERROR: 'agent:stream-error',
   AGENT_TOOL_START: 'agent:tool-start',
   AGENT_TOOL_END: 'agent:tool-end',
+  // A command the agent cannot run itself - a login, a password prompt, an
+  // interactive picker - passed to the renderer to type into a terminal pane
+  // beside the agent, where there is a person and a real tty.
+  AGENT_HAND_OFF: 'agent:hand-off',
   // The thread on disk: an append-only event log per session, replayed when a
   // pane opens. The renderer decides what happened; main only writes it down.
   AGENT_SESSION_APPEND: 'agent:session-append',

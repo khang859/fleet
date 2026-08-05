@@ -64,8 +64,74 @@ const terminalRegistry = new Map<string, Terminal>();
 /** Panes currently being restarted — onExit handler should skip tab close for these. */
 export const restartingPanes = new Set<string>();
 
+/** Commands typed into a pane whose shell is not ready to be typed into yet. */
+const drafts = new Map<string, string>();
+
+/** Panes whose shell has printed something, and so has a prompt to type at. */
+const shellSpoke = new Set<string>();
+
+/**
+ * How long after the shell's first output to type. The prompt is on screen by
+ * then, but zsh may still be a beat away from handing the keyboard to its line
+ * editor, and anything arriving in that gap is echoed by the tty as well as
+ * redrawn by the editor - the same command twice, once above the prompt.
+ */
+const DRAFT_SETTLE_MS = 50;
+
+/**
+ * How long to wait for a shell that says nothing at all. A pane remounted onto
+ * a PTY that has been sitting at its prompt since before the reload has no
+ * output left to give, and waiting on it forever would drop the command
+ * silently - far worse than typing into a prompt that was already there.
+ */
+const DRAFT_WAIT_MS = 2_000;
+
+/**
+ * Type a command into a pane's shell and leave it there, unrun.
+ *
+ * The agent hands work to the user this way, so the command has to arrive
+ * whether the pane has been running for an hour or was split into existence a
+ * moment ago - which is why a pane whose shell has yet to say anything keeps
+ * the text until it does. A PTY exists well before the shell in it is ready:
+ * typing at a shell that has not drawn its prompt is typing into the tty's own
+ * line buffer, which echoes it and then hands it over to be drawn again.
+ *
+ * Written as plain keystrokes rather than as a bracketed paste: the escape
+ * sequence only means anything once the shell has enabled it, and arriving a
+ * fraction early would leave `[200~` sitting on the prompt.
+ */
+export function draftInto(paneId: string, command: string): void {
+  drafts.set(paneId, command);
+  if (shellSpoke.has(paneId)) flushDraft(paneId);
+  else setTimeout(() => shellIsReady(paneId), DRAFT_WAIT_MS);
+}
+
+/** Told on the first output of a pane's shell: there is a prompt to type at. */
+export function shellIsReady(paneId: string): void {
+  if (shellSpoke.has(paneId)) return;
+  shellSpoke.add(paneId);
+  setTimeout(() => flushDraft(paneId), DRAFT_SETTLE_MS);
+}
+
+/**
+ * End of line, then kill the line: what every shell's line editor means by
+ * "start again". A handed-over command that is still sitting on the prompt
+ * unrun is the normal case, not the exception - the user has not got to it yet
+ * - and typing the next one onto the end of it would leave the two spliced
+ * together into a command neither the agent nor the user asked for.
+ */
+const CLEAR_LINE = '\x05\x15';
+
+function flushDraft(paneId: string): void {
+  const command = drafts.get(paneId);
+  if (command === undefined) return;
+  drafts.delete(paneId);
+  window.fleet.pty.input({ paneId, data: CLEAR_LINE + command });
+}
+
 export function clearCreatedPty(paneId: string): void {
   createdPtys.delete(paneId);
+  shellSpoke.delete(paneId);
 }
 
 /** Pre-mark a pane as having a PTY (created by main process, e.g. crew deployments). */
@@ -86,6 +152,7 @@ export async function restartPane(
   restartingPanes.add(paneId);
   window.fleet.pty.kill(paneId);
   createdPtys.delete(paneId);
+  shellSpoke.delete(paneId);
 
   // Clear xterm buffer so the user sees a fresh terminal
   const term = terminalRegistry.get(paneId);
@@ -374,6 +441,7 @@ function createTerminal(
 
   log.debug('registerPaneData', { paneId: options.paneId });
   const ipcUnsubscribe = window.fleet.pty.registerPaneData(options.paneId, (data) => {
+    shellIsReady(options.paneId);
     if (!attachResolved) {
       pendingLiveData.push(data);
       return;

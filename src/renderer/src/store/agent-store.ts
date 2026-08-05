@@ -11,6 +11,8 @@ import {
   splitForCompaction
 } from '../../../shared/agent-context';
 import { useSettingsStore } from './settings-store';
+import { useWorkspaceStore } from './workspace-store';
+import { draftInto } from '../hooks/use-terminal';
 import { createLogger } from '../logger';
 
 const log = createLogger('store:agent');
@@ -323,6 +325,22 @@ function recordToolCall(streamId: string, call: AgentToolCall): void {
   });
 }
 
+/**
+ * Put a command the agent cannot run in front of the user.
+ *
+ * Main knows the turn and the renderer knows the panes, so the two halves meet
+ * here: the turn says which agent pane asked, the workspace says which terminal
+ * is beside it, and the command is typed there for the user to run.
+ */
+function handOff(streamId: string, command: string): void {
+  const found = threadOf(streamId);
+  if (found === null) return;
+  const paneId = useWorkspaceStore.getState().terminalBeside(found.paneId);
+  if (paneId === null) return;
+  log.debug('handOff', { paneId, command });
+  draftInto(paneId, command);
+}
+
 function endTurn(streamId: string, error: string | null, usage: AgentUsage | null): void {
   const found = threadOf(streamId);
   if (found === null) return;
@@ -435,6 +453,7 @@ window.fleet.agent.onStreamError(({ streamId, message }) => {
   log.warn('stream error', { message });
   endTurn(streamId, message, null);
 });
+window.fleet.agent.onHandOff(({ streamId, command }) => handOff(streamId, command));
 window.fleet.agent.onToolStart(({ streamId, call }) => recordToolCall(streamId, call));
 window.fleet.agent.onToolEnd(({ streamId, call }) => recordToolCall(streamId, call));
 window.fleet.agent.onCompactDone(({ streamId, summary }) => applySummary(streamId, summary));

@@ -11,6 +11,7 @@ import type {
 } from '../../../../shared/agent-session';
 import type * as AgentStore from '../agent-store';
 import type * as SettingsStore from '../settings-store';
+import type * as WorkspaceStore from '../workspace-store';
 
 /**
  * Compaction, from the pane's side: when it fires on its own, when it must not,
@@ -151,8 +152,10 @@ beforeEach(async () => {
       onStreamError: listen(IPC_CHANNELS.AGENT_STREAM_ERROR),
       onCompactDone: listen(IPC_CHANNELS.AGENT_COMPACT_DONE),
       onToolStart: listen(IPC_CHANNELS.AGENT_TOOL_START),
-      onToolEnd: listen(IPC_CHANNELS.AGENT_TOOL_END)
+      onToolEnd: listen(IPC_CHANNELS.AGENT_TOOL_END),
+      onHandOff: listen(IPC_CHANNELS.AGENT_HAND_OFF)
     },
+    pty: { input: vi.fn() },
     chat: {
       hasKey: vi.fn().mockResolvedValue(true),
       setKey: vi.fn().mockResolvedValue(undefined),
@@ -676,5 +679,52 @@ describe('tool calls', () => {
         parts: [{ type: 'tool', call: expect.objectContaining({ summary: '1 line' }) }]
       })
     });
+  });
+});
+
+describe('handing a command to the user', () => {
+  /** The pane's own tab, since the terminal has to open in that one. */
+  const agentTab = {
+    id: 'tab-agent',
+    label: 'repo',
+    labelIsCustom: true,
+    cwd: '/repo',
+    type: 'agent' as const,
+    splitRoot: { type: 'leaf' as const, id: PANE, cwd: '/repo', paneType: 'agent' as const }
+  };
+
+  const workspaceWith = async (): Promise<typeof WorkspaceStore> => {
+    const workspace = await import('../workspace-store');
+    workspace.useWorkspaceStore.setState({
+      workspace: { id: 'ws', label: 'W', tabs: [agentTab] },
+      activeTabId: 'tab-agent',
+      activePaneId: PANE
+    });
+    return workspace;
+  };
+
+  it('opens a terminal in the tab of the pane whose turn it is', async () => {
+    const workspace = await workspaceWith();
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'log me in');
+
+    emit(IPC_CHANNELS.AGENT_HAND_OFF, {
+      streamId: liveStreamId(),
+      command: 'gh auth login'
+    });
+
+    const tab = workspace.useWorkspaceStore.getState().workspace.tabs[0];
+    expect(workspace.collectPaneLeafs(tab.splitRoot)).toHaveLength(2);
+  });
+
+  // The turn is how the command finds its pane, so a stale one has no pane to
+  // find - and typing into whichever terminal happened to be open would be
+  // worse than doing nothing.
+  it('ignores a command from a turn that has already ended', async () => {
+    const workspace = await workspaceWith();
+
+    emit(IPC_CHANNELS.AGENT_HAND_OFF, { streamId: 'over-and-done', command: 'gh auth login' });
+
+    const tab = workspace.useWorkspaceStore.getState().workspace.tabs[0];
+    expect(workspace.collectPaneLeafs(tab.splitRoot)).toHaveLength(1);
   });
 });

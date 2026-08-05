@@ -49,6 +49,10 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
     // to see before it runs, and a newline in it would break the row's line.
     case 'bash':
       return { verb: 'Run', target: (args.command ?? '').replace(/\s*\n\s*/g, ' ') };
+    // Not "Run": the command has not run, and the difference is the whole
+    // point of the row - it is sitting in a terminal waiting for the user.
+    case 'terminal':
+      return { verb: 'Hand over', target: args.command ?? '' };
     default:
       return { verb: call.name, target: '' };
   }

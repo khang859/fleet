@@ -5,6 +5,7 @@ import {
   GlobArgs,
   GrepArgs,
   ReadArgs,
+  TerminalArgs,
   WriteArgs,
   type AgentToolContext,
   type AgentToolResult
@@ -14,6 +15,7 @@ import { runEdit } from './edit';
 import { runGlob } from './glob';
 import { runGrep } from './grep';
 import { runRead } from './read';
+import { runTerminal } from './terminal';
 import { runWrite } from './write';
 
 /**
@@ -46,6 +48,8 @@ export async function runAgentTool(
       return runWrite(checked(WriteArgs, args, name), ctx);
     case 'bash':
       return runBash(checked(BashArgs, args, name), ctx);
+    case 'terminal':
+      return runTerminal(checked(TerminalArgs, args, name), ctx);
     default:
       throw new Error(`There is no tool called ${name}`);
   }

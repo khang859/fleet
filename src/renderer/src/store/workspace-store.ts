@@ -317,6 +317,14 @@ type WorkspaceStore = {
   /** Open a native agent pane rooted at `folderPath`, in a new tab. Returns the new pane id. */
   openAgentPane: (folderPath: string) => string;
 
+  /**
+   * The terminal an agent pane hands work to: the one already in its tab, or a
+   * new split below it. Focuses it, and returns its id (null if the pane is
+   * gone). Reusing is the point - a conversation that needs the user three
+   * times should ask in the same terminal rather than tile the tab.
+   */
+  terminalBeside: (agentPaneId: string) => string | null;
+
   // Remote (SSH) helpers
   openSshBrowser: (host: RemoteHost, initialPath?: string) => string;
   openRemoteFile: (host: RemoteHost, remotePath: string) => string;
@@ -1431,6 +1439,25 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }));
     get().addRecentFolder(folderPath);
     return leaf.id;
+  },
+
+  terminalBeside: (agentPaneId) => {
+    const tab = get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(agentPaneId));
+    if (!tab) return null;
+
+    // A leaf with no paneType is a terminal - that is what a pane is unless it
+    // was opened as something else.
+    const existing = collectPaneLeafs(tab.splitRoot).find(
+      (leaf) => leaf.paneType === undefined || leaf.paneType === 'terminal'
+    );
+    // Below rather than beside: the transcript is a column of prose, and
+    // halving its width to make room costs more than the height does.
+    const paneId = existing?.id ?? get().splitPane(agentPaneId, 'vertical');
+
+    // The point of the hand-off is that the user does something, so the pane
+    // they have to do it in is the one in front of them.
+    set({ activeTabId: tab.id, activePaneId: paneId });
+    return paneId;
   },
 
   openSshBrowser: (host, initialPath) => {

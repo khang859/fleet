@@ -749,3 +749,55 @@ describe('ensureKanbanTab', () => {
     expect(useWorkspaceStore.getState().workspace.tabs.some((t) => t.id === 'k1')).toBe(true);
   });
 });
+
+describe('terminalBeside', () => {
+  /** A tab holding one agent pane, the way openAgentPane leaves it. */
+  const agentTab = {
+    id: 'tab-agent',
+    label: 'proj',
+    labelIsCustom: true,
+    cwd: '/proj',
+    type: 'agent' as const,
+    splitRoot: { type: 'leaf' as const, id: 'pane-agent', cwd: '/proj', paneType: 'agent' as const }
+  };
+
+  beforeEach(() => {
+    useWorkspaceStore.setState({
+      workspace: { ...WS_A, tabs: [...WS_A.tabs, agentTab] }
+    });
+  });
+
+  it('splits a terminal below the agent when the tab has none', () => {
+    const paneId = useWorkspaceStore.getState().terminalBeside('pane-agent');
+
+    const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === 'tab-agent')!;
+    expect(tab.splitRoot.type === 'split' && tab.splitRoot.direction).toBe('vertical');
+    expect(collectPaneLeafs(tab.splitRoot).map((l) => l.id)).toContain(paneId);
+    // It opens where the agent works, so the command lands in the right folder.
+    expect(collectPaneLeafs(tab.splitRoot).find((l) => l.id === paneId)?.cwd).toBe('/proj');
+  });
+
+  // Asking twice is a conversation that needed the user twice, not a reason to
+  // tile the tab with terminals.
+  it('reuses the terminal it opened the first time', () => {
+    const first = useWorkspaceStore.getState().terminalBeside('pane-agent');
+    const second = useWorkspaceStore.getState().terminalBeside('pane-agent');
+
+    expect(second).toBe(first);
+    const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === 'tab-agent')!;
+    expect(collectPaneLeafs(tab.splitRoot)).toHaveLength(2);
+  });
+
+  it('puts the user in front of the terminal it chose', () => {
+    useWorkspaceStore.setState({ activeTabId: 'tab-a1', activePaneId: 'pane-a1' });
+
+    const paneId = useWorkspaceStore.getState().terminalBeside('pane-agent');
+
+    expect(useWorkspaceStore.getState().activeTabId).toBe('tab-agent');
+    expect(useWorkspaceStore.getState().activePaneId).toBe(paneId);
+  });
+
+  it('has nowhere to put a command from a pane that is gone', () => {
+    expect(useWorkspaceStore.getState().terminalBeside('pane-closed')).toBeNull();
+  });
+});

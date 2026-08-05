@@ -36,11 +36,15 @@ function file(rel: string, contents: string): string {
   return path;
 }
 
+/** Commands handed to the user this test, oldest first. */
+let handedOff: string[];
+
 /** The conversation every test runs in unless it says otherwise. */
 const ctx = (threadId = 'thread-1', signal = new AbortController().signal): AgentToolContext => ({
   cwd: dir,
   threadId,
-  signal
+  signal,
+  handOff: (command) => handedOff.push(command)
 });
 
 const run = async (name: string, args: object): Promise<{ text: string; summary: string }> =>
@@ -55,6 +59,7 @@ const runIn = async (
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'fleet-agent-tools-'));
+  handedOff = [];
   // What a conversation has read outlives the conversation's own turns, so each
   // test starts as though the app had just opened and nothing had been read.
   forgetAllFiles();
@@ -749,6 +754,23 @@ describe('what a command tells the model', () => {
     expect(text).toContain('grep → grep');
   });
 
+  // The failure this has to answer: stdin is closed, so the command ends in
+  // milliseconds with an error and the model is left holding it.
+  it('points a command that wanted a terminal at the user', async () => {
+    const { text } = await run('bash', {
+      command: 'echo "sudo: a terminal is required to read the password" >&2; exit 1'
+    });
+
+    expect(text).toContain('Hand it to the user with the terminal tool');
+    expect(text.indexOf('Hand it to the user')).toBeLessThan(text.indexOf(OUTPUT_SEPARATOR));
+  });
+
+  it('says nothing about terminals to a command that failed on its own merits', async () => {
+    const { text } = await run('bash', { command: 'echo "no such file" >&2; exit 2' });
+
+    expect(text).not.toContain('terminal tool');
+  });
+
   it('says nothing when the shell was the right answer', async () => {
     const { text } = await run('bash', { command: 'git status --short' });
 
@@ -763,5 +785,23 @@ describe('what a command tells the model', () => {
     const { text } = await run('bash', { command: 'cat a.ts' });
 
     expect(text.indexOf('cat → read')).toBeLessThan(text.indexOf(OUTPUT_SEPARATOR));
+  });
+});
+
+describe('terminal', () => {
+  it('hands the command over and says it has not run', async () => {
+    const { text, summary } = await run('terminal', { command: 'gh auth login' });
+
+    expect(handedOff).toEqual(['gh auth login']);
+    expect(summary).toBe('waiting on you');
+    expect(text).toContain('waiting for the user to press Enter');
+  });
+
+  // It is typed at a prompt, so a second line would run the first one.
+  it('refuses a command written across several lines', async () => {
+    await expect(run('terminal', { command: 'gh auth login\nrm -rf /' })).rejects.toThrow(
+      /one line/
+    );
+    expect(handedOff).toEqual([]);
   });
 });

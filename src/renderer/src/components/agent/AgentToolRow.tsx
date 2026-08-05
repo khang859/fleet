@@ -88,9 +88,10 @@ export function AgentToolRow({ call }: { call: AgentToolCall }): React.JSX.Eleme
 /**
  * A summary that is an outcome rather than a size. A command that exits 1 did
  * not fail the way a refused tool fails - it ran, and answered - but it is
- * still the line in the transcript the user needs to notice.
+ * still the line in the transcript the user needs to notice, and so is the one
+ * that is waiting on them to do something.
  */
-const TROUBLE = /^(exit [1-9]|timed out|killed|stopped)/;
+const TROUBLE = /^(exit [1-9]|timed out|killed|stopped|waiting on you)/;
 
 /** `+12 -3` in the colours those numbers have everywhere else. */
 function Summary({ text }: { text: string | null }): React.JSX.Element | null {
