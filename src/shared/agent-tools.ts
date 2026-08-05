@@ -270,6 +270,21 @@ export type AgentToolCall = {
   summary: string | null;
 };
 
+/**
+ * What a tool runs against.
+ *
+ * `threadId` is here because "has this file been read" is a question about one
+ * conversation, not about the app: a file another pane read is not a file this
+ * model has seen, and letting one pane's reading license another pane's edits
+ * would make the guarantee weaker than it sounds.
+ */
+export type AgentToolContext = {
+  /** The folder the pane was opened on. Everything a tool touches lives inside it. */
+  cwd: string;
+  /** The conversation this call belongs to, stable across its turns. */
+  threadId: string;
+};
+
 /** A finished tool run: what goes to the model, and what the pane shows. */
 export type AgentToolResult = {
   /** The tool's output, already truncated to its limits. */

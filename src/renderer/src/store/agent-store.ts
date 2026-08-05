@@ -185,7 +185,16 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     // Written before the request leaves: what the user said is worth keeping
     // whether or not the turn that follows ever comes back.
     record(thread, { t: 'message', message: user });
-    window.fleet.agent.send({ streamId, cwd, history: thread.messages, text });
+    // The session is the conversation, so it is what tools remember against.
+    // Before one exists there is nothing older than this turn to remember, and
+    // the stream id says exactly that.
+    window.fleet.agent.send({
+      streamId,
+      threadId: thread.sessionId ?? streamId,
+      cwd,
+      history: thread.messages,
+      text
+    });
   },
 
   compact: (paneId) => {

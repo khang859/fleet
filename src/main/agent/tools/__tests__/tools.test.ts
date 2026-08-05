@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { AgentToolContext } from '../../../../shared/agent-tools';
 import { runAgentTool } from '../run';
 import { forgetAllFiles } from '../freshness';
 import { globMatcher } from '../glob-match';
@@ -34,13 +35,23 @@ function file(rel: string, contents: string): string {
   return path;
 }
 
+/** The conversation every test runs in unless it says otherwise. */
+const ctx = (threadId = 'thread-1'): AgentToolContext => ({ cwd: dir, threadId });
+
 const run = async (name: string, args: object): Promise<{ text: string; summary: string }> =>
-  runAgentTool(name, JSON.stringify(args), dir);
+  runIn('thread-1', name, args);
+
+const runIn = async (
+  threadId: string,
+  name: string,
+  args: object
+): Promise<{ text: string; summary: string }> =>
+  runAgentTool(name, JSON.stringify(args), ctx(threadId));
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'fleet-agent-tools-'));
-  // Which files have been read is process-wide, so each test starts as though
-  // the app had just opened and the agent had looked at nothing.
+  // What a conversation has read outlives the conversation's own turns, so each
+  // test starts as though the app had just opened and nothing had been read.
   forgetAllFiles();
 });
 
@@ -289,15 +300,15 @@ describe('grep', () => {
 
 describe('the call itself', () => {
   it('rejects a tool that does not exist', async () => {
-    await expect(runAgentTool('rm', '{}', dir)).rejects.toThrow(/no tool called rm/);
+    await expect(runAgentTool('rm', '{}', ctx())).rejects.toThrow(/no tool called rm/);
   });
 
   it('explains malformed arguments instead of failing the turn', async () => {
-    await expect(runAgentTool('read', '{"path": "a.ts"', dir)).rejects.toThrow(/not valid JSON/);
+    await expect(runAgentTool('read', '{"path": "a.ts"', ctx())).rejects.toThrow(/not valid JSON/);
   });
 
   it('names the argument that was wrong', async () => {
-    await expect(runAgentTool('read', '{}', dir)).rejects.toThrow(/path/);
+    await expect(runAgentTool('read', '{}', ctx())).rejects.toThrow(/path/);
   });
 });
 
@@ -396,6 +407,40 @@ describe('edit', () => {
 
     await expect(
       run('edit', { path: 'a.ts', oldString: 'const a = 1;', newString: 'const a = 2;' })
+    ).rejects.toThrow(/changed on disk since you read it/);
+  });
+
+  it('does not let one conversation read on behalf of another', async () => {
+    file('a.ts', 'const a = 1;\n');
+    await runIn('thread-1', 'read', { path: 'a.ts' });
+
+    await expect(
+      runIn('thread-2', 'edit', {
+        path: 'a.ts',
+        oldString: 'const a = 1;',
+        newString: 'const a = 2;'
+      })
+    ).rejects.toThrow(/Read a.ts before changing it/);
+  });
+
+  it('refuses when another conversation rewrote the file since the read', async () => {
+    file('a.ts', 'const a = 1;\n');
+    await runIn('thread-1', 'read', { path: 'a.ts' });
+    await runIn('thread-2', 'read', { path: 'a.ts' });
+    // A change of length as well as of time: two writes inside the same
+    // millisecond would otherwise leave the stamps identical on some filesystems.
+    await runIn('thread-2', 'edit', {
+      path: 'a.ts',
+      oldString: 'const a = 1;',
+      newString: 'const a = 2;\nconst b = 2;'
+    });
+
+    await expect(
+      runIn('thread-1', 'edit', {
+        path: 'a.ts',
+        oldString: 'const a = 1;',
+        newString: 'const a = 3;'
+      })
     ).rejects.toThrow(/changed on disk since you read it/);
   });
 

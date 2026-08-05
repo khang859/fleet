@@ -22,10 +22,19 @@ export async function readTextFile(abs: string, shown: string): Promise<TextFile
   return { text: crlf ? raw.split('\r\n').join('\n') : raw, crlf };
 }
 
-/** Write text back in the file's own line endings, and record the new stamp. */
-export async function writeTextFile(abs: string, text: string, crlf: boolean): Promise<void> {
+/**
+ * Write text back in the file's own line endings, and record the new stamp
+ * against the conversation that wrote it - having written a file is knowing
+ * what is in it, so the next edit in that conversation does not need a re-read.
+ */
+export async function writeTextFile(
+  threadId: string,
+  abs: string,
+  text: string,
+  crlf: boolean
+): Promise<void> {
   await writeFile(abs, crlf ? text.split('\n').join('\r\n') : text, 'utf8');
-  remember(abs, await stat(abs));
+  remember(threadId, abs, await stat(abs));
 }
 
 /** Throw when a file is too big to hold in memory twice for the sake of one edit. */

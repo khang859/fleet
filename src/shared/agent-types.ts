@@ -233,6 +233,13 @@ export type AgentSendRequest = {
    * be told the id.
    */
   streamId: string;
+  /**
+   * The conversation this turn belongs to, stable across its turns. Tools that
+   * remember something between calls - which files have been read - key on this
+   * rather than on the pane or the process, so what one conversation has seen
+   * never stands in for what another one has.
+   */
+  threadId: string;
   /** The folder the pane was opened on. The agent's working directory. */
   cwd: string;
   /** Prior turns, oldest first. The new user message is `text`, not part of it. */

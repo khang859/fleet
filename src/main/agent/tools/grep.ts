@@ -2,6 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import {
   GREP_MAX_FILES,
   GREP_MAX_MATCHES,
+  type AgentToolContext,
   type AgentToolResult,
   type GrepArgs
 } from '../../../shared/agent-tools';
@@ -37,7 +38,7 @@ const COLLECT_CAP = 5_000;
 
 type Match = { path: string; line: number; text: string };
 
-export async function runGrep(args: GrepArgs, cwd: string): Promise<AgentToolResult> {
+export async function runGrep(args: GrepArgs, { cwd }: AgentToolContext): Promise<AgentToolResult> {
   const root = resolveInsideCwd(args.path ?? '.', cwd);
   const pattern = compile(args.pattern, args.ignoreCase ?? false);
   const filter = args.glob === undefined ? null : globMatcher(args.glob);

@@ -12,7 +12,11 @@ import type {
   AgentUsage
 } from '../../shared/agent-types';
 import { buildSystemPrompt, messageText } from '../../shared/agent-types';
-import { AGENT_TOOL_SPECS, type AgentToolCall } from '../../shared/agent-tools';
+import {
+  AGENT_TOOL_SPECS,
+  type AgentToolCall,
+  type AgentToolContext
+} from '../../shared/agent-tools';
 import type { AgentToolEvent } from '../../shared/agent-types';
 import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../shared/agent-context';
 import {
@@ -283,7 +287,10 @@ export class AgentService {
       });
       for (const call of outcome.toolCalls) {
         if (ctx.signal.aborted) return;
-        const done = await this.runTool(streamId, call, req.cwd);
+        const done = await this.runTool(streamId, call, {
+          cwd: req.cwd,
+          threadId: req.threadId
+        });
         messages.push({
           role: 'tool',
           tool_call_id: call.id,
@@ -307,7 +314,7 @@ export class AgentService {
   private async runTool(
     streamId: string,
     call: { id: string; function: { name: string; arguments: string } },
-    cwd: string
+    tools: AgentToolContext
   ): Promise<AgentToolCall> {
     const started: AgentToolCall = {
       id: call.id,
@@ -324,7 +331,7 @@ export class AgentService {
 
     let finished: AgentToolCall;
     try {
-      const output = await runAgentTool(call.function.name, call.function.arguments, cwd);
+      const output = await runAgentTool(call.function.name, call.function.arguments, tools);
       finished = { ...started, result: output.text, summary: output.summary };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

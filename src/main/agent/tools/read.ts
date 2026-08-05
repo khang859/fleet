@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import {
   READ_DEFAULT_LIMIT,
   READ_MAX_LINE_CHARS,
+  type AgentToolContext,
   type AgentToolResult,
   type ReadArgs
 } from '../../../shared/agent-tools';
@@ -23,9 +24,9 @@ import { remember } from './freshness';
  * an enormous file costs what that range costs, and a file too big to hold in
  * memory is still readable a window at a time.
  */
-export async function runRead(args: ReadArgs, cwd: string): Promise<AgentToolResult> {
-  const abs = resolveInsideCwd(args.path, cwd);
-  const shown = displayPath(abs, cwd);
+export async function runRead(args: ReadArgs, ctx: AgentToolContext): Promise<AgentToolResult> {
+  const abs = resolveInsideCwd(args.path, ctx.cwd);
+  const shown = displayPath(abs, ctx.cwd);
 
   const info = await stat(abs).catch(() => null);
   if (info === null) throw new Error(`${shown} does not exist`);
@@ -54,9 +55,9 @@ export async function runRead(args: ReadArgs, cwd: string): Promise<AgentToolRes
     input.destroy();
   }
 
-  // What the file looked like when it was read, so a later edit can tell
-  // whether it is still editing the file the model actually saw.
-  remember(abs, info);
+  // What the file looked like when it was read, so a later edit in this
+  // conversation can tell whether it is still editing the file the model saw.
+  remember(ctx.threadId, abs, info);
 
   if (lineNumber === 0) return { text: `${shown} is empty`, summary: 'empty file' };
   if (lines.length === 0) {

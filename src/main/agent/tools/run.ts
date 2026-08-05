@@ -5,6 +5,7 @@ import {
   GrepArgs,
   ReadArgs,
   WriteArgs,
+  type AgentToolContext,
   type AgentToolResult
 } from '../../../shared/agent-tools';
 import { runEdit } from './edit';
@@ -26,21 +27,21 @@ import { runWrite } from './write';
 export async function runAgentTool(
   name: string,
   rawArgs: string,
-  cwd: string
+  ctx: AgentToolContext
 ): Promise<AgentToolResult> {
   const args = parseArgs(name, rawArgs);
 
   switch (name) {
     case 'read':
-      return runRead(checked(ReadArgs, args, name), cwd);
+      return runRead(checked(ReadArgs, args, name), ctx);
     case 'glob':
-      return runGlob(checked(GlobArgs, args, name), cwd);
+      return runGlob(checked(GlobArgs, args, name), ctx);
     case 'grep':
-      return runGrep(checked(GrepArgs, args, name), cwd);
+      return runGrep(checked(GrepArgs, args, name), ctx);
     case 'edit':
-      return runEdit(checked(EditArgs, args, name), cwd);
+      return runEdit(checked(EditArgs, args, name), ctx);
     case 'write':
-      return runWrite(checked(WriteArgs, args, name), cwd);
+      return runWrite(checked(WriteArgs, args, name), ctx);
     default:
       throw new Error(`There is no tool called ${name}`);
   }

@@ -1,5 +1,10 @@
 import { stat } from 'node:fs/promises';
-import { DIFF_MAX_LINES, type AgentToolResult, type EditArgs } from '../../../shared/agent-tools';
+import {
+  DIFF_MAX_LINES,
+  type AgentToolContext,
+  type AgentToolResult,
+  type EditArgs
+} from '../../../shared/agent-tools';
 import { diffLines, diffStats, formatUnified, toHunks } from '../../../shared/agent-diff';
 import { displayPath, resolveInsideCwd } from './paths';
 import { applyEdit } from './edit-match';
@@ -15,20 +20,20 @@ import { checkEditableSize, readTextFile, writeTextFile } from './text-file';
  * happened, and it is the same text the pane shows the user, so the two cannot
  * disagree about what was written.
  */
-export async function runEdit(args: EditArgs, cwd: string): Promise<AgentToolResult> {
-  const abs = resolveInsideCwd(args.path, cwd);
-  const shown = displayPath(abs, cwd);
+export async function runEdit(args: EditArgs, ctx: AgentToolContext): Promise<AgentToolResult> {
+  const abs = resolveInsideCwd(args.path, ctx.cwd);
+  const shown = displayPath(abs, ctx.cwd);
 
   const info = await stat(abs).catch(() => null);
   if (info === null) throw new Error(`${shown} does not exist - use write to create it`);
   if (info.isDirectory()) throw new Error(`${shown} is a folder, not a file`);
   checkEditableSize(info.size, shown);
-  requireFresh(abs, info, shown);
+  requireFresh(ctx.threadId, abs, info, shown);
 
   const before = await readTextFile(abs, shown);
   const edited = applyEdit(before.text, args.oldString, args.newString, args.replaceAll ?? false);
 
-  await writeTextFile(abs, edited.text, before.crlf);
+  await writeTextFile(ctx.threadId, abs, edited.text, before.crlf);
   const notes = edited.reindented
     ? [
         'Your text matched only after ignoring indentation - the replacement was re-indented to fit.'

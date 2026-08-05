@@ -2,6 +2,7 @@ import { stat } from 'node:fs/promises';
 import {
   GLOB_MAX_RESULTS,
   GREP_MAX_FILES,
+  type AgentToolContext,
   type AgentToolResult,
   type GlobArgs
 } from '../../../shared/agent-tools';
@@ -18,7 +19,7 @@ import { walkFiles } from './walk';
  * at the top of a truncated list is the difference between a useful answer and
  * an alphabetical accident.
  */
-export async function runGlob(args: GlobArgs, cwd: string): Promise<AgentToolResult> {
+export async function runGlob(args: GlobArgs, { cwd }: AgentToolContext): Promise<AgentToolResult> {
   const root = resolveInsideCwd(args.path ?? '.', cwd);
   const matches = globMatcher(args.pattern);
   const found: string[] = [];

@@ -26,6 +26,7 @@ import {
 
 const REQUEST: AgentSendRequest = {
   streamId: 'stream-1',
+  threadId: 'thread-1',
   cwd: '/repo',
   history: [
     textMessage('a', 'user', 'hi'),
