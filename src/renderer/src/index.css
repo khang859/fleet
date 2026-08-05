@@ -308,7 +308,7 @@ body,
     transform: none !important;
   }
   /* Shimmer "Thinking…" label: hold static at a solid muted color (no sweep). */
-  .chat-shimmer-text {
+  .fleet-shimmer-text {
     animation: none !important;
     background: none !important;
     -webkit-text-fill-color: var(--fleet-text-muted) !important;
@@ -438,10 +438,10 @@ input[type='checkbox']:active:not(:disabled) {
 }
 
 /* Shared shimmer for "Thinking…" labels — sweeps a brighter band across the text
-   via a clipped moving gradient. Used by the reasoning panel (#388) and the
-   waiting-state indicator (#389). Reduced-motion holds it static (see the media
-   query above). */
-.chat-shimmer-text {
+   via a clipped moving gradient. Used by Chat's reasoning panel (#388) and
+   waiting state (#389), and by the agent pane's activity row. Reduced-motion
+   holds it static (see the media query above). */
+.fleet-shimmer-text {
   background: linear-gradient(
     90deg,
     var(--fleet-text-muted) 0%,
@@ -455,9 +455,9 @@ input[type='checkbox']:active:not(:disabled) {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
-  animation: chat-shimmer 1.6s linear infinite;
+  animation: fleet-shimmer 1.6s linear infinite;
 }
-@keyframes chat-shimmer {
+@keyframes fleet-shimmer {
   from {
     background-position: 200% 0;
   }

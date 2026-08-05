@@ -26,6 +26,12 @@ type PaneThread = {
    * to be summarized, whatever else has happened since.
    */
   pendingCompact: { keep: AgentMessage[] } | null;
+  /**
+   * When the in-flight work started, for the elapsed clock. Kept here rather
+   * than in the component so switching to the Settings tab and back shows how
+   * long the turn has really been running.
+   */
+  startedAt: number | null;
   error: string | null;
   /**
    * Roughly what the next turn will resend, from the provider's own count where
@@ -40,6 +46,7 @@ const EMPTY_THREAD: PaneThread = {
   cwd: '',
   streamId: null,
   pendingCompact: null,
+  startedAt: null,
   error: null,
   contextTokens: null
 };
@@ -127,6 +134,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
           cwd,
           messages: [...thread.messages, user, assistant],
           streamId,
+          startedAt: Date.now(),
           error: null
         }
       }
@@ -147,7 +155,13 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     set({
       threads: {
         ...get().threads,
-        [paneId]: { ...thread, streamId, pendingCompact: { keep: recent }, error: null }
+        [paneId]: {
+          ...thread,
+          streamId,
+          pendingCompact: { keep: recent },
+          startedAt: Date.now(),
+          error: null
+        }
       }
     });
     log.debug('compact', { paneId, older: older.length, keep: recent.length });
@@ -201,6 +215,7 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
         ...thread,
         streamId: null,
         pendingCompact: null,
+        startedAt: null,
         error,
         contextTokens: wasCompacting
           ? thread.contextTokens
@@ -260,6 +275,7 @@ function applySummary(streamId: string, summary: string): void {
         messages,
         streamId: null,
         pendingCompact: null,
+        startedAt: null,
         error: null,
         // The provider's count for the summarizing call describes that call,
         // not this transcript, so the new size is estimated until a real turn

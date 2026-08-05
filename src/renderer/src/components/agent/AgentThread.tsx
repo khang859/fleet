@@ -3,6 +3,7 @@ import { ArrowUp, FoldVertical, Square, TriangleAlert } from 'lucide-react';
 import type { AgentMessage } from '../../../../shared/agent-types';
 import { canCompact } from '../../../../shared/agent-context';
 import { AgentMarkdown } from './AgentMarkdown';
+import { AgentActivity } from './AgentActivity';
 import { AgentContextMeter } from './AgentContextMeter';
 import { useAgentStore } from '../../store/agent-store';
 import { useSettingsStore } from '../../store/settings-store';
@@ -41,15 +42,30 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
         </div>
       )}
 
-      {contextTokens !== null && (
-        <AgentContextMeter
-          used={contextTokens}
-          limit={catalog?.models.find((m) => m.id === model)?.contextLimit ?? null}
-          threshold={agent?.compactThreshold ?? null}
-          compacting={compacting}
-          canCompact={!streaming && canCompact(messages)}
-          onCompact={() => compact(paneId)}
-        />
+      {/* One status line for the turn: what the agent is doing on the left, how
+          much room it has left on the right. Always rendered while either has
+          something to say, so neither appearing shoves the composer down. */}
+      {(streaming || contextTokens !== null) && (
+        <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pb-1.5 text-[11px] text-fleet-text-subtle">
+          {streaming && (
+            <AgentActivity
+              last={messages.at(-1)}
+              compacting={compacting}
+              startedAt={thread?.startedAt ?? null}
+            />
+          )}
+          {contextTokens !== null && (
+            <span className="ml-auto">
+              <AgentContextMeter
+                used={contextTokens}
+                limit={catalog?.models.find((m) => m.id === model)?.contextLimit ?? null}
+                threshold={agent?.compactThreshold ?? null}
+                canCompact={!streaming && canCompact(messages)}
+                onCompact={() => compact(paneId)}
+              />
+            </span>
+          )}
+        </div>
       )}
 
       <Composer
@@ -84,8 +100,6 @@ function Transcript({
 }): React.JSX.Element {
   const endRef = useRef<HTMLDivElement>(null);
   const last = messages.at(-1);
-  // The reply being streamed has nothing in it yet, in either channel.
-  const awaitingFirstToken = streaming && last?.content === '' && last.reasoning === '';
 
   // Follow the stream. Keyed on the growing text so every delta scrolls.
   useEffect(() => {
@@ -102,7 +116,6 @@ function Transcript({
             streaming={streaming && i === messages.length - 1}
           />
         ))}
-        {awaitingFirstToken && <span className="text-sm text-fleet-text-muted">Thinking…</span>}
         <div ref={endRef} />
       </div>
     </div>
