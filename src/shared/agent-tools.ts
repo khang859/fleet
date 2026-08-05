@@ -4,9 +4,11 @@ import { z } from 'zod';
  * The tools the agent can call, and the limits they answer within.
  *
  * Deliberately few: find files by name, find them by content, look at one,
- * change part of one, write a whole one. Everything an agent does is some
- * composition of those, and a sixth tool that overlaps the other five only
- * gives the model a decision to get wrong.
+ * change part of one, write a whole one, and run a command. The first five are
+ * the whole of reading and writing code; the sixth is everything else. So a
+ * shell command that only looks at a file or searches for text is a call that
+ * should have been one of the other five, and `bash` says so when it happens -
+ * a tool that overlaps another only gives the model a decision to get wrong.
  *
  * Every limit here is a promise about the size of a tool result, because a tool
  * result is context the user pays for and never sees. The rule they follow: cut
@@ -14,7 +16,7 @@ import { z } from 'zod';
  * result the model believes is complete is worse than no result at all.
  */
 
-export const AGENT_TOOL_NAMES = ['read', 'glob', 'grep', 'edit', 'write'] as const;
+export const AGENT_TOOL_NAMES = ['read', 'glob', 'grep', 'edit', 'write', 'bash'] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
 /**
@@ -48,6 +50,39 @@ export const EDIT_MAX_FILE_BYTES = 2_000_000;
 
 /** Lines of diff a change reports back. Past this the change is its own review. */
 export const DIFF_MAX_LINES = 200;
+
+/**
+ * How long a command runs before it is killed, when the call does not say.
+ * Long enough for a test suite or an install, short enough that a command
+ * waiting for input nobody can give it does not hold the turn all afternoon.
+ */
+export const BASH_DEFAULT_TIMEOUT_MS = 120_000;
+
+/** Ceiling for one command, however long it asks for. */
+export const BASH_MAX_TIMEOUT_MS = 600_000;
+
+/** Shortest timeout a call may ask for; below this it is a number in seconds. */
+export const BASH_MIN_TIMEOUT_MS = 1_000;
+
+/**
+ * Characters of output one command reports back. A build prints far more than
+ * this and says everything that matters in the first few lines and the last
+ * few, which is what gets kept.
+ */
+export const BASH_MAX_OUTPUT_CHARS = 30_000;
+
+/**
+ * The line between what a tool says about a command and the command's own
+ * output.
+ *
+ * The pane shows only what follows the first one. Everything above it is the
+ * tool talking to the model - how the command ended, and any reminder attached
+ * to it - and an instruction addressed to the model has no business appearing
+ * in the user's transcript as though it were addressed to them. Ours is always
+ * first, so a separator the command happens to print in its own output cannot
+ * be mistaken for it.
+ */
+export const OUTPUT_SEPARATOR = '--- output ---';
 
 export const ReadArgs = z.object({
   path: z.string().min(1),
@@ -88,11 +123,21 @@ export const WriteArgs = z.object({
   content: z.string()
 });
 
+export const BashArgs = z.object({
+  command: z.string().min(1),
+  /**
+   * Named for its unit: a bare `timeout` invites a number of seconds, and a
+   * command killed after 30ms looks like a command that failed.
+   */
+  timeoutMs: z.number().int().min(BASH_MIN_TIMEOUT_MS).max(BASH_MAX_TIMEOUT_MS).optional()
+});
+
 export type ReadArgs = z.infer<typeof ReadArgs>;
 export type GlobArgs = z.infer<typeof GlobArgs>;
 export type GrepArgs = z.infer<typeof GrepArgs>;
 export type EditArgs = z.infer<typeof EditArgs>;
 export type WriteArgs = z.infer<typeof WriteArgs>;
+export type BashArgs = z.infer<typeof BashArgs>;
 
 /** The JSON Schema for one tool, as the completions API wants it. */
 export type AgentToolSpec = {
@@ -135,6 +180,14 @@ const WRITE_DESCRIPTION = [
   'Create a file, or replace everything in one that already exists.',
   'Use `edit` for a change to an existing file: a rewrite silently drops whatever you did not repeat.',
   'Overwriting requires having read the file first. Missing parent folders are created.'
+].join(' ');
+
+const BASH_DESCRIPTION = [
+  'Run a shell command in the working folder.',
+  'This is the last tool to reach for, not the first: `read`, `glob`, `grep`, `edit` and `write` do everything they cover better than `cat`, `find`, `grep` and `sed` do here, and they keep their output small enough to be worth reading.',
+  'Use the shell for what only the shell can do - running tests, builds, linters, git, package managers and scripts.',
+  'Each command runs on its own, so a `cd` or an exported variable is gone by the next call; chain with `&&` in one command when that matters.',
+  `Nothing can be typed into it, so avoid anything interactive. Output is cut at ${BASH_MAX_OUTPUT_CHARS.toLocaleString('en-US')} characters and the command is killed after ${BASH_DEFAULT_TIMEOUT_MS / 1000} seconds unless \`timeoutMs\` says otherwise.`
 ].join(' ');
 
 /**
@@ -247,6 +300,25 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
         additionalProperties: false
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'bash',
+      description: BASH_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', description: 'The command line to run.' },
+          timeoutMs: {
+            type: 'integer',
+            description: `How long to let it run, in milliseconds. Defaults to ${BASH_DEFAULT_TIMEOUT_MS}, at most ${BASH_MAX_TIMEOUT_MS}.`
+          }
+        },
+        required: ['command'],
+        additionalProperties: false
+      }
+    }
   }
 ];
 
@@ -283,6 +355,12 @@ export type AgentToolContext = {
   cwd: string;
   /** The conversation this call belongs to, stable across its turns. */
   threadId: string;
+  /**
+   * Aborted when the user stops the turn. A tool that only reads a file is over
+   * before this can matter; a command that runs for ten minutes is not, and
+   * "stop" has to mean the command stops rather than that the pane looks away.
+   */
+  signal: AbortSignal;
 };
 
 /** A finished tool run: what goes to the model, and what the pane shows. */

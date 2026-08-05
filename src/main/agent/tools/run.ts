@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import {
+  BashArgs,
   EditArgs,
   GlobArgs,
   GrepArgs,
@@ -8,6 +9,7 @@ import {
   type AgentToolContext,
   type AgentToolResult
 } from '../../../shared/agent-tools';
+import { runBash } from './bash';
 import { runEdit } from './edit';
 import { runGlob } from './glob';
 import { runGrep } from './grep';
@@ -42,6 +44,8 @@ export async function runAgentTool(
       return runEdit(checked(EditArgs, args, name), ctx);
     case 'write':
       return runWrite(checked(WriteArgs, args, name), ctx);
+    case 'bash':
+      return runBash(checked(BashArgs, args, name), ctx);
     default:
       throw new Error(`There is no tool called ${name}`);
   }

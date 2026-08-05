@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -10,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AgentToolContext } from '../../../../shared/agent-tools';
+import { OUTPUT_SEPARATOR, type AgentToolContext } from '../../../../shared/agent-tools';
 import { runAgentTool } from '../run';
 import { forgetAllFiles } from '../freshness';
 import { globMatcher } from '../glob-match';
@@ -36,7 +37,11 @@ function file(rel: string, contents: string): string {
 }
 
 /** The conversation every test runs in unless it says otherwise. */
-const ctx = (threadId = 'thread-1'): AgentToolContext => ({ cwd: dir, threadId });
+const ctx = (threadId = 'thread-1', signal = new AbortController().signal): AgentToolContext => ({
+  cwd: dir,
+  threadId,
+  signal
+});
 
 const run = async (name: string, args: object): Promise<{ text: string; summary: string }> =>
   runIn('thread-1', name, args);
@@ -643,5 +648,120 @@ describe('what a change tells the model', () => {
     const firstHunk = lines.findIndex((line) => line.startsWith('@@'));
     expect(firstHunk).toBeGreaterThan(0);
     expect(lines.slice(firstHunk).some((line) => line.includes('do not repeat'))).toBe(false);
+  });
+});
+
+describe('bash', () => {
+  /** Everything the pane would show for the call: the output, and only that. */
+  const output = (text: string): string => text.slice(text.indexOf(OUTPUT_SEPARATOR));
+
+  it('runs the command in the working folder', async () => {
+    const { text } = await run('bash', { command: 'echo hi > made.txt && echo done' });
+
+    expect(readFileSync(join(dir, 'made.txt'), 'utf8')).toBe('hi\n');
+    expect(text).toContain('done');
+  });
+
+  it('reports what the command printed on either stream', async () => {
+    const { text, summary } = await run('bash', { command: 'echo out; echo err >&2' });
+
+    expect(text).toContain('out');
+    expect(text).toContain('err');
+    expect(summary).toBe('2 lines');
+  });
+
+  it('reports a non-zero exit rather than failing the call', async () => {
+    const { text, summary } = await run('bash', { command: 'echo nope >&2; exit 3' });
+
+    expect(summary).toBe('exit 3');
+    expect(text).toContain('Exit status 3');
+    expect(text).toContain('nope');
+  });
+
+  it('says so when the command printed nothing', async () => {
+    const { text, summary } = await run('bash', { command: 'true' });
+
+    expect(summary).toBe('no output');
+    expect(text).toContain('No output.');
+  });
+
+  // Nothing can be typed in, so a command that stops to ask a question has to
+  // end now rather than hold the turn until the timeout.
+  it('gives a command that waits for input an immediate end of it', async () => {
+    // It ends on the spot with the status a failed read has, rather than
+    // sitting there until this test's own timeout runs out.
+    const { summary } = await run('bash', { command: 'read -r answer' });
+
+    expect(summary).toBe('exit 1');
+  });
+
+  it('kills a command that runs past its timeout', async () => {
+    const { text, summary } = await run('bash', { command: 'sleep 30', timeoutMs: 1000 });
+
+    expect(summary).toBe('timed out');
+    expect(text).toContain('Timed out after 1s');
+  });
+
+  // The command at the top of a hung build is never the one still running: it
+  // is a child two levels down, which a kill aimed at the shell would leave.
+  it('kills what the command started as well', async () => {
+    await run('bash', {
+      command: '(sleep 1; echo late > late.txt) & sleep 30',
+      timeoutMs: 1000
+    });
+    await new Promise((done) => setTimeout(done, 2000));
+
+    expect(existsSync(join(dir, 'late.txt'))).toBe(false);
+  }, 10_000);
+
+  it('stops the command when the turn is cancelled', async () => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 200);
+
+    const { summary } = await runAgentTool(
+      'bash',
+      JSON.stringify({ command: 'sleep 30' }),
+      ctx('thread-1', controller.signal)
+    );
+
+    expect(summary).toBe('stopped');
+  });
+
+  it('cuts oversized output from the middle and says how much', async () => {
+    const { text } = await run('bash', { command: 'yes x | head -c 40000' });
+
+    expect(text).toContain('characters cut from the middle');
+    expect(output(text).length).toBeLessThan(31_000);
+  });
+
+  it('takes a timeout in milliseconds and refuses one in seconds', async () => {
+    await expect(run('bash', { command: 'true', timeoutMs: 30 })).rejects.toThrow(/timeoutMs/);
+  });
+});
+
+describe('what a command tells the model', () => {
+  it('names the tool that would have done it better, when there is one', async () => {
+    file('a.ts', 'one\n');
+
+    const { text } = await run('bash', { command: 'cat a.ts | grep one' });
+
+    expect(text).toContain('cat → read');
+    expect(text).toContain('grep → grep');
+  });
+
+  it('says nothing when the shell was the right answer', async () => {
+    const { text } = await run('bash', { command: 'git status --short' });
+
+    expect(text).not.toContain('long way round');
+  });
+
+  // The pane shows what follows the separator, so a note written for the model
+  // has to stay above it - the same rule the diff follows.
+  it('keeps everything it tells the model above the output', async () => {
+    file('a.ts', 'one\n');
+
+    const { text } = await run('bash', { command: 'cat a.ts' });
+
+    expect(text.indexOf('cat → read')).toBeLessThan(text.indexOf(OUTPUT_SEPARATOR));
   });
 });

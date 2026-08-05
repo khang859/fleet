@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 import { diffLineKind } from '../../../../shared/agent-diff';
 import { diffBody } from './diff-body';
+import { toolBody } from './output-body';
 import { toolLabel, toolStatus } from './tool-label';
 
 /**
@@ -26,7 +27,7 @@ import { toolLabel, toolStatus } from './tool-label';
 export function AgentToolRow({ call }: { call: AgentToolCall }): React.JSX.Element {
   const status = toolStatus(call);
   const { verb, target } = toolLabel(call);
-  const body = call.error ?? call.result;
+  const body = toolBody(call);
   const diff = status === 'done' ? diffBody(call) : null;
   // Open follows what the row is until the user says otherwise, and then it is
   // theirs: the diff arrives after the row has already rendered as running, so
@@ -84,11 +85,24 @@ export function AgentToolRow({ call }: { call: AgentToolCall }): React.JSX.Eleme
   );
 }
 
+/**
+ * A summary that is an outcome rather than a size. A command that exits 1 did
+ * not fail the way a refused tool fails - it ran, and answered - but it is
+ * still the line in the transcript the user needs to notice.
+ */
+const TROUBLE = /^(exit [1-9]|timed out|killed|stopped)/;
+
 /** `+12 -3` in the colours those numbers have everywhere else. */
 function Summary({ text }: { text: string | null }): React.JSX.Element | null {
   if (text === null) return null;
   const counts = /^\+(\d+) -(\d+)$/.exec(text);
-  if (counts === null) return <span className="text-fleet-text-subtle">{text}</span>;
+  if (counts === null) {
+    return (
+      <span className={TROUBLE.test(text) ? 'text-amber-400/90' : 'text-fleet-text-subtle'}>
+        {text}
+      </span>
+    );
+  }
 
   return (
     <span className="font-mono">

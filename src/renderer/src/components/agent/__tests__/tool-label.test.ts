@@ -53,8 +53,22 @@ describe('toolLabel', () => {
     });
   });
 
+  it('shows a command as the command it is', () => {
+    expect(toolLabel(call('bash', '{"command":"npm test"}'))).toEqual({
+      verb: 'Run',
+      target: 'npm test'
+    });
+  });
+
+  // The row is one line, so a command written across several becomes one.
+  it('flattens a multi-line command onto the row', () => {
+    expect(toolLabel(call('bash', '{"command":"npm run build \\\\\\n  --silent"}')).target).toBe(
+      'npm run build \\ --silent'
+    );
+  });
+
   it('falls back to the tool name for anything it does not know', () => {
-    expect(toolLabel(call('bash', '{"command":"ls"}'))).toEqual({ verb: 'bash', target: '' });
+    expect(toolLabel(call('wobble', '{"path":"a.ts"}'))).toEqual({ verb: 'wobble', target: '' });
   });
 });
 

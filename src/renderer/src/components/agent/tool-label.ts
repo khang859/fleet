@@ -22,7 +22,8 @@ export type ToolStatus = 'running' | 'done' | 'failed';
 const LabelArgs = z.object({
   path: z.string().optional(),
   pattern: z.string().optional(),
-  glob: z.string().optional()
+  glob: z.string().optional(),
+  command: z.string().optional()
 });
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
@@ -44,6 +45,10 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       return { verb: 'Edit', target: args.path ?? '' };
     case 'write':
       return { verb: 'Write', target: args.path ?? '' };
+    // The command itself, not a gloss of it: it is the one thing the user needs
+    // to see before it runs, and a newline in it would break the row's line.
+    case 'bash':
+      return { verb: 'Run', target: (args.command ?? '').replace(/\s*\n\s*/g, ' ') };
     default:
       return { verb: call.name, target: '' };
   }

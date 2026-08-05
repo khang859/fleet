@@ -289,7 +289,8 @@ export class AgentService {
         if (ctx.signal.aborted) return;
         const done = await this.runTool(streamId, call, {
           cwd: req.cwd,
-          threadId: req.threadId
+          threadId: req.threadId,
+          signal: ctx.signal
         });
         messages.push({
           role: 'tool',
