@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Bot, SlidersHorizontal } from 'lucide-react';
+import { Bot, History, SlidersHorizontal } from 'lucide-react';
 import { AgentThread } from './AgentThread';
+import { AgentSessionsTab } from './AgentSessionsTab';
 import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
 import { useAgentStore } from '../../store/agent-store';
 
-type AgentView = 'agent' | 'settings';
+type AgentView = 'agent' | 'sessions' | 'settings';
 
 const TABS = [
   { value: 'agent', label: 'Agent', Icon: Bot },
+  { value: 'sessions', label: 'Sessions', Icon: History },
   { value: 'settings', label: 'Settings', Icon: SlidersHorizontal }
 ] as const satisfies ReadonlyArray<{ value: AgentView; label: string; Icon: typeof Bot }>;
 
@@ -47,9 +49,13 @@ export function AgentPane({
   return (
     <div className="flex h-full w-full flex-col bg-fleet-bg">
       <AgentTabs value={view} onChange={setView} />
-      {view === 'agent' ? (
-        <AgentThread paneId={paneId} cwd={cwd} />
-      ) : (
+      {view === 'agent' && <AgentThread paneId={paneId} cwd={cwd} />}
+      {view === 'sessions' && (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <AgentSessionsTab paneId={paneId} cwd={cwd} onResumed={() => setView('agent')} />
+        </div>
+      )}
+      {view === 'settings' && (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <AgentSettingsPanel />
         </div>

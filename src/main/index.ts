@@ -1570,7 +1570,9 @@ void app.whenReady().then(async () => {
     catalog: new AgentModelCatalog(join(app.getPath('userData'), 'agent-models-dev.json')),
     service: agentService,
     gate: agentGate,
-    sessions: new AgentSessionStore()
+    sessions: new AgentSessionStore(),
+    getSettings: () => settingsStore.get().ai.agent,
+    getApiKey: () => chatSecrets.getKey()
   });
 
   // Cheap AI one-line pane summaries for the agent overview, throttled per pane

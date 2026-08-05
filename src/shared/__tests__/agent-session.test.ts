@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { textMessage, type AgentMessage } from '../agent-types';
 import {
+  emptyReplay,
   encodeEvent,
   replaySession,
   sessionHeader,
@@ -40,12 +41,7 @@ describe('replaySession', () => {
   });
 
   it('reads an empty file as an empty thread rather than failing', () => {
-    expect(replaySession('')).toEqual({
-      messages: [],
-      contextTokens: null,
-      cwd: null,
-      skipped: 0
-    });
+    expect(replaySession('')).toEqual(emptyReplay());
   });
 
   // Nothing has run a turn yet, so nothing may pretend to know the size.
@@ -223,5 +219,84 @@ describe('replaySession', () => {
 
   it('stamps the current version in the header', () => {
     expect(HEADER).toMatchObject({ t: 'session', version: SESSION_LOG_VERSION, cwd: '/repo' });
+  });
+
+  it('reads the title the session was given', () => {
+    const replay = replaySession(log(HEADER, { t: 'title', title: 'Fix the parser' }));
+
+    expect(replay.title).toBe('Fix the parser');
+  });
+
+  // A file written before titles existed is the common case, not an edge one:
+  // every session on disk today is one.
+  it('leaves the title unset when the log never named the session', () => {
+    const replay = replaySession(log(HEADER, { t: 'message', message: msg('a', 'user', 'hi') }));
+
+    expect(replay.title).toBeNull();
+  });
+});
+
+/**
+ * Summarizing reads the same file as replay, for a different question: what to
+ * call this session and where it belongs, without rebuilding the conversation.
+ */
+describe('replaySession: what a listing reads', () => {
+  it('reads the folder, the title and the opening line', () => {
+    const replay = replaySession(
+      log(
+        HEADER,
+        { t: 'message', message: msg('a', 'user', 'why does the parser drop tabs') },
+        { t: 'message', message: msg('b', 'assistant', 'because…') },
+        { t: 'title', title: 'Parser drops tabs' }
+      )
+    );
+
+    expect(replay).toMatchObject({
+      cwd: '/repo',
+      title: 'Parser drops tabs',
+      firstUserText: 'why does the parser drop tabs'
+    });
+  });
+
+  /*
+   * Why the opening line is captured as the log is read rather than taken from
+   * the transcript at the end. Compaction *replaces* the messages it folds, so
+   * the words a session opened with are gone from its transcript long before
+   * they stop being the best name for it.
+   */
+  it('keeps the opening line of a session that has since been compacted', () => {
+    const replay = replaySession(
+      log(
+        HEADER,
+        { t: 'message', message: msg('a', 'user', 'the original question') },
+        { t: 'message', message: msg('b', 'assistant', 'a long answer') },
+        { t: 'message', message: msg('c', 'user', 'a later question') },
+        { t: 'compact', summary: msg('s', 'summary', 'they discussed things'), keep: ['c'] }
+      )
+    );
+
+    expect(replay.firstUserText).toBe('the original question');
+    expect(replay.messages.map((m) => m.id)).toEqual(['s', 'c']);
+  });
+
+  it('takes the last title when a session was somehow named twice', () => {
+    const replay = replaySession(
+      log(HEADER, { t: 'title', title: 'first' }, { t: 'title', title: 'second' })
+    );
+
+    expect(replay.title).toBe('second');
+  });
+
+  /*
+   * How something that is not a session log stays out of the list: the folder
+   * is what the listing matches on, and a file with no header names none.
+   */
+  it('has no folder when the file has no header', () => {
+    expect(replaySession('').cwd).toBeNull();
+    expect(replaySession('not json\n{"t":"context","tokens":1}\n').cwd).toBeNull();
+  });
+
+  it('carries an empty opening line for a session that was never spoken in', () => {
+    expect(replaySession(log(HEADER))).toMatchObject({ firstUserText: '', title: null });
   });
 });

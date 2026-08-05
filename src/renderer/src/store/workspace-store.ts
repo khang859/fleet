@@ -289,6 +289,12 @@ type WorkspaceStore = {
   resizeSplit: (splitNodePath: number[], ratio: number) => void;
   renamePane: (paneId: string, label: string) => void;
   resetPaneLabel: (paneId: string) => void;
+  /**
+   * Point an agent pane at a different session. The id is persisted with the
+   * layout, so this is what makes a resumed conversation the one the pane
+   * comes back to after a restart rather than a choice that lasts a session.
+   */
+  setAgentSession: (paneId: string, sessionId: string) => void;
 
   // Workspace actions
   loadWorkspace: (workspace: Workspace) => void;
@@ -466,6 +472,23 @@ function pickNextTab(tabs: Tab[], closedIndex: number): Tab | null {
 export function collectPaneLeafs(node: PaneNode): PaneLeaf[] {
   if (node.type === 'leaf') return [node];
   return [...collectPaneLeafs(node.children[0]), ...collectPaneLeafs(node.children[1])];
+}
+
+/**
+ * Every agent session a pane is holding, across every tab.
+ *
+ * A pane knows the session it is on and nothing about the others, so on its own
+ * it would happily delete the log a split beside it is still appending to. The
+ * whole workspace is the only place that question can be answered.
+ */
+export function agentSessionsInUse(): Set<string> {
+  const ids = new Set<string>();
+  for (const tab of useWorkspaceStore.getState().workspace.tabs) {
+    for (const leaf of collectPaneLeafs(tab.splitRoot)) {
+      if (leaf.agentSessionId !== undefined) ids.add(leaf.agentSessionId);
+    }
+  }
+  return ids;
 }
 
 /**
@@ -1103,6 +1126,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
             ...leaf,
             label,
             labelIsCustom: true
+          }))
+        }))
+      },
+      isDirty: true
+    }));
+  },
+
+  setAgentSession: (paneId, sessionId) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({
+            ...leaf,
+            agentSessionId: sessionId
           }))
         }))
       },

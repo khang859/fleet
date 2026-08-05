@@ -359,6 +359,14 @@ export const IPC_CHANNELS = {
   // pane opens. The renderer decides what happened; main only writes it down.
   AGENT_SESSION_APPEND: 'agent:session-append',
   AGENT_SESSION_LOAD: 'agent:session-load',
+  // The sessions started in one folder, for the pane's Sessions tab, and the
+  // removal of one. Which session a pane is currently on is the renderer's to
+  // know, so the rules about that are enforced there rather than here.
+  AGENT_SESSION_LIST: 'agent:session-list',
+  AGENT_SESSION_DELETE: 'agent:session-delete',
+  // A name for a session, from the exchange that opened it. Main returns the
+  // text; the renderer decides which session log it belongs in.
+  AGENT_GENERATE_TITLE: 'agent:generate-title',
 
   // ── Remote (SSH) file browser ──────────────────────────────────────────────
   // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's

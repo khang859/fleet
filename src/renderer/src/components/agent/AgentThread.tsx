@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ArrowUp, ChevronRight, FoldVertical, Square, TriangleAlert } from 'lucide-react';
 import type {
   AgentMessage,
@@ -13,6 +13,7 @@ import { AgentToolRow } from './AgentToolRow';
 import { AgentPermissionRow } from './AgentPermissionRow';
 import { reasoningLabel } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
+import { agentSlashCommand, agentSlashMenu, type AgentSlashCommand } from './composer-slash';
 import { useAgentStore } from '../../store/agent-store';
 import { useSettingsStore } from '../../store/settings-store';
 import { shortenPath } from '../../lib/shorten-path';
@@ -26,6 +27,7 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
   const send = useAgentStore((s) => s.send);
   const cancel = useAgentStore((s) => s.cancel);
   const compact = useAgentStore((s) => s.compact);
+  const startNewSession = useAgentStore((s) => s.startNewSession);
   const catalog = useAgentStore((s) => s.catalog);
   const agent = useSettingsStore((s) => s.settings?.ai.agent ?? null);
   const model = agent?.coding.model ?? null;
@@ -91,6 +93,7 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
         asking={ask !== null}
         onSend={(text) => send(paneId, cwd, text)}
         onStop={() => cancel(paneId)}
+        onClear={() => startNewSession(paneId, cwd)}
       />
     </div>
   );
@@ -321,7 +324,8 @@ function Composer({
   streaming,
   asking,
   onSend,
-  onStop
+  onStop,
+  onClear
 }: {
   disabled: boolean;
   streaming: boolean;
@@ -329,10 +333,17 @@ function Composer({
   asking: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
+  onClear: () => void;
 }): React.JSX.Element {
   const [text, setText] = useState('');
   const [refused, setRefused] = useState(false);
+  const [menuIndex, setMenuIndex] = useState(0);
+  const [menuDismissed, setMenuDismissed] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const menuId = useId();
+
+  const menu = agentSlashMenu(text, menuDismissed);
+  const activeIndex = Math.min(menuIndex, Math.max(menu.matches.length - 1, 0));
 
   // Grow with the content up to the max height the class caps it at.
   useEffect(() => {
@@ -348,9 +359,41 @@ function Composer({
     if (!streaming) setRefused(false);
   }, [streaming]);
 
+  /**
+   * Start a new session. Refused mid-turn exactly the way a message is: the
+   * conversation being replaced is the one still being written.
+   */
+  const runClear = (): void => {
+    setMenuDismissed(true);
+    if (streaming) {
+      setRefused(true);
+      return;
+    }
+    onClear();
+    setText('');
+  };
+
+  /**
+   * Run a command, from wherever it was picked. The one place that knows what
+   * a command name means, so the menu and the typed line cannot drift apart.
+   */
+  const runCommand = (command: AgentSlashCommand): void => {
+    switch (command.name) {
+      case 'clear':
+        runClear();
+        return;
+    }
+  };
+
   const submit = (): void => {
     const trimmed = text.trim();
     if (trimmed === '' || disabled) return;
+    // A command is what it does, not something to say to the model.
+    const typed = agentSlashCommand(trimmed);
+    if (typed !== undefined) {
+      runCommand(typed);
+      return;
+    }
     // Not sent, and not thrown away either: the draft stays exactly where it
     // was typed. Silently doing nothing is what makes this feel like a message
     // that vanished, so it is worth a line saying what happened.
@@ -362,6 +405,31 @@ function Composer({
     setText('');
   };
 
+  /** The menu's own keys, which only apply while it is up. */
+  const menuKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    if (!menu.open) return false;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const delta = e.key === 'ArrowDown' ? 1 : -1;
+      setMenuIndex((activeIndex + delta + menu.matches.length) % menu.matches.length);
+      return true;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setMenuDismissed(true);
+      return true;
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      // Picking a command runs it. Unlike Chat, where a pick fills the box
+      // because a skill is a prefix to a message, here the command is the
+      // whole of what the user meant.
+      runCommand(menu.matches[activeIndex]);
+      return true;
+    }
+    return false;
+  };
+
   return (
     <div className="mx-auto w-full max-w-2xl shrink-0 px-4 pb-4">
       {refused && (
@@ -371,14 +439,57 @@ function Composer({
             : 'The agent is still working - your message is still here.'}
         </p>
       )}
-      <div className="flex items-end gap-2 rounded-xl border border-fleet-border bg-fleet-surface p-2 focus-within:border-fleet-border-strong">
+      <div className="relative flex items-end gap-2 rounded-xl border border-fleet-border bg-fleet-surface p-2 focus-within:border-fleet-border-strong">
+        {menu.open && (
+          <div
+            id={menuId}
+            role="listbox"
+            aria-label="Commands"
+            className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full animate-in overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg fade-in zoom-in-95 duration-100"
+          >
+            {menu.matches.map((command, i) => (
+              // Options rather than buttons: focus never leaves the composer,
+              // so the row a key press would take is named by
+              // `aria-activedescendant` instead of being focused itself.
+              <div
+                key={command.name}
+                id={`${menuId}-${command.name}`}
+                role="option"
+                aria-selected={i === activeIndex}
+                // Mouse down rather than click: the textarea must not lose
+                // focus first, or the menu closes before the pick lands.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  runCommand(command);
+                }}
+                onMouseEnter={() => setMenuIndex(i)}
+                className={`flex w-full cursor-pointer items-center gap-1.5 px-3 py-1.5 text-left ${
+                  i === activeIndex ? 'bg-fleet-surface-3' : ''
+                }`}
+              >
+                <command.Icon size={12} className="shrink-0 text-fleet-text-muted" />
+                <span className="font-mono text-xs text-fleet-text">/{command.name}</span>
+                <span className="ml-1 line-clamp-1 text-[11px] text-fleet-text-muted">
+                  {command.description}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         <textarea
           ref={ref}
           rows={1}
           value={text}
           disabled={disabled}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            // Typing again is a fresh attempt, so a menu dismissed with Escape
+            // is allowed back.
+            setMenuDismissed(false);
+            setMenuIndex(0);
+          }}
           onKeyDown={(e) => {
+            if (menuKeyDown(e)) return;
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               submit();
@@ -395,6 +506,14 @@ function Composer({
                 : 'Ask the agent…'
           }
           aria-label="Message the agent"
+          // The composer *is* the combobox while the menu is up: it keeps
+          // focus, and points at the row the next Enter would take.
+          role="combobox"
+          aria-expanded={menu.open}
+          aria-controls={menu.open ? menuId : undefined}
+          aria-activedescendant={
+            menu.open ? `${menuId}-${menu.matches[activeIndex].name}` : undefined
+          }
           className="max-h-48 min-h-6 flex-1 resize-none bg-transparent px-1.5 py-1 text-sm text-fleet-text outline-none placeholder:text-fleet-text-subtle disabled:cursor-not-allowed"
         />
         {streaming ? (

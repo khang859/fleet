@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { AgentMessage } from './agent-types';
+import { messageText, type AgentMessage } from './agent-types';
 
 /**
  * A session on disk: one append-only JSONL file per agent thread.
@@ -24,7 +24,7 @@ import type { AgentMessage } from './agent-types';
  * carries its own shape and the reader accepts the older ones (see
  * `LegacyMessage`) rather than branching on this number.
  */
-export const SESSION_LOG_VERSION = 3;
+export const SESSION_LOG_VERSION = 4;
 
 const ToolCallSchema = z.object({
   id: z.string(),
@@ -90,7 +90,13 @@ const EventSchema = z.discriminatedUnion('t', [
    */
   z.object({ t: z.literal('compact'), summary: MessageSchema, keep: z.array(z.string()) }),
   /** What the provider said the context costs now. Last one wins. */
-  z.object({ t: z.literal('context'), tokens: z.number() })
+  z.object({ t: z.literal('context'), tokens: z.number() }),
+  /**
+   * The model's own name for the session, written once after the turn that
+   * makes it a real conversation. Last one wins, the same rule as `context`,
+   * though in practice nothing ever writes a second one.
+   */
+  z.object({ t: z.literal('title'), title: z.string() })
 ]);
 
 export type AgentSessionEvent = z.infer<typeof EventSchema>;
@@ -111,12 +117,44 @@ export type AgentSessionReplay = {
   contextTokens: number | null;
   cwd: string | null;
   /**
+   * `null` for a session written before titles existed, and for one whose
+   * first turn has not finished yet. Either way the list falls back to what
+   * the user opened with rather than showing a name nothing chose.
+   */
+  title: string | null;
+  /**
+   * The session's opening line, kept as it is read rather than taken from
+   * `messages` at the end. Compaction *replaces* the messages it folds, so by
+   * the time a long session finishes replaying its first words are gone - and
+   * they are exactly what a session with no title has to show instead.
+   */
+  firstUserText: string;
+  /**
    * Lines that were not valid events. Expected to be 0 or 1: a crash during an
    * append truncates the line it was writing, and nothing else can produce one.
    * Anything higher means the file is not what we think it is.
    */
   skipped: number;
 };
+
+/**
+ * A thread that has nothing in it, which is also what an unreadable log gives.
+ *
+ * A function rather than a shared constant because `messages` is an array a
+ * replay fills in place - one constant spread into two replays would hand them
+ * both the same array, and the second session would open holding the first
+ * one's transcript.
+ */
+export function emptyReplay(): AgentSessionReplay {
+  return {
+    messages: [],
+    contextTokens: null,
+    cwd: null,
+    title: null,
+    firstUserText: '',
+    skipped: 0
+  };
+}
 
 export function sessionHeader(id: string, cwd: string, createdAt: string): AgentSessionEvent {
   return { t: 'session', version: SESSION_LOG_VERSION, id, cwd, createdAt };
@@ -135,7 +173,7 @@ export function encodeEvent(event: AgentSessionEvent): string {
  * would lose the whole conversation to protect the part that was never written.
  */
 export function replaySession(contents: string): AgentSessionReplay {
-  const replay: AgentSessionReplay = { messages: [], contextTokens: null, cwd: null, skipped: 0 };
+  const replay = emptyReplay();
 
   for (const line of contents.split('\n')) {
     if (line.trim() === '') continue;
@@ -166,6 +204,9 @@ function apply(replay: AgentSessionReplay, event: AgentSessionEvent): void {
       replay.cwd = event.cwd;
       return;
     case 'message':
+      if (replay.firstUserText === '' && event.message.role === 'user') {
+        replay.firstUserText = messageText(event.message);
+      }
       replay.messages.push(event.message);
       return;
     case 'compact': {
@@ -176,5 +217,29 @@ function apply(replay: AgentSessionReplay, event: AgentSessionEvent): void {
     case 'context':
       replay.contextTokens = event.tokens;
       return;
+    case 'title':
+      replay.title = event.title;
+      return;
   }
 }
+
+/**
+ * A session id, as anything outside this process is allowed to state one.
+ *
+ * Every real id is minted by `crypto.randomUUID()` where a session begins, so
+ * a uuid is the whole shape - and checking it is what keeps a `..` out of the
+ * one operation that turns an id straight into a file that gets deleted.
+ */
+export const AgentSessionId = z.string().uuid();
+
+/** What a session is, for a list of them: enough to name it and place it. */
+export type AgentSessionListItem = {
+  id: string;
+  cwd: string;
+  /** The model's name for it, once it has one. */
+  title: string | null;
+  /** The words it was opened with, for a session that has no title yet. */
+  firstUserText: string;
+  /** Epoch ms of the last append, which is what "last used" means here. */
+  updatedAt: number;
+};

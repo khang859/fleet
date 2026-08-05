@@ -292,7 +292,12 @@ export class AgentService {
         tool_calls: outcome.toolCalls
       });
       for (const call of outcome.toolCalls) {
-        if (ctx.signal.aborted) return;
+        // Thrown rather than returned: `run` only tells the renderer a turn is
+        // over from its catch, so returning here ends the turn in main while
+        // the pane waits on a stream that will never say anything again - and
+        // a pane that thinks it is still busy refuses to clear or switch
+        // session for as long as it is open.
+        if (ctx.signal.aborted) throw new Error('cancelled');
         const done = await this.runTool(streamId, call, {
           cwd: req.cwd,
           threadId: req.threadId,

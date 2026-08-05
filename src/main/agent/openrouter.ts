@@ -90,6 +90,68 @@ const chunkSchema = z.object({
 
 const errorSchema = z.object({ error: z.object({ message: z.string() }) });
 
+const completionSchema = z.object({
+  choices: z
+    .array(z.object({ message: z.object({ content: z.string().nullish() }).nullish() }))
+    .nullish()
+});
+
+/**
+ * One call to the completions endpoint, however its body is shaped.
+ *
+ * Streamed and one-shot differ only in what they ask for and what they do with
+ * the answer, so where to send it and how to say who is asking lives here, and
+ * a response that is not an answer stops here too.
+ */
+async function post(
+  apiKey: string,
+  signal: AbortSignal | undefined,
+  body: Record<string, unknown>
+): Promise<Response> {
+  const res = await fetch(COMPLETIONS_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      ...APP_HEADERS
+    },
+    body: JSON.stringify(body),
+    signal
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res;
+}
+
+export type CompletionRequest = {
+  apiKey: string;
+  model: string;
+  messages: AgentWireMessage[];
+  maxTokens: number;
+  temperature: number;
+  signal?: AbortSignal;
+};
+
+/**
+ * One completion, not streamed and without tools.
+ *
+ * For the work that is not a turn - naming a session - where there is nothing
+ * on screen for a delta to land in, and watching a short answer arrive a word
+ * at a time would be noise rather than progress.
+ */
+export async function completeOnce(req: CompletionRequest): Promise<string> {
+  const res = await post(req.apiKey, req.signal, {
+    model: req.model,
+    messages: req.messages,
+    stream: false,
+    max_tokens: req.maxTokens,
+    temperature: req.temperature
+  });
+
+  const parsed = completionSchema.safeParse(await res.json());
+  if (!parsed.success) throw new Error('OpenRouter returned an unreadable completion');
+  return (parsed.data.choices?.[0]?.message?.content ?? '').trim();
+}
+
 /** One fragment of a tool call, as it appeared on the wire. */
 export type ToolCallDelta = {
   index: number;
@@ -208,26 +270,16 @@ async function errorMessage(res: Response): Promise<string> {
  * whole, in the outcome.
  */
 export async function streamCompletion(req: StreamRequest): Promise<StreamOutcome> {
-  const res = await fetch(COMPLETIONS_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${req.apiKey}`,
-      'Content-Type': 'application/json',
-      ...APP_HEADERS
-    },
-    body: JSON.stringify({
-      model: req.model,
-      messages: req.messages,
-      stream: true,
-      ...(req.maxTokens === null ? {} : { max_tokens: req.maxTokens }),
-      ...(req.temperature === null ? {} : { temperature: req.temperature }),
-      ...(req.reasoning === null ? {} : { reasoning: req.reasoning }),
-      ...(req.tools === undefined || req.tools.length === 0 ? {} : { tools: req.tools })
-    }),
-    signal: req.signal
+  const res = await post(req.apiKey, req.signal, {
+    model: req.model,
+    messages: req.messages,
+    stream: true,
+    ...(req.maxTokens === null ? {} : { max_tokens: req.maxTokens }),
+    ...(req.temperature === null ? {} : { temperature: req.temperature }),
+    ...(req.reasoning === null ? {} : { reasoning: req.reasoning }),
+    ...(req.tools === undefined || req.tools.length === 0 ? {} : { tools: req.tools })
   });
 
-  if (!res.ok) throw new Error(await errorMessage(res));
   if (!res.body) throw new Error('OpenRouter returned an empty response');
 
   const reader = res.body.getReader();

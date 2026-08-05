@@ -8,7 +8,11 @@ import type {
 } from '../../../shared/agent-types';
 import { messageText, textMessage } from '../../../shared/agent-types';
 import type { AgentToolCall } from '../../../shared/agent-tools';
-import type { AgentSessionEvent } from '../../../shared/agent-session';
+import {
+  emptyReplay,
+  type AgentSessionEvent,
+  type AgentSessionReplay
+} from '../../../shared/agent-session';
 import {
   canCompact,
   contextUsed,
@@ -70,6 +74,14 @@ type PaneThread = {
   /** Set while a turn or a compaction is in flight; the id main tags its events with. */
   streamId: string | null;
   /**
+   * Set while the session's own history is still being read off disk.
+   *
+   * A turn sent in that window would carry an empty history - the transcript
+   * arrives afterwards and is prepended, so it would look answered in context
+   * when it was not. The pane waits instead, the same way it waits on a turn.
+   */
+  loading: boolean;
+  /**
    * Set while the in-flight work is a compaction rather than a reply, holding
    * the tail that will survive it. Captured when the compaction starts, not
    * recomputed when it finishes: the summary must replace exactly what was sent
@@ -102,6 +114,7 @@ const EMPTY_THREAD: PaneThread = {
   cwd: '',
   sessionId: null,
   streamId: null,
+  loading: false,
   pendingCompact: null,
   pendingPermission: null,
   startedAt: null,
@@ -132,6 +145,17 @@ type AgentStoreState = {
    * live conversation.
    */
   openSession: (paneId: string, sessionId: string, cwd: string) => Promise<void>;
+  /**
+   * Start this pane on a fresh session. What was said stays on disk under the
+   * old id; the pane simply stops being the place it is read back into.
+   */
+  startNewSession: (paneId: string, cwd: string) => void;
+  /**
+   * Put a session this pane wrote earlier back on screen, in place. Unlike
+   * `openSession` this deliberately replaces whatever the pane is showing,
+   * which is why it cannot be the same call.
+   */
+  resumeSession: (paneId: string, cwd: string, sessionId: string) => Promise<void>;
   send: (paneId: string, cwd: string, text: string) => void;
   /** Folds the older half of the transcript into a summary. Ignored while busy. */
   compact: (paneId: string) => void;
@@ -180,30 +204,31 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     // here would drop a live conversation on the floor.
     if (get().threads[paneId]) return;
     // Claimed before the read, not after, so a turn started in the meantime is
-    // recorded against the right session rather than going unwritten.
-    set({ threads: { ...get().threads, [paneId]: { ...EMPTY_THREAD, sessionId, cwd } } });
+    // recorded against the right session rather than going unwritten. The id is
+    // already the layout's, so unlike the two below this does not write it back.
+    claimSession(paneId, cwd, sessionId);
+    await replayInto(paneId, sessionId);
+  },
 
-    const replay = await window.fleet.agent.loadSession(sessionId);
-    log.debug('openSession', { paneId, sessionId, messages: replay.messages.length });
-    const thread = get().threads[paneId];
-    if (!thread) return;
-    set({
-      threads: {
-        ...get().threads,
-        [paneId]: {
-          ...thread,
-          // Prepended rather than assigned: anything already here was said
-          // while the file was being read, so it belongs after the history.
-          messages: [...replay.messages, ...thread.messages],
-          contextTokens: thread.contextTokens ?? replay.contextTokens
-        }
-      }
-    });
+  startNewSession: (paneId, cwd) => {
+    if (!canSwitch(paneId)) return;
+    const sessionId = crypto.randomUUID();
+    log.debug('startNewSession', { paneId, sessionId });
+    // The file itself waits for a first event, so a session cleared and never
+    // used leaves nothing behind, and there is nothing to read back.
+    switchTo(paneId, cwd, sessionId);
+  },
+
+  resumeSession: async (paneId, cwd, sessionId) => {
+    if (!canSwitch(paneId)) return;
+    switchTo(paneId, cwd, sessionId);
+    await replayInto(paneId, sessionId);
   },
 
   send: (paneId, cwd, text) => {
     const thread = get().threads[paneId] ?? EMPTY_THREAD;
-    if (thread.streamId !== null) return;
+    // A turn sent before the history arrives would be answered without it.
+    if (thread.streamId !== null || thread.loading) return;
 
     const streamId = crypto.randomUUID();
     const user = textMessage(crypto.randomUUID(), 'user', text);
@@ -473,7 +498,120 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
   // Only a completed turn can trigger compaction. A failed one leaves the
   // transcript where it was, and a compaction triggering another compaction is
   // the loop this feature has to not have.
-  if (error === null && !wasCompacting) autoCompact(paneId);
+  if (error === null && !wasCompacting) {
+    autoCompact(paneId);
+    nameSession(thread);
+  }
+}
+
+/**
+ * Whether this pane is free to change session.
+ *
+ * Same rule as sending: a turn in flight is answered, not abandoned. A read in
+ * flight is not a reason to refuse - the load that lands after the switch is
+ * dropped by `replayInto`, so leaving instead of waiting costs nothing.
+ */
+function canSwitch(paneId: string): boolean {
+  return (useAgentStore.getState().threads[paneId]?.streamId ?? null) === null;
+}
+
+/** Point a pane at a session and clear what the last one left on screen. */
+function claimSession(paneId: string, cwd: string, sessionId: string): void {
+  useAgentStore.setState((s) => ({
+    threads: { ...s.threads, [paneId]: { ...EMPTY_THREAD, sessionId, cwd } }
+  }));
+}
+
+/**
+ * The same, and remembered: the id goes back to the layout, which is what makes
+ * a session the pane returns to after a restart rather than a choice that lasts
+ * until the window closes. Also clears a badge the old conversation earned.
+ */
+function switchTo(paneId: string, cwd: string, sessionId: string): void {
+  claimSession(paneId, cwd, sessionId);
+  useWorkspaceStore.getState().setAgentSession(paneId, sessionId);
+  reportActivity(paneId, 'idle');
+}
+
+/** Flip a pane's read flag, unless it has moved to another session meanwhile. */
+function setLoading(paneId: string, sessionId: string, loading: boolean): void {
+  useAgentStore.setState((s) => {
+    const thread = s.threads[paneId];
+    if (thread?.sessionId !== sessionId) return s;
+    return { threads: { ...s.threads, [paneId]: { ...thread, loading } } };
+  });
+}
+
+/**
+ * Read a session off disk and put it behind whatever the pane holds now.
+ *
+ * Anything already there was said while the file was being read, so it belongs
+ * after the history rather than instead of it.
+ */
+async function replayInto(paneId: string, sessionId: string): Promise<void> {
+  // Marked here rather than where the session is claimed, because this is the
+  // only thing `loading` describes: a pane switched to a fresh session has
+  // nothing to read, and would otherwise wait for a read that never happens.
+  setLoading(paneId, sessionId, true);
+
+  let replay: AgentSessionReplay;
+  try {
+    replay = await window.fleet.agent.loadSession(sessionId);
+  } catch (err) {
+    // The pane keeps whatever it has and stops waiting; a history that cannot
+    // be read is not a reason to leave the composer disabled forever.
+    log.warn('replay failed', { paneId, sessionId, error: String(err) });
+    replay = emptyReplay();
+  }
+  const thread = useAgentStore.getState().threads[paneId];
+  // The pane moved on while the file was being read - another session resumed,
+  // or cleared. What this load carries belongs to a conversation nobody is
+  // looking at any more.
+  if (thread?.sessionId !== sessionId) return;
+  log.debug('replayInto', { paneId, sessionId, messages: replay.messages.length });
+  useAgentStore.setState((s) => ({
+    threads: {
+      ...s.threads,
+      [paneId]: {
+        ...thread,
+        loading: false,
+        messages: [...replay.messages, ...thread.messages],
+        contextTokens: thread.contextTokens ?? replay.contextTokens
+      }
+    }
+  }));
+}
+
+/**
+ * Ask the model to name a session, once, after the turn that made it a real
+ * conversation.
+ *
+ * Nothing records that a session has been named. A session holds exactly one
+ * user message at the end of exactly one turn in its whole life, so the test
+ * below can be true only once, and stays false for every session resumed from
+ * disk with a conversation already in it.
+ */
+function nameSession(thread: PaneThread): void {
+  const { sessionId, cwd } = thread;
+  if (sessionId === null) return;
+  const users = thread.messages.filter((m) => m.role === 'user');
+  if (users.length !== 1) return;
+  const assistant = thread.messages.find((m) => m.role === 'assistant');
+
+  void window.fleet.agent
+    .generateTitle({
+      firstUser: messageText(users[0]),
+      firstAssistant: assistant ? messageText(assistant) : ''
+    })
+    .then((title) => {
+      if (title === null) return;
+      log.debug('nameSession', { sessionId, title });
+      // Written against the session that asked, which is held above rather
+      // than read back from the pane: by the time a name arrives the pane may
+      // have cleared or resumed, and the old conversation's title landing in
+      // the new one's file is exactly what that would cost.
+      window.fleet.agent.appendSession({ sessionId, cwd, event: { t: 'title', title } });
+    });
 }
 
 /**

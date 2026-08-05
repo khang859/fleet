@@ -152,9 +152,14 @@ import type {
   AgentStreamDelta,
   AgentStreamDone,
   AgentStreamError,
+  AgentTitleRequest,
   AgentToolEvent
 } from '../shared/agent-types';
-import type { AgentSessionAppend, AgentSessionReplay } from '../shared/agent-session';
+import type {
+  AgentSessionAppend,
+  AgentSessionListItem,
+  AgentSessionReplay
+} from '../shared/agent-session';
 import type {
   DetectedSshHost,
   RemoteDirEntry,
@@ -894,7 +899,14 @@ const fleetApi = {
     appendSession: (req: AgentSessionAppend): void =>
       ipcRenderer.send(IPC_CHANNELS.AGENT_SESSION_APPEND, req),
     loadSession: async (sessionId: string): Promise<AgentSessionReplay> =>
-      typedInvoke<AgentSessionReplay>(IPC_CHANNELS.AGENT_SESSION_LOAD, sessionId)
+      typedInvoke<AgentSessionReplay>(IPC_CHANNELS.AGENT_SESSION_LOAD, sessionId),
+    listSessions: async (cwd: string): Promise<AgentSessionListItem[]> =>
+      typedInvoke<AgentSessionListItem[]>(IPC_CHANNELS.AGENT_SESSION_LIST, cwd),
+    deleteSession: async (sessionId: string): Promise<boolean> =>
+      typedInvoke<boolean>(IPC_CHANNELS.AGENT_SESSION_DELETE, sessionId),
+    /** `null` when nothing usable came back; the caller keeps its own fallback. */
+    generateTitle: async (req: AgentTitleRequest): Promise<string | null> =>
+      typedInvoke<string | null>(IPC_CHANNELS.AGENT_GENERATE_TITLE, req)
   },
 
   /**

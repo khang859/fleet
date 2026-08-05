@@ -80,6 +80,12 @@ export type AgentSettings = {
   compactThreshold: number | null;
   /** Which shell commands run without stopping to ask. */
   permissions: AgentPermissionRules;
+  /**
+   * The model that names a session once its first turn is done. `null` ⇒ the
+   * coding model writes its own titles. A plain field rather than a whole
+   * `AgentModelConfig`, because naming needs none of the other knobs.
+   */
+  titleModel: string | null;
 };
 
 export const EMPTY_AGENT_MODEL_CONFIG: AgentModelConfig = {
@@ -97,7 +103,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   image: { ...EMPTY_AGENT_MODEL_CONFIG },
   systemPrompt: null,
   compactThreshold: 0.8,
-  permissions: DEFAULT_AGENT_PERMISSION_RULES
+  permissions: DEFAULT_AGENT_PERMISSION_RULES,
+  titleModel: null
 };
 
 /**
@@ -269,6 +276,15 @@ export type AgentCompactRequest = {
 };
 
 export type AgentCompactDone = { streamId: string; summary: string; usage: AgentUsage | null };
+
+/**
+ * Ask for a name for a session, from the exchange that opened it.
+ *
+ * It carries the words and nothing else - no session id, no folder. Which
+ * session the answer belongs to is the caller's to remember, and by the time
+ * one arrives the pane may well be showing a different conversation.
+ */
+export type AgentTitleRequest = { firstUser: string; firstAssistant: string };
 
 /**
  * A tool call starting, and the same call finished. Both carry the whole call

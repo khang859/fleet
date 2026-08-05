@@ -11,6 +11,8 @@ import { SecretInput } from '../../chat/settings/SecretInput';
 import { AgentRoleSettings } from './AgentRoleSettings';
 import { SystemPromptField } from './SystemPromptField';
 import { CompactionField } from './CompactionField';
+import { ModelSelect } from './ModelSelect';
+import { relativeTime } from './format';
 
 function validateOpenRouterKey(key: string): string | null {
   if (/\s/.test(key)) return 'Keys cannot contain spaces.';
@@ -84,6 +86,22 @@ export function AgentSettingsPanel(): React.JSX.Element {
           />
         </FieldGroup>
 
+        <FieldGroup title="Sessions">
+          <Field
+            label="Title model"
+            description="Names a session once its first turn finishes. Any model will do - naming calls no tools."
+            layout="stack"
+          >
+            <ModelSelect
+              models={models}
+              value={agent.titleModel}
+              onChange={(titleModel) => void updateSettings({ ai: { agent: { titleModel } } })}
+              allowNone
+              noneLabel="Use the coding model"
+            />
+          </Field>
+        </FieldGroup>
+
         <FieldGroup title="Instructions">
           <SystemPromptField
             value={agent.systemPrompt}
@@ -154,13 +172,4 @@ function CatalogStatus({
       )}
     </div>
   );
-}
-
-function relativeTime(epochMs: number): string {
-  const minutes = Math.round((Date.now() - epochMs) / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
 }

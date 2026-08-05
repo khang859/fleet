@@ -4,10 +4,11 @@ import { DEFAULT_SETTINGS } from '../../../../shared/constants';
 import { messageText, textMessage } from '../../../../shared/agent-types';
 import type { AgentCatalogModel, AgentMessage, AgentUsage } from '../../../../shared/agent-types';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
-import type {
-  AgentSessionAppend,
-  AgentSessionEvent,
-  AgentSessionReplay
+import {
+  emptyReplay,
+  type AgentSessionAppend,
+  type AgentSessionEvent,
+  type AgentSessionReplay
 } from '../../../../shared/agent-session';
 import type * as AgentStore from '../agent-store';
 import type * as SettingsStore from '../settings-store';
@@ -39,7 +40,10 @@ const agentApi = {
   compact: vi.fn(),
   cancel: vi.fn(),
   appendSession: vi.fn(),
-  decidePermission: vi.fn()
+  decidePermission: vi.fn(),
+  deleteSession: vi.fn().mockResolvedValue(true),
+  listSessions: vi.fn().mockResolvedValue([]),
+  generateTitle: vi.fn().mockResolvedValue(null)
 };
 
 /** What `loadSession` hands back; set per test to stand in for a file. */
@@ -142,7 +146,7 @@ function setThreshold(compactThreshold: number | null): void {
 beforeEach(async () => {
   vi.resetModules();
   listeners.clear();
-  replay = { messages: [], contextTokens: null, cwd: null, skipped: 0 };
+  replay = emptyReplay();
 
   Object.assign(window.fleet, {
     agent: {
@@ -154,6 +158,9 @@ beforeEach(async () => {
       cancel: agentApi.cancel,
       appendSession: agentApi.appendSession,
       loadSession: vi.fn().mockImplementation(async () => Promise.resolve(replay)),
+      listSessions: agentApi.listSessions,
+      deleteSession: agentApi.deleteSession,
+      generateTitle: agentApi.generateTitle,
       onStreamChunk: listen(IPC_CHANNELS.AGENT_STREAM_CHUNK),
       onStreamReasoning: listen(IPC_CHANNELS.AGENT_STREAM_REASONING),
       onStreamDone: listen(IPC_CHANNELS.AGENT_STREAM_DONE),
@@ -570,6 +577,8 @@ describe('session log', () => {
       messages: [textMessage('a', 'user', 'earlier'), textMessage('b', 'assistant', 'answer')],
       contextTokens: 4_000,
       cwd: '/repo',
+      title: null,
+      firstUserText: '',
       skipped: 0
     };
 
@@ -934,5 +943,237 @@ describe('telling the rest of the app it is blocked', () => {
     agentStore.useAgentStore.getState().disposePane(PANE);
 
     expect(activityOf()).toBeUndefined();
+  });
+});
+
+/**
+ * Clearing and resuming both replace what a pane is showing, which is exactly
+ * what `openSession` refuses to do. The id also has to reach the layout, since
+ * that is what the pane comes back to after a restart.
+ */
+describe('switching sessions', () => {
+  const OTHER = 'session-2';
+
+  const agentTab = {
+    id: 'tab-agent',
+    label: 'repo',
+    labelIsCustom: true,
+    cwd: '/repo',
+    type: 'agent' as const,
+    splitRoot: {
+      type: 'leaf' as const,
+      id: PANE,
+      cwd: '/repo',
+      paneType: 'agent' as const,
+      agentSessionId: 'session-1'
+    }
+  };
+
+  const workspaceWith = async (): Promise<typeof WorkspaceStore> => {
+    const workspace = await import('../workspace-store');
+    workspace.useWorkspaceStore.setState({
+      workspace: { id: 'ws', label: 'W', tabs: [agentTab] },
+      activeTabId: 'tab-agent',
+      activePaneId: PANE
+    });
+    return workspace;
+  };
+
+  const leafSession = (workspace: typeof WorkspaceStore): string | undefined => {
+    const leafs = workspace.collectPaneLeafs(
+      workspace.useWorkspaceStore.getState().workspace.tabs[0].splitRoot
+    );
+    return leafs.find((l) => l.id === PANE)?.agentSessionId;
+  };
+
+  it('gives a cleared pane a new session, and tells the layout about it', async () => {
+    const workspace = await workspaceWith();
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
+    emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId: liveStreamId(), usage: null });
+
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+
+    expect(thread().messages).toEqual([]);
+    expect(thread().sessionId).not.toBe('session-1');
+    expect(leafSession(workspace)).toBe(thread().sessionId);
+  });
+
+  // The conversation being replaced is the one still being written.
+  it('refuses to clear while a turn is running', async () => {
+    await workspaceWith();
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
+
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+
+    expect(thread().sessionId).toBe('session-1');
+    expect(thread().messages).toHaveLength(2);
+  });
+
+  it('replaces the transcript with the session being resumed', async () => {
+    const workspace = await workspaceWith();
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
+    emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId: liveStreamId(), usage: null });
+    replay = {
+      messages: [textMessage('x', 'user', 'the old question')],
+      contextTokens: 900,
+      cwd: '/repo',
+      title: 'Older work',
+      firstUserText: '',
+      skipped: 0
+    };
+
+    await agentStore.useAgentStore.getState().resumeSession(PANE, '/repo', OTHER);
+
+    expect(thread().messages.map((m) => m.id)).toEqual(['x']);
+    expect(thread().sessionId).toBe(OTHER);
+    expect(leafSession(workspace)).toBe(OTHER);
+  });
+
+  it('refuses to resume while a turn is running', async () => {
+    await workspaceWith();
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
+
+    await agentStore.useAgentStore.getState().resumeSession(PANE, '/repo', OTHER);
+
+    expect(thread().sessionId).toBe('session-1');
+  });
+
+  /*
+   * Two resumes in a row, the first one slower than the second. What the first
+   * read carries belongs to a conversation the pane has already left, and
+   * letting it land would show one session's history under another's name.
+   */
+  it('drops a load the pane has already moved on from', async () => {
+    await workspaceWith();
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+    replay = {
+      messages: [textMessage('slow', 'user', 'from the abandoned session')],
+      contextTokens: null,
+      cwd: '/repo',
+      title: null,
+      firstUserText: '',
+      skipped: 0
+    };
+
+    const first = agentStore.useAgentStore.getState().resumeSession(PANE, '/repo', OTHER);
+    // Arrives while the read above is still outstanding.
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+    await first;
+
+    expect(thread().sessionId).not.toBe(OTHER);
+    expect(thread().messages).toEqual([]);
+  });
+
+  /*
+   * A fresh session has no file to read, so nothing would ever arrive to say
+   * the wait is over. Clearing out of a session still loading has to leave a
+   * pane that can be typed in.
+   */
+  it('leaves a cleared pane able to send, even mid-read', async () => {
+    await workspaceWith();
+    // A read that never comes back, which is what "still loading" is.
+    Object.assign(window.fleet.agent, {
+      loadSession: vi.fn().mockReturnValue(new Promise<AgentSessionReplay>(() => undefined))
+    });
+    void agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
+
+    expect(thread().messages.map((m) => messageText(m))).toContain('hello');
+  });
+});
+
+/**
+ * A session is named once, after the turn that makes it a conversation, and
+ * the name is written against the session that asked rather than whatever the
+ * pane is showing when it arrives.
+ */
+describe('naming a session', () => {
+  const open = async (sessionId = 'session-1'): Promise<void> => {
+    await agentStore.useAgentStore.getState().openSession(PANE, sessionId, '/repo');
+  };
+
+  const titles = (): AgentSessionEvent[] =>
+    agentApi.appendSession.mock.calls
+      .map(([req]) => (req as AgentSessionAppend).event)
+      .filter((e) => e.t === 'title');
+
+  it('asks for a name after the first turn, and writes what comes back', async () => {
+    agentApi.generateTitle.mockResolvedValueOnce('Slow parser');
+    await open();
+    turn('why is the parser slow');
+    await vi.waitFor(() => expect(titles()).toHaveLength(1));
+
+    expect(agentApi.generateTitle).toHaveBeenCalledWith({
+      firstUser: 'why is the parser slow',
+      firstAssistant: 'reply to why is the parser slow'
+    });
+    expect(titles()[0]).toEqual({ t: 'title', title: 'Slow parser' });
+  });
+
+  // Nothing records that a session has been named. The condition is that the
+  // session holds one user message, which is true after exactly one turn.
+  it('does not ask again on later turns', async () => {
+    await open();
+    turn('first');
+    turn('second');
+    turn('third');
+
+    expect(agentApi.generateTitle).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not name a session resumed with a conversation already in it', async () => {
+    replay = {
+      messages: [textMessage('a', 'user', 'earlier'), textMessage('b', 'assistant', 'answer')],
+      contextTokens: null,
+      cwd: '/repo',
+      title: null,
+      firstUserText: '',
+      skipped: 0
+    };
+    await open();
+    turn('carry on');
+
+    expect(agentApi.generateTitle).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing when no name came back', async () => {
+    agentApi.generateTitle.mockResolvedValueOnce(null);
+    await open();
+    turn('hello');
+    await vi.waitFor(() => expect(agentApi.generateTitle).toHaveBeenCalled());
+
+    expect(titles()).toEqual([]);
+  });
+
+  /*
+   * The one race this design exists to avoid: a name arriving after the pane
+   * has cleared must land in the file that asked for it, not in the new one.
+   */
+  it('writes the name into the session that asked, not the one on screen now', async () => {
+    let deliver: (title: string | null) => void = () => undefined;
+    agentApi.generateTitle.mockReturnValueOnce(
+      new Promise<string | null>((resolve) => {
+        deliver = resolve;
+      })
+    );
+    await open('session-1');
+    turn('the first question');
+
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+    const cleared = thread().sessionId;
+    deliver('First question');
+    await vi.waitFor(() => expect(titles()).toHaveLength(1));
+
+    const written = agentApi.appendSession.mock.calls
+      .map(([req]) => req as AgentSessionAppend)
+      .filter((req) => req.event.t === 'title');
+    expect(written[0].sessionId).toBe('session-1');
+    expect(written[0].sessionId).not.toBe(cleared);
   });
 });

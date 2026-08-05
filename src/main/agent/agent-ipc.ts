@@ -1,12 +1,24 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
-import type { AgentCatalog, AgentCompactRequest, AgentSendRequest } from '../../shared/agent-types';
-import type { AgentSessionAppend, AgentSessionReplay } from '../../shared/agent-session';
+import type {
+  AgentCatalog,
+  AgentCompactRequest,
+  AgentSendRequest,
+  AgentSettings,
+  AgentTitleRequest
+} from '../../shared/agent-types';
+import type {
+  AgentSessionAppend,
+  AgentSessionListItem,
+  AgentSessionReplay
+} from '../../shared/agent-session';
 import type { AgentModelCatalog } from './models-catalog';
 import type { AgentService } from './agent-service';
 import type { AgentSessionStore } from './session-store';
 import type { PermissionGate } from './permissions/gate';
 import { AgentPermissionDecision } from '../../shared/agent-types';
+import { completeOnce } from './openrouter';
+import { resolveTitle } from './session-title';
 
 /**
  * Everything the Agent pane calls into main. Agent settings themselves ride on
@@ -18,6 +30,8 @@ export function registerAgentIpc(deps: {
   service: AgentService;
   gate: PermissionGate;
   sessions: AgentSessionStore;
+  getSettings: () => AgentSettings;
+  getApiKey: () => string | null;
 }): void {
   ipcMain.handle(
     IPC_CHANNELS.AGENT_LIST_MODELS,
@@ -53,5 +67,34 @@ export function registerAgentIpc(deps: {
   ipcMain.handle(
     IPC_CHANNELS.AGENT_SESSION_LOAD,
     (_e, sessionId: string): AgentSessionReplay => deps.sessions.load(sessionId)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_SESSION_LIST, (_e, cwd: string): AgentSessionListItem[] =>
+    deps.sessions.list(cwd)
+  );
+
+  // Ids are checked where they become paths, in the store, so every one of
+  // these handlers is covered rather than only the one that deletes.
+  ipcMain.handle(IPC_CHANNELS.AGENT_SESSION_DELETE, (_e, sessionId: string): boolean =>
+    deps.sessions.delete(sessionId)
+  );
+
+  // Nothing is written here. Main works out the words and hands them back; the
+  // renderer knows which session asked, and is the only side that can.
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_GENERATE_TITLE,
+    async (_e, req: AgentTitleRequest): Promise<string | null> => {
+      const apiKey = deps.getApiKey();
+      if (!apiKey) return null;
+      const settings = deps.getSettings();
+      const model = settings.titleModel ?? settings.coding.model;
+      if (model === null) return null;
+      return resolveTitle(completeOnce, {
+        apiKey,
+        model,
+        firstUser: req.firstUser,
+        firstAssistant: req.firstAssistant
+      });
+    }
   );
 }
