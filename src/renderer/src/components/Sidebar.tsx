@@ -761,6 +761,35 @@ export function Sidebar({
     ? TOGGLEABLE_TOOLS.filter((t) => toolSettings[t.type]).length
     : 0;
 
+  // Agent panes get their own pinned section, so they are filtered out of the
+  // scrolling tab list rather than listed twice. One pass feeds both the rows
+  // and the off-screen summary above them.
+  const agentRows = workspace.tabs
+    .filter((t) => t.type === 'agent')
+    .map((tab) => {
+      const paneIds = collectPaneIds(tab.splitRoot);
+      return {
+        tab,
+        paneIds,
+        badge: getTabBadge(paneIds),
+        activity: getTabActivity(paneIds)
+      };
+    });
+
+  // Which agents want the user, as a stable string so the measuring effect only
+  // re-runs when the set changes. Read off the state rather than the rendered
+  // badge: a row showing the activity glyph draws no badge element to find.
+  const needyAgentIds = agentRows
+    .filter(
+      ({ badge, activity }) =>
+        badge === 'permission' ||
+        badge === 'error' ||
+        activity?.state === 'needs_me' ||
+        activity?.state === 'error'
+    )
+    .map(({ tab }) => tab.id)
+    .join(',');
+
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragType, setDragType] = useState<'tab' | 'group' | 'userGroup'>('tab');
   const [dropTarget, setDropTarget] = useState<{
@@ -1196,13 +1225,15 @@ export function Sidebar({
 
   // --- Tab list scroll state ---
   const tabListRef = useRef<HTMLDivElement>(null);
+  const agentListRef = useRef<HTMLDivElement>(null);
   const sidebarRootRef = useRef<HTMLDivElement>(null);
   const [hasScrollOverflow, setHasScrollOverflow] = useState(false);
 
-  // Auto-scroll active tab into view
+  // Auto-scroll active tab into view. Searched across the whole sidebar, not
+  // just the tab list, because the pinned agents section scrolls on its own.
   useEffect(() => {
-    if (!activeTabId || !tabListRef.current) return;
-    const el = tabListRef.current.querySelector(`[data-tab-id="${activeTabId}"]`);
+    if (!activeTabId || !sidebarRootRef.current) return;
+    const el = sidebarRootRef.current.querySelector(`[data-tab-id="${activeTabId}"]`);
     if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [activeTabId]);
 
@@ -1265,6 +1296,44 @@ export function Sidebar({
       container.removeEventListener('scroll', countOffScreen);
     };
   }, [workspace.tabs.length]);
+
+  // Same idea for the pinned agents list, which scrolls inside its own cap: an
+  // agent waiting on a permission must not be able to hide off the ends of it.
+  const [agentOffScreenCounts, setAgentOffScreenCounts] = useState({ above: 0, below: 0 });
+
+  useEffect(() => {
+    const container = agentListRef.current;
+    if (!container) {
+      setAgentOffScreenCounts({ above: 0, below: 0 });
+      return;
+    }
+    const needy = new Set(needyAgentIds ? needyAgentIds.split(',') : []);
+
+    const countOffScreen = (): void => {
+      const containerRect = container.getBoundingClientRect();
+      let above = 0;
+      let below = 0;
+      container.querySelectorAll('[data-tab-id]').forEach((el) => {
+        if (!needy.has(el.getAttribute('data-tab-id') ?? '')) return;
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom < containerRect.top) above++;
+        else if (rect.top > containerRect.bottom) below++;
+      });
+      // Bail out on an unchanged count, or this re-renders on every scroll tick.
+      setAgentOffScreenCounts((prev) =>
+        prev.above === above && prev.below === below ? prev : { above, below }
+      );
+    };
+
+    countOffScreen();
+    container.addEventListener('scroll', countOffScreen);
+    const observer = new ResizeObserver(countOffScreen);
+    observer.observe(container);
+    return () => {
+      container.removeEventListener('scroll', countOffScreen);
+      observer.disconnect();
+    };
+  }, [needyAgentIds, agentRows.length]);
 
   const handleDeleteWorkspace = useCallback(async (wsId: string) => {
     await window.fleet.layout.delete(wsId);
@@ -1450,7 +1519,8 @@ export function Sidebar({
                 t.type !== 'annotate' &&
                 t.type !== 'kanban' &&
                 t.type !== 'sessions' &&
-                t.type !== 'chat'
+                t.type !== 'chat' &&
+                t.type !== 'agent'
             );
 
             const rendered: React.ReactNode[] = [];
@@ -1741,6 +1811,77 @@ export function Sidebar({
           count={offScreenCounts.below}
           label="need attention"
         />
+      </div>
+
+      {/* Pinned agents section */}
+      <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
+        <div className="flex items-center justify-between px-2 py-1">
+          <span className="text-xs font-semibold text-fleet-text-subtle uppercase tracking-wider">
+            Agents
+          </span>
+          <div className="flex items-center gap-1.5">
+            {agentRows.length > 0 && (
+              <span className="text-[10px] font-medium tabular-nums text-fleet-text-subtle">
+                {agentRows.length}
+              </span>
+            )}
+            <button
+              className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
+              // The pane needs a folder to work in, so the same event the
+              // command palette fires opens the picker first.
+              onClick={() => document.dispatchEvent(new CustomEvent('fleet:new-agent'))}
+              title="New Agent Pane"
+            >
+              +
+            </button>
+          </div>
+        </div>
+        {agentRows.length > 0 && (
+          <>
+            <OffScreenBadgeSummary
+              direction="above"
+              count={agentOffScreenCounts.above}
+              label="need attention"
+            />
+            <div ref={agentListRef} className="max-h-[30vh] overflow-y-auto space-y-0.5">
+              {agentRows.map(({ tab, paneIds, badge, activity }) => (
+                <TabItem
+                  key={tab.id}
+                  id={tab.id}
+                  label={tab.label}
+                  labelIsCustom={tab.labelIsCustom}
+                  cwd={tab.cwd}
+                  drivingPaneId={
+                    tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId)
+                      ? activePaneId
+                      : paneIds[0]
+                  }
+                  isActive={tab.id === activeTabId}
+                  badge={badge}
+                  activity={activity}
+                  icon={<Bot size={14} />}
+                  index={realIndex(tab.id)}
+                  pathContext={tab.pathContext}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    for (const paneId of paneIds) {
+                      useNotificationStore.getState().clearPane(paneId);
+                      window.fleet.notifications.paneFocused({ paneId });
+                    }
+                  }}
+                  onClose={() => handleCloseTab(tab.id)}
+                  onRename={(newLabel) => renameTab(tab.id, newLabel)}
+                  onResetLabel={(liveCwd) => resetTabLabel(tab.id, liveCwd)}
+                />
+              ))}
+            </div>
+            <OffScreenBadgeSummary
+              direction="below"
+              count={agentOffScreenCounts.below}
+              label="need attention"
+            />
+          </>
+        )}
       </div>
 
       {/* Pinned tools section */}

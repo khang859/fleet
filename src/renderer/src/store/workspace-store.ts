@@ -401,6 +401,27 @@ function getFirstLeafCwd(node: PaneNode | undefined): string | undefined {
   return getFirstLeafCwd(node.children[0]) ?? getFirstLeafCwd(node.children[1]);
 }
 
+// Backward compat for saved workspaces: old ones may lack labelIsCustom, and a
+// tab's cwd is resynced from its first pane leaf because pane cwds are always
+// up to date. Agent tabs shed their group as well - they render in their own
+// sidebar section now, where a group means nothing.
+function migrateTab(t: Tab): Tab {
+  const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
+  return {
+    ...t,
+    labelIsCustom: t.labelIsCustom ?? false,
+    cwd: firstLeafCwd ?? t.cwd,
+    userGroupId: t.type === 'agent' ? undefined : t.userGroupId
+  };
+}
+
+// A group with no members left renders no header, so it could never be renamed
+// or removed again. Agent tabs leaving for their own section is one way to get
+// there; "Ungroup All" is another.
+function liveUserGroups(groups: UserGroup[] | undefined, tabs: Tab[]): UserGroup[] | undefined {
+  return groups?.filter((g) => tabs.some((t) => t.userGroupId === g.id));
+}
+
 function findLeaf(node: PaneNode, paneId: string): PaneLeaf | null {
   if (node.type === 'leaf') return node.id === paneId ? node : null;
   return findLeaf(node.children[0], paneId) ?? findLeaf(node.children[1], paneId);
@@ -1172,21 +1193,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       label: workspace.label,
       tabCount: workspace.tabs.length
     });
-    // Backward compat: old saved workspaces may lack labelIsCustom
-    // Also sync tab cwd from first pane leaf (pane CWDs are always up-to-date)
     // Drop the now-defunct pinned Artifacts tab (folded into the Kanban view).
-    const migratedTabs = workspace.tabs
-      .filter((t) => t.type !== 'artifacts')
-      .map((t) => {
-        const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
-        return {
-          ...t,
-          labelIsCustom: t.labelIsCustom ?? false,
-          cwd: firstLeafCwd ?? t.cwd
-        };
-      });
+    const migratedTabs = workspace.tabs.filter((t) => t.type !== 'artifacts').map(migrateTab);
     const migrated = applyToolVisibility(
-      { ...workspace, tabs: migratedTabs },
+      {
+        ...workspace,
+        tabs: migratedTabs,
+        userGroups: liveUserGroups(workspace.userGroups, migratedTabs)
+      },
       currentToolVisibility()
     );
 
@@ -1300,18 +1314,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set((state) => {
       const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
       // Drop the now-defunct pinned Artifacts tab (folded into the Kanban view).
-      const migratedTabs = target.tabs
-        .filter((t) => t.type !== 'artifacts')
-        .map((t) => {
-          const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
-          return {
-            ...t,
-            labelIsCustom: t.labelIsCustom ?? false,
-            cwd: firstLeafCwd ?? t.cwd
-          };
-        });
+      const migratedTabs = target.tabs.filter((t) => t.type !== 'artifacts').map(migrateTab);
       const migrated = applyToolVisibility(
-        { ...target, tabs: migratedTabs },
+        {
+          ...target,
+          tabs: migratedTabs,
+          userGroups: liveUserGroups(target.userGroups, migratedTabs)
+        },
         currentToolVisibility()
       );
 
@@ -1375,17 +1384,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       for (const ws of workspaces) {
         // Don't overwrite already-loaded background workspaces or the active workspace
         if (!newBackground.has(ws.id) && ws.id !== state.workspace.id) {
-          const migratedTabs = ws.tabs.map((t) => {
-            const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
-            return {
-              ...t,
-              labelIsCustom: t.labelIsCustom ?? false,
-              cwd: firstLeafCwd ?? t.cwd
-            };
-          });
+          const migratedTabs = ws.tabs.map(migrateTab);
           newBackground.set(
             ws.id,
-            applyToolVisibility({ ...ws, tabs: migratedTabs }, currentToolVisibility())
+            applyToolVisibility(
+              {
+                ...ws,
+                tabs: migratedTabs,
+                userGroups: liveUserGroups(ws.userGroups, migratedTabs)
+              },
+              currentToolVisibility()
+            )
           );
         }
       }

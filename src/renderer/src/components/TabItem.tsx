@@ -36,12 +36,14 @@ type TabItemProps = {
   onRename: (newLabel: string) => void;
   onResetLabel: (liveCwd: string) => void;
   disableReset?: boolean;
-  // Drag-and-drop
+  // Drag-and-drop. Omitted by rows that live outside the reorderable tab list
+  // (agent panes have their own pinned section), which makes the row neither
+  // draggable nor a drop target.
   index: number;
-  onDragStart: (index: number) => void;
-  onDragOver: (e: React.DragEvent, index: number) => void;
-  onDrop: (index: number) => void;
-  isDragOver: 'above' | 'below' | null;
+  onDragStart?: (index: number) => void;
+  onDragOver?: (e: React.DragEvent, index: number) => void;
+  onDrop?: (index: number) => void;
+  isDragOver?: 'above' | 'below' | null;
   /** Tailwind border color class for active state. Defaults to 'border-blue-500'. */
   activeBorderColor?: string;
   /** Called when user selects "Create Worktree" from context menu */
@@ -218,19 +220,22 @@ export function TabItem({
           `}
           onClick={onClick}
           title={labelIsCustom ? `${label} — ${cwd}` : cwd}
-          draggable
+          draggable={onDragStart !== undefined}
           onDragStart={(e) => {
+            if (!onDragStart) return;
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', String(index));
             logDnd.debug('tabItem dragStart', { tabId: id, index, label });
             onDragStart(index);
           }}
           onDragOver={(e) => {
+            if (!onDragOver) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
             onDragOver(e, index);
           }}
           onDrop={(e) => {
+            if (!onDrop) return;
             e.preventDefault();
             e.stopPropagation();
             logDnd.debug('tabItem drop', { tabId: id, index, label });
