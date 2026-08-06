@@ -125,6 +125,7 @@ import { AgentSessionStore } from './agent/session-store';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './agent/image-store';
 import { PermissionGate } from './agent/permissions/gate';
 import { AgentGitWatcher } from './agent/git-watch';
+import { AgentHistoryStore } from './agent/history-store';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
 import { resolveSummary } from './chat/pane-summarizer';
 import { PermissionManager } from './chat/permissions/permission-manager';
@@ -1684,6 +1685,7 @@ void app.whenReady().then(async () => {
     sessions: agentSessions,
     attachments: new AgentImageStore(AGENT_ATTACHMENTS_DIR),
     git: agentGitWatcher,
+    history: new AgentHistoryStore(),
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => chatSecrets.getKey()
   });

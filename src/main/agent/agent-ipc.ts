@@ -27,6 +27,7 @@ import { resolveAttachment } from './attachments';
 import { searchMentionFiles } from './mention-search';
 import type { AgentImageStore } from './image-store';
 import type { AgentGitWatcher } from './git-watch';
+import type { AgentHistoryStore } from './history-store';
 
 /**
  * Everything the Agent pane calls into main. Agent settings themselves ride on
@@ -42,6 +43,8 @@ export function registerAgentIpc(deps: {
   attachments: AgentImageStore;
   /** Which branch each pane's folder is on, and telling the pane when it moves. */
   git: AgentGitWatcher;
+  /** What has been typed into a folder before, for the composer's Up key. */
+  history: AgentHistoryStore;
   getSettings: () => AgentSettings;
   getApiKey: () => string | null;
 }): void {
@@ -138,5 +141,15 @@ export function registerAgentIpc(deps: {
 
   ipcMain.on(IPC_CHANNELS.AGENT_GIT_REFRESH, (_e, paneId: string) => {
     deps.git.refresh(paneId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_HISTORY_LIST, (_e, cwd: string): string[] =>
+    deps.history.list(cwd)
+  );
+
+  // Fire-and-forget: this runs beside a send, and a prompt that could not be
+  // written down is not a reason to hold up the prompt itself.
+  ipcMain.on(IPC_CHANNELS.AGENT_HISTORY_ADD, (_e, cwd: string, text: string) => {
+    deps.history.add(cwd, text);
   });
 }

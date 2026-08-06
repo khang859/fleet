@@ -943,7 +943,17 @@ const fleetApi = {
     /** For a change a watcher cannot see - a tool call that may have checked out. */
     refreshGit: (paneId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_GIT_REFRESH, paneId),
     onGitHead: (cb: (p: AgentGitHeadEvent) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.AGENT_GIT_HEAD, cb)
+      onChannel(IPC_CHANNELS.AGENT_GIT_HEAD, cb),
+    /**
+     * What the composer's Up key walks back through. Asked for once when a pane
+     * opens - a hundred short strings, held in the renderer after that, because
+     * a keypress that waits on a round trip does not feel like a keypress.
+     */
+    historyList: async (cwd: string): Promise<string[]> =>
+      typedInvoke<string[]>(IPC_CHANNELS.AGENT_HISTORY_LIST, cwd),
+    /** Fire-and-forget beside a send: failing to record must not fail the send. */
+    historyAdd: (cwd: string, text: string): void =>
+      ipcRenderer.send(IPC_CHANNELS.AGENT_HISTORY_ADD, cwd, text)
   },
 
   /**

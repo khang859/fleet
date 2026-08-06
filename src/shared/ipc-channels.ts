@@ -395,6 +395,12 @@ export const IPC_CHANNELS = {
   AGENT_GIT_UNWATCH: 'agent:git-unwatch',
   AGENT_GIT_REFRESH: 'agent:git-refresh',
   AGENT_GIT_HEAD: 'agent:git-head',
+  // What the composer's Up key walks back through, scoped to a pane's folder.
+  // LIST is asked once when a pane opens and answered from a file; ADD is
+  // fire-and-forget, because a prompt that failed to be remembered must not be
+  // a prompt that failed to send.
+  AGENT_HISTORY_LIST: 'agent:history-list',
+  AGENT_HISTORY_ADD: 'agent:history-add',
 
   // ── Remote (SSH) file browser ──────────────────────────────────────────────
   // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's

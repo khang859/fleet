@@ -32,6 +32,9 @@ import { AgentContextMeter } from './AgentContextMeter';
 import { AgentSpendMeter } from './AgentSpendMeter';
 import { AgentLocation } from './AgentLocation';
 import { useGitHead } from './use-git-head';
+import { usePromptHistory } from './use-prompt-history';
+import type { HistoryDirection } from '../../../../shared/agent-history';
+import { atFirstRow, atLastRow } from '../../lib/caret-row';
 import { EMPTY_SESSION_SPEND, hasSpend } from '../../../../shared/agent-spend';
 import { agentSlashCommand, agentSlashMenu, type AgentSlashCommand } from './composer-slash';
 import { agentMentionQuery, withoutMentionQuery } from './composer-mention';
@@ -531,6 +534,7 @@ function Composer({
   const [mentionDismissed, setMentionDismissed] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const history = usePromptHistory(cwd);
 
   const slashMenu = agentSlashMenu(text, menuDismissed);
   const mentionQuery = agentMentionQuery(text, mentionDismissed);
@@ -596,6 +600,21 @@ function Composer({
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
+  }, [text]);
+
+  // Where a recalled prompt should leave the caret, applied once React has put
+  // the text in the box. At the end of it, as every shell does: the point of
+  // getting an old prompt back is usually to add to it or send it again.
+  const caretTo = useRef<number | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    const at = caretTo.current;
+    if (el === null || at === null) return;
+    caretTo.current = null;
+    el.setSelectionRange(at, at);
+    // A long recalled prompt is taller than the box, and the end of it is what
+    // was just asked for.
+    el.scrollTop = el.scrollHeight;
   }, [text]);
 
   // The turn is over, so the message that could not go while it ran can go
@@ -668,6 +687,32 @@ function Composer({
       ? commandMenu
       : null;
 
+  /**
+   * Up and Down, once the `/` and `@` menus have had their turn with them.
+   *
+   * Only at the near edge of the box: while the prompt still has rows above the
+   * caret, Up belongs to the caret. Rows here means what is on screen, so a
+   * paragraph that has wrapped counts even with no newline in it - the whole
+   * point is that a long draft cannot be swapped out from under someone who was
+   * only trying to get back to the top of it.
+   *
+   * Attachments are left alone. A recalled prompt is text, and the pictures
+   * clipped to the message being written are still the ones being sent.
+   */
+  const recall = (e: React.KeyboardEvent, direction: HistoryDirection): boolean => {
+    const el = ref.current;
+    if (el === null) return false;
+    if (!(direction === 'back' ? atFirstRow(el) : atLastRow(el))) return false;
+    const next = history.step(direction, text);
+    // Nowhere further to go: leave the key alone rather than swallow it, so it
+    // still does whatever it would have done.
+    if (next === null) return false;
+    e.preventDefault();
+    setText(next);
+    caretTo.current = next.length;
+    return true;
+  };
+
   const submit = (): void => {
     const trimmed = text.trim();
     // An attachment on its own is a message: "look at this" is what dropping a
@@ -687,6 +732,7 @@ function Composer({
       return;
     }
     onSend(trimmed, attachments);
+    history.remember(trimmed);
     setText('');
     setAttachments([]);
     setAttachError(null);
@@ -806,6 +852,10 @@ function Composer({
               setMentionDismissed(false);
               commandMenu.reset();
               mentionMenu.reset();
+              // Editing ends the walk through history: what is in the box is
+              // yours again, and the next Up sets it aside as the draft rather
+              // than treating it as the old prompt it started life as.
+              history.reset();
             }}
             onPaste={(e) => {
               const files = [...e.clipboardData.files];
@@ -818,6 +868,18 @@ function Composer({
             }}
             onKeyDown={(e) => {
               if (mentionMenu.keyDown(e) || commandMenu.keyDown(e)) return;
+              // Bare arrows only. Cmd and Alt make these jump to the ends of the
+              // text, and Shift makes them select - all three are the caret's,
+              // and none of them is a request for an older prompt.
+              if (
+                (e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+                !e.shiftKey &&
+                !e.metaKey &&
+                !e.ctrlKey &&
+                !e.altKey
+              ) {
+                if (recall(e, e.key === 'ArrowUp' ? 'back' : 'forward')) return;
+              }
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 submit();
