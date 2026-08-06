@@ -17,7 +17,8 @@ const tool = (over: { result?: string; error?: string } = {}): AgentPart => ({
     result: over.result ?? null,
     error: over.error ?? null,
     summary: over.result === undefined ? null : '1 line',
-    image: null
+    image: null,
+    todos: null
   }
 });
 

@@ -57,7 +57,9 @@ const ctx = (threadId = 'thread-1', signal = new AbortController().signal): Agen
   wasRefused: (command) => refused.includes(command),
   // No image model, which is the default and what every test here runs under.
   // The image tool has its own file.
-  generateImage: null
+  generateImage: null,
+  // The todo tools have their own file too, and nothing here calls them.
+  todos: { list: () => [], save: () => {} }
 });
 
 const run = async (name: string, args: object): Promise<AgentToolResult> =>

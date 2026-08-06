@@ -232,6 +232,7 @@ function readOnlyContext(ctx: { cwd: string; threadId: string }): AgentToolConte
     handOff: () => {},
     approve: async () => Promise.resolve(false),
     wasRefused: () => false,
-    generateImage: null
+    generateImage: null,
+    todos: { list: () => [], save: () => {} }
   };
 }

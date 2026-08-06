@@ -1,17 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import { Bot, History, SlidersHorizontal } from 'lucide-react';
 import { AgentThread } from './AgentThread';
 import { AgentSessionsTab } from './AgentSessionsTab';
+import { AgentTodoPanel } from './AgentTodoPanel';
+import { showTodoPanel } from './todo-view';
 import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
 import { BackgroundLayer } from '../BackgroundLayer';
 import { useAgentStore } from '../../store/agent-store';
+import { useElementWidth } from '../../hooks/use-element-width';
 import { resolveBackgroundSrc } from '../../lib/pane-background';
 import { getGlassCssVars } from '../../lib/theme';
+import type { AgentTodoItem } from '../../../../shared/agent-todos';
 import type { TerminalBackground } from '../../../../shared/types';
 import type { SlideshowFrame } from '../../hooks/use-slideshow';
 
 type AgentView = 'agent' | 'sessions' | 'settings';
+
+/** Stable empty list, so a pane with no thread does not resubscribe every render. */
+const EMPTY_TODOS: AgentTodoItem[] = [];
 
 /** The pane a `fleet:refocus-pane` event is about. */
 const RefocusDetail = z.object({ paneId: z.string() });
@@ -45,6 +52,26 @@ export function AgentPane({
   const [view, setView] = useState<AgentView>('agent');
   const loadModels = useAgentStore((s) => s.loadModels);
   const openSession = useAgentStore((s) => s.openSession);
+  const todos = useAgentStore((s) => s.threads[paneId]?.todos ?? EMPTY_TODOS);
+  const streaming = useAgentStore((s) => (s.threads[paneId]?.streamId ?? null) !== null);
+
+  // The pane rather than the window: this is one cell of a split the user
+  // drags, so how much room there is here says nothing about how much there is
+  // anywhere else.
+  const frameRef = useRef<HTMLDivElement>(null);
+  const paneWidth = useElementWidth(frameRef);
+  // The panel's width rule depends on whether it is already up, so it has to
+  // read its own last answer. Safe to write during render: the rule is monotone
+  // in `shown`, so feeding an answer back in reproduces it - one pass reaches a
+  // fixed point, and a second render with the same inputs cannot land anywhere
+  // else.
+  const shownRef = useRef(false);
+  const panelled = showTodoPanel(todos, {
+    width: paneWidth,
+    streaming,
+    shown: shownRef.current
+  });
+  shownRef.current = panelled;
 
   // Not only for the settings screen: the catalog carries the context limits,
   // and without them the pane cannot tell how full it is or compact on its own.
@@ -85,6 +112,7 @@ export function AgentPane({
     // `relative` so the layer's absolute children anchor here rather than to
     // the pane frame two levels up.
     <div
+      ref={frameRef}
       className="relative flex h-full w-full flex-col bg-fleet-bg"
       style={getGlassCssVars(hasBackgroundImage)}
     >
@@ -95,7 +123,17 @@ export function AgentPane({
           in one wrapper - which is also what puts all three views over it. */}
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         <AgentTabs value={view} onChange={setView} />
-        {view === 'agent' && <AgentThread paneId={paneId} cwd={cwd} />}
+        {view === 'agent' && (
+          // The conversation and the task list side by side. The list takes a
+          // fixed column and the conversation takes the rest, which does mean
+          // the reading column shifts left the first time the agent writes a
+          // plan - the alternative is a column of empty space held open all
+          // conversation for a list most of them never make.
+          <div className="flex min-h-0 flex-1">
+            <AgentThread paneId={paneId} cwd={cwd} todosInPanel={panelled} />
+            {panelled && <AgentTodoPanel items={todos} streaming={streaming} />}
+          </div>
+        )}
         {view === 'sessions' && (
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <AgentSessionsTab paneId={paneId} cwd={cwd} onResumed={() => setView('agent')} />

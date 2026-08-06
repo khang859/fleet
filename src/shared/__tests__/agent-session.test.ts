@@ -251,7 +251,8 @@ describe('replaySession', () => {
             result: 'shot.png is an image. It is shown below.',
             error: null,
             summary: '42 KB',
-            image: { path: '/repo/shot.png', mimeType: 'image/png' }
+            image: { path: '/repo/shot.png', mimeType: 'image/png' },
+            todos: null
           }
         }
       ],
@@ -270,7 +271,8 @@ describe('replaySession', () => {
       result: 'a.ts lines 1-1',
       error: null,
       summary: '1 line',
-      image: null
+      image: null,
+      todos: null
     };
     const message: AgentMessage = {
       id: 'a',

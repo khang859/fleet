@@ -112,7 +112,8 @@ describe('estimateTranscriptTokens', () => {
         result: 'shot.png is an image. It is shown below.',
         error: null,
         summary: '42 KB',
-        image: { path: '/repo/shot.png', mimeType: 'image/png' }
+        image: { path: '/repo/shot.png', mimeType: 'image/png' },
+        todos: null
       };
       const looked: AgentMessage = {
         ...msg('assistant', ''),

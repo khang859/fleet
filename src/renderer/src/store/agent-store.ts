@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/agent-types';
 import { messageText, textMessage, userMessageWithAttachments } from '../../../shared/agent-types';
 import type { AgentToolCall } from '../../../shared/agent-tools';
+import { hasOpenWork, type AgentTodoItem } from '../../../shared/agent-todos';
 import {
   emptyReplay,
   type AgentSessionEvent,
@@ -116,6 +117,16 @@ type PaneThread = {
    */
   contextTokens: number | null;
   /**
+   * The tasks the agent set itself, newest state of each. Empty for a thread
+   * that never made a list.
+   *
+   * Owned here rather than in main for the same reason the transcript is: it
+   * has to survive a restart, and this is the side that already knows how to
+   * write things down. Main is handed it with each request and hands back
+   * whatever it did to it.
+   */
+  todos: AgentTodoItem[];
+  /**
    * The latest half-drawn render for each running image call, as a data URL.
    *
    * Never written to disk and never part of the transcript: a partial is what
@@ -137,6 +148,7 @@ const EMPTY_THREAD: PaneThread = {
   startedAt: null,
   error: null,
   contextTokens: null,
+  todos: [],
   imagePartials: {}
 };
 
@@ -250,6 +262,22 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     // A turn sent before the history arrives would be answered without it.
     if (thread.streamId !== null || thread.loading) return;
 
+    // A list with nothing open on it belongs to the job that just finished, and
+    // the message being sent now is the next one. Carrying it forward would
+    // leave the pane showing a plan the user has moved on from, count this
+    // request's progress as `7/10` when none of it is done, spend the model's
+    // context re-reading finished items every round, and - because nothing is
+    // ever removed - eventually fill the list with work nobody is waiting on.
+    // Clearing it also puts the model back in front of the nudge that starts a
+    // list, which a settled list otherwise silences for the rest of the
+    // session. What it costs is the finished list itself, which is gone from
+    // the pane the moment the next message is sent; the reply that described
+    // the work is still in the transcript, which is where an account of what
+    // happened belongs.
+    const spent = thread.todos.length > 0 && !hasOpenWork(thread.todos);
+    const todos = spent ? [] : thread.todos;
+    if (spent) record(thread, { t: 'todos', items: [] });
+
     const streamId = crypto.randomUUID();
     const user = userMessageWithAttachments(crypto.randomUUID(), text, attachments);
     const assistant: AgentMessage = {
@@ -268,6 +296,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
           ...thread,
           cwd,
           messages: [...thread.messages, user, assistant],
+          todos,
           streamId,
           startedAt: Date.now(),
           error: null
@@ -287,7 +316,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       cwd,
       history: thread.messages,
       text,
-      attachments
+      attachments,
+      todos
     });
   },
 
@@ -457,16 +487,38 @@ function updateStreaming(
  * late must land on its own row rather than append a second one.
  */
 function recordToolCall(streamId: string, call: AgentToolCall): void {
+  if (call.todos !== null) recordTodos(streamId, call.todos);
   updateStreaming(streamId, (m) => {
+    // Stripped on the way in: the list travelled on this call so the pane
+    // would hear about it, and it has now been heard. Left on the part it
+    // would be written to the log as well, giving the file two accounts of the
+    // same list - one of them a snapshot from whenever this call happened.
+    const stored = { ...call, todos: null };
     const at = m.parts.findIndex((p) => p.type === 'tool' && p.call.id === call.id);
     const parts =
       at === -1
-        ? [...m.parts, { type: 'tool' as const, call }]
-        : m.parts.map((p, i) => (i === at ? { type: 'tool' as const, call } : p));
+        ? [...m.parts, { type: 'tool' as const, call: stored }]
+        : m.parts.map((p, i) => (i === at ? { type: 'tool' as const, call: stored } : p));
     return { ...m, parts };
   });
   // A call that has stopped running has nothing left to preview.
   if (call.result !== null || call.error !== null) forgetImagePartial(streamId, call.id);
+}
+
+/**
+ * The task list, as the turn just left it.
+ *
+ * Written to the log here rather than when the turn ends, because this is when
+ * it changed: a plan the agent got halfway through before the user stopped it
+ * is worth keeping, and it is exactly the plan they will want to look at.
+ */
+function recordTodos(streamId: string, todos: AgentTodoItem[]): void {
+  const found = threadOf(streamId);
+  if (found === null) return;
+  useAgentStore.setState((s) => ({
+    threads: { ...s.threads, [found.paneId]: { ...found.thread, todos } }
+  }));
+  record(found.thread, { t: 'todos', items: todos });
 }
 
 /** The newest render of an image still being generated, for its own row. */
@@ -662,7 +714,11 @@ async function replayInto(paneId: string, sessionId: string): Promise<void> {
         ...thread,
         loading: false,
         messages: [...replay.messages, ...thread.messages],
-        contextTokens: thread.contextTokens ?? replay.contextTokens
+        contextTokens: thread.contextTokens ?? replay.contextTokens,
+        // What the pane already has wins, the same rule the context figure
+        // follows: a turn that ran while the file was being read knows more
+        // about the list than the file does.
+        todos: thread.todos.length > 0 ? thread.todos : replay.todos
       }
     }
   }));

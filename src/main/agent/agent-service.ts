@@ -16,7 +16,13 @@ import type {
   AgentStreamError,
   AgentUsage
 } from '../../shared/agent-types';
-import { buildSystemPrompt, messageAttachments, messageText } from '../../shared/agent-types';
+import {
+  MAX_TOOL_ROUNDS_CEILING,
+  buildSystemPrompt,
+  messageAttachments,
+  messageText
+} from '../../shared/agent-types';
+import { nextStreak, renderTodoBlock, type AgentTodoItem } from '../../shared/agent-todos';
 import { attachmentWireParts, imageWireParts } from './attachments';
 import { toDataUrl } from './image-kinds';
 import {
@@ -78,10 +84,19 @@ const COMPACT_MAX_TOKENS = 4096;
  *
  * A cap rather than a trust in the model to stop: a loop that reads the same
  * file forever costs money on every lap, and the number that ends it has to be
- * one nothing can talk its way past. Twelve is well past what an honest
- * question takes and well short of an afternoon.
+ * one nothing can talk its way past.
+ *
+ * What the number should be is the user's, because it is a judgement about
+ * their money and their patience rather than about the model. Unset means the
+ * ceiling, which exists only to end a loop - so a turn that stops on the
+ * setting was stopped on purpose, and one that stops on the ceiling is a bug
+ * somewhere. Keeping a plan on the rails is the task list's job, not this
+ * number's.
  */
-const MAX_TOOL_ROUNDS = 12;
+function maxToolRounds(settings: AgentSettings): number {
+  const chosen = settings.maxToolRounds;
+  return chosen === null ? MAX_TOOL_ROUNDS_CEILING : Math.min(chosen, MAX_TOOL_ROUNDS_CEILING);
+}
 
 /**
  * The reasoning parameter this config asks for, in the one form the user set.
@@ -96,6 +111,44 @@ export function toReasoningParam(config: AgentModelConfig): ReasoningParam | nul
 
 /** What building the wire needs to know beyond the messages themselves. */
 type WireContext = { cwd: string; threadId: string };
+
+/**
+ * The messages for one round, with the task list put back in front of the
+ * model.
+ *
+ * Pushed rather than fetched. A list the model has to ask for is one it asks
+ * for once, at the start, and then works for forty rounds from a memory of what
+ * it said - which is exactly how a plan comes apart. Handed over unasked on
+ * every round, being out of date is not something the model has to notice.
+ *
+ * It goes last, after the tool results of the round before, so it is the most
+ * recent thing said. And it is spliced onto a copy: the reminder describes this
+ * round and nothing else, so it must never join the transcript the pane keeps
+ * or the array the next round is built from.
+ *
+ * It rides as a user message rather than a system one for the reason a summary
+ * does - a mid-conversation system message is handled inconsistently across
+ * providers, and there are several here. Labelling it in the text is enough.
+ */
+export function withTodoReminder(
+  messages: AgentWireMessage[],
+  items: AgentTodoItem[],
+  streak: number
+): AgentWireMessage[] {
+  const block = renderTodoBlock(items, streak);
+  if (block === null) return messages;
+  return [...messages, { role: 'user', content: `${TODO_WIRE_PREFIX}\n\n${block}` }];
+}
+
+/**
+ * What marks the reminder as Fleet talking rather than the user.
+ *
+ * Said plainly instead of wrapped in a tag. `<system-reminder>` is a house
+ * style of one harness and one provider; here the same turn may be answered by
+ * any model OpenRouter routes to, and a tag one of them has never seen is
+ * either ignored or read out loud.
+ */
+export const TODO_WIRE_PREFIX = 'Note from Fleet, not from the user:';
 
 /**
  * A user message on the wire: what they typed, and whatever rode with it.
@@ -335,12 +388,22 @@ export class AgentService {
     // narrowing cannot follow them.
     const reported: { usage: AgentUsage | null } = { usage: null };
     const round = { content: '' };
+    // The task list for this turn, seeded from what the pane sent and thrown
+    // away when the turn ends. Main keeps no copy between turns: the pane owns
+    // the list and writes it to its own log, and a second copy here would only
+    // be something to get out of step.
+    const todos = { items: req.todos, streak: 0 };
+    const rounds = maxToolRounds(ctx.settings);
 
-    for (let attempt = 0; attempt < MAX_TOOL_ROUNDS; attempt++) {
+    for (let attempt = 0; attempt < rounds; attempt++) {
       round.content = '';
 
       const outcome: StreamOutcome = await this.call(ctx, {
-        messages,
+        // A copy, spliced rather than appended. The reminder is about this
+        // round only - written into `messages` it would be persisted, resent
+        // stale on the next round, and stack up one copy per round of a long
+        // turn, each contradicting the last about what the list says.
+        messages: withTodoReminder(messages, todos.items, todos.streak),
         maxTokens: config.maxTokens,
         reasoning: toReasoningParam(config),
         tools,
@@ -369,6 +432,11 @@ export class AgentService {
         tool_calls: outcome.toolCalls
       });
       const images: AgentWireMessage[] = [];
+      const before = todos.items;
+      // Strictly one call after another, which the todo tools rely on: ids are
+      // minted against the list as it stands, so two `todo_add` calls running
+      // at once would both be told the list is the length it was and hand out
+      // the same numbers. Parallelising this loop means giving them a lock.
       for (const call of outcome.toolCalls) {
         // Thrown rather than returned: `run` only tells the renderer a turn is
         // over from its catch, so returning here ends the turn in main while
@@ -396,7 +464,13 @@ export class AgentService {
           wasRefused: (command) => this.deps.gate.wasRefused(streamId, command),
           // Built per call rather than per turn, because a partial render has
           // to land on the row that asked for it, and only here is that known.
-          generateImage: this.imageGenerator(ctx, streamId, call.id)
+          generateImage: this.imageGenerator(ctx, streamId, call.id),
+          todos: {
+            list: () => todos.items,
+            save: (items) => {
+              todos.items = items;
+            }
+          }
         });
         messages.push({
           role: 'tool',
@@ -413,10 +487,11 @@ export class AgentService {
       // reason `flush` holds them back: the API takes an unbroken run of
       // results, and a picture in the middle of one is not a result.
       messages.push(...images);
+      todos.streak = nextStreak(todos.streak, before, todos.items);
     }
 
     throw new Error(
-      `Stopped after ${MAX_TOOL_ROUNDS} rounds of tool calls without an answer. Ask again, more narrowly.`
+      `Stopped after ${rounds} rounds of tool calls without an answer. Ask again, more narrowly.`
     );
   }
 
@@ -476,7 +551,8 @@ export class AgentService {
       result: null,
       error: null,
       summary: null,
-      image: null
+      image: null,
+      todos: null
     };
     this.deps.emit(IPC_CHANNELS.AGENT_TOOL_START, {
       streamId,
@@ -490,7 +566,8 @@ export class AgentService {
         ...started,
         result: output.text,
         summary: output.summary,
-        image: output.image ?? null
+        image: output.image ?? null,
+        todos: output.todos ?? null
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

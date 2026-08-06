@@ -584,7 +584,8 @@ describe('session log', () => {
       cwd: '/repo',
       title: null,
       firstUserText: '',
-      skipped: 0
+      skipped: 0,
+      todos: []
     };
 
     await open();
@@ -615,13 +616,15 @@ describe('session log', () => {
 });
 
 describe('tool calls', () => {
-  const CALL = {
+  const CALL: AgentToolCall = {
     id: 'call_1',
     name: 'read',
     args: '{"path":"a.ts"}',
     result: null,
     error: null,
-    summary: null
+    summary: null,
+    image: null,
+    todos: null
   };
 
   const start = (streamId: string): void => {
@@ -1117,7 +1120,8 @@ describe('switching sessions', () => {
       cwd: '/repo',
       title: 'Older work',
       firstUserText: '',
-      skipped: 0
+      skipped: 0,
+      todos: []
     };
 
     await agentStore.useAgentStore.getState().resumeSession(PANE, '/repo', OTHER);
@@ -1151,7 +1155,8 @@ describe('switching sessions', () => {
       cwd: '/repo',
       title: null,
       firstUserText: '',
-      skipped: 0
+      skipped: 0,
+      todos: []
     };
 
     const first = agentStore.useAgentStore.getState().resumeSession(PANE, '/repo', OTHER);
@@ -1229,7 +1234,8 @@ describe('naming a session', () => {
       cwd: '/repo',
       title: null,
       firstUserText: '',
-      skipped: 0
+      skipped: 0,
+      todos: []
     };
     await open();
     turn('carry on');

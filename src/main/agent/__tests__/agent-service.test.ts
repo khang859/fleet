@@ -7,18 +7,28 @@ import {
   buildSystemPrompt,
   DEFAULT_AGENT_SETTINGS,
   DEFAULT_AGENT_SYSTEM_PROMPT,
+  MAX_TOOL_ROUNDS_CEILING,
   textMessage,
   type AgentCompactRequest,
   type AgentMessage,
   type AgentSendRequest
 } from '../../../shared/agent-types';
 import type { AgentToolCall } from '../../../shared/agent-tools';
+import type { AgentTodoItem } from '../../../shared/agent-todos';
 import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../../shared/agent-context';
-import { AgentService, toCompactMessages, toReasoningParam, toWireHistory } from '../agent-service';
+import {
+  AgentService,
+  TODO_WIRE_PREFIX,
+  toCompactMessages,
+  toReasoningParam,
+  toWireHistory,
+  withTodoReminder
+} from '../agent-service';
 import { PermissionGate } from '../permissions/gate';
 import {
   collectToolCalls,
   parseStreamLine,
+  type AgentWireMessage,
   type StreamOutcome,
   type StreamRequest,
   type ToolCallDelta,
@@ -44,7 +54,8 @@ const REQUEST: AgentSendRequest = {
     { ...textMessage('b', 'assistant', 'hello'), reasoning: 'thinking', reasoningMs: 1200 }
   ],
   text: 'what does this do?',
-  attachments: []
+  attachments: [],
+  todos: []
 };
 
 const COMPACT_REQUEST: AgentCompactRequest = {
@@ -189,6 +200,55 @@ describe('buildSystemPrompt', () => {
   });
 });
 
+describe('withTodoReminder', () => {
+  const items: AgentTodoItem[] = [
+    { id: '1', content: 'read the file', activeForm: null, status: 'completed' },
+    { id: '2', content: 'change it', activeForm: null, status: 'in_progress' }
+  ];
+  const history: AgentWireMessage[] = [
+    { role: 'system', content: 'be brief' },
+    { role: 'user', content: 'go' }
+  ];
+
+  it('puts the list last, where it is the most recent thing said', () => {
+    const sent = withTodoReminder(history, items, 0);
+
+    expect(sent).toHaveLength(3);
+    expect(sent.at(-1)?.role).toBe('user');
+    expect(sent.at(-1)?.content).toContain('2. [~] change it');
+  });
+
+  /*
+   * A mid-conversation system message is handled inconsistently across
+   * providers, and a turn here may be answered by any of them - so the note
+   * says who it is from rather than relying on a role or a tag to.
+   */
+  it('marks it as Fleet talking rather than the user', () => {
+    expect(withTodoReminder(history, items, 0).at(-1)?.content).toContain(TODO_WIRE_PREFIX);
+  });
+
+  /*
+   * The reason it is spliced onto a copy. Written into the array the turn
+   * accumulates, every round would leave another stale list behind, each one
+   * contradicting the next about what is done.
+   */
+  it('leaves the messages it was given alone', () => {
+    withTodoReminder(history, items, 0);
+
+    expect(history).toHaveLength(2);
+  });
+
+  it('says nothing once the whole list is settled', () => {
+    const done = items.map((item) => ({ ...item, status: 'completed' as const }));
+
+    expect(withTodoReminder(history, done, 0)).toBe(history);
+  });
+
+  it('asks for a list when there is none', () => {
+    expect(withTodoReminder(history, [], 0).at(-1)?.content).toContain('todo_add');
+  });
+});
+
 describe('toWireHistory', () => {
   it('puts the system prompt ahead of the transcript', async () => {
     const messages = await toWireHistory(REQUEST, 'be brief');
@@ -221,7 +281,8 @@ describe('toWireHistory', () => {
       result: 'a.ts lines 1-1',
       error: null,
       summary: '1 line',
-      image: null
+      image: null,
+      todos: null
     };
     const turn: AgentMessage = {
       id: 'b',
@@ -262,7 +323,8 @@ describe('toWireHistory', () => {
       result: null,
       error: null,
       summary: null,
-      image: null
+      image: null,
+      todos: null
     };
     const turn: AgentMessage = {
       id: 'b',
@@ -412,7 +474,8 @@ describe('toWireHistory: attachments', () => {
       result: 'shot.png is an image. It is shown below.',
       error: null,
       summary: '6 B',
-      image: { path: join(dir, 'shot.png'), mimeType: 'image/png' }
+      image: { path: join(dir, 'shot.png'), mimeType: 'image/png' },
+      todos: null
     };
     const turn: AgentMessage = {
       id: 'b',
@@ -449,7 +512,8 @@ describe('toWireHistory: attachments', () => {
       result: 'shot.png is an image. It is shown below.',
       error: null,
       summary: '6 B',
-      image: { path: join(dir, 'shot.png'), mimeType: 'image/png' }
+      image: { path: join(dir, 'shot.png'), mimeType: 'image/png' },
+      todos: null
     };
     const searched: AgentToolCall = {
       id: 'call_2',
@@ -458,7 +522,8 @@ describe('toWireHistory: attachments', () => {
       result: 'no matches',
       error: null,
       summary: '0 matches',
-      image: null
+      image: null,
+      todos: null
     };
     const turn: AgentMessage = {
       id: 'b',
@@ -852,6 +917,17 @@ describe('the tool loop', () => {
     function: { name, arguments: JSON.stringify(args) }
   });
 
+  /**
+   * What a round was sent, without the task-list reminder spliced onto the end
+   * of every one of them. These tests are about the conversation; the reminder
+   * has its own describe below, and leaving it in would only mean every
+   * assertion about the last message counting backwards past it.
+   */
+  const conversation = (req: StreamRequest): AgentWireMessage[] =>
+    req.messages.filter(
+      (m) => !(typeof m.content === 'string' && m.content.startsWith(TODO_WIRE_PREFIX))
+    );
+
   /** A stream that asks for `calls` on its first round and answers on its second. */
   function twoRounds(calls: WireToolCall[]): {
     stream: (req: StreamRequest) => Promise<StreamOutcome>;
@@ -883,7 +959,7 @@ describe('the tool loop', () => {
     await ended;
 
     // The second round sees its own request and the answer to it.
-    const sent = rounds[1].messages;
+    const sent = conversation(rounds[1]);
     expect(sent.at(-2)).toMatchObject({
       role: 'assistant',
       tool_calls: [{ id: 'call_1', function: { name: 'read' } }]
@@ -913,7 +989,7 @@ describe('the tool loop', () => {
     }).send({ ...REQUEST, cwd: dir });
     await ended;
 
-    const sent = rounds[1].messages;
+    const sent = conversation(rounds[1]);
     expect(sent.at(-2)).toMatchObject({ role: 'tool', tool_call_id: 'call_1' });
     expect(sent.at(-1)).toEqual({
       role: 'user',
@@ -969,7 +1045,7 @@ describe('the tool loop', () => {
     }).send({ ...REQUEST, cwd: dir });
     await ended;
 
-    expect(rounds[1].messages.at(-1)).toHaveProperty(
+    expect(conversation(rounds[1]).at(-1)).toHaveProperty(
       'content',
       expect.stringContaining('outside the working folder')
     );
@@ -1143,7 +1219,7 @@ describe('the tool loop', () => {
 
   // The loop this cannot have: a model that keeps calling tools forever costs
   // money on every lap.
-  it('stops after a fixed number of rounds', async () => {
+  it('stops after the number of rounds the user set', async () => {
     const { emit, events, ended } = collector();
     const stream = vi.fn(async () =>
       Promise.resolve({ toolCalls: [call('read', { path: 'answer.txt' })] })
@@ -1151,7 +1227,7 @@ describe('the tool loop', () => {
 
     new AgentService({
       gate: PASS_GATE,
-      getSettings: () => SETTINGS,
+      getSettings: () => ({ ...SETTINGS, maxToolRounds: 12 }),
       getApiKey: () => 'sk-or-test',
       emit,
       stream
@@ -1161,6 +1237,29 @@ describe('the tool loop', () => {
     expect(stream).toHaveBeenCalledTimes(12);
     expect(events.at(-1)?.channel).toBe(IPC_CHANNELS.AGENT_STREAM_ERROR);
     expect(events.at(-1)?.payload).toMatchObject({ message: expect.stringContaining('12 rounds') });
+  });
+
+  /*
+   * The setting is the user's, but it is not the only thing between a loop and
+   * an unbounded bill: unset means "as long as it takes", and something still
+   * has to end a turn that will never end on its own.
+   */
+  it('holds a cap above the ceiling to the ceiling', async () => {
+    const { emit, ended } = collector();
+    const stream = vi.fn(async () =>
+      Promise.resolve({ toolCalls: [call('read', { path: 'answer.txt' })] })
+    );
+
+    new AgentService({
+      gate: PASS_GATE,
+      getSettings: () => ({ ...SETTINGS, maxToolRounds: MAX_TOOL_ROUNDS_CEILING * 10 }),
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send({ ...REQUEST, cwd: dir });
+    await ended;
+
+    expect(stream).toHaveBeenCalledTimes(MAX_TOOL_ROUNDS_CEILING);
   });
 
   it('does not offer tools when summarizing', async () => {

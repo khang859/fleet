@@ -12,6 +12,7 @@ import { AgentRoleSettings } from './AgentRoleSettings';
 import { AgentImageSettings } from './AgentImageSettings';
 import { SystemPromptField } from './SystemPromptField';
 import { CompactionField } from './CompactionField';
+import { MaxToolRoundsField } from './MaxToolRoundsField';
 import { ModelSelect } from './ModelSelect';
 import { relativeTime } from './format';
 
@@ -111,6 +112,10 @@ export function AgentSettingsPanel(): React.JSX.Element {
             onChange={(compactThreshold) =>
               void updateSettings({ ai: { agent: { compactThreshold } } })
             }
+          />
+          <MaxToolRoundsField
+            value={agent.maxToolRounds}
+            onChange={(maxToolRounds) => void updateSettings({ ai: { agent: { maxToolRounds } } })}
           />
         </FieldGroup>
 

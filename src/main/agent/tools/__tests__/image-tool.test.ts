@@ -45,7 +45,8 @@ const ctx = (generateImage: AgentToolContext['generateImage']): AgentToolContext
   handOff: () => {},
   approve: async () => Promise.resolve(true),
   wasRefused: () => false,
-  generateImage
+  generateImage,
+  todos: { list: () => [], save: () => {} }
 });
 
 /** A file in the working folder, for the tests about references. */

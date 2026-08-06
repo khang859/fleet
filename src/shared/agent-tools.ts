@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TODO_MAX_ITEMS, TODO_STATUSES, type AgentTodoItem } from './agent-todos';
 
 /**
  * The tools the agent can call, and the limits they answer within.
@@ -19,6 +20,15 @@ import { z } from 'zod';
  * the code: one hands a command to the user because it needs a person, and the
  * other makes a picture. `image` is also the only tool here that is not always
  * offered - without an image model configured it is not advertised at all.
+ *
+ * The two todo tools sit outside it again, and are the only pair here that
+ * breaks the one-word naming: they are two halves of one thing, and `add` and
+ * `update` on their own would read as being about anything. They do not touch
+ * the project at all - they write the plan the agent is working to, which the
+ * pane shows and which is handed back to the model on every round. There is
+ * deliberately no tool to read the list: the model is given it unasked, so a
+ * tool for fetching it would only be a way of spending a round on something it
+ * already has.
  */
 
 export const AGENT_TOOL_NAMES = [
@@ -29,9 +39,16 @@ export const AGENT_TOOL_NAMES = [
   'write',
   'bash',
   'terminal',
-  'image'
+  'image',
+  'todo_add',
+  'todo_update'
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
+
+/** Whether a name is one of the two tools that write the task list. */
+export function isTodoTool(name: string): boolean {
+  return name === 'todo_add' || name === 'todo_update';
+}
 
 /**
  * Lines a `read` returns when the model does not say. Small on purpose: most
@@ -201,6 +218,32 @@ export const TerminalArgs = z.object({
     })
 });
 
+/**
+ * One item as the model writes it. `activeForm` is optional because a model
+ * that gives one line instead of two should still get its item, and the pane
+ * falls back to `content` for the line it would have shown.
+ */
+const TodoDraft = z.object({
+  content: z.string().min(1).max(200),
+  activeForm: z.string().min(1).max(200).optional()
+});
+
+export const TodoAddArgs = z.object({
+  /**
+   * Several at once, because a plan is written in one sitting. The alternative
+   * costs a round per item and lets a turn end with half a plan on screen.
+   */
+  items: z.array(TodoDraft).min(1).max(TODO_MAX_ITEMS)
+});
+
+export const TodoUpdateArgs = z.object({
+  id: z.string().min(1),
+  status: z.enum(TODO_STATUSES),
+  /** Rewriting the item, for when the work turned out to be something else. */
+  content: z.string().min(1).max(200).optional(),
+  activeForm: z.string().min(1).max(200).optional()
+});
+
 export type ReadArgs = z.infer<typeof ReadArgs>;
 export type GlobArgs = z.infer<typeof GlobArgs>;
 export type GrepArgs = z.infer<typeof GrepArgs>;
@@ -209,6 +252,8 @@ export type WriteArgs = z.infer<typeof WriteArgs>;
 export type BashArgs = z.infer<typeof BashArgs>;
 export type TerminalArgs = z.infer<typeof TerminalArgs>;
 export type ImageArgs = z.infer<typeof ImageArgs>;
+export type TodoAddArgs = z.infer<typeof TodoAddArgs>;
+export type TodoUpdateArgs = z.infer<typeof TodoUpdateArgs>;
 
 /** The JSON Schema for one tool, as the completions API wants it. */
 export type AgentToolSpec = {
@@ -276,6 +321,21 @@ const IMAGE_DESCRIPTION = [
   'Write `prompt` as a description of the finished picture: subject, composition, style, colours. When editing, describe the result you want, not the change as an instruction.',
   'References are paths to images in the working folder, or to images you generated earlier in this conversation.',
   'The file is saved outside the working folder and its path comes back to you; copy it in with `bash` if it belongs in the project. The user is shown the image, so do not describe it back to them.'
+].join(' ');
+
+const TODO_ADD_DESCRIPTION = [
+  'Add tasks to the list you are working through, which the user can see.',
+  'Use it at the start of anything with several steps, and again whenever the work turns up something the list does not mention - a plan that stops describing what you are doing is worse than none.',
+  'Skip it for a question or a single edit.',
+  'Each item gets a number, returned to you here, which is what `todo_update` takes.',
+  'You are given the whole list back on every round, so there is nothing to fetch and no reason to add an item twice.'
+].join(' ');
+
+const TODO_UPDATE_DESCRIPTION = [
+  'Change one task on your list: mark it `in_progress` when you start it, `completed` the moment it is genuinely done, or `cancelled` if it turned out not to be needed.',
+  'One item per call, by its number.',
+  'Only one task may be `in_progress` at a time.',
+  'Do not save up completions for the end - the user is watching this while you work, and a list that all turns green at once told them nothing on the way.'
 ].join(' ');
 
 /**
@@ -455,6 +515,65 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
         additionalProperties: false
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'todo_add',
+      description: TODO_ADD_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            minItems: 1,
+            maxItems: TODO_MAX_ITEMS,
+            items: {
+              type: 'object',
+              properties: {
+                content: {
+                  type: 'string',
+                  description: 'What is to be done, as an outcome. E.g. `Move the parser to zod`.'
+                },
+                activeForm: {
+                  type: 'string',
+                  description:
+                    'The same thing while it is happening, shown as the status. E.g. `Moving the parser to zod`.'
+                }
+              },
+              required: ['content'],
+              additionalProperties: false
+            },
+            description: 'The tasks to add, in the order you mean to do them.'
+          }
+        },
+        required: ['items'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'todo_update',
+      description: TODO_UPDATE_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'The number of the task, as shown in your list.' },
+          status: {
+            type: 'string',
+            enum: [...TODO_STATUSES],
+            description:
+              '`in_progress` when you start it, `completed` when it is done, `cancelled` when it turned out not to be needed.'
+          },
+          content: { type: 'string', description: 'Rewrites the task, if it was not quite right.' },
+          activeForm: { type: 'string', description: 'Rewrites the present-continuous form.' }
+        },
+        required: ['id', 'status'],
+        additionalProperties: false
+      }
+    }
   }
 ];
 
@@ -496,6 +615,18 @@ export type AgentToolCall = {
    * up in the session log.
    */
   image: AgentToolImage | null;
+  /**
+   * The whole task list as this call left it, set only by the todo tools.
+   *
+   * The whole list rather than what changed, so the event that carries it can
+   * be missed without leaving the pane showing something that never existed -
+   * the next call puts it right, because every one of them is the truth in
+   * full. It rides here rather than on a channel of its own for the same
+   * reason `image` does: the pane already learns about finished calls, and a
+   * second way of learning the same thing is a second way for the two to
+   * disagree.
+   */
+  todos: AgentTodoItem[] | null;
 };
 
 /** An image a tool is handing to the model, as a file rather than as bytes. */
@@ -555,6 +686,23 @@ export type AgentToolContext = {
    * transcript, an invented name) can then be told plainly what is off.
    */
   generateImage: AgentImageGenerator | null;
+  /**
+   * The task list as it stands, and a way to replace it.
+   *
+   * Turn-local: the pane owns the list and sends it with the request, this is
+   * seeded from that, and it is thrown away when the turn ends. Main keeps no
+   * copy, so nothing here has to be reconciled with what the pane thinks or
+   * written anywhere - the pane already persists its own transcript, and a
+   * second store of the same list would be the same problem solved twice.
+   *
+   * Reading through a function rather than holding the array means two calls in
+   * one round see each other's work, which is what makes a plan of five items
+   * added one after another come out with five different numbers.
+   */
+  todos: {
+    list: () => AgentTodoItem[];
+    save: (items: AgentTodoItem[]) => void;
+  };
 };
 
 /**
@@ -592,4 +740,6 @@ export type AgentToolResult = {
    * on an image file; every other tool leaves it out.
    */
   image?: AgentToolImage;
+  /** The task list as this call left it. Set only by the todo tools. */
+  todos?: AgentTodoItem[];
 };

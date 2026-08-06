@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AgentToolCall } from './agent-tools';
+import { AGENT_TODO_INSTRUCTIONS, type AgentTodoItem } from './agent-todos';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
 
 /**
@@ -107,6 +108,17 @@ export type AgentSettings = {
    * automatically. `null` ⇒ only ever compact when the user asks.
    */
   compactThreshold: number | null;
+  /**
+   * How many rounds of tool calls one turn may take before it is stopped.
+   * `null` ⇒ as many as it needs, up to `MAX_TOOL_ROUNDS_CEILING`.
+   *
+   * A cap is a guess at how long a job should take, made by someone who has not
+   * seen the job. Set too low it ends real work halfway, which costs everything
+   * spent getting there and leaves the folder half-changed - so the default is
+   * to let a turn run, and this is here for someone who would rather be stopped
+   * early than surprised by a bill.
+   */
+  maxToolRounds: number | null;
   /** Which shell commands run without stopping to ask. */
   permissions: AgentPermissionRules;
   /**
@@ -139,9 +151,22 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   image: { ...EMPTY_AGENT_IMAGE_CONFIG },
   systemPrompt: null,
   compactThreshold: 0.8,
+  maxToolRounds: null,
   permissions: DEFAULT_AGENT_PERMISSION_RULES,
   titleModel: null
 };
+
+/**
+ * The most rounds a turn may take, whatever the setting says.
+ *
+ * Not a policy, a backstop. Nothing a person asks for takes a thousand rounds,
+ * so a turn that reaches this is a loop rather than a long job - and the one
+ * thing worse than a turn that stops too early is one that never stops at all.
+ */
+export const MAX_TOOL_ROUNDS_CEILING = 1000;
+
+/** Narrowest cap the setting will accept. Below this it stops honest work. */
+export const MAX_TOOL_ROUNDS_MIN = 5;
 
 /**
  * The instructions the agent runs with unless the user replaces them. The
@@ -188,6 +213,10 @@ export const AGENT_IMAGE_INSTRUCTIONS = [
  * than left to the prompt text, so a custom prompt cannot accidentally drop the
  * one fact the agent has no other way to learn. Whether image generation is on
  * is the same kind of fact, and is appended the same way.
+ *
+ * The task list is appended unconditionally, because unlike `image` its two
+ * tools are always offered. A user who replaces the prompt is replacing how the
+ * agent works, not switching off a pane of the UI they can still see.
  */
 export function buildSystemPrompt(
   cwd: string,
@@ -197,7 +226,7 @@ export function buildSystemPrompt(
   const custom = override?.trim() ?? '';
   const base = custom === '' ? DEFAULT_AGENT_SYSTEM_PROMPT : custom;
   const image = options.image ? `\n\n${AGENT_IMAGE_INSTRUCTIONS}` : '';
-  return `${base}${image}\n\nWorking folder: ${cwd}`;
+  return `${base}${image}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
 }
 
 /*
@@ -413,6 +442,15 @@ export type AgentSendRequest = {
   text: string;
   /** What rode along with this turn's own message. Empty when nothing did. */
   attachments: AgentAttachment[];
+  /**
+   * The task list as it stands, sent whole the way `history` is.
+   *
+   * The pane owns it, so main holds nothing between turns and has nothing to
+   * keep in step. What the turn does to it comes back on the tool calls it
+   * makes, and the pane writes the result to its own log - the same round trip
+   * the transcript already takes.
+   */
+  todos: AgentTodoItem[];
 };
 
 /**

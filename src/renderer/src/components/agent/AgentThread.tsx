@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
+  Check,
   ChevronRight,
   FoldVertical,
+  ListChecks,
   Paperclip,
   Square,
   TriangleAlert
@@ -16,7 +18,10 @@ import type {
   AgentPermissionOutcome
 } from '../../../../shared/agent-types';
 import { ATTACHMENT_ACCEPT, messageAttachments, messageText } from '../../../../shared/agent-types';
+import { isTodoTool } from '../../../../shared/agent-tools';
+import { renderTodoList, type AgentTodoItem } from '../../../../shared/agent-todos';
 import { canCompact } from '../../../../shared/agent-context';
+import { todoProgress, type TodoProgress } from './todo-view';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentActivity } from './AgentActivity';
 import { AgentToolRow } from './AgentToolRow';
@@ -40,10 +45,26 @@ import { shortenPath } from '../../lib/shorten-path';
 /** Stable empty map, so a pane with no thread does not remount the transcript. */
 const EMPTY_PARTIALS: Record<string, string> = {};
 
+/** The same, for a pane whose thread has no task list. */
+const EMPTY_TODOS: AgentTodoItem[] = [];
+
 /** How near the end still counts as being at it, in pixels. */
 const TAIL_SLACK_PX = 24;
 
-export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): React.JSX.Element {
+export function AgentThread({
+  paneId,
+  cwd,
+  todosInPanel
+}: {
+  paneId: string;
+  cwd: string;
+  /**
+   * Whether the pane is showing the task list in its own column. When it is
+   * not, the list still has to be somewhere, and the status line is where the
+   * pane already says what is happening.
+   */
+  todosInPanel: boolean;
+}): React.JSX.Element {
   const thread = useAgentStore((s) => s.threads[paneId]);
   const send = useAgentStore((s) => s.send);
   const cancel = useAgentStore((s) => s.cancel);
@@ -62,6 +83,10 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
   const contextTokens = thread?.contextTokens ?? null;
   const ask = thread?.pendingPermission ?? null;
   const imagePartials = thread?.imagePartials ?? EMPTY_PARTIALS;
+  // Only when the pane has no column for it, so the same list is never in two
+  // places saying the same thing.
+  const todoItems = thread?.todos ?? EMPTY_TODOS;
+  const todos = todosInPanel ? null : todoProgress(todoItems);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -87,7 +112,7 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
       {/* One status line for the turn: what the agent is doing on the left, how
           much room it has left on the right. Always rendered while either has
           something to say, so neither appearing shoves the composer down. */}
-      {(streaming || contextTokens !== null) && (
+      {(streaming || contextTokens !== null || todos !== null) && (
         <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pb-1.5 text-[11px] text-fleet-text-subtle">
           {streaming && (
             <AgentActivity
@@ -97,6 +122,7 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
               startedAt={thread?.startedAt ?? null}
             />
           )}
+          {todos !== null && <TodoChip progress={todos} items={todoItems} />}
           {contextTokens !== null && (
             <span className="ml-auto">
               <AgentContextMeter
@@ -230,6 +256,46 @@ function Transcript({
 }
 
 /**
+ * The task list, when the pane is too narrow to give it a column.
+ *
+ * A count and the item being worked on, and nothing else. What survives the
+ * collapse is the answer to "is it still on the rails" - how far through, and
+ * what it is doing now - because that is what someone glances at the panel for.
+ * The items themselves do not survive it, and should not: eight of them in a
+ * line above the composer is a paragraph, not a glance.
+ */
+function TodoChip({
+  progress,
+  items
+}: {
+  progress: TodoProgress;
+  items: AgentTodoItem[];
+}): React.JSX.Element {
+  return (
+    <span
+      className="flex min-w-0 items-center gap-1.5"
+      // What the collapse costs is the plan itself - in this layout there is no
+      // width at which the items are readable. A hover title is the whole of
+      // the fix: no popover, no state, and the text is the one the model reads.
+      title={renderTodoList(items)}
+      // The list itself is not on screen in this layout, so the count and the
+      // running item are all a screen reader has to go on too.
+      aria-label={`Tasks: ${progress.count} done${progress.doing === null ? '' : `, ${progress.doing}`}`}
+    >
+      {/* A finished list rests here after every job, and `3/3` under a
+          to-do icon reads as a list still waiting to be done. */}
+      {progress.open ? (
+        <ListChecks size={12} className="shrink-0" />
+      ) : (
+        <Check size={12} className="shrink-0 text-emerald-400/90" />
+      )}
+      <span className="font-mono tabular-nums">{progress.count}</span>
+      {progress.doing !== null && <span className="truncate">{progress.doing}</span>}
+    </span>
+  );
+}
+
+/**
  * User turns are a bubble, the agent's answer is flat on the page - the reply is
  * the content, not one side of a conversation. Model prose is Markdown, whether
  * it is an answer or a summary; what the user typed and the reasoning channel
@@ -285,6 +351,10 @@ function Message({
       {message.parts.map((part, i) => {
         // Attachments are the user's, so an assistant turn never holds one.
         if (part.type === 'attachment') return null;
+        // The task list is already on screen, either in its column or on the
+        // status line. A row here as well would report every tick twice, and
+        // fill a long turn's transcript with bookkeeping.
+        if (part.type === 'tool' && isTodoTool(part.call.name)) return null;
         if (part.type === 'text') {
           return (
             <div key={i} className="text-fleet-text">

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TODO_STATUSES, type AgentTodoItem } from './agent-todos';
 import { messageText, type AgentMessage } from './agent-types';
 
 /**
@@ -38,7 +39,18 @@ const ToolCallSchema = z.object({
   // Written since version 5, so every earlier line has no key here at all.
   // Nullish rather than nullable for that reason, and normalised to `null` so
   // nothing downstream has to know which version it is holding.
-  image: ToolImageSchema.nullish().transform((v) => v ?? null)
+  image: ToolImageSchema.nullish().transform((v) => v ?? null),
+  /**
+   * Never written, and always read back as `null`.
+   *
+   * The todo tools put the whole list on their call so that the event the pane
+   * already listens to can carry it, but that is a way of telling the pane
+   * something, not a fact about the call. The list belongs to the session, and
+   * has its own event below - keeping a copy on every call that touched it
+   * would put two answers to the same question in one file, one of which is a
+   * snapshot from an hour ago.
+   */
+  todos: z.unknown().transform((): AgentTodoItem[] | null => null)
 });
 
 /** What rode along with a user message. New in version 5. */
@@ -97,6 +109,21 @@ const LegacyMessage = z
 
 const MessageSchema = z.union([CurrentMessage, LegacyMessage]);
 
+/**
+ * One task. `activeForm` is nullish rather than nullable for the same reason
+ * `image` is: it may be absent from a line whichever version wrote it, since
+ * the model is free to leave it out.
+ */
+const TodoItemSchema = z.object({
+  id: z.string(),
+  content: z.string(),
+  activeForm: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? null),
+  status: z.enum(TODO_STATUSES)
+});
+
 const EventSchema = z.discriminatedUnion('t', [
   /** Always the first line: what this session is, and what wrote it. */
   z.object({
@@ -116,6 +143,17 @@ const EventSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('compact'), summary: MessageSchema, keep: z.array(z.string()) }),
   /** What the provider said the context costs now. Last one wins. */
   z.object({ t: z.literal('context'), tokens: z.number() }),
+  /**
+   * The task list as the last turn left it. Last one wins.
+   *
+   * A line of its own rather than something read back out of the tool calls
+   * that wrote it, because those do not survive: compaction folds older
+   * messages into a summary that keeps their text and drops everything else,
+   * so a list reconstructed from calls would vanish exactly when a long piece
+   * of work most needs it. Here it is a fact about the session rather than a
+   * detail of a message, and the `compact` event only ever rewrites messages.
+   */
+  z.object({ t: z.literal('todos'), items: z.array(TodoItemSchema) }),
   /**
    * The model's own name for the session, written once after the turn that
    * makes it a real conversation. Last one wins, the same rule as `context`,
@@ -141,6 +179,8 @@ export type AgentSessionReplay = {
   /** `null` when the log never recorded one, same as a thread that has not run a turn. */
   contextTokens: number | null;
   cwd: string | null;
+  /** The task list, empty for a session that never made one. */
+  todos: AgentTodoItem[];
   /**
    * `null` for a session written before titles existed, and for one whose
    * first turn has not finished yet. Either way the list falls back to what
@@ -175,6 +215,7 @@ export function emptyReplay(): AgentSessionReplay {
     messages: [],
     contextTokens: null,
     cwd: null,
+    todos: [],
     title: null,
     firstUserText: '',
     skipped: 0
@@ -241,6 +282,9 @@ function apply(replay: AgentSessionReplay, event: AgentSessionEvent): void {
     }
     case 'context':
       replay.contextTokens = event.tokens;
+      return;
+    case 'todos':
+      replay.todos = event.items;
       return;
     case 'title':
       replay.title = event.title;
