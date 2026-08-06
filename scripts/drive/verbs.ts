@@ -58,8 +58,13 @@ export async function evalExpr(page: Page, expr: string): Promise<string> {
   // __name() helper that is undefined in the browser context. The try/catch
   // handles circular references; JSON.stringify yields "undefined" for
   // functions/undefined values, which prints acceptably.
-  return page.evaluate((e) => {
-    const value: unknown = (0, eval)(e);
+  //
+  // The result is awaited so an async expression reports what it resolved to.
+  // Without it a promise stringifies to `{}`, which reads like an empty answer
+  // rather than a missing await - and anything that has to wait for the UI (a
+  // drag, an animation, a round of state) has to be async.
+  return page.evaluate(async (e) => {
+    const value: unknown = await (0, eval)(e);
     try {
       return JSON.stringify(value, null, 2);
     } catch {
