@@ -40,6 +40,9 @@ import { shortenPath } from '../../lib/shorten-path';
 /** Stable empty map, so a pane with no thread does not remount the transcript. */
 const EMPTY_PARTIALS: Record<string, string> = {};
 
+/** How near the end still counts as being at it, in pixels. */
+const TAIL_SLACK_PX = 24;
+
 export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): React.JSX.Element {
   const thread = useAgentStore((s) => s.threads[paneId]);
   const send = useAgentStore((s) => s.send);
@@ -157,6 +160,10 @@ function Transcript({
 }): React.JSX.Element {
   const endRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Whether the reader is parked at the tail. Written only from actual scrolls,
+  // so when the content grows it still says where they were before it did.
+  const atTail = useRef(true);
   const last = messages.at(-1);
 
   // Follow the stream. Keyed on the growing text so every delta scrolls.
@@ -169,6 +176,11 @@ function Transcript({
   // which is enough to push the end of the answer below the fold - and an
   // answer that finishes on a code block is most of them. So the tail follows
   // the content itself rather than the render that started it.
+  //
+  // Only for a reader who was already at the tail, though. Growth is not always
+  // the reply arriving: opening a tool call grows the transcript too, and
+  // someone who scrolled up to open one is asking to look there, not to be
+  // taken to the end.
   useEffect(() => {
     const content = contentRef.current;
     if (content === null) return;
@@ -181,6 +193,7 @@ function Transcript({
         return;
       }
       height = grown;
+      if (!atTail.current) return;
       endRef.current?.scrollIntoView({ block: 'end' });
     });
     observer.observe(content);
@@ -188,7 +201,17 @@ function Transcript({
   }, []);
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div
+      ref={scrollRef}
+      className="min-h-0 flex-1 overflow-y-auto"
+      onScroll={() => {
+        const el = scrollRef.current;
+        if (el === null) return;
+        // A line's worth of slack, so "as far down as it goes" survives the
+        // fractional scroll heights a zoomed or half-pixel layout produces.
+        atTail.current = el.scrollHeight - el.scrollTop - el.clientHeight <= TAIL_SLACK_PX;
+      }}
+    >
       <div ref={contentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5">
         {messages.map((message, i) => (
           <Message
