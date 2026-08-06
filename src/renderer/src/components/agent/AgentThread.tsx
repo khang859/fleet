@@ -368,6 +368,24 @@ function SummaryCard({ summary }: { summary: string }): React.JSX.Element {
 /** How long to wait for the typing to settle before searching the folder. */
 const MENTION_DEBOUNCE_MS = 120;
 
+/**
+ * A line above the composer about something worth knowing and not worth
+ * stopping for - a file that could not be attached, a model that will not look
+ * at the picture. Announced rather than shown, since it appears while the user
+ * is typing and their eyes are in the box.
+ */
+function Notice({ children }: { children: React.ReactNode }): React.JSX.Element {
+  return (
+    <p
+      role="status"
+      className="flex items-start gap-1.5 px-1 pb-1.5 text-[11px] text-amber-700 dark:text-amber-400/90"
+    >
+      <TriangleAlert size={12} className="mt-px shrink-0" />
+      {children}
+    </p>
+  );
+}
+
 function Composer({
   disabled,
   streaming,
@@ -597,24 +615,12 @@ function Composer({
             : 'The agent is still working - your message is still here.'}
         </p>
       )}
-      {attachError !== null && (
-        <p
-          role="status"
-          className="flex items-start gap-1.5 px-1 pb-1.5 text-[11px] text-amber-700 dark:text-amber-400/90"
-        >
-          <TriangleAlert size={12} className="mt-px shrink-0" />
-          {attachError}
-        </p>
-      )}
+      {attachError !== null && <Notice>{attachError}</Notice>}
       {blind && hasImage && (
-        <p
-          role="status"
-          className="flex items-start gap-1.5 px-1 pb-1.5 text-[11px] text-amber-700 dark:text-amber-400/90"
-        >
-          <TriangleAlert size={12} className="mt-px shrink-0" />
+        <Notice>
           This model cannot see images. It will be sent, but the model may ignore it - choose one
           with vision in Settings to have it looked at.
-        </p>
+        </Notice>
       )}
       <div
         className={`relative flex flex-col gap-2 rounded-xl border bg-fleet-surface p-2 ${
