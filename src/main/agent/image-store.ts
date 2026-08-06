@@ -9,29 +9,55 @@ import { createLogger } from '../logger';
 const log = createLogger('agent:images');
 
 /**
- * Images the agent generated, on disk beside its sessions.
+ * Images a conversation owns, on disk beside its sessions.
  *
- * Outside the working folder on purpose: a generated picture is not a change to
- * the project, and dropping one into a repo because a model asked for it would
- * be a write the user never authorised. It lands here instead, and reaches the
- * project only if someone copies it there.
+ * Two roots, one class. What the agent generated is not a change to the
+ * project, and dropping one into a repo because a model asked for it would be a
+ * write the user never authorised; what the user pasted or dropped never had a
+ * home of its own, or had one that may be gone tomorrow. Both land here instead
+ * of in the working folder, and reach the project only if someone puts them
+ * there.
  *
- * One folder per conversation, so the images go when the conversation does.
- * A stray folder is not just wasted disk - it is a picture the user thought
- * they had deleted.
+ * One folder per conversation either way, so the images go when the
+ * conversation does. A stray folder is not just wasted disk - it is a picture
+ * the user thought they had deleted.
  */
 
-const IMAGES_DIR = join(homedir(), '.fleet', 'agent', 'images');
+const AGENT_IMAGES_DIR = join(homedir(), '.fleet', 'agent', 'images');
+
+/** Where an attachment is copied to. Separate from what the agent generated:
+ *  they are deleted together, but they are not the same thing, and a folder
+ *  that mixes them cannot say which picture came from whom. */
+export const AGENT_ATTACHMENTS_DIR = join(homedir(), '.fleet', 'agent', 'attachments');
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
+  'image/gif': 'gif',
   'image/svg+xml': 'svg'
 };
 
+/** Whether a real path sits inside a real root. */
+function within(root: string, path: string): boolean {
+  const rel = relative(realpathOrNearest(root), realpathOrNearest(path));
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+/**
+ * Whether a path is one Fleet put a picture at.
+ *
+ * The two folders here are the only places outside the working folder that a
+ * picture may be read from, which is what lets a pasted screenshot and an image
+ * the agent drew be sent at all - they have no home in the project, and the
+ * sandbox that guards everything else would refuse them.
+ */
+export function isAgentImagePath(path: string): boolean {
+  return within(AGENT_IMAGES_DIR, path) || within(AGENT_ATTACHMENTS_DIR, path);
+}
+
 export class AgentImageStore {
-  constructor(private readonly root: string = IMAGES_DIR) {}
+  constructor(private readonly root: string = AGENT_IMAGES_DIR) {}
 
   /**
    * Where one conversation's images live, for an id allowed to name a folder.
@@ -80,7 +106,6 @@ export class AgentImageStore {
    * symlink dropped in here cannot be used to read something else.
    */
   contains(path: string): boolean {
-    const rel = relative(realpathOrNearest(this.root), realpathOrNearest(path));
-    return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+    return within(this.root, path);
   }
 }

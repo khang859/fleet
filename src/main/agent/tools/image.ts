@@ -6,6 +6,7 @@ import {
   type AgentToolResult,
   type ImageArgs
 } from '../../../shared/agent-tools';
+import { formatSize } from '../image-kinds';
 import { resolveInsideCwd } from './paths';
 import type { AgentImageStore } from '../image-store';
 
@@ -113,12 +114,6 @@ async function readReference(
 
   const data = await readFile(abs);
   return `data:${MIME_BY_EXT[ext] ?? 'image/png'};base64,${data.toString('base64')}`;
-}
-
-function formatSize(bytes: number): string {
-  return bytes < 1_000_000
-    ? `${Math.round(bytes / 1000)} KB`
-    : `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
 /** Cents matter here: a generation costs a few, and the row is where they show. */

@@ -249,7 +249,69 @@ export type AgentCatalog = {
  * search, not below it, and the same is true of the copy that goes back to the
  * model on the next turn.
  */
-export type AgentPart = { type: 'text'; text: string } | { type: 'tool'; call: AgentToolCall };
+/**
+ * Something the user handed over with a message: a picture, a document, or a
+ * file in the working folder they pointed at.
+ *
+ * None of these hold bytes. An image is a path re-read when the turn is built,
+ * and a mention is re-read the same way - so the model always sees the file as
+ * it is now rather than as it was when it was attached, and the session log
+ * stays a log rather than a store of base64. A PDF is the exception and holds
+ * its text, because the text was extracted from bytes that will never change
+ * again: re-parsing the same document on every turn would buy nothing.
+ */
+export type AgentAttachment =
+  | {
+      kind: 'image';
+      /** Absolute path. Read fresh at every wire build, never cached as bytes. */
+      path: string;
+      mimeType: string;
+      /** What to call it. Display only - it is never resolved back to a file. */
+      name: string;
+    }
+  | {
+      kind: 'pdf';
+      name: string;
+      /** Extracted once, when it was attached. */
+      text: string;
+      pages: number;
+      /** No text layer at all: a scan Fleet has no way to read. */
+      scanned: boolean;
+    }
+  | {
+      kind: 'mention';
+      /** A file in the working folder, re-read through `read` on every turn. */
+      path: string;
+    };
+
+/** Biggest image Fleet will attach. */
+export const ATTACHMENT_MAX_IMAGE_BYTES = 8_000_000;
+
+/**
+ * What the picker offers, which is exactly what `resolveAttachment` accepts.
+ * Here rather than in main because the file input is the one place the user is
+ * told what may be attached, and being told wrong is a dialog that greys out
+ * the file they wanted.
+ */
+export const ATTACHMENT_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,application/pdf';
+
+/** Biggest PDF Fleet will open. Past this it is a book, not an attachment. */
+export const ATTACHMENT_MAX_PDF_BYTES = 20_000_000;
+
+/**
+ * Characters of PDF text one attachment contributes. Twice what a shell command
+ * may return: this is a document the user chose to hand over rather than output
+ * that happened on the way to something else.
+ */
+export const ATTACHMENT_MAX_PDF_TEXT_CHARS = 60_000;
+
+/** Pages one PDF is read from, whatever else is in it. */
+export const ATTACHMENT_MAX_PDF_PAGES = 300;
+
+export type AgentPart =
+  | { type: 'text'; text: string }
+  | { type: 'tool'; call: AgentToolCall }
+  | { type: 'attachment'; attachment: AgentAttachment };
 
 export type AgentMessage = {
   id: string;
@@ -290,6 +352,35 @@ export function messageToolCalls(message: AgentMessage): AgentToolCall[] {
   return message.parts.filter((part) => part.type === 'tool').map((part) => part.call);
 }
 
+/** What was attached to the message, in the order it was attached. */
+export function messageAttachments(message: AgentMessage): AgentAttachment[] {
+  return message.parts.filter((part) => part.type === 'attachment').map((part) => part.attachment);
+}
+
+/**
+ * What the user sent: their words, and whatever rode along with them.
+ *
+ * The attachments belong to *their* message rather than to a turn of the
+ * agent's own, because that is whose they are. Nothing here is addressed to the
+ * model as though the agent had gone and fetched it.
+ */
+export function userMessageWithAttachments(
+  id: string,
+  text: string,
+  attachments: AgentAttachment[]
+): AgentMessage {
+  return {
+    id,
+    role: 'user',
+    parts: [
+      ...(text === '' ? [] : [{ type: 'text' as const, text }]),
+      ...attachments.map((attachment) => ({ type: 'attachment' as const, attachment }))
+    ],
+    reasoning: '',
+    reasoningMs: null
+  };
+}
+
 /**
  * What a turn cost, counted by the model's own tokenizer and reported by
  * OpenRouter in the last message of the stream. Absent when a provider does not
@@ -320,6 +411,41 @@ export type AgentSendRequest = {
   /** Prior turns, oldest first. The new user message is `text`, not part of it. */
   history: AgentMessage[];
   text: string;
+  /** What rode along with this turn's own message. Empty when nothing did. */
+  attachments: AgentAttachment[];
+};
+
+/**
+ * Something on its way to becoming an attachment.
+ *
+ * Two sources, because two things are being asked for. Bytes arrive from a
+ * paste, a drop or the file picker and have no home of their own, so Fleet
+ * copies them somewhere durable. A path is an `@`-mention of a file in the
+ * working folder, which already has one - and is left exactly where it is.
+ */
+export type AgentAttachRequest = {
+  threadId: string;
+  cwd: string;
+  source:
+    | { kind: 'bytes'; name: string; mimeType: string; bytes: ArrayBuffer }
+    | { kind: 'path'; path: string };
+};
+
+/**
+ * Whether it worked, as data rather than as a rejection: a file too large or a
+ * type Fleet cannot read is an ordinary thing for a person to try, and it wants
+ * a sentence next to the composer rather than an exception.
+ */
+export type AgentAttachResult =
+  | { ok: true; attachment: AgentAttachment }
+  | { ok: false; error: string };
+
+/** One row of the composer's `@` menu. */
+export type AgentMentionMatch = {
+  /** Absolute path, which is what attaching it asks for. */
+  path: string;
+  /** Relative to the working folder, which is what the row shows. */
+  rel: string;
 };
 
 /**

@@ -28,15 +28,19 @@ export function toolBody(call: AgentToolCall): string | null {
 }
 
 /**
- * The image a finished `image` call produced, as something an `<img>` can load.
+ * The picture a finished call has to show, as something an `<img>` can load.
  *
- * The path comes out of the same half of the result the shell's output does -
- * everything above the separator was written for the model, and the path alone
- * is below it. Read that way rather than by finding a path in the prose, so
- * changing the wording of the result cannot silently stop the picture showing.
+ * Two calls produce one, and they say so differently because they mean
+ * different things. `image` made a file, and writes its path below the
+ * separator the way the shell writes its output there - read that way rather
+ * than by finding a path in the prose, so changing the wording of the result
+ * cannot silently stop the picture showing. `read` did not make anything; it
+ * looked at a file that was already there, and says which one on the call.
  */
 export function imageBody(call: AgentToolCall): string | null {
-  if (call.name !== 'image' || call.error !== null || call.result === null) return null;
+  if (call.error !== null) return null;
+  if (call.image !== null) return toFleetImageUrl(call.image.path);
+  if (call.name !== 'image' || call.result === null) return null;
   const path = outputBody(call.result).trim();
   return path === '' ? null : toFleetImageUrl(path);
 }

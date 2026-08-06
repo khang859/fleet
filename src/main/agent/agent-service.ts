@@ -1,11 +1,14 @@
+import { basename } from 'node:path';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type {
+  AgentAttachment,
   AgentCompactDone,
   AgentCompactRequest,
   AgentHandOff,
   AgentImagePartial,
   AgentMessage,
   AgentModelConfig,
+  AgentPart,
   AgentSendRequest,
   AgentSettings,
   AgentStreamDelta,
@@ -13,7 +16,9 @@ import type {
   AgentStreamError,
   AgentUsage
 } from '../../shared/agent-types';
-import { buildSystemPrompt, messageText } from '../../shared/agent-types';
+import { buildSystemPrompt, messageAttachments, messageText } from '../../shared/agent-types';
+import { attachmentWireParts, imageWireParts } from './attachments';
+import { toDataUrl } from './image-kinds';
 import {
   toolSpecsFor,
   type AgentImageGenerator,
@@ -69,17 +74,6 @@ type CallContext = {
 const COMPACT_MAX_TOKENS = 4096;
 
 /**
- * Image bytes as something an `<img>` can show.
- *
- * Only ever used for a partial render, which is never written to disk - so the
- * bytes themselves are what crosses to the renderer. A finished image is a file
- * and travels as a path.
- */
-function toDataUrl(data: Uint8Array, mimeType: string): string {
-  return `data:${mimeType};base64,${Buffer.from(data).toString('base64')}`;
-}
-
-/**
  * How many times one turn may call tools and go back to the model.
  *
  * A cap rather than a trust in the model to stop: a loop that reads the same
@@ -100,6 +94,26 @@ export function toReasoningParam(config: AgentModelConfig): ReasoningParam | nul
   return null;
 }
 
+/** What building the wire needs to know beyond the messages themselves. */
+type WireContext = { cwd: string; threadId: string };
+
+/**
+ * A user message on the wire: what they typed, and whatever rode with it.
+ *
+ * A message with nothing attached stays a plain string, which is what every
+ * turn before this feature was and what every turn without an attachment still
+ * is. Only a message that needs parts gets them.
+ */
+async function toUserMessage(
+  text: string,
+  attachments: AgentAttachment[],
+  ctx: WireContext
+): Promise<AgentWireMessage> {
+  if (attachments.length === 0) return { role: 'user', content: text };
+  const parts = text === '' ? [] : [{ type: 'text' as const, text }];
+  return { role: 'user', content: [...parts, ...(await attachmentWireParts(attachments, ctx))] };
+}
+
 /**
  * One transcript message as the wire wants it. A summary goes back as a
  * labelled user message: it is not something the assistant said, and a
@@ -115,19 +129,27 @@ export function toReasoningParam(config: AgentModelConfig): ReasoningParam | nul
  * The API requires every tool_call to be followed by its result, so a call
  * whose result was never recorded is given one saying so rather than left
  * dangling.
+ *
+ * Asynchronous because an attachment is a path: the bytes are read here, on the
+ * way out, rather than carried around in the transcript.
  */
-function toWireMessages(message: AgentMessage): AgentWireMessage[] {
+async function toWireMessages(
+  message: AgentMessage,
+  ctx: WireContext
+): Promise<AgentWireMessage[]> {
   if (message.role === 'summary') {
     return [{ role: 'user', content: `${SUMMARY_WIRE_PREFIX}\n\n${messageText(message)}` }];
   }
-  if (message.role === 'user') return [{ role: 'user', content: messageText(message) }];
+  if (message.role === 'user') {
+    return [await toUserMessage(messageText(message), messageAttachments(message), ctx)];
+  }
 
   const wire: AgentWireMessage[] = [];
   let text = '';
   let calls: AgentToolCall[] = [];
 
   /** One round: what was said, what it asked for, and what came back. */
-  const flush = (): void => {
+  const flush = async (): Promise<void> => {
     if (text === '' && calls.length === 0) return;
     wire.push({
       role: 'assistant',
@@ -142,13 +164,19 @@ function toWireMessages(message: AgentMessage): AgentWireMessage[] {
           }
         : {})
     });
+    const images: AgentWireMessage[] = [];
     for (const call of calls) {
       wire.push({
         role: 'tool',
         tool_call_id: call.id,
         content: call.result ?? call.error ?? 'This call did not finish.'
       });
+      images.push(...(await toolImageMessages(call, ctx.cwd)));
     }
+    // After the whole round, not after the call that produced them. A model may
+    // ask for several things at once, and the API requires every one of those
+    // calls to be answered before anything else is said.
+    wire.push(...images);
     text = '';
     calls = [];
   };
@@ -156,11 +184,13 @@ function toWireMessages(message: AgentMessage): AgentWireMessage[] {
   for (const part of message.parts) {
     // Text after a call opens the next round, so the round that just ended goes
     // out before it rather than swallowing it.
-    if (part.type === 'text' && calls.length > 0) flush();
+    if (part.type === 'text' && calls.length > 0) await flush();
     if (part.type === 'text') text += part.text;
-    else calls.push(part.call);
+    else if (part.type === 'tool') calls.push(part.call);
+    // An attachment on an assistant message cannot happen - only the composer
+    // makes them - and there is nothing sensible to send if one ever did.
   }
-  flush();
+  await flush();
 
   // An assistant turn that produced nothing at all still has to be something:
   // a gap in the transcript would leave the next user message following the
@@ -168,12 +198,30 @@ function toWireMessages(message: AgentMessage): AgentWireMessage[] {
   return wire.length > 0 ? wire : [{ role: 'assistant', content: '' }];
 }
 
+/**
+ * The picture a call is handing back, on a message of its own.
+ *
+ * A tool result carries text and only text - that is the API's rule, not ours -
+ * so an image `read` returned cannot ride on it. It follows the round's results
+ * instead, as a user message, which is the one role a picture may travel in.
+ */
+async function toolImageMessages(call: AgentToolCall, cwd: string): Promise<AgentWireMessage[]> {
+  if (call.image === null) return [];
+  const parts = await imageWireParts(call.image, basename(call.image.path), cwd);
+  return [{ role: 'user', content: parts }];
+}
+
 /** Transcript plus the new message, as the wire wants it. */
-export function toWireHistory(req: AgentSendRequest, systemPrompt: string): AgentWireMessage[] {
+export async function toWireHistory(
+  req: AgentSendRequest,
+  systemPrompt: string
+): Promise<AgentWireMessage[]> {
+  const ctx: WireContext = { cwd: req.cwd, threadId: req.threadId };
+  const history = await Promise.all(req.history.map(async (m) => toWireMessages(m, ctx)));
   return [
     { role: 'system', content: systemPrompt },
-    ...req.history.flatMap(toWireMessages),
-    { role: 'user', content: req.text }
+    ...history.flat(),
+    await toUserMessage(req.text, req.attachments, ctx)
   ];
 }
 
@@ -182,17 +230,24 @@ export function toWireHistory(req: AgentSendRequest, systemPrompt: string): Agen
  * rather than pasted into one prompt, so the model reads it the same way it
  * read it the first time.
  */
-export function toCompactMessages(req: AgentCompactRequest): AgentWireMessage[] {
+export async function toCompactMessages(req: AgentCompactRequest): Promise<AgentWireMessage[]> {
+  // Only what was said, not what was looked at: the summary is about the
+  // conversation, and a page of tool output would crowd out the part of it
+  // worth keeping. Attachments go the same way, and for the same reason - what
+  // survives compaction is the conversation, not the screenshot it was about.
+  const ctx: WireContext = { cwd: req.cwd, threadId: '' };
+  const messages = await Promise.all(
+    req.messages.map(async (m) => toWireMessages({ ...m, parts: textOnly(m) }, ctx))
+  );
   return [
     { role: 'system', content: `${COMPACT_SYSTEM_PROMPT}\n\nWorking folder: ${req.cwd}` },
-    // Only what was said, not what was looked at: the summary is about the
-    // conversation, and a page of tool output would crowd out the part of it
-    // worth keeping.
-    ...req.messages.flatMap((m) =>
-      toWireMessages({ ...m, parts: [{ type: 'text', text: messageText(m) }] })
-    ),
+    ...messages.flat(),
     { role: 'user', content: 'Write the summary now, following the instructions above.' }
   ];
+}
+
+function textOnly(message: AgentMessage): AgentPart[] {
+  return [{ type: 'text', text: messageText(message) }];
 }
 
 export class AgentService {
@@ -271,7 +326,7 @@ export class AgentService {
     const emit = this.deps.emit;
     const config = ctx.settings.coding;
     const imageModel = ctx.settings.image.model;
-    const messages = toWireHistory(
+    const messages = await toWireHistory(
       req,
       buildSystemPrompt(req.cwd, ctx.settings.systemPrompt, { image: imageModel !== null })
     );
@@ -313,6 +368,7 @@ export class AgentService {
         content: round.content,
         tool_calls: outcome.toolCalls
       });
+      const images: AgentWireMessage[] = [];
       for (const call of outcome.toolCalls) {
         // Thrown rather than returned: `run` only tells the renderer a turn is
         // over from its catch, so returning here ends the turn in main while
@@ -347,7 +403,16 @@ export class AgentService {
           tool_call_id: call.id,
           content: done.result ?? `Error: ${done.error ?? 'the tool failed'}`
         });
+        // The same injection the replayed history gets, and it has to be here
+        // too: this loop builds the wire for the rest of *this* turn, so
+        // without it a model that asked to look at a screenshot would not see
+        // it until the turn after the one it asked in.
+        images.push(...(await toolImageMessages(done, req.cwd)));
       }
+      // Held back until every call in the round has been answered, for the
+      // reason `flush` holds them back: the API takes an unbroken run of
+      // results, and a picture in the middle of one is not a result.
+      messages.push(...images);
     }
 
     throw new Error(
@@ -410,7 +475,8 @@ export class AgentService {
       args: call.function.arguments,
       result: null,
       error: null,
-      summary: null
+      summary: null,
+      image: null
     };
     this.deps.emit(IPC_CHANNELS.AGENT_TOOL_START, {
       streamId,
@@ -420,7 +486,12 @@ export class AgentService {
     let finished: AgentToolCall;
     try {
       const output = await runAgentTool(call.function.name, call.function.arguments, tools);
-      finished = { ...started, result: output.text, summary: output.summary };
+      finished = {
+        ...started,
+        result: output.text,
+        summary: output.summary,
+        image: output.image ?? null
+      };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       finished = { ...started, error: message, summary: 'failed' };
@@ -437,7 +508,7 @@ export class AgentService {
     const reported: { usage: AgentUsage | null } = { usage: null };
 
     await this.call(ctx, {
-      messages: toCompactMessages(req),
+      messages: await toCompactMessages(req),
       // Never above the summary ceiling, and never above the user's own cap.
       maxTokens: Math.min(COMPACT_MAX_TOKENS, ctx.settings.coding.maxTokens ?? COMPACT_MAX_TOKENS),
       // Summarizing is not what a thinking budget is for, and the reasoning

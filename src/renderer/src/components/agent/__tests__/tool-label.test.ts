@@ -9,6 +9,7 @@ const call = (name: string, args: string, over: Partial<AgentToolCall> = {}): Ag
   result: null,
   error: null,
   summary: null,
+  image: null,
   ...over
 });
 

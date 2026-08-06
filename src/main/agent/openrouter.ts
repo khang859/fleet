@@ -6,8 +6,7 @@ import { sseLines } from './sse';
 /**
  * Minimal streaming client for OpenRouter's chat completions endpoint - just
  * enough for one round of the agent: send messages, receive content, reasoning
- * and tool calls, and the token usage the last message carries. Images are not
- * here yet.
+ * and tool calls, and the token usage the last message carries.
  */
 
 const COMPLETIONS_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -26,12 +25,29 @@ export type WireToolCall = {
 };
 
 /**
+ * A piece of a multi-part message. Images travel as data URLs - the endpoint is
+ * remote and cannot read this disk - and OpenRouter takes png, jpeg, webp and
+ * gif, which is why svg is never sent as one.
+ *
+ * The text goes first and the pictures after it: OpenRouter recommends that
+ * order, because of how the parts are parsed on the way to the provider.
+ */
+export type WireContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
+/**
  * One message on the wire. The assistant's own tool calls have to be sent back
  * alongside their results, or the results are answers to questions the
  * transcript never asked.
+ *
+ * Only a user message may be made of parts. That is the API's rule rather than
+ * ours, and it is the reason a tool that produces a picture cannot answer with
+ * one: the image follows the tool result as a user message of its own.
  */
 export type AgentWireMessage =
-  | { role: 'system' | 'user'; content: string }
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string | WireContentPart[] }
   | { role: 'assistant'; content: string; tool_calls?: WireToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string };
 

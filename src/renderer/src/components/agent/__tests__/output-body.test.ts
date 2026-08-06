@@ -9,6 +9,7 @@ const call = (over: Partial<AgentToolCall> = {}): AgentToolCall => ({
   result: null,
   error: null,
   summary: null,
+  image: null,
   ...over
 });
 
@@ -64,9 +65,31 @@ describe('imageBody', () => {
     expect(imageBody(image({ result }))).toBe('fleet-image:///home/k/.fleet/agent/images/t/a.png');
   });
 
+  // What `read` returns when the file was a picture. Any tool may say it looked
+  // at one, so this is read off the call rather than off the tool's name.
+  it('shows the picture a call came back with, whatever tool it was', () => {
+    const read = call({
+      name: 'read',
+      result: 'docs/shot.png is an image. It is shown below.',
+      image: { path: '/repo/docs/shot.png', mimeType: 'image/png' }
+    });
+
+    expect(imageBody(read)).toBe('fleet-image:///repo/docs/shot.png');
+  });
+
   it('has nothing for a call that is not an image, or failed, or is still running', () => {
     expect(imageBody(call({ result: `x\n${OUTPUT_SEPARATOR}\n/tmp/a.png` }))).toBeNull();
     expect(imageBody(image({ error: 'no credits' }))).toBeNull();
     expect(imageBody(image())).toBeNull();
+  });
+
+  it('shows nothing for a picture on a call that failed anyway', () => {
+    const failed = call({
+      name: 'read',
+      error: 'shot.png is 12.0 MB, too large to look at',
+      image: { path: '/repo/shot.png', mimeType: 'image/png' }
+    });
+
+    expect(imageBody(failed)).toBeNull();
   });
 });

@@ -122,6 +122,7 @@ import { registerAgentIpc } from './agent/agent-ipc';
 import { AgentModelCatalog } from './agent/models-catalog';
 import { AgentService } from './agent/agent-service';
 import { AgentSessionStore } from './agent/session-store';
+import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './agent/image-store';
 import { PermissionGate } from './agent/permissions/gate';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
 import { resolveSummary } from './chat/pane-summarizer';
@@ -1667,6 +1668,7 @@ void app.whenReady().then(async () => {
     service: agentService,
     gate: agentGate,
     sessions: new AgentSessionStore(),
+    attachments: new AgentImageStore(AGENT_ATTACHMENTS_DIR),
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => chatSecrets.getKey()
   });

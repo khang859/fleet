@@ -183,6 +183,83 @@ describe('replaySession', () => {
         { type: 'tool', call: expect.objectContaining({ id: 'call_1' }) }
       ]);
     });
+
+    /*
+     * Version 4 is every session on disk today. Its tool calls have no `image`
+     * field at all, because no tool could come back with a picture yet - so the
+     * field has to read as "this call returned no picture" rather than as a
+     * message missing a field, which replay would drop on the floor.
+     */
+    it('replays a call from before a tool could come back with a picture', () => {
+      const V4 =
+        '{"t":"session","version":4,"id":"s-1","cwd":"/repo","createdAt":"2026-08-05T10:00:00.000Z"}\n' +
+        '{"t":"message","message":{"id":"a","role":"assistant","reasoning":"","reasoningMs":null,"parts":' +
+        '[{"type":"tool","call":{"id":"call_1","name":"read","args":"{}","result":"a.ts","error":null,"summary":"1 line"}}]}}\n';
+
+      const replay = replaySession(V4);
+
+      expect(replay.skipped).toBe(0);
+      expect(replay.messages[0].parts).toEqual([
+        { type: 'tool', call: expect.objectContaining({ id: 'call_1', image: null }) }
+      ]);
+    });
+  });
+
+  // What the user handed over is part of their message, so reopening a thread
+  // has to bring the screenshot and the PDF back with it.
+  it('round-trips the attachments on a message', () => {
+    const message: AgentMessage = {
+      id: 'a',
+      role: 'user',
+      parts: [
+        { type: 'text', text: 'what is wrong with this' },
+        {
+          type: 'attachment',
+          attachment: {
+            kind: 'image',
+            path: '/home/k/.fleet/agent/attachments/s-1/x.png',
+            mimeType: 'image/png',
+            name: 'shot.png'
+          }
+        },
+        {
+          type: 'attachment',
+          attachment: { kind: 'pdf', name: 'spec.pdf', text: 'the spec', pages: 3, scanned: false }
+        },
+        { type: 'attachment', attachment: { kind: 'mention', path: '/repo/src/a.ts' } }
+      ],
+      reasoning: '',
+      reasoningMs: null
+    };
+
+    expect(replaySession(log(HEADER, { t: 'message', message })).messages[0]).toEqual(message);
+  });
+
+  // A picture a tool came back with is a path, never the bytes. A log that
+  // stored base64 would grow by a megabyte every time the agent looked at one.
+  it('round-trips the picture a call came back with as a path', () => {
+    const message: AgentMessage = {
+      id: 'a',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool',
+          call: {
+            id: 'call_1',
+            name: 'read',
+            args: '{"path":"shot.png"}',
+            result: 'shot.png is an image. It is shown below.',
+            error: null,
+            summary: '42 KB',
+            image: { path: '/repo/shot.png', mimeType: 'image/png' }
+          }
+        }
+      ],
+      reasoning: '',
+      reasoningMs: null
+    };
+
+    expect(replaySession(log(HEADER, { t: 'message', message })).messages[0]).toEqual(message);
   });
 
   it('keeps what a turn said and did in the order it happened', () => {
@@ -192,7 +269,8 @@ describe('replaySession', () => {
       args: '{"path":"a.ts"}',
       result: 'a.ts lines 1-1',
       error: null,
-      summary: '1 line'
+      summary: '1 line',
+      image: null
     };
     const message: AgentMessage = {
       id: 'a',

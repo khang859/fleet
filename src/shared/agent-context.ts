@@ -1,4 +1,4 @@
-import type { AgentMessage, AgentUsage } from './agent-types';
+import type { AgentAttachment, AgentMessage, AgentUsage } from './agent-types';
 
 /**
  * Context accounting and compaction: deciding how full a transcript is, when it
@@ -43,17 +43,44 @@ export function estimateTranscriptTokens(messages: AgentMessage[], systemPrompt 
   );
 }
 
+/**
+ * What one image costs, flat.
+ *
+ * The real figure is a function of the picture's dimensions, and working it out
+ * would mean decoding every attached image to count something that is only ever
+ * an estimate here anyway. This is roughly what a 1920×1080 screenshot costs -
+ * high for most images, which is the safe direction for the same reason the
+ * characters-per-token figure above is.
+ */
+const IMAGE_TOKENS = 1600;
+
+/** About what a `read` of a mentioned file returns, at its default window. */
+const MENTION_TOKENS = 1300;
+
 function estimatePartsTokens(message: AgentMessage): number {
   return message.parts.reduce((total, part) => {
     if (part.type === 'text') return total + estimateTokens(part.text);
+    if (part.type === 'attachment') return total + estimateAttachmentTokens(part.attachment);
     const { call } = part;
     return (
       total +
       estimateTokens(call.args) +
       estimateTokens(call.result ?? call.error ?? '') +
+      (call.image === null ? 0 : IMAGE_TOKENS) +
       PER_MESSAGE_OVERHEAD
     );
   }, 0);
+}
+
+function estimateAttachmentTokens(attachment: AgentAttachment): number {
+  switch (attachment.kind) {
+    case 'image':
+      return IMAGE_TOKENS;
+    case 'pdf':
+      return estimateTokens(attachment.text);
+    case 'mention':
+      return MENTION_TOKENS;
+  }
 }
 
 /**

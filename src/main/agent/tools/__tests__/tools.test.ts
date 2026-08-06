@@ -1,6 +1,7 @@
 import {
   existsSync,
   mkdtempSync,
+  realpathSync,
   mkdirSync,
   readFileSync,
   rmSync,
@@ -11,7 +12,11 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { OUTPUT_SEPARATOR, type AgentToolContext } from '../../../../shared/agent-tools';
+import {
+  OUTPUT_SEPARATOR,
+  type AgentToolContext,
+  type AgentToolResult
+} from '../../../../shared/agent-tools';
 import { runAgentTool } from '../run';
 import { forgetAllFiles } from '../freshness';
 import { globMatcher } from '../glob-match';
@@ -55,14 +60,10 @@ const ctx = (threadId = 'thread-1', signal = new AbortController().signal): Agen
   generateImage: null
 });
 
-const run = async (name: string, args: object): Promise<{ text: string; summary: string }> =>
+const run = async (name: string, args: object): Promise<AgentToolResult> =>
   runIn('thread-1', name, args);
 
-const runIn = async (
-  threadId: string,
-  name: string,
-  args: object
-): Promise<{ text: string; summary: string }> =>
+const runIn = async (threadId: string, name: string, args: object): Promise<AgentToolResult> =>
   runAgentTool(name, JSON.stringify(args), ctx(threadId));
 
 beforeEach(() => {
@@ -150,6 +151,42 @@ describe('read', () => {
     writeFileSync(join(dir, 'bin'), Buffer.from([0x7f, 0x45, 0x4c, 0x00, 0x01]));
 
     await expect(run('read', { path: 'bin' })).rejects.toThrow(/binary/);
+  });
+
+  // The whole point of the image branch: a screenshot used to be "that is a
+  // binary file", and is now something the model can actually look at.
+  it.each([
+    ['shot.png', 'image/png'],
+    ['shot.jpg', 'image/jpeg'],
+    ['shot.jpeg', 'image/jpeg'],
+    ['shot.webp', 'image/webp'],
+    ['shot.gif', 'image/gif']
+  ])('hands back %s as a picture rather than as text', async (name, mimeType) => {
+    writeFileSync(join(dir, name), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]));
+
+    const result = await run('read', { path: name });
+
+    // The real path, the way every tool resolves one: the temp folder is
+    // itself behind a symlink on macOS.
+    expect(result.image).toEqual({ path: realpathSync(join(dir, name)), mimeType });
+    expect(result.text).toContain('is an image');
+  });
+
+  // Not a picture: it is XML, no provider decodes it as one, and the text of it
+  // is more use to a model than a render would be.
+  it('still reads an svg as text', async () => {
+    file('logo.svg', '<svg><title>logo</title></svg>');
+
+    const result = await run('read', { path: 'logo.svg' });
+
+    expect(result.image).toBeUndefined();
+    expect(result.text).toContain('<title>logo</title>');
+  });
+
+  it('refuses an image too large to look at', async () => {
+    writeFileSync(join(dir, 'huge.png'), Buffer.alloc(8_000_001));
+
+    await expect(run('read', { path: 'huge.png' })).rejects.toThrow(/too large/);
   });
 
   it('sends the model somewhere useful when given a folder', async () => {

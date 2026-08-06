@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import type {
+  AgentAttachment,
   AgentCatalog,
   AgentMessage,
   AgentPermissionAsk,
   AgentPermissionOutcome,
   AgentUsage
 } from '../../../shared/agent-types';
-import { messageText, textMessage } from '../../../shared/agent-types';
+import { messageText, textMessage, userMessageWithAttachments } from '../../../shared/agent-types';
 import type { AgentToolCall } from '../../../shared/agent-tools';
 import {
   emptyReplay,
@@ -173,7 +174,7 @@ type AgentStoreState = {
    * which is why it cannot be the same call.
    */
   resumeSession: (paneId: string, cwd: string, sessionId: string) => Promise<void>;
-  send: (paneId: string, cwd: string, text: string) => void;
+  send: (paneId: string, cwd: string, text: string, attachments?: AgentAttachment[]) => void;
   /** Folds the older half of the transcript into a summary. Ignored while busy. */
   compact: (paneId: string) => void;
   cancel: (paneId: string) => void;
@@ -244,13 +245,13 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     await replayInto(paneId, sessionId);
   },
 
-  send: (paneId, cwd, text) => {
+  send: (paneId, cwd, text, attachments = []) => {
     const thread = get().threads[paneId] ?? EMPTY_THREAD;
     // A turn sent before the history arrives would be answered without it.
     if (thread.streamId !== null || thread.loading) return;
 
     const streamId = crypto.randomUUID();
-    const user = textMessage(crypto.randomUUID(), 'user', text);
+    const user = userMessageWithAttachments(crypto.randomUUID(), text, attachments);
     const assistant: AgentMessage = {
       id: streamId,
       role: 'assistant',
@@ -285,7 +286,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       threadId: thread.sessionId ?? streamId,
       cwd,
       history: thread.messages,
-      text
+      text,
+      attachments
     });
   },
 

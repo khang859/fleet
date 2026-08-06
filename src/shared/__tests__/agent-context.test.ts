@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { textMessage, type AgentMessage } from '../agent-types';
+import { textMessage, type AgentAttachment, type AgentMessage } from '../agent-types';
 import {
   COMPACT_MIN_OLDER,
   canCompact,
@@ -44,6 +44,87 @@ describe('estimateTranscriptTokens', () => {
     expect(estimateTranscriptTokens([msg('assistant', 'hi', 'z'.repeat(1000))])).toBe(
       estimateTranscriptTokens([msg('assistant', 'hi')])
     );
+  });
+
+  /*
+   * Attachments stay in context for the life of the conversation, so they are
+   * resent with every turn - which makes them the one thing a user can add that
+   * silently costs more each time. If they were counted as free, a thread with
+   * four screenshots in it would overflow the window with a bar reading empty.
+   */
+  describe('attachments', () => {
+    const withAttachment = (attachment: AgentAttachment): AgentMessage => ({
+      ...msg('user', 'look'),
+      parts: [
+        { type: 'text', text: 'look' },
+        { type: 'attachment', attachment }
+      ]
+    });
+
+    it('charges for a picture, which no character count would notice', () => {
+      const shot = withAttachment({
+        kind: 'image',
+        path: '/repo/shot.png',
+        mimeType: 'image/png',
+        name: 'shot.png'
+      });
+
+      expect(estimateTranscriptTokens([shot])).toBeGreaterThan(
+        estimateTranscriptTokens([msg('user', 'look')]) + 1000
+      );
+    });
+
+    // A PDF is words by the time it is attached, so it costs what its words do.
+    it('charges a PDF for the text that came out of it', () => {
+      const short = withAttachment({
+        kind: 'pdf',
+        name: 'a.pdf',
+        text: 'x'.repeat(35),
+        pages: 1,
+        scanned: false
+      });
+      const long = withAttachment({
+        kind: 'pdf',
+        name: 'a.pdf',
+        text: 'x'.repeat(3500),
+        pages: 40,
+        scanned: false
+      });
+
+      expect(estimateTranscriptTokens([long]) - estimateTranscriptTokens([short])).toBe(990);
+    });
+
+    it('charges a mention for the file it re-reads every turn', () => {
+      const mention = withAttachment({ kind: 'mention', path: '/repo/src/a.ts' });
+
+      expect(estimateTranscriptTokens([mention])).toBeGreaterThan(
+        estimateTranscriptTokens([msg('user', 'look')]) + 1000
+      );
+    });
+
+    // A `read` that came back with a picture puts one on the wire too, and it
+    // is charged the same as one the user attached.
+    it('charges for a picture a tool call came back with', () => {
+      const call = {
+        id: 'c1',
+        name: 'read',
+        args: '{"path":"shot.png"}',
+        result: 'shot.png is an image. It is shown below.',
+        error: null,
+        summary: '42 KB',
+        image: { path: '/repo/shot.png', mimeType: 'image/png' }
+      };
+      const looked: AgentMessage = {
+        ...msg('assistant', ''),
+        parts: [{ type: 'tool', call }]
+      };
+      const read: AgentMessage = {
+        ...looked,
+        parts: [{ type: 'tool', call: { ...call, image: null } }]
+      };
+
+      expect(estimateTranscriptTokens([looked]) - estimateTranscriptTokens([read])).toBe(1600);
+    });
   });
 });
 

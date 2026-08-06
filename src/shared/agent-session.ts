@@ -24,7 +24,9 @@ import { messageText, type AgentMessage } from './agent-types';
  * carries its own shape and the reader accepts the older ones (see
  * `LegacyMessage`) rather than branching on this number.
  */
-export const SESSION_LOG_VERSION = 4;
+export const SESSION_LOG_VERSION = 5;
+
+const ToolImageSchema = z.object({ path: z.string(), mimeType: z.string() });
 
 const ToolCallSchema = z.object({
   id: z.string(),
@@ -32,12 +34,35 @@ const ToolCallSchema = z.object({
   args: z.string(),
   result: z.string().nullable(),
   error: z.string().nullable(),
-  summary: z.string().nullable()
+  summary: z.string().nullable(),
+  // Written since version 5, so every earlier line has no key here at all.
+  // Nullish rather than nullable for that reason, and normalised to `null` so
+  // nothing downstream has to know which version it is holding.
+  image: ToolImageSchema.nullish().transform((v) => v ?? null)
 });
+
+/** What rode along with a user message. New in version 5. */
+const AttachmentSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('image'),
+    path: z.string(),
+    mimeType: z.string(),
+    name: z.string()
+  }),
+  z.object({
+    kind: z.literal('pdf'),
+    name: z.string(),
+    text: z.string(),
+    pages: z.number(),
+    scanned: z.boolean()
+  }),
+  z.object({ kind: z.literal('mention'), path: z.string() })
+]);
 
 const PartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string() }),
-  z.object({ type: z.literal('tool'), call: ToolCallSchema })
+  z.object({ type: z.literal('tool'), call: ToolCallSchema }),
+  z.object({ type: z.literal('attachment'), attachment: AttachmentSchema })
 ]);
 
 const CommonMessageFields = {

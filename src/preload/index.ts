@@ -143,11 +143,14 @@ import type {
 } from '../shared/env-editor-types';
 import type { NoteReadResult, NoteWriteResult } from '../shared/notes-types';
 import type {
+  AgentAttachRequest,
+  AgentAttachResult,
   AgentCatalog,
   AgentCompactDone,
   AgentCompactRequest,
   AgentHandOff,
   AgentImagePartial,
+  AgentMentionMatch,
   AgentPermissionAsk,
   AgentPermissionDecision,
   AgentSendRequest,
@@ -918,7 +921,12 @@ const fleetApi = {
       typedInvoke<boolean>(IPC_CHANNELS.AGENT_SESSION_DELETE, sessionId),
     /** `null` when nothing usable came back; the caller keeps its own fallback. */
     generateTitle: async (req: AgentTitleRequest): Promise<string | null> =>
-      typedInvoke<string | null>(IPC_CHANNELS.AGENT_GENERATE_TITLE, req)
+      typedInvoke<string | null>(IPC_CHANNELS.AGENT_GENERATE_TITLE, req),
+    /** Refusals come back in the result, so the composer can say why. */
+    attach: async (req: AgentAttachRequest): Promise<AgentAttachResult> =>
+      typedInvoke<AgentAttachResult>(IPC_CHANNELS.AGENT_ATTACH, req),
+    mentionSearch: async (query: string, cwd: string): Promise<AgentMentionMatch[]> =>
+      typedInvoke<AgentMentionMatch[]>(IPC_CHANNELS.AGENT_MENTION_SEARCH, query, cwd)
   },
 
   /**

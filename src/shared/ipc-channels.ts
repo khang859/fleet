@@ -378,6 +378,14 @@ export const IPC_CHANNELS = {
   // A name for a session, from the exchange that opened it. Main returns the
   // text; the renderer decides which session log it belongs in.
   AGENT_GENERATE_TITLE: 'agent:generate-title',
+  // One thing the user attached to a message - pasted, dropped, picked, or
+  // `@`-mentioned. Main copies it somewhere durable or reads what it needs out
+  // of it, and hands back the small record the message carries. The bytes never
+  // come back: what the model gets is read at the moment the turn is built.
+  AGENT_ATTACH: 'agent:attach',
+  // Files the `@` menu can offer, from the same gitignore-aware walk `glob`
+  // and `grep` use, so the menu cannot offer what the sandbox would refuse.
+  AGENT_MENTION_SEARCH: 'agent:mention-search',
 
   // ── Remote (SSH) file browser ──────────────────────────────────────────────
   // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's

@@ -1,8 +1,11 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type {
+  AgentAttachRequest,
+  AgentAttachResult,
   AgentCatalog,
   AgentCompactRequest,
+  AgentMentionMatch,
   AgentSendRequest,
   AgentSettings,
   AgentTitleRequest
@@ -19,6 +22,9 @@ import type { PermissionGate } from './permissions/gate';
 import { AgentPermissionDecision } from '../../shared/agent-types';
 import { completeOnce } from './openrouter';
 import { resolveTitle } from './session-title';
+import { resolveAttachment } from './attachments';
+import { searchMentionFiles } from './mention-search';
+import type { AgentImageStore } from './image-store';
 
 /**
  * Everything the Agent pane calls into main. Agent settings themselves ride on
@@ -30,6 +36,8 @@ export function registerAgentIpc(deps: {
   service: AgentService;
   gate: PermissionGate;
   sessions: AgentSessionStore;
+  /** Where a pasted or dropped image is copied to, keyed by conversation. */
+  attachments: AgentImageStore;
   getSettings: () => AgentSettings;
   getApiKey: () => string | null;
 }): void {
@@ -96,5 +104,20 @@ export function registerAgentIpc(deps: {
         firstAssistant: req.firstAssistant
       });
     }
+  );
+
+  // A refusal - too large, not a kind we can read, a path the sandbox will not
+  // hand over - comes back as data rather than as a rejection, because it is an
+  // ordinary thing for someone to try and it belongs beside the composer.
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_ATTACH,
+    async (_e, req: AgentAttachRequest): Promise<AgentAttachResult> =>
+      resolveAttachment(req, deps.attachments)
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_MENTION_SEARCH,
+    async (_e, query: string, cwd: string): Promise<AgentMentionMatch[]> =>
+      searchMentionFiles(query, cwd)
   );
 }

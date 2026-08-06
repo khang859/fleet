@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
@@ -43,7 +43,8 @@ const REQUEST: AgentSendRequest = {
     textMessage('a', 'user', 'hi'),
     { ...textMessage('b', 'assistant', 'hello'), reasoning: 'thinking', reasoningMs: 1200 }
   ],
-  text: 'what does this do?'
+  text: 'what does this do?',
+  attachments: []
 };
 
 const COMPACT_REQUEST: AgentCompactRequest = {
@@ -189,8 +190,8 @@ describe('buildSystemPrompt', () => {
 });
 
 describe('toWireHistory', () => {
-  it('puts the system prompt ahead of the transcript', () => {
-    const messages = toWireHistory(REQUEST, 'be brief');
+  it('puts the system prompt ahead of the transcript', async () => {
+    const messages = await toWireHistory(REQUEST, 'be brief');
 
     expect(messages[0]).toEqual({ role: 'system', content: 'be brief' });
     expect(messages.slice(1)).toEqual([
@@ -200,9 +201,9 @@ describe('toWireHistory', () => {
     ]);
   });
 
-  it('sends a summary as a labelled user message, not as the assistant speaking', () => {
+  it('sends a summary as a labelled user message, not as the assistant speaking', async () => {
     const summary = textMessage('s', 'summary', 'we chose zod');
-    const messages = toWireHistory({ ...REQUEST, history: [summary] }, 'be brief');
+    const messages = await toWireHistory({ ...REQUEST, history: [summary] }, 'be brief');
 
     expect(messages[1].role).toBe('user');
     expect(messages[1].content).toContain(SUMMARY_WIRE_PREFIX);
@@ -212,14 +213,15 @@ describe('toWireHistory', () => {
   // The ordering the parts exist for. A model handed its own closing sentence
   // as though it were written before the search it was reacting to is being
   // told a small lie about how it got there.
-  it('rebuilds a turn that used tools round by round, in order', () => {
+  it('rebuilds a turn that used tools round by round, in order', async () => {
     const call: AgentToolCall = {
       id: 'call_1',
       name: 'read',
       args: '{"path":"a.ts"}',
       result: 'a.ts lines 1-1',
       error: null,
-      summary: '1 line'
+      summary: '1 line',
+      image: null
     };
     const turn: AgentMessage = {
       id: 'b',
@@ -233,7 +235,7 @@ describe('toWireHistory', () => {
       reasoningMs: null
     };
 
-    const messages = toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+    const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
 
     expect(messages.slice(1, -1)).toEqual([
       {
@@ -252,14 +254,15 @@ describe('toWireHistory', () => {
     ]);
   });
 
-  it('answers a call that never came back, so none is left dangling', () => {
+  it('answers a call that never came back, so none is left dangling', async () => {
     const pending: AgentToolCall = {
       id: 'call_1',
       name: 'read',
       args: '{}',
       result: null,
       error: null,
-      summary: null
+      summary: null,
+      image: null
     };
     const turn: AgentMessage = {
       id: 'b',
@@ -269,7 +272,7 @@ describe('toWireHistory', () => {
       reasoningMs: null
     };
 
-    const messages = toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+    const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
 
     expect(messages[1]).toMatchObject({ role: 'assistant', content: '' });
     expect(messages[2]).toEqual({
@@ -281,7 +284,7 @@ describe('toWireHistory', () => {
 
   // A cancelled turn can leave a message with nothing in it at all. Dropping it
   // would put two user messages back to back.
-  it('sends an empty assistant turn rather than no turn', () => {
+  it('sends an empty assistant turn rather than no turn', async () => {
     const empty: AgentMessage = {
       id: 'b',
       role: 'assistant',
@@ -290,15 +293,15 @@ describe('toWireHistory', () => {
       reasoningMs: null
     };
 
-    const messages = toWireHistory({ ...REQUEST, history: [empty] }, 'be brief');
+    const messages = await toWireHistory({ ...REQUEST, history: [empty] }, 'be brief');
 
     expect(messages[1]).toEqual({ role: 'assistant', content: '' });
   });
 });
 
 describe('toCompactMessages', () => {
-  it('hands the messages over as a transcript under the compaction instructions', () => {
-    const messages = toCompactMessages(COMPACT_REQUEST);
+  it('hands the messages over as a transcript under the compaction instructions', async () => {
+    const messages = await toCompactMessages(COMPACT_REQUEST);
 
     expect(messages[0].role).toBe('system');
     expect(messages[0].content).toContain(COMPACT_SYSTEM_PROMPT);
@@ -310,6 +313,201 @@ describe('toCompactMessages', () => {
     // Ends on a user turn: a transcript that stops on an assistant message is
     // an invalid request for some providers.
     expect(messages.at(-1)?.role).toBe('user');
+  });
+});
+
+/**
+ * Attachments on the wire.
+ *
+ * Nothing about an attachment lives in the transcript except a path, so this is
+ * where a screenshot stops being a filename and becomes bytes. It happens on
+ * every turn, for every attachment the conversation has ever had - which is
+ * what "stays in context" means, and why the reading is deliberately late.
+ */
+describe('toWireHistory: attachments', () => {
+  let dir: string;
+
+  const shot = (): { kind: 'image'; path: string; mimeType: string; name: string } => ({
+    kind: 'image',
+    path: join(dir, 'shot.png'),
+    mimeType: 'image/png',
+    name: 'shot.png'
+  });
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'fleet-wire-'));
+    writeFileSync(join(dir, 'shot.png'), 'pixels');
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // The shape every turn had before attachments existed, and still has when
+  // there are none. Parts are the exception, not the new normal.
+  it('leaves a message with nothing attached as a plain string', async () => {
+    const messages = await toWireHistory({ ...REQUEST, cwd: dir }, 'be brief');
+
+    expect(messages.at(-1)).toEqual({ role: 'user', content: 'what does this do?' });
+  });
+
+  it('sends what was typed as text and what was attached after it', async () => {
+    const messages = await toWireHistory(
+      { ...REQUEST, cwd: dir, attachments: [shot()] },
+      'be brief'
+    );
+
+    expect(messages.at(-1)).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'what does this do?' },
+        { type: 'text', text: 'Image file: shot.png' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,cGl4ZWxz' } }
+      ]
+    });
+  });
+
+  // Dropping a screenshot in with nothing to say is a complete message.
+  it('sends an attachment with no words as parts without an empty one', async () => {
+    const messages = await toWireHistory(
+      { ...REQUEST, cwd: dir, text: '', attachments: [shot()] },
+      'be brief'
+    );
+
+    expect(messages.at(-1)).toMatchObject({
+      content: [{ type: 'text', text: 'Image file: shot.png' }, { type: 'image_url' }]
+    });
+  });
+
+  // The whole of "stays in context": a picture attached ten turns ago is read
+  // off disk again now, rather than having been left behind in the transcript.
+  it('re-reads an attachment from a turn already in the transcript', async () => {
+    const earlier: AgentMessage = {
+      ...textMessage('a', 'user', 'look at this'),
+      parts: [
+        { type: 'text', text: 'look at this' },
+        { type: 'attachment', attachment: shot() }
+      ]
+    };
+
+    const messages = await toWireHistory({ ...REQUEST, cwd: dir, history: [earlier] }, 'be brief');
+
+    expect(messages[1]).toMatchObject({
+      role: 'user',
+      content: [{ type: 'text', text: 'look at this' }, { type: 'text' }, { type: 'image_url' }]
+    });
+  });
+
+  /*
+   * A tool result is text and only text - the API's rule, not ours - so a
+   * picture `read` came back with rides in a user message immediately after it.
+   * Immediately: anything in between separates the image from the call that
+   * produced it, and the model has no other way to tell which is which.
+   */
+  it('puts a picture a call came back with right after its result', async () => {
+    const call: AgentToolCall = {
+      id: 'call_1',
+      name: 'read',
+      args: '{"path":"shot.png"}',
+      result: 'shot.png is an image. It is shown below.',
+      error: null,
+      summary: '6 B',
+      image: { path: join(dir, 'shot.png'), mimeType: 'image/png' }
+    };
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [{ type: 'tool', call }],
+      reasoning: '',
+      reasoningMs: null
+    };
+
+    const messages = await toWireHistory({ ...REQUEST, cwd: dir, history: [turn] }, 'be brief');
+
+    expect(messages[2]).toMatchObject({ role: 'tool', tool_call_id: 'call_1' });
+    expect(messages[3]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Image file: shot.png' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,cGl4ZWxz' } }
+      ]
+    });
+  });
+
+  /*
+   * And it waits for the rest of the round. A model may ask for several things
+   * at once, and the API takes the answers as an unbroken run - a picture
+   * dropped between two results is not a result, and the whole request is
+   * rejected. Since the transcript is rebuilt from the same parts on every
+   * later turn, getting this wrong would not fail once: it would fail forever.
+   */
+  it('holds a picture back until every call in the round has been answered', async () => {
+    const looked: AgentToolCall = {
+      id: 'call_1',
+      name: 'read',
+      args: '{"path":"shot.png"}',
+      result: 'shot.png is an image. It is shown below.',
+      error: null,
+      summary: '6 B',
+      image: { path: join(dir, 'shot.png'), mimeType: 'image/png' }
+    };
+    const searched: AgentToolCall = {
+      id: 'call_2',
+      name: 'grep',
+      args: '{"pattern":"todo"}',
+      result: 'no matches',
+      error: null,
+      summary: '0 matches',
+      image: null
+    };
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [
+        { type: 'tool', call: looked },
+        { type: 'tool', call: searched }
+      ],
+      reasoning: '',
+      reasoningMs: null
+    };
+
+    const messages = await toWireHistory({ ...REQUEST, cwd: dir, history: [turn] }, 'be brief');
+
+    expect(messages.slice(1, 5).map((m) => m.role)).toEqual(['assistant', 'tool', 'tool', 'user']);
+    expect(messages[4]).toMatchObject({ content: [{ type: 'text' }, { type: 'image_url' }] });
+  });
+
+  // A turn is not worth failing over a file that moved out from under it.
+  it('says a file it can no longer read is gone rather than throwing', async () => {
+    const missing = { ...shot(), path: join(dir, 'deleted.png') };
+
+    const messages = await toWireHistory(
+      { ...REQUEST, cwd: dir, attachments: [missing] },
+      'be brief'
+    );
+
+    expect(messages.at(-1)).toMatchObject({
+      content: [
+        { type: 'text', text: 'what does this do?' },
+        { type: 'text', text: expect.stringContaining('could not be read') }
+      ]
+    });
+  });
+
+  // Compaction is a model reading a conversation to write it down shorter.
+  // Re-sending the pictures for that would be paying for them twice.
+  it('leaves the pictures out of the compacting call', async () => {
+    const earlier: AgentMessage = {
+      ...textMessage('a', 'user', 'look at this'),
+      parts: [
+        { type: 'text', text: 'look at this' },
+        { type: 'attachment', attachment: shot() }
+      ]
+    };
+
+    const messages = await toCompactMessages({ ...COMPACT_REQUEST, messages: [earlier] });
+
+    expect(messages[1]).toEqual({ role: 'user', content: 'look at this' });
   });
 });
 
@@ -694,6 +892,43 @@ describe('the tool loop', () => {
     expect(sent.at(-1)).toHaveProperty('content', expect.stringContaining('the answer is 42'));
   });
 
+  /*
+   * The point of teaching `read` to return pictures: the model asked to look at
+   * a screenshot on this round, so it has to be able to see it on the next one.
+   * The picture is injected into the running turn rather than only when the
+   * transcript is rebuilt - otherwise the agent reads an image, is told a file
+   * it cannot see exists, and answers about nothing.
+   */
+  it('shows the model a picture a call returned, in the same turn it asked', async () => {
+    const { emit, events, ended } = collector();
+    writeFileSync(join(dir, 'shot.png'), 'pixels');
+    const { stream, rounds } = twoRounds([call('read', { path: 'shot.png' })]);
+
+    new AgentService({
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send({ ...REQUEST, cwd: dir });
+    await ended;
+
+    const sent = rounds[1].messages;
+    expect(sent.at(-2)).toMatchObject({ role: 'tool', tool_call_id: 'call_1' });
+    expect(sent.at(-1)).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Image file: shot.png' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,cGl4ZWxz' } }
+      ]
+    });
+    // And the pane is told, so the transcript shows what the agent looked at.
+    const end = events.find((e) => e.channel === IPC_CHANNELS.AGENT_TOOL_END);
+    expect(end?.payload).toMatchObject({
+      call: { image: { path: realpathSync(join(dir, 'shot.png')), mimeType: 'image/png' } }
+    });
+  });
+
   it('tells the pane a call started and how it ended', async () => {
     const { emit, events, ended } = collector();
     const { stream } = twoRounds([call('read', { path: 'answer.txt' })]);
@@ -812,7 +1047,9 @@ describe('the tool loop', () => {
     /** The system message one turn opened with. */
     async function systemPrompt(settings: typeof SETTINGS): Promise<string> {
       const round = await firstRound(settings);
-      return String(round.messages[0].content);
+      const { content } = round.messages[0];
+      // Always a string: only a user message ever carries parts.
+      return typeof content === 'string' ? content : '';
     }
 
     it('leaves the image instructions out of the prompt when it is off', async () => {

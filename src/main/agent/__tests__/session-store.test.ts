@@ -1,7 +1,16 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, utimesSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { AgentImageStore } from '../image-store';
 import { AgentSessionStore } from '../session-store';
 import { emptyReplay } from '../../../shared/agent-session';
 import { textMessage, type AgentMessage } from '../../../shared/agent-types';
@@ -183,5 +192,29 @@ describe('AgentSessionStore.delete', () => {
   // caller wanted, not a failure to report to them.
   it('counts a session that was never there as removed', () => {
     expect(store.delete(GONE)).toBe(true);
+  });
+
+  /*
+   * The pictures go with it. What the user attached lives outside the session
+   * file - it has to, since a screenshot pasted into the composer never had a
+   * file of its own - so a delete that only unlinked the JSONL would leave the
+   * images the user thought they had deleted sitting on disk forever.
+   */
+  it('takes the images the conversation owned with it', () => {
+    const images = join(dir, 'images');
+    const attachments = join(dir, 'attachments');
+    const withImages = new AgentSessionStore(
+      dir,
+      new AgentImageStore(images),
+      new AgentImageStore(attachments)
+    );
+    withImages.append(S1, '/repo', { t: 'message', message: msg('a', 'hi') });
+    const drawn = new AgentImageStore(images).save(S1, new Uint8Array([1]), 'image/png');
+    const pasted = new AgentImageStore(attachments).save(S1, new Uint8Array([2]), 'image/png');
+
+    expect(withImages.delete(S1)).toBe(true);
+
+    expect(existsSync(drawn)).toBe(false);
+    expect(existsSync(pasted)).toBe(false);
   });
 });

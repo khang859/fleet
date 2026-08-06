@@ -224,6 +224,7 @@ const READ_DESCRIPTION = [
   `Read a file, ${READ_DEFAULT_LIMIT} lines at a time by default.`,
   'Output is the file with line numbers, so a line number you quote back is the real one.',
   'Pass `offset` and `limit` to read further in - the footer of a truncated read tells you the next offset to ask for.',
+  'A png, jpg, webp or gif comes back as the picture itself rather than as text, so use this to look at a screenshot, a mockup or an image you generated.',
   'Paths may be absolute or relative to the working folder, and must stay inside it.'
 ].join(' ');
 
@@ -486,7 +487,19 @@ export type AgentToolCall = {
   error: string | null;
   /** The one line the pane shows for this call, e.g. `42 matches in 7 files`. */
   summary: string | null;
+  /**
+   * A picture this call is handing over, on top of its text. `null` for every
+   * call but a `read` of an image file, which is nearly all of them.
+   *
+   * A path rather than the bytes, for the same reason an attachment is one: the
+   * file is read again each time the turn is built, so nothing base64 ever ends
+   * up in the session log.
+   */
+  image: AgentToolImage | null;
 };
+
+/** An image a tool is handing to the model, as a file rather than as bytes. */
+export type AgentToolImage = { path: string; mimeType: string };
 
 /**
  * What a tool runs against.
@@ -574,4 +587,9 @@ export type AgentToolResult = {
   text: string;
   /** One line describing the outcome, for the row in the transcript. */
   summary: string;
+  /**
+   * A picture the model should see as well as read about. Set only by `read`,
+   * on an image file; every other tool leaves it out.
+   */
+  image?: AgentToolImage;
 };

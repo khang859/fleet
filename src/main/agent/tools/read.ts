@@ -8,6 +8,8 @@ import {
   type AgentToolResult,
   type ReadArgs
 } from '../../../shared/agent-tools';
+import { ATTACHMENT_MAX_IMAGE_BYTES } from '../../../shared/agent-types';
+import { formatSize, imageMimeFor } from '../image-kinds';
 import { displayPath, resolveInsideCwd } from './paths';
 import { remember } from './freshness';
 
@@ -23,6 +25,11 @@ import { remember } from './freshness';
  * Read a line at a time rather than in one gulp so that a range near the top of
  * an enormous file costs what that range costs, and a file too big to hold in
  * memory is still readable a window at a time.
+ *
+ * An image is the one file this does not read as text. It comes back as a
+ * picture instead, which is a screenshot the agent can actually look at rather
+ * than the "that is a binary file" it used to get - and the reason the user can
+ * point it at one at all.
  */
 export async function runRead(args: ReadArgs, ctx: AgentToolContext): Promise<AgentToolResult> {
   const abs = resolveInsideCwd(args.path, ctx.cwd);
@@ -31,6 +38,20 @@ export async function runRead(args: ReadArgs, ctx: AgentToolContext): Promise<Ag
   const info = await stat(abs).catch(() => null);
   if (info === null) throw new Error(`${shown} does not exist`);
   if (info.isDirectory()) throw new Error(`${shown} is a folder - use glob to list what is in it`);
+
+  const mimeType = imageMimeFor(abs);
+  if (mimeType !== null) {
+    if (info.size > ATTACHMENT_MAX_IMAGE_BYTES) {
+      throw new Error(`${shown} is ${formatSize(info.size)}, too large to look at`);
+    }
+    // No `remember` here: freshness is what licenses an `edit`, and nothing
+    // edits a png through a string match.
+    return {
+      text: `${shown} is an image. It is shown below.`,
+      summary: formatSize(info.size),
+      image: { path: abs, mimeType }
+    };
+  }
 
   const from = args.offset ?? 1;
   const limit = args.limit ?? READ_DEFAULT_LIMIT;

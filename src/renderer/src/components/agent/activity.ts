@@ -44,6 +44,8 @@ export function agentPhase(
   const part = last.parts.at(-1);
   if (part === undefined) return last.reasoning === '' ? 'waiting' : 'reasoning';
   if (part.type === 'text') return 'writing';
+  // An attachment is the user's, so an assistant turn cannot end on one.
+  if (part.type === 'attachment') return 'waiting';
   return part.call.result === null && part.call.error === null ? 'tooling' : 'waiting';
 }
 
