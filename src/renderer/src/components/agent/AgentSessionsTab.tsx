@@ -5,7 +5,8 @@ import type { AgentSessionListItem } from '../../../../shared/agent-session';
 import { useAgentStore } from '../../store/agent-store';
 import { agentSessionsInUse } from '../../store/workspace-store';
 import { dialogFadeAnim } from '../../lib/motion';
-import { relativeTime } from './settings/format';
+import { formatTokens, formatUsd, relativeTime } from './settings/format';
+import { hasSpend, type AgentSessionSpend } from '../../../../shared/agent-spend';
 
 /**
  * The conversations this pane's folder has had, and a way back into one.
@@ -133,6 +134,18 @@ export function AgentSessionsTab({
                 <span className="shrink-0 text-[11px] text-fleet-text-subtle">
                   {relativeTime(session.updatedAt)}
                 </span>
+                {/*
+                 * A fixed column so the amounts line up down the list, which is
+                 * what makes an expensive session findable at a glance. A dash
+                 * for one that kept no count - which is every session from
+                 * before this existed, and is not the same as one that was free.
+                 */}
+                <span
+                  className="w-14 shrink-0 text-right text-[11px] tabular-nums text-fleet-text-subtle"
+                  title={sessionCostTitle(session.spend)}
+                >
+                  {sessionCost(session.spend)}
+                </span>
               </button>
               <button
                 type="button"
@@ -203,6 +216,26 @@ function sessionLabel(session: AgentSessionListItem): string {
   if (title !== '') return title;
   const opening = session.firstUserText.trim().split('\n')[0];
   return opening === '' ? 'Empty session' : opening;
+}
+
+/**
+ * What a session cost, in the width of a column.
+ *
+ * Three states rather than two, and the difference matters: a price, a session
+ * whose provider quoted none, and a session from before any of this was
+ * recorded. Only the last is a dash - "we never counted" is the one of the
+ * three that is about Fleet rather than about the conversation.
+ */
+function sessionCost(spend: AgentSessionSpend | null): string {
+  if (spend === null || !hasSpend(spend)) return '—';
+  return spend.costUsd === null ? '·' : formatUsd(spend.costUsd);
+}
+
+function sessionCostTitle(spend: AgentSessionSpend | null): string {
+  if (spend === null || !hasSpend(spend))
+    return 'This session was written before Fleet kept count.';
+  const tokens = `${formatTokens(spend.promptTokens + spend.completionTokens)} tokens over ${spend.calls} calls`;
+  return spend.costUsd === null ? `${tokens}, at no quoted price.` : `${tokens}.`;
 }
 
 function Centered({ children }: { children: React.ReactNode }): React.JSX.Element {

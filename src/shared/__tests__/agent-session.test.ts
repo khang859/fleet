@@ -3,11 +3,13 @@ import { textMessage, type AgentMessage } from '../agent-types';
 import {
   emptyReplay,
   encodeEvent,
+  lastSpendIn,
   replaySession,
   sessionHeader,
   SESSION_LOG_VERSION,
   type AgentSessionEvent
 } from '../agent-session';
+import { EMPTY_SESSION_SPEND, type AgentSessionSpend } from '../agent-spend';
 
 /**
  * Replay is the only thing standing between a session file and a transcript, so
@@ -20,6 +22,14 @@ const msg = (id: string, role: AgentMessage['role'], content: string): AgentMess
   textMessage(id, role, content);
 
 const log = (...events: AgentSessionEvent[]): string => events.map(encodeEvent).join('');
+
+const spend = (costUsd: number, calls: number): AgentSessionSpend => ({
+  ...EMPTY_SESSION_SPEND,
+  costUsd,
+  promptTokens: calls * 1000,
+  completionTokens: calls * 100,
+  calls
+});
 
 const HEADER = sessionHeader('s-1', '/repo', '2026-08-05T10:00:00.000Z');
 
@@ -378,5 +388,70 @@ describe('replaySession: what a listing reads', () => {
 
   it('carries an empty opening line for a session that was never spoken in', () => {
     expect(replaySession(log(HEADER))).toMatchObject({ firstUserText: '', title: null });
+  });
+
+  it('takes the last spend total, since each one supersedes the last', () => {
+    const replay = replaySession(
+      log(HEADER, { t: 'spend', total: spend(0.01, 1) }, { t: 'spend', total: spend(0.04, 3) })
+    );
+
+    expect(replay.spend).toEqual(spend(0.04, 3));
+  });
+
+  it('has spent nothing for a session written before spend was recorded', () => {
+    expect(replaySession(log(HEADER, { t: 'context', tokens: 12 })).spend).toEqual(
+      EMPTY_SESSION_SPEND
+    );
+  });
+
+  /*
+   * The one thing compaction must not touch. It rewrites messages, and money
+   * already spent is not a message - a session whose transcript was folded away
+   * has still been billed for the turns that filled it.
+   */
+  it('keeps the spend total across a compaction', () => {
+    const replay = replaySession(
+      log(
+        HEADER,
+        { t: 'message', message: msg('a', 'user', 'hi') },
+        { t: 'spend', total: spend(0.5, 20) },
+        { t: 'compact', summary: msg('s', 'summary', 'we talked'), keep: [] }
+      )
+    );
+
+    expect(replay.messages.map((m) => m.id)).toEqual(['s']);
+    expect(replay.spend).toEqual(spend(0.5, 20));
+  });
+});
+
+/*
+ * The listing never replays a session - it reads a window off each end of the
+ * file - so the running total has to survive being read out of a slice that
+ * starts in the middle of a line and holds none of the conversation.
+ */
+describe('lastSpendIn', () => {
+  it('finds the last total in a slice', () => {
+    const contents = log(
+      { t: 'spend', total: spend(0.01, 1) },
+      { t: 'spend', total: spend(0.09, 7) }
+    );
+    expect(lastSpendIn(contents)).toEqual(spend(0.09, 7));
+  });
+
+  it('survives a slice that begins part-way through a line', () => {
+    const whole = log(
+      HEADER,
+      { t: 'message', message: msg('a', 'user', 'hi') },
+      {
+        t: 'spend',
+        total: spend(0.02, 2)
+      }
+    );
+    expect(lastSpendIn(whole.slice(20))).toEqual(spend(0.02, 2));
+  });
+
+  it('is null when the slice holds no total', () => {
+    expect(lastSpendIn(log(HEADER, { t: 'context', tokens: 5 }))).toBeNull();
+    expect(lastSpendIn('')).toBeNull();
   });
 });

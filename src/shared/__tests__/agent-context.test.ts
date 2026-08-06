@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { textMessage, type AgentAttachment, type AgentMessage } from '../agent-types';
+import {
+  EMPTY_AGENT_USAGE,
+  textMessage,
+  type AgentAttachment,
+  type AgentMessage,
+  type AgentTurnUsage
+} from '../agent-types';
 import {
   COMPACT_MIN_OLDER,
   canCompact,
@@ -130,14 +136,26 @@ describe('estimateTranscriptTokens', () => {
 });
 
 describe('contextUsed', () => {
+  const turn = (contextTokens: number | null): AgentTurnUsage => ({
+    billed: { ...EMPTY_AGENT_USAGE, promptTokens: 9000, totalTokens: 9500 },
+    contextTokens,
+    calls: 9,
+    model: null,
+    provider: null
+  });
+
   it('trusts the provider over the estimate', () => {
-    expect(contextUsed({ promptTokens: 900, completionTokens: 100, totalTokens: 1000 }, 12)).toBe(
-      1000
-    );
+    expect(contextUsed(turn(1000), 12)).toBe(1000);
+  });
+
+  it('reads the last round rather than what the turn was billed for', () => {
+    // Nine rounds resent the same conversation nine times. The window holds one.
+    expect(contextUsed(turn(1000), 12)).toBe(1000);
   });
 
   it('falls back to the estimate when no usage was reported', () => {
     expect(contextUsed(null, 12)).toBe(12);
+    expect(contextUsed(turn(null), 12)).toBe(12);
   });
 });
 

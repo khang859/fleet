@@ -16,12 +16,14 @@ import {
   AgentSessionId,
   emptyReplay,
   encodeEvent,
+  lastSpendIn,
   replaySession,
   sessionHeader,
   type AgentSessionEvent,
   type AgentSessionListItem,
   type AgentSessionReplay
 } from '../../shared/agent-session';
+import { hasSpend, type AgentSessionSpend } from '../../shared/agent-spend';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './image-store';
 import { createLogger } from '../logger';
 
@@ -135,6 +137,7 @@ export class AgentSessionStore {
       const path = this.path(id);
       if (path === null) continue;
       try {
+        const info = statSync(path);
         const replay = replaySession(readHead(path));
         // No header means this is not one of ours, which is how a stray file
         // in the folder stays out of the list.
@@ -146,7 +149,8 @@ export class AgentSessionStore {
           firstUserText: replay.firstUserText,
           // Last written is last used: an append is the only thing that ever
           // touches one of these files, so the mtime needs no help from the log.
-          updatedAt: statSync(path).mtimeMs
+          updatedAt: info.mtimeMs,
+          spend: readSpend(path, info.size, replay)
         });
       } catch (err) {
         // One unreadable session is not a reason to show the user none.
@@ -222,6 +226,16 @@ export class AgentSessionStore {
 const LIST_SCAN_BYTES = 256 * 1024;
 
 /**
+ * How much of the *end* of a file the listing reads, to find what it spent.
+ *
+ * The running total is rewritten after every turn, so the newest one is within
+ * a few lines of the end however long the conversation ran. Small, because it
+ * only ever has to contain one line - the extra room is for the turn that
+ * happened to end with a long reply in front of it.
+ */
+const LIST_TAIL_BYTES = 16 * 1024;
+
+/**
  * The first `LIST_SCAN_BYTES` of a file, as text.
  *
  * The slice usually ends mid-line, which needs no handling here: `replaySession`
@@ -229,10 +243,32 @@ const LIST_SCAN_BYTES = 256 * 1024;
  * exactly the same thing behind.
  */
 function readHead(path: string): string {
+  return readWindow(path, 0, LIST_SCAN_BYTES);
+}
+
+/**
+ * What a session spent, without replaying it.
+ *
+ * The head is read anyway, so a file that fits inside it has already been fully
+ * parsed and there is nothing to go back for. Only a longer one needs the tail,
+ * where the newest running total is - and past that point the head is far too
+ * early to hold it, since it was written before most of the money was spent.
+ *
+ * `null` when there is no total anywhere: a session from before this was
+ * recorded, which the row shows as a dash rather than as zero.
+ */
+function readSpend(path: string, size: number, head: AgentSessionReplay): AgentSessionSpend | null {
+  if (size <= LIST_SCAN_BYTES) return hasSpend(head.spend) ? head.spend : null;
+  const start = Math.max(0, size - LIST_TAIL_BYTES);
+  return lastSpendIn(readWindow(path, start, LIST_TAIL_BYTES)) ?? null;
+}
+
+/** `length` bytes from `start`, as text, without reading the rest of the file. */
+function readWindow(path: string, start: number, length: number): string {
   const fd = openSync(path, 'r');
   try {
-    const buffer = Buffer.alloc(LIST_SCAN_BYTES);
-    const read = readSync(fd, buffer, 0, LIST_SCAN_BYTES, 0);
+    const buffer = Buffer.alloc(length);
+    const read = readSync(fd, buffer, 0, length, start);
     return buffer.subarray(0, read).toString('utf8');
   } finally {
     closeSync(fd);

@@ -1,4 +1,5 @@
 import type { completeOnce, AgentWireMessage } from './openrouter';
+import type { AgentTitleResult, AgentTurnUsage, AgentUsage } from '../../shared/agent-types';
 import { createLogger } from '../logger';
 
 const log = createLogger('agent:title');
@@ -72,16 +73,21 @@ export function toTitleMessages(input: TitleInput): AgentWireMessage[] {
 }
 
 /**
- * A title for this session, or `null` when there is not one worth writing.
+ * A title for this session, and what asking for it cost.
  *
  * Never throws, and never invents a placeholder. A session with no title shows
  * the words the user opened it with, which is a better label than anything
  * that could be made up here, so a failure needs no fallback of its own.
+ *
+ * The cost is reported even when the title is `null`, because a model that
+ * answered with something unusable was still paid for answering. Only a call
+ * that never happened - or one that failed on the way out - has nothing to
+ * report.
  */
 export async function resolveTitle(
   complete: typeof completeOnce,
   input: TitleInput
-): Promise<string | null> {
+): Promise<AgentTitleResult> {
   try {
     const answer = await complete({
       apiKey: input.apiKey,
@@ -90,14 +96,28 @@ export async function resolveTitle(
       maxTokens: 24,
       temperature: 0.3
     });
-    const title = sanitizeTitle(answer) || null;
+    const title = sanitizeTitle(answer.text) || null;
     if (title === null) log.warn('model returned no usable title', { model: input.model });
-    return title;
+    return { title, usage: toTurnUsage(answer.usage, input.model) };
   } catch (err) {
     // Logged rather than raised: a session keeps the words it opened with, so
     // there is nothing for the pane to do about this - but a title that never
     // appears is otherwise invisible from the outside.
     log.warn('title failed', { model: input.model, error: String(err) });
-    return null;
+    return { title: null, usage: null };
   }
+}
+
+/** One un-streamed call, in the shape a session's total adds up. */
+function toTurnUsage(usage: AgentUsage | null, model: string): AgentTurnUsage | null {
+  if (usage === null) return null;
+  return {
+    billed: usage,
+    // Its prompt is two excerpts, not the transcript, so it says nothing about
+    // how full the window is. The pane's own figure stands.
+    contextTokens: null,
+    calls: 1,
+    model,
+    provider: null
+  };
 }

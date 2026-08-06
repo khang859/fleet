@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { TODO_STATUSES, type AgentTodoItem } from './agent-todos';
+import { EMPTY_SESSION_SPEND, type AgentSessionSpend } from './agent-spend';
 import { messageText, type AgentMessage } from './agent-types';
 
 /**
@@ -124,6 +125,24 @@ const TodoItemSchema = z.object({
   status: z.enum(TODO_STATUSES)
 });
 
+/**
+ * A session's running total, as it is written down.
+ *
+ * Every field is required, because this line is written whole every time and
+ * has no older shape to be read back from. `costUsd` is nullable rather than
+ * optional for the reason it is nullable everywhere else: a session nobody has
+ * ever quoted a price for is not a session that cost nothing.
+ */
+const SpendSchema = z.object({
+  costUsd: z.number().nullable(),
+  promptTokens: z.number(),
+  cachedTokens: z.number(),
+  cacheWriteTokens: z.number(),
+  completionTokens: z.number(),
+  reasoningTokens: z.number(),
+  calls: z.number()
+}) satisfies z.ZodType<AgentSessionSpend>;
+
 const EventSchema = z.discriminatedUnion('t', [
   /** Always the first line: what this session is, and what wrote it. */
   z.object({
@@ -159,7 +178,18 @@ const EventSchema = z.discriminatedUnion('t', [
    * makes it a real conversation. Last one wins, the same rule as `context`,
    * though in practice nothing ever writes a second one.
    */
-  z.object({ t: z.literal('title'), title: z.string() })
+  z.object({ t: z.literal('title'), title: z.string() }),
+  /**
+   * What the session has spent so far. Last one wins.
+   *
+   * A running total rather than one line per turn, for two reasons. The
+   * listing reads a fixed window from the end of the file to find this, which
+   * only works if the last one is the whole answer; and compaction folds
+   * messages away, so a total assembled by adding up per-turn lines would
+   * survive only as long as the messages did. Money already spent does not
+   * stop having been spent because the transcript that spent it was summarized.
+   */
+  z.object({ t: z.literal('spend'), total: SpendSchema })
 ]);
 
 export type AgentSessionEvent = z.infer<typeof EventSchema>;
@@ -181,6 +211,11 @@ export type AgentSessionReplay = {
   cwd: string | null;
   /** The task list, empty for a session that never made one. */
   todos: AgentTodoItem[];
+  /**
+   * What the session has spent. All zeroes for one written before any of this
+   * existed, which `hasSpend` is how the UI tells apart from a real zero.
+   */
+  spend: AgentSessionSpend;
   /**
    * `null` for a session written before titles existed, and for one whose
    * first turn has not finished yet. Either way the list falls back to what
@@ -216,6 +251,7 @@ export function emptyReplay(): AgentSessionReplay {
     contextTokens: null,
     cwd: null,
     todos: [],
+    spend: { ...EMPTY_SESSION_SPEND },
     title: null,
     firstUserText: '',
     skipped: 0
@@ -286,10 +322,32 @@ function apply(replay: AgentSessionReplay, event: AgentSessionEvent): void {
     case 'todos':
       replay.todos = event.items;
       return;
+    case 'spend':
+      replay.spend = event.total;
+      return;
     case 'title':
       replay.title = event.title;
       return;
   }
+}
+
+/**
+ * The last spend total in a slice of a log, or `null` if there is none in it.
+ *
+ * For the listing, which reads the end of a file it has no intention of
+ * replaying: the slice usually begins mid-line and mid-conversation, so every
+ * other event in it is a fragment of a story this is not being told. Only the
+ * running total means the same thing out of context as in it, which is the
+ * whole reason it is written as a total.
+ */
+export function lastSpendIn(contents: string): AgentSessionSpend | null {
+  let found: AgentSessionSpend | null = null;
+  for (const line of contents.split('\n')) {
+    if (line.trim() === '') continue;
+    const event = parseLine(line);
+    if (event?.t === 'spend') found = event.total;
+  }
+  return found;
 }
 
 /**
@@ -311,4 +369,10 @@ export type AgentSessionListItem = {
   firstUserText: string;
   /** Epoch ms of the last append, which is what "last used" means here. */
   updatedAt: number;
+  /**
+   * What it spent, or `null` for a session written before spend was recorded -
+   * which the row shows as a dash rather than as nothing, since "we did not
+   * keep count" and "it cost nothing" are different things to have been told.
+   */
+  spend: AgentSessionSpend | null;
 };

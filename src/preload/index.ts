@@ -158,6 +158,7 @@ import type {
   AgentStreamDone,
   AgentStreamError,
   AgentTitleRequest,
+  AgentTitleResult,
   AgentToolEvent
 } from '../shared/agent-types';
 import type {
@@ -919,9 +920,13 @@ const fleetApi = {
       typedInvoke<AgentSessionListItem[]>(IPC_CHANNELS.AGENT_SESSION_LIST, cwd),
     deleteSession: async (sessionId: string): Promise<boolean> =>
       typedInvoke<boolean>(IPC_CHANNELS.AGENT_SESSION_DELETE, sessionId),
-    /** `null` when nothing usable came back; the caller keeps its own fallback. */
-    generateTitle: async (req: AgentTitleRequest): Promise<string | null> =>
-      typedInvoke<string | null>(IPC_CHANNELS.AGENT_GENERATE_TITLE, req),
+    /**
+     * A `null` title means nothing usable came back and the caller keeps its
+     * own fallback - but the call still has its cost to report, which is why
+     * this is a pair rather than a name.
+     */
+    generateTitle: async (req: AgentTitleRequest): Promise<AgentTitleResult> =>
+      typedInvoke<AgentTitleResult>(IPC_CHANNELS.AGENT_GENERATE_TITLE, req),
     /** Refusals come back in the result, so the composer can say why. */
     attach: async (req: AgentAttachRequest): Promise<AgentAttachResult> =>
       typedInvoke<AgentAttachResult>(IPC_CHANNELS.AGENT_ATTACH, req),

@@ -742,4 +742,13 @@ export type AgentToolResult = {
   image?: AgentToolImage;
   /** The task list as this call left it. Set only by the todo tools. */
   todos?: AgentTodoItem[];
+  /**
+   * What running this tool cost, in USD. Set only by `image`, which buys its
+   * result from an endpoint that prices the whole picture rather than tokens -
+   * every other tool runs on this machine and is free.
+   *
+   * Absent and `null` mean the same thing here as everywhere else: nobody said,
+   * which is not the same as nothing.
+   */
+  costUsd?: number | null;
 };

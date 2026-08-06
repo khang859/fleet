@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveTitle, sanitizeTitle, toTitleMessages } from '../session-title';
+import type { completeOnce } from '../openrouter';
+import { EMPTY_AGENT_USAGE, type AgentUsage } from '../../../shared/agent-types';
 
 /**
  * A title is written by whichever model the user picked, including small ones
@@ -8,7 +10,17 @@ import { resolveTitle, sanitizeTitle, toTitleMessages } from '../session-title';
  * with no title rather than with a bad one.
  */
 
-const complete = (answer: string): (() => Promise<string>) => vi.fn().mockResolvedValue(answer);
+const complete = (answer: string, usage: AgentUsage | null = null): typeof completeOnce =>
+  vi.fn().mockResolvedValue({ text: answer, usage });
+
+/** A priced call, for the tests about what naming a session costs. */
+const priced = (costUsd: number): AgentUsage => ({
+  ...EMPTY_AGENT_USAGE,
+  promptTokens: 120,
+  completionTokens: 4,
+  totalTokens: 124,
+  costUsd
+});
 
 const INPUT = { apiKey: 'k', model: 'm', firstUser: 'why is it slow', firstAssistant: 'because…' };
 
@@ -67,7 +79,9 @@ describe('toTitleMessages', () => {
 
 describe('resolveTitle', () => {
   it('is the sanitized answer when the model gave one', async () => {
-    await expect(resolveTitle(complete('"Slow parser"'), INPUT)).resolves.toBe('Slow parser');
+    await expect(resolveTitle(complete('"Slow parser"'), INPUT)).resolves.toMatchObject({
+      title: 'Slow parser'
+    });
   });
 
   /*
@@ -78,12 +92,38 @@ describe('resolveTitle', () => {
   it('is nothing at all when the call fails', async () => {
     const failing = vi.fn().mockRejectedValue(new Error('OpenRouter responded 429'));
 
-    await expect(resolveTitle(failing, INPUT)).resolves.toBeNull();
+    await expect(resolveTitle(failing, INPUT)).resolves.toEqual({ title: null, usage: null });
   });
 
   it('is nothing at all when the model answered with nothing usable', async () => {
-    await expect(resolveTitle(complete('   '), INPUT)).resolves.toBeNull();
-    await expect(resolveTitle(complete('""'), INPUT)).resolves.toBeNull();
+    await expect(resolveTitle(complete('   '), INPUT)).resolves.toMatchObject({ title: null });
+    await expect(resolveTitle(complete('""'), INPUT)).resolves.toMatchObject({ title: null });
+  });
+
+  it('reports what the call cost, against the model that answered', async () => {
+    const { usage } = await resolveTitle(complete('Slow parser', priced(0.00004)), INPUT);
+
+    expect(usage).toEqual({
+      billed: priced(0.00004),
+      // Its prompt is two excerpts rather than the transcript, so it says
+      // nothing about how full the window is.
+      contextTokens: null,
+      calls: 1,
+      model: 'm',
+      provider: null
+    });
+  });
+
+  /*
+   * A model that answered with something unusable was still paid for
+   * answering, and a total that quietly dropped those calls would disagree
+   * with the invoice in the direction that flatters us.
+   */
+  it('reports the cost even when the answer was unusable', async () => {
+    const { title, usage } = await resolveTitle(complete('   ', priced(0.00004)), INPUT);
+
+    expect(title).toBeNull();
+    expect(usage?.billed.costUsd).toBe(0.00004);
   });
 
   it('asks for few enough tokens that a title cannot become an essay', async () => {

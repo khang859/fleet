@@ -1,4 +1,4 @@
-import type { AgentAttachment, AgentMessage, AgentUsage } from './agent-types';
+import type { AgentAttachment, AgentMessage, AgentTurnUsage } from './agent-types';
 
 /**
  * Context accounting and compaction: deciding how full a transcript is, when it
@@ -88,9 +88,14 @@ function estimateAttachmentTokens(attachment: AgentAttachment): number {
  * count wins whenever we have it: prompt plus completion is exactly what gets
  * resent. It runs a little high, since reasoning tokens are counted in the
  * completion but never sent back - again, the safe direction.
+ *
+ * The turn's *last* round, not its sum. A turn of twenty rounds resent the
+ * conversation twenty times, and adding those up would answer a question
+ * nobody asked - what the turn was billed for, which is `billed` and is not
+ * this. Only the final prompt describes the transcript that now exists.
  */
-export function contextUsed(usage: AgentUsage | null, estimate: number): number {
-  return usage === null ? estimate : usage.totalTokens;
+export function contextUsed(usage: AgentTurnUsage | null, estimate: number): number {
+  return usage?.contextTokens ?? estimate;
 }
 
 /**

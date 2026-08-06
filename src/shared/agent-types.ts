@@ -411,14 +411,64 @@ export function userMessageWithAttachments(
 }
 
 /**
- * What a turn cost, counted by the model's own tokenizer and reported by
- * OpenRouter in the last message of the stream. Absent when a provider does not
- * send it, which is why nothing here may depend on having it.
+ * What one call to the model cost, counted by the model's own tokenizer and
+ * reported by OpenRouter in the last message of the stream. Absent when a
+ * provider does not send it, which is why nothing here may depend on having it.
+ *
+ * `cachedTokens` is part of `promptTokens` rather than on top of it, and the
+ * same is true of `reasoningTokens` inside `completionTokens` - they say how
+ * that total was made up, not that there was more of it. Which matters because
+ * they are what explains the money: the same prompt costs a tenth as much when
+ * most of it was read from the cache.
  */
 export type AgentUsage = {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /** Read from the provider's cache, and billed at a fraction of the rate. */
+  cachedTokens: number;
+  /** Written to the cache this call, which is what the first turn pays for. */
+  cacheWriteTokens: number;
+  /** Thinking tokens. Billed as output whether or not they are shown. */
+  reasoningTokens: number;
+  /** USD OpenRouter charged. `null` when the provider did not say. */
+  costUsd: number | null;
+};
+
+export const EMPTY_AGENT_USAGE: AgentUsage = {
+  promptTokens: 0,
+  completionTokens: 0,
+  totalTokens: 0,
+  cachedTokens: 0,
+  cacheWriteTokens: 0,
+  reasoningTokens: 0,
+  costUsd: null
+};
+
+/**
+ * What a whole turn did, which is two different sums over the same rounds.
+ *
+ * A turn is one model call per round, and the two questions asked of it pull in
+ * opposite directions. *What does the conversation cost to send* is answered by
+ * the last round alone, whose prompt is the whole transcript - adding the
+ * earlier rounds would count the same conversation once per round. *What did
+ * this turn spend* is answered by adding every round up, because every one of
+ * them was billed. One field cannot be both, so there are two.
+ */
+export type AgentTurnUsage = {
+  /** Every round added together: what was billed, including the image tool. */
+  billed: AgentUsage;
+  /**
+   * The last round's total, which is what the next turn's prompt will cost to
+   * send. `null` when no round reported usage at all.
+   */
+  contextTokens: number | null;
+  /** How many billed calls it took, images included. */
+  calls: number;
+  /** The model that actually served it, which `:auto` and fallbacks can change. */
+  model: string | null;
+  /** The upstream that served it - Anthropic, Bedrock, Vertex, and so on. */
+  provider: string | null;
 };
 
 export type AgentSendRequest = {
@@ -498,7 +548,11 @@ export type AgentCompactRequest = {
   messages: AgentMessage[];
 };
 
-export type AgentCompactDone = { streamId: string; summary: string; usage: AgentUsage | null };
+export type AgentCompactDone = {
+  streamId: string;
+  summary: string;
+  usage: AgentTurnUsage | null;
+};
 
 /**
  * Ask for a name for a session, from the exchange that opened it.
@@ -508,6 +562,15 @@ export type AgentCompactDone = { streamId: string; summary: string; usage: Agent
  * one arrives the pane may well be showing a different conversation.
  */
 export type AgentTitleRequest = { firstUser: string; firstAssistant: string };
+
+/**
+ * The name, and what asking for it cost.
+ *
+ * The cost comes back even when the title does not. A call that produced
+ * nothing usable was still billed, and a total that quietly omits the failures
+ * is a total that disagrees with the invoice in the direction that flatters us.
+ */
+export type AgentTitleResult = { title: string | null; usage: AgentTurnUsage | null };
 
 /**
  * A tool call starting, and the same call finished. Both carry the whole call
@@ -571,5 +634,14 @@ export type AgentPermissionDecision = z.infer<typeof AgentPermissionDecision>;
 
 /** Every stream event carries its request's id, so panes can tell theirs apart. */
 export type AgentStreamDelta = { streamId: string; delta: string };
-export type AgentStreamDone = { streamId: string; usage: AgentUsage | null };
-export type AgentStreamError = { streamId: string; message: string };
+export type AgentStreamDone = { streamId: string; usage: AgentTurnUsage | null };
+/*
+ * A failed turn carries what it spent for the same reason a finished one does:
+ * the rounds before the failure were billed, and the provider does not refund a
+ * conversation for ending badly.
+ */
+export type AgentStreamError = {
+  streamId: string;
+  message: string;
+  usage: AgentTurnUsage | null;
+};

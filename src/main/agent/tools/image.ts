@@ -75,7 +75,8 @@ export async function runImage(
       OUTPUT_SEPARATOR,
       path
     ].join('\n'),
-    summary: image.costUsd === null ? 'saved' : formatCost(image.costUsd)
+    summary: image.costUsd === null ? 'saved' : formatCost(image.costUsd),
+    costUsd: image.costUsd
   };
 }
 

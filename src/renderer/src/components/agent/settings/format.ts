@@ -23,3 +23,18 @@ export function formatCost(cost: { input: number; output: number }): string {
   const price = (n: number): string => (n < 1 ? `$${n.toFixed(2)}` : `$${n}`);
   return `${price(cost.input)} / ${price(cost.output)} per 1M`;
 }
+
+/**
+ * Money, at the precision the amount deserves.
+ *
+ * A session costs anything from a twentieth of a cent to several dollars, and
+ * one number of decimal places cannot serve both: `$0.00` for a real cost reads
+ * as free, and `$1.24000` reads as a machine talking. So the places follow the
+ * magnitude, and the string stays short enough for a status line either way.
+ */
+export function formatUsd(cost: number): string {
+  if (cost === 0) return '$0';
+  if (cost >= 1) return `$${cost.toFixed(2)}`;
+  if (cost >= 0.01) return `$${cost.toFixed(3)}`;
+  return `$${cost.toFixed(5)}`;
+}

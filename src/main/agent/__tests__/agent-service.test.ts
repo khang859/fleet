@@ -7,6 +7,7 @@ import {
   buildSystemPrompt,
   DEFAULT_AGENT_SETTINGS,
   DEFAULT_AGENT_SYSTEM_PROMPT,
+  EMPTY_AGENT_USAGE,
   MAX_TOOL_ROUNDS_CEILING,
   textMessage,
   type AgentCompactRequest,
@@ -69,6 +70,17 @@ const SETTINGS = {
   coding: { ...DEFAULT_AGENT_SETTINGS.coding, model: 'anthropic/claude-sonnet-4.5' }
 };
 
+/**
+ * A finished round, as the stream reports one. Most tests care only about what
+ * the model asked for next, so who served it defaults to unstated - which is
+ * also what a provider that does not name itself sends.
+ */
+const round = (toolCalls: WireToolCall[] = []): StreamOutcome => ({
+  toolCalls,
+  model: null,
+  provider: null
+});
+
 /** Collects emitted events and resolves once the turn has ended. */
 function collector(): {
   emit: (channel: string, payload: unknown) => void;
@@ -97,17 +109,18 @@ function collector(): {
 }
 
 describe('parseStreamLine', () => {
+  /** A parsed line that carried nothing but the field under test. */
+  const bare = { content: '', reasoning: '', toolCalls: [], model: null, provider: null };
+
   it('reads content and reasoning deltas', () => {
     expect(parseStreamLine('data: {"choices":[{"delta":{"content":"he"}}]}')).toEqual({
+      ...bare,
       content: 'he',
-      reasoning: '',
-      toolCalls: [],
       usage: null
     });
     expect(parseStreamLine('data: {"choices":[{"delta":{"reasoning":"hm"}}]}')).toEqual({
-      content: '',
+      ...bare,
       reasoning: 'hm',
-      toolCalls: [],
       usage: null
     });
   });
@@ -116,25 +129,65 @@ describe('parseStreamLine', () => {
     const usage = '"usage":{"prompt_tokens":194,"completion_tokens":2,"total_tokens":196}';
 
     expect(parseStreamLine(`data: {"choices":[{"delta":{"content":""}}],${usage}}`)).toEqual({
-      content: '',
-      reasoning: '',
-      toolCalls: [],
-      usage: { promptTokens: 194, completionTokens: 2, totalTokens: 196 }
+      ...bare,
+      usage: {
+        promptTokens: 194,
+        completionTokens: 2,
+        totalTokens: 196,
+        cachedTokens: 0,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        costUsd: null
+      }
     });
   });
 
-  it('still reads usage from a final message that carries no delta', () => {
-    // Some upstreams send the usage on a message with an empty choices array,
-    // which would otherwise be discarded along with the keep-alives.
+  it('reads the cost and the detail counts when the provider sends them', () => {
+    const usage = [
+      '"usage":{"prompt_tokens":194,"completion_tokens":20,"total_tokens":214',
+      '"cost":0.0042',
+      '"prompt_tokens_details":{"cached_tokens":150,"cache_write_tokens":44}',
+      '"completion_tokens_details":{"reasoning_tokens":12}}'
+    ].join(',');
+
+    expect(parseStreamLine(`data: {"choices":[],${usage}}`)).toEqual({
+      ...bare,
+      usage: {
+        promptTokens: 194,
+        completionTokens: 20,
+        totalTokens: 214,
+        cachedTokens: 150,
+        cacheWriteTokens: 44,
+        reasoningTokens: 12,
+        costUsd: 0.0042
+      }
+    });
+  });
+
+  /*
+   * The distinction the whole total rests on: a provider that says nothing
+   * about caching cached nothing, but one that says nothing about price has
+   * not told us it was free.
+   */
+  it('reads a silent provider as zero cached tokens and an unknown cost', () => {
+    const line = parseStreamLine(
+      'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11}}'
+    );
+
+    expect(line).toMatchObject({ usage: { cachedTokens: 0, costUsd: null } });
+  });
+
+  it('reads which model and upstream actually served the round', () => {
     expect(
       parseStreamLine(
-        'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11}}'
+        'data: {"choices":[{"delta":{"content":"x"}}],"model":"anthropic/claude-sonnet-4.5","provider":"Google"}'
       )
     ).toEqual({
-      content: '',
-      reasoning: '',
-      toolCalls: [],
-      usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 }
+      ...bare,
+      content: 'x',
+      usage: null,
+      model: 'anthropic/claude-sonnet-4.5',
+      provider: 'Google'
     });
   });
 
@@ -583,7 +636,7 @@ describe('AgentService', () => {
       req.onReasoning('thinking');
       req.onDelta('an ');
       req.onDelta('answer');
-      return Promise.resolve({ toolCalls: [] });
+      return Promise.resolve(round());
     });
 
     new AgentService({
@@ -606,7 +659,7 @@ describe('AgentService', () => {
 
   it('passes the configured model and inference settings through', async () => {
     const { emit, ended } = collector();
-    const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
+    const stream = vi.fn(async () => Promise.resolve(round()));
 
     new AgentService({
       gate: PASS_GATE,
@@ -632,7 +685,7 @@ describe('AgentService', () => {
 
   it('sends the configured system prompt instead of the default', async () => {
     const { emit, ended } = collector();
-    const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
+    const stream = vi.fn(async () => Promise.resolve(round()));
 
     new AgentService({
       gate: PASS_GATE,
@@ -658,7 +711,12 @@ describe('AgentService', () => {
 
   it('reports the token usage the provider counted, so context can be measured', async () => {
     const { emit, events, ended } = collector();
-    const usage = { promptTokens: 900, completionTokens: 100, totalTokens: 1000 };
+    const usage = {
+      ...EMPTY_AGENT_USAGE,
+      promptTokens: 900,
+      completionTokens: 100,
+      totalTokens: 1000
+    };
 
     new AgentService({
       gate: PASS_GATE,
@@ -668,14 +726,19 @@ describe('AgentService', () => {
       stream: async (req) => {
         req.onDelta('an answer');
         req.onUsage?.(usage);
-        return Promise.resolve({ toolCalls: [] });
+        return Promise.resolve(round());
       }
     }).send(REQUEST);
     await ended;
 
     expect(events.at(-1)).toEqual({
       channel: IPC_CHANNELS.AGENT_STREAM_DONE,
-      payload: { streamId: 'stream-1', usage }
+      payload: {
+        streamId: 'stream-1',
+        // One round, so what was billed and what is in the window are the same
+        // numbers - it takes a second round for them to part ways.
+        usage: { billed: usage, contextTokens: 1000, calls: 1, model: null, provider: null }
+      }
     });
   });
 
@@ -687,7 +750,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       getApiKey: () => 'sk-or-test',
       emit,
-      stream: vi.fn(async () => Promise.resolve({ toolCalls: [] }))
+      stream: vi.fn(async () => Promise.resolve(round()))
     }).send(REQUEST);
     await ended;
 
@@ -709,7 +772,7 @@ describe('AgentService', () => {
     expect(events).toEqual([
       {
         channel: IPC_CHANNELS.AGENT_STREAM_ERROR,
-        payload: { streamId: 'stream-1', message: 'No OpenRouter API key configured' }
+        payload: { streamId: 'stream-1', message: 'No OpenRouter API key configured', usage: null }
       }
     ]);
   });
@@ -728,7 +791,8 @@ describe('AgentService', () => {
 
     expect(events[0].payload).toEqual({
       streamId: 'stream-2',
-      message: 'No coding model selected'
+      message: 'No coding model selected',
+      usage: null
     });
   });
 
@@ -743,8 +807,13 @@ describe('AgentService', () => {
       stream: async (req) => {
         req.onDelta('  They chose zod ');
         req.onDelta('over casts.  ');
-        req.onUsage?.({ promptTokens: 500, completionTokens: 20, totalTokens: 520 });
-        return Promise.resolve({ toolCalls: [] });
+        req.onUsage?.({
+          ...EMPTY_AGENT_USAGE,
+          promptTokens: 500,
+          completionTokens: 20,
+          totalTokens: 520
+        });
+        return Promise.resolve(round());
       }
     }).compact(COMPACT_REQUEST);
     await ended;
@@ -756,7 +825,18 @@ describe('AgentService', () => {
         payload: {
           streamId: 'compact-1',
           summary: 'They chose zod over casts.',
-          usage: { promptTokens: 500, completionTokens: 20, totalTokens: 520 }
+          usage: {
+            billed: {
+              ...EMPTY_AGENT_USAGE,
+              promptTokens: 500,
+              completionTokens: 20,
+              totalTokens: 520
+            },
+            contextTokens: 520,
+            calls: 1,
+            model: null,
+            provider: null
+          }
         }
       }
     ]);
@@ -764,7 +844,7 @@ describe('AgentService', () => {
 
   it('does not spend the configured thinking budget on a summary', async () => {
     const { emit, ended } = collector();
-    const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
+    const stream = vi.fn(async () => Promise.resolve(round()));
 
     new AgentService({
       gate: PASS_GATE,
@@ -795,7 +875,7 @@ describe('AgentService', () => {
       emit,
       stream: async (req) => {
         req.onDelta('   \n ');
-        return Promise.resolve({ toolCalls: [] });
+        return Promise.resolve(round());
       }
     }).compact(COMPACT_REQUEST);
     await ended;
@@ -803,7 +883,13 @@ describe('AgentService', () => {
     expect(events).toEqual([
       {
         channel: IPC_CHANNELS.AGENT_STREAM_ERROR,
-        payload: { streamId: 'compact-1', message: 'The model returned an empty summary' }
+        // This stub reported no usage, so there is nothing to charge the
+        // session for - a failure carrying what it spent is tested below.
+        payload: {
+          streamId: 'compact-1',
+          message: 'The model returned an empty summary',
+          usage: null
+        }
       }
     ]);
   });
@@ -857,6 +943,66 @@ describe('AgentService', () => {
       IPC_CHANNELS.AGENT_STREAM_CHUNK,
       IPC_CHANNELS.AGENT_STREAM_DONE
     ]);
+  });
+
+  /*
+   * The rounds before an ending were billed whatever the ending was. A stop
+   * button that also wiped out what the turn had already spent would be a
+   * quieter bug than most: the pane looks right, and the total is simply low.
+   */
+  it('reports what a cancelled turn had already spent', async () => {
+    const { emit, events, ended } = collector();
+    const service = new AgentService({
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream: async (req) => {
+        req.onUsage?.({
+          ...EMPTY_AGENT_USAGE,
+          promptTokens: 800,
+          totalTokens: 900,
+          costUsd: 0.004
+        });
+        service.cancel('stream-1');
+        await Promise.resolve();
+        throw new Error('The operation was aborted.');
+      }
+    });
+
+    service.send(REQUEST);
+    await ended;
+
+    expect(events.at(-1)).toMatchObject({
+      channel: IPC_CHANNELS.AGENT_STREAM_DONE,
+      payload: { usage: { billed: { costUsd: 0.004 }, calls: 1 } }
+    });
+  });
+
+  it('reports what a failed turn had already spent', async () => {
+    const { emit, events, ended } = collector();
+
+    new AgentService({
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream: async (req) => {
+        req.onUsage?.({
+          ...EMPTY_AGENT_USAGE,
+          promptTokens: 800,
+          totalTokens: 900,
+          costUsd: 0.004
+        });
+        return Promise.reject(new Error('OpenRouter responded 500'));
+      }
+    }).send(REQUEST);
+    await ended;
+
+    expect(events.at(-1)).toMatchObject({
+      channel: IPC_CHANNELS.AGENT_STREAM_ERROR,
+      payload: { message: 'OpenRouter responded 500', usage: { calls: 1 } }
+    });
   });
 });
 
@@ -938,9 +1084,9 @@ describe('the tool loop', () => {
       rounds,
       stream: async (req) => {
         rounds.push(req);
-        if (rounds.length === 1) return Promise.resolve({ toolCalls: calls });
+        if (rounds.length === 1) return Promise.resolve(round(calls));
         req.onDelta('42');
-        return Promise.resolve({ toolCalls: [] });
+        return Promise.resolve(round());
       }
     };
   }
@@ -1056,7 +1202,7 @@ describe('the tool loop', () => {
 
   it('offers the tools to the model', async () => {
     const { emit, ended } = collector();
-    const stream = vi.fn(async () => Promise.resolve({ toolCalls: [] }));
+    const stream = vi.fn(async () => Promise.resolve(round()));
 
     new AgentService({
       gate: PASS_GATE,
@@ -1093,7 +1239,7 @@ describe('the tool loop', () => {
       const rounds: StreamRequest[] = [];
       const stream = async (req: StreamRequest): Promise<StreamOutcome> => {
         rounds.push(req);
-        return Promise.resolve({ toolCalls: [] });
+        return Promise.resolve(round());
       };
       new AgentService({
         gate: PASS_GATE,
@@ -1152,12 +1298,10 @@ describe('the tool loop', () => {
       const image = vi.fn(async () =>
         Promise.resolve({ data: Buffer.from('x'), mimeType: 'image/png', costUsd: 0.02 })
       );
-      let round = 0;
+      let attempt = 0;
       const stream = vi.fn(async () => {
-        round += 1;
-        return Promise.resolve({
-          toolCalls: round === 1 ? [call('image', { prompt: 'a cap' })] : []
-        });
+        attempt += 1;
+        return Promise.resolve(round(attempt === 1 ? [call('image', { prompt: 'a cap' })] : []));
       });
 
       new AgentService({
@@ -1190,12 +1334,10 @@ describe('the tool loop', () => {
         req.onPartial({ data: Buffer.from('half drawn'), mimeType: 'image/png' });
         return Promise.resolve({ data: Buffer.from('x'), mimeType: 'image/png', costUsd: null });
       });
-      let round = 0;
+      let attempt = 0;
       const stream = vi.fn(async () => {
-        round += 1;
-        return Promise.resolve({
-          toolCalls: round === 1 ? [call('image', { prompt: 'a cap' })] : []
-        });
+        attempt += 1;
+        return Promise.resolve(round(attempt === 1 ? [call('image', { prompt: 'a cap' })] : []));
       });
 
       new AgentService({
@@ -1222,7 +1364,7 @@ describe('the tool loop', () => {
   it('stops after the number of rounds the user set', async () => {
     const { emit, events, ended } = collector();
     const stream = vi.fn(async () =>
-      Promise.resolve({ toolCalls: [call('read', { path: 'answer.txt' })] })
+      Promise.resolve(round([call('read', { path: 'answer.txt' })]))
     );
 
     new AgentService({
@@ -1247,7 +1389,7 @@ describe('the tool loop', () => {
   it('holds a cap above the ceiling to the ceiling', async () => {
     const { emit, ended } = collector();
     const stream = vi.fn(async () =>
-      Promise.resolve({ toolCalls: [call('read', { path: 'answer.txt' })] })
+      Promise.resolve(round([call('read', { path: 'answer.txt' })]))
     );
 
     new AgentService({
@@ -1266,7 +1408,7 @@ describe('the tool loop', () => {
     const { emit, ended } = collector();
     const stream = vi.fn(async (req: StreamRequest) => {
       req.onDelta('a summary');
-      return Promise.resolve({ toolCalls: [] });
+      return Promise.resolve(round());
     });
 
     new AgentService({

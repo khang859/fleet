@@ -29,6 +29,8 @@ import { AgentPermissionRow } from './AgentPermissionRow';
 import { AgentAttachmentChip, AgentMessageAttachments } from './AgentAttachment';
 import { reasoningLabel } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
+import { AgentSpendMeter } from './AgentSpendMeter';
+import { EMPTY_SESSION_SPEND, hasSpend } from '../../../../shared/agent-spend';
 import { agentSlashCommand, agentSlashMenu, type AgentSlashCommand } from './composer-slash';
 import { agentMentionQuery, withoutMentionQuery } from './composer-mention';
 import { useComposerMenu, type ComposerMenuAnchor } from './composer-menu';
@@ -81,6 +83,7 @@ export function AgentThread({
   const compacting = (thread?.pendingCompact ?? null) !== null;
   const streaming = (thread?.streamId ?? null) !== null;
   const contextTokens = thread?.contextTokens ?? null;
+  const spend = thread?.spend ?? EMPTY_SESSION_SPEND;
   const ask = thread?.pendingPermission ?? null;
   const imagePartials = thread?.imagePartials ?? EMPTY_PARTIALS;
   // Only when the pane has no column for it, so the same list is never in two
@@ -112,7 +115,7 @@ export function AgentThread({
       {/* One status line for the turn: what the agent is doing on the left, how
           much room it has left on the right. Always rendered while either has
           something to say, so neither appearing shoves the composer down. */}
-      {(streaming || contextTokens !== null || todos !== null) && (
+      {(streaming || contextTokens !== null || todos !== null || hasSpend(spend)) && (
         <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pb-1.5 text-[11px] text-fleet-text-subtle">
           {streaming && (
             <AgentActivity
@@ -123,8 +126,18 @@ export function AgentThread({
             />
           )}
           {todos !== null && <TodoChip progress={todos} items={todoItems} />}
+          {/* Money first, then room left: what a turn cost is the fact that
+              changes with every turn, and the window is the one that only
+              matters near its end. */}
+          <span className="ml-auto">
+            <AgentSpendMeter
+              spend={spend}
+              model={thread?.served?.model ?? null}
+              provider={thread?.served?.provider ?? null}
+            />
+          </span>
           {contextTokens !== null && (
-            <span className="ml-auto">
+            <span>
               <AgentContextMeter
                 used={contextTokens}
                 limit={modelCard?.contextLimit ?? null}

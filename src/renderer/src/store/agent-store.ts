@@ -5,8 +5,14 @@ import type {
   AgentMessage,
   AgentPermissionAsk,
   AgentPermissionOutcome,
-  AgentUsage
+  AgentTurnUsage
 } from '../../../shared/agent-types';
+import {
+  EMPTY_SESSION_SPEND,
+  addTurn,
+  hasSpend,
+  type AgentSessionSpend
+} from '../../../shared/agent-spend';
 import { messageText, textMessage, userMessageWithAttachments } from '../../../shared/agent-types';
 import type { AgentToolCall } from '../../../shared/agent-tools';
 import { hasOpenWork, type AgentTodoItem } from '../../../shared/agent-todos';
@@ -117,6 +123,27 @@ type PaneThread = {
    */
   contextTokens: number | null;
   /**
+   * What this session has spent, everything Fleet paid for included: the turns,
+   * the compactions nobody asked for, the call that named it, and any pictures
+   * it made. It is the number the user's OpenRouter invoice will agree with,
+   * which it can only be by counting the spending they did not initiate.
+   *
+   * Kept here rather than derived from the transcript because most of it is not
+   * in the transcript - and because compaction throws away the messages while
+   * leaving the money spent on them exactly as spent.
+   */
+  spend: AgentSessionSpend;
+  /**
+   * Which model and upstream actually served the last turn, which `:auto` and a
+   * provider fallback can both make different from what was asked for.
+   *
+   * Live only, and deliberately not written down. It describes one turn rather
+   * than the session, so a value replayed from disk would be a claim about
+   * whoever happens to answer next - and the settings already say what was
+   * asked for, which is the answer for a session that has not run a turn yet.
+   */
+  served: { model: string | null; provider: string | null } | null;
+  /**
    * The tasks the agent set itself, newest state of each. Empty for a thread
    * that never made a list.
    *
@@ -148,6 +175,8 @@ const EMPTY_THREAD: PaneThread = {
   startedAt: null,
   error: null,
   contextTokens: null,
+  spend: EMPTY_SESSION_SPEND,
+  served: null,
   todos: [],
   imagePartials: {}
 };
@@ -583,7 +612,7 @@ function handOff(streamId: string, command: string): void {
   window.fleet.activity.report({ paneId, state: 'needs_me' });
 }
 
-function endTurn(streamId: string, error: string | null, usage: AgentUsage | null): void {
+function endTurn(streamId: string, error: string | null, usage: AgentTurnUsage | null): void {
   const found = threadOf(streamId);
   if (found === null) return;
   const { paneId, thread } = found;
@@ -593,6 +622,11 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
   const contextTokens = wasCompacting
     ? thread.contextTokens
     : contextUsed(usage, estimateTranscriptTokens(thread.messages));
+  // Counted however the turn ended. A turn that was cancelled half-way, or that
+  // failed on its ninth round of tools, spent everything it spent getting
+  // there - and a total that only counted the turns that worked would be at
+  // its least trustworthy on exactly the days it mattered most.
+  const spend = usage === null ? thread.spend : addTurn(thread.spend, usage);
 
   useAgentStore.setState((s) => ({
     threads: {
@@ -606,7 +640,13 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
         pendingPermission: null,
         startedAt: null,
         error,
-        contextTokens
+        contextTokens,
+        spend,
+        // Only when this turn said. A turn that failed before the first chunk
+        // names nobody, and the last answer's attribution is still the truest
+        // thing on screen about who has been answering.
+        served:
+          usage?.model == null ? thread.served : { model: usage.model, provider: usage.provider }
       }
     }
   }));
@@ -632,6 +672,9 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
     }
     if (contextTokens !== null) record(thread, { t: 'context', tokens: contextTokens });
   }
+  // Unconditionally, compaction included: a compaction that ended here failed,
+  // and a failed call is still a paid one.
+  if (usage !== null) record(thread, { t: 'spend', total: spend });
 
   // Only a completed turn can trigger compaction. A failed one leaves the
   // transcript where it was, and a compaction triggering another compaction is
@@ -717,7 +760,12 @@ async function replayInto(paneId: string, sessionId: string): Promise<void> {
         contextTokens: thread.contextTokens ?? replay.contextTokens,
         // What the pane already has wins, the same rule the context figure
         // follows: a turn that ran while the file was being read knows more
-        // about the list than the file does.
+        // about the list than the file does. For the total the case is
+        // theoretical rather than real - `send` refuses while `loading`, so
+        // nothing can be spent during a read - and the rule is the same either
+        // way, because the two totals cannot be added without counting the
+        // file's turns twice.
+        spend: hasSpend(thread.spend) ? thread.spend : replay.spend,
         todos: thread.todos.length > 0 ? thread.todos : replay.todos
       }
     }
@@ -745,15 +793,45 @@ function nameSession(thread: PaneThread): void {
       firstUser: messageText(users[0]),
       firstAssistant: assistant ? messageText(assistant) : ''
     })
-    .then((title) => {
-      if (title === null) return;
+    .then(({ title, usage }) => {
       log.debug('nameSession', { sessionId, title });
       // Written against the session that asked, which is held above rather
       // than read back from the pane: by the time a name arrives the pane may
       // have cleared or resumed, and the old conversation's title landing in
       // the new one's file is exactly what that would cost.
-      window.fleet.agent.appendSession({ sessionId, cwd, event: { t: 'title', title } });
+      if (title !== null) {
+        window.fleet.agent.appendSession({ sessionId, cwd, event: { t: 'title', title } });
+      }
+      // Charged against the pane rather than against `thread`, which is a
+      // snapshot from before the call: a turn may well have finished while the
+      // model was thinking of a name, and adding to the old copy would drop it.
+      if (usage !== null) addSpend(sessionId, usage);
     });
+}
+
+/**
+ * Fold spending into whichever pane is still showing this session.
+ *
+ * For money that arrives after the turn that spent it has ended - a title, so
+ * far. The pane is found by session rather than held, because by the time an
+ * answer comes back the pane may have moved on, and a total is a fact about a
+ * conversation rather than about the window it was in. When no pane is showing
+ * it any more the figure is dropped: writing it would mean appending to a file
+ * nothing has read, against a total that may since have moved on.
+ */
+function addSpend(sessionId: string, usage: AgentTurnUsage): void {
+  const entry = Object.entries(useAgentStore.getState().threads).find(
+    ([, thread]) => thread?.sessionId === sessionId
+  );
+  if (entry === undefined) return;
+  const [paneId, thread] = entry;
+  if (thread === undefined) return;
+
+  const spend = addTurn(thread.spend, usage);
+  useAgentStore.setState((s) => ({
+    threads: { ...s.threads, [paneId]: { ...thread, spend } }
+  }));
+  record(thread, { t: 'spend', total: spend });
 }
 
 /**
@@ -778,7 +856,7 @@ function autoCompact(paneId: string): void {
   state.compact(paneId);
 }
 
-function applySummary(streamId: string, summary: string): void {
+function applySummary(streamId: string, summary: string, usage: AgentTurnUsage | null): void {
   const found = threadOf(streamId);
   const pending = found?.thread.pendingCompact;
   // No compaction in flight under this id: a summary from a pane that has
@@ -788,12 +866,17 @@ function applySummary(streamId: string, summary: string): void {
   const message = textMessage(crypto.randomUUID(), 'summary', summary);
   const messages = [message, ...pending.keep];
   const contextTokens = estimateTranscriptTokens(messages);
+  // Nobody asked for this call, which is the reason to count it rather than a
+  // reason not to: unprompted spending is the kind a person most wants to find
+  // accounted for when they go looking for where the money went.
+  const spend = usage === null ? found.thread.spend : addTurn(found.thread.spend, usage);
 
   // One line saying what replaced what, rather than a rewrite: the turns the
   // summary folded up stay in the file, and replay reaches the same transcript
   // the pane is showing.
   record(found.thread, { t: 'compact', summary: message, keep: pending.keep.map((m) => m.id) });
   record(found.thread, { t: 'context', tokens: contextTokens });
+  if (usage !== null) record(found.thread, { t: 'spend', total: spend });
 
   useAgentStore.setState((s) => ({
     threads: {
@@ -808,7 +891,8 @@ function applySummary(streamId: string, summary: string): void {
         // The provider's count for the summarizing call describes that call,
         // not this transcript, so the new size is estimated until a real turn
         // reports on it.
-        contextTokens
+        contextTokens,
+        spend
       }
     }
   }));
@@ -819,9 +903,11 @@ function applySummary(streamId: string, summary: string): void {
 window.fleet.agent.onStreamChunk(({ streamId, delta }) => appendText(streamId, delta));
 window.fleet.agent.onStreamReasoning(({ streamId, delta }) => appendReasoning(streamId, delta));
 window.fleet.agent.onStreamDone(({ streamId, usage }) => endTurn(streamId, null, usage));
-window.fleet.agent.onStreamError(({ streamId, message }) => {
+window.fleet.agent.onStreamError(({ streamId, message, usage }) => {
   log.warn('stream error', { message });
-  endTurn(streamId, message, null);
+  // The rounds before the failure were paid for, so the total takes them the
+  // same way a finished turn's would.
+  endTurn(streamId, message, usage);
 });
 window.fleet.agent.onHandOff(({ streamId, command }) => handOff(streamId, command));
 window.fleet.agent.onPermissionAsk((ask) => askPermission(ask));
@@ -830,7 +916,9 @@ window.fleet.agent.onToolEnd(({ streamId, call }) => recordToolCall(streamId, ca
 window.fleet.agent.onImagePartial(({ streamId, callId, image }) =>
   recordImagePartial(streamId, callId, image)
 );
-window.fleet.agent.onCompactDone(({ streamId, summary }) => applySummary(streamId, summary));
+window.fleet.agent.onCompactDone(({ streamId, summary, usage }) =>
+  applySummary(streamId, summary, usage)
+);
 
 // A pane closing mid-turn is the one case a turn cannot end on its own: main is
 // waiting on a click, and the pane that would have made it is the one going.

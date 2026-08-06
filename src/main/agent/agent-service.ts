@@ -14,14 +14,17 @@ import type {
   AgentStreamDelta,
   AgentStreamDone,
   AgentStreamError,
+  AgentTurnUsage,
   AgentUsage
 } from '../../shared/agent-types';
 import {
+  EMPTY_AGENT_USAGE,
   MAX_TOOL_ROUNDS_CEILING,
   buildSystemPrompt,
   messageAttachments,
   messageText
 } from '../../shared/agent-types';
+import { addRound } from '../../shared/agent-spend';
 import { nextStreak, renderTodoBlock, type AgentTodoItem } from '../../shared/agent-todos';
 import { attachmentWireParts, imageWireParts } from './attachments';
 import { toDataUrl } from './image-kinds';
@@ -303,6 +306,63 @@ function textOnly(message: AgentMessage): AgentPart[] {
   return [{ type: 'text', text: messageText(message) }];
 }
 
+/**
+ * The account kept while a turn runs.
+ *
+ * Here rather than in the renderer because this is the only side that sees the
+ * rounds. A turn is one model call per round plus whatever the tools spent, and
+ * from outside it looks like a single exchange - so a pane adding up what it
+ * was told would be adding up one number and calling it the whole bill.
+ *
+ * Two numbers come out of the same rounds. Everything is summed, except the
+ * context figure, which is the last round alone: see `AgentTurnUsage`.
+ */
+class TurnAccount {
+  private billed: AgentUsage = { ...EMPTY_AGENT_USAGE };
+  private context: number | null = null;
+  private calls = 0;
+  private model: string | null = null;
+  private provider: string | null = null;
+
+  /** One model call that reported what it cost. */
+  round(usage: AgentUsage): void {
+    this.billed = addRound(this.billed, usage);
+    this.context = usage.totalTokens;
+    this.calls += 1;
+  }
+
+  /** Who answered, from the round that just finished. */
+  served(outcome: StreamOutcome): void {
+    if (outcome.model !== null) this.model = outcome.model;
+    if (outcome.provider !== null) this.provider = outcome.provider;
+  }
+
+  /**
+   * Money spent by a tool rather than by a round - an image, priced whole. It
+   * has no tokens to add, and it is still part of what the turn cost.
+   */
+  flat(costUsd: number): void {
+    this.billed = { ...this.billed, costUsd: (this.billed.costUsd ?? 0) + costUsd };
+    this.calls += 1;
+  }
+
+  /**
+   * What to tell the pane, or `null` when no provider on this turn said
+   * anything at all - in which case there is nothing to report but a set of
+   * zeroes, and zeroes would be recorded as fact.
+   */
+  report(): AgentTurnUsage | null {
+    if (this.calls === 0) return null;
+    return {
+      billed: this.billed,
+      contextTokens: this.context,
+      calls: this.calls,
+      model: this.model,
+      provider: this.provider
+    };
+  }
+}
+
 export class AgentService {
   private readonly inflight = new Map<string, AbortController>();
 
@@ -310,12 +370,12 @@ export class AgentService {
 
   /** Starts a turn and returns immediately; the reply arrives as stream events. */
   send(req: AgentSendRequest): void {
-    void this.run(req.streamId, async (ctx) => this.turn(req, ctx));
+    void this.run(req.streamId, async (ctx, account) => this.turn(req, ctx, account));
   }
 
   /** Starts a compaction; the summary arrives as a single done event. */
   compact(req: AgentCompactRequest): void {
-    void this.run(req.streamId, async (ctx) => this.summarize(req, ctx));
+    void this.run(req.streamId, async (ctx, account) => this.summarize(req, ctx, account));
   }
 
   cancel(streamId: string): void {
@@ -332,10 +392,18 @@ export class AgentService {
    * What a turn and a compaction have in common: one abort controller, the key
    * and model checked once, and any failure reported as a stream error rather
    * than thrown out of a fire-and-forget IPC handler.
+   *
+   * The account is opened here rather than by the work, because the two endings
+   * that skip the work's own report - a cancel and a failure - are caught here.
+   * A turn stopped after five rounds was billed for five rounds.
    */
-  private async run(streamId: string, work: (ctx: CallContext) => Promise<void>): Promise<void> {
+  private async run(
+    streamId: string,
+    work: (ctx: CallContext, account: TurnAccount) => Promise<void>
+  ): Promise<void> {
     const controller = new AbortController();
     this.inflight.set(streamId, controller);
+    const account = new TurnAccount();
     try {
       const apiKey = this.deps.getApiKey();
       if (!apiKey) throw new Error('No OpenRouter API key configured');
@@ -343,20 +411,21 @@ export class AgentService {
       const model = settings.coding.model;
       if (model === null) throw new Error('No coding model selected');
 
-      await work({ apiKey, model, settings, signal: controller.signal });
+      await work({ apiKey, model, settings, signal: controller.signal }, account);
     } catch (err) {
       // A cancel is a normal ending, not a failure: the partial reply the user
       // already saw stays, and no error is shown.
       if (controller.signal.aborted) {
         this.deps.emit(IPC_CHANNELS.AGENT_STREAM_DONE, {
           streamId,
-          usage: null
+          usage: account.report()
         } satisfies AgentStreamDone);
       } else {
         const message = err instanceof Error ? err.message : String(err);
         this.deps.emit(IPC_CHANNELS.AGENT_STREAM_ERROR, {
           streamId,
-          message
+          message,
+          usage: account.report()
         } satisfies AgentStreamError);
       }
     } finally {
@@ -371,10 +440,10 @@ export class AgentService {
    * without asking for anything else.
    *
    * The messages accumulate across rounds so each call sees what the last one
-   * asked for and what came back. Usage is taken from the last round, since
-   * that is the one whose prompt is the whole conversation.
+   * asked for and what came back, and `TurnAccount` accumulates alongside them:
+   * every round is billed, so every round is counted.
    */
-  private async turn(req: AgentSendRequest, ctx: CallContext): Promise<void> {
+  private async turn(req: AgentSendRequest, ctx: CallContext, account: TurnAccount): Promise<void> {
     const { streamId } = req;
     const emit = this.deps.emit;
     const config = ctx.settings.coding;
@@ -384,9 +453,8 @@ export class AgentService {
       buildSystemPrompt(req.cwd, ctx.settings.systemPrompt, { image: imageModel !== null })
     );
     const tools = toolSpecsFor({ image: imageModel !== null });
-    // Holders rather than locals: they are written inside callbacks, where
-    // narrowing cannot follow them.
-    const reported: { usage: AgentUsage | null } = { usage: null };
+    // A holder rather than a local: it is written inside a callback, where
+    // narrowing cannot follow it.
     const round = { content: '' };
     // The task list for this turn, seeded from what the pane sent and thrown
     // away when the turn ends. Main keeps no copy between turns: the pane owns
@@ -413,15 +481,14 @@ export class AgentService {
         },
         onReasoning: (delta) =>
           emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta } satisfies AgentStreamDelta),
-        onUsage: (usage) => {
-          reported.usage = usage;
-        }
+        onUsage: (usage) => account.round(usage)
       });
+      account.served(outcome);
 
       if (outcome.toolCalls.length === 0) {
         emit(IPC_CHANNELS.AGENT_STREAM_DONE, {
           streamId,
-          usage: reported.usage
+          usage: account.report()
         } satisfies AgentStreamDone);
         return;
       }
@@ -472,16 +539,20 @@ export class AgentService {
             }
           }
         });
+        // A tool that spent money is part of what the turn cost, and `image` is
+        // the one that can: it buys a picture from a second endpoint that
+        // prices the whole thing rather than its tokens.
+        if (done.costUsd !== null) account.flat(done.costUsd);
         messages.push({
           role: 'tool',
           tool_call_id: call.id,
-          content: done.result ?? `Error: ${done.error ?? 'the tool failed'}`
+          content: done.call.result ?? `Error: ${done.call.error ?? 'the tool failed'}`
         });
         // The same injection the replayed history gets, and it has to be here
         // too: this loop builds the wire for the rest of *this* turn, so
         // without it a model that asked to look at a screenshot would not see
         // it until the turn after the one it asked in.
-        images.push(...(await toolImageMessages(done, req.cwd)));
+        images.push(...(await toolImageMessages(done.call, req.cwd)));
       }
       // Held back until every call in the round has been answered, for the
       // reason `flush` holds them back: the API takes an unbroken run of
@@ -538,12 +609,16 @@ export class AgentService {
    * A tool that throws is not a failed turn: what it threw is a sentence the
    * model can read and act on, so it becomes the result of the call and the
    * conversation carries on.
+   *
+   * What it cost comes back beside the call rather than on it. The call is what
+   * the pane draws and what the session log keeps, and a price is neither -
+   * it belongs to the turn's account, which is main's to keep.
    */
   private async runTool(
     streamId: string,
     call: { id: string; function: { name: string; arguments: string } },
     tools: AgentToolContext
-  ): Promise<AgentToolCall> {
+  ): Promise<{ call: AgentToolCall; costUsd: number | null }> {
     const started: AgentToolCall = {
       id: call.id,
       name: call.function.name,
@@ -560,6 +635,7 @@ export class AgentService {
     } satisfies AgentToolEvent);
 
     let finished: AgentToolCall;
+    let costUsd: number | null = null;
     try {
       const output = await runAgentTool(call.function.name, call.function.arguments, tools);
       finished = {
@@ -569,6 +645,7 @@ export class AgentService {
         image: output.image ?? null,
         todos: output.todos ?? null
       };
+      costUsd = output.costUsd ?? null;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       finished = { ...started, error: message, summary: 'failed' };
@@ -577,14 +654,22 @@ export class AgentService {
       streamId,
       call: finished
     } satisfies AgentToolEvent);
-    return finished;
+    return { call: finished, costUsd };
   }
 
-  private async summarize(req: AgentCompactRequest, ctx: CallContext): Promise<void> {
+  /*
+   * Compacting is a model call like any other, and is billed like one. A total
+   * that left it out would drift from the invoice by exactly the amount the
+   * user never chose to spend - which is the part they would most want to see.
+   */
+  private async summarize(
+    req: AgentCompactRequest,
+    ctx: CallContext,
+    account: TurnAccount
+  ): Promise<void> {
     const collected = { summary: '' };
-    const reported: { usage: AgentUsage | null } = { usage: null };
 
-    await this.call(ctx, {
+    const outcome = await this.call(ctx, {
       messages: await toCompactMessages(req),
       // Never above the summary ceiling, and never above the user's own cap.
       maxTokens: Math.min(COMPACT_MAX_TOKENS, ctx.settings.coding.maxTokens ?? COMPACT_MAX_TOKENS),
@@ -595,10 +680,9 @@ export class AgentService {
         collected.summary += delta;
       },
       onReasoning: () => {},
-      onUsage: (usage) => {
-        reported.usage = usage;
-      }
+      onUsage: (usage) => account.round(usage)
     });
+    account.served(outcome);
 
     // Replacing the transcript with nothing would erase the conversation, so an
     // empty summary fails the compaction instead.
@@ -607,7 +691,7 @@ export class AgentService {
     this.deps.emit(IPC_CHANNELS.AGENT_COMPACT_DONE, {
       streamId: req.streamId,
       summary: collected.summary.trim(),
-      usage: reported.usage
+      usage: account.report()
     } satisfies AgentCompactDone);
   }
 

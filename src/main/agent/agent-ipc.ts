@@ -8,7 +8,8 @@ import type {
   AgentMentionMatch,
   AgentSendRequest,
   AgentSettings,
-  AgentTitleRequest
+  AgentTitleRequest,
+  AgentTitleResult
 } from '../../shared/agent-types';
 import type {
   AgentSessionAppend,
@@ -88,15 +89,16 @@ export function registerAgentIpc(deps: {
   );
 
   // Nothing is written here. Main works out the words and hands them back; the
-  // renderer knows which session asked, and is the only side that can.
+  // renderer knows which session asked, and is the only side that can - which
+  // goes for what the call cost as well as for what it said.
   ipcMain.handle(
     IPC_CHANNELS.AGENT_GENERATE_TITLE,
-    async (_e, req: AgentTitleRequest): Promise<string | null> => {
+    async (_e, req: AgentTitleRequest): Promise<AgentTitleResult> => {
       const apiKey = deps.getApiKey();
-      if (!apiKey) return null;
+      if (!apiKey) return { title: null, usage: null };
       const settings = deps.getSettings();
       const model = settings.titleModel ?? settings.coding.model;
-      if (model === null) return null;
+      if (model === null) return { title: null, usage: null };
       return resolveTitle(completeOnce, {
         apiKey,
         model,

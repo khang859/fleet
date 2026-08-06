@@ -1,9 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IPC_CHANNELS } from '../../../../shared/ipc-channels';
 import { DEFAULT_SETTINGS } from '../../../../shared/constants';
-import { messageText, textMessage } from '../../../../shared/agent-types';
-import type { AgentCatalogModel, AgentMessage, AgentUsage } from '../../../../shared/agent-types';
+import { EMPTY_AGENT_USAGE, messageText, textMessage } from '../../../../shared/agent-types';
+import type {
+  AgentCatalogModel,
+  AgentMessage,
+  AgentTitleResult,
+  AgentTurnUsage
+} from '../../../../shared/agent-types';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
+import { EMPTY_SESSION_SPEND } from '../../../../shared/agent-spend';
 import {
   emptyReplay,
   type AgentSessionAppend,
@@ -46,7 +52,7 @@ const agentApi = {
   decidePermission: vi.fn(),
   deleteSession: vi.fn().mockResolvedValue(true),
   listSessions: vi.fn().mockResolvedValue([]),
-  generateTitle: vi.fn().mockResolvedValue(null)
+  generateTitle: vi.fn().mockResolvedValue({ title: null, usage: null })
 };
 
 /** What `loadSession` hands back; set per test to stand in for a file. */
@@ -116,17 +122,29 @@ function liveStreamId(paneId = PANE): string {
 }
 
 /** One complete exchange: ask, receive, and report what it cost. */
-function turn(text: string, usage: AgentUsage | null = null): void {
+function turn(text: string, usage: AgentTurnUsage | null = null): void {
   agentStore.useAgentStore.getState().send(PANE, '/repo', text);
   const streamId = liveStreamId();
   emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: `reply to ${text}` });
   emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage });
 }
 
-const usageOf = (total: number): AgentUsage => ({
-  promptTokens: total - 100,
-  completionTokens: 100,
-  totalTokens: total
+/**
+ * A one-round turn that left `total` tokens in the window. Single-round, so the
+ * window and the bill agree; the tests that care about the difference build
+ * their own.
+ */
+const usageOf = (total: number): AgentTurnUsage => ({
+  billed: {
+    ...EMPTY_AGENT_USAGE,
+    promptTokens: total - 100,
+    completionTokens: 100,
+    totalTokens: total
+  },
+  contextTokens: total,
+  calls: 1,
+  model: 'anthropic/claude-sonnet-4.5',
+  provider: 'Anthropic'
 });
 
 /** Sets the threshold, or turns automatic compaction off with `null`. */
@@ -218,6 +236,90 @@ describe('context accounting', () => {
   });
 });
 
+/*
+ * The window and the bill are two different readings of the same numbers, and
+ * the whole reason spend is tracked separately is that they move differently:
+ * a window can shrink, a bill only grows.
+ */
+describe('spend accounting', () => {
+  const priced = (costUsd: number): AgentTurnUsage => ({
+    ...usageOf(1_000),
+    billed: { ...EMPTY_AGENT_USAGE, promptTokens: 900, completionTokens: 100, costUsd },
+    calls: 2
+  });
+
+  it('adds up every turn, while the window only shows the last', () => {
+    turn('one', priced(0.01));
+    turn('two', priced(0.02));
+
+    expect(thread().spend).toMatchObject({
+      costUsd: 0.03,
+      promptTokens: 1_800,
+      completionTokens: 200,
+      calls: 4
+    });
+    expect(thread().contextTokens).toBe(1_000);
+  });
+
+  // Summarizing is Fleet's own decision, not the user's, which is exactly why
+  // it has to show up in the total rather than quietly beside it.
+  it('counts what compacting the conversation cost', () => {
+    // Four turns is what it takes for the pane to decide on its own that the
+    // window is full, which is the compaction nobody asked for.
+    turn('one', priced(0.01));
+    turn('two', priced(0.01));
+    turn('three', priced(0.01));
+    turn('four', { ...priced(0.01), contextTokens: 85_000 });
+    emit(IPC_CHANNELS.AGENT_COMPACT_DONE, {
+      streamId: liveStreamId(),
+      summary: 'they talked about parsers',
+      usage: priced(0.005)
+    });
+
+    expect(thread().spend.costUsd).toBeCloseTo(0.045, 10);
+  });
+
+  it('holds no total at all until something has been spent', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
+
+    expect(thread().spend).toEqual(EMPTY_SESSION_SPEND);
+  });
+
+  // A provider that quotes nothing must not read as free, and must not erase
+  // what the priced turns beside it already cost.
+  it('keeps an unpriced turn from flattening the total', () => {
+    turn('one', priced(0.01));
+    turn('two', usageOf(2_000));
+
+    expect(thread().spend.costUsd).toBe(0.01);
+    expect(thread().spend.calls).toBe(3);
+  });
+
+  // Main reports what a failed turn had spent before it failed, and the pane
+  // has to bank it: an error is not a refund.
+  it('charges the session for a turn that ended badly', () => {
+    turn('one', priced(0.01));
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'two');
+    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, {
+      streamId: liveStreamId(),
+      message: 'OpenRouter responded 500',
+      usage: priced(0.005)
+    });
+
+    expect(thread().spend.costUsd).toBeCloseTo(0.015, 10);
+    expect(thread().error).toBe('OpenRouter responded 500');
+  });
+
+  it('remembers who served the last turn', () => {
+    turn('one', priced(0.01));
+
+    expect(thread().served).toEqual({
+      model: 'anthropic/claude-sonnet-4.5',
+      provider: 'Anthropic'
+    });
+  });
+});
+
 describe('automatic compaction', () => {
   /** Four exchanges, the last of which fills the window past the threshold. */
   function fillPastThreshold(): void {
@@ -285,7 +387,8 @@ describe('automatic compaction', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'three');
     emit(IPC_CHANNELS.AGENT_STREAM_ERROR, {
       streamId: liveStreamId(),
-      message: 'Rate limited'
+      message: 'Rate limited',
+      usage: null
     });
 
     expect(agentApi.compact).not.toHaveBeenCalled();
@@ -369,7 +472,8 @@ describe('a compaction that does not finish', () => {
 
     emit(IPC_CHANNELS.AGENT_STREAM_ERROR, {
       streamId: liveStreamId(),
-      message: 'The model returned an empty summary'
+      message: 'The model returned an empty summary',
+      usage: null
     });
 
     expect(thread().messages).toEqual(before);
@@ -529,7 +633,18 @@ describe('session log', () => {
         t: 'message',
         message: said('assistant', 'hi there')
       },
-      { t: 'context', tokens: 500 }
+      { t: 'context', tokens: 500 },
+      // The running total, rewritten whole every turn: the file is read back
+      // last-wins, so the newest line is the answer on its own.
+      {
+        t: 'spend',
+        total: {
+          ...EMPTY_SESSION_SPEND,
+          promptTokens: 400,
+          completionTokens: 100,
+          calls: 1
+        }
+      }
     ]);
   });
 
@@ -540,7 +655,7 @@ describe('session log', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
     const streamId = liveStreamId();
     emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: 'half an ans' });
-    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, { streamId, message: 'connection lost' });
+    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, { streamId, message: 'connection lost', usage: null });
 
     expect(written()).toContainEqual({
       t: 'message',
@@ -551,7 +666,11 @@ describe('session log', () => {
   it('writes nothing for a turn that produced no reply at all', async () => {
     await open();
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
-    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, { streamId: liveStreamId(), message: 'no api key' });
+    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, {
+      streamId: liveStreamId(),
+      message: 'no api key',
+      usage: null
+    });
 
     expect(written().filter((e) => e.t === 'message')).toHaveLength(1);
   });
@@ -585,7 +704,8 @@ describe('session log', () => {
       title: null,
       firstUserText: '',
       skipped: 0,
-      todos: []
+      todos: [],
+      spend: { ...EMPTY_SESSION_SPEND }
     };
 
     await open();
@@ -696,7 +816,7 @@ describe('tool calls', () => {
     const streamId = liveStreamId();
     start(streamId);
     finish(streamId);
-    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, { streamId, message: 'connection lost' });
+    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, { streamId, message: 'connection lost', usage: null });
 
     const events = agentApi.appendSession.mock.calls.map(
       ([req]) => (req as AgentSessionAppend).event
@@ -996,7 +1116,7 @@ describe('telling the rest of the app it is blocked', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
     const streamId = liveStreamId();
 
-    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, { streamId, message: 'no key' });
+    emit(IPC_CHANNELS.AGENT_STREAM_ERROR, { streamId, message: 'no key', usage: null });
 
     expect(activityOf()).toBe('error');
   });
@@ -1121,7 +1241,8 @@ describe('switching sessions', () => {
       title: 'Older work',
       firstUserText: '',
       skipped: 0,
-      todos: []
+      todos: [],
+      spend: { ...EMPTY_SESSION_SPEND }
     };
 
     await agentStore.useAgentStore.getState().resumeSession(PANE, '/repo', OTHER);
@@ -1156,7 +1277,8 @@ describe('switching sessions', () => {
       title: null,
       firstUserText: '',
       skipped: 0,
-      todos: []
+      todos: [],
+      spend: { ...EMPTY_SESSION_SPEND }
     };
 
     const first = agentStore.useAgentStore.getState().resumeSession(PANE, '/repo', OTHER);
@@ -1204,7 +1326,7 @@ describe('naming a session', () => {
       .filter((e) => e.t === 'title');
 
   it('asks for a name after the first turn, and writes what comes back', async () => {
-    agentApi.generateTitle.mockResolvedValueOnce('Slow parser');
+    agentApi.generateTitle.mockResolvedValueOnce({ title: 'Slow parser', usage: null });
     await open();
     turn('why is the parser slow');
     await vi.waitFor(() => expect(titles()).toHaveLength(1));
@@ -1235,7 +1357,8 @@ describe('naming a session', () => {
       title: null,
       firstUserText: '',
       skipped: 0,
-      todos: []
+      todos: [],
+      spend: { ...EMPTY_SESSION_SPEND }
     };
     await open();
     turn('carry on');
@@ -1243,8 +1366,35 @@ describe('naming a session', () => {
     expect(agentApi.generateTitle).not.toHaveBeenCalled();
   });
 
+  /*
+   * Naming is a call the user never asked for, made against a model they did
+   * not pick. A total that left it out would be a number Fleet chose to print
+   * rather than the one the invoice will show.
+   */
+  it('charges the session for what naming it cost', async () => {
+    agentApi.generateTitle.mockResolvedValueOnce({
+      title: 'Slow parser',
+      usage: {
+        billed: { ...EMPTY_AGENT_USAGE, promptTokens: 120, completionTokens: 4, costUsd: 0.00004 },
+        contextTokens: null,
+        calls: 1,
+        model: 'openai/gpt-4o-mini',
+        provider: null
+      }
+    });
+    await open();
+    turn('why is the parser slow', usageOf(1_000));
+    await vi.waitFor(() => expect(titles()).toHaveLength(1));
+
+    expect(thread().spend.costUsd).toBe(0.00004);
+    expect(thread().spend.calls).toBe(2);
+    // The naming model answered last, and is nobody's idea of what is doing
+    // the work: the status line keeps naming what served the turn.
+    expect(thread().served?.model).toBe('anthropic/claude-sonnet-4.5');
+  });
+
   it('writes nothing when no name came back', async () => {
-    agentApi.generateTitle.mockResolvedValueOnce(null);
+    agentApi.generateTitle.mockResolvedValueOnce({ title: null, usage: null });
     await open();
     turn('hello');
     await vi.waitFor(() => expect(agentApi.generateTitle).toHaveBeenCalled());
@@ -1257,9 +1407,9 @@ describe('naming a session', () => {
    * has cleared must land in the file that asked for it, not in the new one.
    */
   it('writes the name into the session that asked, not the one on screen now', async () => {
-    let deliver: (title: string | null) => void = () => undefined;
+    let deliver: (result: AgentTitleResult) => void = () => undefined;
     agentApi.generateTitle.mockReturnValueOnce(
-      new Promise<string | null>((resolve) => {
+      new Promise<AgentTitleResult>((resolve) => {
         deliver = resolve;
       })
     );
@@ -1268,7 +1418,7 @@ describe('naming a session', () => {
 
     agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
     const cleared = thread().sessionId;
-    deliver('First question');
+    deliver({ title: 'First question', usage: null });
     await vi.waitFor(() => expect(titles()).toHaveLength(1));
 
     const written = agentApi.appendSession.mock.calls

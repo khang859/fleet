@@ -13,9 +13,19 @@ import { join } from 'node:path';
 import { AgentImageStore } from '../image-store';
 import { AgentSessionStore } from '../session-store';
 import { emptyReplay } from '../../../shared/agent-session';
+import { EMPTY_SESSION_SPEND, type AgentSessionSpend } from '../../../shared/agent-spend';
 import { textMessage, type AgentMessage } from '../../../shared/agent-types';
 
 const msg = (id: string, content: string): AgentMessage => textMessage(id, 'user', content);
+
+/** A running total, as a turn would have left it. */
+const spendOf = (costUsd: number): AgentSessionSpend => ({
+  ...EMPTY_SESSION_SPEND,
+  costUsd,
+  promptTokens: 900,
+  completionTokens: 100,
+  calls: 3
+});
 
 /*
  * Real session ids, because the store refuses anything that is not a uuid -
@@ -167,6 +177,36 @@ describe('AgentSessionStore.list', () => {
 
   it('is empty rather than an error before anything has been written', () => {
     expect(new AgentSessionStore(join(dir, 'nothing-here')).list('/repo')).toEqual([]);
+  });
+
+  it('reports what a session cost, and nothing at all for one from before', () => {
+    store.append(S1, '/repo', { t: 'message', message: msg('a', 'hi') });
+    store.append(S1, '/repo', { t: 'spend', total: spendOf(0.02) });
+    store.append(S2, '/repo', { t: 'message', message: msg('b', 'hi') });
+
+    const byId = new Map(store.list('/repo').map((s) => [s.id, s]));
+
+    expect(byId.get(S1)?.spend).toMatchObject({ costUsd: 0.02, calls: 3 });
+    // Not a zero. A session written before any of this existed has no answer,
+    // and printing one would be inventing it.
+    expect(byId.get(S2)?.spend).toBeNull();
+  });
+
+  /*
+   * The head scan stops well short of a long conversation's end, and the total
+   * is the last line rather than the first. A long session that reported no
+   * cost would be the one people most want the number for.
+   */
+  it('finds the total at the end of a conversation too long to scan', () => {
+    store.append(S1, '/repo', { t: 'message', message: msg('a', 'the question') });
+    store.append(S1, '/repo', { t: 'spend', total: spendOf(0.01) });
+    // Comfortably past the 256KB the list reads from the front.
+    for (let i = 0; i < 40; i += 1) {
+      store.append(S1, '/repo', { t: 'message', message: msg(`pad-${i}`, 'x'.repeat(10_000)) });
+    }
+    store.append(S1, '/repo', { t: 'spend', total: spendOf(0.09) });
+
+    expect(store.list('/repo')[0].spend).toMatchObject({ costUsd: 0.09 });
   });
 
   // One bad file in the directory should cost that file, not the whole list.
