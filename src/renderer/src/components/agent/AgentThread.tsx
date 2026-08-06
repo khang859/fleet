@@ -30,6 +30,8 @@ import { AgentAttachmentChip, AgentMessageAttachments } from './AgentAttachment'
 import { reasoningLabel } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
 import { AgentSpendMeter } from './AgentSpendMeter';
+import { AgentLocation } from './AgentLocation';
+import { useGitHead } from './use-git-head';
 import { EMPTY_SESSION_SPEND, hasSpend } from '../../../../shared/agent-spend';
 import { agentSlashCommand, agentSlashMenu, type AgentSlashCommand } from './composer-slash';
 import { agentMentionQuery, withoutMentionQuery } from './composer-mention';
@@ -38,7 +40,6 @@ import { ComposerMenu } from './ComposerMenu';
 import { downscaleImage } from '../../lib/downscale-image';
 import { useAgentStore } from '../../store/agent-store';
 import { useSettingsStore } from '../../store/settings-store';
-import { shortenPath } from '../../lib/shorten-path';
 
 /**
  * The agent's transcript and composer. One streamed turn at a time, which may
@@ -90,11 +91,12 @@ export function AgentThread({
   // places saying the same thing.
   const todoItems = thread?.todos ?? EMPTY_TODOS;
   const todos = todosInPanel ? null : todoProgress(todoItems);
+  const gitHead = useGitHead(paneId, cwd);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       {messages.length === 0 ? (
-        <EmptyState cwd={cwd} />
+        <EmptyState />
       ) : (
         <Transcript
           messages={messages}
@@ -167,18 +169,21 @@ export function AgentThread({
         onStop={() => cancel(paneId)}
         onClear={() => startNewSession(paneId, cwd)}
       />
+
+      <AgentLocation cwd={cwd} head={gitHead} />
     </div>
   );
 }
 
-function EmptyState({ cwd }: { cwd: string }): React.JSX.Element {
+/**
+ * No folder here: the location line under the composer names it, and does so
+ * for the whole life of the pane rather than only until the first message.
+ */
+function EmptyState(): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
       <span className="text-sm font-medium uppercase tracking-[0.3em] text-fleet-text-subtle">
         Agent
-      </span>
-      <span className="max-w-full truncate px-4 text-xs text-fleet-text-subtle/70">
-        {shortenPath(cwd)}
       </span>
     </div>
   );
@@ -691,7 +696,9 @@ function Composer({
 
   return (
     <div
-      className="mx-auto w-full max-w-2xl shrink-0 px-4 pb-4"
+      // Bottom padding is the location line's, below - the composer only needs
+      // the gap between itself and it.
+      className="mx-auto w-full max-w-2xl shrink-0 px-4 pb-1.5"
       // On the whole composer rather than on the textarea: aiming a dragged
       // file at a one-line box is a game, and the target should be the thing
       // that looks like the target.

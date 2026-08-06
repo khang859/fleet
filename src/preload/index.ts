@@ -166,6 +166,7 @@ import type {
   AgentSessionListItem,
   AgentSessionReplay
 } from '../shared/agent-session';
+import type { AgentGitHeadEvent } from '../shared/agent-git';
 import type {
   DetectedSshHost,
   RemoteDirEntry,
@@ -931,7 +932,18 @@ const fleetApi = {
     attach: async (req: AgentAttachRequest): Promise<AgentAttachResult> =>
       typedInvoke<AgentAttachResult>(IPC_CHANNELS.AGENT_ATTACH, req),
     mentionSearch: async (query: string, cwd: string): Promise<AgentMentionMatch[]> =>
-      typedInvoke<AgentMentionMatch[]>(IPC_CHANNELS.AGENT_MENTION_SEARCH, query, cwd)
+      typedInvoke<AgentMentionMatch[]>(IPC_CHANNELS.AGENT_MENTION_SEARCH, query, cwd),
+    /**
+     * Which branch the pane's folder is on. Registering answers on `onGitHead`
+     * straight away, so there is no separate first read to wait for.
+     */
+    watchGit: (paneId: string, cwd: string): void =>
+      ipcRenderer.send(IPC_CHANNELS.AGENT_GIT_WATCH, paneId, cwd),
+    unwatchGit: (paneId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_GIT_UNWATCH, paneId),
+    /** For a change a watcher cannot see - a tool call that may have checked out. */
+    refreshGit: (paneId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_GIT_REFRESH, paneId),
+    onGitHead: (cb: (p: AgentGitHeadEvent) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_GIT_HEAD, cb)
   },
 
   /**

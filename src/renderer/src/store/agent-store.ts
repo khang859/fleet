@@ -912,7 +912,15 @@ window.fleet.agent.onStreamError(({ streamId, message, usage }) => {
 window.fleet.agent.onHandOff(({ streamId, command }) => handOff(streamId, command));
 window.fleet.agent.onPermissionAsk((ask) => askPermission(ask));
 window.fleet.agent.onToolStart(({ streamId, call }) => recordToolCall(streamId, call));
-window.fleet.agent.onToolEnd(({ streamId, call }) => recordToolCall(streamId, call));
+window.fleet.agent.onToolEnd(({ streamId, call }) => {
+  recordToolCall(streamId, call);
+  // The call may have been `git checkout`. The gitdir watcher would catch that
+  // on its own; this is what covers a repo it could not watch - a network mount,
+  // or one whose watcher died - where the agent moving the branch under itself
+  // is the change most worth not missing.
+  const owner = threadOf(streamId);
+  if (owner !== null) window.fleet.agent.refreshGit(owner.paneId);
+});
 window.fleet.agent.onImagePartial(({ streamId, callId, image }) =>
   recordImagePartial(streamId, callId, image)
 );

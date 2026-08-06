@@ -51,6 +51,7 @@ const agentApi = {
   appendSession: vi.fn(),
   decidePermission: vi.fn(),
   deleteSession: vi.fn().mockResolvedValue(true),
+  refreshGit: vi.fn(),
   listSessions: vi.fn().mockResolvedValue([]),
   generateTitle: vi.fn().mockResolvedValue({ title: null, usage: null })
 };
@@ -192,7 +193,8 @@ beforeEach(async () => {
       onImagePartial: listen(IPC_CHANNELS.AGENT_IMAGE_PARTIAL),
       onHandOff: listen(IPC_CHANNELS.AGENT_HAND_OFF),
       onPermissionAsk: listen(IPC_CHANNELS.AGENT_PERMISSION_ASK),
-      decidePermission: agentApi.decidePermission
+      decidePermission: agentApi.decidePermission,
+      refreshGit: agentApi.refreshGit
     },
     pty: { input: vi.fn() },
     activity: activityApi,

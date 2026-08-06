@@ -386,6 +386,15 @@ export const IPC_CHANNELS = {
   // Files the `@` menu can offer, from the same gitignore-aware walk `glob`
   // and `grep` use, so the menu cannot offer what the sandbox would refuse.
   AGENT_MENTION_SEARCH: 'agent:mention-search',
+  // Which branch a pane's folder is on. WATCH registers a pane and answers
+  // immediately on HEAD; REFRESH asks for a re-read after something that no
+  // file watcher would have seen, such as a tool call that may have been a
+  // checkout. A pane whose folder is not a repo is watched too, and answers
+  // `null` - not being in a repo is an ordinary state, not a failure.
+  AGENT_GIT_WATCH: 'agent:git-watch',
+  AGENT_GIT_UNWATCH: 'agent:git-unwatch',
+  AGENT_GIT_REFRESH: 'agent:git-refresh',
+  AGENT_GIT_HEAD: 'agent:git-head',
 
   // ── Remote (SSH) file browser ──────────────────────────────────────────────
   // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's

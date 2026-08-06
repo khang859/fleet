@@ -26,6 +26,7 @@ import { resolveTitle } from './session-title';
 import { resolveAttachment } from './attachments';
 import { searchMentionFiles } from './mention-search';
 import type { AgentImageStore } from './image-store';
+import type { AgentGitWatcher } from './git-watch';
 
 /**
  * Everything the Agent pane calls into main. Agent settings themselves ride on
@@ -39,6 +40,8 @@ export function registerAgentIpc(deps: {
   sessions: AgentSessionStore;
   /** Where a pasted or dropped image is copied to, keyed by conversation. */
   attachments: AgentImageStore;
+  /** Which branch each pane's folder is on, and telling the pane when it moves. */
+  git: AgentGitWatcher;
   getSettings: () => AgentSettings;
   getApiKey: () => string | null;
 }): void {
@@ -122,4 +125,18 @@ export function registerAgentIpc(deps: {
     async (_e, query: string, cwd: string): Promise<AgentMentionMatch[]> =>
       searchMentionFiles(query, cwd)
   );
+
+  // Fire-and-forget in both directions: the branch arrives on AGENT_GIT_HEAD,
+  // first as the answer to the registration and then whenever it changes.
+  ipcMain.on(IPC_CHANNELS.AGENT_GIT_WATCH, (_e, paneId: string, cwd: string) => {
+    void deps.git.watch(paneId, cwd);
+  });
+
+  ipcMain.on(IPC_CHANNELS.AGENT_GIT_UNWATCH, (_e, paneId: string) => {
+    deps.git.unwatch(paneId);
+  });
+
+  ipcMain.on(IPC_CHANNELS.AGENT_GIT_REFRESH, (_e, paneId: string) => {
+    deps.git.refresh(paneId);
+  });
 }

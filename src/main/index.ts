@@ -124,6 +124,7 @@ import { AgentService } from './agent/agent-service';
 import { AgentSessionStore } from './agent/session-store';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './agent/image-store';
 import { PermissionGate } from './agent/permissions/gate';
+import { AgentGitWatcher } from './agent/git-watch';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
 import { resolveSummary } from './chat/pane-summarizer';
 import { PermissionManager } from './chat/permissions/permission-manager';
@@ -1646,6 +1647,15 @@ void app.whenReady().then(async () => {
     const w = mainWindow;
     if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
   };
+  const agentGitWatcher = new AgentGitWatcher((paneId, head) =>
+    agentEmit(IPC_CHANNELS.AGENT_GIT_HEAD, { paneId, head })
+  );
+  // Someone who switched branch in a terminal outside Fleet is most likely to
+  // look at the pane the moment they come back to it, so coming back is when
+  // every pane re-reads. FSEvents also coalesces across sleep, and this is what
+  // covers the wake.
+  app.on('browser-window-focus', () => agentGitWatcher.refreshAll());
+
   const agentGate = new PermissionGate({
     getRules: () => settingsStore.get().ai.agent.permissions,
     persistAllow: (rule) => {
@@ -1673,6 +1683,7 @@ void app.whenReady().then(async () => {
     gate: agentGate,
     sessions: agentSessions,
     attachments: new AgentImageStore(AGENT_ATTACHMENTS_DIR),
+    git: agentGitWatcher,
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => chatSecrets.getKey()
   });
