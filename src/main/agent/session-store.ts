@@ -180,6 +180,33 @@ export class AgentSessionStore {
       return false;
     }
   }
+
+  /**
+   * Throw away pictures whose conversation is gone.
+   *
+   * Deleting a session takes its own with it, so what is left here belongs to
+   * conversations that ended some other way - most of all panes from before
+   * sessions existed, which filed their files under the pane's id and left them
+   * behind for good. Without this the two folders only ever grow.
+   */
+  sweep(): void {
+    let live: Set<string>;
+    try {
+      live = new Set(
+        readdirSync(this.dir)
+          .filter((name) => name.endsWith('.jsonl'))
+          .map((name) => name.slice(0, -'.jsonl'.length))
+      );
+    } catch (err) {
+      // No sessions folder at all is a first run, not an empty one: sweeping
+      // against a set that is empty for the wrong reason would delete
+      // everything the user has.
+      if (!isMissing(err)) log.warn('sweep: could not list sessions', { error: String(err) });
+      return;
+    }
+    this.images.sweep(live);
+    this.attachments.sweep(live);
+  }
 }
 
 /**

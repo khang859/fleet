@@ -217,4 +217,47 @@ describe('AgentSessionStore.delete', () => {
     expect(existsSync(drawn)).toBe(false);
     expect(existsSync(pasted)).toBe(false);
   });
+
+  /*
+   * Not every conversation ends by being deleted. A pane from before sessions
+   * existed filed its pictures under its own id and left them there for good,
+   * and nothing was ever going to come back for them.
+   */
+  it('sweeps pictures whose conversation is gone, and leaves the rest alone', () => {
+    const images = join(dir, 'images');
+    const attachments = join(dir, 'attachments');
+    const withImages = new AgentSessionStore(
+      dir,
+      new AgentImageStore(images),
+      new AgentImageStore(attachments)
+    );
+    withImages.append(S1, '/repo', { t: 'message', message: msg('a', 'hi') });
+    const kept = new AgentImageStore(images).save(S1, new Uint8Array([1]), 'image/png');
+    const orphan = new AgentImageStore(attachments).save(GONE, new Uint8Array([2]), 'image/png');
+
+    withImages.sweep();
+
+    expect(existsSync(kept)).toBe(true);
+    expect(existsSync(orphan)).toBe(false);
+  });
+
+  /*
+   * A first run has no sessions folder at all. Reading that as "no conversation
+   * owns anything" would throw away every picture on the machine.
+   */
+  it('sweeps nothing when there are no sessions to sweep against', () => {
+    const images = join(dir, 'images');
+    const kept = new AgentImageStore(images).save(S1, new Uint8Array([1]), 'image/png');
+
+    // Both roots named, never defaulted: a store built with defaults points at
+    // the real home folder, and this test's whole subject is what sweep does
+    // when it cannot see any sessions.
+    new AgentSessionStore(
+      join(dir, 'not-here'),
+      new AgentImageStore(images),
+      new AgentImageStore(join(dir, 'attachments'))
+    ).sweep();
+
+    expect(existsSync(kept)).toBe(true);
+  });
 });

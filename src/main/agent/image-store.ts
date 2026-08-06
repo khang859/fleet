@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative, isAbsolute } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -90,6 +90,38 @@ export class AgentImageStore {
     const dir = this.dirFor(threadId);
     if (dir === null) return;
     rmSync(dir, { recursive: true, force: true });
+  }
+
+  /**
+   * Drop every folder no live conversation answers for.
+   *
+   * Deleting a session takes its pictures with it, so this is for the ones that
+   * lost their conversation some other way: a pane too old to have a session at
+   * all, whose files were filed under the pane's own id and can never be
+   * matched again, and a crash between saving a picture and writing the line
+   * that mentions it.
+   *
+   * Called once at startup and nowhere else, because it is safe exactly then.
+   * A conversation writes its session file on its first message, so a picture
+   * attached but not yet sent is a folder with no session - and sweeping while
+   * the app is running would delete it out from under the composer.
+   */
+  sweep(live: Set<string>): void {
+    let names: string[];
+    try {
+      names = readdirSync(this.root);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      if (live.has(name)) continue;
+      try {
+        rmSync(join(this.root, name), { recursive: true, force: true });
+        log.info('removed pictures no conversation answers for', { threadId: name });
+      } catch (err) {
+        log.warn('sweep failed', { threadId: name, error: String(err) });
+      }
+    }
   }
 
   /**

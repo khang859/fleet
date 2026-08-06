@@ -1663,11 +1663,15 @@ void app.whenReady().then(async () => {
     gate: agentGate,
     emit: agentEmit
   });
+  const agentSessions = new AgentSessionStore();
+  // Once, here, before any pane has had the chance to attach anything: a
+  // picture that has not been sent yet is a folder with no session behind it.
+  agentSessions.sweep();
   registerAgentIpc({
     catalog: new AgentModelCatalog(join(app.getPath('userData'), 'agent-models-dev.json')),
     service: agentService,
     gate: agentGate,
-    sessions: new AgentSessionStore(),
+    sessions: agentSessions,
     attachments: new AgentImageStore(AGENT_ATTACHMENTS_DIR),
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => chatSecrets.getKey()
