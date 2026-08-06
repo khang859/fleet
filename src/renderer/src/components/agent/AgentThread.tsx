@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
   ChevronRight,
@@ -26,6 +26,8 @@ import { reasoningLabel } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
 import { agentSlashCommand, agentSlashMenu, type AgentSlashCommand } from './composer-slash';
 import { agentMentionQuery, withoutMentionQuery } from './composer-mention';
+import { useComposerMenu, type ComposerMenuAnchor } from './composer-menu';
+import { ComposerMenu } from './ComposerMenu';
 import { downscaleImage } from '../../lib/downscale-image';
 import { useAgentStore } from '../../store/agent-store';
 import { useSettingsStore } from '../../store/settings-store';
@@ -392,25 +394,17 @@ function Composer({
 }): React.JSX.Element {
   const [text, setText] = useState('');
   const [refused, setRefused] = useState(false);
-  const [menuIndex, setMenuIndex] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [attachments, setAttachments] = useState<AgentAttachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [mentions, setMentions] = useState<AgentMentionMatch[]>([]);
-  const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionDismissed, setMentionDismissed] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const menuId = useId();
-  const mentionId = useId();
 
-  const menu = agentSlashMenu(text, menuDismissed);
-  const activeIndex = Math.min(menuIndex, Math.max(menu.matches.length - 1, 0));
-
+  const slashMenu = agentSlashMenu(text, menuDismissed);
   const mentionQuery = agentMentionQuery(text, mentionDismissed);
-  const mentionOpen = mentionQuery !== null && mentions.length > 0;
-  const mentionActive = Math.min(mentionIndex, Math.max(mentions.length - 1, 0));
 
   /**
    * Hand one thing to main and keep what comes back.
@@ -517,13 +511,33 @@ function Composer({
     setAttachError(null);
   };
 
+  // The same widget over the same box, differing only in where the rows come
+  // from and what taking one does. Picking a command runs it - unlike Chat,
+  // where a pick fills the box because a skill is a prefix to a message, here
+  // the command is the whole of what the user meant.
+  const commandMenu = useComposerMenu({
+    items: slashMenu.open ? slashMenu.matches : [],
+    onPick: runCommand,
+    onDismiss: () => setMenuDismissed(true)
+  });
+
   /** Turn the `@…` being typed into an attachment, and take it out of the line. */
-  const pickMention = (match: AgentMentionMatch): void => {
-    setText(withoutMentionQuery(text));
-    setMentionIndex(0);
-    void attach({ kind: 'path', path: match.path });
-    ref.current?.focus();
-  };
+  const mentionMenu = useComposerMenu({
+    items: mentionQuery === null ? [] : mentions,
+    onPick: (match: AgentMentionMatch) => {
+      setText(withoutMentionQuery(text));
+      void attach({ kind: 'path', path: match.path });
+      ref.current?.focus();
+    },
+    onDismiss: () => setMentionDismissed(true)
+  });
+
+  /** Whichever one is up, for the composer's own combobox wiring. */
+  const openMenu: ComposerMenuAnchor | null = mentionMenu.open
+    ? mentionMenu
+    : commandMenu.open
+      ? commandMenu
+      : null;
 
   const submit = (): void => {
     const trimmed = text.trim();
@@ -547,50 +561,6 @@ function Composer({
     setText('');
     setAttachments([]);
     setAttachError(null);
-  };
-
-  /** The menus' own keys, which only apply while one of them is up. */
-  const menuKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
-    if (mentionOpen) {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        const delta = e.key === 'ArrowDown' ? 1 : -1;
-        setMentionIndex((mentionActive + delta + mentions.length) % mentions.length);
-        return true;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setMentionDismissed(true);
-        return true;
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault();
-        pickMention(mentions[mentionActive]);
-        return true;
-      }
-      return false;
-    }
-    if (!menu.open) return false;
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const delta = e.key === 'ArrowDown' ? 1 : -1;
-      setMenuIndex((activeIndex + delta + menu.matches.length) % menu.matches.length);
-      return true;
-    }
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      setMenuDismissed(true);
-      return true;
-    }
-    if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault();
-      // Picking a command runs it. Unlike Chat, where a pick fills the box
-      // because a skill is a prefix to a message, here the command is the
-      // whole of what the user meant.
-      runCommand(menu.matches[activeIndex]);
-      return true;
-    }
-    return false;
   };
 
   const hasImage = attachments.some((a) => a.kind === 'image');
@@ -653,69 +623,22 @@ function Composer({
             : 'border-fleet-border focus-within:border-fleet-border-strong'
         }`}
       >
-        {mentionOpen && (
-          <div
-            id={mentionId}
-            role="listbox"
-            aria-label="Files"
-            className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full animate-in overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg fade-in zoom-in-95 duration-100"
-          >
-            {mentions.map((match, i) => (
-              <div
-                key={match.path}
-                id={`${mentionId}-${i}`}
-                role="option"
-                aria-selected={i === mentionActive}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  pickMention(match);
-                }}
-                onMouseEnter={() => setMentionIndex(i)}
-                className={`flex w-full cursor-pointer items-center gap-1.5 px-3 py-1.5 text-left ${
-                  i === mentionActive ? 'bg-fleet-surface-3' : ''
-                }`}
-              >
-                <span className="truncate font-mono text-xs text-fleet-text">{match.rel}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {menu.open && (
-          <div
-            id={menuId}
-            role="listbox"
-            aria-label="Commands"
-            className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full animate-in overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg fade-in zoom-in-95 duration-100"
-          >
-            {menu.matches.map((command, i) => (
-              // Options rather than buttons: focus never leaves the composer,
-              // so the row a key press would take is named by
-              // `aria-activedescendant` instead of being focused itself.
-              <div
-                key={command.name}
-                id={`${menuId}-${command.name}`}
-                role="option"
-                aria-selected={i === activeIndex}
-                // Mouse down rather than click: the textarea must not lose
-                // focus first, or the menu closes before the pick lands.
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  runCommand(command);
-                }}
-                onMouseEnter={() => setMenuIndex(i)}
-                className={`flex w-full cursor-pointer items-center gap-1.5 px-3 py-1.5 text-left ${
-                  i === activeIndex ? 'bg-fleet-surface-3' : ''
-                }`}
-              >
-                <command.Icon size={12} className="shrink-0 text-fleet-text-muted" />
-                <span className="font-mono text-xs text-fleet-text">/{command.name}</span>
-                <span className="ml-1 line-clamp-1 text-[11px] text-fleet-text-muted">
-                  {command.description}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+        <ComposerMenu menu={mentionMenu} label="Files" itemKey={(match) => match.path}>
+          {(match) => (
+            <span className="truncate font-mono text-xs text-fleet-text">{match.rel}</span>
+          )}
+        </ComposerMenu>
+        <ComposerMenu menu={commandMenu} label="Commands" itemKey={(command) => command.name}>
+          {(command) => (
+            <>
+              <command.Icon size={12} className="shrink-0 text-fleet-text-muted" />
+              <span className="font-mono text-xs text-fleet-text">/{command.name}</span>
+              <span className="ml-1 line-clamp-1 text-[11px] text-fleet-text-muted">
+                {command.description}
+              </span>
+            </>
+          )}
+        </ComposerMenu>
         {attachments.length > 0 && (
           <div className="flex flex-wrap items-center gap-2.5 px-0.5 pt-1">
             {attachments.map((attachment, i) => (
@@ -759,11 +682,11 @@ function Composer({
             onChange={(e) => {
               setText(e.target.value);
               // Typing again is a fresh attempt, so a menu dismissed with Escape
-              // is allowed back.
+              // is allowed back, at the top of its list.
               setMenuDismissed(false);
-              setMenuIndex(0);
               setMentionDismissed(false);
-              setMentionIndex(0);
+              commandMenu.reset();
+              mentionMenu.reset();
             }}
             onPaste={(e) => {
               const files = [...e.clipboardData.files];
@@ -775,7 +698,7 @@ function Composer({
               void attachFiles(files);
             }}
             onKeyDown={(e) => {
-              if (menuKeyDown(e)) return;
+              if (mentionMenu.keyDown(e) || commandMenu.keyDown(e)) return;
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 submit();
@@ -795,14 +718,10 @@ function Composer({
             // The composer *is* the combobox while a menu is up: it keeps focus,
             // and points at the row the next Enter would take.
             role="combobox"
-            aria-expanded={menu.open || mentionOpen}
-            aria-controls={mentionOpen ? mentionId : menu.open ? menuId : undefined}
+            aria-expanded={openMenu !== null}
+            aria-controls={openMenu?.id}
             aria-activedescendant={
-              mentionOpen
-                ? `${mentionId}-${mentionActive}`
-                : menu.open
-                  ? `${menuId}-${menu.matches[activeIndex].name}`
-                  : undefined
+              openMenu === null ? undefined : `${openMenu.id}-${openMenu.active}`
             }
             className="max-h-48 min-h-6 flex-1 resize-none bg-transparent px-1.5 py-1 text-sm text-fleet-text outline-none placeholder:text-fleet-text-subtle disabled:cursor-not-allowed"
           />
