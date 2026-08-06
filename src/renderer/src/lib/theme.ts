@@ -61,6 +61,30 @@ export function getAccentCssVars(id?: AccentColorId): FleetThemeCssProperties {
   };
 }
 
+/**
+ * The surface tokens a pane's chrome paints with once there is a background
+ * image behind it: the same colors, mixed toward transparent so the picture
+ * reads through them. Returns nothing when no image is showing, which leaves
+ * the `index.css` defaults - the opaque tokens - in place.
+ *
+ * Surfaces opt in by name (`bg-fleet-glass-surface`), so the things that must
+ * stay solid to stay usable - text inputs, the settings cards - simply keep
+ * asking for the opaque token and are unaffected.
+ */
+export function getGlassCssVars(active: boolean): FleetThemeCssProperties | undefined {
+  if (!active) return undefined;
+  // Held above the pane's own background opacity: chrome is what the user
+  // reads and types into, so it stays the most solid thing over the picture.
+  const glass = (token: string, percent: number): string =>
+    `color-mix(in srgb, var(${token}) ${percent}%, transparent)`;
+  return {
+    '--fleet-glass-bg': glass('--fleet-bg', 55),
+    '--fleet-glass-surface': glass('--fleet-surface', 70),
+    '--fleet-glass-surface-2': glass('--fleet-surface-2', 65),
+    '--fleet-glass-surface-3': glass('--fleet-surface-3', 70)
+  };
+}
+
 // ── App theme (UI chrome) ──────────────────────────────────────────────────
 
 function parseHex(hex: string): [number, number, number] {

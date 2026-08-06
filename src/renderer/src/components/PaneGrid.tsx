@@ -271,6 +271,8 @@ export function PaneGrid({
                   paneId={leaf.id}
                   cwd={leaf.node.cwd}
                   sessionId={leaf.node.agentSessionId}
+                  terminalBackground={terminalBackground}
+                  slideshowFrame={slideshowFrame}
                 />
               </PaneFrame>
             </div>

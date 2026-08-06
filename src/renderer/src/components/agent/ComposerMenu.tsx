@@ -20,7 +20,7 @@ export function ComposerMenu<T>(props: {
       id={menu.id}
       role="listbox"
       aria-label={label}
-      className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full animate-in overflow-y-auto rounded border border-fleet-border bg-fleet-surface-2 py-1 shadow-lg fade-in zoom-in-95 duration-100"
+      className="absolute bottom-full left-0 z-20 mb-1 max-h-56 w-full animate-in overflow-y-auto rounded border border-fleet-border bg-fleet-glass-surface-2 py-1 shadow-lg backdrop-blur-md fade-in zoom-in-95 duration-100"
     >
       {menu.items.map((item, i) => (
         // Options rather than buttons: focus never leaves the composer, so the

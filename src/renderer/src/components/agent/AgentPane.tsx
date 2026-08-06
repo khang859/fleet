@@ -4,7 +4,12 @@ import { Bot, History, SlidersHorizontal } from 'lucide-react';
 import { AgentThread } from './AgentThread';
 import { AgentSessionsTab } from './AgentSessionsTab';
 import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
+import { BackgroundLayer } from '../BackgroundLayer';
 import { useAgentStore } from '../../store/agent-store';
+import { resolveBackgroundSrc } from '../../lib/pane-background';
+import { getGlassCssVars } from '../../lib/theme';
+import type { TerminalBackground } from '../../../../shared/types';
+import type { SlideshowFrame } from '../../hooks/use-slideshow';
 
 type AgentView = 'agent' | 'sessions' | 'settings';
 
@@ -25,12 +30,17 @@ const TABS = [
 export function AgentPane({
   paneId,
   cwd,
-  sessionId
+  sessionId,
+  terminalBackground,
+  slideshowFrame
 }: {
   paneId: string;
   cwd: string;
   /** Absent on panes created before sessions existed; those stay in memory. */
   sessionId?: string;
+  /** The same picture the terminals are showing - one setting, one look. */
+  terminalBackground?: TerminalBackground;
+  slideshowFrame?: SlideshowFrame;
 }): React.JSX.Element {
   const [view, setView] = useState<AgentView>('agent');
   const loadModels = useAgentStore((s) => s.loadModels);
@@ -64,20 +74,39 @@ export function AgentPane({
     return () => document.removeEventListener('fleet:refocus-pane', handler);
   }, [paneId]);
 
+  // Whether there is a picture to read through decides whether the chrome
+  // turns to glass; the floor underneath it stays painted either way.
+  const hasBackgroundImage = resolveBackgroundSrc(terminalBackground, slideshowFrame) !== null;
+
   return (
-    <div className="flex h-full w-full flex-col bg-fleet-bg">
-      <AgentTabs value={view} onChange={setView} />
-      {view === 'agent' && <AgentThread paneId={paneId} cwd={cwd} />}
-      {view === 'sessions' && (
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <AgentSessionsTab paneId={paneId} cwd={cwd} onResumed={() => setView('agent')} />
-        </div>
+    // The floor stays opaque and the image blends onto it at the user's
+    // opacity, which is what a terminal pane does - blending against nothing
+    // instead would make the same setting read far stronger here than there.
+    // `relative` so the layer's absolute children anchor here rather than to
+    // the pane frame two levels up.
+    <div
+      className="relative flex h-full w-full flex-col bg-fleet-bg"
+      style={getGlassCssVars(hasBackgroundImage)}
+    >
+      {terminalBackground && (
+        <BackgroundLayer background={terminalBackground} frame={slideshowFrame} />
       )}
-      {view === 'settings' && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <AgentSettingsPanel />
-        </div>
-      )}
+      {/* The layer sits at z-0, so everything the user sees is lifted above it
+          in one wrapper - which is also what puts all three views over it. */}
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        <AgentTabs value={view} onChange={setView} />
+        {view === 'agent' && <AgentThread paneId={paneId} cwd={cwd} />}
+        {view === 'sessions' && (
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <AgentSessionsTab paneId={paneId} cwd={cwd} onResumed={() => setView('agent')} />
+          </div>
+        )}
+        {view === 'settings' && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <AgentSettingsPanel />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -110,7 +139,7 @@ function AgentTabs({
           e.preventDefault();
           move(e.key === 'ArrowRight' ? 1 : -1);
         }}
-        className="flex items-center gap-0.5 rounded-lg border border-fleet-border bg-fleet-surface p-0.5"
+        className="flex items-center gap-0.5 rounded-lg border border-fleet-border bg-fleet-glass-surface p-0.5 backdrop-blur-md"
       >
         {TABS.map(({ value: tab, label, Icon }) => {
           const selected = tab === value;
@@ -126,7 +155,7 @@ function AgentTabs({
               onClick={() => onChange(tab)}
               className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors focus-ring ${
                 selected
-                  ? 'bg-fleet-surface-3 text-fleet-text'
+                  ? 'bg-fleet-glass-surface-3 text-fleet-text'
                   : 'text-fleet-text-muted hover:text-fleet-text-secondary'
               }`}
             >

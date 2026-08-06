@@ -28,6 +28,14 @@
   --color-fleet-text-muted: var(--fleet-text-muted);
   --color-fleet-text-subtle: var(--fleet-text-subtle);
 
+  /* Glass counterparts of the surface tokens, for chrome that sits over a
+     pane's background image. Identical to the opaque tokens until a pane
+     overrides them on its own root (see getGlassCssVars in lib/theme.ts). */
+  --color-fleet-glass-bg: var(--fleet-glass-bg);
+  --color-fleet-glass-surface: var(--fleet-glass-surface);
+  --color-fleet-glass-surface-2: var(--fleet-glass-surface-2);
+  --color-fleet-glass-surface-3: var(--fleet-glass-surface-3);
+
   /* shadcn-style semantic tokens, bridged to the fleet palette. Streamdown's
      rendered markdown references these utilities (bg-muted, text-muted-foreground,
      border-border, …); mapping them to --fleet-* keeps chat markdown in sync with
@@ -160,6 +168,17 @@
   --fleet-text-secondary: #d2d4d8;
   --fleet-text-muted: #a1a3a7;
   --fleet-text-subtle: #717377;
+
+  /* Chrome that can sit over a pane background image paints with these rather
+     than the tokens above. Here they carry the same value that chrome had
+     before there was anything to see through it, so a pane with no image looks
+     exactly as it did; a pane with one retargets them to translucent mixes on
+     its own root and its whole subtree turns to glass. The alpha lives in the
+     token rather than in a `/40` on the class so the two cannot compound. */
+  --fleet-glass-bg: color-mix(in srgb, var(--fleet-bg) 40%, transparent);
+  --fleet-glass-surface: var(--fleet-surface);
+  --fleet-glass-surface-2: var(--fleet-surface-2);
+  --fleet-glass-surface-3: var(--fleet-surface-3);
 
   /* shadcn semantic tokens consumed by Streamdown, aliased to the fleet
      palette above so chat markdown re-themes live with the rest of the app. */

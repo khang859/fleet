@@ -38,7 +38,7 @@ function Pill({ attachment }: { attachment: AgentAttachment }): React.JSX.Elemen
   return (
     <span
       title={title}
-      className="flex max-w-full items-center gap-1.5 rounded-lg border border-fleet-border bg-fleet-surface-2 px-2 py-1 text-xs text-fleet-text"
+      className="flex max-w-full items-center gap-1.5 rounded-lg border border-fleet-border bg-fleet-glass-surface-2 px-2 py-1 text-xs text-fleet-text"
     >
       <Icon size={13} className="shrink-0 text-fleet-text-muted" />
       <span className="truncate">{name}</span>

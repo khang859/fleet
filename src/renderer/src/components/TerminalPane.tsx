@@ -3,6 +3,7 @@ import { useTerminal } from '../hooks/use-terminal';
 import { useTerminalDrop } from '../hooks/use-terminal-drop';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
 import { BackgroundLayer } from './BackgroundLayer';
+import { resolveBackgroundSrc } from '../lib/pane-background';
 import { PaneToolbar } from './PaneToolbar';
 import { SearchBar } from './SearchBar';
 import { openAnnotateModal } from '../lib/annotate-modal-bridge';
@@ -50,10 +51,8 @@ export function TerminalPane({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const workspaceId = useWorkspaceStore((s) => s.workspace.id);
-  // Mirrors BackgroundLayer's source resolution: slideshow image when active,
-  // else the static image. Keeps xterm transparent whenever a layer is visible.
-  const slideshowActive = !!terminalBackground?.slideshow.enabled && !!slideshowFrame?.currentPath;
-  const hasBackgroundImage = slideshowActive || !!terminalBackground?.imagePath;
+  // Keeps xterm transparent whenever a layer is visible.
+  const hasBackgroundImage = resolveBackgroundSrc(terminalBackground, slideshowFrame) !== null;
   const { focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(containerRef, {
     paneId,
     cwd,

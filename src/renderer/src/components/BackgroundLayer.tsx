@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import type { TerminalBackground } from '../../../shared/types';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
 import { toFleetImageUrl } from '../../../shared/path-platform';
+import { resolveBackgroundSrc } from '../lib/pane-background';
 
 const FIT_STYLES: Record<TerminalBackground['fit'], { size: string; repeat: string }> = {
   cover: { size: 'cover', repeat: 'no-repeat' },
@@ -50,7 +51,7 @@ export function BackgroundLayer({
   frame
 }: BackgroundLayerProps): React.JSX.Element | null {
   const slideshowOn = background.slideshow.enabled;
-  const currentSrc = slideshowOn && frame?.currentPath ? frame.currentPath : background.imagePath;
+  const currentSrc = resolveBackgroundSrc(background, frame);
   if (!currentSrc) return null;
 
   const fadeMs = reducedMotionQuery.matches ? 0 : background.slideshow.transitionMs;

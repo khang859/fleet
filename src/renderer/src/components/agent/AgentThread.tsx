@@ -236,7 +236,7 @@ function Message({
       <div className="flex flex-col items-end gap-1.5">
         <AgentMessageAttachments attachments={messageAttachments(message)} />
         {text !== '' && (
-          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-fleet-surface-2 px-3.5 py-2 text-sm text-fleet-text">
+          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-fleet-glass-surface-2 px-3.5 py-2 text-sm text-fleet-text backdrop-blur-md">
             {text}
           </div>
         )}
@@ -623,7 +623,7 @@ function Composer({
         </Notice>
       )}
       <div
-        className={`relative flex flex-col gap-2 rounded-xl border bg-fleet-surface p-2 ${
+        className={`relative flex flex-col gap-2 rounded-xl border bg-fleet-glass-surface p-2 backdrop-blur-md ${
           dragging
             ? 'border-fleet-accent'
             : 'border-fleet-border focus-within:border-fleet-border-strong'
