@@ -17,7 +17,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
     "rebuild:node": "npm rebuild better-sqlite3",
-    "rebuild:electron": "electron-builder install-app-deps",
+    "rebuild:electron": "electron-builder install-app-deps && electron-rebuild -f -w better-sqlite3",
     "predev": "npm run rebuild:electron && npm run copy:pdfjs",
     "dev": "npm run build:hook && FLEET_DEV=1 electron-vite dev",
     "drive": "tsx scripts/drive/cli.ts",
