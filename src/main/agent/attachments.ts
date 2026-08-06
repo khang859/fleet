@@ -3,8 +3,6 @@ import { basename, extname } from 'node:path';
 import {
   ATTACHMENT_MAX_IMAGE_BYTES,
   ATTACHMENT_MAX_PDF_BYTES,
-  ATTACHMENT_MAX_PDF_PAGES,
-  ATTACHMENT_MAX_PDF_TEXT_CHARS,
   type AgentAttachRequest,
   type AgentAttachResult,
   type AgentAttachment
@@ -13,6 +11,7 @@ import type { AgentToolContext, AgentToolImage } from '../../shared/agent-tools'
 import type { WireContentPart } from './openrouter';
 import { isAgentImagePath, type AgentImageStore } from './image-store';
 import { formatSize, imageMimeFor, isSendableImage, toDataUrl } from './image-kinds';
+import { parsePdf } from './pdf/parse';
 import { displayPath, resolveInsideCwd } from './tools/paths';
 import { runRead } from './tools/read';
 import { createLogger } from '../logger';
@@ -103,68 +102,9 @@ async function resolve(req: AgentAttachRequest, store: AgentImageStore): Promise
   return { kind: 'mention', path: abs };
 }
 
-/**
- * A PDF's words.
- *
- * Extracted here rather than sent to the provider's own parser, which would
- * re-parse - and re-charge for - the same document on every turn, since Fleet
- * resends the whole conversation each time. Doing it once on the machine also
- * means a PDF works on any model rather than only on one that can see.
- */
+/** A PDF, as words. The reading itself happens off this thread - see `./pdf/parse`. */
 async function readPdf(name: string, bytes: Uint8Array): Promise<AgentAttachment> {
-  // The legacy build is the one that runs outside a browser. Imported here
-  // rather than at the top of the file because it is 800KB of parser that a
-  // conversation without a PDF in it should never pay to load.
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const task = pdfjs.getDocument({
-    data: bytes,
-    // Nothing here has a network or a DOM: this is a document being read for
-    // its words, not one being drawn.
-    useWorkerFetch: false,
-    isEvalSupported: false,
-    useSystemFonts: false
-  });
-
-  // A document that never opens still built a parser to fail in. Encrypted and
-  // truncated PDFs reject here, and nothing on that path takes the parser -
-  // or the twenty megabytes it is holding - back down.
-  const doc = await task.promise.catch(async (err: unknown) => {
-    await task.destroy();
-    throw err;
-  });
-
-  try {
-    const pages = Math.min(doc.numPages, ATTACHMENT_MAX_PDF_PAGES);
-    let text = '';
-    for (let page = 1; page <= pages && text.length < ATTACHMENT_MAX_PDF_TEXT_CHARS; page++) {
-      const content = await (await doc.getPage(page)).getTextContent();
-      for (const item of content.items) {
-        if (!('str' in item)) continue;
-        text += item.str;
-        if (item.hasEOL) text += '\n';
-      }
-      text += '\n';
-    }
-    return {
-      kind: 'pdf',
-      name,
-      text: clipPdfText(text.trim(), doc.numPages, pages),
-      pages: doc.numPages,
-      // A scan is a picture of a document rather than a document. Saying so is
-      // the whole of what Fleet can do about it, and saying nothing would leave
-      // the user with a page count and an agent that had read nothing.
-      scanned: text.trim() === ''
-    };
-  } finally {
-    await doc.destroy();
-  }
-}
-
-/** Cut at the ceiling, with what was left out said out loud rather than implied. */
-function clipPdfText(text: string, total: number, read: number): string {
-  const missing = read < total ? `\n\n… pages ${read + 1}-${total} were not read.` : '';
-  if (text.length <= ATTACHMENT_MAX_PDF_TEXT_CHARS) return `${text}${missing}`;
-  return `${text.slice(0, ATTACHMENT_MAX_PDF_TEXT_CHARS)}\n\n… the rest of this document was cut.`;
+  return { kind: 'pdf', name, ...(await parsePdf(bytes)) };
 }
 
 /**

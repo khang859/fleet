@@ -9,10 +9,23 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { attachmentWireParts, resolveAttachment } from '../attachments';
 import { AgentImageStore } from '../image-store';
 import type { AgentAttachRequest } from '../../../shared/agent-types';
+
+// The reading itself is a worker thread, and a worker needs a built .mjs that
+// does not exist while these run. What pdfjs makes of real bytes is
+// `pdf/__tests__/extract.test.ts`'s subject; this file's is what happens to the
+// answer once it comes back.
+vi.mock('../pdf/parse', () => ({
+  parsePdf: async (bytes: Uint8Array) =>
+    Promise.resolve(
+      bytes.byteLength === 0
+        ? { text: '', pages: 1, scanned: true }
+        : { text: 'Fleet attachments are read locally.', pages: 3, scanned: false }
+    )
+}));
 
 /**
  * What the user hands over, and what the model ends up seeing.
@@ -29,45 +42,6 @@ const THREAD = '11111111-2222-4333-8444-555555555555';
 let dir: string;
 let store: AgentImageStore;
 let storeRoot: string;
-
-/**
- * A real PDF, written out by hand.
- *
- * Built here rather than checked in as bytes or produced by whatever converter
- * the machine happens to have: this has to run the same on a laptop and on CI,
- * and a fixture whose contents nobody can read is a fixture nobody can change.
- * It is the smallest document pdfjs will accept - a catalog, one page, one font
- * and a content stream - with the byte offsets in the cross-reference table
- * counted as it is assembled.
- */
-function pdfWith(lines: string[]): ArrayBuffer {
-  const content =
-    lines.length === 0
-      ? ''
-      : `BT /F1 12 Tf 72 720 Td 14 TL\n${lines.map((l) => `(${l}) Tj T*`).join('\n')}\nET\n`;
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ' +
-      '/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    `<< /Length ${content.length} >>\nstream\n${content}endstream`
-  ];
-
-  let pdf = '%PDF-1.4\n';
-  const offsets: number[] = [];
-  objects.forEach((body, i) => {
-    offsets.push(pdf.length);
-    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
-  });
-
-  const startxref = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (const at of offsets) pdf += `${String(at).padStart(10, '0')} 00000 n \n`;
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\n`;
-  pdf += `startxref\n${startxref}\n%%EOF\n`;
-  return new TextEncoder().encode(pdf).buffer;
-}
 
 function file(rel: string, contents: string): string {
   const path = join(dir, rel);
@@ -133,37 +107,47 @@ describe('pasted, dropped and picked files', () => {
 });
 
 describe('PDFs', () => {
-  it('reads the words out once, on this machine, rather than sending the file', async () => {
-    const bytes = pdfWith(['Fleet attachments are read locally.']);
-
+  it('keeps the words and nothing else - not the file they came out of', async () => {
     const result = await attach({
       kind: 'bytes',
       name: 'notes.pdf',
       mimeType: 'application/pdf',
-      bytes
+      bytes: new ArrayBuffer(1024)
     });
 
-    expect(result.ok).toBe(true);
     if (!result.ok || result.attachment.kind !== 'pdf') throw new Error('not a pdf');
-    expect(result.attachment.text).toContain('Fleet attachments are read locally.');
-    expect(result.attachment.pages).toBe(1);
-    expect(result.attachment.scanned).toBe(false);
+    expect(result.attachment).toEqual({
+      kind: 'pdf',
+      name: 'notes.pdf',
+      text: 'Fleet attachments are read locally.',
+      pages: 3,
+      scanned: false
+    });
     // Nothing about the file survives beyond its words.
     expect(readdirSync(storeRoot)).toHaveLength(0);
   });
 
-  it('says so when there is no text in it at all', async () => {
-    const bytes = pdfWith([]);
-
+  it('carries through that there was nothing in it to read', async () => {
     const result = await attach({
       kind: 'bytes',
       name: 'scan.pdf',
       mimeType: 'application/pdf',
-      bytes
+      bytes: new ArrayBuffer(0)
     });
 
     if (!result.ok || result.attachment.kind !== 'pdf') throw new Error('not a pdf');
     expect(result.attachment.scanned).toBe(true);
+  });
+
+  it('refuses one past the ceiling without ever opening it', async () => {
+    const result = await attach({
+      kind: 'bytes',
+      name: 'huge.pdf',
+      mimeType: 'application/pdf',
+      bytes: new ArrayBuffer(20_000_001)
+    });
+
+    expect(result).toEqual({ ok: false, error: expect.stringContaining('too large') });
   });
 });
 
