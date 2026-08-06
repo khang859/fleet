@@ -75,6 +75,12 @@ export const IPC_CHANNELS = {
   IMAGES_LIST_ACTIONS: 'images:list-actions',
   LOG_BATCH: 'log:batch',
   ACTIVITY_STATE: 'activity:state',
+  /** Renderer -> main: which panes the user can currently see. */
+  ACTIVITY_VISIBLE_PANES: 'activity:visible-panes',
+  /** Renderer -> main: a pane that reports its own state, having no process to watch. */
+  ACTIVITY_REPORT: 'activity:report',
+  /** Main -> renderer: ring the chime. Main owns how loud an event is. */
+  ACTIVITY_CHIME: 'activity:chime',
   AI_SUMMARIZE_PANE: 'ai:summarize-pane',
   REMOTE_STATE: 'remote:state',
   WORKTREE_CREATE: 'worktree:create',

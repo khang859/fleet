@@ -27,6 +27,7 @@ import type {
   LogEntry,
   DiagnosticsInfo,
   ActivityStatePayload,
+  ActivityReportPayload,
   RemoteStatePayload,
   WorktreeCreateRequest,
   WorktreeCreateResponse,
@@ -306,7 +307,14 @@ const fleetApi = {
   },
   activity: {
     onStateChange: (callback: (payload: ActivityStatePayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.ACTIVITY_STATE, callback)
+      onChannel(IPC_CHANNELS.ACTIVITY_STATE, callback),
+    /** Tell main what the user can see, so it can judge how loudly to say things. */
+    visiblePanes: (paneIds: string[]): void =>
+      ipcRenderer.send(IPC_CHANNELS.ACTIVITY_VISIBLE_PANES, paneIds),
+    /** Report a pane that has no process for main to watch. */
+    report: (payload: ActivityReportPayload): void =>
+      ipcRenderer.send(IPC_CHANNELS.ACTIVITY_REPORT, payload),
+    onChime: (callback: () => void): Unsubscribe => onChannel(IPC_CHANNELS.ACTIVITY_CHIME, callback)
   },
   ai: {
     summarizePane: async (paneId: string, tailText: string): Promise<string> =>

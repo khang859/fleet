@@ -24,7 +24,6 @@ import { useSettingsStore } from './settings-store';
 import { useNotificationStore } from './notification-store';
 import { registerPaneDisposer, useWorkspaceStore } from './workspace-store';
 import { draftInto } from '../hooks/use-terminal';
-import { playChime } from '../lib/chime';
 import { createLogger } from '../logger';
 import type { ActivityState } from '../../../shared/types';
 
@@ -47,13 +46,21 @@ function reportActivity(paneId: string, state: ActivityState): void {
   if (previous === state) return;
 
   store.setActivity({ paneId, state, lastOutputAt: now, timestamp: now });
-  // Only on the way in, and only if the user asked to hear about it. Main
-  // dedupes its own transitions for the same reason: a question that is still
-  // waiting is not a new question.
-  if (state !== 'needs_me') return;
-  if (useSettingsStore.getState().settings?.notifications.needsPermission.sound === true) {
-    playChime();
-  }
+  // And again to main, which draws the dock badge and the window title and
+  // decides whether this is worth a sound or a desktop notification. It cannot
+  // work any of that out for itself: an agent pane has no process to watch.
+  //
+  // The folder rides along because a desktop notification has no sidebar to
+  // point at: "an agent needs your permission" is the one fact the user with
+  // four panes running already has.
+  window.fleet.activity.report({ paneId, state, label: folderName(paneId) });
+}
+
+/** The last segment of the pane's working folder, as something to call it. */
+function folderName(paneId: string): string | undefined {
+  const cwd = useAgentStore.getState().threads[paneId]?.cwd;
+  if (cwd === undefined || cwd === '') return undefined;
+  return cwd.split(/[/\\]/).filter(Boolean).at(-1);
 }
 
 /**
@@ -164,6 +171,8 @@ type AgentStoreState = {
   decidePermission: (paneId: string, outcome: AgentPermissionOutcome) => void;
   /** The pane is gone: stop its turn and forget it. */
   disposePane: (paneId: string) => void;
+  /** The user is looking at this pane: drop a badge that has now been read. */
+  markSeen: (paneId: string) => void;
 };
 
 export const useAgentStore = create<AgentStoreState>((set, get) => ({
@@ -324,12 +333,37 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   disposePane: (paneId) => {
     get().cancel(paneId);
     useNotificationStore.getState().clearActivity(paneId);
+    // Main is told outright, because it will not find out. `pane-closed` is
+    // emitted by the PTY paths, and this pane never had one - so a record left
+    // behind here is a dock badge that outlives the pane it counted.
+    window.fleet.activity.report({ paneId, state: 'gone' });
+
     set((s) => {
       if (!s.threads[paneId]) return { threads: s.threads };
       const next = { ...s.threads };
       delete next[paneId];
       return { threads: next };
     });
+  },
+
+  /*
+   * A badge is a message that has not been read yet, so reading it is what
+   * takes it down. Left up, it is on screen next to the thing it is pointing
+   * at, and a badge that survives being looked at teaches the user to stop
+   * looking at badges.
+   *
+   * Only what the pane has already said: a question is still unanswered however
+   * long it is looked at, and clearing that would take the pane out of "needs
+   * you" while it still does.
+   */
+  markSeen: (paneId) => {
+    // Only a pane this store speaks for. A terminal's state is main's, read off
+    // a live process, and clearing it here would be a disagreement main wins
+    // the moment the process says anything.
+    if (get().threads[paneId] === undefined) return;
+    const state = useNotificationStore.getState().getActivity(paneId)?.state;
+    if (state !== 'done' && state !== 'error') return;
+    reportActivity(paneId, 'idle');
   }
 }));
 
@@ -446,6 +480,15 @@ function handOff(streamId: string, command: string): void {
   if (paneId === null) return;
   log.debug('handOff', { paneId, command });
   draftInto(paneId, command);
+  // The command sits on a prompt until the user presses Enter, which is the
+  // one thing this tool is for - so the terminal is waiting on them just as
+  // surely as a permission question is, and used to say nothing at all.
+  //
+  // Reported to main rather than written here: that pane has a process, and
+  // main is the one watching it. Main latches the state through the tracker
+  // that owns it, so the echo of the typed command cannot clear it and the
+  // user's Enter can.
+  window.fleet.activity.report({ paneId, state: 'needs_me' });
 }
 
 function endTurn(streamId: string, error: string | null, usage: AgentUsage | null): void {
@@ -478,8 +521,11 @@ function endTurn(streamId: string, error: string | null, usage: AgentUsage | nul
 
   // The turn is over however it ended, so the pane is no longer waiting on
   // anyone. A failure keeps a badge, since the pane has something to say that
-  // nobody watching another tab has seen.
-  reportActivity(paneId, error === null ? 'idle' : 'error');
+  // nobody watching another tab has seen - and so does a reply, which is the
+  // whole reason someone left it running. A compaction that ended here was
+  // cancelled or failed and produced no answer, so it announces nothing.
+  const finished: ActivityState = wasCompacting ? 'idle' : 'done';
+  reportActivity(paneId, error === null ? finished : 'error');
 
   // The reply is only written down once it has stopped changing. A turn that
   // was cancelled or failed part-way is recorded as far as it got, since that

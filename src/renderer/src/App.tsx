@@ -242,6 +242,11 @@ export function App(): React.JSX.Element {
       const tab = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
       if (tab) {
         useWorkspaceStore.setState({ activeTabId: tab.id, activePaneId: paneId });
+        // Being on the right tab is not being in front of the thing that asked:
+        // a terminal still has to take the cursor, and an agent pane parked on
+        // its Settings view would show a settings screen to someone who came
+        // here to answer a question.
+        document.dispatchEvent(new CustomEvent('fleet:refocus-pane', { detail: { paneId } }));
       }
     });
   }, []);

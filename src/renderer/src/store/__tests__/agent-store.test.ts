@@ -15,11 +15,6 @@ import type * as SettingsStore from '../settings-store';
 import type * as WorkspaceStore from '../workspace-store';
 import type * as NotificationStore from '../notification-store';
 
-// The chime builds an Audio element from a Blob URL, neither of which exists in
-// a Node test environment. What matters here is whether it was rung.
-const chimed = vi.fn();
-vi.mock('../../lib/chime', () => ({ playChime: () => chimed() }));
-
 /**
  * Compaction, from the pane's side: when it fires on its own, when it must not,
  * and what the transcript looks like afterwards. Nearly all of the risk in this
@@ -35,6 +30,14 @@ const CONTEXT_LIMIT = 100_000;
 const PANE = 'pane-1';
 
 const listeners = new Map<string, Listener>();
+/** What the pane tells main about itself, so the dock and the sound follow. */
+const activityApi = {
+  report: vi.fn(),
+  visiblePanes: vi.fn(),
+  onChime: vi.fn().mockReturnValue(() => {}),
+  onStateChange: vi.fn().mockReturnValue(() => {})
+};
+
 const agentApi = {
   send: vi.fn(),
   compact: vi.fn(),
@@ -173,6 +176,7 @@ beforeEach(async () => {
       decidePermission: agentApi.decidePermission
     },
     pty: { input: vi.fn() },
+    activity: activityApi,
     chat: {
       hasKey: vi.fn().mockResolvedValue(true),
       setKey: vi.fn().mockResolvedValue(undefined),
@@ -185,7 +189,7 @@ beforeEach(async () => {
   agentStore = await import('../agent-store');
   settingsStore = await import('../settings-store');
   notificationStore = await import('../notification-store');
-  chimed.mockClear();
+  activityApi.report.mockClear();
   agentStore.useAgentStore.setState({
     catalog: { models: [catalogModel], fetchedAt: 1, source: 'cache', error: null },
     threads: {}
@@ -737,6 +741,33 @@ describe('handing a command to the user', () => {
     expect(workspace.collectPaneLeafs(tab.splitRoot)).toHaveLength(2);
   });
 
+  /*
+   * A command left on a prompt is waiting on the user exactly as a permission
+   * question is - it is their Enter the whole tool exists to get - and it used
+   * to say nothing at all to anyone not already looking at that terminal.
+   *
+   * Reported to main rather than written into the activity map here: that pane
+   * has a process, and main is the one watching it. Anything written locally
+   * would be undone by the echo of the command as it is typed.
+   */
+  it('says the terminal is now waiting on the user', async () => {
+    const workspace = await workspaceWith();
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'log me in');
+    activityApi.report.mockClear();
+
+    emit(IPC_CHANNELS.AGENT_HAND_OFF, {
+      streamId: liveStreamId(),
+      command: 'gh auth login'
+    });
+
+    const tab = workspace.useWorkspaceStore.getState().workspace.tabs[0];
+    const terminal = workspace.collectPaneLeafs(tab.splitRoot).find((leaf) => leaf.id !== PANE);
+    expect(activityApi.report).toHaveBeenCalledWith({
+      paneId: terminal?.id,
+      state: 'needs_me'
+    });
+  });
+
   // The turn is how the command finds its pane, so a stale one has no pane to
   // find - and typing into whichever terminal happened to be open would be
   // worse than doing nothing.
@@ -866,19 +897,35 @@ describe('telling the rest of the app it is blocked', () => {
     });
   }
 
-  it('marks the pane as wanting the user, and says so out loud', () => {
+  /** Every state this pane reported to main, in order. */
+  const reported = (): unknown[] => activityApi.report.mock.calls.map((call) => call[0]?.state);
+
+  it('marks the pane as wanting the user, and tells main so', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
     ask();
 
     expect(activityOf()).toBe('needs_me');
-    expect(chimed).toHaveBeenCalledTimes(1);
+    // Main draws the dock badge and decides whether this is worth a sound; it
+    // has no process here to learn any of it from.
+    expect(reported()).toEqual(['working', 'needs_me']);
+  });
+
+  it('names the folder it is asking about, for a notification with no sidebar', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/Users/x/work/fleet', 'clean up');
+    ask();
+
+    expect(activityApi.report).toHaveBeenLastCalledWith({
+      paneId: PANE,
+      state: 'needs_me',
+      label: 'fleet'
+    });
   });
 
   it('is working, not waiting, while the turn runs', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
 
     expect(activityOf()).toBe('working');
-    expect(chimed).not.toHaveBeenCalled();
+    expect(reported()).toEqual(['working']);
   });
 
   it('stops asking once the question is answered', () => {
@@ -890,22 +937,55 @@ describe('telling the rest of the app it is blocked', () => {
     expect(activityOf()).toBe('working');
   });
 
-  it('rings once for one question, however often the pane re-renders', () => {
+  // A question that is still waiting is not a new question, and main turns each
+  // report into a sound or a banner.
+  it('reports one question once, however often it is re-announced', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
     ask();
     ask();
 
-    expect(chimed).toHaveBeenCalledTimes(1);
+    expect(reported()).toEqual(['working', 'needs_me']);
   });
 
-  it('goes quiet when the turn ends', () => {
+  it('has something to say when the turn finishes, not nothing', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
     const streamId = liveStreamId();
     ask();
 
     emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
 
+    // The reply is the whole reason someone left it running, so the pane keeps
+    // a badge until it has been looked at.
+    expect(activityOf()).toBe('done');
+  });
+
+  it('drops the badge once the user has seen the pane, but never an open question', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
+    const streamId = liveStreamId();
+    emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
+
+    agentStore.useAgentStore.getState().markSeen(PANE);
     expect(activityOf()).toBe('idle');
+
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'again');
+    ask();
+    agentStore.useAgentStore.getState().markSeen(PANE);
+    expect(activityOf()).toBe('needs_me');
+  });
+
+  it('leaves a pane it does not speak for alone', () => {
+    notificationStore.useNotificationStore.getState().setActivity({
+      paneId: 'a-terminal',
+      state: 'error',
+      lastOutputAt: 0,
+      timestamp: 0
+    });
+
+    agentStore.useAgentStore.getState().markSeen('a-terminal');
+
+    // Main watches that pane off a live process and would put back anything
+    // cleared behind its back.
+    expect(activityOf('a-terminal')).toBe('error');
   });
 
   it('keeps a badge on a turn that failed', () => {
@@ -917,13 +997,15 @@ describe('telling the rest of the app it is blocked', () => {
     expect(activityOf()).toBe('error');
   });
 
-  it('stays silent when the user has turned the sound off', () => {
+  // How loud to be is main's to decide, from where the user is and what they
+  // allowed; the pane's job is to say what happened either way.
+  it('reports the question whatever the user has silenced', () => {
     settingsStore.useSettingsStore.setState({
       settings: {
         ...DEFAULT_SETTINGS,
         notifications: {
           ...DEFAULT_SETTINGS.notifications,
-          needsPermission: { ...DEFAULT_SETTINGS.notifications.needsPermission, sound: false }
+          needsPermission: { badge: false, sound: false, os: false }
         }
       }
     });
@@ -931,7 +1013,7 @@ describe('telling the rest of the app it is blocked', () => {
     ask();
 
     expect(activityOf()).toBe('needs_me');
-    expect(chimed).not.toHaveBeenCalled();
+    expect(reported()).toEqual(['working', 'needs_me']);
   });
 
   // Otherwise "jump to the agent that needs input" has somewhere to send the
@@ -943,6 +1025,18 @@ describe('telling the rest of the app it is blocked', () => {
     agentStore.useAgentStore.getState().disposePane(PANE);
 
     expect(activityOf()).toBeUndefined();
+  });
+
+  // Main will not find out on its own: `pane-closed` is emitted by the PTY
+  // paths and this pane never had one, so the dock would keep counting a
+  // question nobody can answer any more.
+  it('tells main the pane is gone, since nothing else will', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
+    ask();
+
+    agentStore.useAgentStore.getState().disposePane(PANE);
+
+    expect(activityApi.report).toHaveBeenLastCalledWith({ paneId: PANE, state: 'gone' });
   });
 });
 

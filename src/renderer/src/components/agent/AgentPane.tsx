@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { z } from 'zod';
 import { Bot, History, SlidersHorizontal } from 'lucide-react';
 import { AgentThread } from './AgentThread';
 import { AgentSessionsTab } from './AgentSessionsTab';
@@ -6,6 +7,9 @@ import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
 import { useAgentStore } from '../../store/agent-store';
 
 type AgentView = 'agent' | 'sessions' | 'settings';
+
+/** The pane a `fleet:refocus-pane` event is about. */
+const RefocusDetail = z.object({ paneId: z.string() });
 
 const TABS = [
   { value: 'agent', label: 'Agent', Icon: Bot },
@@ -45,6 +49,20 @@ export function AgentPane({
     if (sessionId === undefined) return;
     void openSession(paneId, sessionId, cwd);
   }, [openSession, paneId, sessionId, cwd]);
+
+  // Sent here by something that wanted this pane looked at - a click on a
+  // desktop notification, the palette's "needs you". Whatever it was asking
+  // about is in the conversation, so that is what the pane comes back to.
+  useEffect(() => {
+    const handler = (event: Event): void => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = RefocusDetail.safeParse(event.detail);
+      if (!detail.success || detail.data.paneId !== paneId) return;
+      setView('agent');
+    };
+    document.addEventListener('fleet:refocus-pane', handler);
+    return () => document.removeEventListener('fleet:refocus-pane', handler);
+  }, [paneId]);
 
   return (
     <div className="flex h-full w-full flex-col bg-fleet-bg">
