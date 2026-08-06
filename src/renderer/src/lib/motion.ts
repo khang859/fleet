@@ -17,9 +17,16 @@ export const motionTokens = {
  * Shared timing for overlay enter/exit: ease-out-expo, with exits faster than
  * entrances (150ms in, 100ms out) so dismissing something never feels like it
  * lingers. Compose into a component's animate-in/out classes.
+ *
+ * The exit holds its last frame (`fill-mode-forwards`). tw-animate-css defaults
+ * animations to `fill-mode: none`, so an element whose exit has finished snaps
+ * back to full opacity and full size for however long it stays mounted - and
+ * something has to unmount it, which costs at least a render and a paint. That
+ * shows as a flash of the whole overlay on the way out, worst where the panel
+ * is large. Holding the end state makes the gap invisible however long it is.
  */
 export const overlayTiming =
-  'ease-[cubic-bezier(.16,1,.3,1)] data-[state=open]:duration-150 data-[state=closed]:duration-100';
+  'ease-[cubic-bezier(.16,1,.3,1)] data-[state=open]:duration-150 data-[state=closed]:duration-100 data-[state=closed]:fill-mode-forwards';
 
 /** Exit duration (ms) matching `overlayTiming`'s `data-[state=closed]:duration-100` — pass to `usePresence` so unmount doesn't cut the animation short. */
 export const overlayExitMs = 100;

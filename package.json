@@ -93,6 +93,7 @@
     "pdfjs-dist": "4.10.38",
     "pid-cwd": "^1.2.0",
     "react-markdown": "^10.1.0",
+    "react-zoom-pan-pinch": "^4.0.4",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "shell-env": "^4.0.3",

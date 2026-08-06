@@ -1,5 +1,15 @@
 import { useState } from 'react';
+import { RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-react';
+import {
+  TransformComponent,
+  TransformWrapper,
+  useControls,
+  useTransformEffect
+} from 'react-zoom-pan-pinch';
 import { Overlay } from '../Overlay';
+
+/** How far in the viewer will go. Past this a generated image is only pixels. */
+const MAX_SCALE = 8;
 
 /**
  * A picture the agent made.
@@ -29,17 +39,89 @@ export function AgentImage({ src, alt }: { src: string; alt: string }): React.JS
         <img src={src} alt={alt} className="block max-h-80 w-auto max-w-full object-contain" />
       </button>
 
-      <Overlay
-        open={zoomed}
-        onClose={() => setZoomed(false)}
-        panelClassName="rounded-lg overflow-hidden"
-      >
-        {/* Capped to the viewport rather than shown at native size: a 4K render
-            would otherwise open larger than the window and be scrolled to look
-            at, which is worse than the row it came from. */}
-        <img src={src} alt={alt} className="block max-h-[88vh] max-w-[92vw] object-contain" />
+      <Overlay open={zoomed} onClose={() => setZoomed(false)} panelClassName="relative">
+        <TransformWrapper maxScale={MAX_SCALE} doubleClick={{ mode: 'toggle', step: 1 }}>
+          <Viewer src={src} alt={alt} onClose={() => setZoomed(false)} />
+        </TransformWrapper>
       </Overlay>
     </>
+  );
+}
+
+/**
+ * The opened image and its controls.
+ *
+ * Separate from {@link AgentImage} only because the zoom hooks have to run
+ * under the wrapper that owns the transform.
+ */
+function Viewer({
+  src,
+  alt,
+  onClose
+}: {
+  src: string;
+  alt: string;
+  onClose: () => void;
+}): React.JSX.Element {
+  const { zoomIn, zoomOut, resetTransform } = useControls();
+  const [magnified, setMagnified] = useState(false);
+  // Fires on every frame of a pan, but only ever hands React the same boolean,
+  // which it bails out of - so the cursor and the disabled buttons stay honest
+  // without a render per frame.
+  useTransformEffect(({ state }) => setMagnified(state.scale > 1.01));
+
+  return (
+    <>
+      <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-md border border-white/10 bg-black/60 p-0.5 backdrop-blur-sm">
+        <Tool label="Zoom out" onClick={() => zoomOut()} disabled={!magnified}>
+          <ZoomOut size={15} />
+        </Tool>
+        <Tool label="Zoom in" onClick={() => zoomIn()}>
+          <ZoomIn size={15} />
+        </Tool>
+        <Tool label="Reset zoom" onClick={() => resetTransform()} disabled={!magnified}>
+          <RotateCcw size={15} />
+        </Tool>
+        <Tool label="Close" onClick={onClose}>
+          <X size={15} />
+        </Tool>
+      </div>
+
+      {/* Capped to the viewport rather than shown at native size: a 4K render
+          would otherwise open larger than the window and be scrolled to look
+          at, which is worse than the row it came from. Zooming past that is
+          what the controls are for. */}
+      <TransformComponent
+        wrapperClass={`rounded-lg ${magnified ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      >
+        <img src={src} alt={alt} className="block max-h-[88vh] max-w-[92vw] object-contain" />
+      </TransformComponent>
+    </>
+  );
+}
+
+function Tool({
+  label,
+  onClick,
+  disabled = false,
+  children
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className="rounded p-1.5 text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-35 focus-ring"
+    >
+      {children}
+    </button>
   );
 }
 
