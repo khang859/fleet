@@ -14,6 +14,11 @@ import { z } from 'zod';
  * result is context the user pays for and never sees. The rule they follow: cut
  * at a boundary, and say what was cut and how to ask for the rest. A truncated
  * result the model believes is complete is worse than no result at all.
+ *
+ * `terminal` and `image` sit outside that set. Neither is a way of working on
+ * the code: one hands a command to the user because it needs a person, and the
+ * other makes a picture. `image` is also the only tool here that is not always
+ * offered - without an image model configured it is not advertised at all.
  */
 
 export const AGENT_TOOL_NAMES = [
@@ -23,7 +28,8 @@ export const AGENT_TOOL_NAMES = [
   'edit',
   'write',
   'bash',
-  'terminal'
+  'terminal',
+  'image'
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
@@ -149,6 +155,39 @@ function isControlChar(c: string): boolean {
   return c < ' ' || c === '\u007f';
 }
 
+/**
+ * Aspect ratios the images endpoint normalizes. A closed list rather than a
+ * free string: a model that invents `1920:1080` gets an error from the provider
+ * halfway through a paid call, where a rejected argument costs nothing.
+ */
+export const IMAGE_ASPECT_RATIOS = [
+  '1:1',
+  '16:9',
+  '9:16',
+  '4:3',
+  '3:4',
+  '3:2',
+  '2:3',
+  '21:9'
+] as const;
+
+/**
+ * Reference images one edit may cite. Each one is uploaded with the request, so
+ * the ceiling is about what the call costs and what providers accept rather
+ * than about anything Fleet cannot do.
+ */
+export const IMAGE_MAX_REFERENCES = 4;
+
+export const ImageArgs = z.object({
+  prompt: z.string().min(1),
+  /**
+   * Images to work from, turning generation into editing. Paths, not bytes:
+   * the pixels never travel through the model's arguments.
+   */
+  references: z.array(z.string().min(1)).max(IMAGE_MAX_REFERENCES).optional(),
+  aspectRatio: z.enum(IMAGE_ASPECT_RATIOS).optional()
+});
+
 export const TerminalArgs = z.object({
   command: z
     .string()
@@ -169,6 +208,7 @@ export type EditArgs = z.infer<typeof EditArgs>;
 export type WriteArgs = z.infer<typeof WriteArgs>;
 export type BashArgs = z.infer<typeof BashArgs>;
 export type TerminalArgs = z.infer<typeof TerminalArgs>;
+export type ImageArgs = z.infer<typeof ImageArgs>;
 
 /** The JSON Schema for one tool, as the completions API wants it. */
 export type AgentToolSpec = {
@@ -229,9 +269,20 @@ const TERMINAL_DESCRIPTION = [
   'Never work around a prompt instead: no piping a password into `sudo -S`, and no secret on a command line.'
 ].join(' ');
 
+const IMAGE_DESCRIPTION = [
+  'Generate an image from a description, or edit existing ones by naming them in `references`.',
+  'One image per call - call it again for a variation rather than expecting several from one.',
+  'Write `prompt` as a description of the finished picture: subject, composition, style, colours. When editing, describe the result you want, not the change as an instruction.',
+  'References are paths to images in the working folder, or to images you generated earlier in this conversation.',
+  'The file is saved outside the working folder and its path comes back to you; copy it in with `bash` if it belongs in the project. The user is shown the image, so do not describe it back to them.'
+].join(' ');
+
 /**
  * What the model is told it can call. Kept next to the zod schemas above so the
  * shape advertised and the shape enforced cannot drift apart.
+ *
+ * Everything here is offered on every turn except `image` - see `toolSpecsFor`,
+ * which is what a turn should actually send.
  */
 export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
   {
@@ -376,8 +427,46 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
         additionalProperties: false
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'image',
+      description: IMAGE_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          prompt: { type: 'string', description: 'A description of the finished image.' },
+          references: {
+            type: 'array',
+            items: { type: 'string' },
+            maxItems: IMAGE_MAX_REFERENCES,
+            description:
+              'Paths of images to work from. Present means editing rather than generating.'
+          },
+          aspectRatio: {
+            type: 'string',
+            enum: [...IMAGE_ASPECT_RATIOS],
+            description: "Shape of the image. Defaults to the model's own."
+          }
+        },
+        required: ['prompt'],
+        additionalProperties: false
+      }
+    }
   }
 ];
+
+/**
+ * The tools one turn offers.
+ *
+ * `image` is advertised only when there is a model to run it. A tool named in
+ * the request but backed by nothing is worse than a missing tool: the model
+ * spends a round calling it, and the only thing that comes back is an apology.
+ */
+export function toolSpecsFor(options: { image: boolean }): AgentToolSpec[] {
+  return AGENT_TOOL_SPECS.filter((spec) => options.image || spec.function.name !== 'image');
+}
 
 /**
  * One call the model made, and what came back.
@@ -443,7 +532,41 @@ export type AgentToolContext = {
    * a "don't run" is to hand the same line to the user's own terminal.
    */
   wasRefused: (command: string) => boolean;
+  /**
+   * Make a picture, or `null` when no image model is configured.
+   *
+   * A capability rather than a key and a model on the context, so the tool
+   * never holds a credential and settings stay in one place. `null` rather than
+   * a function that always fails, because the difference decides whether the
+   * tool is offered at all - and a call that arrives anyway (an older
+   * transcript, an invented name) can then be told plainly what is off.
+   */
+  generateImage: AgentImageGenerator | null;
 };
+
+/**
+ * What the image tool asks for, once its arguments have been checked.
+ *
+ * Nothing here is about showing anything. The renders that arrive on the way to
+ * the finished image are the pane's business and the service's to forward, so
+ * the tool never learns that they exist.
+ */
+export type AgentImageRequest = {
+  prompt: string;
+  /** Reference images, already read off disk and inlined as data URLs. */
+  references: string[];
+  aspectRatio: string | null;
+};
+
+export type AgentImageBytes = { data: Uint8Array; mimeType: string };
+
+/** The finished image, and what it cost when the provider says. */
+export type AgentImageResponse = AgentImageBytes & { costUsd: number | null };
+
+export type AgentImageGenerator = (
+  req: AgentImageRequest,
+  signal: AbortSignal
+) => Promise<AgentImageResponse>;
 
 /** A finished tool run: what goes to the model, and what the pane shows. */
 export type AgentToolResult = {

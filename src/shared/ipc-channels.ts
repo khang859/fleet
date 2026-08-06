@@ -352,6 +352,11 @@ export const IPC_CHANNELS = {
   AGENT_STREAM_ERROR: 'agent:stream-error',
   AGENT_TOOL_START: 'agent:tool-start',
   AGENT_TOOL_END: 'agent:tool-end',
+  // A half-drawn image, on its way to the finished one. Sent as bytes rather
+  // than a path because a partial is never saved: it is a progress indicator
+  // that happens to look like the answer, and it is thrown away when the real
+  // one lands. Nothing depends on any arriving.
+  AGENT_IMAGE_PARTIAL: 'agent:image-partial',
   // A command the agent cannot run itself - a login, a password prompt, an
   // interactive picker - passed to the renderer to type into a terminal pane
   // beside the agent, where there is a person and a real tty.

@@ -147,6 +147,7 @@ import type {
   AgentCompactDone,
   AgentCompactRequest,
   AgentHandOff,
+  AgentImagePartial,
   AgentPermissionAsk,
   AgentPermissionDecision,
   AgentSendRequest,
@@ -897,6 +898,9 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.AGENT_TOOL_START, cb),
     onToolEnd: (cb: (p: AgentToolEvent) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_TOOL_END, cb),
+    /** A render on the way to a finished image. May never fire. */
+    onImagePartial: (cb: (p: AgentImagePartial) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_IMAGE_PARTIAL, cb),
     onHandOff: (cb: (p: AgentHandOff) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_HAND_OFF, cb),
     onPermissionAsk: (cb: (p: AgentPermissionAsk) => void): Unsubscribe =>

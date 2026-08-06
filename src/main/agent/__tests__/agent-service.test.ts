@@ -765,6 +765,145 @@ describe('the tool loop', () => {
     );
   });
 
+  /*
+   * Image generation is off unless a model has been chosen for it, and off has
+   * to mean the model never hears of the tool. A tool it can name but nothing
+   * can run costs a round and answers with an apology.
+   */
+  describe('image generation', () => {
+    const withImage = {
+      ...SETTINGS,
+      image: { ...SETTINGS.image, model: 'google/gemini-3-pro-image' }
+    };
+
+    /** The request one turn opened with, under the given settings. */
+    async function firstRound(settings: typeof SETTINGS): Promise<StreamRequest> {
+      const { emit, ended } = collector();
+      const rounds: StreamRequest[] = [];
+      const stream = async (req: StreamRequest): Promise<StreamOutcome> => {
+        rounds.push(req);
+        return Promise.resolve({ toolCalls: [] });
+      };
+      new AgentService({
+        gate: PASS_GATE,
+        getSettings: () => settings,
+        getApiKey: () => 'sk-or-test',
+        emit,
+        stream
+      }).send({ ...REQUEST, cwd: dir });
+      await ended;
+      return rounds[0];
+    }
+
+    /** The names of the tools one turn offered, in the order it offered them. */
+    async function toolsOffered(settings: typeof SETTINGS): Promise<string[]> {
+      const round = await firstRound(settings);
+      return (round.tools ?? []).map((spec) => spec.function.name);
+    }
+
+    it('does not offer the image tool when no image model is set', async () => {
+      expect(await toolsOffered(SETTINGS)).not.toContain('image');
+    });
+
+    it('offers it once one is', async () => {
+      expect(await toolsOffered(withImage)).toContain('image');
+    });
+
+    /** The system message one turn opened with. */
+    async function systemPrompt(settings: typeof SETTINGS): Promise<string> {
+      const round = await firstRound(settings);
+      return String(round.messages[0].content);
+    }
+
+    it('leaves the image instructions out of the prompt when it is off', async () => {
+      expect(await systemPrompt(SETTINGS)).not.toContain('`image` generates a picture');
+    });
+
+    it('tells the model about it when it is on', async () => {
+      const prompt = await systemPrompt(withImage);
+      expect(prompt).toContain('`image` generates a picture');
+      // Whatever else is appended, the folder is still the last word.
+      expect(prompt).toContain(`Working folder: ${dir}`);
+    });
+
+    /*
+     * These two stop at the generator. What the tool does with the image it
+     * gets back - where it saves it, what it reports - is its own file's
+     * business, and testing it here would mean writing into the real
+     * ~/.fleet/agent/images. What is checked here is the wiring: that the
+     * capability is built at all, that it carries the right settings, and that
+     * a render on the way out reaches the pane.
+     */
+    it('hands the tool a generator that carries the user’s settings, not the key', async () => {
+      const { emit, ended } = collector();
+      const image = vi.fn(async () =>
+        Promise.resolve({ data: Buffer.from('x'), mimeType: 'image/png', costUsd: 0.02 })
+      );
+      let round = 0;
+      const stream = vi.fn(async () => {
+        round += 1;
+        return Promise.resolve({
+          toolCalls: round === 1 ? [call('image', { prompt: 'a cap' })] : []
+        });
+      });
+
+      new AgentService({
+        gate: PASS_GATE,
+        getSettings: () => ({
+          ...withImage,
+          image: { ...withImage.image, resolution: '2K', quality: 'high', seed: 3 }
+        }),
+        getApiKey: () => 'sk-or-test',
+        emit,
+        stream,
+        image
+      }).send({ ...REQUEST, cwd: dir });
+      await ended;
+
+      expect(image).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'google/gemini-3-pro-image',
+          prompt: 'a cap',
+          apiKey: 'sk-or-test',
+          config: expect.objectContaining({ resolution: '2K', quality: 'high', seed: 3 })
+        }),
+        expect.anything()
+      );
+    });
+
+    it('sends a partial render to the pane, on the row that asked for it', async () => {
+      const { emit, events, ended } = collector();
+      const image = vi.fn(async (req: { onPartial: (p: unknown) => void }) => {
+        req.onPartial({ data: Buffer.from('half drawn'), mimeType: 'image/png' });
+        return Promise.resolve({ data: Buffer.from('x'), mimeType: 'image/png', costUsd: null });
+      });
+      let round = 0;
+      const stream = vi.fn(async () => {
+        round += 1;
+        return Promise.resolve({
+          toolCalls: round === 1 ? [call('image', { prompt: 'a cap' })] : []
+        });
+      });
+
+      new AgentService({
+        gate: PASS_GATE,
+        getSettings: () => withImage,
+        getApiKey: () => 'sk-or-test',
+        emit,
+        stream,
+        image: image as never
+      }).send({ ...REQUEST, cwd: dir });
+      await ended;
+
+      const partial = events.find((e) => e.channel === IPC_CHANNELS.AGENT_IMAGE_PARTIAL);
+      expect(partial?.payload).toMatchObject({
+        streamId: REQUEST.streamId,
+        callId: 'call_1',
+        image: `data:image/png;base64,${Buffer.from('half drawn').toString('base64')}`
+      });
+    });
+  });
+
   // The loop this cannot have: a model that keeps calling tools forever costs
   // money on every lap.
   it('stops after a fixed number of rounds', async () => {

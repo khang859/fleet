@@ -171,6 +171,7 @@ beforeEach(async () => {
       onCompactDone: listen(IPC_CHANNELS.AGENT_COMPACT_DONE),
       onToolStart: listen(IPC_CHANNELS.AGENT_TOOL_START),
       onToolEnd: listen(IPC_CHANNELS.AGENT_TOOL_END),
+      onImagePartial: listen(IPC_CHANNELS.AGENT_IMAGE_PARTIAL),
       onHandOff: listen(IPC_CHANNELS.AGENT_HAND_OFF),
       onPermissionAsk: listen(IPC_CHANNELS.AGENT_PERMISSION_ASK),
       decidePermission: agentApi.decidePermission

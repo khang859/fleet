@@ -22,6 +22,9 @@ import { shortenPath } from '../../lib/shorten-path';
  * The agent's transcript and composer. One streamed turn at a time, which may
  * read its way around the folder before it answers.
  */
+/** Stable empty map, so a pane with no thread does not remount the transcript. */
+const EMPTY_PARTIALS: Record<string, string> = {};
+
 export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): React.JSX.Element {
   const thread = useAgentStore((s) => s.threads[paneId]);
   const send = useAgentStore((s) => s.send);
@@ -39,6 +42,7 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
   const streaming = (thread?.streamId ?? null) !== null;
   const contextTokens = thread?.contextTokens ?? null;
   const ask = thread?.pendingPermission ?? null;
+  const imagePartials = thread?.imagePartials ?? EMPTY_PARTIALS;
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -50,6 +54,7 @@ export function AgentThread({ paneId, cwd }: { paneId: string; cwd: string }): R
           streaming={streaming && !compacting}
           ask={ask}
           onDecide={(outcome) => decidePermission(paneId, outcome)}
+          imagePartials={imagePartials}
         />
       )}
 
@@ -116,12 +121,14 @@ function Transcript({
   messages,
   streaming,
   ask,
-  onDecide
+  onDecide,
+  imagePartials
 }: {
   messages: AgentMessage[];
   streaming: boolean;
   ask: AgentPermissionAsk | null;
   onDecide: (outcome: AgentPermissionOutcome) => void;
+  imagePartials: Record<string, string>;
 }): React.JSX.Element {
   const endRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -165,6 +172,7 @@ function Transcript({
             streaming={streaming && i === messages.length - 1}
             ask={ask}
             onDecide={onDecide}
+            imagePartials={imagePartials}
           />
         ))}
         <div ref={endRef} />
@@ -183,12 +191,15 @@ function Message({
   message,
   streaming,
   ask,
-  onDecide
+  onDecide,
+  imagePartials
 }: {
   message: AgentMessage;
   streaming: boolean;
   ask: AgentPermissionAsk | null;
   onDecide: (outcome: AgentPermissionOutcome) => void;
+  /** Half-drawn renders for the image calls still running, by call id. */
+  imagePartials: Record<string, string>;
 }): React.JSX.Element {
   if (message.role === 'summary') return <SummaryCard summary={messageText(message)} />;
   if (message.role === 'user') {
@@ -223,7 +234,7 @@ function Message({
           ask?.callId === part.call.id ? (
             <AgentPermissionRow key={i} ask={ask} onDecide={onDecide} />
           ) : (
-            <AgentToolRow key={i} call={part.call} />
+            <AgentToolRow key={i} call={part.call} partial={imagePartials[part.call.id]} />
           )
         ) : (
           <div key={i} className="text-fleet-text">

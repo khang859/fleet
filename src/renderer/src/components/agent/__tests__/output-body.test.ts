@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { OUTPUT_SEPARATOR, type AgentToolCall } from '../../../../../shared/agent-tools';
-import { toolBody } from '../output-body';
+import { imageBody, toolBody } from '../output-body';
 
 const call = (over: Partial<AgentToolCall> = {}): AgentToolCall => ({
   id: 'c1',
@@ -46,5 +46,27 @@ describe('toolBody', () => {
   it('has nothing to show for a call still running, or one that printed nothing', () => {
     expect(toolBody(call())).toBeNull();
     expect(toolBody(call({ result: `Finished in 0.1s.\n${OUTPUT_SEPARATOR}\n` }))).toBeNull();
+  });
+});
+
+describe('imageBody', () => {
+  const image = (over: Partial<AgentToolCall> = {}): AgentToolCall =>
+    call({ name: 'image', args: '{"prompt":"a cap"}', ...over });
+
+  it('takes the path from below the separator and serves it over fleet-image', () => {
+    const result = [
+      'Generated an image and saved it to /home/k/.fleet/agent/images/t/a.png (42 KB, $0.04).',
+      'It is outside the working folder.',
+      OUTPUT_SEPARATOR,
+      '/home/k/.fleet/agent/images/t/a.png'
+    ].join('\n');
+
+    expect(imageBody(image({ result }))).toBe('fleet-image:///home/k/.fleet/agent/images/t/a.png');
+  });
+
+  it('has nothing for a call that is not an image, or failed, or is still running', () => {
+    expect(imageBody(call({ result: `x\n${OUTPUT_SEPARATOR}\n/tmp/a.png` }))).toBeNull();
+    expect(imageBody(image({ error: 'no credits' }))).toBeNull();
+    expect(imageBody(image())).toBeNull();
   });
 });

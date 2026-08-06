@@ -92,8 +92,14 @@ export function ParamSlider({
   );
 }
 
-/** Small pill group for a fixed set of values, e.g. reasoning effort levels. */
-export function OptionPills({
+/**
+ * Small pill group for a fixed set of values, e.g. reasoning effort levels.
+ *
+ * Generic in the value so a caller with a narrower union than `string` - the
+ * image resolutions, the quality levels - gets that union back out of
+ * `onChange` rather than having to assert its way to it.
+ */
+export function OptionPills<T extends string>({
   label,
   hint,
   options,
@@ -102,9 +108,9 @@ export function OptionPills({
 }: {
   label: string;
   hint?: string;
-  options: readonly string[];
-  value: string | null;
-  onChange: (next: string | null) => void;
+  options: readonly T[];
+  value: T | null;
+  onChange: (next: T | null) => void;
 }): React.JSX.Element {
   return (
     <div className="flex items-center justify-between gap-4">
@@ -117,23 +123,22 @@ export function OptionPills({
         aria-label={label}
         className="flex shrink-0 items-center gap-0.5 rounded-lg border border-fleet-border bg-fleet-surface p-0.5"
       >
-        {['default', ...options].map((option) => {
-          const isDefault = option === 'default';
-          const selected = isDefault ? value === null : value === option;
+        {[null, ...options].map((option) => {
+          const selected = value === option;
           return (
             <button
-              key={option}
+              key={option ?? 'default'}
               type="button"
               role="radio"
               aria-checked={selected}
-              onClick={() => onChange(isDefault ? null : option)}
+              onClick={() => onChange(option)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors focus-ring ${
                 selected
                   ? 'bg-fleet-surface-3 text-fleet-text'
                   : 'text-fleet-text-muted hover:text-fleet-text-secondary'
               }`}
             >
-              {option}
+              {option ?? 'default'}
             </button>
           );
         })}

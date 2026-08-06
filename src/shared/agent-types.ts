@@ -65,12 +65,41 @@ export type AgentModelConfig = {
   reasoningTokens: number | null;
 };
 
+/** Sizes the images endpoint takes, as tiers rather than pixels. */
+export const IMAGE_RESOLUTIONS = ['512', '1K', '2K', '4K'] as const;
+export type ImageResolution = (typeof IMAGE_RESOLUTIONS)[number];
+
+export const IMAGE_QUALITIES = ['low', 'medium', 'high'] as const;
+export type ImageQuality = (typeof IMAGE_QUALITIES)[number];
+
+/**
+ * Settings for image generation. Not an `AgentModelConfig`: the images endpoint
+ * shares none of a completion's parameters - no max tokens, no temperature, no
+ * reasoning - and offering knobs the provider ignores is worse than offering
+ * none. What it does take that a person should choose rather than a model is
+ * here; the prompt, the references and the aspect ratio are the call's.
+ *
+ * `null` throughout ⇒ the parameter is left out and the provider's own default
+ * applies, which is also the only honest thing to show for "we did not ask".
+ */
+export type AgentImageConfig = {
+  /** `null` ⇒ image generation is off, and the tool is never offered. */
+  model: string | null;
+  resolution: ImageResolution | null;
+  quality: ImageQuality | null;
+  /**
+   * Fixed seed for reproducible generations. `null` ⇒ a new one every call,
+   * which is what someone asking for another go at the same prompt wants.
+   */
+  seed: number | null;
+};
+
 export type AgentSettings = {
   provider: 'openrouter';
   /** The model that writes code and drives tools. */
   coding: AgentModelConfig;
-  /** The model behind image generation. `model: null` ⇒ image generation off. */
-  image: AgentModelConfig;
+  /** The model behind image generation, and how it is asked. */
+  image: AgentImageConfig;
   /** Replaces the built-in instructions. `null` ⇒ use the default below. */
   systemPrompt: string | null;
   /**
@@ -97,10 +126,17 @@ export const EMPTY_AGENT_MODEL_CONFIG: AgentModelConfig = {
   reasoningTokens: null
 };
 
+export const EMPTY_AGENT_IMAGE_CONFIG: AgentImageConfig = {
+  model: null,
+  resolution: null,
+  quality: null,
+  seed: null
+};
+
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   provider: 'openrouter',
   coding: { ...EMPTY_AGENT_MODEL_CONFIG, model: 'anthropic/claude-sonnet-4.5' },
-  image: { ...EMPTY_AGENT_MODEL_CONFIG },
+  image: { ...EMPTY_AGENT_IMAGE_CONFIG },
   systemPrompt: null,
   compactThreshold: 0.8,
   permissions: DEFAULT_AGENT_PERMISSION_RULES,
@@ -131,14 +167,37 @@ export const DEFAULT_AGENT_SYSTEM_PROMPT = [
 ].join('\n');
 
 /**
+ * What the agent is told about `image`, when there is an image model to run it.
+ *
+ * Kept out of the prompt above because the tool is only offered when one is
+ * configured, and instructions for a tool that is not there are instructions to
+ * hallucinate a call. It says where the file lands, since that is the one thing
+ * about this tool that is not obvious: everything else the agent writes goes
+ * into the working folder, and this does not.
+ */
+export const AGENT_IMAGE_INSTRUCTIONS = [
+  '`image` generates a picture from a description, and edits one when you name reference images. Write the prompt as a description of the finished image - subject, composition, style, colours - rather than as an instruction to a person.',
+  '',
+  'One image per call. Ask for another if you want a variation, rather than expecting several from one.',
+  '',
+  'The file is saved outside the working folder, and the path comes back to you. It is not part of the project until you put it there: copy it in with `bash` when it belongs in the repo, and leave it where it is when it was only something to look at. The user is shown the image itself, so describe what you made only insofar as it answers what they asked - do not narrate the picture back to them.'
+].join('\n');
+
+/**
  * The system message for a turn. The working folder is appended by Fleet rather
  * than left to the prompt text, so a custom prompt cannot accidentally drop the
- * one fact the agent has no other way to learn.
+ * one fact the agent has no other way to learn. Whether image generation is on
+ * is the same kind of fact, and is appended the same way.
  */
-export function buildSystemPrompt(cwd: string, override: string | null): string {
+export function buildSystemPrompt(
+  cwd: string,
+  override: string | null,
+  options: { image: boolean } = { image: false }
+): string {
   const custom = override?.trim() ?? '';
   const base = custom === '' ? DEFAULT_AGENT_SYSTEM_PROMPT : custom;
-  return `${base}\n\nWorking folder: ${cwd}`;
+  const image = options.image ? `\n\n${AGENT_IMAGE_INSTRUCTIONS}` : '';
+  return `${base}${image}\n\nWorking folder: ${cwd}`;
 }
 
 /*
@@ -292,6 +351,16 @@ export type AgentTitleRequest = { firstUser: string; firstAssistant: string };
  * half-updated row.
  */
 export type AgentToolEvent = { streamId: string; call: AgentToolCall };
+
+/**
+ * A render on the way to a finished image.
+ *
+ * Carries a data URL rather than a path: a partial is never written to disk, so
+ * there is no file to point at, and the pane only has to hold the latest one
+ * until the call ends. It names the call as well as the turn, because the row
+ * it belongs to is the one that asked for the picture.
+ */
+export type AgentImagePartial = { streamId: string; callId: string; image: string };
 
 /**
  * A command for the user to run, on its way to a terminal pane.

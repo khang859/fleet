@@ -3,6 +3,7 @@ import type {
   AgentCompactDone,
   AgentCompactRequest,
   AgentHandOff,
+  AgentImagePartial,
   AgentMessage,
   AgentModelConfig,
   AgentSendRequest,
@@ -14,9 +15,11 @@ import type {
 } from '../../shared/agent-types';
 import { buildSystemPrompt, messageText } from '../../shared/agent-types';
 import {
-  AGENT_TOOL_SPECS,
+  toolSpecsFor,
+  type AgentImageGenerator,
   type AgentToolCall,
-  type AgentToolContext
+  type AgentToolContext,
+  type AgentToolSpec
 } from '../../shared/agent-tools';
 import type { AgentToolEvent } from '../../shared/agent-types';
 import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../shared/agent-context';
@@ -27,6 +30,7 @@ import {
   type StreamOutcome
 } from './openrouter';
 import { runAgentTool } from './tools/run';
+import { generateImage } from './images';
 import type { PermissionGate } from './permissions/gate';
 
 /**
@@ -49,6 +53,8 @@ type Deps = {
   gate: PermissionGate;
   /** Injectable for tests; defaults to the real OpenRouter call. */
   stream?: typeof streamCompletion;
+  /** Injectable for tests; defaults to the real OpenRouter image call. */
+  image?: typeof generateImage;
 };
 
 /** Everything a model call needs, resolved once before the work starts. */
@@ -61,6 +67,17 @@ type CallContext = {
 
 /** Ceiling for a summary: enough room for the specifics, not for a retelling. */
 const COMPACT_MAX_TOKENS = 4096;
+
+/**
+ * Image bytes as something an `<img>` can show.
+ *
+ * Only ever used for a partial render, which is never written to disk - so the
+ * bytes themselves are what crosses to the renderer. A finished image is a file
+ * and travels as a path.
+ */
+function toDataUrl(data: Uint8Array, mimeType: string): string {
+  return `data:${mimeType};base64,${Buffer.from(data).toString('base64')}`;
+}
 
 /**
  * How many times one turn may call tools and go back to the model.
@@ -253,7 +270,12 @@ export class AgentService {
     const { streamId } = req;
     const emit = this.deps.emit;
     const config = ctx.settings.coding;
-    const messages = toWireHistory(req, buildSystemPrompt(req.cwd, ctx.settings.systemPrompt));
+    const imageModel = ctx.settings.image.model;
+    const messages = toWireHistory(
+      req,
+      buildSystemPrompt(req.cwd, ctx.settings.systemPrompt, { image: imageModel !== null })
+    );
+    const tools = toolSpecsFor({ image: imageModel !== null });
     // Holders rather than locals: they are written inside callbacks, where
     // narrowing cannot follow them.
     const reported: { usage: AgentUsage | null } = { usage: null };
@@ -266,7 +288,7 @@ export class AgentService {
         messages,
         maxTokens: config.maxTokens,
         reasoning: toReasoningParam(config),
-        tools: AGENT_TOOL_SPECS,
+        tools,
         onDelta: (delta) => {
           round.content += delta;
           emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta } satisfies AgentStreamDelta);
@@ -315,7 +337,10 @@ export class AgentService {
               command,
               signal: ctx.signal
             })) === 'run',
-          wasRefused: (command) => this.deps.gate.wasRefused(streamId, command)
+          wasRefused: (command) => this.deps.gate.wasRefused(streamId, command),
+          // Built per call rather than per turn, because a partial render has
+          // to land on the row that asked for it, and only here is that known.
+          generateImage: this.imageGenerator(ctx, streamId, call.id)
         });
         messages.push({
           role: 'tool',
@@ -328,6 +353,43 @@ export class AgentService {
     throw new Error(
       `Stopped after ${MAX_TOOL_ROUNDS} rounds of tool calls without an answer. Ask again, more narrowly.`
     );
+  }
+
+  /**
+   * The image capability for one tool call, or `null` when image generation is
+   * off - which is also when the tool was never offered, so a call that gets
+   * this far is one the model invented or replayed.
+   *
+   * The API key stops here: the tool is handed a function, not a credential,
+   * and the settings the user chose are closed over rather than passed through
+   * arguments a model writes.
+   */
+  private imageGenerator(
+    ctx: CallContext,
+    streamId: string,
+    callId: string
+  ): AgentImageGenerator | null {
+    const config = ctx.settings.image;
+    const model = config.model;
+    if (model === null) return null;
+    const call = this.deps.image ?? generateImage;
+
+    return async (req, signal) =>
+      call(
+        {
+          ...req,
+          apiKey: ctx.apiKey,
+          model,
+          config,
+          onPartial: (image) =>
+            this.deps.emit(IPC_CHANNELS.AGENT_IMAGE_PARTIAL, {
+              streamId,
+              callId,
+              image: toDataUrl(image.data, image.mimeType)
+            } satisfies AgentImagePartial)
+        },
+        signal
+      );
   }
 
   /**
@@ -408,7 +470,7 @@ export class AgentService {
       messages: AgentWireMessage[];
       maxTokens: number | null;
       reasoning: ReasoningParam | null;
-      tools?: typeof AGENT_TOOL_SPECS;
+      tools?: AgentToolSpec[];
       onDelta: (text: string) => void;
       onReasoning: (text: string) => void;
       onUsage: (usage: AgentUsage) => void;

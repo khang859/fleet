@@ -3,8 +3,9 @@ import { ChevronRight } from 'lucide-react';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 import { diffLineKind } from '../../../../shared/agent-diff';
 import { diffBody } from './diff-body';
-import { toolBody } from './output-body';
+import { imageBody, toolBody } from './output-body';
 import { toolLabel, toolStatus } from './tool-label';
+import { AgentImage, AgentImagePreview } from './AgentImage';
 
 /**
  * One tool call, on one line.
@@ -20,20 +21,32 @@ import { toolLabel, toolStatus } from './tool-label';
  * the user does want to read, so the diff is open from the start; and the
  * output is a diff, so it is drawn as one rather than as a page of text.
  *
+ * A generated image is the same exception for the same reason, and one further:
+ * it is the only tool whose output is worth looking at *before* it is finished,
+ * so a running row shows the renders arriving on the way to it.
+ *
  * The other exception is a call that failed. Then the row is the only place the
  * reason exists, so the row says so plainly and the disclosure holds the
  * reason rather than a result.
  */
-export function AgentToolRow({ call }: { call: AgentToolCall }): React.JSX.Element {
+export function AgentToolRow({
+  call,
+  partial
+}: {
+  call: AgentToolCall;
+  /** The latest half-drawn render, while this call is still generating one. */
+  partial?: string;
+}): React.JSX.Element {
   const status = toolStatus(call);
   const { verb, target } = toolLabel(call);
   const body = toolBody(call);
   const diff = status === 'done' ? diffBody(call) : null;
+  const image = status === 'done' ? imageBody(call) : null;
   // Open follows what the row is until the user says otherwise, and then it is
   // theirs: the diff arrives after the row has already rendered as running, so
   // an initial state could not have known what this call turned out to be.
   const [choice, setChoice] = useState<boolean | null>(null);
-  const open = choice ?? diff !== null;
+  const open = choice ?? (diff !== null || image !== null);
 
   const label = (
     <>
@@ -44,8 +57,11 @@ export function AgentToolRow({ call }: { call: AgentToolCall }): React.JSX.Eleme
 
   if (status === 'running') {
     return (
-      <div className="flex items-center gap-1.5 pl-[18px] text-xs">
-        <span className="fleet-shimmer-text flex min-w-0 items-center gap-1.5">{label}</span>
+      <div className="flex flex-col gap-1.5 pl-[18px]">
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="fleet-shimmer-text flex min-w-0 items-center gap-1.5">{label}</span>
+        </div>
+        {partial !== undefined && <AgentImagePreview src={partial} />}
       </div>
     );
   }
@@ -72,7 +88,9 @@ export function AgentToolRow({ call }: { call: AgentToolCall }): React.JSX.Eleme
         </span>
       </button>
       {open &&
-        (diff !== null ? (
+        (image !== null ? (
+          <AgentImage src={image} alt={target === '' ? 'Generated image' : target} />
+        ) : diff !== null ? (
           <DiffBody lines={diff} />
         ) : (
           body !== null && (

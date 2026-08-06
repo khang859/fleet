@@ -4,6 +4,7 @@ import {
   EditArgs,
   GlobArgs,
   GrepArgs,
+  ImageArgs,
   ReadArgs,
   TerminalArgs,
   WriteArgs,
@@ -14,9 +15,11 @@ import { runBash } from './bash';
 import { runEdit } from './edit';
 import { runGlob } from './glob';
 import { runGrep } from './grep';
+import { runImage } from './image';
 import { runRead } from './read';
 import { runTerminal } from './terminal';
 import { runWrite } from './write';
+import { AgentImageStore } from '../image-store';
 
 /**
  * Run one tool call.
@@ -28,6 +31,13 @@ import { runWrite } from './write';
  * and the caller sends that sentence back as the result of the call rather than
  * ending the turn.
  */
+/**
+ * Where generated images are kept. A module-level instance rather than a
+ * parameter threaded through every caller: it holds no state, and it is the
+ * one folder there is.
+ */
+const images = new AgentImageStore();
+
 export async function runAgentTool(
   name: string,
   rawArgs: string,
@@ -50,6 +60,8 @@ export async function runAgentTool(
       return runBash(checked(BashArgs, args, name), ctx);
     case 'terminal':
       return runTerminal(checked(TerminalArgs, args, name), ctx);
+    case 'image':
+      return runImage(checked(ImageArgs, args, name), ctx, images);
     default:
       throw new Error(`There is no tool called ${name}`);
   }

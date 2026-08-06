@@ -23,7 +23,9 @@ const LabelArgs = z.object({
   path: z.string().optional(),
   pattern: z.string().optional(),
   glob: z.string().optional(),
-  command: z.string().optional()
+  command: z.string().optional(),
+  prompt: z.string().optional(),
+  references: z.array(z.string()).optional()
 });
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
@@ -53,6 +55,15 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
     // point of the row - it is sitting in a terminal waiting for the user.
     case 'terminal':
       return { verb: 'Hand over', target: args.command ?? '' };
+    // The prompt, because it is the only description of a picture that does not
+    // exist yet - and once it does, the picture is on the row underneath and
+    // the prompt is the caption. Editing says so: the same row would otherwise
+    // read as though the reference images had been ignored.
+    case 'image':
+      return {
+        verb: (args.references?.length ?? 0) > 0 ? 'Edit image' : 'Generate',
+        target: (args.prompt ?? '').replace(/\s*\n\s*/g, ' ')
+      };
     default:
       return { verb: call.name, target: '' };
   }

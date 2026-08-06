@@ -84,3 +84,27 @@ describe('toolStatus', () => {
     expect(toolStatus(call('glob', '{}', { result: '' }))).toBe('done');
   });
 });
+
+describe('image', () => {
+  const image = (args: object): AgentToolCall => call('image', JSON.stringify(args));
+
+  it('shows the prompt, because the picture does not exist yet', () => {
+    expect(toolLabel(image({ prompt: 'a teal officer cap' }))).toEqual({
+      verb: 'Generate',
+      target: 'a teal officer cap'
+    });
+  });
+
+  it('says it is editing when the call names references', () => {
+    expect(
+      toolLabel(image({ prompt: 'the same cap in navy', references: ['assets/cap.png'] }))
+    ).toEqual({ verb: 'Edit image', target: 'the same cap in navy' });
+  });
+
+  // A prompt is prose and often several lines; the row is one line.
+  it('flattens a prompt written over several lines', () => {
+    expect(toolLabel(image({ prompt: 'a cap,\n  seen from above' })).target).toBe(
+      'a cap, seen from above'
+    );
+  });
+});

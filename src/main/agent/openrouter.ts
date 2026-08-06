@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AgentUsage } from '../../shared/agent-types';
 import type { AgentToolSpec } from '../../shared/agent-tools';
+import { sseLines } from './sse';
 
 /**
  * Minimal streaming client for OpenRouter's chat completions endpoint - just
@@ -10,7 +11,12 @@ import type { AgentToolSpec } from '../../shared/agent-tools';
  */
 
 const COMPLETIONS_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const APP_HEADERS = { 'HTTP-Referer': 'https://github.com/khang859/fleet', 'X-Title': 'Fleet' };
+
+/** Who is asking, on every OpenRouter request Fleet makes. */
+export const APP_HEADERS = {
+  'HTTP-Referer': 'https://github.com/khang859/fleet',
+  'X-Title': 'Fleet'
+};
 
 /** A tool call as the API states it, and as it must be echoed back. */
 export type WireToolCall = {
@@ -282,27 +288,15 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
 
   if (!res.body) throw new Error('OpenRouter returned an empty response');
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
   const toolDeltas: ToolCallDelta[] = [];
-  let buffer = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    // A chunk can split a line anywhere, so the tail is held back until the
-    // next read completes it.
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      const parsed = parseStreamLine(line);
-      if (parsed === 'done') return { toolCalls: collectToolCalls(toolDeltas) };
-      if (parsed === null) continue;
-      if (parsed.content) req.onDelta(parsed.content);
-      if (parsed.reasoning) req.onReasoning(parsed.reasoning);
-      if (parsed.toolCalls.length > 0) toolDeltas.push(...parsed.toolCalls);
-      if (parsed.usage) req.onUsage?.(parsed.usage);
-    }
+  for await (const line of sseLines(res.body)) {
+    const parsed = parseStreamLine(line);
+    if (parsed === 'done') break;
+    if (parsed === null) continue;
+    if (parsed.content) req.onDelta(parsed.content);
+    if (parsed.reasoning) req.onReasoning(parsed.reasoning);
+    if (parsed.toolCalls.length > 0) toolDeltas.push(...parsed.toolCalls);
+    if (parsed.usage) req.onUsage?.(parsed.usage);
   }
   return { toolCalls: collectToolCalls(toolDeltas) };
 }

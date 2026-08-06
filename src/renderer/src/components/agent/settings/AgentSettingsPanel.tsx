@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
-import { Code2, ImagePlus, RefreshCw, TriangleAlert } from 'lucide-react';
-import type { AgentModelConfig } from '../../../../../shared/agent-types';
+import { Code2, RefreshCw, TriangleAlert } from 'lucide-react';
+import type { AgentImageConfig, AgentModelConfig } from '../../../../../shared/agent-types';
 import { DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
 import { useAgentStore } from '../../../store/agent-store';
 import { useSettingsStore } from '../../../store/settings-store';
@@ -9,6 +9,7 @@ import { useSettingsStore } from '../../../store/settings-store';
 import { SectionShell, FieldGroup, Field } from '../../chat/settings/primitives';
 import { SecretInput } from '../../chat/settings/SecretInput';
 import { AgentRoleSettings } from './AgentRoleSettings';
+import { AgentImageSettings } from './AgentImageSettings';
 import { SystemPromptField } from './SystemPromptField';
 import { CompactionField } from './CompactionField';
 import { ModelSelect } from './ModelSelect';
@@ -40,8 +41,12 @@ export function AgentSettingsPanel(): React.JSX.Element {
   const codingModels = useMemo(() => models.filter((m) => m.supportsTools), [models]);
   const imageModels = useMemo(() => models.filter((m) => m.outputImage), [models]);
 
-  const patchRole = (role: 'coding' | 'image', patch: Partial<AgentModelConfig>): void => {
-    void updateSettings({ ai: { agent: { [role]: { ...agent[role], ...patch } } } });
+  const patchCoding = (patch: Partial<AgentModelConfig>): void => {
+    void updateSettings({ ai: { agent: { coding: { ...agent.coding, ...patch } } } });
+  };
+
+  const patchImage = (patch: Partial<AgentImageConfig>): void => {
+    void updateSettings({ ai: { agent: { image: { ...agent.image, ...patch } } } });
   };
 
   return (
@@ -72,18 +77,9 @@ export function AgentSettingsPanel(): React.JSX.Element {
             icon={<Code2 size={16} />}
             models={codingModels}
             config={agent.coding}
-            onChange={(patch) => patchRole('coding', patch)}
+            onChange={patchCoding}
           />
-          <AgentRoleSettings
-            title="Image agent"
-            description="Generates and edits images on request. None turns image generation off."
-            icon={<ImagePlus size={16} />}
-            models={imageModels}
-            config={agent.image}
-            onChange={(patch) => patchRole('image', patch)}
-            allowNone
-            noneLabel="None - image generation off"
-          />
+          <AgentImageSettings models={imageModels} config={agent.image} onChange={patchImage} />
         </FieldGroup>
 
         <FieldGroup title="Sessions">

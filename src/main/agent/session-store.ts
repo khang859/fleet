@@ -22,6 +22,7 @@ import {
   type AgentSessionListItem,
   type AgentSessionReplay
 } from '../../shared/agent-session';
+import { AgentImageStore } from './image-store';
 import { createLogger } from '../logger';
 
 const log = createLogger('agent:sessions');
@@ -42,7 +43,11 @@ const log = createLogger('agent:sessions');
 const SESSIONS_DIR = join(homedir(), '.fleet', 'agent', 'sessions');
 
 export class AgentSessionStore {
-  constructor(private readonly dir: string = SESSIONS_DIR) {}
+  constructor(
+    private readonly dir: string = SESSIONS_DIR,
+    /** The images those sessions generated, so deleting one removes both. */
+    private readonly images: AgentImageStore = new AgentImageStore()
+  ) {}
 
   /**
    * Where a session lives, for an id that is allowed to name one.
@@ -150,13 +155,19 @@ export class AgentSessionStore {
   }
 
   /**
-   * Remove a session's file. A session that is already gone counts as removed:
-   * there is nothing left either way, and saying otherwise would put an error
-   * in front of the user for the outcome they asked for.
+   * Remove a session's file, and the images it generated. A session that is
+   * already gone counts as removed: there is nothing left either way, and
+   * saying otherwise would put an error in front of the user for the outcome
+   * they asked for.
+   *
+   * The images go first. A picture that outlives the conversation it belongs to
+   * is not wasted disk - it is something the user believes they deleted, still
+   * sitting in their home folder.
    */
   delete(sessionId: string): boolean {
     const path = this.path(sessionId);
     if (path === null) return false;
+    this.images.remove(sessionId);
     try {
       unlinkSync(path);
       return true;

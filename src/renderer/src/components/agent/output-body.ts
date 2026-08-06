@@ -1,4 +1,5 @@
 import { OUTPUT_SEPARATOR, type AgentToolCall } from '../../../../shared/agent-tools';
+import { toFleetImageUrl } from '../../../../shared/path-platform';
 
 /**
  * What the row shows for a call that is not a change to a file: the command's
@@ -24,4 +25,18 @@ export function toolBody(call: AgentToolCall): string | null {
   if (call.result === null) return null;
   const body = outputBody(call.result);
   return body === '' ? null : body;
+}
+
+/**
+ * The image a finished `image` call produced, as something an `<img>` can load.
+ *
+ * The path comes out of the same half of the result the shell's output does -
+ * everything above the separator was written for the model, and the path alone
+ * is below it. Read that way rather than by finding a path in the prose, so
+ * changing the wording of the result cannot silently stop the picture showing.
+ */
+export function imageBody(call: AgentToolCall): string | null {
+  if (call.name !== 'image' || call.error !== null || call.result === null) return null;
+  const path = outputBody(call.result).trim();
+  return path === '' ? null : toFleetImageUrl(path);
 }

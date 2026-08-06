@@ -114,6 +114,15 @@ type PaneThread = {
    * nothing may treat a missing figure as zero.
    */
   contextTokens: number | null;
+  /**
+   * The latest half-drawn render for each running image call, as a data URL.
+   *
+   * Never written to disk and never part of the transcript: a partial is what
+   * the wait looks like, not what happened. It is dropped the moment its call
+   * ends, so a finished image is never shown with an older draft of itself
+   * still on screen, and a session replayed from disk shows none of them.
+   */
+  imagePartials: Record<string, string>;
 };
 
 const EMPTY_THREAD: PaneThread = {
@@ -126,7 +135,8 @@ const EMPTY_THREAD: PaneThread = {
   pendingPermission: null,
   startedAt: null,
   error: null,
-  contextTokens: null
+  contextTokens: null,
+  imagePartials: {}
 };
 
 /**
@@ -453,6 +463,34 @@ function recordToolCall(streamId: string, call: AgentToolCall): void {
         : m.parts.map((p, i) => (i === at ? { type: 'tool' as const, call } : p));
     return { ...m, parts };
   });
+  // A call that has stopped running has nothing left to preview.
+  if (call.result !== null || call.error !== null) forgetImagePartial(streamId, call.id);
+}
+
+/** The newest render of an image still being generated, for its own row. */
+function recordImagePartial(streamId: string, callId: string, image: string): void {
+  patchPartials(streamId, (partials) => ({ ...partials, [callId]: image }));
+}
+
+function forgetImagePartial(streamId: string, callId: string): void {
+  patchPartials(streamId, (partials) =>
+    callId in partials
+      ? Object.fromEntries(Object.entries(partials).filter(([id]) => id !== callId))
+      : partials
+  );
+}
+
+function patchPartials(
+  streamId: string,
+  change: (partials: Record<string, string>) => Record<string, string>
+): void {
+  const found = threadOf(streamId);
+  if (found === null) return;
+  const imagePartials = change(found.thread.imagePartials);
+  if (imagePartials === found.thread.imagePartials) return;
+  useAgentStore.setState((s) => ({
+    threads: { ...s.threads, [found.paneId]: { ...found.thread, imagePartials } }
+  }));
 }
 
 /**
@@ -731,6 +769,9 @@ window.fleet.agent.onHandOff(({ streamId, command }) => handOff(streamId, comman
 window.fleet.agent.onPermissionAsk((ask) => askPermission(ask));
 window.fleet.agent.onToolStart(({ streamId, call }) => recordToolCall(streamId, call));
 window.fleet.agent.onToolEnd(({ streamId, call }) => recordToolCall(streamId, call));
+window.fleet.agent.onImagePartial(({ streamId, callId, image }) =>
+  recordImagePartial(streamId, callId, image)
+);
 window.fleet.agent.onCompactDone(({ streamId, summary }) => applySummary(streamId, summary));
 
 // A pane closing mid-turn is the one case a turn cannot end on its own: main is
