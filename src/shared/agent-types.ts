@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { AgentToolCall } from './agent-tools';
 import { AGENT_TODO_INSTRUCTIONS, type AgentTodoItem } from './agent-todos';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
+import type { McpServersConfig } from './agent-mcp';
 
 /**
  * Settings for the native Agent panes. One configuration, shared by every agent
@@ -122,6 +123,14 @@ export type AgentSettings = {
   /** Which shell commands run without stopping to ask. */
   permissions: AgentPermissionRules;
   /**
+   * External MCP servers whose tools join the agent's own.
+   *
+   * App-wide rather than per folder, like everything else here: a pane is a
+   * folder to work in, not a separate set of tools. Servers imported from a
+   * project's config are still kept here, with a note of where they came from.
+   */
+  mcpServers: McpServersConfig;
+  /**
    * The model that names a session once its first turn is done. `null` ⇒ the
    * coding model writes its own titles. A plain field rather than a whole
    * `AgentModelConfig`, because naming needs none of the other knobs.
@@ -153,7 +162,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   compactThreshold: 0.8,
   maxToolRounds: null,
   permissions: DEFAULT_AGENT_PERMISSION_RULES,
-  titleModel: null
+  titleModel: null,
+  mcpServers: {}
 };
 
 /**
