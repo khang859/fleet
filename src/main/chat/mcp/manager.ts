@@ -8,7 +8,7 @@ import type {
 import { namespacedToolName, transportOf } from '../../../shared/mcp-types';
 import { McpClient, type McpTool } from './client';
 import { StdioTransport, HttpTransport, type Transport } from './transport';
-import { expandVars, expandArray, expandRecord } from './expand';
+import { expandVars, expandArray, expandRecord } from '../../mcp-expand';
 
 const MAX_RESULT_CHARS = 25_000;
 const WARN_RESULT_CHARS = 10_000;

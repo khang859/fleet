@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { expand, expandVars, expandArray, expandRecord, missingVars } from '../expand';
+import { expand, expandVars, expandArray, expandRecord, missingVars } from '../mcp-expand';
 
 const env = { TOKEN: 'sekrit', REGION: 'us-east-1' } satisfies NodeJS.ProcessEnv;
 

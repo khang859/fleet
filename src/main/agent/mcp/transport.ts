@@ -7,7 +7,7 @@ import {
 import type { McpServerConfig } from '../../../shared/agent-mcp';
 import { MCP_SECRET_REF } from '../../../shared/agent-mcp';
 import { enrichProcessEnv } from '../../shell-env';
-import { expandArray, expandRecord, expandVars } from './expand';
+import { expandArray, expandRecord, expandVars } from '../../mcp-expand';
 
 /**
  * How Fleet reaches one server.
