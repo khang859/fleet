@@ -98,9 +98,16 @@ export function AgentPermissionRow({
           // Not `focus-ring`: that draws the accent directly against this
           // button's own accent fill, where it cannot be seen. The gap is what
           // makes it a ring rather than a slightly larger button.
-          className="rounded-md fleet-accent-bg px-2.5 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90 focus-ring-offset"
+          className="flex items-center gap-1.5 rounded-md fleet-accent-bg px-2.5 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90 focus-ring-offset"
         >
           Run once
+          {/* The key that does this without reaching for the mouse. On the
+              button rather than in a legend of its own, because the only place
+              a shortcut is worth reading is next to what it does - and this is
+              the only one of the three answers a key can give. */}
+          <span aria-hidden="true" className="text-[10px] leading-none text-white/60">
+            ⏎
+          </span>
         </button>
         {ask.rule !== null && (
           <button

@@ -64,6 +64,64 @@ const EMPTY_TODOS: AgentTodoItem[] = [];
 /** How near the end still counts as being at it, in pixels. */
 const TAIL_SLACK_PX = 24;
 
+/**
+ * How long the typing has to stop before a permission question is put on screen.
+ *
+ * A card that lands between two keystrokes is the one way this pane can take an
+ * answer nobody meant to give: it appears under the hands of someone mid-
+ * sentence, and the next key they press was aimed at the message they were
+ * writing. Claude Code and Codex both arrived at the same answer after the same
+ * bug reports - hold the question until the typing stops - and at roughly the
+ * same delay, which is the evidence for this number being about right.
+ *
+ * Only before the card is drawn. Once it is up it stays up: it is the turn's
+ * question, not a notification, and taking it away because the user started
+ * typing again would leave the turn stopped on something they can no longer
+ * answer.
+ */
+const PERMISSION_TYPING_IDLE_MS = 1000;
+
+/**
+ * The pending question, held back until the typing stops.
+ *
+ * Returns the question only once it is safe to draw, plus the callback the
+ * composer uses to say a key was pressed. Typing is reported through a ref
+ * rather than state so the common case - typing with nothing pending - costs no
+ * render at all; the timer re-reads that ref when it fires and puts itself back
+ * if the user is still going.
+ */
+function useSettledAsk(ask: AgentPermissionAsk | null): {
+  settled: AgentPermissionAsk | null;
+  noteTyping: () => void;
+} {
+  const [settled, setSettled] = useState<AgentPermissionAsk | null>(null);
+  const typedAt = useRef(0);
+
+  useEffect(() => {
+    if (ask === null) {
+      setSettled(null);
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout>;
+    const settle = (): void => {
+      const idleFor = Date.now() - typedAt.current;
+      if (idleFor >= PERMISSION_TYPING_IDLE_MS) {
+        setSettled(ask);
+        return;
+      }
+      timer = setTimeout(settle, PERMISSION_TYPING_IDLE_MS - idleFor);
+    };
+    timer = setTimeout(settle, 0);
+    return () => clearTimeout(timer);
+  }, [ask]);
+
+  const noteTyping = useCallback(() => {
+    typedAt.current = Date.now();
+  }, []);
+
+  return { settled, noteTyping };
+}
+
 export function AgentThread({
   paneId,
   cwd,
@@ -96,7 +154,9 @@ export function AgentThread({
   const streaming = (thread?.streamId ?? null) !== null;
   const contextTokens = thread?.contextTokens ?? null;
   const spend = thread?.spend ?? EMPTY_SESSION_SPEND;
-  const ask = thread?.pendingPermission ?? null;
+  // Everything downstream asks "is there a question on screen", which is not
+  // quite "has one been asked" - so the held-back one is what they are given.
+  const { settled: ask, noteTyping } = useSettledAsk(thread?.pendingPermission ?? null);
   const imagePartials = thread?.imagePartials ?? EMPTY_PARTIALS;
   // Only when the pane has no column for it, so the same list is never in two
   // places saying the same thing.
@@ -168,6 +228,8 @@ export function AgentThread({
         streaming={streaming}
         asking={ask !== null}
         cwd={cwd}
+        onApprove={() => decidePermission(paneId, 'once')}
+        onTyping={noteTyping}
         toolMode={agent?.toolMode ?? DEFAULT_AGENT_SETTINGS.toolMode}
         onToolMode={(toolMode) => void updateSettings({ ai: { agent: { toolMode } } })}
         // The conversation is what an attachment belongs to, so it is what the
@@ -238,26 +300,39 @@ function Transcript({
   // answer that finishes on a code block is most of them. So the tail follows
   // the content itself rather than the render that started it.
   //
+  // The window onto that content moves too, and losing height is the same thing
+  // happening from the other side: a line appearing under the transcript - a
+  // permission question's status line, a notice, the composer growing under a
+  // long draft - takes its space out of this box without changing anything
+  // inside it. Nothing scrolls, so the end of the transcript quietly slips
+  // below the fold, and what slips is whatever just arrived: the answer, or the
+  // buttons that answer a question. Both halves mean the same thing, so both
+  // get the same answer - put the reader back at the end.
+  //
   // Only for a reader who was already at the tail, though. Growth is not always
   // the reply arriving: opening a tool call grows the transcript too, and
   // someone who scrolled up to open one is asking to look there, not to be
   // taken to the end.
   useEffect(() => {
     const content = contentRef.current;
-    if (content === null) return;
+    const port = scrollRef.current;
+    if (content === null || port === null) return;
 
-    let height = content.getBoundingClientRect().height;
+    let contentHeight = content.getBoundingClientRect().height;
+    let portHeight = port.clientHeight;
     const observer = new ResizeObserver(() => {
-      const grown = content.getBoundingClientRect().height;
-      if (grown <= height) {
-        height = grown;
-        return;
-      }
-      height = grown;
-      if (!atTail.current) return;
+      const grownContent = content.getBoundingClientRect().height;
+      const shrunkPort = port.clientHeight;
+      const lostRoom = grownContent > contentHeight || shrunkPort < portHeight;
+      contentHeight = grownContent;
+      portHeight = shrunkPort;
+      // Read after the sizes are recorded, so a move the reader made is not
+      // remembered as one they did not.
+      if (!lostRoom || !atTail.current) return;
       endRef.current?.scrollIntoView({ block: 'end' });
     });
     observer.observe(content);
+    observer.observe(port);
     return () => observer.disconnect();
   }, []);
 
@@ -506,6 +581,15 @@ function SummaryCard({ summary }: { summary: string }): React.JSX.Element {
 const MENTION_DEBOUNCE_MS = 120;
 
 /**
+ * How long a first Escape stays loaded before it is forgotten.
+ *
+ * Long enough to be a deliberate second press, short enough that an Escape hit
+ * on the way past cannot still be waiting when the user comes back and presses
+ * it for something else entirely.
+ */
+const INTERRUPT_ARM_MS = 2000;
+
+/**
  * A line above the composer about something worth knowing and not worth
  * stopping for - a file that could not be attached, a model that will not look
  * at the picture. Announced rather than shown, since it appears while the user
@@ -528,6 +612,8 @@ function Composer({
   streaming,
   asking,
   cwd,
+  onApprove,
+  onTyping,
   toolMode,
   onToolMode,
   threadId,
@@ -541,6 +627,10 @@ function Composer({
   /** Stopped on a question, which is the one thing typing here cannot answer. */
   asking: boolean;
   cwd: string;
+  /** Run the command being asked about, once. What Enter means while it is up. */
+  onApprove: () => void;
+  /** A key went into the box, so a question waiting to be asked should wait. */
+  onTyping: () => void;
   /** Who answers the permission questions. App-wide, like every agent setting. */
   toolMode: AgentToolMode;
   onToolMode: (mode: AgentToolMode) => void;
@@ -554,6 +644,8 @@ function Composer({
 }): React.JSX.Element {
   const [text, setText] = useState('');
   const [refused, setRefused] = useState(false);
+  /** Whether an Escape is loaded, waiting on the second one that stops the turn. */
+  const [armed, setArmed] = useState(false);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [attachments, setAttachments] = useState<AgentAttachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
@@ -646,10 +738,23 @@ function Composer({
   }, [text]);
 
   // The turn is over, so the message that could not go while it ran can go
-  // now, and saying otherwise would be stale.
+  // now, and saying otherwise would be stale. A loaded Escape goes with it:
+  // there is no longer a turn for the second press to stop, and one left armed
+  // would spend itself on the next turn instead of this one.
   useEffect(() => {
-    if (!streaming) setRefused(false);
+    if (streaming) return;
+    setRefused(false);
+    setArmed(false);
   }, [streaming]);
+
+  // A first Escape is forgotten if the second never comes. Without this it
+  // waits indefinitely, and the press that closed a menu a minute ago is still
+  // holding the trigger when the user reaches for Escape again.
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), INTERRUPT_ARM_MS);
+    return () => clearTimeout(timer);
+  }, [armed]);
 
   /**
    * Start a new session. Refused mid-turn exactly the way a message is: the
@@ -801,6 +906,13 @@ function Composer({
             : 'The agent is still working - your message is still here.'}
         </p>
       )}
+      {/* Amber rather than subtle: this is the one line here that is about
+          something the next keystroke will do, not something already done. */}
+      {armed && (
+        <p role="status" className="px-1 pb-1.5 text-[11px] text-amber-700 dark:text-amber-400/90">
+          Press Escape again to interrupt.
+        </p>
+      )}
       {attachError !== null && <Notice>{attachError}</Notice>}
       {blind && hasImage && (
         <Notice>
@@ -877,6 +989,9 @@ function Composer({
             disabled={disabled}
             onChange={(e) => {
               setText(e.target.value);
+              // Said on every keystroke, so a question that arrives mid-sentence
+              // waits for the sentence to end rather than for the next key.
+              onTyping();
               // Typing again is a fresh attempt, so a menu dismissed with Escape
               // is allowed back, at the top of its list.
               setMenuDismissed(false);
@@ -911,19 +1026,48 @@ function Composer({
               ) {
                 if (recall(e, e.key === 'ArrowUp' ? 'back' : 'forward')) return;
               }
+              // Twice, and only while there is a turn to stop. One press is too
+              // easy to arrive by accident - leaving a field, dismissing
+              // something - and what it would throw away is minutes of work and
+              // the money that bought them.
+              if (e.key === 'Escape' && streaming) {
+                e.preventDefault();
+                if (!armed) {
+                  setArmed(true);
+                  return;
+                }
+                setArmed(false);
+                onStop();
+                return;
+              }
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
+                // A question with an empty box is the one case where Enter has
+                // nothing else it could mean, so there it answers the question.
+                //
+                // Only with an empty box, though. A card can arrive in the
+                // middle of a sentence someone is still typing, and Enter is
+                // how that sentence gets sent - so with a draft in hand the key
+                // stays the send key it has always been, and the user is told
+                // to answer above rather than having answered by reflex. What
+                // Enter must never become is a way to agree to a command
+                // without having looked at it.
+                if (asking && text.trim() === '' && attachments.length === 0) {
+                  onApprove();
+                  return;
+                }
                 submit();
               }
             }}
             // The turn is not listening here until the question above is
-            // answered, and Enter doing nothing at all reads as a dropped
-            // message. The draft is left alone - it is still worth sending after.
+            // answered, so the box says what Enter does instead of leaving the
+            // user to find out it no longer sends. The draft is left alone - it
+            // is still worth sending after.
             placeholder={
               disabled
                 ? 'Choose a coding model in Settings first'
                 : asking
-                  ? 'Answer the question above to carry on'
+                  ? 'Press Enter to run it, or answer above'
                   : 'Ask the agent…'
             }
             aria-label="Message the agent"
