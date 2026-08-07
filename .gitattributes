@@ -1,0 +1,11 @@
+# Generated graphify knowledge-graph artifacts.
+#
+# linguist-generated collapses them in PR review and keeps them out of the
+# repo's language stats. `-diff` stops git from rendering a textual diff:
+# Louvain clustering is nondeterministic, so a rebuild that finds no code
+# changes still rewrites ~80% of graph.json's community assignments, and an
+# unsuppressed refresh buries the real diff under thousands of meaningless lines.
+graphify-out/** linguist-generated=true
+graphify-out/graph.json -diff
+graphify-out/graph.html -diff
+graphify-out/manifest.json -diff

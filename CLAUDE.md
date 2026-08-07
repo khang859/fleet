@@ -18,6 +18,23 @@ Past mistakes and fixes are documented in `docs/learnings/`. **After every mista
 - **Lint:** `npm run lint`
 - **Build:** `npm run build` (runs typecheck first, then electron-vite build)
 
+## Knowledge Graph (graphify)
+
+`graphify-out/` holds a committed knowledge graph of `src/`, so a fresh clone can answer architecture questions without building anything.
+Query it with `/graphify query "<question>"` rather than rebuilding - the graph is already there.
+`GRAPH_REPORT.md` carries the god nodes, community map, and import cycles; `graph.html` is the interactive view.
+
+**Refresh on a cadence, not on every change.** Regenerate at releases, or when the graph has drifted far enough to give wrong answers - not as a routine step after editing code.
+The reason is that Louvain clustering is nondeterministic: a rebuild that finds no code changes still reassigns ~80% of nodes to different communities, so every refresh is a ~6,000-line diff and two branches that both rebuild will conflict irreconcilably.
+`.gitattributes` marks these files generated so review collapses them, but that hides the noise rather than removing it.
+
+Two gotchas when you do refresh:
+
+- The bare `graphify update` CLI **overwrites the curated community labels** with mechanical ones (`Reported Activity` becomes `ReportedActivity`). Refresh through the `/graphify` skill so the labelling step reruns, and check `GRAPH_REPORT.md` before committing.
+- `graphify-out/.graphify_root` points at `src`, so a bare `graphify update` writes a stray `src/graphify-out/` directory. Delete it if it appears; it is not the real output.
+
+`graph.json` is 7.8 MB (about 360 KB compressed in git). Only `cost.json`, `cache/`, and the two absolute-path `.graphify_*` files are ignored.
+
 ## Driving the UI (fleet-drive)
 
 To see and control the running app during development, use `fleet-drive`. Start `npm run dev`, then from the repo root:

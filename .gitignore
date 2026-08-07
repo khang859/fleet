@@ -17,3 +17,10 @@ hooks/bin/
 
 # Superpowers brainstorm scratch
 .superpowers/
+
+# graphify knowledge graph - the graph itself is committed so a clone can query
+# it without a rebuild. These are machine-local or per-developer noise.
+graphify-out/cost.json
+graphify-out/cache/
+graphify-out/.graphify_python
+graphify-out/.graphify_root
