@@ -1,5 +1,6 @@
 import { attach } from './core';
 import { screenshot, snapshot, click, type, keys, evalExpr } from './verbs';
+import { FIXTURES, fixtureNames } from './fixtures';
 
 function print(msg: string): void {
   process.stdout.write(`${msg}\n`);
@@ -14,7 +15,18 @@ async function main(): Promise<void> {
   const verb = process.argv.at(2);
 
   if (!verb || verb === 'help') {
-    print('Usage: npm run drive -- <status|screenshot|snapshot|click|type|keys|eval> [args]');
+    print(
+      'Usage: npm run drive -- <status|screenshot|snapshot|click|type|keys|eval|fixture> [args]'
+    );
+    return;
+  }
+
+  // Answered before attaching, since listing what is available is a question
+  // about this repo rather than about the window - and the window is usually
+  // not running yet when someone asks it.
+  if (verb === 'fixture' && process.argv.at(3) === undefined) {
+    print('Usage: npm run drive -- fixture <name>\n');
+    for (const name of fixtureNames()) print(`  ${name}\n    ${FIXTURES[name].describe}\n`);
     return;
   }
 
@@ -64,6 +76,16 @@ async function main(): Promise<void> {
         const expr = process.argv.at(3);
         if (!expr) throw new Error('eval requires a JS expression');
         print(await evalExpr(page, expr));
+        break;
+      }
+      case 'fixture': {
+        const name = process.argv.at(3);
+        // The listing above returns for a missing name, so reaching here with
+        // one that is not a fixture means it was misspelled.
+        if (name === undefined || !(name in FIXTURES)) {
+          throw new Error(`Unknown fixture: ${name}. Try one of: ${fixtureNames().join(', ')}`);
+        }
+        print(await evalExpr(page, FIXTURES[name].source));
         break;
       }
       default:
