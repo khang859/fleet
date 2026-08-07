@@ -122,7 +122,7 @@ export class McpManager {
       await client.close().catch(() => {});
       // A server asking to be signed in has nothing wrong with it, so it is not
       // reported as broken. The pane offers a button instead of an error.
-      if (err instanceof UnauthorizedError) {
+      if (err instanceof UnauthorizedError || wantsAuth(cfg, err)) {
         this.servers.set(name, { config: cfg, client: null, tools: [], state: 'needs-auth' });
         return;
       }
@@ -429,6 +429,30 @@ function asParameters(schema: unknown): Record<string, unknown> {
 
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** The status an HTTP error carries, when it carries one. */
+const HttpStatus = z.object({ status: z.number() });
+
+/**
+ * Whether a failed connection was a server asking to be authenticated.
+ *
+ * `UnauthorizedError` covers the case where Fleet already knew to sign in and
+ * had a provider attached. This covers the case that actually happens: a server
+ * imported from another tool, where the credential lived in that tool's own
+ * store and never appeared in the config we copied. Nothing is sent, the server
+ * answers 401, and the SDK - with no provider to hand it to - reports it as an
+ * ordinary HTTP failure.
+ *
+ * Under the MCP auth spec the 401 *is* the invitation: it is what carries the
+ * `WWW-Authenticate` pointing at the authorization server. So it belongs in
+ * `needs-auth` with a Sign in button, not in `failed` with a JSON blob the user
+ * is left to interpret.
+ */
+function wantsAuth(cfg: McpServerConfig, err: unknown): boolean {
+  if (transportOf(cfg) !== 'http') return false;
+  const parsed = HttpStatus.safeParse(err);
+  return parsed.success && parsed.data.status === 401;
 }
 
 async function withTimeout<T>(work: Promise<T>, ms: number, what: string): Promise<T> {

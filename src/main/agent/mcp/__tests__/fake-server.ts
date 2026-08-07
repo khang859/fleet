@@ -1,6 +1,8 @@
 import {
   InMemoryTransport,
   LATEST_PROTOCOL_VERSION,
+  SdkErrorCode,
+  SdkHttpError,
   parseJSONRPCMessage,
   type JSONRPCMessage,
   type Tool,
@@ -100,6 +102,29 @@ export function fakeServer(options: FakeServerOptions): FakeServer {
         asMessage({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' })
       );
     }
+  };
+}
+
+/**
+ * A transport that fails the handshake with an HTTP status, the way the SDK
+ * does when it has no auth provider to hand the response to.
+ *
+ * The SDK's own error type rather than a plain object with a `status` on it:
+ * that class exposes the status as a prototype getter, and a stand-in with an
+ * own property would let a reader that only sees own properties pass here and
+ * fail against a real server.
+ */
+export function refusingTransport(status: number): Transport {
+  return {
+    start: async () => {},
+    send: async () =>
+      Promise.reject(
+        new SdkHttpError(SdkErrorCode.ClientHttpNotImplemented, 'Error POSTing to endpoint', {
+          status,
+          statusText: 'refused'
+        })
+      ),
+    close: async () => {}
   };
 }
 

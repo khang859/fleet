@@ -3,7 +3,7 @@ import type { Tool } from '@modelcontextprotocol/client';
 import { McpManager, readResult } from '../manager';
 import type { McpServersConfig } from '../../../../shared/agent-mcp';
 import { wireToolName } from '../../../../shared/agent-mcp-names';
-import { fakeServer, hangingTransport, type FakeServer } from './fake-server';
+import { fakeServer, hangingTransport, refusingTransport, type FakeServer } from './fake-server';
 
 const SEARCH: Tool = {
   name: 'search',
@@ -263,6 +263,55 @@ describe('McpManager', () => {
     await manager.reload();
 
     expect(manager.getToolSpecs()[0].function.description).toBe('go, from the docs server.');
+    await manager.closeAll();
+  });
+
+  /*
+   * The state a server imported from another tool lands in.
+   *
+   * That tool kept the credential in its own store, so what Fleet copied is a
+   * URL and nothing else. The server refuses, and under the MCP auth spec that
+   * refusal is the invitation to sign in - so it has to reach the user as a
+   * button rather than as a failure they are left to diagnose.
+   */
+  it('treats a refusal from an HTTP server as needing a sign-in', async () => {
+    const manager = new McpManager({
+      getConfig: () => ({ docs: enabled('https://docs.test') }),
+      createTransport: () => refusingTransport(401)
+    });
+
+    await manager.reload();
+
+    expect(manager.statuses()[0].state).toBe('needs-auth');
+    expect(manager.statuses()[0].error).toBeUndefined();
+    await manager.closeAll();
+  });
+
+  it('still reports every other refusal as a failure', async () => {
+    // A 403 is "not you", not "who are you" - offering a sign-in would send the
+    // user round a loop that cannot fix it.
+    const manager = new McpManager({
+      getConfig: () => ({ docs: enabled('https://docs.test') }),
+      createTransport: () => refusingTransport(403)
+    });
+
+    await manager.reload();
+
+    expect(manager.statuses()[0].state).toBe('failed');
+    await manager.closeAll();
+  });
+
+  it('does not offer a sign-in for a local command', async () => {
+    // There is nothing to sign in to: a 401 out of a spawned process would mean
+    // something else entirely, and the button would do nothing.
+    const manager = new McpManager({
+      getConfig: () => ({ local: { command: 'thing', enabled: true } }),
+      createTransport: () => refusingTransport(401)
+    });
+
+    await manager.reload();
+
+    expect(manager.statuses()[0].state).toBe('failed');
     await manager.closeAll();
   });
 });

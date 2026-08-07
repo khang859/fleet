@@ -253,6 +253,39 @@ describe('credentials', () => {
 
     expect(manager.calls).toContain('signIn:docs');
   });
+
+  it('writes down that this server signs in, once it has', async () => {
+    // A server imported from another tool arrives with no `auth` at all - the
+    // credential was in that tool's own store. Fleet learns it needs one by
+    // being refused, and that has to survive a restart or the stored tokens
+    // would never be sent again.
+    servers = HTTP;
+
+    await call(IPC_CHANNELS.AGENT_MCP_SIGN_IN, 'docs');
+
+    expect(servers.docs?.auth).toEqual({ kind: 'oauth' });
+    expect(manager.calls).toContain('reload');
+  });
+
+  it('leaves a server that already said how it signs in alone', async () => {
+    servers = { docs: { ...HTTP.docs, url: 'https://docs.example.com/mcp', enabled: true } };
+
+    await call(IPC_CHANNELS.AGENT_MCP_SIGN_IN, 'docs');
+    const first = servers;
+    await call(IPC_CHANNELS.AGENT_MCP_SIGN_IN, 'docs');
+
+    // Rewritten once, not on every sign-in: each write is a settings save and a
+    // reconnect of every server in the list.
+    expect(servers).toBe(first);
+  });
+
+  it('has nothing to write down for a server that has since been removed', async () => {
+    servers = HTTP;
+    const gone = call(IPC_CHANNELS.AGENT_MCP_SIGN_IN, 'nowhere');
+
+    await expect(gone).resolves.toBeDefined();
+    expect(servers).toEqual(HTTP);
+  });
 });
 
 describe('importing', () => {
