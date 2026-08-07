@@ -1078,9 +1078,9 @@ export function App(): React.JSX.Element {
       <AgentFolderDialog
         open={agentFolderOpen}
         onCancel={() => setAgentFolderOpen(false)}
-        onConfirm={(folderPath) => {
+        onConfirm={(folderPath, worktree) => {
           setAgentFolderOpen(false);
-          openAgentPane(folderPath);
+          openAgentPane(folderPath, worktree);
         }}
       />
       <AnnotateModal open={false} onClose={() => {}} />

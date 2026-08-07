@@ -252,8 +252,23 @@ type WorkspaceStore = {
   ) => void;
   addRecentFile: (filePath: string) => void;
 
-  /** Open a native agent pane rooted at `folderPath`, in a new tab. Returns the new pane id. */
-  openAgentPane: (folderPath: string) => string;
+  /**
+   * Open a native agent pane rooted at `folderPath`, in a new tab. Returns the
+   * new pane id.
+   *
+   * `worktree` marks the tab as owning a git worktree that was created for it,
+   * which is what routes its close through the confirmation dialog and the
+   * on-disk teardown. Its `path` is the worktree's own root, which `folderPath`
+   * can sit below when the user picked a folder inside the repository - the
+   * teardown has to be handed the root or it would delete a subfolder and leave
+   * the worktree registered. `repoPath` is the repository the worktree came
+   * from, and is what gets remembered as a recent folder: the worktree itself
+   * is destroyed when the tab closes, so offering it again would be a dead end.
+   */
+  openAgentPane: (
+    folderPath: string,
+    worktree?: { path: string; branchName: string; repoPath: string }
+  ) => string;
 
   /**
    * The terminal an agent pane hands work to: the one already in its tab, or a
@@ -1341,7 +1356,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     return leaf.id;
   },
 
-  openAgentPane: (folderPath) => {
+  openAgentPane: (folderPath, worktree) => {
     // The folder is picked from the local filesystem, so it is in the host's
     // own coordinate system rather than the active pane's (which may be WSL).
     const ctx: PathContext = window.fleet.platform === 'win32' ? 'win32' : 'posix';
@@ -1357,11 +1372,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     };
     const tab: Tab = {
       id: generateId(),
-      label: cwdBasename(folderPath, ctx),
+      // The branch is what distinguishes one worktree from another; the folder
+      // name is the repository's, and every worktree of it would share it.
+      label: worktree ? worktree.branchName : cwdBasename(folderPath, ctx),
       labelIsCustom: true,
       cwd: folderPath,
       type: 'agent',
-      splitRoot: leaf
+      splitRoot: leaf,
+      // Deliberately ungrouped: the dialog can be pointed at a repository with
+      // no tab of its own, so there is no parent for the worktree to sit under.
+      // Close-time teardown keys off `worktreePath` alone, so it still applies.
+      ...(worktree ? { worktreePath: worktree.path, worktreeBranch: worktree.branchName } : {})
     };
     set((s) => ({
       workspace: { ...s.workspace, tabs: [...s.workspace.tabs, tab] },
@@ -1369,7 +1390,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       activePaneId: leaf.id,
       isDirty: true
     }));
-    get().addRecentFolder(folderPath);
+    get().addRecentFolder(worktree ? worktree.repoPath : folderPath);
     return leaf.id;
   },
 

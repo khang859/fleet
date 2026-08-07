@@ -726,6 +726,75 @@ describe('duplicateTab — live CWD', () => {
   });
 });
 
+describe('openAgentPane — worktree', () => {
+  const WORKTREE = {
+    path: '/home/k/.fleet/worktrees/proj/proj-bold-mast-cove',
+    branchName: 'proj-bold-mast-cove',
+    repoPath: '/home/k/dev/proj'
+  };
+
+  beforeEach(() => {
+    useWorkspaceStore.setState({ recentFolders: [] });
+  });
+
+  it('marks the tab as owning the worktree so close-time teardown finds it', () => {
+    const paneId = useWorkspaceStore.getState().openAgentPane(WORKTREE.path, WORKTREE);
+
+    const tab = useWorkspaceStore
+      .getState()
+      .workspace.tabs.find((t) => collectPaneLeafs(t.splitRoot).some((l) => l.id === paneId))!;
+    expect(tab.worktreePath).toBe(WORKTREE.path);
+    expect(tab.worktreeBranch).toBe(WORKTREE.branchName);
+    // The branch names the tab: every worktree of a repo shares its folder name.
+    expect(tab.label).toBe(WORKTREE.branchName);
+    // Standalone by design - the dialog can be pointed at a repo with no tab.
+    expect(tab.groupId).toBeUndefined();
+  });
+
+  it('records the repository as recent, not the worktree that gets destroyed', () => {
+    useWorkspaceStore.getState().openAgentPane(WORKTREE.path, WORKTREE);
+
+    expect(useWorkspaceStore.getState().recentFolders[0]).toBe(WORKTREE.repoPath);
+  });
+
+  // The agent can be rooted below the worktree when a subfolder was picked; the
+  // tab still has to carry the worktree's own root for `git worktree remove`.
+  it('keeps the pane cwd separate from the worktree root', () => {
+    const nested = `${WORKTREE.path}/src`;
+    const paneId = useWorkspaceStore.getState().openAgentPane(nested, WORKTREE);
+
+    const tab = useWorkspaceStore
+      .getState()
+      .workspace.tabs.find((t) => collectPaneLeafs(t.splitRoot).some((l) => l.id === paneId))!;
+    expect(collectPaneLeafs(tab.splitRoot)[0].cwd).toBe(nested);
+    expect(tab.worktreePath).toBe(WORKTREE.path);
+  });
+
+  it('routes its close through the worktree confirmation', () => {
+    const paneId = useWorkspaceStore.getState().openAgentPane(WORKTREE.path, WORKTREE);
+    useWorkspaceStore.setState({ worktreeCloseConfirm: null });
+
+    useWorkspaceStore.getState().closePane(paneId);
+
+    expect(useWorkspaceStore.getState().worktreeCloseConfirm).toEqual({
+      tabId: expect.any(String),
+      label: WORKTREE.branchName
+    });
+  });
+
+  it('leaves an ordinary agent pane untouched', () => {
+    const paneId = useWorkspaceStore.getState().openAgentPane('/home/k/dev/proj');
+
+    const tab = useWorkspaceStore
+      .getState()
+      .workspace.tabs.find((t) => collectPaneLeafs(t.splitRoot).some((l) => l.id === paneId))!;
+    expect(tab.worktreePath).toBeUndefined();
+    expect(tab.worktreeBranch).toBeUndefined();
+    expect(tab.label).toBe('proj');
+    expect(useWorkspaceStore.getState().recentFolders[0]).toBe('/home/k/dev/proj');
+  });
+});
+
 describe('terminalBeside', () => {
   /** A tab holding one agent pane, the way openAgentPane leaves it. */
   const agentTab = {
