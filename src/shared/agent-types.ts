@@ -96,6 +96,22 @@ export type AgentImageConfig = {
   seed: number | null;
 };
 
+/**
+ * Who answers a permission question no rule has settled.
+ *
+ * `ask` is the user, every time, which is what the agent has always done.
+ * `auto` puts a cheap model in front of the question: it may say the command is
+ * safe enough to run unasked, and anything else it says still comes to the user.
+ *
+ * A one-way relaxation, deliberately. Auto mode can only remove a question, and
+ * never add a refusal - so turning it on cannot make the agent do less than it
+ * would have done, and cannot make a command run that the user's own rules or
+ * the always-ask list would have stopped. Those are checked first, in code, and
+ * a model is never consulted about them.
+ */
+export const AGENT_TOOL_MODES = ['ask', 'auto'] as const;
+export type AgentToolMode = (typeof AGENT_TOOL_MODES)[number];
+
 export type AgentSettings = {
   provider: 'openrouter';
   /** The model that writes code and drives tools. */
@@ -122,6 +138,24 @@ export type AgentSettings = {
   maxToolRounds: number | null;
   /** Which shell commands run without stopping to ask. */
   permissions: AgentPermissionRules;
+  /** Who answers what those rules leave open. */
+  toolMode: AgentToolMode;
+  /**
+   * The model that answers it in `auto` mode. `null` ⇒ the coding model does,
+   * which is the model the user already trusts to drive the tools.
+   *
+   * Worth setting to something small and fast. It is asked once per command the
+   * rules have not settled, and the question is one line long.
+   */
+  classifierModel: string | null;
+  /**
+   * What that model should know about this setup - a disposable container where
+   * installs are fine, a folder whose deploy scripts are never ordinary.
+   *
+   * Added to the built-in instructions rather than replacing them, unlike
+   * `systemPrompt`. See `agent-classifier` for why the two differ.
+   */
+  classifierNote: string | null;
   /**
    * External MCP servers whose tools join the agent's own.
    *
@@ -162,6 +196,12 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   compactThreshold: 0.8,
   maxToolRounds: null,
   permissions: DEFAULT_AGENT_PERMISSION_RULES,
+  // Off until it is chosen. Auto mode spends money on a second model and hands
+  // some of the user's say over what runs on their machine to it, and neither
+  // is something an upgrade should decide for somebody.
+  toolMode: 'ask',
+  classifierModel: null,
+  classifierNote: null,
   titleModel: null,
   mcpServers: {}
 };

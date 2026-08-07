@@ -1,7 +1,11 @@
 import { useEffect, useMemo } from 'react';
 import { Code2, RefreshCw, TriangleAlert } from 'lucide-react';
-import type { AgentImageConfig, AgentModelConfig } from '../../../../../shared/agent-types';
-import { DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
+import type {
+  AgentImageConfig,
+  AgentModelConfig,
+  AgentToolMode
+} from '../../../../../shared/agent-types';
+import { AGENT_TOOL_MODES, DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
 import { useAgentStore } from '../../../store/agent-store';
 import { useSettingsStore } from '../../../store/settings-store';
 import { SectionShell, FieldGroup, Field } from './primitives';
@@ -11,9 +15,21 @@ import { AgentImageSettings } from './AgentImageSettings';
 import { SystemPromptField } from './SystemPromptField';
 import { CompactionField } from './CompactionField';
 import { MaxToolRoundsField } from './MaxToolRoundsField';
+import { ClassifierNoteField } from './ClassifierNoteField';
 import { ModelSelect } from './ModelSelect';
+import { selectCls } from './controls';
 import { McpSection } from './mcp/McpSection';
 import { relativeTime } from './format';
+
+/**
+ * A `<select>` hands back a plain string, and this one decides who gets to say
+ * what runs on the machine. Narrowed by looking the value up rather than
+ * asserted: anything the list does not contain is a bug somewhere, and the mode
+ * that asks is the one to have it in.
+ */
+function toAgentToolMode(value: string): AgentToolMode {
+  return AGENT_TOOL_MODES.find((mode) => mode === value) ?? DEFAULT_AGENT_SETTINGS.toolMode;
+}
 
 function validateOpenRouterKey(key: string): string | null {
   if (/\s/.test(key)) return 'Keys cannot contain spaces.';
@@ -96,6 +112,49 @@ export function AgentSettingsPanel(): React.JSX.Element {
               noneLabel="Use the coding model"
             />
           </Field>
+        </FieldGroup>
+
+        <FieldGroup title="Permissions">
+          <Field
+            label="Who answers"
+            description="What a command your rules have not settled does next. The picker in the composer sets the same thing."
+            htmlFor="agent-tool-mode"
+          >
+            <select
+              id="agent-tool-mode"
+              value={agent.toolMode}
+              onChange={(e) =>
+                void updateSettings({
+                  ai: { agent: { toolMode: toAgentToolMode(e.target.value) } }
+                })
+              }
+              className={selectCls}
+            >
+              <option value="ask">Ask every time</option>
+              <option value="auto">Auto: decide the ordinary ones</option>
+            </select>
+          </Field>
+          <Field
+            label="Auto-approval model"
+            description="Judges one command at a time in Auto. Small and fast is what this wants - it never sees the conversation, only the command line."
+            layout="stack"
+          >
+            <ModelSelect
+              models={models}
+              value={agent.classifierModel}
+              onChange={(classifierModel) =>
+                void updateSettings({ ai: { agent: { classifierModel } } })
+              }
+              allowNone
+              noneLabel="Use the coding model"
+            />
+          </Field>
+          <ClassifierNoteField
+            value={agent.classifierNote}
+            onChange={(classifierNote) =>
+              void updateSettings({ ai: { agent: { classifierNote } } })
+            }
+          />
         </FieldGroup>
 
         <McpSection />

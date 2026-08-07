@@ -15,9 +15,15 @@ import type {
   AgentMentionMatch,
   AgentMessage,
   AgentPermissionAsk,
-  AgentPermissionOutcome
+  AgentPermissionOutcome,
+  AgentToolMode
 } from '../../../../shared/agent-types';
-import { ATTACHMENT_ACCEPT, messageAttachments, messageText } from '../../../../shared/agent-types';
+import {
+  ATTACHMENT_ACCEPT,
+  DEFAULT_AGENT_SETTINGS,
+  messageAttachments,
+  messageText
+} from '../../../../shared/agent-types';
 import { isTodoTool } from '../../../../shared/agent-tools';
 import { renderTodoList, type AgentTodoItem } from '../../../../shared/agent-todos';
 import { canCompact, clearedCallIds } from '../../../../shared/agent-context';
@@ -26,6 +32,7 @@ import { AgentMarkdown } from './AgentMarkdown';
 import { AgentActivity } from './AgentActivity';
 import { AgentToolRow } from './AgentToolRow';
 import { AgentPermissionRow } from './AgentPermissionRow';
+import { ToolModePicker } from './ToolModePicker';
 import { AgentAttachmentChip, AgentMessageAttachments } from './AgentAttachment';
 import { reasoningLabel } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
@@ -78,6 +85,7 @@ export function AgentThread({
   const startNewSession = useAgentStore((s) => s.startNewSession);
   const catalog = useAgentStore((s) => s.catalog);
   const agent = useSettingsStore((s) => s.settings?.ai.agent ?? null);
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
   const model = agent?.coding.model ?? null;
   const modelCard = catalog?.models.find((m) => m.id === model) ?? null;
 
@@ -160,6 +168,8 @@ export function AgentThread({
         streaming={streaming}
         asking={ask !== null}
         cwd={cwd}
+        toolMode={agent?.toolMode ?? DEFAULT_AGENT_SETTINGS.toolMode}
+        onToolMode={(toolMode) => void updateSettings({ ai: { agent: { toolMode } } })}
         // The conversation is what an attachment belongs to, so it is what the
         // folder holding it is named after and what deleting the session
         // removes. A pane old enough to have no session of its own falls back
@@ -518,6 +528,8 @@ function Composer({
   streaming,
   asking,
   cwd,
+  toolMode,
+  onToolMode,
   threadId,
   blind,
   onSend,
@@ -529,6 +541,9 @@ function Composer({
   /** Stopped on a question, which is the one thing typing here cannot answer. */
   asking: boolean;
   cwd: string;
+  /** Who answers the permission questions. App-wide, like every agent setting. */
+  toolMode: AgentToolMode;
+  onToolMode: (mode: AgentToolMode) => void;
   /** What an attachment is filed under, and deleted with. */
   threadId: string;
   /** The chosen model cannot see pictures. Worth saying; not worth refusing. */
@@ -851,6 +866,10 @@ function Composer({
           >
             <Paperclip size={14} />
           </button>
+          {/* Beside the paperclip rather than out on the right: both are about
+              what this message will do, and the right-hand side of the box is
+              where sending it lives. */}
+          <ToolModePicker value={toolMode} disabled={disabled} onChange={onToolMode} />
           <textarea
             ref={ref}
             rows={1}

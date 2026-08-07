@@ -1,7 +1,8 @@
 import { getEventListeners } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC_CHANNELS } from '../../../../shared/ipc-channels';
-import type { AgentPermissionAsk } from '../../../../shared/agent-types';
+import type { AgentPermissionAsk, AgentTurnUsage } from '../../../../shared/agent-types';
+import { EMPTY_AGENT_USAGE } from '../../../../shared/agent-types';
 import type { AgentPermissionRules } from '../../../../shared/agent-permissions';
 import { PermissionGate } from '../gate';
 
@@ -21,23 +22,29 @@ const emit = vi.fn((channel: string, payload: unknown) => {
   if (channel === IPC_CHANNELS.AGENT_PERMISSION_ASK) asks.push(payload as AgentPermissionAsk);
 });
 
-function gate(): PermissionGate {
+type AutoApprove = ConstructorParameters<typeof PermissionGate>[0]['autoApprove'];
+
+function gate(autoApprove?: AutoApprove): PermissionGate {
   return new PermissionGate({
     getRules: () => rules,
     persistAllow: (rule) => persisted.push(rule),
     persistAllowMcp: (rule) => persistedMcp.push(rule),
-    emit
+    emit,
+    autoApprove
   });
 }
 
 const request = (
   command: string,
-  signal = new AbortController().signal
+  signal = new AbortController().signal,
+  overrides: Partial<Parameters<PermissionGate['check']>[0]> = {}
 ): Parameters<PermissionGate['check']>[0] => ({
   streamId: 'stream-1',
   callId: 'call-1',
   command,
-  signal
+  cwd: '/repo',
+  signal,
+  ...overrides
 });
 
 beforeEach(() => {
@@ -211,6 +218,148 @@ describe('PermissionGate', () => {
     g.decide(asks[0].requestId, 'always');
 
     expect(persisted).toEqual([]);
+  });
+});
+
+/*
+ * Auto mode. The gate hands a command no rule settled to a model and takes
+ * `safe` as a yes; what matters here is which commands ever reach it, and that
+ * everything else it could say lands the user in front of the same question
+ * they would have seen anyway.
+ */
+describe('PermissionGate, in auto mode', () => {
+  /** A classifier that answers as told, and records what it was asked. */
+  function classifier(
+    verdict: 'safe' | 'ask',
+    usage: AgentTurnUsage | null = null
+  ): { auto: AutoApprove; seen: Array<{ command: string; cwd: string }> } {
+    const seen: Array<{ command: string; cwd: string }> = [];
+    return {
+      seen,
+      auto: async ({ command, cwd }) => {
+        seen.push({ command, cwd });
+        return Promise.resolve({ verdict, usage });
+      }
+    };
+  }
+
+  it('runs a command the model calls safe, without disturbing anybody', async () => {
+    const { auto, seen } = classifier('safe');
+
+    await expect(gate(auto).check(request('npm test'))).resolves.toBe('run');
+    expect(seen).toEqual([{ command: 'npm test', cwd: '/repo' }]);
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('asks the user about one it does not', async () => {
+    const g = gate(classifier('ask').auto);
+    const verdict = g.check(request('npm install left-pad'));
+
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'once');
+    await expect(verdict).resolves.toBe('run');
+  });
+
+  /*
+   * The line the whole feature sits behind. `alwaysAskReason` names the handful
+   * where being wrong costs a rewritten remote or a leaked key - those are the
+   * user's whatever the mode is, and a model is never even shown them.
+   */
+  it('never consults the model about a command that always asks', async () => {
+    const { auto, seen } = classifier('safe');
+    const g = gate(auto);
+    void g.check(request('sudo rm -rf /tmp/x'));
+
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    expect(asks[0].reason).toBe('Runs as root.');
+    expect(seen).toEqual([]);
+  });
+
+  it('never consults it about one the user denied', async () => {
+    rules.deny.push('npm publish');
+    const { auto, seen } = classifier('safe');
+
+    await expect(gate(auto).check(request('npm publish'))).resolves.toBe('refuse');
+    expect(seen).toEqual([]);
+  });
+
+  it('never consults it about one an allow rule already covers', async () => {
+    rules.allow.push('npm run');
+    const { auto, seen } = classifier('ask');
+
+    await expect(gate(auto).check(request('npm run build'))).resolves.toBe('run');
+    expect(seen).toEqual([]);
+  });
+
+  it('asks about a command the turn was already told no about, never the model', async () => {
+    const { auto, seen } = classifier('safe');
+    const g = gate(auto);
+    const first = g.check(request('rm -rf ~/Documents'));
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'no');
+    await first;
+
+    await expect(g.check(request('rm -rf ~/Documents'))).resolves.toBe('refuse');
+    expect(seen).toEqual([]);
+  });
+
+  it('judges the same command once per turn, however often it is run', async () => {
+    const { auto, seen } = classifier('safe');
+    const g = gate(auto);
+
+    for (let i = 0; i < 3; i++) await expect(g.check(request('npm test'))).resolves.toBe('run');
+
+    expect(seen).toHaveLength(1);
+  });
+
+  it('does not re-ask the model about one it already sent to the user', async () => {
+    const { auto, seen } = classifier('ask');
+    const g = gate(auto);
+    const first = g.check(request('npm install left-pad'));
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'once');
+    await first;
+
+    void g.check(request('npm install left-pad'));
+
+    await vi.waitFor(() => expect(asks).toHaveLength(2));
+    expect(seen).toHaveLength(1);
+  });
+
+  it('forgets what it judged once the turn is over', async () => {
+    const { auto, seen } = classifier('safe');
+    const g = gate(auto);
+    await g.check(request('npm test'));
+
+    g.endTurn('stream-1');
+    await g.check(request('npm test'));
+
+    expect(seen).toHaveLength(2);
+  });
+
+  /* A model that was asked was billed, whichever way it answered. */
+  it('reports what the judgement cost', async () => {
+    const usage: AgentTurnUsage = {
+      billed: { ...EMPTY_AGENT_USAGE, promptTokens: 120, completionTokens: 1, costUsd: 0.0001 },
+      contextTokens: null,
+      calls: 1,
+      model: 'anthropic/claude-haiku-4.5',
+      provider: null
+    };
+    const billed: AgentTurnUsage[] = [];
+    const { auto } = classifier('ask', usage);
+    const g = gate(auto);
+
+    void g.check(request('npm install left-pad', undefined, { onUsage: (u) => billed.push(u) }));
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+
+    expect(billed).toEqual([usage]);
+  });
+
+  /* A gate with nothing wired up behind it is a gate in the mode it shipped in. */
+  it('asks the user when there is no classifier at all', async () => {
+    void gate().check(request('npm test'));
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
   });
 });
 
