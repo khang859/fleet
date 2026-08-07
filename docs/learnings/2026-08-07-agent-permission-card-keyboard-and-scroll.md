@@ -1,0 +1,95 @@
+# Agent permission card: a shrinking scrollport, and Enter with a live composer
+
+## Problem
+
+Two complaints about the Agent pane's permission card:
+
+1. Pressing Enter while the card was open did nothing useful - it showed "Answer the question above first" instead of accepting.
+2. With the transcript already scrolled to the bottom, opening the card left its buttons below the fold.
+
+## Root cause of the scroll bug
+
+Not the card. The tail-following effect in `AgentThread`'s `Transcript` observed only the *content* element:
+
+```ts
+const observer = new ResizeObserver(() => {
+  const grown = content.getBoundingClientRect().height;
+  if (grown <= height) { height = grown; return; }
+  ...
+});
+observer.observe(content);
+```
+
+That catches the transcript growing, but not the *window onto it* getting shorter.
+Anything that appears below the transcript - the "your message is still here" notice, an error line, the status line, the composer growing under a long draft - takes its height out of the scroll container without changing content height at all.
+`scrollTop` stays valid, no scroll event fires, the ResizeObserver never sees a change, and the end of the transcript silently slips below the fold.
+
+Measured with `npm run drive` against the live window, pressing Enter with a draft typed while the card was open:
+
+| | clientHeight | gap below tail | card fully visible |
+|---|---|---|---|
+| before Enter | 607 | 19 | yes |
+| after Enter (notice appeared) | 585 | 41 | **no** |
+
+The card itself was innocent: when nothing else changed size, the content-growth path already recovered within 50ms.
+
+## Fix
+
+Observe the scroll container as well, and treat "content grew" and "window shrank" as the same event - both mean the reader lost their place at the tail:
+
+```ts
+export function lostRoom(before: Room, after: Room): boolean {
+  return after.content > before.content || after.port < before.port;
+}
+```
+
+This fixes a whole class of bug, not just the permission card.
+
+## The keyboard half: what other harnesses do
+
+Researched ten harnesses before choosing. The finding that mattered:
+
+- **No harness autofocuses the approve button.** Cline explicitly avoids it - its refocus effect is gated on `!enableButtons`, so it stops pulling focus back to the textarea but never moves focus to the button.
+- **Accidental approval while typing is the dominant failure mode.** Codex [#7744](https://github.com/openai/codex/issues/7744) (typing `y` or `a` fired approve), Claude Code [#23643](https://github.com/anthropics/claude-code/issues/23643) ("steals keyboard focus mid-keystroke"), Claude Code [#32630](https://github.com/anthropics/claude-code/issues/32630) (Cmd+Enter approved *and* sent the half-typed message).
+- The TUI camp (Claude Code, Codex, Gemini, OpenCode, Aider, Goose) preselects the affirmative and Enter approves - but in all six **the composer is gone** while the prompt is up. Fleet's composer stays live, which is why their model cannot be copied wholesale.
+
+**Do not autofocus the approve button.** Space activates a focused button, so a user typing a queued message would approve a command by typing a space.
+
+## What Fleet does
+
+1. **Idle deferral** (`PERMISSION_DRAFT_IDLE_MS = 1000`), the fix Claude Code and Codex both landed on independently. Codex ships `APPROVAL_PROMPT_TYPING_IDLE_DELAY = Duration::from_secs(1)`; Claude Code's changelog 2.1.30 reads "Fixed permission dialogs stealing focus while actively typing". The card is held back until the typing stops, so it can never appear between two keystrokes. Once drawn it stays drawn - it is the turn's question, not a notification.
+
+   `useSettledAsk` reports through a **ref**, and the timer reschedules itself by re-reading that ref. Writing a message with nothing pending therefore costs no render at all - important, because a `setState` per keystroke here would re-render the whole transcript.
+
+   **"Typing" is the wrong word for what has to hold the card back.** The first cut called `noteTyping` from the textarea's `onChange` only, which left every attachment path - the picker, a drop, a paste, an `@` picked off the menu - able to let a card land on someone with their hands on the composer. All four go through `attach`, so that is the one place it belongs, called twice: once for the gesture and once when main comes back with the file, since that read can outlast the idle window. The callback is now `onDraft` - a name that does not quietly exclude three of its four callers.
+
+2. **Enter approves only when there is nothing to send** (empty box, no attachments). This is not extra caution: `agentSlashCommand` exists so that typing `/clear` in full and pressing Enter runs the command. Without the guard, Enter would approve the command instead of running `/clear`, and a draft mid-sentence would be answered by reflex.
+
+3. **Escape twice interrupts** the turn, armed for 2s. One press is too easy to arrive by accident, and what it discards is minutes of work and the money that bought it.
+
+4. **The answer names the question it is answering.** `decidePermission` takes the `requestId` of the card that was actually rendered, and the store drops the decision when that is not the request it is holding. The settled card is a copy of store state, and the store can advance A -> B without React ever drawing the gap between them - so an answer that named no question would run whichever command the store had moved on to. Narrow race, but the thing it races on is a permission gate.
+
+## Testing this without a DOM
+
+The repo has no component testing library, and adding one for three interactions was not worth it. The decisions were extracted into pure modules instead - `composer-keys.ts` (`composerIntent`, `settleDelay`) and `transcript-tail.ts` (`atTail`, `lostRoom`) - which is the same shape as `composer-slash.ts` and `todo-view.ts`. What is left in the component is dispatch, and what a mistake would cost now lives in a file that can be tested with a table of arguments.
+## Reproducing
+
+`npm run drive -- fixture agent-permission-ask` seeds a streaming turn that stops on a permission question, at the foot of a transcript long enough to scroll.
+The question arrives a beat *after* the transcript, because a state seeded all at once cannot reproduce a reader already parked at the tail when the card appears under them.
+
+## Gotcha met on the way
+
+**`ps` is not a reliable way to find a running dev server here.** Under an agent sandbox `ps -eo pid,ppid,command` lists only the agent's own shell processes - about thirty lines - so a check for an existing Electron comes back empty while three instances are running, and a fourth gets started. Ports are visible even when processes are not:
+
+```bash
+for p in 5173 5174 5175 5176; do curl -s -m 1 -o /dev/null -w "$p %{http_code}\n" http://localhost:$p/; done
+curl -s http://localhost:5174/src/main.tsx | head -c 300   # which checkout it serves
+/usr/sbin/lsof -nP -iTCP:5174 -sTCP:LISTEN                 # who owns it
+```
+
+Killing the vite process orphans its Electron child, which keeps a CDP port open and a window on screen loading nothing; `/usr/sbin/lsof -nP -iTCP -sTCP:LISTEN | grep -i electron` finds it.
+
+Two `npm run dev` servers from different checkouts collide on Vite's port.
+The second takes 5174 while `ELECTRON_RENDERER_URL` and `.fleet-drive/session.json` can disagree about which one the window actually loaded, so `fleet-drive` attaches to a window whose renderer is being served by the *other* checkout - which renders blank, since the preload and the module graph come from different trees.
+Symptom: `document.body.innerHTML.length === 87` and `typeof window.__FLEET__ === 'undefined'`.
+Check `curl -s http://localhost:<port>/src/main.tsx | head` and look at which absolute path the `/@fs/` imports point at before trusting anything you measure.

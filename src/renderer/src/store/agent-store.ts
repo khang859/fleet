@@ -272,8 +272,15 @@ type AgentStoreState = {
   /** Folds the older half of the transcript into a summary. Ignored while busy. */
   compact: (paneId: string) => void;
   cancel: (paneId: string) => void;
-  /** Answer the command waiting on this pane. Nothing is decided here: main is. */
-  decidePermission: (paneId: string, outcome: AgentPermissionOutcome) => void;
+  /**
+   * Answer the command waiting on this pane. Nothing is decided here: main is.
+   *
+   * `requestId` is the question the answer was actually given to, and it is
+   * required rather than looked up: the card on screen can be a beat behind the
+   * one the store is holding, and an answer applied to whichever question
+   * happens to be pending is an answer to a command the user never read.
+   */
+  decidePermission: (paneId: string, outcome: AgentPermissionOutcome, requestId: string) => void;
   /** The same, for the command a subagent of this pane is waiting on. */
   decideTaskPermission: (taskId: string, outcome: AgentPermissionOutcome) => void;
   /** The pane is gone: stop its turn and forget it. */
@@ -475,10 +482,17 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     if (streamId) window.fleet.agent.cancel(streamId);
   },
 
-  decidePermission: (paneId, outcome) => {
+  decidePermission: (paneId, outcome, requestId) => {
     const thread = get().threads[paneId];
     const ask = thread?.pendingPermission;
     if (!thread || !ask) return;
+    // Answered, but not this question. The pane draws the card a beat after
+    // the ask arrives - deliberately, so it cannot land under someone's hands
+    // mid-keystroke - which leaves a moment where what is on screen and what
+    // is pending are two different commands. Dropping the answer is the only
+    // safe reading of it: the turn is still stopped, the new question is drawn
+    // a moment later, and the user answers the one they can actually see.
+    if (ask.requestId !== requestId) return;
     // Cleared here rather than on an answer from main: the question has been
     // answered, and leaving the buttons up while the command starts reads as
     // though the click was missed.

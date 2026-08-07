@@ -916,10 +916,10 @@ describe('handing a command to the user', () => {
 });
 
 describe('asking the user about a command', () => {
-  const ask = (streamId: string, command = 'npm test'): void =>
+  const ask = (streamId: string, command = 'npm test', requestId = 'req-1'): void =>
     emit(IPC_CHANNELS.AGENT_PERMISSION_ASK, {
       streamId,
-      requestId: 'req-1',
+      requestId,
       callId: 'call-1',
       command,
       reason: null,
@@ -947,13 +947,59 @@ describe('asking the user about a command', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'run the tests');
     ask(liveStreamId());
 
-    agentStore.useAgentStore.getState().decidePermission(PANE, 'always');
+    agentStore.useAgentStore.getState().decidePermission(PANE, 'always', 'req-1');
 
     expect(agentApi.decidePermission).toHaveBeenCalledWith({
       requestId: 'req-1',
       outcome: 'always'
     });
     expect(thread().pendingPermission).toBeNull();
+  });
+
+  /*
+   * The card the user read is not always the question the store is holding.
+   * A turn can be refused one command and stop on the next within a frame, and
+   * React need never draw the gap between them - so the row keeps showing the
+   * old command while the store has moved on. An answer that named no question
+   * would run the new one, which nobody has read.
+   */
+  it('ignores an answer to a question that has already been replaced', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'run the tests');
+    const streamId = liveStreamId();
+    ask(streamId, 'npm test', 'req-1');
+    ask(streamId, 'rm -rf build', 'req-2');
+
+    agentStore.useAgentStore.getState().decidePermission(PANE, 'once', 'req-1');
+
+    expect(agentApi.decidePermission).not.toHaveBeenCalled();
+    expect(thread().pendingPermission).toMatchObject({ command: 'rm -rf build' });
+  });
+
+  it('answers the question the user was shown once it is the one being asked', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'run the tests');
+    const streamId = liveStreamId();
+    ask(streamId, 'npm test', 'req-1');
+    ask(streamId, 'rm -rf build', 'req-2');
+
+    agentStore.useAgentStore.getState().decidePermission(PANE, 'once', 'req-2');
+
+    expect(agentApi.decidePermission).toHaveBeenCalledWith({
+      requestId: 'req-2',
+      outcome: 'once'
+    });
+    expect(thread().pendingPermission).toBeNull();
+  });
+
+  // The same key pressed twice, or a click landing on a card mid-teardown.
+  it('says nothing to main about a question that is already answered', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'run the tests');
+    ask(liveStreamId());
+    agentStore.useAgentStore.getState().decidePermission(PANE, 'once', 'req-1');
+    agentApi.decidePermission.mockClear();
+
+    agentStore.useAgentStore.getState().decidePermission(PANE, 'once', 'req-1');
+
+    expect(agentApi.decidePermission).not.toHaveBeenCalled();
   });
 
   // Main refuses it on its side when the turn ends, so the row must not be
@@ -1270,7 +1316,7 @@ describe('telling the rest of the app it is blocked', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'clean up');
     ask();
 
-    agentStore.useAgentStore.getState().decidePermission(PANE, 'once');
+    agentStore.useAgentStore.getState().decidePermission(PANE, 'once', 'req-1');
 
     expect(activityOf()).toBe('working');
   });

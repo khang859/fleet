@@ -34,7 +34,7 @@ import { AgentToolRow } from './AgentToolRow';
 import { AgentPermissionRow } from './AgentPermissionRow';
 import { AgentTaskCard } from './AgentTaskCard';
 import { AgentTaskPermissions } from './AgentTaskPermissions';
-import { pendingTaskAsks } from './task-permissions';
+import { pendingTaskAsks, type PendingTaskAsk } from './task-permissions';
 import { ToolModePicker } from './ToolModePicker';
 import { AgentAttachmentChip, AgentMessageAttachments } from './AgentAttachment';
 import { reasoningLabel } from './activity';
@@ -49,6 +49,8 @@ import { EMPTY_SESSION_SPEND, hasSpend } from '../../../../shared/agent-spend';
 import { agentSlashCommand, agentSlashMenu, type AgentSlashCommand } from './composer-slash';
 import { agentMentionQuery, withoutMentionQuery } from './composer-mention';
 import { useComposerMenu, type ComposerMenuAnchor } from './composer-menu';
+import { INTERRUPT_ARM_MS, composerIntent, settleDelay } from './composer-keys';
+import { atTail, lostRoom } from './transcript-tail';
 import { ComposerMenu } from './ComposerMenu';
 import { downscaleImage } from '../../lib/downscale-image';
 import { useAgentStore } from '../../store/agent-store';
@@ -70,8 +72,91 @@ const EMPTY_TASK_ACTIVITY: Record<string, string | null> = {};
 /** The same, for a pane with no subagent waiting on a command. */
 const EMPTY_TASK_PERMISSIONS: Record<string, AgentPermissionAsk> = {};
 
-/** How near the end still counts as being at it, in pixels. */
-const TAIL_SLACK_PX = 24;
+/** Stable empty release list, so clearing one twice does not re-render. */
+const NOTHING_RELEASED: readonly string[] = [];
+
+/**
+ * The pending questions, each held back until the composer goes quiet.
+ *
+ * Returns the pane's own question and the subagents' - each only once it is safe
+ * to draw - plus the callback the composer uses to say the message being written
+ * has just changed. That is reported through a ref rather than state so the
+ * common case - writing with nothing pending - costs no render at all; the timer
+ * re-reads that ref when it fires and puts itself back if the user is still
+ * going.
+ *
+ * A subagent's question cannot take a keystroke the way the pane's own can:
+ * nothing moves focus, and Enter never answers one. But the strip it appears in
+ * grows out of the top of the composer and pushes it down the pane, which is
+ * enough to slide a button under a mouse already on its way to the box. Same
+ * hold, same clock - what the user is in the middle of doing is what decides
+ * when any of them appear.
+ *
+ * What has been let through is remembered by request id, so that answering one
+ * of several does not hold the rest back a second time, and a subagent's next
+ * question waits on its own account rather than arriving on the last one's
+ * ticket.
+ */
+function useSettledAsks(
+  ask: AgentPermissionAsk | null,
+  tasks: PendingTaskAsk[]
+): {
+  settled: AgentPermissionAsk | null;
+  settledTasks: PendingTaskAsk[];
+  noteDraft: () => void;
+} {
+  const [released, setReleased] = useState(NOTHING_RELEASED);
+  const draftedAt = useRef(0);
+  const waiting = useRef(NOTHING_RELEASED);
+
+  const pending = [
+    ...(ask === null ? [] : [ask.requestId]),
+    ...tasks.map((task) => task.ask.requestId)
+  ];
+  // Keyed on which questions are waiting rather than how many, since one
+  // arriving as another is answered leaves the count where it was.
+  const key = pending.join(' ');
+
+  // Declared first so it has already run by the time the timer below is
+  // scheduled: what gets released is whatever is waiting when the composer goes
+  // quiet, not whatever was waiting when the wait began.
+  useEffect(() => {
+    waiting.current = pending;
+  });
+
+  useEffect(() => {
+    if (key === '') {
+      // Nothing is waiting, so nothing is owed a release. Kept tidy rather than
+      // left to accumulate - ids are uuids and never come round again, so this
+      // is housekeeping and not part of the guard.
+      setReleased(NOTHING_RELEASED);
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout>;
+    const settle = (): void => {
+      const wait = settleDelay(Date.now(), draftedAt.current);
+      if (wait === 0) {
+        setReleased(waiting.current);
+        return;
+      }
+      timer = setTimeout(settle, wait);
+    };
+    timer = setTimeout(settle, 0);
+    return () => clearTimeout(timer);
+  }, [key]);
+
+  const noteDraft = useCallback(() => {
+    draftedAt.current = Date.now();
+  }, []);
+
+  // Filtered against what is still waiting, so a question that has been answered
+  // leaves the screen the moment it is - the hold is on the way in only.
+  return {
+    settled: ask !== null && released.includes(ask.requestId) ? ask : null,
+    settledTasks: tasks.filter((task) => released.includes(task.ask.requestId)),
+    noteDraft
+  };
+}
 
 export function AgentThread({
   paneId,
@@ -106,16 +191,21 @@ export function AgentThread({
   const streaming = (thread?.streamId ?? null) !== null;
   const contextTokens = thread?.contextTokens ?? null;
   const spend = thread?.spend ?? EMPTY_SESSION_SPEND;
-  const ask = thread?.pendingPermission ?? null;
   const imagePartials = thread?.imagePartials ?? EMPTY_PARTIALS;
   const taskActivity = thread?.taskActivity ?? EMPTY_TASK_ACTIVITY;
   const taskPermissions = thread?.taskPermissions ?? EMPTY_TASK_PERMISSIONS;
+  // Everything downstream asks "is there a question on screen", which is not
+  // quite "has one been asked" - so the held-back ones are what they are given.
+  const {
+    settled: ask,
+    settledTasks: pendingTasks,
+    noteDraft
+  } = useSettledAsks(thread?.pendingPermission ?? null, pendingTaskAsks(messages, taskPermissions));
   // Only when the pane has no column for it, so the same list is never in two
   // places saying the same thing.
   const todoItems = thread?.todos ?? EMPTY_TODOS;
   const todos = todosInPanel ? null : todoProgress(todoItems);
   const gitHead = useGitHead(paneId, cwd);
-  const pendingTasks = pendingTaskAsks(messages, taskPermissions);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -126,7 +216,7 @@ export function AgentThread({
           messages={messages}
           streaming={streaming && !compacting}
           ask={ask}
-          onDecide={(outcome) => decidePermission(paneId, outcome)}
+          onDecide={(outcome, requestId) => decidePermission(paneId, outcome, requestId)}
           imagePartials={imagePartials}
           taskActivity={taskActivity}
           taskPermissions={taskPermissions}
@@ -188,6 +278,13 @@ export function AgentThread({
         streaming={streaming}
         asking={ask !== null}
         cwd={cwd}
+        // The card on screen, not whatever the store is holding now: a question
+        // that arrived after this one was drawn has not been read yet, and a key
+        // pressed at the old one must not answer the new one.
+        onApprove={() => {
+          if (ask !== null) decidePermission(paneId, 'once', ask.requestId);
+        }}
+        onDraft={noteDraft}
         toolMode={agent?.toolMode ?? DEFAULT_AGENT_SETTINGS.toolMode}
         onToolMode={(toolMode) => void updateSettings({ ai: { agent: { toolMode } } })}
         // The conversation is what an attachment belongs to, so it is what the
@@ -234,7 +331,7 @@ function Transcript({
   messages: AgentMessage[];
   streaming: boolean;
   ask: AgentPermissionAsk | null;
-  onDecide: (outcome: AgentPermissionOutcome) => void;
+  onDecide: (outcome: AgentPermissionOutcome, requestId: string) => void;
   imagePartials: Record<string, string>;
   taskActivity: Record<string, string | null>;
   taskPermissions: Record<string, AgentPermissionAsk>;
@@ -244,7 +341,7 @@ function Transcript({
   const scrollRef = useRef<HTMLDivElement>(null);
   // Whether the reader is parked at the tail. Written only from actual scrolls,
   // so when the content grows it still says where they were before it did.
-  const atTail = useRef(true);
+  const parked = useRef(true);
   const last = messages.at(-1);
   // Which results the next request will leave out. Worked out from the same
   // transcript and by the same function main uses, so a row that says it was
@@ -256,11 +353,11 @@ function Transcript({
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [messages.length, last?.parts, last?.reasoning]);
 
-  // A reply keeps growing after React has finished with it: a code block is
-  // highlighted asynchronously and lands taller than the space held for it,
-  // which is enough to push the end of the answer below the fold - and an
-  // answer that finishes on a code block is most of them. So the tail follows
-  // the content itself rather than the render that started it.
+  // A reply keeps growing after React has finished with it, and the window onto
+  // it can shrink under a line that was not there before - `lostRoom` is what
+  // those two have in common. Watching the elements themselves rather than the
+  // render that changed them is what catches the asynchronous half: a code
+  // block highlighted after the fact lands taller than the space held for it.
   //
   // Only for a reader who was already at the tail, though. Growth is not always
   // the reply arriving: opening a tool call grows the transcript too, and
@@ -268,20 +365,21 @@ function Transcript({
   // taken to the end.
   useEffect(() => {
     const content = contentRef.current;
-    if (content === null) return;
+    const port = scrollRef.current;
+    if (content === null || port === null) return;
 
-    let height = content.getBoundingClientRect().height;
+    let room = { content: content.getBoundingClientRect().height, port: port.clientHeight };
     const observer = new ResizeObserver(() => {
-      const grown = content.getBoundingClientRect().height;
-      if (grown <= height) {
-        height = grown;
-        return;
-      }
-      height = grown;
-      if (!atTail.current) return;
+      const now = { content: content.getBoundingClientRect().height, port: port.clientHeight };
+      const lost = lostRoom(room, now);
+      room = now;
+      // Read after the sizes are recorded, so a move the reader made is not
+      // remembered as one they did not.
+      if (!lost || !parked.current) return;
       endRef.current?.scrollIntoView({ block: 'end' });
     });
     observer.observe(content);
+    observer.observe(port);
     return () => observer.disconnect();
   }, []);
 
@@ -292,9 +390,7 @@ function Transcript({
       onScroll={() => {
         const el = scrollRef.current;
         if (el === null) return;
-        // A line's worth of slack, so "as far down as it goes" survives the
-        // fractional scroll heights a zoomed or half-pixel layout produces.
-        atTail.current = el.scrollHeight - el.scrollTop - el.clientHeight <= TAIL_SLACK_PX;
+        parked.current = atTail(el);
       }}
     >
       <div ref={contentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5">
@@ -376,7 +472,7 @@ function Message({
   message: AgentMessage;
   streaming: boolean;
   ask: AgentPermissionAsk | null;
-  onDecide: (outcome: AgentPermissionOutcome) => void;
+  onDecide: (outcome: AgentPermissionOutcome, requestId: string) => void;
   /** Half-drawn renders for the image calls still running, by call id. */
   imagePartials: Record<string, string>;
   /** Calls whose result is no longer being sent to the model, by call id. */
@@ -572,6 +668,8 @@ function Composer({
   streaming,
   asking,
   cwd,
+  onApprove,
+  onDraft,
   toolMode,
   onToolMode,
   threadId,
@@ -585,6 +683,14 @@ function Composer({
   /** Stopped on a question, which is the one thing typing here cannot answer. */
   asking: boolean;
   cwd: string;
+  /** Run the command being asked about, once. What Enter means while it is up. */
+  onApprove: () => void;
+  /**
+   * The message being written has just changed, so a question waiting to be
+   * asked should keep waiting. Typing is most of it, but a file being attached
+   * counts the same: both mean hands on the composer.
+   */
+  onDraft: () => void;
   /** Who answers the permission questions. App-wide, like every agent setting. */
   toolMode: AgentToolMode;
   onToolMode: (mode: AgentToolMode) => void;
@@ -598,6 +704,8 @@ function Composer({
 }): React.JSX.Element {
   const [text, setText] = useState('');
   const [refused, setRefused] = useState(false);
+  /** Whether an Escape is loaded, waiting on the second one that stops the turn. */
+  const [armed, setArmed] = useState(false);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [attachments, setAttachments] = useState<AgentAttachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
@@ -620,7 +728,14 @@ function Composer({
    */
   const attach = useCallback(
     async (source: AgentAttachRequest['source']): Promise<void> => {
+      // Attaching is composing too. Every way in - the picker, a drop, a paste,
+      // an `@` picked off the menu - comes through here, so this is the one
+      // place a question waiting to be asked has to be told to keep waiting.
+      // Twice: main reads the file in between, and a card that landed during
+      // that read would land on someone with their hands still on the composer.
+      onDraft();
       const result = await window.fleet.agent.attach({ threadId, cwd, source });
+      onDraft();
       if (!result.ok) {
         setAttachError(result.error);
         return;
@@ -628,7 +743,7 @@ function Composer({
       setAttachError(null);
       setAttachments((current) => [...current, result.attachment]);
     },
-    [cwd, threadId]
+    [cwd, threadId, onDraft]
   );
 
   /** Files from a paste, a drop or the picker - all the same thing from here. */
@@ -690,10 +805,23 @@ function Composer({
   }, [text]);
 
   // The turn is over, so the message that could not go while it ran can go
-  // now, and saying otherwise would be stale.
+  // now, and saying otherwise would be stale. A loaded Escape goes with it:
+  // there is no longer a turn for the second press to stop, and one left armed
+  // would spend itself on the next turn instead of this one.
   useEffect(() => {
-    if (!streaming) setRefused(false);
+    if (streaming) return;
+    setRefused(false);
+    setArmed(false);
   }, [streaming]);
+
+  // A first Escape is forgotten if the second never comes. Without this it
+  // waits indefinitely, and the press that closed a menu a minute ago is still
+  // holding the trigger when the user reaches for Escape again.
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), INTERRUPT_ARM_MS);
+    return () => clearTimeout(timer);
+  }, [armed]);
 
   /**
    * Start a new session. Refused mid-turn exactly the way a message is: the
@@ -845,6 +973,13 @@ function Composer({
             : 'The agent is still working - your message is still here.'}
         </p>
       )}
+      {/* Amber rather than subtle: this is the one line here that is about
+          something the next keystroke will do, not something already done. */}
+      {armed && (
+        <p role="status" className="px-1 pb-1.5 text-[11px] text-amber-700 dark:text-amber-400/90">
+          Press Escape again to interrupt.
+        </p>
+      )}
       {attachError !== null && <Notice>{attachError}</Notice>}
       {blind && hasImage && (
         <Notice>
@@ -921,6 +1056,9 @@ function Composer({
             disabled={disabled}
             onChange={(e) => {
               setText(e.target.value);
+              // Said on every keystroke, so a question that arrives mid-sentence
+              // waits for the sentence to end rather than for the next key.
+              onDraft();
               // Typing again is a fresh attempt, so a menu dismissed with Escape
               // is allowed back, at the top of its list.
               setMenuDismissed(false);
@@ -955,19 +1093,40 @@ function Composer({
               ) {
                 if (recall(e, e.key === 'ArrowUp' ? 'back' : 'forward')) return;
               }
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                submit();
+              const intent = composerIntent(e, {
+                asking,
+                streaming,
+                armed,
+                draft: text.trim() !== '' || attachments.length > 0
+              });
+              // Anything the composer has no opinion about is left alone
+              // entirely, default included: these are the caret's keys.
+              if (intent === 'pass') return;
+              e.preventDefault();
+              if (intent === 'arm') {
+                setArmed(true);
+                return;
               }
+              if (intent === 'interrupt') {
+                setArmed(false);
+                onStop();
+                return;
+              }
+              if (intent === 'approve') {
+                onApprove();
+                return;
+              }
+              submit();
             }}
             // The turn is not listening here until the question above is
-            // answered, and Enter doing nothing at all reads as a dropped
-            // message. The draft is left alone - it is still worth sending after.
+            // answered, so the box says what Enter does instead of leaving the
+            // user to find out it no longer sends. The draft is left alone - it
+            // is still worth sending after.
             placeholder={
               disabled
                 ? 'Choose a coding model in Settings first'
                 : asking
-                  ? 'Answer the question above to carry on'
+                  ? 'Press Enter to run it, or answer above'
                   : 'Ask the agent…'
             }
             aria-label="Message the agent"
