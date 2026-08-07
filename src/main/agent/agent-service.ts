@@ -399,6 +399,20 @@ class TurnAccount {
   }
 
   /**
+   * A model call the turn needed but did not make of the coding model - auto
+   * mode asking whether a command is safe.
+   *
+   * Everything is added except the context figure, which is left where the last
+   * round put it. That number is what the next prompt will cost to send, and
+   * this call's prompt was one command line: letting it win would have the
+   * meter report the window emptying out every time the agent ran something.
+   */
+  side(usage: AgentTurnUsage): void {
+    this.billed = addRound(this.billed, usage.billed);
+    this.calls += usage.calls;
+  }
+
+  /**
    * What to tell the pane, or `null` when no provider on this turn said
    * anything at all - in which case there is nothing to report but a set of
    * zeroes, and zeroes would be recorded as fact.
@@ -586,7 +600,13 @@ export class AgentService {
               streamId,
               callId: call.id,
               command,
-              signal: ctx.signal
+              cwd: req.cwd,
+              signal: ctx.signal,
+              // Auto mode answers some of these with a model, and a model that
+              // was asked was billed. It lands in the turn that caused it
+              // rather than anywhere of its own: from the user's side one
+              // command ran, and what it took to decide that is part of it.
+              onUsage: (usage) => account.side(usage)
             })) === 'run',
           wasRefused: (command) => this.deps.gate.wasRefused(streamId, command),
           // Built per call rather than per turn, because a partial render has

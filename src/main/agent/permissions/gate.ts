@@ -7,7 +7,12 @@ import {
   type AgentPermissionRules
 } from '../../../shared/agent-permissions';
 import { serverRulePattern } from '../../../shared/agent-mcp-names';
-import type { AgentPermissionAsk, AgentPermissionOutcome } from '../../../shared/agent-types';
+import type {
+  AgentPermissionAsk,
+  AgentPermissionOutcome,
+  AgentTurnUsage
+} from '../../../shared/agent-types';
+import type { ClassifierVerdict } from './classifier';
 
 /**
  * The gate a shell command passes through before it runs.
@@ -30,7 +35,24 @@ type Deps = {
    */
   persistAllowMcp: (rule: string) => void;
   emit: (channel: string, payload: unknown) => void;
+  /**
+   * Whether a model may answer this question instead of the user, and what it
+   * said. Absent ⇒ the gate has no such thing and every question is the user's,
+   * which is what it was before auto mode existed.
+   *
+   * It is asked about the commands no rule settled and nothing else. Deciding
+   * whether the mode is even on lives behind this rather than here, because
+   * "off" and "the model said ask" and "the call failed" all mean the same
+   * thing to the gate, and a gate that could tell them apart would only be able
+   * to do the same thing about each.
+   */
+  autoApprove?: (req: AutoApproveRequest) => Promise<AutoApproval>;
 };
+
+export type AutoApproveRequest = { command: string; cwd: string; signal: AbortSignal };
+
+/** What the model said, and what asking it cost. */
+export type AutoApproval = { verdict: ClassifierVerdict; usage: AgentTurnUsage | null };
 
 type Pending = {
   resolve: (grant: PermissionGrant) => void;
@@ -44,12 +66,24 @@ type Pending = {
   release: () => void;
 };
 
-export type PermissionRequest = {
+/** What every question needs, however it was arrived at. */
+type Question = {
   streamId: string;
   callId: string;
   command: string;
   /** Aborted when the turn is stopped, which answers a question nobody got to. */
   signal: AbortSignal;
+};
+
+export type PermissionRequest = Question & {
+  /** Where the command would run. Most of what "outside the folder" means. */
+  cwd: string;
+  /**
+   * Bills a model call this question needed - which in auto mode it may. The
+   * turn's account is the caller's, and this is the only side of the wall that
+   * knows a second call happened.
+   */
+  onUsage?: (usage: AgentTurnUsage) => void;
 };
 
 /** The same question, about one of a connected server's tools. */
@@ -80,6 +114,17 @@ export class PermissionGate {
    */
   private readonly refused = new Map<string, Set<string>>();
 
+  /**
+   * What auto mode has already been asked about this turn, and answered.
+   *
+   * For the money, and for the consistency. A turn that runs the test suite
+   * five times should pay for one judgement rather than five, and a model that
+   * was told `npm test` is fine must not be stopped and asked about it three
+   * rounds later - the same command getting two different answers inside one
+   * turn reads as a bug, whichever way round it happens.
+   */
+  private readonly judged = new Map<string, Map<string, ClassifierVerdict>>();
+
   constructor(private readonly deps: Deps) {}
 
   async check(req: PermissionRequest): Promise<PermissionGrant> {
@@ -89,10 +134,41 @@ export class PermissionGate {
     if (verdict.kind === 'allow') return 'run';
     if (verdict.kind === 'deny') return 'refuse';
 
+    // Only what no rule had anything to say about. A command carrying an
+    // always-ask reason is one the user decides whatever the mode is: those are
+    // the handful where being wrong costs a rewritten remote or a leaked key,
+    // and they are not put to a model.
+    if (verdict.kind === 'unknown' && (await this.autoApproved(req))) return 'run';
+
     // A command that always asks is one no rule may quietly cover later, so
     // there is nothing to offer to remember.
     const rule = verdict.kind === 'ask' && !verdict.remember ? null : suggestRule(req.command);
     return this.ask(req, verdict.kind === 'ask' ? verdict.reason : null, rule);
+  }
+
+  /**
+   * Whether a model says this one may run unasked.
+   *
+   * `false` for everything that is not a plain yes - no classifier wired up,
+   * auto mode off, the model said ask, the call failed. All of them mean the
+   * user is asked, which is what would have happened anyway, so none of them is
+   * worth telling apart here.
+   */
+  private async autoApproved(req: PermissionRequest): Promise<boolean> {
+    const ask = this.deps.autoApprove;
+    if (ask === undefined) return false;
+
+    const seen = this.judged.get(req.streamId) ?? new Map<string, ClassifierVerdict>();
+    const remembered = seen.get(req.command);
+    if (remembered !== undefined) return remembered === 'safe';
+
+    const answer = await ask({ command: req.command, cwd: req.cwd, signal: req.signal });
+    // Before the verdict is used, so a call that was billed is billed even if
+    // what came back is about to be thrown away.
+    if (answer.usage !== null) req.onUsage?.(answer.usage);
+    seen.set(req.command, answer.verdict);
+    this.judged.set(req.streamId, seen);
+    return answer.verdict === 'safe';
   }
 
   /**
@@ -104,6 +180,12 @@ export class PermissionGate {
    * about it was already a server the user chose to hand their machine to. The
    * user's own rules still come first, so a denied tool stays denied whatever
    * the server says about it.
+   *
+   * Auto mode does not reach here. A classifier reads a command line and says
+   * what running it would do; an MCP call is a name and a blob of JSON, and
+   * what `create_issue` on somebody's server does cannot be read off either.
+   * Asking a model to guess would be inventing an opinion rather than forming
+   * one - so the answer stays the server's `readOnly` claim, or the user.
    */
   async checkMcp(req: McpPermissionRequest): Promise<PermissionGrant> {
     if (this.wasRefused(req.streamId, req.wireName)) return 'refuse';
@@ -153,13 +235,14 @@ export class PermissionGate {
   /** Called when a turn ends, however it ended: nothing here outlives it. */
   endTurn(streamId: string): void {
     this.refused.delete(streamId);
+    this.judged.delete(streamId);
     for (const [id, entry] of [...this.pending]) {
       if (entry.streamId === streamId) this.settle(id, 'refuse');
     }
   }
 
   private async ask(
-    req: PermissionRequest,
+    req: Question,
     reason: string | null,
     rule: string | null,
     mcp: AgentPermissionAsk['mcp'] = null

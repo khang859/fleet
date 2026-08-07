@@ -72,6 +72,7 @@ import { AgentService } from './agent/agent-service';
 import { AgentSessionStore } from './agent/session-store';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './agent/image-store';
 import { PermissionGate } from './agent/permissions/gate';
+import { classifyCommand } from './agent/permissions/classifier';
 import { AgentGitWatcher } from './agent/git-watch';
 import { AgentHistoryStore } from './agent/history-store';
 import { McpManager as AgentMcpManager } from './agent/mcp/manager';
@@ -882,7 +883,22 @@ void app.whenReady().then(async () => {
         }
       });
     },
-    emit: agentEmit
+    emit: agentEmit,
+    // Auto mode. Every reason not to consult a model - the mode is off, there
+    // is no key, no model is chosen - comes back as `ask`, which is the answer
+    // the gate would have reached without any of this.
+    autoApprove: async ({ command, cwd, signal }) => {
+      const a = settingsStore.get().ai.agent;
+      const apiKey = openRouterSecrets.getKey();
+      // Falls through to the coding model rather than to the title model: the
+      // one the user already trusts to drive the tools is the honest default,
+      // and naming a session is not a judgement about what may run.
+      const model = a.classifierModel ?? a.coding.model;
+      if (a.toolMode !== 'auto' || apiKey === null || model === null) {
+        return { verdict: 'ask', usage: null };
+      }
+      return classifyCommand(completeOnce, { apiKey, model, command, cwd, signal });
+    }
   });
   // MCP servers for the Agent pane, with their own config and secret store.
   const agentMcpSecrets = new AgentMcpSecrets();
