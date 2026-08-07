@@ -12,17 +12,24 @@ const log = createLogger('shell-env');
 // volta, etc. are invisible. This module resolves the user's real shell
 // environment once at startup and merges it into process.env.
 
-let resolved = false;
+// The in-flight (or finished) resolution. A promise rather than a boolean so a
+// second caller waits for the first to finish instead of racing past it: a flag
+// set before the await returns immediately while PATH is still the minimal one,
+// which is exactly the bug this module exists to prevent.
+let resolution: Promise<void> | null = null;
 
 /**
  * Enrich `process.env` with the user's login shell environment.
  * Uses `shell-env` (same strategy as VS Code) with a fallback to probing
- * known install locations. Safe to call multiple times — only runs once.
+ * known install locations. Safe to call multiple times — only runs once, and
+ * every caller awaits the same resolution.
  */
 export async function enrichProcessEnv(): Promise<void> {
-  if (resolved) return;
-  resolved = true;
+  resolution ??= run();
+  return resolution;
+}
 
+async function run(): Promise<void> {
   // Windows inherits PATH correctly from the desktop — nothing to do
   if (process.platform === 'win32') return;
 

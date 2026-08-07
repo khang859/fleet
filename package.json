@@ -65,6 +65,7 @@
     "@git-diff-view/react": "^0.1.2",
     "@git-diff-view/shiki": "^0.1.2",
     "@huggingface/transformers": "^4.2.0",
+    "@modelcontextprotocol/client": "2.0.0",
     "@mozilla/readability": "^0.6.0",
     "@radix-ui/react-context-menu": "^2.2.16",
     "@radix-ui/react-dialog": "^1.1.15",
