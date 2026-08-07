@@ -44,6 +44,13 @@ type ServerSecrets = {
   /** Client registration, by issuer. */
   clientEnc?: Record<string, string>;
   /**
+   * Header and environment values lifted out of the config, by field.
+   *
+   * Keyed `headers.<name>` or `env.<name>`, so one server can hold several -
+   * an API key header and a token in the environment are both ordinary.
+   */
+  fieldsEnc?: Record<string, string>;
+  /**
    * The issuer the last token was saved under.
    *
    * The transport reads the bearer token for each request without saying which
@@ -114,6 +121,30 @@ export class AgentMcpSecrets {
       delete next.tokenEnc;
       return next;
     });
+  }
+
+  /**
+   * A header or environment value lifted out of the config.
+   *
+   * `field` is `headers.<name>` or `env.<name>` - the same path the config
+   * leaves a reference at, so the two line up without anything having to be
+   * remembered alongside.
+   */
+  setField(server: string, field: string, plain: string): void {
+    this.update(server, (s) => ({
+      ...s,
+      fieldsEnc: { ...s.fieldsEnc, [field]: this.encrypt(plain) }
+    }));
+  }
+
+  /** Every lifted field for one server, decrypted. Ones that will not decrypt are left out. */
+  fields(server: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [field, enc] of Object.entries(this.of(server).fieldsEnc ?? {})) {
+      const value = this.decrypt(enc);
+      if (value !== null) out[field] = value;
+    }
+    return out;
   }
 
   saveTokens(server: string, issuer: string, tokens: StoredTokens): void {

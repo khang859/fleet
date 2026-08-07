@@ -5,6 +5,7 @@ import {
   type Transport
 } from '@modelcontextprotocol/client';
 import type { McpServerConfig } from '../../../shared/agent-mcp';
+import { MCP_SECRET_REF } from '../../../shared/agent-mcp';
 import { enrichProcessEnv } from '../../shell-env';
 import { expandArray, expandRecord, expandVars } from './expand';
 
@@ -32,6 +33,8 @@ export type TransportAuth = {
   authProvider?: OAuthClientProvider;
   /** Headers holding a resolved secret, kept out of the stored config. */
   headers?: Record<string, string>;
+  /** Environment values holding a resolved secret, likewise. */
+  env?: Record<string, string>;
 };
 
 export async function createTransport(
@@ -41,10 +44,10 @@ export async function createTransport(
   if (cfg.url !== undefined && cfg.url !== '') {
     return httpTransport(cfg, auth);
   }
-  return stdioTransport(cfg);
+  return stdioTransport(cfg, auth);
 }
 
-async function stdioTransport(cfg: McpServerConfig): Promise<Transport> {
+async function stdioTransport(cfg: McpServerConfig, auth?: TransportAuth): Promise<Transport> {
   // Idempotent, and awaited rather than assumed: the app kicks this off at
   // startup without waiting, so the first server to connect may well get here
   // before it has finished.
@@ -60,8 +63,12 @@ async function stdioTransport(cfg: McpServerConfig): Promise<Transport> {
     command,
     args: expandArray(cfg.args, env) ?? [],
     // The enriched process env underneath, so a server inherits the shell the
-    // user actually has, with its own settings layered on top.
-    env: { ...stringOnly(process.env), ...(expandRecord(cfg.env, env) ?? {}) },
+    // user actually has, with its own settings layered on top, and the values
+    // that were lifted into the secret store on top of those.
+    env: {
+      ...stringOnly(process.env),
+      ...resolved(expandRecord(cfg.env, env), auth?.env)
+    },
     // Captured rather than inherited: a server that chatters on stderr would
     // otherwise write over Fleet's own log, and a server that dies has its
     // reason there. The manager reads it to explain a failure.
@@ -82,10 +89,7 @@ export function httpTransport(
 ): StreamableHTTPClientTransport {
   const env = process.env;
   const url = new URL(expandVars(cfg.url ?? '', env));
-  const headers = {
-    ...(expandRecord(cfg.headers, env) ?? {}),
-    ...(auth?.headers ?? {})
-  };
+  const headers = resolved(expandRecord(cfg.headers, env), auth?.headers);
 
   return new StreamableHTTPClientTransport(url, {
     requestInit: Object.keys(headers).length > 0 ? { headers } : undefined,
@@ -93,6 +97,26 @@ export function httpTransport(
     // "send what headers you were given and do not try to authenticate".
     authProvider: auth?.authProvider
   });
+}
+
+/**
+ * The config's own values with the lifted secrets put back.
+ *
+ * A field still reading the marker afterwards is dropped rather than sent. The
+ * secret store could not produce it - a keychain the OS will no longer unlock,
+ * a config copied between machines - and sending a literal `${fleet:secret}` as
+ * an API key would come back as an authentication error nobody could explain.
+ */
+function resolved(
+  own: Record<string, string> | undefined,
+  fromStore: Record<string, string> | undefined
+): Record<string, string> {
+  const merged = { ...own, ...fromStore };
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(merged)) {
+    if (value !== MCP_SECRET_REF) out[key] = value;
+  }
+  return out;
 }
 
 /**

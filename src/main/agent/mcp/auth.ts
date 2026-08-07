@@ -38,24 +38,57 @@ export function resolveAuth(
   cfg: McpServerConfig,
   deps: AuthDeps
 ): TransportAuth | undefined {
+  // Headers and environment values that were lifted out of the config when it
+  // was imported. Separate from `auth`, and applying whatever that says: a
+  // server can want an API key header and an OAuth sign-in both.
+  const lifted = liftedFields(server, deps);
   const kind = cfg.auth?.kind ?? 'none';
-  if (kind === 'none') return undefined;
 
-  if (kind === 'bearer') {
-    const token = deps.secrets.getToken(server);
-    return token === null ? undefined : { headers: { Authorization: `Bearer ${token}` } };
+  if (kind === 'oauth') {
+    return {
+      ...lifted,
+      authProvider: new FleetOAuthProvider({
+        server,
+        secrets: deps.secrets,
+        // No flow is running, so nothing is listening here. The URL is still the
+        // one the registration was made under, which is what the token endpoint
+        // checks a refresh against.
+        redirectUrl: DEFAULT_CALLBACK_URL,
+        openExternal: deps.openExternal
+      })
+    };
+  }
+
+  const token = kind === 'bearer' ? deps.secrets.getToken(server) : null;
+  if (token !== null) {
+    return { ...lifted, headers: { ...lifted.headers, Authorization: `Bearer ${token}` } };
+  }
+
+  // Nothing at all rather than an empty object, so a server that needs no
+  // credentials is not handed one.
+  return lifted.headers === undefined && lifted.env === undefined ? undefined : lifted;
+}
+
+/**
+ * The secrets taken out of this server's config, back in the shape they came
+ * from: `headers.X-Api-Key` becomes a header, `env.API_KEY` an environment
+ * value.
+ */
+function liftedFields(server: string, deps: AuthDeps): TransportAuth {
+  const headers: Record<string, string> = {};
+  const env: Record<string, string> = {};
+
+  for (const [field, value] of Object.entries(deps.secrets.fields(server))) {
+    const [kind, ...rest] = field.split('.');
+    const key = rest.join('.');
+    if (key === '') continue;
+    if (kind === 'headers') headers[key] = value;
+    if (kind === 'env') env[key] = value;
   }
 
   return {
-    authProvider: new FleetOAuthProvider({
-      server,
-      secrets: deps.secrets,
-      // No flow is running, so nothing is listening here. The URL is still the
-      // one the registration was made under, which is what the token endpoint
-      // checks a refresh against.
-      redirectUrl: DEFAULT_CALLBACK_URL,
-      openExternal: deps.openExternal
-    })
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
+    env: Object.keys(env).length > 0 ? env : undefined
   };
 }
 
