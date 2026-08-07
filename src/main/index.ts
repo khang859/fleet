@@ -1666,6 +1666,20 @@ void app.whenReady().then(async () => {
         ai: { agent: { permissions: { ...permissions, allow: [...permissions.allow, rule] } } }
       });
     },
+    persistAllowMcp: (rule) => {
+      const { permissions } = settingsStore.get().ai.agent;
+      if (permissions.mcp.allow.includes(rule)) return;
+      settingsStore.set({
+        ai: {
+          agent: {
+            permissions: {
+              ...permissions,
+              mcp: { ...permissions.mcp, allow: [...permissions.mcp.allow, rule] }
+            }
+          }
+        }
+      });
+    },
     emit: agentEmit
   });
   agentService = new AgentService({

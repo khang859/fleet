@@ -19,9 +19,39 @@ export type AgentPermissionRules = {
   allow: string[];
   /** Refused without asking. Written by the user, never by Fleet. */
   deny: string[];
+  /**
+   * The same, for the tools connected servers offer, matched against the wire
+   * name: `mcp__linear__*` covers one server, `mcp__linear__list_issues` one
+   * tool.
+   *
+   * A separate pair rather than more entries in the two above, because these
+   * are matched against a tool name and those are matched against a shell
+   * command. One list would mean a rule the user wrote about `git` being tried
+   * against a tool name, and a shell splitter being handed something that is
+   * not a shell command.
+   */
+  mcp: { allow: string[]; deny: string[] };
 };
 
-export const DEFAULT_AGENT_PERMISSION_RULES: AgentPermissionRules = { allow: [], deny: [] };
+export const DEFAULT_AGENT_PERMISSION_RULES: AgentPermissionRules = {
+  allow: [],
+  deny: [],
+  mcp: { allow: [], deny: [] }
+};
+
+/**
+ * Whether one of a connected server's tools may run.
+ *
+ * Deliberately not `decideCommand`: that one splits shell syntax, and a tool
+ * name is not a command line. There is no always-ask list here either - what
+ * an MCP tool does is the server's business and cannot be read off its name,
+ * so everything a rule has not settled goes to the user.
+ */
+export function decideMcpTool(rules: AgentPermissionRules, wireName: string): CommandVerdict {
+  if (rules.mcp.deny.some((rule) => matchCommand(rule, wireName))) return { kind: 'deny' };
+  if (rules.mcp.allow.some((rule) => matchCommand(rule, wireName))) return { kind: 'allow' };
+  return { kind: 'unknown' };
+}
 
 /**
  * What to do with a command.
