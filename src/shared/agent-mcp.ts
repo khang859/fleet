@@ -102,6 +102,23 @@ export type McpDetectedServer = {
   status: 'new' | 'changed' | 'known';
 };
 
+/**
+ * What a server said, before it becomes a tool result.
+ *
+ * A picture comes back beside the text rather than inside it, because a tool
+ * result on the wire may only be text - the same reason `read` hands a
+ * screenshot back on a message of its own. Only the first one: a tool that
+ * returns a gallery is returning something for a person to scroll, and sending
+ * all of it would cost more context than the answer is worth.
+ */
+export type McpToolOutput = {
+  text: string;
+  /** True when the server reported the call itself as a failure. */
+  isError: boolean;
+  /** Base64, exactly as the server sent it. */
+  image: { data: string; mimeType: string } | null;
+};
+
 export function transportOf(cfg: McpServerConfig): McpTransportKind {
   return cfg.url !== undefined && cfg.url !== '' ? 'http' : 'stdio';
 }

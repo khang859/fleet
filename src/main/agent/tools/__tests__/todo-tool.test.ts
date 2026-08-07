@@ -18,6 +18,7 @@ const ctx = (): AgentToolContext => ({
   approve: async () => Promise.resolve(true),
   wasRefused: () => false,
   generateImage: null,
+  mcp: null,
   todos: {
     list: () => items,
     save: (next) => {

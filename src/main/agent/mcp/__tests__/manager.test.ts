@@ -65,7 +65,7 @@ describe('McpManager', () => {
 
     const result = await manager.callTool('mcp__docs__search', '{"q":"pty"}');
 
-    expect(result).toEqual({ text: 'ran search', isError: false });
+    expect(result).toEqual({ text: 'ran search', isError: false, image: null });
     expect(docs.calls).toEqual([{ name: 'search', args: { q: 'pty' } }]);
     await manager.closeAll();
   });
@@ -213,7 +213,8 @@ describe('McpManager', () => {
 
     expect(await manager.callTool('mcp__docs__search', '{}')).toEqual({
       text: 'no such document',
-      isError: true
+      isError: true,
+      image: null
     });
     await manager.closeAll();
   });
@@ -235,7 +236,8 @@ describe('McpManager', () => {
 
     expect(await manager.callTool('mcp__gone__search', '{}')).toEqual({
       text: 'There is no tool called mcp__gone__search',
-      isError: true
+      isError: true,
+      image: null
     });
   });
 
@@ -276,9 +278,38 @@ describe('readResult', () => {
     expect(result.text).toBe('a\nb');
   });
 
-  it('names content it cannot put into a text result', () => {
-    const result = readResult({ content: [{ type: 'image', data: '...', mimeType: 'image/png' }] });
-    expect(result.text).toBe('(image content)');
+  it('lifts a picture out to travel beside the text', () => {
+    const result = readResult({
+      content: [
+        { type: 'text', text: 'here is the page' },
+        { type: 'image', data: 'aGk=', mimeType: 'image/png' }
+      ]
+    });
+    expect(result.text).toBe('here is the page');
+    expect(result.image).toEqual({ data: 'aGk=', mimeType: 'image/png' });
+  });
+
+  it('says a picture arrived when that is all there was', () => {
+    const result = readResult({
+      content: [{ type: 'image', data: 'aGk=', mimeType: 'image/png' }]
+    });
+    expect(result.text).toBe('(an image)');
+  });
+
+  it('takes only the first picture, however many came back', () => {
+    const result = readResult({
+      content: [
+        { type: 'image', data: 'first', mimeType: 'image/png' },
+        { type: 'image', data: 'second', mimeType: 'image/png' }
+      ]
+    });
+    expect(result.image?.data).toBe('first');
+  });
+
+  it('names content it can neither read nor show', () => {
+    const result = readResult({ content: [{ type: 'audio', data: '...', mimeType: 'audio/wav' }] });
+    expect(result.text).toBe('(audio content)');
+    expect(result.image).toBeNull();
   });
 
   it('says so rather than returning nothing at all', () => {
