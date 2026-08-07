@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.93.0
+
+- **The Pi agent and Rune are removed** - both come out whole rather than leaving a half-wired surface behind, following the Chat/Images and Kanban removals. Pi takes its settings section, tab and plan modal, agent/config/auth/env managers, the fleet-bridge WebSocket server and its extensions, the bundled pi-skills, and the `fleet pi` CLI group with it. Rune takes its settings section, managers, the Cmd+I Rune Assist overlay, and its session source. Sessions is now Claude-only, so the agent filter, agent badge, and session tree UI are gone. Existing learnings keep their provenance and still load (#493).
+- **Cmd+Shift+V is free again** - the shortcut toggled the visualizer and shadowed paste-style use of the same chord. The visualizer is still reachable from the command palette (#494).
+
 ## v2.92.0
 
 - **The Chat and Images tools are removed** - the native Agent pane supersedes both, so the OpenRouter Chat tool and the fal.ai image generator come out whole: their tabs, settings, bundled chat skills, and the `fleet images` CLI commands. Saved workspaces drop the two tabs on load, and settings written by an older version shed their now-dead entries on the next write. Your OpenRouter API key carries over untouched and is now managed from Agent settings; the Agent pane's own image tool is unaffected (#491).
