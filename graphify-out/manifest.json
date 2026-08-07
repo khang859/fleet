@@ -39,11 +39,6 @@
     "ast_hash": "a160f0e1a9b2fff369be38d64b5ca8cd",
     "semantic_hash": "a160f0e1a9b2fff369be38d64b5ca8cd"
   },
-  "main/__tests__/default-profiles.test.ts": {
-    "mtime": 1781732483.036205,
-    "ast_hash": "bc9ed09bc4ed5d8a58d3a849a169c5f1",
-    "semantic_hash": "bc9ed09bc4ed5d8a58d3a849a169c5f1"
-  },
   "main/__tests__/env-editor-fs.test.ts": {
     "mtime": 1781918180.2578938,
     "ast_hash": "7e5b901ce0db4e05ac71c18bc45953f5",
@@ -100,9 +95,9 @@
     "semantic_hash": "8273b171729106cd256eca391411c721"
   },
   "main/__tests__/fleet-cli.test.ts": {
-    "mtime": 1781918180.2583077,
-    "ast_hash": "8cfe195d3ff1973e09614b73d3384a5a",
-    "semantic_hash": "8cfe195d3ff1973e09614b73d3384a5a"
+    "mtime": 1786108767.2132075,
+    "ast_hash": "1f3f788df1622941f13ecdea9b54a209",
+    "semantic_hash": "1f3f788df1622941f13ecdea9b54a209"
   },
   "main/__tests__/fleet-plan-mode-extension.test.ts": {
     "mtime": 1777328856.0453804,
@@ -118,126 +113,6 @@
     "mtime": 1776290266.5680518,
     "ast_hash": "451c854db7557a47a9672c5adfcee1c3",
     "semantic_hash": "451c854db7557a47a9672c5adfcee1c3"
-  },
-  "main/__tests__/kanban-agent-context.test.ts": {
-    "mtime": 1781455999.6384828,
-    "ast_hash": "49a9a144cb1b3af80779bb4878545cd1",
-    "semantic_hash": "49a9a144cb1b3af80779bb4878545cd1"
-  },
-  "main/__tests__/kanban-attachments.test.ts": {
-    "mtime": 1780697434.8192086,
-    "ast_hash": "f1249b2ad60a58c1e69dc9bf97178458",
-    "semantic_hash": "f1249b2ad60a58c1e69dc9bf97178458"
-  },
-  "main/__tests__/kanban-board-slug.test.ts": {
-    "mtime": 1780697434.8192816,
-    "ast_hash": "de2506fd79d4646240f257ad6f3693ed",
-    "semantic_hash": "de2506fd79d4646240f257ad6f3693ed"
-  },
-  "main/__tests__/kanban-commands.test.ts": {
-    "mtime": 1781918180.2588387,
-    "ast_hash": "ad5bdd455b08d16e996c062cd1e3ee4e",
-    "semantic_hash": "ad5bdd455b08d16e996c062cd1e3ee4e"
-  },
-  "main/__tests__/kanban-dispatcher-review.test.ts": {
-    "mtime": 1781318381.821376,
-    "ast_hash": "d1d0c45fd723d2218b5415a8186df9d2",
-    "semantic_hash": "d1d0c45fd723d2218b5415a8186df9d2"
-  },
-  "main/__tests__/kanban-dispatcher-verify.test.ts": {
-    "mtime": 1781318381.8216321,
-    "ast_hash": "bcf85c13690aeed4983c62f34854e440",
-    "semantic_hash": "bcf85c13690aeed4983c62f34854e440"
-  },
-  "main/__tests__/kanban-dispatcher.test.ts": {
-    "mtime": 1781732483.038069,
-    "ast_hash": "9581089bbdee95c1963179f3f4d22d4b",
-    "semantic_hash": "9581089bbdee95c1963179f3f4d22d4b"
-  },
-  "main/__tests__/kanban-mcp-server.test.ts": {
-    "mtime": 1781918180.259218,
-    "ast_hash": "d13f286fd2c7534be23a75e78b16a26d",
-    "semantic_hash": "d13f286fd2c7534be23a75e78b16a26d"
-  },
-  "main/__tests__/kanban-mcp-verify.test.ts": {
-    "mtime": 1781303206.4990208,
-    "ast_hash": "a8ebd77161da85814d58c371481660c5",
-    "semantic_hash": "a8ebd77161da85814d58c371481660c5"
-  },
-  "main/__tests__/kanban-notifier.test.ts": {
-    "mtime": 1781318381.8223763,
-    "ast_hash": "536f0517c68a2cf9bef45ecf8a11f518",
-    "semantic_hash": "536f0517c68a2cf9bef45ecf8a11f518"
-  },
-  "main/__tests__/kanban-pr-poller.test.ts": {
-    "mtime": 1781787458.9194782,
-    "ast_hash": "5189c874e32d6fa38fe9c812053c3ea5",
-    "semantic_hash": "5189c874e32d6fa38fe9c812053c3ea5"
-  },
-  "main/__tests__/kanban-review-mcp.test.ts": {
-    "mtime": 1781918180.259447,
-    "ast_hash": "91e24f7d2b2230b6d4fbf46328206424",
-    "semantic_hash": "91e24f7d2b2230b6d4fbf46328206424"
-  },
-  "main/__tests__/kanban-review-spawn.test.ts": {
-    "mtime": 1781318381.822697,
-    "ast_hash": "081e5fe5ad7e6ba79f6a1131c5ccd8c1",
-    "semantic_hash": "081e5fe5ad7e6ba79f6a1131c5ccd8c1"
-  },
-  "main/__tests__/kanban-review-store.test.ts": {
-    "mtime": 1781918180.259931,
-    "ast_hash": "5664d34d863e645aa69a981af0087f43",
-    "semantic_hash": "5664d34d863e645aa69a981af0087f43"
-  },
-  "main/__tests__/kanban-review-workspace.test.ts": {
-    "mtime": 1781318381.8230689,
-    "ast_hash": "016a596128720157237b636b70fbf415",
-    "semantic_hash": "016a596128720157237b636b70fbf415"
-  },
-  "main/__tests__/kanban-schedule.test.ts": {
-    "mtime": 1780697434.8197622,
-    "ast_hash": "87a2f9ea9f487df412fecab3a9fd3ea2",
-    "semantic_hash": "87a2f9ea9f487df412fecab3a9fd3ea2"
-  },
-  "main/__tests__/kanban-socket-watch.test.ts": {
-    "mtime": 1781918180.2602859,
-    "ast_hash": "26ec7e91640229288b1eaae324a825a8",
-    "semantic_hash": "26ec7e91640229288b1eaae324a825a8"
-  },
-  "main/__tests__/kanban-spawn-worker.test.ts": {
-    "mtime": 1781918180.2608497,
-    "ast_hash": "2d0b8d2d916575ee5b2eb0e1cc89261c",
-    "semantic_hash": "2d0b8d2d916575ee5b2eb0e1cc89261c"
-  },
-  "main/__tests__/kanban-store.test.ts": {
-    "mtime": 1781918180.2612002,
-    "ast_hash": "d39d48386ff1fcdaaea74cb9db2db3ac",
-    "semantic_hash": "d39d48386ff1fcdaaea74cb9db2db3ac"
-  },
-  "main/__tests__/kanban-swarm.test.ts": {
-    "mtime": 1781918180.2614326,
-    "ast_hash": "d7cff414317e5adabe12ecac24fabe82",
-    "semantic_hash": "d7cff414317e5adabe12ecac24fabe82"
-  },
-  "main/__tests__/kanban-verify-spawn.test.ts": {
-    "mtime": 1781918180.2617626,
-    "ast_hash": "97e16b344399309da7d2209a2f890878",
-    "semantic_hash": "97e16b344399309da7d2209a2f890878"
-  },
-  "main/__tests__/kanban-verify-store.test.ts": {
-    "mtime": 1781918180.262082,
-    "ast_hash": "aa4fe8f643cdc1b5878492dc0022381f",
-    "semantic_hash": "aa4fe8f643cdc1b5878492dc0022381f"
-  },
-  "main/__tests__/kanban-workspace-wsl.test.ts": {
-    "mtime": 1781452603.1855397,
-    "ast_hash": "e2bf6abec213f420561752cb22b6e5e8",
-    "semantic_hash": "e2bf6abec213f420561752cb22b6e5e8"
-  },
-  "main/__tests__/kanban-workspace.test.ts": {
-    "mtime": 1781193425.7771215,
-    "ast_hash": "fcfbed3cc4732b48dd5a47e1f7f0be10",
-    "semantic_hash": "fcfbed3cc4732b48dd5a47e1f7f0be10"
   },
   "main/__tests__/layout-store.test.ts": {
     "mtime": 1776290266.5683029,
@@ -329,31 +204,6 @@
     "ast_hash": "dcca8522befe4b9fc4ca7a0851c2414c",
     "semantic_hash": "dcca8522befe4b9fc4ca7a0851c2414c"
   },
-  "main/__tests__/pipeline-templates.test.ts": {
-    "mtime": 1781732483.0395653,
-    "ast_hash": "a9bdd558e655858f4b8e6850036903d2",
-    "semantic_hash": "a9bdd558e655858f4b8e6850036903d2"
-  },
-  "main/__tests__/pm-agents.test.ts": {
-    "mtime": 1781303206.500677,
-    "ast_hash": "7978716114660b592a97967435c87f00",
-    "semantic_hash": "7978716114660b592a97967435c87f00"
-  },
-  "main/__tests__/pm-paths.test.ts": {
-    "mtime": 1781085635.0063438,
-    "ast_hash": "405f45c74f628077243cbefdd74af36f",
-    "semantic_hash": "405f45c74f628077243cbefdd74af36f"
-  },
-  "main/__tests__/pm-retro.test.ts": {
-    "mtime": 1781918180.2623396,
-    "ast_hash": "9a43da6c0d1194d11fe26b9ac48904d9",
-    "semantic_hash": "9a43da6c0d1194d11fe26b9ac48904d9"
-  },
-  "main/__tests__/profile-file.test.ts": {
-    "mtime": 1780697434.8203485,
-    "ast_hash": "255b95188405c2a2fc20e32bf663c542",
-    "semantic_hash": "255b95188405c2a2fc20e32bf663c542"
-  },
   "main/__tests__/protocol-paths.test.ts": {
     "mtime": 1781452603.1856177,
     "ast_hash": "19aa784693b3c6dfe496a2543db82d21",
@@ -409,20 +259,15 @@
     "ast_hash": "6a657c36f2bd651d3e2d24b004a45e8b",
     "semantic_hash": "6a657c36f2bd651d3e2d24b004a45e8b"
   },
-  "main/__tests__/settings-kanban-notifications.test.ts": {
-    "mtime": 1780697434.8205893,
-    "ast_hash": "440a30f5ddafa2c26d214cb1654698b7",
-    "semantic_hash": "440a30f5ddafa2c26d214cb1654698b7"
-  },
   "main/__tests__/settings-store-ai.test.ts": {
     "mtime": 1782399196.6820025,
     "ast_hash": "90f998c9ee90f872c52ae6425a627dc4",
     "semantic_hash": "90f998c9ee90f872c52ae6425a627dc4"
   },
   "main/__tests__/settings-store.test.ts": {
-    "mtime": 1786069974.6892014,
-    "ast_hash": "08d89ea7c0e6dd1d555855d951e60e16",
-    "semantic_hash": "08d89ea7c0e6dd1d555855d951e60e16"
+    "mtime": 1786108767.2134397,
+    "ast_hash": "0705440035aff5a477c3d396212074a0",
+    "semantic_hash": "0705440035aff5a477c3d396212074a0"
   },
   "main/__tests__/shell-detection.test.ts": {
     "mtime": 1773495625.4478817,
@@ -458,16 +303,6 @@
     "mtime": 1774708989.9880018,
     "ast_hash": "51c05bbd0f5b5e2b58d4b0fc4f32a0e9",
     "semantic_hash": "51c05bbd0f5b5e2b58d4b0fc4f32a0e9"
-  },
-  "main/__tests__/spawn-worker.test.ts": {
-    "mtime": 1781732483.0399327,
-    "ast_hash": "c0feb434fdc6ef1ed84871c3213dab4b",
-    "semantic_hash": "c0feb434fdc6ef1ed84871c3213dab4b"
-  },
-  "main/__tests__/template-expander.test.ts": {
-    "mtime": 1781732483.0404305,
-    "ast_hash": "9c29a42b27d391e427acef870a10c9ae",
-    "semantic_hash": "9c29a42b27d391e427acef870a10c9ae"
   },
   "main/__tests__/workspace-path.test.ts": {
     "mtime": 1774106325.703686,
@@ -599,11 +434,6 @@
     "ast_hash": "37a343c8fdb79cd7e26d3ab218633389",
     "semantic_hash": "37a343c8fdb79cd7e26d3ab218633389"
   },
-  "main/agent/mcp/__tests__/expand.test.ts": {
-    "mtime": 1786069974.6957214,
-    "ast_hash": "275036d72d334076712fbe406ae1547b",
-    "semantic_hash": "275036d72d334076712fbe406ae1547b"
-  },
   "main/agent/mcp/__tests__/fake-oauth-server.ts": {
     "mtime": 1786069974.6958697,
     "ast_hash": "6a180499eed8a1f069fc56324a2a3bcc",
@@ -643,11 +473,6 @@
     "mtime": 1786069974.6971488,
     "ast_hash": "5c7e73d2882ab141a1dd9cdbd4cf8321",
     "semantic_hash": "5c7e73d2882ab141a1dd9cdbd4cf8321"
-  },
-  "main/agent/mcp/expand.ts": {
-    "mtime": 1786069974.697284,
-    "ast_hash": "949354936bc785b1151174bfd5ae5746",
-    "semantic_hash": "949354936bc785b1151174bfd5ae5746"
   },
   "main/agent/mcp/import/__tests__/detect.test.ts": {
     "mtime": 1786069974.6975355,
@@ -735,9 +560,9 @@
     "semantic_hash": "ee30b75db0c46a9e5a43743b3ba80660"
   },
   "main/agent/mcp/transport.ts": {
-    "mtime": 1786069974.700731,
-    "ast_hash": "d054ad452048938db725efe028319160",
-    "semantic_hash": "d054ad452048938db725efe028319160"
+    "mtime": 1786106551.5616941,
+    "ast_hash": "6fa59eed18fc5bb0fe1880d26b0beea8",
+    "semantic_hash": "6fa59eed18fc5bb0fe1880d26b0beea8"
   },
   "main/agent/mention-search.ts": {
     "mtime": 1786069974.700919,
@@ -1074,30 +899,20 @@
     "ast_hash": "86fd864ad8337fa30b788285bb4c270f",
     "semantic_hash": "86fd864ad8337fa30b788285bb4c270f"
   },
-  "main/chat/mcp/__tests__/expand.test.ts": {
-    "mtime": 1782508309.0789711,
-    "ast_hash": "90f38abf156ea68795e9d3c7d7c7b9cf",
-    "semantic_hash": "90f38abf156ea68795e9d3c7d7c7b9cf"
-  },
   "main/chat/mcp/__tests__/manager.test.ts": {
-    "mtime": 1782508309.0792398,
-    "ast_hash": "3ab371c40c4a8d2b608d303ae25d3d4f",
-    "semantic_hash": "3ab371c40c4a8d2b608d303ae25d3d4f"
+    "mtime": 1786106551.5620012,
+    "ast_hash": "32838b03d44a4f40980c8335ee227581",
+    "semantic_hash": "32838b03d44a4f40980c8335ee227581"
   },
   "main/chat/mcp/client.ts": {
     "mtime": 1782508309.0793233,
     "ast_hash": "8afcf2ffc4f8df5c42563e10c16b6593",
     "semantic_hash": "8afcf2ffc4f8df5c42563e10c16b6593"
   },
-  "main/chat/mcp/expand.ts": {
-    "mtime": 1782508309.079399,
-    "ast_hash": "b302dfde48e075b6942b723bfc30052e",
-    "semantic_hash": "b302dfde48e075b6942b723bfc30052e"
-  },
   "main/chat/mcp/manager.ts": {
-    "mtime": 1782508309.0796623,
-    "ast_hash": "95665b9942ae94711a45126e2777e068",
-    "semantic_hash": "95665b9942ae94711a45126e2777e068"
+    "mtime": 1786106551.5622945,
+    "ast_hash": "042bec3d40e47b06085a12e15c00cfdc",
+    "semantic_hash": "042bec3d40e47b06085a12e15c00cfdc"
   },
   "main/chat/mcp/transport.ts": {
     "mtime": 1782508309.0797446,
@@ -1360,9 +1175,9 @@
     "semantic_hash": "ec7ce916e5d3a6d1707cb3fb95809aa9"
   },
   "main/fleet-cli.ts": {
-    "mtime": 1781918180.2639158,
-    "ast_hash": "485c41a26c89124eb989dac8e8b495be",
-    "semantic_hash": "485c41a26c89124eb989dac8e8b495be"
+    "mtime": 1786108767.2136834,
+    "ast_hash": "b19858f6b208fda827a9fc61c631d0c7",
+    "semantic_hash": "b19858f6b208fda827a9fc61c631d0c7"
   },
   "main/git-service.ts": {
     "mtime": 1785682195.024856,
@@ -1390,9 +1205,9 @@
     "semantic_hash": "425fd0e93f77b85dfbf06fc9c3422d07"
   },
   "main/index.ts": {
-    "mtime": 1786069974.710455,
-    "ast_hash": "8200c6368a6231998c6033612f26c95d",
-    "semantic_hash": "8200c6368a6231998c6033612f26c95d"
+    "mtime": 1786108767.214052,
+    "ast_hash": "30b40da6b3aa1249e34fc2a8fa24dff8",
+    "semantic_hash": "30b40da6b3aa1249e34fc2a8fa24dff8"
   },
   "main/install-fleet-cli.ts": {
     "mtime": 1786069974.7107484,
@@ -1400,189 +1215,9 @@
     "semantic_hash": "7bf0b125de9e9ff17309e5ad22bb8a49"
   },
   "main/ipc-handlers.ts": {
-    "mtime": 1785937083.677619,
-    "ast_hash": "6dad6c686bb08a9035a261843d221c8a",
-    "semantic_hash": "6dad6c686bb08a9035a261843d221c8a"
-  },
-  "main/kanban/__tests__/board-digest-config.test.ts": {
-    "mtime": 1781632963.7467856,
-    "ast_hash": "0bcdfa32f8f00d13ceaf51743b337fd7",
-    "semantic_hash": "0bcdfa32f8f00d13ceaf51743b337fd7"
-  },
-  "main/kanban/__tests__/kanban-mcp-pm-tools.test.ts": {
-    "mtime": 1781632963.7472582,
-    "ast_hash": "8970fe5afc786f604fde09cd8e8532af",
-    "semantic_hash": "8970fe5afc786f604fde09cd8e8532af"
-  },
-  "main/kanban/__tests__/pm-agents.test.ts": {
-    "mtime": 1781632963.7476804,
-    "ast_hash": "1ba35e1ce2cc948566d1a11666c72c8e",
-    "semantic_hash": "1ba35e1ce2cc948566d1a11666c72c8e"
-  },
-  "main/kanban/__tests__/pm-autopilot.test.ts": {
-    "mtime": 1781787458.9206772,
-    "ast_hash": "676833ea5e15b6670cd1fbb07c84289c",
-    "semantic_hash": "676833ea5e15b6670cd1fbb07c84289c"
-  },
-  "main/kanban/__tests__/pm-chat-service.test.ts": {
-    "mtime": 1781787458.9210167,
-    "ast_hash": "a11421e2036c40d59964df3ca6b2cbd1",
-    "semantic_hash": "a11421e2036c40d59964df3ca6b2cbd1"
-  },
-  "main/kanban/__tests__/pm-digest.test.ts": {
-    "mtime": 1781632963.7490864,
-    "ast_hash": "26e9a07e3e6c5492985b819e94a92227",
-    "semantic_hash": "26e9a07e3e6c5492985b819e94a92227"
-  },
-  "main/kanban/__tests__/pm-proposals-store.test.ts": {
-    "mtime": 1781632963.7494833,
-    "ast_hash": "4ee89f977bbf51c93043ac891864b5c0",
-    "semantic_hash": "4ee89f977bbf51c93043ac891864b5c0"
-  },
-  "main/kanban/__tests__/proposal-commands.test.ts": {
-    "mtime": 1781632963.7499776,
-    "ast_hash": "c58a169a29551e664e61853aba4d27a9",
-    "semantic_hash": "c58a169a29551e664e61853aba4d27a9"
-  },
-  "main/kanban/__tests__/proposal-executor.test.ts": {
-    "mtime": 1781632963.7503414,
-    "ast_hash": "edd05e7ae9d8314b3850c2abb525e147",
-    "semantic_hash": "edd05e7ae9d8314b3850c2abb525e147"
-  },
-  "main/kanban/agent-context.ts": {
-    "mtime": 1781455999.6389205,
-    "ast_hash": "ac00b8a6b4b29238c19fa1901c73efc7",
-    "semantic_hash": "ac00b8a6b4b29238c19fa1901c73efc7"
-  },
-  "main/kanban/artifact-files.ts": {
-    "mtime": 1780697434.822117,
-    "ast_hash": "05fa3f3a893f01c1c2588b5a3a31940d",
-    "semantic_hash": "05fa3f3a893f01c1c2588b5a3a31940d"
-  },
-  "main/kanban/attachments.ts": {
-    "mtime": 1780697434.8221939,
-    "ast_hash": "78a797a42fc8d79f8ed0a3a73ec0585a",
-    "semantic_hash": "78a797a42fc8d79f8ed0a3a73ec0585a"
-  },
-  "main/kanban/board-slug.ts": {
-    "mtime": 1780697434.8222685,
-    "ast_hash": "d99080dac78148b05534d93305b93b3d",
-    "semantic_hash": "d99080dac78148b05534d93305b93b3d"
-  },
-  "main/kanban/kanban-commands.ts": {
-    "mtime": 1781918180.2658331,
-    "ast_hash": "494ac1bed8dbb11b470e0a8f347a8420",
-    "semantic_hash": "494ac1bed8dbb11b470e0a8f347a8420"
-  },
-  "main/kanban/kanban-dispatcher.ts": {
-    "mtime": 1781918180.2662961,
-    "ast_hash": "64b519c57ddf312c954c29c4b4999287",
-    "semantic_hash": "64b519c57ddf312c954c29c4b4999287"
-  },
-  "main/kanban/kanban-ipc.ts": {
-    "mtime": 1781918180.2666125,
-    "ast_hash": "b67d42e569f7f90b6bb0f940b2f927f5",
-    "semantic_hash": "b67d42e569f7f90b6bb0f940b2f927f5"
-  },
-  "main/kanban/kanban-mcp-server.ts": {
-    "mtime": 1781918180.2670789,
-    "ast_hash": "bfe8807b4ce784db27663b6983fb4668",
-    "semantic_hash": "bfe8807b4ce784db27663b6983fb4668"
-  },
-  "main/kanban/kanban-notifier.ts": {
-    "mtime": 1781318381.8245168,
-    "ast_hash": "621fd3d949909730289323e6b10a27a2",
-    "semantic_hash": "621fd3d949909730289323e6b10a27a2"
-  },
-  "main/kanban/kanban-settings-bridge.ts": {
-    "mtime": 1780697434.822885,
-    "ast_hash": "db3bb2ccae806c67cf37b18d49898896",
-    "semantic_hash": "db3bb2ccae806c67cf37b18d49898896"
-  },
-  "main/kanban/kanban-store.ts": {
-    "mtime": 1781918180.2675476,
-    "ast_hash": "f1da31feae1d82afb01d149e1bc316c0",
-    "semantic_hash": "f1da31feae1d82afb01d149e1bc316c0"
-  },
-  "main/kanban/kanban-swarm.ts": {
-    "mtime": 1780697434.823177,
-    "ast_hash": "2ad3e6fc31057d94efe6c3b4eb2e446e",
-    "semantic_hash": "2ad3e6fc31057d94efe6c3b4eb2e446e"
-  },
-  "main/kanban/pipeline-templates.ts": {
-    "mtime": 1781732483.045621,
-    "ast_hash": "1685752f98ab587f78bca2446443da10",
-    "semantic_hash": "1685752f98ab587f78bca2446443da10"
-  },
-  "main/kanban/pm-agents.ts": {
-    "mtime": 1781632963.7530134,
-    "ast_hash": "c09bf13fc3a1938413e72c8738a57932",
-    "semantic_hash": "c09bf13fc3a1938413e72c8738a57932"
-  },
-  "main/kanban/pm-autopilot.ts": {
-    "mtime": 1781787458.9218862,
-    "ast_hash": "1d489c9480abb7493231d29f025d3ce7",
-    "semantic_hash": "1d489c9480abb7493231d29f025d3ce7"
-  },
-  "main/kanban/pm-chat-service.ts": {
-    "mtime": 1781787458.9222274,
-    "ast_hash": "ef358bb533ee4752194672a87a88a9a5",
-    "semantic_hash": "ef358bb533ee4752194672a87a88a9a5"
-  },
-  "main/kanban/pm-digest.ts": {
-    "mtime": 1781632963.7543187,
-    "ast_hash": "68f858a3ceb82a26437af8ebd0862773",
-    "semantic_hash": "68f858a3ceb82a26437af8ebd0862773"
-  },
-  "main/kanban/pm-paths.ts": {
-    "mtime": 1781918180.2679005,
-    "ast_hash": "63922ed7b877096ec646d4c3fe490cda",
-    "semantic_hash": "63922ed7b877096ec646d4c3fe490cda"
-  },
-  "main/kanban/pm-retro.ts": {
-    "mtime": 1781787458.922463,
-    "ast_hash": "01e645365377ce8bd554b5e77b4e989f",
-    "semantic_hash": "01e645365377ce8bd554b5e77b4e989f"
-  },
-  "main/kanban/pr-poller.ts": {
-    "mtime": 1781918180.2682626,
-    "ast_hash": "9e22063e2e711dea684adc326f938a8c",
-    "semantic_hash": "9e22063e2e711dea684adc326f938a8c"
-  },
-  "main/kanban/profile-file.ts": {
-    "mtime": 1780697434.823635,
-    "ast_hash": "7710c67c5ea700beb57eef97e20358dd",
-    "semantic_hash": "7710c67c5ea700beb57eef97e20358dd"
-  },
-  "main/kanban/proposal-executor.ts": {
-    "mtime": 1781732483.0459282,
-    "ast_hash": "5b13a8bad879d200595e8e34dfb088c3",
-    "semantic_hash": "5b13a8bad879d200595e8e34dfb088c3"
-  },
-  "main/kanban/schedule.ts": {
-    "mtime": 1780697434.8237236,
-    "ast_hash": "ca9aec7beaa894186b5d611bdcda486a",
-    "semantic_hash": "ca9aec7beaa894186b5d611bdcda486a"
-  },
-  "main/kanban/schema.ts": {
-    "mtime": 1781732483.0462167,
-    "ast_hash": "f1107c8ae899ce2af0bf2c5e72e05af4",
-    "semantic_hash": "f1107c8ae899ce2af0bf2c5e72e05af4"
-  },
-  "main/kanban/spawn-worker.ts": {
-    "mtime": 1781732483.0466263,
-    "ast_hash": "9f47788edac5f5a2026e8463fdd51a05",
-    "semantic_hash": "9f47788edac5f5a2026e8463fdd51a05"
-  },
-  "main/kanban/template-expander.ts": {
-    "mtime": 1781732483.0469687,
-    "ast_hash": "cb0253afd4c2b5b418db9633664fd886",
-    "semantic_hash": "cb0253afd4c2b5b418db9633664fd886"
-  },
-  "main/kanban/workspace.ts": {
-    "mtime": 1781918180.268697,
-    "ast_hash": "e94305d2a42f3ff0a9e897a5eabbf3fe",
-    "semantic_hash": "e94305d2a42f3ff0a9e897a5eabbf3fe"
+    "mtime": 1786108767.2143674,
+    "ast_hash": "2175adb8ab632cb0889f4f49ca44e598",
+    "semantic_hash": "2175adb8ab632cb0889f4f49ca44e598"
   },
   "main/layout-store.ts": {
     "mtime": 1781009459.280235,
@@ -1625,9 +1260,9 @@
     "semantic_hash": "de192df0ba44aea362f10d60b5770df8"
   },
   "main/learnings/learnings-mcp-server.ts": {
-    "mtime": 1781570029.28793,
-    "ast_hash": "dbdb9a2fbbbe91742098dc6bdb0b4268",
-    "semantic_hash": "dbdb9a2fbbbe91742098dc6bdb0b4268"
+    "mtime": 1786108767.21464,
+    "ast_hash": "87e33810bcdb6f531a67fe023954b54f",
+    "semantic_hash": "87e33810bcdb6f531a67fe023954b54f"
   },
   "main/learnings/learnings-store.ts": {
     "mtime": 1781570029.288213,
@@ -1800,9 +1435,9 @@
     "semantic_hash": "0dec9901aac15a9d8f2f2440080e4f0d"
   },
   "main/rune-assist/rune-file-chat-service.ts": {
-    "mtime": 1781452603.1898067,
-    "ast_hash": "d23055bcb979d93d23a80e439996017c",
-    "semantic_hash": "d23055bcb979d93d23a80e439996017c"
+    "mtime": 1786108767.214888,
+    "ast_hash": "0fa3cf8bff436bc1497a381459e12665",
+    "semantic_hash": "0fa3cf8bff436bc1497a381459e12665"
   },
   "main/rune-config-manager.ts": {
     "mtime": 1780915923.9582326,
@@ -1810,9 +1445,9 @@
     "semantic_hash": "d7d6a52254e4587d8a27330681d37432"
   },
   "main/rune-manager.ts": {
-    "mtime": 1780961028.0621269,
-    "ast_hash": "3ef39b56bf6fb1c13d769ee505e96402",
-    "semantic_hash": "3ef39b56bf6fb1c13d769ee505e96402"
+    "mtime": 1786108767.2151353,
+    "ast_hash": "75a63cc096407e84ab740600fb3c2b63",
+    "semantic_hash": "75a63cc096407e84ab740600fb3c2b63"
   },
   "main/runtime-env.ts": {
     "mtime": 1774106319.6487389,
@@ -1875,9 +1510,9 @@
     "semantic_hash": "0863553cdde5ae62f21c6fff96cf5388"
   },
   "main/settings-store.ts": {
-    "mtime": 1786069974.7114298,
-    "ast_hash": "2e149f2c5d5dd812b89f37d85a80aa20",
-    "semantic_hash": "2e149f2c5d5dd812b89f37d85a80aa20"
+    "mtime": 1786108767.2153914,
+    "ast_hash": "c91a7ce1019914a8c6430a3c5fe8339a",
+    "semantic_hash": "c91a7ce1019914a8c6430a3c5fe8339a"
   },
   "main/shell-detection.ts": {
     "mtime": 1774052544.3880901,
@@ -1910,14 +1545,14 @@
     "semantic_hash": "417dc5983d55c57ec3ebbb0785d41b21"
   },
   "main/socket-server.ts": {
-    "mtime": 1780856840.2649014,
-    "ast_hash": "7d58da4da318b488583a388941cf97d4",
-    "semantic_hash": "7d58da4da318b488583a388941cf97d4"
+    "mtime": 1786108767.21569,
+    "ast_hash": "37fafd4f4f83ce812abc29f33066407f",
+    "semantic_hash": "37fafd4f4f83ce812abc29f33066407f"
   },
   "main/socket-supervisor.ts": {
-    "mtime": 1780697434.8253636,
-    "ast_hash": "2c30197988006f65f2c88df810bd66bb",
-    "semantic_hash": "2c30197988006f65f2c88df810bd66bb"
+    "mtime": 1786108767.2158642,
+    "ast_hash": "51cacf65a5329459b01ab60a36674820",
+    "semantic_hash": "51cacf65a5329459b01ab60a36674820"
   },
   "main/system-checker.ts": {
     "mtime": 1781918180.2694318,
@@ -1950,9 +1585,9 @@
     "semantic_hash": "e0f1bc70613cccfda3e65d769b1c442a"
   },
   "preload/index.ts": {
-    "mtime": 1786069974.71194,
-    "ast_hash": "4d016a946b8e60b6afda6cf673a45040",
-    "semantic_hash": "4d016a946b8e60b6afda6cf673a45040"
+    "mtime": 1786108767.2161424,
+    "ast_hash": "6558ee38a8cc7659dfb87ec556a79860",
+    "semantic_hash": "6558ee38a8cc7659dfb87ec556a79860"
   },
   "renderer/copilot/src/App.tsx": {
     "mtime": 1776107720.2528336,
@@ -2060,9 +1695,9 @@
     "semantic_hash": "06daed33851f4c10610ca769e80aa735"
   },
   "renderer/src/App.tsx": {
-    "mtime": 1786069974.71243,
-    "ast_hash": "bc4176b0c60dd0967c71b5a745237929",
-    "semantic_hash": "bc4176b0c60dd0967c71b5a745237929"
+    "mtime": 1786108767.2164211,
+    "ast_hash": "09d5ef69ee359615b7333980e5426cf9",
+    "semantic_hash": "09d5ef69ee359615b7333980e5426cf9"
   },
   "renderer/src/__tests__/logger.test.ts": {
     "mtime": 1774636373.031277,
@@ -2235,9 +1870,9 @@
     "semantic_hash": "e6aef94f7426650d4fbcfb0f837142d5"
   },
   "renderer/src/components/Sidebar.tsx": {
-    "mtime": 1786069974.7141669,
-    "ast_hash": "5d03824d1c1c37176fb4979129622d9d",
-    "semantic_hash": "5d03824d1c1c37176fb4979129622d9d"
+    "mtime": 1786108767.2167692,
+    "ast_hash": "c5850e593a8c6884ec3ea41fd29d85fb",
+    "semantic_hash": "c5850e593a8c6884ec3ea41fd29d85fb"
   },
   "renderer/src/components/SidebarResizeHandle.tsx": {
     "mtime": 1776803758.7845645,
@@ -2899,116 +2534,6 @@
     "ast_hash": "a99dc19d73282d1eac9f2713c8ccbf6e",
     "semantic_hash": "a99dc19d73282d1eac9f2713c8ccbf6e"
   },
-  "renderer/src/components/kanban/ArtifactsView.tsx": {
-    "mtime": 1780843379.04801,
-    "ast_hash": "f85933101e5f7e6f973a66b32f4043ba",
-    "semantic_hash": "f85933101e5f7e6f973a66b32f4043ba"
-  },
-  "renderer/src/components/kanban/CommentThread.tsx": {
-    "mtime": 1780697434.8296678,
-    "ast_hash": "457bc312260e1a82fb540e93d6765d11",
-    "semantic_hash": "457bc312260e1a82fb540e93d6765d11"
-  },
-  "renderer/src/components/kanban/FeaturePickerModal.tsx": {
-    "mtime": 1780843379.0481913,
-    "ast_hash": "9d09d5b324849c15b3f48ee0e13d825b",
-    "semantic_hash": "9d09d5b324849c15b3f48ee0e13d825b"
-  },
-  "renderer/src/components/kanban/FeaturePrRollup.tsx": {
-    "mtime": 1781265170.5716696,
-    "ast_hash": "a46e97268db94b9ce4052ecf0013c9c9",
-    "semantic_hash": "a46e97268db94b9ce4052ecf0013c9c9"
-  },
-  "renderer/src/components/kanban/FeatureSelector.tsx": {
-    "mtime": 1780843379.0485377,
-    "ast_hash": "2d8564a288c60084fd486846bc326571",
-    "semantic_hash": "2d8564a288c60084fd486846bc326571"
-  },
-  "renderer/src/components/kanban/FeatureSuggestionsPrompt.tsx": {
-    "mtime": 1781271837.8391902,
-    "ast_hash": "ac8ad1b33b744e986f962a4ec385385d",
-    "semantic_hash": "ac8ad1b33b744e986f962a4ec385385d"
-  },
-  "renderer/src/components/kanban/FeaturesView.tsx": {
-    "mtime": 1780843379.0487254,
-    "ast_hash": "31ce30061e54a4c94fe988fc1faf8679",
-    "semantic_hash": "31ce30061e54a4c94fe988fc1faf8679"
-  },
-  "renderer/src/components/kanban/KanbanArtifacts.tsx": {
-    "mtime": 1780843379.0489454,
-    "ast_hash": "ffb609312207be5f08aa85a892ebba0d",
-    "semantic_hash": "ffb609312207be5f08aa85a892ebba0d"
-  },
-  "renderer/src/components/kanban/KanbanBoard.tsx": {
-    "mtime": 1782956873.9320412,
-    "ast_hash": "77067f9f13ee1df37a4ac4e4b5853f5e",
-    "semantic_hash": "77067f9f13ee1df37a4ac4e4b5853f5e"
-  },
-  "renderer/src/components/kanban/KanbanCard.tsx": {
-    "mtime": 1781732483.0505168,
-    "ast_hash": "be3ebc047e58a2e380d4b69366df7aec",
-    "semantic_hash": "be3ebc047e58a2e380d4b69366df7aec"
-  },
-  "renderer/src/components/kanban/KanbanColumn.tsx": {
-    "mtime": 1780697434.8304174,
-    "ast_hash": "84e29ceb1cef6c1c31619d0bcd74c6aa",
-    "semantic_hash": "84e29ceb1cef6c1c31619d0bcd74c6aa"
-  },
-  "renderer/src/components/kanban/KanbanDrawer.tsx": {
-    "mtime": 1781318381.8260412,
-    "ast_hash": "f1721a89275f57f3fc722ee37fc416dd",
-    "semantic_hash": "f1721a89275f57f3fc722ee37fc416dd"
-  },
-  "renderer/src/components/kanban/PmChatPanel.tsx": {
-    "mtime": 1781632963.7563448,
-    "ast_hash": "41b1bb3a48812ab77470d150ab9e3fea",
-    "semantic_hash": "41b1bb3a48812ab77470d150ab9e3fea"
-  },
-  "renderer/src/components/kanban/PrStatusBadge.tsx": {
-    "mtime": 1780697434.830649,
-    "ast_hash": "c61fd92e74a414c9bd5821a1a71c0510",
-    "semantic_hash": "c61fd92e74a414c9bd5821a1a71c0510"
-  },
-  "renderer/src/components/kanban/ProjectsModal.tsx": {
-    "mtime": 1781303206.505518,
-    "ast_hash": "bde876020bf7eff002d06f2500a441dd",
-    "semantic_hash": "bde876020bf7eff002d06f2500a441dd"
-  },
-  "renderer/src/components/kanban/RuneMissingBanner.tsx": {
-    "mtime": 1780843379.0497205,
-    "ast_hash": "44d927b1f3b0c4706e7ee7bc1029536d",
-    "semantic_hash": "44d927b1f3b0c4706e7ee7bc1029536d"
-  },
-  "renderer/src/components/kanban/SwarmModal.tsx": {
-    "mtime": 1780843379.049919,
-    "ast_hash": "2060ef61b29a5c16d618e83886304334",
-    "semantic_hash": "2060ef61b29a5c16d618e83886304334"
-  },
-  "renderer/src/components/kanban/WorktreeManager.tsx": {
-    "mtime": 1780843379.0501094,
-    "ast_hash": "2fd9653349653e581d2fd42341d0cfef",
-    "semantic_hash": "2fd9653349653e581d2fd42341d0cfef"
-  },
-  "renderer/src/components/kanban/__tests__/kanban-utils.test.ts": {
-    "mtime": 1780697434.8310635,
-    "ast_hash": "12e6cdcef329cbe8d576ed78c0befb0b",
-    "semantic_hash": "12e6cdcef329cbe8d576ed78c0befb0b"
-  },
-  "renderer/src/components/kanban/__tests__/swarm-modal.test.ts": {
-    "mtime": 1780697434.8311322,
-    "ast_hash": "d0540dd7ee404eb544f1c3c4d700ccec",
-    "semantic_hash": "d0540dd7ee404eb544f1c3c4d700ccec"
-  },
-  "renderer/src/components/kanban/artifact-preview.tsx": {
-    "mtime": 1780697434.831215,
-    "ast_hash": "bb71bbc172b812c59727d149bba4cf1b",
-    "semantic_hash": "bb71bbc172b812c59727d149bba4cf1b"
-  },
-  "renderer/src/components/kanban/kanban-utils.ts": {
-    "mtime": 1780697434.8313124,
-    "ast_hash": "57d6eda3eda9f08ace83e37ae4f005db",
-    "semantic_hash": "57d6eda3eda9f08ace83e37ae4f005db"
-  },
   "renderer/src/components/markdown/CodeBlock.tsx": {
     "mtime": 1780845898.924739,
     "ast_hash": "9e53011fb82ad8d9dc7356658dbe292a",
@@ -3060,9 +2585,9 @@
     "semantic_hash": "bf850300092360e74cf367a980471047"
   },
   "renderer/src/components/rune/RuneInstallCommand.tsx": {
-    "mtime": 1780843379.0502908,
-    "ast_hash": "af629847d76cc22daa1993ebe7bd58d3",
-    "semantic_hash": "af629847d76cc22daa1993ebe7bd58d3"
+    "mtime": 1786108767.2169957,
+    "ast_hash": "d08d7f8846d0781de215d33c7daab823",
+    "semantic_hash": "d08d7f8846d0781de215d33c7daab823"
   },
   "renderer/src/components/sessions/DistillModal.tsx": {
     "mtime": 1781531196.6009223,
@@ -3165,14 +2690,14 @@
     "semantic_hash": "19f660b5c3c737ff7ddb24e896b1a4be"
   },
   "renderer/src/components/settings/SettingsNav.tsx": {
-    "mtime": 1785682195.0372698,
-    "ast_hash": "2fae2b2f7880f2732959e3bad037e8d0",
-    "semantic_hash": "2fae2b2f7880f2732959e3bad037e8d0"
+    "mtime": 1786108767.2172015,
+    "ast_hash": "1eb4132318a21f668b2ba2d4bbe3a0bc",
+    "semantic_hash": "1eb4132318a21f668b2ba2d4bbe3a0bc"
   },
   "renderer/src/components/settings/SettingsTab.tsx": {
-    "mtime": 1785682195.037626,
-    "ast_hash": "edc1732eb0ec1dd3e2411d17e290913c",
-    "semantic_hash": "edc1732eb0ec1dd3e2411d17e290913c"
+    "mtime": 1786108767.2174752,
+    "ast_hash": "3b96ff4953a0efa778d0bf95658ebd1d",
+    "semantic_hash": "3b96ff4953a0efa778d0bf95658ebd1d"
   },
   "renderer/src/components/settings/SocketSection.tsx": {
     "mtime": 1780697434.8332994,
@@ -3198,16 +2723,6 @@
     "mtime": 1781265170.572669,
     "ast_hash": "86ff5146776737bccccd1a115117f7af",
     "semantic_hash": "86ff5146776737bccccd1a115117f7af"
-  },
-  "renderer/src/components/settings/kanban/KanbanSection.tsx": {
-    "mtime": 1781632963.7566297,
-    "ast_hash": "7bad9ee79e44966245577694a6d304e1",
-    "semantic_hash": "7bad9ee79e44966245577694a6d304e1"
-  },
-  "renderer/src/components/settings/kanban/ProfileEditor.tsx": {
-    "mtime": 1780843379.0520506,
-    "ast_hash": "bb4ab1868801cf299686cb27ea971e71",
-    "semantic_hash": "bb4ab1868801cf299686cb27ea971e71"
   },
   "renderer/src/components/settings/pi/PiAdvancedAccordion.tsx": {
     "mtime": 1780843379.052264,
@@ -3300,9 +2815,9 @@
     "semantic_hash": "b67cf8cdb16f4df7eafb31097249fcae"
   },
   "renderer/src/components/settings/rune/RuneSection.tsx": {
-    "mtime": 1781007854.210327,
-    "ast_hash": "0cd6b89426c13b3065610f50f185cd8e",
-    "semantic_hash": "0cd6b89426c13b3065610f50f185cd8e"
+    "mtime": 1786108767.217728,
+    "ast_hash": "b0c7c50b7891bb962c3ab2457b371ac3",
+    "semantic_hash": "b0c7c50b7891bb962c3ab2457b371ac3"
   },
   "renderer/src/components/settings/rune/RuneSettingsEditor.tsx": {
     "mtime": 1780915443.6558688,
@@ -3495,9 +3010,9 @@
     "semantic_hash": "87cbc86ad7d36a17610160ac205f327e"
   },
   "renderer/src/hooks/__tests__/use-pane-navigation.test.ts": {
-    "mtime": 1780697434.8349164,
-    "ast_hash": "4ec6f9492b20cda84d9dab51799ca215",
-    "semantic_hash": "4ec6f9492b20cda84d9dab51799ca215"
+    "mtime": 1786108767.2179508,
+    "ast_hash": "778f0785f2f9b72a944221efd7561ae4",
+    "semantic_hash": "778f0785f2f9b72a944221efd7561ae4"
   },
   "renderer/src/hooks/use-app-theme.ts": {
     "mtime": 1786069974.7290704,
@@ -3530,9 +3045,9 @@
     "semantic_hash": "60ac328e386e1f05488b9f8761a4e694"
   },
   "renderer/src/hooks/use-pane-navigation.ts": {
-    "mtime": 1783087487.6537251,
-    "ast_hash": "1a5908f37ea00531219a6469ef9facbb",
-    "semantic_hash": "1a5908f37ea00531219a6469ef9facbb"
+    "mtime": 1786108767.2182083,
+    "ast_hash": "be116a7cc7237093cf931af64f234c89",
+    "semantic_hash": "be116a7cc7237093cf931af64f234c89"
   },
   "renderer/src/hooks/use-presence.ts": {
     "mtime": 1780838941.956095,
@@ -3573,11 +3088,6 @@
     "mtime": 1786069974.7301977,
     "ast_hash": "0962544ff270af5b0865a3dd33f5d257",
     "semantic_hash": "0962544ff270af5b0865a3dd33f5d257"
-  },
-  "renderer/src/hooks/useKanbanAttention.ts": {
-    "mtime": 1781318381.826489,
-    "ast_hash": "4a50f074354969825eec4857203575f1",
-    "semantic_hash": "4a50f074354969825eec4857203575f1"
   },
   "renderer/src/lib/__tests__/annotate-modal-bridge.test.ts": {
     "mtime": 1775133749.068297,
@@ -3660,9 +3170,9 @@
     "semantic_hash": "525e317d64e466943d864569753fbfea"
   },
   "renderer/src/lib/commands.ts": {
-    "mtime": 1786069974.7318175,
-    "ast_hash": "50ae7778a0c94f0af74457da692c72ef",
-    "semantic_hash": "50ae7778a0c94f0af74457da692c72ef"
+    "mtime": 1786108767.218471,
+    "ast_hash": "ac5bdce4a9039676c5930c6d3672f156",
+    "semantic_hash": "ac5bdce4a9039676c5930c6d3672f156"
   },
   "renderer/src/lib/contrast.ts": {
     "mtime": 1781265170.573129,
@@ -3760,9 +3270,9 @@
     "semantic_hash": "93a9fa1b8f5ea9fd1d412cf6c974e673"
   },
   "renderer/src/main.tsx": {
-    "mtime": 1786069974.7380447,
-    "ast_hash": "ac7c19e345c0082f04cefd5850dfdf46",
-    "semantic_hash": "ac7c19e345c0082f04cefd5850dfdf46"
+    "mtime": 1786108767.218682,
+    "ast_hash": "bc886a0da936326340dbb433db366987",
+    "semantic_hash": "bc886a0da936326340dbb433db366987"
   },
   "renderer/src/store/__tests__/agent-store.test.ts": {
     "mtime": 1786069974.738413,
@@ -3778,11 +3288,6 @@
     "mtime": 1780697434.837014,
     "ast_hash": "a1515adcad5da3da785565eefae62370",
     "semantic_hash": "a1515adcad5da3da785565eefae62370"
-  },
-  "renderer/src/store/__tests__/kanban-unread.test.ts": {
-    "mtime": 1780697434.8370879,
-    "ast_hash": "135574cd4a00f4c47740239d55bb54bb",
-    "semantic_hash": "135574cd4a00f4c47740239d55bb54bb"
   },
   "renderer/src/store/__tests__/remote-ssh-mutations.test.ts": {
     "mtime": 1785682195.0412037,
@@ -3815,9 +3320,9 @@
     "semantic_hash": "45b0fde012c9291af36d71d2b754f1ca"
   },
   "renderer/src/store/__tests__/workspace-store.test.ts": {
-    "mtime": 1786069974.7388244,
-    "ast_hash": "bfad5e876f08f5545aa2fac7c4bf720c",
-    "semantic_hash": "bfad5e876f08f5545aa2fac7c4bf720c"
+    "mtime": 1786108767.218947,
+    "ast_hash": "c1827d0fa5ced30604849b05e3215997",
+    "semantic_hash": "c1827d0fa5ced30604849b05e3215997"
   },
   "renderer/src/store/__tests__/zustand-selectors.test.ts": {
     "mtime": 1774353565.531083,
@@ -3864,20 +3369,10 @@
     "ast_hash": "9ab01c1c03ea7e4b251e3efd59094678",
     "semantic_hash": "9ab01c1c03ea7e4b251e3efd59094678"
   },
-  "renderer/src/store/kanban-store.ts": {
-    "mtime": 1781271837.8410296,
-    "ast_hash": "a488591182a2097336bd85beceec6f3e",
-    "semantic_hash": "a488591182a2097336bd85beceec6f3e"
-  },
   "renderer/src/store/notification-store.ts": {
     "mtime": 1786069974.7399013,
     "ast_hash": "85c18d9bea92e6ac7c2c7f6b6839a4f7",
     "semantic_hash": "85c18d9bea92e6ac7c2c7f6b6839a4f7"
-  },
-  "renderer/src/store/pm-chat-store.ts": {
-    "mtime": 1781044547.9243107,
-    "ast_hash": "2b816a061c0af4d86089e2ffef342ab5",
-    "semantic_hash": "2b816a061c0af4d86089e2ffef342ab5"
   },
   "renderer/src/store/remote-ssh-store.ts": {
     "mtime": 1785682195.0417652,
@@ -3925,9 +3420,9 @@
     "semantic_hash": "6e6f17b05e25053c202003a3f3ecb333"
   },
   "renderer/src/store/workspace-store.ts": {
-    "mtime": 1786069974.740347,
-    "ast_hash": "55f4efbc9c1171d1cbdb6625181d75af",
-    "semantic_hash": "55f4efbc9c1171d1cbdb6625181d75af"
+    "mtime": 1786108767.2193081,
+    "ast_hash": "d8ea9b458c912633e9e38f20df574830",
+    "semantic_hash": "d8ea9b458c912633e9e38f20df574830"
   },
   "shared/__tests__/agent-context.test.ts": {
     "mtime": 1786069974.7406783,
@@ -4018,16 +3513,6 @@
     "mtime": 1780856840.2671752,
     "ast_hash": "ed593436c17a1582cd9b54700c25b13f",
     "semantic_hash": "ed593436c17a1582cd9b54700c25b13f"
-  },
-  "shared/__tests__/kanban-dispatcher-defaults.test.ts": {
-    "mtime": 1781193425.7844815,
-    "ast_hash": "b0c54d6a4d6988238adcc933e191f804",
-    "semantic_hash": "b0c54d6a4d6988238adcc933e191f804"
-  },
-  "shared/__tests__/kanban-notifications.test.ts": {
-    "mtime": 1781318381.8266644,
-    "ast_hash": "26dd7bd9d759e5a18438ba19966ed0a6",
-    "semantic_hash": "26dd7bd9d759e5a18438ba19966ed0a6"
   },
   "shared/__tests__/languages.test.ts": {
     "mtime": 1775921115.8097465,
@@ -4165,9 +3650,9 @@
     "semantic_hash": "ea46ff744569302ce20a6cb22bbf106c"
   },
   "shared/constants.ts": {
-    "mtime": 1785682195.0424793,
-    "ast_hash": "0e8d9171bb9d3f27d2b07b1d202d607d",
-    "semantic_hash": "0e8d9171bb9d3f27d2b07b1d202d607d"
+    "mtime": 1786108767.2195404,
+    "ast_hash": "f49ccf1e5c24d0a4e578445c86d1a94c",
+    "semantic_hash": "f49ccf1e5c24d0a4e578445c86d1a94c"
   },
   "shared/drive-session.ts": {
     "mtime": 1783044263.3601613,
@@ -4200,24 +3685,14 @@
     "semantic_hash": "8f7b36944ffba57420759fef0a059884"
   },
   "shared/ipc-api.ts": {
-    "mtime": 1786069974.7469902,
-    "ast_hash": "be3ea3ac7241ed8b9a3cb84ff903b95d",
-    "semantic_hash": "be3ea3ac7241ed8b9a3cb84ff903b95d"
+    "mtime": 1786108767.2197726,
+    "ast_hash": "59f30e5e9bd60a9134f170c097d2b8e8",
+    "semantic_hash": "59f30e5e9bd60a9134f170c097d2b8e8"
   },
   "shared/ipc-channels.ts": {
-    "mtime": 1786069974.7471917,
-    "ast_hash": "2ba8abb285c2b928523655afcb2fa740",
-    "semantic_hash": "2ba8abb285c2b928523655afcb2fa740"
-  },
-  "shared/kanban-notifications.ts": {
-    "mtime": 1781318381.827075,
-    "ast_hash": "e3e49e96378b306e0615bbecbc8db70b",
-    "semantic_hash": "e3e49e96378b306e0615bbecbc8db70b"
-  },
-  "shared/kanban-types.ts": {
-    "mtime": 1781787458.9231744,
-    "ast_hash": "e223ef188f1b15a568599caf86a80bbb",
-    "semantic_hash": "e223ef188f1b15a568599caf86a80bbb"
+    "mtime": 1786108767.2199886,
+    "ast_hash": "acb863ffcd8a5bf548e9baa95771b92b",
+    "semantic_hash": "acb863ffcd8a5bf548e9baa95771b92b"
   },
   "shared/languages.ts": {
     "mtime": 1775921115.7972052,
@@ -4285,9 +3760,9 @@
     "semantic_hash": "1233d90dc43b2b09b4e1a70a77bc7bc1"
   },
   "shared/rune.ts": {
-    "mtime": 1780951360.1864357,
-    "ast_hash": "2dcc7ccc021a20b74c6dcc670cffa291",
-    "semantic_hash": "2dcc7ccc021a20b74c6dcc670cffa291"
+    "mtime": 1786108767.2201862,
+    "ast_hash": "6c2608940480ce197d8a38540dfe6780",
+    "semantic_hash": "6c2608940480ce197d8a38540dfe6780"
   },
   "shared/sessions.ts": {
     "mtime": 1781531196.6032004,
@@ -4325,18 +3800,28 @@
     "semantic_hash": "2ab2bf853a93c8d77fc990a72d550b07"
   },
   "shared/tools.ts": {
-    "mtime": 1782399196.6880186,
-    "ast_hash": "0fd14eccf41870a9fdca3146c731e28f",
-    "semantic_hash": "0fd14eccf41870a9fdca3146c731e28f"
+    "mtime": 1786108767.2203722,
+    "ast_hash": "adc7837a67b65ba8f0e2965fc997cfe3",
+    "semantic_hash": "adc7837a67b65ba8f0e2965fc997cfe3"
   },
   "shared/types.ts": {
-    "mtime": 1786069974.747785,
-    "ast_hash": "ef6be64d720b339061e57a238222dde1",
-    "semantic_hash": "ef6be64d720b339061e57a238222dde1"
+    "mtime": 1786108767.2206335,
+    "ast_hash": "839cf05465608400393cfd2949fa65bf",
+    "semantic_hash": "839cf05465608400393cfd2949fa65bf"
   },
   "test-setup.ts": {
     "mtime": 1782682234.7823772,
     "ast_hash": "7a91e20aba2180eeb47623266b70b1a2",
     "semantic_hash": "7a91e20aba2180eeb47623266b70b1a2"
+  },
+  "main/__tests__/mcp-expand.test.ts": {
+    "mtime": 1786106551.5614026,
+    "ast_hash": "095e8f564146f29f5ce76fb886120faf",
+    "semantic_hash": "095e8f564146f29f5ce76fb886120faf"
+  },
+  "main/mcp-expand.ts": {
+    "mtime": 1786106551.562546,
+    "ast_hash": "f815452274dc9480388a5fa7aabafd83",
+    "semantic_hash": "f815452274dc9480388a5fa7aabafd83"
   }
 }
