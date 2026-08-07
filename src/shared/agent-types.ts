@@ -149,6 +149,14 @@ export type AgentSettings = {
    */
   classifierModel: string | null;
   /**
+   * What that model should know about this setup - a disposable container where
+   * installs are fine, a folder whose deploy scripts are never ordinary.
+   *
+   * Added to the built-in instructions rather than replacing them, unlike
+   * `systemPrompt`. See `agent-classifier` for why the two differ.
+   */
+  classifierNote: string | null;
+  /**
    * External MCP servers whose tools join the agent's own.
    *
    * App-wide rather than per folder, like everything else here: a pane is a
@@ -193,6 +201,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   // is something an upgrade should decide for somebody.
   toolMode: 'ask',
   classifierModel: null,
+  classifierNote: null,
   titleModel: null,
   mcpServers: {}
 };

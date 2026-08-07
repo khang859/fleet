@@ -897,7 +897,14 @@ void app.whenReady().then(async () => {
       if (a.toolMode !== 'auto' || apiKey === null || model === null) {
         return { verdict: 'ask', usage: null };
       }
-      return classifyCommand(completeOnce, { apiKey, model, command, cwd, signal });
+      return classifyCommand(completeOnce, {
+        apiKey,
+        model,
+        command,
+        cwd,
+        note: a.classifierNote,
+        signal
+      });
     }
   });
   // MCP servers for the Agent pane, with their own config and secret store.

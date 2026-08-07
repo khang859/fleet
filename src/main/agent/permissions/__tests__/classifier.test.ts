@@ -12,7 +12,8 @@ const input = {
   apiKey: 'sk-or-test',
   model: 'anthropic/claude-haiku-4.5',
   command: 'npm test',
-  cwd: '/repo'
+  cwd: '/repo',
+  note: null
 };
 
 /** A model that answers with whatever it is handed. */
@@ -64,6 +65,12 @@ describe('toClassifyMessages', () => {
       role: 'user',
       content: 'Working folder: /repo\n\nCommand:\nrm -rf node_modules && npm ci'
     });
+  });
+
+  it('carries the user’s note into the instructions', () => {
+    const messages = toClassifyMessages({ ...input, note: 'Installs are fine in this container.' });
+
+    expect(messages[0].content).toContain('Installs are fine in this container.');
   });
 });
 

@@ -15,6 +15,7 @@ import { AgentImageSettings } from './AgentImageSettings';
 import { SystemPromptField } from './SystemPromptField';
 import { CompactionField } from './CompactionField';
 import { MaxToolRoundsField } from './MaxToolRoundsField';
+import { ClassifierNoteField } from './ClassifierNoteField';
 import { ModelSelect } from './ModelSelect';
 import { selectCls } from './controls';
 import { McpSection } from './mcp/McpSection';
@@ -148,6 +149,12 @@ export function AgentSettingsPanel(): React.JSX.Element {
               noneLabel="Use the coding model"
             />
           </Field>
+          <ClassifierNoteField
+            value={agent.classifierNote}
+            onChange={(classifierNote) =>
+              void updateSettings({ ai: { agent: { classifierNote } } })
+            }
+          />
         </FieldGroup>
 
         <McpSection />
