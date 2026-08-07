@@ -57,9 +57,11 @@ Researched ten harnesses before choosing. The finding that mattered:
 
 ## What Fleet does
 
-1. **Typing-idle deferral** (`PERMISSION_TYPING_IDLE_MS = 1000`), the fix Claude Code and Codex both landed on independently. Codex ships `APPROVAL_PROMPT_TYPING_IDLE_DELAY = Duration::from_secs(1)`; Claude Code's changelog 2.1.30 reads "Fixed permission dialogs stealing focus while actively typing". The card is held back until the typing stops, so it can never appear between two keystrokes. Once drawn it stays drawn - it is the turn's question, not a notification.
+1. **Idle deferral** (`PERMISSION_DRAFT_IDLE_MS = 1000`), the fix Claude Code and Codex both landed on independently. Codex ships `APPROVAL_PROMPT_TYPING_IDLE_DELAY = Duration::from_secs(1)`; Claude Code's changelog 2.1.30 reads "Fixed permission dialogs stealing focus while actively typing". The card is held back until the typing stops, so it can never appear between two keystrokes. Once drawn it stays drawn - it is the turn's question, not a notification.
 
-   `useSettledAsk` reports typing through a **ref**, and the timer reschedules itself by re-reading that ref. Typing with nothing pending therefore costs no render at all - important, because a `setState` per keystroke here would re-render the whole transcript.
+   `useSettledAsk` reports through a **ref**, and the timer reschedules itself by re-reading that ref. Writing a message with nothing pending therefore costs no render at all - important, because a `setState` per keystroke here would re-render the whole transcript.
+
+   **"Typing" is the wrong word for what has to hold the card back.** The first cut called `noteTyping` from the textarea's `onChange` only, which left every attachment path - the picker, a drop, a paste, an `@` picked off the menu - able to let a card land on someone with their hands on the composer. All four go through `attach`, so that is the one place it belongs, called twice: once for the gesture and once when main comes back with the file, since that read can outlast the idle window. The callback is now `onDraft` - a name that does not quietly exclude three of its four callers.
 
 2. **Enter approves only when there is nothing to send** (empty box, no attachments). This is not extra caution: `agentSlashCommand` exists so that typing `/clear` in full and pressing Enter runs the command. Without the guard, Enter would approve the command instead of running `/clear`, and a draft mid-sentence would be answered by reflex.
 

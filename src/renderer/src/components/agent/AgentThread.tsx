@@ -64,20 +64,20 @@ const EMPTY_PARTIALS: Record<string, string> = {};
 const EMPTY_TODOS: AgentTodoItem[] = [];
 
 /**
- * The pending question, held back until the typing stops.
+ * The pending question, held back until the composer goes quiet.
  *
  * Returns the question only once it is safe to draw, plus the callback the
- * composer uses to say a key was pressed. Typing is reported through a ref
- * rather than state so the common case - typing with nothing pending - costs no
- * render at all; the timer re-reads that ref when it fires and puts itself back
- * if the user is still going.
+ * composer uses to say the message being written has just changed. That is
+ * reported through a ref rather than state so the common case - writing with
+ * nothing pending - costs no render at all; the timer re-reads that ref when it
+ * fires and puts itself back if the user is still going.
  */
 function useSettledAsk(ask: AgentPermissionAsk | null): {
   settled: AgentPermissionAsk | null;
-  noteTyping: () => void;
+  noteDraft: () => void;
 } {
   const [settled, setSettled] = useState<AgentPermissionAsk | null>(null);
-  const typedAt = useRef(0);
+  const draftedAt = useRef(0);
 
   useEffect(() => {
     if (ask === null) {
@@ -86,7 +86,7 @@ function useSettledAsk(ask: AgentPermissionAsk | null): {
     }
     let timer: ReturnType<typeof setTimeout>;
     const settle = (): void => {
-      const wait = settleDelay(Date.now(), typedAt.current);
+      const wait = settleDelay(Date.now(), draftedAt.current);
       if (wait === 0) {
         setSettled(ask);
         return;
@@ -97,11 +97,11 @@ function useSettledAsk(ask: AgentPermissionAsk | null): {
     return () => clearTimeout(timer);
   }, [ask]);
 
-  const noteTyping = useCallback(() => {
-    typedAt.current = Date.now();
+  const noteDraft = useCallback(() => {
+    draftedAt.current = Date.now();
   }, []);
 
-  return { settled, noteTyping };
+  return { settled, noteDraft };
 }
 
 export function AgentThread({
@@ -138,7 +138,7 @@ export function AgentThread({
   const spend = thread?.spend ?? EMPTY_SESSION_SPEND;
   // Everything downstream asks "is there a question on screen", which is not
   // quite "has one been asked" - so the held-back one is what they are given.
-  const { settled: ask, noteTyping } = useSettledAsk(thread?.pendingPermission ?? null);
+  const { settled: ask, noteDraft } = useSettledAsk(thread?.pendingPermission ?? null);
   const imagePartials = thread?.imagePartials ?? EMPTY_PARTIALS;
   // Only when the pane has no column for it, so the same list is never in two
   // places saying the same thing.
@@ -216,7 +216,7 @@ export function AgentThread({
         onApprove={() => {
           if (ask !== null) decidePermission(paneId, 'once', ask.requestId);
         }}
-        onTyping={noteTyping}
+        onDraft={noteDraft}
         toolMode={agent?.toolMode ?? DEFAULT_AGENT_SETTINGS.toolMode}
         onToolMode={(toolMode) => void updateSettings({ ai: { agent: { toolMode } } })}
         // The conversation is what an attachment belongs to, so it is what the
@@ -577,7 +577,7 @@ function Composer({
   asking,
   cwd,
   onApprove,
-  onTyping,
+  onDraft,
   toolMode,
   onToolMode,
   threadId,
@@ -593,8 +593,12 @@ function Composer({
   cwd: string;
   /** Run the command being asked about, once. What Enter means while it is up. */
   onApprove: () => void;
-  /** A key went into the box, so a question waiting to be asked should wait. */
-  onTyping: () => void;
+  /**
+   * The message being written has just changed, so a question waiting to be
+   * asked should keep waiting. Typing is most of it, but a file being attached
+   * counts the same: both mean hands on the composer.
+   */
+  onDraft: () => void;
   /** Who answers the permission questions. App-wide, like every agent setting. */
   toolMode: AgentToolMode;
   onToolMode: (mode: AgentToolMode) => void;
@@ -632,7 +636,14 @@ function Composer({
    */
   const attach = useCallback(
     async (source: AgentAttachRequest['source']): Promise<void> => {
+      // Attaching is composing too. Every way in - the picker, a drop, a paste,
+      // an `@` picked off the menu - comes through here, so this is the one
+      // place a question waiting to be asked has to be told to keep waiting.
+      // Twice: main reads the file in between, and a card that landed during
+      // that read would land on someone with their hands still on the composer.
+      onDraft();
       const result = await window.fleet.agent.attach({ threadId, cwd, source });
+      onDraft();
       if (!result.ok) {
         setAttachError(result.error);
         return;
@@ -640,7 +651,7 @@ function Composer({
       setAttachError(null);
       setAttachments((current) => [...current, result.attachment]);
     },
-    [cwd, threadId]
+    [cwd, threadId, onDraft]
   );
 
   /** Files from a paste, a drop or the picker - all the same thing from here. */
@@ -955,7 +966,7 @@ function Composer({
               setText(e.target.value);
               // Said on every keystroke, so a question that arrives mid-sentence
               // waits for the sentence to end rather than for the next key.
-              onTyping();
+              onDraft();
               // Typing again is a fresh attempt, so a menu dismissed with Escape
               // is allowed back, at the top of its list.
               setMenuDismissed(false);

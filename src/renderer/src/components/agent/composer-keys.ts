@@ -16,7 +16,8 @@
  */
 
 /**
- * How long the typing has to stop before a permission question is put on screen.
+ * How long the composer has to be quiet before a permission question is put on
+ * screen.
  *
  * A card that appears mid-sentence appears under the hands of someone whose
  * next keystroke was aimed at the message they were writing. Claude Code and
@@ -24,12 +25,15 @@
  * question until the typing stops - and at roughly the same delay, which is the
  * evidence for this number being about right.
  *
+ * Typing is most of what counts, but not all of it: attaching a file is the
+ * message being written too, and the hands doing it are on the same keyboard.
+ *
  * Only before the card is drawn. Once it is up it stays up: it is the turn's
  * question, not a notification, and taking it away because the user started
  * typing again would leave the turn stopped on something they can no longer
  * answer.
  */
-export const PERMISSION_TYPING_IDLE_MS = 1000;
+export const PERMISSION_DRAFT_IDLE_MS = 1000;
 
 /**
  * How long a first Escape stays loaded before it is forgotten.
@@ -44,12 +48,13 @@ export const INTERRUPT_ARM_MS = 2000;
  * How much longer the question has to wait, in milliseconds.
  *
  * Zero means it can be drawn now. Anything else is how long is left of the
- * quiet period, measured from the last keystroke rather than from when the
- * question arrived - so someone who keeps typing keeps pushing it back.
+ * quiet period, measured from the last change to the message being written
+ * rather than from when the question arrived - so someone who keeps working on
+ * it keeps pushing the question back.
  */
-export function settleDelay(now: number, typedAt: number): number {
-  const idleFor = now - typedAt;
-  return idleFor >= PERMISSION_TYPING_IDLE_MS ? 0 : PERMISSION_TYPING_IDLE_MS - idleFor;
+export function settleDelay(now: number, draftedAt: number): number {
+  const idleFor = now - draftedAt;
+  return idleFor >= PERMISSION_DRAFT_IDLE_MS ? 0 : PERMISSION_DRAFT_IDLE_MS - idleFor;
 }
 
 /** A key press, reduced to what the decision depends on. */

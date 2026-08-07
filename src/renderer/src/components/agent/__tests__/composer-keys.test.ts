@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PERMISSION_TYPING_IDLE_MS,
+  PERMISSION_DRAFT_IDLE_MS,
   composerIntent,
   settleDelay,
   type ComposerState
@@ -69,22 +69,29 @@ describe('composerIntent', () => {
   });
 });
 
+/*
+ * "Quiet" is every way the message being written can change, not only the
+ * keyboard: `attach` reports here too, so the picker, a drop, a paste and an
+ * `@` picked off the menu all push the question back the same way a keystroke
+ * does. This function is told the moment of the last one and does not care
+ * which it was.
+ */
 describe('settleDelay', () => {
-  it('draws the question at once when nobody is typing', () => {
+  it('draws the question at once when the composer is quiet', () => {
     expect(settleDelay(10_000, 0)).toBe(0);
-    expect(settleDelay(10_000, 10_000 - PERMISSION_TYPING_IDLE_MS)).toBe(0);
+    expect(settleDelay(10_000, 10_000 - PERMISSION_DRAFT_IDLE_MS)).toBe(0);
   });
 
   it('holds it back for what is left of the quiet period', () => {
-    expect(settleDelay(10_000, 9_800)).toBe(PERMISSION_TYPING_IDLE_MS - 200);
-    expect(settleDelay(10_000, 10_000)).toBe(PERMISSION_TYPING_IDLE_MS);
+    expect(settleDelay(10_000, 9_800)).toBe(PERMISSION_DRAFT_IDLE_MS - 200);
+    expect(settleDelay(10_000, 10_000)).toBe(PERMISSION_DRAFT_IDLE_MS);
   });
 
-  // Measured from the last keystroke, not from when the question arrived, so
-  // someone who keeps typing keeps pushing it back rather than watching it land
-  // a fixed second later regardless.
-  it('starts the wait again on every keystroke', () => {
-    expect(settleDelay(10_000, 9_900)).toBe(PERMISSION_TYPING_IDLE_MS - 100);
-    expect(settleDelay(10_100, 10_050)).toBe(PERMISSION_TYPING_IDLE_MS - 50);
+  // Measured from the last change, not from when the question arrived, so
+  // someone still working on their message keeps pushing it back rather than
+  // watching it land a fixed second later regardless.
+  it('starts the wait again on every change', () => {
+    expect(settleDelay(10_000, 9_900)).toBe(PERMISSION_DRAFT_IDLE_MS - 100);
+    expect(settleDelay(10_100, 10_050)).toBe(PERMISSION_DRAFT_IDLE_MS - 50);
   });
 });
