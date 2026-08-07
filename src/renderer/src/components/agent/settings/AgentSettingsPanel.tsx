@@ -14,6 +14,7 @@ import { SystemPromptField } from './SystemPromptField';
 import { CompactionField } from './CompactionField';
 import { MaxToolRoundsField } from './MaxToolRoundsField';
 import { ModelSelect } from './ModelSelect';
+import { McpSection } from './mcp/McpSection';
 import { relativeTime } from './format';
 
 function validateOpenRouterKey(key: string): string | null {
@@ -98,6 +99,8 @@ export function AgentSettingsPanel(): React.JSX.Element {
             />
           </Field>
         </FieldGroup>
+
+        <McpSection />
 
         <FieldGroup title="Instructions">
           <SystemPromptField

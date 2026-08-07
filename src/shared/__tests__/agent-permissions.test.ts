@@ -2,14 +2,24 @@ import { describe, expect, it } from 'vitest';
 import {
   alwaysAskReason,
   decideCommand,
+  decideMcpTool,
   matchCommand,
   suggestRule,
   type AgentPermissionRules
 } from '../agent-permissions';
+import { serverRulePattern, wireToolName } from '../agent-mcp-names';
 
 const rules = (allow: string[] = [], deny: string[] = []): AgentPermissionRules => ({
   allow,
-  deny
+  deny,
+  mcp: { allow: [], deny: [] }
+});
+
+/** The same, for the tools connected servers offer. */
+const mcpRules = (allow: string[] = [], deny: string[] = []): AgentPermissionRules => ({
+  allow: [],
+  deny: [],
+  mcp: { allow, deny }
 });
 
 describe('matchCommand', () => {
@@ -188,7 +198,7 @@ describe('alwaysAskReason', () => {
  * asked about, whatever rule happens to cover it.
  */
 describe('always-ask holds against a rule that would otherwise cover the line', () => {
-  const bypasses: [command: string, allow: string[]][] = [
+  const bypasses: Array<[command: string, allow: string[]]> = [
     ['ls\nsudo whoami', ['ls', 'whoami']],
     ['echo `sudo chmod 4755 /bin/sh`', ['echo', 'chmod']],
     ['env sudo whoami', ['whoami']],
@@ -246,5 +256,75 @@ describe('suggestRule', () => {
       expect(rule).not.toBeNull();
       expect(decideCommand(rules([rule ?? '']), command)).toEqual({ kind: 'allow' });
     }
+  });
+});
+
+describe('decideMcpTool', () => {
+  it('has nothing to say until a rule does', () => {
+    expect(decideMcpTool(mcpRules(), 'mcp__linear__list_issues')).toEqual({ kind: 'unknown' });
+  });
+
+  it('lets a server wildcard cover every tool on it', () => {
+    const rules = mcpRules(['mcp__linear__*']);
+    expect(decideMcpTool(rules, 'mcp__linear__list_issues')).toEqual({ kind: 'allow' });
+    expect(decideMcpTool(rules, 'mcp__linear__create_issue')).toEqual({ kind: 'allow' });
+    expect(decideMcpTool(rules, 'mcp__notion__list_pages')).toEqual({ kind: 'unknown' });
+  });
+
+  it('lets a rule name one tool', () => {
+    const rules = mcpRules(['mcp__linear__list_issues']);
+    expect(decideMcpTool(rules, 'mcp__linear__list_issues')).toEqual({ kind: 'allow' });
+    expect(decideMcpTool(rules, 'mcp__linear__create_issue')).toEqual({ kind: 'unknown' });
+  });
+
+  it('does not let one server name ride in on the prefix of another', () => {
+    // `linear` must not cover `linear-staging`, the way `git` never covers
+    // `github` on the shell side.
+    expect(decideMcpTool(mcpRules(['mcp__linear__*']), 'mcp__linear_staging__x')).toEqual({
+      kind: 'unknown'
+    });
+  });
+
+  it('refuses ahead of allowing, so a deny cannot be widened away', () => {
+    const rules = mcpRules(['mcp__linear__*'], ['mcp__linear__delete_issue']);
+    expect(decideMcpTool(rules, 'mcp__linear__delete_issue')).toEqual({ kind: 'deny' });
+    expect(decideMcpTool(rules, 'mcp__linear__list_issues')).toEqual({ kind: 'allow' });
+  });
+
+  it('is not consulted about the agent own tools', () => {
+    expect(decideMcpTool(mcpRules(['*']), 'bash')).toEqual({ kind: 'allow' });
+    // `*` really does mean everything, which is why nothing routes a shell
+    // command through here - see the branch in `runAgentTool`.
+  });
+});
+
+describe('serverRulePattern', () => {
+  it('covers every tool on the server it names', () => {
+    const rule = serverRulePattern('linear');
+    expect(rule).toBe('mcp__linear__*');
+    expect(decideMcpTool(mcpRules([rule ?? '']), wireToolName('linear', 'list_issues'))).toEqual({
+      kind: 'allow'
+    });
+  });
+
+  it('still covers a tool whose wire name had to be shortened', () => {
+    const rule = serverRulePattern('linear');
+    const wire = wireToolName('linear', 'x'.repeat(90));
+    expect(decideMcpTool(mcpRules([rule ?? '']), wire)).toEqual({ kind: 'allow' });
+  });
+
+  it('folds the same characters the wire name does', () => {
+    expect(serverRulePattern('my.server')).toBe('mcp__my_server__*');
+    expect(decideMcpTool(mcpRules(['mcp__my_server__*']), wireToolName('my.server', 'go'))).toEqual(
+      {
+        kind: 'allow'
+      }
+    );
+  });
+
+  it('offers nothing rather than a rule that would match nothing', () => {
+    // A server named this long is shortened before its own name ends, so no
+    // prefix could cover its tools.
+    expect(serverRulePattern('s'.repeat(80))).toBeNull();
   });
 });

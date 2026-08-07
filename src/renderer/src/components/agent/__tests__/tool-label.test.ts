@@ -110,3 +110,35 @@ describe('image', () => {
     );
   });
 });
+
+describe('a call to a server', () => {
+  it('reads as a verb and the server, not as a wire name', () => {
+    expect(toolLabel(call('mcp__context7__query_docs', '{}'))).toEqual({
+      verb: 'Query docs',
+      target: 'context7'
+    });
+  });
+
+  it('handles a tool whose name is one word, and one with dashes', () => {
+    expect(toolLabel(call('mcp__linear__issues', '{}'))).toEqual({
+      verb: 'Issues',
+      target: 'linear'
+    });
+    expect(toolLabel(call('mcp__mobbin__search-screens', '{}'))).toEqual({
+      verb: 'Search screens',
+      target: 'mobbin'
+    });
+  });
+
+  it('leaves a tool Fleet does not know saying its own name', () => {
+    // The fallback still has to be a name rather than nothing: a row reading
+    // only "·" says less than the raw name would.
+    expect(toolLabel(call('something_else', '{}'))).toEqual({
+      verb: 'something_else',
+      target: ''
+    });
+    // Prefixed but with no server in it. Not a name any manager would produce,
+    // and the row must not end up claiming a server called "".
+    expect(toolLabel(call('mcp__', '{}'))).toEqual({ verb: 'mcp__', target: '' });
+  });
+});

@@ -9,6 +9,7 @@ import { useKanbanStore } from './store/kanban-store';
 import { useSessionsStore } from './store/sessions-store';
 import { useRemoteSshStore } from './store/remote-ssh-store';
 import { useAgentStore } from './store/agent-store';
+import { useAgentMcpStore } from './store/agent-mcp-store';
 import { useNotificationStore } from './store/notification-store';
 import './index.css';
 
@@ -87,6 +88,7 @@ if (import.meta.env.DEV) {
       sessions: useSessionsStore,
       remoteSsh: useRemoteSshStore,
       agent: useAgentStore,
+      agentMcp: useAgentMcpStore,
       notification: useNotificationStore
     }
   };

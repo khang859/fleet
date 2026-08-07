@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { AgentToolCall } from './agent-tools';
 import { AGENT_TODO_INSTRUCTIONS, type AgentTodoItem } from './agent-todos';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
+import type { McpServersConfig } from './agent-mcp';
 
 /**
  * Settings for the native Agent panes. One configuration, shared by every agent
@@ -122,6 +123,14 @@ export type AgentSettings = {
   /** Which shell commands run without stopping to ask. */
   permissions: AgentPermissionRules;
   /**
+   * External MCP servers whose tools join the agent's own.
+   *
+   * App-wide rather than per folder, like everything else here: a pane is a
+   * folder to work in, not a separate set of tools. Servers imported from a
+   * project's config are still kept here, with a note of where they came from.
+   */
+  mcpServers: McpServersConfig;
+  /**
    * The model that names a session once its first turn is done. `null` ⇒ the
    * coding model writes its own titles. A plain field rather than a whole
    * `AgentModelConfig`, because naming needs none of the other knobs.
@@ -153,7 +162,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   compactThreshold: 0.8,
   maxToolRounds: null,
   permissions: DEFAULT_AGENT_PERMISSION_RULES,
-  titleModel: null
+  titleModel: null,
+  mcpServers: {}
 };
 
 /**
@@ -209,6 +219,19 @@ export const AGENT_IMAGE_INSTRUCTIONS = [
 ].join('\n');
 
 /**
+ * What to say about the tools the user connected rather than the ones Fleet
+ * ships. Their own descriptions say what they do; this says what they are, and
+ * which of them not to reach for.
+ */
+export const AGENT_MCP_INSTRUCTIONS = [
+  'Tools whose names begin with `mcp__` come from servers the user connected. The rest of the name is the server and then the tool, so `mcp__linear__list_issues` is `list_issues` on their `linear` server.',
+  '',
+  'They reach things this machine does not have - an issue tracker, a browser, a database - and each call goes over a network to something the user set up. So they can be slow, and they can fail for reasons that have nothing to do with what you asked. Read what comes back rather than assuming it worked.',
+  '',
+  "Where a server offers something Fleet already has - reading a file, searching text, running a command - use Fleet's own tool. It works on the folder this conversation is about, and the server may not be pointed at the same place."
+].join('\n');
+
+/**
  * The system message for a turn. The working folder is appended by Fleet rather
  * than left to the prompt text, so a custom prompt cannot accidentally drop the
  * one fact the agent has no other way to learn. Whether image generation is on
@@ -221,12 +244,13 @@ export const AGENT_IMAGE_INSTRUCTIONS = [
 export function buildSystemPrompt(
   cwd: string,
   override: string | null,
-  options: { image: boolean } = { image: false }
+  options: { image: boolean; mcp?: boolean } = { image: false }
 ): string {
   const custom = override?.trim() ?? '';
   const base = custom === '' ? DEFAULT_AGENT_SYSTEM_PROMPT : custom;
   const image = options.image ? `\n\n${AGENT_IMAGE_INSTRUCTIONS}` : '';
-  return `${base}${image}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
+  const mcp = options.mcp === true ? `\n\n${AGENT_MCP_INSTRUCTIONS}` : '';
+  return `${base}${image}${mcp}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
 }
 
 /*
@@ -613,6 +637,19 @@ export type AgentPermissionAsk = {
   reason: string | null;
   /** The rule "always allow" would leave behind. `null` ⇒ do not offer it. */
   rule: string | null;
+  /**
+   * Set when the question is about a connected server's tool rather than a
+   * shell command, in which case `command` is the wire name and this is what
+   * the card should actually show: the user connected `linear`, and
+   * `mcp__linear__list_issues` is Fleet's plumbing rather than their word for
+   * it.
+   */
+  mcp: {
+    server: string;
+    tool: string;
+    /** The arguments as the model wrote them: JSON, and possibly malformed. */
+    args: string;
+  } | null;
 };
 
 /** `once` runs it, `always` runs it and remembers the rule, `no` refuses. */

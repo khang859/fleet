@@ -167,6 +167,14 @@ import type {
   AgentSessionReplay
 } from '../shared/agent-session';
 import type { AgentGitHeadEvent } from '../shared/agent-git';
+// Aliased: Chat has its own `McpServersConfig` and `McpServerStatus` next door,
+// and the two panes' server lists are deliberately different things.
+import type {
+  McpDetectedServer as AgentMcpDetected,
+  McpServersConfig as AgentMcpServers,
+  McpServerStatus as AgentMcpStatus,
+  McpSnapshot as AgentMcpSnapshot
+} from '../shared/agent-mcp';
 import type {
   DetectedSshHost,
   RemoteDirEntry,
@@ -953,7 +961,43 @@ const fleetApi = {
       typedInvoke<string[]>(IPC_CHANNELS.AGENT_HISTORY_LIST, cwd),
     /** Fire-and-forget beside a send: failing to record must not fail the send. */
     historyAdd: (cwd: string, text: string): void =>
-      ipcRenderer.send(IPC_CHANNELS.AGENT_HISTORY_ADD, cwd, text)
+      ipcRenderer.send(IPC_CHANNELS.AGENT_HISTORY_ADD, cwd, text),
+
+    /**
+     * MCP servers the agent can call tools on.
+     *
+     * Every call that changes something answers with the whole snapshot, so the
+     * pane never has to ask again to find out what its own click did. Nothing
+     * here ever carries a credential back: `credentials` says whether one is
+     * set, and that is all the renderer is told.
+     */
+    mcp: {
+      get: async (): Promise<AgentMcpSnapshot> =>
+        typedInvoke<AgentMcpSnapshot>(IPC_CHANNELS.AGENT_MCP_GET),
+      set: async (servers: AgentMcpServers): Promise<AgentMcpSnapshot> =>
+        typedInvoke<AgentMcpSnapshot>(IPC_CHANNELS.AGENT_MCP_SET, servers),
+      reconnect: async (name: string): Promise<AgentMcpSnapshot> =>
+        typedInvoke<AgentMcpSnapshot>(IPC_CHANNELS.AGENT_MCP_RECONNECT, name),
+      /** Opens the user's browser and settles when they come back, or rejects. */
+      signIn: async (name: string): Promise<AgentMcpSnapshot> =>
+        typedInvoke<AgentMcpSnapshot>(IPC_CHANNELS.AGENT_MCP_SIGN_IN, name),
+      signOut: async (name: string): Promise<AgentMcpSnapshot> =>
+        typedInvoke<AgentMcpSnapshot>(IPC_CHANNELS.AGENT_MCP_SIGN_OUT, name),
+      /** `null` clears it. It never comes back out; only whether one is set does. */
+      setToken: async (name: string, token: string | null): Promise<AgentMcpSnapshot> =>
+        typedInvoke<AgentMcpSnapshot>(IPC_CHANNELS.AGENT_MCP_SET_TOKEN, name, token),
+      /** What Claude Code and OpenCode have configured, with their keys removed. */
+      detect: async (cwd: string): Promise<AgentMcpDetected[]> =>
+        typedInvoke<AgentMcpDetected[]>(IPC_CHANNELS.AGENT_MCP_DETECT, cwd),
+      import: async (
+        picked: Array<{ name: string; path: string }>,
+        cwd: string
+      ): Promise<AgentMcpSnapshot> =>
+        typedInvoke<AgentMcpSnapshot>(IPC_CHANNELS.AGENT_MCP_IMPORT, picked, cwd),
+      /** Pushed whenever a connection changes state, including with nobody asking. */
+      onStatus: (cb: (p: AgentMcpStatus[]) => void): Unsubscribe =>
+        onChannel(IPC_CHANNELS.AGENT_MCP_STATUS, cb)
+    }
   },
 
   /**

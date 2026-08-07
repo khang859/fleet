@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { TODO_MAX_ITEMS, TODO_STATUSES, type AgentTodoItem } from './agent-todos';
+import type { McpToolOutput } from './agent-mcp';
 
 /**
  * The tools the agent can call, and the limits they answer within.
@@ -264,6 +265,26 @@ export type AgentToolSpec = {
     parameters: Record<string, unknown>;
   };
 };
+
+/**
+ * The same, for a tool the agent does not own.
+ *
+ * An MCP server names its own tools and writes its own schemas, so the name is
+ * a string rather than one of ours and the parameters are whatever the server
+ * said. Separate from `AgentToolSpec` so that the agent's own tools keep the
+ * closed set - a typo in one of those should still be a compile error.
+ */
+export type ExternalToolSpec = {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
+/** Anything a turn may offer: the agent's own tools, and connected servers'. */
+export type ToolSpec = AgentToolSpec | ExternalToolSpec;
 
 const READ_DESCRIPTION = [
   `Read a file, ${READ_DEFAULT_LIMIT} lines at a time by default.`,
@@ -583,9 +604,13 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
  * `image` is advertised only when there is a model to run it. A tool named in
  * the request but backed by nothing is worse than a missing tool: the model
  * spends a round calling it, and the only thing that comes back is an apology.
+ *
+ * Connected servers' tools go last, so the agent's own keep the front of the
+ * list no matter how many servers the user has switched on.
  */
-export function toolSpecsFor(options: { image: boolean }): AgentToolSpec[] {
-  return AGENT_TOOL_SPECS.filter((spec) => options.image || spec.function.name !== 'image');
+export function toolSpecsFor(options: { image: boolean; mcp?: ExternalToolSpec[] }): ToolSpec[] {
+  const own = AGENT_TOOL_SPECS.filter((spec) => options.image || spec.function.name !== 'image');
+  return [...own, ...(options.mcp ?? [])];
 }
 
 /**
@@ -703,7 +728,26 @@ export type AgentToolContext = {
     list: () => AgentTodoItem[];
     save: (items: AgentTodoItem[]) => void;
   };
+  /**
+   * Run a tool one of the connected MCP servers offers, or `null` when there
+   * are none - which is also when none was offered.
+   *
+   * A capability rather than the manager itself, for the reason `generateImage`
+   * is one: what a tool needs is a way to make the call, not the connections,
+   * the credentials, or the ability to reconfigure them. The permission gate is
+   * already inside it by the time it gets here.
+   */
+  mcp: AgentMcpCaller | null;
 };
+
+/**
+ * Run one MCP tool by the name it was offered under.
+ *
+ * Returns what the server said rather than a finished tool result: turning an
+ * answer into a result is the dispatcher's job for every other tool, and a
+ * picture in particular has to be written somewhere before it can be handed on.
+ */
+export type AgentMcpCaller = (name: string, rawArgs: string) => Promise<McpToolOutput>;
 
 /**
  * What the image tool asks for, once its arguments have been checked.

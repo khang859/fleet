@@ -1,0 +1,52 @@
+{
+  "numStartups": 412,
+  "mcpServers": {
+    "auggie-mcp": {
+      "type": "stdio",
+      "command": "auggie",
+      "args": ["mcp"]
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "ctx7sk-0000-1111-2222-3333-444455556666"
+      }
+    },
+    "fleet-learnings": {
+      "type": "http",
+      "url": "http://127.0.0.1:8765/mcp"
+    },
+    "linear": {
+      "type": "sse",
+      "url": "https://mcp.linear.app/sse"
+    },
+    "broken": {
+      "type": "stdio"
+    }
+  },
+  "projects": {
+    "/work/demo": {
+      "allowedTools": [],
+      "mcpServers": {
+        "playwright": {
+          "type": "stdio",
+          "command": "npx",
+          "args": ["-y", "@playwright/mcp@latest"],
+          "env": {
+            "NODE_ENV": "production",
+            "PLAYWRIGHT_TOKEN": "pw-aaaabbbbccccddddeeeeffff0000"
+          }
+        }
+      }
+    },
+    "/work/somewhere-else": {
+      "mcpServers": {
+        "not-ours": {
+          "type": "stdio",
+          "command": "nope"
+        }
+      }
+    }
+  }
+}

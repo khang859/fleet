@@ -31,10 +31,12 @@ import { toDataUrl } from './image-kinds';
 import {
   toolSpecsFor,
   type AgentImageGenerator,
+  type AgentMcpCaller,
   type AgentToolCall,
   type AgentToolContext,
-  type AgentToolSpec
+  type ToolSpec
 } from '../../shared/agent-tools';
+import type { McpManager } from './mcp/manager';
 import type { AgentToolEvent } from '../../shared/agent-types';
 import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../shared/agent-context';
 import {
@@ -65,6 +67,8 @@ type Deps = {
   emit: AgentEmitter;
   /** Decides whether a shell command runs. Only `bash` consults it. */
   gate: PermissionGate;
+  /** The connected MCP servers, or `null` when the feature is not wired up. */
+  mcp?: McpManager | null;
   /** Injectable for tests; defaults to the real OpenRouter call. */
   stream?: typeof streamCompletion;
   /** Injectable for tests; defaults to the real OpenRouter image call. */
@@ -110,6 +114,54 @@ export function toReasoningParam(config: AgentModelConfig): ReasoningParam | nul
   if (config.reasoningEffort !== null) return { effort: config.reasoningEffort };
   if (config.reasoningEnabled !== null) return { enabled: config.reasoningEnabled };
   return null;
+}
+
+/**
+ * The way to call a connected server, or `null` when there are none.
+ *
+ * `null` rather than a function that always refuses, for the reason
+ * `generateImage` is null when image generation is off: it is the same answer
+ * the model was given when the tools were listed, so the two cannot disagree.
+ *
+ * The gate is inside it rather than beside it, so there is no way to reach a
+ * server's tool that does not pass through the question. A refusal comes back
+ * as text the model can read - the same as any other tool saying no - because
+ * a turn that ends on a declined call throws away the work it had already done.
+ */
+function mcpCaller(
+  mcp: McpManager | null,
+  gate: PermissionGate,
+  // Per call rather than per turn, for the reason `imageGenerator` is: the row
+  // the question lands on is this call's, and only here is that known.
+  at: { streamId: string; callId: string; signal: AbortSignal }
+): AgentMcpCaller | null {
+  if (mcp === null) return null;
+  return async (name, rawArgs) => {
+    const server = mcp.serverOf(name);
+    const tool = mcp.toolOf(name);
+    // No route means no such tool, which the manager says better than a
+    // question about a server nobody can name would.
+    if (server !== null && tool !== null) {
+      const grant = await gate.checkMcp({
+        streamId: at.streamId,
+        callId: at.callId,
+        signal: at.signal,
+        wireName: name,
+        server,
+        tool,
+        args: rawArgs,
+        readOnly: mcp.isReadOnly(name)
+      });
+      if (grant === 'refuse') {
+        return {
+          text: `The user did not allow ${tool} on the ${server} server to run.`,
+          isError: true,
+          image: null
+        };
+      }
+    }
+    return mcp.callTool(name, rawArgs);
+  };
 }
 
 /** What building the wire needs to know beyond the messages themselves. */
@@ -448,11 +500,19 @@ export class AgentService {
     const emit = this.deps.emit;
     const config = ctx.settings.coding;
     const imageModel = ctx.settings.image.model;
+    // Read once per turn rather than per round: a server that comes or goes
+    // mid-turn would otherwise change what the model was offered between the
+    // call it made and the answer it gets.
+    const mcp = this.deps.mcp ?? null;
+    const mcpSpecs = mcp?.getToolSpecs() ?? [];
     const messages = await toWireHistory(
       req,
-      buildSystemPrompt(req.cwd, ctx.settings.systemPrompt, { image: imageModel !== null })
+      buildSystemPrompt(req.cwd, ctx.settings.systemPrompt, {
+        image: imageModel !== null,
+        mcp: mcpSpecs.length > 0
+      })
     );
-    const tools = toolSpecsFor({ image: imageModel !== null });
+    const tools = toolSpecsFor({ image: imageModel !== null, mcp: mcpSpecs });
     // A holder rather than a local: it is written inside a callback, where
     // narrowing cannot follow it.
     const round = { content: '' };
@@ -537,7 +597,12 @@ export class AgentService {
             save: (items) => {
               todos.items = items;
             }
-          }
+          },
+          mcp: mcpCaller(mcp, this.deps.gate, {
+            streamId,
+            callId: call.id,
+            signal: ctx.signal
+          })
         });
         // A tool that spent money is part of what the turn cost, and `image` is
         // the one that can: it buys a picture from a second endpoint that
@@ -702,7 +767,7 @@ export class AgentService {
       messages: AgentWireMessage[];
       maxTokens: number | null;
       reasoning: ReasoningParam | null;
-      tools?: AgentToolSpec[];
+      tools?: ToolSpec[];
       onDelta: (text: string) => void;
       onReasoning: (text: string) => void;
       onUsage: (usage: AgentUsage) => void;

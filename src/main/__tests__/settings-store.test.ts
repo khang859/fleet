@@ -137,4 +137,30 @@ describe('SettingsStore settings merge', () => {
     expect(tools.workspaceDir).toBe('/w'); // saved field preserved
     expect(tools.maxToolRounds).toBe(25); // new field backfilled from default
   });
+
+  it('backfills agent.mcpServers for settings saved before it existed', () => {
+    // The field is a flat record with whole-replace semantics, so it rides the
+    // generic `...current.ai.agent` spread rather than needing a merge line of
+    // its own. What must hold is that an agent object saved without the key
+    // reads back as `{}` and not as undefined, which would throw on iteration.
+    store.set({
+      ai: { agent: { systemPrompt: 'be brief' } } as never
+    });
+    expect(store.get().ai.agent.mcpServers).toEqual({});
+    expect(store.get().ai.agent.systemPrompt).toBe('be brief');
+  });
+
+  it('replaces the whole mcpServers map rather than merging entries', () => {
+    // Removing a server means writing the map without it. An entry-wise merge
+    // would make deletion impossible.
+    store.set({ ai: { agent: { mcpServers: { a: { enabled: true, url: 'http://a' } } } } });
+    store.set({ ai: { agent: { mcpServers: { b: { enabled: true, url: 'http://b' } } } } });
+    expect(Object.keys(store.get().ai.agent.mcpServers)).toEqual(['b']);
+  });
+
+  it('leaves mcpServers alone when an unrelated agent field is patched', () => {
+    store.set({ ai: { agent: { mcpServers: { a: { enabled: true, url: 'http://a' } } } } });
+    store.set({ ai: { agent: { compactThreshold: 0.5 } } });
+    expect(Object.keys(store.get().ai.agent.mcpServers)).toEqual(['a']);
+  });
 });

@@ -269,12 +269,24 @@ export async function installOpencodePlugin(): Promise<void> {
 
   const candidatePluginPaths = [
     join(mainDir, '..', '..', 'resources', 'opencode-plugin', 'fleet.ts'),
-    join(process.resourcesPath ?? '', 'app.asar.unpacked', 'resources', 'opencode-plugin', 'fleet.ts')
+    join(
+      process.resourcesPath ?? '',
+      'app.asar.unpacked',
+      'resources',
+      'opencode-plugin',
+      'fleet.ts'
+    )
   ];
 
   const candidateSkillPaths = [
     join(mainDir, '..', '..', 'resources', 'opencode-plugin', 'SKILL.md'),
-    join(process.resourcesPath ?? '', 'app.asar.unpacked', 'resources', 'opencode-plugin', 'SKILL.md')
+    join(
+      process.resourcesPath ?? '',
+      'app.asar.unpacked',
+      'resources',
+      'opencode-plugin',
+      'SKILL.md'
+    )
   ];
 
   // ── Install plugin file ──────────────────────────────────────────────────
@@ -361,7 +373,10 @@ export async function installOpencodePlugin(): Promise<void> {
 
   pkgJson.dependencies = pkgJson.dependencies ?? {};
 
-  if (pkgJson.dependencies['@opencode-ai/plugin'] === '*' || pkgJson.dependencies['@opencode-ai/plugin'] === 'latest') {
+  if (
+    pkgJson.dependencies['@opencode-ai/plugin'] === '*' ||
+    pkgJson.dependencies['@opencode-ai/plugin'] === 'latest'
+  ) {
     pkgJson.dependencies['@opencode-ai/plugin'] = '^1';
   }
 

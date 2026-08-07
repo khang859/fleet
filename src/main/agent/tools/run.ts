@@ -13,6 +13,8 @@ import {
   type AgentToolContext,
   type AgentToolResult
 } from '../../../shared/agent-tools';
+import { isMcpToolName } from '../../../shared/agent-mcp-names';
+import type { McpToolOutput } from '../../../shared/agent-mcp';
 import { runBash } from './bash';
 import { runEdit } from './edit';
 import { runGlob } from './glob';
@@ -46,6 +48,14 @@ export async function runAgentTool(
   rawArgs: string,
   ctx: AgentToolContext
 ): Promise<AgentToolResult> {
+  // Ahead of the switch and ahead of the parse: a server's tool owns its own
+  // arguments, and checking them here against a schema this file does not have
+  // would only be a second opinion with nothing behind it.
+  if (isMcpToolName(name)) {
+    if (ctx.mcp === null) throw new Error(`There is no tool called ${name}`);
+    return runMcp(await ctx.mcp(name, rawArgs), ctx);
+  }
+
   const args = parseArgs(name, rawArgs);
 
   switch (name) {
@@ -72,6 +82,36 @@ export async function runAgentTool(
     default:
       throw new Error(`There is no tool called ${name}`);
   }
+}
+
+/**
+ * What a server said, as a tool result.
+ *
+ * A failure throws, the way every other tool's does, so the caller turns it
+ * into an error on the row and a sentence in the conversation. A picture is
+ * written into the conversation's own image folder and handed on as a path:
+ * that folder is one of the two places outside the working folder a picture may
+ * be read from, so a screenshot from a browser server can be looked at without
+ * the sandbox having to make an exception for whatever the server chose.
+ */
+function runMcp(output: McpToolOutput, ctx: AgentToolContext): AgentToolResult {
+  if (output.isError) throw new Error(output.text);
+  if (output.image === null) return { text: output.text, summary: summarize(output.text) };
+
+  const bytes = Buffer.from(output.image.data, 'base64');
+  const path = images.save(ctx.threadId, bytes, output.image.mimeType);
+  return {
+    text: output.text,
+    summary: 'an image',
+    image: { path, mimeType: output.image.mimeType }
+  };
+}
+
+/** The one line the row shows for a server's answer. */
+function summarize(text: string): string {
+  if (text === '') return 'no output';
+  const lines = text.split('\n').length;
+  return lines === 1 ? `${text.length} character${text.length === 1 ? '' : 's'}` : `${lines} lines`;
 }
 
 /**
