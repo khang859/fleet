@@ -28,6 +28,7 @@ import { searchMentionFiles } from './mention-search';
 import type { AgentImageStore } from './image-store';
 import type { AgentGitWatcher } from './git-watch';
 import type { AgentHistoryStore } from './history-store';
+import { registerAgentMcpIpc, type McpIpcDeps } from './mcp/mcp-ipc';
 
 /**
  * Everything the Agent pane calls into main. Agent settings themselves ride on
@@ -45,9 +46,13 @@ export function registerAgentIpc(deps: {
   git: AgentGitWatcher;
   /** What has been typed into a folder before, for the composer's Up key. */
   history: AgentHistoryStore;
+  /** The MCP servers this agent can call tools on, and their settings pane. */
+  mcp: McpIpcDeps;
   getSettings: () => AgentSettings;
   getApiKey: () => string | null;
 }): void {
+  registerAgentMcpIpc(deps.mcp);
+
   ipcMain.handle(
     IPC_CHANNELS.AGENT_LIST_MODELS,
     async (_e, refresh?: boolean): Promise<AgentCatalog> => deps.catalog.list(refresh ?? false)
