@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.92.0
+
+- **The Chat and Images tools are removed** - the native Agent pane supersedes both, so the OpenRouter Chat tool and the fal.ai image generator come out whole: their tabs, settings, bundled chat skills, and the `fleet images` CLI commands. Saved workspaces drop the two tabs on load, and settings written by an older version shed their now-dead entries on the next write. Your OpenRouter API key carries over untouched and is now managed from Agent settings; the Agent pane's own image tool is unaffected (#491).
+- **The Kanban board is removed** - the board, its PM agent, swarms, and the dispatcher and CLI that drove them (#489).
+
 ## v2.91.0
 
 - **A native Agent pane** - a coding agent that lives in Fleet rather than in a terminal running someone else's CLI, built from scratch on OpenRouter. Agents get their own sidebar section, open in a folder you pick, and show the branch the work is landing on under the composer. Tools cover `read`/`glob`/`grep`, `edit`/`write` with read-before-edit, `bash`, a todo list, an image tool, and a `terminal` tool that types commands needing a person (a login, a picker, a dev server) into a real terminal beside the pane. Shell commands the rules do not settle stop and ask, and a blocked turn announces itself outside its own pane. The transcript streams with collapsing reasoning, Markdown replies, diffs for every change, and attached files and PDFs read off the main thread. Conversations persist to disk, context is accounted and compacted automatically at a threshold you set, cost is shown as it runs, and Up-arrow recalls the last hundred prompts for that folder. App-wide settings cover the provider key, per-role models from the models.dev catalog, output limits, reasoning effort, and an editable system prompt (#484).
