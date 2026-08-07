@@ -38,7 +38,7 @@
 
   /* shadcn-style semantic tokens, bridged to the fleet palette. Streamdown's
      rendered markdown references these utilities (bg-muted, text-muted-foreground,
-     border-border, …); mapping them to --fleet-* keeps chat markdown in sync with
+     border-border, …); mapping them to --fleet-* keeps agent markdown in sync with
      the active app theme. */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -181,7 +181,7 @@
   --fleet-glass-surface-3: var(--fleet-surface-3);
 
   /* shadcn semantic tokens consumed by Streamdown, aliased to the fleet
-     palette above so chat markdown re-themes live with the rest of the app. */
+     palette above so agent markdown re-themes live with the rest of the app. */
   --background: var(--fleet-bg);
   --foreground: var(--fleet-text);
   --card: var(--fleet-surface);
@@ -316,15 +316,10 @@ body,
   input[type='checkbox']:active {
     transform: none !important;
   }
-  /* Streaming caret and thinking dots: hold static at full opacity rather than
-     blink/wave. The caret still shows (no animation); dots stay visible. */
-  .fleet-markdown [style*='--streamdown-caret']::after,
-  .chat-think-dot {
+  /* Streaming caret: hold static at full opacity rather than blink. The caret
+     still shows, just without the animation. */
+  .fleet-markdown [style*='--streamdown-caret']::after {
     animation: none !important;
-  }
-  .chat-think-dot {
-    opacity: 1 !important;
-    transform: none !important;
   }
   /* Shimmer "Thinking…" label: hold static at a solid muted color (no sweep). */
   .fleet-shimmer-text {
@@ -332,10 +327,6 @@ body,
     background: none !important;
     -webkit-text-fill-color: var(--fleet-text-muted) !important;
     color: var(--fleet-text-muted) !important;
-  }
-  /* Action-bar reveal: drop the opacity fade (snap in/out instead). */
-  .chat-actions {
-    transition: none !important;
   }
 }
 
@@ -356,7 +347,7 @@ body,
 /* Blink the streaming caret. Streamdown renders a static ▋ glyph via ::after on
    the tip element (carrying an inline --streamdown-caret custom property); we
    add the hard on/off blink it omits. */
-@keyframes chat-caret-blink {
+@keyframes fleet-caret-blink {
   0%,
   50% {
     opacity: 1;
@@ -367,7 +358,7 @@ body,
   }
 }
 .fleet-markdown [style*='--streamdown-caret']::after {
-  animation: chat-caret-blink 1s steps(1, jump-none) infinite;
+  animation: fleet-caret-blink 1s steps(1, jump-none) infinite;
 }
 
 /* Standardized keyboard focus ring for icon buttons, toggles, and form inputs.
@@ -405,12 +396,9 @@ input[type='checkbox']:active:not(:disabled) {
   transform: scale(0.9);
 }
 
-/* prefers-contrast: more — strengthen separation between chat surfaces. The user
-   bubble and tool/permission cards lean on subtle fills; firm up their borders. */
+/* prefers-contrast: more — strengthen separation between message surfaces. The
+   user bubble and tool cards lean on subtle fills; firm up their borders. */
 @media (prefers-contrast: more) {
-  .chat-actions {
-    opacity: 1 !important;
-  }
   .fleet-markdown table,
   .fleet-markdown th,
   .fleet-markdown td,
@@ -419,56 +407,9 @@ input[type='checkbox']:active:not(:disabled) {
   }
 }
 
-/* Per-message action bar. Visible by default so touch / no-hover environments
-   always expose the actions; on hover-capable devices it hides and reveals on
-   hover or keyboard focus. Opacity (not display) keeps its height reserved, so
-   messages never jump vertically. Gated on `hover: hover`, not a width
-   breakpoint, so narrow desktop windows still get the hover affordance. */
-.chat-actions {
-  opacity: 1;
-  transition: opacity 150ms ease;
-}
-@media (hover: hover) {
-  .chat-actions {
-    opacity: 0;
-  }
-  .group:hover .chat-actions,
-  .chat-actions:focus-within {
-    opacity: 1;
-  }
-}
-
-/* Pre-first-token "thinking" three-dot wave. */
-.chat-think-dot {
-  display: inline-block;
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 9999px;
-  background: currentColor;
-  animation: chat-think-wave 1.4s ease-in-out infinite;
-}
-.chat-think-dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-.chat-think-dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
-@keyframes chat-think-wave {
-  0%,
-  60%,
-  100% {
-    opacity: 0.3;
-    transform: translateY(0);
-  }
-  30% {
-    opacity: 1;
-    transform: translateY(-2px);
-  }
-}
-
 /* Shared shimmer for "Thinking…" labels — sweeps a brighter band across the text
-   via a clipped moving gradient. Used by Chat's reasoning panel (#388) and
-   waiting state (#389), and by the agent pane's activity row. Reduced-motion
+   via a clipped moving gradient. Used by the agent pane's activity row and its
+   tool rows. Reduced-motion
    holds it static (see the media query above). */
 .fleet-shimmer-text {
   background: linear-gradient(

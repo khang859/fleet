@@ -220,7 +220,6 @@ export function registerIpcHandlers(
   cwdPoller: CwdPoller,
   gitService: GitService,
   getWindow: () => BrowserWindow | null,
-  workspacePath: string,
   activityTracker: ActivityTracker,
   worktreeService: WorktreeService,
   annotationStore: AnnotationStore,
@@ -394,7 +393,6 @@ export function registerIpcHandlers(
     });
     try {
       layoutStore.save(req.workspace);
-      layoutStore.ensureImagesTab(req.workspace.id, workspacePath);
     } catch (err) {
       log.error('failed to save workspace', {
         error: err instanceof Error ? err.message : String(err)

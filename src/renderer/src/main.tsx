@@ -3,7 +3,6 @@ import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { createLogger } from './logger';
 import { useWorkspaceStore } from './store/workspace-store';
-import { useChatStore } from './store/chat-store';
 import { useSettingsStore } from './store/settings-store';
 import { useSessionsStore } from './store/sessions-store';
 import { useRemoteSshStore } from './store/remote-ssh-store';
@@ -81,7 +80,6 @@ if (import.meta.env.DEV) {
   window.__FLEET__ = {
     stores: {
       workspace: useWorkspaceStore,
-      chat: useChatStore,
       settings: useSettingsStore,
       sessions: useSessionsStore,
       remoteSsh: useRemoteSshStore,

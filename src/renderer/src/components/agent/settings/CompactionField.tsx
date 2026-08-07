@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
 import { COMPACT_THRESHOLD_MAX, COMPACT_THRESHOLD_MIN } from '../../../../../shared/agent-context';
-import { Toggle } from '../../chat/settings/Toggle';
+import { Toggle } from './Toggle';
 
 const DEFAULT_THRESHOLD = DEFAULT_AGENT_SETTINGS.compactThreshold ?? 0.8;
 const percent = (fraction: number): number => Math.round(fraction * 100);

@@ -1,4 +1,12 @@
-import type { OpenRouterClient } from './openrouter-client';
+import type { completeOnce } from './agent/openrouter';
+
+/**
+ * The one-line "what is this pane doing" summary in the agent overview.
+ *
+ * One un-streamed completion against the same OpenRouter key the Agent panes
+ * use, in the shape `session-title.ts` already established: main computes the
+ * text, the renderer decides what to do with it.
+ */
 
 const SYSTEM_PROMPT =
   'You summarize the current state of a terminal pane for a scannable status list. ' +
@@ -18,12 +26,12 @@ export function sanitizeSummary(raw: string): string {
   return t.length > MAX_LEN ? `${t.slice(0, MAX_LEN - 1).trim()}…` : t;
 }
 
-/** Ask the task model to summarize a pane's recent output. Throws on API failure. */
+/** Ask the title model to summarize a pane's recent output. Throws on API failure. */
 export async function generateSummary(
-  client: OpenRouterClient,
+  complete: typeof completeOnce,
   opts: { apiKey: string; model: string; tailText: string; signal?: AbortSignal }
 ): Promise<string> {
-  const raw = await client.complete({
+  const answer = await complete({
     apiKey: opts.apiKey,
     model: opts.model,
     messages: [
@@ -34,16 +42,16 @@ export async function generateSummary(
     temperature: 0.3,
     signal: opts.signal
   });
-  return sanitizeSummary(raw);
+  return sanitizeSummary(answer.text);
 }
 
 /** Never throws — returns '' on failure so the caller can keep the previous summary. */
 export async function resolveSummary(
-  client: OpenRouterClient,
+  complete: typeof completeOnce,
   opts: { apiKey: string; model: string; tailText: string; signal?: AbortSignal }
 ): Promise<string> {
   try {
-    return await generateSummary(client, opts);
+    return await generateSummary(complete, opts);
   } catch {
     return '';
   }

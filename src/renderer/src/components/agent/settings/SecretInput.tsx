@@ -100,7 +100,7 @@ export function SecretInput({
             autoCorrect="off"
             autoCapitalize="off"
             spellCheck={false}
-            name="chat-secret"
+            name="api-secret"
             data-1p-ignore
             placeholder={placeholder}
             onChange={(e) => {

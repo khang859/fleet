@@ -4,10 +4,8 @@ import type { AgentImageConfig, AgentModelConfig } from '../../../../../shared/a
 import { DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
 import { useAgentStore } from '../../../store/agent-store';
 import { useSettingsStore } from '../../../store/settings-store';
-// Layout primitives and the key field come from the Chat settings kit: both
-// surfaces are the same kind of form, and one implementation keeps them so.
-import { SectionShell, FieldGroup, Field } from '../../chat/settings/primitives';
-import { SecretInput } from '../../chat/settings/SecretInput';
+import { SectionShell, FieldGroup, Field } from './primitives';
+import { SecretInput } from './SecretInput';
 import { AgentRoleSettings } from './AgentRoleSettings';
 import { AgentImageSettings } from './AgentImageSettings';
 import { SystemPromptField } from './SystemPromptField';
@@ -57,7 +55,7 @@ export function AgentSettingsPanel(): React.JSX.Element {
         <FieldGroup title="Provider">
           <Field
             label="OpenRouter API key"
-            description="Stored encrypted on this device, and shared with the Chat tool - setting it here sets it there."
+            description="Stored encrypted on this device, and never sent anywhere but OpenRouter."
             layout="stack"
             htmlFor="agent-openrouter-key"
           >

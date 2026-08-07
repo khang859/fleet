@@ -43,14 +43,12 @@ This outputs `resources/mascots/<mascot-id>.webp`. Then register the mascot in `
 
 **Generating mascot frames workflow:**
 
-1. **Generate frame 0** with `fleet images generate` — establish the character style. Include "solid bright blue #0000FF chroma key background" in the prompt. Keep the mascot Fleet-themed (naval/officer aesthetic, teal/navy colors).
-2. **Generate frames 1-8** with `fleet images edit --images <frame-0-path>` — use the first frame as a style reference to maintain consistency. Describe the pose for each frame's state.
-3. **Remove backgrounds** on all 9 frames: `fleet images action remove-background <path>` (uses BRIA RMBG 2.0).
+1. **Generate frame 0** with whatever image model you have to hand (the Agent pane's image tool works). Include "solid bright blue #0000FF chroma key background" in the prompt. Keep the mascot Fleet-themed (naval/officer aesthetic, teal/navy colors).
+2. **Generate frames 1-8** using frame 0 as a style reference so the character stays consistent. Describe the pose for each frame's state.
+3. **Remove backgrounds** on all 9 frames.
 4. **Assemble** into sprite sheet: `npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> path/to/frames/`
 
-Do NOT use PixelLab MCP tools (`create_character`, etc.) — the results are poor for this use case. Stick to `fleet images` for generation and editing.
-
-All `fleet images` commands are async — use `fleet images status <id>` to poll. Don't sleep-wait; just check status when needed.
+Do NOT use PixelLab MCP tools (`create_character`, etc.) - the results are poor for this use case.
 
 ## Development Notes
 

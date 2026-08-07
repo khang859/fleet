@@ -194,15 +194,13 @@ beforeEach(async () => {
       onHandOff: listen(IPC_CHANNELS.AGENT_HAND_OFF),
       onPermissionAsk: listen(IPC_CHANNELS.AGENT_PERMISSION_ASK),
       decidePermission: agentApi.decidePermission,
-      refreshGit: agentApi.refreshGit
-    },
-    pty: { input: vi.fn() },
-    activity: activityApi,
-    chat: {
+      refreshGit: agentApi.refreshGit,
       hasKey: vi.fn().mockResolvedValue(true),
       setKey: vi.fn().mockResolvedValue(undefined),
       clearKey: vi.fn().mockResolvedValue(undefined)
-    }
+    },
+    pty: { input: vi.fn() },
+    activity: activityApi
   });
 
   // Imported after the bridge exists: the store installs its listeners when the

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Search, ArrowDownAZ, Clock, HardDrive, Image, FolderOpen, Layers } from 'lucide-react';
+import { Search, ArrowDownAZ, Clock, HardDrive, FolderOpen, Layers } from 'lucide-react';
 import { Overlay } from './Overlay';
 import { createLogger } from '../logger';
 const log = createLogger('overlay:file-search');
@@ -8,13 +8,11 @@ import {
   getActivePaneContext,
   getPaneContextById
 } from '../store/workspace-store';
-import { useImageStore } from '../store/image-store';
 import { quotePathForShell, bracketedPaste } from '../lib/shell-utils';
 import { getFileIcon } from '../lib/file-icons';
-import { toFleetImageUrl, pathForPaneContext } from '../../../shared/path-platform';
+import { pathForPaneContext } from '../../../shared/path-platform';
 import { z } from 'zod';
 import type { FileSearchResult, RecentImageResult } from '../../../shared/ipc-api';
-import type { ImageGenerationMeta } from '../../../shared/types';
 
 const RECENT_STORAGE_KEY = 'fleet:file-search-recent';
 const MAX_RECENT = 20;
@@ -31,12 +29,11 @@ const fileSearchResultSchema = z.array(
 
 // --- Scope types ---
 
-type ScopeId = 'all' | 'files' | 'generated';
+type ScopeId = 'all' | 'files';
 
 const SCOPE_OPTIONS: Array<{ id: ScopeId; label: string; icon: typeof Clock }> = [
   { id: 'all', label: 'All', icon: Layers },
-  { id: 'files', label: 'Files', icon: FolderOpen },
-  { id: 'generated', label: 'Generated', icon: Image }
+  { id: 'files', label: 'Files', icon: FolderOpen }
 ];
 
 // --- Recent files LRU ---
@@ -71,40 +68,6 @@ function relativeTime(epochMs: number): string {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
   return new Date(epochMs).toLocaleDateString();
-}
-
-// --- Time group helpers ---
-
-type TimeGroup = 'Today' | 'Yesterday' | 'This Week' | 'Older';
-
-function getTimeGroup(epochMs: number): TimeGroup {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfYesterday = startOfToday - 86400000;
-  const startOfWeek = startOfToday - now.getDay() * 86400000;
-
-  if (epochMs >= startOfToday) return 'Today';
-  if (epochMs >= startOfYesterday) return 'Yesterday';
-  if (epochMs >= startOfWeek) return 'This Week';
-  return 'Older';
-}
-
-function groupByTime<T>(
-  items: T[],
-  getTime: (item: T) => number
-): Array<{ group: TimeGroup; items: T[] }> {
-  const groups = new Map<TimeGroup, T[]>();
-  const order: TimeGroup[] = ['Today', 'Yesterday', 'This Week', 'Older'];
-  for (const g of order) groups.set(g, []);
-
-  for (const item of items) {
-    const group = getTimeGroup(getTime(item));
-    groups.get(group)!.push(item);
-  }
-
-  return order
-    .filter((g) => groups.get(g)!.length > 0)
-    .map((g) => ({ group: g, items: groups.get(g)! }));
 }
 
 // --- Highlight matched characters ---
@@ -158,80 +121,6 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// --- Generated image thumbnail ---
-
-function GeneratedThumbnail({
-  generation,
-  onSelect,
-  size = 'small'
-}: {
-  generation: ImageGenerationMeta;
-  onSelect: (file: FileSearchResult) => void;
-  size?: 'small' | 'large';
-}): React.JSX.Element | null {
-  const [src, setSrc] = useState<string | null>(null);
-  const firstImage = generation.images.find((img) => img.filename);
-
-  useEffect(() => {
-    if (!firstImage?.filename) return;
-    const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${generation.id}/${firstImage.filename}`;
-    setSrc(toFleetImageUrl(filePath));
-  }, [generation.id, firstImage?.filename]);
-
-  if (!firstImage?.filename) return null;
-
-  const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${generation.id}/${firstImage.filename}`;
-  const parentDir = `${window.fleet.homeDir}/.fleet/images/generations/${generation.id}`;
-  const isLarge = size === 'large';
-  const imgClass = isLarge
-    ? 'h-[150px] w-[150px] object-cover rounded border border-fleet-border-strong'
-    : 'h-[120px] w-[120px] object-cover rounded border border-fleet-border-strong';
-  const placeholderClass = isLarge
-    ? 'h-[150px] w-[150px] flex items-center justify-center bg-fleet-surface-2 rounded border border-fleet-border-strong text-fleet-text-subtle'
-    : 'h-[120px] w-[120px] flex items-center justify-center bg-fleet-surface-2 rounded border border-fleet-border-strong text-fleet-text-subtle';
-  const labelWidth = isLarge ? 'w-[150px]' : 'w-[120px]';
-
-  return (
-    <button
-      onClick={() =>
-        onSelect({
-          path: filePath,
-          name: firstImage.filename!,
-          parentDir,
-          modifiedAt: new Date(generation.createdAt).getTime(),
-          size: 0
-        })
-      }
-      className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-fleet-surface-2 transition-colors shrink-0 active:scale-[0.97]"
-      title={generation.prompt}
-    >
-      {src ? (
-        <img src={src} alt={generation.prompt} className={imgClass} />
-      ) : (
-        <div className={placeholderClass}>
-          <svg
-            className="w-6 h-6"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <path d="M21 15l-5-5L5 21" />
-          </svg>
-        </div>
-      )}
-      <span className={`text-[10px] text-fleet-text-muted truncate ${labelWidth} text-center`}>
-        {generation.prompt.length > 20 ? generation.prompt.slice(0, 20) + '…' : generation.prompt}
-      </span>
-      <span className="text-[9px] text-fleet-text-subtle">
-        {relativeTime(new Date(generation.createdAt).getTime())}
-      </span>
-    </button>
-  );
-}
-
 // --- Props ---
 
 type FileSearchOverlayProps = {
@@ -260,41 +149,6 @@ export function FileSearchOverlay({
 
   const activePaneId = useWorkspaceStore((s) => s.activePaneId);
   const targetPaneId = activePaneId;
-  const generations = useImageStore((s) => s.generations);
-  const loadGenerations = useImageStore((s) => s.loadGenerations);
-
-  const completedGenerations = useMemo(
-    () =>
-      generations
-        .filter((g) => g.status === 'completed' || g.status === 'partial')
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [generations]
-  );
-
-  const recentGenerations = useMemo(() => completedGenerations.slice(0, 5), [completedGenerations]);
-
-  // Time-grouped generations for the Generated scope
-  const groupedGenerations = useMemo(
-    () => groupByTime(completedGenerations, (g) => new Date(g.createdAt).getTime()),
-    [completedGenerations]
-  );
-
-  // Filtered generations when searching in Generated scope
-  const filteredGenerations = useMemo(() => {
-    if (!query.trim()) return completedGenerations;
-    const q = query.trim().toLowerCase();
-    return completedGenerations.filter(
-      (g) =>
-        g.prompt.toLowerCase().includes(q) ||
-        g.images.some((img) => img.filename?.toLowerCase().includes(q))
-    );
-  }, [query, completedGenerations]);
-
-  const filteredGroupedGenerations = useMemo(
-    () => groupByTime(filteredGenerations, (g) => new Date(g.createdAt).getTime()),
-    [filteredGenerations]
-  );
-
   // Reset state on open
   useEffect(() => {
     if (isOpen) {
@@ -307,14 +161,13 @@ export function FileSearchOverlay({
       void window.fleet.file.searchRecentImages(getActivePaneContext().pathContext).then((res) => {
         if (res.success) setRecentImages(res.results);
       });
-      void loadGenerations();
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isOpen]);
 
   // Debounced search (for All and Files scopes)
   useEffect(() => {
-    if (!isOpen || scope === 'generated') return;
+    if (!isOpen) return;
 
     if (!query.trim()) {
       setResults(getRecentFiles());
@@ -387,17 +240,6 @@ export function FileSearchOverlay({
     [targetPaneId, onClose]
   );
 
-  const handleScopeToParent = useCallback(() => {
-    const file = sortedResults[selectedIndex];
-    if (file) {
-      // In generated scope, Tab doesn't make sense for scoping to parent
-      if (scope !== 'generated') {
-        // For file results, we can't set a folder scope with the new tab model,
-        // but we preserve the keyboard shortcut for power users
-      }
-    }
-  }, [sortedResults, selectedIndex, scope]);
-
   const handleKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -410,94 +252,17 @@ export function FileSearchOverlay({
       const file = sortedResults[selectedIndex];
       if (file) handleSelect(file);
     } else if (e.key === 'Tab') {
+      // Swallowed so focus never leaves the overlay's input.
       e.preventDefault();
-      handleScopeToParent();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       onClose();
     }
   };
 
-  const placeholder =
-    scope === 'generated'
-      ? 'Search generated images...'
-      : scope === 'files'
-        ? 'Search files on disk...'
-        : 'Search files and images...';
+  const placeholder = scope === 'files' ? 'Search files on disk...' : 'Search files and images...';
 
   // --- Render helpers ---
-
-  const renderGeneratedGrid = (gens: ImageGenerationMeta[]): React.JSX.Element => (
-    <div className="grid grid-cols-3 gap-2 px-3 py-2">
-      {gens.map((gen) => (
-        <GeneratedThumbnail key={gen.id} generation={gen} onSelect={handleSelect} size="large" />
-      ))}
-    </div>
-  );
-
-  const renderGeneratedScope = (): React.JSX.Element => {
-    if (query.trim()) {
-      // Searching — show filtered results grouped by time
-      if (filteredGenerations.length === 0) {
-        return (
-          <div className="px-3 py-8 text-center">
-            <p className="text-sm text-fleet-text-muted">
-              No generated images match &ldquo;{query}&rdquo;
-            </p>
-            <button
-              onClick={() => setScope('all')}
-              className="mt-2 text-xs text-blue-400 hover:text-blue-300 transition active:scale-[0.97]"
-            >
-              Search All instead
-            </button>
-          </div>
-        );
-      }
-      return (
-        <>
-          {filteredGroupedGenerations.map(({ group, items }) => (
-            <div key={group}>
-              <div className="px-3 py-1 text-[10px] text-fleet-text-subtle uppercase tracking-wider">
-                {group}
-              </div>
-              {renderGeneratedGrid(items)}
-            </div>
-          ))}
-        </>
-      );
-    }
-
-    // No query — show recent strip + all grouped by time
-    if (completedGenerations.length === 0) {
-      return (
-        <div className="px-3 py-8 text-center">
-          <div className="text-fleet-text-subtle mb-2">
-            <Image size={24} className="mx-auto" />
-          </div>
-          <p className="text-sm text-fleet-text-muted">No generated images yet</p>
-          <p className="text-xs text-fleet-text-subtle mt-1">
-            Generate one with:{' '}
-            <code className="text-fleet-text-subtle">
-              fleet images generate --prompt &quot;...&quot;
-            </code>
-          </p>
-        </div>
-      );
-    }
-
-    return (
-      <>
-        {groupedGenerations.map(({ group, items }) => (
-          <div key={group}>
-            <div className="px-3 py-1 text-[10px] text-fleet-text-subtle uppercase tracking-wider">
-              {group}
-            </div>
-            {renderGeneratedGrid(items)}
-          </div>
-        ))}
-      </>
-    );
-  };
 
   const renderFileResults = (): React.JSX.Element => {
     if (error) {
@@ -565,27 +330,6 @@ export function FileSearchOverlay({
   const renderAllScope = (): React.JSX.Element => {
     return (
       <>
-        {/* Generated Images thumbnail strip (only when no query) */}
-        {!query && recentGenerations.length > 0 && (
-          <>
-            <div className="px-3 py-1 text-[10px] text-fleet-text-subtle uppercase tracking-wider flex items-center justify-between">
-              <span>Generated Images</span>
-              {completedGenerations.length > 5 && (
-                <button
-                  onClick={() => setScope('generated')}
-                  className="text-blue-400 hover:text-blue-300 normal-case tracking-normal transition active:scale-[0.97]"
-                >
-                  See all {completedGenerations.length} →
-                </button>
-              )}
-            </div>
-            <div className="no-scrollbar relative flex gap-2 px-3 py-2 border-b border-fleet-border overflow-x-auto">
-              {recentGenerations.map((gen) => (
-                <GeneratedThumbnail key={gen.id} generation={gen} onSelect={handleSelect} />
-              ))}
-            </div>
-          </>
-        )}
         {/* Recent Images thumbnail strip */}
         {!query && recentImages.length > 0 && (
           <>
@@ -670,7 +414,7 @@ export function FileSearchOverlay({
           );
         })}
         {/* Sort controls (only for file-based scopes) */}
-        {scope !== 'generated' && results.length > 0 && (
+        {results.length > 0 && (
           <div className="ml-auto flex items-center gap-1">
             <span className="text-[10px] text-fleet-text-subtle mr-1">Sort:</span>
             {SORT_OPTIONS.map(({ id, label, icon: Icon }) => (
@@ -693,7 +437,6 @@ export function FileSearchOverlay({
 
       {/* Results */}
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pt-1 pb-2">
-        {scope === 'generated' && renderGeneratedScope()}
         {scope === 'files' && renderFileResults()}
         {scope === 'all' && renderAllScope()}
       </div>

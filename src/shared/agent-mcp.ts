@@ -3,11 +3,6 @@ import { z } from 'zod';
 /**
  * MCP servers the Agent pane connects to.
  *
- * Deliberately separate from `mcp-types.ts`, which is Chat's. The two panes
- * keep their own server lists and their own connections: the Agent pane is a
- * from-scratch build, and a shared config would mean one pane's settings
- * silently changing what the other can do.
- *
  * The config shape follows the standard `mcpServers` blob so a config lifted
  * out of a README pastes in unchanged, with `enabled` added because a server
  * worth keeping is not always a server worth connecting to right now.

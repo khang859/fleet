@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Bot,
   SlidersHorizontal,
-  MessageSquare,
   Server
 } from 'lucide-react';
 import { getFileIcon } from '../lib/file-icons';
@@ -27,7 +26,6 @@ import type { PathContext } from '../../../shared/shell-profiles';
 import { useNotificationStore } from '../store/notification-store';
 import { useCwdStore } from '../store/cwd-store';
 
-import { useImageStore } from '../store/image-store';
 import { serializePane } from '../hooks/use-terminal';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
@@ -47,7 +45,6 @@ import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 import { SessionsTabCard } from './sessions/SessionsTabCard';
 import { useSettingsStore } from '../store/settings-store';
 import { TOGGLEABLE_TOOLS } from '../../../shared/tools';
-import { toFleetImageUrl } from '../../../shared/path-platform';
 
 function getFirstDirtyPaneId(tab: Tab): string | null {
   function check(node: Tab['splitRoot']): string | null {
@@ -345,132 +342,6 @@ function GroupHeader({
   );
 }
 
-function ImagesTabCard({
-  isActive,
-  onClick
-}: {
-  isActive: boolean;
-  onClick: () => void;
-}): React.JSX.Element {
-  const { generations, isLoaded, loadGenerations } = useImageStore();
-  const [thumbSrc, setThumbSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isLoaded) void loadGenerations();
-  }, [isLoaded, loadGenerations]);
-
-  // Subscribe to live updates
-  useEffect(() => {
-    const cleanup = window.fleet.images.onChanged(() => {
-      void loadGenerations();
-    });
-    return cleanup;
-  }, [loadGenerations]);
-
-  // Load thumbnail of most recent completed image
-  const lastCompleted = generations.find(
-    (g) => g.status === 'completed' && g.images.some((img) => img.filename)
-  );
-  const thumbFile = lastCompleted?.images.find((img) => img.filename);
-
-  useEffect(() => {
-    if (!lastCompleted || !thumbFile?.filename) {
-      setThumbSrc(null);
-      return;
-    }
-    const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${lastCompleted.id}/${thumbFile.filename}`;
-    setThumbSrc(toFleetImageUrl(filePath));
-  }, [lastCompleted?.id, thumbFile?.filename]);
-
-  const inProgress = generations.filter(
-    (g) => g.status === 'queued' || g.status === 'processing'
-  ).length;
-  const totalImages = generations.length;
-
-  return (
-    <div
-      onClick={onClick}
-      className="cursor-pointer rounded-md overflow-hidden relative transition-all"
-      style={{
-        background: isActive ? '#0d0a1a' : 'rgba(13,10,26,0.4)',
-        border: isActive ? '1px solid rgba(168,85,247,0.35)' : '1px solid rgba(255,255,255,0.05)',
-        boxShadow: isActive
-          ? '0 0 10px rgba(168,85,247,0.15), inset 0 0 20px rgba(168,85,247,0.03)'
-          : 'none'
-      }}
-    >
-      {/* Subtle noise overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none z-10 opacity-[0.03]"
-        style={{
-          backgroundImage:
-            'repeating-linear-gradient(transparent 0px, transparent 1px, rgba(255,255,255,0.15) 1px, rgba(255,255,255,0.15) 2px)',
-          backgroundSize: '100% 2px'
-        }}
-      />
-
-      <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
-        {/* Thumbnail or icon */}
-        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-fleet-surface-2/50 flex items-center justify-center">
-          {thumbSrc ? (
-            <img src={thumbSrc} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <svg
-              className="w-4 h-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={isActive ? 'rgb(192,132,252)' : 'rgba(192,132,252,0.4)'}
-              strokeWidth="1.5"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <path d="M21 15l-5-5L5 21" />
-            </svg>
-          )}
-          {inProgress > 0 && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-500/30 overflow-hidden">
-              <div className="h-full bg-purple-400 animate-pulse" style={{ width: '60%' }} />
-            </div>
-          )}
-        </div>
-
-        {/* Text content */}
-        <div className="flex-1 min-w-0">
-          <div
-            className="font-mono uppercase tracking-widest leading-none mb-1"
-            style={{
-              fontSize: '9px',
-              color: isActive ? 'rgb(192,132,252)' : 'rgba(192,132,252,0.5)'
-            }}
-          >
-            Images
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[9px] font-mono text-fleet-text-subtle">
-              {totalImages > 0 ? (
-                <span className="text-purple-300/70">{totalImages} generated</span>
-              ) : (
-                <span>none yet</span>
-              )}
-            </span>
-            {inProgress > 0 && (
-              <span
-                className="text-[9px] font-mono font-semibold px-1 rounded-sm animate-pulse"
-                style={{
-                  background: 'rgba(168,85,247,0.2)',
-                  color: 'rgb(192,132,252)'
-                }}
-              >
-                {inProgress}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AnnotateTabCard({
   isActive,
   onClick
@@ -524,45 +395,6 @@ function AnnotateTabCard({
             }}
           >
             Annotate
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ChatTabCard({
-  isActive,
-  onClick
-}: {
-  isActive: boolean;
-  onClick: () => void;
-}): React.JSX.Element {
-  return (
-    <div
-      onClick={onClick}
-      className="cursor-pointer rounded-md overflow-hidden relative transition-all"
-      style={{
-        background: isActive ? '#0a1a12' : 'rgba(10,26,18,0.4)',
-        border: isActive ? '1px solid rgba(52,211,153,0.35)' : '1px solid rgba(255,255,255,0.05)'
-      }}
-    >
-      <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
-        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-fleet-surface-2/50 flex items-center justify-center">
-          <MessageSquare
-            size={16}
-            className={isActive ? 'text-emerald-400' : 'text-emerald-400/40'}
-          />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div
-            className="font-mono uppercase tracking-widest leading-none"
-            style={{
-              fontSize: '9px',
-              color: isActive ? 'rgb(52,211,153)' : 'rgba(52,211,153,0.5)'
-            }}
-          >
-            Chat
           </div>
         </div>
       </div>
@@ -1421,11 +1253,9 @@ export function Sidebar({
           {(() => {
             const regularTabs = workspace.tabs.filter(
               (t) =>
-                t.type !== 'images' &&
                 t.type !== 'settings' &&
                 t.type !== 'annotate' &&
                 t.type !== 'sessions' &&
-                t.type !== 'chat' &&
                 t.type !== 'agent'
             );
 
@@ -1812,16 +1642,6 @@ export function Sidebar({
             </button>
           </div>
         </div>
-        {/* Images tab (pinned, not closeable) */}
-        {workspace.tabs
-          .filter((tab) => tab.type === 'images')
-          .map((tab) => (
-            <ImagesTabCard
-              key={tab.id}
-              isActive={tab.id === activeTabId}
-              onClick={() => setActiveTab(tab.id)}
-            />
-          ))}
         {/* Annotate tab (pinned, not closeable) */}
         {workspace.tabs
           .filter((tab) => tab.type === 'annotate')
@@ -1837,16 +1657,6 @@ export function Sidebar({
           .filter((tab) => tab.type === 'sessions')
           .map((tab) => (
             <SessionsTabCard
-              key={tab.id}
-              isActive={tab.id === activeTabId}
-              onClick={() => setActiveTab(tab.id)}
-            />
-          ))}
-        {/* Chat tab (pinned, not closeable) */}
-        {workspace.tabs
-          .filter((tab) => tab.type === 'chat')
-          .map((tab) => (
-            <ChatTabCard
               key={tab.id}
               isActive={tab.id === activeTabId}
               onClick={() => setActiveTab(tab.id)}

@@ -88,21 +88,6 @@ function createLeafWithProfile(
   return { type: 'leaf', id: generateId(), cwd, shellProfileId: profileId, pathContext };
 }
 
-/** Ensure workspace has a pinned Images tab; mutates and returns the workspace */
-function ensureImagesTab(workspace: Workspace): Workspace {
-  if (workspace.tabs.some((t) => t.type === 'images')) return workspace;
-  const cwd = workspace.tabs[0]?.cwd ?? '/';
-  const imagesTab: Tab = {
-    id: generateId(),
-    label: 'Images',
-    labelIsCustom: true,
-    cwd,
-    type: 'images',
-    splitRoot: createLeaf(cwd)
-  };
-  return { ...workspace, tabs: [imagesTab, ...workspace.tabs] };
-}
-
 /** Ensure workspace has a pinned Sessions tab; returns the workspace */
 function ensureSessionsTab(workspace: Workspace): Workspace {
   if (workspace.tabs.some((t) => t.type === 'sessions')) return workspace;
@@ -118,21 +103,6 @@ function ensureSessionsTab(workspace: Workspace): Workspace {
   return { ...workspace, tabs: [sessionsTab, ...workspace.tabs] };
 }
 
-/** Ensure workspace has a pinned Chat tab; returns the workspace */
-function ensureChatTab(workspace: Workspace): Workspace {
-  if (workspace.tabs.some((t) => t.type === 'chat')) return workspace;
-  const cwd = workspace.tabs[0]?.cwd ?? '/';
-  const chatTab: Tab = {
-    id: generateId(),
-    label: 'Chat',
-    labelIsCustom: true,
-    cwd,
-    type: 'chat',
-    splitRoot: createLeaf(cwd)
-  };
-  return { ...workspace, tabs: [chatTab, ...workspace.tabs] };
-}
-
 /** Ensure workspace has a pinned Annotate tab; mutates and returns the workspace */
 function ensureAnnotateTab(workspace: Workspace): Workspace {
   if (workspace.tabs.some((t) => t.type === 'annotate')) return workspace;
@@ -145,12 +115,7 @@ function ensureAnnotateTab(workspace: Workspace): Workspace {
     type: 'annotate',
     splitRoot: createLeaf(cwd)
   };
-  // Insert after images tab if present, otherwise prepend
-  const imagesIdx = workspace.tabs.findIndex((t) => t.type === 'images');
-  const insertIdx = imagesIdx >= 0 ? imagesIdx + 1 : 0;
-  const tabs = [...workspace.tabs];
-  tabs.splice(insertIdx, 0, annotateTab);
-  return { ...workspace, tabs };
+  return { ...workspace, tabs: [annotateTab, ...workspace.tabs] };
 }
 
 /** Current global tool visibility, falling back to defaults before settings load. */
@@ -165,19 +130,13 @@ function currentToolVisibility(): ToolVisibility {
 function applyToolVisibility(workspace: Workspace, vis: ToolVisibility): Workspace {
   let ws = workspace;
   if (vis.sessions) ws = ensureSessionsTab(ws);
-  if (vis.images) ws = ensureImagesTab(ws);
   if (vis.annotate) ws = ensureAnnotateTab(ws);
-  if (vis.chat) ws = ensureChatTab(ws);
   const tabs = ws.tabs.filter((t) => {
     switch (t.type) {
       case 'annotate':
         return vis.annotate;
-      case 'images':
-        return vis.images;
       case 'sessions':
         return vis.sessions;
-      case 'chat':
-        return vis.chat;
       default:
         return true;
     }
@@ -284,9 +243,7 @@ type WorkspaceStore = {
   setSidebarWidth: (width: number) => void;
   markClean: () => void;
 
-  ensureImagesTab: () => void;
   ensureSessionsTab: () => void;
-  ensureChatTab: () => void;
   setToolVisible: (type: ToolType, visible: boolean) => void;
   reconcileToolTabs: () => void;
 
@@ -457,9 +414,9 @@ export function collectPaneIds(node: PaneNode): string[] {
  * old Kanban view) and Kanban itself. A saved workspace still carries them, and
  * nothing renders them, so a load that kept them would show a blank tab.
  */
-const DEFUNCT_TAB_TYPES = new Set(['artifacts', 'kanban']);
+const DEFUNCT_TAB_TYPES = new Set(['artifacts', 'kanban', 'images', 'chat']);
 
-const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings', 'sessions', 'chat']);
+const SPECIAL_TAB_TYPES = new Set(['annotate', 'settings', 'sessions']);
 
 function isNormalTab(tab: Tab): boolean {
   return !SPECIAL_TAB_TYPES.has(tab.type ?? '');
@@ -647,7 +604,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
     set((state) => {
       const target = state.workspace.tabs.find((t) => t.id === tabId);
-      // Pinned tabs (Images/Annotate/Sessions/Chat) are not closeable.
+      // Pinned tabs (Annotate/Sessions) are not closeable.
       if (target && SPECIAL_TAB_TYPES.has(target.type ?? '')) return state;
       const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
       const rawTab = state.workspace.tabs[tabIndex];
@@ -1193,10 +1150,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       (migrated.activeTabId
         ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
         : undefined) ??
-      migrated.tabs.find(
-        (t) =>
-          t.type !== 'images' && t.type !== 'annotate' && t.type !== 'sessions' && t.type !== 'chat'
-      ) ??
+      migrated.tabs.find((t) => t.type !== 'annotate' && t.type !== 'sessions') ??
       migrated.tabs[0];
 
     const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
@@ -1221,25 +1175,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
-  ensureImagesTab: () => {
-    set((state) => {
-      const updated = ensureImagesTab(state.workspace);
-      if (updated === state.workspace) return state;
-      return { workspace: updated, isDirty: true };
-    });
-  },
-
   ensureSessionsTab: () => {
     set((state) => {
       const updated = ensureSessionsTab(state.workspace);
-      if (updated === state.workspace) return state;
-      return { workspace: updated, isDirty: true };
-    });
-  },
-
-  ensureChatTab: () => {
-    set((state) => {
-      const updated = ensureChatTab(state.workspace);
       if (updated === state.workspace) return state;
       return { workspace: updated, isDirty: true };
     });
@@ -1302,13 +1240,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         (migrated.activeTabId
           ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
           : undefined) ??
-        migrated.tabs.find(
-          (t) =>
-            t.type !== 'images' &&
-            t.type !== 'annotate' &&
-            t.type !== 'sessions' &&
-            t.type !== 'chat'
-        ) ??
+        migrated.tabs.find((t) => t.type !== 'annotate' && t.type !== 'sessions') ??
         migrated.tabs[0];
 
       const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];

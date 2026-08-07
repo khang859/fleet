@@ -7,11 +7,10 @@ function sc(id: string): ShortcutDef {
   return ALL_SHORTCUTS.find((s) => s.id === id)!;
 }
 
-/** Filter out pinned/special tabs (Images, Annotate, Sessions, Settings) - used for Cmd+1-9 tab switching */
+/** Filter out pinned/special tabs (Annotate, Sessions, Settings) - used for Cmd+1-9 tab switching */
 export function getNormalTabs<T extends { type?: string }>(tabs: T[]): T[] {
   return tabs.filter(
-    (t) =>
-      t.type !== 'images' && t.type !== 'settings' && t.type !== 'annotate' && t.type !== 'sessions'
+    (t) => t.type !== 'settings' && t.type !== 'annotate' && t.type !== 'sessions'
   );
 }
 
@@ -181,7 +180,7 @@ export function usePaneNavigation(): void {
       }
 
       // Cmd/Ctrl+1-9 to switch tabs (check metaKey on mac, ctrlKey on other)
-      // Only count normal tabs — special tabs (Images, Settings) are excluded
+      // Only count normal tabs — special tabs (Sessions, Settings) are excluded
       const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
       const modHeld = isMac ? e.metaKey : e.ctrlKey;
       if (modHeld && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {

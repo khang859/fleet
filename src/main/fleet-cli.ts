@@ -101,7 +101,7 @@ export function parseArgs(argv: string[]): Record<string, unknown> {
       const next = argv[i + 1];
 
       if (next !== undefined && !next.startsWith('--')) {
-        if (key === 'depends-on' || key === 'images' || key === 'worker') {
+        if (key === 'depends-on' || key === 'worker') {
           // Accumulate into array for repeated flags
           const existing = result[key];
           result[key] =
@@ -274,16 +274,6 @@ export class FleetCLI {
 // ── Command mapping: CLI names → socket server command names ─────────────────
 
 const COMMAND_MAP: Record<string, string> = {
-  // Images
-  'images.generate': 'image.generate',
-  'images.edit': 'image.edit',
-  'images.status': 'image.status',
-  'images.list': 'image.list',
-  'images.retry': 'image.retry',
-  'images.config': 'image.config.get',
-  'images.action': 'image.action',
-  'images.actions': 'image.actions.list',
-  // Annotate
   'annotate.start': 'annotate.start'
 };
 
@@ -294,55 +284,11 @@ function mapCommand(group: string, action: string): string {
 
 // ── Client-side validation ────────────────────────────────────────────────────
 
-export function validateCommand(command: string, args: Record<string, unknown>): string | null {
-  switch (command) {
-    // ── Images ────────────────────────────────────────────────────────────
-    case 'image.generate':
-      if (!args.prompt)
-        return 'Error: images generate requires --prompt.\n\nUsage: fleet images generate --prompt "description"';
-      return null;
-
-    case 'image.edit': {
-      if (!args.prompt)
-        return 'Error: images edit requires --prompt.\n\nUsage: fleet images edit --prompt "description" --images <file1> [file2 ...]';
-      if (!args.images)
-        return 'Error: images edit requires --images.\n\nUsage: fleet images edit --prompt "description" --images <file1> [file2 ...]';
-      const imageFiles = Array.isArray(args.images) ? args.images : [args.images];
-      for (const img of imageFiles) {
-        if (typeof img !== 'string') continue;
-        if (img.startsWith('http://') || img.startsWith('https://')) continue;
-        const resolved = resolve(img);
-        if (!existsSync(resolved)) {
-          return `Error: file not found: ${img}`;
-        }
-      }
-      return null;
-    }
-
-    case 'image.status':
-    case 'image.retry':
-      if (!args.id)
-        return `Error: images ${command === 'image.status' ? 'status' : 'retry'} requires an ID.\n\nUsage: fleet images ${command === 'image.status' ? 'status' : 'retry'} <generation-id>`;
-      return null;
-
-    case 'image.action': {
-      if (!args.action)
-        return 'Error: images action requires an action type.\n\nUsage: fleet images action <action-type> <source> [--provider <id>]';
-      if (!args.source)
-        return 'Error: images action requires a source image.\n\nUsage: fleet images action <action-type> <source> [--provider <id>]';
-      return null;
-    }
-
-    default:
-      return null;
-  }
-}
-
 // ── Help text ─────────────────────────────────────────────────────────────────
 
 const HELP_TOP = `# Fleet CLI
 
-Manage images and files from the terminal.
+Manage files from the terminal.
 
 ## Usage
 
@@ -353,7 +299,6 @@ Manage images and files from the terminal.
 
 | Command | Intent |
 |---------|--------|
-| images | Generate, edit, and transform AI images. |
 | open | Open files or images in Fleet tabs. |
 | annotate | Visually annotate web page elements for AI agents. |
 | pi | Open Pi agent tabs and Pi plan documents. |
@@ -361,7 +306,6 @@ Manage images and files from the terminal.
 ## Examples
 
 \`\`\`bash
-fleet images generate --prompt "A cat in space"
 fleet open src/main.ts
 \`\`\`
 
@@ -442,45 +386,7 @@ screenshots. Results are written to a JSON file that agents can read.
 fleet annotate https://localhost:3000
 fleet annotate https://example.com --timeout 600
 fleet annotate
-\`\`\``,
-
-  images: `
-# fleet images
-
-Manage AI image generation.
-
-## Commands
-
-  fleet images generate --prompt "..."         Generate image(s) from a text prompt
-  fleet images edit --prompt "..." --images <file1> [file2 ...]  Edit images with a prompt
-  fleet images status <id>                     Check generation status
-  fleet images list                            List all generations
-  fleet images retry <id>                      Retry a failed generation
-  fleet images config                          Show current configuration
-  fleet images config --api-key <key>          Set fal.ai API key
-  fleet images config --action <type> --model <id>  Set model for an action
-  fleet images action <type> <source>          Run an action on an image (e.g. remove-background)
-  fleet images actions                         List available actions
-
-## Options (generate/edit)
-
-  --provider <id>         Image provider (default: fal-ai)
-  --model <model>         Model to use (default: fal-ai/nano-banana-2)
-  --resolution <res>      0.5K, 1K, 2K, or 4K (default: 1K)
-  --aspect-ratio <ratio>  e.g. 1:1, 16:9, 9:16 (default: 1:1)
-  --format <fmt>          png, jpeg, or webp (default: png)
-  --num-images <n>        1-4 (default: 1)
-
-## Examples
-
-  fleet images generate --prompt "A cat in space" --resolution 2K
-  fleet images edit --prompt "Add a hat" --images ./cat.png
-  fleet images config --api-key sk-xxx
-  fleet images config --action remove-background --model fal-ai/birefnet/v2
-  fleet images action remove-background ./photo.png
-  fleet images action remove-background ./photo.png --provider fal-ai
-  fleet images actions
-`
+\`\`\``
 };
 
 export function getHelpText(argv: string[]): string | null {
@@ -648,65 +554,6 @@ export async function runCLI(
     }
   }
 
-  // ── Images config (get or set based on flags) ──────────────────────────
-  if (group === 'images' && action === 'config') {
-    const configArgs = parseArgs(rest.filter((t) => t !== '--quiet'));
-    const hasSetFlags = Object.keys(configArgs).some((k) =>
-      [
-        'api-key',
-        'default-model',
-        'default-resolution',
-        'default-output-format',
-        'default-aspect-ratio',
-        'provider',
-        'action',
-        'model'
-      ].includes(k)
-    );
-    const configCommand = hasSetFlags ? 'image.config.set' : 'image.config.get';
-    const cli = new FleetCLI(sockPath);
-    try {
-      const response = opts?.retry
-        ? await cli.sendWithRetry(configCommand, configArgs)
-        : await cli.send(configCommand, configArgs);
-      if (!response.ok) return `Error: ${response.error ?? 'Unknown error'}`;
-      if (configCommand === 'image.config.set') return 'Configuration updated.';
-      if (isRecord(response.data)) {
-        const lines: string[] = [];
-        const data = response.data;
-        if (data.defaultProvider) lines.push(`defaultProvider: ${toStr(data.defaultProvider)}`);
-        const providers = data.providers;
-        if (isRecord(providers)) {
-          for (const [name, val] of Object.entries(providers)) {
-            lines.push(`${name}:`);
-            if (isRecord(val)) {
-              for (const [k, v] of Object.entries(val)) {
-                if (k === 'actions' && isRecord(v)) {
-                  lines.push(`  actions:`);
-                  for (const [actionName, actionVal] of Object.entries(v)) {
-                    lines.push(`    ${actionName}:`);
-                    if (isRecord(actionVal)) {
-                      for (const [ak, av] of Object.entries(actionVal)) {
-                        lines.push(`      ${ak}: ${toStr(av)}`);
-                      }
-                    }
-                  }
-                } else {
-                  lines.push(`  ${k}: ${toStr(v)}`);
-                }
-              }
-            }
-          }
-        }
-        return lines.join('\n');
-      }
-      return toStr(response.data);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return `Error: ${msg}`;
-    }
-  }
-
   if (!group || !action) {
     return 'Usage: fleet <group> <action> [--key value ...]';
   }
@@ -744,33 +591,6 @@ export async function runCLI(
   }
   const args = parseArgs(cleanRest);
 
-  // ── image.action: remap positionals to named args ───────────────────────
-  if (command === 'image.action') {
-    // cleanRest was ['remove-background', './photo.png', ...flags]
-    // parseArgs mapped all positionals to 'id' (last wins), so we re-parse:
-    const positionals = cleanRest.filter((t) => !t.startsWith('--'));
-    if (positionals.length >= 1 && !args.action) args.action = positionals[0];
-    if (positionals.length >= 2 && !args.source) {
-      const src = positionals[1];
-      // Resolve relative file paths to absolute
-      if (typeof src === 'string' && !src.startsWith('http') && !src.startsWith('data:')) {
-        const resolved = resolve(src);
-        if (existsSync(resolved)) {
-          args.source = resolved;
-        } else {
-          // Could be a generation ref like <genId>/image-001.png
-          args.source = src;
-        }
-      } else {
-        args.source = src;
-      }
-    }
-  }
-
-  // ── Client-side validation ──────────────────────────────────────────────
-  const validationError = validateCommand(command, args);
-  if (validationError) return validationError;
-
   const cli = new FleetCLI(sockPath);
 
   let response: CLIResponse;
@@ -793,50 +613,6 @@ export async function runCLI(
   // ── JSON format: return raw JSON ──────────────────────────────────────────
   if (format === 'json') {
     return JSON.stringify(data ?? null, null, 2);
-  }
-
-  // ── image.generate / image.edit formatting ──────────────────────────────
-  if (
-    (command === 'image.generate' || command === 'image.edit' || command === 'image.action') &&
-    isRecord(data) &&
-    typeof data.id === 'string'
-  ) {
-    return `Submitted: ${data.id}`;
-  }
-
-  // ── image.status formatting ─────────────────────────────────────────────
-  if (command === 'image.status' && isRecord(data)) {
-    const lines: string[] = [];
-    lines.push(`status: ${toStr(data.status)}`);
-    if (data.status === 'completed' || data.status === 'partial') {
-      lines.push(`path: ~/.fleet/images/generations/${toStr(data.id)}`);
-      if (Array.isArray(data.images)) {
-        const filenames = data.images
-          .filter(
-            (img): img is Record<string, unknown> =>
-              isRecord(img) && typeof img.filename === 'string'
-          )
-          .map((img) => img.filename);
-        if (filenames.length > 0) lines.push(`images: ${filenames.join(', ')}`);
-      }
-    }
-    if (data.error) lines.push(`error: ${toStr(data.error)}`);
-    return lines.join('\n');
-  }
-
-  // ── image.list formatting ───────────────────────────────────────────────
-  if (command === 'image.list') {
-    if (!Array.isArray(data) || data.length === 0) return 'No images found.';
-    const rows = data
-      .filter((d): d is Record<string, unknown> => isRecord(d))
-      .map((d) => ({
-        ID: toStr(d.id),
-        STATUS: toStr(d.status),
-        MODE: toStr(d.mode),
-        MODEL: toStr(d.model),
-        PROMPT: toStr(d.prompt).slice(0, 40) + (toStr(d.prompt).length > 40 ? '...' : '')
-      }));
-    return formatTable(rows);
   }
 
   // ── Array → text table ────────────────────────────────────────────────────

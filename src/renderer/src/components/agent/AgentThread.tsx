@@ -660,9 +660,8 @@ function Composer({
   };
 
   // The same widget over the same box, differing only in where the rows come
-  // from and what taking one does. Picking a command runs it - unlike Chat,
-  // where a pick fills the box because a skill is a prefix to a message, here
-  // the command is the whole of what the user meant.
+  // from and what taking one does. Picking a command runs it rather than
+  // filling the box: the command is the whole of what the user meant.
   const commandMenu = useComposerMenu({
     items: slashMenu.open ? slashMenu.matches : [],
     onPick: runCommand,

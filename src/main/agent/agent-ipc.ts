@@ -29,17 +29,20 @@ import type { AgentImageStore } from './image-store';
 import type { AgentGitWatcher } from './git-watch';
 import type { AgentHistoryStore } from './history-store';
 import { registerAgentMcpIpc, type McpIpcDeps } from './mcp/mcp-ipc';
+import type { OpenRouterSecrets } from '../openrouter-secrets';
 
 /**
  * Everything the Agent pane calls into main. Agent settings themselves ride on
- * the generic SETTINGS_GET/SET under `ai.agent`, and the OpenRouter key is the
- * one Chat stores, so only the catalog and the turn itself live here.
+ * the generic SETTINGS_GET/SET under `ai.agent`, so only the catalog, the key,
+ * and the turn itself live here.
  */
 export function registerAgentIpc(deps: {
   catalog: AgentModelCatalog;
   service: AgentService;
   gate: PermissionGate;
   sessions: AgentSessionStore;
+  /** The OpenRouter key, which main holds encrypted and never reads back out. */
+  secrets: OpenRouterSecrets;
   /** Where a pasted or dropped image is copied to, keyed by conversation. */
   attachments: AgentImageStore;
   /** Which branch each pane's folder is on, and telling the pane when it moves. */
@@ -57,6 +60,16 @@ export function registerAgentIpc(deps: {
     IPC_CHANNELS.AGENT_LIST_MODELS,
     async (_e, refresh?: boolean): Promise<AgentCatalog> => deps.catalog.list(refresh ?? false)
   );
+
+  // Write-only by design: the renderer can say whether a key is stored, and
+  // replace or remove it, but never read the one that is there.
+  ipcMain.handle(IPC_CHANNELS.AGENT_SET_KEY, (_e, key: string) => {
+    deps.secrets.setKey(key);
+  });
+  ipcMain.handle(IPC_CHANNELS.AGENT_HAS_KEY, (): boolean => deps.secrets.hasKey());
+  ipcMain.handle(IPC_CHANNELS.AGENT_CLEAR_KEY, () => {
+    deps.secrets.clearKey();
+  });
 
   // Fire-and-forget: the reply, and any failure, come back as stream events.
   ipcMain.on(IPC_CHANNELS.AGENT_SEND, (_e, req: AgentSendRequest) => {

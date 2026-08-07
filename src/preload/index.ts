@@ -56,8 +56,6 @@ import type {
   FleetSettings,
   FleetSettingsPatch,
   UpdateStatus,
-  ImageGenerationMeta,
-  ImageSettings,
   AnnotationMeta
 } from '../shared/types';
 import type {
@@ -118,8 +116,7 @@ import type {
   AgentSessionReplay
 } from '../shared/agent-session';
 import type { AgentGitHeadEvent } from '../shared/agent-git';
-// Aliased: Chat has its own `McpServersConfig` and `McpServerStatus` next door,
-// and the two panes' server lists are deliberately different things.
+// Aliased so the generic MCP names read as the Agent pane's at every use site.
 import type {
   McpDetectedServer as AgentMcpDetected,
   McpServersConfig as AgentMcpServers,
@@ -139,35 +136,6 @@ import type {
 } from '../shared/remote-ssh-types';
 import type { ShellEnvSnapshot } from '../shared/shell-env-types';
 import type { SessionAgent, SessionSummary, SessionTranscript } from '../shared/sessions';
-import type {
-  ChatConversation,
-  ChatMessage,
-  ChatModel,
-  ChatSettings,
-  ChatSendRequest,
-  ChatRegenerateRequest,
-  ChatEditRequest,
-  ChatMentionItem,
-  ChatSendResponse,
-  ChatStreamChunkPayload,
-  ChatStreamReasoningPayload,
-  ChatStreamDonePayload,
-  ChatStreamErrorPayload,
-  ChatToolStatusPayload,
-  ChatConversationRenamedPayload,
-  ChatConversationTaggedPayload,
-  ChatAuditEntry,
-  ChatSearchHit,
-  WebSearchProviderId
-} from '../shared/chat-types';
-import type { ChatExportFormat, ChatExportResult } from '../shared/chat-export';
-import type {
-  PermissionRequestPayload,
-  PermissionOutcome,
-  PermissionResolvedPayload
-} from '../shared/chat-permissions';
-import type { McpServersConfig, McpServerStatus } from '../shared/mcp-types';
-import type { SkillState, SkillsView } from '../shared/skill-types';
 import type {
   Learning,
   CreateLearningInput,
@@ -402,55 +370,6 @@ const fleetApi = {
     installUpdate: (): void => ipcRenderer.send(IPC_CHANNELS.UPDATE_INSTALL),
     getVersion: async (): Promise<string> => typedInvoke(IPC_CHANNELS.GET_VERSION)
   },
-  images: {
-    generate: async (opts: {
-      prompt: string;
-      provider?: string;
-      model?: string;
-      resolution?: string;
-      aspectRatio?: string;
-      outputFormat?: string;
-      numImages?: number;
-    }): Promise<{ id: string }> => typedInvoke(IPC_CHANNELS.IMAGES_GENERATE, opts),
-    edit: async (opts: {
-      prompt: string;
-      images: string[];
-      provider?: string;
-      model?: string;
-      resolution?: string;
-      aspectRatio?: string;
-      outputFormat?: string;
-      numImages?: number;
-    }): Promise<{ id: string }> => typedInvoke(IPC_CHANNELS.IMAGES_EDIT, opts),
-    getStatus: async (id: string): Promise<ImageGenerationMeta | null> =>
-      typedInvoke(IPC_CHANNELS.IMAGES_STATUS, id),
-    list: async (): Promise<ImageGenerationMeta[]> => typedInvoke(IPC_CHANNELS.IMAGES_LIST),
-    retry: async (id: string): Promise<{ id: string }> =>
-      typedInvoke(IPC_CHANNELS.IMAGES_RETRY, id),
-    delete: async (id: string): Promise<void> => typedInvoke(IPC_CHANNELS.IMAGES_DELETE, id),
-    getConfig: async (): Promise<ImageSettings> => typedInvoke(IPC_CHANNELS.IMAGES_CONFIG_GET),
-    setConfig: async (partial: Partial<ImageSettings>): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.IMAGES_CONFIG_SET, partial),
-    onChanged: (callback: (payload: { id: string }) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.IMAGES_CHANGED, callback),
-    runAction: async (opts: {
-      actionType: string;
-      source: string;
-      provider?: string;
-    }): Promise<{ id: string }> => typedInvoke(IPC_CHANNELS.IMAGES_RUN_ACTION, opts),
-    listActions: async (
-      provider?: string
-    ): Promise<
-      Array<{
-        id: string;
-        actionType: string;
-        provider: string;
-        name: string;
-        description: string;
-        model: string;
-      }>
-    > => typedInvoke(IPC_CHANNELS.IMAGES_LIST_ACTIONS, provider)
-  },
   shell: {
     openExternal: async (url: string): Promise<void> =>
       typedInvoke(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, url)
@@ -680,13 +599,16 @@ const fleetApi = {
   },
 
   /**
-   * Agent panes. Settings live in `settings.ai.agent` and the OpenRouter key is
-   * the one under `chat`, so what is agent-specific is the model catalog and
-   * the turn itself. The caller mints the stream id and every event carries it.
+   * Agent panes. Settings live in `settings.ai.agent`; the OpenRouter key is
+   * app-wide and write-only from here. The caller mints the stream id and every
+   * event carries it.
    */
   agent: {
     listModels: async (refresh = false): Promise<AgentCatalog> =>
       typedInvoke<AgentCatalog>(IPC_CHANNELS.AGENT_LIST_MODELS, refresh),
+    setKey: async (key: string): Promise<void> => typedInvoke(IPC_CHANNELS.AGENT_SET_KEY, key),
+    hasKey: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.AGENT_HAS_KEY),
+    clearKey: async (): Promise<void> => typedInvoke(IPC_CHANNELS.AGENT_CLEAR_KEY),
     send: (req: AgentSendRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_SEND, req),
     compact: (req: AgentCompactRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_COMPACT, req),
     cancel: (streamId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_CANCEL, streamId),
@@ -882,96 +804,6 @@ const fleetApi = {
       typedInvoke<number>(IPC_CHANNELS.LEARNINGS_MODEL_CACHE_SIZE),
     clearModelCache: async (): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.LEARNINGS_CLEAR_MODEL_CACHE)
-  },
-  chat: {
-    listConversations: async (): Promise<ChatConversation[]> =>
-      typedInvoke(IPC_CHANNELS.CHAT_LIST_CONVERSATIONS),
-    createConversation: async (): Promise<ChatConversation> =>
-      typedInvoke(IPC_CHANNELS.CHAT_CREATE_CONVERSATION),
-    renameConversation: async (id: string, title: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_RENAME_CONVERSATION, { id, title }),
-    setConversationModel: async (id: string, model: string | null): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_SET_CONVERSATION_MODEL, { id, model }),
-    setConversationPersona: async (id: string, personaId: string | null): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_SET_CONVERSATION_PERSONA, { id, personaId }),
-    setConversationPinned: async (id: string, pinned: boolean): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_SET_CONVERSATION_PINNED, { id, pinned }),
-    setConversationFolder: async (id: string, folder: string | null): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_SET_CONVERSATION_FOLDER, { id, folder }),
-    search: async (query: string): Promise<ChatSearchHit[]> =>
-      typedInvoke(IPC_CHANNELS.CHAT_SEARCH, query),
-    deleteConversation: async (id: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_DELETE_CONVERSATION, id),
-    getMessages: async (conversationId: string): Promise<ChatMessage[]> =>
-      typedInvoke(IPC_CHANNELS.CHAT_GET_MESSAGES, conversationId),
-    send: async (req: ChatSendRequest): Promise<ChatSendResponse> =>
-      typedInvoke(IPC_CHANNELS.CHAT_SEND, req),
-    regenerate: async (req: ChatRegenerateRequest): Promise<{ streamId: string }> =>
-      typedInvoke(IPC_CHANNELS.CHAT_REGENERATE, req),
-    editMessage: async (req: ChatEditRequest): Promise<ChatSendResponse> =>
-      typedInvoke(IPC_CHANNELS.CHAT_EDIT_MESSAGE, req),
-    deleteMessage: async (messageId: string): Promise<ChatMessage[]> =>
-      typedInvoke(IPC_CHANNELS.CHAT_DELETE_MESSAGE, messageId),
-    selectVariant: async (messageId: string): Promise<ChatMessage[]> =>
-      typedInvoke(IPC_CHANNELS.CHAT_SELECT_VARIANT, messageId),
-    forkConversation: async (messageId: string): Promise<ChatConversation | null> =>
-      typedInvoke(IPC_CHANNELS.CHAT_FORK_CONVERSATION, messageId),
-    mentionSearch: async (
-      query: string,
-      conversationId: string | null
-    ): Promise<ChatMentionItem[]> =>
-      typedInvoke(IPC_CHANNELS.CHAT_MENTION_SEARCH, query, conversationId),
-    revealFolder: async (conversationId: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_REVEAL_FOLDER, conversationId),
-    export: async (conversationId: string, format: ChatExportFormat): Promise<ChatExportResult> =>
-      typedInvoke(IPC_CHANNELS.CHAT_EXPORT, conversationId, format),
-    cancel: async (streamId: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_CANCEL, streamId),
-    listModels: async (): Promise<ChatModel[]> => typedInvoke(IPC_CHANNELS.CHAT_LIST_MODELS),
-    listImageModels: async (): Promise<ChatModel[]> =>
-      typedInvoke(IPC_CHANNELS.CHAT_LIST_IMAGE_MODELS),
-    getSettings: async (): Promise<ChatSettings> => typedInvoke(IPC_CHANNELS.CHAT_GET_SETTINGS),
-    patchSettings: async (patch: Partial<ChatSettings>): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_PATCH_SETTINGS, patch),
-    setKey: async (key: string): Promise<void> => typedInvoke(IPC_CHANNELS.CHAT_SET_KEY, key),
-    hasKey: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.CHAT_HAS_KEY),
-    setSearchKey: async (provider: WebSearchProviderId, key: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_SET_SEARCH_KEY, { provider, key }),
-    hasSearchKey: async (provider: WebSearchProviderId): Promise<boolean> =>
-      typedInvoke(IPC_CHANNELS.CHAT_HAS_SEARCH_KEY, provider),
-    clearKey: async (): Promise<void> => typedInvoke(IPC_CHANNELS.CHAT_CLEAR_KEY),
-    clearSearchKey: async (provider: WebSearchProviderId): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_CLEAR_SEARCH_KEY, provider),
-    onStreamChunk: (cb: (p: ChatStreamChunkPayload) => void): Unsubscribe =>
-      onChannel<ChatStreamChunkPayload>(IPC_CHANNELS.CHAT_STREAM_CHUNK, cb),
-    onStreamReasoning: (cb: (p: ChatStreamReasoningPayload) => void): Unsubscribe =>
-      onChannel<ChatStreamReasoningPayload>(IPC_CHANNELS.CHAT_STREAM_REASONING, cb),
-    onStreamDone: (cb: (p: ChatStreamDonePayload) => void): Unsubscribe =>
-      onChannel<ChatStreamDonePayload>(IPC_CHANNELS.CHAT_STREAM_DONE, cb),
-    onStreamError: (cb: (p: ChatStreamErrorPayload) => void): Unsubscribe =>
-      onChannel<ChatStreamErrorPayload>(IPC_CHANNELS.CHAT_STREAM_ERROR, cb),
-    onToolStatus: (cb: (p: ChatToolStatusPayload) => void): Unsubscribe =>
-      onChannel<ChatToolStatusPayload>(IPC_CHANNELS.CHAT_TOOL_STATUS, cb),
-    onPermissionRequest: (cb: (p: PermissionRequestPayload) => void): Unsubscribe =>
-      onChannel<PermissionRequestPayload>(IPC_CHANNELS.CHAT_PERMISSION_REQUEST, cb),
-    decidePermission: async (requestId: string, outcome: PermissionOutcome): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.CHAT_PERMISSION_DECIDE, { requestId, outcome }),
-    onPermissionResolved: (cb: (p: PermissionResolvedPayload) => void): Unsubscribe =>
-      onChannel<PermissionResolvedPayload>(IPC_CHANNELS.CHAT_PERMISSION_RESOLVED, cb),
-    onConversationRenamed: (cb: (p: ChatConversationRenamedPayload) => void): Unsubscribe =>
-      onChannel<ChatConversationRenamedPayload>(IPC_CHANNELS.CHAT_CONVERSATION_RENAMED, cb),
-    onConversationTagged: (cb: (p: ChatConversationTaggedPayload) => void): Unsubscribe =>
-      onChannel<ChatConversationTaggedPayload>(IPC_CHANNELS.CHAT_CONVERSATION_TAGGED, cb),
-    mcpGet: async (): Promise<McpServerStatus[]> => typedInvoke(IPC_CHANNELS.CHAT_MCP_GET),
-    mcpSet: async (config: McpServersConfig): Promise<McpServerStatus[]> =>
-      typedInvoke(IPC_CHANNELS.CHAT_MCP_SET, config),
-    skillsGet: async (): Promise<SkillsView> => typedInvoke(IPC_CHANNELS.CHAT_SKILLS_GET),
-    skillsSetState: async (name: string, state: SkillState): Promise<SkillsView> =>
-      typedInvoke(IPC_CHANNELS.CHAT_SKILLS_SET_STATE, { name, state }),
-    skillsRescan: async (): Promise<SkillsView> => typedInvoke(IPC_CHANNELS.CHAT_SKILLS_RESCAN),
-    skillsReveal: async (): Promise<void> => typedInvoke(IPC_CHANNELS.CHAT_SKILLS_REVEAL),
-    auditList: async (conversationId?: string): Promise<ChatAuditEntry[]> =>
-      typedInvoke(IPC_CHANNELS.CHAT_AUDIT_LIST, { conversationId })
   }
 };
 

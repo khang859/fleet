@@ -1,13 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  parseArgs,
-  validateCommand,
-  getHelpText,
-  runCLI,
-  FleetCLI,
-  formatTable,
-  stripAnsi
-} from '../fleet-cli';
+import { parseArgs, getHelpText, runCLI, FleetCLI, formatTable, stripAnsi } from '../fleet-cli';
 
 // ── parseArgs tests ───────────────────────────────────────────────────────────
 
@@ -66,50 +58,6 @@ describe('parseArgs repeatable --worker', () => {
   });
 });
 
-// ── validateCommand tests ─────────────────────────────────────────────────────
-
-describe('validateCommand', () => {
-  it('validates image.generate requires --prompt', () => {
-    const error = validateCommand('image.generate', {});
-    expect(error).toContain('--prompt');
-  });
-
-  it('returns null for valid image.generate', () => {
-    const error = validateCommand('image.generate', { prompt: 'A cat' });
-    expect(error).toBeNull();
-  });
-
-  it('validates image.edit requires --prompt', () => {
-    const error = validateCommand('image.edit', { images: 'foo.png' });
-    expect(error).toContain('--prompt');
-  });
-
-  it('validates image.edit requires --images', () => {
-    const error = validateCommand('image.edit', { prompt: 'A hat' });
-    expect(error).toContain('--images');
-  });
-
-  it('validates image.status requires an id', () => {
-    const error = validateCommand('image.status', {});
-    expect(error).toContain('ID');
-  });
-
-  it('validates image.retry requires an id', () => {
-    const error = validateCommand('image.retry', {});
-    expect(error).toContain('ID');
-  });
-
-  it('validates image.action requires action and source', () => {
-    expect(validateCommand('image.action', {})).toContain('action type');
-    expect(validateCommand('image.action', { action: 'remove-background' })).toContain('source');
-  });
-
-  it('returns null for unknown commands', () => {
-    const error = validateCommand('unknown.command', {});
-    expect(error).toBeNull();
-  });
-});
-
 // ── formatTable tests ─────────────────────────────────────────────────────────
 
 describe('formatTable', () => {
@@ -147,7 +95,7 @@ describe('stripAnsi', () => {
 
 describe('getHelpText', () => {
   it('returns null when no help flag present', () => {
-    expect(getHelpText(['images', 'list'])).toBeNull();
+    expect(getHelpText(['annotate', 'start'])).toBeNull();
   });
 
   it('returns null for empty argv', () => {
@@ -157,7 +105,7 @@ describe('getHelpText', () => {
   it('returns top-level help for --help alone', () => {
     const out = getHelpText(['--help']);
     expect(out).toContain('Fleet CLI');
-    expect(out).toContain('images');
+    expect(out).toContain('annotate');
     expect(out).toContain('open');
   });
 
@@ -166,9 +114,9 @@ describe('getHelpText', () => {
     expect(out).toContain('Fleet CLI');
   });
 
-  it('returns group help for fleet images --help', () => {
-    const out = getHelpText(['images', '--help']);
-    expect(out).toContain('fleet images');
+  it('returns group help for fleet annotate --help', () => {
+    const out = getHelpText(['annotate', '--help']);
+    expect(out).toContain('fleet annotate');
   });
 
   it('returns group help for fleet open --help', () => {
@@ -177,13 +125,13 @@ describe('getHelpText', () => {
   });
 
   it('detects --help anywhere in argv', () => {
-    const out = getHelpText(['images', 'generate', '--prompt', 'foo', '--help']);
-    expect(out).toContain('fleet images');
+    const out = getHelpText(['annotate', 'start', '--url', 'foo', '--help']);
+    expect(out).toContain('fleet annotate');
   });
 
   it('detects -h anywhere in argv', () => {
-    const out = getHelpText(['images', 'generate', '-h']);
-    expect(out).toContain('fleet images');
+    const out = getHelpText(['annotate', 'start', '-h']);
+    expect(out).toContain('fleet annotate');
   });
 
   it('falls back to top-level help for unknown group', () => {
@@ -199,16 +147,16 @@ describe('--help via runCLI', () => {
     expect(out).not.toContain('Error');
   });
 
-  it('fleet images --help does not treat --help as action name', async () => {
-    const out = await runCLI(['images', '--help'], '/tmp/no-socket.sock');
-    expect(out).toContain('fleet images');
+  it('fleet annotate --help does not treat --help as action name', async () => {
+    const out = await runCLI(['annotate', '--help'], '/tmp/no-socket.sock');
+    expect(out).toContain('fleet annotate');
     expect(out).not.toContain('Error');
     expect(out).not.toContain('Unknown command');
   });
 
-  it('fleet images generate --help returns help', async () => {
-    const out = await runCLI(['images', 'generate', '--help'], '/tmp/no-socket.sock');
-    expect(out).toContain('fleet images');
+  it('fleet annotate start --help returns help', async () => {
+    const out = await runCLI(['annotate', 'start', '--help'], '/tmp/no-socket.sock');
+    expect(out).toContain('fleet annotate');
   });
 
   it('fleet -h returns help', async () => {

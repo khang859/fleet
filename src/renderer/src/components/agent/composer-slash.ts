@@ -3,10 +3,8 @@ import { Eraser, type LucideIcon } from 'lucide-react';
 /**
  * The composer's `/` menu.
  *
- * One command today, and no `kind` to tell commands apart the way Chat's menu
- * has to - Chat is choosing between installed skills and saved prompts, which
- * are genuinely different things. Here they would all be the same thing, so
- * the distinction can be added when there is one to make.
+ * One command today, and no `kind` to tell commands apart: they would all be
+ * the same kind, so the distinction can be added when there is one to make.
  */
 
 /**

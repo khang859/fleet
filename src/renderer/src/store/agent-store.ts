@@ -184,7 +184,7 @@ const EMPTY_THREAD: PaneThread = {
 /**
  * State backing the agent panes. The settings themselves live in the app
  * settings store under `ai.agent`; what is agent-specific is the models.dev
- * catalog, the OpenRouter key (the same key Chat stores), and the transcripts.
+ * catalog, the OpenRouter key, and the transcripts.
  */
 type AgentStoreState = {
   catalog: AgentCatalog | null;
@@ -247,16 +247,16 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   },
 
   loadKey: async () => {
-    set({ keyPresent: await window.fleet.chat.hasKey() });
+    set({ keyPresent: await window.fleet.agent.hasKey() });
   },
 
   saveKey: async (key) => {
-    await window.fleet.chat.setKey(key);
+    await window.fleet.agent.setKey(key);
     set({ keyPresent: true });
   },
 
   clearKey: async () => {
-    await window.fleet.chat.clearKey();
+    await window.fleet.agent.clearKey();
     set({ keyPresent: false });
   },
 

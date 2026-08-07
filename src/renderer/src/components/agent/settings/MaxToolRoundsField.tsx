@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MAX_TOOL_ROUNDS_CEILING, MAX_TOOL_ROUNDS_MIN } from '../../../../../shared/agent-types';
-import { Toggle } from '../../chat/settings/Toggle';
+import { Toggle } from './Toggle';
 
 /**
  * What a cap is set to when it is first switched on. Well past what a real

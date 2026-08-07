@@ -2,9 +2,7 @@ import { createServer, type Server, type Socket } from 'node:net';
 import { mkdirSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { EventEmitter } from 'node:events';
-import type { ImageService } from './image-service';
 import type { AnnotateService } from './annotate-service';
-import type { ImageProviderSettings } from '../shared/types';
 import { CodedError } from './errors';
 
 type Request = {
@@ -51,7 +49,6 @@ export class SocketServer extends EventEmitter {
 
   constructor(
     private socketPath: string,
-    private imageService?: ImageService,
     private annotateService?: AnnotateService
   ) {
     super();
@@ -203,164 +200,6 @@ export class SocketServer extends EventEmitter {
         };
         this.emit('file-open', payload);
         return { fileCount: files.length };
-      }
-
-      // ── Images ──────────────────────────────────────────────────────────────
-      case 'image.generate': {
-        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
-        const prompt = typeof args.prompt === 'string' ? args.prompt : undefined;
-        if (!prompt) throw new CodedError('image.generate requires a prompt', 'BAD_REQUEST');
-        const result = this.imageService.generate({
-          prompt,
-          provider: typeof args.provider === 'string' ? args.provider : undefined,
-          model: typeof args.model === 'string' ? args.model : undefined,
-          resolution: typeof args.resolution === 'string' ? args.resolution : undefined,
-          aspectRatio:
-            typeof args.aspectRatio === 'string'
-              ? args.aspectRatio
-              : typeof args['aspect-ratio'] === 'string'
-                ? String(args['aspect-ratio'])
-                : undefined,
-          outputFormat: typeof args.format === 'string' ? args.format : undefined,
-          numImages: typeof args['num-images'] === 'string' ? Number(args['num-images']) : undefined
-        });
-        this.emit('state-change', 'image:changed', { id: result.id });
-        return result;
-      }
-
-      case 'image.edit': {
-        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
-        const editPrompt = typeof args.prompt === 'string' ? args.prompt : undefined;
-        if (!editPrompt) throw new CodedError('image.edit requires a prompt', 'BAD_REQUEST');
-        const rawImages = args.images;
-        const images = Array.isArray(rawImages)
-          ? rawImages.filter((x): x is string => typeof x === 'string')
-          : typeof rawImages === 'string'
-            ? [rawImages]
-            : [];
-        if (images.length === 0)
-          throw new CodedError('image.edit requires --images', 'BAD_REQUEST');
-        const editResult = this.imageService.edit({
-          prompt: editPrompt,
-          images,
-          provider: typeof args.provider === 'string' ? args.provider : undefined,
-          model: typeof args.model === 'string' ? args.model : undefined,
-          resolution: typeof args.resolution === 'string' ? args.resolution : undefined,
-          aspectRatio:
-            typeof args.aspectRatio === 'string'
-              ? args.aspectRatio
-              : typeof args['aspect-ratio'] === 'string'
-                ? String(args['aspect-ratio'])
-                : undefined,
-          outputFormat: typeof args.format === 'string' ? args.format : undefined,
-          numImages: typeof args['num-images'] === 'string' ? Number(args['num-images']) : undefined
-        });
-        this.emit('state-change', 'image:changed', { id: editResult.id });
-        return editResult;
-      }
-
-      case 'image.status': {
-        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
-        const statusId = typeof args.id === 'string' ? args.id : undefined;
-        if (!statusId) throw new CodedError('image.status requires an id', 'BAD_REQUEST');
-        const meta = this.imageService.getStatus(statusId);
-        if (!meta) throw new CodedError(`Generation not found: ${statusId}`, 'NOT_FOUND');
-        return meta;
-      }
-
-      case 'image.list': {
-        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
-        return this.imageService.list();
-      }
-
-      case 'image.retry': {
-        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
-        const retryId = typeof args.id === 'string' ? args.id : undefined;
-        if (!retryId) throw new CodedError('image.retry requires an id', 'BAD_REQUEST');
-        const retryResult = this.imageService.retry(retryId);
-        this.emit('state-change', 'image:changed', { id: retryResult.id });
-        return retryResult;
-      }
-
-      case 'image.delete': {
-        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
-        const deleteId = typeof args.id === 'string' ? args.id : undefined;
-        if (!deleteId) throw new CodedError('image.delete requires an id', 'BAD_REQUEST');
-        this.imageService.delete(deleteId);
-        this.emit('state-change', 'image:changed', { id: deleteId });
-        return { deleted: true };
-      }
-
-      case 'image.config.get': {
-        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
-        const settings = this.imageService.getSettings();
-        const redacted = { ...settings, providers: { ...settings.providers } };
-        for (const [key, val] of Object.entries(redacted.providers)) {
-          redacted.providers[key] = {
-            ...val,
-            apiKey: val.apiKey ? `${val.apiKey.slice(0, 4)}***` : ''
-          };
-        }
-        return redacted;
-      }
-
-      case 'image.config.set': {
-        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
-        const providerId = typeof args.provider === 'string' ? args.provider : undefined;
-        const providerKey = providerId ?? this.imageService.getSettings().defaultProvider;
-        const providerUpdate: Partial<ImageProviderSettings> = {};
-        if (typeof args['api-key'] === 'string') providerUpdate.apiKey = args['api-key'];
-        if (typeof args['default-model'] === 'string')
-          providerUpdate.defaultModel = args['default-model'];
-        if (typeof args['default-resolution'] === 'string')
-          providerUpdate.defaultResolution = args['default-resolution'];
-        if (typeof args['default-output-format'] === 'string')
-          providerUpdate.defaultOutputFormat = args['default-output-format'];
-        if (typeof args['default-aspect-ratio'] === 'string')
-          providerUpdate.defaultAspectRatio = args['default-aspect-ratio'];
-        // Action-level model override: --action remove-background --model fal-ai/birefnet/v2
-        if (typeof args.action === 'string' && typeof args.model === 'string') {
-          const currentSettings = this.imageService.getSettings();
-          const currentProvider = currentSettings.providers[providerKey];
-          const existingActions = currentProvider.actions ?? {};
-          providerUpdate.actions = {
-            ...existingActions,
-            [args.action]: { model: args.model }
-          };
-        }
-        if (Object.keys(providerUpdate).length > 0) {
-          this.imageService.updateSettings({ providers: { [providerKey]: providerUpdate } });
-        }
-        this.emit('state-change', 'image:changed', {});
-        return { updated: true };
-      }
-
-      case 'image.action': {
-        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
-        const actionType =
-          typeof args.action === 'string'
-            ? args.action
-            : typeof args.id === 'string'
-              ? args.id
-              : undefined;
-        if (!actionType)
-          throw new CodedError('image.action requires an action type', 'BAD_REQUEST');
-        const source = typeof args.source === 'string' ? args.source : undefined;
-        if (!source) throw new CodedError('image.action requires a source image', 'BAD_REQUEST');
-        const actionResult = this.imageService.runAction({
-          actionType,
-          source,
-          provider: typeof args.provider === 'string' ? args.provider : undefined
-        });
-        this.emit('state-change', 'image:changed', { id: actionResult.id });
-        return actionResult;
-      }
-
-      case 'image.actions.list': {
-        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
-        return this.imageService.listActions(
-          typeof args.provider === 'string' ? args.provider : undefined
-        );
       }
 
       // ── Annotate ──────────────────────────────────────────────────────────────

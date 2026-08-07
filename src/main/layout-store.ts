@@ -1,6 +1,5 @@
 import Store from 'electron-store';
-import { randomUUID } from 'crypto';
-import type { Workspace, Tab, PaneNode } from '../shared/types';
+import type { Workspace, PaneNode } from '../shared/types';
 import { createLogger } from './logger';
 
 const log = createLogger('layout:persistence');
@@ -87,26 +86,5 @@ export class LayoutStore {
     const workspaces = this.store.get('workspaces', {});
     delete workspaces[workspaceId];
     this.store.set('workspaces', workspaces);
-  }
-
-  ensureImagesTab(workspaceId: string, cwd: string): void {
-    const workspace = this.load(workspaceId);
-    if (!workspace) return;
-
-    const hasImages = workspace.tabs.some((t) => t.type === 'images');
-    if (hasImages) return;
-
-    const paneId = randomUUID();
-    const imagesTab: Tab = {
-      id: randomUUID(),
-      label: 'Images',
-      labelIsCustom: true,
-      cwd,
-      type: 'images',
-      splitRoot: { type: 'leaf', id: paneId, cwd }
-    };
-
-    workspace.tabs.unshift(imagesTab);
-    this.save(workspace);
   }
 }

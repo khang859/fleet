@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { useImageStore } from '../store/image-store';
 import { toFleetImageUrl } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
@@ -24,8 +23,7 @@ type ImageViewerPaneProps = {
   /**
    * Set when `filePath` is the local cache copy of a remote image. Rendering is
    * unaffected - the cache copy is byte-identical - but the name shown must be
-   * the remote one, and the image actions are hidden because they would write
-   * their output into the cache where it could never reach the server.
+   * the remote one.
    */
   remote?: RemoteFileRef;
 };
@@ -190,21 +188,6 @@ export function ImageViewerPane({
     return () => window.removeEventListener('keydown', onKey);
   }, [applyFit, adjustZoom]);
 
-  const { actions, loadActions, runAction } = useImageStore();
-  const [runningAction, setRunningAction] = useState<string | null>(null);
-
-  useEffect(() => {
-    void loadActions();
-  }, [loadActions]);
-
-  const handleAction = useCallback(
-    (actionType: string) => {
-      setRunningAction(actionType);
-      void runAction({ actionType, source: filePath }).finally(() => setRunningAction(null));
-    },
-    [filePath, runAction]
-  );
-
   const zoomPercent = Math.round(zoom * 100);
   const cursor = isFit ? 'default' : isDragging ? 'grabbing' : 'grab';
 
@@ -296,21 +279,6 @@ export function ImageViewerPane({
             </ToolbarButton>
           </div>
         )}
-        {imageSrc && !remote && actions.length > 0 && (
-          <div className="flex items-center gap-0.5 ml-2">
-            <div className="w-px h-3.5 bg-neutral-700 mx-1" />
-            {actions.map((action) => (
-              <ToolbarButton
-                key={action.id}
-                onClick={() => handleAction(action.actionType)}
-                title={action.description}
-                disabled={runningAction !== null}
-              >
-                {runningAction === action.actionType ? '...' : action.name}
-              </ToolbarButton>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -319,20 +287,17 @@ export function ImageViewerPane({
 function ToolbarButton({
   children,
   onClick,
-  title,
-  disabled
+  title
 }: {
   children: React.ReactNode;
   onClick: () => void;
   title?: string;
-  disabled?: boolean;
 }): React.JSX.Element {
   return (
     <button
-      className="text-neutral-300 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors disabled:opacity-50 disabled:pointer-events-none active:scale-[0.97] disabled:active:scale-100"
+      className="text-neutral-300 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors active:scale-[0.97]"
       onClick={onClick}
       title={title}
-      disabled={disabled}
     >
       {children}
     </button>

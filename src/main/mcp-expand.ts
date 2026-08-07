@@ -10,9 +10,8 @@
  * `${VAR:-default}` is supported for the same reason - a config that names a
  * port or a region should not fail to start on a machine that never set one.
  *
- * Shared by both MCP clients (Chat and Agent). It lives here rather than under
- * either one because a config pasted into Chat and the same config pasted into
- * Agent have to expand identically; they did not when each kept its own copy.
+ * Kept outside the MCP client itself so expansion stays one implementation no
+ * matter how many clients end up wanting it.
  */
 
 /**

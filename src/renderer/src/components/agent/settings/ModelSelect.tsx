@@ -32,9 +32,10 @@ function rank(models: AgentCatalogModel[], query: string): AgentCatalogModel[] {
 }
 
 /**
- * Full-width model picker over the models.dev catalog. Unlike the compact chat
- * picker this is a settings control, so each row spells out what the settings
- * below it will let you change: context, output ceiling, price, capabilities.
+ * Full-width model picker over the models.dev catalog. This is a settings
+ * control rather than a compact composer picker, so each row spells out what
+ * the settings below it will let you change: context, output ceiling, price,
+ * capabilities.
  */
 export function ModelSelect({
   models,

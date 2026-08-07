@@ -7,7 +7,6 @@ import {
   Crosshair,
   History,
   SlidersHorizontal,
-  MessageSquare,
   Bot
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
@@ -52,11 +51,9 @@ import { EnvEditorModal } from './components/env-editor/EnvEditorModal';
 import { NotesModal } from './components/notes/NotesModal';
 import { ShellEnvModal } from './components/shell-env/ShellEnvModal';
 import { AgentFolderDialog } from './components/agent/AgentFolderDialog';
-import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
 import { SessionsTab } from './components/sessions/SessionsTab';
-import { ChatTab } from './components/chat/ChatTab';
 import { PiPlanModal } from './components/PiPlanModal';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
@@ -756,12 +753,7 @@ export function App(): React.JSX.Element {
             {/* File/terminal/image tab icons (excluding pinned + settings) */}
             {workspace.tabs
               .filter(
-                (t) =>
-                  t.type !== 'images' &&
-                  t.type !== 'settings' &&
-                  t.type !== 'annotate' &&
-                  t.type !== 'sessions' &&
-                  t.type !== 'chat'
+                (t) => t.type !== 'settings' && t.type !== 'annotate' && t.type !== 'sessions'
               )
               .map((tab) => {
                 const isActive = tab.id === activeTabId;
@@ -805,44 +797,9 @@ export function App(): React.JSX.Element {
               })}
             <div className="flex-1" />
             {/* Pinned tools section (mirrors expanded sidebar: tools above workspaces) */}
-            {workspace.tabs.some(
-              (t) =>
-                t.type === 'images' ||
-                t.type === 'annotate' ||
-                t.type === 'sessions' ||
-                t.type === 'chat'
-            ) && <div className="w-6 h-px bg-fleet-border my-0.5" />}
-            {/* Images pinned icon */}
-            {workspace.tabs
-              .filter((t) => t.type === 'images')
-              .map((tab) => {
-                const isImagesActive = tab.id === activeTabId;
-                return (
-                  <MiniSidebarTooltip label="Images" key={tab.id}>
-                    <button
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors active:scale-90 ${
-                        isImagesActive
-                          ? 'bg-purple-900/40 ring-1 ring-purple-500/30'
-                          : 'hover:bg-fleet-surface-2'
-                      }`}
-                    >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke={isImagesActive ? 'rgb(192,132,252)' : 'rgba(192,132,252,0.4)'}
-                        strokeWidth="1.5"
-                      >
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                        <circle cx="8.5" cy="8.5" r="1.5" />
-                        <path d="M21 15l-5-5L5 21" />
-                      </svg>
-                    </button>
-                  </MiniSidebarTooltip>
-                );
-              })}
+            {workspace.tabs.some((t) => t.type === 'annotate' || t.type === 'sessions') && (
+              <div className="w-6 h-px bg-fleet-border my-0.5" />
+            )}
             {/* Annotate pinned icon */}
             {workspace.tabs
               .filter((t) => t.type === 'annotate')
@@ -884,29 +841,6 @@ export function App(): React.JSX.Element {
                       <History
                         size={16}
                         className={isSessionsActive ? 'text-blue-400' : 'text-blue-400/40'}
-                      />
-                    </button>
-                  </MiniSidebarTooltip>
-                );
-              })}
-            {/* Chat pinned icon */}
-            {workspace.tabs
-              .filter((t) => t.type === 'chat')
-              .map((tab) => {
-                const isChatActive = tab.id === activeTabId;
-                return (
-                  <MiniSidebarTooltip label="Chat" key={tab.id}>
-                    <button
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors active:scale-90 ${
-                        isChatActive
-                          ? 'bg-emerald-900/40 ring-1 ring-emerald-500/30'
-                          : 'hover:bg-fleet-surface-2'
-                      }`}
-                    >
-                      <MessageSquare
-                        size={16}
-                        className={isChatActive ? 'text-emerald-400' : 'text-emerald-400/40'}
                       />
                     </button>
                   </MiniSidebarTooltip>
@@ -1010,9 +944,7 @@ export function App(): React.JSX.Element {
                     className="h-full w-full"
                     style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
                   >
-                    {tab.type === 'images' ? (
-                      <ImageGallery />
-                    ) : tab.type === 'annotate' ? (
+                    {tab.type === 'annotate' ? (
                       <AnnotateTab />
                     ) : tab.type === 'settings' ? (
                       <SettingsTab />
@@ -1026,8 +958,6 @@ export function App(): React.JSX.Element {
                       />
                     ) : tab.type === 'sessions' ? (
                       <SessionsTab />
-                    ) : tab.type === 'chat' ? (
-                      <ChatTab />
                     ) : (
                       <PaneGrid
                         root={tab.splitRoot}

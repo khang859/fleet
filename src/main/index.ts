@@ -37,7 +37,6 @@ import { deriveDebugPort, sessionFilePath, type DriveSession } from '../shared/d
 import { SocketSupervisor } from './socket-supervisor';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile, installOpencodePlugin } from './install-fleet-cli';
-import { ImageService } from './image-service';
 import { AnnotateService } from './annotate-service';
 import { AnnotationStore } from './annotation-store';
 import { PiAgentManager } from './pi-agent-manager';
@@ -53,9 +52,8 @@ import { WslService } from './wsl-service';
 import { parseFleetUrl } from './protocol-paths';
 import { toWslUncPath } from '../shared/path-platform';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
-import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload } from '../shared/ipc-api';
-import type { NotificationLevel, UpdateStatus, ImageSettings } from '../shared/types';
+import type { NotificationLevel, UpdateStatus } from '../shared/types';
 import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
 import { createLogger } from './logger';
 import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
@@ -76,14 +74,9 @@ import {
   persistPort
 } from './learnings/learnings-mcp-registrar';
 import { runBackfill } from './learnings/backfill';
-import { ChatStore } from './chat/chat-store';
-import { ChatSecrets } from './chat/chat-secrets';
-import { OpenRouterClient } from './chat/openrouter-client';
-import { ChatService } from './chat/chat-service';
-import { ChatSearchService } from './chat/chat-search-service';
-import { runChatBackfill } from './chat/chat-backfill';
-import { registerChatIpc } from './chat/chat-ipc';
+import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
+import { completeOnce } from './agent/openrouter';
 import { AgentModelCatalog } from './agent/models-catalog';
 import { AgentService } from './agent/agent-service';
 import { AgentSessionStore } from './agent/session-store';
@@ -95,21 +88,7 @@ import { McpManager as AgentMcpManager } from './agent/mcp/manager';
 import { AgentMcpSecrets } from './agent/mcp/secrets';
 import { resolveAuth, signIn as signInToMcp } from './agent/mcp/auth';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
-import { resolveSummary } from './chat/pane-summarizer';
-import { PermissionManager } from './chat/permissions/permission-manager';
-import {
-  ChatToolExecutor,
-  type WebSearchRunner,
-  type WebFetchRunner
-} from './chat/tools/tool-runner';
-import { createWebSearchProvider, formatWebSearchResults } from './chat/web-search';
-import { extractContent, capResult } from './chat/web-fetch';
-import { renderPage } from './chat/web-fetch-render';
-import { McpManager } from './chat/mcp/manager';
-import { SkillManager, type SkillRoot } from './chat/skills/skill-manager';
-import { ChatImageStorage } from './chat/image/image-storage';
-import { ChatWorkspace } from './chat/chat-workspace';
-import { OpenRouterImageProvider } from './chat/image/openrouter-image-provider';
+import { resolveSummary } from './pane-summarizer';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -152,7 +131,6 @@ const reportedActivity = new ReportedActivity();
  */
 let visiblePaneIds = new Set<string>();
 const cwdPoller = new CwdPoller(eventBus, ptyManager);
-const imageService = new ImageService();
 const ANNOTATIONS_DIR = join(homedir(), '.fleet', 'annotations');
 const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
 const annotateService = new AnnotateService(annotationStore);
@@ -183,12 +161,6 @@ const shellProfileRegistry = new ShellProfileRegistry({
   env: process.env,
   wslService,
   fileExists: defaultFileExists
-});
-imageService.on('changed', (id: string) => {
-  const windowRef = mainWindow;
-  if (windowRef && !windowRef.isDestroyed()) {
-    windowRef.webContents.send(IPC_CHANNELS.IMAGES_CHANGED, { id });
-  }
 });
 log.info('startup marker', { runtime: 'spawn-ipc', preload: 'out/preload/index.js' });
 
@@ -471,11 +443,6 @@ void app.whenReady().then(async () => {
   createWindow();
 
   const gitService = new GitService();
-  const workspacePath = resolveBootstrapWorkspacePath({
-    cwd: process.cwd(),
-    pwd: process.env.PWD,
-    isPackaged: app.isPackaged
-  });
   void enrichProcessEnv();
   void installSkillFile().catch((err) => {
     log.warn('failed to install skill file', {
@@ -511,7 +478,6 @@ void app.whenReady().then(async () => {
     cwdPoller,
     gitService,
     () => mainWindow,
-    workspacePath,
     activityTracker,
     new WorktreeService(),
     annotationStore,
@@ -529,8 +495,6 @@ void app.whenReady().then(async () => {
     envSyncSecrets
   );
 
-  imageService.resumeInterrupted();
-
   // Clean up old annotations based on retention settings
   const retentionDays = settingsStore.get().annotate.retentionDays;
   annotationStore.cleanup(retentionDays);
@@ -543,7 +507,7 @@ void app.whenReady().then(async () => {
   });
 
   // Start socket server for fleet CLI (images + open commands)
-  socketSupervisor = new SocketSupervisor(SOCKET_PATH, imageService, annotateService);
+  socketSupervisor = new SocketSupervisor(SOCKET_PATH, annotateService);
   socketSupervisor.on('file-open', (payload: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
@@ -951,43 +915,6 @@ void app.whenReady().then(async () => {
     sendUpdateStatus({ state: 'error', message: err.message });
   });
 
-  // Image generation IPC handlers
-  ipcMain.handle(
-    IPC_CHANNELS.IMAGES_GENERATE,
-    (_e, opts: Parameters<typeof imageService.generate>[0]) => imageService.generate(opts)
-  );
-  ipcMain.handle(IPC_CHANNELS.IMAGES_EDIT, (_e, opts: Parameters<typeof imageService.edit>[0]) =>
-    imageService.edit(opts)
-  );
-  ipcMain.handle(IPC_CHANNELS.IMAGES_STATUS, (_e, id: string) => imageService.getStatus(id));
-  ipcMain.handle(IPC_CHANNELS.IMAGES_LIST, () => imageService.list());
-  ipcMain.handle(IPC_CHANNELS.IMAGES_RETRY, (_e, id: string) => imageService.retry(id));
-  ipcMain.handle(IPC_CHANNELS.IMAGES_DELETE, (_e, id: string) => {
-    imageService.delete(id);
-  });
-  ipcMain.handle(IPC_CHANNELS.IMAGES_CONFIG_GET, () => {
-    const settings = imageService.getSettings();
-    const redacted = { ...settings, providers: { ...settings.providers } };
-    for (const [key, val] of Object.entries(redacted.providers)) {
-      redacted.providers[key] = {
-        ...val,
-        apiKey: val.apiKey ? `${val.apiKey.slice(0, 4)}***` : ''
-      };
-    }
-    return redacted;
-  });
-  ipcMain.handle(IPC_CHANNELS.IMAGES_CONFIG_SET, (_e, partial: Partial<ImageSettings>) => {
-    imageService.updateSettings(partial);
-  });
-  ipcMain.handle(
-    IPC_CHANNELS.IMAGES_RUN_ACTION,
-    (_e, opts: { actionType: string; source: string; provider?: string }) =>
-      imageService.runAction(opts)
-  );
-  ipcMain.handle(IPC_CHANNELS.IMAGES_LIST_ACTIONS, (_e, provider?: string) =>
-    imageService.listActions(provider)
-  );
-
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
     if (updateState === 'checking' || updateState === 'downloading') return;
     try {
@@ -1021,161 +948,15 @@ void app.whenReady().then(async () => {
     });
   }
 
-  // One shared embedding worker (transformers.js model in a worker thread) powers
-  // both the learnings KB and chat semantic search — a single model download and a
-  // single inference thread. Constructed here so the chat store (below) and the
-  // learnings subsystem (further down) can share the instance.
+  // One shared embedding worker (transformers.js model in a worker thread) backs
+  // the learnings KB: a single model download and a single inference thread.
   const learningsHome = join(homedir(), '.fleet', 'learnings');
   const learningsModelDir = join(learningsHome, 'models');
   const sharedEmbedder = new WorkerEmbedder({ modelCacheDir: learningsModelDir });
 
-  const chatStore = new ChatStore(join(app.getPath('userData'), 'chat.db'));
-  const chatSecrets = new ChatSecrets();
-  const chatClient = new OpenRouterClient();
-  const chatWorkspace = new ChatWorkspace(
-    join(homedir(), '.fleet', 'chat'),
-    join(app.getPath('userData'), 'chat-images')
-  );
-  const chatImageStorage = new ChatImageStorage(chatWorkspace);
-  const chatImageProvider = new OpenRouterImageProvider(() => chatSecrets.getKey());
-  const chatEmit = (channel: string, payload: unknown): void => {
-    const w = mainWindow;
-    if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
-  };
-  const chatPermissions = new PermissionManager({
-    getRules: () => settingsStore.get().ai.chat.permissions,
-    persistAllowRule: (rule) => {
-      const current = settingsStore.get().ai.chat.permissions;
-      if (current.allow.includes(rule)) return;
-      settingsStore.set({
-        ai: { chat: { permissions: { ...current, allow: [...current.allow, rule] } } }
-      });
-    },
-    emit: chatEmit
-  });
-  const chatMcp = new McpManager(() => settingsStore.get().ai.chat.mcpServers);
-  void chatMcp.reload();
-  const skillsResourcesDir = app.isPackaged
-    ? join(process.resourcesPath, 'resources')
-    : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources');
-  const personalSkillsDir = join(app.getPath('userData'), 'chat-skills');
-  const chatSkills = new SkillManager(
-    () => {
-      const roots: SkillRoot[] = [
-        { root: join(skillsResourcesDir, 'chat-skills'), scope: 'bundled' },
-        { root: join(skillsResourcesDir, 'pi-skills'), scope: 'bundled' },
-        { root: personalSkillsDir, scope: 'personal' }
-      ];
-      const ws = settingsStore.get().ai.chat.tools.workspaceDir;
-      if (ws) roots.push({ root: join(ws, '.claude', 'skills'), scope: 'project' });
-      return roots;
-    },
-    () => settingsStore.get().ai.chat.skills
-  );
-  chatSkills.rescan();
-  const isWebSearchReady = (): boolean => {
-    const cfg = settingsStore.get().ai.chat.webSearch;
-    return cfg.enabled && chatSecrets.hasSearchKey(cfg.provider);
-  };
-  const chatWebSearch: WebSearchRunner = {
-    enabled: isWebSearchReady,
-    search: async (query, signal) => {
-      const cfg = settingsStore.get().ai.chat.webSearch;
-      const key = chatSecrets.getSearchKey(cfg.provider);
-      if (!key) throw new Error('No web-search API key configured');
-      const provider = createWebSearchProvider(cfg.provider);
-      const results = await provider.search({
-        query,
-        apiKey: key,
-        maxResults: cfg.maxResults,
-        signal
-      });
-      return formatWebSearchResults(query, results);
-    }
-  };
-  const isWebFetchReady = (): boolean => settingsStore.get().ai.chat.webFetch.enabled;
-  const chatWebFetch: WebFetchRunner = {
-    enabled: isWebFetchReady,
-    fetch: async (url, signal, onRender) => {
-      const cfg = settingsStore.get().ai.chat.webFetch;
-      const content = await extractContent({
-        url,
-        deps: { render: renderPage },
-        signal,
-        onRender
-      });
-      return capResult(content, cfg.maxChars);
-    }
-  };
-  const chatToolExecutor = new ChatToolExecutor(
-    chatPermissions,
-    () => settingsStore.get().ai.chat.tools,
-    chatEmit,
-    chatWorkspace,
-    chatMcp,
-    (entry) => chatStore.addAudit(entry),
-    chatWebSearch,
-    chatWebFetch
-  );
-  const chatService = new ChatService({
-    store: chatStore,
-    client: chatClient,
-    secrets: chatSecrets,
-    getDefaultModel: () => settingsStore.get().ai.chat.defaultModel,
-    getImageModel: () => settingsStore.get().ai.chat.imageModel,
-    getNaming: () => {
-      const c = settingsStore.get().ai.chat;
-      return {
-        enabled: c.autoName,
-        model: c.taskModel ?? c.defaultModel,
-        timing: c.namingTiming
-      };
-    },
-    getAutoTag: () => {
-      const c = settingsStore.get().ai.chat;
-      return { enabled: c.autoTag, model: c.taskModel ?? c.defaultModel };
-    },
-    getToolsMode: () => settingsStore.get().ai.chat.tools.mode,
-    getTools: () => settingsStore.get().ai.chat.tools,
-    getUsage: () => settingsStore.get().ai.chat.usage,
-    getPersonas: () => {
-      const c = settingsStore.get().ai.chat;
-      return { presets: c.personas, defaultId: c.defaultPersonaId };
-    },
-    isWebSearchReady,
-    isWebFetchReady,
-    getMcpToolDefs: () => chatMcp.getToolDefs(),
-    skills: chatSkills,
-    toolExecutor: chatToolExecutor,
-    imageProvider: chatImageProvider,
-    imageStorage: chatImageStorage,
-    workspace: chatWorkspace,
-    emit: chatEmit
-  });
-  // Hybrid keyword + semantic search over chat messages, sharing the embed worker.
-  // The write hook embeds each new message in the background as it's persisted.
-  const chatSearch = new ChatSearchService(chatStore, sharedEmbedder);
-  chatStore.setMessageWriteHook((m) => chatSearch.scheduleEmbed(m.id, m.content));
+  const openRouterSecrets = new OpenRouterSecrets();
 
-  registerChatIpc({
-    store: chatStore,
-    search: chatSearch,
-    secrets: chatSecrets,
-    service: chatService,
-    settingsStore,
-    permissions: chatPermissions,
-    mcp: chatMcp,
-    skills: chatSkills,
-    workspace: chatWorkspace,
-    imageStorage: chatImageStorage,
-    revealSkillsFolder: () => {
-      mkdirSync(personalSkillsDir, { recursive: true });
-      void shell.openPath(personalSkillsDir);
-    }
-  });
-
-  // Agent panes. Separate from Chat by design: it shares only the OpenRouter key
-  // and the settings store, both of which are app-wide.
+  // Agent panes.
   const agentEmit = (channel: string, payload: unknown): void => {
     const w = mainWindow;
     if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
@@ -1214,9 +995,7 @@ void app.whenReady().then(async () => {
     },
     emit: agentEmit
   });
-  // MCP servers for the Agent pane. Deliberately its own manager, its own
-  // config and its own secret store: Chat's are next door and stay there, so
-  // one pane's server list cannot change what the other can do.
+  // MCP servers for the Agent pane, with their own config and secret store.
   const agentMcpSecrets = new AgentMcpSecrets();
   // The authorization endpoint comes from the server's own metadata, so it is
   // not an address Fleet chose. Anything that is not a web address is refused
@@ -1240,7 +1019,7 @@ void app.whenReady().then(async () => {
 
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
-    getApiKey: () => chatSecrets.getKey(),
+    getApiKey: () => openRouterSecrets.getKey(),
     gate: agentGate,
     mcp: agentMcp,
     emit: agentEmit
@@ -1264,7 +1043,8 @@ void app.whenReady().then(async () => {
       setServers: (mcpServers) => settingsStore.set({ ai: { agent: { mcpServers } } })
     },
     getSettings: () => settingsStore.get().ai.agent,
-    getApiKey: () => chatSecrets.getKey()
+    getApiKey: () => openRouterSecrets.getKey(),
+    secrets: openRouterSecrets
   });
 
   // Cheap AI one-line pane summaries for the agent overview, throttled per pane
@@ -1285,13 +1065,17 @@ void app.whenReady().then(async () => {
       const inFlight = paneSummaryInFlight.get(req.paneId);
       if (inFlight) return inFlight;
 
-      const apiKey = chatSecrets.getKey();
+      const apiKey = openRouterSecrets.getKey();
       if (!apiKey) return '';
-      const c = settingsStore.get().ai.chat;
+      const a = settingsStore.get().ai.agent;
+      // The cheap model a session's title comes from, falling back to the model
+      // that writes the code when no separate one is set.
+      const model = a.titleModel ?? a.coding.model;
+      if (model === null) return '';
       const request = (async (): Promise<string> => {
-        const summary = await resolveSummary(chatClient, {
+        const summary = await resolveSummary(completeOnce, {
           apiKey,
-          model: c.taskModel ?? c.defaultModel,
+          model,
           tailText: req.tailText
         });
         if (summary) paneSummaryCache.set(req.paneId, { summary, at: Date.now() });
@@ -1331,7 +1115,7 @@ void app.whenReady().then(async () => {
   registerRemoteSshIpcHandlers(ptyManager);
 
   const learningsStoreRef = new LearningsStore(join(learningsHome, 'learnings.db'));
-  // Reuse the one shared embed worker constructed above (chat + learnings share it).
+  // Reuse the one shared embed worker constructed above.
   const learningsEmbedderRef = sharedEmbedder;
   learningsStore = learningsStoreRef;
   learningsEmbedder = learningsEmbedderRef;
@@ -1362,17 +1146,7 @@ void app.whenReady().then(async () => {
       log.error('learnings MCP startup failed', {
         error: err instanceof Error ? err.message : String(err)
       })
-    )
-    // Chat embedding backfill is independent of the learnings MCP — run it regardless
-    // of whether the MCP bound, but after (sequentially) so the two backfills don't
-    // contend for the shared inference thread at startup.
-    .finally(() => {
-      void runChatBackfill(chatStore, sharedEmbedder).catch((err: unknown) =>
-        log.error('chat embedding backfill failed', {
-          error: err instanceof Error ? err.message : String(err)
-        })
-      );
-    });
+    );
   sessionsService.startWatching(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.SESSIONS_CHANGED);
@@ -1395,7 +1169,6 @@ function shutdownAll(): void {
       error: err instanceof Error ? err.message : String(err)
     })
   );
-  imageService.shutdown();
   // Kills the running command and settles any permission question still on
   // screen as a refusal, so nothing starts on the way out.
   agentService?.cancelAll();
