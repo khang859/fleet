@@ -98,6 +98,7 @@ export function registerAgentMcpIpc(deps: McpIpcDeps): void {
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(SIGN_IN_TIMEOUT_MS)]);
     try {
       await deps.manager.signIn(name, signal);
+      await rememberOAuth(deps, name);
       return snapshot();
     } finally {
       if (running.get(name) === controller) running.delete(name);
@@ -160,6 +161,28 @@ export function registerAgentMcpIpc(deps: McpIpcDeps): void {
       return snapshot();
     }
   );
+}
+
+/**
+ * Write down that this server signs in with OAuth, once it has.
+ *
+ * A server imported from another tool arrives with no `auth` at all - the
+ * credential lived in that tool's own store, not in the config. Fleet finds out
+ * it needs one by being refused, and the user fixes it by signing in. Without
+ * this the discovery is thrown away the moment the app restarts: nothing would
+ * attach a provider on the next connect, so the stored tokens would never be
+ * sent and the server would ask all over again.
+ *
+ * Reconnects afterwards so the sign-in takes effect on the connection the user
+ * was waiting for, rather than on the next restart.
+ */
+async function rememberOAuth(deps: McpIpcDeps, name: string): Promise<void> {
+  const servers = deps.getServers();
+  const config = servers[name];
+  if (config === undefined || config.auth?.kind === 'oauth') return;
+
+  deps.setServers({ ...servers, [name]: { ...config, auth: { kind: 'oauth' } } });
+  await deps.manager.reload();
 }
 
 /**
