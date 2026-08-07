@@ -20,6 +20,15 @@ import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
 import { ActivityTracker } from './activity-tracker';
 import { NotificationStateManager } from './notification-state';
+import { ReportedActivity } from './reported-activity';
+import { routeActivityReport } from './activity-report';
+import {
+  attentionOf,
+  alertsFor,
+  channelsKeyFor,
+  VisiblePanesSchema,
+  ActivityReportSchema
+} from '../shared/attention';
 import { registerIpcHandlers } from './ipc-handlers';
 import { GitService } from './git-service';
 import { SettingsStore } from './settings-store';
@@ -109,6 +118,14 @@ import { ChatService } from './chat/chat-service';
 import { ChatSearchService } from './chat/chat-search-service';
 import { runChatBackfill } from './chat/chat-backfill';
 import { registerChatIpc } from './chat/chat-ipc';
+import { registerAgentIpc } from './agent/agent-ipc';
+import { AgentModelCatalog } from './agent/models-catalog';
+import { AgentService } from './agent/agent-service';
+import { AgentSessionStore } from './agent/session-store';
+import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './agent/image-store';
+import { PermissionGate } from './agent/permissions/gate';
+import { AgentGitWatcher } from './agent/git-watch';
+import { AgentHistoryStore } from './agent/history-store';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
 import { resolveSummary } from './chat/pane-summarizer';
 import { PermissionManager } from './chat/permissions/permission-manager';
@@ -143,6 +160,7 @@ let sessionsService: SessionsService | null = null;
 let learningsStore: LearningsStore | undefined;
 let learningsEmbedder: WorkerEmbedder | undefined;
 let learningsMcp: LearningsMcpServer | undefined;
+let agentService: AgentService | null = null;
 let kanbanStore: KanbanStore | undefined;
 let kanbanMcp: KanbanMcpServer | undefined;
 let kanbanDispatcher: KanbanDispatcher | undefined;
@@ -175,6 +193,15 @@ const activityTracker = new ActivityTracker(eventBus, {
   processPollingIntervalMs: 2000,
   getProcessName: (paneId) => ptyManager.getProcessName(paneId)
 });
+const reportedActivity = new ReportedActivity();
+/**
+ * The panes the user can currently see, as the renderer last described them.
+ *
+ * Only the renderer knows this - it owns the tabs and the splits - and only
+ * main knows whether the window is focused. An alert is chosen from both, so
+ * the two halves have to meet, and this is the half that travels.
+ */
+let visiblePaneIds = new Set<string>();
 const cwdPoller = new CwdPoller(eventBus, ptyManager);
 const imageService = new ImageService();
 const ANNOTATIONS_DIR = join(homedir(), '.fleet', 'annotations');
@@ -270,6 +297,16 @@ function createWindow(): void {
     log.error('renderer failed to load', { errorCode, errorDescription });
   });
 
+  /*
+   * A reload throws away everything the renderer knew, including which panes
+   * were mid-turn. An agent turn parked on a permission question is waiting on
+   * a click from a window that no longer exists, and the fresh renderer has no
+   * thread to deliver the question to, so nothing would ever answer it.
+   */
+  mainWindow.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame) agentService?.cancelAll();
+  });
+
   // Intercept navigation away from app (e.g. <a href> without target)
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (!url.startsWith('http://localhost') && !url.startsWith('file://')) {
@@ -332,6 +369,11 @@ function createWindow(): void {
 }
 
 app.setName('Fleet');
+
+// Windows shows a toast only for an app it can identify, and says nothing at
+// all - no error, no toast - for one it cannot. Matches `appId` in
+// electron-builder.yml, which is what the installed shortcut is stamped with.
+if (process.platform === 'win32') app.setAppUserModelId('com.fleet.app');
 
 // fleet-drive: enable CDP so `npm run drive` can attach to this dev window.
 // Dev-only, loopback-only, per-checkout port. Never present in packaged builds.
@@ -658,7 +700,14 @@ void app.whenReady().then(async () => {
   // already opt out of its OS notification/sound.
   function updateChrome(): void {
     const settings = settingsStore.get();
-    const counts = activityTracker.getCounts();
+    const watched = activityTracker.getCounts();
+    const reported = reportedActivity.getCounts();
+    // Panes main watches and panes that report themselves are one population to
+    // the dock: the user counting badges is not counting shells.
+    const counts = {
+      needsMe: watched.needsMe + reported.needsMe,
+      error: watched.error + reported.error
+    };
     const needsMe = settings.notifications.needsPermission.badge ? counts.needsMe : 0;
     const errorCount = settings.notifications.processExitError.badge ? counts.error : 0;
     const total = needsMe + errorCount;
@@ -758,6 +807,15 @@ void app.whenReady().then(async () => {
   let osNotifTimer: ReturnType<typeof setTimeout> | null = null;
   const OS_NOTIF_BATCH_MS = 500; // batch window for coalescing
 
+  /**
+   * Notifications still waiting to be clicked.
+   *
+   * Held only so they are not collected before the user answers them: a
+   * `Notification` nothing refers to can be swept up with its click handler,
+   * and the banner then does nothing when clicked.
+   */
+  const liveNotifications = new Set<Notification>();
+
   function flushOsNotifications(): void {
     if (pendingOsNotifications.length === 0) return;
 
@@ -772,11 +830,22 @@ void app.whenReady().then(async () => {
 
     let body: string;
     if (batch.length === 1) {
-      body = hasPermission
-        ? 'An agent needs your permission'
-        : hasError
-          ? 'A process exited with an error'
-          : 'Task completed';
+      // Named where we can. With several panes running, "an agent" is the one
+      // thing the user already knows and the folder is what they need. Only a
+      // pane that reports itself has a name to use; a terminal is described the
+      // way it always was.
+      const where = reportedActivity.labelOf(batch[0].paneId);
+      if (hasPermission) {
+        body =
+          where === undefined
+            ? 'An agent needs your permission'
+            : `Agent in ${where} needs your permission`;
+      } else if (hasError) {
+        body =
+          where === undefined ? 'A process exited with an error' : `Agent in ${where} hit an error`;
+      } else {
+        body = where === undefined ? 'Task completed' : `Agent in ${where} finished`;
+      }
     } else {
       const parts: string[] = [];
       const permCount = batch.filter((n) => n.level === 'permission').length;
@@ -789,7 +858,17 @@ void app.whenReady().then(async () => {
     }
 
     const notif = new Notification({ title: 'Fleet', body });
+    liveNotifications.add(notif);
+    notif.on('close', () => liveNotifications.delete(notif));
+    // macOS refuses to show these at all for a binary it cannot verify, and
+    // says so only here. Without this the failure is silent and looks like a
+    // notification the user missed.
+    notif.on('failed', (_event, error) => {
+      liveNotifications.delete(notif);
+      log.warn('desktop notification failed', { error });
+    });
     notif.on('click', () => {
+      liveNotifications.delete(notif);
       mainWindow?.show();
       mainWindow?.focus();
       // Focus the first pane from the batch (most recent high-priority)
@@ -802,23 +881,59 @@ void app.whenReady().then(async () => {
     notif.show();
   }
 
-  eventBus.on('notification', (event) => {
+  /**
+   * Raise one event, as loudly as the distance to the user warrants.
+   *
+   * The choice is made here, in main, for every pane: only main knows whether
+   * the window is focused, and a second opinion in the renderer would be a
+   * second chance to disagree. The renderer is told to chime rather than
+   * deciding to - which is also what keeps a desktop notification and a chime
+   * from both announcing the same question.
+   */
+  function raiseAlerts(paneId: string, level: NotificationLevel): void {
     const settings = settingsStore.get();
+    const attention = attentionOf({
+      windowFocused: mainWindow?.isFocused() === true,
+      paneVisible: visiblePaneIds.has(paneId)
+    });
+    const alerts = alertsFor(attention, level, settings.notifications[channelsKeyFor(level)]);
 
-    const notifKeyMap: Record<NotificationLevel, keyof typeof settings.notifications> = {
-      permission: 'needsPermission',
-      error: 'processExitError',
-      info: 'taskComplete',
-      subtle: 'processExitClean'
-    };
-    const settingsKey = notifKeyMap[event.level];
-
-    const config = settings.notifications[settingsKey];
-
-    if (config.os) {
-      pendingOsNotifications.push({ paneId: event.paneId, level: event.level });
+    if (alerts.chime) {
+      const w = mainWindow;
+      if (w && !w.isDestroyed()) w.webContents.send(IPC_CHANNELS.ACTIVITY_CHIME);
+    }
+    if (alerts.os) {
+      pendingOsNotifications.push({ paneId, level });
       osNotifTimer ??= setTimeout(flushOsNotifications, OS_NOTIF_BATCH_MS);
     }
+  }
+
+  eventBus.on('notification', (event) => {
+    raiseAlerts(event.paneId, event.level);
+  });
+
+  ipcMain.on(IPC_CHANNELS.ACTIVITY_VISIBLE_PANES, (_event, payload: unknown) => {
+    const parsed = VisiblePanesSchema.safeParse(payload);
+    if (!parsed.success) return;
+    visiblePaneIds = new Set(parsed.data);
+  });
+
+  ipcMain.on(IPC_CHANNELS.ACTIVITY_REPORT, (_event, payload: unknown) => {
+    const parsed = ActivityReportSchema.safeParse(payload);
+    if (!parsed.success) return;
+    routeActivityReport(parsed.data, {
+      isWatched: (paneId) => activityTracker.getState(paneId) !== undefined,
+      reported: reportedActivity,
+      emitNotification: (paneId, level) =>
+        eventBus.emit('notification', {
+          type: 'notification',
+          paneId,
+          level,
+          timestamp: Date.now()
+        }),
+      raiseAlerts,
+      updateChrome
+    });
   });
 
   // --- Auto-updater: unified status pipeline ---
@@ -1527,6 +1642,54 @@ void app.whenReady().then(async () => {
     }
   });
 
+  // Agent panes. Separate from Chat by design: it shares only the OpenRouter key
+  // and the settings store, both of which are app-wide.
+  const agentEmit = (channel: string, payload: unknown): void => {
+    const w = mainWindow;
+    if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
+  };
+  const agentGitWatcher = new AgentGitWatcher((paneId, head) =>
+    agentEmit(IPC_CHANNELS.AGENT_GIT_HEAD, { paneId, head })
+  );
+  // Someone who switched branch in a terminal outside Fleet is most likely to
+  // look at the pane the moment they come back to it, so coming back is when
+  // every pane re-reads. FSEvents also coalesces across sleep, and this is what
+  // covers the wake.
+  app.on('browser-window-focus', () => agentGitWatcher.refreshAll());
+
+  const agentGate = new PermissionGate({
+    getRules: () => settingsStore.get().ai.agent.permissions,
+    persistAllow: (rule) => {
+      const { permissions } = settingsStore.get().ai.agent;
+      if (permissions.allow.includes(rule)) return;
+      settingsStore.set({
+        ai: { agent: { permissions: { ...permissions, allow: [...permissions.allow, rule] } } }
+      });
+    },
+    emit: agentEmit
+  });
+  agentService = new AgentService({
+    getSettings: () => settingsStore.get().ai.agent,
+    getApiKey: () => chatSecrets.getKey(),
+    gate: agentGate,
+    emit: agentEmit
+  });
+  const agentSessions = new AgentSessionStore();
+  // Once, here, before any pane has had the chance to attach anything: a
+  // picture that has not been sent yet is a folder with no session behind it.
+  agentSessions.sweep();
+  registerAgentIpc({
+    catalog: new AgentModelCatalog(join(app.getPath('userData'), 'agent-models-dev.json')),
+    service: agentService,
+    gate: agentGate,
+    sessions: agentSessions,
+    attachments: new AgentImageStore(AGENT_ATTACHMENTS_DIR),
+    git: agentGitWatcher,
+    history: new AgentHistoryStore(),
+    getSettings: () => settingsStore.get().ai.agent,
+    getApiKey: () => chatSecrets.getKey()
+  });
+
   // Cheap AI one-line pane summaries for the agent overview, throttled per pane
   // so the overview polling on an interval doesn't re-call the model every tick.
   const paneSummaryCache = new Map<string, { summary: string; at: number }>();
@@ -1664,6 +1827,9 @@ function shutdownAll(): void {
     })
   );
   imageService.shutdown();
+  // Kills the running command and settles any permission question still on
+  // screen as a refusal, so nothing starts on the way out.
+  agentService?.cancelAll();
   sessionsService?.dispose();
   annotateService.destroy();
   kanbanDispatcher?.stop();

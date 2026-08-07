@@ -1,5 +1,5 @@
 import type { PermissionRules, PermissionVerdict } from '../../../shared/chat-permissions';
-import { splitShellCommand } from './shell-split';
+import { splitShellCommand } from '../../../shared/shell-split';
 
 /** A parsed rule: a tool name and a glob pattern (`*` is the only wildcard). */
 export type ParsedRule = { tool: string; pattern: string };

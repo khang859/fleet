@@ -12,7 +12,10 @@ export default defineConfig({
           'fleet-cli': 'src/main/fleet-cli.ts',
           // Worker-thread entry for transformers.js embeddings; loaded by
           // embed-service.ts via new Worker(new URL('./embed-worker.mjs', ...)).
-          'embed-worker': 'src/main/learnings/embed-worker.ts'
+          'embed-worker': 'src/main/learnings/embed-worker.ts',
+          // Worker-thread entry for reading attached PDFs; loaded by
+          // agent/pdf/parse.ts via new Worker(new URL('./pdf-worker.mjs', ...)).
+          'pdf-worker': 'src/main/agent/pdf/worker.ts'
         },
         output: { format: 'es' }
       }

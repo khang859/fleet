@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useWorkspaceStore, collectPaneLeafs } from '../workspace-store';
+import { useWorkspaceStore, collectPaneLeafs, agentSessionsInUse } from '../workspace-store';
 import { useCwdStore } from '../cwd-store';
 import type { Workspace } from '../../../../shared/types';
 
@@ -248,6 +248,72 @@ describe('getAllPaneIds', () => {
     expect(ids.has('pane-a1')).toBe(true);
     expect(ids.has('pane-b1')).toBe(true);
     expect(ids.has('pane-c1')).toBe(true);
+  });
+});
+
+/**
+ * The Sessions list asks this before it offers to delete a log: a session two
+ * panes are both holding is one another pane is still writing to.
+ */
+describe('agentSessionsInUse', () => {
+  const withAgentPanes = (...sessionIds: Array<string | undefined>): void => {
+    useWorkspaceStore.setState({
+      workspace: {
+        ...WS_A,
+        tabs: sessionIds.map((agentSessionId, i) => ({
+          id: `tab-agent-${i}`,
+          label: 'Agent',
+          labelIsCustom: false,
+          cwd: '/tmp',
+          splitRoot: {
+            type: 'leaf' as const,
+            id: `pane-agent-${i}`,
+            cwd: '/tmp',
+            paneType: 'agent' as const,
+            agentSessionId
+          }
+        }))
+      }
+    });
+  };
+
+  it('finds the session behind every agent pane, in every tab', () => {
+    withAgentPanes('sess-1', 'sess-2');
+
+    expect(agentSessionsInUse()).toEqual(new Set(['sess-1', 'sess-2']));
+  });
+
+  it('passes over panes that are not on a session', () => {
+    withAgentPanes('sess-1', undefined);
+
+    expect(agentSessionsInUse()).toEqual(new Set(['sess-1']));
+  });
+
+  it('reaches panes inside a split, not only the tab root', () => {
+    useWorkspaceStore.setState({
+      workspace: {
+        ...WS_A,
+        tabs: [
+          {
+            id: 'tab-split',
+            label: 'Split',
+            labelIsCustom: false,
+            cwd: '/tmp',
+            splitRoot: {
+              type: 'split',
+              direction: 'horizontal',
+              ratio: 0.5,
+              children: [
+                { type: 'leaf', id: 'pane-l', cwd: '/tmp', agentSessionId: 'sess-left' },
+                { type: 'leaf', id: 'pane-r', cwd: '/tmp', agentSessionId: 'sess-right' }
+              ]
+            }
+          }
+        ]
+      }
+    });
+
+    expect(agentSessionsInUse()).toEqual(new Set(['sess-left', 'sess-right']));
   });
 });
 
@@ -747,5 +813,57 @@ describe('ensureKanbanTab', () => {
     });
     useWorkspaceStore.getState().closeTab('k1');
     expect(useWorkspaceStore.getState().workspace.tabs.some((t) => t.id === 'k1')).toBe(true);
+  });
+});
+
+describe('terminalBeside', () => {
+  /** A tab holding one agent pane, the way openAgentPane leaves it. */
+  const agentTab = {
+    id: 'tab-agent',
+    label: 'proj',
+    labelIsCustom: true,
+    cwd: '/proj',
+    type: 'agent' as const,
+    splitRoot: { type: 'leaf' as const, id: 'pane-agent', cwd: '/proj', paneType: 'agent' as const }
+  };
+
+  beforeEach(() => {
+    useWorkspaceStore.setState({
+      workspace: { ...WS_A, tabs: [...WS_A.tabs, agentTab] }
+    });
+  });
+
+  it('splits a terminal below the agent when the tab has none', () => {
+    const paneId = useWorkspaceStore.getState().terminalBeside('pane-agent');
+
+    const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === 'tab-agent')!;
+    expect(tab.splitRoot.type === 'split' && tab.splitRoot.direction).toBe('vertical');
+    expect(collectPaneLeafs(tab.splitRoot).map((l) => l.id)).toContain(paneId);
+    // It opens where the agent works, so the command lands in the right folder.
+    expect(collectPaneLeafs(tab.splitRoot).find((l) => l.id === paneId)?.cwd).toBe('/proj');
+  });
+
+  // Asking twice is a conversation that needed the user twice, not a reason to
+  // tile the tab with terminals.
+  it('reuses the terminal it opened the first time', () => {
+    const first = useWorkspaceStore.getState().terminalBeside('pane-agent');
+    const second = useWorkspaceStore.getState().terminalBeside('pane-agent');
+
+    expect(second).toBe(first);
+    const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === 'tab-agent')!;
+    expect(collectPaneLeafs(tab.splitRoot)).toHaveLength(2);
+  });
+
+  it('puts the user in front of the terminal it chose', () => {
+    useWorkspaceStore.setState({ activeTabId: 'tab-a1', activePaneId: 'pane-a1' });
+
+    const paneId = useWorkspaceStore.getState().terminalBeside('pane-agent');
+
+    expect(useWorkspaceStore.getState().activeTabId).toBe('tab-agent');
+    expect(useWorkspaceStore.getState().activePaneId).toBe(paneId);
+  });
+
+  it('has nowhere to put a command from a pane that is gone', () => {
+    expect(useWorkspaceStore.getState().terminalBeside('pane-closed')).toBeNull();
   });
 });

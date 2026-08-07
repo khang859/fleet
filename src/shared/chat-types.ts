@@ -1,3 +1,4 @@
+import { DEFAULT_AGENT_SETTINGS, type AgentSettings } from './agent-types';
 import { DEFAULT_PERMISSION_RULES, type PermissionRules } from './chat-permissions';
 import type { McpServersConfig } from './mcp-types';
 import type { SkillsOverlay } from './skill-types';
@@ -318,6 +319,8 @@ export type ChatAuditEntry = {
 /** Capability-namespaced AI settings. Future: image, video slot in here additively. */
 export type AiSettings = {
   chat: ChatSettings;
+  /** Shared by every native Agent pane. */
+  agent: AgentSettings;
 };
 
 export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
@@ -344,7 +347,8 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
 };
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
-  chat: DEFAULT_CHAT_SETTINGS
+  chat: DEFAULT_CHAT_SETTINGS,
+  agent: DEFAULT_AGENT_SETTINGS
 };
 
 /** One message in an OpenRouter chat-completions request. */

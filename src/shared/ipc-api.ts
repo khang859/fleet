@@ -102,6 +102,21 @@ export type ActivityStatePayload = {
   timestamp: number;
 };
 
+/**
+ * A pane telling main what it is doing.
+ *
+ * Terminals are watched by main, which sees their process. A pane that runs no
+ * process - an agent pane - is the only one who knows, so it says so. `gone`
+ * is the pane closing: no `pane-closed` is emitted for a pane without a PTY,
+ * and a record left behind is a dock badge that never clears.
+ */
+export type ActivityReportPayload = {
+  paneId: string;
+  state: ActivityState | 'gone';
+  /** What to call this pane in a desktop notification, where it has no glyph. */
+  label?: string;
+};
+
 export type PaneFocusedPayload = {
   paneId: string;
 };

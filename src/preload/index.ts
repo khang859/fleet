@@ -27,6 +27,7 @@ import type {
   LogEntry,
   DiagnosticsInfo,
   ActivityStatePayload,
+  ActivityReportPayload,
   RemoteStatePayload,
   WorktreeCreateRequest,
   WorktreeCreateResponse,
@@ -141,6 +142,31 @@ import type {
   EnvTrashResult
 } from '../shared/env-editor-types';
 import type { NoteReadResult, NoteWriteResult } from '../shared/notes-types';
+import type {
+  AgentAttachRequest,
+  AgentAttachResult,
+  AgentCatalog,
+  AgentCompactDone,
+  AgentCompactRequest,
+  AgentHandOff,
+  AgentImagePartial,
+  AgentMentionMatch,
+  AgentPermissionAsk,
+  AgentPermissionDecision,
+  AgentSendRequest,
+  AgentStreamDelta,
+  AgentStreamDone,
+  AgentStreamError,
+  AgentTitleRequest,
+  AgentTitleResult,
+  AgentToolEvent
+} from '../shared/agent-types';
+import type {
+  AgentSessionAppend,
+  AgentSessionListItem,
+  AgentSessionReplay
+} from '../shared/agent-session';
+import type { AgentGitHeadEvent } from '../shared/agent-git';
 import type {
   DetectedSshHost,
   RemoteDirEntry,
@@ -287,7 +313,14 @@ const fleetApi = {
   },
   activity: {
     onStateChange: (callback: (payload: ActivityStatePayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.ACTIVITY_STATE, callback)
+      onChannel(IPC_CHANNELS.ACTIVITY_STATE, callback),
+    /** Tell main what the user can see, so it can judge how loudly to say things. */
+    visiblePanes: (paneIds: string[]): void =>
+      ipcRenderer.send(IPC_CHANNELS.ACTIVITY_VISIBLE_PANES, paneIds),
+    /** Report a pane that has no process for main to watch. */
+    report: (payload: ActivityReportPayload): void =>
+      ipcRenderer.send(IPC_CHANNELS.ACTIVITY_REPORT, payload),
+    onChime: (callback: () => void): Unsubscribe => onChannel(IPC_CHANNELS.ACTIVITY_CHIME, callback)
   },
   ai: {
     summarizePane: async (paneId: string, tailText: string): Promise<string> =>
@@ -843,6 +876,84 @@ const fleetApi = {
         expectedMtimeMs,
         pathContext
       )
+  },
+
+  /**
+   * Agent panes. Settings live in `settings.ai.agent` and the OpenRouter key is
+   * the one under `chat`, so what is agent-specific is the model catalog and
+   * the turn itself. The caller mints the stream id and every event carries it.
+   */
+  agent: {
+    listModels: async (refresh = false): Promise<AgentCatalog> =>
+      typedInvoke<AgentCatalog>(IPC_CHANNELS.AGENT_LIST_MODELS, refresh),
+    send: (req: AgentSendRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_SEND, req),
+    compact: (req: AgentCompactRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_COMPACT, req),
+    cancel: (streamId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_CANCEL, streamId),
+    onStreamChunk: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_STREAM_CHUNK, cb),
+    onStreamReasoning: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_STREAM_REASONING, cb),
+    onStreamDone: (cb: (p: AgentStreamDone) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_STREAM_DONE, cb),
+    onStreamError: (cb: (p: AgentStreamError) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_STREAM_ERROR, cb),
+    onCompactDone: (cb: (p: AgentCompactDone) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_COMPACT_DONE, cb),
+    onToolStart: (cb: (p: AgentToolEvent) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_TOOL_START, cb),
+    onToolEnd: (cb: (p: AgentToolEvent) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_TOOL_END, cb),
+    /** A render on the way to a finished image. May never fire. */
+    onImagePartial: (cb: (p: AgentImagePartial) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_IMAGE_PARTIAL, cb),
+    onHandOff: (cb: (p: AgentHandOff) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_HAND_OFF, cb),
+    onPermissionAsk: (cb: (p: AgentPermissionAsk) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_PERMISSION_ASK, cb),
+    decidePermission: (req: AgentPermissionDecision): void =>
+      ipcRenderer.send(IPC_CHANNELS.AGENT_PERMISSION_DECIDE, req),
+    /** Fire-and-forget: a failed write must not stall the turn that caused it. */
+    appendSession: (req: AgentSessionAppend): void =>
+      ipcRenderer.send(IPC_CHANNELS.AGENT_SESSION_APPEND, req),
+    loadSession: async (sessionId: string): Promise<AgentSessionReplay> =>
+      typedInvoke<AgentSessionReplay>(IPC_CHANNELS.AGENT_SESSION_LOAD, sessionId),
+    listSessions: async (cwd: string): Promise<AgentSessionListItem[]> =>
+      typedInvoke<AgentSessionListItem[]>(IPC_CHANNELS.AGENT_SESSION_LIST, cwd),
+    deleteSession: async (sessionId: string): Promise<boolean> =>
+      typedInvoke<boolean>(IPC_CHANNELS.AGENT_SESSION_DELETE, sessionId),
+    /**
+     * A `null` title means nothing usable came back and the caller keeps its
+     * own fallback - but the call still has its cost to report, which is why
+     * this is a pair rather than a name.
+     */
+    generateTitle: async (req: AgentTitleRequest): Promise<AgentTitleResult> =>
+      typedInvoke<AgentTitleResult>(IPC_CHANNELS.AGENT_GENERATE_TITLE, req),
+    /** Refusals come back in the result, so the composer can say why. */
+    attach: async (req: AgentAttachRequest): Promise<AgentAttachResult> =>
+      typedInvoke<AgentAttachResult>(IPC_CHANNELS.AGENT_ATTACH, req),
+    mentionSearch: async (query: string, cwd: string): Promise<AgentMentionMatch[]> =>
+      typedInvoke<AgentMentionMatch[]>(IPC_CHANNELS.AGENT_MENTION_SEARCH, query, cwd),
+    /**
+     * Which branch the pane's folder is on. Registering answers on `onGitHead`
+     * straight away, so there is no separate first read to wait for.
+     */
+    watchGit: (paneId: string, cwd: string): void =>
+      ipcRenderer.send(IPC_CHANNELS.AGENT_GIT_WATCH, paneId, cwd),
+    unwatchGit: (paneId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_GIT_UNWATCH, paneId),
+    /** For a change a watcher cannot see - a tool call that may have checked out. */
+    refreshGit: (paneId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_GIT_REFRESH, paneId),
+    onGitHead: (cb: (p: AgentGitHeadEvent) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_GIT_HEAD, cb),
+    /**
+     * What the composer's Up key walks back through. Asked for once when a pane
+     * opens - a hundred short strings, held in the renderer after that, because
+     * a keypress that waits on a round trip does not feel like a keypress.
+     */
+    historyList: async (cwd: string): Promise<string[]> =>
+      typedInvoke<string[]>(IPC_CHANNELS.AGENT_HISTORY_LIST, cwd),
+    /** Fire-and-forget beside a send: failing to record must not fail the send. */
+    historyAdd: (cwd: string, text: string): void =>
+      ipcRenderer.send(IPC_CHANNELS.AGENT_HISTORY_ADD, cwd, text)
   },
 
   /**

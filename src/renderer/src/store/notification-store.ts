@@ -22,6 +22,7 @@ type NotificationStore = {
   activities: Map<string, ActivityRecord>;
   setNotification: (record: NotificationRecord) => void;
   setActivity: (record: ActivityRecord) => void;
+  clearActivity: (paneId: string) => void;
   clearPane: (paneId: string) => void;
   getTabBadge: (paneIds: string[]) => NotificationLevel | null;
   getActivity: (paneId: string) => ActivityRecord | undefined;
@@ -72,6 +73,24 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
     set((state) => {
       const next = new Map(state.activities);
       next.set(record.paneId, record);
+      return { activities: next };
+    });
+  },
+
+  /**
+   * Forget a pane's activity outright, for panes that report their own.
+   *
+   * `clearPane` deliberately leaves activity alone, because for a terminal it
+   * is live state main will correct on its own. A pane that has gone has
+   * nobody left to correct it, and a stale `needs_me` is worse than none: it
+   * is what "jump to the agent that needs input" would send the user to.
+   */
+  clearActivity: (paneId) => {
+    log.debug('clearActivity', { paneId });
+    set((state) => {
+      if (!state.activities.has(paneId)) return { activities: state.activities };
+      const next = new Map(state.activities);
+      next.delete(paneId);
       return { activities: next };
     });
   },

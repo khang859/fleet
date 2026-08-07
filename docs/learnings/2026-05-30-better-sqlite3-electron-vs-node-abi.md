@@ -40,3 +40,19 @@ npx electron-rebuild -f -w better-sqlite3
    So `npm test` and `npm run dev` each rebuild for their own ABI on the way in — no manual `electron-rebuild` step, no clobbering.
 4. **Bootstrap ordering is a latent footgun.** Registering IPC handlers as the last line after several `await`/throwable calls means any earlier failure silently strips the whole feature's IPC. Consider registering handlers early / wrapping risky bootstrap steps so one failure doesn't take down unrelated wiring.
 5. **(2026-06-09) The self-healing hooks have two bypasses.** `npx vitest run` skips the `pretest` hook (only `npm test` triggers it), and `electron-builder install-app-deps` can report "finished" while leaving a stale Node-ABI binary in place (its staleness check trusts a marker, not the actual ABI). When `npm run dev` still hits `NODE_MODULE_VERSION` after a rebuild "succeeded", force it: `./node_modules/.bin/electron-rebuild --force --module-dir . --which-module better-sqlite3`.
+6. **(2026-08-06) Bypass #5 is now closed.** `rebuild:electron` chains the forced rebuild after `install-app-deps`:
+
+   ```
+   "rebuild:electron": "electron-builder install-app-deps && electron-rebuild -f -w better-sqlite3"
+   ```
+
+   The forced pass costs ~2s because it installs a prebuilt binary rather than compiling, so `predev` pays it every time and `npm run dev` can no longer start against a Node-ABI binary. `npx vitest run` still bypasses `pretest`, so that half of the trap remains: after a bare `npx vitest run`, the next `npm run dev` heals itself, but a bare `npx vitest run` on an Electron-ABI binary still fails with the mirror-image error.
+
+## What it looks like when only *part* of the bootstrap is gone
+
+Worth knowing, because the app does not crash and nothing on screen says "broken":
+
+- The window opens, panes render, terminals work. Only the features whose `registerXIpc(...)` sits after the throwing line are dead, and they fail as *empty* rather than as errors: the OpenRouter key field looks unset when a key is saved, the session list shows nothing, the model catalog falls back to cache.
+- The tell is in the main-process output: `No handler registered for 'chat:has-key'` and friends. Everything registered before the throw still answers, which is why the app feels ~80% alive.
+- **`npm run dev > file 2>&1` captures none of this** - the output is swallowed when stdout is not a tty. Use `script -q file npm run dev` to get a pty and see the startup log.
+- Restarting needs `pkill -9 -f electron-vite` **and** `pkill -9 -f node_modules/electron/dist`. A survivor keeps port 57856, the new instance cannot bind it, and `fleet-drive` then times out on `connectOverCDP` against the corpse.

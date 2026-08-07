@@ -36,6 +36,13 @@ npm run drive -- eval "__FLEET__.stores.workspace.getState().activeTabId"
 
 Theme is React state, not a store - read it from the DOM.
 
+The expression may be async, and what it resolves to is what gets printed.
+That is how to check something that only settles after the UI has moved - a drag, an animation, a round of state:
+
+```
+npm run drive -- eval "(async () => { el.dispatchEvent(ev); await new Promise(r => setTimeout(r, 300)); return getComputedStyle(el).transform })()"
+```
+
 ## Notes
 
 - Each checkout uses a stable per-checkout debug port (override: `FLEET_DEBUG_PORT`).

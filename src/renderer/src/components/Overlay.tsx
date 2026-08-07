@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePresence } from '../hooks/use-presence';
 import { overlayExitMs, overlayTiming } from '../lib/motion';
 
@@ -36,6 +36,11 @@ export function Overlay({
   backdropClassName = 'bg-black/60'
 }: OverlayProps): React.JSX.Element | null {
   const { mounted, state } = usePresence(open, overlayExitMs);
+  // A click closes only when the press that produced it also began on the
+  // backdrop. Otherwise a gesture that starts inside the panel and ends outside
+  // it - dragging a zoomed image, selecting to the end of a line - dismisses
+  // the thing the user was working in.
+  const pressedBackdrop = useRef(false);
 
   useEffect(() => {
     if (!open || !closeOnEscape) return;
@@ -51,12 +56,16 @@ export function Overlay({
   return (
     <div
       data-state={state}
-      onClick={closeOnBackdrop ? onClose : undefined}
+      onPointerDown={(e) => {
+        pressedBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (closeOnBackdrop && pressedBackdrop.current && e.target === e.currentTarget) onClose();
+      }}
       className={`fixed inset-0 z-50 flex ${containerClassName} ${backdropClassName} ${overlayTiming} data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0`}
     >
       <div
         data-state={state}
-        onClick={(e) => e.stopPropagation()}
         className={`${overlayTiming} data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:slide-out-to-bottom-2 fleet-shadow-overlay ${panelClassName}`}
       >
         {children}

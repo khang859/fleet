@@ -114,7 +114,7 @@ function ReasoningPanel({
       >
         <ChevronRight size={12} className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
         {thinking ? (
-          <span className="chat-shimmer-text font-medium">
+          <span className="fleet-shimmer-text font-medium">
             Thinking… {formatThoughtTime(elapsedMs)}
           </span>
         ) : (
@@ -432,7 +432,7 @@ function ReengageOnNewStream({ animation }: { animation: ScrollBehavior }): null
 function WaitingIndicator(): React.JSX.Element {
   return (
     <div className="py-1" aria-hidden="true">
-      <span className="chat-shimmer-text text-sm font-medium">Thinking…</span>
+      <span className="fleet-shimmer-text text-sm font-medium">Thinking…</span>
     </div>
   );
 }

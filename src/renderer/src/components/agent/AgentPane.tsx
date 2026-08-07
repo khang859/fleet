@@ -1,0 +1,208 @@
+import { useEffect, useRef, useState } from 'react';
+import { z } from 'zod';
+import { Bot, History, SlidersHorizontal } from 'lucide-react';
+import { AgentThread } from './AgentThread';
+import { AgentSessionsTab } from './AgentSessionsTab';
+import { AgentTodoPanel } from './AgentTodoPanel';
+import { showTodoPanel } from './todo-view';
+import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
+import { BackgroundLayer } from '../BackgroundLayer';
+import { useAgentStore } from '../../store/agent-store';
+import { useElementWidth } from '../../hooks/use-element-width';
+import { resolveBackgroundSrc } from '../../lib/pane-background';
+import { getGlassCssVars } from '../../lib/theme';
+import type { AgentTodoItem } from '../../../../shared/agent-todos';
+import type { TerminalBackground } from '../../../../shared/types';
+import type { SlideshowFrame } from '../../hooks/use-slideshow';
+
+type AgentView = 'agent' | 'sessions' | 'settings';
+
+/** Stable empty list, so a pane with no thread does not resubscribe every render. */
+const EMPTY_TODOS: AgentTodoItem[] = [];
+
+/** The pane a `fleet:refocus-pane` event is about. */
+const RefocusDetail = z.object({ paneId: z.string() });
+
+const TABS = [
+  { value: 'agent', label: 'Agent', Icon: Bot },
+  { value: 'sessions', label: 'Sessions', Icon: History },
+  { value: 'settings', label: 'Settings', Icon: SlidersHorizontal }
+] as const satisfies ReadonlyArray<{ value: AgentView; label: string; Icon: typeof Bot }>;
+
+/**
+ * Native agent pane: a thread rooted in one folder, plus the settings every
+ * agent pane shares - they run on the same provider and models and differ only
+ * in the folder they work in.
+ */
+export function AgentPane({
+  paneId,
+  cwd,
+  sessionId,
+  terminalBackground,
+  slideshowFrame
+}: {
+  paneId: string;
+  cwd: string;
+  /** Absent on panes created before sessions existed; those stay in memory. */
+  sessionId?: string;
+  /** The same picture the terminals are showing - one setting, one look. */
+  terminalBackground?: TerminalBackground;
+  slideshowFrame?: SlideshowFrame;
+}): React.JSX.Element {
+  const [view, setView] = useState<AgentView>('agent');
+  const loadModels = useAgentStore((s) => s.loadModels);
+  const openSession = useAgentStore((s) => s.openSession);
+  const todos = useAgentStore((s) => s.threads[paneId]?.todos ?? EMPTY_TODOS);
+  const streaming = useAgentStore((s) => (s.threads[paneId]?.streamId ?? null) !== null);
+
+  // The pane rather than the window: this is one cell of a split the user
+  // drags, so how much room there is here says nothing about how much there is
+  // anywhere else.
+  const frameRef = useRef<HTMLDivElement>(null);
+  const paneWidth = useElementWidth(frameRef);
+  // The panel's width rule depends on whether it is already up, so it has to
+  // read its own last answer. Safe to write during render: the rule is monotone
+  // in `shown`, so feeding an answer back in reproduces it - one pass reaches a
+  // fixed point, and a second render with the same inputs cannot land anywhere
+  // else.
+  const shownRef = useRef(false);
+  const panelled = showTodoPanel(todos, {
+    width: paneWidth,
+    streaming,
+    shown: shownRef.current
+  });
+  shownRef.current = panelled;
+
+  // Not only for the settings screen: the catalog carries the context limits,
+  // and without them the pane cannot tell how full it is or compact on its own.
+  // Loading it is idempotent and cached in main, so opening a pane is cheap.
+  useEffect(() => {
+    void loadModels();
+  }, [loadModels]);
+
+  // The thread this pane left behind. Reading it is what makes the pane the
+  // same conversation after a restart rather than a new one in the same folder.
+  useEffect(() => {
+    if (sessionId === undefined) return;
+    void openSession(paneId, sessionId, cwd);
+  }, [openSession, paneId, sessionId, cwd]);
+
+  // Sent here by something that wanted this pane looked at - a click on a
+  // desktop notification, the palette's "needs you". Whatever it was asking
+  // about is in the conversation, so that is what the pane comes back to.
+  useEffect(() => {
+    const handler = (event: Event): void => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = RefocusDetail.safeParse(event.detail);
+      if (!detail.success || detail.data.paneId !== paneId) return;
+      setView('agent');
+    };
+    document.addEventListener('fleet:refocus-pane', handler);
+    return () => document.removeEventListener('fleet:refocus-pane', handler);
+  }, [paneId]);
+
+  // Whether there is a picture to read through decides whether the chrome
+  // turns to glass; the floor underneath it stays painted either way.
+  const hasBackgroundImage = resolveBackgroundSrc(terminalBackground, slideshowFrame) !== null;
+
+  return (
+    // The floor stays opaque and the image blends onto it at the user's
+    // opacity, which is what a terminal pane does - blending against nothing
+    // instead would make the same setting read far stronger here than there.
+    // `relative` so the layer's absolute children anchor here rather than to
+    // the pane frame two levels up.
+    <div
+      ref={frameRef}
+      className="relative flex h-full w-full flex-col bg-fleet-bg"
+      style={getGlassCssVars(hasBackgroundImage)}
+    >
+      {terminalBackground && (
+        <BackgroundLayer background={terminalBackground} frame={slideshowFrame} />
+      )}
+      {/* The layer sits at z-0, so everything the user sees is lifted above it
+          in one wrapper - which is also what puts all three views over it. */}
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        <AgentTabs value={view} onChange={setView} />
+        {view === 'agent' && (
+          // The conversation and the task list side by side. The list takes a
+          // fixed column and the conversation takes the rest, which does mean
+          // the reading column shifts left the first time the agent writes a
+          // plan - the alternative is a column of empty space held open all
+          // conversation for a list most of them never make.
+          <div className="flex min-h-0 flex-1">
+            <AgentThread paneId={paneId} cwd={cwd} todosInPanel={panelled} />
+            {panelled && <AgentTodoPanel items={todos} streaming={streaming} />}
+          </div>
+        )}
+        {view === 'sessions' && (
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <AgentSessionsTab paneId={paneId} cwd={cwd} onResumed={() => setView('agent')} />
+          </div>
+        )}
+        {view === 'settings' && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <AgentSettingsPanel />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The pane's own switcher, centered over the content it toggles. A pill track
+ * rather than underlines: it reads as a control at any pane width, including
+ * the narrow ones a vertical split produces.
+ */
+function AgentTabs({
+  value,
+  onChange
+}: {
+  value: AgentView;
+  onChange: (view: AgentView) => void;
+}): React.JSX.Element {
+  const move = (delta: number): void => {
+    const next =
+      TABS[(TABS.findIndex((t) => t.value === value) + delta + TABS.length) % TABS.length];
+    onChange(next.value);
+  };
+
+  return (
+    <div className="flex shrink-0 justify-center px-3 pt-2.5 pb-1.5">
+      <div
+        role="tablist"
+        aria-label="Agent pane view"
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+          e.preventDefault();
+          move(e.key === 'ArrowRight' ? 1 : -1);
+        }}
+        className="flex items-center gap-0.5 rounded-lg border border-fleet-border bg-fleet-glass-surface p-0.5 backdrop-blur-md"
+      >
+        {TABS.map(({ value: tab, label, Icon }) => {
+          const selected = tab === value;
+          return (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              // Only the active tab is in the tab order; arrow keys move between
+              // them, which is what a tablist is meant to do.
+              tabIndex={selected ? 0 : -1}
+              onClick={() => onChange(tab)}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors focus-ring ${
+                selected
+                  ? 'bg-fleet-glass-surface-3 text-fleet-text'
+                  : 'text-fleet-text-muted hover:text-fleet-text-secondary'
+              }`}
+            >
+              <Icon size={13} />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

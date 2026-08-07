@@ -54,6 +54,7 @@ export type Tab = {
     | 'pdf'
     | 'sessions'
     | 'chat'
+    | 'agent'
     | 'ssh-browser';
   avatarVariant?: string;
   splitRoot: PaneNode;
@@ -95,6 +96,7 @@ export type PaneLeaf = {
     | 'kanban'
     | 'artifacts'
     | 'pdf'
+    | 'agent'
     | 'ssh-browser';
   filePath?: string;
   /**
@@ -106,6 +108,12 @@ export type PaneLeaf = {
   remoteHost?: RemoteHost;
   /** Current directory for an `ssh-browser` pane. */
   remotePath?: string;
+  /**
+   * Which session file an `agent` pane's thread is written to and read back
+   * from. Minted when the pane opens and persisted with the layout, so the pane
+   * finds its own conversation again after a restart.
+   */
+  agentSessionId?: string;
   isDirty?: boolean;
   serializedContent?: string;
   /** One-shot startup command for this pane (e.g. resuming a session). Runs on first PTY create. */

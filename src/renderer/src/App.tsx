@@ -8,7 +8,8 @@ import {
   KanbanSquare,
   History,
   SlidersHorizontal,
-  MessageSquare
+  MessageSquare,
+  Bot
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
@@ -52,6 +53,7 @@ import { EnvSyncModal } from './components/env-sync/EnvSyncModal';
 import { EnvEditorModal } from './components/env-editor/EnvEditorModal';
 import { NotesModal } from './components/notes/NotesModal';
 import { ShellEnvModal } from './components/shell-env/ShellEnvModal';
+import { AgentFolderDialog } from './components/agent/AgentFolderDialog';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
@@ -135,7 +137,8 @@ export function App(): React.JSX.Element {
     undoCloseTab,
     recentFiles,
     recentFolders,
-    openFile
+    openFile,
+    openAgentPane
   } = useWorkspaceStore(
     useShallow((s) => ({
       workspace: s.workspace,
@@ -149,7 +152,8 @@ export function App(): React.JSX.Element {
       undoCloseTab: s.undoCloseTab,
       recentFiles: s.recentFiles,
       recentFolders: s.recentFolders,
-      openFile: s.openFile
+      openFile: s.openFile,
+      openAgentPane: s.openAgentPane
     }))
   );
   const settings = useSettingsStore((s) => s.settings);
@@ -182,6 +186,7 @@ export function App(): React.JSX.Element {
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [shellEnvOpen, setShellEnvOpen] = useState(false);
+  const [agentFolderOpen, setAgentFolderOpen] = useState(false);
   const [planModalQueue, setPlanModalQueue] = useState<PiPlanModalEntry[]>([]);
   const [updateReady, setUpdateReady] = useState(false);
 
@@ -237,6 +242,11 @@ export function App(): React.JSX.Element {
       const tab = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
       if (tab) {
         useWorkspaceStore.setState({ activeTabId: tab.id, activePaneId: paneId });
+        // Being on the right tab is not being in front of the thing that asked:
+        // a terminal still has to take the cursor, and an agent pane parked on
+        // its Settings view would show a settings screen to someone who came
+        // here to answer a question.
+        document.dispatchEvent(new CustomEvent('fleet:refocus-pane', { detail: { paneId } }));
       }
     });
   }, []);
@@ -359,6 +369,13 @@ export function App(): React.JSX.Element {
     const handler = (): void => setShellEnvOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-shell-env', handler);
     return () => document.removeEventListener('fleet:toggle-shell-env', handler);
+  }, []);
+
+  // New agent: pick the folder first, then open the pane in it
+  useEffect(() => {
+    const handler = (): void => setAgentFolderOpen(true);
+    document.addEventListener('fleet:new-agent', handler);
+    return () => document.removeEventListener('fleet:new-agent', handler);
   }, []);
 
   // Quick open toggle (Cmd+P)
@@ -795,6 +812,11 @@ export function App(): React.JSX.Element {
                           size={16}
                           className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}
                         />
+                      ) : tab.type === 'agent' ? (
+                        <Bot
+                          size={16}
+                          className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}
+                        />
                       ) : (
                         <Terminal
                           size={16}
@@ -1213,6 +1235,14 @@ export function App(): React.JSX.Element {
         isOpen={shellEnvOpen}
         onClose={() => setShellEnvOpen(false)}
         paneId={activePaneId}
+      />
+      <AgentFolderDialog
+        open={agentFolderOpen}
+        onCancel={() => setAgentFolderOpen(false)}
+        onConfirm={(folderPath) => {
+          setAgentFolderOpen(false);
+          openAgentPane(folderPath);
+        }}
       />
       <AnnotateModal open={false} onClose={() => {}} />
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />

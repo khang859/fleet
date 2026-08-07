@@ -289,6 +289,12 @@ type WorkspaceStore = {
   resizeSplit: (splitNodePath: number[], ratio: number) => void;
   renamePane: (paneId: string, label: string) => void;
   resetPaneLabel: (paneId: string) => void;
+  /**
+   * Point an agent pane at a different session. The id is persisted with the
+   * layout, so this is what makes a resumed conversation the one the pane
+   * comes back to after a restart rather than a choice that lasts a session.
+   */
+  setAgentSession: (paneId: string, sessionId: string) => void;
 
   // Workspace actions
   loadWorkspace: (workspace: Workspace) => void;
@@ -313,6 +319,17 @@ type WorkspaceStore = {
     files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf'; label: string }>
   ) => void;
   addRecentFile: (filePath: string) => void;
+
+  /** Open a native agent pane rooted at `folderPath`, in a new tab. Returns the new pane id. */
+  openAgentPane: (folderPath: string) => string;
+
+  /**
+   * The terminal an agent pane hands work to: the one already in its tab, or a
+   * new split below it. Focuses it, and returns its id (null if the pane is
+   * gone). Reusing is the point - a conversation that needs the user three
+   * times should ask in the same terminal rather than tile the tab.
+   */
+  terminalBeside: (agentPaneId: string) => string | null;
 
   // Remote (SSH) helpers
   openSshBrowser: (host: RemoteHost, initialPath?: string) => string;
@@ -382,6 +399,27 @@ function getFirstLeafCwd(node: PaneNode | undefined): string | undefined {
   if (!node) return undefined;
   if (node.type === 'leaf') return node.cwd;
   return getFirstLeafCwd(node.children[0]) ?? getFirstLeafCwd(node.children[1]);
+}
+
+// Backward compat for saved workspaces: old ones may lack labelIsCustom, and a
+// tab's cwd is resynced from its first pane leaf because pane cwds are always
+// up to date. Agent tabs shed their group as well - they render in their own
+// sidebar section now, where a group means nothing.
+function migrateTab(t: Tab): Tab {
+  const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
+  return {
+    ...t,
+    labelIsCustom: t.labelIsCustom ?? false,
+    cwd: firstLeafCwd ?? t.cwd,
+    userGroupId: t.type === 'agent' ? undefined : t.userGroupId
+  };
+}
+
+// A group with no members left renders no header, so it could never be renamed
+// or removed again. Agent tabs leaving for their own section is one way to get
+// there; "Ungroup All" is another.
+function liveUserGroups(groups: UserGroup[] | undefined, tabs: Tab[]): UserGroup[] | undefined {
+  return groups?.filter((g) => tabs.some((t) => t.userGroupId === g.id));
 }
 
 function findLeaf(node: PaneNode, paneId: string): PaneLeaf | null {
@@ -455,6 +493,39 @@ function pickNextTab(tabs: Tab[], closedIndex: number): Tab | null {
 export function collectPaneLeafs(node: PaneNode): PaneLeaf[] {
   if (node.type === 'leaf') return [node];
   return [...collectPaneLeafs(node.children[0]), ...collectPaneLeafs(node.children[1])];
+}
+
+/**
+ * Every agent session a pane is holding, across every tab.
+ *
+ * A pane knows the session it is on and nothing about the others, so on its own
+ * it would happily delete the log a split beside it is still appending to. The
+ * whole workspace is the only place that question can be answered.
+ */
+export function agentSessionsInUse(): Set<string> {
+  const ids = new Set<string>();
+  for (const tab of useWorkspaceStore.getState().workspace.tabs) {
+    for (const leaf of collectPaneLeafs(tab.splitRoot)) {
+      if (leaf.agentSessionId !== undefined) ids.add(leaf.agentSessionId);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Per-pane state that lives in another store, told when its pane goes away.
+ *
+ * A callback rather than an import because the agent store installs its
+ * main-to-renderer listeners the moment it is imported, and this store is
+ * imported by plenty of code that has no bridge for them to attach to. So it
+ * registers itself, and where it was never loaded there is no turn to end.
+ * `disposePane` on the Rune store is the same job done the direct way, which
+ * works only because that store imports nothing back.
+ */
+let disposePaneElsewhere: (paneId: string) => void = () => {};
+
+export function registerPaneDisposer(dispose: (paneId: string) => void): void {
+  disposePaneElsewhere = dispose;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
@@ -580,11 +651,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closeTab: (tabId, serializedPanes) => {
     logTabs.debug('closeTab', { tabId });
-    // Cancel any in-flight Rune Quick-Assist turns for panes in this tab and drop their state.
+    // Cancel any in-flight Rune Quick-Assist or Agent turns for panes in this
+    // tab and drop their state.
     const closing = get().workspace.tabs.find((t) => t.id === tabId);
     if (closing) {
       const rune = useRuneAssistStore.getState();
-      for (const pid of collectPaneIds(closing.splitRoot)) rune.disposePane(pid);
+      for (const pid of collectPaneIds(closing.splitRoot)) {
+        rune.disposePane(pid);
+        disposePaneElsewhere(pid);
+      }
     }
     set((state) => {
       const target = state.workspace.tabs.find((t) => t.id === tabId);
@@ -996,8 +1071,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closePane: (paneId) => {
     logLayout.debug('closePane', { paneId });
-    // Cancel any in-flight Rune Quick-Assist turn for this pane and drop its state.
+    // Cancel any in-flight Rune Quick-Assist or Agent turn for this pane and
+    // drop its state. The agent matters most: a turn parked on a permission
+    // question is waiting on a click from the pane being closed, and nothing
+    // else would ever end it.
     useRuneAssistStore.getState().disposePane(paneId);
+    disposePaneElsewhere(paneId);
     set((state) => {
       // Don't let the close-pane action destroy a pinned tab via its sole leaf.
       const owner = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
@@ -1075,6 +1154,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }));
   },
 
+  setAgentSession: (paneId, sessionId) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({
+            ...leaf,
+            agentSessionId: sessionId
+          }))
+        }))
+      },
+      isDirty: true
+    }));
+  },
+
   resetPaneLabel: (paneId) => {
     set((state) => ({
       workspace: {
@@ -1098,21 +1193,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       label: workspace.label,
       tabCount: workspace.tabs.length
     });
-    // Backward compat: old saved workspaces may lack labelIsCustom
-    // Also sync tab cwd from first pane leaf (pane CWDs are always up-to-date)
     // Drop the now-defunct pinned Artifacts tab (folded into the Kanban view).
-    const migratedTabs = workspace.tabs
-      .filter((t) => t.type !== 'artifacts')
-      .map((t) => {
-        const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
-        return {
-          ...t,
-          labelIsCustom: t.labelIsCustom ?? false,
-          cwd: firstLeafCwd ?? t.cwd
-        };
-      });
+    const migratedTabs = workspace.tabs.filter((t) => t.type !== 'artifacts').map(migrateTab);
     const migrated = applyToolVisibility(
-      { ...workspace, tabs: migratedTabs },
+      {
+        ...workspace,
+        tabs: migratedTabs,
+        userGroups: liveUserGroups(workspace.userGroups, migratedTabs)
+      },
       currentToolVisibility()
     );
 
@@ -1226,18 +1314,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set((state) => {
       const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
       // Drop the now-defunct pinned Artifacts tab (folded into the Kanban view).
-      const migratedTabs = target.tabs
-        .filter((t) => t.type !== 'artifacts')
-        .map((t) => {
-          const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
-          return {
-            ...t,
-            labelIsCustom: t.labelIsCustom ?? false,
-            cwd: firstLeafCwd ?? t.cwd
-          };
-        });
+      const migratedTabs = target.tabs.filter((t) => t.type !== 'artifacts').map(migrateTab);
       const migrated = applyToolVisibility(
-        { ...target, tabs: migratedTabs },
+        {
+          ...target,
+          tabs: migratedTabs,
+          userGroups: liveUserGroups(target.userGroups, migratedTabs)
+        },
         currentToolVisibility()
       );
 
@@ -1301,17 +1384,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       for (const ws of workspaces) {
         // Don't overwrite already-loaded background workspaces or the active workspace
         if (!newBackground.has(ws.id) && ws.id !== state.workspace.id) {
-          const migratedTabs = ws.tabs.map((t) => {
-            const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
-            return {
-              ...t,
-              labelIsCustom: t.labelIsCustom ?? false,
-              cwd: firstLeafCwd ?? t.cwd
-            };
-          });
+          const migratedTabs = ws.tabs.map(migrateTab);
           newBackground.set(
             ws.id,
-            applyToolVisibility({ ...ws, tabs: migratedTabs }, currentToolVisibility())
+            applyToolVisibility(
+              {
+                ...ws,
+                tabs: migratedTabs,
+                userGroups: liveUserGroups(ws.userGroups, migratedTabs)
+              },
+              currentToolVisibility()
+            )
           );
         }
       }
@@ -1396,6 +1479,57 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }));
     get().addRecentFile(filePath);
     return leaf.id;
+  },
+
+  openAgentPane: (folderPath) => {
+    // The folder is picked from the local filesystem, so it is in the host's
+    // own coordinate system rather than the active pane's (which may be WSL).
+    const ctx: PathContext = window.fleet.platform === 'win32' ? 'win32' : 'posix';
+    const leaf: PaneLeaf = {
+      type: 'leaf',
+      id: generateId(),
+      cwd: folderPath,
+      paneType: 'agent',
+      pathContext: ctx,
+      // Minted here rather than on the first message so it is in the layout
+      // before anything can be said; the file itself waits for a first event.
+      agentSessionId: crypto.randomUUID()
+    };
+    const tab: Tab = {
+      id: generateId(),
+      label: cwdBasename(folderPath, ctx),
+      labelIsCustom: true,
+      cwd: folderPath,
+      type: 'agent',
+      splitRoot: leaf
+    };
+    set((s) => ({
+      workspace: { ...s.workspace, tabs: [...s.workspace.tabs, tab] },
+      activeTabId: tab.id,
+      activePaneId: leaf.id,
+      isDirty: true
+    }));
+    get().addRecentFolder(folderPath);
+    return leaf.id;
+  },
+
+  terminalBeside: (agentPaneId) => {
+    const tab = get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(agentPaneId));
+    if (!tab) return null;
+
+    // A leaf with no paneType is a terminal - that is what a pane is unless it
+    // was opened as something else.
+    const existing = collectPaneLeafs(tab.splitRoot).find(
+      (leaf) => leaf.paneType === undefined || leaf.paneType === 'terminal'
+    );
+    // Below rather than beside: the transcript is a column of prose, and
+    // halving its width to make room costs more than the height does.
+    const paneId = existing?.id ?? get().splitPane(agentPaneId, 'vertical');
+
+    // The point of the hand-off is that the user does something, so the pane
+    // they have to do it in is the one in front of them.
+    set({ activeTabId: tab.id, activePaneId: paneId });
+    return paneId;
   },
 
   openSshBrowser: (host, initialPath) => {

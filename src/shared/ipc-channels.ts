@@ -75,6 +75,12 @@ export const IPC_CHANNELS = {
   IMAGES_LIST_ACTIONS: 'images:list-actions',
   LOG_BATCH: 'log:batch',
   ACTIVITY_STATE: 'activity:state',
+  /** Renderer -> main: which panes the user can currently see. */
+  ACTIVITY_VISIBLE_PANES: 'activity:visible-panes',
+  /** Renderer -> main: a pane that reports its own state, having no process to watch. */
+  ACTIVITY_REPORT: 'activity:report',
+  /** Main -> renderer: ring the chime. Main owns how loud an event is. */
+  ACTIVITY_CHIME: 'activity:chime',
   AI_SUMMARIZE_PANE: 'ai:summarize-pane',
   REMOTE_STATE: 'remote:state',
   WORKTREE_CREATE: 'worktree:create',
@@ -326,6 +332,75 @@ export const IPC_CHANNELS = {
   CHAT_AUDIT_LIST: 'chat:audit-list',
   // Export one conversation's active thread to Markdown or JSON.
   CHAT_EXPORT: 'chat:export',
+
+  // ── Agent panes ────────────────────────────────────────────────────────────
+  // The OpenRouter slice of the models.dev catalog, disk-cached in main. Agent
+  // settings themselves ride on SETTINGS_GET/SET under `ai.agent`, and the API
+  // key is the one Chat already stores.
+  AGENT_LIST_MODELS: 'agent:list-models',
+  // One turn: SEND starts a stream and returns its id, CANCEL aborts it. The
+  // transcript is renderer-side, so the request carries the whole history.
+  AGENT_SEND: 'agent:send',
+  AGENT_CANCEL: 'agent:cancel',
+  // Fold older messages into one summary. Shares CANCEL and the error channel,
+  // and reports only the finished summary - nothing is streamed to the pane.
+  AGENT_COMPACT: 'agent:compact',
+  AGENT_COMPACT_DONE: 'agent:compact-done',
+  AGENT_STREAM_CHUNK: 'agent:stream-chunk',
+  AGENT_STREAM_REASONING: 'agent:stream-reasoning',
+  AGENT_STREAM_DONE: 'agent:stream-done',
+  AGENT_STREAM_ERROR: 'agent:stream-error',
+  AGENT_TOOL_START: 'agent:tool-start',
+  AGENT_TOOL_END: 'agent:tool-end',
+  // A half-drawn image, on its way to the finished one. Sent as bytes rather
+  // than a path because a partial is never saved: it is a progress indicator
+  // that happens to look like the answer, and it is thrown away when the real
+  // one lands. Nothing depends on any arriving.
+  AGENT_IMAGE_PARTIAL: 'agent:image-partial',
+  // A command the agent cannot run itself - a login, a password prompt, an
+  // interactive picker - passed to the renderer to type into a terminal pane
+  // beside the agent, where there is a person and a real tty.
+  AGENT_HAND_OFF: 'agent:hand-off',
+  // A command the rules do not settle on their own. Main asks, the pane renders
+  // the question on the call's row, and the answer comes back on DECIDE. The
+  // renderer never decides anything itself - it relays a click.
+  AGENT_PERMISSION_ASK: 'agent:permission-ask',
+  AGENT_PERMISSION_DECIDE: 'agent:permission-decide',
+  // The thread on disk: an append-only event log per session, replayed when a
+  // pane opens. The renderer decides what happened; main only writes it down.
+  AGENT_SESSION_APPEND: 'agent:session-append',
+  AGENT_SESSION_LOAD: 'agent:session-load',
+  // The sessions started in one folder, for the pane's Sessions tab, and the
+  // removal of one. Which session a pane is currently on is the renderer's to
+  // know, so the rules about that are enforced there rather than here.
+  AGENT_SESSION_LIST: 'agent:session-list',
+  AGENT_SESSION_DELETE: 'agent:session-delete',
+  // A name for a session, from the exchange that opened it. Main returns the
+  // text; the renderer decides which session log it belongs in.
+  AGENT_GENERATE_TITLE: 'agent:generate-title',
+  // One thing the user attached to a message - pasted, dropped, picked, or
+  // `@`-mentioned. Main copies it somewhere durable or reads what it needs out
+  // of it, and hands back the small record the message carries. The bytes never
+  // come back: what the model gets is read at the moment the turn is built.
+  AGENT_ATTACH: 'agent:attach',
+  // Files the `@` menu can offer, from the same gitignore-aware walk `glob`
+  // and `grep` use, so the menu cannot offer what the sandbox would refuse.
+  AGENT_MENTION_SEARCH: 'agent:mention-search',
+  // Which branch a pane's folder is on. WATCH registers a pane and answers
+  // immediately on HEAD; REFRESH asks for a re-read after something that no
+  // file watcher would have seen, such as a tool call that may have been a
+  // checkout. A pane whose folder is not a repo is watched too, and answers
+  // `null` - not being in a repo is an ordinary state, not a failure.
+  AGENT_GIT_WATCH: 'agent:git-watch',
+  AGENT_GIT_UNWATCH: 'agent:git-unwatch',
+  AGENT_GIT_REFRESH: 'agent:git-refresh',
+  AGENT_GIT_HEAD: 'agent:git-head',
+  // What the composer's Up key walks back through, scoped to a pane's folder.
+  // LIST is asked once when a pane opens and answered from a file; ADD is
+  // fire-and-forget, because a prompt that failed to be remembered must not be
+  // a prompt that failed to send.
+  AGENT_HISTORY_LIST: 'agent:history-list',
+  AGENT_HISTORY_ADD: 'agent:history-add',
 
   // ── Remote (SSH) file browser ──────────────────────────────────────────────
   // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's

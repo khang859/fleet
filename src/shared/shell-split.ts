@@ -11,7 +11,7 @@
 // what gets matched.
 
 /** Wrappers that prefix another command; we strip them so the inner command matches. */
-const WRAPPERS = new Set([
+export const WRAPPERS = new Set([
   'timeout',
   'nice',
   'nohup',
@@ -33,23 +33,50 @@ const WRAPPERS = new Set([
  * non-empty subcommands.
  */
 export function splitShellCommand(raw: string): string[] {
-  const segments = splitOnOperators(raw);
   const out: string[] = [];
-  for (const seg of segments) {
-    const { command, substitutions } = extractSubstitutions(seg);
-    // Substitutions run first / independently — gate them too.
-    for (const sub of substitutions) out.push(...splitShellCommand(sub));
-    const stripped = stripWrappers(command.trim());
+  for (const seg of splitShellSegments(raw)) {
+    const stripped = stripWrappers(seg);
     if (stripped) out.push(stripped);
   }
   return out;
 }
 
 /**
+ * The same subcommands, as written, before wrappers are stripped.
+ *
+ * `splitShellCommand` exists to produce something a rule can match, and getting
+ * there means throwing away the parts of the line no rule is ever about -
+ * `sudo` among them, since `sudo npm test` is the `npm test` rule's business.
+ * Anything asking what a command *does*, rather than which rule covers it, has
+ * to look before that happens.
+ */
+export function splitShellSegments(raw: string): string[] {
+  const out: string[] = [];
+  for (const seg of splitOnOperators(raw)) {
+    const { command, substitutions } = extractSubstitutions(seg);
+    // Substitutions run first / independently — gate them too.
+    for (const sub of substitutions) out.push(...splitShellSegments(sub));
+    const trimmed = command.trim();
+    if (trimmed) out.push(trimmed);
+  }
+  return out;
+}
+
+/** Whitespace tokenizer that unquotes: `"sudo" -x` → `['sudo', '-x']`. */
+export function tokenizeCommand(cmd: string): string[] {
+  return tokenize(cmd);
+}
+
+/**
  * Split on `&&`, `||`, `;`, `|`, `&`, and newlines, ignoring operators inside
- * single or double quotes. Redirections and the trailing background `&` are
- * treated as separators (the right side becomes its own — possibly empty —
- * segment which is dropped if blank).
+ * single or double quotes. The trailing background `&` is treated as a
+ * separator (the right side becomes its own — possibly empty — segment which is
+ * dropped if blank).
+ *
+ * Redirections are NOT separators: `echo x > f` stays one segment, because the
+ * target is a file rather than a command and matching it against the allowlist
+ * would ask about the wrong thing. What the redirection *writes to* is the
+ * caller's problem — see `redirectTargets` in `agent-permissions.ts`.
  */
 function splitOnOperators(raw: string): string[] {
   const segments: string[] = [];

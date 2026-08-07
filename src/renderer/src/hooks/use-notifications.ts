@@ -1,44 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useNotificationStore } from '../store/notification-store';
-import { useSettingsStore } from '../store/settings-store';
+import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
+import { useAgentStore } from '../store/agent-store';
+import { playChime } from '../lib/chime';
 
 export function useNotifications(): void {
   const { setNotification, setActivity } = useNotificationStore();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    // Create audio element for notification chime.
-    // Generate a minimal WAV beep as a data URI (440Hz, 100ms)
-    const audio = new Audio();
-    const sampleRate = 8000;
-    const duration = 0.1;
-    const samples = sampleRate * duration;
-    const buffer = new ArrayBuffer(44 + samples);
-    const view = new DataView(buffer);
-    const writeString = (offset: number, str: string): void => {
-      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-    };
-    writeString(0, 'RIFF');
-    view.setUint32(4, 36 + samples, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate, true);
-    view.setUint16(32, 1, true);
-    view.setUint16(34, 8, true);
-    writeString(36, 'data');
-    view.setUint32(40, samples, true);
-    for (let i = 0; i < samples; i++) {
-      view.setUint8(44 + i, 128 + 64 * Math.sin((2 * Math.PI * 440 * i) / sampleRate));
-    }
-    const blob = new Blob([buffer], { type: 'audio/wav' });
-    audio.src = URL.createObjectURL(blob);
-    audio.volume = 0.3;
-    audioRef.current = audio;
-  }, []);
 
   // Subscribe to notification events (existing)
   useEffect(() => {
@@ -54,13 +21,9 @@ export function useNotifications(): void {
     };
   }, [setNotification]);
 
-  // Subscribe to activity state changes (new). This is the single source of
-  // truth for the in-app chime: main only emits a state change on an actual
-  // transition (see ActivityTracker.setState's dedup), so `needs_me`/`error`
-  // here already mean "just became blocked/failed", not "still is". A
-  // permission prompt bridges to `needs_me` via the same underlying event in
-  // main, so chiming here (instead of also on the raw `notification` event
-  // above) avoids a double beep for one occurrence.
+  // Subscribe to activity state changes. This is live state for the sidebar,
+  // the tab badges and the palette; how loudly any of it is announced is not
+  // decided here (see the chime below).
   useEffect(() => {
     const cleanup = window.fleet.activity.onStateChange((payload) => {
       setActivity({
@@ -69,19 +32,61 @@ export function useNotifications(): void {
         lastOutputAt: payload.lastOutputAt,
         timestamp: payload.timestamp
       });
-
-      const notifications = useSettingsStore.getState().settings?.notifications;
-      const shouldChime =
-        (payload.state === 'needs_me' && notifications?.needsPermission.sound) ||
-        (payload.state === 'error' && notifications?.processExitError.sound);
-      if (shouldChime && audioRef.current) {
-        audioRef.current.play().catch(() => {
-          // Audio play may be blocked by browser autoplay policy — ignore
-        });
-      }
     });
     return () => {
       cleanup();
     };
   }, [setActivity]);
+
+  /*
+   * The chime rings when main says so, rather than whenever a pane changes
+   * state.
+   *
+   * How loud an event should be depends on where the user is, and that answer
+   * is split across the two processes: only main knows whether the window is
+   * focused, only the renderer knows which panes are on screen. Main holds the
+   * rule, so the same event cannot be judged twice and differently - and so a
+   * desktop notification, which rings on its own, is never doubled by a chime
+   * for the same news.
+   */
+  useEffect(() => {
+    return window.fleet.activity.onChime(() => playChime());
+  }, []);
+
+  /*
+   * Tell main what the user can see.
+   *
+   * Every tab stays mounted and inactive ones are hidden with `display: none`,
+   * so being rendered is not being visible: the panes of the active tab are.
+   */
+  useEffect(() => {
+    let last = '';
+    const publish = (): void => {
+      const state = useWorkspaceStore.getState();
+      const tab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
+      const paneIds = tab === undefined ? [] : collectPaneIds(tab.splitRoot);
+      // Sent on any workspace change, which is most of them, so an unchanged
+      // set is dropped here rather than crossing the bridge to be ignored.
+      const key = paneIds.join(',');
+      if (key !== last) {
+        last = key;
+        window.fleet.activity.visiblePanes(paneIds);
+      }
+      // What is on screen in a focused window has been seen. Only agent panes
+      // are told: a terminal's state belongs to main, which watches the process
+      // and would put back anything cleared behind its back.
+      if (!document.hasFocus()) return;
+      const markSeen = useAgentStore.getState().markSeen;
+      for (const paneId of paneIds) markSeen(paneId);
+    };
+    publish();
+    const unsubscribe = useWorkspaceStore.subscribe(publish);
+    // Coming back to the window is the other way a pane becomes seen, and it
+    // moves no panes at all.
+    window.addEventListener('focus', publish);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', publish);
+    };
+  }, []);
 }

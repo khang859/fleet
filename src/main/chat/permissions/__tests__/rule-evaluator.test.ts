@@ -6,7 +6,7 @@ import {
   evaluateExplicitPermission,
   suggestRememberRule
 } from '../rule-evaluator';
-import { splitShellCommand } from '../shell-split';
+import { splitShellCommand } from '../../../../shared/shell-split';
 import type { PermissionRules } from '../../../../shared/chat-permissions';
 
 const rules = (r: Partial<PermissionRules>): PermissionRules => ({
