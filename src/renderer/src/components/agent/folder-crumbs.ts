@@ -7,7 +7,7 @@ export type Crumb = {
 };
 
 /** Drop trailing separators, but never turn a posix root into the empty string. */
-function stripTrailing(path: string): string {
+export function stripTrailing(path: string): string {
   const trimmed = path.replace(/[\\/]+$/, '');
   return trimmed === '' ? '/' : trimmed;
 }

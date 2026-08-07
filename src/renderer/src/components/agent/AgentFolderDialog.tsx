@@ -7,13 +7,23 @@ import {
   useRef,
   useState
 } from 'react';
-import { Bot, ChevronLeft, ChevronRight, Clock, Folder, FolderOpen, Search } from 'lucide-react';
+import {
+  Bot,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Folder,
+  FolderOpen,
+  GitBranch,
+  Search
+} from 'lucide-react';
 import { Overlay } from '../Overlay';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { fuzzyMatch } from '../../lib/commands';
 import { basename } from '../../lib/path-utils';
 import { shortenPath } from '../../lib/shorten-path';
 import { crumbTrail, parentDir, type Crumb } from './folder-crumbs';
+import { rerootIntoWorktree } from './worktree-target';
 
 /** How many recent folders ride above the listing. */
 const RECENT_LIMIT = 5;
@@ -52,7 +62,10 @@ function keepFocus(e: React.MouseEvent): void {
 type AgentFolderDialogProps = {
   open: boolean;
   onCancel: () => void;
-  onConfirm: (folderPath: string) => void;
+  onConfirm: (
+    folderPath: string,
+    worktree?: { path: string; branchName: string; repoPath: string }
+  ) => void;
 };
 
 /**
@@ -64,6 +77,9 @@ type AgentFolderDialogProps = {
  * The folder being browsed is itself a valid answer, so there is always a
  * target: with no row selected it is the folder the breadcrumb names, and
  * selecting a row narrows it to that child.
+ *
+ * A target inside a git repository can also be opened in a worktree of its own,
+ * giving the agent a branch and a working tree nobody else is editing.
  */
 export function AgentFolderDialog({
   open,
@@ -78,6 +94,13 @@ export function AgentFolderDialog({
   // folder being browsed rather than anything inside it.
   const [selectedIndex, setSelectedIndex] = useState<number | null>(0);
   const [listing, setListing] = useState<Listing>({ status: 'loading' });
+  const [worktreeMode, setWorktreeMode] = useState(false);
+  // Whether the current target sits in a git repo, and so can be worktree'd.
+  const [targetIsRepo, setTargetIsRepo] = useState(false);
+  // Creating a worktree is the one thing here that can take a visible moment
+  // and can fail, so it gets to say both rather than closing on a guess.
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const crumbsRef = useRef<HTMLDivElement>(null);
@@ -90,6 +113,9 @@ export function AgentFolderDialog({
     setDir(homeDir);
     setFilter('');
     setSelectedIndex(0);
+    setWorktreeMode(false);
+    setError(null);
+    setCreating(false);
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [open, homeDir]);
 
@@ -148,6 +174,26 @@ export function AgentFolderDialog({
   const crumbs = useMemo(() => crumbTrail(dir, homeDir), [dir, homeDir]);
   const parent = parentDir(dir);
 
+  // Whether a worktree is even possible follows the target around, since the
+  // cursor can move between a repository and a plain folder without the
+  // browsed directory changing at all.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setError(null);
+    void window.fleet.git
+      .isRepo(target)
+      .then((result) => {
+        if (!cancelled) setTargetIsRepo(result.isRepo);
+      })
+      .catch(() => {
+        if (!cancelled) setTargetIsRepo(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, target]);
+
   // A listing can shrink under the cursor - entering a folder with fewer
   // entries than the last one had. Pull the cursor back to the final row
   // instead of leaving it pointed past the end at nothing.
@@ -184,10 +230,44 @@ export function AgentFolderDialog({
     inputRef.current?.focus();
   }, []);
 
+  /**
+   * Open the agent at `path`, first cutting it a worktree if asked. The
+   * worktree is always taken from the repository root - `git worktree add`
+   * names both the branch and the directory after the path it is handed, and a
+   * subfolder would name them after itself.
+   */
+  const confirm = useCallback(
+    async (path: string, worktree: boolean): Promise<void> => {
+      if (!worktree) {
+        onConfirm(path);
+        return;
+      }
+      setCreating(true);
+      setError(null);
+      try {
+        const { root } = await window.fleet.git.repoRoot(path);
+        if (!root) throw new Error('Not a git repository.');
+        const created = await window.fleet.worktree.create({ repoPath: root });
+        onConfirm(rerootIntoWorktree(path, root, created.worktreePath), {
+          path: created.worktreePath,
+          branchName: created.branchName,
+          repoPath: root
+        });
+      } catch (err) {
+        // Staying open with the reason on screen beats closing on a failure the
+        // user would only discover by noticing the agent is on the wrong branch.
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setCreating(false);
+      }
+    },
+    [onConfirm]
+  );
+
   const browse = useCallback(async () => {
     const picked = await window.fleet.showFolderPicker();
-    if (picked) onConfirm(picked);
-  }, [onConfirm]);
+    if (picked) await confirm(picked, worktreeMode);
+  }, [confirm, worktreeMode]);
 
   /** True when the caret sits at `edge` of the search field with nothing selected. */
   const caretAt = (edge: 'start' | 'end'): boolean => {
@@ -200,6 +280,12 @@ export function AgentFolderDialog({
   // Bound to the panel rather than the search field, so a click that lands on a
   // row cannot quietly take the keyboard away with it.
   const handleKeyDown = (e: React.KeyboardEvent): void => {
+    // A worktree is being cut; every key here would act on a dialog that is
+    // about to be replaced by the pane it opened.
+    if (creating) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex((i) => (i === null ? 0 : Math.min(i + 1, choices.length - 1)));
@@ -210,7 +296,9 @@ export function AgentFolderDialog({
       setSelectedIndex((i) => (i === null || i === 0 ? null : i - 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      onConfirm(target);
+      // Alt is the shortcut for the checkbox below, so the keyboard-only path
+      // to a worktree does not run through toggling state first.
+      void confirm(target, (worktreeMode || e.altKey) && targetIsRepo);
     } else if (e.key === 'Tab' || e.key === 'ArrowRight') {
       // Arrow keys belong to the text field whenever the caret can still move.
       if (e.key === 'ArrowRight' && !caretAt('end')) return;
@@ -228,6 +316,12 @@ export function AgentFolderDialog({
     <Overlay
       open={open}
       onClose={onCancel}
+      // Dismissing while the worktree is being cut would not stop it: the
+      // branch and directory still land, and the pane still opens - moments
+      // later, over whatever the user turned to instead. The work is short, so
+      // the dialog holds until it is done rather than growing a way to abort.
+      closeOnEscape={!creating}
+      closeOnBackdrop={!creating}
       containerClassName="justify-center"
       panelClassName="mt-[12vh] w-[600px] h-[min(64vh,520px)] bg-fleet-surface border border-fleet-border-strong rounded-xl overflow-hidden"
     >
@@ -309,23 +403,57 @@ export function AgentFolderDialog({
           )}
         </div>
 
+        {error && (
+          <div className="border-t border-fleet-border bg-red-500/10 px-5 py-2 text-xs text-red-300">
+            Couldn&rsquo;t create the worktree.
+            <span className="mt-0.5 block text-[11px] text-red-300/70">{error}</span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between gap-3 border-t border-fleet-border px-5 py-3">
-          <button
-            onClick={() => void browse()}
-            className="flex items-center gap-2 rounded-md border border-fleet-border-strong px-3 py-1.5 text-xs text-fleet-text-secondary transition-colors hover:bg-fleet-surface-2 active:scale-[0.98] focus-ring"
-          >
-            <FolderOpen size={14} />
-            Browse...
-          </button>
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              onClick={() => void browse()}
+              disabled={creating}
+              className="flex shrink-0 items-center gap-2 rounded-md border border-fleet-border-strong px-3 py-1.5 text-xs text-fleet-text-secondary transition-colors hover:bg-fleet-surface-2 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 focus-ring"
+            >
+              <FolderOpen size={14} />
+              Browse...
+            </button>
+            <label
+              onMouseDown={keepFocus}
+              title={
+                targetIsRepo
+                  ? 'Give the agent its own branch and working tree'
+                  : 'Not a git repository'
+              }
+              className={`flex shrink-0 items-center gap-2 text-xs ${
+                targetIsRepo && !creating
+                  ? 'cursor-pointer text-fleet-text-secondary'
+                  : 'cursor-default text-fleet-text-subtle opacity-40'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={worktreeMode && targetIsRepo}
+                disabled={!targetIsRepo || creating}
+                onChange={(e) => setWorktreeMode(e.target.checked)}
+                className="size-3.5 shrink-0 fleet-accent-input focus-ring"
+              />
+              <GitBranch size={13} className="shrink-0" />
+              New worktree
+            </label>
+          </div>
           <div className="flex min-w-0 items-center gap-3">
             <span className="truncate text-[11px] text-fleet-text-subtle">
               {shortenPath(target)}
             </span>
             <button
-              onClick={() => onConfirm(target)}
-              className="shrink-0 rounded-md fleet-accent-bg px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 active:scale-[0.98] focus-ring-offset"
+              onClick={() => void confirm(target, worktreeMode && targetIsRepo)}
+              disabled={creating}
+              className="shrink-0 rounded-md fleet-accent-bg px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-60 focus-ring-offset"
             >
-              Open Agent
+              {creating ? 'Creating worktree...' : 'Open Agent'}
             </button>
           </div>
         </div>
@@ -333,6 +461,7 @@ export function AgentFolderDialog({
         <div className="flex items-center gap-3 border-t border-fleet-border bg-fleet-bg/40 px-5 py-1.5 text-[10px] text-fleet-text-subtle">
           <span>↑↓ select</span>
           <span>↵ open agent</span>
+          {targetIsRepo && <span>⌥↵ in worktree</span>}
           <span>→ enter folder</span>
           <span>← go up</span>
           <span>esc cancel</span>
