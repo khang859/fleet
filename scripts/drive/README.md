@@ -16,9 +16,30 @@ npm run drive -- click '<sel>'
 npm run drive -- type '<sel>' '<text>'
 npm run drive -- keys 'Meta+K'                  # renderer shortcuts only
 npm run drive -- eval '<js expression>'
+npm run drive -- fixture                        # list the seedable UI states
+npm run drive -- fixture <name>                 # put the window in one
 ```
 
 Screenshots default to `.fleet-drive/screenshots/<timestamp>.png` (gitignored).
+
+## Fixtures
+
+Some UI states are expensive to reach for real.
+The "cleared" marker on a tool row only appears once a session has built up tens of thousands of tokens of stale tool output, which is a long agent run and real money spent to look at one word on one row.
+
+A fixture writes that state straight into the store, so the rendering can be checked on its own:
+
+```
+npm run drive -- fixture agent-cleared-results
+npm run drive -- screenshot --selector main
+```
+
+Nothing is persisted - reload the window (`npm run drive -- keys 'Meta+r'`) to clear it.
+That makes a fixture safe to run against a real session that happens to be open.
+
+Add one in `fixtures.ts`.
+Fixtures are JS source strings, not typed builders, because they are evaluated in the renderer where this directory's imports do not exist.
+They should find what they need from `__FLEET__.stores` rather than take arguments, so a fixture cannot be pointed at the wrong pane.
 
 ## Selectors
 
