@@ -59,6 +59,8 @@ const ctx = (threadId = 'thread-1', signal = new AbortController().signal): Agen
   // The image tool has its own file.
   generateImage: null,
   mcp: null,
+  dispatchTask: null,
+  findSubagent: null,
   // The todo tools have their own file too, and nothing here calls them.
   todos: { list: () => [], save: () => {} }
 });
@@ -759,14 +761,19 @@ describe('bash', () => {
   // The command at the top of a hung build is never the one still running: it
   // is a child two levels down, which a kill aimed at the shell would leave.
   it('kills what the command started as well', async () => {
+    // The background write is timed well past the kill, and the wait well past
+    // the write. A margin either side of both, because a runner under load can
+    // hold a timer for longer than the gap it is measuring - and with the two
+    // set to the same second, whichever of them the scheduler got to first
+    // decided the result.
     await run('bash', {
-      command: '(sleep 1; echo late > late.txt) & sleep 30',
+      command: '(sleep 4; echo late > late.txt) & sleep 30',
       timeoutMs: 1000
     });
-    await new Promise((done) => setTimeout(done, 2000));
+    await new Promise((done) => setTimeout(done, 5000));
 
     expect(existsSync(join(dir, 'late.txt'))).toBe(false);
-  }, 10_000);
+  }, 15_000);
 
   it('stops the command when the turn is cancelled', async () => {
     const controller = new AbortController();

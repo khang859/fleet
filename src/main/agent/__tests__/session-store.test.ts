@@ -14,7 +14,12 @@ import { AgentImageStore } from '../image-store';
 import { AgentSessionStore } from '../session-store';
 import { emptyReplay } from '../../../shared/agent-session';
 import { EMPTY_SESSION_SPEND, type AgentSessionSpend } from '../../../shared/agent-spend';
-import { textMessage, type AgentMessage } from '../../../shared/agent-types';
+import {
+  EMPTY_AGENT_USAGE,
+  textMessage,
+  type AgentMessage,
+  type AgentTurnUsage
+} from '../../../shared/agent-types';
 
 const msg = (id: string, content: string): AgentMessage => textMessage(id, 'user', content);
 
@@ -129,6 +134,57 @@ describe('AgentSessionStore', () => {
       blocked.append(S1, '/repo', { t: 'message', message: msg('a', 'hi') })
     ).not.toThrow();
     expect(blocked.load(S1).messages).toEqual([]);
+  });
+});
+
+/*
+ * A subagent reports back long after the pane that dispatched it moved on, so
+ * the bill arrives for a session nothing is adding up. The total is cumulative
+ * and lives in the log, which is why the adding happens here.
+ */
+describe('AgentSessionStore.addSpend', () => {
+  const usage = (costUsd: number): AgentTurnUsage => ({
+    billed: { ...EMPTY_AGENT_USAGE, costUsd, promptTokens: 100, completionTokens: 10 },
+    contextTokens: 110,
+    calls: 1,
+    model: 'anthropic/claude-sonnet-4.5',
+    provider: 'Anthropic'
+  });
+
+  it('adds to what the session had already spent', () => {
+    store.append(S1, '/repo', { t: 'message', message: msg('a', 'hi') });
+    store.append(S1, '/repo', { t: 'spend', total: spendOf(0.5) });
+
+    store.addSpend(S1, '/repo', usage(0.25));
+
+    expect(store.load(S1).spend).toMatchObject({ costUsd: 0.75, calls: 4 });
+  });
+
+  it('starts from nothing for a session that has never been billed', () => {
+    store.append(S1, '/repo', { t: 'message', message: msg('a', 'hi') });
+
+    store.addSpend(S1, '/repo', usage(0.25));
+
+    expect(store.load(S1).spend).toMatchObject({ costUsd: 0.25, calls: 1 });
+  });
+
+  // Two children of the same closed session finishing at once. Each read sees
+  // the write before it, which is the whole reason this is not done in a pane.
+  it('does not lose one of two bills that arrive together', () => {
+    store.append(S1, '/repo', { t: 'message', message: msg('a', 'hi') });
+
+    store.addSpend(S1, '/repo', usage(0.25));
+    store.addSpend(S1, '/repo', usage(0.25));
+
+    expect(store.load(S1).spend).toMatchObject({ costUsd: 0.5, calls: 2 });
+  });
+
+  // Same rule as every other event: only something that was said starts a file,
+  // so a bill for a deleted session does not put it back in the list.
+  it('writes nothing for a session that is gone', () => {
+    store.addSpend(GONE, '/repo', usage(0.25));
+
+    expect(existsSync(join(dir, `${GONE}.jsonl`))).toBe(false);
   });
 });
 

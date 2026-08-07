@@ -262,7 +262,8 @@ describe('replaySession', () => {
             error: null,
             summary: '42 KB',
             image: { path: '/repo/shot.png', mimeType: 'image/png' },
-            todos: null
+            todos: null,
+            task: null
           }
         }
       ],
@@ -282,7 +283,8 @@ describe('replaySession', () => {
       error: null,
       summary: '1 line',
       image: null,
-      todos: null
+      todos: null,
+      task: null
     };
     const message: AgentMessage = {
       id: 'a',

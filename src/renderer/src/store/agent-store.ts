@@ -5,6 +5,7 @@ import type {
   AgentMessage,
   AgentPermissionAsk,
   AgentPermissionOutcome,
+  AgentTaskDone,
   AgentTurnUsage
 } from '../../../shared/agent-types';
 import {
@@ -14,7 +15,8 @@ import {
   type AgentSessionSpend
 } from '../../../shared/agent-spend';
 import { messageText, textMessage, userMessageWithAttachments } from '../../../shared/agent-types';
-import type { AgentToolCall } from '../../../shared/agent-tools';
+import type { AgentTaskInfo, AgentToolCall } from '../../../shared/agent-tools';
+import { sanitizeReport } from '../../../shared/subagent-report';
 import { hasOpenWork, type AgentTodoItem } from '../../../shared/agent-todos';
 import {
   emptyReplay,
@@ -32,6 +34,7 @@ import {
 import { useSettingsStore } from './settings-store';
 import { useNotificationStore } from './notification-store';
 import { registerPaneDisposer, useWorkspaceStore } from './workspace-store';
+import { toolLabel } from '../components/agent/tool-label';
 import { draftInto } from '../hooks/use-terminal';
 import { createLogger } from '../logger';
 import type { ActivityState } from '../../../shared/types';
@@ -49,6 +52,14 @@ const log = createLogger('store:agent');
  * looking at that pane, which is the one person who does not need telling.
  */
 function reportActivity(paneId: string, state: ActivityState): void {
+  // A subagent stopped on a command still needs the user, whatever else in the
+  // pane has since finished. Subagents run alongside each other and alongside
+  // the turn, so the thing that ends is routinely not the thing that is
+  // waiting: one subagent reporting back would otherwise clear the badge for
+  // another that is stopped on a question, and the only sign left that anything
+  // needs answering would be a card somewhere up the transcript.
+  if (state !== 'needs_me' && waitingOnUser(paneId)) return;
+
   const now = Date.now();
   const store = useNotificationStore.getState();
   const previous = store.getActivity(paneId)?.state;
@@ -63,6 +74,13 @@ function reportActivity(paneId: string, state: ActivityState): void {
   // point at: "an agent needs your permission" is the one fact the user with
   // four panes running already has.
   window.fleet.activity.report({ paneId, state, label: folderName(paneId) });
+}
+
+/** Whether anything in this pane - its turn, or a subagent - is asking. */
+function waitingOnUser(paneId: string): boolean {
+  const thread = useAgentStore.getState().threads[paneId];
+  if (thread === undefined) return false;
+  return thread.pendingPermission !== null || Object.keys(thread.taskPermissions).length > 0;
 }
 
 /** The last segment of the pane's working folder, as something to call it. */
@@ -163,6 +181,28 @@ type PaneThread = {
    * still on screen, and a session replayed from disk shows none of them.
    */
   imagePartials: Record<string, string>;
+  /**
+   * The subagents this pane has running, and what each is doing right now.
+   *
+   * Keyed by task id, which is also the child's stream id - so a tool event
+   * arriving from a conversation this pane is not having still finds its way to
+   * the row that started it. `null` for one that has not called a tool yet.
+   *
+   * Only the running ones. What a finished subagent did is on the call in the
+   * transcript and in the child's own log, both of which survive a restart;
+   * this map is about the ones still going, and a running subagent is exactly
+   * what does not survive one.
+   */
+  taskActivity: Record<string, string | null>;
+  /**
+   * The question each running subagent is stopped on, by task id.
+   *
+   * A map rather than the single `pendingPermission` slot beside it, because
+   * subagents run in parallel: two of them can be waiting on a command at the
+   * same moment, and one slot would drop whichever asked second - leaving that
+   * child stopped forever on a question that is not on screen anywhere.
+   */
+  taskPermissions: Record<string, AgentPermissionAsk>;
 };
 
 const EMPTY_THREAD: PaneThread = {
@@ -179,7 +219,9 @@ const EMPTY_THREAD: PaneThread = {
   spend: EMPTY_SESSION_SPEND,
   served: null,
   todos: [],
-  imagePartials: {}
+  imagePartials: {},
+  taskActivity: {},
+  taskPermissions: {}
 };
 
 /**
@@ -217,6 +259,16 @@ type AgentStoreState = {
    */
   resumeSession: (paneId: string, cwd: string, sessionId: string) => Promise<void>;
   send: (paneId: string, cwd: string, text: string, attachments?: AgentAttachment[]) => void;
+  /**
+   * Take the conversation up again with nothing new said.
+   *
+   * For a subagent's report, which arrives on a call the model already made and
+   * so needs no message to introduce it: the transcript ends on a tool result,
+   * which is the shape that has always meant "carry on". A user message here
+   * would be Fleet putting words in the user's mouth, and the model would
+   * answer the words rather than the report.
+   */
+  resume: (paneId: string) => void;
   /** Folds the older half of the transcript into a summary. Ignored while busy. */
   compact: (paneId: string) => void;
   cancel: (paneId: string) => void;
@@ -229,6 +281,8 @@ type AgentStoreState = {
    * happens to be pending is an answer to a command the user never read.
    */
   decidePermission: (paneId: string, outcome: AgentPermissionOutcome, requestId: string) => void;
+  /** The same, for the command a subagent of this pane is waiting on. */
+  decideTaskPermission: (taskId: string, outcome: AgentPermissionOutcome) => void;
   /** The pane is gone: stop its turn and forget it. */
   disposePane: (paneId: string) => void;
   /** The user is looking at this pane: drop a badge that has now been read. */
@@ -358,6 +412,44 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     });
   },
 
+  resume: (paneId) => {
+    const thread = get().threads[paneId];
+    if (thread?.streamId !== null || thread.loading) return;
+
+    const streamId = crypto.randomUUID();
+    const assistant: AgentMessage = {
+      id: streamId,
+      role: 'assistant',
+      parts: [],
+      reasoning: '',
+      reasoningMs: null
+    };
+    set({
+      threads: {
+        ...get().threads,
+        [paneId]: {
+          ...thread,
+          messages: [...thread.messages, assistant],
+          streamId,
+          startedAt: Date.now(),
+          error: null
+        }
+      }
+    });
+    reportActivity(paneId, 'working');
+    // No user message, and none written down. The turn is built from the
+    // transcript as it stands, which now ends on the report.
+    window.fleet.agent.send({
+      streamId,
+      threadId: thread.sessionId ?? streamId,
+      cwd: thread.cwd,
+      history: thread.messages,
+      text: '',
+      attachments: [],
+      todos: thread.todos
+    });
+  },
+
   compact: (paneId) => {
     const thread = get().threads[paneId];
     if (thread?.streamId !== null) return;
@@ -411,6 +503,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     window.fleet.agent.decidePermission({ requestId: ask.requestId, outcome });
   },
 
+  decideTaskPermission: (taskId, outcome) => decideTaskPermission(taskId, outcome),
+
   /*
    * Cancelling is the point, not the tidying. A turn stopped on a permission
    * question has no other way to end - main is waiting on a click that can no
@@ -418,6 +512,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
    */
   disposePane: (paneId) => {
     get().cancel(paneId);
+    refuseTaskQuestions(paneId);
     useNotificationStore.getState().clearActivity(paneId);
     // Main is told outright, because it will not find out. `pane-closed` is
     // emitted by the PTY paths, and this pane never had one - so a record left
@@ -565,6 +660,271 @@ function recordTodos(streamId: string, todos: AgentTodoItem[]): void {
   record(found.thread, { t: 'todos', items: todos });
 }
 
+/**
+ * The pane a subagent belongs to.
+ *
+ * By task id rather than by stream, because that is what the child's own events
+ * arrive under and the parent's turn is long over by the time most of them do.
+ */
+function threadOfTask(taskId: string): { paneId: string; thread: PaneThread } | null {
+  for (const [paneId, thread] of Object.entries(useAgentStore.getState().threads)) {
+    if (thread !== undefined && taskId in thread.taskActivity) return { paneId, thread };
+  }
+  return null;
+}
+
+/**
+ * The pane a report is addressed to.
+ *
+ * The thread id is the session where there is one, and the stream id of the
+ * turn that started it where there is not - a pane that had not yet been given
+ * a session file when it dispatched. Both are checked, because a subagent
+ * dispatched in the first seconds of a pane's life is exactly the case the
+ * first check misses, and it reports back like any other.
+ */
+function threadOfThread(threadId: string): { paneId: string; thread: PaneThread } | null {
+  for (const [paneId, thread] of Object.entries(useAgentStore.getState().threads)) {
+    if (thread === undefined) continue;
+    if (thread.sessionId === threadId) return { paneId, thread };
+    if (thread.sessionId === null && thread.messages.some((m) => m.id === threadId)) {
+      return { paneId, thread };
+    }
+  }
+  return null;
+}
+
+/** A subagent has started: make room for the events it is about to send. */
+function startTask(threadId: string, task: AgentTaskInfo): void {
+  const found = threadOfThread(threadId);
+  if (found === null) return;
+  useAgentStore.setState((s) => ({
+    threads: {
+      ...s.threads,
+      [found.paneId]: {
+        ...found.thread,
+        taskActivity: { ...found.thread.taskActivity, [task.id]: null }
+      }
+    }
+  }));
+}
+
+/**
+ * What a running subagent is doing, for the line on its card.
+ *
+ * Only a verb and a target - the row's own words for the call, the same ones
+ * the pane would have drawn if this were its own turn. Nothing is written down:
+ * this is the shape of the wait, and by the time anyone replays the session it
+ * has been over for hours.
+ */
+function noteTaskActivity(taskId: string, call: AgentToolCall): void {
+  const found = threadOfTask(taskId);
+  if (found === null) return;
+  const { verb, target } = toolLabel(call);
+  useAgentStore.setState((s) => ({
+    threads: {
+      ...s.threads,
+      [found.paneId]: {
+        ...found.thread,
+        taskActivity: {
+          ...found.thread.taskActivity,
+          [taskId]: target === '' ? verb : `${verb} ${target}`
+        }
+      }
+    }
+  }));
+}
+
+/**
+ * A subagent's report, onto the call that asked for it.
+ *
+ * The result is overwritten rather than added beside, which is what makes this
+ * work without a delivery mechanism: the next turn serializes the transcript
+ * the way it always does, and the report goes out as that call's answer. One
+ * appended event says the same thing to the file, so a replay reaches the same
+ * transcript rather than one still saying "started".
+ */
+/** What a finished subagent leaves in the log of the session that asked. */
+function taskEvent(done: AgentTaskDone): AgentSessionEvent {
+  return {
+    t: 'task',
+    id: done.task.id,
+    status: done.task.status,
+    report: done.report,
+    summary: done.task.summary
+  };
+}
+
+function finishTask(done: AgentTaskDone): void {
+  const event = taskEvent(done);
+  const found = threadOfThread(done.threadId);
+  if (found === null) {
+    // Nothing on screen is showing this session, which is the ordinary end of a
+    // long errand: the pane that dispatched it has since been given a new
+    // session or closed. The report still belongs to the session that asked
+    // for it, so it is written straight to that log rather than dropped - and
+    // the row reads `done` when the session is next opened, instead of the
+    // pane inventing an "interrupted" that never happened.
+    log.debug('report for a session no pane is showing', { task: done.task.id });
+    window.fleet.agent.appendSession({ sessionId: done.threadId, cwd: done.cwd, event });
+    // And the bill, which is main's to add up here: the running total lives in
+    // the log, and there is no thread holding it to add to. A child that ran
+    // for four minutes after its pane was closed was still charged for it.
+    if (done.usage !== null) {
+      window.fleet.agent.addSessionSpend({
+        sessionId: done.threadId,
+        cwd: done.cwd,
+        usage: done.usage
+      });
+    }
+    return;
+  }
+  const { paneId, thread } = found;
+
+  const messages = thread.messages.map((m) => ({
+    ...m,
+    parts: m.parts.map((p) =>
+      p.type === 'tool' && p.call.id === done.callId
+        ? {
+            ...p,
+            call: { ...p.call, task: done.task, result: done.report, summary: done.task.summary }
+          }
+        : p
+    )
+  }));
+  const taskActivity = { ...thread.taskActivity };
+  delete taskActivity[done.task.id];
+  // A child stopped on a question and then cancelled has had that question
+  // settled by the gate on its way out. Leaving it on screen would be asking
+  // about a command that can no longer run.
+  const taskPermissions = { ...thread.taskPermissions };
+  delete taskPermissions[done.task.id];
+
+  useAgentStore.setState((s) => ({
+    threads: { ...s.threads, [paneId]: { ...thread, messages, taskActivity, taskPermissions } }
+  }));
+  record(thread, event);
+  // The money the child spent belongs to the session, since the turn that
+  // dispatched it ended long before the bill did.
+  if (done.usage !== null && thread.sessionId !== null) addSpend(thread.sessionId, done.usage);
+
+  // Nothing further is needed from the user to collect a report, so nothing is
+  // asked of them. See `scheduleResume`.
+  scheduleResume(paneId);
+}
+
+/**
+ * How long a report waits for its neighbours before the pane picks it up.
+ *
+ * Subagents are dispatched together and finish together, and one turn that sees
+ * three reports is worth three turns that each see one: the parent can weigh
+ * them against each other, and the user is not charged for reading the same
+ * transcript three times. Short enough that a lone report is not left sitting
+ * there, long enough that a batch dispatched in one round arrives as one.
+ */
+const RESUME_BATCH_MS = 1500;
+
+const resumeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Pick the conversation back up once the reports have settled.
+ *
+ * Automatic rather than a button, because from the user's side they already
+ * asked for this: the agent said it was going to check something and would come
+ * back. A report that sits waiting to be collected is a conversation that has
+ * quietly stopped, in a pane whose composer says it is ready.
+ *
+ * Rescheduled rather than dropped when the pane is busy. A turn in flight will
+ * end, and the report is already in the transcript it will be built from - so
+ * the only question is which turn reads it, and the answer must not be "none".
+ */
+function scheduleResume(paneId: string): void {
+  clearTimeout(resumeTimers.get(paneId));
+  resumeTimers.set(
+    paneId,
+    setTimeout(() => {
+      resumeTimers.delete(paneId);
+      const thread = useAgentStore.getState().threads[paneId];
+      if (thread === undefined) return;
+      // Still waiting on something: a turn, a read, or another subagent whose
+      // report would arrive one turn too late to be read with this one.
+      if (thread.streamId !== null || thread.loading) {
+        scheduleResume(paneId);
+        return;
+      }
+      if (Object.keys(thread.taskActivity).length > 0) return;
+      useAgentStore.getState().resume(paneId);
+    }, RESUME_BATCH_MS)
+  );
+}
+
+/**
+ * Mark as interrupted every subagent this session says is running that nothing
+ * is actually running.
+ *
+ * A row that says "running" was written by a renderer that has since been
+ * reloaded, or by a launch of the app that ended last week - and main is the
+ * only side that can tell those from a subagent still going. Without this the
+ * card shimmers forever, and worse, the model is left holding a tool call whose
+ * result still says a report is coming.
+ */
+async function reconcileTasks(paneId: string, sessionId: string): Promise<void> {
+  const thread = useAgentStore.getState().threads[paneId];
+  if (thread?.sessionId !== sessionId) return;
+
+  const running = thread.messages.flatMap((m) =>
+    m.parts.flatMap((p) =>
+      p.type === 'tool' && p.call.task?.status === 'running' ? [p.call.task] : []
+    )
+  );
+  if (running.length === 0) return;
+
+  const live = new Set(await window.fleet.agent.runningTasks(running.map((t) => t.id)));
+  for (const task of running) {
+    if (live.has(task.id)) {
+      // Still going, so the pane starts listening to it again - the events it
+      // sends from here arrive under its id, and the report will too.
+      useAgentStore.setState((s) => {
+        const current = s.threads[paneId];
+        if (current === undefined) return { threads: s.threads };
+        return {
+          threads: {
+            ...s.threads,
+            [paneId]: { ...current, taskActivity: { ...current.taskActivity, [task.id]: null } }
+          }
+        };
+      });
+      continue;
+    }
+    // Not live, and no ending was ever written down - so it stopped without
+    // anyone recording why. A subagent that merely finished while this session
+    // was closed does not reach here: its report was written to the log the
+    // moment it arrived, and the replay above has already folded it in.
+    finishTask({
+      threadId: sessionId,
+      callId: callIdOfTask(paneId, task.id) ?? '',
+      cwd: thread.cwd,
+      task: { ...task, status: 'interrupted', summary: 'interrupted' },
+      report: sanitizeReport(
+        task.agent,
+        'This subagent stopped without reporting - Fleet was closed, or it did not survive whatever ended it. Run it again if you still need it.'
+      ),
+      usage: null
+    });
+  }
+}
+
+/** Which call in the transcript started this subagent. */
+function callIdOfTask(paneId: string, taskId: string): string | null {
+  const thread = useAgentStore.getState().threads[paneId];
+  if (thread === undefined) return null;
+  for (const message of thread.messages) {
+    for (const part of message.parts) {
+      if (part.type === 'tool' && part.call.task?.id === taskId) return part.call.id;
+    }
+  }
+  return null;
+}
+
 /** The newest render of an image still being generated, for its own row. */
 function recordImagePartial(streamId: string, callId: string, image: string): void {
   patchPartials(streamId, (partials) => ({ ...partials, [callId]: image }));
@@ -600,13 +960,75 @@ function patchPartials(
  */
 /** Put a command's fate in front of the user, on the row of the call that made it. */
 function askPermission(ask: AgentPermissionAsk): void {
-  const found = threadOf(ask.streamId);
-  if (found === null) return;
   log.debug('permission ask', { command: ask.command, reason: ask.reason });
+
+  // A subagent's question arrives under its own stream, which is no pane's, so
+  // the ordinary lookup misses it entirely. Without this the question is
+  // dropped in silence and the child waits on an answer that cannot be given:
+  // the gate is holding its command open, and nothing on screen says so.
+  const task = threadOfTask(ask.streamId);
+  if (task !== null) {
+    useAgentStore.setState((s) => ({
+      threads: {
+        ...s.threads,
+        [task.paneId]: {
+          ...task.thread,
+          taskPermissions: { ...task.thread.taskPermissions, [ask.streamId]: ask }
+        }
+      }
+    }));
+    reportActivity(task.paneId, 'needs_me');
+    return;
+  }
+
+  const found = threadOf(ask.streamId);
+  if (found === null) {
+    // Nothing on screen can answer this, so it is answered here, fail-closed.
+    //
+    // A subagent is what makes this reachable: it outlives the turn that
+    // dispatched it, so it can ask its first question minutes later, by which
+    // time the pane may have been given another session or closed - and then
+    // there is no card to draw the question on and no pane to draw it in. The
+    // child would wait on that answer for the rest of the session, holding one
+    // of the five slots and reporting nothing.
+    //
+    // Refusing is the safe half: the command does not run, the child is told so
+    // in the ordinary way, and it carries on and reports. The same as
+    // `PermissionGate.refusePending` does when the window reloads, for the same
+    // reason. A question for a turn that ended has already been refused by main
+    // and settles nothing here.
+    log.debug('refused a question no pane can show', { command: ask.command });
+    window.fleet.agent.decidePermission({ requestId: ask.requestId, outcome: 'no' });
+    return;
+  }
   useAgentStore.setState((s) => ({
     threads: { ...s.threads, [found.paneId]: { ...found.thread, pendingPermission: ask } }
   }));
   reportActivity(found.paneId, 'needs_me');
+}
+
+/**
+ * Answer the question a subagent is stopped on.
+ *
+ * Separate from `decidePermission` only because of where the question is kept:
+ * the answer itself goes back the same way, on the request id, which is what
+ * main matches on and which belongs to neither pane nor stream.
+ */
+function decideTaskPermission(taskId: string, outcome: AgentPermissionOutcome): void {
+  const found = threadOfTask(taskId);
+  const ask = found?.thread.taskPermissions[taskId];
+  if (found === null || ask === undefined) return;
+
+  const taskPermissions = { ...found.thread.taskPermissions };
+  delete taskPermissions[taskId];
+  useAgentStore.setState((s) => ({
+    threads: { ...s.threads, [found.paneId]: { ...found.thread, taskPermissions } }
+  }));
+  // Reported after the question has been taken off the thread, so that
+  // `reportActivity` sees a pane with one fewer question outstanding - it holds
+  // the badge on its own if another subagent is still stopped on one.
+  reportActivity(found.paneId, 'working');
+  window.fleet.agent.decidePermission({ requestId: ask.requestId, outcome });
 }
 
 function handOff(streamId: string, command: string): void {
@@ -716,9 +1138,32 @@ function canSwitch(paneId: string): boolean {
 
 /** Point a pane at a session and clear what the last one left on screen. */
 function claimSession(paneId: string, cwd: string, sessionId: string): void {
+  refuseTaskQuestions(paneId);
   useAgentStore.setState((s) => ({
     threads: { ...s.threads, [paneId]: { ...EMPTY_THREAD, sessionId, cwd } }
   }));
+}
+
+/**
+ * Answer every question this pane's subagents are stopped on, fail-closed.
+ *
+ * For the moment the pane stops showing the session that dispatched them - a
+ * new session, another session, or the pane closing. The cards go with it, so
+ * the questions have nowhere left to be drawn, and a question with no button is
+ * one the child waits on for the rest of the session while holding a slot.
+ *
+ * The children themselves are left alone: outliving the pane is the point of
+ * them, and each is told no about the one command it happened to be stopped on,
+ * which it can report having been refused. The same bargain
+ * `PermissionGate.refusePending` makes when the window reloads.
+ */
+function refuseTaskQuestions(paneId: string): void {
+  const thread = useAgentStore.getState().threads[paneId];
+  if (thread === undefined) return;
+  for (const ask of Object.values(thread.taskPermissions)) {
+    log.debug('refused a question the pane stopped showing', { command: ask.command });
+    window.fleet.agent.decidePermission({ requestId: ask.requestId, outcome: 'no' });
+  }
 }
 
 /**
@@ -788,6 +1233,11 @@ async function replayInto(paneId: string, sessionId: string): Promise<void> {
       }
     }
   }));
+
+  // After the transcript is on screen, because what this settles is a row the
+  // user is already looking at. Not awaited for the same reason: a pane whose
+  // history has loaded is a pane that can be used.
+  void reconcileTasks(paneId, sessionId);
 }
 
 /**
@@ -929,8 +1379,22 @@ window.fleet.agent.onStreamError(({ streamId, message, usage }) => {
 });
 window.fleet.agent.onHandOff(({ streamId, command }) => handOff(streamId, command));
 window.fleet.agent.onPermissionAsk((ask) => askPermission(ask));
-window.fleet.agent.onToolStart(({ streamId, call }) => recordToolCall(streamId, call));
+window.fleet.agent.onTaskStart(({ threadId, task }) => startTask(threadId, task));
+window.fleet.agent.onTaskDone((done) => finishTask(done));
+window.fleet.agent.onToolStart(({ streamId, call }) => {
+  // A stream id that is a task id belongs to a subagent, whose calls are not
+  // this pane's transcript: they are what its card says it is doing.
+  if (threadOfTask(streamId) !== null) {
+    noteTaskActivity(streamId, call);
+    return;
+  }
+  recordToolCall(streamId, call);
+});
 window.fleet.agent.onToolEnd(({ streamId, call }) => {
+  if (threadOfTask(streamId) !== null) {
+    noteTaskActivity(streamId, call);
+    return;
+  }
   recordToolCall(streamId, call);
   // The call may have been `git checkout`. The gitdir watcher would catch that
   // on its own; this is what covers a repo it could not watch - a network mount,

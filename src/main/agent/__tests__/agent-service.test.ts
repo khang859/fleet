@@ -32,6 +32,7 @@ import {
   withTodoReminder
 } from '../agent-service';
 import { PermissionGate } from '../permissions/gate';
+import { SubagentManager } from '../subagents/manager';
 import {
   collectToolCalls,
   parseStreamLine,
@@ -41,6 +42,18 @@ import {
   type ToolCallDelta,
   type WireToolCall
 } from '../openrouter';
+
+/**
+ * A machine with no subagent definitions on it, which is what the tests below
+ * are about: what a turn does. What it does when there *are* subagents has its
+ * own file, and letting these reach the real loader would make every assertion
+ * about the tool list depend on what is in `resources/agents` today.
+ */
+const NO_SUBAGENTS = new SubagentManager({
+  emit: () => {},
+  run: async () => Promise.reject(new Error('no subagent should run here')),
+  definitions: async () => Promise.resolve([])
+});
 
 /**
  * A gate that lets everything through. Whether a command is allowed is its own
@@ -342,7 +355,8 @@ describe('toWireHistory', () => {
       error: null,
       summary: '1 line',
       image: null,
-      todos: null
+      todos: null,
+      task: null
     };
     const turn: AgentMessage = {
       id: 'b',
@@ -384,7 +398,8 @@ describe('toWireHistory', () => {
       error: null,
       summary: null,
       image: null,
-      todos: null
+      todos: null,
+      task: null
     };
     const turn: AgentMessage = {
       id: 'b',
@@ -535,7 +550,8 @@ describe('toWireHistory: attachments', () => {
       error: null,
       summary: '6 B',
       image: { path: join(dir, 'shot.png'), mimeType: 'image/png' },
-      todos: null
+      todos: null,
+      task: null
     };
     const turn: AgentMessage = {
       id: 'b',
@@ -573,7 +589,8 @@ describe('toWireHistory: attachments', () => {
       error: null,
       summary: '6 B',
       image: { path: join(dir, 'shot.png'), mimeType: 'image/png' },
-      todos: null
+      todos: null,
+      task: null
     };
     const searched: AgentToolCall = {
       id: 'call_2',
@@ -583,7 +600,8 @@ describe('toWireHistory: attachments', () => {
       error: null,
       summary: '0 matches',
       image: null,
-      todos: null
+      todos: null,
+      task: null
     };
     const turn: AgentMessage = {
       id: 'b',
@@ -649,6 +667,7 @@ describe('AgentService', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream
@@ -674,6 +693,7 @@ describe('AgentService', () => {
         ...SETTINGS,
         coding: { ...SETTINGS.coding, maxTokens: 8192, temperature: 0.2, reasoningEffort: 'high' }
       }),
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream
@@ -697,6 +717,7 @@ describe('AgentService', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => ({ ...SETTINGS, systemPrompt: 'Answer only in haiku.' }),
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream
@@ -728,6 +749,7 @@ describe('AgentService', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream: async (req) => {
@@ -755,6 +777,7 @@ describe('AgentService', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream: vi.fn(async () => Promise.resolve(round()))
@@ -770,6 +793,7 @@ describe('AgentService', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => null,
       emit,
       stream: vi.fn()
@@ -790,6 +814,7 @@ describe('AgentService', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => ({ ...SETTINGS, coding: { ...SETTINGS.coding, model: null } }),
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream: vi.fn()
@@ -809,6 +834,7 @@ describe('AgentService', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream: async (req) => {
@@ -859,6 +885,7 @@ describe('AgentService', () => {
         ...SETTINGS,
         coding: { ...SETTINGS.coding, reasoningEffort: 'high', maxTokens: 64_000 }
       }),
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       // An empty stream fails the compaction, which is fine: the request has
@@ -878,6 +905,7 @@ describe('AgentService', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream: async (req) => {
@@ -906,6 +934,7 @@ describe('AgentService', () => {
     const service = new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream: async () => {
@@ -932,6 +961,7 @@ describe('AgentService', () => {
     const service = new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream: async (req) => {
@@ -962,6 +992,7 @@ describe('AgentService', () => {
     const service = new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream: async (req) => {
@@ -992,6 +1023,7 @@ describe('AgentService', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream: async (req) => {
@@ -1105,6 +1137,7 @@ describe('the tool loop', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream
@@ -1136,6 +1169,7 @@ describe('the tool loop', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream
@@ -1165,6 +1199,7 @@ describe('the tool loop', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream
@@ -1192,6 +1227,7 @@ describe('the tool loop', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream
@@ -1214,6 +1250,7 @@ describe('the tool loop', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream
@@ -1251,6 +1288,7 @@ describe('the tool loop', () => {
       new AgentService({
         gate: PASS_GATE,
         getSettings: () => settings,
+        subagents: NO_SUBAGENTS,
         getApiKey: () => 'sk-or-test',
         emit,
         stream
@@ -1317,6 +1355,7 @@ describe('the tool loop', () => {
           ...withImage,
           image: { ...withImage.image, resolution: '2K', quality: 'high', seed: 3 }
         }),
+        subagents: NO_SUBAGENTS,
         getApiKey: () => 'sk-or-test',
         emit,
         stream,
@@ -1350,6 +1389,7 @@ describe('the tool loop', () => {
       new AgentService({
         gate: PASS_GATE,
         getSettings: () => withImage,
+        subagents: NO_SUBAGENTS,
         getApiKey: () => 'sk-or-test',
         emit,
         stream,
@@ -1377,6 +1417,7 @@ describe('the tool loop', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => ({ ...SETTINGS, maxToolRounds: 12 }),
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream
@@ -1402,6 +1443,7 @@ describe('the tool loop', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => ({ ...SETTINGS, maxToolRounds: MAX_TOOL_ROUNDS_CEILING * 10 }),
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream
@@ -1421,6 +1463,7 @@ describe('the tool loop', () => {
     new AgentService({
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
       emit,
       stream

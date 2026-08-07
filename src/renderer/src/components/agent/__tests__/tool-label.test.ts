@@ -11,6 +11,7 @@ const call = (name: string, args: string, over: Partial<AgentToolCall> = {}): Ag
   summary: null,
   image: null,
   todos: null,
+  task: null,
   ...over
 });
 
