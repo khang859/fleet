@@ -6,14 +6,20 @@ import {
   type AgentMessage,
   type AgentTurnUsage
 } from '../agent-types';
+import type { AgentToolCall } from '../agent-tools';
 import {
+  CLEARED_RESULT_TEXT,
+  CLEAR_KEEP_RECENT,
+  CLEAR_MIN_TOKENS,
   COMPACT_MIN_OLDER,
   canCompact,
+  clearedCallIds,
   contextUsed,
   estimateTokens,
   estimateTranscriptTokens,
   shouldCompact,
-  splitForCompaction
+  splitForCompaction,
+  withClearedResults
 } from '../agent-context';
 
 const msg = (role: AgentMessage['role'], content: string, reasoning = ''): AgentMessage => ({
@@ -132,6 +138,139 @@ describe('estimateTranscriptTokens', () => {
 
       expect(estimateTranscriptTokens([looked]) - estimateTranscriptTokens([read])).toBe(1600);
     });
+  });
+});
+
+describe('clearing old tool results', () => {
+  /** A finished call, with a result big enough to be worth clearing. */
+  const call = (id: string, name: string, resultChars = 40_000): AgentToolCall => ({
+    id,
+    name,
+    args: '{}',
+    result: 'x'.repeat(resultChars),
+    error: null,
+    summary: '200 lines',
+    image: null,
+    todos: null
+  });
+
+  /** An assistant turn that made these calls, in order. */
+  const called = (...calls: AgentToolCall[]): AgentMessage => ({
+    ...msg('assistant', ''),
+    parts: calls.map((c) => ({ type: 'tool', call: c }))
+  });
+
+  /** Enough old reads to clear, plus `keepRecent` fresh ones after them. */
+  const longRun = (): AgentMessage[] => [
+    called(call('old1', 'read'), call('old2', 'read')),
+    called(...Array.from({ length: CLEAR_KEEP_RECENT }, (_, i) => call(`new${i}`, 'read', 10)))
+  ];
+
+  it('clears old reproducible results once there is enough to gain', () => {
+    expect(clearedCallIds(longRun())).toEqual(new Set(['old1', 'old2']));
+  });
+
+  it('keeps the most recent calls whatever they cost', () => {
+    const ids = clearedCallIds([
+      called(...Array.from({ length: CLEAR_KEEP_RECENT }, (_, i) => call(`c${i}`, 'read')))
+    ]);
+
+    expect(ids).toEqual(new Set());
+  });
+
+  /*
+   * The guard that stops a rewrite costing more than it saves. Every provider
+   * caches on an exact prefix, so clearing one small result throws away the
+   * cached prefix behind it to save a few hundred tokens.
+   */
+  it('does nothing when there is too little to be worth breaking the cache for', () => {
+    const barely = Math.floor((CLEAR_MIN_TOKENS * 3.5) / 2) - 1;
+    const ids = clearedCallIds([
+      called(call('old1', 'read', barely)),
+      called(...Array.from({ length: CLEAR_KEEP_RECENT }, (_, i) => call(`new${i}`, 'read', 10)))
+    ]);
+
+    expect(ids).toEqual(new Set());
+  });
+
+  /*
+   * The whole safety property. Nothing about a command line says whether
+   * running it twice is free, and an edit describes a change that happened
+   * once, so neither may be thrown away and re-derived.
+   */
+  it('never clears a tool that cannot simply be run again', () => {
+    for (const name of ['bash', 'edit', 'write', 'terminal', 'image', 'mcp__linear__search']) {
+      const ids = clearedCallIds([
+        called(call('old1', name), call('old2', name)),
+        called(...Array.from({ length: CLEAR_KEEP_RECENT }, (_, i) => call(`new${i}`, 'read', 10)))
+      ]);
+
+      expect(ids, `${name} must survive`).toEqual(new Set());
+    }
+  });
+
+  it('leaves a failed call alone, since the reason is why the next rounds went as they did', () => {
+    const failed: AgentToolCall = { ...call('old1', 'read'), result: null, error: 'no such file' };
+    const ids = clearedCallIds([
+      called(failed, call('old2', 'read')),
+      called(...Array.from({ length: CLEAR_KEEP_RECENT }, (_, i) => call(`new${i}`, 'read', 10)))
+    ]);
+
+    expect(ids.has('old1')).toBe(false);
+  });
+
+  it('replaces the result and the picture it came with, and nothing else', () => {
+    const withImage: AgentToolCall = {
+      ...call('old1', 'read'),
+      image: { path: '/repo/shot.png', mimeType: 'image/png' }
+    };
+    const cleared = withClearedResults([
+      called(withImage, call('old2', 'read')),
+      called(...Array.from({ length: CLEAR_KEEP_RECENT }, (_, i) => call(`new${i}`, 'read', 10)))
+    ]);
+
+    const part = cleared[0].parts[0];
+    if (part.type !== 'tool') throw new Error('expected a tool part');
+    expect(part.call.result).toBe(CLEARED_RESULT_TEXT);
+    expect(part.call.image).toBeNull();
+    // The call itself survives, so the model still knows it read the file.
+    expect(part.call.name).toBe('read');
+    expect(part.call.args).toBe('{}');
+  });
+
+  it('returns the transcript itself when there is nothing to do', () => {
+    const messages = [called(call('c1', 'read', 10))];
+
+    expect(withClearedResults(messages)).toBe(messages);
+  });
+
+  /*
+   * The loop guard. A second pass sees placeholders where it left them, and
+   * must not count them as a saving available all over again - otherwise every
+   * round rewrites the same messages and invalidates the cache forever.
+   */
+  it('is settled after one pass', () => {
+    const once = withClearedResults(longRun());
+
+    expect(clearedCallIds(once)).toEqual(new Set());
+    expect(withClearedResults(once)).toBe(once);
+  });
+
+  it('does not touch the transcript it was given', () => {
+    const messages = longRun();
+    withClearedResults(messages);
+
+    const part = messages[0].parts[0];
+    if (part.type !== 'tool') throw new Error('expected a tool part');
+    expect(part.call.result).toBe('x'.repeat(40_000));
+  });
+
+  it('shrinks what the request is estimated to cost', () => {
+    const messages = longRun();
+
+    expect(estimateTranscriptTokens(withClearedResults(messages))).toBeLessThan(
+      estimateTranscriptTokens(messages) - CLEAR_MIN_TOKENS
+    );
   });
 });
 

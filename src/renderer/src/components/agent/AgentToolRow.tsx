@@ -31,11 +31,21 @@ import { AgentImage, AgentImagePreview } from './AgentImage';
  */
 export function AgentToolRow({
   call,
-  partial
+  partial,
+  cleared = false
 }: {
   call: AgentToolCall;
   /** The latest half-drawn render, while this call is still generating one. */
   partial?: string;
+  /**
+   * Whether this result has been dropped from what the model is sent.
+   *
+   * Said on the row because the alternative is a transcript that quietly stops
+   * describing the conversation the model is having. The output stays open
+   * underneath either way - it is still what happened, and it is still the
+   * user's record - so the marker is about the model's memory, not this pane's.
+   */
+  cleared?: boolean;
 }): React.JSX.Element {
   const status = toolStatus(call);
   const { verb, target } = toolLabel(call);
@@ -79,7 +89,15 @@ export function AgentToolRow({
           className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
         />
         {label}
-        <span className="ml-auto shrink-0 pl-2">
+        <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
+          {cleared && (
+            <span
+              title="This result is no longer sent to the model, to save context. The agent can run the tool again if it needs it."
+              className="text-[10px] text-fleet-text-muted/60"
+            >
+              cleared
+            </span>
+          )}
           {status === 'failed' ? (
             <span className="text-amber-400/90">failed</span>
           ) : (

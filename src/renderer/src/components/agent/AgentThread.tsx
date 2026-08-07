@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUp,
   Check,
@@ -20,7 +20,7 @@ import type {
 import { ATTACHMENT_ACCEPT, messageAttachments, messageText } from '../../../../shared/agent-types';
 import { isTodoTool } from '../../../../shared/agent-tools';
 import { renderTodoList, type AgentTodoItem } from '../../../../shared/agent-todos';
-import { canCompact } from '../../../../shared/agent-context';
+import { canCompact, clearedCallIds } from '../../../../shared/agent-context';
 import { todoProgress, type TodoProgress } from './todo-view';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentActivity } from './AgentActivity';
@@ -212,6 +212,10 @@ function Transcript({
   // so when the content grows it still says where they were before it did.
   const atTail = useRef(true);
   const last = messages.at(-1);
+  // Which results the next request will leave out. Worked out from the same
+  // transcript and by the same function main uses, so a row that says it was
+  // cleared is one the model is genuinely no longer being told about.
+  const cleared = useMemo(() => clearedCallIds(messages), [messages]);
 
   // Follow the stream. Keyed on the growing text so every delta scrolls.
   useEffect(() => {
@@ -268,6 +272,7 @@ function Transcript({
             ask={ask}
             onDecide={onDecide}
             imagePartials={imagePartials}
+            cleared={cleared}
           />
         ))}
         <div ref={endRef} />
@@ -327,7 +332,8 @@ function Message({
   streaming,
   ask,
   onDecide,
-  imagePartials
+  imagePartials,
+  cleared
 }: {
   message: AgentMessage;
   streaming: boolean;
@@ -335,6 +341,8 @@ function Message({
   onDecide: (outcome: AgentPermissionOutcome) => void;
   /** Half-drawn renders for the image calls still running, by call id. */
   imagePartials: Record<string, string>;
+  /** Calls whose result is no longer being sent to the model, by call id. */
+  cleared: Set<string>;
 }): React.JSX.Element {
   if (message.role === 'summary') return <SummaryCard summary={messageText(message)} />;
   if (message.role === 'user') {
@@ -388,7 +396,12 @@ function Message({
         return ask?.callId === part.call.id ? (
           <AgentPermissionRow key={i} ask={ask} onDecide={onDecide} />
         ) : (
-          <AgentToolRow key={i} call={part.call} partial={imagePartials[part.call.id]} />
+          <AgentToolRow
+            key={i}
+            call={part.call}
+            partial={imagePartials[part.call.id]}
+            cleared={cleared.has(part.call.id)}
+          />
         );
       })}
     </div>

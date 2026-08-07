@@ -16,13 +16,19 @@ import {
 } from '../../../shared/agent-types';
 import type { AgentToolCall } from '../../../shared/agent-tools';
 import type { AgentTodoItem } from '../../../shared/agent-todos';
-import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../../shared/agent-context';
+import {
+  CLEARED_RESULT_TEXT,
+  CLEAR_KEEP_RECENT,
+  COMPACT_SYSTEM_PROMPT,
+  SUMMARY_WIRE_PREFIX
+} from '../../../shared/agent-context';
 import {
   AgentService,
   TODO_WIRE_PREFIX,
   toCompactMessages,
   toReasoningParam,
   toWireHistory,
+  withClearedWireResults,
   withTodoReminder
 } from '../agent-service';
 import { PermissionGate } from '../permissions/gate';
@@ -1422,5 +1428,84 @@ describe('the tool loop', () => {
     await ended;
 
     expect(stream.mock.calls[0][0].tools).toBeUndefined();
+  });
+});
+
+/*
+ * The within-turn half of clearing. `toWireHistory` is built once from the
+ * transcript at the start of a turn; everything a long turn goes on to read is
+ * appended after that and never passes through it again, so a forty-round turn
+ * would otherwise clear nothing until the next turn began.
+ */
+describe('withClearedWireResults', () => {
+  /** A round: the assistant asking for `name`, and the answer it got. */
+  const exchange = (id: string, name: string, resultChars = 40_000): AgentWireMessage[] => [
+    {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{ id, type: 'function', function: { name, arguments: '{}' } }]
+    },
+    { role: 'tool', tool_call_id: id, content: 'x'.repeat(resultChars) }
+  ];
+
+  /** The recent calls that are kept whatever they cost. */
+  const recent = (): AgentWireMessage[] =>
+    Array.from({ length: CLEAR_KEEP_RECENT }, (_, i) => exchange(`new${i}`, 'read', 10)).flat();
+
+  const contentOf = (messages: AgentWireMessage[], id: string): string | undefined =>
+    messages.find(
+      (m): m is Extract<AgentWireMessage, { role: 'tool' }> =>
+        m.role === 'tool' && m.tool_call_id === id
+    )?.content;
+
+  it('clears old reproducible results and keeps the calls that asked for them', () => {
+    const wire = [...exchange('old1', 'read'), ...exchange('old2', 'grep'), ...recent()];
+    const cleared = withClearedWireResults(wire);
+
+    expect(contentOf(cleared, 'old1')).toBe(CLEARED_RESULT_TEXT);
+    expect(contentOf(cleared, 'old2')).toBe(CLEARED_RESULT_TEXT);
+    // The assistant message naming the call is untouched, or the results would
+    // be answers to questions the transcript never asked.
+    expect(cleared.filter((m) => m.role === 'assistant')).toEqual(
+      wire.filter((m) => m.role === 'assistant')
+    );
+  });
+
+  it('keeps the most recent results whatever they cost', () => {
+    const wire = [...exchange('old1', 'read'), ...recent()];
+
+    for (let i = 0; i < CLEAR_KEEP_RECENT; i++) {
+      expect(contentOf(withClearedWireResults(wire), `new${i}`)).toBe('x'.repeat(10));
+    }
+  });
+
+  it('never clears a command, whose result cannot simply be had again', () => {
+    const wire = [...exchange('old1', 'bash'), ...exchange('old2', 'bash'), ...recent()];
+
+    expect(withClearedWireResults(wire)).toBe(wire);
+  });
+
+  it('does nothing when there is too little to be worth breaking the cache for', () => {
+    const wire = [...exchange('old1', 'read', 1000), ...recent()];
+
+    expect(withClearedWireResults(wire)).toBe(wire);
+  });
+
+  /*
+   * The history arrives already cleared by `toWireHistory`, so a placeholder is
+   * not a saving that is available all over again. Counting it as one would
+   * rewrite the same messages every round and invalidate the cache forever.
+   */
+  it('is settled after one pass', () => {
+    const once = withClearedWireResults([...exchange('old1', 'read'), ...recent()]);
+
+    expect(withClearedWireResults(once)).toBe(once);
+  });
+
+  it('does not touch the array it was given', () => {
+    const wire = [...exchange('old1', 'read'), ...recent()];
+    withClearedWireResults(wire);
+
+    expect(contentOf(wire, 'old1')).toBe('x'.repeat(40_000));
   });
 });

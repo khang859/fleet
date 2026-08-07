@@ -38,7 +38,16 @@ import {
 } from '../../shared/agent-tools';
 import type { McpManager } from './mcp/manager';
 import type { AgentToolEvent } from '../../shared/agent-types';
-import { COMPACT_SYSTEM_PROMPT, SUMMARY_WIRE_PREFIX } from '../../shared/agent-context';
+import {
+  CLEARED_RESULT_TEXT,
+  CLEAR_KEEP_RECENT,
+  CLEAR_MIN_TOKENS,
+  COMPACT_SYSTEM_PROMPT,
+  SUMMARY_WIRE_PREFIX,
+  estimateTokens,
+  isReproducibleTool,
+  withClearedResults
+} from '../../shared/agent-context';
 import {
   streamCompletion,
   type AgentWireMessage,
@@ -196,6 +205,57 @@ export function withTodoReminder(
 }
 
 /**
+ * The same clearing `toWireHistory` does, for the messages a turn adds to it as
+ * it runs.
+ *
+ * Needed because those two are different things. `toWireHistory` is built once,
+ * from the transcript, at the start of a turn; everything after that is
+ * appended here round by round and never passes through it again. A turn that
+ * runs forty rounds is exactly where clearing earns its keep, and without this
+ * none of what it read would be cleared until the *next* turn began.
+ *
+ * Applied to a copy at the point of sending, like the todo reminder above and
+ * for the same reason: the array the next round is built from has to keep the
+ * real results, or a second pass would be clearing what it already cleared and
+ * counting the saving twice.
+ *
+ * A picture a `read` handed over rides in a message of its own after the
+ * result, and is left alone. Finding it would mean tracking which user message
+ * belongs to which call, and an image is a flat 1600 tokens against the
+ * thousands a file of source is - so it is not worth the bookkeeping.
+ */
+type WireToolResult = Extract<AgentWireMessage, { role: 'tool' }>;
+
+export function withClearedWireResults(
+  messages: AgentWireMessage[],
+  keepRecent = CLEAR_KEEP_RECENT
+): AgentWireMessage[] {
+  // What each result is an answer to. A `tool` message names only the call's
+  // id, so the tool's own name has to come from the assistant message that
+  // asked for it.
+  const names = new Map<string, string>();
+  for (const message of messages) {
+    if (message.role !== 'assistant') continue;
+    for (const call of message.tool_calls ?? []) names.set(call.id, call.function.name);
+  }
+
+  const results = messages.filter((m): m is WireToolResult => m.role === 'tool');
+  const older = results.slice(0, Math.max(0, results.length - keepRecent));
+  const clearable = older.filter(
+    (m) => isReproducibleTool(names.get(m.tool_call_id) ?? '') && m.content !== CLEARED_RESULT_TEXT
+  );
+
+  const placeholder = estimateTokens(CLEARED_RESULT_TEXT);
+  const freed = clearable.reduce((total, m) => total + estimateTokens(m.content) - placeholder, 0);
+  if (freed < CLEAR_MIN_TOKENS) return messages;
+
+  const ids = new Set(clearable.map((m) => m.tool_call_id));
+  return messages.map((m) =>
+    m.role === 'tool' && ids.has(m.tool_call_id) ? { ...m, content: CLEARED_RESULT_TEXT } : m
+  );
+}
+
+/**
  * What marks the reminder as Fleet talking rather than the user.
  *
  * Said plainly instead of wrapped in a tag. `<system-reminder>` is a house
@@ -319,13 +379,22 @@ async function toolImageMessages(call: AgentToolCall, cwd: string): Promise<Agen
   return [{ role: 'user', content: parts }];
 }
 
-/** Transcript plus the new message, as the wire wants it. */
+/**
+ * Transcript plus the new message, as the wire wants it.
+ *
+ * Old tool results are dropped on the way out rather than out of the
+ * transcript: what the pane holds and what the model is sent are allowed to
+ * differ, and this is the only place the difference is made. See
+ * `withClearedResults`.
+ */
 export async function toWireHistory(
   req: AgentSendRequest,
   systemPrompt: string
 ): Promise<AgentWireMessage[]> {
   const ctx: WireContext = { cwd: req.cwd, threadId: req.threadId };
-  const history = await Promise.all(req.history.map(async (m) => toWireMessages(m, ctx)));
+  const history = await Promise.all(
+    withClearedResults(req.history).map(async (m) => toWireMessages(m, ctx))
+  );
   return [
     { role: 'system', content: systemPrompt },
     ...history.flat(),
@@ -530,8 +599,10 @@ export class AgentService {
         // A copy, spliced rather than appended. The reminder is about this
         // round only - written into `messages` it would be persisted, resent
         // stale on the next round, and stack up one copy per round of a long
-        // turn, each contradicting the last about what the list says.
-        messages: withTodoReminder(messages, todos.items, todos.streak),
+        // turn, each contradicting the last about what the list says. The
+        // clearing pass is a copy for the same reason, and runs first so the
+        // reminder is never what gets cleared.
+        messages: withTodoReminder(withClearedWireResults(messages), todos.items, todos.streak),
         maxTokens: config.maxTokens,
         reasoning: toReasoningParam(config),
         tools,

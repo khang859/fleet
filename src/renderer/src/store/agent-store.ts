@@ -26,7 +26,8 @@ import {
   contextUsed,
   estimateTranscriptTokens,
   shouldCompact,
-  splitForCompaction
+  splitForCompaction,
+  withClearedResults
 } from '../../../shared/agent-context';
 import { useSettingsStore } from './settings-store';
 import { useNotificationStore } from './notification-store';
@@ -621,7 +622,10 @@ function endTurn(streamId: string, error: string | null, usage: AgentTurnUsage |
   const wasCompacting = thread.pendingCompact !== null;
   const contextTokens = wasCompacting
     ? thread.contextTokens
-    : contextUsed(usage, estimateTranscriptTokens(thread.messages));
+    : // Cleared results are counted as cleared. The provider's own figure
+      // already is, so the estimate that stands in until one arrives has to
+      // describe the same request rather than the transcript it was built from.
+      contextUsed(usage, estimateTranscriptTokens(withClearedResults(thread.messages)));
   // Counted however the turn ended. A turn that was cancelled half-way, or that
   // failed on its ninth round of tools, spent everything it spent getting
   // there - and a total that only counted the turns that worked would be at

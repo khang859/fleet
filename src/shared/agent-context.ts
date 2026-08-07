@@ -1,4 +1,6 @@
 import type { AgentAttachment, AgentMessage, AgentTurnUsage } from './agent-types';
+import { messageToolCalls } from './agent-types';
+import type { AgentToolCall } from './agent-tools';
 
 /**
  * Context accounting and compaction: deciding how full a transcript is, when it
@@ -154,6 +156,149 @@ export function splitForCompaction(
 /** Whether compacting this transcript would actually remove anything. */
 export function canCompact(messages: AgentMessage[], keepRecent = COMPACT_KEEP_RECENT): boolean {
   return splitForCompaction(messages, keepRecent).older.length >= COMPACT_MIN_OLDER;
+}
+
+/*
+ * Clearing old tool results.
+ *
+ * The cheaper half of context management, and the one that runs first. A
+ * transcript is mostly not conversation: a read of two hundred lines dwarfs the
+ * sentence that asked for it, and it goes back on the wire in full with every
+ * round for the rest of the session. Anthropic measured their own research
+ * agent at 96% tool output by the time it filled a window.
+ *
+ * Most of that is worth nothing by then. A file read forty rounds ago is either
+ * still true - in which case reading it again costs one round - or has since
+ * been edited, in which case what is being resent is wrong. So the result is
+ * replaced with a line saying it was cleared, while the call itself stays: the
+ * model still sees that it read the file, and can read it again if it matters.
+ *
+ * Unlike compaction this is not lossy, and so needs no model call, no summary,
+ * and no permission. It also does not touch the transcript. The pane and the
+ * session log keep every result in full - what shrinks is the request, which is
+ * the only place the tokens were ever costing anything. The two are allowed to
+ * disagree, and `clearedCallIds` is how the pane says so on the row.
+ */
+
+/**
+ * Tools whose result can be had again just by asking for it again.
+ *
+ * Deliberately short. `bash` is absent because nothing about a command line
+ * says whether running it twice is free: `git status` is, `npm install` is not,
+ * and a test run that took four minutes is not either. `edit` and `write`
+ * describe a change that happened once. `image` costs money to produce. Where
+ * the answer is not obviously yes, the result stays.
+ *
+ * MCP tools are absent for the same reason - a server's tool does whatever the
+ * server does - even though some of them advertise `readOnlyHint`. Believing
+ * that here would make what the pane draws depend on which servers happen to be
+ * connected, and a marker that means different things in different windows is
+ * worse than a saving left on the table.
+ */
+const REPRODUCIBLE_TOOLS = new Set(['read', 'glob', 'grep']);
+
+/**
+ * Whether running this tool again would give the same answer for free.
+ *
+ * Exported because the rule is applied to two different shapes - the pane's
+ * transcript and the array a running turn accumulates - and the two must never
+ * come to different conclusions about the same call.
+ */
+export function isReproducibleTool(name: string): boolean {
+  return REPRODUCIBLE_TOOLS.has(name);
+}
+
+/** What stands in for a result that is no longer being sent. */
+export const CLEARED_RESULT_TEXT =
+  '[Old tool result cleared to save context. Run the tool again if you still need what it returned.]';
+
+/**
+ * Calls at the end of the transcript kept whole, counted in calls rather than
+ * in messages.
+ *
+ * Messages are the wrong unit here in a way they are not for compaction: one
+ * assistant message holds every call of a turn, so a turn that ran forty rounds
+ * is a single message, and keeping "the last four" of those would keep all
+ * forty results or none.
+ */
+export const CLEAR_KEEP_RECENT = 5;
+
+/**
+ * The least a pass has to free to be worth doing.
+ *
+ * This is a cache guard rather than a tidiness threshold. Every provider that
+ * caches prompts matches on an exact prefix, so rewriting a result in the
+ * middle of the transcript throws away the cached prefix behind it - which is
+ * charged at full rate to rebuild. Below this the rewrite costs more than the
+ * tokens it saves, so nothing happens at all and short sessions never pay for a
+ * feature they had no use for.
+ */
+export const CLEAR_MIN_TOKENS = 20_000;
+
+/**
+ * Which calls would have their results left off the next request.
+ *
+ * The same answer for the pane as for the wire, from the same transcript, so a
+ * row marked as cleared is one the model is genuinely no longer being told
+ * about. An empty set means this transcript is not worth a pass yet.
+ */
+export function clearedCallIds(
+  messages: AgentMessage[],
+  keepRecent = CLEAR_KEEP_RECENT
+): Set<string> {
+  const calls = messages.flatMap(messageToolCalls);
+  const older = calls.slice(0, Math.max(0, calls.length - keepRecent));
+  const clearable = older.filter(isClearable);
+
+  // What the pass would actually save: the results go, but each leaves the
+  // sentence saying so behind, and an image read is carrying a picture the
+  // placeholder replaces as well.
+  const freed = clearable.reduce(
+    (total, call) =>
+      total +
+      estimateTokens(call.result ?? '') +
+      (call.image === null ? 0 : IMAGE_TOKENS) -
+      estimateTokens(CLEARED_RESULT_TEXT),
+    0
+  );
+  if (freed < CLEAR_MIN_TOKENS) return new Set();
+  return new Set(clearable.map((call) => call.id));
+}
+
+/**
+ * A call worth clearing: one that succeeded, that can be run again, and that is
+ * not already cleared. A failure stays because what it says is usually short
+ * and is the reason the next few rounds went the way they did.
+ */
+function isClearable(call: AgentToolCall): boolean {
+  return (
+    isReproducibleTool(call.name) && call.result !== null && call.result !== CLEARED_RESULT_TEXT
+  );
+}
+
+/**
+ * The transcript as the next request should carry it.
+ *
+ * A copy, and only when there is something to do - an untouched transcript is
+ * returned as itself so the common case allocates nothing. The picture a `read`
+ * handed over goes with the result it came from, since re-running the read is
+ * what brings both back.
+ */
+export function withClearedResults(
+  messages: AgentMessage[],
+  keepRecent = CLEAR_KEEP_RECENT
+): AgentMessage[] {
+  const ids = clearedCallIds(messages, keepRecent);
+  if (ids.size === 0) return messages;
+
+  return messages.map((message) => ({
+    ...message,
+    parts: message.parts.map((part) =>
+      part.type === 'tool' && ids.has(part.call.id)
+        ? { ...part, call: { ...part.call, result: CLEARED_RESULT_TEXT, image: null } }
+        : part
+    )
+  }));
 }
 
 /**
