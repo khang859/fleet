@@ -219,6 +219,19 @@ export const AGENT_IMAGE_INSTRUCTIONS = [
 ].join('\n');
 
 /**
+ * What to say about the tools the user connected rather than the ones Fleet
+ * ships. Their own descriptions say what they do; this says what they are, and
+ * which of them not to reach for.
+ */
+export const AGENT_MCP_INSTRUCTIONS = [
+  'Tools whose names begin with `mcp__` come from servers the user connected. The rest of the name is the server and then the tool, so `mcp__linear__list_issues` is `list_issues` on their `linear` server.',
+  '',
+  'They reach things this machine does not have - an issue tracker, a browser, a database - and each call goes over a network to something the user set up. So they can be slow, and they can fail for reasons that have nothing to do with what you asked. Read what comes back rather than assuming it worked.',
+  '',
+  "Where a server offers something Fleet already has - reading a file, searching text, running a command - use Fleet's own tool. It works on the folder this conversation is about, and the server may not be pointed at the same place."
+].join('\n');
+
+/**
  * The system message for a turn. The working folder is appended by Fleet rather
  * than left to the prompt text, so a custom prompt cannot accidentally drop the
  * one fact the agent has no other way to learn. Whether image generation is on
@@ -231,12 +244,13 @@ export const AGENT_IMAGE_INSTRUCTIONS = [
 export function buildSystemPrompt(
   cwd: string,
   override: string | null,
-  options: { image: boolean } = { image: false }
+  options: { image: boolean; mcp?: boolean } = { image: false }
 ): string {
   const custom = override?.trim() ?? '';
   const base = custom === '' ? DEFAULT_AGENT_SYSTEM_PROMPT : custom;
   const image = options.image ? `\n\n${AGENT_IMAGE_INSTRUCTIONS}` : '';
-  return `${base}${image}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
+  const mcp = options.mcp === true ? `\n\n${AGENT_MCP_INSTRUCTIONS}` : '';
+  return `${base}${image}${mcp}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
 }
 
 /*

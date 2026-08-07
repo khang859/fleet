@@ -5,9 +5,11 @@ import type {
   McpServersConfig,
   McpServerStatus,
   McpConnectionState,
-  McpToolSummary
+  McpToolSummary,
+  McpToolOutput
 } from '../../../shared/agent-mcp';
 import { transportOf, isConnectable } from '../../../shared/agent-mcp';
+import type { ExternalToolSpec } from '../../../shared/agent-tools';
 import { wireToolName } from '../../../shared/agent-mcp-names';
 import { createTransport, type TransportAuth } from './transport';
 import { createLogger } from '../../logger';
@@ -36,16 +38,6 @@ const WARN_RESULT_CHARS = 10_000;
  * failed and can be reconnected by hand.
  */
 const CONNECT_TIMEOUT_MS = 5_000;
-
-/** What a turn is handed for one tool, in the shape the completions API wants. */
-export type ExternalToolSpec = {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  };
-};
 
 type ServerEntry = {
   config: McpServerConfig;
@@ -232,13 +224,14 @@ export class McpManager {
    * a server that is down or a tool that errored is something the model can
    * work around, and ending the turn over it would throw away the rest.
    */
-  async callTool(wire: string, argsJson: string): Promise<McpCallResult> {
+  async callTool(wire: string, argsJson: string): Promise<McpToolOutput> {
     const route = this.routes.get(wire);
-    if (route === undefined) return { text: `There is no tool called ${wire}`, isError: true };
+    if (route === undefined)
+      return { text: `There is no tool called ${wire}`, isError: true, image: null };
 
     const entry = this.servers.get(route.server);
     if (entry?.client == null) {
-      return { text: `The ${route.server} server is not connected.`, isError: true };
+      return { text: `The ${route.server} server is not connected.`, isError: true, image: null };
     }
 
     let args: Record<string, unknown> = {};
@@ -248,12 +241,17 @@ export class McpManager {
         if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
           args = { ...parsed };
         } else {
-          return { text: `The arguments for ${wire} were not a JSON object.`, isError: true };
+          return {
+            text: `The arguments for ${wire} were not a JSON object.`,
+            isError: true,
+            image: null
+          };
         }
       } catch {
         return {
           text: `The arguments for ${wire} were not valid JSON: ${argsJson}`,
-          isError: true
+          isError: true,
+          image: null
         };
       }
     }
@@ -262,7 +260,7 @@ export class McpManager {
       const result = await entry.client.callTool({ name: route.tool, arguments: args });
       return readResult(result);
     } catch (err) {
-      return { text: messageOf(err), isError: true };
+      return { text: messageOf(err), isError: true, image: null };
     }
   }
 
@@ -300,28 +298,40 @@ export class McpManager {
   }
 }
 
-export type McpCallResult = { text: string; isError: boolean };
-
 /**
  * An MCP result, flattened to what a tool-result message can carry.
  *
  * The wire allows a list of blocks of several kinds; a tool result may only be
- * text. Text blocks are joined, and anything else is named rather than dropped,
- * so a model that gets back an image at least knows one arrived.
+ * text. Text blocks are joined and a picture is lifted out to travel beside
+ * them. Anything else is named rather than dropped, so a model that gets back
+ * an audio clip at least knows one arrived.
  */
-export function readResult(result: unknown): McpCallResult {
+export function readResult(result: unknown): McpToolOutput {
   const parsed = ToolResultShape.safeParse(result);
   if (!parsed.success || parsed.data.content === undefined) {
     // Not a shape we know how to read. Handed over verbatim rather than
     // discarded: a server that answers in its own dialect is still answering.
     const verbatim = result === undefined ? '(no output)' : JSON.stringify(result);
-    return { text: budget(verbatim), isError: parsed.data?.isError ?? false };
+    return { text: budget(verbatim), isError: parsed.data?.isError ?? false, image: null };
   }
 
-  const parts = parsed.data.content
-    .map((block) => block.text ?? (block.type === undefined ? '' : `(${block.type} content)`))
-    .filter((part) => part !== '');
-  return { text: budget(parts.join('\n')) || '(no output)', isError: parsed.data.isError };
+  const parts: string[] = [];
+  let image: McpToolOutput['image'] = null;
+  for (const block of parsed.data.content) {
+    if (block.type === 'image' && block.data !== undefined && block.mimeType !== undefined) {
+      image ??= { data: block.data, mimeType: block.mimeType };
+      continue;
+    }
+    const part = block.text ?? (block.type === undefined ? '' : `(${block.type} content)`);
+    if (part !== '') parts.push(part);
+  }
+
+  const text = budget(parts.join('\n'));
+  return {
+    text: text === '' ? (image === null ? '(no output)' : '(an image)') : text,
+    isError: parsed.data.isError,
+    image
+  };
 }
 
 /**
@@ -337,7 +347,9 @@ const ToolResultShape = z.object({
     .array(
       z.object({
         type: z.string().optional().catch(undefined),
-        text: z.string().optional().catch(undefined)
+        text: z.string().optional().catch(undefined),
+        data: z.string().optional().catch(undefined),
+        mimeType: z.string().optional().catch(undefined)
       })
     )
     .optional()

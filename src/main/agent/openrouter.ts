@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { AgentUsage } from '../../shared/agent-types';
-import type { AgentToolSpec } from '../../shared/agent-tools';
+import type { ToolSpec } from '../../shared/agent-tools';
 import { sseLines } from './sse';
 
 /**
@@ -63,7 +63,7 @@ export type StreamRequest = {
   temperature: number | null;
   reasoning: ReasoningParam | null;
   /** Offered to the model when present. Omitted entirely when empty. */
-  tools?: AgentToolSpec[];
+  tools?: ToolSpec[];
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onReasoning: (text: string) => void;
