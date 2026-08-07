@@ -1,0 +1,19 @@
+{
+  // The project's own servers. Comments and a trailing comma, because this is
+  // a file people edit by hand.
+  "mcp": {
+    /* The docs server the whole team uses. */
+    "project-docs": {
+      "type": "remote",
+      "url": "https://docs.example.com/mcp", // note the // inside this string
+      "enabled": true,
+    },
+    "with-var": {
+      "type": "local",
+      "command": ["node", "server.js"],
+      "environment": {
+        "API_KEY": "${MY_API_KEY}",
+      },
+    },
+  },
+}

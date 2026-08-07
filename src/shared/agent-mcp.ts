@@ -23,6 +23,14 @@ export type McpImportOrigin = {
   /** Absolute path of the file it was read from, so the UI can point at it. */
   path: string;
   /**
+   * The key it had in that file.
+   *
+   * Kept because Fleet's own name can drift - the user renames it, or two tools
+   * both called theirs `context7` and one had to be qualified - and a re-scan
+   * still has to be able to find the row this server was copied into.
+   */
+  sourceName: string;
+  /**
    * A digest of the normalised config as it stood when imported. A re-scan
    * compares against this to tell "already have it" from "it changed since".
    */
@@ -66,6 +74,17 @@ export type McpServerConfig = {
  * code that does it should have to say what it means to happen.
  */
 export type McpServersConfig = Record<string, McpServerConfig | undefined>;
+
+/**
+ * What stands in a stored config where a secret used to be.
+ *
+ * A header or environment value that looks like a credential is lifted into the
+ * secret store on the way in, and this is left behind so the settings file still
+ * says the field exists. Deliberately shaped like the `${VAR}` references the
+ * config already understands, and deliberately not one: nothing expands it, and
+ * a value still reading this at connect time is dropped rather than sent.
+ */
+export const MCP_SECRET_REF = '${fleet:secret}';
 
 export type McpTransportKind = 'stdio' | 'http';
 

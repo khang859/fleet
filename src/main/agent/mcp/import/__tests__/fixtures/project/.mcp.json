@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "team-docs": {
+      "type": "streamable-http",
+      "url": "https://docs.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer team-token-abcdefgh12345678"
+      }
+    },
+    "no-type-but-a-url": {
+      "url": "https://plain.example.com/mcp"
+    }
+  }
+}
