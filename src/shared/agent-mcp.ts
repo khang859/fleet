@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * MCP servers the Agent pane connects to.
  *
@@ -119,6 +121,26 @@ export type McpServerStatus = {
   tools: McpToolSummary[];
 };
 
+/**
+ * Everything the settings pane holds, in one answer.
+ *
+ * Every call that changes something answers with this, so the pane never has to
+ * ask a second time to find out what its own click did - and cannot end up
+ * showing a config that has been saved beside a status from before it was.
+ */
+export type McpSnapshot = {
+  servers: McpServersConfig;
+  statuses: McpServerStatus[];
+  /**
+   * Which servers have a credential stored.
+   *
+   * The value itself never leaves main, so this is all the pane can know - and
+   * all it needs, because the only question it asks is whether to draw "Sign
+   * in" or "Sign out".
+   */
+  credentials: Record<string, boolean>;
+};
+
 /** One server found in another tool's config, and whether we already have it. */
 export type McpDetectedServer = {
   name: string;
@@ -144,6 +166,45 @@ export type McpToolOutput = {
   /** Base64, exactly as the server sent it. */
   image: { data: string; mimeType: string } | null;
 };
+
+/**
+ * The same shape, checked at runtime.
+ *
+ * Everything here arrives from the renderer, and a config becomes a process to
+ * spawn or a URL to POST to. Types say nothing at the boundary, so the boundary
+ * checks - and a field that does not belong is dropped rather than carried
+ * through to a spawn.
+ */
+const StringMap = z.record(z.string(), z.string());
+
+export const McpAuthSchema: z.ZodType<McpAuth> = z.object({
+  kind: z.enum(['none', 'bearer', 'oauth'])
+});
+
+export const McpImportOriginSchema: z.ZodType<McpImportOrigin> = z.object({
+  source: z.enum(['claude-code', 'opencode']),
+  scope: z.enum(['user', 'project']),
+  path: z.string(),
+  sourceName: z.string(),
+  fingerprint: z.string()
+});
+
+export const McpServerConfigSchema: z.ZodType<McpServerConfig> = z.object({
+  command: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  env: StringMap.optional(),
+  url: z.string().optional(),
+  headers: StringMap.optional(),
+  enabled: z.boolean(),
+  auth: McpAuthSchema.optional(),
+  disabledTools: z.array(z.string()).optional(),
+  importedFrom: McpImportOriginSchema.optional()
+});
+
+export const McpServersConfigSchema: z.ZodType<McpServersConfig> = z.record(
+  z.string(),
+  McpServerConfigSchema
+);
 
 export function transportOf(cfg: McpServerConfig): McpTransportKind {
   return cfg.url !== undefined && cfg.url !== '' ? 'http' : 'stdio';

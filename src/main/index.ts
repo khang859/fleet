@@ -8,7 +8,7 @@ import {
   protocol,
   shell
 } from 'electron';
-import { safeOpenExternal } from './safe-external';
+import { safeOpenExternal, isSafeExternalUrl } from './safe-external';
 import { existsSync, statSync, mkdirSync, writeFileSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -126,6 +126,9 @@ import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './agent/image-store';
 import { PermissionGate } from './agent/permissions/gate';
 import { AgentGitWatcher } from './agent/git-watch';
 import { AgentHistoryStore } from './agent/history-store';
+import { McpManager as AgentMcpManager } from './agent/mcp/manager';
+import { AgentMcpSecrets } from './agent/mcp/secrets';
+import { resolveAuth, signIn as signInToMcp } from './agent/mcp/auth';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
 import { resolveSummary } from './chat/pane-summarizer';
 import { PermissionManager } from './chat/permissions/permission-manager';
@@ -161,6 +164,7 @@ let learningsStore: LearningsStore | undefined;
 let learningsEmbedder: WorkerEmbedder | undefined;
 let learningsMcp: LearningsMcpServer | undefined;
 let agentService: AgentService | null = null;
+let agentMcp: AgentMcpManager | undefined;
 let kanbanStore: KanbanStore | undefined;
 let kanbanMcp: KanbanMcpServer | undefined;
 let kanbanDispatcher: KanbanDispatcher | undefined;
@@ -1682,10 +1686,35 @@ void app.whenReady().then(async () => {
     },
     emit: agentEmit
   });
+  // MCP servers for the Agent pane. Deliberately its own manager, its own
+  // config and its own secret store: Chat's are next door and stay there, so
+  // one pane's server list cannot change what the other can do.
+  const agentMcpSecrets = new AgentMcpSecrets();
+  // The authorization endpoint comes from the server's own metadata, so it is
+  // not an address Fleet chose. Anything that is not a web address is refused
+  // out loud rather than quietly not opened, which would leave the sign-in
+  // waiting on a browser that never appeared.
+  const openMcpSignIn = async (url: string): Promise<void> => {
+    if (!isSafeExternalUrl(url)) throw new Error('That sign-in page is not a web address.');
+    await shell.openExternal(url);
+  };
+  agentMcp = new AgentMcpManager({
+    getConfig: () => settingsStore.get().ai.agent.mcpServers,
+    getAuth: (name, cfg) =>
+      resolveAuth(name, cfg, { secrets: agentMcpSecrets, openExternal: openMcpSignIn }),
+    signIn: async (name, cfg, signal) =>
+      signInToMcp(name, cfg, { secrets: agentMcpSecrets, openExternal: openMcpSignIn }, signal),
+    onStatusChange: (statuses) => agentEmit(IPC_CHANNELS.AGENT_MCP_STATUS, statuses)
+  });
+  // Not awaited: a server that takes its time to start must not hold up the
+  // window, and the pane finds out on AGENT_MCP_STATUS either way.
+  void agentMcp.reload();
+
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => chatSecrets.getKey(),
     gate: agentGate,
+    mcp: agentMcp,
     emit: agentEmit
   });
   const agentSessions = new AgentSessionStore();
@@ -1700,6 +1729,12 @@ void app.whenReady().then(async () => {
     attachments: new AgentImageStore(AGENT_ATTACHMENTS_DIR),
     git: agentGitWatcher,
     history: new AgentHistoryStore(),
+    mcp: {
+      manager: agentMcp,
+      secrets: agentMcpSecrets,
+      getServers: () => settingsStore.get().ai.agent.mcpServers,
+      setServers: (mcpServers) => settingsStore.set({ ai: { agent: { mcpServers } } })
+    },
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => chatSecrets.getKey()
   });
@@ -1844,6 +1879,9 @@ function shutdownAll(): void {
   // Kills the running command and settles any permission question still on
   // screen as a refusal, so nothing starts on the way out.
   agentService?.cancelAll();
+  // Spawned servers are child processes of this one, so a quit that skipped
+  // this would leave them running with nothing to talk to.
+  void agentMcp?.closeAll();
   sessionsService?.dispose();
   annotateService.destroy();
   kanbanDispatcher?.stop();

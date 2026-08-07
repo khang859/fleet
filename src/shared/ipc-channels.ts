@@ -401,6 +401,27 @@ export const IPC_CHANNELS = {
   // a prompt that failed to send.
   AGENT_HISTORY_LIST: 'agent:history-list',
   AGENT_HISTORY_ADD: 'agent:history-add',
+  // MCP servers this pane's agent can call tools on. The configs live in
+  // settings under `ai.agent.mcpServers`, but they go through SET rather than
+  // SETTINGS_SET so that saving also reconnects and answers with what happened.
+  // STATUS is pushed whenever a connection changes state, which includes while
+  // nobody asked - a server can drop at any time.
+  AGENT_MCP_GET: 'agent:mcp-get',
+  AGENT_MCP_SET: 'agent:mcp-set',
+  AGENT_MCP_STATUS: 'agent:mcp-status',
+  AGENT_MCP_RECONNECT: 'agent:mcp-reconnect',
+  // What other tools on this machine have configured, and taking some of it.
+  // The detection carries no credentials; IMPORT re-reads the source files in
+  // main, which is the only place allowed to see them.
+  AGENT_MCP_DETECT: 'agent:mcp-detect',
+  AGENT_MCP_IMPORT: 'agent:mcp-import',
+  // Signing in to one server, which opens the user's browser. Long-running and
+  // cancellable, because it waits on a person.
+  AGENT_MCP_SIGN_IN: 'agent:mcp-sign-in',
+  AGENT_MCP_SIGN_OUT: 'agent:mcp-sign-out',
+  // A static token the user types, straight into the encrypted store. It never
+  // comes back out over IPC; the renderer only learns whether one is set.
+  AGENT_MCP_SET_TOKEN: 'agent:mcp-set-token',
 
   // ── Remote (SSH) file browser ──────────────────────────────────────────────
   // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's
