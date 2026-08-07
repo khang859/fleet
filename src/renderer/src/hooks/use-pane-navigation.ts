@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
-import { useVisualizerStore } from '../store/visualizer-store';
 import { ALL_SHORTCUTS, matchesShortcut, type ShortcutDef } from '../lib/shortcuts';
 
 function sc(id: string): ShortcutDef {
@@ -104,12 +103,6 @@ export function usePaneNavigation(): void {
         document.dispatchEvent(
           new CustomEvent('fleet:toggle-search', { detail: { paneId: activePaneId } })
         );
-        return;
-      }
-
-      if (matchesShortcut(e, sc('visualizer'))) {
-        e.preventDefault();
-        useVisualizerStore.getState().toggleVisible();
         return;
       }
 
