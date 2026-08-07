@@ -118,7 +118,6 @@ export function createCommandRegistry(): Command[] {
     {
       id: 'toggle-visualizer',
       label: 'Toggle Visualizer',
-      shortcut: sc('visualizer'),
       category: 'View',
       execute: () => useVisualizerStore.getState().toggleVisible()
     },

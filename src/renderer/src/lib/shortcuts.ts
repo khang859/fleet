@@ -72,14 +72,6 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     other: { key: 'F', ctrl: true, shift: true }
   },
   {
-    id: 'visualizer',
-    label: 'Toggle visualizer',
-    mac: { key: 'V', meta: true, shift: true },
-    // Ctrl+Shift+V is reserved for terminal paste on Windows/Linux, so the
-    // visualizer toggle uses Ctrl+Alt+Shift+V there.
-    other: { key: 'V', ctrl: true, shift: true, alt: true }
-  },
-  {
     id: 'settings',
     label: 'Settings',
     mac: { key: ',', meta: true },
