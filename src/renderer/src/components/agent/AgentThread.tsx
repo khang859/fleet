@@ -32,6 +32,9 @@ import { AgentMarkdown } from './AgentMarkdown';
 import { AgentActivity } from './AgentActivity';
 import { AgentToolRow } from './AgentToolRow';
 import { AgentPermissionRow } from './AgentPermissionRow';
+import { AgentTaskCard } from './AgentTaskCard';
+import { AgentTaskPermissions } from './AgentTaskPermissions';
+import { pendingTaskAsks } from './task-permissions';
 import { ToolModePicker } from './ToolModePicker';
 import { AgentAttachmentChip, AgentMessageAttachments } from './AgentAttachment';
 import { reasoningLabel } from './activity';
@@ -60,6 +63,12 @@ const EMPTY_PARTIALS: Record<string, string> = {};
 
 /** The same, for a pane whose thread has no task list. */
 const EMPTY_TODOS: AgentTodoItem[] = [];
+
+/** The same, for a pane with no subagents running. */
+const EMPTY_TASK_ACTIVITY: Record<string, string | null> = {};
+
+/** The same, for a pane with no subagent waiting on a command. */
+const EMPTY_TASK_PERMISSIONS: Record<string, AgentPermissionAsk> = {};
 
 /** How near the end still counts as being at it, in pixels. */
 const TAIL_SLACK_PX = 24;
@@ -90,6 +99,7 @@ export function AgentThread({
   const modelCard = catalog?.models.find((m) => m.id === model) ?? null;
 
   const decidePermission = useAgentStore((s) => s.decidePermission);
+  const decideTaskPermission = useAgentStore((s) => s.decideTaskPermission);
 
   const messages = thread?.messages ?? [];
   const compacting = (thread?.pendingCompact ?? null) !== null;
@@ -98,11 +108,14 @@ export function AgentThread({
   const spend = thread?.spend ?? EMPTY_SESSION_SPEND;
   const ask = thread?.pendingPermission ?? null;
   const imagePartials = thread?.imagePartials ?? EMPTY_PARTIALS;
+  const taskActivity = thread?.taskActivity ?? EMPTY_TASK_ACTIVITY;
+  const taskPermissions = thread?.taskPermissions ?? EMPTY_TASK_PERMISSIONS;
   // Only when the pane has no column for it, so the same list is never in two
   // places saying the same thing.
   const todoItems = thread?.todos ?? EMPTY_TODOS;
   const todos = todosInPanel ? null : todoProgress(todoItems);
   const gitHead = useGitHead(paneId, cwd);
+  const pendingTasks = pendingTaskAsks(messages, taskPermissions);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -115,6 +128,8 @@ export function AgentThread({
           ask={ask}
           onDecide={(outcome) => decidePermission(paneId, outcome)}
           imagePartials={imagePartials}
+          taskActivity={taskActivity}
+          taskPermissions={taskPermissions}
         />
       )}
 
@@ -124,6 +139,11 @@ export function AgentThread({
           <span>{thread.error}</span>
         </div>
       )}
+
+      {/* Above the status line rather than below it, so the strip sits against
+          the transcript it came out of and the status line stays where it has
+          always been: the row directly over the composer. */}
+      <AgentTaskPermissions pending={pendingTasks} onDecide={decideTaskPermission} />
 
       {/* One status line for the turn: what the agent is doing on the left, how
           much room it has left on the right. Always rendered while either has
@@ -207,13 +227,17 @@ function Transcript({
   streaming,
   ask,
   onDecide,
-  imagePartials
+  imagePartials,
+  taskActivity,
+  taskPermissions
 }: {
   messages: AgentMessage[];
   streaming: boolean;
   ask: AgentPermissionAsk | null;
   onDecide: (outcome: AgentPermissionOutcome) => void;
   imagePartials: Record<string, string>;
+  taskActivity: Record<string, string | null>;
+  taskPermissions: Record<string, AgentPermissionAsk>;
 }): React.JSX.Element {
   const endRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -283,6 +307,8 @@ function Transcript({
             onDecide={onDecide}
             imagePartials={imagePartials}
             cleared={cleared}
+            taskActivity={taskActivity}
+            taskPermissions={taskPermissions}
           />
         ))}
         <div ref={endRef} />
@@ -343,7 +369,9 @@ function Message({
   ask,
   onDecide,
   imagePartials,
-  cleared
+  cleared,
+  taskActivity,
+  taskPermissions
 }: {
   message: AgentMessage;
   streaming: boolean;
@@ -353,6 +381,10 @@ function Message({
   imagePartials: Record<string, string>;
   /** Calls whose result is no longer being sent to the model, by call id. */
   cleared: Set<string>;
+  /** What each running subagent is doing right now, by task id. */
+  taskActivity: Record<string, string | null>;
+  /** The command each stopped subagent is waiting on, by task id. */
+  taskPermissions: Record<string, AgentPermissionAsk>;
 }): React.JSX.Element {
   if (message.role === 'summary') return <SummaryCard summary={messageText(message)} />;
   if (message.role === 'user') {
@@ -403,9 +435,21 @@ function Message({
         }
         // The question takes the row's place: until it is answered there is
         // nothing else that row could be saying.
-        return ask?.callId === part.call.id ? (
-          <AgentPermissionRow key={i} ask={ask} onDecide={onDecide} />
-        ) : (
+        if (ask?.callId === part.call.id) {
+          return <AgentPermissionRow key={i} ask={ask} onDecide={onDecide} />;
+        }
+        // A subagent is a conversation rather than a call, and gets a card.
+        if (part.call.name === 'task' && part.call.task !== null) {
+          return (
+            <AgentTaskCard
+              key={i}
+              call={part.call}
+              activity={taskActivity[part.call.task.id]}
+              asking={part.call.task.id in taskPermissions}
+            />
+          );
+        }
+        return (
           <AgentToolRow
             key={i}
             call={part.call}

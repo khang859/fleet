@@ -125,7 +125,8 @@ describe('estimateTranscriptTokens', () => {
         error: null,
         summary: '42 KB',
         image: { path: '/repo/shot.png', mimeType: 'image/png' },
-        todos: null
+        todos: null,
+        task: null
       };
       const looked: AgentMessage = {
         ...msg('assistant', ''),
@@ -151,7 +152,8 @@ describe('clearing old tool results', () => {
     error: null,
     summary: '200 lines',
     image: null,
-    todos: null
+    todos: null,
+    task: null
   });
 
   /** An assistant turn that made these calls, in order. */

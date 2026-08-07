@@ -81,11 +81,14 @@ import type {
   AgentStreamDelta,
   AgentStreamDone,
   AgentStreamError,
+  AgentTaskDone,
+  AgentTaskStart,
   AgentTitleRequest,
   AgentTitleResult,
   AgentToolEvent
 } from '../shared/agent-types';
 import type {
+  AgentSessionAddSpend,
   AgentSessionAppend,
   AgentSessionListItem,
   AgentSessionReplay
@@ -537,9 +540,27 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.AGENT_PERMISSION_ASK, cb),
     decidePermission: (req: AgentPermissionDecision): void =>
       ipcRenderer.send(IPC_CHANNELS.AGENT_PERMISSION_DECIDE, req),
+    /**
+     * A subagent starting, and later ending. Addressed by thread rather than by
+     * stream, because the turn that dispatched it is over by the time it ends.
+     */
+    onTaskStart: (cb: (p: AgentTaskStart) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_TASK_START, cb),
+    onTaskDone: (cb: (p: AgentTaskDone) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_TASK_DONE, cb),
+    /** The child's own transcript, read when its card is opened. */
+    taskTranscript: async (taskId: string): Promise<AgentSessionReplay> =>
+      typedInvoke<AgentSessionReplay>(IPC_CHANNELS.AGENT_TASK_TRANSCRIPT, taskId),
+    cancelTask: (taskId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_TASK_CANCEL, taskId),
+    /** Which of these are still running, for a pane that has just replayed. */
+    runningTasks: async (taskIds: string[]): Promise<string[]> =>
+      typedInvoke<string[]>(IPC_CHANNELS.AGENT_TASK_RUNNING, taskIds),
     /** Fire-and-forget: a failed write must not stall the turn that caused it. */
     appendSession: (req: AgentSessionAppend): void =>
       ipcRenderer.send(IPC_CHANNELS.AGENT_SESSION_APPEND, req),
+    /** The same, for a bill a session has to add to its own total. */
+    addSessionSpend: (req: AgentSessionAddSpend): void =>
+      ipcRenderer.send(IPC_CHANNELS.AGENT_SESSION_ADD_SPEND, req),
     loadSession: async (sessionId: string): Promise<AgentSessionReplay> =>
       typedInvoke<AgentSessionReplay>(IPC_CHANNELS.AGENT_SESSION_LOAD, sessionId),
     listSessions: async (cwd: string): Promise<AgentSessionListItem[]> =>

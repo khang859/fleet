@@ -23,7 +23,8 @@ import {
   type AgentSessionListItem,
   type AgentSessionReplay
 } from '../../shared/agent-session';
-import { hasSpend, type AgentSessionSpend } from '../../shared/agent-spend';
+import { addTurn, hasSpend, type AgentSessionSpend } from '../../shared/agent-spend';
+import type { AgentTurnUsage } from '../../shared/agent-types';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './image-store';
 import { createLogger } from '../logger';
 
@@ -98,6 +99,21 @@ export class AgentSessionStore {
       // is on screen: the thread lives in the renderer either way.
       log.warn('append failed', { sessionId, error: String(err) });
     }
+  }
+
+  /**
+   * Add what one turn spent to a session's running total.
+   *
+   * Read, add, write, in one synchronous step here rather than in the pane,
+   * because the total is cumulative and the pane may not have the session open
+   * to add to. That is the case this exists for: a subagent reports back
+   * minutes after the pane that dispatched it moved on, and its bill belongs to
+   * the session that asked for it whether or not anything is still showing it.
+   * Two children finishing at once on the same closed session would race a
+   * read-modify-write done anywhere else.
+   */
+  addSpend(sessionId: string, cwd: string, usage: AgentTurnUsage): void {
+    this.append(sessionId, cwd, { t: 'spend', total: addTurn(this.load(sessionId).spend, usage) });
   }
 
   /** The thread this session left behind, or an empty one if there is no file. */

@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { AGENT_TASK_STATUSES } from './agent-tools';
 import { TODO_STATUSES, type AgentTodoItem } from './agent-todos';
 import { EMPTY_SESSION_SPEND, type AgentSessionSpend } from './agent-spend';
-import { messageText, type AgentMessage } from './agent-types';
+import { messageText, type AgentMessage, type AgentTurnUsage } from './agent-types';
 
 /**
  * A session on disk: one append-only JSONL file per agent thread.
@@ -26,9 +27,26 @@ import { messageText, type AgentMessage } from './agent-types';
  * carries its own shape and the reader accepts the older ones (see
  * `LegacyMessage`) rather than branching on this number.
  */
-export const SESSION_LOG_VERSION = 5;
+export const SESSION_LOG_VERSION = 6;
 
 const ToolImageSchema = z.object({ path: z.string(), mimeType: z.string() });
+
+/**
+ * A dispatched subagent, on the call that dispatched it.
+ *
+ * Written down rather than reconstructed, unlike `todos`, because there is
+ * nowhere else for it to live: a subagent outlives the turn that started it, so
+ * the only thing tying a report that arrives ten minutes later back to the row
+ * that asked for it is this id, and the only thing that knows the row exists at
+ * all after a reload is this line.
+ */
+const ToolTaskSchema = z.object({
+  id: z.string(),
+  agent: z.string(),
+  prompt: z.string(),
+  status: z.enum(AGENT_TASK_STATUSES),
+  summary: z.string().nullable()
+});
 
 const ToolCallSchema = z.object({
   id: z.string(),
@@ -41,6 +59,8 @@ const ToolCallSchema = z.object({
   // Nullish rather than nullable for that reason, and normalised to `null` so
   // nothing downstream has to know which version it is holding.
   image: ToolImageSchema.nullish().transform((v) => v ?? null),
+  /** Written since version 6; absent on every earlier line, same as `image`. */
+  task: ToolTaskSchema.nullish().transform((v) => v ?? null),
   /**
    * Never written, and always read back as `null`.
    *
@@ -189,7 +209,28 @@ const EventSchema = z.discriminatedUnion('t', [
    * survive only as long as the messages did. Money already spent does not
    * stop having been spent because the transcript that spent it was summarized.
    */
-  z.object({ t: z.literal('spend'), total: SpendSchema })
+  z.object({ t: z.literal('spend'), total: SpendSchema }),
+  /**
+   * How a dispatched subagent ended, written when it does.
+   *
+   * The one event that reaches back into a message already on disk, because a
+   * subagent is the one thing that outlives the turn that started it: the row
+   * was written while the child was still running, and by the time there is
+   * anything to say about it the turn is minutes gone. Appending the ending is
+   * still append-only - `apply` folds it into the row on the way past, the same
+   * as `compact` folds messages, and the file keeps both halves of the story.
+   *
+   * `report` becomes the call's result, which is also how the model hears about
+   * it: the next turn serializes the row it is patched into and the report goes
+   * out as that call's answer, with no separate delivery path to get wrong.
+   */
+  z.object({
+    t: z.literal('task'),
+    id: z.string(),
+    status: z.enum(AGENT_TASK_STATUSES),
+    report: z.string().nullable(),
+    summary: z.string().nullable()
+  })
 ]);
 
 export type AgentSessionEvent = z.infer<typeof EventSchema>;
@@ -202,6 +243,19 @@ export type AgentSessionAppend = {
   sessionId: string;
   cwd: string;
   event: AgentSessionEvent;
+};
+
+/**
+ * What a turn spent, for a session that has to add it up itself.
+ *
+ * A usage rather than a total, unlike the event it becomes: the total is the
+ * one thing the caller cannot work out, because it is only ever the sum of
+ * what is already in the file.
+ */
+export type AgentSessionAddSpend = {
+  sessionId: string;
+  cwd: string;
+  usage: AgentTurnUsage;
 };
 
 export type AgentSessionReplay = {
@@ -328,6 +382,24 @@ function apply(replay: AgentSessionReplay, event: AgentSessionEvent): void {
     case 'title':
       replay.title = event.title;
       return;
+    case 'task': {
+      // Backwards: the row is almost always the most recent one that dispatched
+      // anything, and a session that ran a hundred subagents should not walk a
+      // hundred messages to find each ending.
+      for (let i = replay.messages.length - 1; i >= 0; i -= 1) {
+        for (const part of replay.messages[i].parts) {
+          if (part.type !== 'tool' || part.call.task?.id !== event.id) continue;
+          part.call.task = { ...part.call.task, status: event.status, summary: event.summary };
+          if (event.report !== null) part.call.result = event.report;
+          part.call.summary = event.summary;
+          return;
+        }
+      }
+      // Nothing found: the turn that dispatched it was compacted away while the
+      // child was still running. The report has nowhere to go, and the model
+      // will not be told about a call it can no longer see either.
+      return;
+    }
   }
 }
 

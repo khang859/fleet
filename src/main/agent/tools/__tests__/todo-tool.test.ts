@@ -19,6 +19,8 @@ const ctx = (): AgentToolContext => ({
   wasRefused: () => false,
   generateImage: null,
   mcp: null,
+  dispatchTask: null,
+  findSubagent: null,
   todos: {
     list: () => items,
     save: (next) => {

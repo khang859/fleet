@@ -42,9 +42,19 @@ function args(raw: string): string {
  */
 export function AgentPermissionRow({
   ask,
+  by = null,
   onDecide
 }: {
   ask: AgentPermissionAsk;
+  /**
+   * Who is asking, where that is not obvious from where the row is drawn.
+   *
+   * A row inside the transcript is the agent's own, and saying so would be
+   * telling the user which conversation they are looking at. The pinned strip
+   * is the case this exists for: several subagents can be stopped on a command
+   * at once, and there "who wants to run this" is half the question.
+   */
+  by?: string | null;
   onDecide: (outcome: AgentPermissionOutcome) => void;
 }): React.JSX.Element {
   return (
@@ -57,7 +67,9 @@ export function AgentPermissionRow({
           is a turn that looks hung. Said once, politely, in full: the command
           on its own is not a question. */}
       <p role="status" className="sr-only">
-        {`The agent is asking to run ${spoken(ask)}.${ask.reason === null ? '' : ` ${ask.reason}`}`}
+        {`${by === null ? 'The agent' : `The ${by} subagent`} is asking to run ${spoken(ask)}.${
+          ask.reason === null ? '' : ` ${ask.reason}`
+        }`}
       </p>
       <div className="flex items-start gap-1.5">
         {ask.mcp === null ? (
@@ -72,6 +84,11 @@ export function AgentPermissionRow({
             aria-hidden="true"
             className="mt-px shrink-0 text-amber-700 dark:text-amber-400/90"
           />
+        )}
+        {by !== null && (
+          // Before the command rather than above it, so a strip of these reads
+          // down as a list of who wants what.
+          <span className="shrink-0 text-[11px] leading-relaxed text-fleet-text-muted">{by}</span>
         )}
         <span className="max-h-32 overflow-y-auto font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-fleet-text">
           {ask.mcp === null ? (

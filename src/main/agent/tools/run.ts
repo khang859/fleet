@@ -8,6 +8,7 @@ import {
   ReadArgs,
   TerminalArgs,
   TodoAddArgs,
+  TaskArgs,
   TodoUpdateArgs,
   WriteArgs,
   type AgentToolContext,
@@ -23,6 +24,7 @@ import { runImage } from './image';
 import { runRead } from './read';
 import { runTerminal } from './terminal';
 import { runTodoAdd, runTodoUpdate } from './todo';
+import { runTask } from './task';
 import { runWrite } from './write';
 import { AgentImageStore } from '../image-store';
 
@@ -79,6 +81,8 @@ export async function runAgentTool(
       return runTodoAdd(checked(TodoAddArgs, args, name), ctx);
     case 'todo_update':
       return runTodoUpdate(checked(TodoUpdateArgs, args, name), ctx);
+    case 'task':
+      return runTask(checked(TaskArgs, args, name), ctx);
     default:
       throw new Error(`There is no tool called ${name}`);
   }

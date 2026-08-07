@@ -187,9 +187,31 @@ export const IPC_CHANNELS = {
   // renderer never decides anything itself - it relays a click.
   AGENT_PERMISSION_ASK: 'agent:permission-ask',
   AGENT_PERMISSION_DECIDE: 'agent:permission-decide',
+  // A subagent starting and, some minutes later, ending. START comes before any
+  // of the child's own tool events, so the pane has somewhere to put them by the
+  // time they arrive; DONE carries the report, which the pane writes onto the
+  // call that asked for it and hands to the model on the next turn.
+  //
+  // Two events rather than one because a subagent outlives the turn that started
+  // it: by the time it ends there is no stream left to end, and the pane it
+  // belongs to is identified by its session rather than by a turn in flight.
+  AGENT_TASK_START: 'agent:task-start',
+  AGENT_TASK_DONE: 'agent:task-done',
+  // The sub-transcript of one subagent, read when the user opens its card. Kept
+  // by main rather than the pane, because a subagent has no pane: it is the one
+  // conversation in Fleet nobody was watching while it happened.
+  AGENT_TASK_TRANSCRIPT: 'agent:task-transcript',
+  AGENT_TASK_CANCEL: 'agent:task-cancel',
+  // Which subagents are still running, asked by a pane that has just replayed a
+  // session and found rows saying "running". Main is the only one that knows:
+  // the renderer that dispatched them may have been reloaded, or been a
+  // different launch of the app entirely, and a row nobody is working on has to
+  // stop claiming it is.
+  AGENT_TASK_RUNNING: 'agent:task-running',
   // The thread on disk: an append-only event log per session, replayed when a
   // pane opens. The renderer decides what happened; main only writes it down.
   AGENT_SESSION_APPEND: 'agent:session-append',
+  AGENT_SESSION_ADD_SPEND: 'agent:session-add-spend',
   AGENT_SESSION_LOAD: 'agent:session-load',
   // The sessions started in one folder, for the pane's Sessions tab, and the
   // removal of one. Which session a pane is currently on is the renderer's to
