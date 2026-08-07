@@ -88,6 +88,45 @@ describe('McpManager', () => {
     expect(await mgr.callTool('mcp__ghost__x', '{}')).toContain('Unknown MCP tool');
   });
 
+  // Chat and Agent each carried their own copy of the ${VAR} expander, and the two
+  // disagreed: Chat's blanked an unset variable and did not understand `:-default`
+  // at all, so a config pasted from a README reached the transport as a literal.
+  // Both now share src/main/mcp-expand.ts; these pin the behaviour at the level a
+  // user hits it, so a re-introduced local copy fails here and not just in a util test.
+  it('applies the ${VAR:-default} fallback when building a transport', async () => {
+    const seen: string[] = [];
+    const inner = mockMcpFetch({ tools: [{ name: 'echo' }] });
+    vi.stubGlobal('fetch', async (url: unknown, init?: { body?: string }) => {
+      seen.push(String(url));
+      return inner(url as string, init as RequestInit);
+    });
+    const mgr = new McpManager(
+      () => ({ srv: { url: 'http://localhost:${MCP_PORT:-9999}/mcp', enabled: true } }),
+      {}
+    );
+    await mgr.reload();
+
+    expect(seen[0]).toBe('http://localhost:9999/mcp');
+    await mgr.closeAll();
+  });
+
+  it('leaves an unset variable visible rather than blanking it', async () => {
+    const seen: string[] = [];
+    const inner = mockMcpFetch({ tools: [{ name: 'echo' }] });
+    vi.stubGlobal('fetch', async (url: unknown, init?: { body?: string }) => {
+      seen.push(String(url));
+      return inner(url as string, init as RequestInit);
+    });
+    const mgr = new McpManager(
+      () => ({ srv: { url: 'http://localhost/${MCP_PATH}', enabled: true } }),
+      {}
+    );
+    await mgr.reload();
+
+    expect(seen[0]).toContain('${MCP_PATH}');
+    await mgr.closeAll();
+  });
+
   it('rejects invalid JSON arguments', async () => {
     vi.stubGlobal('fetch', mockMcpFetch({ tools: [{ name: 'echo' }] }));
     const mgr = new McpManager(() => ({ srv: { url: 'http://localhost/mcp', enabled: true } }));
