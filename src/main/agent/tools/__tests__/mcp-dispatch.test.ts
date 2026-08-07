@@ -46,7 +46,9 @@ function ctx(output: McpToolOutput | null, threadId = randomUUID()): AgentToolCo
         : async (name, args) => {
             seen.push({ name, args });
             return Promise.resolve(output);
-          }
+          },
+    dispatchTask: null,
+    findSubagent: null
   };
 }
 

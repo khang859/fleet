@@ -17,6 +17,11 @@ extraResources:
     to: hooks/
   - from: resources/mascots/
     to: resources/mascots/
+  # Read with readdir at runtime, which cannot walk into app.asar - so these
+  # need a real folder outside it, not just asarUnpack. See
+  # docs/learnings/2026-06-28-chat-skills-missing-from-packaged-app.md.
+  - from: resources/agents/
+    to: resources/agents/
 asarUnpack:
   - resources/**
   - node_modules/onnxruntime-node/**

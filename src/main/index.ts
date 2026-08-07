@@ -76,6 +76,7 @@ import { classifyCommand } from './agent/permissions/classifier';
 import { AgentGitWatcher } from './agent/git-watch';
 import { AgentHistoryStore } from './agent/history-store';
 import { McpManager as AgentMcpManager } from './agent/mcp/manager';
+import { SubagentManager } from './agent/subagents/manager';
 import { AgentMcpSecrets } from './agent/mcp/secrets';
 import { resolveAuth, signIn as signInToMcp } from './agent/mcp/auth';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
@@ -99,6 +100,7 @@ let learningsEmbedder: WorkerEmbedder | undefined;
 let learningsMcp: LearningsMcpServer | undefined;
 let agentService: AgentService | null = null;
 let agentMcp: AgentMcpManager | undefined;
+let agentSubagents: SubagentManager | null = null;
 
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
@@ -196,7 +198,13 @@ function createWindow(): void {
    * thread to deliver the question to, so nothing would ever answer it.
    */
   mainWindow.webContents.on('did-start-navigation', (details) => {
-    if (details.isMainFrame) agentService?.cancelAll();
+    if (!details.isMainFrame) return;
+    agentService?.cancelAll();
+    // Subagents are not cancelled: they are meant to outlive the window, and
+    // the fresh renderer reattaches to them when it replays the session. What
+    // cannot survive is a question one of them is stopped on, since the screen
+    // that would have answered it is gone.
+    agentService?.refusePending(agentSubagents?.liveIds() ?? []);
   });
 
   // Intercept navigation away from app (e.g. <a href> without target)
@@ -929,11 +937,23 @@ void app.whenReady().then(async () => {
   // window, and the pane finds out on AGENT_MCP_STATUS either way.
   void agentMcp.reload();
 
+  // The knot between these two is deliberate and only looks circular: the
+  // manager decides *whether* a subagent runs, and the service is *how* one
+  // runs, because a subagent is a turn. Tied with a lazy reference rather than
+  // a setter so neither can be half-built while the other is using it.
+  agentSubagents = new SubagentManager({
+    emit: agentEmit,
+    run: async (run) => {
+      if (agentService === null) throw new Error('The agent is not running.');
+      return agentService.runTask(run);
+    }
+  });
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
     gate: agentGate,
     mcp: agentMcp,
+    subagents: agentSubagents,
     emit: agentEmit
   });
   const agentSessions = new AgentSessionStore();
@@ -948,6 +968,7 @@ void app.whenReady().then(async () => {
     attachments: new AgentImageStore(AGENT_ATTACHMENTS_DIR),
     git: agentGitWatcher,
     history: new AgentHistoryStore(),
+    subagents: agentSubagents,
     mcp: {
       manager: agentMcp,
       secrets: agentMcpSecrets,
@@ -1069,6 +1090,9 @@ function shutdownAll(): void {
   // Kills the running command and settles any permission question still on
   // screen as a refusal, so nothing starts on the way out.
   agentService?.cancelAll();
+  // And writes down every subagent still running as interrupted, so a card
+  // reopened tomorrow says what happened rather than shimmering forever.
+  agentSubagents?.cancelAll();
   // Spawned servers are child processes of this one, so a quit that skipped
   // this would leave them running with nothing to talk to.
   void agentMcp?.closeAll();

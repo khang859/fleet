@@ -29,6 +29,7 @@ import type { AgentImageStore } from './image-store';
 import type { AgentGitWatcher } from './git-watch';
 import type { AgentHistoryStore } from './history-store';
 import { registerAgentMcpIpc, type McpIpcDeps } from './mcp/mcp-ipc';
+import type { SubagentManager } from './subagents/manager';
 import type { OpenRouterSecrets } from '../openrouter-secrets';
 
 /**
@@ -51,6 +52,8 @@ export function registerAgentIpc(deps: {
   history: AgentHistoryStore;
   /** The MCP servers this agent can call tools on, and their settings pane. */
   mcp: McpIpcDeps;
+  /** The subagents running, and the transcripts of the ones that have run. */
+  subagents: SubagentManager;
   getSettings: () => AgentSettings;
   getApiKey: () => string | null;
 }): void {
@@ -96,6 +99,23 @@ export function registerAgentIpc(deps: {
   ipcMain.on(IPC_CHANNELS.AGENT_SESSION_APPEND, (_e, req: AgentSessionAppend) => {
     deps.sessions.append(req.sessionId, req.cwd, req.event);
   });
+
+  // A subagent's own transcript, read when the user opens its card. Main keeps
+  // it because a subagent has no pane to keep it for.
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_TASK_TRANSCRIPT,
+    (_e, taskId: string): AgentSessionReplay => deps.subagents.transcript(taskId)
+  );
+
+  ipcMain.on(IPC_CHANNELS.AGENT_TASK_CANCEL, (_e, taskId: string) => {
+    deps.subagents.cancel(taskId);
+  });
+
+  // What a pane that has just replayed a session asks, to tell a subagent that
+  // is still running from one that died with a previous launch of the app.
+  ipcMain.handle(IPC_CHANNELS.AGENT_TASK_RUNNING, (_e, taskIds: string[]): string[] =>
+    deps.subagents.runningAmong(taskIds)
+  );
 
   ipcMain.handle(
     IPC_CHANNELS.AGENT_SESSION_LOAD,

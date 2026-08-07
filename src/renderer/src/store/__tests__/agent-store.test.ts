@@ -53,7 +53,9 @@ const agentApi = {
   deleteSession: vi.fn().mockResolvedValue(true),
   refreshGit: vi.fn(),
   listSessions: vi.fn().mockResolvedValue([]),
-  generateTitle: vi.fn().mockResolvedValue({ title: null, usage: null })
+  generateTitle: vi.fn().mockResolvedValue({ title: null, usage: null }),
+  cancelTask: vi.fn(),
+  runningTasks: vi.fn().mockResolvedValue([])
 };
 
 /** What `loadSession` hands back; set per test to stand in for a file. */
@@ -193,6 +195,11 @@ beforeEach(async () => {
       onImagePartial: listen(IPC_CHANNELS.AGENT_IMAGE_PARTIAL),
       onHandOff: listen(IPC_CHANNELS.AGENT_HAND_OFF),
       onPermissionAsk: listen(IPC_CHANNELS.AGENT_PERMISSION_ASK),
+      onTaskStart: listen(IPC_CHANNELS.AGENT_TASK_START),
+      onTaskDone: listen(IPC_CHANNELS.AGENT_TASK_DONE),
+      cancelTask: agentApi.cancelTask,
+      runningTasks: agentApi.runningTasks,
+      taskTranscript: vi.fn().mockImplementation(async () => Promise.resolve(emptyReplay())),
       decidePermission: agentApi.decidePermission,
       refreshGit: agentApi.refreshGit,
       hasKey: vi.fn().mockResolvedValue(true),
@@ -744,7 +751,8 @@ describe('tool calls', () => {
     error: null,
     summary: null,
     image: null,
-    todos: null
+    todos: null,
+    task: null
   };
 
   const start = (streamId: string): void => {
@@ -956,6 +964,122 @@ describe('asking the user about a command', () => {
     emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
 
     expect(thread().pendingPermission).toBeNull();
+  });
+});
+
+/*
+ * A subagent is the one thing in a pane that asks questions, spends money and
+ * finishes on a stream that is not the pane's own. Everything here is a case
+ * where treating it as though it were the pane's turn loses something.
+ */
+describe('subagents', () => {
+  const info = (id: string, over = {}): unknown => ({
+    id,
+    agent: 'review',
+    prompt: 'look at the diff',
+    status: 'running',
+    summary: null,
+    ...over
+  });
+
+  /** Start a turn, and a subagent on the call it just made. */
+  function dispatch(taskId: string, callId = 'call-1'): string {
+    const streamId = liveStreamId();
+    emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta: 'on it' });
+    emit(IPC_CHANNELS.AGENT_TASK_START, { threadId: streamId, callId, task: info(taskId) });
+    return streamId;
+  }
+
+  /** A question from inside a subagent, which arrives on the child's stream. */
+  function childAsks(taskId: string, requestId: string, command: string): void {
+    emit(IPC_CHANNELS.AGENT_PERMISSION_ASK, {
+      streamId: taskId,
+      requestId,
+      callId: `${taskId}-call`,
+      command,
+      reason: null,
+      rule: command
+    });
+  }
+
+  // The child's stream is not the pane's, so a question matched only against
+  // the pane's own turn is a question nobody ever sees.
+  it('puts a question from a child on its card rather than dropping it', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'look into it');
+    dispatch('task-1');
+
+    childAsks('task-1', 'req-9', 'git log --oneline -3');
+
+    expect(thread().taskPermissions['task-1']).toMatchObject({ command: 'git log --oneline -3' });
+    // And not on the composer, where it would be answered for the wrong stream.
+    expect(thread().pendingPermission).toBeNull();
+  });
+
+  it('answers the child that asked, and takes down only that question', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'look into it');
+    dispatch('task-1');
+    dispatch('task-2', 'call-2');
+    childAsks('task-1', 'req-1', 'git log');
+    childAsks('task-2', 'req-2', 'git diff');
+
+    agentStore.useAgentStore.getState().decideTaskPermission('task-1', 'once');
+
+    // Matched on the request id, so two questions on screen at once cannot
+    // cross-wire however they are answered.
+    expect(agentApi.decidePermission).toHaveBeenCalledWith({ requestId: 'req-1', outcome: 'once' });
+    expect(thread().taskPermissions['task-1']).toBeUndefined();
+    expect(thread().taskPermissions['task-2']).toMatchObject({ command: 'git diff' });
+  });
+
+  // Subagents run alongside each other, so the one that ends is routinely not
+  // the one that is waiting.
+  it('keeps asking for the user while another child is still waiting', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'look into it');
+    const streamId = dispatch('task-1');
+    dispatch('task-2', 'call-2');
+    childAsks('task-2', 'req-2', 'git diff');
+
+    emit(IPC_CHANNELS.AGENT_TASK_DONE, {
+      threadId: streamId,
+      callId: 'call-1',
+      cwd: '/repo',
+      task: info('task-1', { status: 'done', summary: '12 words' }),
+      report: 'the diff is small',
+      usage: null
+    });
+
+    expect(notificationStore.useNotificationStore.getState().getActivity(PANE)?.state).toBe(
+      'needs_me'
+    );
+  });
+
+  // The ordinary end of a long errand: the pane that dispatched it has since
+  // been given another session, or closed. The report still belongs to the
+  // session that asked for it.
+  it('writes a report for a session no pane is showing straight to its log', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'look into it');
+    dispatch('task-1');
+
+    emit(IPC_CHANNELS.AGENT_TASK_DONE, {
+      threadId: 'a-session-nobody-is-looking-at',
+      callId: 'call-1',
+      cwd: '/repo',
+      task: info('task-1', { status: 'done', summary: '12 words' }),
+      report: 'the diff is small',
+      usage: null
+    });
+
+    expect(agentApi.appendSession).toHaveBeenCalledWith({
+      sessionId: 'a-session-nobody-is-looking-at',
+      cwd: '/repo',
+      event: {
+        t: 'task',
+        id: 'task-1',
+        status: 'done',
+        report: 'the diff is small',
+        summary: '12 words'
+      }
+    });
   });
 });
 

@@ -59,6 +59,8 @@ const ctx = (threadId = 'thread-1', signal = new AbortController().signal): Agen
   // The image tool has its own file.
   generateImage: null,
   mcp: null,
+  dispatchTask: null,
+  findSubagent: null,
   // The todo tools have their own file too, and nothing here calls them.
   todos: { list: () => [], save: () => {} }
 });

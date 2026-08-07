@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { TODO_MAX_ITEMS, TODO_STATUSES, type AgentTodoItem } from './agent-todos';
 import type { McpToolOutput } from './agent-mcp';
+import type { SubagentDefinition } from './agent-subagents';
 
 /**
  * The tools the agent can call, and the limits they answer within.
@@ -32,7 +33,19 @@ import type { McpToolOutput } from './agent-mcp';
  * already has.
  */
 
-export const AGENT_TOOL_NAMES = [
+/**
+ * Every tool a subagent may be given: all of them but the one that starts
+ * another subagent.
+ *
+ * Written first, and `task` appended below, so that a tool added here becomes
+ * available to subagents without anyone remembering to come back for it - the
+ * list that has to be maintained is the longer one. This is one of the two
+ * halves of "no nesting"; the other is that a child's tool context has no
+ * `dispatchTask` to call. Two halves that do not depend on each other, because
+ * one of them being wrong should not be enough to get a subagent spawning
+ * subagents.
+ */
+export const SUBAGENT_TOOL_NAMES = [
   'read',
   'glob',
   'grep',
@@ -44,6 +57,9 @@ export const AGENT_TOOL_NAMES = [
   'todo_add',
   'todo_update'
 ] as const;
+export type SubagentToolName = (typeof SUBAGENT_TOOL_NAMES)[number];
+
+export const AGENT_TOOL_NAMES = [...SUBAGENT_TOOL_NAMES, 'task'] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
 /** Whether a name is one of the two tools that write the task list. */
@@ -245,6 +261,25 @@ export const TodoUpdateArgs = z.object({
   activeForm: z.string().min(1).max(200).optional()
 });
 
+/**
+ * Handing a job to a subagent.
+ *
+ * `prompt` is the whole of what crosses over: a subagent starts from nothing and
+ * cannot see this conversation, so a prompt that refers to "the file we were
+ * looking at" is a prompt about a file the child has never heard of. The tool's
+ * description says so in as many words, because this is the one thing every
+ * product that has shipped subagents reports people getting wrong.
+ *
+ * `tools` and `model` are the caller's to set per errand rather than the
+ * definition's to fix, because the parent is the one that knows what this
+ * particular job needs. Both fall back to the definition when absent.
+ */
+export const TaskArgs = z.object({
+  agent: z.string().min(1),
+  prompt: z.string().min(1),
+  tools: z.array(z.enum(SUBAGENT_TOOL_NAMES)).min(1).optional()
+});
+
 export type ReadArgs = z.infer<typeof ReadArgs>;
 export type GlobArgs = z.infer<typeof GlobArgs>;
 export type GrepArgs = z.infer<typeof GrepArgs>;
@@ -255,6 +290,7 @@ export type TerminalArgs = z.infer<typeof TerminalArgs>;
 export type ImageArgs = z.infer<typeof ImageArgs>;
 export type TodoAddArgs = z.infer<typeof TodoAddArgs>;
 export type TodoUpdateArgs = z.infer<typeof TodoUpdateArgs>;
+export type TaskArgs = z.infer<typeof TaskArgs>;
 
 /** The JSON Schema for one tool, as the completions API wants it. */
 export type AgentToolSpec = {
@@ -599,18 +635,107 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
 ];
 
 /**
+ * What `task` says about itself, given the subagents this folder actually has.
+ *
+ * Built per turn rather than sitting in `AGENT_TOOL_SPECS`, for the reason a
+ * server's tools are: the choices are not known until someone looks. The names
+ * go in an `enum` rather than being described in prose, because a name the
+ * schema will not accept is a name the model cannot spend a round guessing
+ * wrong, and the descriptions go beside them because that is the only thing the
+ * model reads when deciding which one this job is for.
+ *
+ * `null` when there are none, so a folder with no definitions is never offered a
+ * tool whose every call would come back an apology - the same rule `image`
+ * follows when there is no model behind it.
+ */
+export function buildTaskSpec(definitions: SubagentDefinition[]): AgentToolSpec | null {
+  if (definitions.length === 0) return null;
+  const roster = definitions.map((d) => `- \`${d.name}\`: ${d.description}`).join('\n');
+  return {
+    type: 'function',
+    function: {
+      name: 'task',
+      description: [
+        'Hand a self-contained job to a subagent and get its findings back later.',
+        '',
+        'Worth it when answering something would cost you many tool calls but only',
+        'a paragraph of the answer matters - searching an unfamiliar part of the',
+        'repo, reading a long file to settle one question, reviewing a change. The',
+        'subagent spends that reading in its own context rather than yours.',
+        '',
+        'Not worth it for anything you can answer in a call or two, and a poor way',
+        'to write code: two subagents editing one project cannot see each other and',
+        'come back with work that does not fit together. Make the changes yourself.',
+        '',
+        'It runs in the background. This call returns a receipt straight away, not',
+        'an answer, and the report arrives on a later turn - so finish or wind up',
+        'what you are doing rather than waiting, and never call `task` again just',
+        'to check on one.',
+        '',
+        'The subagent cannot see this conversation. It starts from nothing and gets',
+        'only what you write in `prompt`, so name the files, the paths, the errors',
+        'and the decisions in full. "The file we were looking at" means nothing to',
+        'it. Say what you want back, too: you will be shown only its final answer.',
+        '',
+        'The subagents available here:',
+        roster
+      ].join('\n'),
+      parameters: {
+        type: 'object',
+        properties: {
+          agent: {
+            type: 'string',
+            enum: definitions.map((d) => d.name),
+            description: 'Which subagent to hand this to.'
+          },
+          prompt: {
+            type: 'string',
+            description:
+              'The whole job, written for someone who has not seen this conversation. Include every path, name and error it needs, and say what you want reported back.'
+          },
+          tools: {
+            type: 'array',
+            items: { type: 'string', enum: [...SUBAGENT_TOOL_NAMES] },
+            description:
+              'The tools it may use. Omit to take the subagent’s own default, which is usually right. Narrow it when the job genuinely only needs reading.'
+          }
+        },
+        required: ['agent', 'prompt'],
+        additionalProperties: false
+      }
+    }
+  };
+}
+
+/**
  * The tools one turn offers.
  *
  * `image` is advertised only when there is a model to run it. A tool named in
  * the request but backed by nothing is worse than a missing tool: the model
  * spends a round calling it, and the only thing that comes back is an apology.
+ * `task` follows the same rule and is absent twice over - when the folder has no
+ * subagents, and when this turn *is* one.
+ *
+ * `only` is how a subagent gets the narrower set its dispatch asked for. It
+ * filters rather than selects, so a name that no longer exists quietly falls out
+ * instead of producing a spec for a tool nothing can run.
  *
  * Connected servers' tools go last, so the agent's own keep the front of the
  * list no matter how many servers the user has switched on.
  */
-export function toolSpecsFor(options: { image: boolean; mcp?: ExternalToolSpec[] }): ToolSpec[] {
-  const own = AGENT_TOOL_SPECS.filter((spec) => options.image || spec.function.name !== 'image');
-  return [...own, ...(options.mcp ?? [])];
+export function toolSpecsFor(options: {
+  image: boolean;
+  mcp?: ExternalToolSpec[];
+  task?: AgentToolSpec | null;
+  only?: readonly AgentToolName[];
+}): ToolSpec[] {
+  const own = AGENT_TOOL_SPECS.filter(
+    (spec) =>
+      (options.image || spec.function.name !== 'image') &&
+      (options.only === undefined || options.only.includes(spec.function.name))
+  );
+  const task = options.task ?? null;
+  return [...own, ...(task === null ? [] : [task]), ...(options.mcp ?? [])];
 }
 
 /**
@@ -652,10 +777,56 @@ export type AgentToolCall = {
    * disagree.
    */
   todos: AgentTodoItem[] | null;
+  /**
+   * The subagent this call started, set only by `task`.
+   *
+   * Here for the reason `todos` and `image` are here, and for one more of its
+   * own. A dispatched subagent outlives the turn that dispatched it, so this
+   * field is the only thing that still points at it once the turn is over - the
+   * row in the transcript is where the parent's memory of the errand lives.
+   *
+   * It is also what makes the report arrive without a mechanism for reports.
+   * When the child finishes, its answer is written into this call's `result`,
+   * and the next turn's wire history serialises that call the way it serialises
+   * every other one. Nothing has to inject anything: a field the pane already
+   * persists simply says something different than it did an hour ago.
+   */
+  task: AgentTaskInfo | null;
 };
 
 /** An image a tool is handing to the model, as a file rather than as bytes. */
 export type AgentToolImage = { path: string; mimeType: string };
+
+export const AGENT_TASK_STATUSES = [
+  'running',
+  'done',
+  'failed',
+  'cancelled',
+  'interrupted'
+] as const;
+export type AgentTaskStatus = (typeof AGENT_TASK_STATUSES)[number];
+
+/**
+ * A dispatched subagent, as the row that started it knows about it.
+ *
+ * `interrupted` is not a way a subagent ends, it is a way one is found: the app
+ * was quit or crashed while it was running, and nothing is coming. It exists so
+ * a card reopened afterwards can say what happened, rather than shimmer forever
+ * waiting on a process that no longer exists.
+ */
+export type AgentTaskInfo = {
+  /** The child's own id. It is its stream, its thread, and its session file. */
+  id: string;
+  /** Which definition ran. Held here rather than looked up on replay: the file
+   * can be edited or deleted afterwards, and the transcript should still say
+   * what actually ran rather than what a file of that name says today. */
+  agent: string;
+  /** What the parent asked for - the whole of what crossed into the child. */
+  prompt: string;
+  status: AgentTaskStatus;
+  /** One line for the collapsed row, once there is one. `null` while running. */
+  summary: string | null;
+};
 
 /**
  * What a tool runs against.
@@ -738,7 +909,45 @@ export type AgentToolContext = {
    * already inside it by the time it gets here.
    */
   mcp: AgentMcpCaller | null;
+  /**
+   * Start a subagent, or `null` when there is no subagent to start.
+   *
+   * `null` in exactly two cases, and they mean the same thing to the model: no
+   * definitions were found for this folder, and this *is* a subagent. The second
+   * is how "no nesting" is enforced where it counts - not by checking a depth
+   * counter at dispatch, but by never giving a child the thing it would need. A
+   * capability that was never handed over cannot be called by mistake.
+   *
+   * Returns the moment the child is registered rather than when it finishes.
+   * That is the whole point of it: the turn that dispatched a subagent must be
+   * free to end, and the API needs this call answered before the next thing the
+   * model says. What comes back here is a receipt, not a result.
+   */
+  dispatchTask: AgentTaskDispatcher | null;
+  /**
+   * The definitions this folder offers, for turning a name into a subagent.
+   *
+   * Separate from `dispatchTask` so the tool can say "there is no subagent
+   * called X, here are the ones there are" in the same voice every other tool
+   * reports a bad argument in, rather than the dispatcher needing an error
+   * channel it has no other use for.
+   */
+  findSubagent: ((name: string) => SubagentDefinition | null) | null;
 };
+
+/**
+ * Start one subagent and get back its receipt.
+ *
+ * Asynchronous only because registering it touches the disk. It never waits for
+ * the child to do any work, and a change that made it do so would quietly turn
+ * every dispatch back into a blocking call.
+ */
+export type AgentTaskDispatcher = (req: {
+  agent: string;
+  prompt: string;
+  /** The call's own list, or `null` to take the definition's. */
+  tools: SubagentToolName[] | null;
+}) => Promise<AgentTaskInfo>;
 
 /**
  * Run one MCP tool by the name it was offered under.
@@ -795,4 +1004,6 @@ export type AgentToolResult = {
    * which is not the same as nothing.
    */
   costUsd?: number | null;
+  /** The subagent this call started. Set only by `task`. */
+  task?: AgentTaskInfo;
 };

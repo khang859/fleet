@@ -234,6 +234,8 @@ function readOnlyContext(ctx: { cwd: string; threadId: string }): AgentToolConte
     wasRefused: () => false,
     generateImage: null,
     mcp: null,
+    dispatchTask: null,
+    findSubagent: null,
     todos: { list: () => [], save: () => {} }
   };
 }

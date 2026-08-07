@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type {
@@ -29,13 +30,16 @@ import { nextStreak, renderTodoBlock, type AgentTodoItem } from '../../shared/ag
 import { attachmentWireParts, imageWireParts } from './attachments';
 import { toDataUrl } from './image-kinds';
 import {
+  buildTaskSpec,
   toolSpecsFor,
   type AgentImageGenerator,
   type AgentMcpCaller,
+  type AgentTaskDispatcher,
   type AgentToolCall,
   type AgentToolContext,
   type ToolSpec
 } from '../../shared/agent-tools';
+import type { SubagentDefinition } from '../../shared/agent-subagents';
 import type { McpManager } from './mcp/manager';
 import type { AgentToolEvent } from '../../shared/agent-types';
 import {
@@ -55,6 +59,12 @@ import {
   type StreamOutcome
 } from './openrouter';
 import { runAgentTool } from './tools/run';
+import {
+  TaskFailure,
+  type SubagentManager,
+  type TaskOutcome,
+  type TaskRun
+} from './subagents/manager';
 import { generateImage } from './images';
 import type { PermissionGate } from './permissions/gate';
 
@@ -78,6 +88,8 @@ type Deps = {
   gate: PermissionGate;
   /** The connected MCP servers, or `null` when the feature is not wired up. */
   mcp?: McpManager | null;
+  /** The subagents on disk, and the ones running. */
+  subagents: SubagentManager;
   /** Injectable for tests; defaults to the real OpenRouter call. */
   stream?: typeof streamCompletion;
   /** Injectable for tests; defaults to the real OpenRouter image call. */
@@ -90,6 +102,48 @@ type CallContext = {
   model: string;
   settings: AgentSettings;
   signal: AbortSignal;
+};
+
+/**
+ * One run of the round loop: a turn, or a subagent, which are the same thing.
+ *
+ * Assembled by whoever is starting it rather than derived here, because the
+ * whole of the difference between a turn and a subagent is in these fields -
+ * different messages, a different tool list, and, for a child, no way to reach
+ * an MCP server or to start a subagent of its own.
+ */
+type RoundsRequest = {
+  streamId: string;
+  threadId: string;
+  cwd: string;
+  /** The wire, ready to send. Appended to as the rounds go. */
+  messages: AgentWireMessage[];
+  tools: ToolSpec[];
+  /** The connected servers, or `null` for a run that may not reach them. */
+  mcp: McpManager | null;
+  todos: AgentTodoItem[];
+  /**
+   * Built per call rather than per run, the way `generateImage` and the MCP
+   * caller are: the report has to come back to the row that asked for it, and
+   * the row is only known here.
+   */
+  dispatchTask: (callId: string) => AgentTaskDispatcher | null;
+  findSubagent: ((name: string) => SubagentDefinition | null) | null;
+  /**
+   * One finished round of this run's own conversation. Set for a subagent,
+   * whose transcript main has to keep because it has no pane; `null` for a turn,
+   * whose transcript the pane already owns and writes.
+   */
+  onRound: ((message: AgentMessage) => void) | null;
+  /**
+   * Whether to keep the token-by-token text off the wire.
+   *
+   * Set for a subagent. Nothing is watching it type - its card shows what it is
+   * doing, from the tool events, and its words are read afterwards out of its
+   * log - so streaming them would be a few thousand IPC messages a run that
+   * arrive somewhere with no pane to put them.
+   */
+  quiet: boolean;
 };
 
 /** Ceiling for a summary: enough room for the specifics, not for a retelling. */
@@ -175,6 +229,26 @@ function mcpCaller(
 
 /** What building the wire needs to know beyond the messages themselves. */
 type WireContext = { cwd: string; threadId: string };
+
+/**
+ * One round of a run, as the pane would have drawn it.
+ *
+ * Built here only for a subagent, whose rounds nobody drew: text first and then
+ * the calls, which is the order `toWireMessages` reads a message back in, so a
+ * child's log replays into the same shape a pane's does.
+ */
+function roundMessage(text: string, calls: AgentToolCall[]): AgentMessage {
+  return {
+    id: randomUUID(),
+    role: 'assistant',
+    reasoning: '',
+    reasoningMs: null,
+    parts: [
+      ...(text === '' ? [] : [{ type: 'text' as const, text }]),
+      ...calls.map((call) => ({ type: 'tool' as const, call }))
+    ]
+  };
+}
 
 /**
  * The messages for one round, with the task list put back in front of the
@@ -395,11 +469,15 @@ export async function toWireHistory(
   const history = await Promise.all(
     withClearedResults(req.history).map(async (m) => toWireMessages(m, ctx))
   );
-  return [
-    { role: 'system', content: systemPrompt },
-    ...history.flat(),
-    await toUserMessage(req.text, req.attachments, ctx)
-  ];
+  // A turn with nothing said is the pane picking the conversation back up after
+  // a subagent reported - see `resume`. The transcript already ends on that
+  // report, which is the shape that means "carry on", and an empty user message
+  // pushed after it would be a question the user did not ask.
+  const opening =
+    req.text === '' && req.attachments.length === 0
+      ? []
+      : [await toUserMessage(req.text, req.attachments, ctx)];
+  return [{ role: 'system', content: systemPrompt }, ...history.flat(), ...opening];
 }
 
 /**
@@ -524,6 +602,15 @@ export class AgentService {
   }
 
   /**
+   * Refuse the questions these streams are stopped on, leaving the streams
+   * themselves alone. Only subagents are ever in that position - see
+   * `PermissionGate.refusePending`.
+   */
+  refusePending(streamIds: string[]): void {
+    for (const streamId of streamIds) this.deps.gate.refusePending(streamId);
+  }
+
+  /**
    * What a turn and a compaction have in common: one abort controller, the key
    * and model checked once, and any failure reported as a stream error rather
    * than thrown out of a fire-and-forget IPC handler.
@@ -579,31 +666,83 @@ export class AgentService {
    * every round is billed, so every round is counted.
    */
   private async turn(req: AgentSendRequest, ctx: CallContext, account: TurnAccount): Promise<void> {
-    const { streamId } = req;
-    const emit = this.deps.emit;
-    const config = ctx.settings.coding;
     const imageModel = ctx.settings.image.model;
     // Read once per turn rather than per round: a server that comes or goes
     // mid-turn would otherwise change what the model was offered between the
     // call it made and the answer it gets.
     const mcp = this.deps.mcp ?? null;
     const mcpSpecs = mcp?.getToolSpecs() ?? [];
+    const subagents = await this.deps.subagents.list(req.cwd);
+    const taskSpec = buildTaskSpec(subagents);
     const messages = await toWireHistory(
       req,
       buildSystemPrompt(req.cwd, ctx.settings.systemPrompt, {
         image: imageModel !== null,
-        mcp: mcpSpecs.length > 0
+        mcp: mcpSpecs.length > 0,
+        task: taskSpec !== null
       })
     );
-    const tools = toolSpecsFor({ image: imageModel !== null, mcp: mcpSpecs });
+
+    await this.runRounds(
+      {
+        streamId: req.streamId,
+        threadId: req.threadId,
+        cwd: req.cwd,
+        messages,
+        tools: toolSpecsFor({ image: imageModel !== null, mcp: mcpSpecs, task: taskSpec }),
+        mcp,
+        todos: req.todos,
+        // The parent is the only one that gets these. A child's context has
+        // neither, which is the half of "no nesting" that does not depend on
+        // the tool list being right.
+        dispatchTask: this.taskDispatcher(req, ctx, subagents),
+        findSubagent: (name) => subagents.find((s) => s.name === name) ?? null,
+        // The pane draws this run and writes it down. Only a subagent needs
+        // main to keep its transcript, and only a subagent is watched by
+        // nobody while it runs.
+        onRound: null,
+        quiet: false
+      },
+      ctx,
+      account
+    );
+
+    this.deps.emit(IPC_CHANNELS.AGENT_STREAM_DONE, {
+      streamId: req.streamId,
+      usage: account.report()
+    } satisfies AgentStreamDone);
+  }
+
+  /**
+   * Rounds of model call and tool run, until the model answers without asking
+   * for anything else. What it answered with comes back.
+   *
+   * The messages accumulate across rounds so each call sees what the last one
+   * asked for and what came back, and `TurnAccount` accumulates alongside them:
+   * every round is billed, so every round is counted.
+   *
+   * Shared by a turn and by a subagent, because a subagent is a turn: the same
+   * loop, the same tools, the same permission gate, on a stream of its own. What
+   * differs is only what is handed in - which messages, which tools, and whether
+   * it may start subagents of its own.
+   */
+  private async runRounds(
+    run: RoundsRequest,
+    ctx: CallContext,
+    account: TurnAccount
+  ): Promise<string> {
+    const { streamId } = run;
+    const emit = this.deps.emit;
+    const config = ctx.settings.coding;
+    const { messages, tools } = run;
     // A holder rather than a local: it is written inside a callback, where
     // narrowing cannot follow it.
     const round = { content: '' };
-    // The task list for this turn, seeded from what the pane sent and thrown
-    // away when the turn ends. Main keeps no copy between turns: the pane owns
-    // the list and writes it to its own log, and a second copy here would only
-    // be something to get out of step.
-    const todos = { items: req.todos, streak: 0 };
+    // The task list for this run, seeded from what the pane sent and thrown
+    // away when it ends. Main keeps no copy between turns: the pane owns the
+    // list and writes it to its own log, and a second copy here would only be
+    // something to get out of step.
+    const todos = { items: run.todos, streak: 0 };
     const rounds = maxToolRounds(ctx.settings);
 
     for (let attempt = 0; attempt < rounds; attempt++) {
@@ -622,20 +761,20 @@ export class AgentService {
         tools,
         onDelta: (delta) => {
           round.content += delta;
+          if (run.quiet) return;
           emit(IPC_CHANNELS.AGENT_STREAM_CHUNK, { streamId, delta } satisfies AgentStreamDelta);
         },
-        onReasoning: (delta) =>
-          emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta } satisfies AgentStreamDelta),
+        onReasoning: (delta) => {
+          if (run.quiet) return;
+          emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta } satisfies AgentStreamDelta);
+        },
         onUsage: (usage) => account.round(usage)
       });
       account.served(outcome);
 
       if (outcome.toolCalls.length === 0) {
-        emit(IPC_CHANNELS.AGENT_STREAM_DONE, {
-          streamId,
-          usage: account.report()
-        } satisfies AgentStreamDone);
-        return;
+        run.onRound?.(roundMessage(round.content, []));
+        return round.content;
       }
 
       messages.push({
@@ -645,6 +784,9 @@ export class AgentService {
       });
       const images: AgentWireMessage[] = [];
       const before = todos.items;
+      // Finished calls, kept alongside the wire so the round can be written down
+      // as the pane would have drawn it. Only a subagent uses this.
+      const drawn: AgentToolCall[] = [];
       // Strictly one call after another, which the todo tools rely on: ids are
       // minted against the list as it stands, so two `todo_add` calls running
       // at once would both be told the list is the length it was and hand out
@@ -657,8 +799,8 @@ export class AgentService {
         // session for as long as it is open.
         if (ctx.signal.aborted) throw new Error('cancelled');
         const done = await this.runTool(streamId, call, {
-          cwd: req.cwd,
-          threadId: req.threadId,
+          cwd: run.cwd,
+          threadId: run.threadId,
           signal: ctx.signal,
           // Which pane to open the terminal beside is a question only the
           // renderer can answer, so the turn is what goes over the wire.
@@ -671,7 +813,7 @@ export class AgentService {
               streamId,
               callId: call.id,
               command,
-              cwd: req.cwd,
+              cwd: run.cwd,
               signal: ctx.signal,
               // Auto mode answers some of these with a model, and a model that
               // was asked was billed. It lands in the turn that caused it
@@ -689,12 +831,15 @@ export class AgentService {
               todos.items = items;
             }
           },
-          mcp: mcpCaller(mcp, this.deps.gate, {
+          mcp: mcpCaller(run.mcp, this.deps.gate, {
             streamId,
             callId: call.id,
             signal: ctx.signal
-          })
+          }),
+          dispatchTask: run.dispatchTask(call.id),
+          findSubagent: run.findSubagent
         });
+        drawn.push(done.call);
         // A tool that spent money is part of what the turn cost, and `image` is
         // the one that can: it buys a picture from a second endpoint that
         // prices the whole thing rather than its tokens.
@@ -708,18 +853,103 @@ export class AgentService {
         // too: this loop builds the wire for the rest of *this* turn, so
         // without it a model that asked to look at a screenshot would not see
         // it until the turn after the one it asked in.
-        images.push(...(await toolImageMessages(done.call, req.cwd)));
+        images.push(...(await toolImageMessages(done.call, run.cwd)));
       }
       // Held back until every call in the round has been answered, for the
       // reason `flush` holds them back: the API takes an unbroken run of
       // results, and a picture in the middle of one is not a result.
       messages.push(...images);
       todos.streak = nextStreak(todos.streak, before, todos.items);
+      run.onRound?.(roundMessage(round.content, drawn));
     }
 
     throw new Error(
       `Stopped after ${rounds} rounds of tool calls without an answer. Ask again, more narrowly.`
     );
+  }
+
+  /**
+   * The way this turn starts subagents, or `null` when there are none to start.
+   *
+   * A closure over the turn rather than a method on the manager, because what
+   * the manager is missing is all context: which pane to report back to, which
+   * folder to work in, and what model `inherit` means today. None of that is a
+   * property of a subagent, and all of it is a property of the turn.
+   */
+  private taskDispatcher(
+    req: AgentSendRequest,
+    ctx: CallContext,
+    definitions: SubagentDefinition[]
+  ): (callId: string) => AgentTaskDispatcher | null {
+    if (definitions.length === 0) return () => null;
+    return (callId) => async (call) =>
+      this.deps.subagents.dispatch({
+        ...call,
+        parentModel: ctx.model,
+        threadId: req.threadId,
+        callId,
+        cwd: req.cwd
+      });
+  }
+
+  /**
+   * One subagent, from its prompt to its report.
+   *
+   * A turn in every way that matters - the same round loop, the same tools, the
+   * same permission gate - with three differences, all of them the point of the
+   * feature. It starts from an empty history, so the twenty file reads it does
+   * never touch the parent's context. It runs under its own id, which is its
+   * stream, its thread, and its session file at once, so cancelling it, billing
+   * it and asking permission inside it all work without anything new. And its
+   * context has no `dispatchTask` and no MCP, so it cannot start subagents of
+   * its own or reach a server on the parent's behalf.
+   *
+   * What comes back is the last thing it said. Not a summary of the run - the
+   * definition asked it for a report, and a report is what a model writes when
+   * it stops calling tools.
+   */
+  async runTask(run: TaskRun): Promise<TaskOutcome> {
+    const account = new TurnAccount();
+    try {
+      const apiKey = this.deps.getApiKey();
+      if (!apiKey) throw new Error('No OpenRouter API key configured');
+      const settings = this.deps.getSettings();
+      const ctx: CallContext = { apiKey, model: run.model, settings, signal: run.signal };
+
+      const report = await this.runRounds(
+        {
+          streamId: run.taskId,
+          threadId: run.taskId,
+          cwd: run.cwd,
+          messages: [
+            {
+              role: 'system',
+              content: buildSystemPrompt(run.cwd, run.definition.systemPrompt, {
+                // Nothing conditional to say: a child is never given the image
+                // tool, an MCP server, or a subagent of its own.
+                image: false
+              })
+            },
+            { role: 'user', content: run.prompt }
+          ],
+          tools: toolSpecsFor({ image: false, only: run.tools }),
+          mcp: null,
+          todos: [],
+          dispatchTask: () => null,
+          findSubagent: null,
+          onRound: run.onMessage,
+          quiet: true
+        },
+        ctx,
+        account
+      );
+      return { report, usage: account.report() };
+    } catch (err) {
+      throw new TaskFailure(err instanceof Error ? err.message : String(err), account.report());
+    } finally {
+      // A question nobody answered does not outlive the subagent that asked it.
+      this.deps.gate.endTurn(run.taskId);
+    }
   }
 
   /**
@@ -783,7 +1013,8 @@ export class AgentService {
       error: null,
       summary: null,
       image: null,
-      todos: null
+      todos: null,
+      task: null
     };
     this.deps.emit(IPC_CHANNELS.AGENT_TOOL_START, {
       streamId,
@@ -799,7 +1030,8 @@ export class AgentService {
         result: output.text,
         summary: output.summary,
         image: output.image ?? null,
-        todos: output.todos ?? null
+        todos: output.todos ?? null,
+        task: output.task ?? null
       };
       costUsd = output.costUsd ?? null;
     } catch (err) {

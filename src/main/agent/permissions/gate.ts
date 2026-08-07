@@ -236,6 +236,20 @@ export class PermissionGate {
   endTurn(streamId: string): void {
     this.refused.delete(streamId);
     this.judged.delete(streamId);
+    this.refusePending(streamId);
+  }
+
+  /**
+   * Refuse whatever this stream is waiting on, without ending it.
+   *
+   * For a subagent when the window reloads. It keeps running - that is the
+   * point of it - but the question it is stopped on was on a screen that no
+   * longer exists, and nothing will ever re-ask it. Refusing is the safe half
+   * of that: the command does not run, the child is told so in the ordinary
+   * way, and it carries on and reports. The alternative is a subagent stopped
+   * forever on a question nobody can see, holding one of the five slots.
+   */
+  refusePending(streamId: string): void {
     for (const [id, entry] of [...this.pending]) {
       if (entry.streamId === streamId) this.settle(id, 'refuse');
     }
