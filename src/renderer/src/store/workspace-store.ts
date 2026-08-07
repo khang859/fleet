@@ -153,25 +153,6 @@ function ensureAnnotateTab(workspace: Workspace): Workspace {
   return { ...workspace, tabs };
 }
 
-/** Ensure workspace has a pinned Kanban tab at the top; dedupes extras; mutates and returns the workspace */
-function ensureKanbanTab(workspace: Workspace): Workspace {
-  const existing = workspace.tabs.filter((t) => t.type === 'kanban');
-  // Already pinned at the top with no duplicates — nothing to do.
-  if (existing.length === 1 && workspace.tabs[0]?.type === 'kanban') return workspace;
-  const cwd = workspace.tabs[0]?.cwd ?? '/';
-  // Keep the first existing kanban tab (if any), drop duplicates, then pin it to the top.
-  const kanbanTab: Tab = existing[0] ?? {
-    id: generateId(),
-    label: 'Kanban',
-    labelIsCustom: true,
-    cwd,
-    type: 'kanban',
-    splitRoot: { type: 'leaf', id: generateId(), cwd, paneType: 'kanban' }
-  };
-  const rest = workspace.tabs.filter((t) => t.type !== 'kanban');
-  return { ...workspace, tabs: [kanbanTab, ...rest] };
-}
-
 /** Current global tool visibility, falling back to defaults before settings load. */
 function currentToolVisibility(): ToolVisibility {
   return useSettingsStore.getState().settings?.tools ?? DEFAULT_TOOL_VISIBILITY;
@@ -186,14 +167,11 @@ function applyToolVisibility(workspace: Workspace, vis: ToolVisibility): Workspa
   if (vis.sessions) ws = ensureSessionsTab(ws);
   if (vis.images) ws = ensureImagesTab(ws);
   if (vis.annotate) ws = ensureAnnotateTab(ws);
-  if (vis.kanban) ws = ensureKanbanTab(ws);
   if (vis.chat) ws = ensureChatTab(ws);
   const tabs = ws.tabs.filter((t) => {
     switch (t.type) {
       case 'annotate':
         return vis.annotate;
-      case 'kanban':
-        return vis.kanban;
       case 'images':
         return vis.images;
       case 'sessions':
@@ -307,7 +285,6 @@ type WorkspaceStore = {
   markClean: () => void;
 
   ensureImagesTab: () => void;
-  ensureKanbanTab: () => void;
   ensureSessionsTab: () => void;
   ensureChatTab: () => void;
   setToolVisible: (type: ToolType, visible: boolean) => void;
@@ -475,7 +452,14 @@ export function collectPaneIds(node: PaneNode): string[] {
 }
 
 /** Special/pinned tabs that should not be auto-selected when normal tabs are closed */
-const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings', 'kanban', 'sessions', 'chat']);
+/**
+ * Tab types for pinned tools Fleet no longer has: Artifacts (folded into the
+ * old Kanban view) and Kanban itself. A saved workspace still carries them, and
+ * nothing renders them, so a load that kept them would show a blank tab.
+ */
+const DEFUNCT_TAB_TYPES = new Set(['artifacts', 'kanban']);
+
+const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings', 'sessions', 'chat']);
 
 function isNormalTab(tab: Tab): boolean {
   return !SPECIAL_TAB_TYPES.has(tab.type ?? '');
@@ -663,7 +647,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
     set((state) => {
       const target = state.workspace.tabs.find((t) => t.id === tabId);
-      // Pinned tabs (Kanban/Images/Annotate) are not closeable.
+      // Pinned tabs (Images/Annotate/Sessions/Chat) are not closeable.
       if (target && SPECIAL_TAB_TYPES.has(target.type ?? '')) return state;
       const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
       const rawTab = state.workspace.tabs[tabIndex];
@@ -1193,8 +1177,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       label: workspace.label,
       tabCount: workspace.tabs.length
     });
-    // Drop the now-defunct pinned Artifacts tab (folded into the Kanban view).
-    const migratedTabs = workspace.tabs.filter((t) => t.type !== 'artifacts').map(migrateTab);
+    const migratedTabs = workspace.tabs
+      .filter((t) => !DEFUNCT_TAB_TYPES.has(t.type ?? ''))
+      .map(migrateTab);
     const migrated = applyToolVisibility(
       {
         ...workspace,
@@ -1210,11 +1195,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         : undefined) ??
       migrated.tabs.find(
         (t) =>
-          t.type !== 'images' &&
-          t.type !== 'annotate' &&
-          t.type !== 'kanban' &&
-          t.type !== 'sessions' &&
-          t.type !== 'chat'
+          t.type !== 'images' && t.type !== 'annotate' && t.type !== 'sessions' && t.type !== 'chat'
       ) ??
       migrated.tabs[0];
 
@@ -1243,14 +1224,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   ensureImagesTab: () => {
     set((state) => {
       const updated = ensureImagesTab(state.workspace);
-      if (updated === state.workspace) return state;
-      return { workspace: updated, isDirty: true };
-    });
-  },
-
-  ensureKanbanTab: () => {
-    set((state) => {
-      const updated = ensureKanbanTab(state.workspace);
       if (updated === state.workspace) return state;
       return { workspace: updated, isDirty: true };
     });
@@ -1313,8 +1286,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       getFirstLeafCwd(resolvedTarget.tabs[0]?.splitRoot) ?? resolvedTarget.tabs[0]?.cwd;
     set((state) => {
       const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
-      // Drop the now-defunct pinned Artifacts tab (folded into the Kanban view).
-      const migratedTabs = target.tabs.filter((t) => t.type !== 'artifacts').map(migrateTab);
+      const migratedTabs = target.tabs
+        .filter((t) => !DEFUNCT_TAB_TYPES.has(t.type ?? ''))
+        .map(migrateTab);
       const migrated = applyToolVisibility(
         {
           ...target,
@@ -1332,7 +1306,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           (t) =>
             t.type !== 'images' &&
             t.type !== 'annotate' &&
-            t.type !== 'kanban' &&
             t.type !== 'sessions' &&
             t.type !== 'chat'
         ) ??

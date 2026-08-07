@@ -5,7 +5,6 @@ import { createLogger } from './logger';
 import { useWorkspaceStore } from './store/workspace-store';
 import { useChatStore } from './store/chat-store';
 import { useSettingsStore } from './store/settings-store';
-import { useKanbanStore } from './store/kanban-store';
 import { useSessionsStore } from './store/sessions-store';
 import { useRemoteSshStore } from './store/remote-ssh-store';
 import { useAgentStore } from './store/agent-store';
@@ -84,7 +83,6 @@ if (import.meta.env.DEV) {
       workspace: useWorkspaceStore,
       chat: useChatStore,
       settings: useSettingsStore,
-      kanban: useKanbanStore,
       sessions: useSessionsStore,
       remoteSsh: useRemoteSshStore,
       agent: useAgentStore,

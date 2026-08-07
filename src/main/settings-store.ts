@@ -43,21 +43,6 @@ export class SettingsStore {
       annotate: { ...DEFAULT_SETTINGS.annotate, ...(saved.annotate ?? {}) },
       sessions: { ...DEFAULT_SETTINGS.sessions, ...(saved.sessions ?? {}) },
       tools: { ...DEFAULT_SETTINGS.tools, ...(saved.tools ?? {}) },
-      kanban: {
-        ...DEFAULT_SETTINGS.kanban,
-        ...saved.kanban,
-        dispatcher: { ...DEFAULT_SETTINGS.kanban.dispatcher, ...saved.kanban?.dispatcher },
-        pm: { ...DEFAULT_SETTINGS.kanban.pm, ...saved.kanban?.pm },
-        defaults: { ...DEFAULT_SETTINGS.kanban.defaults, ...saved.kanban?.defaults },
-        notifications: {
-          ...DEFAULT_SETTINGS.kanban.notifications,
-          ...saved.kanban?.notifications
-        },
-        profiles: (saved.kanban?.profiles ?? DEFAULT_SETTINGS.kanban.profiles).map((p) => ({
-          ...p,
-          role: p.role ?? 'worker'
-        }))
-      },
       ai: {
         ...DEFAULT_SETTINGS.ai,
         ...saved.ai,
@@ -89,7 +74,7 @@ export class SettingsStore {
       remoteSsh: {
         ...DEFAULT_SETTINGS.remoteSsh,
         ...saved.remoteSsh,
-        // Whole-array replace, like kanban.profiles - a saved host list is
+        // Whole-array replace - a saved host list is
         // authoritative, not something to merge element-wise with defaults.
         hosts: saved.remoteSsh?.hosts ?? DEFAULT_SETTINGS.remoteSsh.hosts
       }
@@ -124,18 +109,6 @@ export class SettingsStore {
       annotate: { ...current.annotate, ...(partial.annotate ?? {}) },
       sessions: { ...current.sessions, ...(partial.sessions ?? {}) },
       tools: { ...current.tools, ...(partial.tools ?? {}) },
-      kanban: {
-        ...current.kanban,
-        ...(partial.kanban ?? {}),
-        dispatcher: { ...current.kanban.dispatcher, ...(partial.kanban?.dispatcher ?? {}) },
-        pm: { ...current.kanban.pm, ...(partial.kanban?.pm ?? {}) },
-        defaults: { ...current.kanban.defaults, ...(partial.kanban?.defaults ?? {}) },
-        notifications: {
-          ...current.kanban.notifications,
-          ...(partial.kanban?.notifications ?? {})
-        },
-        profiles: partial.kanban?.profiles ?? current.kanban.profiles
-      },
       ai: {
         ...current.ai,
         ...(partial.ai ?? {}),

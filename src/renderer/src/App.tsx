@@ -5,7 +5,6 @@ import {
   ImageIcon,
   Settings,
   Crosshair,
-  KanbanSquare,
   History,
   SlidersHorizontal,
   MessageSquare,
@@ -34,7 +33,6 @@ import { initRemoteTransferListener } from './store/remote-ssh-store';
 import { useSettingsStore } from './store/settings-store';
 import { useShellProfilesStore } from './store/shell-profiles-store';
 import { useHomesStore } from './store/homes-store';
-import { useKanbanStore } from './store/kanban-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
@@ -57,14 +55,12 @@ import { AgentFolderDialog } from './components/agent/AgentFolderDialog';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
-import { KanbanBoard } from './components/kanban/KanbanBoard';
 import { SessionsTab } from './components/sessions/SessionsTab';
 import { ChatTab } from './components/chat/ChatTab';
 import { PiPlanModal } from './components/PiPlanModal';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
 import type { PiPlanOpenPayload } from '../../shared/ipc-api';
-import { useKanbanAttention } from './hooks/useKanbanAttention';
 import { getAccentCssVars } from './lib/theme';
 import { tooltipAnim, popperAnim } from './lib/motion';
 import { useAppThemeVars } from './hooks/use-app-theme';
@@ -112,7 +108,6 @@ function killClosedTabPtys(paneIds: string[]): void {
 export function App(): React.JSX.Element {
   usePaneNavigation();
   useNotifications();
-  useKanbanAttention();
   useRuneAssistEvents();
   const { loadSettings } = useSettingsStore();
   const initRef = useRef(false);
@@ -455,24 +450,6 @@ export function App(): React.JSX.Element {
     setPlanModalQueue((queue) => queue.slice(1));
   }, []);
 
-  // Live kanban updates: any task_event → refetch board + open task (150ms coalesced)
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const cleanup = window.fleet.kanban.onEvent(() => {
-      if (timer) return;
-      timer = setTimeout(() => {
-        timer = null;
-        const s = useKanbanStore.getState();
-        void s.loadBoard();
-        void s.refreshDetail();
-      }, 150);
-    });
-    return () => {
-      if (timer) clearTimeout(timer);
-      cleanup();
-    };
-  }, []);
-
   // Auto-updater
   useEffect(() => {
     const cleanup = window.fleet.updates.onUpdateStatus((status) => {
@@ -783,7 +760,6 @@ export function App(): React.JSX.Element {
                   t.type !== 'images' &&
                   t.type !== 'settings' &&
                   t.type !== 'annotate' &&
-                  t.type !== 'kanban' &&
                   t.type !== 'sessions' &&
                   t.type !== 'chat'
               )
@@ -833,33 +809,9 @@ export function App(): React.JSX.Element {
               (t) =>
                 t.type === 'images' ||
                 t.type === 'annotate' ||
-                t.type === 'kanban' ||
                 t.type === 'sessions' ||
                 t.type === 'chat'
             ) && <div className="w-6 h-px bg-fleet-border my-0.5" />}
-            {/* Kanban pinned icon */}
-            {workspace.tabs
-              .filter((t) => t.type === 'kanban')
-              .map((tab) => {
-                const isKanbanActive = tab.id === activeTabId;
-                return (
-                  <MiniSidebarTooltip label="Kanban" key={tab.id}>
-                    <button
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors active:scale-90 ${
-                        isKanbanActive
-                          ? 'bg-blue-900/40 ring-1 ring-blue-500/30'
-                          : 'hover:bg-fleet-surface-2'
-                      }`}
-                    >
-                      <KanbanSquare
-                        size={16}
-                        className={isKanbanActive ? 'text-blue-400' : 'text-blue-400/40'}
-                      />
-                    </button>
-                  </MiniSidebarTooltip>
-                );
-              })}
             {/* Images pinned icon */}
             {workspace.tabs
               .filter((t) => t.type === 'images')
@@ -1072,8 +1024,6 @@ export function App(): React.JSX.Element {
                         fontSize={settings?.general.fontSize}
                         terminalTheme={settings?.general.terminalTheme}
                       />
-                    ) : tab.type === 'kanban' ? (
-                      <KanbanBoard />
                     ) : tab.type === 'sessions' ? (
                       <SessionsTab />
                     ) : tab.type === 'chat' ? (

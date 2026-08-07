@@ -333,72 +333,6 @@ export function validateCommand(command: string, args: Record<string, unknown>):
       return null;
     }
 
-    // ── Kanban ────────────────────────────────────────────────────────────
-    case 'kanban.create':
-      if (!args.title)
-        return 'Error: kanban create requires --title.\n\nUsage: fleet kanban create --title "..." [--assignee <profile>] [--priority <n>] [--body "..."] [--workspace <scratch|dir|worktree>] [--repo <path>]';
-      if (args.workspace === 'worktree' && !args.repo)
-        return 'Error: kanban create --workspace worktree requires --repo <path>.\n\nUsage: fleet kanban create --title "..." --workspace worktree --repo <path>';
-      return null;
-
-    case 'kanban.swarm':
-      if (!args.goal)
-        return 'Error: kanban swarm requires a goal.\n\nUsage: fleet kanban swarm "<goal>" --worker <profile:title[:skillA,skillB]> [--worker ...] --verifier <profile> --synthesizer <profile>';
-      if (!args.worker)
-        return 'Error: kanban swarm requires at least one --worker.\n\nUsage: fleet kanban swarm "<goal>" --worker <profile:title> --verifier <profile> --synthesizer <profile>';
-      if (!args.verifier) return 'Error: kanban swarm requires --verifier <profile>.';
-      if (!args.synthesizer) return 'Error: kanban swarm requires --synthesizer <profile>.';
-      return null;
-
-    case 'kanban.show':
-    case 'kanban.log':
-    case 'kanban.ready':
-    case 'kanban.unblock':
-    case 'kanban.archive':
-    case 'kanban.decompose':
-    case 'kanban.specify': {
-      const verb = command.split('.')[1];
-      if (!args.id)
-        return `Error: kanban ${verb} requires a task id.\n\nUsage: fleet kanban ${verb} <task-id>`;
-      return null;
-    }
-
-    case 'kanban.assign':
-      if (!args.id)
-        return 'Error: kanban assign requires a task id.\n\nUsage: fleet kanban assign <task-id> --profile <name>';
-      if (!args.profile)
-        return 'Error: kanban assign requires --profile.\n\nUsage: fleet kanban assign <task-id> --profile <name>';
-      return null;
-
-    case 'kanban.block':
-      if (!args.id)
-        return 'Error: kanban block requires a task id.\n\nUsage: fleet kanban block <task-id> --reason "..."';
-      if (!args.reason)
-        return 'Error: kanban block requires --reason.\n\nUsage: fleet kanban block <task-id> --reason "..."';
-      return null;
-
-    case 'kanban.complete':
-      if (!args.id)
-        return 'Error: kanban complete requires a task id.\n\nUsage: fleet kanban complete <task-id> --result "..."';
-      if (!args.result)
-        return 'Error: kanban complete requires --result.\n\nUsage: fleet kanban complete <task-id> --result "..."';
-      return null;
-
-    case 'kanban.comment':
-      if (!args.id)
-        return 'Error: kanban comment requires a task id.\n\nUsage: fleet kanban comment <task-id> "comment text"';
-      if (!args.body)
-        return 'Error: kanban comment requires a comment body.\n\nUsage: fleet kanban comment <task-id> "comment text"';
-      return null;
-
-    case 'kanban.link':
-    case 'kanban.unlink': {
-      const verb = command.split('.')[1];
-      if (!args.parentId || !args.childId)
-        return `Error: kanban ${verb} requires a parent and child id.\n\nUsage: fleet kanban ${verb} <parent-id> <child-id>`;
-      return null;
-    }
-
     default:
       return null;
   }
@@ -408,7 +342,7 @@ export function validateCommand(command: string, args: Record<string, unknown>):
 
 const HELP_TOP = `# Fleet CLI
 
-Manage images, files, and the Kanban board from the terminal.
+Manage images and files from the terminal.
 
 ## Usage
 
@@ -423,7 +357,6 @@ Manage images, files, and the Kanban board from the terminal.
 | open | Open files or images in Fleet tabs. |
 | annotate | Visually annotate web page elements for AI agents. |
 | pi | Open Pi agent tabs and Pi plan documents. |
-| kanban | Manage the Kanban board: tasks, links, comments, live watch. |
 
 ## Examples
 
@@ -547,45 +480,7 @@ Manage AI image generation.
   fleet images action remove-background ./photo.png
   fleet images action remove-background ./photo.png --provider fal-ai
   fleet images actions
-`,
-
-  kanban: `# fleet kanban
-
-Manage the Kanban board from the terminal. Requires the Fleet app to be running.
-
-## Commands
-
-  fleet kanban create --title "..." [--body "..."] [--assignee <profile>] [--priority <n>] [--workspace <scratch|dir|worktree>] [--repo <path>]
-  fleet kanban swarm "<goal>" --worker <profile:title[:skillA,skillB]> [--worker ...] --verifier <profile> --synthesizer <profile> [--repo <path>]
-  fleet kanban list [--status <status>]
-  fleet kanban show <task-id>
-  fleet kanban assign <task-id> --profile <name>
-  fleet kanban ready <task-id>
-  fleet kanban block <task-id> --reason "..."
-  fleet kanban unblock <task-id>
-  fleet kanban archive <task-id>
-  fleet kanban complete <task-id> --result "..."
-  fleet kanban comment <task-id> "comment text"
-  fleet kanban link <parent-id> <child-id>
-  fleet kanban unlink <parent-id> <child-id>
-  fleet kanban log <task-id>
-  fleet kanban dispatch
-  fleet kanban decompose <task-id>            Fan a triage task into a child-task graph
-  fleet kanban specify <task-id>              Rewrite a triage task into a fuller spec
-  fleet kanban watch
-
-## Options
-
-  --status <status>   Filter list by status (triage|todo|ready|running|blocked|review|done|archived).
-  --format json       Emit raw JSON instead of a table.
-
-## Examples
-
-  fleet kanban create --title "Fix flaky test" --assignee default --priority 2
-  fleet kanban create --title "Refactor auth" --workspace worktree --repo /home/me/project
-  fleet kanban list --status ready
-  fleet kanban show t_abc123
-  fleet kanban watch`
+`
 };
 
 export function getHelpText(argv: string[]): string | null {
@@ -606,65 +501,6 @@ export function getHelpText(argv: string[]): string | null {
 
   // Unknown group → top-level help
   return HELP_TOP;
-}
-
-// ── kanban watch: long-lived event stream ────────────────────────────────────
-
-function formatWatchEvent(event: unknown): string {
-  if (!isRecord(event)) return toStr(event);
-  const t = typeof event.createdAt === 'number' ? new Date(event.createdAt) : null;
-  const time = t ? t.toISOString().slice(11, 19) : '--:--:--';
-  const taskId = toStr(event.taskId);
-  const kind = toStr(event.kind);
-  return `${time}  ${taskId}  ${kind}`;
-}
-
-export async function runKanbanWatch(sockPath: string, opts: { json: boolean }): Promise<string> {
-  return new Promise((resolve) => {
-    const socket = createConnection(sockPath, () => {
-      socket.write(JSON.stringify({ id: randomUUID(), command: 'kanban.watch', args: {} }) + '\n');
-    });
-    let buffer = '';
-    let acked = false;
-
-    socket.on('data', (chunk) => {
-      buffer += chunk.toString();
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        let msg: unknown;
-        try {
-          msg = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        if (!acked) {
-          acked = true;
-          if (isRecord(msg) && msg.ok === false) {
-            socket.end();
-            resolve(`Error: ${toStr(msg.error)}`);
-            return;
-          }
-          process.stderr.write('Watching kanban events (Ctrl-C to stop)…\n');
-          continue;
-        }
-        if (isRecord(msg) && 'kanbanEvent' in msg) {
-          process.stdout.write((opts.json ? line : formatWatchEvent(msg.kanbanEvent)) + '\n');
-        }
-      }
-    });
-
-    socket.on('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'ENOENT' || err.code === 'ECONNREFUSED') {
-        resolve('Fleet is not running');
-      } else {
-        resolve(`Error: ${err.message}`);
-      }
-    });
-
-    socket.on('close', () => resolve(''));
-  });
 }
 
 // ── runCLI: parse argv and format output ─────────────────────────────────────
@@ -812,13 +648,6 @@ export async function runCLI(
     }
   }
 
-  // ── Top-level "kanban watch" (streaming; all other kanban verbs use the generic path) ──
-  if (group === 'kanban' && action === 'watch') {
-    const fmtIdx = rest.indexOf('--format');
-    const json = fmtIdx !== -1 && rest[fmtIdx + 1] === 'json';
-    return runKanbanWatch(sockPath, { json });
-  }
-
   // ── Images config (get or set based on flags) ──────────────────────────
   if (group === 'images' && action === 'config') {
     const configArgs = parseArgs(rest.filter((t) => t !== '--quiet'));
@@ -935,26 +764,6 @@ export async function runCLI(
       } else {
         args.source = src;
       }
-    }
-  }
-
-  // ── kanban: remap positionals to named args ──────────────────────────────
-  if (group === 'kanban') {
-    const positionals = cleanRest.filter((t) => !t.startsWith('--'));
-    if (action === 'comment' && positionals.length >= 2) {
-      // parseArgs maps every positional to args.id (last wins), so the comment
-      // text clobbered id — restore id from the first positional, body from the rest.
-      args.id = positionals[0];
-      args.body = positionals.slice(1).join(' ');
-    }
-    if ((action === 'link' || action === 'unlink') && positionals.length >= 2) {
-      args.parentId = positionals[0];
-      args.childId = positionals[1];
-      delete args.id;
-    }
-    if (action === 'swarm' && positionals.length >= 1) {
-      args.goal = positionals.join(' ');
-      delete args.id;
     }
   }
 
