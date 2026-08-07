@@ -41,8 +41,9 @@ import {
  * file's business; these tests are about what a turn does with the answer.
  */
 const PASS_GATE = new PermissionGate({
-  getRules: () => ({ allow: ['*'], deny: [] }),
+  getRules: () => ({ allow: ['*'], deny: [], mcp: { allow: ['*'], deny: [] } }),
   persistAllow: () => {},
+  persistAllowMcp: () => {},
   emit: () => {}
 });
 

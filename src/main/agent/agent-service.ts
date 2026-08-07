@@ -122,10 +122,46 @@ export function toReasoningParam(config: AgentModelConfig): ReasoningParam | nul
  * `null` rather than a function that always refuses, for the reason
  * `generateImage` is null when image generation is off: it is the same answer
  * the model was given when the tools were listed, so the two cannot disagree.
+ *
+ * The gate is inside it rather than beside it, so there is no way to reach a
+ * server's tool that does not pass through the question. A refusal comes back
+ * as text the model can read - the same as any other tool saying no - because
+ * a turn that ends on a declined call throws away the work it had already done.
  */
-function mcpCaller(mcp: McpManager | null): AgentMcpCaller | null {
+function mcpCaller(
+  mcp: McpManager | null,
+  gate: PermissionGate,
+  // Per call rather than per turn, for the reason `imageGenerator` is: the row
+  // the question lands on is this call's, and only here is that known.
+  at: { streamId: string; callId: string; signal: AbortSignal }
+): AgentMcpCaller | null {
   if (mcp === null) return null;
-  return async (name, rawArgs) => mcp.callTool(name, rawArgs);
+  return async (name, rawArgs) => {
+    const server = mcp.serverOf(name);
+    const tool = mcp.toolOf(name);
+    // No route means no such tool, which the manager says better than a
+    // question about a server nobody can name would.
+    if (server !== null && tool !== null) {
+      const grant = await gate.checkMcp({
+        streamId: at.streamId,
+        callId: at.callId,
+        signal: at.signal,
+        wireName: name,
+        server,
+        tool,
+        args: rawArgs,
+        readOnly: mcp.isReadOnly(name)
+      });
+      if (grant === 'refuse') {
+        return {
+          text: `The user did not allow ${tool} on the ${server} server to run.`,
+          isError: true,
+          image: null
+        };
+      }
+    }
+    return mcp.callTool(name, rawArgs);
+  };
 }
 
 /** What building the wire needs to know beyond the messages themselves. */
@@ -562,7 +598,11 @@ export class AgentService {
               todos.items = items;
             }
           },
-          mcp: mcpCaller(mcp)
+          mcp: mcpCaller(mcp, this.deps.gate, {
+            streamId,
+            callId: call.id,
+            signal: ctx.signal
+          })
         });
         // A tool that spent money is part of what the turn cost, and `image` is
         // the one that can: it buys a picture from a second endpoint that

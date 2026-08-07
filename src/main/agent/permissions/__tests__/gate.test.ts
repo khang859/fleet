@@ -13,6 +13,8 @@ import { PermissionGate } from '../gate';
 
 let rules: AgentPermissionRules;
 let persisted: string[];
+/** Rules remembered about a server's tools, kept apart from the shell ones. */
+let persistedMcp: string[];
 let asks: AgentPermissionAsk[];
 
 const emit = vi.fn((channel: string, payload: unknown) => {
@@ -23,6 +25,7 @@ function gate(): PermissionGate {
   return new PermissionGate({
     getRules: () => rules,
     persistAllow: (rule) => persisted.push(rule),
+    persistAllowMcp: (rule) => persistedMcp.push(rule),
     emit
   });
 }
@@ -38,8 +41,9 @@ const request = (
 });
 
 beforeEach(() => {
-  rules = { allow: [], deny: [] };
+  rules = { allow: [], deny: [], mcp: { allow: [], deny: [] } };
   persisted = [];
+  persistedMcp = [];
   asks = [];
   emit.mockClear();
 });
@@ -207,5 +211,121 @@ describe('PermissionGate', () => {
     g.decide(asks[0].requestId, 'always');
 
     expect(persisted).toEqual([]);
+  });
+});
+
+/** A question about a server's tool, with the pieces the card draws. */
+const mcpRequest = (
+  tool = 'list_issues',
+  overrides: Partial<Parameters<PermissionGate['checkMcp']>[0]> = {}
+): Parameters<PermissionGate['checkMcp']>[0] => ({
+  streamId: 'stream-1',
+  callId: 'call-1',
+  signal: new AbortController().signal,
+  wireName: `mcp__linear__${tool}`,
+  server: 'linear',
+  tool,
+  args: '{"team":"core"}',
+  readOnly: false,
+  ...overrides
+});
+
+describe('PermissionGate, on a connected server’s tool', () => {
+  it('asks, when no rule has anything to say', async () => {
+    const g = gate();
+    const verdict = g.checkMcp(mcpRequest());
+
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    expect(asks[0].mcp).toEqual({ server: 'linear', tool: 'list_issues', args: '{"team":"core"}' });
+    expect(asks[0].callId).toBe('call-1');
+
+    g.decide(asks[0].requestId, 'once');
+    await expect(verdict).resolves.toBe('run');
+  });
+
+  it('offers to remember the server rather than the one tool', async () => {
+    const g = gate();
+    void g.checkMcp(mcpRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+
+    expect(asks[0].rule).toBe('mcp__linear__*');
+  });
+
+  it('remembers a rule where tool names are matched, not shell commands', async () => {
+    const g = gate();
+    const verdict = g.checkMcp(mcpRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+
+    g.decide(asks[0].requestId, 'always');
+    await verdict;
+
+    expect(persistedMcp).toEqual(['mcp__linear__*']);
+    expect(persisted).toEqual([]);
+  });
+
+  it('runs a tool an existing rule covers, without disturbing anybody', async () => {
+    rules.mcp.allow.push('mcp__linear__*');
+    await expect(gate().checkMcp(mcpRequest())).resolves.toBe('run');
+    expect(asks).toEqual([]);
+  });
+
+  it('refuses one the user denied, without disturbing anybody', async () => {
+    rules.mcp.deny.push('mcp__linear__delete_issue');
+    await expect(gate().checkMcp(mcpRequest('delete_issue'))).resolves.toBe('refuse');
+    expect(asks).toEqual([]);
+  });
+
+  /*
+   * The server's own claim about its own tool. It saves a click on a search,
+   * and it is never a boundary - see the comment on `checkMcp`.
+   */
+  it('takes a server at its word that a tool only reads', async () => {
+    await expect(gate().checkMcp(mcpRequest('search', { readOnly: true }))).resolves.toBe('run');
+    expect(asks).toEqual([]);
+  });
+
+  it('does not take that word over the user’s own', async () => {
+    rules.mcp.deny.push('mcp__linear__*');
+    await expect(gate().checkMcp(mcpRequest('search', { readOnly: true }))).resolves.toBe('refuse');
+  });
+
+  it('does not ask twice about a tool it has already been told no about', async () => {
+    const g = gate();
+    const first = g.checkMcp(mcpRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'no');
+    await expect(first).resolves.toBe('refuse');
+
+    await expect(g.checkMcp(mcpRequest())).resolves.toBe('refuse');
+    expect(asks).toHaveLength(1);
+  });
+
+  it('forgets that refusal when the turn ends', async () => {
+    const g = gate();
+    const first = g.checkMcp(mcpRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'no');
+    await first;
+
+    g.endTurn('stream-1');
+    void g.checkMcp(mcpRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(2));
+  });
+
+  it('refuses a question the user never got to, when the turn is stopped', async () => {
+    const controller = new AbortController();
+    const g = gate();
+    const verdict = g.checkMcp(mcpRequest('list_issues', { signal: controller.signal }));
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+
+    controller.abort();
+
+    await expect(verdict).resolves.toBe('refuse');
+  });
+
+  it('leaves the shell rules out of it entirely', async () => {
+    rules.allow.push('*');
+    void gate().checkMcp(mcpRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
   });
 });

@@ -1,5 +1,30 @@
-import { CircleQuestionMark } from 'lucide-react';
+import { CircleQuestionMark, Plug } from 'lucide-react';
 import type { AgentPermissionAsk, AgentPermissionOutcome } from '../../../../shared/agent-types';
+
+/** What the announcement says the agent is asking to run. */
+function spoken(ask: AgentPermissionAsk): string {
+  return ask.mcp === null ? ask.command : `${ask.mcp.tool} on the ${ask.mcp.server} server`;
+}
+
+/**
+ * The arguments, on one line, for the user to glance at before agreeing.
+ *
+ * Re-printed compactly rather than shown as the model wrote them: the model
+ * writes pretty JSON, and four lines of braces above the buttons pushes the
+ * question itself out of view. Text that will not parse is shown as it came,
+ * because a call about to run on arguments nobody can read is exactly the one
+ * worth looking at twice.
+ */
+function args(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed === '' || trimmed === '{}') return '';
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return JSON.stringify(parsed);
+  } catch {
+    return trimmed;
+  }
+}
 
 /**
  * A command the agent cannot run without being told to.
@@ -32,16 +57,37 @@ export function AgentPermissionRow({
           is a turn that looks hung. Said once, politely, in full: the command
           on its own is not a question. */}
       <p role="status" className="sr-only">
-        {`The agent is asking to run ${ask.command}.${ask.reason === null ? '' : ` ${ask.reason}`}`}
+        {`The agent is asking to run ${spoken(ask)}.${ask.reason === null ? '' : ` ${ask.reason}`}`}
       </p>
       <div className="flex items-start gap-1.5">
-        <CircleQuestionMark
-          size={13}
-          aria-hidden="true"
-          className="mt-px shrink-0 text-amber-700 dark:text-amber-400/90"
-        />
+        {ask.mcp === null ? (
+          <CircleQuestionMark
+            size={13}
+            aria-hidden="true"
+            className="mt-px shrink-0 text-amber-700 dark:text-amber-400/90"
+          />
+        ) : (
+          <Plug
+            size={13}
+            aria-hidden="true"
+            className="mt-px shrink-0 text-amber-700 dark:text-amber-400/90"
+          />
+        )}
         <span className="max-h-32 overflow-y-auto font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-fleet-text">
-          {ask.command}
+          {ask.mcp === null ? (
+            ask.command
+          ) : (
+            <>
+              {ask.mcp.tool}
+              {/* The server is what the user actually chose to connect, so it
+                  is named rather than left implicit in the tool's name - which
+                  is often generic enough to belong to any of them. */}
+              <span className="text-fleet-text-subtle"> on {ask.mcp.server}</span>
+              {args(ask.mcp.args) !== '' && (
+                <span className="block text-fleet-text-subtle">{args(ask.mcp.args)}</span>
+              )}
+            </>
+          )}
         </span>
       </div>
       {ask.reason !== null && <p className="text-[11px] text-fleet-text-subtle">{ask.reason}</p>}
@@ -60,14 +106,23 @@ export function AgentPermissionRow({
           <button
             type="button"
             onClick={() => onDecide('always')}
-            title={`Always allow ${ask.rule}`}
+            title={
+              ask.mcp === null
+                ? `Always allow ${ask.rule}`
+                : `Always allow every tool on the ${ask.mcp.server} server`
+            }
             className="flex min-w-0 max-w-full items-baseline gap-1 rounded-md bg-fleet-surface-3 px-2.5 py-1 text-[11px] font-medium text-fleet-text transition-colors hover:bg-fleet-surface-2 focus-ring"
           >
             {/* The command above is never shortened; the rule is derived text,
                 and a rule long enough to break the row out of the card is one
                 the button cannot usefully spell out anyway. */}
             <span className="shrink-0">Always allow</span>
-            <span className="truncate font-mono">{ask.rule}</span>
+            {/* A server's rule is a wire-name glob, which is Fleet's plumbing.
+                What the user agreed to is the server, so that is what the
+                button says. */}
+            <span className={ask.mcp === null ? 'truncate font-mono' : 'truncate'}>
+              {ask.mcp === null ? ask.rule : `${ask.mcp.server} tools`}
+            </span>
           </button>
         )}
         <button

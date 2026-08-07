@@ -637,6 +637,19 @@ export type AgentPermissionAsk = {
   reason: string | null;
   /** The rule "always allow" would leave behind. `null` ⇒ do not offer it. */
   rule: string | null;
+  /**
+   * Set when the question is about a connected server's tool rather than a
+   * shell command, in which case `command` is the wire name and this is what
+   * the card should actually show: the user connected `linear`, and
+   * `mcp__linear__list_issues` is Fleet's plumbing rather than their word for
+   * it.
+   */
+  mcp: {
+    server: string;
+    tool: string;
+    /** The arguments as the model wrote them: JSON, and possibly malformed. */
+    args: string;
+  } | null;
 };
 
 /** `once` runs it, `always` runs it and remembers the rule, `no` refuses. */
