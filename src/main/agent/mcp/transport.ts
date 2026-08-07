@@ -69,7 +69,17 @@ async function stdioTransport(cfg: McpServerConfig): Promise<Transport> {
   });
 }
 
-function httpTransport(cfg: McpServerConfig, auth?: TransportAuth): Transport {
+/**
+ * The HTTP transport, concretely.
+ *
+ * Exported with its real type rather than as a `Transport` because signing in
+ * needs `finishAuth`, which only this one has - a spawned process has no
+ * redirect to come back from.
+ */
+export function httpTransport(
+  cfg: McpServerConfig,
+  auth?: TransportAuth
+): StreamableHTTPClientTransport {
   const env = process.env;
   const url = new URL(expandVars(cfg.url ?? '', env));
   const headers = {

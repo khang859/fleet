@@ -52,7 +52,12 @@ type Route = { server: string; tool: string };
 export type ManagerDeps = {
   getConfig: () => McpServersConfig;
   /** Resolves stored secrets and OAuth for one server. Absent in tests. */
-  getAuth?: (name: string, cfg: McpServerConfig) => Promise<TransportAuth | undefined>;
+  getAuth?: (
+    name: string,
+    cfg: McpServerConfig
+  ) => TransportAuth | undefined | Promise<TransportAuth | undefined>;
+  /** Runs an interactive sign-in. Absent in tests, and on a build with no window. */
+  signIn?: (name: string, cfg: McpServerConfig, signal?: AbortSignal) => Promise<void>;
   /** Lets the pane redraw when a server's tools or state change underneath it. */
   onStatusChange?: (statuses: McpServerStatus[]) => void;
   /** Swapped in tests. Real callers get the SDK transports. */
@@ -82,7 +87,9 @@ export class McpManager {
     // each has its own timeout, so the whole reload is bounded by the slowest
     // single connect rather than by their sum.
     await Promise.all(
-      Object.entries(config).map(async ([name, cfg]) => this.connectOne(name, cfg))
+      Object.entries(config).map(async ([name, cfg]) =>
+        cfg === undefined ? undefined : this.connectOne(name, cfg)
+      )
     );
     this.announce();
   }
@@ -262,6 +269,46 @@ export class McpManager {
     } catch (err) {
       return { text: messageOf(err), isError: true, image: null };
     }
+  }
+
+  /**
+   * Sign in to one server, then connect it.
+   *
+   * Reconnecting is part of signing in rather than something the caller has to
+   * remember: the point of signing in is to have the server's tools, and a
+   * server that says "signed in" while still showing none of them is a button
+   * that appears not to have worked.
+   */
+  async signIn(name: string, signal?: AbortSignal): Promise<void> {
+    const cfg = this.deps.getConfig()[name];
+    if (cfg === undefined) throw new Error(`There is no server called ${name}.`);
+    if (this.deps.signIn === undefined) {
+      throw new Error('Signing in is not available in this build.');
+    }
+
+    // Dropped first: the connection that could not authorize is holding the
+    // old credentials, and reconnecting over it would use them again.
+    await this.disconnect(name);
+    await this.deps.signIn(name, cfg, signal);
+    await this.connectOne(name, cfg);
+    this.announce();
+  }
+
+  /** Drop one server and reconnect it, for a config the user just changed. */
+  async reconnect(name: string): Promise<void> {
+    const cfg = this.deps.getConfig()[name];
+    await this.disconnect(name);
+    if (cfg !== undefined) await this.connectOne(name, cfg);
+    this.announce();
+  }
+
+  private async disconnect(name: string): Promise<void> {
+    await this.servers
+      .get(name)
+      ?.client?.close()
+      .catch(() => {});
+    this.servers.delete(name);
+    this.clearRoutesFor(name);
   }
 
   statuses(): McpServerStatus[] {

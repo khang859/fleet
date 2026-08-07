@@ -58,7 +58,14 @@ export type McpServerConfig = {
   importedFrom?: McpImportOrigin;
 };
 
-export type McpServersConfig = Record<string, McpServerConfig>;
+/**
+ * Every configured server, by the name the user gave it.
+ *
+ * `| undefined` on the value because looking up a name that is not there is
+ * ordinary - a row the user just deleted, a name typed into a rule - and the
+ * code that does it should have to say what it means to happen.
+ */
+export type McpServersConfig = Record<string, McpServerConfig | undefined>;
 
 export type McpTransportKind = 'stdio' | 'http';
 
