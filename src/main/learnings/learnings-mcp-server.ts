@@ -1,5 +1,5 @@
 // src/main/learnings/learnings-mcp-server.ts
-// A loopback MCP server exposing the Learnings KB to agents (Rune + Claude Code).
+// A loopback MCP server exposing the Learnings KB to agents (Claude Code).
 // Read-only, no auth token — the 127.0.0.1 bind is the security boundary.
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http';
 import { z } from 'zod';

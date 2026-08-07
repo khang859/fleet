@@ -1,19 +1,16 @@
 // src/renderer/src/components/sessions/TranscriptView.tsx
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import type {
   SessionSummary,
-  SubagentSummary,
   TranscriptBlock,
   TranscriptMessage
 } from '../../../../shared/sessions';
 import { useSessionsStore } from '../../store/sessions-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
-import { SessionTree } from './SessionTree';
 import { DistillModal } from './DistillModal';
-import { pathToNode } from './tree-utils';
 
 function resumeCommand(s: SessionSummary): string {
-  return s.agent === 'rune' ? `rune --resume ${s.id}` : `claude --resume ${s.id}`;
+  return `claude --resume ${s.id}`;
 }
 
 function formatTokens(n: number): string {
@@ -162,60 +159,17 @@ function Message({ message }: { message: TranscriptMessage }): React.JSX.Element
   );
 }
 
-function SubagentList({ subagents }: { subagents: SubagentSummary[] }): React.JSX.Element {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-fleet-text-subtle">
-        Subagents
-      </div>
-      {subagents.map((sa) => (
-        <div key={sa.id} className="rounded bg-fleet-surface-2/40 px-2 py-1 text-xs">
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-fleet-text">
-              {sa.name.length > 0 ? sa.name : '(unnamed)'}
-            </span>
-            <span className="flex-shrink-0 rounded bg-fleet-surface-2 px-1 text-[10px] text-fleet-text-subtle">
-              {sa.status}
-            </span>
-          </div>
-          {sa.agentType ? (
-            <div className="truncate text-[10px] text-fleet-text-subtle">{sa.agentType}</div>
-          ) : null}
-          {sa.summary ? (
-            <div className="mt-0.5 line-clamp-3 text-[11px] text-fleet-text-subtle">
-              {sa.summary}
-            </div>
-          ) : null}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function TranscriptView({
   onDistilled
 }: {
   /** Fired after a distill is saved, so the Learnings list can refresh. */
   onDistilled?: () => void;
 } = {}): React.JSX.Element {
-  const { selected, transcript, selectedNodeId, selectNode, isLoadingTranscript, transcriptError } =
-    useSessionsStore();
+  const { selected, transcript, isLoadingTranscript, transcriptError } = useSessionsStore();
   const openResumeTab = useWorkspaceStore((s) => s.openResumeTab);
-  const [showRail, setShowRail] = useState(true);
   const [distilling, setDistilling] = useState(false);
 
-  const tree = transcript?.tree;
-  const subagents = transcript?.subagents;
-  const hasRail = Boolean(tree) || (subagents !== undefined && subagents.length > 0);
-
-  // When the session branches, distill the path the user is currently viewing.
-  const distillNodeId = tree ? (selectedNodeId ?? tree.activeId) : undefined;
-  const onBranch = Boolean(tree) && selectedNodeId !== null && selectedNodeId !== tree?.activeId;
-
-  const messages = useMemo<TranscriptMessage[]>(() => {
-    if (!transcript) return [];
-    return tree ? pathToNode(tree, selectedNodeId) : transcript.messages;
-  }, [transcript, tree, selectedNodeId]);
+  const messages = transcript?.messages ?? [];
 
   if (!selected) {
     return (
@@ -245,34 +199,15 @@ export function TranscriptView({
       <div className="flex items-start justify-between gap-3 border-b border-fleet-border px-4 py-3">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-fleet-text">{s.title}</div>
-          {s.agent === 'claude' ? (
-            <ClaudeMetaPanel s={s} messageCount={messages.length} />
-          ) : (
-            <div className="text-xs text-fleet-text-subtle">
-              {s.agent} {s.provider ? `· ${s.provider}` : ''} {s.model ? `· ${s.model}` : ''} ·{' '}
-              {messages.length} msgs
-            </div>
-          )}
+          <ClaudeMetaPanel s={s} messageCount={messages.length} />
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
-          {hasRail ? (
-            <button
-              onClick={() => setShowRail((v) => !v)}
-              className="rounded border border-fleet-border-strong px-2 py-1.5 text-xs text-fleet-text-subtle hover:bg-fleet-surface-2/50"
-            >
-              {showRail ? '⌹ Hide branches' : '⌹ Branches'}
-            </button>
-          ) : null}
           <button
             onClick={() => setDistilling(true)}
             className="rounded border border-fleet-border-strong px-2 py-1.5 text-xs text-fleet-text-subtle hover:bg-fleet-surface-2/50"
-            title={
-              onBranch
-                ? 'Distill a reusable learning from this branch'
-                : 'Distill a reusable learning from this session'
-            }
+            title="Distill a reusable learning from this session"
           >
-            ✨ Distill {onBranch ? 'branch' : 'learning'}
+            ✨ Distill learning
           </button>
           <button
             onClick={() => openResumeTab(s.cwd, resumeCommand(s), s.title)}
@@ -285,19 +220,10 @@ export function TranscriptView({
       <DistillModal
         open={distilling}
         session={s}
-        nodeId={distillNodeId}
         onClose={() => setDistilling(false)}
         onSaved={onDistilled}
       />
       <div className="flex min-h-0 flex-1">
-        {hasRail && showRail ? (
-          <div className="flex w-64 flex-shrink-0 flex-col gap-3 overflow-y-auto border-r border-fleet-border px-2 py-3">
-            {tree ? (
-              <SessionTree tree={tree} selectedNodeId={selectedNodeId} onSelect={selectNode} />
-            ) : null}
-            {subagents && subagents.length > 0 ? <SubagentList subagents={subagents} /> : null}
-          </div>
-        ) : null}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
           {messages.map((m, i) => (
             <Message key={i} message={m} />

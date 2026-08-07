@@ -1,12 +1,7 @@
 // src/renderer/src/components/sessions/SessionList.tsx
 import { useMemo, useState } from 'react';
-import type { SessionAgentFilter, SessionGroup, SessionSummary } from '../../../../shared/sessions';
+import type { SessionGroup, SessionSummary } from '../../../../shared/sessions';
 import { useSessionsStore } from '../../store/sessions-store';
-import { useSettingsStore } from '../../store/settings-store';
-
-function isAgentFilter(v: string): v is SessionAgentFilter {
-  return v === 'all' || v === 'rune' || v === 'claude';
-}
 
 function groupByProject(sessions: SessionSummary[]): SessionGroup[] {
   const groups = new Map<string, SessionGroup>();
@@ -38,27 +33,19 @@ function formatCost(usd: number): string {
 
 export function SessionList(): React.JSX.Element {
   const { sessions, selected, select } = useSessionsStore();
-  const { settings, updateSettings } = useSettingsStore();
-  const filter: SessionAgentFilter = settings?.sessions.preferredAgent ?? 'rune';
   const [query, setQuery] = useState('');
-
-  const setFilter = (next: SessionAgentFilter): void => {
-    void updateSettings({ sessions: { preferredAgent: next } });
-  };
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtered = sessions
-      .filter((s) => filter === 'all' || s.agent === filter)
-      .filter(
-        (s) =>
-          !q ||
-          s.title.toLowerCase().includes(q) ||
-          s.preview.toLowerCase().includes(q) ||
-          s.project.toLowerCase().includes(q)
-      );
+    const filtered = sessions.filter(
+      (s) =>
+        !q ||
+        s.title.toLowerCase().includes(q) ||
+        s.preview.toLowerCase().includes(q) ||
+        s.project.toLowerCase().includes(q)
+    );
     return groupByProject(filtered);
-  }, [sessions, filter, query]);
+  }, [sessions, query]);
 
   return (
     <div className="flex h-full flex-col border-r border-fleet-border">
@@ -69,17 +56,6 @@ export function SessionList(): React.JSX.Element {
           placeholder="Search sessions…"
           className="flex-1 rounded bg-fleet-surface px-2 py-1 text-sm text-fleet-text border border-fleet-border-strong"
         />
-        <select
-          value={filter}
-          onChange={(e) => {
-            if (isAgentFilter(e.target.value)) setFilter(e.target.value);
-          }}
-          className="rounded bg-fleet-surface px-2 py-1 text-sm text-fleet-text border border-fleet-border-strong"
-        >
-          <option value="all">All</option>
-          <option value="rune">Rune</option>
-          <option value="claude">Claude Code</option>
-        </select>
       </div>
       <div className="flex-1 overflow-y-auto">
         {groups.length === 0 ? (
@@ -92,10 +68,10 @@ export function SessionList(): React.JSX.Element {
               </div>
               {g.sessions.map((s) => {
                 const sel = selected;
-                const isSel = sel !== null && sel.agent === s.agent && sel.id === s.id;
+                const isSel = sel !== null && sel.id === s.id;
                 return (
                   <div
-                    key={`${s.agent}-${s.id}`}
+                    key={s.id}
                     onClick={() => void select(s)}
                     className={`cursor-pointer px-3 py-2 border-b border-fleet-border/40 ${isSel ? 'bg-blue-600/15' : 'hover:bg-fleet-surface-2/50'}`}
                   >
@@ -106,21 +82,23 @@ export function SessionList(): React.JSX.Element {
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-[10px] text-fleet-text-subtle">
-                      <span className="rounded bg-fleet-surface-2 px-1">{s.agent}</span>
-                      {s.model && <span className="truncate">{s.model}</span>}
-                      <span>· {s.messageCount} msgs</span>
-                      {s.agent === 'claude' && (
-                        <span
-                          className="ml-auto flex-shrink-0 font-mono fleet-tnum text-fleet-text"
-                          title={
-                            s.costUsd === undefined
-                              ? 'Cost unavailable — a model in this session is not in the pricing table'
-                              : 'Estimated session cost'
-                          }
-                        >
-                          {s.costUsd === undefined ? '—' : formatCost(s.costUsd)}
-                        </span>
+                      {s.models?.[0] && (
+                        <>
+                          <span className="truncate">{s.models[0]}</span>
+                          <span className="flex-shrink-0">·</span>
+                        </>
                       )}
+                      <span className="flex-shrink-0">{s.messageCount} msgs</span>
+                      <span
+                        className="ml-auto flex-shrink-0 font-mono fleet-tnum text-fleet-text"
+                        title={
+                          s.costUsd === undefined
+                            ? 'Cost unavailable — a model in this session is not in the pricing table'
+                            : 'Estimated session cost'
+                        }
+                      >
+                        {s.costUsd === undefined ? '—' : formatCost(s.costUsd)}
+                      </span>
                     </div>
                   </div>
                 );

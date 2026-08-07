@@ -44,26 +44,23 @@ function unionTags(a: string[], b: string[]): string[] {
 }
 
 /**
- * Distill a finished session (or one Rune branch) into a draft learning via a
- * headless one-shot run on Fleet's flagship agent, then let the user edit, dedup
- * against existing learnings, and save it into the cross-project learnings store.
+ * Distill a finished session into a draft learning via a headless one-shot agent
+ * run, then let the user edit, dedup against existing learnings, and save it into
+ * the cross-project learnings store.
  */
 export function DistillModal({
   open,
   session,
-  nodeId,
   onClose,
   onSaved
 }: {
   open: boolean;
   session: SessionSummary | null;
-  nodeId?: string;
   onClose: () => void;
   onSaved?: () => void;
 }): React.JSX.Element | null {
-  // Snapshot the session/node so they stay stable while the modal is open.
+  // Snapshot the session so it stays stable while the modal is open.
   const [shown, setShown] = useState<SessionSummary | null>(session);
-  const [shownNode, setShownNode] = useState<string | undefined>(nodeId);
   const [phase, setPhase] = useState<Phase>('loading');
   const [error, setError] = useState('');
   const [title, setTitle] = useState('');
@@ -112,14 +109,14 @@ export function DistillModal({
   );
 
   const run = useCallback(
-    async (s: SessionSummary, node: string | undefined): Promise<void> => {
+    async (s: SessionSummary): Promise<void> => {
       const token = ++runToken.current;
       setPhase('loading');
       setError('');
       setSimilar([]);
       setMergeTarget(null);
       const [res, tagVocab] = await Promise.all([
-        window.fleet.learnings.distill({ agent: s.agent, id: s.id, cwd: s.cwd, nodeId: node }),
+        window.fleet.learnings.distill({ id: s.id, cwd: s.cwd }),
         window.fleet.learnings.tags()
       ]);
       if (token !== runToken.current) return;
@@ -133,11 +130,10 @@ export function DistillModal({
   useEffect(() => {
     if (open && !prevOpen.current && session) {
       setShown(session);
-      setShownNode(nodeId);
-      void run(session, nodeId);
+      void run(session);
     }
     prevOpen.current = open;
-  }, [open, session, nodeId, run]);
+  }, [open, session, run]);
 
   // On unmount, invalidate any in-flight run (its setState calls become no-ops)
   // and clear the rising-edge guard so a remount re-distills cleanly.
@@ -168,11 +164,11 @@ export function DistillModal({
           title: title.trim(),
           body: body.trim(),
           tags: draftTags,
-          sourceAgent: shown.agent,
+          sourceAgent: 'claude',
           sourceSessionId: shown.id,
           sourceCwd: shown.cwd,
           sourceProject: shown.project,
-          model: shown.model
+          model: shown.models?.[0]
         });
       }
       onSaved?.();
@@ -203,14 +199,13 @@ export function DistillModal({
         <h2 className="mb-3 flex-shrink-0 text-sm font-semibold text-neutral-100">
           Distill learning
           {shown ? <span className="ml-2 text-neutral-500">· {shown.title}</span> : null}
-          {shownNode ? <span className="ml-1 text-neutral-600">· branch</span> : null}
         </h2>
 
         {phase === 'loading' && (
           <div className="py-10 text-center text-sm text-neutral-400">
             Reading the session and distilling a learning…
             <div className="mt-1 text-xs text-neutral-600">
-              Running a headless rune pass — this can take a moment.
+              Running a headless Claude pass — this can take a moment.
             </div>
           </div>
         )}
@@ -305,14 +300,14 @@ export function DistillModal({
         <div className="mt-3 flex flex-shrink-0 items-center justify-between">
           {phase === 'error' || phase === 'nothing' ? (
             <button
-              onClick={() => shown && void run(shown, shownNode)}
+              onClick={() => shown && void run(shown)}
               className="rounded px-3 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 active:scale-[0.97]"
             >
               Try again
             </button>
           ) : phase === 'ready' ? (
             <button
-              onClick={() => shown && void run(shown, shownNode)}
+              onClick={() => shown && void run(shown)}
               className="rounded px-3 py-1 text-xs text-neutral-400 transition hover:bg-neutral-800 active:scale-[0.97]"
             >
               Regenerate

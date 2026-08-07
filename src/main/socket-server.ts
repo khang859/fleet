@@ -217,20 +217,6 @@ export class SocketServer extends EventEmitter {
         return { resultPath };
       }
 
-      case 'pi.open': {
-        const cwd = typeof args.cwd === 'string' ? args.cwd : undefined;
-        if (!cwd) throw new CodedError('pi.open requires a cwd', 'BAD_REQUEST');
-        this.emit('pi-open', { cwd });
-        return { ok: true };
-      }
-
-      case 'pi.plan_open': {
-        const planPath = typeof args.path === 'string' ? args.path : undefined;
-        if (!planPath) throw new CodedError('pi.plan_open requires a path', 'BAD_REQUEST');
-        this.emit('pi-plan-open', { path: planPath });
-        return { ok: true };
-      }
-
       default: {
         throw new CodedError(`Unknown command: ${command}`, 'NOT_FOUND');
       }

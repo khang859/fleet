@@ -8,8 +8,6 @@ import { VisualizerSection } from './VisualizerSection';
 import { UpdatesSection } from './UpdatesSection';
 import { CopilotSection } from './CopilotSection';
 import { AnnotateSection } from './AnnotateSection';
-import { PiSection } from './pi/PiSection';
-import { RuneSection } from './rune/RuneSection';
 import { EnvSyncSection } from './EnvSyncSection';
 import { LearningsSection } from './LearningsSection';
 import { RemoteHostsSection } from './RemoteHostsSection';
@@ -23,8 +21,6 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   updates: UpdatesSection,
   copilot: CopilotSection,
   annotate: AnnotateSection,
-  rune: RuneSection,
-  pi: PiSection,
   envSync: EnvSyncSection,
   remoteHosts: RemoteHostsSection,
   learnings: LearningsSection,

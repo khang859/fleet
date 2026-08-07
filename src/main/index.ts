@@ -9,7 +9,7 @@ import {
   shell
 } from 'electron';
 import { safeOpenExternal, isSafeExternalUrl } from './safe-external';
-import { existsSync, statSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { join, dirname, resolve } from 'path';
@@ -39,13 +39,8 @@ import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile, installOpencodePlugin } from './install-fleet-cli';
 import { AnnotateService } from './annotate-service';
 import { AnnotationStore } from './annotation-store';
-import { PiAgentManager } from './pi-agent-manager';
-import { PiEnvInjectionManager } from './pi-env-injection-manager';
 import { EnvSyncManager } from './env-sync/env-sync-manager';
 import { EnvSyncSecrets } from './env-sync/env-sync-secrets';
-import { PiConfigManager } from './pi-config-manager';
-import { PiAuthInspector } from './pi-auth-inspector';
-import { FleetBridgeServer } from './fleet-bridge';
 import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
 import { WslService } from './wsl-service';
@@ -54,13 +49,8 @@ import { toWslUncPath } from '../shared/path-platform';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
 import type { HostContextPayload } from '../shared/ipc-api';
 import type { NotificationLevel, UpdateStatus } from '../shared/types';
-import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
 import { createLogger } from './logger';
 import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
-import { RuneFileChatService } from './rune-assist/rune-file-chat-service';
-import { registerRuneAssistIpc } from './rune-assist/rune-assist-ipc';
-import { RuneManager } from './rune-manager';
-import { RuneConfigManager } from './rune-config-manager';
 import { SessionsService } from './sessions/service';
 import { registerSessionsIpcHandlers } from './sessions/ipc-handlers';
 import { LearningsStore } from './learnings/learnings-store';
@@ -96,7 +86,7 @@ const log = createLogger('fleet-main');
 const updaterLog = createLogger('auto-updater');
 
 // Preferred loopback port for the Learnings KB MCP server. Fixed so the URL written
-// into ~/.claude.json and ~/.rune/mcp.json stays stable across restarts; falls back
+// into ~/.claude.json stays stable across restarts; falls back
 // to an OS-assigned port on conflict (the entry is then rewritten with the live port).
 const LEARNINGS_MCP_PORT = 49823;
 
@@ -108,7 +98,6 @@ let learningsEmbedder: WorkerEmbedder | undefined;
 let learningsMcp: LearningsMcpServer | undefined;
 let agentService: AgentService | null = null;
 let agentMcp: AgentMcpManager | undefined;
-let runeAssist: RuneFileChatService | null = null;
 
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
@@ -134,27 +123,8 @@ const cwdPoller = new CwdPoller(eventBus, ptyManager);
 const ANNOTATIONS_DIR = join(homedir(), '.fleet', 'annotations');
 const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
 const annotateService = new AnnotateService(annotationStore);
-const piAgentManager = new PiAgentManager();
-const runeManager = new RuneManager();
-const runeConfigManager = new RuneConfigManager();
-const piConfigManager = new PiConfigManager();
-const piEnvInjectionManager = new PiEnvInjectionManager();
 const envSyncSecrets = new EnvSyncSecrets();
 const envSyncManager = new EnvSyncManager({ secrets: envSyncSecrets });
-const piAuthInspector = new PiAuthInspector({
-  modelCatalogPath: join(
-    homedir(),
-    '.fleet',
-    'agents',
-    'pi',
-    'node_modules',
-    '@mariozechner',
-    'pi-ai',
-    'dist',
-    'index.js'
-  )
-});
-const fleetBridge = new FleetBridgeServer();
 const wslService = new WslService();
 const shellProfileRegistry = new ShellProfileRegistry({
   platform: process.platform,
@@ -482,13 +452,6 @@ void app.whenReady().then(async () => {
     new WorktreeService(),
     annotationStore,
     annotateService,
-    piAgentManager,
-    runeManager,
-    runeConfigManager,
-    fleetBridge,
-    piConfigManager,
-    piAuthInspector,
-    piEnvInjectionManager,
     shellProfileRegistry,
     wslService,
     envSyncManager,
@@ -513,76 +476,8 @@ void app.whenReady().then(async () => {
       mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
     }
   });
-  socketSupervisor.on('pi-open', (payload: unknown) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(IPC_CHANNELS.PI_OPEN, payload);
-    }
-  });
-  socketSupervisor.on('pi-plan-open', (payload: unknown) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(IPC_CHANNELS.PI_PLAN_OPEN, payload);
-    }
-  });
   socketSupervisor.start().catch((err: unknown) => {
     log.error('socket-supervisor failed to start', {
-      error: err instanceof Error ? err.message : String(err)
-    });
-  });
-
-  // Start Fleet bridge for Pi agent extensions
-  fleetBridge.onRequest(async (type, payload, paneId) => {
-    await Promise.resolve();
-    switch (type) {
-      case 'file.open': {
-        const rawPath = typeof payload.path === 'string' ? payload.path : '';
-        if (!rawPath) throw new Error('file.open requires a path');
-
-        const filePath = resolve(rawPath);
-        if (!existsSync(filePath)) throw new Error(`file not found: ${filePath}`);
-        if (statSync(filePath).isDirectory()) {
-          throw new Error(`directories not supported, use a file path: ${filePath}`);
-        }
-        if (isBinaryBlockedFilePath(filePath)) {
-          throw new Error(`unsupported binary file: ${filePath}`);
-        }
-
-        const paneType = getPaneTypeForFilePath(filePath);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, {
-            files: [{ path: filePath, paneType, label: filePath.split('/').pop() ?? filePath }]
-          });
-        }
-        return { ok: true, paneType };
-      }
-      case 'pi.plan_open': {
-        const rawPath = typeof payload.path === 'string' ? payload.path : '';
-        const requestId = typeof payload.requestId === 'string' ? payload.requestId : undefined;
-        if (!rawPath) throw new Error('pi.plan_open requires a path');
-
-        const planPath = resolve(rawPath);
-        if (!existsSync(planPath)) throw new Error(`file not found: ${planPath}`);
-        if (statSync(planPath).isDirectory()) {
-          throw new Error(`directories not supported, use a file path: ${planPath}`);
-        }
-        if (isBinaryBlockedFilePath(planPath)) {
-          throw new Error(`unsupported binary file: ${planPath}`);
-        }
-
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC_CHANNELS.PI_PLAN_OPEN, {
-            path: planPath,
-            paneId,
-            requestId
-          });
-        }
-        return { ok: true };
-      }
-      default:
-        throw new Error(`Unknown bridge command: ${type}`);
-    }
-  });
-  fleetBridge.start().catch((err: unknown) => {
-    log.error('Fleet bridge failed to start', {
       error: err instanceof Error ? err.message : String(err)
     });
   });
@@ -940,12 +835,6 @@ void app.whenReady().then(async () => {
         error: err instanceof Error ? err.message : String(err)
       });
     });
-
-    piAgentManager.checkForUpdates().catch((err: unknown) => {
-      log.warn('pi agent update check failed', {
-        error: err instanceof Error ? err.message : String(err)
-      });
-    });
   }
 
   // One shared embedding worker (transformers.js model in a worker thread) backs
@@ -1094,21 +983,6 @@ void app.whenReady().then(async () => {
     paneSummaryInFlight.delete(event.paneId);
   });
 
-  runeAssist = new RuneFileChatService({
-    stateDir: app.getPath('userData'),
-    emitStatus: (payload) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.RUNE_ASSIST_STATUS, payload);
-      }
-    },
-    emitResult: (payload) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.RUNE_ASSIST_RESULT, payload);
-      }
-    }
-  });
-  registerRuneAssistIpc(runeAssist);
-
   sessionsService = new SessionsService();
   registerSessionsIpcHandlers(sessionsService);
 
@@ -1127,8 +1001,8 @@ void app.whenReady().then(async () => {
     learningsEmbedderRef,
     learningsModelDir
   );
-  // Expose the KB to Rune + Claude Code over a loopback MCP server, then register it
-  // in their global configs and backfill embeddings for existing learnings.
+  // Expose the KB to Claude Code over a loopback MCP server, then register it in
+  // its global config and backfill embeddings for existing learnings.
   learningsMcp = new LearningsMcpServer(learningsStoreRef, learningsSearch);
   learningsMcp
     .start(loadPreferredPort(LEARNINGS_MCP_PORT))
@@ -1177,7 +1051,6 @@ function shutdownAll(): void {
   void agentMcp?.closeAll();
   sessionsService?.dispose();
   annotateService.destroy();
-  runeAssist?.dispose();
   void learningsMcp?.stop();
   void learningsEmbedder?.close();
   learningsStore?.close();

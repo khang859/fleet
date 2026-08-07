@@ -41,7 +41,6 @@ export class SettingsStore {
       },
       copilot: { ...DEFAULT_SETTINGS.copilot, ...saved.copilot },
       annotate: { ...DEFAULT_SETTINGS.annotate, ...(saved.annotate ?? {}) },
-      sessions: { ...DEFAULT_SETTINGS.sessions, ...(saved.sessions ?? {}) },
       // `tools` and `ai` are rebuilt key by key rather than spread from `saved`,
       // so a tool or capability that no longer exists (kanban, images, chat)
       // drops out on the next write instead of riding along forever.
@@ -97,7 +96,6 @@ export class SettingsStore {
       },
       copilot: { ...current.copilot, ...(partial.copilot ?? {}) },
       annotate: { ...current.annotate, ...(partial.annotate ?? {}) },
-      sessions: { ...current.sessions, ...(partial.sessions ?? {}) },
       tools: { ...current.tools, ...(partial.tools ?? {}) },
       ai: {
         ...current.ai,

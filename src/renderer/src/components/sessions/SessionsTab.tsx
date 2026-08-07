@@ -27,9 +27,7 @@ export function SessionsTab(): React.JSX.Element {
   // Jump from a learning back to the session it was distilled from (best-effort:
   // the session may no longer exist).
   function openSource(l: Learning): void {
-    const match = sessions.find(
-      (s) => s.agent === l.sourceAgent && s.id === l.sourceSessionId && s.cwd === l.sourceCwd
-    );
+    const match = sessions.find((s) => s.id === l.sourceSessionId && s.cwd === l.sourceCwd);
     if (match) {
       void select(match);
       setView('sessions');

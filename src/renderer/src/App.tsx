@@ -23,7 +23,6 @@ import {
 } from './store/workspace-store';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
-import { useRuneAssistEvents } from './hooks/use-rune-assist-events';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, restartingPanes, serializePane } from './hooks/use-terminal';
 import { initCwdListener, useCwdStore } from './store/cwd-store';
@@ -52,19 +51,14 @@ import { NotesModal } from './components/notes/NotesModal';
 import { ShellEnvModal } from './components/shell-env/ShellEnvModal';
 import { AgentFolderDialog } from './components/agent/AgentFolderDialog';
 import { AnnotateTab } from './components/AnnotateTab';
-import { PiTab } from './components/PiTab';
 import { SessionsTab } from './components/sessions/SessionsTab';
-import { PiPlanModal } from './components/PiPlanModal';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
-import type { PiPlanOpenPayload } from '../../shared/ipc-api';
 import { getAccentCssVars } from './lib/theme';
 import { tooltipAnim, popperAnim } from './lib/motion';
 import { useAppThemeVars } from './hooks/use-app-theme';
 import { useSlideshow } from './hooks/use-slideshow';
 import { findPaneLocation } from './lib/palette-items';
-
-type PiPlanModalEntry = PiPlanOpenPayload & { modalId: string };
 
 function MiniSidebarTooltip({
   label,
@@ -105,7 +99,6 @@ function killClosedTabPtys(paneIds: string[]): void {
 export function App(): React.JSX.Element {
   usePaneNavigation();
   useNotifications();
-  useRuneAssistEvents();
   const { loadSettings } = useSettingsStore();
   const initRef = useRef(false);
   const [showUndoToast, setShowUndoToast] = useState(false);
@@ -179,7 +172,6 @@ export function App(): React.JSX.Element {
   const [notesOpen, setNotesOpen] = useState(false);
   const [shellEnvOpen, setShellEnvOpen] = useState(false);
   const [agentFolderOpen, setAgentFolderOpen] = useState(false);
-  const [planModalQueue, setPlanModalQueue] = useState<PiPlanModalEntry[]>([]);
   const [updateReady, setUpdateReady] = useState(false);
 
   // Load settings on startup
@@ -420,31 +412,6 @@ export function App(): React.JSX.Element {
     return () => {
       cleanup();
     };
-  }, []);
-
-  // Open Pi agent tab via IPC (fleet pi CLI command)
-  useEffect(() => {
-    const cleanup = window.fleet.pi.onOpen((payload) => {
-      useWorkspaceStore.getState().addPiTab(payload.cwd);
-    });
-    return () => {
-      cleanup();
-    };
-  }, []);
-
-  // Open Pi plan document in modal via IPC (fleet pi plan_open / Pi extension bridge)
-  useEffect(() => {
-    const cleanup = window.fleet.pi.onPlanOpen((payload) => {
-      setPlanModalQueue((queue) => [...queue, { ...payload, modalId: crypto.randomUUID() }]);
-    });
-    return () => {
-      cleanup();
-    };
-  }, []);
-
-  const activePlanModal = planModalQueue[0] ?? null;
-  const closeActivePlanModal = useCallback(() => {
-    setPlanModalQueue((queue) => queue.slice(1));
   }, []);
 
   // Auto-updater
@@ -948,14 +915,6 @@ export function App(): React.JSX.Element {
                       <AnnotateTab />
                     ) : tab.type === 'settings' ? (
                       <SettingsTab />
-                    ) : tab.type === 'pi' ? (
-                      <PiTab
-                        tab={tab}
-                        isActive={tab.id === activeTabId}
-                        fontFamily={settings?.general.fontFamily}
-                        fontSize={settings?.general.fontSize}
-                        terminalTheme={settings?.general.terminalTheme}
-                      />
                     ) : tab.type === 'sessions' ? (
                       <SessionsTab />
                     ) : (
@@ -1126,11 +1085,6 @@ export function App(): React.JSX.Element {
       />
       <AnnotateModal open={false} onClose={() => {}} />
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />
-      <PiPlanModal
-        plan={activePlanModal}
-        contentKey={activePlanModal ? activePlanModal.modalId : undefined}
-        onClose={closeActivePlanModal}
-      />
       <ToastContainer />
     </div>
   );

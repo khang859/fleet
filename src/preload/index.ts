@@ -32,25 +32,12 @@ import type {
   WorktreeCreateRequest,
   WorktreeCreateResponse,
   WorktreeRemoveRequest,
-  PiOpenPayload,
-  PiPlanOpenPayload,
-  PiPlanResponseRequest,
-  PiLaunchConfig,
   ShellProfilesListResponse,
   WslStatusResponse,
   WslPathResponse,
-  WslHomeDirResponse,
-  RuneAssistSendRequest,
-  RuneAssistStopRequest,
-  RuneAssistResetRequest,
-  RuneAssistStateRequest,
-  RuneAssistState,
-  RuneAssistStatusPayload,
-  RuneAssistResultPayload
+  WslHomeDirResponse
 } from '../shared/ipc-api';
 import type { WslDistroState, PathContext } from '../shared/shell-profiles';
-import type { RuneStatus, RuneInstallResult } from '../shared/rune';
-import type { RuneSettings, RuneSecrets } from '../shared/rune-config-types';
 import type {
   Workspace,
   FleetSettings,
@@ -58,18 +45,6 @@ import type {
   UpdateStatus,
   AnnotationMeta
 } from '../shared/types';
-import type {
-  PiSettings,
-  PiProvider,
-  PiModelsFile,
-  BuiltInProviderStatus,
-  ModelEntry
-} from '../shared/pi-config-types';
-import type {
-  RedactedBedrock,
-  BedrockWritePatch,
-  BedrockSecretField
-} from '../shared/pi-env-injection-types';
 import type {
   EnvSyncConfig,
   ConflictChoice,
@@ -135,7 +110,7 @@ import type {
   RemoteTransferRequest
 } from '../shared/remote-ssh-types';
 import type { ShellEnvSnapshot } from '../shared/shell-env-types';
-import type { SessionAgent, SessionSummary, SessionTranscript } from '../shared/sessions';
+import type { SessionSummary, SessionTranscript } from '../shared/sessions';
 import type {
   Learning,
   CreateLearningInput,
@@ -419,65 +394,6 @@ const fleetApi = {
     onCompleted: (callback: () => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.ANNOTATE_COMPLETED, callback)
   },
-  rune: {
-    getVersion: async (): Promise<RuneStatus> => typedInvoke(IPC_CHANNELS.RUNE_VERSION),
-    install: async (): Promise<RuneInstallResult> => typedInvoke(IPC_CHANNELS.RUNE_INSTALL),
-    readSettings: async (): Promise<RuneSettings> =>
-      typedInvoke(IPC_CHANNELS.RUNE_CONFIG_READ_SETTINGS),
-    writeSettings: async (patch: Partial<RuneSettings>): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.RUNE_CONFIG_WRITE_SETTINGS, patch),
-    readSecrets: async (): Promise<RuneSecrets> =>
-      typedInvoke(IPC_CHANNELS.RUNE_CONFIG_READ_SECRETS),
-    writeSecrets: async (patch: Record<string, string>): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.RUNE_CONFIG_WRITE_SECRETS, patch),
-    openConfigFolder: async (): Promise<void> => typedInvoke(IPC_CHANNELS.RUNE_CONFIG_OPEN_FOLDER)
-  },
-  pi: {
-    onOpen: (callback: (payload: PiOpenPayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.PI_OPEN, callback),
-    onPlanOpen: (callback: (payload: PiPlanOpenPayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.PI_PLAN_OPEN, callback),
-    respondToPlan: async (req: PiPlanResponseRequest): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.PI_PLAN_RESPOND, req),
-    getLaunchConfig: async (paneId: string): Promise<PiLaunchConfig> =>
-      typedInvoke(IPC_CHANNELS.PI_LAUNCH_CONFIG, { paneId }),
-    getVersion: async (): Promise<{ version: string | null; installed: boolean }> =>
-      typedInvoke(IPC_CHANNELS.PI_VERSION),
-    checkForUpdates: async (): Promise<{
-      previousVersion: string | null;
-      currentVersion: string | null;
-      updated: boolean;
-      installed: boolean;
-    }> => typedInvoke(IPC_CHANNELS.PI_CHECK_UPDATES)
-  },
-  piConfig: {
-    readSettings: async (): Promise<PiSettings> =>
-      typedInvoke(IPC_CHANNELS.PI_CONFIG_READ_SETTINGS),
-    writeSettings: async (patch: Partial<PiSettings>): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.PI_CONFIG_WRITE_SETTINGS, patch),
-    readModels: async (): Promise<PiModelsFile> => typedInvoke(IPC_CHANNELS.PI_CONFIG_READ_MODELS),
-    writeProvider: async (id: string, provider: PiProvider): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.PI_CONFIG_WRITE_PROVIDER, { id, provider }),
-    deleteProvider: async (id: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.PI_CONFIG_DELETE_PROVIDER, id),
-    renameProvider: async (oldId: string, newId: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.PI_CONFIG_RENAME_PROVIDER, { oldId, newId }),
-    getBuiltInStatus: async (): Promise<BuiltInProviderStatus[]> =>
-      typedInvoke(IPC_CHANNELS.PI_CONFIG_BUILT_IN_STATUS),
-    listAvailableModels: async (): Promise<ModelEntry[]> =>
-      typedInvoke(IPC_CHANNELS.PI_CONFIG_LIST_MODELS),
-    openConfigFolder: async (): Promise<void> => typedInvoke(IPC_CHANNELS.PI_CONFIG_OPEN_FOLDER)
-  },
-  piEnv: {
-    readBedrock: async (): Promise<RedactedBedrock | undefined> =>
-      (await typedInvoke<{ bedrock?: RedactedBedrock }>(IPC_CHANNELS.PI_ENV_READ_BEDROCK)).bedrock,
-    writeBedrock: async (patch: BedrockWritePatch): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.PI_ENV_WRITE_BEDROCK, patch),
-    clearSecret: async (field: BedrockSecretField): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.PI_ENV_CLEAR_SECRET, field),
-    isEncryptionAvailable: async (): Promise<boolean> =>
-      typedInvoke(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE)
-  },
   shellProfiles: {
     list: async (): Promise<ShellProfilesListResponse> =>
       typedInvoke<ShellProfilesListResponse>(IPC_CHANNELS.SHELL_PROFILES_LIST)
@@ -505,20 +421,6 @@ const fleetApi = {
       const res = await typedInvoke<WslHomeDirResponse>(IPC_CHANNELS.WSL_HOME_DIR, { distro });
       return res.homeDir;
     }
-  },
-  runeAssist: {
-    send: async (req: RuneAssistSendRequest): Promise<void> =>
-      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_SEND, req),
-    stop: async (req: RuneAssistStopRequest): Promise<void> =>
-      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_STOP, req),
-    reset: async (req: RuneAssistResetRequest): Promise<void> =>
-      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_RESET, req),
-    getState: async (req: RuneAssistStateRequest): Promise<RuneAssistState> =>
-      typedInvoke<RuneAssistState>(IPC_CHANNELS.RUNE_ASSIST_STATE, req),
-    onStatus: (callback: (payload: RuneAssistStatusPayload) => void): Unsubscribe =>
-      onChannel<RuneAssistStatusPayload>(IPC_CHANNELS.RUNE_ASSIST_STATUS, callback),
-    onResult: (callback: (payload: RuneAssistResultPayload) => void): Unsubscribe =>
-      onChannel<RuneAssistResultPayload>(IPC_CHANNELS.RUNE_ASSIST_RESULT, callback)
   },
   envSync: {
     getConfig: async (repoDir: string): Promise<EnvSyncConfig | null> =>
@@ -771,11 +673,8 @@ const fleetApi = {
   },
   sessions: {
     list: async (): Promise<SessionSummary[]> => typedInvoke(IPC_CHANNELS.SESSIONS_LIST),
-    read: async (args: {
-      agent: SessionAgent;
-      id: string;
-      cwd: string;
-    }): Promise<SessionTranscript | null> => typedInvoke(IPC_CHANNELS.SESSIONS_READ, args),
+    read: async (args: { id: string; cwd: string }): Promise<SessionTranscript | null> =>
+      typedInvoke(IPC_CHANNELS.SESSIONS_READ, args),
     onChanged: (callback: () => void): Unsubscribe =>
       onChannel<void>(IPC_CHANNELS.SESSIONS_CHANGED, () => callback())
   },

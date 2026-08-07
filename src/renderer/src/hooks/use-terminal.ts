@@ -20,7 +20,7 @@ export type UseTerminalOptions = {
   fontFamily?: string;
   terminalTheme?: TerminalThemeId;
   scrollback?: number;
-  /** Shell command to run instead of default shell (e.g. pi agent binary). */
+  /** Shell command to run instead of default shell (e.g. `claude --resume <id>`). */
   cmd?: string;
   /** If true, PTY exits when cmd finishes instead of falling back to shell. */
   exitOnComplete?: boolean;
@@ -37,15 +37,6 @@ export type UseTerminalOptions = {
   /** When true, render xterm's background transparently so a background image shows through. */
   backgroundImageActive?: boolean;
 };
-
-export const RUNE_READY_MARKER = '\x1b]777;fleet.rune.ready\x07';
-
-export type RuneReadyMarkerState = {
-  pending: string;
-};
-
-const MAX_RUNE_READY_MARKER_PENDING = RUNE_READY_MARKER.length - 1;
-const RUNE_READY_MARKER_FLUSH_DELAY_MS = 100;
 
 // While a pane is hidden (display:none background/inactive tab), coalesce PTY
 // output and write it to xterm at most this often instead of on every ~16ms PTY
@@ -190,50 +181,6 @@ export function getPaneTailText(paneId: string, lines = 40): string | undefined 
   return out.join('\n');
 }
 
-export type RuneReadyMarkerResult = {
-  output: string;
-  readySeen: boolean;
-};
-
-export function stripRuneReadyMarker(
-  state: RuneReadyMarkerState,
-  chunk: string,
-  flush = false
-): RuneReadyMarkerResult {
-  const input = state.pending + chunk;
-  state.pending = '';
-
-  let output = '';
-  let readySeen = false;
-  let index = 0;
-
-  while (index < input.length) {
-    if (input.startsWith(RUNE_READY_MARKER, index)) {
-      readySeen = true;
-      index += RUNE_READY_MARKER.length;
-      continue;
-    }
-
-    if (!flush) {
-      const remaining = input.slice(index);
-      if (RUNE_READY_MARKER.startsWith(remaining)) {
-        state.pending = remaining;
-        break;
-      }
-    }
-
-    output += input[index];
-    index += 1;
-  }
-
-  if (!flush && state.pending.length > MAX_RUNE_READY_MARKER_PENDING) {
-    output += state.pending.slice(0, -MAX_RUNE_READY_MARKER_PENDING);
-    state.pending = state.pending.slice(-MAX_RUNE_READY_MARKER_PENDING);
-  }
-
-  return { output, readySeen };
-}
-
 function createTerminal(
   container: HTMLElement,
   options: UseTerminalOptions
@@ -249,7 +196,6 @@ function createTerminal(
   resizeObserver: ResizeObserver;
   cleanupResizeTimer: () => void;
   cursorSuppressor: { dispose(): void };
-  flushPendingRuneReadyMarker: () => void;
 } {
   log.debug('createTerminal', { paneId: options.paneId, cwd: options.cwd });
 
@@ -314,7 +260,7 @@ function createTerminal(
   }
 
   // Cursor suppression for terminals that always run a TUI which draws its own
-  // cursor glyph (e.g. Claude Code via PiTab). In this mode xterm's native cursor
+  // cursor glyph (e.g. Claude Code). In this mode xterm's native cursor
   // is permanently hidden so it doesn't double up with the TUI-drawn one.
   // Regular terminal panes pass all cursor sequences through to xterm unchanged —
   // apps like nvim, htop, and less rely on the terminal's native DECTCEM cursor.
@@ -374,48 +320,19 @@ function createTerminal(
   let attachResolved = !isPreCreated || options.attachOnly;
   const pendingLiveData: string[] = [];
 
-  const runeReadyMarkerState: RuneReadyMarkerState = { pending: '' };
-  let runeReadyMarkerFlushTimer: ReturnType<typeof setTimeout> | null = null;
-
-  const clearRuneReadyMarkerFlushTimer = (): void => {
-    if (runeReadyMarkerFlushTimer !== null) {
-      clearTimeout(runeReadyMarkerFlushTimer);
-      runeReadyMarkerFlushTimer = null;
-    }
-  };
-
-  const writeToTerm = (data: string, flushRuneReadyMarker = false): void => {
-    clearRuneReadyMarkerFlushTimer();
-    // Strip Rune's ready marker (an OSC handshake) from terminal output so it never displays.
-    const processed = stripRuneReadyMarker(runeReadyMarkerState, data, flushRuneReadyMarker);
-
-    if (runeReadyMarkerState.pending) {
-      runeReadyMarkerFlushTimer = setTimeout(() => {
-        runeReadyMarkerFlushTimer = null;
-        writeToTerm('', true);
-      }, RUNE_READY_MARKER_FLUSH_DELAY_MS);
-    }
-
-    if (!processed.output) {
+  const writeToTerm = (data: string): void => {
+    if (!data) {
       window.fleet.ptyDrain(options.paneId);
       return;
     }
 
-    term.write(processed.output, () => {
+    term.write(data, () => {
       if (pinnedToBottom) {
         term.scrollToBottom();
       }
       window.fleet.ptyDrain(options.paneId);
     });
   };
-
-  const flushPendingRuneReadyMarker = (): void => {
-    clearRuneReadyMarkerFlushTimer();
-    if (runeReadyMarkerState.pending) {
-      writeToTerm('', true);
-    }
-  };
-
   // Hidden-pane write coalescing. Background-workspace (and inactive) tabs stay
   // mounted but display:none so their PTYs remain warm. Feeding xterm on every
   // ~16ms PTY flush forces escape-sequence parsing and rAF rendering for a
@@ -836,8 +753,7 @@ function createTerminal(
     scrollCleanup,
     resizeObserver,
     cleanupResizeTimer,
-    cursorSuppressor,
-    flushPendingRuneReadyMarker
+    cursorSuppressor
   };
 }
 
@@ -877,8 +793,7 @@ export function useTerminal(
       scrollCleanup,
       resizeObserver,
       cleanupResizeTimer,
-      cursorSuppressor,
-      flushPendingRuneReadyMarker
+      cursorSuppressor
     } = createTerminal(container, options);
 
     termRef.current = term;
@@ -896,7 +811,6 @@ export function useTerminal(
       scrollToBottomRef.current = null;
       serializeRegistry.delete(options.paneId);
       terminalRegistry.delete(options.paneId);
-      flushPendingRuneReadyMarker();
       cleanupResizeTimer();
       cursorSuppressor.dispose();
       ipcCleanup();

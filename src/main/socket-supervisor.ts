@@ -95,14 +95,6 @@ export class SocketSupervisor extends EventEmitter {
       this.emit('file-open', ...args);
     });
 
-    server.on('pi-open', (...args: unknown[]) => {
-      this.emit('pi-open', ...args);
-    });
-
-    server.on('pi-plan-open', (...args: unknown[]) => {
-      this.emit('pi-plan-open', ...args);
-    });
-
     server.on('server-error', (err: Error) => {
       log.error('Server error detected', { error: err.message });
       this.restart().catch((e) =>

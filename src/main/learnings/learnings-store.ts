@@ -10,7 +10,6 @@ import type {
   LearningSearchFilter,
   TagCount
 } from '../../shared/learnings';
-import type { SessionAgent } from '../../shared/sessions';
 import { loadVecExtension } from './vec-extension';
 import { EMBED_DIM } from './embedder';
 
@@ -428,7 +427,7 @@ export class LearningsStore {
       title: r.title as string,
       body: r.body as string,
       tags: JSON.parse((r.tags as string) || '[]') as string[],
-      sourceAgent: (r.source_agent as SessionAgent | null) ?? null,
+      sourceAgent: (r.source_agent as string | null) ?? null,
       sourceSessionId: (r.source_session_id as string | null) ?? null,
       sourceCwd: (r.source_cwd as string | null) ?? null,
       sourceProject: (r.source_project as string | null) ?? null,

@@ -1343,7 +1343,7 @@ export function Sidebar({
               const displayLabel = isFile && isFileDirty ? tab.label + ' *' : tab.label;
 
               let icon: React.ReactNode;
-              if (tab.type === 'pi' || tab.type === 'agent') {
+              if (tab.type === 'agent') {
                 icon = <Bot size={14} />;
               } else if (tab.type === 'ssh-browser') {
                 icon = <Server size={14} />;
@@ -1425,7 +1425,7 @@ export function Sidebar({
                     }
                   }}
                   onDuplicate={
-                    !isFile && (!tab.type || tab.type === 'terminal' || tab.type === 'pi')
+                    !isFile && (!tab.type || tab.type === 'terminal')
                       ? () => duplicateTab(tab.id)
                       : undefined
                   }

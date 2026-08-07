@@ -199,7 +199,6 @@ function buildClaudeSummary(id: string, content: string, mtimeMs: number): Sessi
   if (messages.length === 0) return null;
   const preview = claudePreview(messages);
   return {
-    agent: 'claude',
     id,
     title: preview || '(untitled)',
     project: basename(cwd),
@@ -297,7 +296,6 @@ export async function readClaudeSession(
   const preview = claudePreview(messages);
   return {
     summary: {
-      agent: 'claude',
       id,
       title: preview || '(untitled)',
       project: basename(cwd),
