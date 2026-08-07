@@ -91,9 +91,6 @@ export const DEFAULT_SETTINGS: FleetSettings = {
   annotate: {
     retentionDays: 3
   },
-  sessions: {
-    preferredAgent: 'rune'
-  },
   tools: DEFAULT_TOOL_VISIBILITY,
   ai: DEFAULT_AI_SETTINGS,
   remoteSsh: { hosts: [] }

@@ -15,7 +15,7 @@ function containsPane(node: PaneNode, paneId: string): boolean {
 
 /**
  * Strip one-shot startup commands (e.g. session-resume `cmd`) from pane leaves before
- * persisting. Otherwise a resumed tab would re-run `rune/claude --resume <id>` on every
+ * persisting. Otherwise a resumed tab would re-run `claude --resume <id>` on every
  * app restart.
  */
 function stripPaneCmds(node: PaneNode): PaneNode {

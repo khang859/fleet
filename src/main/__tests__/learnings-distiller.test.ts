@@ -79,7 +79,6 @@ describe('distillLearning', () => {
     const gone = join(tmpdir(), 'fleet-nonexistent-cwd-xyz-123');
     const t: SessionTranscript = {
       summary: {
-        agent: 'rune',
         id: 's1',
         title: 't',
         project: 'p',
@@ -101,7 +100,6 @@ describe('distillLearning', () => {
 describe('serializeTranscript', () => {
   const t: SessionTranscript = {
     summary: {
-      agent: 'claude',
       id: 's1',
       title: 't',
       project: 'p',

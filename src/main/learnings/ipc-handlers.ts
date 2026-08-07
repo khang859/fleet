@@ -16,7 +16,6 @@ import {
   type TagCount,
   type LearningsStatus
 } from '../../shared/learnings';
-import { pathMessagesToNode } from '../../shared/sessions';
 import type { LearningsStore } from './learnings-store';
 import type { SessionsService } from '../sessions/service';
 import type { LearningsSearchService } from './search-service';
@@ -157,17 +156,11 @@ export function registerLearningsIpcHandlers(
     IPC_CHANNELS.LEARNINGS_DISTILL,
     async (_e, req: DistillRequest): Promise<DistillResult> => {
       if (!req || typeof req !== 'object') return { status: 'error', message: 'invalid request' };
-      reqString(req.agent, 'agent');
       reqString(req.id, 'id');
       reqString(req.cwd, 'cwd');
-      const transcript = await sessions.read(req.agent, req.id, req.cwd);
+      const transcript = await sessions.read(req.id, req.cwd);
       if (!transcript) return { status: 'error', message: 'Session transcript not found' };
-      // Scope to a single Rune branch path when a node is requested.
-      const scoped =
-        req.nodeId && transcript.tree
-          ? { ...transcript, messages: pathMessagesToNode(transcript.tree, req.nodeId) }
-          : transcript;
-      return distillLearning(scoped);
+      return distillLearning(transcript);
     }
   );
   handle(IPC_CHANNELS.LEARNINGS_SIMILAR, (_e, text: string, limit?: number): Learning[] =>

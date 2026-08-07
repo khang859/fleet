@@ -3,15 +3,17 @@
 // Learnings live in Fleet's own store (NOT in any repo) and are exported by the
 // user into their own projects as they please.
 
-import type { SessionAgent } from './sessions';
-
 export type Learning = {
   id: string;
   title: string;
   body: string; // markdown
   tags: string[];
-  /** Provenance: the session this was distilled from. Null for hand-written entries. */
-  sourceAgent: SessionAgent | null;
+  /**
+   * Provenance: which agent produced the session this was distilled from. Null for
+   * hand-written entries. Free-form because historical rows predate agents that
+   * Fleet no longer supports; new distills always record 'claude'.
+   */
+  sourceAgent: string | null;
   sourceSessionId: string | null;
   sourceCwd: string | null;
   sourceProject: string | null;
@@ -24,7 +26,7 @@ export type CreateLearningInput = {
   title: string;
   body: string;
   tags?: string[];
-  sourceAgent?: SessionAgent;
+  sourceAgent?: string;
   sourceSessionId?: string;
   sourceCwd?: string;
   sourceProject?: string;
@@ -92,11 +94,8 @@ export function slugifyTitle(title: string): string {
 
 /** Which session to distill a learning from (a headless one-shot agent run). */
 export type DistillRequest = {
-  agent: SessionAgent;
   id: string;
   cwd: string;
-  /** Restrict the distill to one Rune branch path (root -> node). Whole session if unset. */
-  nodeId?: string;
 };
 
 /** A tag and how many learnings carry it, for vocabulary suggestions. */

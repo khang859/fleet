@@ -138,7 +138,6 @@ import type {
   LogEntry,
   WorktreeCreateRequest,
   WorktreeRemoveRequest,
-  PiPlanResponseRequest,
   ShellProfilesListResponse,
   WslHomeDirRequest,
   WslHomeDirResponse,
@@ -162,22 +161,10 @@ import type { GitService } from './git-service';
 import type { WorktreeService } from './worktree-service';
 import type { AnnotationStore } from './annotation-store';
 import type { AnnotateService } from './annotate-service';
-import type { PiAgentManager } from './pi-agent-manager';
-import type { RuneManager } from './rune-manager';
-import type { RuneConfigManager } from './rune-config-manager';
-import { RuneConfigParseError, RuneConfigValidationError } from './rune-config-manager';
-import type { RuneSettings } from '../shared/rune-config-types';
-import type { FleetBridgeServer } from './fleet-bridge';
-import type { PiConfigManager } from './pi-config-manager';
-import { PiConfigParseError, PiConfigValidationError } from './pi-config-manager';
-import type { PiAuthInspector } from './pi-auth-inspector';
-import type { PiEnvInjectionManager } from './pi-env-injection-manager';
 import type { ShellProfileRegistry } from './shell-profiles';
 import type { WslService } from './wsl-service';
 import type { PathContext } from '../shared/shell-profiles';
 import { toWslUncPath, toWindowsAccessiblePath } from '../shared/path-platform';
-import type { BedrockWritePatch, BedrockSecretField } from '../shared/pi-env-injection-types';
-import type { PiProvider, PiSettings } from '../shared/pi-config-types';
 import type { FleetSettingsPatch } from '../shared/types';
 import { checkSystemDeps } from './system-checker';
 import { searchFiles } from './file-search';
@@ -224,13 +211,6 @@ export function registerIpcHandlers(
   worktreeService: WorktreeService,
   annotationStore: AnnotationStore,
   annotateService: AnnotateService,
-  piAgentManager: PiAgentManager,
-  runeManager: RuneManager,
-  runeConfigManager: RuneConfigManager,
-  fleetBridge: FleetBridgeServer,
-  piConfigManager: PiConfigManager,
-  piAuthInspector: PiAuthInspector,
-  piEnvInjectionManager: PiEnvInjectionManager,
   shellProfileRegistry: ShellProfileRegistry,
   wslService: WslService,
   envSyncManager: EnvSyncManager,
@@ -805,201 +785,6 @@ export function registerIpcHandlers(
       return { resultPath };
     }
   );
-
-  ipcMain.handle(IPC_CHANNELS.PI_LAUNCH_CONFIG, async (_event, req: { paneId: string }) => {
-    await piAgentManager.ensureInstalled();
-    const token = fleetBridge.generateToken();
-    const port = fleetBridge.getPort();
-    const env = piEnvInjectionManager.getInjectedEnv();
-    const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId, env.set, env.unset);
-    return { cmd };
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PI_VERSION, () => ({
-    version: piAgentManager.getVersion(),
-    installed: piAgentManager.isInstalled()
-  }));
-
-  ipcMain.handle(IPC_CHANNELS.RUNE_VERSION, async () => runeManager.getVersion());
-
-  ipcMain.handle(IPC_CHANNELS.RUNE_INSTALL, async () => runeManager.installOrUpdate());
-
-  function toRuneConfigError(err: unknown): Error {
-    if (err instanceof RuneConfigParseError) {
-      const e = new Error(err.message);
-      e.name = 'RuneConfigParseError';
-      Object.assign(e, { file: err.file, rawSnippet: err.rawSnippet });
-      return e;
-    }
-    if (err instanceof RuneConfigValidationError) {
-      const e = new Error(err.message);
-      e.name = 'RuneConfigValidationError';
-      Object.assign(e, { file: err.file, issues: err.issues });
-      return e;
-    }
-    return toError(err);
-  }
-
-  ipcMain.handle(IPC_CHANNELS.RUNE_CONFIG_READ_SETTINGS, async () => {
-    try {
-      return await runeConfigManager.readSettings();
-    } catch (err) {
-      throw toRuneConfigError(err);
-    }
-  });
-
-  ipcMain.handle(
-    IPC_CHANNELS.RUNE_CONFIG_WRITE_SETTINGS,
-    async (_event, patch: Partial<RuneSettings>) => {
-      try {
-        await runeConfigManager.writeSettings(patch);
-      } catch (err) {
-        throw toRuneConfigError(err);
-      }
-    }
-  );
-
-  ipcMain.handle(IPC_CHANNELS.RUNE_CONFIG_READ_SECRETS, async () => {
-    try {
-      return await runeConfigManager.readSecrets();
-    } catch (err) {
-      throw toRuneConfigError(err);
-    }
-  });
-
-  ipcMain.handle(
-    IPC_CHANNELS.RUNE_CONFIG_WRITE_SECRETS,
-    async (_event, patch: Record<string, string>) => {
-      try {
-        await runeConfigManager.writeSecrets(patch);
-      } catch (err) {
-        throw toRuneConfigError(err);
-      }
-    }
-  );
-
-  ipcMain.handle(IPC_CHANNELS.RUNE_CONFIG_OPEN_FOLDER, async () => {
-    await runeConfigManager.openConfigFolder();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PI_PLAN_RESPOND, (_event, req: PiPlanResponseRequest) => {
-    const delivered = fleetBridge.sendEvent(req.paneId, {
-      type: 'pi.plan_response',
-      payload: {
-        requestId: req.requestId,
-        action: req.action,
-        feedback: req.feedback ?? ''
-      }
-    });
-    if (!delivered) {
-      throw new Error('Pi plan response could not be delivered. The Pi bridge is disconnected.');
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PI_CHECK_UPDATES, async () => {
-    return piAgentManager.checkForUpdates();
-  });
-
-  function toPiConfigError(err: unknown): Error {
-    if (err instanceof PiConfigParseError) {
-      const e = new Error(err.message);
-      e.name = 'PiConfigParseError';
-      Object.assign(e, { file: err.file, rawSnippet: err.rawSnippet });
-      return e;
-    }
-    if (err instanceof PiConfigValidationError) {
-      const e = new Error(err.message);
-      e.name = 'PiConfigValidationError';
-      Object.assign(e, { file: err.file, issues: err.issues });
-      return e;
-    }
-    return toError(err);
-  }
-
-  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_READ_SETTINGS, async () => {
-    try {
-      return await piConfigManager.readSettings();
-    } catch (err) {
-      throw toPiConfigError(err);
-    }
-  });
-
-  ipcMain.handle(
-    IPC_CHANNELS.PI_CONFIG_WRITE_SETTINGS,
-    async (_event, patch: Partial<PiSettings>) => {
-      try {
-        await piConfigManager.writeSettings(patch);
-      } catch (err) {
-        throw toPiConfigError(err);
-      }
-    }
-  );
-
-  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_READ_MODELS, async () => {
-    try {
-      return await piConfigManager.readModels();
-    } catch (err) {
-      throw toPiConfigError(err);
-    }
-  });
-
-  ipcMain.handle(
-    IPC_CHANNELS.PI_CONFIG_WRITE_PROVIDER,
-    async (_event, payload: { id: string; provider: PiProvider }) => {
-      try {
-        await piConfigManager.writeProvider(payload.id, payload.provider);
-      } catch (err) {
-        throw toPiConfigError(err);
-      }
-    }
-  );
-
-  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_DELETE_PROVIDER, async (_event, id: string) => {
-    try {
-      await piConfigManager.deleteProvider(id);
-    } catch (err) {
-      throw toPiConfigError(err);
-    }
-  });
-
-  ipcMain.handle(
-    IPC_CHANNELS.PI_CONFIG_RENAME_PROVIDER,
-    async (_event, payload: { oldId: string; newId: string }) => {
-      try {
-        await piConfigManager.renameProvider(payload.oldId, payload.newId);
-      } catch (err) {
-        throw toPiConfigError(err);
-      }
-    }
-  );
-
-  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_BUILT_IN_STATUS, async () => {
-    return piAuthInspector.getBuiltInStatus();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_LIST_MODELS, async () => {
-    return piAuthInspector.listAvailableModels();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_OPEN_FOLDER, async () => {
-    await piConfigManager.openConfigFolder();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PI_ENV_READ_BEDROCK, () => {
-    return piEnvInjectionManager.getRedactedConfig();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PI_ENV_WRITE_BEDROCK, (_event, patch: BedrockWritePatch) => {
-    piEnvInjectionManager.writeBedrock(patch);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PI_ENV_CLEAR_SECRET, (_event, field: BedrockSecretField) => {
-    piEnvInjectionManager.clearBedrockSecret(field);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE, () => {
-    return piEnvInjectionManager.isEncryptionAvailable();
-  });
 
   ipcMain.handle(IPC_CHANNELS.SHELL_PROFILES_LIST, async (): Promise<ShellProfilesListResponse> => {
     const profiles = await shellProfileRegistry.enumerate();

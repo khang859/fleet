@@ -1,14 +1,12 @@
 // src/main/learnings/distiller.ts
 // Distill a finished agent session into a draft learning via a headless one-shot
-// agent run. We feed the transcript inline to the engine (`rune --prompt`) and
-// capture stdout — agent-agnostic, no transcript re-parsing on the agent side.
-// The engine is rune (Fleet's flagship agent) regardless of which agent produced
-// the session; claude is only a fallback when rune is not installed.
+// `claude -p` run. We feed the transcript inline and capture stdout — no
+// transcript re-parsing on the agent side.
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { StringDecoder } from 'string_decoder';
 import { createLogger } from '../logger';
-import type { SessionAgent, SessionTranscript } from '../../shared/sessions';
+import type { SessionTranscript } from '../../shared/sessions';
 import type { DistillResult } from '../../shared/learnings';
 
 const log = createLogger('learnings-distiller');
@@ -20,10 +18,7 @@ const TIMEOUT_MS = 120_000;
 const MAX_STDOUT_CHARS = 256_000;
 const SENTINEL = 'NO_LEARNING';
 
-// Distill always runs on rune first (flagship); claude is a fallback only when rune
-// is missing from PATH. Using rune as the engine also sidesteps `claude -p`'s
-// tool-use-in-print-mode behavior.
-const ENGINE_ORDER: readonly SessionAgent[] = ['rune', 'claude'];
+const ENGINE = 'claude';
 const NOT_INSTALLED = 'is not installed or not on PATH';
 
 /** Flatten a transcript to plain text, truncating the middle of very long ones. */
@@ -112,24 +107,15 @@ export function parseDraft(raw: string): DistillResult {
   return { status: 'ok', draft: { title: title || 'Untitled learning', body, tags } };
 }
 
-async function runAgentOneShot(agent: SessionAgent, cwd: string, prompt: string): Promise<string> {
-  const cmd = agent === 'rune' ? 'rune' : 'claude';
-  const args = agent === 'rune' ? ['--prompt', prompt] : ['-p', prompt];
+async function runAgentOneShot(cwd: string, prompt: string): Promise<string> {
+  const cmd = ENGINE;
+  const args = ['-p', prompt];
   const isWindows = process.platform === 'win32';
   return new Promise<string>((resolve, reject) => {
     // `detached` on POSIX puts the child in its own process group so we can signal
-    // the whole tree on timeout — rune/claude spawn their own children, and a bare
+    // the whole tree on timeout — claude spawns its own children, and a bare
     // child.kill() hits only the direct PID, re-parenting the rest to init (PID 1).
-    // RUNE_NO_ATTACH stops rune from scanning the prompt for file references and
-    // inlining/warning on them: a serialized transcript is full of incidental path
-    // mentions, and auto-attach would inline current-cwd files (polluting the prompt)
-    // and print "(could not attach …)" onto stdout (corrupting the parsed draft).
-    // Older rune builds ignore the unknown env var, so this is backward-compatible.
-    const child = spawn(cmd, args, {
-      cwd,
-      env: { ...process.env, RUNE_NO_ATTACH: '1' },
-      detached: !isWindows
-    });
+    const child = spawn(cmd, args, { cwd, detached: !isWindows });
     // Decode incrementally so a multibyte codepoint split across two chunks isn't
     // mangled into U+FFFD (common with CJK/emoji in agent output).
     const outDecoder = new StringDecoder('utf8');
@@ -204,23 +190,12 @@ export async function distillLearning(t: SessionTranscript): Promise<DistillResu
     return { status: 'error', message: `Session directory no longer exists: ${cwd}` };
   }
   const prompt = buildPrompt(t);
-  let lastError = 'No distill engine available';
-  // Try engines in order; only fall through to the next when the current one is
-  // simply not installed (any real failure is reported as-is).
-  for (const engine of ENGINE_ORDER) {
-    try {
-      const out = await runAgentOneShot(engine, cwd, prompt);
-      return parseDraft(out);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.includes(NOT_INSTALLED)) {
-        lastError = message;
-        continue;
-      }
-      log.warn('distill failed', { engine, message });
-      return { status: 'error', message };
-    }
+  try {
+    const out = await runAgentOneShot(cwd, prompt);
+    return parseDraft(out);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn('distill failed', { engine: ENGINE, message });
+    return { status: 'error', message };
   }
-  log.warn('distill failed — no engine installed', { lastError });
-  return { status: 'error', message: lastError };
 }

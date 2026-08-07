@@ -1,9 +1,7 @@
 // src/main/learnings/learnings-mcp-registrar.ts
 // Registers the Learnings MCP server globally so the user's own terminal sessions
-// pick it up: Claude Code via ~/.claude.json (key `mcpServers`), Rune via
-// ~/.rune/mcp.json (key `servers`). Both honored by headless `claude -p` / `rune --prompt`.
-// Fleet-spawned Rune runs get it injected into their per-workspace mcp.json instead
-// (see spawn-worker.ts), which is why this exposes the current entry too.
+// pick it up: Claude Code via ~/.claude.json (key `mcpServers`), which headless
+// `claude -p` honors too.
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
@@ -19,12 +17,9 @@ export type McpHttpEntry = { type: 'http'; url: string };
 export interface RegistrarPaths {
   /** ~/.claude.json — Claude Code user-scoped config. */
   claudeJsonPath?: string;
-  /** ~/.rune/mcp.json — Rune global MCP config. */
-  runeMcpPath?: string;
 }
 
-// The live entry, set at startup. spawn-worker reads this to add the server to the
-// per-workspace mcp.json it writes for Fleet-managed Rune runs.
+// The live entry, set at startup.
 let currentEntry: McpHttpEntry | null = null;
 
 /** The current learnings MCP entry, or null before the server has started. */
@@ -70,7 +65,7 @@ const ObjectSchema = z.record(z.string(), z.unknown());
  * Atomically replace a file's contents: write a sibling temp file, then rename over the
  * target (atomic on POSIX within one filesystem). A crash mid-write leaves either the
  * old file or the new one intact — never a truncated file. Critical because these
- * configs may hold other servers' API keys (e.g. Rune's CONTEXT7_API_KEY).
+ * configs may hold other servers' API keys.
  */
 function atomicWriteJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -99,7 +94,7 @@ function readConfig(path: string): Record<string, unknown> | null {
 
 /**
  * Merge `{ [SERVER_NAME]: entry }` into the object under `key`, preserving every other
- * key (the Rune file may hold API keys for other servers). Writes only when changed,
+ * key (the file may hold API keys for other servers). Writes only when changed,
  * and never overwrites a config it couldn't parse.
  */
 function mergeServerEntry(path: string, key: string, entry: McpHttpEntry): void {
@@ -119,22 +114,16 @@ function mergeServerEntry(path: string, key: string, entry: McpHttpEntry): void 
 }
 
 /**
- * Point Claude Code and Rune at the learnings MCP server on `port`. Idempotent across
- * restarts when the port is stable. Each write preserves all other config.
+ * Point Claude Code at the learnings MCP server on `port`. Idempotent across
+ * restarts when the port is stable. The write preserves all other config.
  */
 export function registerLearningsMcp(port: number, paths: RegistrarPaths = {}): void {
   const entry: McpHttpEntry = { type: 'http', url: `http://127.0.0.1:${port}/mcp` };
   currentEntry = entry;
   const claudeJsonPath = paths.claudeJsonPath ?? join(homedir(), '.claude.json');
-  const runeMcpPath = paths.runeMcpPath ?? join(homedir(), '.rune', 'mcp.json');
   try {
     mergeServerEntry(claudeJsonPath, 'mcpServers', entry);
   } catch (err) {
     log.warn('failed to register with Claude Code', { error: String(err) });
-  }
-  try {
-    mergeServerEntry(runeMcpPath, 'servers', entry);
-  } catch (err) {
-    log.warn('failed to register with Rune', { error: String(err) });
   }
 }

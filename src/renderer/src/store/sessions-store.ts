@@ -1,21 +1,18 @@
 // src/renderer/src/store/sessions-store.ts
 import { create } from 'zustand';
-import type { SessionAgent, SessionSummary, SessionTranscript } from '../../../shared/sessions';
+import type { SessionSummary, SessionTranscript } from '../../../shared/sessions';
 
-type SelectedKey = { agent: SessionAgent; id: string; cwd: string };
+type SelectedKey = { id: string; cwd: string };
 
 type SessionsStoreState = {
   sessions: SessionSummary[];
   isLoaded: boolean;
   selected: SelectedKey | null;
   transcript: SessionTranscript | null;
-  /** Node selected in the branch tree; defaults to the session's active node. */
-  selectedNodeId: string | null;
   isLoadingTranscript: boolean;
   transcriptError: string | null;
   load: () => Promise<void>;
   select: (s: SessionSummary) => Promise<void>;
-  selectNode: (nodeId: string) => void;
 };
 
 const READ_FAILED = 'This session could not be loaded. The file may have been moved or deleted.';
@@ -25,7 +22,6 @@ export const useSessionsStore = create<SessionsStoreState>((set, get) => ({
   isLoaded: false,
   selected: null,
   transcript: null,
-  selectedNodeId: null,
   isLoadingTranscript: false,
   transcriptError: null,
 
@@ -34,19 +30,11 @@ export const useSessionsStore = create<SessionsStoreState>((set, get) => ({
     set({ sessions, isLoaded: true });
     // If a session is open and still present, refresh its transcript.
     const sel = get().selected;
-    if (sel && sessions.some((s) => s.agent === sel.agent && s.id === sel.id)) {
+    if (sel && sessions.some((s) => s.id === sel.id)) {
       try {
         const transcript = await window.fleet.sessions.read(sel);
         const cur = get().selected;
-        if (cur?.id === sel.id && cur?.agent === sel.agent && transcript) {
-          // Keep the user's branch selection if it still exists; otherwise reset to active.
-          const keep = get().selectedNodeId;
-          const stillValid = transcript.tree?.nodes.some((n) => n.id === keep) ?? false;
-          set({
-            transcript,
-            selectedNodeId: stillValid ? keep : (transcript.tree?.activeId ?? null)
-          });
-        }
+        if (cur?.id === sel.id && transcript) set({ transcript });
       } catch {
         // ignore refresh failure; keep existing transcript
       }
@@ -54,32 +42,21 @@ export const useSessionsStore = create<SessionsStoreState>((set, get) => ({
   },
 
   select: async (s) => {
-    const selected = { agent: s.agent, id: s.id, cwd: s.cwd };
+    const selected = { id: s.id, cwd: s.cwd };
     set({
       selected,
       isLoadingTranscript: true,
       transcript: null,
-      selectedNodeId: null,
       transcriptError: null
     });
-    const isCurrent = (): boolean => {
-      const cur = get().selected;
-      return cur?.id === s.id && cur?.agent === s.agent;
-    };
+    const isCurrent = (): boolean => get().selected?.id === s.id;
     try {
       const transcript = await window.fleet.sessions.read(selected);
       if (!isCurrent()) return;
-      if (transcript)
-        set({
-          transcript,
-          selectedNodeId: transcript.tree?.activeId ?? null,
-          isLoadingTranscript: false
-        });
+      if (transcript) set({ transcript, isLoadingTranscript: false });
       else set({ isLoadingTranscript: false, transcriptError: READ_FAILED });
     } catch {
       if (isCurrent()) set({ isLoadingTranscript: false, transcriptError: READ_FAILED });
     }
-  },
-
-  selectNode: (nodeId) => set({ selectedNodeId: nodeId })
+  }
 }));

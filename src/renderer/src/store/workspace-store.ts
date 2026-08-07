@@ -6,7 +6,6 @@ import { DEFAULT_TOOL_VISIBILITY } from '../../../shared/tools';
 import { getPaneTypeForFilePath } from '../../../shared/file-open';
 import { useCwdStore } from './cwd-store';
 import { useSettingsStore } from './settings-store';
-import { useRuneAssistStore } from './rune-assist-store';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { createLogger } from '../logger';
 import { clampSidebarWidth } from '../components/sidebar-constants';
@@ -186,7 +185,6 @@ type WorkspaceStore = {
   addTab: (label: string | undefined, cwd: string) => string;
   openResumeTab: (cwd: string, cmd: string, label: string) => void;
   duplicateTab: (tabId: string) => string | null;
-  addPiTab: (cwd: string) => string;
   closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
   undoCloseTab: () => void;
   renameTab: (tabId: string, label: string) => void;
@@ -460,8 +458,6 @@ export function agentSessionsInUse(): Set<string> {
  * main-to-renderer listeners the moment it is imported, and this store is
  * imported by plenty of code that has no bridge for them to attach to. So it
  * registers itself, and where it was never loaded there is no turn to end.
- * `disposePane` on the Rune store is the same job done the direct way, which
- * works only because that store imports nothing back.
  */
 let disposePaneElsewhere: (paneId: string) => void = () => {};
 
@@ -538,10 +534,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   duplicateTab: (tabId) => {
     const state = get();
     const sourceTab = state.workspace.tabs.find((t) => t.id === tabId);
-    if (
-      !sourceTab ||
-      (sourceTab.type && sourceTab.type !== 'terminal' && sourceTab.type !== 'pi')
-    ) {
+    if (!sourceTab || (sourceTab.type && sourceTab.type !== 'terminal')) {
       return null;
     }
 
@@ -557,48 +550,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     return get().addTab(undefined, cwd);
   },
 
-  addPiTab: (cwd) => {
-    const { id: profileId, pathContext } = resolveDefaultProfile();
-    const leaf: PaneLeaf = {
-      type: 'leaf',
-      id: generateId(),
-      cwd,
-      paneType: 'pi',
-      shellProfileId: profileId,
-      pathContext
-    };
-    const tab: Tab = {
-      id: generateId(),
-      label: 'Pi Agent',
-      labelIsCustom: true,
-      cwd,
-      type: 'pi',
-      splitRoot: leaf,
-      shellProfileId: profileId,
-      pathContext
-    };
-    logTabs.debug('addPiTab', { tabId: tab.id, cwd, paneId: leaf.id });
-    set((state) => ({
-      workspace: {
-        ...state.workspace,
-        tabs: [...state.workspace.tabs, tab]
-      },
-      activeTabId: tab.id,
-      activePaneId: leaf.id,
-      isDirty: true
-    }));
-    return leaf.id;
-  },
-
   closeTab: (tabId, serializedPanes) => {
     logTabs.debug('closeTab', { tabId });
-    // Cancel any in-flight Rune Quick-Assist or Agent turns for panes in this
-    // tab and drop their state.
+    // Cancel any in-flight Agent turns for panes in this tab and drop their state.
     const closing = get().workspace.tabs.find((t) => t.id === tabId);
     if (closing) {
-      const rune = useRuneAssistStore.getState();
       for (const pid of collectPaneIds(closing.splitRoot)) {
-        rune.disposePane(pid);
         disposePaneElsewhere(pid);
       }
     }
@@ -1012,11 +969,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closePane: (paneId) => {
     logLayout.debug('closePane', { paneId });
-    // Cancel any in-flight Rune Quick-Assist or Agent turn for this pane and
-    // drop its state. The agent matters most: a turn parked on a permission
-    // question is waiting on a click from the pane being closed, and nothing
-    // else would ever end it.
-    useRuneAssistStore.getState().disposePane(paneId);
+    // Cancel any in-flight Agent turn for this pane and drop its state: a turn
+    // parked on a permission question is waiting on a click from the pane being
+    // closed, and nothing else would ever end it.
     disposePaneElsewhere(paneId);
     set((state) => {
       // Don't let the close-pane action destroy a pinned tab via its sole leaf.
