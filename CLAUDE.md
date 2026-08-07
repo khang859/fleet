@@ -24,6 +24,10 @@ Past mistakes and fixes are documented in `docs/learnings/`. **After every mista
 Query it with `/graphify query "<question>"` rather than rebuilding - the graph is already there.
 `GRAPH_REPORT.md` carries the god nodes, community map, and import cycles; `graph.html` is the interactive view.
 
+**Query the graph first, grep second.** For any question about architecture, relationships, or where something lives in `src/` - "what depends on X", "where does this flow go", "what is in the chat subsystem", "what breaks if I delete this" - run `/graphify query "<question>"` before reaching for Grep/Glob.
+The default reflex is to grep; override it.
+Fall back to grep when the question is a literal string or symbol lookup, when the target is outside `src/` (`scripts/`, `docs/`, `resources/`, config), when the code changed after the last graph refresh, or when the graph comes back thin.
+
 **Refresh on a cadence, not on every change.** Regenerate at releases, or when the graph has drifted far enough to give wrong answers - not as a routine step after editing code.
 The reason is that Louvain clustering is nondeterministic: a rebuild that finds no code changes still reassigns ~80% of nodes to different communities, so every refresh is a ~6,000-line diff and two branches that both rebuild will conflict irreconcilably.
 `.gitattributes` marks these files generated so review collapses them, but that hides the noise rather than removing it.
