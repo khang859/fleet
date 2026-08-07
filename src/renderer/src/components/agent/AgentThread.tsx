@@ -34,7 +34,7 @@ import { AgentToolRow } from './AgentToolRow';
 import { AgentPermissionRow } from './AgentPermissionRow';
 import { AgentTaskCard } from './AgentTaskCard';
 import { AgentTaskPermissions } from './AgentTaskPermissions';
-import { pendingTaskAsks } from './task-permissions';
+import { pendingTaskAsks, type PendingTaskAsk } from './task-permissions';
 import { ToolModePicker } from './ToolModePicker';
 import { AgentAttachmentChip, AgentMessageAttachments } from './AgentAttachment';
 import { reasoningLabel } from './activity';
@@ -72,45 +72,90 @@ const EMPTY_TASK_ACTIVITY: Record<string, string | null> = {};
 /** The same, for a pane with no subagent waiting on a command. */
 const EMPTY_TASK_PERMISSIONS: Record<string, AgentPermissionAsk> = {};
 
+/** Stable empty release list, so clearing one twice does not re-render. */
+const NOTHING_RELEASED: readonly string[] = [];
+
 /**
- * The pending question, held back until the composer goes quiet.
+ * The pending questions, each held back until the composer goes quiet.
  *
- * Returns the question only once it is safe to draw, plus the callback the
- * composer uses to say the message being written has just changed. That is
- * reported through a ref rather than state so the common case - writing with
- * nothing pending - costs no render at all; the timer re-reads that ref when it
- * fires and puts itself back if the user is still going.
+ * Returns the pane's own question and the subagents' - each only once it is safe
+ * to draw - plus the callback the composer uses to say the message being written
+ * has just changed. That is reported through a ref rather than state so the
+ * common case - writing with nothing pending - costs no render at all; the timer
+ * re-reads that ref when it fires and puts itself back if the user is still
+ * going.
+ *
+ * A subagent's question cannot take a keystroke the way the pane's own can:
+ * nothing moves focus, and Enter never answers one. But the strip it appears in
+ * grows out of the top of the composer and pushes it down the pane, which is
+ * enough to slide a button under a mouse already on its way to the box. Same
+ * hold, same clock - what the user is in the middle of doing is what decides
+ * when any of them appear.
+ *
+ * What has been let through is remembered by request id, so that answering one
+ * of several does not hold the rest back a second time, and a subagent's next
+ * question waits on its own account rather than arriving on the last one's
+ * ticket.
  */
-function useSettledAsk(ask: AgentPermissionAsk | null): {
+function useSettledAsks(
+  ask: AgentPermissionAsk | null,
+  tasks: PendingTaskAsk[]
+): {
   settled: AgentPermissionAsk | null;
+  settledTasks: PendingTaskAsk[];
   noteDraft: () => void;
 } {
-  const [settled, setSettled] = useState<AgentPermissionAsk | null>(null);
+  const [released, setReleased] = useState(NOTHING_RELEASED);
   const draftedAt = useRef(0);
+  const waiting = useRef(NOTHING_RELEASED);
+
+  const pending = [
+    ...(ask === null ? [] : [ask.requestId]),
+    ...tasks.map((task) => task.ask.requestId)
+  ];
+  // Keyed on which questions are waiting rather than how many, since one
+  // arriving as another is answered leaves the count where it was.
+  const key = pending.join(' ');
+
+  // Declared first so it has already run by the time the timer below is
+  // scheduled: what gets released is whatever is waiting when the composer goes
+  // quiet, not whatever was waiting when the wait began.
+  useEffect(() => {
+    waiting.current = pending;
+  });
 
   useEffect(() => {
-    if (ask === null) {
-      setSettled(null);
+    if (key === '') {
+      // Nothing is waiting, so nothing is owed a release. Kept tidy rather than
+      // left to accumulate - ids are uuids and never come round again, so this
+      // is housekeeping and not part of the guard.
+      setReleased(NOTHING_RELEASED);
       return;
     }
     let timer: ReturnType<typeof setTimeout>;
     const settle = (): void => {
       const wait = settleDelay(Date.now(), draftedAt.current);
       if (wait === 0) {
-        setSettled(ask);
+        setReleased(waiting.current);
         return;
       }
       timer = setTimeout(settle, wait);
     };
     timer = setTimeout(settle, 0);
     return () => clearTimeout(timer);
-  }, [ask]);
+  }, [key]);
 
   const noteDraft = useCallback(() => {
     draftedAt.current = Date.now();
   }, []);
 
-  return { settled, noteDraft };
+  // Filtered against what is still waiting, so a question that has been answered
+  // leaves the screen the moment it is - the hold is on the way in only.
+  return {
+    settled: ask !== null && released.includes(ask.requestId) ? ask : null,
+    settledTasks: tasks.filter((task) => released.includes(task.ask.requestId)),
+    noteDraft
+  };
 }
 
 export function AgentThread({
@@ -146,18 +191,21 @@ export function AgentThread({
   const streaming = (thread?.streamId ?? null) !== null;
   const contextTokens = thread?.contextTokens ?? null;
   const spend = thread?.spend ?? EMPTY_SESSION_SPEND;
-  // Everything downstream asks "is there a question on screen", which is not
-  // quite "has one been asked" - so the held-back one is what they are given.
-  const { settled: ask, noteDraft } = useSettledAsk(thread?.pendingPermission ?? null);
   const imagePartials = thread?.imagePartials ?? EMPTY_PARTIALS;
   const taskActivity = thread?.taskActivity ?? EMPTY_TASK_ACTIVITY;
   const taskPermissions = thread?.taskPermissions ?? EMPTY_TASK_PERMISSIONS;
+  // Everything downstream asks "is there a question on screen", which is not
+  // quite "has one been asked" - so the held-back ones are what they are given.
+  const {
+    settled: ask,
+    settledTasks: pendingTasks,
+    noteDraft
+  } = useSettledAsks(thread?.pendingPermission ?? null, pendingTaskAsks(messages, taskPermissions));
   // Only when the pane has no column for it, so the same list is never in two
   // places saying the same thing.
   const todoItems = thread?.todos ?? EMPTY_TODOS;
   const todos = todosInPanel ? null : todoProgress(todoItems);
   const gitHead = useGitHead(paneId, cwd);
-  const pendingTasks = pendingTaskAsks(messages, taskPermissions);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">

@@ -47,7 +47,11 @@ const AGENT_CLEARED_RESULTS = `(() => {
     error: null,
     summary,
     image: null,
-    todos: null
+    todos: null,
+    // A row that dispatched nothing still has to say so. Left out, the pane
+    // reads it as a call it has not been told about yet and goes looking for a
+    // subagent that was never there.
+    task: null
   });
   const message = (id, role, parts) => ({
     id,
@@ -114,7 +118,7 @@ const AGENT_PERMISSION_ASK = `(() => {
   });
   const said = (n) => message('fixture-a' + n, 'assistant', [
     { type: 'text', text: 'Paragraph ' + n + '. ' + 'Filling the pane so the transcript scrolls. '.repeat(6) },
-    { type: 'tool', call: { id: 'done' + n, name: 'read', args: '{}', result: 'ok', error: null, summary: '40 lines', image: null, todos: null } }
+    { type: 'tool', call: { id: 'done' + n, name: 'read', args: '{}', result: 'ok', error: null, summary: '40 lines', image: null, todos: null, task: null } }
   ]);
 
   const write = (extra) => store.setState((s) => ({
@@ -127,12 +131,15 @@ const AGENT_PERMISSION_ASK = `(() => {
       ...[1, 2, 3, 4, 5, 6, 7, 8].map(said),
       message('fixture-a9', 'assistant', [
         { type: 'text', text: 'Removing the merged branches now.' },
-        { type: 'tool', call: { id: callId, name: 'bash', args: '{}', result: null, error: null, summary: null, image: null, todos: null } }
+        { type: 'tool', call: { id: callId, name: 'bash', args: '{}', result: null, error: null, summary: null, image: null, todos: null, task: null } }
       ])
     ],
     streamId,
     startedAt: Date.now(),
-    pendingPermission: null
+    pendingPermission: null,
+    // Cleared as well as set: a fixture run after another one should show its
+    // own state and not half of the last one's.
+    taskPermissions: {}
   });
 
   // Long enough for the transcript to settle at the tail and for the reader to
@@ -154,6 +161,83 @@ const AGENT_PERMISSION_ASK = `(() => {
   return 'seeded pane ' + paneId + ': the permission card lands in 1.5s and should scroll itself into view';
 })()`;
 
+/**
+ * Two subagents stopped on a command, asking from the pinned strip.
+ *
+ * The strip is the half of this that a real turn is slow and expensive to
+ * reproduce: it takes a dispatch, a child that gets far enough to want a
+ * command, and a second one behind it. The questions arrive a beat apart on
+ * purpose - the second one lands while the first is already up, which is where
+ * "held back" and "left where it is" have to be told apart.
+ */
+const AGENT_TASK_PERMISSION_ASK = `(() => {
+  const store = __FLEET__.stores.agent;
+  const paneId = Object.keys(store.getState().threads)[0];
+  if (paneId === undefined) return 'no agent pane open - open one first';
+
+  const task = (id, agent, prompt) => ({
+    id,
+    agent,
+    prompt,
+    status: 'running',
+    summary: null
+  });
+  const dispatch = (callId, info) => ({
+    type: 'tool',
+    call: { id: callId, name: 'task', args: '{}', result: null, error: null, summary: null, image: null, todos: null, task: info }
+  });
+  const message = (id, role, parts) => ({
+    id,
+    role,
+    parts,
+    reasoning: '',
+    reasoningMs: 0,
+    createdAt: Date.now()
+  });
+  const asking = (requestId, command) => ({
+    streamId: 'fixture-child-' + requestId,
+    requestId,
+    callId: 'fixture-child-call-' + requestId,
+    command,
+    reason: 'Changes the repository, so it is not one of the read-only commands.',
+    rule: 'git:*',
+    mcp: null
+  });
+
+  const write = (extra) => store.setState((s) => ({
+    threads: { ...s.threads, [paneId]: { ...s.threads[paneId], ...extra } }
+  }));
+
+  write({
+    messages: [
+      message('fixture-u1', 'user', [{ type: 'text', text: 'Look at the test failures and the release notes.' }]),
+      message('fixture-a1', 'assistant', [
+        { type: 'text', text: 'Sending two off to look in parallel.' },
+        dispatch('fixture-d1', task('fixture-task-1', 'explore', 'Find what broke the snapshot tests.')),
+        dispatch('fixture-d2', task('fixture-task-2', 'review', 'Check the release notes against the log.'))
+      ])
+    ],
+    streamId: 'fixture-stream',
+    startedAt: Date.now(),
+    pendingPermission: null,
+    taskPermissions: {}
+  });
+
+  setTimeout(() => {
+    write({ taskPermissions: { 'fixture-task-1': asking('fixture-req-1', 'git bisect start HEAD v2.90.0') } });
+  }, 1500);
+  setTimeout(() => {
+    write({
+      taskPermissions: {
+        'fixture-task-1': asking('fixture-req-1', 'git bisect start HEAD v2.90.0'),
+        'fixture-task-2': asking('fixture-req-2', 'git log --oneline v2.90.0..HEAD > /tmp/notes.txt')
+      }
+    });
+  }, 4000);
+
+  return 'seeded pane ' + paneId + ': subagent questions land at 1.5s and 4s. Type through either to see the strip held back.';
+})()`;
+
 export const FIXTURES: Record<string, Fixture> = {
   'agent-cleared-results': {
     describe:
@@ -164,6 +248,11 @@ export const FIXTURES: Record<string, Fixture> = {
     describe:
       'A streaming turn that stops on a permission question 1.5s after the transcript is seeded. The card should scroll fully into view, and Enter in the composer should run the command. Type into the composer as it lands to see the question held back until the typing stops.',
     source: AGENT_PERMISSION_ASK
+  },
+  'agent-task-permission-ask': {
+    describe:
+      'Two subagents stopping on a command, 1.5s and 4s after the transcript is seeded. The pinned strip should appear only once the composer has been quiet for a second, and the first question should stay put when the second one is held back.',
+    source: AGENT_TASK_PERMISSION_ASK
   }
 };
 
