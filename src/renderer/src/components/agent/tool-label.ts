@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
+import { readMcpToolName } from '../../../../shared/agent-mcp-names';
 
 /**
  * What a tool call says about itself on one line.
@@ -65,8 +66,24 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
         target: (args.prompt ?? '').replace(/\s*\n\s*/g, ' ')
       };
     default:
-      return { verb: call.name, target: '' };
+      return mcpLabel(call.name) ?? { verb: call.name, target: '' };
   }
+}
+
+/**
+ * A call to a server's tool, said in the same shape as Fleet's own.
+ *
+ * The wire name is `mcp__context7__query_docs`, which is addressing rather than
+ * language: it tells the model where to send the call and tells a person
+ * nothing. Split back apart it reads "Query docs" from a server called
+ * "context7", which is exactly the verb-and-subject every other row uses.
+ */
+function mcpLabel(name: string): ToolLabel | null {
+  const parsed = readMcpToolName(name);
+  if (parsed === null) return null;
+  const words = parsed.tool.replace(/[_-]+/g, ' ').trim();
+  const verb = words === '' ? parsed.tool : words[0].toUpperCase() + words.slice(1);
+  return { verb, target: parsed.server };
 }
 
 function parseArgs(raw: string): z.infer<typeof LabelArgs> {
