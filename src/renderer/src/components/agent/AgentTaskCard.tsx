@@ -1,12 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bot, ChevronRight, X } from 'lucide-react';
 import type { AgentTaskInfo, AgentToolCall } from '../../../../shared/agent-tools';
-import type {
-  AgentMessage,
-  AgentPermissionAsk,
-  AgentPermissionOutcome
-} from '../../../../shared/agent-types';
-import { AgentPermissionRow } from './AgentPermissionRow';
+import type { AgentMessage } from '../../../../shared/agent-types';
 import { AgentToolRow } from './AgentToolRow';
 import { AgentMarkdown } from './AgentMarkdown';
 import { createLogger } from '../../logger';
@@ -31,8 +26,7 @@ const log = createLogger('agent:task-card');
 export function AgentTaskCard({
   call,
   activity,
-  ask,
-  onDecide
+  asking = false
 }: {
   call: AgentToolCall;
   /**
@@ -41,9 +35,13 @@ export function AgentTaskCard({
    * anything yet.
    */
   activity?: string | null;
-  /** The command this subagent is stopped on, if it is stopped on one. */
-  ask?: AgentPermissionAsk;
-  onDecide: (taskId: string, outcome: AgentPermissionOutcome) => void;
+  /**
+   * Whether this subagent is stopped on a command. The question itself is
+   * answered in the pinned strip above the composer rather than here - see
+   * `AgentTaskPermissions` - so what the card owes the user is only the fact
+   * that this is the one that stopped.
+   */
+  asking?: boolean;
 }): React.JSX.Element {
   const task = call.task;
   const [open, setOpen] = useState(false);
@@ -85,7 +83,7 @@ export function AgentTaskCard({
             {oneLine(task.prompt)}
           </span>
           <span className="max-w-[40%] shrink-0 truncate pl-2">
-            <Status task={task} activity={activity} />
+            <Status task={task} activity={activity} asking={asking} />
           </span>
         </button>
         {running && (
@@ -100,13 +98,6 @@ export function AgentTaskCard({
           </button>
         )}
       </div>
-      {/* Outside the disclosure, so a question is on screen whether or not
-          anyone had this card open. A subagent stopped on a command is stopped
-          until it is answered, and a question behind a chevron is one nobody
-          knows to look for. */}
-      {ask !== undefined && (
-        <AgentPermissionRow ask={ask} onDecide={(outcome) => onDecide(task.id, outcome)} />
-      )}
       {open && <Body task={task} report={call.result} />}
     </div>
   );
@@ -122,11 +113,19 @@ export function AgentTaskCard({
  */
 function Status({
   task,
-  activity
+  activity,
+  asking
 }: {
   task: AgentTaskInfo;
   activity: string | null | undefined;
+  asking: boolean;
 }): React.JSX.Element {
+  // Ahead of what it is doing, because it is not doing it: this row is the one
+  // the strip above the composer is asking about, and saying so is how the two
+  // are tied together. Not shimmering, for the same reason - nothing is moving.
+  if (asking) {
+    return <span className="text-amber-700 dark:text-amber-400/90">waiting on you</span>;
+  }
   if (task.status === 'running') {
     return (
       <span className="fleet-shimmer-text font-mono text-[11px]">{activity ?? 'starting'}</span>

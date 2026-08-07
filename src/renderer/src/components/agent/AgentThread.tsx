@@ -33,6 +33,8 @@ import { AgentActivity } from './AgentActivity';
 import { AgentToolRow } from './AgentToolRow';
 import { AgentPermissionRow } from './AgentPermissionRow';
 import { AgentTaskCard } from './AgentTaskCard';
+import { AgentTaskPermissions } from './AgentTaskPermissions';
+import { pendingTaskAsks } from './task-permissions';
 import { ToolModePicker } from './ToolModePicker';
 import { AgentAttachmentChip, AgentMessageAttachments } from './AgentAttachment';
 import { reasoningLabel } from './activity';
@@ -113,6 +115,7 @@ export function AgentThread({
   const todoItems = thread?.todos ?? EMPTY_TODOS;
   const todos = todosInPanel ? null : todoProgress(todoItems);
   const gitHead = useGitHead(paneId, cwd);
+  const pendingTasks = pendingTaskAsks(messages, taskPermissions);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -127,7 +130,6 @@ export function AgentThread({
           imagePartials={imagePartials}
           taskActivity={taskActivity}
           taskPermissions={taskPermissions}
-          onDecideTask={decideTaskPermission}
         />
       )}
 
@@ -137,6 +139,11 @@ export function AgentThread({
           <span>{thread.error}</span>
         </div>
       )}
+
+      {/* Above the status line rather than below it, so the strip sits against
+          the transcript it came out of and the status line stays where it has
+          always been: the row directly over the composer. */}
+      <AgentTaskPermissions pending={pendingTasks} onDecide={decideTaskPermission} />
 
       {/* One status line for the turn: what the agent is doing on the left, how
           much room it has left on the right. Always rendered while either has
@@ -222,8 +229,7 @@ function Transcript({
   onDecide,
   imagePartials,
   taskActivity,
-  taskPermissions,
-  onDecideTask
+  taskPermissions
 }: {
   messages: AgentMessage[];
   streaming: boolean;
@@ -232,7 +238,6 @@ function Transcript({
   imagePartials: Record<string, string>;
   taskActivity: Record<string, string | null>;
   taskPermissions: Record<string, AgentPermissionAsk>;
-  onDecideTask: (taskId: string, outcome: AgentPermissionOutcome) => void;
 }): React.JSX.Element {
   const endRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -304,7 +309,6 @@ function Transcript({
             cleared={cleared}
             taskActivity={taskActivity}
             taskPermissions={taskPermissions}
-            onDecideTask={onDecideTask}
           />
         ))}
         <div ref={endRef} />
@@ -367,8 +371,7 @@ function Message({
   imagePartials,
   cleared,
   taskActivity,
-  taskPermissions,
-  onDecideTask
+  taskPermissions
 }: {
   message: AgentMessage;
   streaming: boolean;
@@ -382,7 +385,6 @@ function Message({
   taskActivity: Record<string, string | null>;
   /** The command each stopped subagent is waiting on, by task id. */
   taskPermissions: Record<string, AgentPermissionAsk>;
-  onDecideTask: (taskId: string, outcome: AgentPermissionOutcome) => void;
 }): React.JSX.Element {
   if (message.role === 'summary') return <SummaryCard summary={messageText(message)} />;
   if (message.role === 'user') {
@@ -443,8 +445,7 @@ function Message({
               key={i}
               call={part.call}
               activity={taskActivity[part.call.task.id]}
-              ask={taskPermissions[part.call.task.id]}
-              onDecide={onDecideTask}
+              asking={part.call.task.id in taskPermissions}
             />
           );
         }
