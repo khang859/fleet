@@ -55,6 +55,7 @@ const agentApi = {
   listSessions: vi.fn().mockResolvedValue([]),
   generateTitle: vi.fn().mockResolvedValue({ title: null, usage: null }),
   cancelTask: vi.fn(),
+  addSessionSpend: vi.fn(),
   runningTasks: vi.fn().mockResolvedValue([])
 };
 
@@ -181,6 +182,7 @@ beforeEach(async () => {
       compact: agentApi.compact,
       cancel: agentApi.cancel,
       appendSession: agentApi.appendSession,
+      addSessionSpend: agentApi.addSessionSpend,
       loadSession: vi.fn().mockImplementation(async () => Promise.resolve(replay)),
       listSessions: agentApi.listSessions,
       deleteSession: agentApi.deleteSession,
@@ -1080,6 +1082,94 @@ describe('subagents', () => {
         summary: '12 words'
       }
     });
+  });
+
+  // The report is not the only thing that arrives late. A child that ran for
+  // four minutes after its pane was closed was still billed for it, and a total
+  // that quietly skipped those would be wrong on exactly the sessions that used
+  // subagents most.
+  it('bills a session no pane is showing for what its child spent', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'look into it');
+    dispatch('task-1');
+
+    emit(IPC_CHANNELS.AGENT_TASK_DONE, {
+      threadId: 'a-session-nobody-is-looking-at',
+      callId: 'call-1',
+      cwd: '/repo',
+      task: info('task-1', { status: 'done', summary: '12 words' }),
+      report: 'the diff is small',
+      usage: usageOf(5_000)
+    });
+
+    // A usage rather than a total: the running total is in the log, and main
+    // is the only side holding it.
+    expect(agentApi.addSessionSpend).toHaveBeenCalledWith({
+      sessionId: 'a-session-nobody-is-looking-at',
+      cwd: '/repo',
+      usage: usageOf(5_000)
+    });
+  });
+
+  // The pane was given another session, or closed, in the minutes between the
+  // dispatch and the child's first command. There is no card to draw the
+  // question on and no pane to draw it in, and a question left unanswered stops
+  // that child for good - so it is refused here rather than dropped.
+  it('refuses a question that no pane is left to show', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'look into it');
+    const streamId = dispatch('task-1');
+    // The turn is over and the child is still going, which is the whole point
+    // of a subagent - and is what lets the pane be switched out from under it.
+    emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+
+    childAsks('task-1', 'req-9', 'sleep 45');
+
+    expect(agentApi.decidePermission).toHaveBeenCalledWith({ requestId: 'req-9', outcome: 'no' });
+    expect(thread().taskPermissions).toEqual({});
+    expect(thread().pendingPermission).toBeNull();
+  });
+
+  // The other half of the same hole, and the one that actually happened: the
+  // question was on screen and answerable, and then the session it belonged to
+  // was swapped out from under it. Taking the cards away has to take the
+  // questions with them, which means answering them rather than forgetting them.
+  it('refuses a question already on screen when the pane moves to another session', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'look into it');
+    const streamId = dispatch('task-1');
+    childAsks('task-1', 'req-9', 'sleep 45');
+    emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
+
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+
+    expect(agentApi.decidePermission).toHaveBeenCalledWith({ requestId: 'req-9', outcome: 'no' });
+    expect(thread().taskPermissions).toEqual({});
+  });
+
+  it('refuses a question already on screen when the pane closes', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'look into it');
+    const streamId = dispatch('task-1');
+    childAsks('task-1', 'req-9', 'sleep 45');
+    emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
+
+    agentStore.useAgentStore.getState().disposePane(PANE);
+
+    expect(agentApi.decidePermission).toHaveBeenCalledWith({ requestId: 'req-9', outcome: 'no' });
+  });
+
+  it('has no bill to send for a child that never got as far as spending', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'look into it');
+    dispatch('task-1');
+
+    emit(IPC_CHANNELS.AGENT_TASK_DONE, {
+      threadId: 'a-session-nobody-is-looking-at',
+      callId: 'call-1',
+      cwd: '/repo',
+      task: info('task-1', { status: 'failed', summary: 'failed' }),
+      report: 'this subagent stopped without answering',
+      usage: null
+    });
+
+    expect(agentApi.addSessionSpend).not.toHaveBeenCalled();
   });
 });
 

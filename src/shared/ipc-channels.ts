@@ -211,6 +211,7 @@ export const IPC_CHANNELS = {
   // The thread on disk: an append-only event log per session, replayed when a
   // pane opens. The renderer decides what happened; main only writes it down.
   AGENT_SESSION_APPEND: 'agent:session-append',
+  AGENT_SESSION_ADD_SPEND: 'agent:session-add-spend',
   AGENT_SESSION_LOAD: 'agent:session-load',
   // The sessions started in one folder, for the pane's Sessions tab, and the
   // removal of one. Which session a pane is currently on is the renderer's to

@@ -12,6 +12,7 @@ import type {
   AgentTitleResult
 } from '../../shared/agent-types';
 import type {
+  AgentSessionAddSpend,
   AgentSessionAppend,
   AgentSessionListItem,
   AgentSessionReplay
@@ -98,6 +99,11 @@ export function registerAgentIpc(deps: {
 
   ipcMain.on(IPC_CHANNELS.AGENT_SESSION_APPEND, (_e, req: AgentSessionAppend) => {
     deps.sessions.append(req.sessionId, req.cwd, req.event);
+  });
+
+  // Added here rather than sent as a total, for a session no pane is adding up.
+  ipcMain.on(IPC_CHANNELS.AGENT_SESSION_ADD_SPEND, (_e, req: AgentSessionAddSpend) => {
+    deps.sessions.addSpend(req.sessionId, req.cwd, req.usage);
   });
 
   // A subagent's own transcript, read when the user opens its card. Main keeps

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { AGENT_TASK_STATUSES } from './agent-tools';
 import { TODO_STATUSES, type AgentTodoItem } from './agent-todos';
 import { EMPTY_SESSION_SPEND, type AgentSessionSpend } from './agent-spend';
-import { messageText, type AgentMessage } from './agent-types';
+import { messageText, type AgentMessage, type AgentTurnUsage } from './agent-types';
 
 /**
  * A session on disk: one append-only JSONL file per agent thread.
@@ -243,6 +243,19 @@ export type AgentSessionAppend = {
   sessionId: string;
   cwd: string;
   event: AgentSessionEvent;
+};
+
+/**
+ * What a turn spent, for a session that has to add it up itself.
+ *
+ * A usage rather than a total, unlike the event it becomes: the total is the
+ * one thing the caller cannot work out, because it is only ever the sum of
+ * what is already in the file.
+ */
+export type AgentSessionAddSpend = {
+  sessionId: string;
+  cwd: string;
+  usage: AgentTurnUsage;
 };
 
 export type AgentSessionReplay = {

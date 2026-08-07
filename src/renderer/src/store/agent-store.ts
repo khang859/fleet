@@ -498,6 +498,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
    */
   disposePane: (paneId) => {
     get().cancel(paneId);
+    refuseTaskQuestions(paneId);
     useNotificationStore.getState().clearActivity(paneId);
     // Main is told outright, because it will not find out. `pane-closed` is
     // emitted by the PTY paths, and this pane never had one - so a record left
@@ -751,6 +752,16 @@ function finishTask(done: AgentTaskDone): void {
     // pane inventing an "interrupted" that never happened.
     log.debug('report for a session no pane is showing', { task: done.task.id });
     window.fleet.agent.appendSession({ sessionId: done.threadId, cwd: done.cwd, event });
+    // And the bill, which is main's to add up here: the running total lives in
+    // the log, and there is no thread holding it to add to. A child that ran
+    // for four minutes after its pane was closed was still charged for it.
+    if (done.usage !== null) {
+      window.fleet.agent.addSessionSpend({
+        sessionId: done.threadId,
+        cwd: done.cwd,
+        usage: done.usage
+      });
+    }
     return;
   }
   const { paneId, thread } = found;
@@ -957,7 +968,25 @@ function askPermission(ask: AgentPermissionAsk): void {
   }
 
   const found = threadOf(ask.streamId);
-  if (found === null) return;
+  if (found === null) {
+    // Nothing on screen can answer this, so it is answered here, fail-closed.
+    //
+    // A subagent is what makes this reachable: it outlives the turn that
+    // dispatched it, so it can ask its first question minutes later, by which
+    // time the pane may have been given another session or closed - and then
+    // there is no card to draw the question on and no pane to draw it in. The
+    // child would wait on that answer for the rest of the session, holding one
+    // of the five slots and reporting nothing.
+    //
+    // Refusing is the safe half: the command does not run, the child is told so
+    // in the ordinary way, and it carries on and reports. The same as
+    // `PermissionGate.refusePending` does when the window reloads, for the same
+    // reason. A question for a turn that ended has already been refused by main
+    // and settles nothing here.
+    log.debug('refused a question no pane can show', { command: ask.command });
+    window.fleet.agent.decidePermission({ requestId: ask.requestId, outcome: 'no' });
+    return;
+  }
   useAgentStore.setState((s) => ({
     threads: { ...s.threads, [found.paneId]: { ...found.thread, pendingPermission: ask } }
   }));
@@ -1095,9 +1124,32 @@ function canSwitch(paneId: string): boolean {
 
 /** Point a pane at a session and clear what the last one left on screen. */
 function claimSession(paneId: string, cwd: string, sessionId: string): void {
+  refuseTaskQuestions(paneId);
   useAgentStore.setState((s) => ({
     threads: { ...s.threads, [paneId]: { ...EMPTY_THREAD, sessionId, cwd } }
   }));
+}
+
+/**
+ * Answer every question this pane's subagents are stopped on, fail-closed.
+ *
+ * For the moment the pane stops showing the session that dispatched them - a
+ * new session, another session, or the pane closing. The cards go with it, so
+ * the questions have nowhere left to be drawn, and a question with no button is
+ * one the child waits on for the rest of the session while holding a slot.
+ *
+ * The children themselves are left alone: outliving the pane is the point of
+ * them, and each is told no about the one command it happened to be stopped on,
+ * which it can report having been refused. The same bargain
+ * `PermissionGate.refusePending` makes when the window reloads.
+ */
+function refuseTaskQuestions(paneId: string): void {
+  const thread = useAgentStore.getState().threads[paneId];
+  if (thread === undefined) return;
+  for (const ask of Object.values(thread.taskPermissions)) {
+    log.debug('refused a question the pane stopped showing', { command: ask.command });
+    window.fleet.agent.decidePermission({ requestId: ask.requestId, outcome: 'no' });
+  }
 }
 
 /**

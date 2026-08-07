@@ -88,6 +88,7 @@ import type {
   AgentToolEvent
 } from '../shared/agent-types';
 import type {
+  AgentSessionAddSpend,
   AgentSessionAppend,
   AgentSessionListItem,
   AgentSessionReplay
@@ -557,6 +558,9 @@ const fleetApi = {
     /** Fire-and-forget: a failed write must not stall the turn that caused it. */
     appendSession: (req: AgentSessionAppend): void =>
       ipcRenderer.send(IPC_CHANNELS.AGENT_SESSION_APPEND, req),
+    /** The same, for a bill a session has to add to its own total. */
+    addSessionSpend: (req: AgentSessionAddSpend): void =>
+      ipcRenderer.send(IPC_CHANNELS.AGENT_SESSION_ADD_SPEND, req),
     loadSession: async (sessionId: string): Promise<AgentSessionReplay> =>
       typedInvoke<AgentSessionReplay>(IPC_CHANNELS.AGENT_SESSION_LOAD, sessionId),
     listSessions: async (cwd: string): Promise<AgentSessionListItem[]> =>
