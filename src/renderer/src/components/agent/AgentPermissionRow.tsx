@@ -45,7 +45,12 @@ export function AgentPermissionRow({
   onDecide
 }: {
   ask: AgentPermissionAsk;
-  onDecide: (outcome: AgentPermissionOutcome) => void;
+  /**
+   * Takes the question's own id along with the answer. This row is what drew
+   * the command the user read, so it is the only place that can say for certain
+   * which question was answered.
+   */
+  onDecide: (outcome: AgentPermissionOutcome, requestId: string) => void;
 }): React.JSX.Element {
   return (
     <div
@@ -94,7 +99,7 @@ export function AgentPermissionRow({
       <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
-          onClick={() => onDecide('once')}
+          onClick={() => onDecide('once', ask.requestId)}
           // Not `focus-ring`: that draws the accent directly against this
           // button's own accent fill, where it cannot be seen. The gap is what
           // makes it a ring rather than a slightly larger button.
@@ -112,7 +117,7 @@ export function AgentPermissionRow({
         {ask.rule !== null && (
           <button
             type="button"
-            onClick={() => onDecide('always')}
+            onClick={() => onDecide('always', ask.requestId)}
             title={
               ask.mcp === null
                 ? `Always allow ${ask.rule}`
@@ -134,7 +139,7 @@ export function AgentPermissionRow({
         )}
         <button
           type="button"
-          onClick={() => onDecide('no')}
+          onClick={() => onDecide('no', ask.requestId)}
           className="rounded-md px-2.5 py-1 text-[11px] font-medium text-fleet-text-subtle transition-colors hover:text-fleet-text focus-ring"
         >
           Don&apos;t run

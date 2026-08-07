@@ -38,11 +38,9 @@ The card itself was innocent: when nothing else changed size, the content-growth
 Observe the scroll container as well, and treat "content grew" and "window shrank" as the same event - both mean the reader lost their place at the tail:
 
 ```ts
-const lostRoom = grownContent > contentHeight || shrunkPort < portHeight;
-contentHeight = grownContent;
-portHeight = shrunkPort;
-if (!lostRoom || !atTail.current) return;
-endRef.current?.scrollIntoView({ block: 'end' });
+export function lostRoom(before: Room, after: Room): boolean {
+  return after.content > before.content || after.port < before.port;
+}
 ```
 
 This fixes a whole class of bug, not just the permission card.
@@ -67,12 +65,27 @@ Researched ten harnesses before choosing. The finding that mattered:
 
 3. **Escape twice interrupts** the turn, armed for 2s. One press is too easy to arrive by accident, and what it discards is minutes of work and the money that bought it.
 
+4. **The answer names the question it is answering.** `decidePermission` takes the `requestId` of the card that was actually rendered, and the store drops the decision when that is not the request it is holding. The settled card is a copy of store state, and the store can advance A -> B without React ever drawing the gap between them - so an answer that named no question would run whichever command the store had moved on to. Narrow race, but the thing it races on is a permission gate.
+
+## Testing this without a DOM
+
+The repo has no component testing library, and adding one for three interactions was not worth it. The decisions were extracted into pure modules instead - `composer-keys.ts` (`composerIntent`, `settleDelay`) and `transcript-tail.ts` (`atTail`, `lostRoom`) - which is the same shape as `composer-slash.ts` and `todo-view.ts`. What is left in the component is dispatch, and what a mistake would cost now lives in a file that can be tested with a table of arguments.
 ## Reproducing
 
 `npm run drive -- fixture agent-permission-ask` seeds a streaming turn that stops on a permission question, at the foot of a transcript long enough to scroll.
 The question arrives a beat *after* the transcript, because a state seeded all at once cannot reproduce a reader already parked at the tail when the card appears under them.
 
 ## Gotcha met on the way
+
+**`ps` is not a reliable way to find a running dev server here.** Under an agent sandbox `ps -eo pid,ppid,command` lists only the agent's own shell processes - about thirty lines - so a check for an existing Electron comes back empty while three instances are running, and a fourth gets started. Ports are visible even when processes are not:
+
+```bash
+for p in 5173 5174 5175 5176; do curl -s -m 1 -o /dev/null -w "$p %{http_code}\n" http://localhost:$p/; done
+curl -s http://localhost:5174/src/main.tsx | head -c 300   # which checkout it serves
+/usr/sbin/lsof -nP -iTCP:5174 -sTCP:LISTEN                 # who owns it
+```
+
+Killing the vite process orphans its Electron child, which keeps a CDP port open and a window on screen loading nothing; `/usr/sbin/lsof -nP -iTCP -sTCP:LISTEN | grep -i electron` finds it.
 
 Two `npm run dev` servers from different checkouts collide on Vite's port.
 The second takes 5174 while `ELECTRON_RENDERER_URL` and `.fleet-drive/session.json` can disagree about which one the window actually loaded, so `fleet-drive` attaches to a window whose renderer is being served by the *other* checkout - which renders blank, since the preload and the module graph come from different trees.

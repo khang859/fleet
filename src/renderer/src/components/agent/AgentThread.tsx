@@ -46,6 +46,8 @@ import { EMPTY_SESSION_SPEND, hasSpend } from '../../../../shared/agent-spend';
 import { agentSlashCommand, agentSlashMenu, type AgentSlashCommand } from './composer-slash';
 import { agentMentionQuery, withoutMentionQuery } from './composer-mention';
 import { useComposerMenu, type ComposerMenuAnchor } from './composer-menu';
+import { INTERRUPT_ARM_MS, composerIntent, settleDelay } from './composer-keys';
+import { atTail, lostRoom } from './transcript-tail';
 import { ComposerMenu } from './ComposerMenu';
 import { downscaleImage } from '../../lib/downscale-image';
 import { useAgentStore } from '../../store/agent-store';
@@ -60,26 +62,6 @@ const EMPTY_PARTIALS: Record<string, string> = {};
 
 /** The same, for a pane whose thread has no task list. */
 const EMPTY_TODOS: AgentTodoItem[] = [];
-
-/** How near the end still counts as being at it, in pixels. */
-const TAIL_SLACK_PX = 24;
-
-/**
- * How long the typing has to stop before a permission question is put on screen.
- *
- * A card that lands between two keystrokes is the one way this pane can take an
- * answer nobody meant to give: it appears under the hands of someone mid-
- * sentence, and the next key they press was aimed at the message they were
- * writing. Claude Code and Codex both arrived at the same answer after the same
- * bug reports - hold the question until the typing stops - and at roughly the
- * same delay, which is the evidence for this number being about right.
- *
- * Only before the card is drawn. Once it is up it stays up: it is the turn's
- * question, not a notification, and taking it away because the user started
- * typing again would leave the turn stopped on something they can no longer
- * answer.
- */
-const PERMISSION_TYPING_IDLE_MS = 1000;
 
 /**
  * The pending question, held back until the typing stops.
@@ -104,12 +86,12 @@ function useSettledAsk(ask: AgentPermissionAsk | null): {
     }
     let timer: ReturnType<typeof setTimeout>;
     const settle = (): void => {
-      const idleFor = Date.now() - typedAt.current;
-      if (idleFor >= PERMISSION_TYPING_IDLE_MS) {
+      const wait = settleDelay(Date.now(), typedAt.current);
+      if (wait === 0) {
         setSettled(ask);
         return;
       }
-      timer = setTimeout(settle, PERMISSION_TYPING_IDLE_MS - idleFor);
+      timer = setTimeout(settle, wait);
     };
     timer = setTimeout(settle, 0);
     return () => clearTimeout(timer);
@@ -173,7 +155,7 @@ export function AgentThread({
           messages={messages}
           streaming={streaming && !compacting}
           ask={ask}
-          onDecide={(outcome) => decidePermission(paneId, outcome)}
+          onDecide={(outcome, requestId) => decidePermission(paneId, outcome, requestId)}
           imagePartials={imagePartials}
         />
       )}
@@ -228,7 +210,12 @@ export function AgentThread({
         streaming={streaming}
         asking={ask !== null}
         cwd={cwd}
-        onApprove={() => decidePermission(paneId, 'once')}
+        // The card on screen, not whatever the store is holding now: a question
+        // that arrived after this one was drawn has not been read yet, and a key
+        // pressed at the old one must not answer the new one.
+        onApprove={() => {
+          if (ask !== null) decidePermission(paneId, 'once', ask.requestId);
+        }}
         onTyping={noteTyping}
         toolMode={agent?.toolMode ?? DEFAULT_AGENT_SETTINGS.toolMode}
         onToolMode={(toolMode) => void updateSettings({ ai: { agent: { toolMode } } })}
@@ -274,7 +261,7 @@ function Transcript({
   messages: AgentMessage[];
   streaming: boolean;
   ask: AgentPermissionAsk | null;
-  onDecide: (outcome: AgentPermissionOutcome) => void;
+  onDecide: (outcome: AgentPermissionOutcome, requestId: string) => void;
   imagePartials: Record<string, string>;
 }): React.JSX.Element {
   const endRef = useRef<HTMLDivElement>(null);
@@ -282,7 +269,7 @@ function Transcript({
   const scrollRef = useRef<HTMLDivElement>(null);
   // Whether the reader is parked at the tail. Written only from actual scrolls,
   // so when the content grows it still says where they were before it did.
-  const atTail = useRef(true);
+  const parked = useRef(true);
   const last = messages.at(-1);
   // Which results the next request will leave out. Worked out from the same
   // transcript and by the same function main uses, so a row that says it was
@@ -294,20 +281,11 @@ function Transcript({
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [messages.length, last?.parts, last?.reasoning]);
 
-  // A reply keeps growing after React has finished with it: a code block is
-  // highlighted asynchronously and lands taller than the space held for it,
-  // which is enough to push the end of the answer below the fold - and an
-  // answer that finishes on a code block is most of them. So the tail follows
-  // the content itself rather than the render that started it.
-  //
-  // The window onto that content moves too, and losing height is the same thing
-  // happening from the other side: a line appearing under the transcript - a
-  // permission question's status line, a notice, the composer growing under a
-  // long draft - takes its space out of this box without changing anything
-  // inside it. Nothing scrolls, so the end of the transcript quietly slips
-  // below the fold, and what slips is whatever just arrived: the answer, or the
-  // buttons that answer a question. Both halves mean the same thing, so both
-  // get the same answer - put the reader back at the end.
+  // A reply keeps growing after React has finished with it, and the window onto
+  // it can shrink under a line that was not there before - `lostRoom` is what
+  // those two have in common. Watching the elements themselves rather than the
+  // render that changed them is what catches the asynchronous half: a code
+  // block highlighted after the fact lands taller than the space held for it.
   //
   // Only for a reader who was already at the tail, though. Growth is not always
   // the reply arriving: opening a tool call grows the transcript too, and
@@ -318,17 +296,14 @@ function Transcript({
     const port = scrollRef.current;
     if (content === null || port === null) return;
 
-    let contentHeight = content.getBoundingClientRect().height;
-    let portHeight = port.clientHeight;
+    let room = { content: content.getBoundingClientRect().height, port: port.clientHeight };
     const observer = new ResizeObserver(() => {
-      const grownContent = content.getBoundingClientRect().height;
-      const shrunkPort = port.clientHeight;
-      const lostRoom = grownContent > contentHeight || shrunkPort < portHeight;
-      contentHeight = grownContent;
-      portHeight = shrunkPort;
+      const now = { content: content.getBoundingClientRect().height, port: port.clientHeight };
+      const lost = lostRoom(room, now);
+      room = now;
       // Read after the sizes are recorded, so a move the reader made is not
       // remembered as one they did not.
-      if (!lostRoom || !atTail.current) return;
+      if (!lost || !parked.current) return;
       endRef.current?.scrollIntoView({ block: 'end' });
     });
     observer.observe(content);
@@ -343,9 +318,7 @@ function Transcript({
       onScroll={() => {
         const el = scrollRef.current;
         if (el === null) return;
-        // A line's worth of slack, so "as far down as it goes" survives the
-        // fractional scroll heights a zoomed or half-pixel layout produces.
-        atTail.current = el.scrollHeight - el.scrollTop - el.clientHeight <= TAIL_SLACK_PX;
+        parked.current = atTail(el);
       }}
     >
       <div ref={contentRef} className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5">
@@ -423,7 +396,7 @@ function Message({
   message: AgentMessage;
   streaming: boolean;
   ask: AgentPermissionAsk | null;
-  onDecide: (outcome: AgentPermissionOutcome) => void;
+  onDecide: (outcome: AgentPermissionOutcome, requestId: string) => void;
   /** Half-drawn renders for the image calls still running, by call id. */
   imagePartials: Record<string, string>;
   /** Calls whose result is no longer being sent to the model, by call id. */
@@ -579,15 +552,6 @@ function SummaryCard({ summary }: { summary: string }): React.JSX.Element {
 
 /** How long to wait for the typing to settle before searching the folder. */
 const MENTION_DEBOUNCE_MS = 120;
-
-/**
- * How long a first Escape stays loaded before it is forgotten.
- *
- * Long enough to be a deliberate second press, short enough that an Escape hit
- * on the way past cannot still be waiting when the user comes back and presses
- * it for something else entirely.
- */
-const INTERRUPT_ARM_MS = 2000;
 
 /**
  * A line above the composer about something worth knowing and not worth
@@ -1026,38 +990,30 @@ function Composer({
               ) {
                 if (recall(e, e.key === 'ArrowUp' ? 'back' : 'forward')) return;
               }
-              // Twice, and only while there is a turn to stop. One press is too
-              // easy to arrive by accident - leaving a field, dismissing
-              // something - and what it would throw away is minutes of work and
-              // the money that bought them.
-              if (e.key === 'Escape' && streaming) {
-                e.preventDefault();
-                if (!armed) {
-                  setArmed(true);
-                  return;
-                }
+              const intent = composerIntent(e, {
+                asking,
+                streaming,
+                armed,
+                draft: text.trim() !== '' || attachments.length > 0
+              });
+              // Anything the composer has no opinion about is left alone
+              // entirely, default included: these are the caret's keys.
+              if (intent === 'pass') return;
+              e.preventDefault();
+              if (intent === 'arm') {
+                setArmed(true);
+                return;
+              }
+              if (intent === 'interrupt') {
                 setArmed(false);
                 onStop();
                 return;
               }
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                // A question with an empty box is the one case where Enter has
-                // nothing else it could mean, so there it answers the question.
-                //
-                // Only with an empty box, though. A card can arrive in the
-                // middle of a sentence someone is still typing, and Enter is
-                // how that sentence gets sent - so with a draft in hand the key
-                // stays the send key it has always been, and the user is told
-                // to answer above rather than having answered by reflex. What
-                // Enter must never become is a way to agree to a command
-                // without having looked at it.
-                if (asking && text.trim() === '' && attachments.length === 0) {
-                  onApprove();
-                  return;
-                }
-                submit();
+              if (intent === 'approve') {
+                onApprove();
+                return;
               }
+              submit();
             }}
             // The turn is not listening here until the question above is
             // answered, so the box says what Enter does instead of leaving the
