@@ -8,28 +8,23 @@ function tab(id: string, type?: string) {
 }
 
 describe('getNormalTabs', () => {
-  it('excludes images tabs', () => {
-    const tabs = [tab('img', 'images'), tab('a'), tab('b')];
-    expect(getNormalTabs(tabs).map((t) => t.id)).toEqual(['a', 'b']);
-  });
-
   it('excludes settings tabs', () => {
     const tabs = [tab('a'), tab('settings', 'settings'), tab('b')];
     expect(getNormalTabs(tabs).map((t) => t.id)).toEqual(['a', 'b']);
   });
 
-  it('excludes both images and settings', () => {
-    const tabs = [tab('img', 'images'), tab('a'), tab('b'), tab('s', 'settings')];
+  it('excludes both annotate and settings', () => {
+    const tabs = [tab('ann', 'annotate'), tab('a'), tab('b'), tab('s', 'settings')];
     expect(getNormalTabs(tabs).map((t) => t.id)).toEqual(['a', 'b']);
   });
 
   it('excludes pinned sessions and annotate tabs', () => {
-    const tabs = [tab('ses', 'sessions'), tab('img', 'images'), tab('ann', 'annotate'), tab('a')];
+    const tabs = [tab('ses', 'sessions'), tab('ann', 'annotate'), tab('a')];
     expect(getNormalTabs(tabs).map((t) => t.id)).toEqual(['a']);
   });
 
   it('preserves order of normal tabs', () => {
-    const tabs = [tab('img', 'images'), tab('c'), tab('a'), tab('b')];
+    const tabs = [tab('ann', 'annotate'), tab('c'), tab('a'), tab('b')];
     expect(getNormalTabs(tabs).map((t) => t.id)).toEqual(['c', 'a', 'b']);
   });
 
@@ -39,7 +34,7 @@ describe('getNormalTabs', () => {
   });
 
   it('returns empty array when all tabs are special', () => {
-    const tabs = [tab('img', 'images'), tab('s', 'settings')];
+    const tabs = [tab('ann', 'annotate'), tab('s', 'settings')];
     expect(getNormalTabs(tabs)).toEqual([]);
   });
 

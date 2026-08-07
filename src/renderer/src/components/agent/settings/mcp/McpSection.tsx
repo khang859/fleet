@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Plus, TriangleAlert } from 'lucide-react';
 import type { McpServerConfig } from '../../../../../../shared/agent-mcp';
-import { FieldGroup } from '../../../chat/settings/primitives';
+import { FieldGroup } from '../primitives';
 import { newlyFound, statusOf, useAgentMcpStore } from '../../../../store/agent-mcp-store';
 import { useWorkspaceStore } from '../../../../store/workspace-store';
 import { McpServerRow } from './McpServerRow';

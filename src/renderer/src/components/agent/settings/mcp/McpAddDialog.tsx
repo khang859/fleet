@@ -3,9 +3,9 @@ import { Plug } from 'lucide-react';
 import type { McpAuth, McpServerConfig } from '../../../../../../shared/agent-mcp';
 import { transportOf } from '../../../../../../shared/agent-mcp';
 import { Overlay } from '../../../Overlay';
-import { inputCls, selectCls } from '../../../chat/settings/controls';
-import { SecretInput } from '../../../chat/settings/SecretInput';
-import { Field } from '../../../chat/settings/primitives';
+import { inputCls, selectCls } from '../controls';
+import { SecretInput } from '../SecretInput';
+import { Field } from '../primitives';
 import {
   formatEnv,
   formatHeaders,

@@ -1,8 +1,5 @@
-import { useState } from 'react';
-import { ChevronRight } from 'lucide-react';
-
 /**
- * Layout primitives shared by every Chat settings pane. They encode the
+ * Layout primitives shared by every Agent settings pane. They encode the
  * single-column, label-left / control-right convention (NN/g form guidance):
  * tight spacing within a group, generous spacing between groups.
  */
@@ -88,40 +85,6 @@ export function Field({
     <div className="flex items-center justify-between gap-4">
       {head}
       <div className="shrink-0">{children}</div>
-    </div>
-  );
-}
-
-/** A collapsible "Advanced" disclosure — keeps rarely-touched knobs out of view. */
-export function Disclosure({
-  label = 'Advanced',
-  defaultOpen = false,
-  children
-}: {
-  label?: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="border-t border-fleet-border pt-4">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex items-center gap-1 text-xs font-medium text-fleet-text-secondary transition-colors hover:text-fleet-text"
-      >
-        <ChevronRight
-          size={14}
-          className={`transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
-        />
-        {label}
-      </button>
-      {open && (
-        <div className="mt-4 space-y-4 duration-150 animate-in fade-in slide-in-from-top-1">
-          {children}
-        </div>
-      )}
     </div>
   );
 }

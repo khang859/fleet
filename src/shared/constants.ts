@@ -8,7 +8,7 @@ import {
   DEFAULT_TERMINAL_THEME_ID
 } from './theme-presets';
 import { DEFAULT_TOOL_VISIBILITY } from './tools';
-import { DEFAULT_AI_SETTINGS } from './chat-types';
+import { DEFAULT_AI_SETTINGS } from './agent-types';
 export { IPC_CHANNELS } from './ipc-channels';
 
 const DEFAULT_SCROLLBACK = 10_000;

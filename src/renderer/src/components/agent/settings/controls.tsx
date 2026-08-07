@@ -2,6 +2,16 @@ import { useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 
 /**
+ * Shared class strings for the native inputs and selects in these panes, so
+ * every field looks the same. Compose with width utilities at the call site
+ * (e.g. `${inputCls} w-24`).
+ */
+export const inputCls =
+  'rounded-md border border-fleet-border-strong bg-fleet-surface-2 px-2.5 py-1.5 text-sm text-fleet-text outline-none transition-colors focus:border-fleet-text-subtle placeholder:text-fleet-text-subtle';
+
+export const selectCls = `${inputCls} cursor-pointer`;
+
+/**
  * A numeric inference parameter. Unset is a distinct state - the parameter is
  * left out of the request - but the readout still shows the number that will
  * actually be used rather than a vague "default", so the setting is never a

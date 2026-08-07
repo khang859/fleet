@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from '../../../../../shared/agent-types';
-import { Field } from '../../chat/settings/primitives';
+import { Field } from './primitives';
 
 /**
  * The agent's instructions. Empty means Fleet's default, shown as the

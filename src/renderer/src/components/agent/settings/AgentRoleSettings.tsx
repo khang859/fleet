@@ -5,7 +5,7 @@ import {
   type AgentCatalogModel,
   type AgentModelConfig
 } from '../../../../../shared/agent-types';
-import { Toggle } from '../../chat/settings/Toggle';
+import { Toggle } from './Toggle';
 import { ModelSelect } from './ModelSelect';
 import { ParamSlider, OptionPills, RoleCard } from './controls';
 import { formatTokens, formatCost } from './format';

@@ -11,8 +11,8 @@ import type { McpServersConfig } from './agent-mcp';
  * Models come from the models.dev catalog (openrouter provider), which carries
  * the per-model limits and capabilities the settings UI needs to offer only the
  * controls a model actually supports, merged with the defaults OpenRouter
- * publishes for its own models. The OpenRouter API key itself is the same key
- * Chat stores (see ChatSecrets) - one key per install.
+ * publishes for its own models. The OpenRouter API key itself lives in
+ * `openrouter-secrets.ts` - one key per install, not one per pane.
  */
 
 /** How a model exposes its reasoning budget, straight from models.dev. */
@@ -164,6 +164,16 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   permissions: DEFAULT_AGENT_PERMISSION_RULES,
   titleModel: null,
   mcpServers: {}
+};
+
+/** Capability-namespaced AI settings. Future: image, video slot in here additively. */
+export type AiSettings = {
+  /** Shared by every native Agent pane. */
+  agent: AgentSettings;
+};
+
+export const DEFAULT_AI_SETTINGS: AiSettings = {
+  agent: DEFAULT_AGENT_SETTINGS
 };
 
 /**

@@ -42,24 +42,14 @@ export class SettingsStore {
       copilot: { ...DEFAULT_SETTINGS.copilot, ...saved.copilot },
       annotate: { ...DEFAULT_SETTINGS.annotate, ...(saved.annotate ?? {}) },
       sessions: { ...DEFAULT_SETTINGS.sessions, ...(saved.sessions ?? {}) },
-      tools: { ...DEFAULT_SETTINGS.tools, ...(saved.tools ?? {}) },
+      // `tools` and `ai` are rebuilt key by key rather than spread from `saved`,
+      // so a tool or capability that no longer exists (kanban, images, chat)
+      // drops out on the next write instead of riding along forever.
+      tools: {
+        annotate: saved.tools?.annotate ?? DEFAULT_SETTINGS.tools.annotate,
+        sessions: saved.tools?.sessions ?? DEFAULT_SETTINGS.tools.sessions
+      },
       ai: {
-        ...DEFAULT_SETTINGS.ai,
-        ...saved.ai,
-        chat: {
-          ...DEFAULT_SETTINGS.ai.chat,
-          ...saved.ai?.chat,
-          // Deep-merge tools so fields added after a save (e.g. maxToolRounds)
-          // backfill from defaults instead of being undefined for existing users.
-          tools: {
-            ...DEFAULT_SETTINGS.ai.chat.tools,
-            ...saved.ai?.chat?.tools,
-            autoApprove: {
-              ...DEFAULT_SETTINGS.ai.chat.tools.autoApprove,
-              ...saved.ai?.chat?.tools?.autoApprove
-            }
-          }
-        },
         agent: {
           ...DEFAULT_SETTINGS.ai.agent,
           ...saved.ai?.agent,
@@ -112,7 +102,6 @@ export class SettingsStore {
       ai: {
         ...current.ai,
         ...(partial.ai ?? {}),
-        chat: { ...current.ai.chat, ...(partial.ai?.chat ?? {}) },
         agent: {
           ...current.ai.agent,
           ...(partial.ai?.agent ?? {}),

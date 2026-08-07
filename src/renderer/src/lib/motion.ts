@@ -1,7 +1,7 @@
 /**
  * Motion design tokens — the source of truth for the app's easing + duration
  * ramp. ease-out-quart decelerates fast then settles (used for content, e.g.
- * chat messages); ease-out-expo decelerates harder for a snappier feel and is
+ * agent messages); ease-out-expo decelerates harder for a snappier feel and is
  * the standard for overlays (menus, tooltips, dialogs, toasts). Durations (ms)
  * scale from a quick tap to a larger transition. Pair with Tailwind
  * `duration-[…]`/`ease-[…]` utilities (the class strings below bake in these

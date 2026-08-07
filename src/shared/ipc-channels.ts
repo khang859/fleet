@@ -62,17 +62,6 @@ export const IPC_CHANNELS = {
   GET_VERSION: 'fleet:get-version',
   SHELL_OPEN_EXTERNAL: 'shell:open-external',
   TERMINAL_CONTEXT_MENU: 'terminal:context-menu',
-  IMAGES_GENERATE: 'images:generate',
-  IMAGES_EDIT: 'images:edit',
-  IMAGES_STATUS: 'images:status',
-  IMAGES_LIST: 'images:list',
-  IMAGES_RETRY: 'images:retry',
-  IMAGES_DELETE: 'images:delete',
-  IMAGES_CONFIG_GET: 'images:config:get',
-  IMAGES_CONFIG_SET: 'images:config:set',
-  IMAGES_CHANGED: 'images:changed',
-  IMAGES_RUN_ACTION: 'images:run-action',
-  IMAGES_LIST_ACTIONS: 'images:list-actions',
   LOG_BATCH: 'log:batch',
   ACTIVITY_STATE: 'activity:state',
   /** Renderer -> main: which panes the user can currently see. */
@@ -197,70 +186,16 @@ export const IPC_CHANNELS = {
   DIAGNOSTICS_GET_INFO: 'diagnostics:get-info',
   DIAGNOSTICS_GET_LOG_TAIL: 'diagnostics:get-log-tail',
   DIAGNOSTICS_OPEN_LOGS: 'diagnostics:open-logs',
-  // Chat (OpenRouter)
-  CHAT_LIST_CONVERSATIONS: 'chat:list-conversations',
-  CHAT_CREATE_CONVERSATION: 'chat:create-conversation',
-  CHAT_RENAME_CONVERSATION: 'chat:rename-conversation',
-  CHAT_SET_CONVERSATION_MODEL: 'chat:set-conversation-model',
-  CHAT_SET_CONVERSATION_PERSONA: 'chat:set-conversation-persona',
-  CHAT_SET_CONVERSATION_PINNED: 'chat:set-conversation-pinned',
-  CHAT_SET_CONVERSATION_FOLDER: 'chat:set-conversation-folder',
-  CHAT_SEARCH: 'chat:search',
-  CHAT_DELETE_CONVERSATION: 'chat:delete-conversation',
-  CHAT_GET_MESSAGES: 'chat:get-messages',
-  CHAT_SEND: 'chat:send',
-  CHAT_REGENERATE: 'chat:regenerate',
-  CHAT_EDIT_MESSAGE: 'chat:edit-message',
-  CHAT_DELETE_MESSAGE: 'chat:delete-message',
-  CHAT_SELECT_VARIANT: 'chat:select-variant',
-  CHAT_FORK_CONVERSATION: 'chat:fork-conversation',
-  CHAT_MENTION_SEARCH: 'chat:mention-search',
-  CHAT_REVEAL_FOLDER: 'chat:reveal-folder',
-  CHAT_CANCEL: 'chat:cancel',
-  CHAT_LIST_MODELS: 'chat:list-models',
-  CHAT_GET_SETTINGS: 'chat:get-settings',
-  CHAT_PATCH_SETTINGS: 'chat:patch-settings',
-  CHAT_SET_KEY: 'chat:set-key',
-  CHAT_HAS_KEY: 'chat:has-key',
-  CHAT_SET_SEARCH_KEY: 'chat:set-search-key',
-  CHAT_HAS_SEARCH_KEY: 'chat:has-search-key',
-  CHAT_CLEAR_KEY: 'chat:clear-key',
-  CHAT_CLEAR_SEARCH_KEY: 'chat:clear-search-key',
-  CHAT_STREAM_CHUNK: 'chat:stream-chunk',
-  CHAT_STREAM_REASONING: 'chat:stream-reasoning',
-  CHAT_STREAM_DONE: 'chat:stream-done',
-  CHAT_STREAM_ERROR: 'chat:stream-error',
-  CHAT_LIST_IMAGE_MODELS: 'chat:list-image-models',
-  CHAT_TOOL_STATUS: 'chat:tool-status',
-  // Permission gate (tool-call approval). REQUEST is main→renderer; DECIDE is renderer→main.
-  CHAT_PERMISSION_REQUEST: 'chat:permission-request',
-  CHAT_PERMISSION_DECIDE: 'chat:permission-decide',
-  // Main→renderer: a still-pending request was auto-resolved (a remembered rule
-  // now covers it), so the renderer drops its card without a second prompt.
-  CHAT_PERMISSION_RESOLVED: 'chat:permission-resolved',
-  // Emitted when a conversation title changes out-of-band (background auto-naming).
-  CHAT_CONVERSATION_RENAMED: 'chat:conversation-renamed',
-  // Emitted when a conversation's tags are generated (background auto-tagging).
-  CHAT_CONVERSATION_TAGGED: 'chat:conversation-tagged',
-  // MCP servers: GET returns statuses; SET replaces the config and reconnects.
-  CHAT_MCP_GET: 'chat:mcp-get',
-  CHAT_MCP_SET: 'chat:mcp-set',
-  // Skills: GET returns summaries+budget; SET_STATE flips one skill's overlay
-  // state; RESCAN re-reads the skill folders; REVEAL opens the personal folder.
-  CHAT_SKILLS_GET: 'chat:skills-get',
-  CHAT_SKILLS_SET_STATE: 'chat:skills-set-state',
-  CHAT_SKILLS_RESCAN: 'chat:skills-rescan',
-  CHAT_SKILLS_REVEAL: 'chat:skills-reveal',
-  // Audit ledger: list recorded tool actions (optionally scoped to a conversation).
-  CHAT_AUDIT_LIST: 'chat:audit-list',
-  // Export one conversation's active thread to Markdown or JSON.
-  CHAT_EXPORT: 'chat:export',
 
   // ── Agent panes ────────────────────────────────────────────────────────────
   // The OpenRouter slice of the models.dev catalog, disk-cached in main. Agent
-  // settings themselves ride on SETTINGS_GET/SET under `ai.agent`, and the API
-  // key is the one Chat already stores.
+  // settings themselves ride on SETTINGS_GET/SET under `ai.agent`.
   AGENT_LIST_MODELS: 'agent:list-models',
+  // The OpenRouter API key, which main stores encrypted and never hands back.
+  // App-wide rather than per pane: the key is the user's account.
+  AGENT_SET_KEY: 'agent:set-key',
+  AGENT_HAS_KEY: 'agent:has-key',
+  AGENT_CLEAR_KEY: 'agent:clear-key',
   // One turn: SEND starts a stream and returns its id, CANCEL aborts it. The
   // transcript is renderer-side, so the request carries the whole history.
   AGENT_SEND: 'agent:send',

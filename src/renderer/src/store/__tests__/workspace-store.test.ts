@@ -3,38 +3,38 @@ import { useWorkspaceStore, collectPaneLeafs, agentSessionsInUse } from '../work
 import { useCwdStore } from '../cwd-store';
 import type { Workspace } from '../../../../shared/types';
 
-const IMAGES_TAB_A = {
-  id: 'tab-img-a',
-  label: 'Images',
+const ANNOTATE_TAB_A = {
+  id: 'tab-ann-a',
+  label: 'Annotate',
   labelIsCustom: true,
   cwd: '/tmp',
-  type: 'images' as const,
-  splitRoot: { type: 'leaf' as const, id: 'pane-img-a', cwd: '/tmp' }
+  type: 'annotate' as const,
+  splitRoot: { type: 'leaf' as const, id: 'pane-ann-a', cwd: '/tmp' }
 };
 
-const IMAGES_TAB_B = {
-  id: 'tab-img-b',
-  label: 'Images',
+const ANNOTATE_TAB_B = {
+  id: 'tab-ann-b',
+  label: 'Annotate',
   labelIsCustom: true,
   cwd: '/home',
-  type: 'images' as const,
-  splitRoot: { type: 'leaf' as const, id: 'pane-img-b', cwd: '/home' }
+  type: 'annotate' as const,
+  splitRoot: { type: 'leaf' as const, id: 'pane-ann-b', cwd: '/home' }
 };
 
-const IMAGES_TAB_C = {
-  id: 'tab-img-c',
-  label: 'Images',
+const ANNOTATE_TAB_C = {
+  id: 'tab-ann-c',
+  label: 'Annotate',
   labelIsCustom: true,
   cwd: '/',
-  type: 'images' as const,
-  splitRoot: { type: 'leaf' as const, id: 'pane-img-c', cwd: '/' }
+  type: 'annotate' as const,
+  splitRoot: { type: 'leaf' as const, id: 'pane-ann-c', cwd: '/' }
 };
 
 const WS_A: Workspace = {
   id: 'ws-a',
   label: 'Alpha',
   tabs: [
-    IMAGES_TAB_A,
+    ANNOTATE_TAB_A,
     {
       id: 'tab-a1',
       label: 'Shell',
@@ -49,7 +49,7 @@ const WS_B: Workspace = {
   id: 'ws-b',
   label: 'Beta',
   tabs: [
-    IMAGES_TAB_B,
+    ANNOTATE_TAB_B,
     {
       id: 'tab-b1',
       label: 'Shell',
@@ -64,7 +64,7 @@ const WS_C: Workspace = {
   id: 'ws-c',
   label: 'Gamma',
   tabs: [
-    IMAGES_TAB_C,
+    ANNOTATE_TAB_C,
     {
       id: 'tab-c1',
       label: 'Shell',
@@ -234,7 +234,7 @@ describe('getAllPaneIds', () => {
   it('returns only active pane IDs when no background workspaces', () => {
     const ids = useWorkspaceStore.getState().getAllPaneIds();
     expect(ids).toContain('pane-a1');
-    expect(ids).toContain('pane-img-a');
+    expect(ids).toContain('pane-ann-a');
     expect(ids).toHaveLength(2);
   });
 

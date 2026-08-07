@@ -1,6 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
 import { sanitizeSummary, generateSummary, resolveSummary } from '../pane-summarizer';
-import { OpenRouterClient } from '../openrouter-client';
+import type { completeOnce } from '../agent/openrouter';
+
+/** A stand-in for `completeOnce` that answers with the given text. */
+function answering(text: string): typeof completeOnce {
+  return vi.fn(() => Promise.resolve({ text, usage: null }));
+}
+
+/** A stand-in for `completeOnce` that fails the way a rate-limited call does. */
+function failing(message: string): typeof completeOnce {
+  return vi.fn(() => Promise.reject(new Error(message)));
+}
 
 describe('sanitizeSummary', () => {
   it('strips quotes, markdown, and a trailing period', () => {
@@ -24,9 +34,7 @@ describe('sanitizeSummary', () => {
 
 describe('generateSummary', () => {
   it('sanitizes the model output', async () => {
-    const client = new OpenRouterClient();
-    vi.spyOn(client, 'complete').mockResolvedValue('"needs input: proceed with deploy?"');
-    const summary = await generateSummary(client, {
+    const summary = await generateSummary(answering('"needs input: proceed with deploy?"'), {
       apiKey: 'k',
       model: 'cheap/model',
       tailText: '> Proceed with deploy? (y/n)'
@@ -37,9 +45,7 @@ describe('generateSummary', () => {
 
 describe('resolveSummary (never throws)', () => {
   it('returns the model summary when available', async () => {
-    const client = new OpenRouterClient();
-    vi.spyOn(client, 'complete').mockResolvedValue('Editing CollisionSystem.ts');
-    const summary = await resolveSummary(client, {
+    const summary = await resolveSummary(answering('Editing CollisionSystem.ts'), {
       apiKey: 'k',
       model: 'm',
       tailText: 'diff --git a/CollisionSystem.ts'
@@ -48,9 +54,11 @@ describe('resolveSummary (never throws)', () => {
   });
 
   it('returns empty string when the model throws', async () => {
-    const client = new OpenRouterClient();
-    vi.spyOn(client, 'complete').mockRejectedValue(new Error('rate limited'));
-    const summary = await resolveSummary(client, { apiKey: 'k', model: 'm', tailText: 'output' });
+    const summary = await resolveSummary(failing('rate limited'), {
+      apiKey: 'k',
+      model: 'm',
+      tailText: 'output'
+    });
     expect(summary).toBe('');
   });
 });

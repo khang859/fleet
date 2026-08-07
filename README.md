@@ -104,10 +104,6 @@ Annotate live webpages with an element picker or free-draw canvas, then hand the
 
 Access your clipboard history with `Cmd+Shift+H` and paste previous entries into any pane.
 
-### Image Generation
-
-Generate and edit images using FAL AI directly from Fleet. A dedicated image gallery tab tracks all generations with metadata, status, and history. Configure models, resolutions, and formats from settings.
-
 ### Socket API
 
 Control Fleet programmatically over a Unix socket at `~/.fleet/fleet.sock` (macOS/Linux) or a named pipe `\\.\pipe\fleet` (Windows):

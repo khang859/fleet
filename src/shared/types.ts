@@ -3,7 +3,7 @@ import type { AccentColorId, AppThemeSelection, TerminalThemeId } from './theme-
 import type { SessionAgentFilter } from './sessions';
 import type { ToolVisibility } from './tools';
 import type { UserGroupColor } from './group-colors';
-import type { AiSettings } from './chat-types';
+import type { AiSettings } from './agent-types';
 import type { RemoteHost } from './remote-ssh-types';
 
 export type DeepPartial<T> = {
@@ -42,7 +42,6 @@ export type Tab = {
     | 'terminal'
     | 'file'
     | 'image'
-    | 'images'
     | 'settings'
     | 'annotate'
     | 'pi'
@@ -50,7 +49,6 @@ export type Tab = {
     | 'artifacts'
     | 'pdf'
     | 'sessions'
-    | 'chat'
     | 'agent'
     | 'ssh-browser';
   avatarVariant?: string;
@@ -87,7 +85,6 @@ export type PaneLeaf = {
     | 'terminal'
     | 'file'
     | 'image'
-    | 'images'
     | 'pi'
     | 'markdown'
     | 'artifacts'
@@ -398,64 +395,3 @@ export type UpdateStatus =
   | { state: 'ready'; version: string; releaseNotes: string }
   | { state: 'not-available' }
   | { state: 'error'; message: string };
-
-// ── Image Generation ────────────────────────────────────────────────────────
-
-export type ImageGenerationStatus =
-  | 'queued'
-  | 'processing'
-  | 'completed'
-  | 'partial'
-  | 'failed'
-  | 'timeout';
-
-export type ImageGenerationMode = 'generate' | 'edit' | `action:${string}`;
-
-export type ImageFileEntry = {
-  filename: string | null;
-  width: number | null;
-  height: number | null;
-  error?: string;
-  providerUrl?: string;
-};
-
-export type ImageGenerationMeta = {
-  id: string;
-  status: ImageGenerationStatus;
-  createdAt: string;
-  completedAt: string | null;
-  failedAt: string | null;
-  error: string | null;
-  provider: string;
-  model: string;
-  mode: ImageGenerationMode;
-  prompt: string;
-  params: {
-    resolution?: string;
-    aspect_ratio?: string;
-    output_format?: string;
-    num_images?: number;
-  };
-  referenceImages: string[];
-  images: ImageFileEntry[];
-  providerRequestId: string | null;
-  sourceImage: string | null;
-};
-
-export type ImageSettings = {
-  defaultProvider: string;
-  providers: Record<string, ImageProviderSettings>;
-};
-
-export type ImageActionSettings = {
-  model?: string;
-};
-
-export type ImageProviderSettings = {
-  apiKey: string;
-  defaultModel: string;
-  defaultResolution: string;
-  defaultOutputFormat: string;
-  defaultAspectRatio: string;
-  actions?: Record<string, ImageActionSettings>;
-};

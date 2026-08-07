@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import type { McpServerConfig, McpServerStatus } from '../../../../../../shared/agent-mcp';
 import { transportOf } from '../../../../../../shared/agent-mcp';
-import { Toggle } from '../../../chat/settings/Toggle';
+import { Toggle } from '../Toggle';
 import { popperAnim } from '../../../../lib/motion';
 
 /**

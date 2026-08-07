@@ -49,27 +49,6 @@ describe('SettingsStore settings merge', () => {
     expect(s.general.terminalBackground.slideshow.intervalSeconds).toBe(60); // default preserved
   });
 
-  it('returns the chat tools defaults for a fresh store', () => {
-    expect(store.get().ai.chat.tools.maxToolRounds).toBe(25);
-  });
-
-  it('backfills new chat.tools fields on a saved tools object missing them', () => {
-    // Simulate settings saved before `maxToolRounds` existed: a full tools
-    // object with the field absent. Without the deep-merge it would survive
-    // wholesale, leaving maxToolRounds undefined and breaking the tool loop.
-    store.set({
-      ai: {
-        chat: {
-          tools: { mode: 'auto', workspaceDir: '/w', sandbox: false, failClosed: true } as never
-        }
-      } as never
-    });
-    const tools = store.get().ai.chat.tools;
-    expect(tools.mode).toBe('auto'); // saved field preserved
-    expect(tools.workspaceDir).toBe('/w'); // saved field preserved
-    expect(tools.maxToolRounds).toBe(25); // new field backfilled from default
-  });
-
   it('backfills agent.mcpServers for settings saved before it existed', () => {
     // The field is a flat record with whole-replace semantics, so it rides the
     // generic `...current.ai.agent` spread rather than needing a merge line of
@@ -94,5 +73,17 @@ describe('SettingsStore settings merge', () => {
     store.set({ ai: { agent: { mcpServers: { a: { enabled: true, url: 'http://a' } } } } });
     store.set({ ai: { agent: { compactThreshold: 0.5 } } });
     expect(Object.keys(store.get().ai.agent.mcpServers)).toEqual(['a']);
+  });
+
+  it('drops tools and ai capabilities that no longer exist', () => {
+    // Settings written by an older version still carry flags for tools that
+    // have since been removed. They should not survive the next write.
+    store.set({
+      tools: { annotate: true, kanban: true, images: false, chat: true },
+      ai: { chat: { defaultModel: 'someone/old-model' }, agent: { compactThreshold: 0.5 } }
+    } as never);
+    expect(store.get().tools).toEqual({ annotate: true, sessions: false });
+    expect(Object.keys(store.get().ai)).toEqual(['agent']);
+    expect(store.get().ai.agent.compactThreshold).toBe(0.5);
   });
 });
