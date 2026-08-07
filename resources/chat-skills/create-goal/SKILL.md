@@ -95,6 +95,6 @@ Match this shape exactly. Omit a section only if it genuinely has no content.
 ## What to skip
 
 - Do not implement the idea or write code.
-- Do not create kanban cards, swarms, or branches — this skill only writes a doc.
+- Do not create branches or start any work - this skill only writes a doc.
 - Do not pad the document with filler; an empty section is better than guessed
   content.

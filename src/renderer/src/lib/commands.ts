@@ -239,17 +239,6 @@ export function createCommandRegistry(): Command[] {
       execute: () => document.dispatchEvent(new CustomEvent('fleet:new-agent'))
     },
     {
-      id: 'open-kanban',
-      label: 'Open Kanban Board',
-      category: 'Tabs',
-      execute: () => {
-        const ws = useWorkspaceStore.getState();
-        ws.setToolVisible('kanban', true);
-        const kanban = useWorkspaceStore.getState().workspace.tabs.find((t) => t.type === 'kanban');
-        if (kanban) ws.setActiveTab(kanban.id);
-      }
-    },
-    {
       id: 'open-sessions',
       label: 'Open Sessions',
       category: 'Tabs',

@@ -8,7 +8,6 @@ export type SettingsSection =
   | 'annotate'
   | 'rune'
   | 'pi'
-  | 'kanban'
   | 'envSync'
   | 'remoteHosts'
   | 'learnings'
@@ -35,7 +34,6 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'copilot', label: 'Copilot', darwinOnly: true },
       { id: 'rune', label: 'Rune' },
       { id: 'pi', label: 'Pi Agent' },
-      { id: 'kanban', label: 'Kanban' },
       { id: 'learnings', label: 'Learnings' },
       { id: 'visualizer', label: 'Visualizer' },
       { id: 'annotate', label: 'Annotate' },

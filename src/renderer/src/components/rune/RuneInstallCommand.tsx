@@ -3,9 +3,8 @@ import { Check, Copy } from 'lucide-react';
 import { RUNE_INSTALL_COMMAND } from '../../../../shared/rune';
 
 /**
- * The Rune install one-liner with a Copy button. Shared by the Settings status row and the
- * Kanban pre-flight banner so both surfaces present the exact same install command (NN/g:
- * constructive recovery — give the user the fix, not just the problem).
+ * The Rune install one-liner with a Copy button, so the Settings status row hands the user
+ * the fix rather than just the problem (NN/g: constructive recovery).
  */
 export function RuneInstallCommand(): React.JSX.Element {
   const [copied, setCopied] = useState(false);

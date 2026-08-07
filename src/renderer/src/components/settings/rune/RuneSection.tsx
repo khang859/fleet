@@ -28,8 +28,8 @@ export function RuneSection(): React.JSX.Element {
         <div>
           <h1 className="text-xl text-neutral-100 font-semibold">Rune</h1>
           <p className="text-sm text-neutral-500">
-            Rune is the agent that runs your Kanban tasks. Fleet spawns it for every worker and
-            orchestrator run, so it must be installed on your PATH.
+            Rune is the agent behind Quick-Assist. Fleet spawns it for every assist turn, so it
+            must be installed on your PATH.
           </p>
         </div>
         <button
@@ -92,7 +92,7 @@ export function RuneSection(): React.JSX.Element {
         <div className="space-y-3 rounded border border-amber-700/40 bg-amber-900/20 p-3">
           <div className="flex items-center gap-2 text-sm text-amber-200">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span>Rune isn&apos;t installed. Kanban tasks can&apos;t run until it is.</span>
+            <span>Rune isn&apos;t installed. Quick-Assist can&apos;t run until it is.</span>
           </div>
           <button
             onClick={install}

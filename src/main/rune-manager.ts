@@ -17,15 +17,15 @@ const INSTALL_TIMEOUT_MS = 120_000;
  * prefers /usr/local/bin when writable, which isn't on a Homebrew-on-arm64 user's PATH — the binary
  * lands but `rune` is "command not found". ~/.fleet/bin is the one directory Fleet guarantees is on
  * PATH (index.ts prepends it; install-fleet-cli.ts adds it to shell profiles), so installing here
- * keeps the version probe, the Kanban dispatcher's spawn, and the user's terminal in agreement.
+ * keeps the version probe, Quick-Assist's spawn, and the user's terminal in agreement.
  */
 const RUNE_INSTALL_DIR = join(homedir(), '.fleet', 'bin');
 
 /**
- * Probes for the user-installed `rune` binary on PATH. Rune is a critical dependency for the
- * Kanban dispatcher (every worker/orchestrator run is `spawn('rune', …)`), but Fleet does not
- * manage its install — it lives on the user's PATH. This manager answers "is rune available?"
- * for the Settings status row, the Kanban pre-flight banner, and the dispatcher's spawn guard.
+ * Probes for the user-installed `rune` binary on PATH. Rune is a critical dependency for
+ * Quick-Assist (every assist turn is `spawn('rune', …)`), but Fleet does not manage its
+ * install - it lives on the user's PATH. This manager answers "is rune available?" for the
+ * Settings status row and the spawn guard.
  *
  * `getVersion()` runs `rune --version` and caches the outcome. `isInstalledCached()` returns
  * that cache synchronously so the spawn guard can fail fast with a clear reason instead of

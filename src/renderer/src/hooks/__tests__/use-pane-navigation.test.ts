@@ -23,8 +23,8 @@ describe('getNormalTabs', () => {
     expect(getNormalTabs(tabs).map((t) => t.id)).toEqual(['a', 'b']);
   });
 
-  it('excludes pinned kanban and annotate tabs', () => {
-    const tabs = [tab('k', 'kanban'), tab('img', 'images'), tab('ann', 'annotate'), tab('a')];
+  it('excludes pinned sessions and annotate tabs', () => {
+    const tabs = [tab('ses', 'sessions'), tab('img', 'images'), tab('ann', 'annotate'), tab('a')];
     expect(getNormalTabs(tabs).map((t) => t.id)).toEqual(['a']);
   });
 

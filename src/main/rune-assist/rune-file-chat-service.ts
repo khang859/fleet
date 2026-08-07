@@ -4,8 +4,7 @@ import { join, dirname, resolve } from 'path';
 import { z } from 'zod';
 import { createLogger } from '../logger';
 import { CodedError } from '../errors';
-import { RUNE_NOT_INSTALLED_MESSAGE } from '../../shared/rune';
-import { isAuthFailureText } from '../kanban/spawn-worker';
+import { RUNE_NOT_INSTALLED_MESSAGE, isAuthFailureText } from '../../shared/rune';
 import { readRuneSession } from '../sessions/rune-source';
 import {
   buildAssistArgs,

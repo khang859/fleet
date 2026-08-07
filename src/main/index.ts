@@ -55,44 +55,12 @@ import { toWslUncPath } from '../shared/path-platform';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload } from '../shared/ipc-api';
-import type {
-  NotificationLevel,
-  UpdateStatus,
-  ImageSettings,
-  WorkerProfile
-} from '../shared/types';
-import { REVIEWER_PROFILE_NAME, DEFAULT_REVIEWER_INSTRUCTIONS } from '../shared/types';
+import type { NotificationLevel, UpdateStatus, ImageSettings } from '../shared/types';
 import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
-import { randomUUID } from 'crypto';
 import { createLogger } from './logger';
 import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
-import { KanbanStore } from './kanban/kanban-store';
-import { KanbanDispatcher } from './kanban/kanban-dispatcher';
-import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
-import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
-import { KanbanMcpServer } from './kanban/kanban-mcp-server';
-import { PmChatService } from './kanban/pm-chat-service';
-import { PmAutopilot, buildEventBriefing } from './kanban/pm-autopilot';
-import { buildRetroBriefing } from './kanban/pm-retro';
-import { buildDigestContext } from './kanban/pm-digest';
 import { RuneFileChatService } from './rune-assist/rune-file-chat-service';
 import { registerRuneAssistIpc } from './rune-assist/rune-assist-ipc';
-import {
-  prepareWorkspace,
-  ensureFeatureBranch,
-  checkoutBranchWorktree,
-  worktreeDiff
-} from './kanban/workspace';
-import { PrPoller } from './kanban/pr-poller';
-import { loadTaskDocs, pmDocsDir } from './kanban/pm-paths';
-import {
-  spawnRuneWorker,
-  spawnVerify,
-  resolveWorkProfile,
-  detectAuthFailure,
-  extractRuneError,
-  lastLogLine
-} from './kanban/spawn-worker';
 import { RuneManager } from './rune-manager';
 import { RuneConfigManager } from './rune-config-manager';
 import { SessionsService } from './sessions/service';
@@ -108,9 +76,6 @@ import {
   persistPort
 } from './learnings/learnings-mcp-registrar';
 import { runBackfill } from './learnings/backfill';
-import { RUNE_NOT_INSTALLED_MESSAGE } from '../shared/rune';
-import { registerKanbanIpc } from './kanban/kanban-ipc';
-import { KanbanCommands } from './kanban/kanban-commands';
 import { ChatStore } from './chat/chat-store';
 import { ChatSecrets } from './chat/chat-secrets';
 import { OpenRouterClient } from './chat/openrouter-client';
@@ -145,7 +110,6 @@ import { SkillManager, type SkillRoot } from './chat/skills/skill-manager';
 import { ChatImageStorage } from './chat/image/image-storage';
 import { ChatWorkspace } from './chat/chat-workspace';
 import { OpenRouterImageProvider } from './chat/image/openrouter-image-provider';
-import { KanbanNotifier } from './kanban/kanban-notifier';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -165,26 +129,7 @@ let learningsEmbedder: WorkerEmbedder | undefined;
 let learningsMcp: LearningsMcpServer | undefined;
 let agentService: AgentService | null = null;
 let agentMcp: AgentMcpManager | undefined;
-let kanbanStore: KanbanStore | undefined;
-let kanbanMcp: KanbanMcpServer | undefined;
-let kanbanDispatcher: KanbanDispatcher | undefined;
-let kanbanPrPoller: PrPoller | undefined;
-let kanbanCommands: KanbanCommands | undefined;
-let kanbanNotifier: KanbanNotifier | null = null;
-let pmChat: PmChatService | undefined;
-let pmAutopilot: PmAutopilot | undefined;
-let pmDigestTimer: ReturnType<typeof setInterval> | undefined;
 let runeAssist: RuneFileChatService | null = null;
-
-function requireKanbanStore(): KanbanStore {
-  if (!kanbanStore) throw new Error('kanban store not initialized');
-  return kanbanStore;
-}
-
-function requireKanbanCommands(): KanbanCommands {
-  if (!kanbanCommands) throw new Error('kanban commands not initialized');
-  return kanbanCommands;
-}
 
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
@@ -598,12 +543,7 @@ void app.whenReady().then(async () => {
   });
 
   // Start socket server for fleet CLI (images + open commands)
-  socketSupervisor = new SocketSupervisor(
-    SOCKET_PATH,
-    imageService,
-    annotateService,
-    () => kanbanCommands
-  );
+  socketSupervisor = new SocketSupervisor(SOCKET_PATH, imageService, annotateService);
   socketSupervisor.on('file-open', (payload: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
@@ -1081,418 +1021,6 @@ void app.whenReady().then(async () => {
     });
   }
 
-  // Bootstrap kanban subsystem
-  const KANBAN_HOME = join(homedir(), '.fleet', 'kanban');
-  const verifyLogPath = (runId: number): string => join(KANBAN_HOME, 'logs', `verify-${runId}.log`);
-  kanbanStore = new KanbanStore(join(KANBAN_HOME, 'kanban.db'), {
-    onEvent: (event) => {
-      const w = mainWindow;
-      if (w && !w.isDestroyed()) {
-        w.webContents.send(IPC_CHANNELS.KANBAN_EVENT, event);
-      }
-      socketSupervisor?.broadcastKanbanEvent(event);
-      kanbanNotifier?.enqueue(event);
-      pmAutopilot?.onEvent(event);
-    },
-    onBoardsChanged: () => {
-      for (const w of BrowserWindow.getAllWindows()) {
-        w.webContents.send(IPC_CHANNELS.KANBAN_BOARDS_CHANGED);
-      }
-    }
-  });
-  kanbanNotifier = new KanbanNotifier({
-    isOsEnabled: (category) => settingsStore.get().kanban.notifications[category].os,
-    isAutoReviewOn: () => settingsStore.get().kanban.dispatcher.autoReview,
-    getTask: (taskId) => {
-      const t = kanbanStore?.getTask(taskId);
-      return t ? { title: t.title, boardId: t.boardId } : null;
-    },
-    getFeature: (featureId) => {
-      const f = kanbanStore?.getFeature(featureId);
-      return f ? { name: f.name, boardId: f.boardId } : null;
-    },
-    present: ({ body, boardSlug, taskId }) => {
-      if (!Notification.isSupported()) return;
-      const notif = new Notification({ title: 'Fleet — Kanban', body });
-      notif.on('click', () => {
-        mainWindow?.show();
-        mainWindow?.focus();
-        mainWindow?.webContents.send(IPC_CHANNELS.KANBAN_FOCUS_TASK, { boardSlug, taskId });
-      });
-      notif.show();
-    }
-  });
-  kanbanMcp = new KanbanMcpServer(kanbanStore, () => settingsStore.get().kanban.profiles);
-  const kanbanMcpPort = await kanbanMcp.start(0);
-
-  const kanbanMcpRef = kanbanMcp;
-  // A worker that dies this soon after spawn never did real work — treat such a
-  // crash as a deterministic startup failure (block now) rather than retrying.
-  const KANBAN_STARTUP_CRASH_MS = 10_000;
-  // How each worker process exited, keyed by runId. Lets reclaim() tell a clean
-  // "ended turn without completing" (rune exit 3) apart from a crash. Pruned as
-  // soon as reclaim consumes an entry; entries are only recorded for runs that
-  // hadn't already reached a terminal state, so normal completions never linger.
-  const workerExits = new Map<number, WorkerExit>();
-  const buildDispatcherConfig = (): DispatcherConfig => {
-    const d = settingsStore.get().kanban.dispatcher;
-    return {
-      failureLimit: d.failureLimit,
-      claimGraceMs: 120_000, // internal grace window; not user-configurable
-      maxInProgress: d.maxInProgress,
-      claimTtlMs: d.claimTtlMs,
-      autoDecompose: d.autoDecompose,
-      autoAssign: d.autoAssign,
-      autoIntegrate: d.autoIntegrate,
-      autoReview: d.autoReview,
-      maxDecompose: d.maxDecompose,
-      artifactRetentionDays: settingsStore.get().kanban.artifactRetentionDays
-    };
-  };
-  kanbanDispatcher = new KanbanDispatcher(kanbanStore, {
-    now: Date.now,
-    workerProfileNames: () =>
-      settingsStore
-        .get()
-        .kanban.profiles.filter((p) => p.role === 'worker')
-        .map((p) => p.name),
-    profileRoles: () => settingsStore.get().kanban.profiles.map((p) => p.role),
-    isAlive: (pid) => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    prepareWorkspaceFn: (task) => {
-      // A feature_sync system task must check out the integration branch ITSELF (no new
-      // -b branch), so its resolve run merges main into the real integration branch.
-      if (
-        task.systemKind === 'feature_sync' &&
-        task.workspaceKind === 'worktree' &&
-        task.repoPath &&
-        task.branchName &&
-        task.workspacePath == null
-      ) {
-        const wt = checkoutBranchWorktree({
-          repoPath: task.repoPath,
-          branchName: task.branchName,
-          worktreesRoot: join(KANBAN_HOME, 'worktrees'),
-          taskId: task.id
-        });
-        requireKanbanStore().setWorkspace(task.id, wt.path, wt.branchName, task.baseBranch ?? null);
-        return wt.path;
-      }
-      // A worktree task in a feature branches off the feature's integration branch
-      // (`fleet/feature-<id>`), created on first use. The captured base then cascades:
-      // the task merges back into integration, and decompose children inherit it.
-      let featureStartPoint: string | undefined;
-      if (
-        task.featureId &&
-        task.workspaceKind === 'worktree' &&
-        task.repoPath &&
-        task.workspacePath == null
-      ) {
-        const feature = requireKanbanStore().getFeature(task.featureId);
-        if (feature) {
-          const integrationBranch = feature.integrationBranch ?? `fleet/feature-${feature.id}`;
-          const ensured = ensureFeatureBranch({
-            repoPath: task.repoPath,
-            integrationBranch,
-            baseBranch: feature.baseBranch ?? undefined
-          });
-          if (!ensured.ok) {
-            // Fail fast: silently falling back to repo HEAD would merge this
-            // feature task into main instead of its integration branch. The
-            // dispatcher turns this into a visible spawn_failed for the task.
-            throw new Error(`feature integration branch setup failed: ${ensured.error}`);
-          }
-          featureStartPoint = integrationBranch;
-          if (!feature.integrationBranch) {
-            requireKanbanStore().updateFeature(feature.id, {
-              integrationBranch,
-              mergeState: 'pending'
-            });
-          }
-        }
-      }
-      const prepared = prepareWorkspace({
-        kind: task.workspaceKind,
-        taskId: task.id,
-        workspacesRoot: join(KANBAN_HOME, 'workspaces'),
-        worktreesRoot: join(KANBAN_HOME, 'worktrees'),
-        workspacePath: task.workspacePath ?? undefined,
-        repoPath: task.repoPath ?? undefined,
-        branchName: task.branchName ?? undefined,
-        // A dependent child branches from its parent's base so it inherits the
-        // parent's merged work; a feature task branches off its integration branch;
-        // top-level tasks fall back to the repo's HEAD.
-        startPoint: task.baseBranch ?? featureStartPoint ?? undefined
-      });
-      // Persist the workspace path for worktree AND scratch tasks so the artifact MCP handler,
-      // archive warning, and reveal/discard actions all resolve the same durable path.
-      if (
-        (task.workspaceKind === 'worktree' || task.workspaceKind === 'scratch') &&
-        task.workspacePath == null
-      ) {
-        requireKanbanStore().setWorkspace(
-          task.id,
-          prepared.path,
-          prepared.branchName,
-          prepared.baseBranch
-        );
-      }
-      return prepared.path;
-    },
-    spawnWorker: ({ task, runId, lock, workspace, mode, verifyFailure, reviewFindings }) => {
-      // Pre-flight gate: if we already know rune is missing, fail fast with a clear, actionable
-      // reason. This routes through the dispatcher's catch → spawn_failed (shown in the drawer)
-      // instead of letting the worker die and surface as a cryptic "pid not alive" reclaim.
-      if (runeManager.isInstalledCached() === false) {
-        throw new Error(RUNE_NOT_INSTALLED_MESSAGE);
-      }
-      const runToken = randomUUID();
-      kanbanMcpRef.registerRun(runToken, { kind: 'task', taskId: task.id, runId, mode }, lock);
-      const profiles = settingsStore.get().kanban.profiles;
-      let profile: WorkerProfile | null;
-      let roster: Array<{ name: string; description: string }> | undefined;
-      let reviewDiff: string | undefined;
-      if (mode === 'work' || mode === 'resolve') {
-        const resolved = resolveWorkProfile(profiles, task.assignee);
-        profile = resolved.profile;
-        if (resolved.fellBack) {
-          log.warn('kanban: non-worker profile assigned to work task; using worker fallback', {
-            taskId: task.id,
-            assignee: task.assignee,
-            fallback: profile?.name ?? null
-          });
-        }
-      } else if (mode === 'review') {
-        // Singleton reviewer selected BY MODE; fall back to an in-memory default persona when
-        // no saved reviewer profile exists (existing users have none). NEVER write task.assignee.
-        const reviewerProfile = profiles.find(
-          (p) => p.name === REVIEWER_PROFILE_NAME && p.role === 'reviewer'
-        );
-        profile = reviewerProfile ?? {
-          name: REVIEWER_PROFILE_NAME,
-          role: 'reviewer',
-          model: '',
-          skills: [],
-          instructions: DEFAULT_REVIEWER_INSTRUCTIONS
-        };
-        reviewDiff = worktreeDiff({ workspacePath: workspace, baseBranch: task.baseBranch });
-      } else if (mode === 'explore' || mode === 'spec' || mode === 'qa') {
-        // Pipeline stage roles run under their own persona, selected by the assignee the
-        // expander stamped on the task ('explorer'/'architect'/'qa'). NEVER overwrite the
-        // assignee and offer NO worker roster — these are single-role runs, not orchestrations.
-        profile = profiles.find((p) => p.name === task.assignee) ?? null;
-      } else {
-        // decompose/specify: run as an orchestrator profile; offer the worker roster.
-        profile =
-          profiles.find((p) => p.role === 'orchestrator') ??
-          profiles.find((p) => p.name === 'orchestrator') ??
-          null;
-        roster = profiles
-          .filter((p) => p.role === 'worker')
-          .map((p) => ({
-            name: p.name,
-            description: (p.instructions.split('\n')[0] ?? '').slice(0, 120)
-          }));
-        // Record the orchestrator as the task's assignee so the triage card reflects who is
-        // running it. The dispatcher never sets this for decompose/specify runs (it only writes
-        // task_runs.profile), leaving the card unassigned otherwise.
-        // decompose/specify record the orchestrator as the card's assignee; an assign run
-        // must not — it exists precisely to choose and set the real assignee itself.
-        if (mode !== 'assign') {
-          requireKanbanStore().updateTask(task.id, {
-            assignee: profile?.name ?? 'orchestrator'
-          });
-        }
-      }
-      let resolveTarget: string | undefined;
-      if (mode === 'resolve') {
-        if (task.systemKind === 'feature_sync') {
-          resolveTarget = task.baseBranch ?? undefined; // system task's branch IS the integration branch; merge base in
-        } else if (task.featureId) {
-          const f = requireKanbanStore().getFeature(task.featureId);
-          resolveTarget = f ? (f.integrationBranch ?? `fleet/feature-${f.id}`) : undefined;
-        } else {
-          resolveTarget = task.baseBranch ?? undefined;
-        }
-      }
-      const logPath = join(KANBAN_HOME, 'logs', `${runToken}.log`);
-      const spawnedAt = Date.now();
-      return spawnRuneWorker(
-        {
-          task: {
-            id: task.id,
-            title: task.title,
-            body: task.body,
-            assignee: task.assignee,
-            modelOverride: task.modelOverride
-          },
-          workspace,
-          resolveTarget,
-          verifyFailure,
-          reviewDiff,
-          reviewFindings,
-          mcpPort: kanbanMcpPort,
-          runToken,
-          logPath,
-          mode,
-          profile,
-          roster,
-          attachments: requireKanbanStore()
-            .listAttachments(task.id)
-            .map((a) => ({
-              filename: a.filename,
-              storedPath: a.storedPath
-            })),
-          docs: loadTaskDocs(pmDocsDir(KANBAN_HOME, task.boardId), task.docs)
-        },
-        // ENOENT here means rune vanished from PATH after our cached check. Mark it missing so
-        // the next claim is guarded up-front with the clear reason above.
-        (err) => {
-          if (err.code === 'ENOENT') runeManager.markMissing();
-        },
-        // Record the exit only if the run didn't already finish via an MCP
-        // terminal call (kanban_complete/block move the task off 'running').
-        // That keeps the map to in-flight-but-exited runs and lets reclaim()
-        // classify rune's exit-3 "incomplete" without false-flagging successes.
-        (exit) => {
-          const t = requireKanbanStore().getTask(task.id);
-          if (t?.status !== 'running' || t.currentRunId !== runId) return;
-          // Classify the cause of death while the log path is in scope, so the
-          // dispatcher can surface the real error and block retry-proof failures
-          // instead of looping on a cryptic "pid not alive" reclaim.
-          const authFailed = detectAuthFailure(logPath);
-          const runeError = extractRuneError(logPath);
-          const crashed = (exit.code != null && exit.code !== 0) || exit.signal != null;
-          const startupCrash = crashed && Date.now() - spawnedAt < KANBAN_STARTUP_CRASH_MS;
-          let fatalReason: string | undefined;
-          let blockNow = false;
-          if (authFailed) {
-            fatalReason = `rune authentication failed${runeError ? `: ${runeError}` : ''} — fix the provider credentials (e.g. \`rune login\`) and retry`;
-            blockNow = true;
-          } else if (runeError) {
-            // A provider/runtime error (e.g. a 4xx). Surface it; only block now if
-            // it also died on startup — otherwise let the retry budget absorb transients.
-            fatalReason = runeError;
-            blockNow = startupCrash;
-          } else if (startupCrash) {
-            const line = lastLogLine(logPath);
-            fatalReason = `worker crashed on startup${line ? `: ${line}` : ''}`;
-            blockNow = true;
-          }
-          workerExits.set(runId, { ...exit, fatalReason, blockNow });
-        }
-      );
-    },
-    config: buildDispatcherConfig(),
-    intervalMs: settingsStore.get().kanban.dispatcher.intervalMs,
-    workerExit: (id) => workerExits.get(id),
-    clearWorkerExit: (id) => workerExits.delete(id),
-    verifyLogPath
-  });
-  kanbanDispatcher.start();
-  // Poll GitHub PR status out-of-band (a gh network call inside the 5s dispatch
-  // tick would stall task claiming).
-  kanbanPrPoller = new PrPoller(kanbanStore, { now: Date.now });
-  kanbanPrPoller.start();
-  kanbanCommands = new KanbanCommands(
-    kanbanStore,
-    kanbanDispatcher,
-    () => {
-      const d = settingsStore.get().kanban.defaults;
-      return { workspaceKind: d.workspaceKind, maxRuntimeSeconds: d.maxRuntimeSeconds };
-    },
-    () => settingsStore.get().kanban.profiles
-  );
-  kanbanMcp.setSwarmHandler((input) => requireKanbanCommands().createSwarm(input));
-  kanbanMcp.setCommands(kanbanCommands);
-  kanbanMcp.setKanbanHome(KANBAN_HOME);
-  kanbanMcp.setVerifyRunner(({ runId, taskId, workspace, commands }) => {
-    const logPath = verifyLogPath(runId);
-    return spawnVerify({ workspace, commands, logPath }, (exit) => {
-      // Raw recorder: NO rune auth/crash classification (a test exit-3 or a "401" in
-      // output must not be misread as a fatal block). Same running/currentRunId guard as
-      // the rune recorder so a late exit (after reclaim already fail-opened) can't leave a
-      // stale entry.
-      const t = kanbanStore!.getTask(taskId);
-      if (t?.status !== 'running' || t.currentRunId !== runId) return;
-      workerExits.set(runId, { code: exit.code, signal: exit.signal });
-    });
-  });
-  pmChat = new PmChatService({
-    mcp: kanbanMcp,
-    mcpPort: kanbanMcpPort,
-    kanbanHome: KANBAN_HOME,
-    getProjects: (boardId) => requireKanbanCommands().listProjects(boardId),
-    isAutopilotEnabled: () => settingsStore.get().kanban.pm.autopilotEnabled,
-    emitStatus: (payload) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.KANBAN_PM_STATUS, payload);
-      }
-    },
-    emitTranscript: (payload) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.KANBAN_PM_TRANSCRIPT, payload);
-      }
-    }
-  });
-  pmAutopilot = new PmAutopilot({
-    now: () => Date.now(),
-    getConfig: () => settingsStore.get().kanban.pm,
-    getBoardForTask: (id) =>
-      kanbanStore?.getTask(id)?.boardId ?? kanbanStore?.getFeature(id)?.boardId ?? null,
-    runTurn: async (boardId, prompt, origin) => {
-      await pmChat?.runTurn(boardId, prompt, origin);
-    },
-    buildBriefing: (events) =>
-      buildEventBriefing(
-        events,
-        (id) => kanbanStore?.getTask(id)?.title ?? kanbanStore?.getFeature(id)?.name ?? null
-      ),
-    buildRetro: (featureId) => {
-      const store = kanbanStore;
-      if (!store) return null;
-      const feature = store.getFeature(featureId);
-      if (!feature) return null;
-      const tasks = store.listFeatureTasks(featureId);
-      return buildRetroBriefing(
-        feature,
-        tasks,
-        (id) => store.listRuns(id),
-        (id) => store.listEvents(id)
-      );
-    },
-    log: (msg, meta) => log.warn(msg, meta ?? {}),
-    listDigestBoards: () =>
-      (kanbanStore?.listBoards() ?? []).map((b) => {
-        const cfg = kanbanStore?.getDigestConfig(b.slug);
-        return {
-          boardId: b.slug,
-          digestCron: cfg?.digestCron ?? null,
-          lastDigestAt: cfg?.lastDigestAt ?? null
-        };
-      }),
-    // The standup digest summarizes task-level activity (completed/blocked/failure).
-    // Feature-level events (e.g. feature_pr_ready) are intentionally NOT bucketed here;
-    // they surface as real-time PM event turns via buildBriefing/getBoardForTask instead.
-    buildDigest: (boardId, since) =>
-      buildDigestContext({
-        events: kanbanStore?.listBoardEventsSince(boardId, since) ?? [],
-        pendingProposals: kanbanStore?.listProposals(boardId, { status: 'pending' }).length ?? 0,
-        resolveTitle: (id) => kanbanStore?.getTask(id)?.title ?? null
-      }),
-    stampDigest: (boardId) => kanbanStore?.stampLastDigest(boardId)
-  });
-  // Drive digest scheduling at cron's 1-minute granularity. stamp-before-run in
-  // checkDigests makes piggybacking on a coarse tick safe (no double-fire).
-  pmDigestTimer = setInterval(() => void pmAutopilot?.checkDigests(), 60_000);
-  registerKanbanIpc(kanbanCommands, pmChat);
-
   // One shared embedding worker (transformers.js model in a worker thread) powers
   // both the learnings KB and chat semantic search — a single model download and a
   // single inference thread. Constructed here so the chat store (below) and the
@@ -1803,7 +1331,6 @@ void app.whenReady().then(async () => {
   registerRemoteSshIpcHandlers(ptyManager);
 
   const learningsStoreRef = new LearningsStore(join(learningsHome, 'learnings.db'));
-  kanbanMcp?.setLearningsStore(learningsStoreRef);
   // Reuse the one shared embed worker constructed above (chat + learnings share it).
   const learningsEmbedderRef = sharedEmbedder;
   learningsStore = learningsStoreRef;
@@ -1852,13 +1379,6 @@ void app.whenReady().then(async () => {
     }
   });
 
-  setKanbanSettingsApplier(() => {
-    kanbanDispatcher?.reconfigure(
-      buildDispatcherConfig(),
-      settingsStore.get().kanban.dispatcher.intervalMs
-    );
-  });
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -1884,17 +1404,10 @@ function shutdownAll(): void {
   void agentMcp?.closeAll();
   sessionsService?.dispose();
   annotateService.destroy();
-  kanbanDispatcher?.stop();
-  kanbanPrPoller?.stop();
-  if (pmDigestTimer) clearInterval(pmDigestTimer);
-  pmAutopilot?.dispose();
-  pmChat?.dispose();
   runeAssist?.dispose();
-  void kanbanMcp?.stop();
   void learningsMcp?.stop();
   void learningsEmbedder?.close();
   learningsStore?.close();
-  kanbanStore?.close();
 }
 
 app.on('window-all-closed', () => {

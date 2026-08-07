@@ -1,7 +1,6 @@
 // src/main/learnings/learnings-mcp-server.ts
 // A loopback MCP server exposing the Learnings KB to agents (Rune + Claude Code).
-// Read-only, no auth token — the 127.0.0.1 bind is the security boundary. Mirrors the
-// JSON-RPC shape of KanbanMcpServer.
+// Read-only, no auth token — the 127.0.0.1 bind is the security boundary.
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http';
 import { z } from 'zod';
 import { createLogger } from '../logger';

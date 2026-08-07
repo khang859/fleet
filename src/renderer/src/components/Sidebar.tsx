@@ -8,7 +8,6 @@ import {
   ImageIcon,
   ChevronRight,
   Bot,
-  KanbanSquare,
   SlidersHorizontal,
   MessageSquare,
   Server
@@ -27,7 +26,6 @@ import {
 import type { PathContext } from '../../../shared/shell-profiles';
 import { useNotificationStore } from '../store/notification-store';
 import { useCwdStore } from '../store/cwd-store';
-import { useKanbanStore } from '../store/kanban-store';
 
 import { useImageStore } from '../store/image-store';
 import { serializePane } from '../hooks/use-terminal';
@@ -528,97 +526,6 @@ function AnnotateTabCard({
             Annotate
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function KanbanTabCard({
-  isActive,
-  onClick
-}: {
-  isActive: boolean;
-  onClick: () => void;
-}): React.JSX.Element {
-  const { running, active } = useKanbanStore(
-    useShallow((s) => ({
-      running: s.cards.filter((c) => c.status === 'running').length,
-      active: s.cards.filter((c) => c.status !== 'done' && c.status !== 'archived').length
-    }))
-  );
-  const unread = useKanbanStore((s) => s.unreadCount);
-
-  return (
-    <div
-      onClick={onClick}
-      className="cursor-pointer rounded-md overflow-hidden relative transition-all"
-      style={{
-        background: isActive ? '#0a0f1a' : 'rgba(10,15,26,0.4)',
-        border: isActive ? '1px solid rgba(96,165,250,0.35)' : '1px solid rgba(255,255,255,0.05)',
-        boxShadow: isActive
-          ? '0 0 10px rgba(96,165,250,0.15), inset 0 0 20px rgba(96,165,250,0.03)'
-          : 'none'
-      }}
-    >
-      {/* Subtle noise overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none z-10 opacity-[0.03]"
-        style={{
-          backgroundImage:
-            'repeating-linear-gradient(transparent 0px, transparent 1px, rgba(255,255,255,0.15) 1px, rgba(255,255,255,0.15) 2px)',
-          backgroundSize: '100% 2px'
-        }}
-      />
-
-      <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
-        {/* Icon */}
-        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-fleet-surface-2/50 flex items-center justify-center relative">
-          <KanbanSquare size={16} className={isActive ? 'text-blue-400' : 'text-blue-400/40'} />
-          {running > 0 && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500/30 overflow-hidden">
-              <div className="h-full bg-blue-400 animate-pulse" style={{ width: '60%' }} />
-            </div>
-          )}
-        </div>
-
-        {/* Text content */}
-        <div className="flex-1 min-w-0">
-          <div
-            className="font-mono uppercase tracking-widest leading-none mb-1"
-            style={{
-              fontSize: '9px',
-              color: isActive ? 'rgb(96,165,250)' : 'rgba(96,165,250,0.5)'
-            }}
-          >
-            Kanban
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[9px] font-mono text-fleet-text-subtle">
-              {active > 0 ? (
-                <span className="text-blue-300/70">{active} active</span>
-              ) : (
-                <span>none yet</span>
-              )}
-            </span>
-            {running > 0 && (
-              <span
-                className="text-[9px] font-mono font-semibold px-1 rounded-sm animate-pulse"
-                style={{ background: 'rgba(96,165,250,0.2)', color: 'rgb(96,165,250)' }}
-              >
-                {running}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Unread badge */}
-        {unread > 0 && (
-          <div className="flex-shrink-0 min-w-[16px] h-4 px-1 rounded-full bg-blue-500 flex items-center justify-center">
-            <span className="text-[9px] font-mono font-semibold text-white leading-none">
-              {unread > 99 ? '99+' : unread}
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1517,7 +1424,6 @@ export function Sidebar({
                 t.type !== 'images' &&
                 t.type !== 'settings' &&
                 t.type !== 'annotate' &&
-                t.type !== 'kanban' &&
                 t.type !== 'sessions' &&
                 t.type !== 'chat' &&
                 t.type !== 'agent'
@@ -1906,16 +1812,6 @@ export function Sidebar({
             </button>
           </div>
         </div>
-        {/* Kanban tab (pinned, not closeable) */}
-        {workspace.tabs
-          .filter((tab) => tab.type === 'kanban')
-          .map((tab) => (
-            <KanbanTabCard
-              key={tab.id}
-              isActive={tab.id === activeTabId}
-              onClick={() => setActiveTab(tab.id)}
-            />
-          ))}
         {/* Images tab (pinned, not closeable) */}
         {workspace.tabs
           .filter((tab) => tab.type === 'images')

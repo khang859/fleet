@@ -185,7 +185,6 @@ import { grepFiles } from './file-grep';
 import { searchRecentImages } from './recent-images';
 import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor';
 import { onCopilotSettingsChanged } from './copilot/index';
-import { onKanbanSettingsChanged } from './kanban/kanban-settings-bridge';
 import type { EnvSyncManager } from './env-sync/env-sync-manager';
 import type { EnvSyncSecrets } from './env-sync/env-sync-secrets';
 import { readConfig, writeConfig, findNearestConfig } from './env-sync/env-sync-config';
@@ -441,9 +440,6 @@ export function registerIpcHandlers(
     settingsStore.set(settings);
     if (settings.copilot) {
       await onCopilotSettingsChanged();
-    }
-    if (settings.kanban) {
-      onKanbanSettingsChanged();
     }
   });
 
