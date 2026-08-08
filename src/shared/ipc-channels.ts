@@ -229,6 +229,11 @@ export const IPC_CHANNELS = {
   // Files the `@` menu can offer, from the same gitignore-aware walk `glob`
   // and `grep` use, so the menu cannot offer what the sandbox would refuse.
   AGENT_MENTION_SEARCH: 'agent:mention-search',
+  // What the composer's `/` menu offers, for a pane open on this folder. Asked
+  // once when the pane opens, like the prompt history below: the offering may
+  // lag a file added a moment ago, but resolving a name never does - that is
+  // read off disk again on every turn.
+  AGENT_COMMANDS_LIST: 'agent:commands-list',
   // Which branch a pane's folder is on. WATCH registers a pane and answers
   // immediately on HEAD; REFRESH asks for a re-read after something that no
   // file watcher would have seen, such as a tool call that may have been a

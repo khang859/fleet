@@ -46,7 +46,13 @@ import { usePromptHistory } from './use-prompt-history';
 import type { HistoryDirection } from '../../../../shared/agent-history';
 import { atFirstRow, atLastRow } from '../../lib/caret-row';
 import { EMPTY_SESSION_SPEND, hasSpend } from '../../../../shared/agent-spend';
-import { agentSlashCommand, agentSlashMenu, type AgentSlashCommand } from './composer-slash';
+import {
+  agentSlashCommand,
+  agentSlashMenu,
+  isSlashQuery,
+  type AgentSlashCommand
+} from './composer-slash';
+import { useAgentCommands } from './use-agent-commands';
 import { agentMentionQuery, withoutMentionQuery } from './composer-mention';
 import { useComposerMenu, type ComposerMenuAnchor } from './composer-menu';
 import { INTERRUPT_ARM_MS, composerIntent, settleDelay } from './composer-keys';
@@ -716,7 +722,8 @@ function Composer({
   const fileRef = useRef<HTMLInputElement>(null);
   const history = usePromptHistory(cwd);
 
-  const slashMenu = agentSlashMenu(text, menuDismissed);
+  const commands = useAgentCommands(cwd, isSlashQuery(text) && !menuDismissed);
+  const slashMenu = agentSlashMenu(text, commands, menuDismissed);
   const mentionQuery = agentMentionQuery(text, mentionDismissed);
 
   /**
@@ -842,10 +849,23 @@ function Composer({
   };
 
   /**
-   * Run a command, from wherever it was picked. The one place that knows what
-   * a command name means, so the menu and the typed line cannot drift apart.
+   * Take a row off the `/` menu.
+   *
+   * A builtin runs on the spot, because picking `/clear` is the whole of what
+   * the user meant. A prompt command is put in the box instead, with the space
+   * after it already typed: it was picked in order to say which pull request,
+   * or what to look at, and running it the instant it is named would spend real
+   * money answering a question nobody finished asking. Enter on an empty
+   * argument still sends it, so nothing is harder to reach - it is one more
+   * keypress for the case that wants no arguments, and a place to type for the
+   * case that does.
    */
   const runCommand = (command: AgentSlashCommand): void => {
+    if (command.kind === 'prompt') {
+      setText(`/${command.name} `);
+      ref.current?.focus();
+      return;
+    }
     switch (command.name) {
       case 'clear':
         runClear();
@@ -917,10 +937,13 @@ function Composer({
     // An attachment on its own is a message: "look at this" is what dropping a
     // screenshot into a composer means.
     if ((trimmed === '' && attachments.length === 0) || disabled) return;
-    // A command is what it does, not something to say to the model.
-    const typed = agentSlashCommand(trimmed);
-    if (typed !== undefined) {
-      runCommand(typed);
+    // A builtin is what it does, not something to say to the model. A prompt
+    // command is the opposite - it is only ever something to say - so it goes
+    // out as the line the user typed and main turns it into the prompt behind
+    // it on the way to the model.
+    const typed = agentSlashCommand(trimmed, commands);
+    if (typed?.command.kind === 'builtin') {
+      runCommand(typed.command);
       return;
     }
     // Not sent, and not thrown away either: the draft stays exactly where it

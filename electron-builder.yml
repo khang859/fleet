@@ -22,6 +22,8 @@ extraResources:
   # docs/learnings/2026-06-28-chat-skills-missing-from-packaged-app.md.
   - from: resources/agents/
     to: resources/agents/
+  - from: resources/commands/
+    to: resources/commands/
 asarUnpack:
   - resources/**
   - node_modules/onnxruntime-node/**
