@@ -38,8 +38,13 @@ export const TODO_PANEL_MIN_PANE_PX = 950;
  */
 export const TODO_PANEL_KEEP_PX = 890;
 
-/** What the panel takes when it is shown. */
-export const TODO_PANEL_WIDTH_PX = 260;
+/**
+ * What the panel's column takes when it is shown, gutters included.
+ *
+ * The card floats inside this rather than filling it, so a dozen or so pixels
+ * of this go to the gap on either side of it and the rest is the card.
+ */
+export const TODO_PANEL_WIDTH_PX = 272;
 
 /**
  * Finished items past which the panel shows them as one line.
