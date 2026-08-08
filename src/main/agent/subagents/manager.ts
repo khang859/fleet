@@ -75,6 +75,23 @@ export class TaskFailure extends Error {
   }
 }
 
+/**
+ * A dispatch declined because the machine is already running as many subagents
+ * as it will.
+ *
+ * Its own type because it is the one refusal here that does not mean anything
+ * went wrong. "There is no subagent called X" will be true next round too; this
+ * one stops being true as soon as a slot frees, and the model is expected to
+ * try again - which is exactly what it does. Told apart from a real failure by
+ * its type rather than by its sentence, so the wording stays free to change.
+ */
+export class SubagentCapReached extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SubagentCapReached';
+  }
+}
+
 type Deps = {
   emit: (channel: string, payload: unknown) => void;
   /** Runs one child turn. `AgentService` supplies this; a subagent *is* a turn. */
@@ -164,6 +181,10 @@ export class SubagentManager {
    * machine already running as many as it will. `runAgentTool` turns a throw
    * into text the model reads and can act on - which for the cap means trying
    * again next round, and for the name means picking a real one.
+   *
+   * The cap throws a type of its own, because those two are the same to the
+   * model and not to the user: one is a mistake and the other is a queue. See
+   * `SubagentCapReached`, and `runTask`, which is where the difference is spent.
    */
   async dispatch(req: {
     agent: string;
@@ -180,7 +201,7 @@ export class SubagentManager {
     // the last slot. The cap is about the rate limit and the bill, so a cap
     // that holds only when nothing happens at once is not a cap.
     if (this.live.size >= MAX_PARALLEL_TASKS) {
-      throw new Error(
+      throw new SubagentCapReached(
         `${MAX_PARALLEL_TASKS} subagents are already running, which is as many as Fleet will run at once. Wait for one to report back and dispatch this again.`
       );
     }

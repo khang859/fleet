@@ -103,6 +103,22 @@ describe('toolStatus', () => {
   it('counts an empty result as finished', () => {
     expect(toolStatus(call('glob', '{}', { result: '' }))).toBe('done');
   });
+
+  /*
+   * A dispatch the parallel cap turned away. Nothing went wrong - the model
+   * kept the subagents it had, carried on, and sent this one again once a slot
+   * came free - so it must not read as a failure in the middle of a review. It
+   * arrives as an ordinary result rather than an error for exactly that reason;
+   * this is the half of that contract the user sees.
+   */
+  it('does not read a subagent waiting for a slot as a failure', () => {
+    const waiting = call('task', '{"agent":"review"}', {
+      result: '5 subagents are already running, which is as many as Fleet will run at once.',
+      summary: 'waiting for a slot'
+    });
+
+    expect(toolStatus(waiting)).toBe('done');
+  });
 });
 
 describe('image', () => {
