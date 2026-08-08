@@ -5,46 +5,17 @@ import {
   settledCount,
   type AgentTodoItem
 } from '../../../../shared/agent-todos';
+import { fitsSideColumn } from './side-column';
 
 /**
  * What the task list looks like, worked out apart from what draws it.
  *
- * Two places show the same list and have to agree about it: a column beside the
- * conversation when the pane is wide, and one line above the composer when it is
- * not. Both answer the same three questions - how far along, what is happening
- * now, and is there anything to show at all - so they answer them here rather
- * than each in their own JSX.
+ * Two places show the same list and have to agree about it: a card in the
+ * column beside the conversation when the pane is wide, and one line above the
+ * composer when it is not. Both answer the same three questions - how far
+ * along, what is happening now, and is there anything to show at all - so they
+ * answer them here rather than each in their own JSX.
  */
-
-/**
- * Pane width below which the list gives up its column.
- *
- * A pane narrower than this has a conversation squeezed to nothing once a
- * column is taken out of it, and a transcript is what the pane is for. Chosen
- * against the transcript rather than against the panel: the reading column is
- * `max-w-2xl` (672px) plus its padding, so this is about the width at which the
- * text would start to be the thing giving way.
- */
-export const TODO_PANEL_MIN_PANE_PX = 950;
-
-/**
- * Width the panel hangs on down to once it is already showing.
- *
- * One threshold for both directions would put a 260px column in and out of the
- * layout on every pixel of jitter while a split divider is parked on the line -
- * and the divider is dragged live, so that line is easy to park on. Below this
- * the column really is too much and goes; between the two it keeps whatever it
- * was, which is the answer that does not move under the reader.
- */
-export const TODO_PANEL_KEEP_PX = 890;
-
-/**
- * What the panel's column takes when it is shown, gutters included.
- *
- * The card floats inside this rather than filling it, so a dozen or so pixels
- * of this go to the gap on either side of it and the rest is the card.
- */
-export const TODO_PANEL_WIDTH_PX = 272;
 
 /**
  * Finished items past which the panel shows them as one line.
@@ -118,23 +89,19 @@ export function splitTodos(items: AgentTodoItem[]): {
 }
 
 /**
- * Whether the panel gets its column.
+ * Whether the task list gets a card in the column.
  *
  * Three ways to lose it. There is nothing to show; the pane is too narrow, at
  * which point the status line's chip says the same thing in one line; or the
  * work is done and the turn is over, which is the one worth explaining.
  *
- * A list with every item settled has said what it had to say. Holding a column
+ * A list with every item settled has said what it had to say. Holding a card
  * open for it would spend the rest of the conversation showing a plan the user
  * has finished reading - so it collapses to the chip, which still carries the
  * count as a receipt. Not the moment the last item ticks, though: finishing the
- * list and then adding to it is ordinary mid-turn behaviour, and a column that
+ * list and then adding to it is ordinary mid-turn behaviour, and a card that
  * vanished and came back seconds later would take the reader's eye with it both
  * times. It waits for the turn to end.
- *
- * Not while the width is still `null` either: the first paint would put a
- * column into a pane that turns out to be half its size, and the reader would
- * watch the conversation jump sideways a frame later.
  */
 export function showTodoPanel(
   items: AgentTodoItem[],
@@ -148,6 +115,5 @@ export function showTodoPanel(
 ): boolean {
   if (items.length === 0) return false;
   if (!hasOpenWork(items) && !pane.streaming) return false;
-  if (pane.width === null) return false;
-  return pane.width >= (pane.shown ? TODO_PANEL_KEEP_PX : TODO_PANEL_MIN_PANE_PX);
+  return fitsSideColumn(pane.width, pane.shown);
 }

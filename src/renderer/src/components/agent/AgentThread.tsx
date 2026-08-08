@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUp,
+  Bot,
   Check,
   ChevronRight,
   FoldVertical,
@@ -35,6 +36,7 @@ import { AgentPermissionRow } from './AgentPermissionRow';
 import { AgentTaskCard } from './AgentTaskCard';
 import { AgentTaskPermissions } from './AgentTaskPermissions';
 import { pendingTaskAsks, type PendingTaskAsk } from './task-permissions';
+import type { RunningSubagent } from './subagent-view';
 import { ToolModePicker } from './ToolModePicker';
 import { AgentAttachmentChip, AgentMessageAttachments } from './AgentAttachment';
 import { reasoningLabel } from './activity';
@@ -71,6 +73,9 @@ const EMPTY_PARTIALS: Record<string, string> = {};
 
 /** The same, for a pane whose thread has no task list. */
 const EMPTY_TODOS: AgentTodoItem[] = [];
+
+/** The same, for a pane with no thread yet. */
+const EMPTY_MESSAGES: AgentMessage[] = [];
 
 /** The same, for a pane with no subagents running. */
 const EMPTY_TASK_ACTIVITY: Record<string, string | null> = {};
@@ -167,7 +172,9 @@ function useSettledAsks(
 export function AgentThread({
   paneId,
   cwd,
-  todosInPanel
+  todosInPanel,
+  running,
+  subagentsInPanel
 }: {
   paneId: string;
   cwd: string;
@@ -177,6 +184,14 @@ export function AgentThread({
    * pane already says what is happening.
    */
   todosInPanel: boolean;
+  /**
+   * The subagents still out there. Handed down rather than worked out here,
+   * because the pane needs the same list to decide whether to give it a column
+   * and deriving it twice would walk the transcript twice on every frame.
+   */
+  running: RunningSubagent[];
+  /** The same as `todosInPanel`, for the subagents. */
+  subagentsInPanel: boolean;
 }): React.JSX.Element {
   const thread = useAgentStore((s) => s.threads[paneId]);
   const send = useAgentStore((s) => s.send);
@@ -192,7 +207,10 @@ export function AgentThread({
   const decidePermission = useAgentStore((s) => s.decidePermission);
   const decideTaskPermission = useAgentStore((s) => s.decideTaskPermission);
 
-  const messages = thread?.messages ?? [];
+  // The shared empty rather than a fresh `[]`: two memos below key on this, and
+  // a new array every render would mean neither ever hits for a pane whose
+  // thread has not loaded yet.
+  const messages = thread?.messages ?? EMPTY_MESSAGES;
   const compacting = (thread?.pendingCompact ?? null) !== null;
   const streaming = (thread?.streamId ?? null) !== null;
   const contextTokens = thread?.contextTokens ?? null;
@@ -200,17 +218,25 @@ export function AgentThread({
   const imagePartials = thread?.imagePartials ?? EMPTY_PARTIALS;
   const taskActivity = thread?.taskActivity ?? EMPTY_TASK_ACTIVITY;
   const taskPermissions = thread?.taskPermissions ?? EMPTY_TASK_PERMISSIONS;
+  // Held apart from the render below it because it walks the transcript, and
+  // this component re-renders on every token of a streaming turn - the same
+  // reason `cleared` is memoized further down.
+  const asks = useMemo(
+    () => pendingTaskAsks(messages, taskPermissions),
+    [messages, taskPermissions]
+  );
   // Everything downstream asks "is there a question on screen", which is not
   // quite "has one been asked" - so the held-back ones are what they are given.
   const {
     settled: ask,
     settledTasks: pendingTasks,
     noteDraft
-  } = useSettledAsks(thread?.pendingPermission ?? null, pendingTaskAsks(messages, taskPermissions));
+  } = useSettledAsks(thread?.pendingPermission ?? null, asks);
   // Only when the pane has no column for it, so the same list is never in two
   // places saying the same thing.
   const todoItems = thread?.todos ?? EMPTY_TODOS;
   const todos = todosInPanel ? null : todoProgress(todoItems);
+  const subagents = subagentsInPanel || running.length === 0 ? null : running;
   const gitHead = useGitHead(paneId, cwd);
 
   return (
@@ -244,7 +270,11 @@ export function AgentThread({
       {/* One status line for the turn: what the agent is doing on the left, how
           much room it has left on the right. Always rendered while either has
           something to say, so neither appearing shoves the composer down. */}
-      {(streaming || contextTokens !== null || todos !== null || hasSpend(spend)) && (
+      {(streaming ||
+        contextTokens !== null ||
+        todos !== null ||
+        subagents !== null ||
+        hasSpend(spend)) && (
         <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pb-1.5 text-[11px] text-fleet-text-subtle">
           {streaming && (
             <AgentActivity
@@ -255,6 +285,7 @@ export function AgentThread({
             />
           )}
           {todos !== null && <TodoChip progress={todos} items={todoItems} />}
+          {subagents !== null && <SubagentChip running={subagents} />}
           {/* Money first, then room left: what a turn cost is the fact that
               changes with every turn, and the window is the one that only
               matters near its end. */}
@@ -455,6 +486,46 @@ function TodoChip({
       )}
       <span className="font-mono tabular-nums">{progress.count}</span>
       {progress.doing !== null && <span className="truncate">{progress.doing}</span>}
+    </span>
+  );
+}
+
+/**
+ * The subagents, when the pane is too narrow to give them a column.
+ *
+ * How many are out there, and - when there is only one - what it is doing. With
+ * two or more there is no honest one-line answer: they are working on different
+ * things at once, and picking one of them to name would read as the only thing
+ * happening. The count is what survives, since the reason to glance at this at
+ * all is that work is going on somewhere other than the transcript.
+ *
+ * The one exception is a child stopped on a command, which is said however many
+ * there are: it is not working, it is waiting, and the strip that can answer it
+ * is directly below this line.
+ */
+function SubagentChip({ running }: { running: RunningSubagent[] }): React.JSX.Element {
+  const asking = running.filter((subagent) => subagent.asking).length;
+  const only = running.length === 1 ? running[0] : null;
+  const label =
+    asking > 0
+      ? `${asking} waiting on you`
+      : only !== null
+        ? (only.activity ?? 'starting')
+        : `${running.length} subagents`;
+
+  return (
+    <span
+      className="flex min-w-0 items-center gap-1.5"
+      // What the collapse costs is which subagent is on what. A hover title is
+      // the whole of the fix, the same one the task list's chip makes.
+      title={running.map((subagent) => `${subagent.agent}: ${subagent.prompt}`).join('\n')}
+      aria-label={`Subagents: ${running.length} running${asking > 0 ? `, ${asking} waiting on you` : ''}`}
+    >
+      <Bot size={12} className="shrink-0" />
+      <span className="font-mono tabular-nums">{running.length}</span>
+      <span className={`truncate ${asking > 0 ? 'text-amber-700 dark:text-amber-400/90' : ''}`}>
+        {label}
+      </span>
     </span>
   );
 }
