@@ -64,6 +64,7 @@ import {
 import { runAgentTool } from './tools/run';
 import {
   TaskFailure,
+  type LiveSubagent,
   type SubagentManager,
   type TaskOutcome,
   type TaskRun
@@ -280,7 +281,77 @@ export function withTodoReminder(
 ): AgentWireMessage[] {
   const block = renderTodoBlock(items, streak);
   if (block === null) return messages;
-  return [...messages, { role: 'user', content: `${TODO_WIRE_PREFIX}\n\n${block}` }];
+  return [...messages, { role: 'user', content: `${FLEET_WIRE_PREFIX}\n\n${block}` }];
+}
+
+/**
+ * The messages for one round, with the subagents still out named.
+ *
+ * The parent is told a child has started and, later, what it said, and that is
+ * all: the receipt and the report are the same tool call, minutes apart, with
+ * whatever else the turn did in between. Working out who is still out means
+ * diffing every receipt in the transcript against every report that has landed
+ * since - which a model does correctly for one child and stops doing at three.
+ * The list is short, main already holds it, and handing it over costs less than
+ * the mistake does.
+ *
+ * Pushed for the reason the task list is pushed, and omitted for a reason the
+ * task list has no equivalent of: for most turns of most conversations nothing
+ * is running, and a line saying so every round would be the whole cost of the
+ * feature paid on the turns where it has nothing to say.
+ *
+ * It goes before the task list rather than after, so the plan stays the most
+ * recent thing said - the roster is context for the round, the list is what the
+ * round is meant to be getting on with.
+ */
+export function withSubagentReminder(
+  messages: AgentWireMessage[],
+  running: LiveSubagent[],
+  waiting: Set<string>
+): AgentWireMessage[] {
+  if (running.length === 0) return messages;
+  return [
+    ...messages,
+    { role: 'user', content: `${FLEET_WIRE_PREFIX}\n\n${renderSubagentBlock(running, waiting)}` }
+  ];
+}
+
+/**
+ * How much of the prompt is enough to tell two of them apart.
+ *
+ * The parent wrote these, so what the line has to do is remind rather than
+ * inform - and two `explore` children sent into the same folder are told apart
+ * by the middle of the sentence rather than the first few words. Capped anyway,
+ * because five of them at whatever length the model felt like writing is a cost
+ * that grows with nothing the user asked for.
+ */
+const SUBAGENT_PROMPT_CHARS = 120;
+
+function renderSubagentBlock(running: LiveSubagent[], waiting: Set<string>): string {
+  const lines = running.map((task) => {
+    const prompt = task.prompt.trim().replace(/\s+/g, ' ');
+    const short =
+      prompt.length > SUBAGENT_PROMPT_CHARS
+        ? `${prompt.slice(0, SUBAGENT_PROMPT_CHARS).trimEnd()}...`
+        : prompt;
+    const stopped = waiting.has(task.taskId) ? ' [stopped, waiting for the user to answer it]' : '';
+    return `- ${task.agent}${stopped}: ${short}`;
+  });
+
+  return [
+    'Subagents you started that have not reported back yet:',
+    '',
+    ...lines,
+    '',
+    // The same sentence the receipt ended with, because by now the receipt is
+    // forty rounds up the context and this is the round where it matters.
+    'Each report arrives as the result of the call that started it, and nothing you do will make one arrive sooner.',
+    ...(waiting.size > 0
+      ? [
+          'A stopped one is not working and will not go on until the user answers, so say so rather than waiting on it.'
+        ]
+      : [])
+  ].join('\n');
 }
 
 /**
@@ -335,14 +406,17 @@ export function withClearedWireResults(
 }
 
 /**
- * What marks the reminder as Fleet talking rather than the user.
+ * What marks a reminder as Fleet talking rather than the user.
  *
  * Said plainly instead of wrapped in a tag. `<system-reminder>` is a house
  * style of one harness and one provider; here the same turn may be answered by
  * any model OpenRouter routes to, and a tag one of them has never seen is
  * either ignored or read out loud.
+ *
+ * The same words for every reminder, so a round carrying two of them does not
+ * appear to have two different things talking to the model.
  */
-export const TODO_WIRE_PREFIX = 'Note from Fleet, not from the user:';
+export const FLEET_WIRE_PREFIX = 'Note from Fleet, not from the user:';
 
 /**
  * A user message on the wire: what they typed, and whatever rode with it.
@@ -771,13 +845,21 @@ export class AgentService {
       round.content = '';
 
       const outcome: StreamOutcome = await this.call(ctx, {
-        // A copy, spliced rather than appended. The reminder is about this
-        // round only - written into `messages` it would be persisted, resent
+        // A copy, spliced rather than appended. The reminders are about this
+        // round only - written into `messages` they would be persisted, resent
         // stale on the next round, and stack up one copy per round of a long
         // turn, each contradicting the last about what the list says. The
-        // clearing pass is a copy for the same reason, and runs first so the
+        // clearing pass is a copy for the same reason, and runs first so a
         // reminder is never what gets cleared.
-        messages: withTodoReminder(withClearedWireResults(messages), todos.items, todos.streak),
+        //
+        // Both are read fresh here rather than once before the loop: a turn
+        // that runs forty rounds is exactly where a child reports back in the
+        // middle, and a roster read at the top would go on naming it.
+        messages: withTodoReminder(
+          this.withRunningSubagents(withClearedWireResults(messages), run.threadId),
+          todos.items,
+          todos.streak
+        ),
         maxTokens: config.maxTokens,
         reasoning: toReasoningParam(config),
         tools,
@@ -889,6 +971,21 @@ export class AgentService {
     throw new Error(
       `Stopped after ${rounds} rounds of tool calls without an answer. Ask again, more narrowly.`
     );
+  }
+
+  /**
+   * The roster for this round, gathered from the two places that hold it.
+   *
+   * A method rather than a call at the splice point because it is the only
+   * thing there that needs the service's own dependencies: which children this
+   * thread is waiting on is the manager's, and which of those are stopped on a
+   * question is the gate's. Neither knows about the other, and neither should.
+   */
+  private withRunningSubagents(messages: AgentWireMessage[], threadId: string): AgentWireMessage[] {
+    const running = this.deps.subagents.runningFor(threadId);
+    if (running.length === 0) return messages;
+    const waiting = new Set(this.deps.gate.waitingOn(running.map((task) => task.taskId)));
+    return withSubagentReminder(messages, running, waiting);
   }
 
   /**

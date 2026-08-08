@@ -255,6 +255,19 @@ export class PermissionGate {
     }
   }
 
+  /**
+   * Which of these streams are stopped on a question right now.
+   *
+   * Asked about a list rather than reported as it happens, because the one
+   * caller is a turn being built: it has the ids of the subagents it started
+   * and wants to know, at that moment, which of them are not moving. A stream
+   * with no question pending is simply absent from the answer.
+   */
+  waitingOn(streamIds: string[]): string[] {
+    const asked = new Set([...this.pending.values()].map((entry) => entry.streamId));
+    return streamIds.filter((id) => asked.has(id));
+  }
+
   private async ask(
     req: Question,
     reason: string | null,

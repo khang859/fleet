@@ -24,15 +24,16 @@ import {
 } from '../../../shared/agent-context';
 import {
   AgentService,
-  TODO_WIRE_PREFIX,
+  FLEET_WIRE_PREFIX,
   toCompactMessages,
   toReasoningParam,
   toWireHistory,
   withClearedWireResults,
+  withSubagentReminder,
   withTodoReminder
 } from '../agent-service';
 import { PermissionGate } from '../permissions/gate';
-import { SubagentManager } from '../subagents/manager';
+import { SubagentManager, type LiveSubagent } from '../subagents/manager';
 import {
   collectToolCalls,
   parseStreamLine,
@@ -54,6 +55,41 @@ const NO_SUBAGENTS = new SubagentManager({
   run: async () => Promise.reject(new Error('no subagent should run here')),
   definitions: async () => Promise.resolve([])
 });
+
+/**
+ * A machine with one subagent already out and never coming back, for the rounds
+ * that are meant to name it. Its child hangs deliberately: what is being checked
+ * is what a turn sends while one is still running, which is the only time there
+ * is anything to say.
+ */
+async function oneRunningSubagent(threadId: string): Promise<SubagentManager> {
+  const subagents = new SubagentManager({
+    emit: () => {},
+    run: async () => new Promise(() => {}),
+    definitions: async () =>
+      Promise.resolve([
+        {
+          name: 'explore',
+          description: 'looks things up',
+          systemPrompt: 'be brief',
+          tools: null,
+          model: 'inherit',
+          source: 'bundled' as const,
+          path: '/repo/.fleet/agents/explore.md'
+        }
+      ])
+  });
+  await subagents.dispatch({
+    agent: 'explore',
+    prompt: 'find where the column width is decided',
+    tools: null,
+    parentModel: 'a/model',
+    threadId,
+    callId: 'call-1',
+    cwd: '/repo'
+  });
+  return subagents;
+}
 
 /**
  * A gate that lets everything through. Whether a command is allowed is its own
@@ -297,7 +333,7 @@ describe('withTodoReminder', () => {
    * says who it is from rather than relying on a role or a tag to.
    */
   it('marks it as Fleet talking rather than the user', () => {
-    expect(withTodoReminder(history, items, 0).at(-1)?.content).toContain(TODO_WIRE_PREFIX);
+    expect(withTodoReminder(history, items, 0).at(-1)?.content).toContain(FLEET_WIRE_PREFIX);
   });
 
   /*
@@ -319,6 +355,93 @@ describe('withTodoReminder', () => {
 
   it('asks for a list when there is none', () => {
     expect(withTodoReminder(history, [], 0).at(-1)?.content).toContain('todo_add');
+  });
+});
+
+describe('withSubagentReminder', () => {
+  const history: AgentWireMessage[] = [
+    { role: 'system', content: 'be brief' },
+    { role: 'user', content: 'go' }
+  ];
+  const running: LiveSubagent[] = [
+    { taskId: 't1', agent: 'explore', prompt: 'find where the column width is decided' },
+    { taskId: 't2', agent: 'review', prompt: 'review the permission gate' }
+  ];
+
+  /*
+   * The whole of why it is worth sending. The parent has a receipt for each of
+   * these somewhere up the transcript and no way to tell which ones are still
+   * out except by diffing them against the reports that have landed since.
+   */
+  it('names each one that has not reported', () => {
+    const sent = withSubagentReminder(history, running, new Set());
+
+    expect(sent).toHaveLength(3);
+    expect(sent.at(-1)?.content).toContain('- explore: find where the column width is decided');
+    expect(sent.at(-1)?.content).toContain('- review: review the permission gate');
+  });
+
+  it('marks it as Fleet talking rather than the user', () => {
+    expect(withSubagentReminder(history, running, new Set()).at(-1)?.content).toContain(
+      FLEET_WIRE_PREFIX
+    );
+  });
+
+  it('leaves the messages it was given alone', () => {
+    withSubagentReminder(history, running, new Set());
+
+    expect(history).toHaveLength(2);
+  });
+
+  /*
+   * The one that decides whether the feature is worth having. Most turns of
+   * most conversations start no subagents at all, and a line saying so every
+   * round would be the whole cost of this paid where it has nothing to say.
+   */
+  it('says nothing at all when none are running', () => {
+    expect(withSubagentReminder(history, [], new Set())).toBe(history);
+  });
+
+  /*
+   * A child stopped on a permission prompt is indistinguishable from a slow one
+   * from the parent's side, which is the case where "say what you are waiting
+   * for and stop" goes worst: it stops, and nobody has told the user that the
+   * thing it is waiting for needs a click.
+   */
+  it('says which are stopped on a question, and what that means', () => {
+    const sent = withSubagentReminder(history, running, new Set(['t2']));
+    const content = sent.at(-1)?.content ?? '';
+
+    expect(content).toContain('- review [stopped, waiting for the user to answer it]:');
+    expect(content).toContain('- explore: find');
+    expect(content).toContain('will not go on until the user answers');
+  });
+
+  it('leaves out the advice about stopped ones when none are stopped', () => {
+    expect(withSubagentReminder(history, running, new Set()).at(-1)?.content).not.toContain(
+      'will not go on until the user answers'
+    );
+  });
+
+  /*
+   * Five of them at whatever length the model felt like writing is a cost that
+   * grows with nothing the user asked for. The parent wrote these prompts, so
+   * the line only has to remind it which one this is.
+   */
+  it('shortens a long prompt', () => {
+    const long = [{ taskId: 't1', agent: 'explore', prompt: 'x'.repeat(400) }];
+    const content = withSubagentReminder(history, long, new Set()).at(-1)?.content ?? '';
+
+    expect(content).toContain(`${'x'.repeat(120)}...`);
+    expect(content).not.toContain('x'.repeat(121));
+  });
+
+  /* A prompt written over several lines would otherwise break the list apart. */
+  it('flattens a prompt onto one line', () => {
+    const wrapped = [{ taskId: 't1', agent: 'explore', prompt: 'find the\n\n  column width' }];
+    const content = withSubagentReminder(history, wrapped, new Set()).at(-1)?.content ?? '';
+
+    expect(content).toContain('- explore: find the column width');
   });
 });
 
@@ -681,6 +804,66 @@ describe('AgentService', () => {
       IPC_CHANNELS.AGENT_STREAM_DONE
     ]);
     expect(events[1].payload).toEqual({ streamId: 'stream-1', delta: 'an ' });
+  });
+
+  /*
+   * The wiring the roster rests on. Read per round from the live registry
+   * rather than assembled once, so a child that reports in the middle of a long
+   * turn stops being named on the round after it does.
+   */
+  it('names the subagents still out in every round it sends', async () => {
+    const { emit, ended } = collector();
+    const rounds: StreamRequest[] = [];
+    const stream = async (req: StreamRequest): Promise<StreamOutcome> => {
+      rounds.push(req);
+      return Promise.resolve(round());
+    };
+
+    new AgentService({
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      subagents: await oneRunningSubagent(REQUEST.threadId),
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send(REQUEST);
+    await ended;
+
+    // Second to last, behind the task list: the roster is context for the
+    // round, and the plan is what the round is meant to be getting on with.
+    expect(rounds[0].messages.at(-2)?.content).toContain(
+      '- explore: find where the column width is decided'
+    );
+  });
+
+  /*
+   * The reason this is affordable. Most turns of most conversations start no
+   * subagents at all, and a line saying so on every round of every one of them
+   * would be the whole cost of the feature paid where it has nothing to say.
+   */
+  it('sends nothing at all about subagents when none are running', async () => {
+    const { emit, ended } = collector();
+    const rounds: StreamRequest[] = [];
+    const stream = async (req: StreamRequest): Promise<StreamOutcome> => {
+      rounds.push(req);
+      return Promise.resolve(round());
+    };
+
+    new AgentService({
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send(REQUEST);
+    await ended;
+
+    expect(
+      rounds[0].messages.some(
+        (m) => typeof m.content === 'string' && m.content.includes('have not reported back yet')
+      )
+    ).toBe(false);
   });
 
   it('passes the configured model and inference settings through', async () => {
@@ -1110,7 +1293,7 @@ describe('the tool loop', () => {
    */
   const conversation = (req: StreamRequest): AgentWireMessage[] =>
     req.messages.filter(
-      (m) => !(typeof m.content === 'string' && m.content.startsWith(TODO_WIRE_PREFIX))
+      (m) => !(typeof m.content === 'string' && m.content.startsWith(FLEET_WIRE_PREFIX))
     );
 
   /** A stream that asks for `calls` on its first round and answers on its second. */

@@ -1,4 +1,5 @@
 import type { AgentMessage, AgentPermissionAsk } from '../../../../shared/agent-types';
+import { taskIndex } from './subagent-view';
 
 /** One subagent stopped on a command, and which one it is. */
 export type PendingTaskAsk = { taskId: string; agent: string; ask: AgentPermissionAsk };
@@ -22,18 +23,11 @@ export function pendingTaskAsks(
   // walked on each render of a streaming turn.
   if (pending.length === 0) return [];
 
-  const named = new Map<string, string>();
-  for (const message of messages) {
-    for (const part of message.parts) {
-      if (part.type === 'tool' && part.call.task !== null) {
-        named.set(part.call.task.id, part.call.task.agent);
-      }
-    }
-  }
+  const known = taskIndex(messages);
 
   return pending.map(([taskId, ask]) => ({
     taskId,
-    agent: named.get(taskId) ?? 'subagent',
+    agent: known.get(taskId)?.agent ?? 'subagent',
     ask
   }));
 }

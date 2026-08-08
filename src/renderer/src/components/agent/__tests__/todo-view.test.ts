@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentTodoItem, AgentTodoStatus } from '../../../../../shared/agent-todos';
-import {
-  TODO_PANEL_KEEP_PX,
-  TODO_PANEL_MIN_PANE_PX,
-  showTodoPanel,
-  splitTodos,
-  todoProgress
-} from '../todo-view';
+import { showTodoPanel, splitTodos, todoProgress } from '../todo-view';
+import { SIDE_COLUMN_KEEP_PX, SIDE_COLUMN_MIN_PANE_PX } from '../side-column';
 
 /** The panel is up, the pane is wide, and a turn is running. */
 const LIVE = { width: 2000, streaming: true, shown: true };
@@ -116,12 +111,12 @@ describe('showTodoPanel', () => {
   const items = [item('1', 'pending')];
 
   it('takes a column only when the pane has the room', () => {
-    expect(showTodoPanel(items, { ...LIVE, shown: false, width: TODO_PANEL_MIN_PANE_PX })).toBe(
+    expect(showTodoPanel(items, { ...LIVE, shown: false, width: SIDE_COLUMN_MIN_PANE_PX })).toBe(
       true
     );
-    expect(showTodoPanel(items, { ...LIVE, shown: false, width: TODO_PANEL_MIN_PANE_PX - 1 })).toBe(
-      false
-    );
+    expect(
+      showTodoPanel(items, { ...LIVE, shown: false, width: SIDE_COLUMN_MIN_PANE_PX - 1 })
+    ).toBe(false);
   });
 
   /*
@@ -129,14 +124,14 @@ describe('showTodoPanel', () => {
    * for both directions flickers a 260px column in and out under the hand.
    */
   it('holds a column it already has down to a lower width', () => {
-    const width = TODO_PANEL_MIN_PANE_PX - 10;
+    const width = SIDE_COLUMN_MIN_PANE_PX - 10;
 
     expect(showTodoPanel(items, { ...LIVE, width, shown: true })).toBe(true);
     expect(showTodoPanel(items, { ...LIVE, width, shown: false })).toBe(false);
   });
 
   it('gives the column up once the pane is genuinely too narrow', () => {
-    expect(showTodoPanel(items, { ...LIVE, width: TODO_PANEL_KEEP_PX - 1, shown: true })).toBe(
+    expect(showTodoPanel(items, { ...LIVE, width: SIDE_COLUMN_KEEP_PX - 1, shown: true })).toBe(
       false
     );
   });

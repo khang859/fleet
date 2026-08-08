@@ -70,8 +70,17 @@ const ToolCallSchema = z.object({
    * has its own event below - keeping a copy on every call that touched it
    * would put two answers to the same question in one file, one of which is a
    * snapshot from an hour ago.
+   *
+   * Optional, and not because anything writes it absent: `z.unknown()` accepts
+   * an explicit `undefined` but a `.transform()` on top of it makes the key
+   * itself required, so a line from before the field existed - which is every
+   * line in a session older than the task list - failed to parse and had its
+   * tool calls dropped on replay.
    */
-  todos: z.unknown().transform((): AgentTodoItem[] | null => null)
+  todos: z
+    .unknown()
+    .optional()
+    .transform((): AgentTodoItem[] | null => null)
 });
 
 /** What rode along with a user message. New in version 5. */

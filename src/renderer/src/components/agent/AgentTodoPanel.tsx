@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Check, ChevronRight, Circle, CircleDot, LoaderCircle, Minus } from 'lucide-react';
 import type { AgentTodoItem, AgentTodoStatus } from '../../../../shared/agent-todos';
-import { splitTodos, todoProgress, TODO_DONE_COLLAPSE_AT, TODO_PANEL_WIDTH_PX } from './todo-view';
+import { splitTodos, todoProgress, TODO_DONE_COLLAPSE_AT } from './todo-view';
+import { SideColumnCard } from './SideColumnCard';
 
 /**
  * The agent's task list, beside the conversation.
@@ -41,61 +42,32 @@ export function AgentTodoPanel({
   const collapsed = done.length > TODO_DONE_COLLAPSE_AT && !showDone;
 
   return (
-    // The column the card floats in, held open at a fixed width so the
-    // conversation beside it keeps a steady edge. A flex column rather than a
-    // block: it is what caps the card at the pane's height, by letting the card
-    // shrink once its list is longer than there is room for.
-    <div
-      style={{ width: TODO_PANEL_WIDTH_PX }}
-      className="flex shrink-0 flex-col pt-2 pr-3 pb-3 pl-2"
-    >
-      <aside
-        aria-label="Agent tasks"
-        // The same card the composer is: rounded, bordered, glass over whatever
-        // the pane has behind it. A list of short lines read straight off a
-        // photograph is the one thing here small enough to disappear into one,
-        // and the border is what gives it an edge on all four sides rather than
-        // a slab that runs off the top and bottom of the pane.
-        //
-        // `min-h-0` so it can shrink past its content and the list scrolls
-        // inside it; without it a long list would push the card off the bottom.
-        // `overflow-hidden` so that scrolling list stays inside the corners.
-        className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-fleet-border bg-fleet-glass-surface shadow-lg backdrop-blur-md"
-      >
-        <div className="flex shrink-0 items-baseline gap-2 px-3 pt-2.5 pb-1.5">
-          <h2 className="text-[11px] font-medium tracking-wide text-fleet-text-secondary uppercase">
-            Tasks
-          </h2>
-          <span className="ml-auto font-mono text-[11px] text-fleet-text-subtle tabular-nums">
-            {progress.count}
-          </span>
-        </div>
-        {/* Work still to do first, so the top of the card is the answer to
-            "what now" and the scroll position it starts at is the right one. The
-            finished pile grows downwards, which is the direction it should push. */}
-        <ol className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-2">
-          {open.map((item) => (
-            <Row key={item.id} item={item} streaming={streaming} />
-          ))}
-          {collapsed ? (
-            <li>
-              <button
-                type="button"
-                onClick={() => setShowDone(true)}
-                aria-expanded={false}
-                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-fleet-text-subtle transition-colors hover:text-fleet-text-secondary focus-ring"
-              >
-                <Check size={12} className="shrink-0 text-emerald-400/90" />
-                <span>{done.length} finished</span>
-                <ChevronRight size={12} className="ml-auto shrink-0" />
-              </button>
-            </li>
-          ) : (
-            done.map((item) => <Row key={item.id} item={item} streaming={streaming} />)
-          )}
-        </ol>
-      </aside>
-    </div>
+    <SideColumnCard label="Tasks" name="Agent tasks" count={progress.count}>
+      {/* Work still to do first, so the top of the card is the answer to
+          "what now" and the scroll position it starts at is the right one. The
+          finished pile grows downwards, which is the direction it should push. */}
+      <ol className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-2">
+        {open.map((item) => (
+          <Row key={item.id} item={item} streaming={streaming} />
+        ))}
+        {collapsed ? (
+          <li>
+            <button
+              type="button"
+              onClick={() => setShowDone(true)}
+              aria-expanded={false}
+              className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-fleet-text-subtle transition-colors hover:text-fleet-text-secondary focus-ring"
+            >
+              <Check size={12} className="shrink-0 text-emerald-400/90" />
+              <span>{done.length} finished</span>
+              <ChevronRight size={12} className="ml-auto shrink-0" />
+            </button>
+          </li>
+        ) : (
+          done.map((item) => <Row key={item.id} item={item} streaming={streaming} />)
+        )}
+      </ol>
+    </SideColumnCard>
   );
 }
 

@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 import { Bot, History, SlidersHorizontal } from 'lucide-react';
 import { AgentThread } from './AgentThread';
 import { AgentSessionsTab } from './AgentSessionsTab';
 import { AgentTodoPanel } from './AgentTodoPanel';
+import { AgentSubagentPanel } from './AgentSubagentPanel';
 import { showTodoPanel } from './todo-view';
+import { runningSubagents, showSubagentPanel } from './subagent-view';
+import { SIDE_COLUMN_WIDTH_PX } from './side-column';
 import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
 import { BackgroundLayer } from '../BackgroundLayer';
 import { useAgentStore } from '../../store/agent-store';
@@ -12,6 +15,7 @@ import { useElementWidth } from '../../hooks/use-element-width';
 import { resolveBackgroundSrc } from '../../lib/pane-background';
 import { getGlassCssVars } from '../../lib/theme';
 import type { AgentTodoItem } from '../../../../shared/agent-todos';
+import type { AgentMessage, AgentPermissionAsk } from '../../../../shared/agent-types';
 import type { TerminalBackground } from '../../../../shared/types';
 import type { SlideshowFrame } from '../../hooks/use-slideshow';
 
@@ -19,6 +23,15 @@ type AgentView = 'agent' | 'sessions' | 'settings';
 
 /** Stable empty list, so a pane with no thread does not resubscribe every render. */
 const EMPTY_TODOS: AgentTodoItem[] = [];
+
+/** The same, for a pane with no thread yet. */
+const EMPTY_MESSAGES: AgentMessage[] = [];
+
+/** The same, for a pane with no subagents running. */
+const EMPTY_TASK_ACTIVITY: Record<string, string | null> = {};
+
+/** The same, for a pane with no subagent waiting on a command. */
+const EMPTY_TASK_PERMISSIONS: Record<string, AgentPermissionAsk> = {};
 
 /** The pane a `fleet:refocus-pane` event is about. */
 const RefocusDetail = z.object({ paneId: z.string() });
@@ -54,24 +67,44 @@ export function AgentPane({
   const openSession = useAgentStore((s) => s.openSession);
   const todos = useAgentStore((s) => s.threads[paneId]?.todos ?? EMPTY_TODOS);
   const streaming = useAgentStore((s) => (s.threads[paneId]?.streamId ?? null) !== null);
+  const messages = useAgentStore((s) => s.threads[paneId]?.messages ?? EMPTY_MESSAGES);
+  const taskActivity = useAgentStore((s) => s.threads[paneId]?.taskActivity ?? EMPTY_TASK_ACTIVITY);
+  const taskPermissions = useAgentStore(
+    (s) => s.threads[paneId]?.taskPermissions ?? EMPTY_TASK_PERMISSIONS
+  );
+  // Worked out here rather than in each of the two places that show it, because
+  // the transcript walk behind it would otherwise happen twice on every frame of
+  // a streaming turn. It costs nothing at all when nothing is running, which is
+  // most of every conversation.
+  const running = useMemo(
+    () => runningSubagents(messages, taskActivity, taskPermissions),
+    [messages, taskActivity, taskPermissions]
+  );
 
   // The pane rather than the window: this is one cell of a split the user
   // drags, so how much room there is here says nothing about how much there is
   // anywhere else.
   const frameRef = useRef<HTMLDivElement>(null);
   const paneWidth = useElementWidth(frameRef);
-  // The panel's width rule depends on whether it is already up, so it has to
+  // The column's width rule depends on whether it is already up, so it has to
   // read its own last answer. Safe to write during render: the rule is monotone
   // in `shown`, so feeding an answer back in reproduces it - one pass reaches a
   // fixed point, and a second render with the same inputs cannot land anywhere
   // else.
+  //
+  // One ref for the column rather than one per card: the hysteresis is about
+  // whether the conversation has already given up the width, which is a fact
+  // about the pane. Two of them would let the cards answer it differently and
+  // put the column in and out from under each other.
   const shownRef = useRef(false);
-  const panelled = showTodoPanel(todos, {
+  const todoCard = showTodoPanel(todos, {
     width: paneWidth,
     streaming,
     shown: shownRef.current
   });
-  shownRef.current = panelled;
+  const subagentCard = showSubagentPanel(running, { width: paneWidth, shown: shownRef.current });
+  const columned = todoCard || subagentCard;
+  shownRef.current = columned;
 
   // Not only for the settings screen: the catalog carries the context limits,
   // and without them the pane cannot tell how full it is or compact on its own.
@@ -124,14 +157,40 @@ export function AgentPane({
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         <AgentTabs value={view} onChange={setView} />
         {view === 'agent' && (
-          // The conversation and the task list side by side. The list takes a
-          // fixed column and the conversation takes the rest, which does mean
-          // the reading column shifts left the first time the agent writes a
-          // plan - the alternative is a column of empty space held open all
-          // conversation for a list most of them never make.
+          // The conversation and the work in flight side by side. The column
+          // takes a fixed width and the conversation takes the rest, which does
+          // mean the reading column shifts left the first time the agent writes
+          // a plan or sends a subagent out - the alternative is a column of
+          // empty space held open all conversation for a list most of them
+          // never make.
           <div className="flex min-h-0 flex-1">
-            <AgentThread paneId={paneId} cwd={cwd} todosInPanel={panelled} />
-            {panelled && <AgentTodoPanel items={todos} streaming={streaming} />}
+            <AgentThread
+              paneId={paneId}
+              cwd={cwd}
+              todosInPanel={todoCard}
+              running={running}
+              subagentsInPanel={subagentCard}
+            />
+            {columned && (
+              // A flex column rather than a block: it is what caps the cards at
+              // the pane's height, by letting each shrink once there is more to
+              // say than there is room for. The plan first and the subagents
+              // under it - the plan is the steadier of the two, and a card that
+              // comes and goes with every dispatch should not be the one that
+              // moves the other down the pane each time.
+              <div
+                style={{ width: SIDE_COLUMN_WIDTH_PX }}
+                className="flex shrink-0 flex-col gap-2 pt-2 pr-3 pb-3 pl-2"
+              >
+                {todoCard && <AgentTodoPanel items={todos} streaming={streaming} />}
+                {subagentCard && (
+                  <AgentSubagentPanel
+                    running={running}
+                    onStop={(taskId) => window.fleet.agent.cancelTask(taskId)}
+                  />
+                )}
+              </div>
+            )}
           </div>
         )}
         {view === 'sessions' && (
