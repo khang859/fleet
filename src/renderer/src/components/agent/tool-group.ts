@@ -29,6 +29,13 @@ import { toolLabel } from './tool-label';
  * changes no output is a classification not worth having - and one worth
  * avoiding, since a call whose class changes underneath a rendered group is its
  * own class of bug.
+ *
+ * Every one of these is a call whose whole story is told when it comes back,
+ * which is what makes a count of them honest. `image` is the tool that is not:
+ * it has something worth watching before it is finished, and the half-drawn
+ * renders arrive on a channel of their own keyed by call id. Nothing in a folded
+ * run can be receiving those, which is why the group hands its rows no live
+ * preview - add `image` here and that stops being true.
  */
 const GROUPABLE = new Set(['read', 'glob', 'grep']);
 
