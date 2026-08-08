@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { SubagentDefinition } from '../../../../shared/agent-subagents';
-import { SubagentManager, type TaskOutcome, type TaskRun } from '../manager';
+import { MAX_PARALLEL_TASKS, type SubagentDefinition } from '../../../../shared/agent-subagents';
+import { SubagentCapReached, SubagentManager, type TaskOutcome, type TaskRun } from '../manager';
 
 /**
  * What the registry says about the subagents that are still out.
@@ -94,5 +94,55 @@ describe('SubagentManager.runningFor', () => {
 
   it('gives back nothing for a conversation that has started none', () => {
     expect(manager().subagents.runningFor('thread-1')).toEqual([]);
+  });
+});
+
+/*
+ * The cap, and the one thing about it that is not like the other refusal here.
+ * "There is no subagent called X" will still be true next round; this stops
+ * being true the moment a child reports, and the model is expected to try
+ * again. `runTask` spends that difference on how the row is drawn.
+ */
+describe('SubagentManager.dispatch, at the parallel cap', () => {
+  it('turns the next one away with a type of its own', async () => {
+    const { subagents } = manager();
+    for (let i = 0; i < MAX_PARALLEL_TASKS; i++) {
+      await dispatch(subagents, 'thread-1', `job ${i}`);
+    }
+
+    await expect(dispatch(subagents, 'thread-1', 'one too many')).rejects.toBeInstanceOf(
+      SubagentCapReached
+    );
+  });
+
+  /* Counted across the app rather than per conversation - it is about the rate
+   * limit and the bill, and neither of those is per pane. */
+  it('counts the children of every conversation towards it', async () => {
+    const { subagents } = manager();
+    for (let i = 0; i < MAX_PARALLEL_TASKS; i++) {
+      await dispatch(subagents, `thread-${i}`, `job ${i}`);
+    }
+
+    await expect(dispatch(subagents, 'thread-fresh', 'mine')).rejects.toBeInstanceOf(
+      SubagentCapReached
+    );
+  });
+
+  /* A name that is not a subagent is a mistake, not a queue, and still reads as
+   * one - which is the whole reason the cap needed its own type. */
+  it('leaves a bad name as an ordinary failure', async () => {
+    const { subagents } = manager();
+
+    await expect(
+      subagents.dispatch({
+        agent: 'nonesuch',
+        prompt: 'go',
+        tools: null,
+        parentModel: 'a/model',
+        threadId: 'thread-1',
+        callId: 'call-1',
+        cwd: '/repo'
+      })
+    ).rejects.not.toBeInstanceOf(SubagentCapReached);
   });
 });

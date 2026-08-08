@@ -1,4 +1,10 @@
-import type { AgentToolContext, AgentToolResult, TaskArgs } from '../../../shared/agent-tools';
+import type {
+  AgentTaskInfo,
+  AgentToolContext,
+  AgentToolResult,
+  TaskArgs
+} from '../../../shared/agent-tools';
+import { SubagentCapReached } from '../subagents/manager';
 
 /**
  * Handing a job to a subagent.
@@ -12,6 +18,15 @@ import type { AgentToolContext, AgentToolResult, TaskArgs } from '../../../share
  * would make two subagents at once impossible, which is the case that is worth
  * having them for.
  */
+/**
+ * What the row says when the cap turned a dispatch away.
+ *
+ * Reads as a state rather than an outcome, because that is what it is - the
+ * work was not refused, it was not started yet, and by the time the user reads
+ * the row it has almost certainly been started since.
+ */
+const WAITING_FOR_SLOT = 'waiting for a slot';
+
 export async function runTask(args: TaskArgs, ctx: AgentToolContext): Promise<AgentToolResult> {
   if (ctx.dispatchTask === null || ctx.findSubagent === null) {
     // Two ways to get here and they want different sentences, because one of
@@ -26,11 +41,28 @@ export async function runTask(args: TaskArgs, ctx: AgentToolContext): Promise<Ag
     throw new Error(`There is no subagent called "${args.agent}".`);
   }
 
-  const task = await ctx.dispatchTask({
-    agent: definition.name,
-    prompt: args.prompt,
-    tools: args.tools ?? null
-  });
+  let task: AgentTaskInfo;
+  try {
+    task = await ctx.dispatchTask({
+      agent: definition.name,
+      prompt: args.prompt,
+      tools: args.tools ?? null
+    });
+  } catch (err) {
+    // Not a failure, and it must not be shown as one. Nothing went wrong: the
+    // model asked for a sixth subagent while five were running, kept the five
+    // it had, carried on with its own work, and dispatched this again once a
+    // slot came free - which is the behaviour the cap is there to produce.
+    // Thrown, it would land in the transcript as a red row in the middle of a
+    // review, indistinguishable from a subagent that does not exist, and with
+    // nothing to connect it to the retry that succeeded.
+    //
+    // The sentence the model reads is the manager's own, unchanged. It is
+    // already clear and already produces the right behaviour; only how the row
+    // is drawn changes.
+    if (!(err instanceof SubagentCapReached)) throw err;
+    return { text: err.message, summary: WAITING_FOR_SLOT };
+  }
 
   return {
     // Written so a model reading it two rounds later does not go looking for a
