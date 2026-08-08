@@ -50,6 +50,13 @@ export type TaskRun = {
 export type TaskOutcome = { report: string; usage: AgentTurnUsage | null };
 
 /**
+ * One subagent that has not reported yet, as the parent's next round is told
+ * about it. Its own id doubles as its stream, which is how the permission gate
+ * is asked whether it is stopped on a question.
+ */
+export type LiveSubagent = { taskId: string; agent: string; prompt: string };
+
+/**
  * A run that ended without an answer, carrying what it spent anyway.
  *
  * A subclass rather than a return value, because everything below the runner
@@ -129,6 +136,24 @@ export class SubagentManager {
   /** Every subagent running right now, by id. */
   liveIds(): string[] {
     return [...this.live.keys()];
+  }
+
+  /**
+   * The children one conversation started and is still waiting on.
+   *
+   * By thread rather than by id, because the caller is a turn rather than a
+   * pane that has just reloaded: what it wants is not "are these still alive"
+   * but "what is out there in my name". A child asks and gets nothing back -
+   * its thread id is its own task id, which nothing is ever the parent of.
+   */
+  runningFor(threadId: string): LiveSubagent[] {
+    return [...this.live.values()]
+      .filter((entry) => entry.parent.threadId === threadId)
+      .map((entry) => ({
+        taskId: entry.info.id,
+        agent: entry.info.agent,
+        prompt: entry.info.prompt
+      }));
   }
 
   /**

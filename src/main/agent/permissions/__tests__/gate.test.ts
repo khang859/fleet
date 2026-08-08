@@ -219,6 +219,26 @@ describe('PermissionGate', () => {
 
     expect(persisted).toEqual([]);
   });
+
+  /*
+   * Asked by a parent turn building the round that names its running children:
+   * a child stopped on a question is not working, and is the one thing on that
+   * list the parent should say out loud rather than wait for.
+   */
+  it('says which of the streams asked about are stopped on a question', async () => {
+    const g = gate();
+    const verdict = g.check(request('npm test', undefined, { streamId: 'task-1' }));
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+
+    expect(g.waitingOn(['task-1', 'task-2'])).toEqual(['task-1']);
+    // Nothing was asked about this one, so it is simply not in the answer.
+    expect(g.waitingOn(['task-2'])).toEqual([]);
+
+    g.decide(asks[0].requestId, 'once');
+    await verdict;
+
+    expect(g.waitingOn(['task-1'])).toEqual([]);
+  });
 });
 
 /*
