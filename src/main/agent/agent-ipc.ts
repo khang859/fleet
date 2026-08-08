@@ -26,6 +26,8 @@ import { completeOnce } from './openrouter';
 import { resolveTitle } from './session-title';
 import { resolveAttachment } from './attachments';
 import { searchMentionFiles } from './mention-search';
+import { loadCommands } from './commands/definitions';
+import type { AgentCommandDescriptor } from '../../shared/agent-commands';
 import type { AgentImageStore } from './image-store';
 import type { AgentGitWatcher } from './git-watch';
 import type { AgentHistoryStore } from './history-store';
@@ -171,6 +173,15 @@ export function registerAgentIpc(deps: {
     IPC_CHANNELS.AGENT_MENTION_SEARCH,
     async (_e, query: string, cwd: string): Promise<AgentMentionMatch[]> =>
       searchMentionFiles(query, cwd)
+  );
+
+  // Names and descriptions, never templates. The prompt behind a command is
+  // read again on the way to the model, so a copy of it in the renderer would
+  // be a second version of the same text kept fresh by nobody.
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_COMMANDS_LIST,
+    async (_e, cwd: string): Promise<AgentCommandDescriptor[]> =>
+      (await loadCommands(cwd)).map(({ name, description }) => ({ name, description }))
   );
 
   // Fire-and-forget in both directions: the branch arrives on AGENT_GIT_HEAD,

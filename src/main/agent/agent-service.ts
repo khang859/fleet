@@ -28,6 +28,7 @@ import {
 import { addRound } from '../../shared/agent-spend';
 import { nextStreak, renderTodoBlock, type AgentTodoItem } from '../../shared/agent-todos';
 import { attachmentWireParts, imageWireParts } from './attachments';
+import { expandCommand } from './commands/expand';
 import { toDataUrl } from './image-kinds';
 import {
   buildTaskSpec,
@@ -345,14 +346,19 @@ export const TODO_WIRE_PREFIX = 'Note from Fleet, not from the user:';
  * A message with nothing attached stays a plain string, which is what every
  * turn before this feature was and what every turn without an attachment still
  * is. Only a message that needs parts gets them.
+ *
+ * A `/command` line becomes the prompt behind it here, which is the one place
+ * every user message passes through - the new one and every older one, on every
+ * turn. See `expandCommand`.
  */
 async function toUserMessage(
   text: string,
   attachments: AgentAttachment[],
   ctx: WireContext
 ): Promise<AgentWireMessage> {
-  if (attachments.length === 0) return { role: 'user', content: text };
-  const parts = text === '' ? [] : [{ type: 'text' as const, text }];
+  const said = await expandCommand(text, ctx.cwd);
+  if (attachments.length === 0) return { role: 'user', content: said };
+  const parts = said === '' ? [] : [{ type: 'text' as const, text: said }];
   return { role: 'user', content: [...parts, ...(await attachmentWireParts(attachments, ctx))] };
 }
 

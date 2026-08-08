@@ -87,6 +87,7 @@ import type {
   AgentTitleResult,
   AgentToolEvent
 } from '../shared/agent-types';
+import type { AgentCommandDescriptor } from '../shared/agent-commands';
 import type {
   AgentSessionAddSpend,
   AgentSessionAppend,
@@ -579,6 +580,12 @@ const fleetApi = {
       typedInvoke<AgentAttachResult>(IPC_CHANNELS.AGENT_ATTACH, req),
     mentionSearch: async (query: string, cwd: string): Promise<AgentMentionMatch[]> =>
       typedInvoke<AgentMentionMatch[]>(IPC_CHANNELS.AGENT_MENTION_SEARCH, query, cwd),
+    /**
+     * The `/` menu's rows. Names and descriptions only - the prompt behind a
+     * command stays in main, which is the side that sends it.
+     */
+    commandsList: async (cwd: string): Promise<AgentCommandDescriptor[]> =>
+      typedInvoke<AgentCommandDescriptor[]>(IPC_CHANNELS.AGENT_COMMANDS_LIST, cwd),
     /**
      * Which branch the pane's folder is on. Registering answers on `onGitHead`
      * straight away, so there is no separate first read to wait for.
