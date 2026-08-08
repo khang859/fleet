@@ -282,6 +282,19 @@ export const IPC_CHANNELS = {
   AGENT_SKILLS_INSTALL: 'agent:skills-install',
   AGENT_SKILLS_REMOVE: 'agent:skills-remove',
   AGENT_SKILLS_REVEAL: 'agent:skills-reveal',
+  // Reminders the agent set for itself. Main owns them, because deciding that
+  // one is due has to happen whether or not any pane is open on the session it
+  // belongs to - which is also why CHANGED is pushed rather than polled.
+  //
+  // PULL_DUE is the one that matters: it is the only way a due schedule is ever
+  // consumed, and it hands the batch over and clears it in the same call, so a
+  // pane that asks twice gets it once. CANCEL is the user's stop button, which
+  // needs no session of its own - a person clicking in their own pane is
+  // already looking at the row they mean.
+  AGENT_SCHEDULE_LIST: 'agent:schedule-list',
+  AGENT_SCHEDULE_CANCEL: 'agent:schedule-cancel',
+  AGENT_SCHEDULE_PULL_DUE: 'agent:schedule-pull-due',
+  AGENT_SCHEDULE_CHANGED: 'agent:schedule-changed',
 
   // ── Remote (SSH) file browser ──────────────────────────────────────────────
   // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's

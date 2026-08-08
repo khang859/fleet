@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { TODO_MAX_ITEMS, TODO_STATUSES, type AgentTodoItem } from './agent-todos';
+import {
+  MAX_SCHEDULES_PER_SESSION,
+  SCHEDULE_NOTE_MAX_CHARS,
+  type AgentScheduleRecord
+} from './agent-schedule';
 import type { McpToolOutput } from './agent-mcp';
 import type { SubagentDefinition } from './agent-subagents';
 import type { SkillDefinition } from './agent-skills';
@@ -61,7 +66,22 @@ export const SUBAGENT_TOOL_NAMES = [
 ] as const;
 export type SubagentToolName = (typeof SUBAGENT_TOOL_NAMES)[number];
 
-export const AGENT_TOOL_NAMES = [...SUBAGENT_TOOL_NAMES, 'task'] as const;
+/**
+ * Everything the pane's own model may call.
+ *
+ * The four that are not a subagent's are the two ends of the same idea: `task`
+ * starts a conversation elsewhere, and the `schedule_*` three start one later.
+ * A subagent has neither - no children of its own, and no durable session for a
+ * fire to land in - so offering it any of them would be a tool backed by
+ * nothing, which is what `SUBAGENT_TOOL_NAMES` exists to prevent.
+ */
+export const AGENT_TOOL_NAMES = [
+  ...SUBAGENT_TOOL_NAMES,
+  'task',
+  'schedule_create',
+  'schedule_list',
+  'schedule_cancel'
+] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
 /** Whether a name is one of the two tools that write the task list. */
@@ -282,6 +302,25 @@ export const TaskArgs = z.object({
   tools: z.array(z.enum(SUBAGENT_TOOL_NAMES)).min(1).optional()
 });
 
+/**
+ * Waking yourself up later.
+ *
+ * `note` is `task`'s `prompt` problem again and worse: a subagent at least
+ * starts in the same minute as the turn that sent it, while the turn this wakes
+ * has nothing at all - not the conversation, not the folder's state, not the
+ * reason any of it mattered. The length allowance is generous for exactly that
+ * reason, and the description spends most of its words on it.
+ */
+export const ScheduleCreateArgs = z.object({
+  cron: z.string().min(1),
+  note: z.string().min(1).max(SCHEDULE_NOTE_MAX_CHARS),
+  recurring: z.boolean()
+});
+
+export const ScheduleListArgs = z.object({});
+
+export const ScheduleCancelArgs = z.object({ id: z.string().min(1) });
+
 export type ReadArgs = z.infer<typeof ReadArgs>;
 export type GlobArgs = z.infer<typeof GlobArgs>;
 export type GrepArgs = z.infer<typeof GrepArgs>;
@@ -293,6 +332,9 @@ export type ImageArgs = z.infer<typeof ImageArgs>;
 export type TodoAddArgs = z.infer<typeof TodoAddArgs>;
 export type TodoUpdateArgs = z.infer<typeof TodoUpdateArgs>;
 export type TaskArgs = z.infer<typeof TaskArgs>;
+export type ScheduleCreateArgs = z.infer<typeof ScheduleCreateArgs>;
+export type ScheduleListArgs = z.infer<typeof ScheduleListArgs>;
+export type ScheduleCancelArgs = z.infer<typeof ScheduleCancelArgs>;
 
 /** The JSON Schema for one tool, as the completions API wants it. */
 export type AgentToolSpec = {
@@ -395,6 +437,33 @@ const TODO_UPDATE_DESCRIPTION = [
   'One item per call, by its number.',
   'Only one task may be `in_progress` at a time.',
   'Do not save up completions for the end - the user is watching this while you work, and a list that all turns green at once told them nothing on the way.'
+].join(' ');
+
+/*
+ * The cold-start paragraph is the load-bearing part of this one, and it is
+ * second rather than last on purpose. Every product that has shipped
+ * self-scheduling reports the same failure: a note written as a reminder to
+ * someone who remembers the conversation, read by someone who does not.
+ */
+const SCHEDULE_CREATE_DESCRIPTION = [
+  'Wake yourself up later to check on something, on a schedule you set now.',
+  'When it fires, `note` is the entire brief the turn that reads it will have - not this conversation, not what you were doing when you called this, nothing else. Write it as though for a version of yourself with no memory of today: name the file, the command, the PR, the value you are watching, and what "done" or "still wrong" looks like. "Check on it" or "see if it finished" is not enough on its own to act on.',
+  "`cron` is a standard 5-field expression - minute hour day-of-month month day-of-week - read in the user's own timezone. `*` means every value, `,` lists several, `-` is a range, `/` is a step (`*/15` = every 15 minutes); 3-letter day and month names are accepted. Day-of-month and day-of-week are OR'd together when both are restricted, the traditional cron rule.",
+  '`recurring: true` repeats on that schedule and expires itself a week after being created, firing once more on its way out; `recurring: false` fires once and is gone. A recurring schedule that missed several fires while nothing was open to run it gets exactly one catch-up message, saying how overdue it is, not one per missed interval.',
+  'The fire arrives as an ordinary message in this conversation once you are next idle - never mid-turn - and a normal round follows from it. There is no need to keep this turn open or check back yourself: stop your turn once the schedule is set.',
+  `A conversation may only hold ${MAX_SCHEDULES_PER_SESSION} of these at once, and a schedule created by a schedule that fired from a schedule cannot chain forever - past a few hops the call is refused and says to ask the user instead.`
+].join('\n\n');
+
+const SCHEDULE_LIST_DESCRIPTION = [
+  'The schedules this conversation has set, with their ids.',
+  'You are told this unasked on every round that has any, so there is rarely a reason to call it - reach for it when you need an exact id to cancel and the round you are on did not carry one.',
+  "It is this conversation's own list. Schedules set in other panes are not yours to see or to cancel."
+].join(' ');
+
+const SCHEDULE_CANCEL_DESCRIPTION = [
+  'Drop a schedule you set, by its id.',
+  'Do it as soon as the thing it was watching stops being worth watching - the deploy landed, the question was answered, the user said never mind.',
+  'A schedule left running past its purpose is a turn nobody asked for, on a bill somebody pays.'
 ].join(' ');
 
 /**
@@ -630,6 +699,58 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
           activeForm: { type: 'string', description: 'Rewrites the present-continuous form.' }
         },
         required: ['id', 'status'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'schedule_create',
+      description: SCHEDULE_CREATE_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          cron: {
+            type: 'string',
+            description:
+              'Five fields: minute hour day-of-month month day-of-week. E.g. `0 9 * * MON-FRI` for 9am on weekdays, `*/30 * * * *` every half hour.'
+          },
+          note: {
+            type: 'string',
+            maxLength: SCHEDULE_NOTE_MAX_CHARS,
+            description:
+              'The whole brief for the turn this wakes, which will have nothing else. Name the thing, where it is, and what you are looking for.'
+          },
+          recurring: {
+            type: 'boolean',
+            description: 'True to keep firing on that schedule, false to fire once and be gone.'
+          }
+        },
+        required: ['cron', 'note', 'recurring'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'schedule_list',
+      description: SCHEDULE_LIST_DESCRIPTION,
+      parameters: { type: 'object', properties: {}, additionalProperties: false }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'schedule_cancel',
+      description: SCHEDULE_CANCEL_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'The id the schedule was given when it was set.' }
+        },
+        required: ['id'],
         additionalProperties: false
       }
     }
@@ -964,6 +1085,39 @@ export type AgentToolContext = {
    * procedure for that job at least as much as the parent that sent it.
    */
   findSkill: ((name: string) => SkillDefinition | null) | null;
+  /**
+   * Set a reminder for this conversation, or `null` when there is nothing to
+   * set one against.
+   *
+   * `null` for a subagent, which is the second half of the same double
+   * enforcement `dispatchTask` describes: the tools are kept out of
+   * `SUBAGENT_TOOL_NAMES`, and the capability behind them is never handed over,
+   * so neither being wrong on its own is enough to give a child a schedule. What
+   * it would be scheduling is the problem - a subagent's conversation ends when
+   * it reports, and a fire aimed at it would have nowhere to land.
+   */
+  schedule: AgentScheduleCapability | null;
+};
+
+/**
+ * What the schedule tools are given: this conversation's list, and the two ways
+ * to change it.
+ *
+ * Synchronous, because the store behind it is - the whole design rests on a
+ * create being counted and written with nothing awaited in the middle.
+ *
+ * `chainDepth` is here rather than passed to `create` so that the tool cannot
+ * forget it. It says what started the turn making this call: `null` for one a
+ * person started, and a number for one a fire did. That is the only thing
+ * standing between "check again in an hour" and a loop that runs until someone
+ * notices the bill.
+ */
+export type AgentScheduleCapability = {
+  /** The depth of the schedule that fired to start this turn, or `null` for an ordinary one. */
+  chainDepth: number | null;
+  create: (input: { cron: string; note: string; recurring: boolean }) => AgentScheduleRecord;
+  list: () => AgentScheduleRecord[];
+  cancel: (id: string) => boolean;
 };
 
 /**

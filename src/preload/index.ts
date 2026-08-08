@@ -101,6 +101,7 @@ import type {
   AgentSessionReplay
 } from '../shared/agent-session';
 import type { AgentGitHeadEvent } from '../shared/agent-git';
+import type { AgentScheduleChanged, AgentScheduleRecord } from '../shared/agent-schedule';
 // Aliased so the generic MCP names read as the Agent pane's at every use site.
 import type {
   McpDetectedServer as AgentMcpDetected,
@@ -683,6 +684,27 @@ const fleetApi = {
       /** The way to everything this UI does not do: edit one, look at what it bundles. */
       reveal: async (path: string): Promise<void> =>
         typedInvoke<void>(IPC_CHANNELS.AGENT_SKILLS_REVEAL, path)
+    },
+
+    /**
+     * Reminders the agent set for itself.
+     *
+     * `pullDue` is the only way a due one is ever collected, and it empties what
+     * it hands over in the same call in main - so a pane that asks twice, or two
+     * panes on one session asking at once, deliver it once between them.
+     *
+     * `cancel` names no session, unlike the model's own `schedule_cancel`: this
+     * is the stop button on a row the user is looking at.
+     */
+    schedule: {
+      list: async (sessionId: string): Promise<AgentScheduleRecord[]> =>
+        typedInvoke<AgentScheduleRecord[]>(IPC_CHANNELS.AGENT_SCHEDULE_LIST, sessionId),
+      cancel: async (id: string): Promise<boolean> =>
+        typedInvoke<boolean>(IPC_CHANNELS.AGENT_SCHEDULE_CANCEL, id),
+      pullDue: async (sessionId: string): Promise<AgentScheduleRecord[]> =>
+        typedInvoke<AgentScheduleRecord[]>(IPC_CHANNELS.AGENT_SCHEDULE_PULL_DUE, sessionId),
+      onChanged: (cb: (p: AgentScheduleChanged) => void): Unsubscribe =>
+        onChannel(IPC_CHANNELS.AGENT_SCHEDULE_CHANGED, cb)
     }
   },
 

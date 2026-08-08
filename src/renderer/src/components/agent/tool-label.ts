@@ -28,7 +28,9 @@ const LabelArgs = z.object({
   glob: z.string().optional(),
   command: z.string().optional(),
   prompt: z.string().optional(),
-  references: z.array(z.string()).optional()
+  references: z.array(z.string()).optional(),
+  cron: z.string().optional(),
+  id: z.string().optional()
 });
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
@@ -77,6 +79,17 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
         verb: (args.references?.length ?? 0) > 0 ? 'Edit image' : 'Generate',
         target: (args.prompt ?? '').replace(/\s*\n\s*/g, ' ')
       };
+    // When rather than what: the note is a paragraph written for a turn that
+    // has not happened yet, and the expression is both short enough for a row
+    // and the thing the user would check if the check-in arrived on the wrong
+    // day. What it is about is on the card in the column, and in full behind
+    // the row's own disclosure.
+    case 'schedule_create':
+      return { verb: 'Schedule', target: args.cron ?? '' };
+    case 'schedule_list':
+      return { verb: 'List schedules', target: '' };
+    case 'schedule_cancel':
+      return { verb: 'Cancel schedule', target: args.id ?? '' };
     default:
       return mcpLabel(call.name) ?? { verb: call.name, target: '' };
   }

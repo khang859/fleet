@@ -45,6 +45,17 @@ grep -c "some distinctive string from your change" out/main/index.mjs
 If the bundle is stale, restart the dev server rather than touching files to prod the watcher - `touch` did not work here.
 Ask first: the dev server belongs to whoever started it, and a second `npm run dev` breaks `fleet-drive`.
 
+## Seen again (2026-08-08)
+
+Verifying the agent `schedule` tools, a tool row kept drawing the cron expression twice - `Schedule 50 12 * * *  50 12 * * *` - minutes after the `summary` that produced the duplicate had been changed in `src/main/agent/tools/schedule.ts`.
+The renderer half of the same feature was live in the very same screenshot: the schedules panel drew, the fire card drew, the chip drew.
+That is what makes this one hard to catch by eye - the feature looks current because most of it is.
+
+The tell is that the stale part is always the main-side one.
+A restart of `npm run dev` fixed it, and the same call then rendered `Schedule 56 12 * * *  today 12:56 PM`.
+
+Cheapest habit: after editing anything under `src/main` or anything in `src/shared` that main imports, restart the dev server before the E2E pass rather than checking `stat` afterwards and discovering the last twenty minutes of verification proved nothing.
+
 ## Related
 
 A settings key added to `DEFAULT_SETTINGS` is a cheap liveness probe for main, since main merges defaults on load:

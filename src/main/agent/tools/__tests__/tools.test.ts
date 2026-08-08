@@ -62,6 +62,7 @@ const ctx = (threadId = 'thread-1', signal = new AbortController().signal): Agen
   dispatchTask: null,
   findSubagent: null,
   findSkill: null,
+  schedule: null,
   // The todo tools have their own file too, and nothing here calls them.
   todos: { list: () => [], save: () => {} }
 });

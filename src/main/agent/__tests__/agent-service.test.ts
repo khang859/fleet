@@ -14,7 +14,7 @@ import {
   type AgentMessage,
   type AgentSendRequest
 } from '../../../shared/agent-types';
-import type { AgentToolCall } from '../../../shared/agent-tools';
+import type { AgentScheduleCapability, AgentToolCall } from '../../../shared/agent-tools';
 import type { AgentTodoItem } from '../../../shared/agent-todos';
 import {
   CLEARED_RESULT_TEXT,
@@ -30,9 +30,12 @@ import {
   toWireHistory,
   withClearedWireResults,
   withResumeNote,
+  withScheduleReminder,
   withSubagentReminder,
   withTodoReminder
 } from '../agent-service';
+import { ScheduleStore } from '../schedule-store';
+import { SCHEDULE_WIRE_PREFIX } from '../../../shared/agent-schedule';
 import { PermissionGate } from '../permissions/gate';
 import { SubagentManager, type LiveSubagent } from '../subagents/manager';
 import {
@@ -55,6 +58,25 @@ const NO_SUBAGENTS = new SubagentManager({
   emit: () => {},
   run: async () => Promise.reject(new Error('no subagent should run here')),
   definitions: async () => Promise.resolve([])
+});
+
+/**
+ * A schedule store pointed at a temporary file, replaced before every test.
+ *
+ * A `let` rather than a constant because it has to be swapped, and swapped
+ * rather than cleared because the store reads its file once and keeps it: two
+ * tests sharing one would share whatever the first of them set.
+ */
+let SCHEDULES = new ScheduleStore({ file: join(tmpdir(), 'fleet-agent-service-schedules.json') });
+let schedulesDir: string;
+
+beforeEach(() => {
+  schedulesDir = mkdtempSync(join(tmpdir(), 'fleet-agent-service-schedules-'));
+  SCHEDULES = new ScheduleStore({ file: join(schedulesDir, 'schedules.json') });
+});
+
+afterEach(() => {
+  rmSync(schedulesDir, { recursive: true, force: true });
 });
 
 /**
@@ -393,6 +415,72 @@ describe('withResumeNote', () => {
   });
 });
 
+describe('withScheduleReminder', () => {
+  const history: AgentWireMessage[] = [
+    { role: 'system', content: 'be brief' },
+    { role: 'user', content: 'go' }
+  ];
+  const capability = (): AgentScheduleCapability => ({
+    chainDepth: null,
+    create: (input) =>
+      SCHEDULES.create({
+        sessionId: 'session-1',
+        cwd: '/repo',
+        cron: input.cron,
+        note: input.note,
+        recurring: input.recurring,
+        depth: 0,
+        now: new Date()
+      }),
+    list: () => SCHEDULES.list('session-1'),
+    cancel: (id) => SCHEDULES.cancel(id, 'session-1')
+  });
+  /** One set, as a conversation that has been using this would have. */
+  const set = (): AgentScheduleCapability => {
+    const schedule = capability();
+    schedule.create({ cron: '0 3 * * *', note: 'Check the release job.', recurring: false });
+    return schedule;
+  };
+
+  // The ids are the point of it. Without them a model that wants to cancel
+  // something it set two hours ago has to spend a round asking what it set.
+  it('names each one with the id that cancels it', () => {
+    const schedule = set();
+
+    const sent = withScheduleReminder(history, schedule);
+
+    expect(sent).toHaveLength(3);
+    expect(sent.at(-1)?.content).toContain(schedule.list()[0].id);
+    expect(sent.at(-1)?.content).toContain('Check the release job.');
+  });
+
+  it('marks it as Fleet talking rather than the user', () => {
+    expect(withScheduleReminder(history, set()).at(-1)?.content).toContain(FLEET_WIRE_PREFIX);
+  });
+
+  it('leaves the messages it was given alone', () => {
+    withScheduleReminder(history, set());
+
+    expect(history).toHaveLength(2);
+  });
+
+  /*
+   * The one that decides whether this is worth sending at all. Most turns of
+   * most conversations have nothing scheduled, and a line saying so on every
+   * round would be the whole cost of the feature paid where it has nothing to
+   * say.
+   */
+  it('says nothing at all when the conversation has none', () => {
+    expect(withScheduleReminder(history, capability())).toBe(history);
+  });
+
+  // A subagent has no schedules and no way to get any, so there is nothing here
+  // for it to be told.
+  it('says nothing to a subagent', () => {
+    expect(withScheduleReminder(history, null)).toBe(history);
+  });
+});
+
 describe('withSubagentReminder', () => {
   const history: AgentWireMessage[] = [
     { role: 'system', content: 'be brief' },
@@ -499,6 +587,26 @@ describe('toWireHistory', () => {
     expect(messages[1].role).toBe('user');
     expect(messages[1].content).toContain(SUMMARY_WIRE_PREFIX);
     expect(messages[1].content).toContain('we chose zod');
+  });
+
+  /*
+   * `role` is branched with `if` chains rather than switched exhaustively, so a
+   * missing branch here compiles perfectly and quietly hands the model its own
+   * reminder as something it said. Hence a test rather than a type.
+   */
+  it('sends a fired schedule as a labelled user message, not as the assistant speaking', async () => {
+    const fire = textMessage('f', 'scheduled', 'Check the release job on PR #512.');
+    const messages = await toWireHistory({ ...REQUEST, history: [fire] }, 'be brief');
+
+    expect(messages[1].role).toBe('user');
+    expect(messages[1].content).toContain(SCHEDULE_WIRE_PREFIX);
+    expect(messages[1].content).toContain('Check the release job on PR #512.');
+  });
+
+  it('does not label an ordinary user message as a schedule', async () => {
+    const messages = await toWireHistory(REQUEST, 'be brief');
+
+    for (const message of messages) expect(message.content).not.toContain(SCHEDULE_WIRE_PREFIX);
   });
 
   // The ordering the parts exist for. A model handed its own closing sentence
@@ -823,6 +931,7 @@ describe('AgentService', () => {
     });
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -855,6 +964,7 @@ describe('AgentService', () => {
     };
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: await oneRunningSubagent(REQUEST.threadId),
@@ -885,6 +995,7 @@ describe('AgentService', () => {
     };
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -916,6 +1027,7 @@ describe('AgentService', () => {
     };
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -941,6 +1053,7 @@ describe('AgentService', () => {
     };
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -962,6 +1075,7 @@ describe('AgentService', () => {
     const stream = vi.fn(async () => Promise.resolve(round()));
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => ({
         ...SETTINGS,
@@ -989,6 +1103,7 @@ describe('AgentService', () => {
     const stream = vi.fn(async () => Promise.resolve(round()));
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => ({ ...SETTINGS, systemPrompt: 'Answer only in haiku.' }),
       subagents: NO_SUBAGENTS,
@@ -1021,6 +1136,7 @@ describe('AgentService', () => {
     };
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1049,6 +1165,7 @@ describe('AgentService', () => {
     const { emit, events, ended } = collector();
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1065,6 +1182,7 @@ describe('AgentService', () => {
     const { emit, events, ended } = collector();
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1086,6 +1204,7 @@ describe('AgentService', () => {
     const { emit, events, ended } = collector();
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => ({ ...SETTINGS, coding: { ...SETTINGS.coding, model: null } }),
       subagents: NO_SUBAGENTS,
@@ -1106,6 +1225,7 @@ describe('AgentService', () => {
     const { emit, events, ended } = collector();
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1154,6 +1274,7 @@ describe('AgentService', () => {
     const stream = vi.fn(async () => Promise.resolve(round()));
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => ({
         ...SETTINGS,
@@ -1177,6 +1298,7 @@ describe('AgentService', () => {
     const { emit, events, ended } = collector();
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1206,6 +1328,7 @@ describe('AgentService', () => {
   it('leaves the transcript alone when a compaction is cancelled', async () => {
     const { emit, events, ended } = collector();
     const service = new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1233,6 +1356,7 @@ describe('AgentService', () => {
   it('treats a cancel as a normal ending, keeping the partial reply', async () => {
     const { emit, events, ended } = collector();
     const service = new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1264,6 +1388,7 @@ describe('AgentService', () => {
   it('reports what a cancelled turn had already spent', async () => {
     const { emit, events, ended } = collector();
     const service = new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1295,6 +1420,7 @@ describe('AgentService', () => {
     const { emit, events, ended } = collector();
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1409,6 +1535,7 @@ describe('the tool loop', () => {
     const { stream, rounds } = twoRounds([call('read', { path: 'answer.txt' })]);
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1441,6 +1568,7 @@ describe('the tool loop', () => {
     const { stream, rounds } = twoRounds([call('read', { path: 'shot.png' })]);
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1471,6 +1599,7 @@ describe('the tool loop', () => {
     const { stream } = twoRounds([call('read', { path: 'answer.txt' })]);
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1499,6 +1628,7 @@ describe('the tool loop', () => {
     const { stream, rounds } = twoRounds([call('read', { path: '../../../etc/passwd' })]);
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1522,6 +1652,7 @@ describe('the tool loop', () => {
     const stream = vi.fn(async () => Promise.resolve(round()));
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
@@ -1560,6 +1691,7 @@ describe('the tool loop', () => {
         return Promise.resolve(round());
       };
       new AgentService({
+        schedules: SCHEDULES,
         gate: PASS_GATE,
         getSettings: () => settings,
         subagents: NO_SUBAGENTS,
@@ -1624,6 +1756,7 @@ describe('the tool loop', () => {
       });
 
       new AgentService({
+        schedules: SCHEDULES,
         gate: PASS_GATE,
         getSettings: () => ({
           ...withImage,
@@ -1661,6 +1794,7 @@ describe('the tool loop', () => {
       });
 
       new AgentService({
+        schedules: SCHEDULES,
         gate: PASS_GATE,
         getSettings: () => withImage,
         subagents: NO_SUBAGENTS,
@@ -1689,6 +1823,7 @@ describe('the tool loop', () => {
     );
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => ({ ...SETTINGS, maxToolRounds: 12 }),
       subagents: NO_SUBAGENTS,
@@ -1715,6 +1850,7 @@ describe('the tool loop', () => {
     );
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => ({ ...SETTINGS, maxToolRounds: MAX_TOOL_ROUNDS_CEILING * 10 }),
       subagents: NO_SUBAGENTS,
@@ -1735,6 +1871,7 @@ describe('the tool loop', () => {
     });
 
     new AgentService({
+      schedules: SCHEDULES,
       gate: PASS_GATE,
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,

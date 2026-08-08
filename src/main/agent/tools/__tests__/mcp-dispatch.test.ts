@@ -49,7 +49,8 @@ function ctx(output: McpToolOutput | null, threadId = randomUUID()): AgentToolCo
           },
     dispatchTask: null,
     findSubagent: null,
-    findSkill: null
+    findSkill: null,
+    schedule: null
   };
 }
 

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { AgentTaskInfo, AgentToolCall } from './agent-tools';
 import { AGENT_TODO_INSTRUCTIONS, type AgentTodoItem } from './agent-todos';
 import { AGENT_SKILL_INSTRUCTIONS } from './agent-skills';
+import { AGENT_SCHEDULE_INSTRUCTIONS } from './agent-schedule';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
 import type { McpServersConfig } from './agent-mcp';
 
@@ -314,11 +315,21 @@ export const AGENT_TASK_INSTRUCTIONS = [
  * The task list is appended unconditionally, because unlike `image` its two
  * tools are always offered. A user who replaces the prompt is replacing how the
  * agent works, not switching off a pane of the UI they can still see.
+ *
+ * The schedule block is not unconditional for the reason `task` is not: a
+ * subagent is never offered those tools, and describing a tool that is not there
+ * is how a model spends a round finding out.
  */
 export function buildSystemPrompt(
   cwd: string,
   override: string | null,
-  options: { image: boolean; mcp?: boolean; task?: boolean; skill?: boolean } = { image: false }
+  options: {
+    image: boolean;
+    mcp?: boolean;
+    task?: boolean;
+    skill?: boolean;
+    schedule?: boolean;
+  } = { image: false }
 ): string {
   const custom = override?.trim() ?? '';
   const base = custom === '' ? DEFAULT_AGENT_SYSTEM_PROMPT : custom;
@@ -329,7 +340,8 @@ export function buildSystemPrompt(
   // subagent is something to hand off once started, and the order these are read
   // in is the order they come up in.
   const skill = options.skill === true ? `\n\n${AGENT_SKILL_INSTRUCTIONS}` : '';
-  return `${base}${image}${mcp}${skill}${task}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
+  const schedule = options.schedule === true ? `\n\n${AGENT_SCHEDULE_INSTRUCTIONS}` : '';
+  return `${base}${image}${mcp}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
 }
 
 /*
@@ -451,8 +463,17 @@ export type AgentMessage = {
    * `summary` is what compaction leaves behind: one message standing in for the
    * turns it replaced. It is a distinct role because it is neither side of the
    * conversation, and rendering it as the assistant's own words would be a lie.
+   *
+   * `scheduled` is a reminder the agent set for itself coming back. Distinct for
+   * the same reason and one more: it is the only message in the transcript that
+   * nobody in the room wrote, and drawing it as the user's would have the person
+   * reading it looking for when they said that.
+   *
+   * Note that nothing here is exhaustively switched on - `role` is branched with
+   * `if` chains - so adding a member compiles cleanly and silently falls through
+   * to the assistant branch everywhere it was not handled.
    */
-  role: 'user' | 'assistant' | 'summary';
+  role: 'user' | 'assistant' | 'summary' | 'scheduled';
   /** What the message is made of, oldest first. One turn, however many rounds. */
   parts: AgentPart[];
   /** Assistant only: the reasoning channel, when the model streams one. */
@@ -615,6 +636,23 @@ export type AgentSendRequest = {
    * already answered it above.
    */
   resumed?: boolean;
+  /**
+   * The depth of the schedule whose firing started this turn, or absent for
+   * every turn a person or a subagent report started.
+   *
+   * It travels for the reason `resumed` does - the wire cannot show it - and it
+   * is the only thing standing between "check again in an hour" and a loop that
+   * re-arms itself for as long as the app is open. A schedule set during such a
+   * turn is recorded one hop deeper, and past a few hops `schedule_create`
+   * refuses.
+   *
+   * Deliberately one-shot rather than causal: it tags the turn a fire directly
+   * produced and nothing further downstream. A model that dispatches a subagent
+   * from a woken turn and schedules something when the report lands is back at
+   * depth zero, which is a simplification rather than an oversight - the
+   * alternative is threading a cause through every detour a turn can take.
+   */
+  scheduleChainDepth?: number;
 };
 
 /**

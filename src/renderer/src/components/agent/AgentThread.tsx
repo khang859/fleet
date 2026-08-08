@@ -4,11 +4,13 @@ import {
   Bot,
   Check,
   ChevronRight,
+  Clock,
   FoldVertical,
   ListChecks,
   Paperclip,
   Square,
-  TriangleAlert
+  TriangleAlert,
+  X
 } from 'lucide-react';
 import type {
   AgentAttachRequest,
@@ -34,9 +36,12 @@ import { AgentActivity } from './AgentActivity';
 import { AgentToolRow } from './AgentToolRow';
 import { AgentPermissionRow } from './AgentPermissionRow';
 import { AgentTaskCard } from './AgentTaskCard';
+import { AgentScheduleFire } from './AgentScheduleFire';
 import { AgentTaskPermissions } from './AgentTaskPermissions';
 import { pendingTaskAsks, type PendingTaskAsk } from './task-permissions';
 import type { RunningSubagent } from './subagent-view';
+import { scheduleChip, type ScheduleRow } from './schedule-view';
+import { cancelSchedule } from '../../store/agent-schedule';
 import { ToolModePicker } from './ToolModePicker';
 import { AgentAttachmentChip, AgentMessageAttachments } from './AgentAttachment';
 import { reasoningLabel } from './activity';
@@ -174,7 +179,9 @@ export function AgentThread({
   cwd,
   todosInPanel,
   running,
-  subagentsInPanel
+  subagentsInPanel,
+  schedules,
+  schedulesInPanel
 }: {
   paneId: string;
   cwd: string;
@@ -192,6 +199,10 @@ export function AgentThread({
   running: RunningSubagent[];
   /** The same as `todosInPanel`, for the subagents. */
   subagentsInPanel: boolean;
+  /** What this conversation has set to wake itself up with, in display order. */
+  schedules: ScheduleRow[];
+  /** The same as `todosInPanel`, for the schedules. */
+  schedulesInPanel: boolean;
 }): React.JSX.Element {
   const thread = useAgentStore((s) => s.threads[paneId]);
   const send = useAgentStore((s) => s.send);
@@ -237,6 +248,7 @@ export function AgentThread({
   const todoItems = thread?.todos ?? EMPTY_TODOS;
   const todos = todosInPanel ? null : todoProgress(todoItems);
   const subagents = subagentsInPanel || running.length === 0 ? null : running;
+  const scheduleChips = schedulesInPanel || schedules.length === 0 ? null : schedules;
   const gitHead = useGitHead(paneId, cwd);
 
   return (
@@ -286,6 +298,7 @@ export function AgentThread({
           )}
           {todos !== null && <TodoChip progress={todos} items={todoItems} />}
           {subagents !== null && <SubagentChip running={subagents} />}
+          {scheduleChips !== null && <ScheduleChip rows={scheduleChips} />}
           {/* Money first, then room left: what a turn cost is the fact that
               changes with every turn, and the window is the one that only
               matters near its end. */}
@@ -531,6 +544,51 @@ function SubagentChip({ running }: { running: RunningSubagent[] }): React.JSX.El
 }
 
 /**
+ * The check-ins this conversation has set, for a pane with no column to put
+ * them in.
+ *
+ * When rather than what, because when is the fact: what a schedule is about is
+ * on the tool call that set it, and the thing the user cannot otherwise know is
+ * that this pane is going to start working at nine tomorrow. Absolute rather
+ * than a countdown - a ticking clock in the status line is movement nobody
+ * asked for.
+ */
+function ScheduleChip({ rows }: { rows: ScheduleRow[] }): React.JSX.Element {
+  const { label, title } = scheduleChip(rows);
+  const only = rows.length === 1 ? rows[0] : null;
+
+  return (
+    <span
+      className="flex min-w-0 items-center gap-1.5"
+      // What the collapse costs is which check-in is about what, the same thing
+      // the subagent chip's title buys back.
+      title={title}
+      aria-label={`Schedules: ${rows.length} set, next ${label}`}
+    >
+      <Clock size={12} className="shrink-0" />
+      <span className="font-mono tabular-nums">{rows.length}</span>
+      <span className="truncate">{label}</span>
+      {/* The stop button follows the one thing it could mean. With several set
+          the chip says only how many, and an X beside a count is a button
+          whose target the user cannot see - so cancelling one of several is
+          left to the card, which names each. The pane at this width is one
+          drag away from having that card. */}
+      {only !== null && (
+        <button
+          type="button"
+          onClick={() => void cancelSchedule(only.id)}
+          aria-label={`Cancel the check-in ${only.when}`}
+          title="Cancel this check-in"
+          className="focus-ring shrink-0 text-fleet-text-subtle transition-colors hover:text-fleet-text"
+        >
+          <X size={11} />
+        </button>
+      )}
+    </span>
+  );
+}
+
+/**
  * User turns are a bubble, the agent's answer is flat on the page - the reply is
  * the content, not one side of a conversation. Model prose is Markdown, whether
  * it is an answer or a summary; what the user typed and the reasoning channel
@@ -560,6 +618,10 @@ function Message({
   taskPermissions: Record<string, AgentPermissionAsk>;
 }): React.JSX.Element {
   if (message.role === 'summary') return <SummaryCard summary={messageText(message)} />;
+  // Before the user check, and it has to be: a fire is neither side of the
+  // conversation, and drawn as either one it would read as somebody having said
+  // something nobody said.
+  if (message.role === 'scheduled') return <AgentScheduleFire text={messageText(message)} />;
   if (message.role === 'user') {
     const text = messageText(message);
     return (

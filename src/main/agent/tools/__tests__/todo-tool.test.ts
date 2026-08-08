@@ -22,6 +22,7 @@ const ctx = (): AgentToolContext => ({
   dispatchTask: null,
   findSubagent: null,
   findSkill: null,
+  schedule: null,
   todos: {
     list: () => items,
     save: (next) => {

@@ -37,9 +37,12 @@ import {
   type AgentMcpCaller,
   type AgentTaskDispatcher,
   type AgentToolCall,
+  type AgentScheduleCapability,
   type AgentToolContext,
   type ToolSpec
 } from '../../shared/agent-tools';
+import { SCHEDULE_WIRE_PREFIX, renderScheduleBlock } from '../../shared/agent-schedule';
+import type { ScheduleStore } from './schedule-store';
 import type { SubagentDefinition } from '../../shared/agent-subagents';
 import { buildSkillSpec, type SkillDefinition } from '../../shared/agent-skills';
 import { loadSkills } from './skills/definitions';
@@ -94,6 +97,8 @@ type Deps = {
   mcp?: McpManager | null;
   /** The subagents on disk, and the ones running. */
   subagents: SubagentManager;
+  /** Every conversation's reminders. Only a turn's tools ever reach it. */
+  schedules: ScheduleStore;
   /** Injectable for tests; defaults to the real OpenRouter call. */
   stream?: typeof streamCompletion;
   /** Injectable for tests; defaults to the real OpenRouter image call. */
@@ -140,6 +145,15 @@ type RoundsRequest = {
   findSubagent: ((name: string) => SubagentDefinition | null) | null;
   /** Set for both a turn and a subagent: a skill is text, not a capability. */
   findSkill: ((name: string) => SkillDefinition | null) | null;
+  /**
+   * Setting a reminder for this conversation, and reading what it has set.
+   *
+   * `null` for a subagent, for the reason `dispatchTask` is: a child's
+   * conversation ends when it reports, so a fire aimed at it would have nothing
+   * to wake. Built once per run rather than per call, because unlike a report a
+   * fire does not come back to the row that asked for it.
+   */
+  schedule: AgentScheduleCapability | null;
   /**
    * One finished round of this run's own conversation. Set for a subagent,
    * whose transcript main has to keep because it has no pane; `null` for a turn,
@@ -319,6 +333,28 @@ export function withSubagentReminder(
     ...messages,
     { role: 'user', content: `${FLEET_WIRE_PREFIX}\n\n${renderSubagentBlock(running, waiting)}` }
   ];
+}
+
+/**
+ * The messages for one round, with what this conversation has set to wake it.
+ *
+ * Pushed for the reason the subagent roster is pushed rather than the reason
+ * the task list is: most conversations have nothing scheduled, and a line
+ * saying so on every round would be the whole cost of the feature paid on the
+ * turns where it has nothing to say.
+ *
+ * What it buys is the ids. A model that wants to cancel something it set two
+ * hours ago would otherwise have to spend a round on `schedule_list` first, and
+ * a model that has forgotten it set anything would set it again.
+ */
+export function withScheduleReminder(
+  messages: AgentWireMessage[],
+  schedule: AgentScheduleCapability | null
+): AgentWireMessage[] {
+  if (schedule === null) return messages;
+  const block = renderScheduleBlock(schedule.list(), new Date());
+  if (block === null) return messages;
+  return [...messages, { role: 'user', content: `${FLEET_WIRE_PREFIX}\n\n${block}` }];
 }
 
 /**
@@ -503,6 +539,14 @@ async function toWireMessages(
 ): Promise<AgentWireMessage[]> {
   if (message.role === 'summary') {
     return [{ role: 'user', content: `${SUMMARY_WIRE_PREFIX}\n\n${messageText(message)}` }];
+  }
+  // Same treatment and for the same reason: no provider has a role for "the
+  // app woke this conversation up", so it crosses as a user message with a line
+  // in front of it saying who is really talking. Without this branch it falls
+  // through to the assistant path below and the model is handed its own note as
+  // something it said.
+  if (message.role === 'scheduled') {
+    return [{ role: 'user', content: `${SCHEDULE_WIRE_PREFIX}\n\n${messageText(message)}` }];
   }
   if (message.role === 'user') {
     return [await toUserMessage(messageText(message), messageAttachments(message), ctx)];
@@ -807,7 +851,9 @@ export class AgentService {
         image: imageModel !== null,
         mcp: mcpSpecs.length > 0,
         task: taskSpec !== null,
-        skill: skillSpec !== null
+        skill: skillSpec !== null,
+        // Always, for a turn: the three tools are offered on every one of them.
+        schedule: true
       })
     );
 
@@ -832,6 +878,7 @@ export class AgentService {
         dispatchTask: this.taskDispatcher(req, ctx, subagents),
         findSubagent: (name) => subagents.find((s) => s.name === name) ?? null,
         findSkill: (name) => skills.find((s) => s.name === name) ?? null,
+        schedule: this.scheduleCapability(req),
         // The pane draws this run and writes it down. Only a subagent needs
         // main to keep its transcript, and only a subagent is watched by
         // nobody while it runs.
@@ -898,9 +945,12 @@ export class AgentService {
         // the round, and the task list goes last so the plan stays the most
         // recent thing said.
         messages: withTodoReminder(
-          this.withRunningSubagents(
-            withResumeNote(withClearedWireResults(messages), run.resumed),
-            run.threadId
+          withScheduleReminder(
+            this.withRunningSubagents(
+              withResumeNote(withClearedWireResults(messages), run.resumed),
+              run.threadId
+            ),
+            run.schedule
           ),
           todos.items,
           todos.streak
@@ -987,7 +1037,8 @@ export class AgentService {
           }),
           dispatchTask: run.dispatchTask(call.id),
           findSubagent: run.findSubagent,
-          findSkill: run.findSkill
+          findSkill: run.findSkill,
+          schedule: run.schedule
         });
         drawn.push(done.call);
         // A tool that spent money is part of what the turn cost, and `image` is
@@ -1026,6 +1077,39 @@ export class AgentService {
    * thread is waiting on is the manager's, and which of those are stopped on a
    * question is the gate's. Neither knows about the other, and neither should.
    */
+  /**
+   * What the schedule tools are given for this turn.
+   *
+   * The conversation is the schedule's owner, so `threadId` - which is the
+   * session id for every turn a pane sends - is what everything here is keyed
+   * on, and it is also the ownership check `cancel` makes: one conversation may
+   * not cancel another's.
+   *
+   * The `+ 1` is the whole of the chain guardrail, and it is here rather than in
+   * the tool because this is the only place that knows why the turn started. A
+   * fire that produced this turn carries its own depth on the request; anything
+   * else is depth zero, which is what makes a person asking for a reminder a
+   * fresh start every time.
+   */
+  private scheduleCapability(req: AgentSendRequest): AgentScheduleCapability {
+    const chainDepth = req.scheduleChainDepth ?? null;
+    return {
+      chainDepth,
+      create: (input) =>
+        this.deps.schedules.create({
+          sessionId: req.threadId,
+          cwd: req.cwd,
+          cron: input.cron,
+          note: input.note,
+          recurring: input.recurring,
+          depth: chainDepth === null ? 0 : chainDepth + 1,
+          now: new Date()
+        }),
+      list: () => this.deps.schedules.list(req.threadId),
+      cancel: (id) => this.deps.schedules.cancel(id, req.threadId)
+    };
+  }
+
   private withRunningSubagents(messages: AgentWireMessage[], threadId: string): AgentWireMessage[] {
     const running = this.deps.subagents.runningFor(threadId);
     if (running.length === 0) return messages;
@@ -1114,6 +1198,9 @@ export class AgentService {
           dispatchTask: () => null,
           findSubagent: null,
           findSkill: (name) => skills.find((s) => s.name === name) ?? null,
+          // Nothing to schedule against: this conversation ends when the report
+          // does, so a fire aimed at it would wake nobody.
+          schedule: null,
           onRound: run.onMessage,
           quiet: true
         },

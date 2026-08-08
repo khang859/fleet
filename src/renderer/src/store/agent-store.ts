@@ -31,6 +31,8 @@ import {
   splitForCompaction,
   withClearedResults
 } from '../../../shared/agent-context';
+import type { AgentScheduleRecord } from '../../../shared/agent-schedule';
+import { checkSchedules, loadSchedules, onScheduleChanged } from './agent-schedule';
 import { useSettingsStore } from './settings-store';
 import { useNotificationStore } from './notification-store';
 import { registerPaneDisposer, useWorkspaceStore } from './workspace-store';
@@ -50,8 +52,11 @@ const log = createLogger('store:agent');
  * an agent pane has no process to watch, so it says so itself. Without this a
  * turn stopped on a permission question is visible only to whoever is already
  * looking at that pane, which is the one person who does not need telling.
+ *
+ * Exported for `agent-schedule`, whose turns are the ones most worth announcing:
+ * nobody is watching a pane that started working on its own.
  */
-function reportActivity(paneId: string, state: ActivityState): void {
+export function reportActivity(paneId: string, state: ActivityState): void {
   // A subagent stopped on a command still needs the user, whatever else in the
   // pane has since finished. Subagents run alongside each other and alongside
   // the turn, so the thing that ends is routinely not the thing that is
@@ -95,7 +100,7 @@ function folderName(paneId: string): string | undefined {
  * session log, which this store appends to as the transcript changes and reads
  * back when the pane opens.
  */
-type PaneThread = {
+export type PaneThread = {
   messages: AgentMessage[];
   /** The folder the pane works in, remembered so compaction can run unprompted. */
   cwd: string;
@@ -203,6 +208,15 @@ type PaneThread = {
    * child stopped forever on a question that is not on screen anywhere.
    */
   taskPermissions: Record<string, AgentPermissionAsk>;
+  /**
+   * The schedules this conversation has set, as main last described them.
+   *
+   * A mirror rather than a source: main owns them, decides when they are due,
+   * and pushes the whole list on every change. It is here so the panel can be
+   * drawn from the thread like everything else the pane shows, and so a pane
+   * showing another session is not affected by a list that is not its own.
+   */
+  schedules: AgentScheduleRecord[];
 };
 
 const EMPTY_THREAD: PaneThread = {
@@ -221,7 +235,8 @@ const EMPTY_THREAD: PaneThread = {
   todos: [],
   imagePartials: {},
   taskActivity: {},
-  taskPermissions: {}
+  taskPermissions: {},
+  schedules: []
 };
 
 /**
@@ -558,8 +573,11 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
  * A thread with no session id records nothing: that only happens to a thread
  * this store made up on the spot (a `send` for a pane that never announced
  * itself), and inventing a file for it would scatter orphan sessions on disk.
+ *
+ * Exported for `agent-schedule`, which starts a turn of its own and has the
+ * same message to write down.
  */
-function record(thread: PaneThread, event: AgentSessionEvent): void {
+export function record(thread: PaneThread, event: AgentSessionEvent): void {
   if (thread.sessionId === null) return;
   window.fleet.agent.appendSession({
     sessionId: thread.sessionId,
@@ -1127,6 +1145,13 @@ function endTurn(streamId: string, error: string | null, usage: AgentTurnUsage |
     autoCompact(paneId);
     nameSession(thread);
   }
+
+  // However it ended, and last: a fire that came due mid-turn has been waiting
+  // for the pane to be free, and this is the moment it is. After the compaction
+  // check so that a turn which triggers one is not immediately given another
+  // turn to run alongside it - `checkSchedules` sees the compaction in flight
+  // and leaves the fire where it is.
+  checkSchedules(paneId);
 }
 
 /**
@@ -1242,6 +1267,10 @@ async function replayInto(paneId: string, sessionId: string): Promise<void> {
   // user is already looking at. Not awaited for the same reason: a pane whose
   // history has loaded is a pane that can be used.
   void reconcileTasks(paneId, sessionId);
+  // And the schedules this conversation set, which is both the panel's contents
+  // and - for a session whose reminder came due while the app was closed - the
+  // fire waiting to be collected.
+  void loadSchedules(paneId, sessionId);
 }
 
 /**
@@ -1368,6 +1397,10 @@ function applySummary(streamId: string, summary: string, usage: AgentTurnUsage |
       }
     }
   }));
+
+  // A compaction ends here rather than in `endTurn`, so a fire that arrived
+  // while it was running would otherwise wait for something else to happen.
+  checkSchedules(found.paneId);
 }
 
 // Installed once: there is a single main→renderer channel per event, and every
@@ -1413,6 +1446,10 @@ window.fleet.agent.onImagePartial(({ streamId, callId, image }) =>
 window.fleet.agent.onCompactDone(({ streamId, summary, usage }) =>
   applySummary(streamId, summary, usage)
 );
+// One session's schedules, whenever anything changed them - a create, a cancel,
+// the tick claiming one. It carries the list the panel draws, and asking every
+// pane on that session to look is how a due fire finds a pane at all.
+window.fleet.agent.schedule.onChanged((changed) => onScheduleChanged(changed));
 
 // A pane closing mid-turn is the one case a turn cannot end on its own: main is
 // waiting on a click, and the pane that would have made it is the one going.
