@@ -121,7 +121,8 @@
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
     U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
@@ -130,8 +131,10 @@
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
-    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
 }
 @font-face {
   font-family: 'Inter';
@@ -139,7 +142,8 @@
   font-weight: 100 900;
   font-style: italic;
   font-display: swap;
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
     U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
@@ -148,13 +152,19 @@
   font-weight: 100 900;
   font-style: italic;
   font-display: swap;
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
-    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
 }
 
 :root {
   --fleet-accent: #3b82f6;
   --fleet-accent-hover: #60a5fa;
+
+  /* What a scrollbar takes out of a scroll port. See the scrollbar rules near
+     the bottom of this file. */
+  --fleet-scrollbar: 6px;
 
   /* App-chrome defaults (Fleet Dark). Overridden at runtime on the root element
      by the active app theme; these keep the initial paint correct. */
@@ -203,9 +213,7 @@
 
   /* The one signature elevation shadow, reserved for the shared Overlay
      primitive. Borders (not shadows) carry depth everywhere else. */
-  --fleet-shadow-overlay:
-    0 20px 60px -12px rgba(0, 0, 0, 0.5),
-    0 8px 24px -8px rgba(0, 0, 0, 0.35);
+  --fleet-shadow-overlay: 0 20px 60px -12px rgba(0, 0, 0, 0.5), 0 8px 24px -8px rgba(0, 0, 0, 0.35);
 }
 
 html,
@@ -257,10 +265,15 @@ body,
   font-variant-numeric: tabular-nums slashed-zero;
 }
 
-/* Global scrollbar — dark sci-fi theme */
+/* Global scrollbar — dark sci-fi theme.
+
+   Styling the pseudo-element makes these classic scrollbars rather than
+   overlay ones, so the width below is real layout width taken out of every
+   scroll port. A column that has to line up with something outside its port
+   has to know that number, which is why it is a variable. */
 *::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: var(--fleet-scrollbar);
+  height: var(--fleet-scrollbar);
 }
 *::-webkit-scrollbar-track {
   background: transparent;
@@ -271,6 +284,21 @@ body,
 }
 *::-webkit-scrollbar-thumb:hover {
   background: #2dd4bf66;
+}
+
+/* A scrolling column and the rows under it that do not scroll, made to line up.
+
+   The scrollbar takes its width off the right of the port only, so a column
+   centered inside one sits half a scrollbar left of the same column centered
+   outside it - and its right edge stops short of theirs. The port keeps the
+   same width free on both sides, and whatever has to match it takes that width
+   on both sides too; then the two are the same box at every width, whether or
+   not there is enough to scroll. */
+.fleet-scroll-balanced {
+  scrollbar-gutter: stable both-edges;
+}
+.fleet-scroll-inset {
+  padding-inline: var(--fleet-scrollbar);
 }
 
 /* Opt-out for horizontal carousels (thumbnail strips) that scroll but
