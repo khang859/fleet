@@ -1,6 +1,13 @@
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// electron and winston-daily-rotate-file are mocked globally in src/test-setup.ts
+/*
+ * src/test-setup.ts mocks electron and winston-daily-rotate-file, but neither
+ * mock reaches this module: it reads both through `require`, and vi.mock only
+ * intercepts `import`. What keeps the suite out of the real log is
+ * FLEET_LOG_DIR, set in vitest.config.ts.
+ */
 
 describe('logger', () => {
   beforeEach(() => {
@@ -39,5 +46,30 @@ describe('logger', () => {
     process.env.LOG_LEVEL = 'warn';
     const mod = await import('../logger');
     expect(mod.logger.level).toBe('warn');
+  });
+
+  it('writes to FLEET_LOG_DIR when it is set', async () => {
+    const configured = process.env.FLEET_LOG_DIR;
+    const elsewhere = join(tmpdir(), 'fleet-logger-test');
+    process.env.FLEET_LOG_DIR = elsewhere;
+    try {
+      const mod = await import('../logger');
+      expect(mod.LOG_DIR).toBe(elsewhere);
+    } finally {
+      // Restored rather than deleted: the next import in this file would
+      // otherwise fall through to the real home, which is the whole problem.
+      process.env.FLEET_LOG_DIR = configured;
+    }
+  });
+
+  /*
+   * The suite runs on the same machine as the app, and the fallback below this
+   * is the real home directory. A run that lands there appends test fixtures -
+   * failed connections, 502s, ids that were never real - to the log the app is
+   * writing, and diagnostics reads that log back as a record of what happened.
+   */
+  it('never points at the log directory the running app is using', async () => {
+    const mod = await import('../logger');
+    expect(mod.LOG_DIR).not.toBe(join(homedir(), '.fleet', 'logs'));
   });
 });

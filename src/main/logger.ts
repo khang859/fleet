@@ -64,7 +64,18 @@ const fileFormat = winston.format.combine(
   winston.format.json()
 );
 
-const logDir = join(electronApp ? electronApp.home : homedir(), '.fleet', 'logs');
+/**
+ * Where the daily logs are written.
+ *
+ * `FLEET_LOG_DIR` wins when it is set. Outside Electron - the runtime child
+ * process, CLI tools, and the test suite - `resolveElectronApp` returns null
+ * and the fallback is the user's real home, so anything that is not the app
+ * itself would otherwise append to the log the app is still writing. A log
+ * shared with a test run cannot be read back as evidence of what the app did,
+ * and diagnostics reads it back.
+ */
+const logDir =
+  process.env.FLEET_LOG_DIR ?? join(electronApp ? electronApp.home : homedir(), '.fleet', 'logs');
 
 /** Absolute path to the daily log directory. Single source of truth for any
  * module (e.g. diagnostics) that needs to read these logs back. */
