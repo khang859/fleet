@@ -604,6 +604,17 @@ export type AgentSendRequest = {
    * the transcript already takes.
    */
   todos: AgentTodoItem[];
+  /**
+   * Whether this turn is the pane picking the conversation back up after a
+   * subagent reported, rather than anything the user did.
+   *
+   * It travels because the wire cannot show it. Such a turn carries no message
+   * of its own - see `resume` - so the last thing the user actually said is
+   * still the request that started all this, and a model reading the transcript
+   * has every reason to answer it again. Which it does, word for word, having
+   * already answered it above.
+   */
+  resumed?: boolean;
 };
 
 /**
@@ -628,8 +639,7 @@ export type AgentAttachRequest = {
  * a sentence next to the composer rather than an exception.
  */
 export type AgentAttachResult =
-  | { ok: true; attachment: AgentAttachment }
-  | { ok: false; error: string };
+  { ok: true; attachment: AgentAttachment } | { ok: false; error: string };
 
 /** One row of the composer's `@` menu. */
 export type AgentMentionMatch = {

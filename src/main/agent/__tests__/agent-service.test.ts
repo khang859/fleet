@@ -29,6 +29,7 @@ import {
   toReasoningParam,
   toWireHistory,
   withClearedWireResults,
+  withResumeNote,
   withSubagentReminder,
   withTodoReminder
 } from '../agent-service';
@@ -355,6 +356,40 @@ describe('withTodoReminder', () => {
 
   it('asks for a list when there is none', () => {
     expect(withTodoReminder(history, [], 0).at(-1)?.content).toContain('todo_add');
+  });
+});
+
+/*
+ * The turn a subagent's report starts on its own. It carries no message of its
+ * own, so nothing in the transcript says the parent already answered - and the
+ * last thing the user said is still the request that started the work.
+ */
+describe('withResumeNote', () => {
+  const history: AgentWireMessage[] = [
+    { role: 'system', content: 'be brief' },
+    { role: 'user', content: 'review this PR' }
+  ];
+
+  it('tells the turn it has already replied', () => {
+    const sent = withResumeNote(history, true);
+
+    expect(sent).toHaveLength(3);
+    expect(sent.at(-1)?.content).toContain('already replied');
+  });
+
+  it('marks it as Fleet talking rather than the user', () => {
+    expect(withResumeNote(history, true).at(-1)?.content).toContain(FLEET_WIRE_PREFIX);
+  });
+
+  it('leaves the messages it was given alone', () => {
+    withResumeNote(history, true);
+
+    expect(history).toHaveLength(2);
+  });
+
+  /* Every ordinary turn, which is nearly all of them. */
+  it('says nothing on a turn the user started', () => {
+    expect(withResumeNote(history, false)).toBe(history);
   });
 });
 
@@ -862,6 +897,62 @@ describe('AgentService', () => {
     expect(
       rounds[0].messages.some(
         (m) => typeof m.content === 'string' && m.content.includes('have not reported back yet')
+      )
+    ).toBe(false);
+  });
+
+  /*
+   * A resumed turn is one the pane started, not the user, and the wire it
+   * builds cannot show that: there is no message on it to be empty. Without the
+   * note the model reads a review request that has not been answered and
+   * answers it, having answered it a few messages above.
+   */
+  it('tells a resumed turn that it has already replied', async () => {
+    const { emit, ended } = collector();
+    const rounds: StreamRequest[] = [];
+    const stream = async (req: StreamRequest): Promise<StreamOutcome> => {
+      rounds.push(req);
+      return Promise.resolve(round());
+    };
+
+    new AgentService({
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send({ ...REQUEST, text: '', resumed: true });
+    await ended;
+
+    expect(
+      rounds[0].messages.some(
+        (m) => typeof m.content === 'string' && m.content.includes('already replied')
+      )
+    ).toBe(true);
+  });
+
+  it('says nothing of the kind on an ordinary turn', async () => {
+    const { emit, ended } = collector();
+    const rounds: StreamRequest[] = [];
+    const stream = async (req: StreamRequest): Promise<StreamOutcome> => {
+      rounds.push(req);
+      return Promise.resolve(round());
+    };
+
+    new AgentService({
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream
+    }).send(REQUEST);
+    await ended;
+
+    expect(
+      rounds[0].messages.some(
+        (m) => typeof m.content === 'string' && m.content.includes('already replied')
       )
     ).toBe(false);
   });

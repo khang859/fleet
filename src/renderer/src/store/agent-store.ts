@@ -446,7 +446,11 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       history: thread.messages,
       text: '',
       attachments: [],
-      todos: thread.todos
+      todos: thread.todos,
+      // Said explicitly because the wire it builds cannot show it: an empty
+      // turn is indistinguishable from any other once the transcript is
+      // assembled, and the turn that follows it has already been answered.
+      resumed: true
     });
   },
 
