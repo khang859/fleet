@@ -267,90 +267,96 @@ export function AgentThread({
         />
       )}
 
-      {thread?.error != null && (
-        <div className="mx-auto flex w-full max-w-2xl items-start gap-2 px-4 pb-2 text-xs text-amber-700 dark:text-amber-400/90">
-          <TriangleAlert size={13} className="mt-px shrink-0" />
-          <span>{thread.error}</span>
-        </div>
-      )}
+      {/* Everything that does not scroll, held together so it can be given the
+          room the transcript's scrollbar takes out of the transcript. Reading
+          down the pane, the composer's edges are the ones a message is measured
+          against, and they line up only if both are told the same number. */}
+      <div className="fleet-scroll-inset flex shrink-0 flex-col">
+        {thread?.error != null && (
+          <div className="mx-auto flex w-full max-w-2xl items-start gap-2 px-4 pb-2 text-xs text-amber-700 dark:text-amber-400/90">
+            <TriangleAlert size={13} className="mt-px shrink-0" />
+            <span>{thread.error}</span>
+          </div>
+        )}
 
-      {/* Above the status line rather than below it, so the strip sits against
-          the transcript it came out of and the status line stays where it has
-          always been: the row directly over the composer. */}
-      <AgentTaskPermissions pending={pendingTasks} onDecide={decideTaskPermission} />
+        {/* Above the status line rather than below it, so the strip sits against
+            the transcript it came out of and the status line stays where it has
+            always been: the row directly over the composer. */}
+        <AgentTaskPermissions pending={pendingTasks} onDecide={decideTaskPermission} />
 
-      {/* One status line for the turn: what the agent is doing on the left, how
-          much room it has left on the right. Always rendered while either has
-          something to say, so neither appearing shoves the composer down. */}
-      {(streaming ||
-        contextTokens !== null ||
-        todos !== null ||
-        subagents !== null ||
-        hasSpend(spend)) && (
-        <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pb-1.5 text-[11px] text-fleet-text-subtle">
-          {streaming && (
-            <AgentActivity
-              last={messages.at(-1)}
-              compacting={compacting}
-              asking={ask !== null}
-              startedAt={thread?.startedAt ?? null}
-            />
-          )}
-          {todos !== null && <TodoChip progress={todos} items={todoItems} />}
-          {subagents !== null && <SubagentChip running={subagents} />}
-          {scheduleChips !== null && <ScheduleChip rows={scheduleChips} />}
-          {/* Money first, then room left: what a turn cost is the fact that
-              changes with every turn, and the window is the one that only
-              matters near its end. */}
-          <span className="ml-auto">
-            <AgentSpendMeter
-              spend={spend}
-              model={thread?.served?.model ?? null}
-              provider={thread?.served?.provider ?? null}
-            />
-          </span>
-          {contextTokens !== null && (
-            <span>
-              <AgentContextMeter
-                used={contextTokens}
-                limit={modelCard?.contextLimit ?? null}
-                threshold={agent?.compactThreshold ?? null}
-                canCompact={!streaming && canCompact(messages)}
-                onCompact={() => compact(paneId)}
+        {/* One status line for the turn: what the agent is doing on the left, how
+            much room it has left on the right. Always rendered while either has
+            something to say, so neither appearing shoves the composer down. */}
+        {(streaming ||
+          contextTokens !== null ||
+          todos !== null ||
+          subagents !== null ||
+          hasSpend(spend)) && (
+          <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pb-1.5 text-[11px] text-fleet-text-subtle">
+            {streaming && (
+              <AgentActivity
+                last={messages.at(-1)}
+                compacting={compacting}
+                asking={ask !== null}
+                startedAt={thread?.startedAt ?? null}
+              />
+            )}
+            {todos !== null && <TodoChip progress={todos} items={todoItems} />}
+            {subagents !== null && <SubagentChip running={subagents} />}
+            {scheduleChips !== null && <ScheduleChip rows={scheduleChips} />}
+            {/* Money first, then room left: what a turn cost is the fact that
+                changes with every turn, and the window is the one that only
+                matters near its end. */}
+            <span className="ml-auto">
+              <AgentSpendMeter
+                spend={spend}
+                model={thread?.served?.model ?? null}
+                provider={thread?.served?.provider ?? null}
               />
             </span>
-          )}
-        </div>
-      )}
+            {contextTokens !== null && (
+              <span>
+                <AgentContextMeter
+                  used={contextTokens}
+                  limit={modelCard?.contextLimit ?? null}
+                  threshold={agent?.compactThreshold ?? null}
+                  canCompact={!streaming && canCompact(messages)}
+                  onCompact={() => compact(paneId)}
+                />
+              </span>
+            )}
+          </div>
+        )}
 
-      <Composer
-        disabled={model === null}
-        streaming={streaming}
-        asking={ask !== null}
-        cwd={cwd}
-        // The card on screen, not whatever the store is holding now: a question
-        // that arrived after this one was drawn has not been read yet, and a key
-        // pressed at the old one must not answer the new one.
-        onApprove={() => {
-          if (ask !== null) decidePermission(paneId, 'once', ask.requestId);
-        }}
-        onDraft={noteDraft}
-        toolMode={agent?.toolMode ?? DEFAULT_AGENT_SETTINGS.toolMode}
-        onToolMode={(toolMode) => void updateSettings({ ai: { agent: { toolMode } } })}
-        // The conversation is what an attachment belongs to, so it is what the
-        // folder holding it is named after and what deleting the session
-        // removes. A pane old enough to have no session of its own falls back
-        // to its own id, which is a uuid too and just as stable.
-        threadId={thread?.sessionId ?? paneId}
-        // Not a reason to refuse the attachment - the user can change model and
-        // ask again, and the picture is still what they meant to send.
-        blind={modelCard !== null && !modelCard.inputImage}
-        onSend={(text, attachments) => send(paneId, cwd, text, attachments)}
-        onStop={() => cancel(paneId)}
-        onClear={() => startNewSession(paneId, cwd)}
-      />
+        <Composer
+          disabled={model === null}
+          streaming={streaming}
+          asking={ask !== null}
+          cwd={cwd}
+          // The card on screen, not whatever the store is holding now: a question
+          // that arrived after this one was drawn has not been read yet, and a key
+          // pressed at the old one must not answer the new one.
+          onApprove={() => {
+            if (ask !== null) decidePermission(paneId, 'once', ask.requestId);
+          }}
+          onDraft={noteDraft}
+          toolMode={agent?.toolMode ?? DEFAULT_AGENT_SETTINGS.toolMode}
+          onToolMode={(toolMode) => void updateSettings({ ai: { agent: { toolMode } } })}
+          // The conversation is what an attachment belongs to, so it is what the
+          // folder holding it is named after and what deleting the session
+          // removes. A pane old enough to have no session of its own falls back
+          // to its own id, which is a uuid too and just as stable.
+          threadId={thread?.sessionId ?? paneId}
+          // Not a reason to refuse the attachment - the user can change model and
+          // ask again, and the picture is still what they meant to send.
+          blind={modelCard !== null && !modelCard.inputImage}
+          onSend={(text, attachments) => send(paneId, cwd, text, attachments)}
+          onStop={() => cancel(paneId)}
+          onClear={() => startNewSession(paneId, cwd)}
+        />
 
-      <AgentLocation cwd={cwd} head={gitHead} />
+        <AgentLocation cwd={cwd} head={gitHead} />
+      </div>
     </div>
   );
 }
@@ -436,7 +442,10 @@ function Transcript({
   return (
     <div
       ref={scrollRef}
-      className="min-h-0 flex-1 overflow-y-auto"
+      // `fleet-scroll-balanced` so the transcript reads down the same column the
+      // composer sits in rather than half a scrollbar to the left of it; the
+      // rows under it carry the matching `fleet-scroll-inset`.
+      className="fleet-scroll-balanced min-h-0 flex-1 overflow-y-auto"
       onScroll={() => {
         const el = scrollRef.current;
         if (el === null) return;
