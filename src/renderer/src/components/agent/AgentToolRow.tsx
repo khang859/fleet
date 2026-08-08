@@ -89,7 +89,11 @@ export function AgentToolRow({
           className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
         />
         {label}
-        <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
+        {/* Beside what it describes, not flung to the far edge. A pane can be
+            a thousand pixels wide, and a summary pinned to the right of one
+            reads as a second, unrelated thing rather than as the tail of this
+            row - the target truncates into the space instead when it needs it. */}
+        <span className="flex shrink-0 items-center gap-2">
           {cleared && (
             <span
               title="This result is no longer sent to the model, to save context. The agent can run the tool again if it needs it."

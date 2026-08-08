@@ -19,6 +19,7 @@ import { ClassifierNoteField } from './ClassifierNoteField';
 import { ModelSelect } from './ModelSelect';
 import { selectCls } from './controls';
 import { McpSection } from './mcp/McpSection';
+import { SkillsSection } from './skills/SkillsSection';
 import { relativeTime } from './format';
 
 /**
@@ -158,6 +159,8 @@ export function AgentSettingsPanel(): React.JSX.Element {
         </FieldGroup>
 
         <McpSection />
+
+        <SkillsSection />
 
         <FieldGroup title="Instructions">
           <SystemPromptField

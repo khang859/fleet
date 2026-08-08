@@ -77,6 +77,7 @@ import { AgentGitWatcher } from './agent/git-watch';
 import { AgentHistoryStore } from './agent/history-store';
 import { McpManager as AgentMcpManager } from './agent/mcp/manager';
 import { SubagentManager } from './agent/subagents/manager';
+import { discardAllFetches } from './agent/skills/fetch';
 import { AgentMcpSecrets } from './agent/mcp/secrets';
 import { resolveAuth, signIn as signInToMcp } from './agent/mcp/auth';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
@@ -1096,6 +1097,8 @@ function shutdownAll(): void {
   // Spawned servers are child processes of this one, so a quit that skipped
   // this would leave them running with nothing to talk to.
   void agentMcp?.closeAll();
+  // A skill checkout the user never installed from or closed the dialog on.
+  void discardAllFetches();
   sessionsService?.dispose();
   annotateService.destroy();
   void learningsMcp?.stop();

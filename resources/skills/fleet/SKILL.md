@@ -1,3 +1,8 @@
+---
+name: fleet
+description: Drive the Fleet desktop app from the command line with the `fleet` CLI - open files and images in tabs, split and focus panes, run commands in a pane, and read pane output. Use when the user asks to open, show, split, focus, or close something in Fleet, or when showing a file or image would answer better than pasting it.
+---
+
 # Fleet Terminal Commands
 
 You are running inside **Fleet**, a terminal multiplexer desktop app. You can control Fleet from the command line using the `fleet` CLI.

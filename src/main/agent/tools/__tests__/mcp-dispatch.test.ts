@@ -48,7 +48,8 @@ function ctx(output: McpToolOutput | null, threadId = randomUUID()): AgentToolCo
             return Promise.resolve(output);
           },
     dispatchTask: null,
-    findSubagent: null
+    findSubagent: null,
+    findSkill: null
   };
 }
 

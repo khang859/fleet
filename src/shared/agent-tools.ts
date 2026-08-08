@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TODO_MAX_ITEMS, TODO_STATUSES, type AgentTodoItem } from './agent-todos';
 import type { McpToolOutput } from './agent-mcp';
 import type { SubagentDefinition } from './agent-subagents';
+import type { SkillDefinition } from './agent-skills';
 
 /**
  * The tools the agent can call, and the limits they answer within.
@@ -54,6 +55,7 @@ export const SUBAGENT_TOOL_NAMES = [
   'bash',
   'terminal',
   'image',
+  'skill',
   'todo_add',
   'todo_update'
 ] as const;
@@ -716,6 +718,11 @@ export function buildTaskSpec(definitions: SubagentDefinition[]): AgentToolSpec 
  * `task` follows the same rule and is absent twice over - when the folder has no
  * subagents, and when this turn *is* one.
  *
+ * `skill` follows the first half of that rule and not the second: a folder with
+ * no skills does not get the tool, but a subagent does. A child doing the work
+ * needs the house rules for it as much as the parent does, and it has no
+ * conversation to have been told them in.
+ *
  * `only` is how a subagent gets the narrower set its dispatch asked for. It
  * filters rather than selects, so a name that no longer exists quietly falls out
  * instead of producing a spec for a tool nothing can run.
@@ -727,15 +734,25 @@ export function toolSpecsFor(options: {
   image: boolean;
   mcp?: ExternalToolSpec[];
   task?: AgentToolSpec | null;
+  skill?: AgentToolSpec | null;
   only?: readonly AgentToolName[];
 }): ToolSpec[] {
+  const allowed = (name: AgentToolName): boolean =>
+    options.only === undefined || options.only.includes(name);
   const own = AGENT_TOOL_SPECS.filter(
     (spec) =>
-      (options.image || spec.function.name !== 'image') &&
-      (options.only === undefined || options.only.includes(spec.function.name))
+      (options.image || spec.function.name !== 'image') && allowed(spec.function.name)
   );
+  // Both are built per turn rather than living in `AGENT_TOOL_SPECS`, so both
+  // are filtered here rather than by the loop above.
   const task = options.task ?? null;
-  return [...own, ...(task === null ? [] : [task]), ...(options.mcp ?? [])];
+  const skill = allowed('skill') ? (options.skill ?? null) : null;
+  return [
+    ...own,
+    ...(skill === null ? [] : [skill]),
+    ...(task === null ? [] : [task]),
+    ...(options.mcp ?? [])
+  ];
 }
 
 /**
@@ -933,6 +950,20 @@ export type AgentToolContext = {
    * channel it has no other use for.
    */
   findSubagent: ((name: string) => SubagentDefinition | null) | null;
+  /**
+   * The skills this folder offers, for turning a name into instructions.
+   *
+   * `null` when there are none, which is also when the tool was not offered -
+   * the same shape `generateImage` and `dispatchTask` use, and for the same
+   * reason: a call that arrives anyway, from an older transcript or an invented
+   * name, can then be told plainly that there is nothing here rather than
+   * getting an empty answer that reads like a skill with nothing in it.
+   *
+   * Unlike `dispatchTask`, a subagent gets this one. Nothing about a skill is a
+   * capability - it is text - and a child sent to do a job needs the written
+   * procedure for that job at least as much as the parent that sent it.
+   */
+  findSkill: ((name: string) => SkillDefinition | null) | null;
 };
 
 /**

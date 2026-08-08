@@ -1,5 +1,6 @@
+import type { Dirent } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { Logger } from 'winston';
 import { parse as parseYaml } from 'yaml';
 import type { ZodType } from 'zod';
@@ -8,11 +9,18 @@ import { splitFrontmatter } from './markdown-frontmatter';
 /**
  * Definitions written as markdown with a frontmatter block, read off disk.
  *
- * Two kinds of thing are described this way - subagents and commands - and a
- * third will be. What differs between them is the frontmatter they accept and
- * the object they become; everything up to that point is the same walk, and
- * writing it twice meant two copies of the rules about which files are skipped
- * and which folder being absent is normal.
+ * Three kinds of thing are described this way - subagents, commands and skills.
+ * What differs between them is the frontmatter they accept and the object they
+ * become; everything up to that point is the same walk, and writing it three
+ * times meant three copies of the rules about which files are skipped and which
+ * folder being absent is normal.
+ *
+ * The walk has two shapes because the third kind has a different one on disk. A
+ * subagent and a command are each one `.md` file; a skill is a *folder* holding
+ * `SKILL.md` and whatever it bundles beside it, because that is what the
+ * agentskills.io format says a skill is and Fleet does not get to redefine it.
+ * `loadDefinitions` reads the flat kind and `loadFolderDefinitions` the nested
+ * one, over the same per-file rules.
  *
  * Three places, most specific last: the ones that ship with the app, the user's
  * own, and the project's. A name found twice resolves to the most specific,
@@ -45,6 +53,15 @@ export interface DefinitionLoader<F, D> {
     body: string;
     source: DefinitionSource;
     path: string;
+    /**
+     * The folder the file was found in.
+     *
+     * Only skills have anything to do with it, and they have a lot: every path a
+     * `SKILL.md` mentions is relative to here. Passed to all three rather than
+     * added as a second kind of build function, because it is one field and it
+     * is already known.
+     */
+    dir: string;
   }) => D | null;
   log: Logger;
 }
@@ -57,6 +74,28 @@ export async function loadDefinitions<F, D extends { name: string }>(
   const byName = new Map<string, D>();
   for (const [source, dir] of sources) {
     for (const definition of await readDir(dir, source, loader)) {
+      byName.set(definition.name, definition);
+    }
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * The same, for the kind that is a folder rather than a file.
+ *
+ * A skill is `<name>/SKILL.md` plus whatever it bundles, so the walk is one
+ * level deeper and the entry point has a fixed name. Everything below that -
+ * precedence, one bad file costing only itself, a missing folder being normal -
+ * is the flat walk's, unchanged.
+ */
+export async function loadFolderDefinitions<F, D extends { name: string }>(
+  sources: Array<[DefinitionSource, string]>,
+  entry: string,
+  loader: DefinitionLoader<F, D>
+): Promise<D[]> {
+  const byName = new Map<string, D>();
+  for (const [source, dir] of sources) {
+    for (const definition of await readFolders(dir, entry, source, loader)) {
       byName.set(definition.name, definition);
     }
   }
@@ -85,6 +124,38 @@ async function readDir<F, D extends { name: string }>(
   return found;
 }
 
+async function readFolders<F, D extends { name: string }>(
+  dir: string,
+  entry: string,
+  source: DefinitionSource,
+  loader: DefinitionLoader<F, D>
+): Promise<D[]> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const found: D[] = [];
+  for (const child of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    // `isDirectory` is false for a symlink to one, and a symlinked skill is a
+    // thing people do have - it is how you keep a skill in a repo and use it
+    // everywhere. So a link is followed rather than skipped, and the `readOne`
+    // below is what decides whether what it points at is a skill.
+    if (!child.isDirectory() && !child.isSymbolicLink()) continue;
+    const folder = join(dir, child.name);
+    const definition = await readOne(join(folder, entry), source, loader, {
+      // A folder with no `SKILL.md` is not a broken skill, it is not a skill.
+      // Saying otherwise would put a warning in the log for every stray folder
+      // someone happens to keep beside their skills.
+      quietWhenMissing: true
+    });
+    if (definition !== null) found.push(definition);
+  }
+  return found;
+}
+
 /**
  * One file, or `null` with a line in the log saying why not.
  *
@@ -94,7 +165,8 @@ async function readDir<F, D extends { name: string }>(
 async function readOne<F, D extends { name: string }>(
   path: string,
   source: DefinitionSource,
-  loader: DefinitionLoader<F, D>
+  loader: DefinitionLoader<F, D>,
+  options: { quietWhenMissing?: boolean } = {}
 ): Promise<D | null> {
   const { kind, schema, build, log } = loader;
 
@@ -102,7 +174,7 @@ async function readOne<F, D extends { name: string }>(
   try {
     contents = await readFile(path, 'utf8');
   } catch (error) {
-    log.warn(`could not read ${path}`, error);
+    if (options.quietWhenMissing !== true) log.warn(`could not read ${path}`, error);
     return null;
   }
 
@@ -135,5 +207,5 @@ async function readOne<F, D extends { name: string }>(
     return null;
   }
 
-  return build({ frontmatter: parsed.data, body, source, path });
+  return build({ frontmatter: parsed.data, body, source, path, dir: dirname(path) });
 }

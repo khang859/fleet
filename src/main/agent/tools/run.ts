@@ -14,6 +14,7 @@ import {
   type AgentToolContext,
   type AgentToolResult
 } from '../../../shared/agent-tools';
+import { SkillArgs } from '../../../shared/agent-skills';
 import { isMcpToolName } from '../../../shared/agent-mcp-names';
 import type { McpToolOutput } from '../../../shared/agent-mcp';
 import { runBash } from './bash';
@@ -25,6 +26,7 @@ import { runRead } from './read';
 import { runTerminal } from './terminal';
 import { runTodoAdd, runTodoUpdate } from './todo';
 import { runTask } from './task';
+import { runSkill } from './skill';
 import { runWrite } from './write';
 import { AgentImageStore } from '../image-store';
 
@@ -77,6 +79,8 @@ export async function runAgentTool(
       return runTerminal(checked(TerminalArgs, args, name), ctx);
     case 'image':
       return runImage(checked(ImageArgs, args, name), ctx, images);
+    case 'skill':
+      return runSkill(checked(SkillArgs, args, name), ctx);
     case 'todo_add':
       return runTodoAdd(checked(TodoAddArgs, args, name), ctx);
     case 'todo_update':

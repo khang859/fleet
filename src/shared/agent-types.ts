@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AgentTaskInfo, AgentToolCall } from './agent-tools';
 import { AGENT_TODO_INSTRUCTIONS, type AgentTodoItem } from './agent-todos';
+import { AGENT_SKILL_INSTRUCTIONS } from './agent-skills';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
 import type { McpServersConfig } from './agent-mcp';
 
@@ -317,14 +318,18 @@ export const AGENT_TASK_INSTRUCTIONS = [
 export function buildSystemPrompt(
   cwd: string,
   override: string | null,
-  options: { image: boolean; mcp?: boolean; task?: boolean } = { image: false }
+  options: { image: boolean; mcp?: boolean; task?: boolean; skill?: boolean } = { image: false }
 ): string {
   const custom = override?.trim() ?? '';
   const base = custom === '' ? DEFAULT_AGENT_SYSTEM_PROMPT : custom;
   const image = options.image ? `\n\n${AGENT_IMAGE_INSTRUCTIONS}` : '';
   const mcp = options.mcp === true ? `\n\n${AGENT_MCP_INSTRUCTIONS}` : '';
   const task = options.task === true ? `\n\n${AGENT_TASK_INSTRUCTIONS}` : '';
-  return `${base}${image}${mcp}${task}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
+  // Ahead of `task`, because a skill is something to read before starting and a
+  // subagent is something to hand off once started, and the order these are read
+  // in is the order they come up in.
+  const skill = options.skill === true ? `\n\n${AGENT_SKILL_INSTRUCTIONS}` : '';
+  return `${base}${image}${mcp}${skill}${task}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
 }
 
 /*

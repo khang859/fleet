@@ -89,6 +89,12 @@ import type {
 } from '../shared/agent-types';
 import type { AgentCommandDescriptor } from '../shared/agent-commands';
 import type {
+  FoundSkill,
+  InstalledSkill,
+  SkillFetchResult,
+  SkillInstallOutcome
+} from '../shared/agent-skill-install';
+import type {
   AgentSessionAddSpend,
   AgentSessionAppend,
   AgentSessionListItem,
@@ -642,6 +648,41 @@ const fleetApi = {
       /** Pushed whenever a connection changes state, including with nobody asking. */
       onStatus: (cb: (p: AgentMcpStatus[]) => void): Unsubscribe =>
         onChannel(IPC_CHANNELS.AGENT_MCP_STATUS, cb)
+    },
+
+    /**
+     * Skills: `SKILL.md` folders in the shared agentskills.io format.
+     *
+     * No `get`/`set` pair, because these are files rather than settings. `list`
+     * reads Fleet's own folder, `detect` reads the other tools' folders, `fetch`
+     * clones a repository into a temp folder and reports what is in it, and
+     * `install` copies chosen folders into Fleet's.
+     *
+     * `install` takes paths, and main checks each one against the roots it
+     * itself offered rather than trusting the list back.
+     */
+    skills: {
+      list: async (): Promise<InstalledSkill[]> =>
+        typedInvoke<InstalledSkill[]>(IPC_CHANNELS.AGENT_SKILLS_LIST),
+      /** What Claude Code, OpenCode and `~/.agents` already have. */
+      detect: async (cwd: string): Promise<FoundSkill[]> =>
+        typedInvoke<FoundSkill[]>(IPC_CHANNELS.AGENT_SKILLS_DETECT, cwd),
+      /** Rejects with a sentence to show when the clone fails or holds no skills. */
+      fetch: async (from: string): Promise<SkillFetchResult> =>
+        typedInvoke<SkillFetchResult>(IPC_CHANNELS.AGENT_SKILLS_FETCH, from),
+      /** Throw the checkout away, once installed from or abandoned. */
+      discard: async (fetchId: string): Promise<void> =>
+        typedInvoke<void>(IPC_CHANNELS.AGENT_SKILLS_DISCARD, fetchId),
+      install: async (
+        picked: Array<{ name: string; path: string }>,
+        cwd: string
+      ): Promise<SkillInstallOutcome> =>
+        typedInvoke<SkillInstallOutcome>(IPC_CHANNELS.AGENT_SKILLS_INSTALL, picked, cwd),
+      remove: async (name: string): Promise<void> =>
+        typedInvoke<void>(IPC_CHANNELS.AGENT_SKILLS_REMOVE, name),
+      /** The way to everything this UI does not do: edit one, look at what it bundles. */
+      reveal: async (path: string): Promise<void> =>
+        typedInvoke<void>(IPC_CHANNELS.AGENT_SKILLS_REVEAL, path)
     }
   },
 
