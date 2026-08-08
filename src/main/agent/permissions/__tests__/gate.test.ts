@@ -250,7 +250,7 @@ describe('PermissionGate', () => {
 describe('PermissionGate, in auto mode', () => {
   /** A classifier that answers as told, and records what it was asked. */
   function classifier(
-    verdict: 'safe' | 'ask',
+    verdict: 'safe' | 'ask' | null,
     usage: AgentTurnUsage | null = null
   ): { auto: AutoApprove; seen: Array<{ command: string; cwd: string }> } {
     const seen: Array<{ command: string; cwd: string }> = [];
@@ -344,6 +344,46 @@ describe('PermissionGate, in auto mode', () => {
 
     await vi.waitFor(() => expect(asks).toHaveLength(2));
     expect(seen).toHaveLength(1);
+  });
+
+  /*
+   * A call that never reached a model did not produce a judgement, and the two
+   * tests above are the reason that matters: a verdict is remembered for the
+   * rest of the turn. Remember a 502 and one blip becomes twenty prompts on a
+   * turn that runs `git status` twenty times.
+   */
+  it('asks the user when the classifier has no answer, without remembering it', async () => {
+    const { auto, seen } = classifier(null);
+    const g = gate(auto);
+    const first = g.check(request('npm install left-pad'));
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'once');
+    await first;
+
+    void g.check(request('npm install left-pad'));
+
+    await vi.waitFor(() => expect(asks).toHaveLength(2));
+    // Asked again rather than settled from the cache, which is the whole point.
+    expect(seen).toHaveLength(2);
+  });
+
+  it('takes the answer of a later attempt once the classifier recovers', async () => {
+    const seen: string[] = [];
+    // Down for the first command, up for the rest - one blip in a long turn.
+    const auto: AutoApprove = async ({ command }) => {
+      seen.push(command);
+      return Promise.resolve({ verdict: seen.length === 1 ? null : 'safe', usage: null });
+    };
+    const g = gate(auto);
+
+    const first = g.check(request('git status'));
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'once');
+    await first;
+
+    // Same command, and nobody is disturbed about it a second time.
+    await expect(g.check(request('git status'))).resolves.toBe('run');
+    expect(asks).toHaveLength(1);
   });
 
   it('forgets what it judged once the turn is over', async () => {

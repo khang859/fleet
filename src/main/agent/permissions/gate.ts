@@ -51,8 +51,8 @@ type Deps = {
 
 export type AutoApproveRequest = { command: string; cwd: string; signal: AbortSignal };
 
-/** What the model said, and what asking it cost. */
-export type AutoApproval = { verdict: ClassifierVerdict; usage: AgentTurnUsage | null };
+/** What the model said, or `null` if it did not answer, and what asking cost. */
+export type AutoApproval = { verdict: ClassifierVerdict | null; usage: AgentTurnUsage | null };
 
 type Pending = {
   resolve: (grant: PermissionGrant) => void;
@@ -122,6 +122,11 @@ export class PermissionGate {
    * was told `npm test` is fine must not be stopped and asked about it three
    * rounds later - the same command getting two different answers inside one
    * turn reads as a bug, whichever way round it happens.
+   *
+   * Only actual judgements go in. A call that never reached a model did not
+   * produce one, and writing it here would turn one 502 into every later
+   * occurrence of that command asking the user - twenty prompts, on a turn that
+   * runs `git status` twenty times, for a blip that had already passed.
    */
   private readonly judged = new Map<string, Map<string, ClassifierVerdict>>();
 
@@ -152,7 +157,11 @@ export class PermissionGate {
    * `false` for everything that is not a plain yes - no classifier wired up,
    * auto mode off, the model said ask, the call failed. All of them mean the
    * user is asked, which is what would have happened anyway, so none of them is
-   * worth telling apart here.
+   * worth telling apart *for this call*.
+   *
+   * They are worth telling apart for the next one, which is the only thing the
+   * `null` case changes: the user is still asked now, and the answer is simply
+   * not written down as though a model had given it.
    */
   private async autoApproved(req: PermissionRequest): Promise<boolean> {
     const ask = this.deps.autoApprove;
@@ -166,6 +175,7 @@ export class PermissionGate {
     // Before the verdict is used, so a call that was billed is billed even if
     // what came back is about to be thrown away.
     if (answer.usage !== null) req.onUsage?.(answer.usage);
+    if (answer.verdict === null) return false;
     seen.set(req.command, answer.verdict);
     this.judged.set(req.streamId, seen);
     return answer.verdict === 'safe';

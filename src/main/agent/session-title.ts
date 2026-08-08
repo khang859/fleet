@@ -94,7 +94,10 @@ export async function resolveTitle(
       model: input.model,
       messages: toTitleMessages(input),
       maxTokens: 24,
-      temperature: 0.3
+      temperature: 0.3,
+      // Naming a session is not what a thinking budget is for, and 24 tokens
+      // spent reasoning is 24 tokens not spent on the name.
+      reasoning: { enabled: false }
     });
     const title = sanitizeTitle(answer.text) || null;
     if (title === null) log.warn('model returned no usable title', { model: input.model });

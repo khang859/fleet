@@ -40,10 +40,8 @@ describe('readVerdict', () => {
    * Everything below is a model that did not do as it was told. None of it is
    * consent, and a parser that guessed at any of it would be inventing one.
    */
-  it('treats anything else as a question for the user', () => {
+  it('treats anything else it said as a question for the user', () => {
     for (const raw of [
-      '',
-      '   ',
       'unsafe',
       'safety: this command is fine to run',
       'I cannot answer that',
@@ -52,6 +50,18 @@ describe('readVerdict', () => {
       'yes'
     ]) {
       expect(readVerdict(raw)).toBe('ask');
+    }
+  });
+
+  /*
+   * Saying nothing is not one of the things a model can mean about a command.
+   * It is a reasoning model that spent the budget thinking, or a provider that
+   * returned an empty choice - and either way there is no judgement here to
+   * remember. Still not consent: the caller asks the user on null too.
+   */
+  it('reports having no answer as no answer, not as a question', () => {
+    for (const raw of ['', '   ', '\n\t ']) {
+      expect(readVerdict(raw)).toBeNull();
     }
   });
 });
@@ -75,15 +85,35 @@ describe('toClassifyMessages', () => {
 });
 
 describe('classifyCommand', () => {
-  it('asks with no room to write an essay, and no sampling', async () => {
+  it('asks with no sampling and no thinking', async () => {
     const complete = answering('safe');
     await classifyCommand(complete, input);
 
     expect(complete).toHaveBeenCalledWith(
-      expect.objectContaining({ model: input.model, temperature: 0 })
+      expect.objectContaining({
+        model: input.model,
+        temperature: 0,
+        // Not null, which would leave the model's own default in place. The
+        // classifier model falls through to the coding model, so that default
+        // is a reasoning model's default more often than not, and the whole
+        // budget would go on thinking.
+        reasoning: { enabled: false }
+      })
     );
+  });
+
+  /*
+   * Room for the word to arrive after thinking that could not be turned off -
+   * some models mark reasoning mandatory and refuse `enabled: false` - but not
+   * so much room that a model ignoring the format can bill for an essay.
+   */
+  it('leaves headroom for a model that thinks anyway, without paying for prose', async () => {
+    const complete = answering('safe');
+    await classifyCommand(complete, input);
+
     const [call] = vi.mocked(complete).mock.calls;
-    expect(call[0].maxTokens).toBeLessThan(20);
+    expect(call[0].maxTokens).toBeGreaterThan(64);
+    expect(call[0].maxTokens).toBeLessThanOrEqual(512);
   });
 
   it('reports what the judgement cost', async () => {
@@ -125,13 +155,40 @@ describe('classifyCommand', () => {
     expect(result.usage?.billed.costUsd).toBe(0.0002);
   });
 
-  /* A classifier that is down is a classifier that is not there. */
-  it('sends the question to the user when the call fails', async () => {
+  /*
+   * A classifier that is down is a classifier that is not there. It reports no
+   * answer rather than `ask`, so the gate asks the user this once without
+   * recording a judgement no model made - see its cache.
+   */
+  it('reports no answer when the call fails, rather than a verdict', async () => {
     const complete: typeof completeOnce = async () => Promise.reject(new Error('502 Bad Gateway'));
 
     await expect(classifyCommand(complete, input)).resolves.toEqual({
-      verdict: 'ask',
+      verdict: null,
       usage: null
     });
+  });
+
+  /*
+   * The reasoning-model shape, which is the one this is really guarding: the
+   * call succeeds, is billed, and comes back with nothing in it.
+   */
+  it('reports no answer when the model returns empty content', async () => {
+    const usage = {
+      promptTokens: 120,
+      completionTokens: 0,
+      totalTokens: 120,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 512,
+      costUsd: 0.0003
+    };
+    const complete: typeof completeOnce = async () => Promise.resolve({ text: '', usage });
+
+    const result = await classifyCommand(complete, input);
+    expect(result.verdict).toBeNull();
+    // Still billed. A call that thought for 512 tokens and said nothing cost
+    // money, and a total that drops it is a total that flatters us.
+    expect(result.usage?.billed.costUsd).toBe(0.0003);
   });
 });
