@@ -33,8 +33,7 @@ export type WireToolCall = {
  * order, because of how the parts are parsed on the way to the provider.
  */
 export type WireContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } };
+  { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
 
 /**
  * One message on the wire. The assistant's own tool calls have to be sent back
@@ -207,6 +206,14 @@ export type CompletionRequest = {
   messages: AgentWireMessage[];
   maxTokens: number;
   temperature: number;
+  /**
+   * Omitted from the request when null, so the model's own default applies -
+   * which on a reasoning model means thinking. Everything that calls this wants
+   * a handful of tokens back, so leaving it null spends the whole budget on
+   * reasoning and returns empty content. Stated rather than defaulted for that
+   * reason: a caller asking for 8 tokens should have to say what it wants here.
+   */
+  reasoning: ReasoningParam | null;
   signal?: AbortSignal;
 };
 
@@ -226,7 +233,8 @@ export async function completeOnce(
     messages: req.messages,
     stream: false,
     max_tokens: req.maxTokens,
-    temperature: req.temperature
+    temperature: req.temperature,
+    ...(req.reasoning === null ? {} : { reasoning: req.reasoning })
   });
 
   const parsed = completionSchema.safeParse(await res.json());

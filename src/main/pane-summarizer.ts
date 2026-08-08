@@ -40,6 +40,9 @@ export async function generateSummary(
     ],
     maxTokens: 32,
     temperature: 0.3,
+    // A one-line summary is not what a thinking budget is for, and on a
+    // reasoning model 32 tokens would all go on the thinking.
+    reasoning: { enabled: false },
     signal: opts.signal
   });
   return sanitizeSummary(answer.text);
