@@ -41,6 +41,8 @@ import {
   type ToolSpec
 } from '../../shared/agent-tools';
 import type { SubagentDefinition } from '../../shared/agent-subagents';
+import { buildSkillSpec, type SkillDefinition } from '../../shared/agent-skills';
+import { loadSkills } from './skills/definitions';
 import type { McpManager } from './mcp/manager';
 import type { AgentToolEvent } from '../../shared/agent-types';
 import {
@@ -130,6 +132,8 @@ type RoundsRequest = {
    */
   dispatchTask: (callId: string) => AgentTaskDispatcher | null;
   findSubagent: ((name: string) => SubagentDefinition | null) | null;
+  /** Set for both a turn and a subagent: a skill is text, not a capability. */
+  findSkill: ((name: string) => SkillDefinition | null) | null;
   /**
    * One finished round of this run's own conversation. Set for a subagent,
    * whose transcript main has to keep because it has no pane; `null` for a turn,
@@ -680,12 +684,18 @@ export class AgentService {
     const mcpSpecs = mcp?.getToolSpecs() ?? [];
     const subagents = await this.deps.subagents.list(req.cwd);
     const taskSpec = buildTaskSpec(subagents);
+    // Read per turn for the reason subagents are: the file is the interface, and
+    // a skill someone has just written should be offered on the next turn rather
+    // than on the next launch.
+    const skills = await loadSkills(req.cwd);
+    const skillSpec = buildSkillSpec(skills);
     const messages = await toWireHistory(
       req,
       buildSystemPrompt(req.cwd, ctx.settings.systemPrompt, {
         image: imageModel !== null,
         mcp: mcpSpecs.length > 0,
-        task: taskSpec !== null
+        task: taskSpec !== null,
+        skill: skillSpec !== null
       })
     );
 
@@ -695,7 +705,12 @@ export class AgentService {
         threadId: req.threadId,
         cwd: req.cwd,
         messages,
-        tools: toolSpecsFor({ image: imageModel !== null, mcp: mcpSpecs, task: taskSpec }),
+        tools: toolSpecsFor({
+          image: imageModel !== null,
+          mcp: mcpSpecs,
+          task: taskSpec,
+          skill: skillSpec
+        }),
         mcp,
         todos: req.todos,
         // The parent is the only one that gets these. A child's context has
@@ -703,6 +718,7 @@ export class AgentService {
         // the tool list being right.
         dispatchTask: this.taskDispatcher(req, ctx, subagents),
         findSubagent: (name) => subagents.find((s) => s.name === name) ?? null,
+        findSkill: (name) => skills.find((s) => s.name === name) ?? null,
         // The pane draws this run and writes it down. Only a subagent needs
         // main to keep its transcript, and only a subagent is watched by
         // nobody while it runs.
@@ -843,7 +859,8 @@ export class AgentService {
             signal: ctx.signal
           }),
           dispatchTask: run.dispatchTask(call.id),
-          findSubagent: run.findSubagent
+          findSubagent: run.findSubagent,
+          findSkill: run.findSkill
         });
         drawn.push(done.call);
         // A tool that spent money is part of what the turn cost, and `image` is
@@ -922,6 +939,12 @@ export class AgentService {
       const settings = this.deps.getSettings();
       const ctx: CallContext = { apiKey, model: run.model, settings, signal: run.signal };
 
+      // The one thing a child does get that the parent has. A subagent sent to
+      // review a change needs the review checklist as much as the parent would,
+      // and it has no conversation to have been handed it in.
+      const skills = await loadSkills(run.cwd);
+      const skillSpec = buildSkillSpec(skills);
+
       const report = await this.runRounds(
         {
           streamId: run.taskId,
@@ -931,18 +954,21 @@ export class AgentService {
             {
               role: 'system',
               content: buildSystemPrompt(run.cwd, run.definition.systemPrompt, {
-                // Nothing conditional to say: a child is never given the image
-                // tool, an MCP server, or a subagent of its own.
-                image: false
+                // A child is never given the image tool, an MCP server, or a
+                // subagent of its own. Skills are the exception - they are text,
+                // not a capability.
+                image: false,
+                skill: skillSpec !== null
               })
             },
             { role: 'user', content: run.prompt }
           ],
-          tools: toolSpecsFor({ image: false, only: run.tools }),
+          tools: toolSpecsFor({ image: false, skill: skillSpec, only: run.tools }),
           mcp: null,
           todos: [],
           dispatchTask: () => null,
           findSubagent: null,
+          findSkill: (name) => skills.find((s) => s.name === name) ?? null,
           onRound: run.onMessage,
           quiet: true
         },

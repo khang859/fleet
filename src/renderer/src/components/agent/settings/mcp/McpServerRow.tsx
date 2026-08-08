@@ -1,10 +1,8 @@
 import { useState } from 'react';
-import * as Popover from '@radix-ui/react-popover';
 import {
   ChevronRight,
   KeyRound,
   Loader2,
-  MoreHorizontal,
   Pencil,
   RefreshCw,
   Trash2,
@@ -13,7 +11,7 @@ import {
 import type { McpServerConfig, McpServerStatus } from '../../../../../../shared/agent-mcp';
 import { transportOf } from '../../../../../../shared/agent-mcp';
 import { Toggle } from '../Toggle';
-import { popperAnim } from '../../../../lib/motion';
+import { MenuItem, RowMenu } from '../RowMenu';
 
 /**
  * One configured server, collapsed to a line until the user wants the detail.
@@ -112,14 +110,26 @@ export function McpServerRow({
 
         {busy && <Loader2 size={14} className="shrink-0 animate-spin text-fleet-text-subtle" />}
         <Toggle checked={config.enabled} onChange={onToggle} ariaLabel={`Enable ${name}`} />
-        <RowMenu
-          name={name}
-          canSignOut={hasCredential}
-          onEdit={onEdit}
-          onReconnect={onReconnect}
-          onSignOut={onSignOut}
-          onRemove={onRemove}
-        />
+        <RowMenu label={name}>
+          {(pick) => (
+            <>
+              <MenuItem icon={<Pencil size={13} />} onClick={pick(onEdit)}>
+                Edit…
+              </MenuItem>
+              <MenuItem icon={<RefreshCw size={13} />} onClick={pick(onReconnect)}>
+                Reconnect
+              </MenuItem>
+              {hasCredential && (
+                <MenuItem icon={<KeyRound size={13} />} onClick={pick(onSignOut)}>
+                  Sign out
+                </MenuItem>
+              )}
+              <MenuItem icon={<Trash2 size={13} />} danger onClick={pick(onRemove)}>
+                Remove
+              </MenuItem>
+            </>
+          )}
+        </RowMenu>
       </div>
 
       {open && (
@@ -217,88 +227,5 @@ function Notice({
       {tone === 'warn' && <TriangleAlert size={13} className="shrink-0" />}
       {children}
     </div>
-  );
-}
-
-function RowMenu({
-  name,
-  canSignOut,
-  onEdit,
-  onReconnect,
-  onSignOut,
-  onRemove
-}: {
-  name: string;
-  canSignOut: boolean;
-  onEdit: () => void;
-  onReconnect: () => void;
-  onSignOut: () => void;
-  onRemove: () => void;
-}): React.JSX.Element {
-  const [open, setOpen] = useState(false);
-  const pick = (run: () => void) => (): void => {
-    setOpen(false);
-    run();
-  };
-
-  return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          aria-label={`More actions for ${name}`}
-          className="shrink-0 rounded p-1 text-fleet-text-subtle transition-colors hover:bg-fleet-surface-3 hover:text-fleet-text focus-ring"
-        >
-          <MoreHorizontal size={15} />
-        </button>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content
-          align="end"
-          sideOffset={4}
-          className={`z-50 w-44 overflow-hidden rounded-md border border-fleet-border-strong bg-fleet-surface-2 py-1 shadow-xl ${popperAnim}`}
-        >
-          <MenuItem icon={<Pencil size={13} />} onClick={pick(onEdit)}>
-            Edit…
-          </MenuItem>
-          <MenuItem icon={<RefreshCw size={13} />} onClick={pick(onReconnect)}>
-            Reconnect
-          </MenuItem>
-          {canSignOut && (
-            <MenuItem icon={<KeyRound size={13} />} onClick={pick(onSignOut)}>
-              Sign out
-            </MenuItem>
-          )}
-          <MenuItem icon={<Trash2 size={13} />} danger onClick={pick(onRemove)}>
-            Remove
-          </MenuItem>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
-  );
-}
-
-function MenuItem({
-  icon,
-  danger = false,
-  onClick,
-  children
-}: {
-  icon: React.ReactNode;
-  danger?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-fleet-surface-3 ${
-        danger ? 'text-red-300' : 'text-fleet-text-secondary'
-      }`}
-    >
-      <span className="shrink-0">{icon}</span>
-      {children}
-    </button>
   );
 }

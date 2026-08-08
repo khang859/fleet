@@ -33,3 +33,20 @@ Chromium silently fails to bind a busy port, which would let the driver attach t
 
 **4. Worktrees start with no `node_modules`.**
 A fresh Fleet worktree needs `npm install` before any `npm run` / vitest works; there is no shared/symlinked `node_modules`.
+
+## Gotchas hit while using it
+
+**5. `pkill -f "electron-vite dev"` orphans the Electron app, and the driver keeps talking to the orphan.**
+It kills the wrapper and the vite node process, not the Electron they spawned.
+The orphan keeps running the *old* main bundle and keeps its `session.json` port, so a restarted dev server rebuilds `out/main/index.mjs` while `npm run drive` is still driving the stale window.
+The symptom is maddening: the source is right, `grep` finds the new code in `out/main/index.mjs`, tests pass, and the live app keeps showing the old behaviour through a brand-new agent session.
+Kill the app too before restarting:
+
+```bash
+pkill -f "electron-vite"; pkill -f "out/main/index.mjs"; pkill -f "electron/dist/Electron"
+```
+
+Then confirm nothing survived - `npm run drive -- snapshot` should fail with `ECONNREFUSED` - *before* starting the new server.
+A driver that still attaches after the kill is attached to something you did not just build.
+
+**Rule of thumb:** when a main-process change refuses to show up in the live window, do not re-read the source. Prove the process is new first.

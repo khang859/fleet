@@ -32,6 +32,7 @@ import type { AgentImageStore } from './image-store';
 import type { AgentGitWatcher } from './git-watch';
 import type { AgentHistoryStore } from './history-store';
 import { registerAgentMcpIpc, type McpIpcDeps } from './mcp/mcp-ipc';
+import { registerAgentSkillsIpc } from './skills/skills-ipc';
 import type { SubagentManager } from './subagents/manager';
 import type { OpenRouterSecrets } from '../openrouter-secrets';
 
@@ -61,6 +62,9 @@ export function registerAgentIpc(deps: {
   getApiKey: () => string | null;
 }): void {
   registerAgentMcpIpc(deps.mcp);
+  // No dependencies of its own: skills are folders on disk, read fresh, with no
+  // manager holding connections or state between calls.
+  registerAgentSkillsIpc();
 
   ipcMain.handle(
     IPC_CHANNELS.AGENT_LIST_MODELS,

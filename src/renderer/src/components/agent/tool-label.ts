@@ -21,6 +21,8 @@ export type ToolStatus = 'running' | 'done' | 'failed';
  * optional because a row has to render before the arguments are complete.
  */
 const LabelArgs = z.object({
+  name: z.string().optional(),
+  file: z.string().optional(),
   path: z.string().optional(),
   pattern: z.string().optional(),
   glob: z.string().optional(),
@@ -56,6 +58,16 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
     // point of the row - it is sitting in a terminal waiting for the user.
     case 'terminal':
       return { verb: 'Hand over', target: args.command ?? '' };
+    // The skill's name is what the call is about, so it belongs beside the verb
+    // like every other target - and a bundled file narrows it the way a path
+    // narrows a read. "Load skill" rather than "Load" because the name alone
+    // does not say what kind of thing it is, and rather than "Skill" because
+    // the first word of a row is a verb everywhere else on this list.
+    case 'skill': {
+      const file = args.file ?? '';
+      const name = args.name ?? '';
+      return { verb: 'Load skill', target: file === '' ? name : `${name}/${file}` };
+    }
     // The prompt, because it is the only description of a picture that does not
     // exist yet - and once it does, the picture is on the row underneath and
     // the prompt is the caption. Editing says so: the same row would otherwise

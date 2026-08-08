@@ -31,6 +31,23 @@ describe('toolLabel', () => {
     });
   });
 
+  // The name is the subject of the call. Left in the arguments it would fall
+  // through to the default label, and the row would read "skill" with nothing
+  // beside it and the name stranded at the far end in the summary column.
+  it('puts the skill it loaded beside the verb', () => {
+    expect(toolLabel(call('skill', '{"name":"ship-it"}'))).toEqual({
+      verb: 'Load skill',
+      target: 'ship-it'
+    });
+    expect(toolLabel(call('skill', '{"name":"ship-it","file":"references/API.md"}'))).toEqual({
+      verb: 'Load skill',
+      target: 'ship-it/references/API.md'
+    });
+    // The model asking for the body sometimes sends an empty `file` rather than
+    // leaving it out, and that is not a path.
+    expect(toolLabel(call('skill', '{"name":"ship-it","file":""}')).target).toBe('ship-it');
+  });
+
   it('says where the search was narrowed to', () => {
     expect(toolLabel(call('glob', '{"pattern":"*.ts","path":"src/main"}')).target).toBe(
       '*.ts in src/main'

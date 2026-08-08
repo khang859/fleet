@@ -205,6 +205,18 @@ exec node "$FLEET_DIR/lib/${basename(cliEntrypoint)}" "$@"
 // Copies the Fleet skill file to ~/.fleet/skills/fleet.md so AI agents
 // running in Fleet terminals can read it and learn available commands.
 // Overwrites on every launch to stay in sync with the app version.
+//
+// The source moved into resources/skills/fleet/SKILL.md so that one file serves
+// two readers: this copy, for whatever agent is running in a Fleet *terminal*,
+// and Fleet's own Agent pane, which loads resources/skills as its bundled tier
+// (see src/main/agent/skills/definitions.ts). The destination deliberately did
+// not move - a Go hook binary emits that exact path as SessionStart context, the
+// pane toolbar's inject button reads it, and Rune reads it. Changing it breaks
+// all three.
+//
+// So ~/.fleet/skills holds a flat fleet.md alongside the user's own skill
+// folders. The folder walk that loads skills only descends into directories, so
+// the stray file is skipped rather than read as a broken skill.
 
 export async function installSkillFile(): Promise<void> {
   const fleetHome = join(homedir(), '.fleet');
@@ -216,10 +228,19 @@ export async function installSkillFile(): Promise<void> {
   const mainDir = dirname(fileURLToPath(import.meta.url));
 
   const candidatePaths = [
-    // Dev mode: project root / resources / skills / fleet.md
-    join(mainDir, '..', '..', 'resources', 'skills', 'fleet.md'),
-    // Packaged mode (asar unpacked): process.resourcesPath
-    join(process.resourcesPath ?? '', 'app.asar.unpacked', 'resources', 'skills', 'fleet.md')
+    // Dev mode: project root / resources / skills / fleet / SKILL.md
+    join(mainDir, '..', '..', 'resources', 'skills', 'fleet', 'SKILL.md'),
+    // Packaged mode: the extraResources copy the agent's own loader reads, with
+    // the asar-unpacked path kept as a fallback for a build that has only that.
+    join(process.resourcesPath ?? '', 'resources', 'skills', 'fleet', 'SKILL.md'),
+    join(
+      process.resourcesPath ?? '',
+      'app.asar.unpacked',
+      'resources',
+      'skills',
+      'fleet',
+      'SKILL.md'
+    )
   ];
 
   let sourceContent: string | null = null;

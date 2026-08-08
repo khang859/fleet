@@ -270,6 +270,18 @@ export const IPC_CHANNELS = {
   // A static token the user types, straight into the encrypted store. It never
   // comes back out over IPC; the renderer only learns whether one is set.
   AGENT_MCP_SET_TOKEN: 'agent:mcp-set-token',
+  // Skills: SKILL.md folders, in the shared agentskills.io format. Unlike MCP
+  // servers these are files rather than settings, so there is no GET/SET pair -
+  // LIST reads the folder, and the rest put things into it or take them out.
+  // DETECT finds what other tools on this machine already have; FETCH clones a
+  // repository and reports what is in it, DISCARD throws that clone away.
+  AGENT_SKILLS_LIST: 'agent:skills-list',
+  AGENT_SKILLS_DETECT: 'agent:skills-detect',
+  AGENT_SKILLS_FETCH: 'agent:skills-fetch',
+  AGENT_SKILLS_DISCARD: 'agent:skills-discard',
+  AGENT_SKILLS_INSTALL: 'agent:skills-install',
+  AGENT_SKILLS_REMOVE: 'agent:skills-remove',
+  AGENT_SKILLS_REVEAL: 'agent:skills-reveal',
 
   // ── Remote (SSH) file browser ──────────────────────────────────────────────
   // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's

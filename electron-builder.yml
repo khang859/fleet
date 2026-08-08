@@ -24,6 +24,8 @@ extraResources:
     to: resources/agents/
   - from: resources/commands/
     to: resources/commands/
+  - from: resources/skills/
+    to: resources/skills/
 asarUnpack:
   - resources/**
   - node_modules/onnxruntime-node/**
