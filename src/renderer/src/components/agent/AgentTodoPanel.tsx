@@ -6,12 +6,17 @@ import { splitTodos, todoProgress, TODO_DONE_COLLAPSE_AT, TODO_PANEL_WIDTH_PX } 
 /**
  * The agent's task list, beside the conversation.
  *
- * A column rather than a card in the transcript, because the two things are
- * read at different moments. The transcript is what happened, scrolled through
+ * Beside the transcript rather than in it, because the two things are read at
+ * different moments. The transcript is what happened, scrolled through
  * afterwards; the list is where the work has got to, glanced at while it is
- * still running - and a card that scrolls away with the message that wrote it
- * is exactly the wrong shape for that. Here it stays where it was put, and
+ * still running - and something that scrolls away with the message that wrote
+ * it is exactly the wrong shape for that. Here it stays where it was put, and
  * checking it costs a look rather than a scroll.
+ *
+ * It hugs its list rather than filling the pane. A five-line plan in a
+ * full-height slab is mostly empty tint, which reads as a region of the window
+ * that failed to load rather than as a short list - so the card ends where the
+ * list does, and only grows to the pane's height when there is that much to say.
  *
  * Read-only, deliberately. Every item on it is something the agent said it
  * would do, and a user tick would make the list a place where two authors
@@ -36,47 +41,61 @@ export function AgentTodoPanel({
   const collapsed = done.length > TODO_DONE_COLLAPSE_AT && !showDone;
 
   return (
-    <aside
-      aria-label="Agent tasks"
+    // The column the card floats in, held open at a fixed width so the
+    // conversation beside it keeps a steady edge. A flex column rather than a
+    // block: it is what caps the card at the pane's height, by letting the card
+    // shrink once its list is longer than there is room for.
+    <div
       style={{ width: TODO_PANEL_WIDTH_PX }}
-      // Glass rather than nothing: the pane may have a picture behind it, and a
-      // list of short lines read straight off a photograph is the one thing
-      // here small enough to disappear into one.
-      className="flex min-h-0 shrink-0 flex-col border-l border-fleet-border bg-fleet-glass-bg backdrop-blur-md"
+      className="flex shrink-0 flex-col pt-2 pr-3 pb-3 pl-2"
     >
-      <div className="flex shrink-0 items-baseline gap-2 px-3.5 pt-5 pb-2">
-        <h2 className="text-[11px] font-medium tracking-wide text-fleet-text-secondary uppercase">
-          Tasks
-        </h2>
-        <span className="ml-auto font-mono text-[11px] text-fleet-text-subtle tabular-nums">
-          {progress.count}
-        </span>
-      </div>
-      {/* Work still to do first, so the top of the column is the answer to
-          "what now" and the scroll position it starts at is the right one. The
-          finished pile grows downwards, which is the direction it should push. */}
-      <ol className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">
-        {open.map((item) => (
-          <Row key={item.id} item={item} streaming={streaming} />
-        ))}
-        {collapsed ? (
-          <li>
-            <button
-              type="button"
-              onClick={() => setShowDone(true)}
-              aria-expanded={false}
-              className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-fleet-text-subtle transition-colors hover:text-fleet-text-secondary focus-ring"
-            >
-              <Check size={12} className="shrink-0 text-emerald-400/90" />
-              <span>{done.length} finished</span>
-              <ChevronRight size={12} className="ml-auto shrink-0" />
-            </button>
-          </li>
-        ) : (
-          done.map((item) => <Row key={item.id} item={item} streaming={streaming} />)
-        )}
-      </ol>
-    </aside>
+      <aside
+        aria-label="Agent tasks"
+        // The same card the composer is: rounded, bordered, glass over whatever
+        // the pane has behind it. A list of short lines read straight off a
+        // photograph is the one thing here small enough to disappear into one,
+        // and the border is what gives it an edge on all four sides rather than
+        // a slab that runs off the top and bottom of the pane.
+        //
+        // `min-h-0` so it can shrink past its content and the list scrolls
+        // inside it; without it a long list would push the card off the bottom.
+        // `overflow-hidden` so that scrolling list stays inside the corners.
+        className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-fleet-border bg-fleet-glass-surface shadow-lg backdrop-blur-md"
+      >
+        <div className="flex shrink-0 items-baseline gap-2 px-3 pt-2.5 pb-1.5">
+          <h2 className="text-[11px] font-medium tracking-wide text-fleet-text-secondary uppercase">
+            Tasks
+          </h2>
+          <span className="ml-auto font-mono text-[11px] text-fleet-text-subtle tabular-nums">
+            {progress.count}
+          </span>
+        </div>
+        {/* Work still to do first, so the top of the card is the answer to
+            "what now" and the scroll position it starts at is the right one. The
+            finished pile grows downwards, which is the direction it should push. */}
+        <ol className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-2">
+          {open.map((item) => (
+            <Row key={item.id} item={item} streaming={streaming} />
+          ))}
+          {collapsed ? (
+            <li>
+              <button
+                type="button"
+                onClick={() => setShowDone(true)}
+                aria-expanded={false}
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-fleet-text-subtle transition-colors hover:text-fleet-text-secondary focus-ring"
+              >
+                <Check size={12} className="shrink-0 text-emerald-400/90" />
+                <span>{done.length} finished</span>
+                <ChevronRight size={12} className="ml-auto shrink-0" />
+              </button>
+            </li>
+          ) : (
+            done.map((item) => <Row key={item.id} item={item} streaming={streaming} />)
+          )}
+        </ol>
+      </aside>
+    </div>
   );
 }
 
