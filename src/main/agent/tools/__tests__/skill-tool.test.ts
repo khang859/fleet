@@ -53,6 +53,7 @@ const ctx = (definition: SkillDefinition | null): AgentToolContext => ({
   dispatchTask: null,
   findSubagent: null,
   findSkill: definition === null ? null : (name) => (name === definition.name ? definition : null),
+  schedule: null,
   todos: { list: () => [], save: () => {} }
 });
 

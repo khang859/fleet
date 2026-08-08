@@ -141,6 +141,10 @@ export const COMPACT_MIN_OLDER = 2;
  * Split a transcript into the part that gets summarized and the part that stays
  * verbatim. The cut is moved back to a user message so the kept tail opens with
  * a question rather than with an answer to one that is no longer there.
+ *
+ * A fired schedule counts as one of those. It is not something the user said,
+ * but it is a question the turn after it answers, which is the only property the
+ * cut point is about.
  */
 export function splitForCompaction(
   messages: AgentMessage[],
@@ -149,8 +153,13 @@ export function splitForCompaction(
   if (messages.length <= keepRecent) return { older: [], recent: [...messages] };
 
   let start = messages.length - keepRecent;
-  while (start > 0 && messages[start].role !== 'user') start -= 1;
+  while (start > 0 && !opensATurn(messages[start])) start -= 1;
   return { older: messages.slice(0, start), recent: messages.slice(start) };
+}
+
+/** Whether this message is something a turn was an answer to. */
+function opensATurn(message: AgentMessage): boolean {
+  return message.role === 'user' || message.role === 'scheduled';
 }
 
 /** Whether compacting this transcript would actually remove anything. */

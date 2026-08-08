@@ -59,6 +59,13 @@ const agentApi = {
   runningTasks: vi.fn().mockResolvedValue([])
 };
 
+/** No schedules anywhere, which is what every test in this file assumes. */
+const scheduleApi = {
+  list: vi.fn().mockResolvedValue([]),
+  cancel: vi.fn().mockResolvedValue(true),
+  pullDue: vi.fn().mockResolvedValue([])
+};
+
 /** What `loadSession` hands back; set per test to stand in for a file. */
 let replay: AgentSessionReplay;
 
@@ -206,7 +213,13 @@ beforeEach(async () => {
       refreshGit: agentApi.refreshGit,
       hasKey: vi.fn().mockResolvedValue(true),
       setKey: vi.fn().mockResolvedValue(undefined),
-      clearKey: vi.fn().mockResolvedValue(undefined)
+      clearKey: vi.fn().mockResolvedValue(undefined),
+      schedule: {
+        list: scheduleApi.list,
+        cancel: scheduleApi.cancel,
+        pullDue: scheduleApi.pullDue,
+        onChanged: listen(IPC_CHANNELS.AGENT_SCHEDULE_CHANGED)
+      }
     },
     pty: { input: vi.fn() },
     activity: activityApi

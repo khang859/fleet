@@ -6,6 +6,8 @@ import {
   GrepArgs,
   ImageArgs,
   ReadArgs,
+  ScheduleCancelArgs,
+  ScheduleCreateArgs,
   TerminalArgs,
   TodoAddArgs,
   TaskArgs,
@@ -26,6 +28,7 @@ import { runRead } from './read';
 import { runTerminal } from './terminal';
 import { runTodoAdd, runTodoUpdate } from './todo';
 import { runTask } from './task';
+import { runScheduleCancel, runScheduleCreate, runScheduleList } from './schedule';
 import { runSkill } from './skill';
 import { runWrite } from './write';
 import { AgentImageStore } from '../image-store';
@@ -87,6 +90,14 @@ export async function runAgentTool(
       return runTodoUpdate(checked(TodoUpdateArgs, args, name), ctx);
     case 'task':
       return runTask(checked(TaskArgs, args, name), ctx);
+    case 'schedule_create':
+      return runScheduleCreate(checked(ScheduleCreateArgs, args, name), ctx);
+    case 'schedule_list':
+      // No arguments to check, so none are parsed. The schema exists for the
+      // spec the model is sent, which does have to say "this takes nothing".
+      return runScheduleList(ctx);
+    case 'schedule_cancel':
+      return runScheduleCancel(checked(ScheduleCancelArgs, args, name), ctx);
     default:
       throw new Error(`There is no tool called ${name}`);
   }

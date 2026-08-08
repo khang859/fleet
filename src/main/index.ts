@@ -77,6 +77,9 @@ import { AgentGitWatcher } from './agent/git-watch';
 import { AgentHistoryStore } from './agent/history-store';
 import { McpManager as AgentMcpManager } from './agent/mcp/manager';
 import { SubagentManager } from './agent/subagents/manager';
+import { ScheduleStore } from './agent/schedule-store';
+import { ScheduleTimer } from './agent/schedule-timer';
+import type { AgentScheduleChanged } from '../shared/agent-schedule';
 import { discardAllFetches } from './agent/skills/fetch';
 import { AgentMcpSecrets } from './agent/mcp/secrets';
 import { resolveAuth, signIn as signInToMcp } from './agent/mcp/auth';
@@ -102,6 +105,7 @@ let learningsMcp: LearningsMcpServer | undefined;
 let agentService: AgentService | null = null;
 let agentMcp: AgentMcpManager | undefined;
 let agentSubagents: SubagentManager | null = null;
+let agentScheduleTimer: ScheduleTimer | null = null;
 
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
@@ -949,14 +953,31 @@ void app.whenReady().then(async () => {
       return agentService.runTask(run);
     }
   });
+  // Every change to any conversation's schedules goes out on one channel, from
+  // inside the store, so a create by a tool, a cancel by the user and a tick
+  // finding something due all reach the pane the same way. The push is also the
+  // nudge to deliver: main never starts a turn, and a pane that hears its own
+  // session changed is what turns a claimed fire into one.
+  const agentSchedules = new ScheduleStore({
+    onChanged: (sessionId, schedules) =>
+      agentEmit(IPC_CHANNELS.AGENT_SCHEDULE_CHANGED, {
+        sessionId,
+        schedules
+      } satisfies AgentScheduleChanged)
+  });
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
     gate: agentGate,
     mcp: agentMcp,
     subagents: agentSubagents,
+    schedules: agentSchedules,
     emit: agentEmit
   });
+  // Ticks once as it starts, which is the whole of the catch-up for schedules
+  // that came due while Fleet was closed.
+  agentScheduleTimer = new ScheduleTimer(agentSchedules);
+  agentScheduleTimer.start();
   const agentSessions = new AgentSessionStore();
   // Once, here, before any pane has had the chance to attach anything: a
   // picture that has not been sent yet is a folder with no session behind it.
@@ -970,6 +991,7 @@ void app.whenReady().then(async () => {
     git: agentGitWatcher,
     history: new AgentHistoryStore(),
     subagents: agentSubagents,
+    schedules: agentSchedules,
     mcp: {
       manager: agentMcp,
       secrets: agentMcpSecrets,
@@ -1094,6 +1116,9 @@ function shutdownAll(): void {
   // And writes down every subagent still running as interrupted, so a card
   // reopened tomorrow says what happened rather than shimmering forever.
   agentSubagents?.cancelAll();
+  // Nothing is lost by stopping this: what is due is on disk, and the first
+  // tick of the next launch finds it exactly as this one would have.
+  agentScheduleTimer?.stop();
   // Spawned servers are child processes of this one, so a quit that skipped
   // this would leave them running with nothing to talk to.
   void agentMcp?.closeAll();

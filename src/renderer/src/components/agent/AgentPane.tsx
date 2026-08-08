@@ -5,8 +5,11 @@ import { AgentThread } from './AgentThread';
 import { AgentSessionsTab } from './AgentSessionsTab';
 import { AgentTodoPanel } from './AgentTodoPanel';
 import { AgentSubagentPanel } from './AgentSubagentPanel';
+import { AgentSchedulePanel } from './AgentSchedulePanel';
 import { showTodoPanel } from './todo-view';
 import { runningSubagents, showSubagentPanel } from './subagent-view';
+import { scheduleRows, showSchedulePanel } from './schedule-view';
+import { cancelSchedule } from '../../store/agent-schedule';
 import { SIDE_COLUMN_WIDTH_PX } from './side-column';
 import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
 import { BackgroundLayer } from '../BackgroundLayer';
@@ -15,6 +18,7 @@ import { useElementWidth } from '../../hooks/use-element-width';
 import { resolveBackgroundSrc } from '../../lib/pane-background';
 import { getGlassCssVars } from '../../lib/theme';
 import type { AgentTodoItem } from '../../../../shared/agent-todos';
+import type { AgentScheduleRecord } from '../../../../shared/agent-schedule';
 import type { AgentMessage, AgentPermissionAsk } from '../../../../shared/agent-types';
 import type { TerminalBackground } from '../../../../shared/types';
 import type { SlideshowFrame } from '../../hooks/use-slideshow';
@@ -32,6 +36,9 @@ const EMPTY_TASK_ACTIVITY: Record<string, string | null> = {};
 
 /** The same, for a pane with no subagent waiting on a command. */
 const EMPTY_TASK_PERMISSIONS: Record<string, AgentPermissionAsk> = {};
+
+/** The same, for a conversation that has set nothing to wake itself up with. */
+const EMPTY_SCHEDULES: AgentScheduleRecord[] = [];
 
 /** The pane a `fleet:refocus-pane` event is about. */
 const RefocusDetail = z.object({ paneId: z.string() });
@@ -80,6 +87,11 @@ export function AgentPane({
     () => runningSubagents(messages, taskActivity, taskPermissions),
     [messages, taskActivity, taskPermissions]
   );
+  const records = useAgentStore((s) => s.threads[paneId]?.schedules ?? EMPTY_SCHEDULES);
+  // `now` is read once per change of the list rather than on every render: the
+  // labels are "today 9:00 AM" and "Sep 3", which do not move minute to minute,
+  // and a fresh `new Date()` each render would make this memo pointless.
+  const schedules = useMemo(() => scheduleRows(records, new Date()), [records]);
 
   // The pane rather than the window: this is one cell of a split the user
   // drags, so how much room there is here says nothing about how much there is
@@ -103,7 +115,8 @@ export function AgentPane({
     shown: shownRef.current
   });
   const subagentCard = showSubagentPanel(running, { width: paneWidth, shown: shownRef.current });
-  const columned = todoCard || subagentCard;
+  const scheduleCard = showSchedulePanel(schedules, { width: paneWidth, shown: shownRef.current });
+  const columned = todoCard || subagentCard || scheduleCard;
   shownRef.current = columned;
 
   // Not only for the settings screen: the catalog carries the context limits,
@@ -170,6 +183,8 @@ export function AgentPane({
               todosInPanel={todoCard}
               running={running}
               subagentsInPanel={subagentCard}
+              schedules={schedules}
+              schedulesInPanel={scheduleCard}
             />
             {columned && (
               // A flex column rather than a block: it is what caps the cards at
@@ -188,6 +203,9 @@ export function AgentPane({
                     running={running}
                     onStop={(taskId) => window.fleet.agent.cancelTask(taskId)}
                   />
+                )}
+                {scheduleCard && (
+                  <AgentSchedulePanel rows={schedules} onCancel={(id) => void cancelSchedule(id)} />
                 )}
               </div>
             )}

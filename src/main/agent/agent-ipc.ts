@@ -34,6 +34,8 @@ import type { AgentHistoryStore } from './history-store';
 import { registerAgentMcpIpc, type McpIpcDeps } from './mcp/mcp-ipc';
 import { registerAgentSkillsIpc } from './skills/skills-ipc';
 import type { SubagentManager } from './subagents/manager';
+import type { ScheduleStore } from './schedule-store';
+import type { AgentScheduleRecord } from '../../shared/agent-schedule';
 import type { OpenRouterSecrets } from '../openrouter-secrets';
 
 /**
@@ -58,6 +60,8 @@ export function registerAgentIpc(deps: {
   mcp: McpIpcDeps;
   /** The subagents running, and the transcripts of the ones that have run. */
   subagents: SubagentManager;
+  /** The reminders every conversation has set, and the due ones waiting to be collected. */
+  schedules: ScheduleStore;
   getSettings: () => AgentSettings;
   getApiKey: () => string | null;
 }): void {
@@ -140,8 +144,34 @@ export function registerAgentIpc(deps: {
 
   // Ids are checked where they become paths, in the store, so every one of
   // these handlers is covered rather than only the one that deletes.
-  ipcMain.handle(IPC_CHANNELS.AGENT_SESSION_DELETE, (_e, sessionId: string): boolean =>
-    deps.sessions.delete(sessionId)
+  //
+  // The schedules go with it, and that is a correctness requirement rather than
+  // tidiness: delivering a fire writes a message event, and the session log
+  // recreates a file it cannot find when it is asked to write one. A schedule
+  // outliving its session would bring the session back as an orphan holding one
+  // message nobody wrote.
+  ipcMain.handle(IPC_CHANNELS.AGENT_SESSION_DELETE, (_e, sessionId: string): boolean => {
+    deps.schedules.cancelAllFor(sessionId);
+    return deps.sessions.delete(sessionId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_SCHEDULE_LIST, (_e, sessionId: string): AgentScheduleRecord[] =>
+    deps.schedules.list(sessionId)
+  );
+
+  // No session id, unlike the model's own `schedule_cancel`, which goes through
+  // the ownership-checked branch of the same method. This is the user's stop
+  // button: a person clicking in their own pane needs no such guard.
+  ipcMain.handle(IPC_CHANNELS.AGENT_SCHEDULE_CANCEL, (_e, id: string): boolean =>
+    deps.schedules.cancel(id, null)
+  );
+
+  // The only path by which a due schedule is ever consumed. It hands the batch
+  // over and clears it in the same synchronous call, which is what makes a pane
+  // asking twice - and two panes on the same session asking at once - harmless.
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_SCHEDULE_PULL_DUE,
+    (_e, sessionId: string): AgentScheduleRecord[] => deps.schedules.pullDue(sessionId)
   );
 
   // Nothing is written here. Main works out the words and hands them back; the

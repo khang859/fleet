@@ -39,7 +39,8 @@ function context(dispatch: AgentToolContext['dispatchTask']): AgentToolContext {
     mcp: null,
     dispatchTask: dispatch,
     findSubagent: (name) => (name === DEFINITION.name ? DEFINITION : null),
-    findSkill: null
+    findSkill: null,
+    schedule: null
   };
 }
 
