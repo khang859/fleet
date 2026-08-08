@@ -34,6 +34,8 @@ import { todoProgress, type TodoProgress } from './todo-view';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentActivity } from './AgentActivity';
 import { AgentToolRow } from './AgentToolRow';
+import { AgentToolGroup } from './AgentToolGroup';
+import { groupParts } from './tool-group';
 import { AgentPermissionRow } from './AgentPermissionRow';
 import { AgentTaskCard } from './AgentTaskCard';
 import { AgentScheduleFire } from './AgentScheduleFire';
@@ -660,10 +662,17 @@ function Message({
         />
       )}
       {/* In the order the turn happened: what it said, what it looked at, and
-          what it said about what it found. Keyed by position because that is
-          what a part is - text parts have no id, and two of them are only
-          distinguishable by where they fall. */}
-      {message.parts.map((part, i) => {
+          what it said about what it found, with a run of the same lookup folded
+          into one row. Keyed by position because that is what a part is - text
+          parts have no id, and two of them are only distinguishable by where
+          they fall; a folded run takes the position of the first call in it. */}
+      {groupParts(message.parts, ask?.callId ?? null).map((item) => {
+        if (item.kind === 'run') {
+          return (
+            <AgentToolGroup key={item.key} name={item.name} calls={item.calls} cleared={cleared} />
+          );
+        }
+        const { part, key: i } = item;
         // Attachments are the user's, so an assistant turn never holds one.
         if (part.type === 'attachment') return null;
         // The task list is already on screen, either in its column or on the
