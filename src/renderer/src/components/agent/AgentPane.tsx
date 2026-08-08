@@ -10,7 +10,7 @@ import { showTodoPanel } from './todo-view';
 import { runningSubagents, showSubagentPanel } from './subagent-view';
 import { scheduleRows, showSchedulePanel } from './schedule-view';
 import { cancelSchedule } from '../../store/agent-schedule';
-import { SIDE_COLUMN_WIDTH_PX } from './side-column';
+import { SIDE_COLUMN_WIDTH_PX, centeringGutterPx } from './side-column';
 import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
 import { BackgroundLayer } from '../BackgroundLayer';
 import { useAgentStore } from '../../store/agent-store';
@@ -118,6 +118,7 @@ export function AgentPane({
   const scheduleCard = showSchedulePanel(schedules, { width: paneWidth, shown: shownRef.current });
   const columned = todoCard || subagentCard || scheduleCard;
   shownRef.current = columned;
+  const gutter = centeringGutterPx(paneWidth, columned);
 
   // Not only for the settings screen: the catalog carries the context limits,
   // and without them the pane cannot tell how full it is or compact on its own.
@@ -171,21 +172,28 @@ export function AgentPane({
         <AgentTabs value={view} onChange={setView} />
         {view === 'agent' && (
           // The conversation and the work in flight side by side. The column
-          // takes a fixed width and the conversation takes the rest, which does
-          // mean the reading column shifts left the first time the agent writes
-          // a plan or sends a subagent out - the alternative is a column of
-          // empty space held open all conversation for a list most of them
-          // never make.
+          // takes a fixed width and the conversation takes the rest, with a
+          // matching gutter on the left so the reading column stays centered on
+          // the pane when the column arrives - the tabs above it never move, and
+          // a conversation that slid out from under them every time the agent
+          // wrote a plan would read as the pane having been knocked askew.
+          //
+          // The gutter is empty space rather than a second column of cards: the
+          // conversation is the pane's one subject and the width it reads at is
+          // the setting worth protecting, so the room is spent on symmetry
+          // rather than filled.
           <div className="flex min-h-0 flex-1">
-            <AgentThread
-              paneId={paneId}
-              cwd={cwd}
-              todosInPanel={todoCard}
-              running={running}
-              subagentsInPanel={subagentCard}
-              schedules={schedules}
-              schedulesInPanel={scheduleCard}
-            />
+            <div className="flex min-w-0 flex-1" style={{ paddingLeft: gutter }}>
+              <AgentThread
+                paneId={paneId}
+                cwd={cwd}
+                todosInPanel={todoCard}
+                running={running}
+                subagentsInPanel={subagentCard}
+                schedules={schedules}
+                schedulesInPanel={scheduleCard}
+              />
+            </div>
             {columned && (
               // A flex column rather than a block: it is what caps the cards at
               // the pane's height, by letting each shrink once there is more to

@@ -39,6 +39,36 @@ export const SIDE_COLUMN_KEEP_PX = 890;
 export const SIDE_COLUMN_WIDTH_PX = 272;
 
 /**
+ * How wide the conversation reads at its widest.
+ *
+ * The `max-w-2xl` the transcript, the status line, the composer and the location
+ * line all share, kept here because the gutter below is a sum of this and the
+ * column. Tailwind owns the classes; this is the same number spelled out so the
+ * arithmetic can be done in one place rather than guessed at.
+ */
+export const READING_COLUMN_MAX_PX = 672;
+
+/**
+ * The empty gutter on the left of the conversation, when the column is up.
+ *
+ * Without one, `mx-auto` centers the conversation in what the column leaves
+ * behind rather than in the pane, so the composer and every line above it sit
+ * half a column left of the tabs that are still centered over them. A gutter the
+ * width of the column puts the two centers back together.
+ *
+ * Clamped rather than always the full width, because a pane can be wide enough
+ * for a column and still not wide enough to be symmetric about one. Only the
+ * room left over once the conversation has read at its full width is given
+ * away, so a narrow pane loses the centering - which is what it looks like
+ * today - rather than the reading width, which is what the pane is for.
+ */
+export function centeringGutterPx(width: number | null, columned: boolean): number {
+  if (width === null || !columned) return 0;
+  const spare = width - SIDE_COLUMN_WIDTH_PX - READING_COLUMN_MAX_PX;
+  return Math.max(0, Math.min(SIDE_COLUMN_WIDTH_PX, spare));
+}
+
+/**
  * Whether the pane has the room, given whether the column is up now.
  *
  * Not while the width is still `null`: the first paint would put a column into
