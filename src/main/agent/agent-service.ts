@@ -127,6 +127,11 @@ type RoundsRequest = {
   mcp: McpManager | null;
   todos: AgentTodoItem[];
   /**
+   * Whether this run is a turn picking up after a subagent reported. False for
+   * a subagent, which has never replied to anything and cannot be resumed.
+   */
+  resumed: boolean;
+  /**
    * Built per call rather than per run, the way `generateImage` and the MCP
    * caller are: the report has to come back to the row that asked for it, and
    * the row is only known here.
@@ -313,6 +318,39 @@ export function withSubagentReminder(
   return [
     ...messages,
     { role: 'user', content: `${FLEET_WIRE_PREFIX}\n\n${renderSubagentBlock(running, waiting)}` }
+  ];
+}
+
+/**
+ * The messages for one round, with the fact that this turn is a continuation.
+ *
+ * A subagent that reports after its parent has finished resumes the pane, and
+ * that resumed turn says nothing of its own - the transcript ends on the report,
+ * which is the shape that means "carry on". What it does not say is that the
+ * parent already replied. The last thing the *user* said is still the request
+ * that started the work, so the standing instruction the model reads is
+ * unchanged, and a model reading a review request answers it. Again. At length,
+ * nearly word for word, while the user reads the same summary twice.
+ *
+ * Named rather than inferred: from inside the round loop a resumed turn and a
+ * fresh one are the same array of messages, and the difference is only knowable
+ * where the turn was started - see `AgentSendRequest.resumed`.
+ *
+ * Sent on every round of the turn rather than only the first, because it is the
+ * last round that writes the answer this is about.
+ */
+export function withResumeNote(messages: AgentWireMessage[], resumed: boolean): AgentWireMessage[] {
+  if (!resumed) return messages;
+  return [
+    ...messages,
+    {
+      role: 'user',
+      content: `${FLEET_WIRE_PREFIX}\n\n${[
+        'A subagent has just reported back. You have already replied in this conversation.',
+        'Say what this report adds or changes, and nothing you have said already - the user can read your earlier answer and does not want it a second time.',
+        'If it changes nothing worth saying, say only that.'
+      ].join('\n')}`
+    }
   ];
 }
 
@@ -787,6 +825,7 @@ export class AgentService {
         }),
         mcp,
         todos: req.todos,
+        resumed: req.resumed ?? false,
         // The parent is the only one that gets these. A child's context has
         // neither, which is the half of "no nesting" that does not depend on
         // the tool list being right.
@@ -855,8 +894,14 @@ export class AgentService {
         // Both are read fresh here rather than once before the loop: a turn
         // that runs forty rounds is exactly where a child reports back in the
         // middle, and a roster read at the top would go on naming it.
+        // Innermost first: the note frames the turn, the roster is context for
+        // the round, and the task list goes last so the plan stays the most
+        // recent thing said.
         messages: withTodoReminder(
-          this.withRunningSubagents(withClearedWireResults(messages), run.threadId),
+          this.withRunningSubagents(
+            withResumeNote(withClearedWireResults(messages), run.resumed),
+            run.threadId
+          ),
           todos.items,
           todos.streak
         ),
@@ -1063,6 +1108,9 @@ export class AgentService {
           tools: toolSpecsFor({ image: false, skill: skillSpec, only: run.tools }),
           mcp: null,
           todos: [],
+          // A child answers once and is done. There is nothing for it to be
+          // picking back up, and nothing it has already said.
+          resumed: false,
           dispatchTask: () => null,
           findSubagent: null,
           findSkill: (name) => skills.find((s) => s.name === name) ?? null,

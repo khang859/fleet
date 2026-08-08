@@ -541,6 +541,33 @@ describe('compacting on request', () => {
   });
 });
 
+/*
+ * Picking the conversation back up after a subagent reported late.
+ *
+ * The turn carries no message of its own, deliberately - the transcript ends on
+ * the report, which is the shape that means "carry on". What the transcript
+ * cannot show is that the parent already answered, so the flag has to travel
+ * beside it or the model re-answers the request that started the work.
+ */
+describe('resume', () => {
+  it('tells main the turn is a continuation rather than a question', () => {
+    turn('review this PR');
+    agentApi.send.mockClear();
+
+    agentStore.useAgentStore.getState().resume(PANE);
+
+    expect(agentApi.send).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '', resumed: true })
+    );
+  });
+
+  it('does not mark an ordinary turn as one', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'review this PR');
+
+    expect(agentApi.send).toHaveBeenCalledWith(expect.not.objectContaining({ resumed: true }));
+  });
+});
+
 /**
  * The number the collapsed reasoning block shows for itself. Getting it wrong
  * is quiet: a plausible duration on the wrong message reads as fact.
