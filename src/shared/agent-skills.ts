@@ -105,7 +105,11 @@ export const SkillFrontmatter = z.looseObject({
   description: z.string().min(1).max(SKILL_DESCRIPTION_MAX),
   license: z.string().optional(),
   compatibility: z.string().max(500).optional(),
-  metadata: z.record(z.string(), z.string()).optional(),
+  // Values are `unknown` rather than strings. The field is a free-form bag for
+  // whatever tool wrote the skill, and published ones do nest inside it - a
+  // schema demanding flat strings rejects the whole file over a key Fleet was
+  // never going to read. `total-recall` is one such skill in the wild.
+  metadata: z.record(z.string(), z.unknown()).optional(),
   // Parsed so a file that sets it still loads, and deliberately unused. See the
   // note at the top of this file: honouring it would let a downloaded folder
   // grant itself the one thing the permission gate exists to withhold.

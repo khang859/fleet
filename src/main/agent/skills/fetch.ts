@@ -1,15 +1,19 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { rmSync } from 'node:fs';
+import { mkdtemp, readdir, readFile, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
+import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import {
   toCloneUrl,
   type FoundSkill,
   type SkillFetchResult
 } from '../../../shared/agent-skill-install';
+import { SkillFrontmatter } from '../../../shared/agent-skills';
+import { splitFrontmatter } from '../markdown-frontmatter';
 import { createLogger } from '../../logger';
 import { loadFrom } from './definitions';
 import { readCloned } from './scan';
@@ -35,8 +39,13 @@ const log = createLogger('agent:skills:fetch');
 /** Longest a clone may take before it is abandoned. */
 const CLONE_TIMEOUT_MS = 60_000;
 
-/** How deep to look for skills inside a repo. */
-const MAX_DEPTH = 3;
+/**
+ * How deep to look for skills inside a repo.
+ *
+ * Counted from the temp folder the checkout sits *in* rather than from the
+ * checkout, so one of these levels is spent reaching the repository itself.
+ */
+const MAX_DEPTH = 4;
 
 /**
  * Checkouts made and not yet finished with.
@@ -64,8 +73,15 @@ export async function fetchSkills(input: string): Promise<SkillFetchResult> {
     throw new Error('That is not a repository. Use `owner/repo`, an https URL, or an ssh one.');
   }
 
-  const dir = await mkdtemp(join(tmpdir(), 'fleet-skill-fetch-'));
+  // The repository lands *inside* the temp folder rather than being it, because
+  // a skill's folder has to be named after the skill and `fleet-skill-fetch-Xk2`
+  // is not a name anything can be called. With a level above it, the checkout is
+  // an ordinary child folder and a repository that is itself one skill needs no
+  // special case downstream - it is a root holding a single skill, like any
+  // other.
+  const holder = await mkdtemp(join(tmpdir(), 'fleet-skill-fetch-'));
   const fetchId = randomUUID();
+  const dir = join(holder, 'repo');
 
   try {
     await execFileAsync(
@@ -77,26 +93,88 @@ export async function fetchSkills(input: string): Promise<SkillFetchResult> {
       { timeout: CLONE_TIMEOUT_MS, windowsHide: true }
     );
   } catch (error) {
-    await rm(dir, { recursive: true, force: true });
+    await rm(holder, { recursive: true, force: true });
     throw new Error(cloneFailure(error));
   }
 
-  const roots = await skillRoots(dir);
-  const found: FoundSkill[] = [];
-  for (const root of roots) {
-    found.push(...(await readCloned(root, input)));
-  }
-
-  if (found.length === 0) {
-    await rm(dir, { recursive: true, force: true });
+  const read = await readCheckout(holder, dir, input);
+  if (read.found.length === 0) {
+    await rm(holder, { recursive: true, force: true });
     throw new Error(`No skills in ${input}. Fleet looks for folders holding a SKILL.md.`);
   }
 
-  live.set(fetchId, dir);
-  rootsUnder.set(dir, roots);
-  log.info(`cloned ${input}`, { dir, skills: found.length });
+  live.set(fetchId, holder);
+  rootsUnder.set(holder, read.roots);
+  log.info(`cloned ${input}`, { dir: read.dir, skills: read.found.length });
 
-  return { fetchId, from: input, dir, found };
+  return { fetchId, from: input, dir: read.dir, found: read.found };
+}
+
+/**
+ * What is in a checkout, once git has finished with it.
+ *
+ * Separated from the clone so it can be tested without one - the layouts a
+ * repository can have are the interesting part, and `git clone` is not.
+ * Exported for that reason only.
+ */
+export async function readCheckout(
+  holder: string,
+  checkout: string,
+  from: string
+): Promise<{ dir: string; roots: string[]; found: FoundSkill[] }> {
+  const dir = await nameAfterItsSkill(checkout);
+  const roots = await skillRoots(holder);
+  const found: FoundSkill[] = [];
+  for (const root of roots) {
+    found.push(...(await readCloned(root, from)));
+  }
+  return { dir, roots, found };
+}
+
+/**
+ * A checkout whose root is itself a skill, renamed to what that skill calls
+ * itself.
+ *
+ * Some skills are published as a repository of their own rather than as a folder
+ * in a collection, and for those the checkout directory *is* the skill folder.
+ * The loader requires a skill's folder to be named after it, and the name the
+ * clone happened to land under says nothing - so the folder is renamed to the
+ * name in the frontmatter before anything reads it.
+ *
+ * `name` is checked against the format's own pattern by the schema, which is
+ * lowercase words and single dashes, so it cannot climb anywhere. Anything else
+ * - no `SKILL.md`, an unparseable one, a collection repository - is left where
+ * it is, and is found by the walk in the ordinary way.
+ */
+async function nameAfterItsSkill(dir: string): Promise<string> {
+  let text: string;
+  try {
+    text = await readFile(join(dir, 'SKILL.md'), 'utf8');
+  } catch {
+    return dir;
+  }
+
+  const split = splitFrontmatter(text);
+  if (split === null) return dir;
+
+  let yaml: unknown;
+  try {
+    yaml = parseYaml(split.frontmatter);
+  } catch {
+    return dir;
+  }
+
+  const frontmatter = SkillFrontmatter.safeParse(yaml);
+  if (!frontmatter.success) return dir;
+
+  const named = join(dirname(dir), frontmatter.data.name);
+  if (named === dir) return dir;
+  try {
+    await rename(dir, named);
+  } catch {
+    return dir;
+  }
+  return named;
 }
 
 /** Throw away a checkout, once it has been installed from or abandoned. */
@@ -108,9 +186,25 @@ export async function discardFetch(fetchId: string): Promise<void> {
   await rm(dir, { recursive: true, force: true });
 }
 
-/** Everything still on disk at quit. */
-export async function discardAllFetches(): Promise<void> {
-  await Promise.all([...live.keys()].map(async (id) => discardFetch(id)));
+/**
+ * Everything still on disk at quit.
+ *
+ * Synchronous, which for filesystem work in this process is normally the wrong
+ * choice and here is the only one that works. The shutdown path ends in
+ * `process.exit(0)`, and an exit does not wait for a promise - an async delete
+ * started here would be abandoned mid-unlink every single time, leaving exactly
+ * the abandoned clones this exists to remove.
+ */
+export function discardAllFetches(): void {
+  for (const [id, dir] of live) {
+    live.delete(id);
+    rootsUnder.delete(dir);
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // A temp folder that will not delete is the OS's problem now.
+    }
+  }
 }
 
 /**
@@ -120,6 +214,10 @@ export async function discardAllFetches(): Promise<void> {
  * top level, skills under a `skills/` folder, and one skill *being* the repo.
  * Rather than encode which is which, this walks a few levels down and treats any
  * folder whose children include a `SKILL.md` as a root.
+ *
+ * The third way is why the walk starts at the folder the checkout sits in rather
+ * than at the checkout: a repository that is one skill has its `SKILL.md` at the
+ * top, so the root holding it is the level above.
  *
  * Bounded, because a checkout is somebody else's repository and walking all of
  * it to find two files is work nobody asked for.

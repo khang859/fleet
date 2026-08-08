@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs';
 import type * as os from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -70,6 +78,49 @@ describe('installSkills', () => {
       'echo hi'
     );
     expect(existsSync(join(FLEET_SKILLS, 'ship-it', 'references', 'API.md'))).toBe(true);
+  });
+
+  // Keeping a skill in a repository and linking it into another agent's folder
+  // is a thing people do, so the link is followed - but what lands in
+  // `~/.fleet/skills` has to be the files, not the link. Copying the link would
+  // leave the installed skill changing whenever the original did, which is the
+  // one thing installing rather than referencing exists to prevent.
+  it('copies through a symlinked skill folder rather than reproducing the link', async () => {
+    const real = makeSkill(join(HOME, 'elsewhere'), 'ship-it', { 'references/API.md': '# API' });
+    mkdirSync(CLAUDE_SKILLS, { recursive: true });
+    symlinkSync(real, join(CLAUDE_SKILLS, 'ship-it'), 'dir');
+
+    const outcome = await installSkills(
+      [{ name: 'ship-it', path: join(CLAUDE_SKILLS, 'ship-it') }],
+      offered()
+    );
+
+    expect(outcome).toEqual({ installed: ['ship-it'], failed: [] });
+    const dest = join(FLEET_SKILLS, 'ship-it');
+    expect(lstatSync(dest).isSymbolicLink()).toBe(false);
+    expect(existsSync(join(dest, 'references', 'API.md'))).toBe(true);
+
+    // The proof that it is a copy: changing the original changes nothing here.
+    writeFileSync(join(real, 'SKILL.md'), skillMd('ship-it', 'Do something else entirely.'));
+    expect(readFileSync(join(dest, 'SKILL.md'), 'utf8')).toContain('Do the thing.');
+  });
+
+  // One level down, the same tie. A link inside the folder would survive the
+  // copy and keep reading from wherever it points - including out of the skill.
+  it('drops symlinks inside a skill instead of copying them', async () => {
+    const secret = join(HOME, 'elsewhere', 'private.txt');
+    mkdirSync(join(HOME, 'elsewhere'), { recursive: true });
+    writeFileSync(secret, 'not yours');
+
+    const from = makeSkill(CLAUDE_SKILLS, 'ship-it', { 'references/API.md': '# API' });
+    symlinkSync(secret, join(from, 'references', 'leak.txt'), 'file');
+
+    const outcome = await installSkills([{ name: 'ship-it', path: from }], offered());
+
+    expect(outcome).toEqual({ installed: ['ship-it'], failed: [] });
+    const refs = join(FLEET_SKILLS, 'ship-it', 'references');
+    expect(existsSync(join(refs, 'API.md'))).toBe(true);
+    expect(existsSync(join(refs, 'leak.txt'))).toBe(false);
   });
 
   // What arrives here came from the renderer, and "copy this directory into the

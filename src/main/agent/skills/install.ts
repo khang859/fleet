@@ -1,4 +1,4 @@
-import { cp, lstat, mkdir, readdir, rm } from 'node:fs/promises';
+import { cp, lstat, mkdir, readdir, realpath, rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type {
   InstalledSkill,
@@ -80,7 +80,16 @@ async function installOne(pick: SkillPickFields, roots: string[], target: string
     throw new Error('there is no SKILL.md in it');
   }
 
-  const size = await folderBytes(pick.path);
+  // The real folder, because the offered one may be a link to it. Keeping a
+  // skill in a repository and linking it into `~/.claude/skills` is a thing
+  // people genuinely do, so the link is worth following - but only here, to find
+  // what to read. Copying the *link* would leave `~/.fleet/skills/x` pointing at
+  // somebody else's directory, and then this is not a copy at all: the skill
+  // Fleet loads would keep changing whenever that directory did, which is the
+  // one thing installing rather than referencing is supposed to prevent.
+  const from = await realpath(pick.path);
+
+  const size = await folderBytes(from);
   if (size > MAX_SKILL_BYTES) {
     throw new Error(`it is ${Math.round(size / 1_000_000)}MB, which is too large for a skill`);
   }
@@ -90,19 +99,22 @@ async function installOne(pick: SkillPickFields, roots: string[], target: string
   // skill carrying files nobody will ever look at or think to delete.
   const dest = join(target, folder);
   await rm(dest, { recursive: true, force: true });
-  await cp(pick.path, dest, {
+  await cp(from, dest, {
     recursive: true,
-    // Copy links as links rather than following them. Following would quietly
-    // pull in whatever they point at, which for a folder that came off the
-    // internet is the wrong default; a broken link inside a skill is visible,
-    // and a copied ~/.ssh would not be.
+    // Every link *inside* the folder is dropped, having already dereferenced the
+    // folder itself. One pointing outside would reproduce the same tie this just
+    // undid, one level down; one pointing inside would either duplicate a file
+    // that is being copied anyway or, if absolute, still point at the original.
+    // None of the three is a copy, and a skill is text and scripts.
     dereference: false,
-    // A skill is text and scripts. Anything that is neither is something a
-    // recursive copy should not be reproducing into the user's home.
-    filter: (source) => !basename(source).startsWith('.git')
+    filter: async (source) => {
+      if (basename(source).startsWith('.git')) return false;
+      const info = await lstat(source).catch(() => null);
+      return info !== null && !info.isSymbolicLink();
+    }
   });
 
-  log.info(`installed skill ${folder}`, { from: pick.path, to: dest });
+  log.info(`installed skill ${folder}`, { from, to: dest });
 }
 
 /** What is already installed, for the settings list. */
@@ -142,11 +154,13 @@ async function folderBytes(dir: string): Promise<number> {
     for (const name of names) {
       if (total > MAX_SKILL_BYTES) return;
       const path = join(at, name);
-      // `lstat` rather than `stat`, so a link counts as a link rather than as
-      // whatever it points at - the copy reproduces the link, not the target,
-      // and a link to something enormous is a few bytes either way.
+      // `lstat` rather than `stat`, so a link is not counted as whatever it
+      // points at. The copy drops links, so a link to something enormous costs
+      // nothing, and following one here would refuse an install over bytes that
+      // are never going to be written.
       const info = await lstat(path).catch(() => null);
       if (info === null) continue;
+      if (info.isSymbolicLink()) continue;
       if (info.isDirectory()) await walk(path);
       else if (info.isFile()) total += info.size;
     }

@@ -31,6 +31,18 @@ describe('SkillFrontmatter', () => {
     expect(parsed.metadata).toEqual({ author: 'someone' });
   });
 
+  // `metadata` is a free-form bag for whoever wrote the skill, and published
+  // ones nest inside it. Insisting on flat strings would reject the whole file
+  // over a key Fleet never reads - `total-recall` is one such skill in the wild.
+  it('accepts metadata that nests', () => {
+    const parsed = SkillFrontmatter.safeParse({
+      name: 'total-recall',
+      description: 'Remembers things.',
+      metadata: { openclaw: { emoji: '🧠', requires: { bins: ['jq', 'curl'] } } }
+    });
+    expect(parsed.success).toBe(true);
+  });
+
   // The whole point of adopting the standard is that a folder written for
   // another agent loads here unchanged.
   it('ignores fields another agent added rather than refusing the skill', () => {

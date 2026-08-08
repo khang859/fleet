@@ -1098,7 +1098,8 @@ function shutdownAll(): void {
   // this would leave them running with nothing to talk to.
   void agentMcp?.closeAll();
   // A skill checkout the user never installed from or closed the dialog on.
-  void discardAllFetches();
+  // Synchronous on purpose - see the note on it; this path ends in `exit`.
+  discardAllFetches();
   sessionsService?.dispose();
   annotateService.destroy();
   void learningsMcp?.stop();
