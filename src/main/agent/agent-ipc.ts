@@ -11,6 +11,7 @@ import type {
   AgentTitleRequest,
   AgentTitleResult
 } from '../../shared/agent-types';
+import type { AgentTranscribeRequest, AgentTranscribeResult } from '../../shared/agent-voice';
 import type {
   AgentSessionAddSpend,
   AgentSessionAppend,
@@ -24,6 +25,7 @@ import type { PermissionGate } from './permissions/gate';
 import { AgentPermissionDecision } from '../../shared/agent-types';
 import { completeOnce } from './openrouter';
 import { resolveTitle } from './session-title';
+import { transcribe } from './transcribe';
 import { resolveAttachment } from './attachments';
 import { searchMentionFiles } from './mention-search';
 import { loadCommands } from './commands/definitions';
@@ -191,6 +193,21 @@ export function registerAgentIpc(deps: {
         firstUser: req.firstUser,
         firstAssistant: req.firstAssistant
       });
+    }
+  );
+
+  // Voice dictation: bytes in, text out. The renderer keeps the audio on a
+  // failure so the user can retry; main only ever says what went wrong. The
+  // recognition hints (folder name, branch, coding vocabulary) are assembled
+  // here from nothing but the request and the chosen model.
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_TRANSCRIBE,
+    async (_e, req: AgentTranscribeRequest): Promise<AgentTranscribeResult> => {
+      const apiKey = deps.getApiKey();
+      if (!apiKey)
+        return { ok: false, error: 'No OpenRouter key is set. Add one in Agent settings.' };
+      const settings = deps.getSettings();
+      return transcribe(apiKey, settings.voice.model, req);
     }
   );
 

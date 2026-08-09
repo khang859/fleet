@@ -87,6 +87,7 @@ import type {
   AgentTitleResult,
   AgentToolEvent
 } from '../shared/agent-types';
+import type { AgentTranscribeRequest, AgentTranscribeResult } from '../shared/agent-voice';
 import type { AgentCommandDescriptor } from '../shared/agent-commands';
 import type {
   FoundSkill,
@@ -585,6 +586,16 @@ const fleetApi = {
     /** Refusals come back in the result, so the composer can say why. */
     attach: async (req: AgentAttachRequest): Promise<AgentAttachResult> =>
       typedInvoke<AgentAttachResult>(IPC_CHANNELS.AGENT_ATTACH, req),
+    /** Dictation: a recorded clip in, the transcript out. */
+    transcribe: async (req: AgentTranscribeRequest): Promise<AgentTranscribeResult> =>
+      typedInvoke<AgentTranscribeResult>(IPC_CHANNELS.AGENT_TRANSCRIBE, req),
+    /**
+     * `granted` | `denied` | `restricted` (macOS), asking the OS once if it has
+     * never been asked - so this puts a dialog on screen the first time, and
+     * must only be called when the user has actually reached for the mic.
+     */
+    requestMicrophoneAccess: async (): Promise<string> =>
+      typedInvoke<string>(IPC_CHANNELS.AGENT_MIC_ACCESS),
     mentionSearch: async (query: string, cwd: string): Promise<AgentMentionMatch[]> =>
       typedInvoke<AgentMentionMatch[]>(IPC_CHANNELS.AGENT_MENTION_SEARCH, query, cwd),
     /**

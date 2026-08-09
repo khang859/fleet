@@ -225,6 +225,15 @@ export const IPC_CHANNELS = {
   // `@`-mentioned. Main copies it somewhere durable or reads what it needs out
   // of it, and hands back the small record the message carries. The bytes never
   // come back: what the model gets is read at the moment the turn is built.
+  // Voice dictation, straight up and down: base64 in, text out. Nothing
+  // about the turn or the session log changes - it only fills the composer box.
+  AGENT_TRANSCRIBE: 'agent:transcribe',
+  /**
+   * The OS microphone, resolved to a yes or a no: it reads the state, and asks
+   * for it once if it has never been asked. Named for the ask rather than the
+   * read, because on a never-asked machine it puts a dialog on screen.
+   */
+  AGENT_MIC_ACCESS: 'agent:mic-access',
   AGENT_ATTACH: 'agent:attach',
   // Files the `@` menu can offer, from the same gitignore-aware walk `glob`
   // and `grep` use, so the menu cannot offer what the sandbox would refuse.

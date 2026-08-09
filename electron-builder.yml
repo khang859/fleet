@@ -47,6 +47,11 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   notarize: true
+  # Voice dictation needs the microphone; without the usage string a hardened,
+  # notarized build cannot legally prompt for it.
+  extendInfo:
+    NSMicrophoneUsageDescription: Fleet uses the microphone for voice dictation
+      into the Agent pane.
 win:
   target:
     - target: nsis

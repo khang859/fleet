@@ -6,6 +6,10 @@ import type {
   AgentToolMode
 } from '../../../../../shared/agent-types';
 import { AGENT_TOOL_MODES, DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
+import {
+  AGENT_VOICE_MODELS,
+  DEFAULT_AGENT_VOICE_SETTINGS
+} from '../../../../../shared/agent-voice';
 import { useAgentStore } from '../../../store/agent-store';
 import { useSettingsStore } from '../../../store/settings-store';
 import { SectionShell, FieldGroup, Field } from './primitives';
@@ -57,6 +61,31 @@ export function AgentSettingsPanel(): React.JSX.Element {
   const models = useMemo(() => catalog?.models ?? [], [catalog]);
   const codingModels = useMemo(() => models.filter((m) => m.supportsTools), [models]);
   const imageModels = useMemo(() => models.filter((m) => m.outputImage), [models]);
+  // The curated transcription list, not the whole catalog: it is short enough
+  // to be a choice, and each entry states whether choosing it keeps the hints.
+  const voiceModels = useMemo(
+    () =>
+      AGENT_VOICE_MODELS.map((m) => ({
+        ...m,
+        description: null,
+        contextLimit: null,
+        outputLimit: null,
+        supportsTools: false,
+        supportsTemperature: false,
+        inputImage: false,
+        outputImage: false,
+        reasoning: [],
+        cost: null,
+        releaseDate: null,
+        defaultTemperature: null,
+        defaultReasoningEnabled: null,
+        defaultReasoningEffort: null
+      })),
+    []
+  );
+
+  // Whether the chosen transcription model is one the hints reach at all.
+  const hintsApply = AGENT_VOICE_MODELS.find((m) => m.id === agent.voice.model)?.hints === true;
 
   const patchCoding = (patch: Partial<AgentModelConfig>): void => {
     void updateSettings({ ai: { agent: { coding: { ...agent.coding, ...patch } } } });
@@ -112,6 +141,44 @@ export function AgentSettingsPanel(): React.JSX.Element {
               allowNone
               noneLabel="Use the coding model"
             />
+          </Field>
+        </FieldGroup>
+
+        <FieldGroup title="Voice dictation">
+          <Field
+            label="Dictation model"
+            description="Turns a spoken prompt into text. Only Groq-served models honour the recognition hints (project name, branch, coding terms); the others transcribe without them."
+            layout="stack"
+          >
+            <ModelSelect
+              models={voiceModels}
+              value={agent.voice.model}
+              onChange={(model) =>
+                void updateSettings({
+                  ai: {
+                    agent: {
+                      voice: { ...agent.voice, model: model ?? DEFAULT_AGENT_VOICE_SETTINGS.model }
+                    }
+                  }
+                })
+              }
+            />
+          </Field>
+          <Field
+            label="Recognition hints"
+            description={
+              hintsApply
+                ? 'The project name, branch and coding vocabulary go up with the audio, so identifiers come back spelled the way they are written.'
+                : 'This model ignores them, so identifiers may transcribe imprecisely.'
+            }
+          >
+            {/* The state, not a second copy of the sentence beside it: the row
+                reads label, explanation, answer, like every other one here. */}
+            <span
+              className={`text-xs ${hintsApply ? 'text-fleet-text-secondary' : 'text-fleet-text-muted'}`}
+            >
+              {hintsApply ? 'On' : 'Off'}
+            </span>
           </Field>
         </FieldGroup>
 

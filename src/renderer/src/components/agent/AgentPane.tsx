@@ -71,6 +71,7 @@ export function AgentPane({
 }): React.JSX.Element {
   const [view, setView] = useState<AgentView>('agent');
   const loadModels = useAgentStore((s) => s.loadModels);
+  const loadKey = useAgentStore((s) => s.loadKey);
   const openSession = useAgentStore((s) => s.openSession);
   const todos = useAgentStore((s) => s.threads[paneId]?.todos ?? EMPTY_TODOS);
   const streaming = useAgentStore((s) => (s.threads[paneId]?.streamId ?? null) !== null);
@@ -125,7 +126,10 @@ export function AgentPane({
   // Loading it is idempotent and cached in main, so opening a pane is cheap.
   useEffect(() => {
     void loadModels();
-  }, [loadModels]);
+    // The mic button hides until a key is known to be set, so the pane learns
+    // whether one is before it can be mis-rendered as unavailable.
+    void loadKey();
+  }, [loadModels, loadKey]);
 
   // The thread this pane left behind. Reading it is what makes the pane the
   // same conversation after a restart rather than a new one in the same folder.

@@ -57,7 +57,8 @@ export class SettingsStore {
           permissions: {
             ...DEFAULT_SETTINGS.ai.agent.permissions,
             ...saved.ai?.agent?.permissions
-          }
+          },
+          voice: { ...DEFAULT_SETTINGS.ai.agent.voice, ...saved.ai?.agent?.voice }
         }
       },
       remoteSsh: {
@@ -108,7 +109,8 @@ export class SettingsStore {
           permissions: {
             ...current.ai.agent.permissions,
             ...(partial.ai?.agent?.permissions ?? {})
-          }
+          },
+          voice: { ...current.ai.agent.voice, ...(partial.ai?.agent?.voice ?? {}) }
         }
       },
       remoteSsh: {
