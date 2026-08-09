@@ -48,6 +48,24 @@ describe('toolLabel', () => {
     expect(toolLabel(call('skill', '{"name":"ship-it","file":""}')).target).toBe('ship-it');
   });
 
+  // Three names that would otherwise fall through to the default and print
+  // themselves. `Remember` matters most of the three: a memory write happens
+  // silently in the middle of a turn with no card and no approval, so this row
+  // is the only place the user sees it before it turns up in Settings.
+  it('says which way a memory call went', () => {
+    expect(toolLabel(call('memory', '{"name":"sqlite-abi"}'))).toEqual({
+      verb: 'Recall',
+      target: 'sqlite-abi'
+    });
+    expect(
+      toolLabel(call('memory_write', '{"name":"sqlite-abi","scope":"project","body":"x"}'))
+    ).toEqual({ verb: 'Remember', target: 'sqlite-abi' });
+    expect(toolLabel(call('skill_write', '{"name":"ship-it","scope":"user","body":"x"}'))).toEqual({
+      verb: 'Write skill',
+      target: 'ship-it'
+    });
+  });
+
   it('says where the search was narrowed to', () => {
     expect(toolLabel(call('glob', '{"pattern":"*.ts","path":"src/main"}')).target).toBe(
       '*.ts in src/main'

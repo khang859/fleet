@@ -1,4 +1,5 @@
 import { FoldVertical } from 'lucide-react';
+import { projectInstructionsNotice } from '../../../../shared/agent-project-instructions';
 import { formatTokens } from './settings/format';
 
 /**
@@ -10,13 +11,22 @@ import { formatTokens } from './settings/format';
  * the drop is something you watch happen. Without a context limit for the
  * model there is no percentage to show, and the bar is left out rather than
  * faked.
+ *
+ * It is also where the project's own instructions file is accounted for, which
+ * is the one thing here that is not about compaction. `AGENTS.md` is never
+ * truncated, so a large one is context pressure of the most permanent kind:
+ * present before the first message and never compacted away. That is the same
+ * thing this meter already measures, arriving earlier - which is why the warning
+ * goes here rather than into a log nobody reads or a settings tab you only open
+ * once you have decided something is wrong.
  */
 export function AgentContextMeter({
   used,
   limit,
   threshold,
   canCompact,
-  onCompact
+  onCompact,
+  projectInstructions
 }: {
   used: number;
   limit: number | null;
@@ -24,9 +34,19 @@ export function AgentContextMeter({
   threshold: number | null;
   canCompact: boolean;
   onCompact: () => void;
+  /** The instructions file this folder has, if the last turn found one. */
+  projectInstructions?: { filename: string; tokens: number } | null;
 }): React.JSX.Element {
   const fraction = limit === null || limit <= 0 ? null : used / limit;
-  const high = fraction !== null && threshold !== null && fraction >= threshold;
+  const notice =
+    projectInstructions === undefined || projectInstructions === null
+      ? null
+      : projectInstructionsNotice(projectInstructions.tokens, projectInstructions.filename);
+  // Forced on past the threshold whatever the fill is: a window that is barely
+  // used is still carrying the file, and it will be carrying it on every round
+  // of every turn for as long as this folder is open.
+  const high =
+    (fraction !== null && threshold !== null && fraction >= threshold) || (notice?.warn ?? false);
 
   return (
     <span className="flex shrink-0 items-center gap-2">
@@ -47,11 +67,14 @@ export function AgentContextMeter({
       )}
       <span
         className={`tabular-nums ${high ? 'text-amber-400' : ''}`}
-        title={
+        title={[
           limit === null
             ? 'The catalog does not list this model’s context window, so Fleet will not compact on its own.'
-            : `Tokens the next turn will send, out of the model's ${formatTokens(limit)} context window.`
-        }
+            : `Tokens the next turn will send, out of the model's ${formatTokens(limit)} context window.`,
+          // Always, not only when it is large: "why does this session start at
+          // 6k" is worth answering at any size.
+          ...(notice === null ? [] : [notice.line])
+        ].join('\n\n')}
       >
         {limit === null
           ? `${formatTokens(used)} context`

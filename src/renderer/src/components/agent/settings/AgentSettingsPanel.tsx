@@ -24,6 +24,7 @@ import { ModelSelect } from './ModelSelect';
 import { selectCls } from './controls';
 import { McpSection } from './mcp/McpSection';
 import { SkillsSection } from './skills/SkillsSection';
+import { MemorySection } from './memory/MemorySection';
 import { relativeTime } from './format';
 
 /**
@@ -45,8 +46,13 @@ function validateOpenRouterKey(key: string): string | null {
 /**
  * Settings for every agent pane. Deliberately app-wide rather than per pane:
  * a pane is a folder to work in, not a separate provider account.
+ *
+ * The one exception is `cwd`, and it is an exception because memory has a tier
+ * that lives inside the repository. Which entries exist is a question about a
+ * folder, and this panel is drawn inside a pane that has one - so it is asked
+ * with the pane's own answer rather than guessed from the recent list.
  */
-export function AgentSettingsPanel(): React.JSX.Element {
+export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element {
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const { catalog, loadingModels, keyPresent, loadModels, loadKey, saveKey, clearKey } =
@@ -228,6 +234,8 @@ export function AgentSettingsPanel(): React.JSX.Element {
         <McpSection />
 
         <SkillsSection />
+
+        <MemorySection cwd={cwd} />
 
         <FieldGroup title="Instructions">
           <SystemPromptField

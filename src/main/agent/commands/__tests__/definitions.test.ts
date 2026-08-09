@@ -122,4 +122,22 @@ describe('the commands Fleet ships', () => {
     const found = await loadFrom([['bundled', SHIPPED_DIR]]);
     expect(found.map((c) => c.name)).toContain('pr-review');
   });
+
+  /*
+   * `/refine` is the whole of its own feature: there is no builtin turn behind
+   * it and no IPC channel for it, so a file that failed to parse would leave the
+   * command silently absent from the menu with nothing else to notice.
+   *
+   * The two assertions on the body are the two steps the design says carry the
+   * feature - evidence first, report last - and they are what stops a later edit
+   * from smoothing the prompt into something agreeable that writes plausible
+   * notes nobody can trace.
+   */
+  it('includes refine, and it still asks for evidence and a report', async () => {
+    const found = await loadFrom([['bundled', SHIPPED_DIR]]);
+    const refine = found.find((c) => c.name === 'refine');
+    expect(refine).toBeDefined();
+    expect(refine?.template).toContain('Writing nothing is a correct and common outcome.');
+    expect(refine?.template).toContain('compacted away');
+  });
 });

@@ -144,6 +144,34 @@ export const SkillArgs = z.object({
 
 export type SkillArgsFields = z.infer<typeof SkillArgs>;
 
+/**
+ * What one `skill_write` call carries.
+ *
+ * The same shape a memory write takes, because the two are the same act at
+ * different lengths - a fact and a procedure - and giving them different
+ * arguments would be a difference the model has to remember for no reason.
+ *
+ * `scope` is required rather than defaulted, for the reason a memory's is: a
+ * project skill ships inside the repository and a user skill follows the person
+ * everywhere, and which of those a procedure belongs in is not a question this
+ * file can answer on the model's behalf.
+ *
+ * No cap on `body`, unlike a memory's. A skill is the thing you write when a
+ * note is not long enough, so a ceiling here would only push the text back into
+ * the format that has one.
+ *
+ * `references/`, `scripts/` and the rest of what a skill folder may hold are
+ * deliberately out of reach: this writes `SKILL.md` and nothing beside it.
+ */
+export const SkillWriteArgs = z.object({
+  name: SkillFrontmatter.shape.name,
+  description: SkillFrontmatter.shape.description,
+  body: z.string().min(1),
+  scope: z.enum(['project', 'user'])
+});
+
+export type SkillWriteArgsFields = z.infer<typeof SkillWriteArgs>;
+
 /** Bundled files one call will list. Past this the skill is its own filesystem. */
 export const SKILL_MAX_LISTED_FILES = 50;
 

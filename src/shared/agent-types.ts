@@ -3,6 +3,7 @@ import type { AgentTaskInfo, AgentToolCall } from './agent-tools';
 import { DEFAULT_AGENT_VOICE_SETTINGS, type AgentVoiceSettings } from './agent-voice';
 import { AGENT_TODO_INSTRUCTIONS, type AgentTodoItem } from './agent-todos';
 import { AGENT_SKILL_INSTRUCTIONS } from './agent-skills';
+import { AGENT_MEMORY_INSTRUCTIONS } from './agent-memory';
 import { AGENT_SCHEDULE_INSTRUCTIONS } from './agent-schedule';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
 import type { McpServersConfig } from './agent-mcp';
@@ -327,6 +328,14 @@ export const AGENT_TASK_INSTRUCTIONS = [
  * The schedule block is not unconditional for the reason `task` is not: a
  * subagent is never offered those tools, and describing a tool that is not there
  * is how a model spends a round finding out.
+ *
+ * `projectInstructions` is the project's own `AGENTS.md`, already framed, and it
+ * goes immediately after the base prompt and ahead of every capability block. It
+ * is there even when the user has replaced the system prompt entirely, on the
+ * reasoning this function already applies to the working folder line: a custom
+ * prompt is replacing Fleet's instructions, not the project's. It is never
+ * shortened, however long it is - see `agent-project-instructions.ts` for why
+ * that is the safe direction rather than the reckless one.
  */
 export function buildSystemPrompt(
   cwd: string,
@@ -336,11 +345,18 @@ export function buildSystemPrompt(
     mcp?: boolean;
     task?: boolean;
     skill?: boolean;
+    memory?: boolean;
     schedule?: boolean;
+    /** The framed contents of `AGENTS.md` or `CLAUDE.md`, whole. */
+    projectInstructions?: string | null;
   } = { image: false }
 ): string {
   const custom = override?.trim() ?? '';
   const base = custom === '' ? DEFAULT_AGENT_SYSTEM_PROMPT : custom;
+  const project =
+    options.projectInstructions === undefined || options.projectInstructions === null
+      ? ''
+      : `\n\n${options.projectInstructions}`;
   const image = options.image ? `\n\n${AGENT_IMAGE_INSTRUCTIONS}` : '';
   const mcp = options.mcp === true ? `\n\n${AGENT_MCP_INSTRUCTIONS}` : '';
   const task = options.task === true ? `\n\n${AGENT_TASK_INSTRUCTIONS}` : '';
@@ -348,8 +364,12 @@ export function buildSystemPrompt(
   // subagent is something to hand off once started, and the order these are read
   // in is the order they come up in.
   const skill = options.skill === true ? `\n\n${AGENT_SKILL_INSTRUCTIONS}` : '';
+  // Ahead of `skill` on the same reasoning one step further back: what is
+  // already known about this project is context for choosing a procedure, not
+  // the other way round.
+  const memory = options.memory === true ? `\n\n${AGENT_MEMORY_INSTRUCTIONS}` : '';
   const schedule = options.schedule === true ? `\n\n${AGENT_SCHEDULE_INSTRUCTIONS}` : '';
-  return `${base}${image}${mcp}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
+  return `${base}${project}${image}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
 }
 
 /*
@@ -685,7 +705,8 @@ export type AgentAttachRequest = {
  * a sentence next to the composer rather than an exception.
  */
 export type AgentAttachResult =
-  { ok: true; attachment: AgentAttachment } | { ok: false; error: string };
+  | { ok: true; attachment: AgentAttachment }
+  | { ok: false; error: string };
 
 /** One row of the composer's `@` menu. */
 export type AgentMentionMatch = {
@@ -857,7 +878,20 @@ export type AgentPermissionDecision = z.infer<typeof AgentPermissionDecision>;
 
 /** Every stream event carries its request's id, so panes can tell theirs apart. */
 export type AgentStreamDelta = { streamId: string; delta: string };
-export type AgentStreamDone = { streamId: string; usage: AgentTurnUsage | null };
+/**
+ * `projectInstructions` is what the project's own `AGENTS.md` cost this turn,
+ * for the context meter to name in its tooltip.
+ *
+ * Optional and additive, the shape `resumed` already uses, so a session logged
+ * before this existed replays unchanged rather than needing a migration. Absent
+ * and `null` mean the same thing they mean everywhere else: nobody said, which
+ * is not the same as nothing.
+ */
+export type AgentStreamDone = {
+  streamId: string;
+  usage: AgentTurnUsage | null;
+  projectInstructions?: { filename: string; tokens: number } | null;
+};
 /*
  * A failed turn carries what it spent for the same reason a finished one does:
  * the rounds before the failure were billed, and the provider does not refund a

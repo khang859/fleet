@@ -327,6 +327,7 @@ export function AgentThread({
                   threshold={agent?.compactThreshold ?? null}
                   canCompact={!streaming && canCompact(messages)}
                   onCompact={() => compact(paneId)}
+                  projectInstructions={thread?.projectInstructions ?? null}
                 />
               </span>
             )}

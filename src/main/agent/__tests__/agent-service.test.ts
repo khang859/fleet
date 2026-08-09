@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
@@ -14,7 +14,11 @@ import {
   type AgentMessage,
   type AgentSendRequest
 } from '../../../shared/agent-types';
-import type { AgentScheduleCapability, AgentToolCall } from '../../../shared/agent-tools';
+import {
+  SUBAGENT_TOOL_NAMES,
+  type AgentScheduleCapability,
+  type AgentToolCall
+} from '../../../shared/agent-tools';
 import type { AgentTodoItem } from '../../../shared/agent-todos';
 import {
   CLEARED_RESULT_TEXT,
@@ -1156,7 +1160,10 @@ describe('AgentService', () => {
         streamId: 'stream-1',
         // One round, so what was billed and what is in the window are the same
         // numbers - it takes a second round for them to part ways.
-        usage: { billed: usage, contextTokens: 1000, calls: 1, model: null, provider: null }
+        usage: { billed: usage, contextTokens: 1000, calls: 1, model: null, provider: null },
+        // The temporary folder these run in has no AGENTS.md, so there is
+        // nothing for the context meter to account for.
+        projectInstructions: null
       }
     });
   });
@@ -1175,7 +1182,11 @@ describe('AgentService', () => {
     }).send(REQUEST);
     await ended;
 
-    expect(events.at(-1)?.payload).toEqual({ streamId: 'stream-1', usage: null });
+    expect(events.at(-1)?.payload).toEqual({
+      streamId: 'stream-1',
+      usage: null,
+      projectInstructions: null
+    });
   });
 
   it('reports a missing key as a stream error rather than throwing', async () => {
@@ -1961,5 +1972,230 @@ describe('withClearedWireResults', () => {
     withClearedWireResults(wire);
 
     expect(contentOf(wire, 'old1')).toBe('x'.repeat(40_000));
+  });
+});
+
+/**
+ * What a turn and a subagent are given of what the project already knows.
+ *
+ * Two separate promises are checked here, and both fail silently if they break.
+ * A subagent that gains a write tool does not error, does not warn, and is not
+ * visible until something writes a note nobody can trace back to a conversation.
+ * A project instructions file that gets shortened somewhere between the loader
+ * and the prompt leaves everything working, with the last third of the house
+ * style quietly not being followed.
+ */
+describe('memory and project instructions', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    // Symlinks resolved, because a `Working folder:` assertion compares against
+    // what the turn was handed and macOS temp paths are links.
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'fleet-agent-memory-')));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** One recorded note, in the project tier of the folder a turn opens on. */
+  function recorded(name: string, description: string, body: string): void {
+    mkdirSync(join(dir, '.fleet', 'memory'), { recursive: true });
+    writeFileSync(
+      join(dir, '.fleet', 'memory', `${name}.md`),
+      `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`
+    );
+  }
+
+  const wireCall = (name: string, args: object): WireToolCall => ({
+    id: 'call_1',
+    type: 'function',
+    function: { name, arguments: JSON.stringify(args) }
+  });
+
+  const DEFINITION = {
+    name: 'explore',
+    description: 'Looks things up.',
+    model: 'inherit',
+    tools: null,
+    systemPrompt: 'You look things up.',
+    source: 'bundled',
+    path: '/agents/explore.md'
+  } as const;
+
+  /** Every round a turn on this folder sent, under the given settings. */
+  async function turnRounds(
+    settings: typeof SETTINGS = SETTINGS,
+    calls: WireToolCall[][] = []
+  ): Promise<StreamRequest[]> {
+    const { emit, ended } = collector();
+    const rounds: StreamRequest[] = [];
+    new AgentService({
+      schedules: SCHEDULES,
+      gate: PASS_GATE,
+      getSettings: () => settings,
+      subagents: NO_SUBAGENTS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream: async (req) => {
+        rounds.push(req);
+        return Promise.resolve(round(calls[rounds.length - 1] ?? []));
+      }
+    }).send({ ...REQUEST, cwd: dir });
+    await ended;
+    return rounds;
+  }
+
+  /** The same, for a subagent, which takes a different path through the service. */
+  async function subagentRounds(calls: WireToolCall[][] = []): Promise<StreamRequest[]> {
+    const rounds: StreamRequest[] = [];
+    await new AgentService({
+      schedules: SCHEDULES,
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
+      getApiKey: () => 'sk-or-test',
+      emit: () => {},
+      stream: async (req) => {
+        rounds.push(req);
+        return Promise.resolve(round(calls[rounds.length - 1] ?? []));
+      }
+    }).runTask({
+      taskId: 'task-1',
+      definition: DEFINITION,
+      prompt: 'find the thing',
+      tools: [...SUBAGENT_TOOL_NAMES],
+      model: 'anthropic/claude-sonnet-4.5',
+      cwd: dir,
+      signal: new AbortController().signal,
+      onMessage: () => {}
+    });
+    return rounds;
+  }
+
+  const names = (req: StreamRequest): string[] =>
+    (req.tools ?? []).map((spec) => spec.function.name);
+
+  const prompt = (req: StreamRequest): string => {
+    const { content } = req.messages[0];
+    return typeof content === 'string' ? content : '';
+  };
+
+  /*
+   * The one deliberate departure from how `skill` works. An empty folder means
+   * "nothing to read" to one tool and "a first thing to write" to the other, and
+   * copying `buildSkillSpec` wholesale gets this wrong in the direction where
+   * the feature can never be used at all.
+   */
+  it('offers the write tool with nothing recorded, and the read tool only once there is', async () => {
+    expect(names((await turnRounds())[0])).toContain('memory_write');
+    expect(names((await turnRounds())[0])).not.toContain('memory');
+
+    recorded('sqlite-abi', 'The addon ABI.', 'Run npm test.');
+    expect(names((await turnRounds())[0])).toContain('memory');
+  });
+
+  /*
+   * Requirement 7, and the assertion the handoff calls not-optional decoration.
+   * The line that decides it is one spread in `AGENT_TOOL_NAMES`, and putting a
+   * write tool on the wrong side of it produces no type error and no other
+   * failing test.
+   */
+  it('never offers a subagent either write tool', async () => {
+    recorded('sqlite-abi', 'The addon ABI.', 'Run npm test.');
+    const offered = names((await subagentRounds())[0]);
+
+    expect(offered).not.toContain('memory_write');
+    expect(offered).not.toContain('skill_write');
+    // And the other half of the requirement: it may still read.
+    expect(offered).toContain('memory');
+  });
+
+  it('gives a subagent a way to turn a name into a note', async () => {
+    recorded('sqlite-abi', 'The addon ABI.', 'Run npm test, never npx vitest run.');
+    const rounds = await subagentRounds([[wireCall('memory', { name: 'sqlite-abi' })]]);
+
+    const result = rounds[1].messages.find((m) => m.role === 'tool');
+    expect(result?.content).toContain('Run npm test, never npx vitest run.');
+  });
+
+  it('says nothing about memory to a subagent that has none to read', async () => {
+    const rounds = await subagentRounds();
+    expect(names(rounds[0])).not.toContain('memory');
+    expect(prompt(rounds[0])).not.toContain('You keep memory across sessions');
+  });
+
+  it('leaves the project instructions out when the folder has no such file', async () => {
+    expect(prompt((await turnRounds())[0])).not.toContain('the project’s own file');
+  });
+
+  it('puts AGENTS.md in front of every capability block, and behind the base prompt', async () => {
+    writeFileSync(join(dir, 'AGENTS.md'), 'Never use the em dash.');
+    const text = prompt((await turnRounds())[0]);
+
+    expect(text).toContain('Never use the em dash.');
+    expect(text.indexOf('AGENTS.md')).toBeGreaterThan(text.indexOf(DEFAULT_AGENT_SYSTEM_PROMPT));
+    expect(text.indexOf('AGENTS.md')).toBeLessThan(text.indexOf('You keep memory across sessions'));
+  });
+
+  it('prefers AGENTS.md over CLAUDE.md and does not merge them', async () => {
+    writeFileSync(join(dir, 'AGENTS.md'), 'The standard one.');
+    writeFileSync(join(dir, 'CLAUDE.md'), 'The other one.');
+    const text = prompt((await turnRounds())[0]);
+
+    expect(text).toContain('The standard one.');
+    expect(text).not.toContain('The other one.');
+  });
+
+  /*
+   * A custom system prompt replaces Fleet's instructions, not the project's -
+   * the reasoning `buildSystemPrompt` already applies to the working folder line.
+   */
+  it('sends the project instructions even when the user replaced the system prompt', async () => {
+    writeFileSync(join(dir, 'AGENTS.md'), 'Never use the em dash.');
+    const text = prompt((await turnRounds({ ...SETTINGS, systemPrompt: 'Be terse.' }))[0]);
+
+    expect(text).toContain('Be terse.');
+    expect(text).not.toContain(DEFAULT_AGENT_SYSTEM_PROMPT);
+    expect(text).toContain('Never use the em dash.');
+  });
+
+  it('gives a subagent the project instructions too', async () => {
+    writeFileSync(join(dir, 'AGENTS.md'), 'Never use the em dash.');
+    expect(prompt((await subagentRounds())[0])).toContain('Never use the em dash.');
+  });
+
+  /*
+   * The test that matters most for requirement 5, and it is written against the
+   * built prompt rather than against the loader on purpose: the regression to
+   * fear is a `.slice()` added later, with the best of intentions, anywhere in
+   * between.
+   */
+  it('sends a 200,000-character instructions file whole', async () => {
+    const huge = `Rule one.\n${'x'.repeat(199_000)}\nRule two, at the very end.`;
+    writeFileSync(join(dir, 'AGENTS.md'), huge);
+    const text = prompt((await turnRounds())[0]);
+
+    expect(text).toContain(huge);
+    expect(text).toContain('Rule two, at the very end.');
+  });
+
+  it('reports what the instructions cost when the turn ends', async () => {
+    writeFileSync(join(dir, 'AGENTS.md'), 'x'.repeat(3_500));
+    const { emit, events, ended } = collector();
+    new AgentService({
+      schedules: SCHEDULES,
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
+      getApiKey: () => 'sk-or-test',
+      emit,
+      stream: async () => Promise.resolve(round())
+    }).send({ ...REQUEST, cwd: dir });
+    await ended;
+
+    expect(events.at(-1)?.payload).toMatchObject({
+      projectInstructions: { filename: 'AGENTS.md', tokens: 1_000 }
+    });
   });
 });

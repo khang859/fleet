@@ -16,7 +16,8 @@ import {
   type AgentToolContext,
   type AgentToolResult
 } from '../../../shared/agent-tools';
-import { SkillArgs } from '../../../shared/agent-skills';
+import { SkillArgs, SkillWriteArgs } from '../../../shared/agent-skills';
+import { MemoryArgs, MemoryWriteArgs } from '../../../shared/agent-memory';
 import { isMcpToolName } from '../../../shared/agent-mcp-names';
 import type { McpToolOutput } from '../../../shared/agent-mcp';
 import { runBash } from './bash';
@@ -30,6 +31,9 @@ import { runTodoAdd, runTodoUpdate } from './todo';
 import { runTask } from './task';
 import { runScheduleCancel, runScheduleCreate, runScheduleList } from './schedule';
 import { runSkill } from './skill';
+import { runMemoryRead } from './memory';
+import { writeMemoryEntry } from '../memory/write';
+import { writeSkillBody } from '../skills/write';
 import { runWrite } from './write';
 import { AgentImageStore } from '../image-store';
 
@@ -84,6 +88,16 @@ export async function runAgentTool(
       return runImage(checked(ImageArgs, args, name), ctx, images);
     case 'skill':
       return runSkill(checked(SkillArgs, args, name), ctx);
+    case 'memory':
+      return runMemoryRead(checked(MemoryArgs, args, name), ctx);
+    // The two writes live beside the loaders that have to read them back rather
+    // than in this folder, because the round trip through the reader's own
+    // schema is the whole of what makes them safe, and it is easier to keep true
+    // when the two halves sit next to each other.
+    case 'memory_write':
+      return writeMemoryEntry(checked(MemoryWriteArgs, args, name), ctx);
+    case 'skill_write':
+      return writeSkillBody(checked(SkillWriteArgs, args, name), ctx);
     case 'todo_add':
       return runTodoAdd(checked(TodoAddArgs, args, name), ctx);
     case 'todo_update':

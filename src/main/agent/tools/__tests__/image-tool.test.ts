@@ -50,6 +50,7 @@ const ctx = (generateImage: AgentToolContext['generateImage']): AgentToolContext
   dispatchTask: null,
   findSubagent: null,
   findSkill: null,
+  findMemory: null,
   schedule: null,
   todos: { list: () => [], save: () => {} }
 });

@@ -178,18 +178,50 @@ async function readOne<F, D extends { name: string }>(
     return null;
   }
 
-  const split = splitFrontmatter(contents);
-  if (split === null) {
-    log.warn(`${path} has no --- frontmatter block; skipping`);
+  const parsed = parseDefinitionFile(contents, schema, kind);
+  if (!parsed.ok) {
+    log.warn(`${path} ${parsed.why}; skipping`);
     return null;
   }
+
+  return build({
+    frontmatter: parsed.frontmatter,
+    body: parsed.body,
+    source,
+    path,
+    dir: dirname(path)
+  });
+}
+
+/** A file that parsed, or the reason it did not, phrased to follow its path. */
+export type ParsedDefinitionFile<F> =
+  | { ok: true; frontmatter: F; body: string }
+  | { ok: false; why: string };
+
+/**
+ * The contents of one definition file, checked.
+ *
+ * Split out of `readOne` and exported because the *writer* has to run the same
+ * checks. `markdown-definitions-write.ts` parses everything it serializes back
+ * through this before it touches disk, so a file the reader would silently skip
+ * is a write that fails loudly instead. That guarantee only holds while both
+ * sides go through one function - two copies of these four steps would drift,
+ * and the drift would be invisible until an entry quietly stopped loading.
+ */
+export function parseDefinitionFile<F>(
+  contents: string,
+  schema: ZodType<F>,
+  kind: string
+): ParsedDefinitionFile<F> {
+  const split = splitFrontmatter(contents);
+  if (split === null) return { ok: false, why: 'has no --- frontmatter block' };
 
   let yaml: unknown;
   try {
     yaml = parseYaml(split.frontmatter);
   } catch (error) {
-    log.warn(`${path} has unreadable frontmatter; skipping`, error);
-    return null;
+    const detail = error instanceof Error ? error.message.split('\n')[0] : String(error);
+    return { ok: false, why: `has unreadable frontmatter (${detail})` };
   }
 
   const parsed = schema.safeParse(yaml);
@@ -197,15 +229,11 @@ async function readOne<F, D extends { name: string }>(
     // Named rather than counted: the point of saying anything is so the person
     // who wrote the file can fix it, and "invalid" is not a fix.
     const why = parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`);
-    log.warn(`${path} is not a valid ${kind} (${why.join('; ')}); skipping`);
-    return null;
+    return { ok: false, why: `is not a valid ${kind} (${why.join('; ')})` };
   }
 
   const body = split.body.trim();
-  if (body === '') {
-    log.warn(`${path} has no prompt below its frontmatter; skipping`);
-    return null;
-  }
+  if (body === '') return { ok: false, why: 'has no prompt below its frontmatter' };
 
-  return build({ frontmatter: parsed.data, body, source, path, dir: dirname(path) });
+  return { ok: true, frontmatter: parsed.data, body };
 }

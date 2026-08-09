@@ -34,6 +34,7 @@ import type { AgentImageStore } from './image-store';
 import type { AgentGitWatcher } from './git-watch';
 import type { AgentHistoryStore } from './history-store';
 import { registerAgentMcpIpc, type McpIpcDeps } from './mcp/mcp-ipc';
+import { registerAgentMemoryIpc } from './memory/memory-ipc';
 import { registerAgentSkillsIpc } from './skills/skills-ipc';
 import type { SubagentManager } from './subagents/manager';
 import type { ScheduleStore } from './schedule-store';
@@ -71,6 +72,8 @@ export function registerAgentIpc(deps: {
   // No dependencies of its own: skills are folders on disk, read fresh, with no
   // manager holding connections or state between calls.
   registerAgentSkillsIpc();
+  // Nor here, and for the same reason: memory is folders on disk too.
+  registerAgentMemoryIpc();
 
   ipcMain.handle(
     IPC_CHANNELS.AGENT_LIST_MODELS,
