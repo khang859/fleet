@@ -23,7 +23,12 @@ import {
   type AgentSessionListItem,
   type AgentSessionReplay
 } from '../../shared/agent-session';
-import { addTurn, hasSpend, type AgentSessionSpend } from '../../shared/agent-spend';
+import {
+  addTurn,
+  hasSpend,
+  EMPTY_SESSION_SPEND,
+  type AgentSessionSpend
+} from '../../shared/agent-spend';
 import type { AgentTurnUsage } from '../../shared/agent-types';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './image-store';
 import { createLogger } from '../logger';
@@ -113,7 +118,40 @@ export class AgentSessionStore {
    * read-modify-write done anywhere else.
    */
   addSpend(sessionId: string, cwd: string, usage: AgentTurnUsage): void {
-    this.append(sessionId, cwd, { t: 'spend', total: addTurn(this.load(sessionId).spend, usage) });
+    this.append(sessionId, cwd, {
+      t: 'spend',
+      total: addTurn(this.runningTotal(sessionId), usage)
+    });
+  }
+
+  /**
+   * What a session has spent so far, without replaying it.
+   *
+   * The total is rewritten in full after every turn, so the newest one is the
+   * last of its kind in the file and near the end of it. Reading the tail is
+   * what the listing already does; doing it here too is what keeps the cost of
+   * a turn from growing with the length of the conversation, which is the shape
+   * that hurts - a long session paying a full synchronous read and parse of
+   * itself every time a bill lands, including once per subagent that reports.
+   *
+   * A tail that holds no total is not taken as zero. A single turn long enough
+   * to push the last one out of the window is rare but not impossible, and
+   * reading it as nothing would silently reset what the user has spent. That
+   * case falls back to the whole file, which is what this used to do always.
+   */
+  private runningTotal(sessionId: string): AgentSessionSpend {
+    const path = this.path(sessionId);
+    if (path === null) return EMPTY_SESSION_SPEND;
+    try {
+      const size = statSync(path).size;
+      if (size > SPEND_TAIL_BYTES) {
+        const tail = lastSpendIn(readWindow(path, size - SPEND_TAIL_BYTES, SPEND_TAIL_BYTES));
+        if (tail !== null) return tail;
+      }
+    } catch (err) {
+      if (!isMissing(err)) log.warn('spend tail read failed', { sessionId, error: String(err) });
+    }
+    return this.load(sessionId).spend;
   }
 
   /** The thread this session left behind, or an empty one if there is no file. */
@@ -250,6 +288,16 @@ const LIST_SCAN_BYTES = 256 * 1024;
  * happened to end with a long reply in front of it.
  */
 const LIST_TAIL_BYTES = 16 * 1024;
+
+/**
+ * How much of the end of a file `addSpend` reads to find the running total.
+ *
+ * Larger than the listing's window because missing here is worse than missing
+ * there: the listing shows a dash, this one would fall back to reading the
+ * whole file. Still small enough that a turn's cost does not depend on how long
+ * the conversation has been going.
+ */
+const SPEND_TAIL_BYTES = 64 * 1024;
 
 /**
  * The first `LIST_SCAN_BYTES` of a file, as text.

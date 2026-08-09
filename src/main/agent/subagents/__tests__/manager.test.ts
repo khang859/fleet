@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_PARALLEL_TASKS, type SubagentDefinition } from '../../../../shared/agent-subagents';
+import {
+  MAX_PARALLEL_TASKS,
+  MAX_TASKS_PER_THREAD,
+  type SubagentDefinition
+} from '../../../../shared/agent-subagents';
 import { SubagentCapReached, SubagentManager, type TaskOutcome, type TaskRun } from '../manager';
 
 /**
@@ -107,10 +111,10 @@ describe('SubagentManager.dispatch, at the parallel cap', () => {
   it('turns the next one away with a type of its own', async () => {
     const { subagents } = manager();
     for (let i = 0; i < MAX_PARALLEL_TASKS; i++) {
-      await dispatch(subagents, 'thread-1', `job ${i}`);
+      await dispatch(subagents, `thread-${i}`, `job ${i}`);
     }
 
-    await expect(dispatch(subagents, 'thread-1', 'one too many')).rejects.toBeInstanceOf(
+    await expect(dispatch(subagents, 'thread-fresh', 'one too many')).rejects.toBeInstanceOf(
       SubagentCapReached
     );
   });
@@ -119,13 +123,44 @@ describe('SubagentManager.dispatch, at the parallel cap', () => {
    * limit and the bill, and neither of those is per pane. */
   it('counts the children of every conversation towards it', async () => {
     const { subagents } = manager();
-    for (let i = 0; i < MAX_PARALLEL_TASKS; i++) {
-      await dispatch(subagents, `thread-${i}`, `job ${i}`);
+    await dispatch(subagents, 'thread-1', 'mine');
+    await dispatch(subagents, 'thread-1', 'mine too');
+    for (let i = 0; i < MAX_PARALLEL_TASKS - 2; i++) {
+      await dispatch(subagents, `thread-other-${i}`, `job ${i}`);
     }
 
-    await expect(dispatch(subagents, 'thread-fresh', 'mine')).rejects.toBeInstanceOf(
+    // Under its own limit of three, and refused anyway: the slots are gone.
+    await expect(dispatch(subagents, 'thread-1', 'a third')).rejects.toBeInstanceOf(
       SubagentCapReached
     );
+  });
+
+  /*
+   * And no conversation may take every slot. Without this, a model that fans
+   * out four children in one round refuses every other pane in the app for as
+   * long as they run - work in one pane stopping work in another, which is the
+   * thing this whole area is meant not to do.
+   */
+  it('stops one conversation holding every slot', async () => {
+    const { subagents } = manager();
+    for (let i = 0; i < MAX_TASKS_PER_THREAD; i++) {
+      await dispatch(subagents, 'greedy', `job ${i}`);
+    }
+
+    await expect(dispatch(subagents, 'greedy', 'one more')).rejects.toBeInstanceOf(
+      SubagentCapReached
+    );
+  });
+
+  it('leaves the slots it did not take for somebody else', async () => {
+    const { subagents } = manager();
+    for (let i = 0; i < MAX_TASKS_PER_THREAD; i++) {
+      await dispatch(subagents, 'greedy', `job ${i}`);
+    }
+
+    await expect(dispatch(subagents, 'patient', 'mine')).resolves.toMatchObject({
+      status: 'running'
+    });
   });
 
   /* A name that is not a subagent is a mistake, not a queue, and still reads as

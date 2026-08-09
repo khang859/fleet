@@ -15,15 +15,26 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
  * something a `.env` in the repo can be assumed to have consented to.
  */
 
-/** Credential stores that are never readable, wherever the pane was opened. */
+/**
+ * Credential stores that are never readable, wherever the pane was opened.
+ *
+ * Resolved once. Each one costs a synchronous symlink walk, and a home folder
+ * does not move under a running process - so working them out again on every
+ * tool call would be four `realpathSync` calls on the main thread to learn
+ * something that cannot have changed.
+ */
+let deniedRoots: string[] | null = null;
+
 function credentialRoots(): string[] {
+  if (deniedRoots !== null) return deniedRoots;
   const home = homedir();
-  return [
+  deniedRoots = [
     resolve(home, '.ssh'),
     resolve(home, '.aws'),
     resolve(home, '.gnupg'),
     resolve(home, '.config', 'gh')
-  ];
+  ].map(realpathOrNearest);
+  return deniedRoots;
 }
 
 /** Filenames that hold secrets wherever they turn up, including inside a repo. */
@@ -80,7 +91,7 @@ export function resolveInsideCwd(target: string, cwd: string): string {
   if (!isUnder(real, root)) {
     throw new Error(`${target} is outside the working folder`);
   }
-  if (credentialRoots().some((deny) => isUnder(real, realpathOrNearest(deny)))) {
+  if (credentialRoots().some((deny) => isUnder(real, deny))) {
     throw new Error(`${target} is a credential path`);
   }
   if (DENIED_NAMES.some((deny) => deny.test(basename(real)))) {
@@ -99,7 +110,23 @@ export function isDeniedName(name: string): boolean {
  * forward slashes, because that is how it appears in the code being read.
  */
 export function displayPath(abs: string, cwd: string): string {
+  return under(realpathOrNearest(resolve(cwd)), abs);
+}
+
+/**
+ * `displayPath` for one working folder, with the folder resolved once.
+ *
+ * A search visits thousands of files and names every one of them, and the plain
+ * form re-resolves the folder for each - a synchronous symlink walk per file,
+ * on the main thread, to answer the same question every time. The folder cannot
+ * move during a single search, so it is worked out once and closed over.
+ */
+export function displayPathIn(cwd: string): (abs: string) => string {
   const root = realpathOrNearest(resolve(cwd));
+  return (abs) => under(root, abs);
+}
+
+function under(root: string, abs: string): string {
   const rel = relative(root, abs);
   if (rel === '' || rel.startsWith('..')) return abs;
   return rel.split(sep).join('/');

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { constants, setPriority } from 'node:os';
 import {
   BASH_DEFAULT_TIMEOUT_MS,
   BASH_MAX_OUTPUT_CHARS,
@@ -94,6 +95,8 @@ async function execute(command: string, ctx: AgentToolContext, timeoutMs: number
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
+    standAside(child);
+
     const tape = makeTape();
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
@@ -140,6 +143,34 @@ async function execute(command: string, ctx: AgentToolContext, timeoutMs: number
       });
     });
   });
+}
+
+/**
+ * Let the app have the processor ahead of the command.
+ *
+ * A test run or a build saturates every core it is given, and several agents
+ * doing it at once will happily take the machine. What loses that fight is
+ * Fleet itself - the main process that has to flush a terminal every sixteen
+ * milliseconds, and the renderer that has to draw the character the user just
+ * typed - and the user experiences it as the app going soft while an agent
+ * works, which is the thing this must not do.
+ *
+ * A lower priority rather than a queue, deliberately. Queueing commands would
+ * mean one pane's ten-minute test run holding up another pane's `git status`,
+ * which is the same complaint in a new place. This costs the command nothing
+ * on an idle machine and only yields when there is something else to run - and
+ * the nice value is inherited, so what the shell starts is covered too.
+ *
+ * Best-effort: a platform that will not have it is not a reason to fail the
+ * command, which is why nothing here is reported.
+ */
+function standAside(child: ChildProcess): void {
+  if (child.pid === undefined) return;
+  try {
+    setPriority(child.pid, constants.priority.PRIORITY_BELOW_NORMAL);
+  } catch {
+    // Not permitted, or the command was over before we got to it.
+  }
 }
 
 /** The negative pid is the process group - see `detached` above. */

@@ -55,8 +55,17 @@ function validateOpenRouterKey(key: string): string | null {
 export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element {
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
-  const { catalog, loadingModels, keyPresent, loadModels, loadKey, saveKey, clearKey } =
-    useAgentStore();
+  // Field by field rather than the whole store. The agent store also holds every
+  // pane's transcript, which is rewritten as each token arrives - so subscribing
+  // to all of it re-renders this panel, and the model catalog inside it, once per
+  // token of a turn happening in some other pane entirely.
+  const catalog = useAgentStore((s) => s.catalog);
+  const loadingModels = useAgentStore((s) => s.loadingModels);
+  const keyPresent = useAgentStore((s) => s.keyPresent);
+  const loadModels = useAgentStore((s) => s.loadModels);
+  const loadKey = useAgentStore((s) => s.loadKey);
+  const saveKey = useAgentStore((s) => s.saveKey);
+  const clearKey = useAgentStore((s) => s.clearKey);
 
   useEffect(() => {
     void loadModels();

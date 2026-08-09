@@ -32,6 +32,22 @@ import { SUBAGENT_TOOL_NAMES, type SubagentToolName } from './agent-tools';
  */
 export const MAX_PARALLEL_TASKS = 5;
 
+/**
+ * How many of those one conversation may hold at a time.
+ *
+ * The app-wide cap alone says nothing about who gets the slots, and a model
+ * that dispatches four children in one round takes four of five - so the pane
+ * next to it is refused for as long as they run, for a reason that has nothing
+ * to do with anything it did. That is the same complaint as a terminal that
+ * will not echo: work in one pane stopping work in another.
+ *
+ * Three of five leaves two, which is enough for a second conversation to keep
+ * going while the first is at full stretch. It is deliberately not one: fanning
+ * out is what subagents are for, and a cap that allowed no parallelism would
+ * take the feature away to solve a fairness problem.
+ */
+export const MAX_TASKS_PER_THREAD = 3;
+
 /** Where a definition was found. Decides precedence, and is shown in the UI. */
 export type SubagentSource = 'project' | 'user' | 'bundled';
 
