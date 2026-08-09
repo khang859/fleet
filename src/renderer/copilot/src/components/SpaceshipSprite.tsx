@@ -80,7 +80,7 @@ export function SpaceshipSprite({
       wasDragged.current = false;
       dragStartPos.current = { x: e.screenX, y: e.screenY };
 
-      window.copilot.getPosition().then((pos) => {
+      void window.copilot.getPosition().then((pos) => {
         if (pos) {
           windowStartPos.current = { x: pos.x, y: pos.y };
         }
@@ -91,7 +91,10 @@ export function SpaceshipSprite({
         const dy = ev.screenY - dragStartPos.current.y;
         if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
           wasDragged.current = true;
-          window.copilot.setPosition(windowStartPos.current.x + dx, windowStartPos.current.y + dy);
+          void window.copilot.setPosition(
+            windowStartPos.current.x + dx,
+            windowStartPos.current.y + dy
+          );
         }
       };
 

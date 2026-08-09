@@ -17,7 +17,10 @@ function sessionStatus(session: CopilotSession): BadgeStatus {
     case 'compacting':
       return 'running';
     case 'waitingForInput':
+    case 'idle':
       return 'idle';
+    case 'waitingForApproval':
+      return 'permission';
     case 'ended':
       return 'complete';
     default:
@@ -205,14 +208,14 @@ export function SessionList(): React.JSX.Element {
                       <Button
                         variant="success"
                         size="sm"
-                        onClick={async () => respondPermission(perm.toolUseId, 'allow')}
+                        onClick={() => void respondPermission(perm.toolUseId, 'allow')}
                       >
                         Allow
                       </Button>
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={async () => respondPermission(perm.toolUseId, 'deny')}
+                        onClick={() => void respondPermission(perm.toolUseId, 'deny')}
                       >
                         Deny
                       </Button>

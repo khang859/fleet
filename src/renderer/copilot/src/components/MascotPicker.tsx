@@ -83,7 +83,7 @@ export function MascotPicker(): React.JSX.Element {
   const previewId = hoveredId ?? selectedId;
 
   useEffect(() => {
-    loadSettings();
+    void loadSettings();
   }, [loadSettings]);
 
   return (

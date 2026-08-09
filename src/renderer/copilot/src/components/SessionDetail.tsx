@@ -26,7 +26,7 @@ export function SessionDetail(): React.JSX.Element | null {
 
   useEffect(() => {
     if (session) {
-      loadChatHistory(session.sessionId, session.cwd);
+      void loadChatHistory(session.sessionId, session.cwd);
     }
   }, [session?.sessionId, session?.cwd, loadChatHistory]);
 
@@ -44,7 +44,7 @@ export function SessionDetail(): React.JSX.Element | null {
   const handleKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
@@ -122,14 +122,14 @@ export function SessionDetail(): React.JSX.Element | null {
                     <Button
                       variant="success"
                       size="sm"
-                      onClick={async () => respondPermission(perm.toolUseId, 'allow')}
+                      onClick={() => void respondPermission(perm.toolUseId, 'allow')}
                     >
                       Allow
                     </Button>
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={async () => respondPermission(perm.toolUseId, 'deny')}
+                      onClick={() => void respondPermission(perm.toolUseId, 'deny')}
                     >
                       Deny
                     </Button>
@@ -173,7 +173,11 @@ export function SessionDetail(): React.JSX.Element | null {
                     : 'No TTY — cannot send messages'
               }
             />
-            <Button size="sm" onClick={handleSend} disabled={!canSendMessage || !inputText.trim()}>
+            <Button
+              size="sm"
+              onClick={() => void handleSend()}
+              disabled={!canSendMessage || !inputText.trim()}
+            >
               <ArrowUp size={14} />
             </Button>
           </div>
