@@ -7,7 +7,14 @@ import {
 } from './agent-schedule';
 import type { McpToolOutput } from './agent-mcp';
 import type { SubagentDefinition } from './agent-subagents';
-import type { SkillDefinition } from './agent-skills';
+import { SKILL_DESCRIPTION_MAX, SKILL_NAME_MAX, type SkillDefinition } from './agent-skills';
+import {
+  MEMORY_BODY_MAX,
+  MEMORY_DESCRIPTION_MAX,
+  MEMORY_NAME_MAX,
+  MEMORY_SCOPES,
+  type MemoryDefinition
+} from './agent-memory';
 
 /**
  * The tools the agent can call, and the limits they answer within.
@@ -61,6 +68,7 @@ export const SUBAGENT_TOOL_NAMES = [
   'terminal',
   'image',
   'skill',
+  'memory',
   'todo_add',
   'todo_update'
 ] as const;
@@ -69,14 +77,29 @@ export type SubagentToolName = (typeof SUBAGENT_TOOL_NAMES)[number];
 /**
  * Everything the pane's own model may call.
  *
- * The four that are not a subagent's are the two ends of the same idea: `task`
- * starts a conversation elsewhere, and the `schedule_*` three start one later.
- * A subagent has neither - no children of its own, and no durable session for a
- * fire to land in - so offering it any of them would be a tool backed by
+ * Of the six that are not a subagent's, four are two ends of the same idea:
+ * `task` starts a conversation elsewhere, and the `schedule_*` three start one
+ * later. A subagent has neither - no children of its own, and no durable session
+ * for a fire to land in - so offering it any of them would be a tool backed by
  * nothing, which is what `SUBAGENT_TOOL_NAMES` exists to prevent.
+ *
+ * The other two are the writes, and they are here for a different reason. A
+ * subagent *reads* memory - it is text, like a skill, and a child sent to do a
+ * job needs what is known about the project as much as the parent does - but it
+ * does not write. It starts from nothing, sees none of the conversation, and
+ * reports once, so a fact it recorded would have no provenance any later turn
+ * could weigh. The parent reads its report and, if something in it is worth
+ * keeping, writes it itself.
+ *
+ * That is the whole of the enforcement, and it is one line: a write tool added
+ * to the list above rather than to this spread hands it to every subagent, with
+ * no type error and nothing failing until one of them writes something nobody
+ * can trace. `agent-tools.test.ts` asserts the two lists to keep it honest.
  */
 export const AGENT_TOOL_NAMES = [
   ...SUBAGENT_TOOL_NAMES,
+  'memory_write',
+  'skill_write',
   'task',
   'schedule_create',
   'schedule_list',
@@ -460,6 +483,56 @@ const SCHEDULE_LIST_DESCRIPTION = [
   "It is this conversation's own list. Schedules set in other panes are not yours to see or to cancel."
 ].join(' ');
 
+/*
+ * The load-bearing description in this feature, and the one place its quality is
+ * actually decided.
+ *
+ * Zod validates the shape of an entry and nothing else. Whether a note earned
+ * its place is a judgement made once, by the model, at the moment it calls this -
+ * so the test it applies has to be stated here, along with the failure modes it
+ * would otherwise fall into. A model asked to "record what you learned" records
+ * duplicated file contents, restated user preferences and diary entries, forever,
+ * and every one of them looks like a lesson at the time.
+ *
+ * The test is a cost test rather than a taste test on purpose. "Was this
+ * interesting" has no answer; "would the next agent pay what I just paid" does.
+ */
+const MEMORY_WRITE_DESCRIPTION = [
+  'Write down something this session learned, so the next one starts with it already known.',
+  '',
+  'The test is what it would cost to not have it: if this note were gone, would the next agent working here pay roughly what you just paid to find it out again? If yes, write it. If no, do not - every entry rides on every round of every future turn, so one that is not worth its line makes the ones that are harder to notice.',
+  '',
+  'Three things that feel like they qualify and do not:',
+  '- Anything `read` or `grep` answers in one call. A note that restates a file is wrong the moment the file changes, and nobody comes back to update it.',
+  '- A preference the user stated in this conversation. It is in the transcript and you can still see it. Write it down only if it is about how they work in general, rather than what they wanted this time.',
+  '- An account of what you just did. That is what the transcript is.',
+  '',
+  'A memory is a fact; a skill is a procedure. If what you want to write reads like a checklist or a sequence of steps, it belongs in a skill instead.',
+  '',
+  '`description` is the whole of what a later session sees until it decides to read the note, so write it as when-this-matters rather than as a title: "`npx vitest run` fails after the dev server has run, because the sqlite addon is rebuilt for Electron" rather than "testing notes".',
+  '',
+  'Writing a name that already exists replaces it, which is how a note that turned out to be wrong gets corrected - read it first, and the user is shown what changed. There is no way to delete one: that is the user’s to do, in Settings.'
+].join('\n');
+
+/*
+ * The boundary this description draws is wording rather than a type, and the
+ * plan says so out loud. `skill_write` is offered on every turn, and nothing but
+ * these sentences keeps it to `/refine`. The freshness guard limits the damage -
+ * an existing skill cannot be replaced without being read in the same
+ * conversation - but a new one can be created by any turn that decides to.
+ */
+const SKILL_WRITE_DESCRIPTION = [
+  'Write or replace the instructions of a skill.',
+  '',
+  'This is for `/refine`, the command that looks back over a session and writes down what is worth keeping. Do not reach for it in the middle of ordinary work: a skill is loaded as instructions on every later turn that matches it, so writing one now changes how every future session behaves on the strength of one thing that just happened.',
+  '',
+  'A skill is a procedure - the steps a job takes here, a checklist, a convention with enough detail to follow. A single fact is a memory instead.',
+  '',
+  '`description` is what decides whether the skill is ever loaded, so write it as when to reach for it: "Use before tagging a release: the changelog entry, the tag, and the order they have to happen in" rather than "release notes".',
+  '',
+  'Writing a name that already exists replaces its instructions - load it with `skill` first. Only `SKILL.md` is written; the files a skill bundles are not yours to create.'
+].join('\n');
+
 const SCHEDULE_CANCEL_DESCRIPTION = [
   'Drop a schedule you set, by its id.',
   'Do it as soon as the thing it was watching stops being worth watching - the deploy landed, the question was answered, the user said never mind.',
@@ -703,6 +776,89 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
       }
     }
   },
+  /*
+   * `memory_write` is here, in the always-offered list, while the `memory` tool
+   * that reads is built per turn and can come back `null`. That looks
+   * inconsistent and is the one deliberate departure from how `skill` works.
+   *
+   * An empty folder means opposite things to the two. With nothing recorded
+   * there is nothing to read, so offering the reader would be offering a tool
+   * whose every call is an apology. But with nothing recorded there is a *first
+   * thing to write*, and a memory feature that only appears once it has been
+   * used could never be used at all.
+   */
+  {
+    type: 'function',
+    function: {
+      name: 'memory_write',
+      description: MEMORY_WRITE_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            maxLength: MEMORY_NAME_MAX,
+            description:
+              'What to file it under: lowercase words joined by dashes, e.g. `sqlite-abi`. Reusing an existing name replaces that note.'
+          },
+          description: {
+            type: 'string',
+            maxLength: MEMORY_DESCRIPTION_MAX,
+            description:
+              'One line saying when this matters, which is all a later session sees until it reads the note.'
+          },
+          body: {
+            type: 'string',
+            maxLength: MEMORY_BODY_MAX,
+            description: 'The fact itself, and enough of why it is true to be trusted later.'
+          },
+          scope: {
+            type: 'string',
+            enum: [...MEMORY_SCOPES],
+            description:
+              '`project` for something true of this repository, which lands inside it and is read by anyone who opens it. `user` for something true of this person wherever they are working.'
+          }
+        },
+        required: ['name', 'description', 'body', 'scope'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'skill_write',
+      description: SKILL_WRITE_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            maxLength: SKILL_NAME_MAX,
+            description:
+              'The skill’s name, lowercase words joined by dashes. It is also its folder. Reusing one replaces its instructions.'
+          },
+          description: {
+            type: 'string',
+            maxLength: SKILL_DESCRIPTION_MAX,
+            description: 'When to reach for this skill. It is what decides whether it is ever used.'
+          },
+          body: {
+            type: 'string',
+            description: 'The instructions themselves, in markdown.'
+          },
+          scope: {
+            type: 'string',
+            enum: [...MEMORY_SCOPES],
+            description:
+              '`project` for a procedure belonging to this repository, `user` for one that follows the person between projects.'
+          }
+        },
+        required: ['name', 'description', 'body', 'scope'],
+        additionalProperties: false
+      }
+    }
+  },
   {
     type: 'function',
     function: {
@@ -856,20 +1012,25 @@ export function toolSpecsFor(options: {
   mcp?: ExternalToolSpec[];
   task?: AgentToolSpec | null;
   skill?: AgentToolSpec | null;
+  memory?: AgentToolSpec | null;
   only?: readonly AgentToolName[];
 }): ToolSpec[] {
   const allowed = (name: AgentToolName): boolean =>
     options.only === undefined || options.only.includes(name);
   const own = AGENT_TOOL_SPECS.filter(
-    (spec) =>
-      (options.image || spec.function.name !== 'image') && allowed(spec.function.name)
+    (spec) => (options.image || spec.function.name !== 'image') && allowed(spec.function.name)
   );
-  // Both are built per turn rather than living in `AGENT_TOOL_SPECS`, so both
-  // are filtered here rather than by the loop above.
+  // All three are built per turn rather than living in `AGENT_TOOL_SPECS`, so
+  // all three are filtered here rather than by the loop above.
   const task = options.task ?? null;
   const skill = allowed('skill') ? (options.skill ?? null) : null;
+  // Ahead of `skill`, because what is already known about this project is
+  // context for deciding which procedure applies rather than the other way
+  // round, and the order they appear in is the order they are read in.
+  const memory = allowed('memory') ? (options.memory ?? null) : null;
   return [
     ...own,
+    ...(memory === null ? [] : [memory]),
     ...(skill === null ? [] : [skill]),
     ...(task === null ? [] : [task]),
     ...(options.mcp ?? [])
@@ -1085,6 +1246,20 @@ export type AgentToolContext = {
    * procedure for that job at least as much as the parent that sent it.
    */
   findSkill: ((name: string) => SkillDefinition | null) | null;
+  /**
+   * What has been recorded about this project and this user, for turning a name
+   * into a note.
+   *
+   * `null` when nothing has been, which is also when the read tool was not
+   * offered - the shape `findSkill` uses, for the same reason.
+   *
+   * A subagent gets this one, exactly as it gets `findSkill`, and for the same
+   * argument: a note is text rather than a capability, and a child sent to do a
+   * job needs what is known about the project as much as the parent that sent
+   * it. What a subagent does not get is either write tool, and that is decided
+   * by `SUBAGENT_TOOL_NAMES` rather than here.
+   */
+  findMemory: ((name: string) => MemoryDefinition | null) | null;
   /**
    * Set a reminder for this conversation, or `null` when there is nothing to
    * set one against.

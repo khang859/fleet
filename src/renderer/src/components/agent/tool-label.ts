@@ -70,6 +70,17 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       const name = args.name ?? '';
       return { verb: 'Load skill', target: file === '' ? name : `${name}/${file}` };
     }
+    // Memory rows say what happened to the note, and the name is the note. Two
+    // different verbs rather than one because reading and writing are not the
+    // same event to a person scanning a transcript: "Remember" is the row worth
+    // stopping on, since it is the only place a write becomes visible before it
+    // turns up in Settings or in `git status`.
+    case 'memory':
+      return { verb: 'Recall', target: args.name ?? '' };
+    case 'memory_write':
+      return { verb: 'Remember', target: args.name ?? '' };
+    case 'skill_write':
+      return { verb: 'Write skill', target: args.name ?? '' };
     // The prompt, because it is the only description of a picture that does not
     // exist yet - and once it does, the picture is on the row underneath and
     // the prompt is the caption. Editing says so: the same row would otherwise

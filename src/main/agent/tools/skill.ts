@@ -8,7 +8,8 @@ import {
   type SkillDefinition
 } from '../../../shared/agent-skills';
 import type { AgentToolContext, AgentToolResult } from '../../../shared/agent-tools';
-import { resolveInsideCwd } from './paths';
+import { remember } from './freshness';
+import { realpathOrNearest, resolveInsideCwd } from './paths';
 
 /**
  * Loading a skill's instructions, and the files it bundles.
@@ -43,6 +44,17 @@ export async function runSkill(
   if (args.file !== undefined && args.file !== '') {
     return bundledFile(definition, args.file);
   }
+
+  // Loading a skill counts as having read its `SKILL.md`, which is what lets
+  // `/refine` correct one in the same conversation it noticed the problem in.
+  // Without it, `skill_write` would refuse the only sequence that makes sense -
+  // read the procedure, see what it got wrong, rewrite it - and tell the model
+  // to go and read something it is holding.
+  //
+  // Under the real path, because that is the form the write path stamps against.
+  const entry = realpathOrNearest(join(definition.dir, 'SKILL.md'));
+  const stamp = await stat(entry).catch(() => null);
+  if (stamp !== null) remember(ctx.threadId, entry, stamp);
 
   const text = renderSkill(definition, await listFiles(definition.dir));
   return { text, summary: countLines(text) };

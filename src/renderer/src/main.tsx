@@ -9,6 +9,7 @@ import { useRemoteSshStore } from './store/remote-ssh-store';
 import { useAgentStore } from './store/agent-store';
 import { useAgentMcpStore } from './store/agent-mcp-store';
 import { useAgentSkillsStore } from './store/agent-skills-store';
+import { useAgentMemoryStore } from './store/agent-memory-store';
 import { useNotificationStore } from './store/notification-store';
 import './index.css';
 
@@ -87,6 +88,7 @@ if (import.meta.env.DEV) {
       agent: useAgentStore,
       agentMcp: useAgentMcpStore,
       agentSkills: useAgentSkillsStore,
+      agentMemory: useAgentMemoryStore,
       notification: useNotificationStore
     }
   };

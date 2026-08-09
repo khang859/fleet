@@ -147,6 +147,16 @@ export type PaneThread = {
    */
   contextTokens: number | null;
   /**
+   * The project's own instructions file, if this folder has one, and what it
+   * costs. `null` until a turn reports, and `null` afterwards when there is no
+   * such file.
+   *
+   * Live only, like `served` below: it describes the folder as the last turn
+   * found it, and a figure replayed from disk would be a claim about a file that
+   * may since have been edited or deleted.
+   */
+  projectInstructions: { filename: string; tokens: number } | null;
+  /**
    * What this session has spent, everything Fleet paid for included: the turns,
    * the compactions nobody asked for, the call that named it, and any pictures
    * it made. It is the number the user's OpenRouter invoice will agree with,
@@ -230,6 +240,7 @@ const EMPTY_THREAD: PaneThread = {
   startedAt: null,
   error: null,
   contextTokens: null,
+  projectInstructions: null,
   spend: EMPTY_SESSION_SPEND,
   served: null,
   todos: [],
@@ -1071,7 +1082,15 @@ function handOff(streamId: string, command: string): void {
   window.fleet.activity.report({ paneId, state: 'needs_me' });
 }
 
-function endTurn(streamId: string, error: string | null, usage: AgentTurnUsage | null): void {
+function endTurn(
+  streamId: string,
+  error: string | null,
+  usage: AgentTurnUsage | null,
+  // Undefined means the turn did not report, which a failed one does not: it may
+  // have failed before main ever looked at the folder, and the last turn's
+  // answer is still the truest thing on screen about what the file costs.
+  projectInstructions?: { filename: string; tokens: number } | null
+): void {
   const found = threadOf(streamId);
   if (found === null) return;
   const { paneId, thread } = found;
@@ -1103,6 +1122,8 @@ function endTurn(streamId: string, error: string | null, usage: AgentTurnUsage |
         startedAt: null,
         error,
         contextTokens,
+        projectInstructions:
+          projectInstructions === undefined ? thread.projectInstructions : projectInstructions,
         spend,
         // Only when this turn said. A turn that failed before the first chunk
         // names nobody, and the last answer's attribution is still the truest
@@ -1407,7 +1428,9 @@ function applySummary(streamId: string, summary: string, usage: AgentTurnUsage |
 // event carries the id of the turn that produced it.
 window.fleet.agent.onStreamChunk(({ streamId, delta }) => appendText(streamId, delta));
 window.fleet.agent.onStreamReasoning(({ streamId, delta }) => appendReasoning(streamId, delta));
-window.fleet.agent.onStreamDone(({ streamId, usage }) => endTurn(streamId, null, usage));
+window.fleet.agent.onStreamDone(({ streamId, usage, projectInstructions }) =>
+  endTurn(streamId, null, usage, projectInstructions ?? null)
+);
 window.fleet.agent.onStreamError(({ streamId, message, usage }) => {
   log.warn('stream error', { message });
   // The rounds before the failure were paid for, so the total takes them the

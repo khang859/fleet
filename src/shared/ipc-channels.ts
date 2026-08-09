@@ -291,6 +291,14 @@ export const IPC_CHANNELS = {
   AGENT_SKILLS_INSTALL: 'agent:skills-install',
   AGENT_SKILLS_REMOVE: 'agent:skills-remove',
   AGENT_SKILLS_REVEAL: 'agent:skills-reveal',
+  // Memory: what earlier sessions wrote down. Three channels rather than the
+  // skills' seven, and the two that are missing are the point - nothing here
+  // creates or imports an entry, because the only thing that writes memory is
+  // the agent mid-turn. LIST takes the working folder, since the project tier
+  // is per-folder, and REMOVE is the user's undo.
+  AGENT_MEMORY_LIST: 'agent:memory-list',
+  AGENT_MEMORY_REMOVE: 'agent:memory-remove',
+  AGENT_MEMORY_REVEAL: 'agent:memory-reveal',
   // Reminders the agent set for itself. Main owns them, because deciding that
   // one is due has to happen whether or not any pane is open on the session it
   // belongs to - which is also why CHANGED is pushed rather than polled.

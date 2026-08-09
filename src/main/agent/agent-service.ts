@@ -46,6 +46,10 @@ import type { ScheduleStore } from './schedule-store';
 import type { SubagentDefinition } from '../../shared/agent-subagents';
 import { buildSkillSpec, type SkillDefinition } from '../../shared/agent-skills';
 import { loadSkills } from './skills/definitions';
+import { buildMemorySpec, type MemoryDefinition } from '../../shared/agent-memory';
+import { loadMemory } from './memory/definitions';
+import { renderProjectInstructions } from '../../shared/agent-project-instructions';
+import { loadProjectInstructions } from './project-instructions';
 import type { McpManager } from './mcp/manager';
 import type { AgentToolEvent } from '../../shared/agent-types';
 import {
@@ -145,6 +149,13 @@ type RoundsRequest = {
   findSubagent: ((name: string) => SubagentDefinition | null) | null;
   /** Set for both a turn and a subagent: a skill is text, not a capability. */
   findSkill: ((name: string) => SkillDefinition | null) | null;
+  /**
+   * Set for both, for the same reason `findSkill` is. What a child does not get
+   * is either write tool, and `SUBAGENT_TOOL_NAMES` is where that is decided -
+   * not here, where handing over `null` would look like the same thing and would
+   * only mean the child could not read what the project already knows.
+   */
+  findMemory: ((name: string) => MemoryDefinition | null) | null;
   /**
    * Setting a reminder for this conversation, and reading what it has set.
    *
@@ -845,6 +856,12 @@ export class AgentService {
     // than on the next launch.
     const skills = await loadSkills(req.cwd);
     const skillSpec = buildSkillSpec(skills);
+    // Read per turn for the same reason, and with one more of its own: an entry
+    // written in the middle of a turn is on the roster of the next one, with no
+    // cache to invalidate and nothing to tell.
+    const memories = await loadMemory(req.cwd);
+    const memorySpec = buildMemorySpec(memories);
+    const instructions = await loadProjectInstructions(req.cwd);
     const messages = await toWireHistory(
       req,
       buildSystemPrompt(req.cwd, ctx.settings.systemPrompt, {
@@ -852,8 +869,16 @@ export class AgentService {
         mcp: mcpSpecs.length > 0,
         task: taskSpec !== null,
         skill: skillSpec !== null,
+        // Always, for a turn, the way the todo block is: `memory_write` is
+        // offered on every one of them whether or not anything is recorded yet,
+        // because the first entry has to be writable into existence.
+        memory: true,
         // Always, for a turn: the three tools are offered on every one of them.
-        schedule: true
+        schedule: true,
+        projectInstructions:
+          instructions === null
+            ? null
+            : renderProjectInstructions(instructions.filename, instructions.text)
       })
     );
 
@@ -867,7 +892,8 @@ export class AgentService {
           image: imageModel !== null,
           mcp: mcpSpecs,
           task: taskSpec,
-          skill: skillSpec
+          skill: skillSpec,
+          memory: memorySpec
         }),
         mcp,
         todos: req.todos,
@@ -878,6 +904,7 @@ export class AgentService {
         dispatchTask: this.taskDispatcher(req, ctx, subagents),
         findSubagent: (name) => subagents.find((s) => s.name === name) ?? null,
         findSkill: (name) => skills.find((s) => s.name === name) ?? null,
+        findMemory: (name) => memories.find((m) => m.name === name) ?? null,
         schedule: this.scheduleCapability(req),
         // The pane draws this run and writes it down. Only a subagent needs
         // main to keep its transcript, and only a subagent is watched by
@@ -891,7 +918,15 @@ export class AgentService {
 
     this.deps.emit(IPC_CHANNELS.AGENT_STREAM_DONE, {
       streamId: req.streamId,
-      usage: account.report()
+      usage: account.report(),
+      // What the project's own file cost this turn, so the meter can say so.
+      // It rides here rather than on a channel of its own because the pane
+      // already learns that a turn finished, and a second way of learning the
+      // same thing is a second way for the two to disagree.
+      projectInstructions:
+        instructions === null
+          ? null
+          : { filename: instructions.filename, tokens: instructions.tokens }
     } satisfies AgentStreamDone);
   }
 
@@ -1038,6 +1073,7 @@ export class AgentService {
           dispatchTask: run.dispatchTask(call.id),
           findSubagent: run.findSubagent,
           findSkill: run.findSkill,
+          findMemory: run.findMemory,
           schedule: run.schedule
         });
         drawn.push(done.call);
@@ -1170,6 +1206,13 @@ export class AgentService {
       // and it has no conversation to have been handed it in.
       const skills = await loadSkills(run.cwd);
       const skillSpec = buildSkillSpec(skills);
+      // And the same again for what has been recorded, and for the project's own
+      // instructions. A child doing the work needs the house rules and what is
+      // already known about the place as much as the parent does, and unlike the
+      // parent it has no conversation to have been told them in.
+      const memories = await loadMemory(run.cwd);
+      const memorySpec = buildMemorySpec(memories);
+      const instructions = await loadProjectInstructions(run.cwd);
 
       const report = await this.runRounds(
         {
@@ -1181,15 +1224,29 @@ export class AgentService {
               role: 'system',
               content: buildSystemPrompt(run.cwd, run.definition.systemPrompt, {
                 // A child is never given the image tool, an MCP server, or a
-                // subagent of its own. Skills are the exception - they are text,
-                // not a capability.
+                // subagent of its own. Skills and memory are the exception -
+                // they are text, not a capability.
                 image: false,
-                skill: skillSpec !== null
+                skill: skillSpec !== null,
+                // Conditional here where it is unconditional for a turn, and
+                // that difference is the whole of requirement 7 showing through:
+                // a child has no `memory_write`, so with nothing recorded there
+                // is nothing to describe.
+                memory: memorySpec !== null,
+                projectInstructions:
+                  instructions === null
+                    ? null
+                    : renderProjectInstructions(instructions.filename, instructions.text)
               })
             },
             { role: 'user', content: run.prompt }
           ],
-          tools: toolSpecsFor({ image: false, skill: skillSpec, only: run.tools }),
+          tools: toolSpecsFor({
+            image: false,
+            skill: skillSpec,
+            memory: memorySpec,
+            only: run.tools
+          }),
           mcp: null,
           todos: [],
           // A child answers once and is done. There is nothing for it to be
@@ -1198,6 +1255,7 @@ export class AgentService {
           dispatchTask: () => null,
           findSubagent: null,
           findSkill: (name) => skills.find((s) => s.name === name) ?? null,
+          findMemory: (name) => memories.find((m) => m.name === name) ?? null,
           // Nothing to schedule against: this conversation ends when the report
           // does, so a fire aimed at it would wake nobody.
           schedule: null,

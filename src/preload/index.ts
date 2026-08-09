@@ -89,6 +89,7 @@ import type {
 } from '../shared/agent-types';
 import type { AgentTranscribeRequest, AgentTranscribeResult } from '../shared/agent-voice';
 import type { AgentCommandDescriptor } from '../shared/agent-commands';
+import type { MemoryDescriptor, MemorySource } from '../shared/agent-memory';
 import type {
   FoundSkill,
   InstalledSkill,
@@ -695,6 +696,27 @@ const fleetApi = {
       /** The way to everything this UI does not do: edit one, look at what it bundles. */
       reveal: async (path: string): Promise<void> =>
         typedInvoke<void>(IPC_CHANNELS.AGENT_SKILLS_REVEAL, path)
+    },
+
+    /**
+     * Memory: what earlier sessions wrote down about this project and this user.
+     *
+     * Deliberately smaller than `skills` above. Nothing here creates an entry,
+     * because the agent is the only thing that writes one - this is the panel
+     * for seeing what it wrote and taking one back.
+     *
+     * `list` takes the working folder, since the project tier lives inside the
+     * repository. `remove` takes a tier and a name rather than a path, and main
+     * rebuilds the path from them.
+     */
+    memory: {
+      list: async (cwd: string): Promise<MemoryDescriptor[]> =>
+        typedInvoke<MemoryDescriptor[]>(IPC_CHANNELS.AGENT_MEMORY_LIST, cwd),
+      /** The undo for an entry that should not have been written. */
+      remove: async (scope: MemorySource, name: string, cwd: string): Promise<void> =>
+        typedInvoke<void>(IPC_CHANNELS.AGENT_MEMORY_REMOVE, scope, name, cwd),
+      reveal: async (path: string): Promise<void> =>
+        typedInvoke<void>(IPC_CHANNELS.AGENT_MEMORY_REVEAL, path)
     },
 
     /**
