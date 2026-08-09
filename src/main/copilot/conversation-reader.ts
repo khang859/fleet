@@ -127,23 +127,28 @@ function formatToolInputPreview(toolName: string, input: Record<string, unknown>
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function parseMessageLine(
   json: Record<string, unknown>,
   seenToolIds: Set<string>
 ): CopilotChatMessage | null {
-  const type = json['type'] as string;
-  if (type !== 'user' && type !== 'assistant') return null;
+  const type = json['type'];
+  if (typeof type !== 'string' || (type !== 'user' && type !== 'assistant')) return null;
   if (json['isMeta'] === true) return null;
 
-  const uuid = json['uuid'] as string | undefined;
-  if (!uuid) return null;
+  const uuid = json['uuid'];
+  if (typeof uuid !== 'string' || !uuid) return null;
 
-  const messageDict = json['message'] as Record<string, unknown> | undefined;
-  if (!messageDict) return null;
+  const messageRaw = json['message'];
+  if (!isRecord(messageRaw)) return null;
 
-  const timestamp = (json['timestamp'] as string) ?? new Date().toISOString();
+  const ts = json['timestamp'];
+  const timestamp = typeof ts === 'string' ? ts : new Date().toISOString();
   const blocks: CopilotMessageBlock[] = [];
-  const content = messageDict['content'];
+  const content = messageRaw['content'];
 
   if (typeof content === 'string') {
     if (
@@ -159,27 +164,33 @@ function parseMessageLine(
       blocks.push({ type: 'text', text: content });
     }
   } else if (Array.isArray(content)) {
-    for (const block of content as Array<Record<string, unknown>>) {
-      const blockType = block['type'] as string;
+    for (const block of content) {
+      if (!isRecord(block)) continue;
+      const blockType = block['type'];
+      if (typeof blockType !== 'string') continue;
       switch (blockType) {
         case 'text': {
-          const text = block['text'] as string;
-          if (text?.startsWith('[Request interrupted by user')) {
+          const text = block['text'];
+          const textStr = typeof text === 'string' ? text : '';
+          if (textStr.startsWith('[Request interrupted by user')) {
             blocks.push({ type: 'interrupted' });
-          } else if (text) {
-            blocks.push({ type: 'text', text });
+          } else if (textStr) {
+            blocks.push({ type: 'text', text: textStr });
           }
           break;
         }
         case 'tool_use': {
-          const toolId = block['id'] as string;
-          if (toolId && seenToolIds.has(toolId)) continue;
-          if (toolId) seenToolIds.add(toolId);
-          const name = (block['name'] as string) ?? 'Unknown';
-          const input = (block['input'] as Record<string, unknown>) ?? {};
+          const toolId = block['id'];
+          const toolIdStr = typeof toolId === 'string' ? toolId : '';
+          if (toolIdStr && seenToolIds.has(toolIdStr)) continue;
+          if (toolIdStr) seenToolIds.add(toolIdStr);
+          const nameRaw = block['name'];
+          const name = typeof nameRaw === 'string' ? nameRaw : 'Unknown';
+          const inputRaw = block['input'];
+          const input = isRecord(inputRaw) ? inputRaw : {};
           const toolBlock: CopilotMessageBlock = {
             type: 'tool_use',
-            id: toolId ?? '',
+            id: toolIdStr,
             name,
             inputPreview: formatToolInputPreview(name, input)
           };
@@ -191,9 +202,10 @@ function parseMessageLine(
           break;
         }
         case 'thinking': {
-          const thinking = block['thinking'] as string;
-          if (thinking) {
-            blocks.push({ type: 'thinking', text: thinking });
+          const thinking = block['thinking'];
+          const thinkingStr = typeof thinking === 'string' ? thinking : '';
+          if (thinkingStr) {
+            blocks.push({ type: 'thinking', text: thinkingStr });
           }
           break;
         }
@@ -242,7 +254,8 @@ function applyTranscriptLine(
   }
 
   try {
-    const json = JSON.parse(line) as Record<string, unknown>;
+    const json: unknown = JSON.parse(line);
+    if (!isRecord(json)) return;
     const msg = parseMessageLine(json, seenToolIds);
     if (msg) messages.push(msg);
   } catch {

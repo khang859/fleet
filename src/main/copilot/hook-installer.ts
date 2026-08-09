@@ -18,18 +18,18 @@ const DEFAULT_CLAUDE_DIR = join(homedir(), '.claude');
 // Old Python script name — used for cleanup during migration
 const LEGACY_SCRIPT_NAME = 'fleet-copilot.py';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseClaudeSettings(text: string): ClaudeSettings | null {
+  const data: unknown = JSON.parse(text);
+  return isRecord(data) ? data : null;
+}
+
 function getHookBinaryName(): string {
   const platform = process.platform === 'win32' ? 'windows' : process.platform;
-  let arch: string;
-  switch (process.arch) {
-    case 'arm64':
-      arch = 'arm64';
-      break;
-    case 'x64':
-    default:
-      arch = 'amd64';
-      break;
-  }
+  const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
   const name = `fleet-copilot-${platform}-${arch}`;
   return platform === 'windows' ? `${name}.exe` : name;
 }
@@ -120,7 +120,11 @@ function removeLegacyHooks(configDir?: string): void {
   // Remove old Python hook entries from settings.json
   if (!existsSync(settingsPath)) return;
   try {
-    const settings: ClaudeSettings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    const settings = parseClaudeSettings(readFileSync(settingsPath, 'utf-8'));
+    if (!settings) {
+      log.warn('failed to parse settings.json, skipping legacy cleanup');
+      return;
+    }
     const hooks = settings.hooks ?? {};
     let changed = false;
 
@@ -178,7 +182,8 @@ export function isInstalled(configDir?: string): boolean {
   if (!existsSync(settingsPath)) return false;
 
   try {
-    const settings: ClaudeSettings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    const settings = parseClaudeSettings(readFileSync(settingsPath, 'utf-8'));
+    if (!settings) return false;
     const hooks = settings.hooks ?? {};
     return 'SessionStart' in hooks && hasFleetHook(hooks['SessionStart'] ?? []);
   } catch {
@@ -212,7 +217,8 @@ export function install(configDir?: string): void {
   let settings: ClaudeSettings = {};
   if (existsSync(settingsPath)) {
     try {
-      settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+      const parsed = parseClaudeSettings(readFileSync(settingsPath, 'utf-8'));
+      if (parsed) settings = parsed;
     } catch {
       log.warn('failed to parse existing settings.json, starting fresh');
     }
@@ -265,7 +271,8 @@ export function uninstall(configDir?: string): void {
   if (!existsSync(settingsPath)) return;
 
   try {
-    const settings: ClaudeSettings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    const settings = parseClaudeSettings(readFileSync(settingsPath, 'utf-8'));
+    if (!settings) return;
     const hooks = settings.hooks ?? {};
 
     for (const eventName of Object.keys(hooks)) {
