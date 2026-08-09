@@ -39,6 +39,8 @@ type PtyEntry = {
   cwd: string;
   outputBuffer: string;
   paused: boolean;
+  /** When the pause started, for the self-heal in `flushAll`. Null when running. */
+  pausedAt: number | null;
   dataDisposable: pty.IDisposable | null;
   exitDisposable: pty.IDisposable | null;
   snapshot: ShellEnvSnapshot | null;
@@ -46,6 +48,27 @@ type PtyEntry = {
 
 const FLUSH_INTERVAL_MS = 16;
 const BUFFER_OVERFLOW_BYTES = 256 * 1024;
+
+/**
+ * How long a pane may stay paused waiting for the renderer to say it has caught
+ * up, before this side resumes it anyway.
+ *
+ * Pausing is renderer-driven by design and that is the right default: the
+ * renderer acknowledges a batch once xterm has actually parsed it, which is the
+ * only honest signal that the output was consumed rather than merely sent. The
+ * problem is that it was also the *only* signal. Nothing on this side cleared
+ * `paused`, so a renderer busy enough to be late with the acknowledgement -
+ * rendering a streaming agent reply, say - left the shell stopped mid-write for
+ * as long as it stayed busy, and the person watching saw a terminal that had
+ * frozen. Worse, the pause is entered when this process is too busy to flush on
+ * time, so the two halves could hold each other there.
+ *
+ * With this, the acknowledgement is an optimisation rather than a requirement:
+ * it resumes immediately when it arrives, and the shell runs again shortly
+ * after regardless. A quarter second is long enough that a renderer keeping up
+ * is never second-guessed, and short enough that nobody reads it as a hang.
+ */
+const RESUME_WITHOUT_DRAIN_MS = 250;
 
 export class PtyManager {
   private ptys = new Map<string, PtyEntry>();
@@ -124,6 +147,7 @@ export class PtyManager {
       cwd: opts.cwd,
       outputBuffer: '',
       paused: false,
+      pausedAt: null,
       dataDisposable: null,
       exitDisposable: null,
       snapshot: buildEnvSnapshot({
@@ -145,6 +169,7 @@ export class PtyManager {
           bufferBytes: entry.outputBuffer.length
         });
         entry.paused = true;
+        entry.pausedAt = Date.now();
         this.flushPane(opts.paneId);
         proc.pause();
       }
@@ -272,6 +297,7 @@ export class PtyManager {
     if (entry) {
       log.debug('resume', { paneId });
       entry.paused = false;
+      entry.pausedAt = null;
       entry.process.resume();
     }
   }
@@ -313,6 +339,27 @@ export class PtyManager {
   private flushAll(): void {
     for (const paneId of this.ptys.keys()) {
       this.flushPane(paneId);
+      this.resumeIfStuck(paneId);
     }
+  }
+
+  /**
+   * Let a pane that has been paused too long start reading again.
+   *
+   * Runs on the flush tick rather than on a timer of its own, so a pane is
+   * reconsidered every 16ms while paused and costs nothing while it is not.
+   * The buffer has just been flushed by the time this is reached, so resuming
+   * here is resuming into an empty one - if the producer is genuinely faster
+   * than the renderer, the next burst simply pauses it again, which is the
+   * behaviour wanted: output arrives in bursts rather than stopping dead.
+   *
+   * See RESUME_WITHOUT_DRAIN_MS for why this exists at all.
+   */
+  private resumeIfStuck(paneId: string): void {
+    const entry = this.ptys.get(paneId);
+    if (entry === undefined || !entry.paused || entry.pausedAt === null) return;
+    if (Date.now() - entry.pausedAt < RESUME_WITHOUT_DRAIN_MS) return;
+    log.debug('resuming without a drain', { paneId, pausedMs: Date.now() - entry.pausedAt });
+    this.resume(paneId);
   }
 }

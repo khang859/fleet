@@ -75,6 +75,25 @@ export const TODO_NUDGE_AT = 6;
 export const TODO_ESCALATE_AT = 14;
 
 /**
+ * How often the firmest rung may be said again once it has been said.
+ *
+ * The rung above it is a demand to stop and fix the list before anything else,
+ * and it was being made on every round for as long as the streak lasted. That
+ * turns out to be self-defeating in a way the gentler rungs are not: answering
+ * it costs the model the round it would have spent finishing the item, so
+ * nothing settles, so the streak grows, so it is asked again - harder - the
+ * next round. A real session was observed spending twenty consecutive rounds
+ * explaining why its list had not moved instead of moving it.
+ *
+ * So it is said once and then not again for a while. The list itself is still
+ * shown every round, and the mild rung still rides with it; what backs off is
+ * only the instruction to drop everything, which has already been given and
+ * either landed or did not. Ten rounds is enough to finish something large
+ * enough to have caused the streak in the first place.
+ */
+export const TODO_ESCALATE_EVERY = 10;
+
+/**
  * Whether an item is finished with, one way or the other.
  *
  * The one place the difference between "done" and "not done" is decided, so
@@ -243,7 +262,13 @@ const NO_LIST_NUDGE = [
 function rung(streak: number, items: AgentTodoItem[]): string {
   const active = activeItem(items);
 
-  if (streak < TODO_NUDGE_AT) {
+  // Past the top rung and not on one of its rounds: the demand has been made
+  // recently and repeating it is what stopped the work last time. See
+  // TODO_ESCALATE_EVERY.
+  const escalated =
+    streak >= TODO_ESCALATE_AT && (streak - TODO_ESCALATE_AT) % TODO_ESCALATE_EVERY === 0;
+
+  if (streak < TODO_NUDGE_AT || (streak >= TODO_ESCALATE_AT && !escalated)) {
     // The cancel clause belongs here and not only further up the ladder. A user
     // who changes their mind does it in a fresh turn, where the streak has just
     // reset to zero - so the rung that talks about abandoning work is the one

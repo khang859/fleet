@@ -71,6 +71,7 @@ import { registerAgentIpc } from './agent/agent-ipc';
 import { completeOnce } from './agent/openrouter';
 import { AgentModelCatalog } from './agent/models-catalog';
 import { AgentService } from './agent/agent-service';
+import { coalesceStreamDeltas } from './agent/stream-emit';
 import { AgentSessionStore } from './agent/session-store';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './agent/image-store';
 import { PermissionGate } from './agent/permissions/gate';
@@ -894,10 +895,14 @@ void app.whenReady().then(async () => {
   const openRouterSecrets = new OpenRouterSecrets();
 
   // Agent panes.
-  const agentEmit = (channel: string, payload: unknown): void => {
+  const agentSend = (channel: string, payload: unknown): void => {
     const w = mainWindow;
     if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
   };
+  // Every agent event goes through here, which is what lets the per-token
+  // channels be batched without any of them overtaking a tool row. See
+  // `coalesceStreamDeltas`.
+  const agentEmit = coalesceStreamDeltas(agentSend);
   const agentGitWatcher = new AgentGitWatcher((paneId, head) =>
     agentEmit(IPC_CHANNELS.AGENT_GIT_HEAD, { paneId, head })
   );

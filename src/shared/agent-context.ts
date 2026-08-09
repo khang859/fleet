@@ -229,8 +229,18 @@ export const CLEARED_RESULT_TEXT =
  * assistant message holds every call of a turn, so a turn that ran forty rounds
  * is a single message, and keeping "the last four" of those would keep all
  * forty results or none.
+ *
+ * The number wants to be larger than it first appears, because clearing a
+ * result the model still needs does not save anything - it makes the model read
+ * the file again, which puts the same bytes back in the transcript and costs a
+ * round on top. At five, a working rhythm of read, change, check was losing the
+ * file it was working on within a single item: a session was observed re-reading
+ * the same four files for twenty rounds, and because a re-read settles nothing,
+ * the staleness nudge escalated on top of it. Twenty spans that rhythm several
+ * times over. Nothing is cleared at all until there are CLEAR_MIN_TOKENS to be
+ * won by it, so raising this costs a short session nothing.
  */
-export const CLEAR_KEEP_RECENT = 5;
+export const CLEAR_KEEP_RECENT = 20;
 
 /**
  * The least a pass has to free to be worth doing.

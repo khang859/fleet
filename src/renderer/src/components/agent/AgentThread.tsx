@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUp,
   Bot,
@@ -255,6 +255,15 @@ export function AgentThread({
   const subagents = subagentsInPanel || running.length === 0 ? null : running;
   const scheduleChips = schedulesInPanel || schedules.length === 0 ? null : schedules;
   const gitHead = useGitHead(paneId, cwd);
+  // Stable, because it is handed to every message in the transcript and those
+  // are memoized. An arrow written inline at the call site is a new function on
+  // every token of a streaming turn, which would fail their compare and undo
+  // the memo for the whole list.
+  const onDecide = useCallback(
+    (outcome: AgentPermissionOutcome, requestId: string) =>
+      decidePermission(paneId, outcome, requestId),
+    [decidePermission, paneId]
+  );
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -265,7 +274,7 @@ export function AgentThread({
           messages={messages}
           streaming={streaming && !compacting}
           ask={ask}
-          onDecide={(outcome, requestId) => decidePermission(paneId, outcome, requestId)}
+          onDecide={onDecide}
           imagePartials={imagePartials}
           taskActivity={taskActivity}
           taskPermissions={taskPermissions}
@@ -409,7 +418,14 @@ function Transcript({
   // Which results the next request will leave out. Worked out from the same
   // transcript and by the same function main uses, so a row that says it was
   // cleared is one the model is genuinely no longer being told about.
-  const cleared = useMemo(() => clearedCallIds(messages), [messages]);
+  //
+  // Held to its previous identity while it says the same thing. This set is
+  // handed to every message in the transcript, and the transcript is a new
+  // array on every streamed token - so a fresh `Set` each time, even one with
+  // identical contents, would fail the compare on every memoized message and
+  // undo the whole point of memoizing them. What actually changes it is a call
+  // starting or a result being dropped, which is rare.
+  const cleared = useStableIdSet(useMemo(() => clearedCallIds(messages), [messages]));
 
   // Follow the stream. Keyed on the growing text so every delta scrolls.
   useEffect(() => {
@@ -605,12 +621,35 @@ function ScheduleChip({ rows }: { rows: ScheduleRow[] }): React.JSX.Element {
 }
 
 /**
+ * The same set, for as long as it holds the same ids.
+ *
+ * The cache-the-last-value pattern: a ref written during render, which is sound
+ * here because the value it holds is derived from the arguments and never
+ * outlives being read. Comparing a handful of ids costs nothing next to the
+ * re-render of an entire transcript that an identity change would force.
+ */
+function useStableIdSet(ids: Set<string>): Set<string> {
+  const held = useRef(ids);
+  const same = held.current.size === ids.size && [...ids].every((id) => held.current.has(id));
+  if (!same) held.current = ids;
+  return held.current;
+}
+
+/**
  * User turns are a bubble, the agent's answer is flat on the page - the reply is
  * the content, not one side of a conversation. Model prose is Markdown, whether
  * it is an answer or a summary; what the user typed and the reasoning channel
  * stay verbatim, since neither is written to be formatted.
+ *
+ * Memoized, which is what keeps a long transcript from costing more to stream
+ * into the longer it gets. Only the message being written changes on a token;
+ * every one above it is finished and identical, and without a compare here
+ * React re-renders all of them - every tool row, every paragraph of Markdown -
+ * for each of the tens of thousands of tokens a long turn arrives in. The props
+ * are all either stable identities from the store or hoisted callbacks, so the
+ * default shallow compare holds.
  */
-function Message({
+const Message = memo(function Message({
   message,
   streaming,
   ask,
@@ -718,7 +757,7 @@ function Message({
       })}
     </div>
   );
-}
+});
 
 /**
  * The model's reasoning: open while it is thinking, folded away to a single

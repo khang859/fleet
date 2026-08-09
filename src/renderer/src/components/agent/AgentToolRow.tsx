@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 import { diffLineKind } from '../../../../shared/agent-diff';
@@ -28,8 +28,17 @@ import { AgentImage, AgentImagePreview } from './AgentImage';
  * The other exception is a call that failed. Then the row is the only place the
  * reason exists, so the row says so plainly and the disclosure holds the
  * reason rather than a result.
+ *
+ * Memoized, and of everything in the pane this is the row where it counts. A
+ * turn that reads its way around a repository leaves a hundred of these behind,
+ * each holding the whole of what its call returned, and every one of them was
+ * being re-rendered on every streamed token of the reply still being written -
+ * re-splitting its diff and re-slicing its output each time, for a row whose
+ * content settled minutes ago. A finished call's `call` object is replaced by
+ * id rather than mutated, so its identity is already stable and the default
+ * shallow compare is enough.
  */
-export function AgentToolRow({
+export const AgentToolRow = memo(function AgentToolRow({
   call,
   partial,
   cleared = false
@@ -49,9 +58,12 @@ export function AgentToolRow({
 }): React.JSX.Element {
   const status = toolStatus(call);
   const { verb, target } = toolLabel(call);
-  const body = toolBody(call);
-  const diff = status === 'done' ? diffBody(call) : null;
-  const image = status === 'done' ? imageBody(call) : null;
+  // All three walk the whole of what the call returned - splitting it into
+  // lines, scanning for a diff header, slicing off a data URL - so they are
+  // held against the call rather than redone whenever this row draws.
+  const body = useMemo(() => toolBody(call), [call]);
+  const diff = useMemo(() => (status === 'done' ? diffBody(call) : null), [call, status]);
+  const image = useMemo(() => (status === 'done' ? imageBody(call) : null), [call, status]);
   // Open follows what the row is until the user says otherwise, and then it is
   // theirs: the diff arrives after the row has already rendered as running, so
   // an initial state could not have known what this call turned out to be.
@@ -123,7 +135,7 @@ export function AgentToolRow({
         ))}
     </div>
   );
-}
+});
 
 /**
  * A summary that is an outcome rather than a size. A command that exits 1 did
