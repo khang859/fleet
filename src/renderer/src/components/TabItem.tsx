@@ -10,10 +10,9 @@ import type { UserGroupColor } from './sidebar-constants';
 import { cwdBasename } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
 import { useRemoteStore } from '../store/remote-store';
-import { activityToBadge, PRIORITY } from '../store/notification-store';
 import { shortenPath } from '../lib/shorten-path';
 import { popperAnim } from '../lib/motion';
-import { PaneStatusGlyph } from './PaneStatusGlyph';
+import { TabStatusIndicator } from './TabStatusIndicator';
 import { COLOR_MAP } from './sidebar-constants';
 
 type TabItemProps = {
@@ -62,18 +61,6 @@ type TabItemProps = {
   onCreateGroup?: () => void;
   onAddToGroup?: (groupId: string) => void;
   onRemoveFromGroup?: () => void;
-};
-
-// Multi-signal badge config: color + size + shape + animation per severity level
-// so badge meaning is not conveyed by color alone (WCAG, Baymard, NNG)
-const BADGE_CONFIG: Record<
-  NotificationLevel,
-  { color: string; size: string; animate: string; label: string }
-> = {
-  permission: { color: 'bg-amber-400', size: 'w-2.5 h-2.5', animate: 'animate-pulse', label: '?' },
-  error: { color: 'bg-red-400', size: 'w-2.5 h-2.5', animate: '', label: '!' },
-  info: { color: 'bg-blue-400', size: 'w-2 h-2', animate: '', label: '' },
-  subtle: { color: 'bg-green-500', size: 'w-1.5 h-1.5', animate: '', label: '' }
 };
 
 function formatFreshness(lastOutputAt: number, state: string): string | null {
@@ -129,15 +116,6 @@ export function TabItem({
   const cwd = liveCwd ?? fallbackCwd;
   // Granular subscription — only re-renders when THIS pane's remote state changes
   const isRemote = useRemoteStore((s) => (drivingPaneId ? s.remotes.has(drivingPaneId) : false));
-
-  // The two-axis glyph is richer than the plain notification dot, but a raw
-  // IPC notification (e.g. a terminal bell) can outrank the activity state it
-  // arrived alongside - show whichever signal is more urgent, never the glyph
-  // if it would hide a higher-priority notification.
-  const activityBadgeLevel = activity ? activityToBadge(activity.state) : null;
-  const activityPriority = activityBadgeLevel ? PRIORITY[activityBadgeLevel] : -1;
-  const badgePriority = badge ? PRIORITY[badge] : -1;
-  const showActivityGlyph = activity !== undefined && activityPriority >= badgePriority;
 
   const [freshness, setFreshness] = useState<string | null>(null);
 
@@ -254,21 +232,12 @@ export function TabItem({
           {/* Show the status glyph in both active and inactive states so the
               label never shifts when a tab is selected (the glyph slot stays
               filled), and the focused tab still shows live activity. */}
-          {showActivityGlyph && (
-            <PaneStatusGlyph state={activity.state} className="flex-shrink-0" />
-          )}
-          {!isActive && !showActivityGlyph && badge && (
-            <span
-              className={`rounded-full flex-shrink-0 flex items-center justify-center ${BADGE_CONFIG[badge].color} ${BADGE_CONFIG[badge].size} ${BADGE_CONFIG[badge].animate}`}
-              aria-label={`${badge} notification`}
-            >
-              {BADGE_CONFIG[badge].label && (
-                <span className="text-[7px] font-bold text-black leading-none">
-                  {BADGE_CONFIG[badge].label}
-                </span>
-              )}
-            </span>
-          )}
+          <TabStatusIndicator
+            activity={activity}
+            badge={badge}
+            isActive={isActive}
+            className="flex-shrink-0"
+          />
 
           {icon && (
             <span
