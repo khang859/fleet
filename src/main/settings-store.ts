@@ -4,20 +4,42 @@ import { DEFAULT_SETTINGS } from '../shared/constants';
 
 export class SettingsStore {
   private store: Store<{ settings: FleetSettings }>;
+  /**
+   * The last merged answer, held until something changes it.
+   *
+   * `electron-store` reads the file, parses it and validates it against its
+   * schema on every single access - there is no in-memory copy underneath. That
+   * is invisible for a setting read when a dialog opens, and expensive for the
+   * ones read on a hot path: the agent's permission gate asks for the rules
+   * before every command it runs and again for every MCP call, so a turn that
+   * runs a few hundred tools was doing a few hundred blocking reads of the same
+   * unchanged file on the process that also serves terminal keystrokes.
+   *
+   * `watch` is what keeps this honest rather than merely fast. It invalidates
+   * on any write to the file, including one from outside this process, so the
+   * cache cannot go stale the way a plain memo would - and on macOS it is an
+   * `fs.watch` on the directory with a 100ms debounce, not a poll.
+   */
+  private cached: FleetSettings | null = null;
 
   constructor() {
     this.store = new Store<{ settings: FleetSettings }>({
       name: 'fleet-settings',
       defaults: {
         settings: DEFAULT_SETTINGS
-      }
+      },
+      watch: true
+    });
+    this.store.onDidAnyChange(() => {
+      this.cached = null;
     });
   }
 
   get(): FleetSettings {
+    if (this.cached !== null) return this.cached;
     const saved = this.store.get('settings');
     // Deep-merge with defaults to handle new fields added after initial save
-    return {
+    this.cached = {
       ...DEFAULT_SETTINGS,
       ...saved,
       general: {
@@ -69,6 +91,7 @@ export class SettingsStore {
         hosts: saved.remoteSsh?.hosts ?? DEFAULT_SETTINGS.remoteSsh.hosts
       }
     };
+    return this.cached;
   }
 
   set(partial: FleetSettingsPatch): void {
@@ -119,6 +142,10 @@ export class SettingsStore {
         hosts: partial.remoteSsh?.hosts ?? current.remoteSsh.hosts
       }
     };
+    // Ahead of the write rather than after it: the watcher that would clear
+    // this is debounced, so between the write and the notification a reader
+    // would otherwise be handed the settings as they were before this call.
+    this.cached = null;
     this.store.set('settings', merged);
   }
 }

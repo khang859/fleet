@@ -1,20 +1,46 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SettingsStore } from '../settings-store';
 // Mock electron-store, seeding `defaults` like the real lib does.
-vi.mock('electron-store', () => ({
-  default: class MockStore {
-    private data: Record<string, unknown>;
-    constructor(opts?: { defaults?: Record<string, unknown> }) {
-      this.data = { ...(opts?.defaults ?? {}) };
+//
+// `reads` and `fireChange` are what let the caching in SettingsStore be tested
+// at all: one counts the file accesses the real library would have made, the
+// other stands in for the watcher noticing somebody else wrote the file.
+vi.mock('electron-store', () => {
+  const listeners: Array<() => void> = [];
+  const counter = { reads: 0 };
+  return {
+    default: class MockStore {
+      private data: Record<string, unknown>;
+      constructor(opts?: { defaults?: Record<string, unknown> }) {
+        this.data = { ...(opts?.defaults ?? {}) };
+      }
+      get(key: string, defaultVal?: unknown): unknown {
+        counter.reads++;
+        return this.data[key] ?? defaultVal;
+      }
+      set(key: string, value: unknown): void {
+        this.data[key] = value;
+        for (const listener of listeners) listener();
+      }
+      onDidAnyChange(callback: () => void): () => void {
+        listeners.push(callback);
+        return () => listeners.splice(listeners.indexOf(callback), 1);
+      }
+    },
+    __counter: counter,
+    __fireChange: (): void => {
+      for (const listener of listeners) listener();
     }
-    get(key: string, defaultVal?: unknown): unknown {
-      return this.data[key] ?? defaultVal;
-    }
-    set(key: string, value: unknown): void {
-      this.data[key] = value;
-    }
-  }
-}));
+  };
+});
+
+/** The test-only handles the mock above hangs off the module. */
+async function harness(): Promise<{ __counter: { reads: number }; __fireChange: () => void }> {
+  return (await vi.importMock('electron-store')) as {
+    __counter: { reads: number };
+    __fireChange: () => void;
+  };
+}
 
 describe('SettingsStore settings merge', () => {
   let store: SettingsStore;
@@ -85,5 +111,53 @@ describe('SettingsStore settings merge', () => {
     expect(store.get().tools).toEqual({ annotate: true, sessions: false });
     expect(Object.keys(store.get().ai)).toEqual(['agent']);
     expect(store.get().ai.agent.compactThreshold).toBe(0.5);
+  });
+});
+
+/**
+ * The agent's permission gate reads the rules before every command it runs, and
+ * the real library reads and validates the file on each of those.
+ */
+describe('SettingsStore caching', () => {
+  it('reads the file once however many times it is asked', async () => {
+    const { __counter } = await harness();
+    const store = new SettingsStore();
+    store.get();
+    const after = __counter.reads;
+
+    store.get();
+    store.get();
+    store.get();
+
+    expect(__counter.reads).toBe(after);
+  });
+
+  it('re-reads after a write of its own', async () => {
+    const { __counter } = await harness();
+    const store = new SettingsStore();
+    store.get();
+    const before = __counter.reads;
+
+    store.set({ general: { fontSize: 15 } });
+
+    expect(store.get().general.fontSize).toBe(15);
+    expect(__counter.reads).toBeGreaterThan(before);
+  });
+
+  // The reason the cache is allowed to exist: it is invalidated by anything
+  // that touches the file, not only by writes made through this object.
+  it('re-reads after someone else writes the file', async () => {
+    const { __counter, __fireChange } = await harness();
+    const store = new SettingsStore();
+    store.get();
+    const before = __counter.reads;
+
+    store.get();
+    expect(__counter.reads).toBe(before);
+
+    __fireChange();
+    store.get();
+
+    expect(__counter.reads).toBeGreaterThan(before);
   });
 });

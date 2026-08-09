@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
 import {
   MAX_PARALLEL_TASKS,
+  MAX_TASKS_PER_THREAD,
   resolveTaskModel,
   resolveTaskTools,
   type SubagentDefinition
@@ -203,6 +204,14 @@ export class SubagentManager {
     if (this.live.size >= MAX_PARALLEL_TASKS) {
       throw new SubagentCapReached(
         `${MAX_PARALLEL_TASKS} subagents are already running, which is as many as Fleet will run at once. Wait for one to report back and dispatch this again.`
+      );
+    }
+    // And no one conversation may hold all of them. See `MAX_TASKS_PER_THREAD`:
+    // this is what stops a model that fans out wide from refusing every other
+    // pane in the app for as long as its children run.
+    if (this.runningFor(req.threadId).length >= MAX_TASKS_PER_THREAD) {
+      throw new SubagentCapReached(
+        `This conversation already has ${MAX_TASKS_PER_THREAD} subagents running, which is as many as one conversation runs at once. Wait for one to report back and dispatch this again.`
       );
     }
 

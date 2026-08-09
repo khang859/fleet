@@ -70,3 +70,80 @@ describe('completeOnce', () => {
     expect(bodies[0]).not.toHaveProperty('reasoning');
   });
 });
+
+/**
+ * Asking again, and knowing when not to.
+ *
+ * A turn that fails on a rate limit or a gateway hiccup used to end there, and
+ * a turn that fails is a pane the user has to notice and restart. What matters
+ * as much is the other half: a request that will fail identically next time
+ * should say so at once rather than making the user wait out two more attempts
+ * to be told their key is wrong.
+ */
+describe('completeOnce retries', () => {
+  /** Answers with each status in turn, then a good completion. */
+  function failing(statuses: number[]): { calls: () => number } {
+    let call = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const attempt = call++;
+        return Promise.resolve(
+          attempt < statuses.length
+            ? new Response(JSON.stringify({ error: { message: 'busy' } }), {
+                status: statuses[attempt]
+              })
+            : new Response(JSON.stringify({ choices: [{ message: { content: 'safe' } }] }), {
+                status: 200
+              })
+        );
+      })
+    );
+    return { calls: () => call };
+  }
+
+  const call = async (): Promise<{ text: string }> => completeOnce({ ...request, reasoning: null });
+
+  it('gets the answer that came after a rate limit', async () => {
+    const { calls } = failing([429]);
+
+    await expect(call()).resolves.toMatchObject({ text: 'safe' });
+    expect(calls()).toBe(2);
+  });
+
+  it('gives up after the third attempt rather than asking forever', async () => {
+    const { calls } = failing([503, 503, 503]);
+
+    await expect(call()).rejects.toThrow('busy');
+    expect(calls()).toBe(3);
+  });
+
+  // A bad key is not a busy server. Asking twice more only delays the message
+  // that tells the user what to fix.
+  it('does not ask again about a request that will fail the same way', async () => {
+    const { calls } = failing([401]);
+
+    await expect(call()).rejects.toThrow('busy');
+    expect(calls()).toBe(1);
+  });
+
+  // A cancel is an answer. Nothing should be retried on the user's behalf after
+  // they have said to stop.
+  it('does not ask again once the caller has cancelled', async () => {
+    const controller = new AbortController();
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls += 1;
+        controller.abort();
+        return Promise.reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+      })
+    );
+
+    await expect(
+      completeOnce({ ...request, reasoning: null, signal: controller.signal })
+    ).rejects.toThrow();
+    expect(calls).toBe(1);
+  });
+});

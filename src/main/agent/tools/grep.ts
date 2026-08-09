@@ -6,7 +6,7 @@ import {
   type AgentToolResult,
   type GrepArgs
 } from '../../../shared/agent-tools';
-import { displayPath, resolveInsideCwd } from './paths';
+import { displayPath, displayPathIn, resolveInsideCwd } from './paths';
 import { globMatcher } from './glob-match';
 import { walkFiles } from './walk';
 
@@ -36,10 +36,29 @@ const POOL_SIZE = 16;
 /** Matches held before sorting. Well past what is reported, bounded all the same. */
 const COLLECT_CAP = 5_000;
 
+/**
+ * Files one pool worker searches before handing the loop back.
+ *
+ * Scanning a file is all main-thread work - a split and a regex per line - and
+ * the reads between them are usually served from the page cache, so a search
+ * over a warm repository is a long stretch of computation with nothing waiting
+ * on disk to break it up. Everything else the process owes anyone waits behind
+ * it: the terminal's flush timer, the IPC a keystroke arrives on. Standing
+ * aside on a timer boundary costs the search a millisecond and gives the rest
+ * of the app its turn.
+ */
+const YIELD_EVERY = 8;
+
+/** Let timers and I/O callbacks run. A search is never the only thing waiting. */
+async function yieldToLoop(): Promise<void> {
+  return new Promise((done) => setImmediate(done));
+}
+
 type Match = { path: string; line: number; text: string };
 
 export async function runGrep(args: GrepArgs, { cwd }: AgentToolContext): Promise<AgentToolResult> {
   const root = resolveInsideCwd(args.path ?? '.', cwd);
+  const shownPath = displayPathIn(cwd);
   const pattern = compile(args.pattern, args.ignoreCase ?? false);
   const filter = args.glob === undefined ? null : globMatcher(args.glob);
   const filesOnly = args.mode === 'files';
@@ -71,7 +90,7 @@ export async function runGrep(args: GrepArgs, { cwd }: AgentToolContext): Promis
 
   let truncated = false;
   if (single.isFile()) {
-    await search(root, displayPath(root, cwd));
+    await search(root, shownPath(root));
   } else {
     const candidates: string[] = [];
     const walked = await walkFiles(root, GREP_MAX_FILES, (file) => {
@@ -83,8 +102,13 @@ export async function runGrep(args: GrepArgs, { cwd }: AgentToolContext): Promis
     let next = 0;
     await Promise.all(
       Array.from({ length: Math.min(POOL_SIZE, candidates.length) }, async () => {
+        let since = 0;
         for (let i = next++; i < candidates.length; i = next++) {
-          await search(candidates[i], displayPath(candidates[i], cwd));
+          await search(candidates[i], shownPath(candidates[i]));
+          if (++since >= YIELD_EVERY) {
+            since = 0;
+            await yieldToLoop();
+          }
         }
       })
     );

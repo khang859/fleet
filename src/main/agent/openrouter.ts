@@ -11,6 +11,88 @@ import { sseLines } from './sse';
 
 const COMPLETIONS_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
+/**
+ * How long a call may go silent before it is given up on.
+ *
+ * Idle rather than total: a stream that is arriving is not stuck however long
+ * it has been running, and a long answer from a slow reasoning model is the
+ * ordinary case rather than the failure. What this catches is the other one -
+ * a connection that was accepted and then never said anything - which without
+ * a clock of its own hangs forever. That is not only a pane that never
+ * finishes: a subagent stuck here holds one of the five slots the whole app
+ * shares, so one dead socket can stop every other conversation dispatching.
+ */
+const IDLE_TIMEOUT_MS = 90_000;
+
+/** Attempts a request gets when the far end is busy or broken. */
+const MAX_ATTEMPTS = 3;
+
+/** How long to wait before the second attempt, doubling, if the server did not say. */
+const BACKOFF_MS = 1_000;
+
+/**
+ * Statuses worth asking again about.
+ *
+ * The far end is busy or briefly broken in every one of these, so the same
+ * request may well work in a second. Everything else - a bad key, a model that
+ * does not exist, a body the API would not take - will fail exactly the same
+ * way next time, and retrying it only makes the user wait longer to be told.
+ */
+const RETRY_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+
+/**
+ * A signal that fires when the caller cancels, and also when nothing has
+ * happened for a while.
+ *
+ * The clock is restarted rather than run once, because a call has two different
+ * silences to survive: the wait for the first byte, and the pauses between
+ * chunks once the stream is running. A single deadline over the whole thing
+ * would cut off a long answer that was arriving perfectly well.
+ */
+class IdleDeadline {
+  private readonly controller = new AbortController();
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private unlink: (() => void) | null = null;
+
+  constructor(caller: AbortSignal | undefined) {
+    if (caller !== undefined) {
+      if (caller.aborted) this.controller.abort(caller.reason);
+      else {
+        const relay = (): void => this.controller.abort(caller.reason);
+        caller.addEventListener('abort', relay, { once: true });
+        this.unlink = () => caller.removeEventListener('abort', relay);
+      }
+    }
+    this.touch();
+  }
+
+  get signal(): AbortSignal {
+    return this.controller.signal;
+  }
+
+  /** Something arrived. Start the clock again. */
+  touch(): void {
+    this.hold();
+    this.timer = setTimeout(
+      () => this.controller.abort(new Error('OpenRouter stopped responding.')),
+      IDLE_TIMEOUT_MS
+    );
+  }
+
+  /** Stop the clock without ending the call: waiting to retry is not silence. */
+  hold(): void {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  /** The call is over, one way or another. */
+  clear(): void {
+    this.hold();
+    this.unlink?.();
+    this.unlink = null;
+  }
+}
+
 /** Who is asking, on every OpenRouter request Fleet makes. */
 export const APP_HEADERS = {
   'HTTP-Referer': 'https://github.com/khang859/fleet',
@@ -33,7 +115,8 @@ export type WireToolCall = {
  * order, because of how the parts are parsed on the way to the provider.
  */
 export type WireContentPart =
-  { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
 
 /**
  * One message on the wire. The assistant's own tool calls have to be sent back
@@ -180,24 +263,87 @@ const completionSchema = z.object({
  * Streamed and one-shot differ only in what they ask for and what they do with
  * the answer, so where to send it and how to say who is asking lives here, and
  * a response that is not an answer stops here too.
+ *
+ * This is also the only place in the file that retries, and it is the only
+ * place that safely can: nothing has read the body yet, so asking again cannot
+ * repeat a word the user has already watched arrive. Once `streamCompletion`
+ * has handed over its first delta the round is committed, and a failure after
+ * that is the caller's to report rather than ours to paper over.
  */
 async function post(
   apiKey: string,
-  signal: AbortSignal | undefined,
+  caller: AbortSignal | undefined,
+  deadline: IdleDeadline,
   body: Record<string, unknown>
 ): Promise<Response> {
-  const res = await fetch(COMPLETIONS_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      ...APP_HEADERS
-    },
-    body: JSON.stringify(body),
-    signal
+  const payload = JSON.stringify(body);
+  let wait = BACKOFF_MS;
+
+  for (let attempt = 1; ; attempt += 1) {
+    const last = attempt === MAX_ATTEMPTS;
+    deadline.touch();
+
+    let res: Response;
+    try {
+      res = await fetch(COMPLETIONS_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          ...APP_HEADERS
+        },
+        body: payload,
+        signal: deadline.signal
+      });
+    } catch (err) {
+      // A user who pressed stop has been answered, not failed. Anything else -
+      // a dropped connection, a socket that went quiet - is worth one more try.
+      if (caller?.aborted === true || last) throw err;
+      await backoff(wait, deadline);
+      wait *= 2;
+      continue;
+    }
+
+    if (res.ok) return res;
+    const message = await errorMessage(res);
+    if (last || !RETRY_STATUS.has(res.status)) throw new Error(message);
+    await backoff(retryAfterMs(res) ?? wait, deadline);
+    wait *= 2;
+  }
+}
+
+/** Wait before asking again, with the clock stopped: a wait is not a silence. */
+async function backoff(ms: number, deadline: IdleDeadline): Promise<void> {
+  deadline.hold();
+  await new Promise<void>((done) => {
+    const timer = setTimeout(done, ms);
+    deadline.signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        done();
+      },
+      { once: true }
+    );
   });
-  if (!res.ok) throw new Error(await errorMessage(res));
-  return res;
+}
+
+/**
+ * How long the server asked to be left alone for, in milliseconds.
+ *
+ * A rate limit that states its own window is the one number here worth more
+ * than our guess, since it is the only one that knows when the quota turns
+ * over. Only the seconds form is read: the HTTP-date form is legal and nobody
+ * sends it, and a clock-skewed parse would be worse than the fallback.
+ */
+function retryAfterMs(res: Response): number | null {
+  const header = res.headers.get('retry-after');
+  if (header === null) return null;
+  const seconds = Number(header.trim());
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  // Capped, because a limit that resets in an hour is not something to sit and
+  // wait out with a spinner on screen - it is something to tell the user about.
+  return Math.min(seconds, 30) * 1000;
 }
 
 export type CompletionRequest = {
@@ -228,21 +374,26 @@ export type CompletionRequest = {
 export async function completeOnce(
   req: CompletionRequest
 ): Promise<{ text: string; usage: AgentUsage | null }> {
-  const res = await post(req.apiKey, req.signal, {
-    model: req.model,
-    messages: req.messages,
-    stream: false,
-    max_tokens: req.maxTokens,
-    temperature: req.temperature,
-    ...(req.reasoning === null ? {} : { reasoning: req.reasoning })
-  });
+  const deadline = new IdleDeadline(req.signal);
+  try {
+    const res = await post(req.apiKey, req.signal, deadline, {
+      model: req.model,
+      messages: req.messages,
+      stream: false,
+      max_tokens: req.maxTokens,
+      temperature: req.temperature,
+      ...(req.reasoning === null ? {} : { reasoning: req.reasoning })
+    });
 
-  const parsed = completionSchema.safeParse(await res.json());
-  if (!parsed.success) throw new Error('OpenRouter returned an unreadable completion');
-  return {
-    text: (parsed.data.choices?.[0]?.message?.content ?? '').trim(),
-    usage: toUsage(parsed.data.usage)
-  };
+    const parsed = completionSchema.safeParse(await res.json());
+    if (!parsed.success) throw new Error('OpenRouter returned an unreadable completion');
+    return {
+      text: (parsed.data.choices?.[0]?.message?.content ?? '').trim(),
+      usage: toUsage(parsed.data.usage)
+    };
+  } finally {
+    deadline.clear();
+  }
 }
 
 /** One fragment of a tool call, as it appeared on the wire. */
@@ -363,30 +514,43 @@ async function errorMessage(res: Response): Promise<string> {
  * whole, in the outcome.
  */
 export async function streamCompletion(req: StreamRequest): Promise<StreamOutcome> {
-  const res = await post(req.apiKey, req.signal, {
-    model: req.model,
-    messages: req.messages,
-    stream: true,
-    ...(req.maxTokens === null ? {} : { max_tokens: req.maxTokens }),
-    ...(req.temperature === null ? {} : { temperature: req.temperature }),
-    ...(req.reasoning === null ? {} : { reasoning: req.reasoning }),
-    ...(req.tools === undefined || req.tools.length === 0 ? {} : { tools: req.tools })
-  });
+  const deadline = new IdleDeadline(req.signal);
+  try {
+    const res = await post(req.apiKey, req.signal, deadline, {
+      model: req.model,
+      messages: req.messages,
+      stream: true,
+      ...(req.maxTokens === null ? {} : { max_tokens: req.maxTokens }),
+      ...(req.temperature === null ? {} : { temperature: req.temperature }),
+      ...(req.reasoning === null ? {} : { reasoning: req.reasoning }),
+      ...(req.tools === undefined || req.tools.length === 0 ? {} : { tools: req.tools })
+    });
 
-  if (!res.body) throw new Error('OpenRouter returned an empty response');
+    if (!res.body) throw new Error('OpenRouter returned an empty response');
 
-  const toolDeltas: ToolCallDelta[] = [];
-  const served: { model: string | null; provider: string | null } = { model: null, provider: null };
-  for await (const line of sseLines(res.body)) {
-    const parsed = parseStreamLine(line);
-    if (parsed === 'done') break;
-    if (parsed === null) continue;
-    if (parsed.content) req.onDelta(parsed.content);
-    if (parsed.reasoning) req.onReasoning(parsed.reasoning);
-    if (parsed.toolCalls.length > 0) toolDeltas.push(...parsed.toolCalls);
-    if (parsed.usage) req.onUsage?.(parsed.usage);
-    if (parsed.model !== null) served.model = parsed.model;
-    if (parsed.provider !== null) served.provider = parsed.provider;
+    const toolDeltas: ToolCallDelta[] = [];
+    const served: { model: string | null; provider: string | null } = {
+      model: null,
+      provider: null
+    };
+    for await (const line of sseLines(res.body)) {
+      // Every line, including the keep-alive comments that parse to nothing.
+      // Those are exactly what says the connection is alive while a reasoning
+      // model thinks, and a clock that ignored them would cut off the models
+      // that take longest - the ones worth waiting for.
+      deadline.touch();
+      const parsed = parseStreamLine(line);
+      if (parsed === 'done') break;
+      if (parsed === null) continue;
+      if (parsed.content) req.onDelta(parsed.content);
+      if (parsed.reasoning) req.onReasoning(parsed.reasoning);
+      if (parsed.toolCalls.length > 0) toolDeltas.push(...parsed.toolCalls);
+      if (parsed.usage) req.onUsage?.(parsed.usage);
+      if (parsed.model !== null) served.model = parsed.model;
+      if (parsed.provider !== null) served.provider = parsed.provider;
+    }
+    return { toolCalls: collectToolCalls(toolDeltas), ...served };
+  } finally {
+    deadline.clear();
   }
-  return { toolCalls: collectToolCalls(toolDeltas), ...served };
 }

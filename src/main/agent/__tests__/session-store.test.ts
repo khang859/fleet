@@ -186,6 +186,39 @@ describe('AgentSessionStore.addSpend', () => {
 
     expect(existsSync(join(dir, `${GONE}.jsonl`))).toBe(false);
   });
+
+  /*
+   * The total is read from the end of the file rather than by replaying it, so
+   * that a turn's cost does not grow with the length of the conversation. Past
+   * the window this switches to, a session that kept reading the head would
+   * find a stale total and undercount everything after it.
+   */
+  it('keeps adding to the total in a conversation far past the tail window', () => {
+    store.append(S1, '/repo', { t: 'message', message: msg('a', 'hi') });
+    store.append(S1, '/repo', { t: 'spend', total: spendOf(0.5) });
+    for (let i = 0; i < 20; i += 1) {
+      store.append(S1, '/repo', { t: 'message', message: msg(`pad-${i}`, 'x'.repeat(10_000)) });
+    }
+
+    store.addSpend(S1, '/repo', usage(0.25));
+
+    expect(store.load(S1).spend).toMatchObject({ costUsd: 0.75, calls: 4 });
+  });
+
+  /*
+   * One turn long enough to push the last total out of the window. Reading the
+   * missing total as zero would silently reset what the user has spent, so this
+   * case goes back to the whole file rather than guessing.
+   */
+  it('falls back to the whole file when one turn is longer than the window', () => {
+    store.append(S1, '/repo', { t: 'message', message: msg('a', 'hi') });
+    store.append(S1, '/repo', { t: 'spend', total: spendOf(0.5) });
+    store.append(S1, '/repo', { t: 'message', message: msg('huge', 'x'.repeat(200_000)) });
+
+    store.addSpend(S1, '/repo', usage(0.25));
+
+    expect(store.load(S1).spend).toMatchObject({ costUsd: 0.75, calls: 4 });
+  });
 });
 
 describe('AgentSessionStore.list', () => {
