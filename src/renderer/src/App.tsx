@@ -7,12 +7,15 @@ import {
   Crosshair,
   History,
   SlidersHorizontal,
-  Bot
+  Bot,
+  Server
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
 import { getFileIcon } from './lib/file-icons';
+import type { Tab } from '../../shared/types';
 import { Sidebar } from './components/Sidebar';
+import { TabStatusIndicator } from './components/TabStatusIndicator';
 import { Dashboard } from './components/Dashboard';
 import { PaneGrid } from './components/PaneGrid';
 import {
@@ -83,6 +86,93 @@ function MiniSidebarTooltip({
         </Tooltip.Portal>
       </Tooltip.Root>
     </Tooltip.Provider>
+  );
+}
+
+/**
+ * Section seam in the collapsed rail. Spans the full rail width so a group
+ * boundary reads at a glance instead of dissolving into the background.
+ */
+function RailDivider(): React.JSX.Element {
+  return <div className="w-full h-px bg-fleet-border-strong my-0.5" />;
+}
+
+/**
+ * Corner status dot for a rail tab — the same signal the sidebar row shows next
+ * to its label, anchored to the icon's top-right and ringed in the rail surface
+ * so it reads as a badge rather than a smudge on the glyph beneath.
+ *
+ * Subscribes per tab: lifting the notification store into `App` would re-render
+ * every pane on each activity tick.
+ */
+function MiniTabStatus({
+  paneIds,
+  isActive
+}: {
+  paneIds: string[];
+  isActive: boolean;
+}): React.JSX.Element | null {
+  const badge = useNotificationStore((s) => s.getTabBadge(paneIds));
+  const activity = useNotificationStore((s) => s.getTabActivity(paneIds));
+
+  return (
+    <TabStatusIndicator
+      activity={activity}
+      badge={badge}
+      isActive={isActive}
+      className="absolute -top-0.5 -right-0.5 ring-2 ring-fleet-surface"
+    />
+  );
+}
+
+/**
+ * One tab button in the collapsed rail. Shared by the regular-tab run and the
+ * pinned agent run so both draw the same icon, active ring, and tooltip.
+ */
+function MiniTabButton({
+  tab,
+  isActive,
+  onClick
+}: {
+  tab: Tab;
+  isActive: boolean;
+  onClick: () => void;
+}): React.JSX.Element {
+  const tint = isActive ? 'text-fleet-text' : 'text-fleet-text-subtle';
+  // Same icon vocabulary the expanded sidebar uses, so a tab keeps its glyph
+  // when the sidebar collapses.
+  const isFile =
+    tab.type === 'file' || tab.type === 'image' || tab.type === 'markdown' || tab.type === 'pdf';
+
+  let icon: React.ReactNode;
+  if (tab.type === 'agent') {
+    icon = <Bot size={16} className={tint} />;
+  } else if (tab.type === 'ssh-browser') {
+    icon = <Server size={16} className={tint} />;
+  } else if (tab.type === 'image') {
+    icon = <ImageIcon size={16} className={tint} />;
+  } else if (isFile) {
+    const leafs = collectPaneLeafs(tab.splitRoot);
+    const basename = (leafs[0]?.remotePath ?? leafs[0]?.filePath)?.split('/').pop() ?? tab.label;
+    icon = <span className={tint}>{getFileIcon(basename, 16)}</span>;
+  } else {
+    icon = <Terminal size={16} className={tint} />;
+  }
+
+  return (
+    <MiniSidebarTooltip label={tab.label}>
+      <button
+        onClick={onClick}
+        className={`relative p-1 rounded transition-colors active:scale-90 ${
+          isActive
+            ? 'bg-fleet-surface-3 ring-1 ring-fleet-border-strong'
+            : 'hover:bg-fleet-surface-2'
+        }`}
+      >
+        {icon}
+        <MiniTabStatus paneIds={collectPaneIds(tab.splitRoot)} isActive={isActive} />
+      </button>
+    </MiniSidebarTooltip>
   );
 }
 
@@ -672,6 +762,14 @@ export function App(): React.JSX.Element {
   // workspaces) shows the same image and crossfades in sync.
   const slideshowFrame = useSlideshow(settings?.general.terminalBackground);
 
+  // The collapsed rail splits its icons the same way the expanded sidebar does:
+  // agents are a pinned run of their own rather than mixed into the tab list.
+  const miniRailTabs = workspace.tabs.filter(
+    (t) =>
+      t.type !== 'settings' && t.type !== 'annotate' && t.type !== 'sessions' && t.type !== 'agent'
+  );
+  const miniRailAgentTabs = workspace.tabs.filter((t) => t.type === 'agent');
+
   return (
     <div
       className="flex flex-col h-screen w-screen bg-fleet-bg text-fleet-text overflow-hidden"
@@ -716,56 +814,34 @@ export function App(): React.JSX.Element {
                 </svg>
               </button>
             </MiniSidebarTooltip>
-            <div className="w-6 h-px bg-fleet-border my-0.5" />
-            {/* File/terminal/image tab icons (excluding pinned + settings) */}
-            {workspace.tabs
-              .filter(
-                (t) => t.type !== 'settings' && t.type !== 'annotate' && t.type !== 'sessions'
-              )
-              .map((tab) => {
-                const isActive = tab.id === activeTabId;
-                return (
-                  <MiniSidebarTooltip label={tab.label} key={tab.id}>
-                    <button
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-1 rounded transition-colors active:scale-90 ${
-                        isActive
-                          ? 'bg-fleet-surface-3 ring-1 ring-fleet-border-strong'
-                          : 'hover:bg-fleet-surface-2'
-                      }`}
-                    >
-                      {tab.type === 'file' || tab.type === 'pdf' ? (
-                        <span className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}>
-                          {getFileIcon(
-                            collectPaneLeafs(tab.splitRoot)[0]?.filePath?.split('/').pop() ??
-                              tab.label,
-                            16
-                          )}
-                        </span>
-                      ) : tab.type === 'image' ? (
-                        <ImageIcon
-                          size={16}
-                          className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}
-                        />
-                      ) : tab.type === 'agent' ? (
-                        <Bot
-                          size={16}
-                          className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}
-                        />
-                      ) : (
-                        <Terminal
-                          size={16}
-                          className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}
-                        />
-                      )}
-                    </button>
-                  </MiniSidebarTooltip>
-                );
-              })}
+            <RailDivider />
+            {/* File/terminal/image tab icons (agents and pinned tools run below) */}
+            {miniRailTabs.map((tab) => (
+              <MiniTabButton
+                key={tab.id}
+                tab={tab}
+                isActive={tab.id === activeTabId}
+                onClick={() => setActiveTab(tab.id)}
+              />
+            ))}
             <div className="flex-1" />
+            {/* Pinned agents section (mirrors expanded sidebar: agents above tools) */}
+            {miniRailAgentTabs.length > 0 && (
+              <>
+                <RailDivider />
+                {miniRailAgentTabs.map((tab) => (
+                  <MiniTabButton
+                    key={tab.id}
+                    tab={tab}
+                    isActive={tab.id === activeTabId}
+                    onClick={() => setActiveTab(tab.id)}
+                  />
+                ))}
+              </>
+            )}
             {/* Pinned tools section (mirrors expanded sidebar: tools above workspaces) */}
             {workspace.tabs.some((t) => t.type === 'annotate' || t.type === 'sessions') && (
-              <div className="w-6 h-px bg-fleet-border my-0.5" />
+              <RailDivider />
             )}
             {/* Annotate pinned icon */}
             {workspace.tabs
@@ -813,7 +889,7 @@ export function App(): React.JSX.Element {
                   </MiniSidebarTooltip>
                 );
               })}
-            <div className="w-6 h-px bg-fleet-border my-0.5" />
+            <RailDivider />
             {/* Configure tools */}
             <MiniSidebarTooltip label="Configure tools">
               <button
