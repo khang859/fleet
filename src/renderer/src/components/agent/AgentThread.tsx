@@ -65,6 +65,9 @@ import { useAgentCommands } from './use-agent-commands';
 import { agentMentionQuery, withoutMentionQuery } from './composer-mention';
 import { useComposerMenu, type ComposerMenuAnchor } from './composer-menu';
 import { INTERRUPT_ARM_MS, composerIntent, settleDelay } from './composer-keys';
+import { useVoiceDictation } from './use-voice-dictation';
+import { VoiceButton } from './VoiceButton';
+import { VOICE_COUNTDOWN_MS, VOICE_MAX_MS } from '../../../../shared/agent-voice';
 import { atTail, lostRoom } from './transcript-tail';
 import { ComposerMenu } from './ComposerMenu';
 import { downscaleImage } from '../../lib/downscale-image';
@@ -355,6 +358,7 @@ export function AgentThread({
           onSend={(text, attachments) => send(paneId, cwd, text, attachments)}
           onStop={() => cancel(paneId)}
           onClear={() => startNewSession(paneId, cwd)}
+          branch={gitHead?.branch ?? null}
         />
 
         <AgentLocation cwd={cwd} head={gitHead} />
@@ -833,13 +837,16 @@ function Composer({
   blind,
   onSend,
   onStop,
-  onClear
+  onClear,
+  branch
 }: {
   disabled: boolean;
   streaming: boolean;
   /** Stopped on a question, which is the one thing typing here cannot answer. */
   asking: boolean;
   cwd: string;
+  /** The pane's git branch, fed to the dictation recognition hints. */
+  branch: string | null;
   /** Run the command being asked about, once. What Enter means while it is up. */
   onApprove: () => void;
   /**
@@ -876,6 +883,71 @@ function Composer({
   const commands = useAgentCommands(cwd, isSlashQuery(text) && !menuDismissed);
   const slashMenu = agentSlashMenu(text, commands, menuDismissed);
   const mentionQuery = agentMentionQuery(text, mentionDismissed);
+
+  const hasKey = useAgentStore((s) => s.keyPresent);
+
+  /*
+   * Voice dictation. The hook owns the media and the state machine; this
+   * component only decides where the words land (at the caret) and how the
+   * keys that already mean something here give way to a recording.
+   */
+  // True once the user sends (or clears) until the next recording starts, so a
+  // transcript that returns after the message went out is dropped rather than
+  // arriving in the next empty box (plan section 8.3).
+  const droppedRef = useRef(false);
+
+  /**
+   * The words land at the live caret: `execCommand('insertText')` inserts at
+   * where the selection is now (so text typed or a caret moved during the
+   * transcription is honoured), replaces a selection the way ordinary typing
+   * does, and makes Cmd+Z restore the pre-insert text. The browser mutates the
+   * DOM value, which is pulled back into React state afterwards.
+   */
+  const insertTranscript = useCallback(
+    (text: string) => {
+      if (droppedRef.current) return;
+      const el = ref.current;
+      if (el === null) return;
+      el.focus();
+      document.execCommand('insertText', false, text);
+      setText(el.value);
+      onDraft();
+    },
+    [onDraft]
+  );
+
+  const voice = useVoiceDictation({ cwd, branch, onTranscript: insertTranscript });
+
+  // A fresh recording is a fresh chance for the previous transcript to land.
+  useEffect(() => {
+    if (voice.state.phase === 'recording') droppedRef.current = false;
+  }, [voice.state.phase]);
+
+  // Whether this recording is the down-half of a hold: the composer's hint says
+  // "release to insert" only while a finger is really holding.
+  const holding = voice.state.phase === 'recording' && voice.state.gesture !== 'tap';
+  const remaining = Math.max(0, VOICE_MAX_MS - voice.elapsed);
+
+  /**
+   * Escape's way out: cancel whatever voice is doing, and swallow the key so it
+   * does not also arm the interrupt. The dropped flag is set first, so a word
+   * already on its way back is declined when it lands.
+   */
+  const cancelVoice = useCallback(() => {
+    droppedRef.current = true;
+    voice.cancel();
+  }, [voice]);
+
+  /**
+   * Cmd+Shift+V toggles recording (plan section 7.3). Deliberately not a hold
+   * key: in a textarea a hold collides with typing, which is the bug Claude
+   * Code had to patch. One action rather than a down and an up, because a
+   * keystroke's two halves share a render and the second would overwrite the
+   * first's command before it ever ran.
+   */
+  const toggleVoice = useCallback(() => {
+    voice.toggle();
+  }, [voice]);
 
   /**
    * Hand one thing to main and keep what comes back.
@@ -991,6 +1063,9 @@ function Composer({
       setRefused(true);
       return;
     }
+    // The box is being emptied; a transcript still in flight must not land in
+    // the fresh one.
+    droppedRef.current = true;
     onClear();
     setText('');
     // The chips go too. They were filed under the session being left behind,
@@ -1104,6 +1179,8 @@ function Composer({
       setRefused(true);
       return;
     }
+    // A message going out means a transcript that returns now has no home.
+    droppedRef.current = true;
     onSend(trimmed, attachments);
     history.remember(trimmed);
     setText('');
@@ -1139,6 +1216,14 @@ function Composer({
         setDragging(false);
         void attachFiles(files);
       }}
+      // Cmd/Ctrl+Shift+V toggles dictation in this pane. Bubbles from the
+      // focused textarea (or the button), so it only fires when this composer
+      // is the one holding the key.
+      onKeyDown={(e) => {
+        if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== 'v') return;
+        e.preventDefault();
+        toggleVoice();
+      }}
     >
       {refused && (
         <p role="status" className="px-1 pb-1.5 text-[11px] text-fleet-text-subtle">
@@ -1159,6 +1244,14 @@ function Composer({
         <Notice>
           This model cannot see images. It will be sent, but the model may ignore it - choose one
           with vision in Settings to have it looked at.
+        </Notice>
+      )}
+      {voice.state.phase === 'error' && voice.state.error !== null && (
+        <Notice>{voice.state.error}</Notice>
+      )}
+      {voice.state.phase === 'denied' && (
+        <Notice>
+          Microphone blocked. Grant it in System Settings, then click the mic to try again.
         </Notice>
       )}
       <div
@@ -1219,6 +1312,29 @@ function Composer({
           >
             <Paperclip size={14} />
           </button>
+          <VoiceButton voice={voice} unavailable={!hasKey || disabled} />
+          {voice.state.phase === 'recording' && (
+            /* `h-7` rather than the row's `items-end`: the meter belongs on the
+               same line as the paperclip and the mic, not sitting on the floor
+               of a composer that has grown to several lines. */
+            <span className="flex h-7 shrink-0 items-center gap-1 text-[10px] font-mono tabular-nums text-fleet-text-subtle">
+              <span className="block h-1 w-8 shrink-0 overflow-hidden rounded-full bg-fleet-surface-3">
+                <span
+                  className="block h-full rounded-full bg-fleet-accent"
+                  style={{ width: `${Math.max(4, voice.level * 100)}%` }}
+                />
+              </span>
+              {/* Elapsed time while there is room, and only as the cap comes
+                  into view does it turn into an amber countdown. A recording
+                  that starts by counting down from a minute reads as a deadline
+                  on a sentence that will take five seconds. */}
+              {remaining < VOICE_COUNTDOWN_MS ? (
+                <span className="text-amber-500">{(remaining / 1000).toFixed(1)}s left</span>
+              ) : (
+                <span>{(voice.elapsed / 1000).toFixed(1)}s</span>
+              )}
+            </span>
+          )}
           {/* Beside the paperclip rather than out on the right: both are about
               what this message will do, and the right-hand side of the box is
               where sending it lives. */}
@@ -1271,12 +1387,17 @@ function Composer({
                 asking,
                 streaming,
                 armed,
+                voice: voice.active,
                 draft: text.trim() !== '' || attachments.length > 0
               });
               // Anything the composer has no opinion about is left alone
               // entirely, default included: these are the caret's keys.
               if (intent === 'pass') return;
               e.preventDefault();
+              if (intent === 'voice') {
+                cancelVoice();
+                return;
+              }
               if (intent === 'arm') {
                 setArmed(true);
                 return;
@@ -1299,9 +1420,15 @@ function Composer({
             placeholder={
               disabled
                 ? 'Choose a coding model in Settings first'
-                : asking
-                  ? 'Press Enter to run it, or answer above'
-                  : 'Ask the agent…'
+                : voice.state.phase === 'recording'
+                  ? holding
+                    ? 'Release to insert · move away to discard'
+                    : 'Recording… tap the mic to stop'
+                  : voice.state.phase === 'transcribing'
+                    ? 'Transcribing…'
+                    : asking
+                      ? 'Press Enter to run it, or answer above'
+                      : 'Ask the agent…'
             }
             aria-label="Message the agent"
             // The composer *is* the combobox while a menu is up: it keeps focus,

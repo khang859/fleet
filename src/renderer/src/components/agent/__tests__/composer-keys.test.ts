@@ -13,7 +13,13 @@ import {
  */
 
 /** Nothing running, nothing pending, nothing typed. */
-const IDLE: ComposerState = { asking: false, streaming: false, armed: false, draft: false };
+const IDLE: ComposerState = {
+  asking: false,
+  streaming: false,
+  armed: false,
+  voice: false,
+  draft: false
+};
 
 const enter = { key: 'Enter', shiftKey: false };
 const shiftEnter = { key: 'Enter', shiftKey: true };
@@ -60,6 +66,24 @@ describe('composerIntent', () => {
     expect(composerIntent(escape, IDLE)).toBe('pass');
     expect(composerIntent(escape, { ...IDLE, armed: true })).toBe('pass');
     expect(composerIntent(escape, { ...IDLE, asking: true })).toBe('pass');
+  });
+
+  /*
+   * Section 7.2 of the plan: Escape while voice is capturing or transcribing
+   * cancels the voice and is consumed, leaving `armed` untouched - a wrong
+   * answer costs a moment, a cancelled turn costs minutes and the money that
+   * bought them.
+   */
+  it('gives Escape to voice over the interrupt while voice is active', () => {
+    const streaming = { ...IDLE, streaming: true };
+    expect(composerIntent(escape, { ...streaming, voice: true })).toBe('voice');
+    // The asymmetry that settles the order: arming is NOT touched.
+    expect(composerIntent(escape, { ...streaming, armed: false, voice: true })).toBe('voice');
+    expect(composerIntent(escape, { ...streaming, armed: true, voice: true })).toBe('voice');
+  });
+
+  it('still arms the interrupt when voice is quiet', () => {
+    expect(composerIntent(escape, { ...IDLE, streaming: true })).toBe('arm');
   });
 
   it('has no opinion about ordinary typing', () => {

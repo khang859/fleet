@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AgentTaskInfo, AgentToolCall } from './agent-tools';
+import { DEFAULT_AGENT_VOICE_SETTINGS, type AgentVoiceSettings } from './agent-voice';
 import { AGENT_TODO_INSTRUCTIONS, type AgentTodoItem } from './agent-todos';
 import { AGENT_SKILL_INSTRUCTIONS } from './agent-skills';
 import { AGENT_SCHEDULE_INSTRUCTIONS } from './agent-schedule';
@@ -172,6 +173,12 @@ export type AgentSettings = {
    * `AgentModelConfig`, because naming needs none of the other knobs.
    */
   titleModel: string | null;
+  /**
+   * Voice dictation: the model that turns a spoken prompt into text. A plain
+   * `model` rather than a whole config, because transcription shares none of
+   * a completion's parameters.
+   */
+  voice: AgentVoiceSettings;
 };
 
 export const EMPTY_AGENT_MODEL_CONFIG: AgentModelConfig = {
@@ -205,7 +212,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   classifierModel: null,
   classifierNote: null,
   titleModel: null,
-  mcpServers: {}
+  mcpServers: {},
+  voice: { ...DEFAULT_AGENT_VOICE_SETTINGS }
 };
 
 /** Capability-namespaced AI settings. Future: image, video slot in here additively. */

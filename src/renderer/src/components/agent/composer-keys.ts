@@ -71,6 +71,12 @@ export type ComposerState = {
   streaming: boolean;
   /** An Escape has already been pressed and has not yet been forgotten. */
   armed: boolean;
+  /**
+   * Voice is recording or transcribing. Escape cancels it before it can arm
+   * the interrupt, because a wrong answer here costs little while a cancelled
+   * turn costs minutes of work and the money that bought them (section 7.2).
+   */
+  voice: boolean;
   /** Something is in the box - text or attached pictures, either counts. */
   draft: boolean;
 };
@@ -82,7 +88,7 @@ export type ComposerState = {
  * browser's, and Escape on a pane with nothing running. Those are left alone
  * entirely, default included.
  */
-export type ComposerIntent = 'approve' | 'send' | 'arm' | 'interrupt' | 'pass';
+export type ComposerIntent = 'approve' | 'send' | 'arm' | 'interrupt' | 'voice' | 'pass';
 
 /**
  * The one decision the composer's keyboard makes.
@@ -104,6 +110,11 @@ export type ComposerIntent = 'approve' | 'send' | 'arm' | 'interrupt' | 'pass';
  */
 export function composerIntent(key: ComposerKey, state: ComposerState): ComposerIntent {
   if (key.key === 'Escape') {
+    // Voice is checked first: cancelling a recording is cheap, while cancelling
+    // a turn throws away minutes of work. And it consumes the key without
+    // touching `armed`, so an Escape aimed at the mic never arms the interrupt
+    // the pane would otherwise be waiting on.
+    if (state.voice) return 'voice';
     if (!state.streaming) return 'pass';
     return state.armed ? 'interrupt' : 'arm';
   }

@@ -6,7 +6,9 @@ import {
   nativeImage,
   net,
   protocol,
-  shell
+  session as electronSession,
+  shell,
+  systemPreferences
 } from 'electron';
 import { safeOpenExternal, isSafeExternalUrl } from './safe-external';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
@@ -425,6 +427,38 @@ void app.whenReady().then(async () => {
   });
 
   createWindow();
+
+  // Electron's default refuses getUserMedia outright, so granting it has to be
+  // explicit. Deny-by-default is preserved for everything else: only `media`,
+  // and only on the app's own window.
+  electronSession.defaultSession.setPermissionRequestHandler(
+    (webContents, permission, callback) => {
+      callback(permission === 'media' && webContents === mainWindow?.webContents);
+    }
+  );
+
+  // The microphone at the OS level, resolved to a yes or a no.
+  //
+  // The read is what lets the renderer tell "denied in System Settings" - which
+  // the in-app prompt will never come back from - apart from "never been
+  // asked", which it will. The ask has to live here too: Electron does not
+  // raise the macOS prompt from `getUserMedia`, it only refuses outright for
+  // `denied` and `restricted`, and hands a never-asked app a stream of silence.
+  // Without this call dictation would record nothing and have nothing to say
+  // about why, which is the one outcome the plan rules out.
+  //
+  // macOS only. Elsewhere there is no OS-level gate to read, so getUserMedia is
+  // trusted to manage its own prompt.
+  ipcMain.handle(IPC_CHANNELS.AGENT_MIC_ACCESS, async (): Promise<string> => {
+    if (process.platform !== 'darwin') return 'granted';
+    const status = systemPreferences.getMediaAccessStatus('microphone');
+    if (status !== 'not-determined') return status;
+    await systemPreferences.askForMediaAccess('microphone');
+    // Re-read rather than keeping the boolean: the status is what the renderer
+    // branches on, and a refusal has to come back as `denied` so the copy can
+    // point at System Settings instead of offering a prompt that will not come.
+    return systemPreferences.getMediaAccessStatus('microphone');
+  });
 
   const gitService = new GitService();
   void enrichProcessEnv();
