@@ -81,6 +81,18 @@ export type VoiceDictation = {
   cancel: () => void;
 };
 
+/**
+ * Read a mutable flag ref through a call.
+ *
+ * A bare `ref.current` guard narrows the field to `false` for the rest of the closure,
+ * and that narrowing outlives the very awaits it exists to guard - the unmount that
+ * flips the flag happens while the async call is in flight, so a later `ref.current`
+ * read is genuinely `true` at runtime while the type system still says `false`.
+ */
+function flag(ref: { current: boolean }): boolean {
+  return ref.current;
+}
+
 export function useVoiceDictation(opts: {
   cwd: string;
   branch: string | null;
@@ -162,7 +174,7 @@ export function useVoiceDictation(opts: {
       // shows the prompt again, so both want saying before the stream is
       // opened rather than after a recording that captured nothing.
       const status = await window.fleet.agent.requestMicrophoneAccess();
-      if (disposedRef.current) return;
+      if (flag(disposedRef)) return;
       log.info('microphone access', { status });
       if (status === 'denied' || status === 'restricted') {
         dispatch({ kind: 'deny' });
@@ -170,7 +182,7 @@ export function useVoiceDictation(opts: {
       }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (disposedRef.current) {
+        if (flag(disposedRef)) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
@@ -178,7 +190,7 @@ export function useVoiceDictation(opts: {
         streamRef.current = stream;
         dispatch({ kind: 'grant' });
       } catch (err) {
-        if (disposedRef.current) return;
+        if (flag(disposedRef)) return;
         // Pause requests briefly: a failing mic retried in a hot loop is noise.
         retryAtRef.current = Date.now() + FAILURE_BACKOFF_MS;
         const name = err instanceof DOMException ? err.name : '';
@@ -196,7 +208,7 @@ export function useVoiceDictation(opts: {
     } catch (err) {
       // The status IPC rejected - never let that strand the button in
       // `requesting` (disabled, silent). Fall to an error it can recover from.
-      if (disposedRef.current) return;
+      if (flag(disposedRef)) return;
       log.error('microphone status call failed', { error: String(err) });
       retryAtRef.current = Date.now() + FAILURE_BACKOFF_MS;
       dispatch({ kind: 'fail', error: 'Could not check the microphone.' });
@@ -209,7 +221,7 @@ export function useVoiceDictation(opts: {
     const bucket = new Uint8Array(analyser.fftSize);
     const tailLength = Math.ceil(VOICE_SILENCE_WINDOW_MS / 16);
     const loop = (): void => {
-      if (disposedRef.current) return;
+      if (flag(disposedRef)) return;
       const live = analyserRef.current;
       if (live !== null) {
         live.getByteTimeDomainData(bucket);
@@ -348,7 +360,7 @@ export function useVoiceDictation(opts: {
         audioBase64: base64,
         mimeType: mimeTypeRef.current
       });
-      if (disposedRef.current) return; // unmounted: drop the transcript
+      if (flag(disposedRef)) return; // unmounted: drop the transcript
       if (result.ok) {
         if (result.text !== '') onTranscript(result.text);
         dispatch({ kind: 'done' });

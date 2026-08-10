@@ -4,17 +4,13 @@ import { mkdir, rm } from 'fs/promises';
 import { createLogger } from './logger';
 import { execInContext } from './run-in-context';
 import { toWindowsAccessiblePath } from '../shared/path-platform';
-import type { PathContext } from '../shared/shell-profiles';
+import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { WslService } from './wsl-service';
 
 const log = createLogger('worktree');
 
 // A WSL distro can be cold-booting; give worktree git operations a wide timeout.
 const WSL_GIT_TIMEOUT_MS = 30_000;
-
-function isWslCtx(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
-  return typeof ctx === 'object' && ctx.kind === 'wsl';
-}
 
 function getHomeDir(): string {
   return process.env.HOME ?? process.env.USERPROFILE ?? '/tmp';
@@ -138,7 +134,7 @@ export class WorktreeService {
    * native pane it stays on the byte-for-byte original simple-git path.
    */
   private async git(ctx: PathContext | undefined, cwd: string, args: string[]): Promise<string> {
-    if (isWslCtx(ctx)) {
+    if (isWslContext(ctx)) {
       const res = await execInContext(ctx, 'git', args, { cwd, timeoutMs: WSL_GIT_TIMEOUT_MS });
       if (res.code !== 0) {
         throw new Error(res.stderr.trim() || `git ${args.join(' ')} failed (exit ${res.code})`);
@@ -150,7 +146,7 @@ export class WorktreeService {
 
   /** Remove a directory, bridging to the UNC share for a WSL posix path. */
   private async rmDir(ctx: PathContext | undefined, dir: string): Promise<void> {
-    await rm(isWslCtx(ctx) ? toWindowsAccessiblePath(dir, ctx) : dir, {
+    await rm(isWslContext(ctx) ? toWindowsAccessiblePath(dir, ctx) : dir, {
       recursive: true,
       force: true
     });
@@ -162,7 +158,7 @@ export class WorktreeService {
    * `git worktree` cannot span filesystems), so it goes under the distro's home.
    */
   private async worktreeBase(ctx: PathContext | undefined, repoName: string): Promise<string> {
-    if (isWslCtx(ctx)) {
+    if (isWslContext(ctx)) {
       const home = await this.wslService.homeDir(ctx.distro);
       return posixPath.join(home, '.fleet', 'worktrees', repoName);
     }
@@ -176,7 +172,7 @@ export class WorktreeService {
     const repoName = getRepoName(repoPath);
     const base = await this.worktreeBase(ctx, repoName);
     // Create the base on the repo's filesystem (UNC bridge for a WSL home).
-    await mkdir(isWslCtx(ctx) ? toWindowsAccessiblePath(base, ctx) : base, { recursive: true });
+    await mkdir(isWslContext(ctx) ? toWindowsAccessiblePath(base, ctx) : base, { recursive: true });
 
     // Check both existing worktree names AND branch names to avoid conflicts
     const existing = await this.list(repoPath, ctx);
@@ -202,7 +198,9 @@ export class WorktreeService {
     );
 
     // posix join for WSL so the path git sees inside the distro stays posix.
-    const worktreePath = isWslCtx(ctx) ? posixPath.join(base, branchName) : join(base, branchName);
+    const worktreePath = isWslContext(ctx)
+      ? posixPath.join(base, branchName)
+      : join(base, branchName);
     log.info('creating worktree', { repoPath, worktreePath, branchName });
 
     await this.git(ctx, repoPath, ['worktree', 'add', worktreePath, '-b', branchName]);
@@ -218,7 +216,9 @@ export class WorktreeService {
         await this.git(ctx, worktreePath, ['rev-parse', '--git-common-dir'])
       ).trim();
       // gitCommonDir is like "/path/to/repo/.git" — parent is the repo root
-      mainRepoPath = isWslCtx(ctx) ? posixPath.join(gitCommonDir, '..') : join(gitCommonDir, '..');
+      mainRepoPath = isWslContext(ctx)
+        ? posixPath.join(gitCommonDir, '..')
+        : join(gitCommonDir, '..');
       log.info('resolved main repo', { worktreePath, mainRepoPath });
     } catch {
       log.warn('worktree dir not accessible, cleaning up directory', { worktreePath });

@@ -62,9 +62,8 @@ export function QuickOpenOverlay({
     setIsLoading(true);
     setAllFiles([]);
     void window.fleet.file.list(rootDir, getActivePaneContext().pathContext).then((result) => {
-      if (result.success) {
-        setAllFiles(result.files);
-      }
+      // `file.list` reports an unreadable directory as an empty listing, never a failure.
+      setAllFiles(result.files);
       setIsLoading(false);
     });
   }, [isOpen, rootDir]);
@@ -116,7 +115,7 @@ export function QuickOpenOverlay({
       setSelectedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const file = results[selectedIndex];
+      const file = results.at(selectedIndex);
       if (file) handleSelect(file);
     } else if (e.key === 'Escape') {
       e.preventDefault();

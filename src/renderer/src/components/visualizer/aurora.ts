@@ -55,7 +55,8 @@ export class AuroraBands {
     if (band.cachedCanvas?.width !== width || band.cachedCanvas.height !== bandHeight) {
       band.cachedCanvas = new OffscreenCanvas(width, bandHeight);
     }
-    const offCtx = band.cachedCanvas.getContext('2d')!;
+    const offCtx = band.cachedCanvas.getContext('2d');
+    if (!offCtx) return;
     offCtx.clearRect(0, 0, width, bandHeight);
 
     const grad = offCtx.createLinearGradient(0, 0, 0, bandHeight);
@@ -88,7 +89,9 @@ export class AuroraBands {
       const oscillation = Math.sin(band.phase) * 20; // amplitude ~20px
       const y = band.baseY * height + oscillation;
 
-      ctx.drawImage(band.cachedCanvas!, 0, y);
+      // Non-null in practice - `needsRegen` covers the null case - but skip rather than
+      // assert, so a failed OffscreenCanvas context drops one band instead of throwing.
+      if (band.cachedCanvas) ctx.drawImage(band.cachedCanvas, 0, y);
     }
 
     if (regenerated) {

@@ -241,7 +241,7 @@ async function validateFiles(entries: SpriteEntry[]): Promise<string[]> {
 async function checkTransparency(path: string): Promise<boolean> {
   try {
     const meta = await sharp(path).metadata();
-    return meta.hasAlpha ?? false;
+    return meta.hasAlpha;
   } catch {
     return false;
   }
@@ -291,11 +291,8 @@ async function assembleSheet(entries: SpriteEntry[]): Promise<void> {
   }
 
   if (warnings.length > 0) {
-    // eslint-disable-next-line no-console
     console.log('\nTransparency warnings:');
-    // eslint-disable-next-line no-console
     warnings.forEach((w) => console.log(w));
-    // eslint-disable-next-line no-console
     console.log('  These images may have solid backgrounds that need to be removed.\n');
   }
 
@@ -306,7 +303,6 @@ async function assembleSheet(entries: SpriteEntry[]): Promise<void> {
   await mkdir(join(OUTPUT_SHEET, '..'), { recursive: true });
   await sharp(result).png().toFile(OUTPUT_SHEET);
 
-  // eslint-disable-next-line no-console
   console.log(`Sprite sheet written to: ${OUTPUT_SHEET}`);
 }
 
@@ -373,7 +369,13 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
     '  frameDuration: number',
     '}',
     '',
-    'export const SPRITE_ATLAS: Record<string, SpriteRegion> = {'
+    '/**',
+    ' * Keyed by sprite name. A lookup can miss: keys are built at the call sites from runtime',
+    ' * values (hull index, asteroid variant, celestial kind), and a sheet regenerated without',
+    ' * some sprite simply stops carrying that key. Hence the `undefined` - the guards at the',
+    ' * read sites are load-bearing, not defensive noise.',
+    ' */',
+    'export const SPRITE_ATLAS: Record<string, SpriteRegion | undefined> = {'
   ];
 
   const sortedKeys = Object.keys(atlas).sort((a, b) => {
@@ -408,16 +410,20 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
   lines.push('');
 
   // Helper to get sprite region for a ship by hull index and animation
-  lines.push('/** Get sprite region for a parent ship hull (1-indexed) */');
   lines.push(
-    "export function getParentSprite(hullIndex: number, anim: 'idle' | 'thrust' | 'warp-in' | 'warp-out'): SpriteRegion {"
+    '/** Get sprite region for a parent ship hull (1-indexed). Undefined if the hull has no sprite. */'
+  );
+  lines.push(
+    "export function getParentSprite(hullIndex: number, anim: 'idle' | 'thrust' | 'warp-in' | 'warp-out'): SpriteRegion | undefined {"
   );
   lines.push('  return SPRITE_ATLAS[`parent-${hullIndex}-${anim}`]');
   lines.push('}');
   lines.push('');
-  lines.push('/** Get sprite region for a subagent ship hull (1-indexed) */');
   lines.push(
-    "export function getSubagentSprite(hullIndex: number, anim: 'idle' | 'thrust' | 'warp-in' | 'warp-out'): SpriteRegion {"
+    '/** Get sprite region for a subagent ship hull (1-indexed). Undefined if the hull has no sprite. */'
+  );
+  lines.push(
+    "export function getSubagentSprite(hullIndex: number, anim: 'idle' | 'thrust' | 'warp-in' | 'warp-out'): SpriteRegion | undefined {"
   );
   lines.push('  return SPRITE_ATLAS[`subagent-${hullIndex}-${anim}`]');
   lines.push('}');
@@ -431,18 +437,14 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  // eslint-disable-next-line no-console
   console.log('Sprite Assembly Script');
-  // eslint-disable-next-line no-console
   console.log('======================\n');
 
   // Build manifest of all expected sprites
   const entries = buildManifest();
-  // eslint-disable-next-line no-console
   console.log(`Expected sprites: ${entries.length}`);
 
   // Validate all files exist
-  // eslint-disable-next-line no-console
   console.log('Validating source files...');
   const missing = await validateFiles(entries);
 
@@ -454,25 +456,20 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // eslint-disable-next-line no-console
   console.log('All files found!\n');
 
   // Assemble the sprite sheet
-  // eslint-disable-next-line no-console
   console.log('Assembling sprite sheet...');
   await assembleSheet(entries);
 
   // Generate the atlas TypeScript file
-  // eslint-disable-next-line no-console
   console.log('Generating sprite atlas...');
   const atlas = buildAtlas(entries);
   const code = generateAtlasCode(atlas);
   await mkdir(join(OUTPUT_ATLAS, '..'), { recursive: true });
   await writeFile(OUTPUT_ATLAS, code, 'utf-8');
-  // eslint-disable-next-line no-console
   console.log(`Atlas written to: ${OUTPUT_ATLAS}`);
 
-  // eslint-disable-next-line no-console
   console.log('\nDone! Your sprite sheet and atlas are ready.');
 }
 

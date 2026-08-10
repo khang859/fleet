@@ -37,7 +37,15 @@ if (typeof window === 'undefined') {
 // Polyfill localStorage for Node.js test environment (renderer stores use it).
 // Node 22+ has a global localStorage that requires --localstorage-file to work;
 // when not available, getItem is undefined. Always install our own.
-if (!globalThis.localStorage?.getItem) {
+//
+// Read through a function: the DOM lib types `globalThis.localStorage` as a `Storage`
+// that is always there with all its methods, which is exactly the claim this check
+// exists to disprove. A declared return type survives where a `const` annotation would
+// just get narrowed back to `Storage` by its initializer.
+function existingLocalStorage(): Partial<Storage> | undefined {
+  return globalThis.localStorage;
+}
+if (!existingLocalStorage()?.getItem) {
   const store: Record<string, string> = {};
   Object.assign(globalThis, {
     localStorage: {

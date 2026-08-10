@@ -4,6 +4,7 @@ import { writeFileSync, rmSync, statSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { createLogger } from '../logger';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
+import { z } from 'zod';
 import {
   learningToMarkdown,
   slugifyTitle,
@@ -72,14 +73,39 @@ function reqString(value: unknown, name: string): string {
   return value;
 }
 
-function validateCreateInput(input: CreateLearningInput): CreateLearningInput {
-  if (!input || typeof input !== 'object') throw new IpcError('learning input is required');
-  reqString(input.title, 'title');
-  if (typeof input.body !== 'string') throw new IpcError('body must be a string');
-  if (input.tags !== undefined && !Array.isArray(input.tags)) {
-    throw new IpcError('tags must be an array');
+/** A string that is present and not blank, matching `reqString` without trimming the value. */
+const nonBlank = (name: string): z.ZodString =>
+  z.string().refine((s) => s.trim() !== '', { message: `${name} is required` });
+
+const CreateInputSchema: z.ZodType<CreateLearningInput> = z.object({
+  title: nonBlank('title'),
+  body: z.string({ message: 'body must be a string' }),
+  tags: z.array(z.string(), { message: 'tags must be an array' }).optional(),
+  sourceAgent: z.string().optional(),
+  sourceSessionId: z.string().optional(),
+  sourceCwd: z.string().optional(),
+  sourceProject: z.string().optional(),
+  model: z.string().optional()
+});
+
+const UpdateInputSchema: z.ZodType<UpdateLearningInput> = z.object({
+  title: z.string().optional(),
+  body: z.string().optional(),
+  tags: z.array(z.string(), { message: 'tags must be an array' }).optional()
+});
+
+const DistillRequestSchema: z.ZodType<DistillRequest> = z.object({
+  id: nonBlank('id'),
+  cwd: nonBlank('cwd')
+});
+
+/** Parse an untrusted IPC payload, reporting the first failure as a renderer-safe message. */
+function parseInput<T>(schema: z.ZodType<T>, value: unknown, what: string): T {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    throw new IpcError(result.error.issues[0]?.message ?? `${what} is required`);
   }
-  return input;
+  return result.data;
 }
 
 /** Total size (bytes) of a directory tree; 0 if it doesn't exist. */
@@ -131,38 +157,32 @@ export function registerLearningsIpcHandlers(
   handle(IPC_CHANNELS.LEARNINGS_GET, (_e, id: string): Learning | null =>
     store.get(reqString(id, 'id'))
   );
-  handle(IPC_CHANNELS.LEARNINGS_CREATE, (_e, input: CreateLearningInput): Learning => {
-    const learning = store.create(validateCreateInput(input));
+  handle(IPC_CHANNELS.LEARNINGS_CREATE, (_e, input: unknown): Learning => {
+    const learning = store.create(parseInput(CreateInputSchema, input, 'learning input'));
     scheduleEmbed(learning);
     return learning;
   });
-  handle(
-    IPC_CHANNELS.LEARNINGS_UPDATE,
-    (_e, id: string, fields: UpdateLearningInput): Learning | null => {
-      reqString(id, 'id');
-      if (!fields || typeof fields !== 'object') throw new IpcError('update fields are required');
-      const updated = store.update(id, fields);
-      // The embedding is built from title + body, so only re-embed when one of those
-      // is part of the edit — a tag-only change leaves the existing vector valid.
-      const contentEdited = fields.title !== undefined || fields.body !== undefined;
-      if (updated && contentEdited) scheduleEmbed(updated);
-      return updated;
-    }
-  );
+  handle(IPC_CHANNELS.LEARNINGS_UPDATE, (_e, id: string, rawFields: unknown): Learning | null => {
+    reqString(id, 'id');
+    const fields = parseInput(UpdateInputSchema, rawFields, 'update fields');
+    const updated = store.update(id, fields);
+    // The embedding is built from title + body, so only re-embed when one of those
+    // is part of the edit - a tag-only change leaves the existing vector valid.
+    const contentEdited = fields.title !== undefined || fields.body !== undefined;
+    if (updated && contentEdited) scheduleEmbed(updated);
+    return updated;
+  });
   handle(IPC_CHANNELS.LEARNINGS_DELETE, (_e, id: string): void =>
     store.delete(reqString(id, 'id'))
   );
-  handle(
-    IPC_CHANNELS.LEARNINGS_DISTILL,
-    async (_e, req: DistillRequest): Promise<DistillResult> => {
-      if (!req || typeof req !== 'object') return { status: 'error', message: 'invalid request' };
-      reqString(req.id, 'id');
-      reqString(req.cwd, 'cwd');
-      const transcript = await sessions.read(req.id, req.cwd);
-      if (!transcript) return { status: 'error', message: 'Session transcript not found' };
-      return distillLearning(transcript);
-    }
-  );
+  handle(IPC_CHANNELS.LEARNINGS_DISTILL, async (_e, rawReq: unknown): Promise<DistillResult> => {
+    const parsed = DistillRequestSchema.safeParse(rawReq);
+    if (!parsed.success) return { status: 'error', message: 'invalid request' };
+    const req = parsed.data;
+    const transcript = await sessions.read(req.id, req.cwd);
+    if (!transcript) return { status: 'error', message: 'Session transcript not found' };
+    return distillLearning(transcript);
+  });
   handle(IPC_CHANNELS.LEARNINGS_SIMILAR, (_e, text: string, limit?: number): Learning[] =>
     store.findSimilar(reqString(text, 'text'), limit)
   );

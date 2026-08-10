@@ -212,7 +212,10 @@ const fleetApi = {
   layout: {
     save: async (req: LayoutSaveRequest): Promise<void> =>
       typedInvoke(IPC_CHANNELS.LAYOUT_SAVE, req),
-    load: async (workspaceId: string): Promise<Workspace> =>
+    // `undefined` when no workspace is saved under that id - the main handler and the
+    // store behind it have always been able to return nothing, and callers already
+    // guard for it.
+    load: async (workspaceId: string): Promise<Workspace | undefined> =>
       typedInvoke(IPC_CHANNELS.LAYOUT_LOAD, workspaceId),
     list: async (): Promise<LayoutListResponse> => typedInvoke(IPC_CHANNELS.LAYOUT_LIST),
     delete: async (workspaceId: string): Promise<void> =>

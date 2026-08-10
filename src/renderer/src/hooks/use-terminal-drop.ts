@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { quotePathForShell } from '../lib/shell-utils';
 import { getPaneContextById } from '../store/workspace-store';
 import { pathForPaneContext } from '../../../shared/path-platform';
-import type { PathContext } from '../../../shared/shell-profiles';
+import { isWslContext, type PathContext } from '../../../shared/shell-profiles';
 
 /**
  * getFilePath returns a Windows path. For a WSL pane translate it to POSIX via
@@ -10,7 +10,7 @@ import type { PathContext } from '../../../shared/shell-profiles';
  * fallback if the subprocess fails. win32/posix panes pass through.
  */
 async function pathForContext(winPath: string, ctx: PathContext): Promise<string> {
-  if (typeof ctx === 'object' && ctx.kind === 'wsl') {
+  if (isWslContext(ctx)) {
     try {
       return await window.fleet.wsl.toWslPath(ctx.distro, winPath);
     } catch {

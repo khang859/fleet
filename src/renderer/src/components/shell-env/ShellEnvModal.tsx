@@ -102,7 +102,7 @@ export function ShellEnvModal({
       } else if (e.key === 'Enter') {
         if (e.target !== inputRef.current) return;
         e.preventDefault();
-        const v = visible[selected];
+        const v = visible.at(selected);
         if (v) copyValue(v);
       }
     },

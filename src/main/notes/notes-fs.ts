@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
-import type { PathContext } from '../../shared/shell-profiles';
+import { isWslContext, type PathContext } from '../../shared/shell-profiles';
 import type { NoteReadResult, NoteWriteResult } from '../../shared/notes-types';
 
 /**
@@ -43,7 +43,7 @@ function contextTag(ctx?: PathContext): string {
  * normalized by string only.
  */
 function normalizeScope(scopePath: string, ctx?: PathContext): string {
-  const isWsl = typeof ctx === 'object' && ctx.kind === 'wsl';
+  const isWsl = isWslContext(ctx);
   if (!isWsl) {
     try {
       return realpathSync.native(scopePath);

@@ -49,7 +49,7 @@ export function parseFleetUrl(rawUrl: string, scheme: string): FleetProtocolPath
   // Drive path, with or without the empty-authority leading slash: /C:/… or C:/…
   const drive = /^\/?([A-Za-z]):(\/.*)?$/.exec(s);
   if (drive) {
-    const tail = (drive[2] ?? '/').replace(/\//g, '\\');
+    const tail = (drive.at(2) ?? '/').replace(/\//g, '\\');
     return { kind: 'win', path: `${drive[1].toUpperCase()}:${tail}` };
   }
 

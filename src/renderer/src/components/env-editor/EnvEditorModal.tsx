@@ -25,6 +25,7 @@ import {
   type EnvLine,
   type ParsedEnvFile
 } from '../../../../shared/env-parse';
+import { createCancellation } from '../../lib/cancellation';
 
 const RAW_ONLY_BYTES = 256 * 1024;
 
@@ -73,22 +74,22 @@ export function EnvEditorModal({
   // stale-root flash.
   useEffect(() => {
     if (!isOpen) return;
-    let cancelled = false;
+    const run = createCancellation();
     setError(null);
     setExternalChange(false);
     void (async () => {
       let activeRoot = cwd;
       if (paneId) {
         const live = await window.fleet.pty.resolveCwd(paneId, pathContext);
-        if (cancelled) return;
+        if (run.isCancelled()) return;
         if (live) activeRoot = live;
       }
       setRoot(activeRoot);
       const list = activeRoot ? await window.fleet.envEditor.list(activeRoot, pathContext) : [];
-      if (!cancelled) setFiles(list);
+      if (!run.isCancelled()) setFiles(list);
     })();
     return () => {
-      cancelled = true;
+      run.cancel();
     };
   }, [isOpen, cwd, paneId, pathContext]);
 
@@ -97,7 +98,7 @@ export function EnvEditorModal({
   }, [isOpen]);
 
   useEffect(() => {
-    let cancelled = false;
+    const run = createCancellation();
     setRevealed(new Set());
     setRevealAll(false);
     setError(null);
@@ -112,7 +113,7 @@ export function EnvEditorModal({
     void window.fleet.envEditor
       .read(selected.absPath)
       .then((res) => {
-        if (cancelled) return;
+        if (run.isCancelled()) return;
         setOriginalText(res.text);
         mtimeMsRef.current = res.mtimeMs;
         setParsed(parseEnvFile(res.text));
@@ -120,11 +121,11 @@ export function EnvEditorModal({
         setMode('form');
       })
       .catch((e) => {
-        if (cancelled) return;
+        if (run.isCancelled()) return;
         setError(e instanceof Error ? e.message : 'Failed to read file');
       });
     return () => {
-      cancelled = true;
+      run.cancel();
     };
   }, [selected]);
 

@@ -64,7 +64,7 @@ export function wslMountToWinPath(posixPath: string): string | null {
   const m = /^\/mnt\/([a-zA-Z])(\/.*)?$/.exec(posixPath);
   if (!m) return null;
   const drive = m[1].toUpperCase();
-  const rest = (m[2] ?? '').replace(/^\//, '').replace(/\//g, '\\');
+  const rest = (m.at(2) ?? '').replace(/^\//, '').replace(/\//g, '\\');
   return rest ? `${drive}:\\${rest}` : `${drive}:\\`;
 }
 
@@ -86,7 +86,7 @@ export function parseWslUncPath(p: string): { distro: string; posixPath: string 
   const m = /^\\\\(?:wsl\.localhost|wsl\$)\\([^\\]+)(\\.*)?$/.exec(normalized);
   if (!m) return null;
   const distro = m[1];
-  const rest = (m[2] ?? '').replace(/\\/g, '/');
+  const rest = (m.at(2) ?? '').replace(/\\/g, '/');
   const posixPath = rest === '' ? '/' : rest.replace(/\/+$/, '') || '/';
   return { distro, posixPath };
 }

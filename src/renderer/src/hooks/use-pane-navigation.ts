@@ -3,7 +3,12 @@ import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { ALL_SHORTCUTS, matchesShortcut, type ShortcutDef } from '../lib/shortcuts';
 
 function sc(id: string): ShortcutDef {
-  return ALL_SHORTCUTS.find((s) => s.id === id)!;
+  const def = ALL_SHORTCUTS.find((s) => s.id === id);
+  // Every id below is a literal that exists in ALL_SHORTCUTS. A miss means a shortcut was
+  // renamed without updating this file, and a binding that silently never fires is far
+  // harder to notice than a thrown error.
+  if (!def) throw new Error(`Unknown shortcut id: ${id}`);
+  return def;
 }
 
 /** Filter out pinned/special tabs (Annotate, Sessions, Settings) - used for Cmd+1-9 tab switching */
@@ -180,7 +185,7 @@ export function usePaneNavigation(): void {
         e.preventDefault();
         const index = parseInt(e.key) - 1;
         const normalTabs = getNormalTabs(workspace.tabs);
-        const tab = normalTabs[index];
+        const tab = normalTabs.at(index);
         if (tab) setActiveTab(tab.id);
         return;
       }

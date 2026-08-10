@@ -3,16 +3,12 @@ import { stat, realpath } from 'fs/promises';
 import { basename, dirname, posix as posixPath } from 'path';
 import { homedir } from 'os';
 import type { FileSearchRequest, FileSearchResponse, FileSearchResult } from '../shared/ipc-api';
-import type { PathContext } from '../shared/shell-profiles';
+import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { captureBoundedStdout } from './bounded-stdout';
 import { spawnInContext } from './run-in-context';
 import { toWslUncPath } from '../shared/path-platform';
 
 let activeProcess: ChildProcess | null = null;
-
-function isWslContext(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
-  return typeof ctx === 'object' && ctx.kind === 'wsl';
-}
 
 function killActive(): void {
   if (activeProcess && !activeProcess.killed) {

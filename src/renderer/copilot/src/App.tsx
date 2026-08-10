@@ -58,7 +58,6 @@ export function App(): React.JSX.Element {
 
   // IPC subscriptions
   useEffect(() => {
-    if (!window.copilot) return;
     window.copilot
       .getSessions()
       .then(setSessions)
@@ -109,7 +108,6 @@ export function App(): React.JSX.Element {
 
   // Subscribe to real-time chat updates
   useEffect(() => {
-    if (!window.copilot) return;
     const setChatMessages = useCopilotStore.getState().setChatMessages;
     const unsub = window.copilot.onChatUpdated(({ sessionId, messages }) => {
       setChatMessages(sessionId, messages);

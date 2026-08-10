@@ -4,7 +4,7 @@ import { basename, dirname, extname, join } from 'path';
 import { homedir } from 'os';
 import { nativeImage } from 'electron';
 import type { RecentImageResult, RecentImagesResponse } from '../shared/ipc-api';
-import type { PathContext } from '../shared/shell-profiles';
+import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { toWslUncPath } from '../shared/path-platform';
 import type { WslService } from './wsl-service';
 import { captureBoundedStdout } from './bounded-stdout';
@@ -168,7 +168,7 @@ export async function searchRecentImages(
     const paths = await spawnSearch();
 
     // For a WSL pane, additionally surface images from the distro's home dirs.
-    if (typeof pathContext === 'object' && pathContext.kind === 'wsl') {
+    if (isWslContext(pathContext)) {
       const wslPaths = await scanWslDirsBounded(pathContext.distro, wslService);
       paths.push(...wslPaths);
     }

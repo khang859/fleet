@@ -7,6 +7,7 @@ import './pdf-text-layer.css';
 import { toFleetPdfUrl } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
+import { createCancellation } from '../lib/cancellation';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -65,7 +66,7 @@ export function PdfViewerPane({
   // Load the document (stat first so missing files give a clear error rather
   // than an opaque pdf.js failure).
   useEffect(() => {
-    let cancelled = false;
+    const run = createCancellation();
     setLoading(true);
     setError(null);
     setNumPages(0);
@@ -76,7 +77,7 @@ export function PdfViewerPane({
     let loadingTask: ReturnType<typeof pdfjs.getDocument> | null = null;
     const load = async (): Promise<void> => {
       const stat = await window.fleet.file.stat(filePath, pathContext);
-      if (cancelled) return;
+      if (run.isCancelled()) return;
       if (!stat.success || !stat.data || stat.data.size === 0) {
         setError('File not found or unreadable');
         setLoading(false);
@@ -91,7 +92,7 @@ export function PdfViewerPane({
           standardFontDataUrl: STANDARD_FONT_DATA_URL
         });
         const doc = await loadingTask.promise;
-        if (cancelled) {
+        if (run.isCancelled()) {
           void doc.destroy();
           return;
         }
@@ -99,7 +100,7 @@ export function PdfViewerPane({
         setNumPages(doc.numPages);
         setLoading(false);
       } catch {
-        if (cancelled) return;
+        if (run.isCancelled()) return;
         setError('Failed to load PDF');
         setLoading(false);
       }
@@ -107,7 +108,7 @@ export function PdfViewerPane({
     void load();
 
     return () => {
-      cancelled = true;
+      run.cancel();
       renderTaskRef.current?.cancel();
       renderTaskRef.current = null;
       void loadingTask?.destroy();
@@ -123,13 +124,13 @@ export function PdfViewerPane({
     const doc = docRef.current;
     const canvas = canvasRef.current;
     if (!doc || !canvas || loading || error) return;
-    let cancelled = false;
+    const run = createCancellation();
 
     const render = async (): Promise<void> => {
       renderTaskRef.current?.cancel();
       const page = await doc.getPage(pageNum);
       try {
-        if (cancelled) return;
+        if (run.isCancelled()) return;
         const viewport = page.getViewport({ scale: zoom });
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
@@ -146,7 +147,7 @@ export function PdfViewerPane({
         } catch {
           // Render cancelled (page/zoom changed mid-render) — expected, ignore.
         }
-        if (cancelled) return;
+        if (run.isCancelled()) return;
 
         // Overlay a transparent text layer so the page text is selectable and
         // copyable. setLayerDimensions (inside TextLayer) sizes the container via
@@ -176,7 +177,7 @@ export function PdfViewerPane({
     void render();
 
     return () => {
-      cancelled = true;
+      run.cancel();
       textLayerInstanceRef.current?.cancel();
     };
   }, [pageNum, zoom, loading, error, numPages]);

@@ -97,7 +97,7 @@ export function getHookBinarySourcePath(): string {
   if (existsSync(devPath)) return devPath;
 
   // Production: resources/hooks/<binary>
-  const resourcesPath = join(process.resourcesPath ?? '', 'hooks', HOOK_BINARY_NAME);
+  const resourcesPath = join(process.resourcesPath, 'hooks', HOOK_BINARY_NAME);
   if (existsSync(resourcesPath)) return resourcesPath;
 
   return devPath; // fallback
@@ -128,15 +128,15 @@ function removeLegacyHooks(configDir?: string): void {
     const hooks = settings.hooks ?? {};
     let changed = false;
 
-    for (const eventName of Object.keys(hooks)) {
-      const before = hooks[eventName]?.length ?? 0;
-      hooks[eventName] = (hooks[eventName] ?? []).filter(
+    for (const [eventName, entries] of Object.entries(hooks)) {
+      const kept = entries.filter(
         (entry) => !entry.hooks.some((h) => h.command.includes(LEGACY_SCRIPT_NAME))
       );
-      if ((hooks[eventName]?.length ?? 0) < before) changed = true;
-      if (hooks[eventName]?.length === 0) {
-        delete hooks[eventName];
-      }
+      if (kept.length === entries.length) continue;
+      changed = true;
+      // An event left with no hooks should disappear rather than sit there as an empty array.
+      if (kept.length === 0) delete hooks[eventName];
+      else hooks[eventName] = kept;
     }
 
     if (changed) {

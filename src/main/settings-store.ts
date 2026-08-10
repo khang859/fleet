@@ -1,9 +1,33 @@
 import Store from 'electron-store';
-import type { FleetSettings, FleetSettingsPatch } from '../shared/types';
+import type { CopilotWorkspaceOverride, FleetSettings, FleetSettingsPatch } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/constants';
 
+/**
+ * Rebuild the per-workspace copilot overrides from disk, key by key.
+ *
+ * The saved map is keyed by workspace id, so its entries can be anything - including a
+ * key present with no value, which a plain spread would carry through as an "override"
+ * that overrides nothing.
+ */
+function readWorkspaceOverrides(
+  saved: Record<string, CopilotWorkspaceOverride | undefined> | undefined
+): Record<string, CopilotWorkspaceOverride> {
+  const overrides: Record<string, CopilotWorkspaceOverride> = {};
+  for (const [workspaceId, override] of Object.entries(saved ?? {})) {
+    if (override) overrides[workspaceId] = { claudeConfigDir: override.claudeConfigDir };
+  }
+  return overrides;
+}
+
 export class SettingsStore {
-  private store: Store<{ settings: FleetSettings }>;
+  /**
+   * Typed as a *patch*, not as `FleetSettings`, because that is what is actually on disk:
+   * a file written by an older version predates every setting added since, so any subtree
+   * can be missing. Claiming the read is a complete `FleetSettings` would make the
+   * defaulting in `get()` look redundant to both the compiler and the reader, right up
+   * until an upgrade hands us a file without one of these keys.
+   */
+  private store: Store<{ settings: FleetSettingsPatch }>;
   /**
    * The last merged answer, held until something changes it.
    *
@@ -23,7 +47,7 @@ export class SettingsStore {
   private cached: FleetSettings | null = null;
 
   constructor() {
-    this.store = new Store<{ settings: FleetSettings }>({
+    this.store = new Store<{ settings: FleetSettingsPatch }>({
       name: 'fleet-settings',
       defaults: {
         settings: DEFAULT_SETTINGS
@@ -54,14 +78,38 @@ export class SettingsStore {
           }
         }
       },
-      notifications: { ...DEFAULT_SETTINGS.notifications, ...saved.notifications },
+      // Merged per channel, not as one spread: a saved `taskComplete` that predates the
+      // `os` toggle would otherwise replace the whole default channel and leave `os`
+      // undefined, silently turning a notification off.
+      notifications: {
+        taskComplete: {
+          ...DEFAULT_SETTINGS.notifications.taskComplete,
+          ...saved.notifications?.taskComplete
+        },
+        needsPermission: {
+          ...DEFAULT_SETTINGS.notifications.needsPermission,
+          ...saved.notifications?.needsPermission
+        },
+        processExitError: {
+          ...DEFAULT_SETTINGS.notifications.processExitError,
+          ...saved.notifications?.processExitError
+        },
+        processExitClean: {
+          ...DEFAULT_SETTINGS.notifications.processExitClean,
+          ...saved.notifications?.processExitClean
+        }
+      },
       socketApi: { ...DEFAULT_SETTINGS.socketApi, ...saved.socketApi },
       visualizer: {
         ...DEFAULT_SETTINGS.visualizer,
         ...saved.visualizer,
         effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...saved.visualizer?.effects }
       },
-      copilot: { ...DEFAULT_SETTINGS.copilot, ...saved.copilot },
+      copilot: {
+        ...DEFAULT_SETTINGS.copilot,
+        ...saved.copilot,
+        workspaceOverrides: readWorkspaceOverrides(saved.copilot?.workspaceOverrides)
+      },
       annotate: { ...DEFAULT_SETTINGS.annotate, ...(saved.annotate ?? {}) },
       // `tools` and `ai` are rebuilt key by key rather than spread from `saved`,
       // so a tool or capability that no longer exists (kanban, images, chat)
@@ -78,7 +126,13 @@ export class SettingsStore {
           image: { ...DEFAULT_SETTINGS.ai.agent.image, ...saved.ai?.agent?.image },
           permissions: {
             ...DEFAULT_SETTINGS.ai.agent.permissions,
-            ...saved.ai?.agent?.permissions
+            ...saved.ai?.agent?.permissions,
+            // Nested one level deeper than the rest: `mcp` is its own allow/deny pair, so a
+            // saved copy holding only `allow` must not drop the default `deny`.
+            mcp: {
+              ...DEFAULT_SETTINGS.ai.agent.permissions.mcp,
+              ...saved.ai?.agent?.permissions?.mcp
+            }
           },
           voice: { ...DEFAULT_SETTINGS.ai.agent.voice, ...saved.ai?.agent?.voice }
         }

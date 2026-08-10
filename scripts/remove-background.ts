@@ -90,12 +90,10 @@ async function main(): Promise<void> {
 
   const files = collectImages(SPRITES_STAGING);
   if (files.length === 0) {
-    // eslint-disable-next-line no-console
     console.log('No images found in sprites-staging/');
     return;
   }
 
-  // eslint-disable-next-line no-console
   console.log(`Found ${files.length} image(s) in sprites-staging/\n`);
 
   for (const file of files) {
@@ -105,23 +103,19 @@ async function main(): Promise<void> {
     const outputPath = join(SPRITES_RAW, dirname(rel), outputName);
 
     if (existsSync(outputPath)) {
-      // eslint-disable-next-line no-console
       console.log(`Skipping (already in sprites-raw): ${rel}`);
       continue;
     }
 
     mkdirSync(dirname(outputPath), { recursive: true });
 
-    // eslint-disable-next-line no-console
     console.log(`Processing: ${rel}`);
     const dataUri = toDataUri(file);
     const resultUrl = await removeBackground(dataUri);
     await downloadImage(resultUrl, outputPath);
-    // eslint-disable-next-line no-console
     console.log(`  → sprites-raw/${dirname(rel)}/${outputName}`);
   }
 
-  // eslint-disable-next-line no-console
   console.log('\nDone. Run: npx tsx scripts/assemble-sprites.ts');
 }
 

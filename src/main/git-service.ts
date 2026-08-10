@@ -5,14 +5,10 @@ import type {
   GitRepoRootPayload,
   GitFileStatus
 } from '../shared/ipc-api';
-import type { PathContext } from '../shared/shell-profiles';
+import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { execInContext, type ExecResult } from './run-in-context';
 
 const GIT_TIMEOUT_MS = 20_000;
-
-function isWslCtx(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
-  return typeof ctx === 'object' && ctx.kind === 'wsl';
-}
 
 export class GitService {
   private getGit(cwd: string): SimpleGit {
@@ -29,7 +25,7 @@ export class GitService {
   }
 
   async checkIsRepo(cwd: string, ctx?: PathContext): Promise<GitIsRepoPayload> {
-    if (isWslCtx(ctx)) return this.checkIsRepoWsl(ctx, cwd);
+    if (isWslContext(ctx)) return this.checkIsRepoWsl(ctx, cwd);
     try {
       const isRepo = await this.getGit(cwd).checkIsRepo();
       return { isRepo };
@@ -39,7 +35,7 @@ export class GitService {
   }
 
   async repoRoot(cwd: string, ctx?: PathContext): Promise<GitRepoRootPayload> {
-    if (isWslCtx(ctx)) return this.repoRootWsl(ctx, cwd);
+    if (isWslContext(ctx)) return this.repoRootWsl(ctx, cwd);
     try {
       const root = (await this.getGit(cwd).revparse(['--show-toplevel'])).trim();
       return { root: root || null };
@@ -49,7 +45,7 @@ export class GitService {
   }
 
   async getFullStatus(cwd: string, baseRef?: string, ctx?: PathContext): Promise<GitStatusPayload> {
-    if (isWslCtx(ctx)) return this.getFullStatusWsl(ctx, cwd, baseRef);
+    if (isWslContext(ctx)) return this.getFullStatusWsl(ctx, cwd, baseRef);
     const git = this.getGit(cwd);
 
     // Check if it's a repo first

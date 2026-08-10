@@ -22,7 +22,8 @@ export const useShellProfilesStore = create<ShellProfilesState>((set, get) => ({
   // process resolves from settings — without an app restart.
   refresh: async () => {
     const { profiles, defaultProfileId } = await window.fleet.shellProfiles.list();
-    const defaultProfile = profiles.find((p) => p.id === defaultProfileId) ?? profiles[0] ?? null;
+    const defaultProfile =
+      profiles.find((p) => p.id === defaultProfileId) ?? profiles.at(0) ?? null;
     set({ profiles, defaultProfile, isLoaded: true });
   }
 }));

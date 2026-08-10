@@ -31,10 +31,6 @@ const FILE_LIST_IGNORE_DIRS = [
   '.svelte-kit'
 ];
 
-function isWslContext(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
-  return typeof ctx === 'object' && ctx.kind === 'wsl';
-}
-
 /** Native (non-WSL) host coordinate system for the running process. */
 function hostContext(): PathContext {
   return process.platform === 'win32' ? 'win32' : 'posix';
@@ -163,7 +159,7 @@ import type { AnnotationStore } from './annotation-store';
 import type { AnnotateService } from './annotate-service';
 import type { ShellProfileRegistry } from './shell-profiles';
 import type { WslService } from './wsl-service';
-import type { PathContext } from '../shared/shell-profiles';
+import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { toWslUncPath, toWindowsAccessiblePath } from '../shared/path-platform';
 import type { FleetSettingsPatch } from '../shared/types';
 import { checkSystemDeps } from './system-checker';
@@ -396,7 +392,7 @@ export function registerIpcHandlers(
 
     // Clean up copilot workspace overrides
     const settings = settingsStore.get();
-    if (settings.copilot.workspaceOverrides[workspaceId]) {
+    if (workspaceId in settings.copilot.workspaceOverrides) {
       const remaining = { ...settings.copilot.workspaceOverrides };
       delete remaining[workspaceId];
       settingsStore.set({
@@ -535,7 +531,7 @@ export function registerIpcHandlers(
         defaultPath: defaultPath ?? defaultName,
         properties: ['createDirectory', 'showOverwriteConfirmation']
       });
-      return result.canceled ? null : (result.filePath ?? null);
+      return result.canceled ? null : result.filePath;
     }
   );
 

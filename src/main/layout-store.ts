@@ -58,7 +58,9 @@ export class LayoutStore {
   }
 
   load(workspaceId: string): Workspace | undefined {
-    const workspaces = this.store.get('workspaces', {});
+    // Annotated with `| undefined` values because that is what a lookup by arbitrary id
+    // yields; the bare `Record` type claims every id is present.
+    const workspaces: Record<string, Workspace | undefined> = this.store.get('workspaces', {});
     const ws = workspaces[workspaceId];
     log.debug('load', { workspaceId, found: !!ws, tabCount: ws?.tabs.length });
     return ws;

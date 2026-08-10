@@ -19,7 +19,8 @@ function createCloudCanvas(color: string): OffscreenCanvas {
   const w = 200;
   const h = 120;
   const canvas = new OffscreenCanvas(w, h);
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return canvas;
   const { r, g, b } = hexToRgb(color);
 
   const grad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);

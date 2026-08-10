@@ -2,7 +2,7 @@ import { useSettingsStore } from '../../store/settings-store';
 
 export function AnnotateSection(): React.JSX.Element {
   const { settings, updateSettings } = useSettingsStore();
-  const retentionDays = settings?.annotate?.retentionDays ?? 3;
+  const retentionDays = settings?.annotate.retentionDays ?? 3;
 
   return (
     <div className="space-y-6">

@@ -94,9 +94,10 @@ export type RedactedEnvSyncAuth = {
 /** Safe-for-IPC view of stored passphrases + AWS auth. */
 export type RedactedEnvSyncSecrets = {
   globalPresent: boolean;
-  repoOverrides: Record<string, { present: boolean }>;
+  // Keyed by repo id: only repos with an override appear, so a lookup can miss.
+  repoOverrides: Record<string, { present: boolean } | undefined>;
   globalAuth?: RedactedEnvSyncAuth;
-  authRepoOverrides: Record<string, RedactedEnvSyncAuth>;
+  authRepoOverrides: Record<string, RedactedEnvSyncAuth | undefined>;
 };
 
 /** A discovered repo for the settings UI. */

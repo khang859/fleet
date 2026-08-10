@@ -39,7 +39,8 @@ async function sendPing(socketPath: string): Promise<Record<string, unknown>> {
 
 describe('SocketSupervisor', () => {
   let socketPath: string;
-  let supervisor: InstanceType<typeof SocketSupervisor>;
+  // Undefined until a test constructs one, so the afterEach teardown must cope.
+  let supervisor: InstanceType<typeof SocketSupervisor> | undefined;
 
   beforeEach(async () => {
     ({ SocketSupervisor } = await import('../socket-supervisor'));
@@ -65,14 +66,16 @@ describe('SocketSupervisor', () => {
   });
 
   it('exposes restart() method that restarts the server', async () => {
-    supervisor = new SocketSupervisor(socketPath);
-    await supervisor.start();
+    // Held locally as well, so the listener closure below has a non-nullable handle.
+    const sup = new SocketSupervisor(socketPath);
+    supervisor = sup;
+    await sup.start();
 
     const restartedPromise = new Promise<void>((resolve) => {
-      supervisor.on('restarted', resolve);
+      sup.on('restarted', resolve);
     });
 
-    await supervisor.restart();
+    await sup.restart();
     await restartedPromise;
 
     const response = await sendPing(socketPath);
