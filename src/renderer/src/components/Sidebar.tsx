@@ -24,6 +24,7 @@ import {
 } from '../store/workspace-store';
 import type { PathContext } from '../../../shared/shell-profiles';
 import { useNotificationStore } from '../store/notification-store';
+import { useSidebarSectionsStore } from '../store/sidebar-sections-store';
 import { useCwdStore } from '../store/cwd-store';
 
 import { serializePane } from '../hooks/use-terminal';
@@ -408,6 +409,45 @@ function OffScreenBadgeSummary({
   );
 }
 
+/**
+ * A foldable section header. The chevron is tucked back into the row's own left
+ * padding rather than pushing the label right, so the label stays on the column
+ * it has always been on and folding does not move the sidebar's vertical rhythm.
+ *
+ * Only the label and chevron toggle. The controls passed as `children` sit
+ * outside the button, so the add and configure buttons keep working while the
+ * section is folded and clicking one never folds it by accident.
+ */
+function SectionHeader({
+  label,
+  collapsed,
+  onToggle,
+  children
+}: {
+  label: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center justify-between px-2 py-1">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+        className="-ml-3 flex items-center gap-1 rounded text-[11px] font-medium text-fleet-text-subtle hover:text-fleet-text-secondary transition-colors"
+      >
+        <ChevronRight
+          size={12}
+          className={`shrink-0 transition-transform ${collapsed ? '' : 'rotate-90'}`}
+        />
+        {label}
+      </button>
+      <div className="flex items-center gap-1.5">{children}</div>
+    </div>
+  );
+}
+
 export function Sidebar({
   updateReady,
   onCollapse,
@@ -479,6 +519,13 @@ export function Sidebar({
     }))
   );
   const { getTabBadge, getTabActivity } = useNotificationStore();
+
+  // Selected one at a time so each header only re-renders on its own fold.
+  const agentsCollapsed = useSidebarSectionsStore((s) => s.collapsed.has('agents'));
+  const toolsCollapsed = useSidebarSectionsStore((s) => s.collapsed.has('tools'));
+  const workspacesCollapsed = useSidebarSectionsStore((s) => s.collapsed.has('workspaces'));
+  const toggleSection = useSidebarSectionsStore((s) => s.toggle);
+  const expandSection = useSidebarSectionsStore((s) => s.expand);
 
   const currentSidebarWidth = workspace.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH;
 
@@ -1544,26 +1591,30 @@ export function Sidebar({
 
       {/* Pinned agents section */}
       <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
-        <div className="flex items-center justify-between px-2 py-1">
-          <span className="text-[11px] font-medium text-fleet-text-subtle">Agents</span>
-          <div className="flex items-center gap-1.5">
-            {agentRows.length > 0 && (
-              <span className="text-[10px] font-medium tabular-nums text-fleet-text-subtle">
-                {agentRows.length}
-              </span>
-            )}
-            <button
-              className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
-              // The pane needs a folder to work in, so the same event the
-              // command palette fires opens the picker first.
-              onClick={() => document.dispatchEvent(new CustomEvent('fleet:new-agent'))}
-              title="New Agent Pane"
-            >
-              +
-            </button>
-          </div>
-        </div>
-        {agentRows.length > 0 && (
+        <SectionHeader
+          label="Agents"
+          collapsed={agentsCollapsed}
+          onToggle={() => toggleSection('agents')}
+        >
+          {agentRows.length > 0 && (
+            <span className="text-[10px] font-medium tabular-nums text-fleet-text-subtle">
+              {agentRows.length}
+            </span>
+          )}
+          <button
+            className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
+            // The pane needs a folder to work in, so the same event the
+            // command palette fires opens the picker first.
+            onClick={() => {
+              expandSection('agents');
+              document.dispatchEvent(new CustomEvent('fleet:new-agent'));
+            }}
+            title="New Agent Pane"
+          >
+            +
+          </button>
+        </SectionHeader>
+        {!agentsCollapsed && agentRows.length > 0 && (
           <>
             <OffScreenBadgeSummary
               direction="above"
@@ -1613,53 +1664,62 @@ export function Sidebar({
 
       {/* Pinned tools section */}
       <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
-        <div className="flex items-center justify-between px-2 py-1">
-          <span className="text-[11px] font-medium text-fleet-text-subtle">Tools</span>
-          <div className="flex items-center gap-1.5">
-            <span
-              className="text-[10px] font-medium tabular-nums text-fleet-text-subtle"
-              title={`${enabledToolCount} of ${TOGGLEABLE_TOOLS.length} tools enabled`}
-            >
-              {enabledToolCount}/{TOGGLEABLE_TOOLS.length}
-            </span>
-            <button
-              className="text-fleet-text-subtle hover:text-fleet-text rounded p-0.5 hover:bg-fleet-surface-2 transition active:scale-90"
-              onClick={onOpenToolsConfig}
-              title="Configure tools"
-            >
-              <SlidersHorizontal size={13} />
-            </button>
-          </div>
-        </div>
-        {/* Annotate tab (pinned, not closeable) */}
-        {workspace.tabs
-          .filter((tab) => tab.type === 'annotate')
-          .map((tab) => (
-            <AnnotateTabCard
-              key={tab.id}
-              isActive={tab.id === activeTabId}
-              onClick={() => setActiveTab(tab.id)}
-            />
-          ))}
-        {/* Sessions tab (pinned, not closeable) */}
-        {workspace.tabs
-          .filter((tab) => tab.type === 'sessions')
-          .map((tab) => (
-            <SessionsTabCard
-              key={tab.id}
-              isActive={tab.id === activeTabId}
-              onClick={() => setActiveTab(tab.id)}
-            />
-          ))}
+        <SectionHeader
+          label="Tools"
+          collapsed={toolsCollapsed}
+          onToggle={() => toggleSection('tools')}
+        >
+          <span
+            className="text-[10px] font-medium tabular-nums text-fleet-text-subtle"
+            title={`${enabledToolCount} of ${TOGGLEABLE_TOOLS.length} tools enabled`}
+          >
+            {enabledToolCount}/{TOGGLEABLE_TOOLS.length}
+          </span>
+          <button
+            className="text-fleet-text-subtle hover:text-fleet-text rounded p-0.5 hover:bg-fleet-surface-2 transition active:scale-90"
+            onClick={onOpenToolsConfig}
+            title="Configure tools"
+          >
+            <SlidersHorizontal size={13} />
+          </button>
+        </SectionHeader>
+        {!toolsCollapsed && (
+          <>
+            {/* Annotate tab (pinned, not closeable) */}
+            {workspace.tabs
+              .filter((tab) => tab.type === 'annotate')
+              .map((tab) => (
+                <AnnotateTabCard
+                  key={tab.id}
+                  isActive={tab.id === activeTabId}
+                  onClick={() => setActiveTab(tab.id)}
+                />
+              ))}
+            {/* Sessions tab (pinned, not closeable) */}
+            {workspace.tabs
+              .filter((tab) => tab.type === 'sessions')
+              .map((tab) => (
+                <SessionsTabCard
+                  key={tab.id}
+                  isActive={tab.id === activeTabId}
+                  onClick={() => setActiveTab(tab.id)}
+                />
+              ))}
+          </>
+        )}
       </div>
 
       {/* Bottom section: workspaces */}
       <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
-        <div className="flex items-center justify-between px-2 py-1">
-          <span className="text-[11px] font-medium text-fleet-text-subtle">Workspaces</span>
+        <SectionHeader
+          label="Workspaces"
+          collapsed={workspacesCollapsed}
+          onToggle={() => toggleSection('workspaces')}
+        >
           <button
             className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
             onClick={() => {
+              expandSection('workspaces');
               setShowNewWsInput(true);
               setNewWsName('');
             }}
@@ -1667,10 +1727,10 @@ export function Sidebar({
           >
             +
           </button>
-        </div>
+        </SectionHeader>
 
         {/* Inline new workspace name input */}
-        {showNewWsInput && (
+        {!workspacesCollapsed && showNewWsInput && (
           <div className="px-1">
             <input
               ref={newWsInputRef}
@@ -1694,87 +1754,88 @@ export function Sidebar({
         )}
 
         {/* Saved workspaces list */}
-        {savedWorkspaces
-          .filter((ws) => ws.id !== workspace.id)
-          .map((ws) => (
-            <div key={ws.id} className="relative">
-              {deleteConfirmId === ws.id ? (
-                <div className="flex flex-col gap-1 px-2 py-2 bg-fleet-surface-2 rounded-md text-xs">
-                  <span className="text-red-400">Delete this workspace?</span>
-                  <div className="flex gap-2">
-                    <button
-                      className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded transition active:scale-[0.97]"
-                      onClick={() => {
-                        void handleDeleteWorkspace(ws.id);
-                      }}
-                    >
-                      Delete
-                    </button>
-                    <button
-                      className="px-2 py-0.5 bg-fleet-surface-3 hover:bg-fleet-surface-3 text-fleet-text-secondary rounded transition active:scale-[0.97]"
-                      onClick={() => setDeleteConfirmId(null)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : renamingWsId === ws.id ? (
-                <div className="px-1">
-                  <input
-                    ref={renamingWsInputRef}
-                    type="text"
-                    value={renamingWsValue}
-                    onChange={(e) => setRenamingWsValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') void commitSavedWsRename();
-                      if (e.key === 'Escape') setRenamingWsId(null);
-                    }}
-                    onBlur={() => {
-                      void commitSavedWsRename();
-                    }}
-                    className="w-full px-2 py-1 text-sm bg-fleet-surface-2 text-fleet-text border border-fleet-border-strong rounded focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-              ) : (
-                <ContextMenu.Root>
-                  <ContextMenu.Trigger asChild>
-                    <button
-                      className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded-md transition active:scale-[0.97]"
-                      onClick={() => handleSwitchWorkspace(ws.id)}
-                      title={`Switch to ${ws.label}`}
-                    >
-                      <span className="truncate">{ws.label}</span>
-                      <span className="text-xs text-fleet-text-subtle hover:text-blue-400 ml-1 flex-shrink-0">
-                        Open
-                      </span>
-                    </button>
-                  </ContextMenu.Trigger>
-                  <ContextMenu.Portal>
-                    <ContextMenu.Content
-                      className={`min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50 ${popperAnim}`}
-                    >
-                      <ContextMenu.Item
-                        className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
-                        onSelect={() => {
-                          setRenamingWsValue(ws.label);
-                          setTimeout(() => setRenamingWsId(ws.id), 0);
+        {!workspacesCollapsed &&
+          savedWorkspaces
+            .filter((ws) => ws.id !== workspace.id)
+            .map((ws) => (
+              <div key={ws.id} className="relative">
+                {deleteConfirmId === ws.id ? (
+                  <div className="flex flex-col gap-1 px-2 py-2 bg-fleet-surface-2 rounded-md text-xs">
+                    <span className="text-red-400">Delete this workspace?</span>
+                    <div className="flex gap-2">
+                      <button
+                        className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded transition active:scale-[0.97]"
+                        onClick={() => {
+                          void handleDeleteWorkspace(ws.id);
                         }}
                       >
-                        Rename
-                      </ContextMenu.Item>
-                      <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
-                      <ContextMenu.Item
-                        className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-red-900/50 hover:bg-red-900/50 text-red-400"
-                        onSelect={() => setDeleteConfirmId(ws.id)}
-                      >
                         Delete
-                      </ContextMenu.Item>
-                    </ContextMenu.Content>
-                  </ContextMenu.Portal>
-                </ContextMenu.Root>
-              )}
-            </div>
-          ))}
+                      </button>
+                      <button
+                        className="px-2 py-0.5 bg-fleet-surface-3 hover:bg-fleet-surface-3 text-fleet-text-secondary rounded transition active:scale-[0.97]"
+                        onClick={() => setDeleteConfirmId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : renamingWsId === ws.id ? (
+                  <div className="px-1">
+                    <input
+                      ref={renamingWsInputRef}
+                      type="text"
+                      value={renamingWsValue}
+                      onChange={(e) => setRenamingWsValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void commitSavedWsRename();
+                        if (e.key === 'Escape') setRenamingWsId(null);
+                      }}
+                      onBlur={() => {
+                        void commitSavedWsRename();
+                      }}
+                      className="w-full px-2 py-1 text-sm bg-fleet-surface-2 text-fleet-text border border-fleet-border-strong rounded focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                ) : (
+                  <ContextMenu.Root>
+                    <ContextMenu.Trigger asChild>
+                      <button
+                        className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded-md transition active:scale-[0.97]"
+                        onClick={() => handleSwitchWorkspace(ws.id)}
+                        title={`Switch to ${ws.label}`}
+                      >
+                        <span className="truncate">{ws.label}</span>
+                        <span className="text-xs text-fleet-text-subtle hover:text-blue-400 ml-1 flex-shrink-0">
+                          Open
+                        </span>
+                      </button>
+                    </ContextMenu.Trigger>
+                    <ContextMenu.Portal>
+                      <ContextMenu.Content
+                        className={`min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50 ${popperAnim}`}
+                      >
+                        <ContextMenu.Item
+                          className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
+                          onSelect={() => {
+                            setRenamingWsValue(ws.label);
+                            setTimeout(() => setRenamingWsId(ws.id), 0);
+                          }}
+                        >
+                          Rename
+                        </ContextMenu.Item>
+                        <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
+                        <ContextMenu.Item
+                          className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-red-900/50 hover:bg-red-900/50 text-red-400"
+                          onSelect={() => setDeleteConfirmId(ws.id)}
+                        >
+                          Delete
+                        </ContextMenu.Item>
+                      </ContextMenu.Content>
+                    </ContextMenu.Portal>
+                  </ContextMenu.Root>
+                )}
+              </div>
+            ))}
       </div>
 
       {/* Settings + Update indicator */}
