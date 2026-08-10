@@ -16,7 +16,7 @@ import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
 import { useAgentStore } from '../../store/agent-store';
 import { useElementWidth } from '../../hooks/use-element-width';
 import { resolveBackgroundSrc } from '../../lib/pane-background';
-import { getGlassCssVars, paneGround, PANE_GLASS } from '../../lib/theme';
+import { getGlassCssVars, paneGround, paneBackdrop, PANE_GLASS } from '../../lib/theme';
 import type { AgentTodoItem } from '../../../../shared/agent-todos';
 import type { AgentScheduleRecord } from '../../../../shared/agent-schedule';
 import type { AgentMessage, AgentPermissionAsk } from '../../../../shared/agent-types';
@@ -167,7 +167,16 @@ export function AgentPane({
       className="relative flex h-full w-full flex-col"
       style={{
         ...getGlassCssVars(hasBackgroundImage),
-        backgroundColor: paneGround('var(--fleet-bg)', hasBackgroundImage, PANE_GLASS)
+        backgroundColor: paneGround(
+          'var(--fleet-bg)',
+          hasBackgroundImage,
+          terminalBackground?.paneTint ?? PANE_GLASS
+        ),
+        backdropFilter: paneBackdrop(
+          hasBackgroundImage,
+          terminalBackground?.paneFrost ?? 0,
+          terminalBackground?.paneSaturation ?? 1
+        )
       }}
     >
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">

@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { TerminalBackground } from '../../../../shared/types';
 import { toFleetImageUrl } from '../../../../shared/path-platform';
+import { paneGround, paneBackdrop } from '../../lib/theme';
 
 const FIT_STYLES: Record<TerminalBackground['fit'], { size: string; repeat: string }> = {
   cover: { size: 'cover', repeat: 'no-repeat' },
@@ -47,9 +48,11 @@ export function BackgroundPreview(props: {
     : null;
 
   return (
+    // Layered exactly as the window is: app canvas, the image dimmed onto it,
+    // the pane's ground over that, text on top.
     <div
       className="h-28 w-full rounded-md overflow-hidden border border-fleet-border-strong relative"
-      style={{ backgroundColor: themeBackground }}
+      style={{ backgroundColor: 'var(--fleet-bg)' }}
     >
       {imageLayerStyle && (
         <div
@@ -58,9 +61,25 @@ export function BackgroundPreview(props: {
           style={{ ...imageLayerStyle, zIndex: 0 }}
         />
       )}
+      {/* The pane's own ground, between the picture and the text, exactly as it
+          sits in a real pane. Without it the tint and frost sliders would move
+          nothing here and read as broken. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundColor: paneGround(themeBackground, !!imageLayerStyle, background.paneTint),
+          backdropFilter: paneBackdrop(
+            !!imageLayerStyle,
+            background.paneFrost,
+            background.paneSaturation
+          ),
+          zIndex: 1
+        }}
+      />
       <div
         className="relative p-2 text-[11px] leading-relaxed font-mono"
-        style={{ color: themeForeground, zIndex: 1 }}
+        style={{ color: themeForeground, zIndex: 2 }}
       >
         <div>~/fleet $ npm run dev</div>
         <div style={{ color: '#4ade80' }}>✓ build succeeded</div>
