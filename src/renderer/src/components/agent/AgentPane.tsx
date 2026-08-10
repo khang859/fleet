@@ -264,7 +264,10 @@ function AgentTabs({
           e.preventDefault();
           move(e.key === 'ArrowRight' ? 1 : -1);
         }}
-        className="flex items-center gap-0.5 rounded-lg border border-fleet-border bg-fleet-glass-surface p-0.5 backdrop-blur-md"
+        // The agent pane has no title bar, so this pill is the chrome that
+        // carries the focus cue the other panes carry in their header: lit and
+        // firmly edged when the pane has focus, quiet when it does not.
+        className="flex items-center gap-0.5 rounded-lg border border-fleet-border bg-fleet-glass-surface p-0.5 backdrop-blur-md transition-colors group-data-[pane-active=true]/pane:border-fleet-border-strong group-data-[pane-active=true]/pane:bg-fleet-glass-surface-3"
       >
         {TABS.map(({ value: tab, label, Icon }) => {
           const selected = tab === value;

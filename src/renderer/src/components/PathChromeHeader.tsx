@@ -23,14 +23,19 @@ export function PathChromeHeader({ filePath }: Props): React.JSX.Element {
   }, [filePath]);
 
   return (
-    <div className="flex-shrink-0 flex items-center gap-2 px-3 h-7 bg-neutral-950/80 border-b border-neutral-800 text-xs">
-      <span className="flex-1 min-w-0 truncate text-neutral-300 font-mono" title={filePath}>
+    // The viewer panes' title bar. Same bar as `PaneHeader`, so it carries the
+    // same focus cue - lit when the pane has focus, grey when it does not.
+    <div className="flex-shrink-0 flex items-center gap-2 px-3 h-7 bg-fleet-glass-surface group-data-[pane-active=true]/pane:bg-fleet-glass-surface-3 border-b border-fleet-border text-xs transition-colors">
+      <span
+        className="flex-1 min-w-0 truncate font-mono text-fleet-text-subtle group-data-[pane-active=true]/pane:text-fleet-text-secondary transition-colors"
+        title={filePath}
+      >
         {filePath}
       </span>
       <button
         type="button"
         onClick={handleCopy}
-        className="shrink-0 p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 transition-colors active:scale-90"
+        className="shrink-0 p-1 rounded hover:bg-fleet-surface-3 text-fleet-text-subtle hover:text-fleet-text transition-colors active:scale-90"
         title={copied ? 'Copied!' : 'Copy path'}
         aria-label="Copy path"
       >

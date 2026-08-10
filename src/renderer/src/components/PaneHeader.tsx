@@ -110,8 +110,14 @@ export function PaneHeader({
     // Clicking the bar focuses the pane and double-clicking renames it, so it
     // has to look like it will do something. Without a hover state it read as
     // a dead strip of chrome.
+    //
+    // The bar is also where the pane says whether it has focus: lit ground and
+    // brighter text when it does, flat and grey when it does not. See the note
+    // on `PaneFrame` for why focus is not an accent ring. Hover has to be
+    // declared for both states or the active variant, being the more specific
+    // selector, would swallow it.
     <div
-      className="group/header flex items-center gap-1.5 h-7 pl-2 pr-1 bg-fleet-glass-surface-2 hover:bg-fleet-glass-surface-3 border-b border-fleet-border text-xs text-fleet-text-secondary select-none shrink-0 transition-colors"
+      className="group/header flex items-center gap-1.5 h-7 pl-2 pr-1 bg-fleet-glass-surface hover:bg-fleet-glass-surface-2 group-data-[pane-active=true]/pane:bg-fleet-glass-surface-3 group-data-[pane-active=true]/pane:hover:bg-fleet-glass-surface-3 border-b border-fleet-border text-xs text-fleet-text-subtle group-data-[pane-active=true]/pane:text-fleet-text-secondary select-none shrink-0 transition-colors"
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       title={isEditing ? undefined : `${liveCwd ?? ''}\nDouble-click to rename`}

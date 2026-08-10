@@ -146,16 +146,21 @@ type PaneFrameProps = {
 };
 
 /**
- * Wraps a leaf pane so it can subscribe to its own activity state - the
- * border ring reflects state color when unfocused (the focused pane keeps
- * its accent ring instead, so focus and status don't fight for the same
- * outline), and a corner glyph encodes state + process liveness always.
+ * Wraps a leaf pane so it can subscribe to its own activity state - the border
+ * ring reflects state color, and a corner glyph encodes state + process
+ * liveness always.
  *
- * The pane is a card: rounded, clipped, and lifted off the background canvas,
- * with the active one lifted furthest. That lift is the focus cue, which is
- * why the content underneath no longer needs to be dimmed to say the same
- * thing - dimming cost terminal text its contrast to make a point the frame
- * was already making.
+ * Focus is carried by elevation and by the pane's own title bar, never by a
+ * colour. The focused card keeps its shadow and its title bar lights up; every
+ * other card flattens onto the canvas and its title bar goes grey. That is the
+ * active/inactive window model macOS has used for decades, and it leaves the
+ * accent free to keep meaning "something needs you" - the status ring, the
+ * activity glyph, the permission prompt. An accent ring here made the colour
+ * say two unrelated things, and shouted the less interesting one.
+ *
+ * `group/pane` + `data-pane-active` is how the title bars downstream find out;
+ * see `PaneHeader` and `PathChromeHeader`. It avoids threading a prop through
+ * five pane types that otherwise have no interest in focus.
  */
 function PaneFrame({
   paneId,
@@ -164,22 +169,26 @@ function PaneFrame({
   children
 }: PaneFrameProps): React.JSX.Element {
   const activityState = useNotificationStore((s) => s.activities.get(paneId)?.state);
-  const ringClass = isActive ? 'fleet-accent-ring-pane' : activityRingClass(activityState);
+  const ringClass = activityRingClass(activityState);
 
   return (
     // Two elements because the drop shadow and the state ring are both
-    // box-shadow: `.fleet-accent-ring-pane` sets it raw, so anything sharing an
-    // element with it loses. The outer div owns the lift, the inner the ring.
+    // box-shadow, and the ring classes set it raw, so anything sharing an
+    // element with them loses. The outer div owns the lift, the inner the ring.
     <div
       className={`h-full rounded-lg transition-shadow duration-150 ${
-        isActive ? 'shadow-lg shadow-black/30' : 'shadow-md shadow-black/20'
+        isActive ? 'shadow-lg shadow-black/30' : ''
       }`}
     >
       {/* The hairline is not decoration: a glass terminal over a busy picture
           has no ground of its own to end against, so without an edge an
-          inactive card stops reading as a card at all. */}
+          inactive card stops reading as a card at all. It firms up on the
+          focused pane, which is the quietest half of the focus cue. */}
       <div
-        className={`relative flex flex-col h-full overflow-hidden rounded-lg border border-fleet-border ${ringClass}`}
+        data-pane-active={isActive ? 'true' : 'false'}
+        className={`group/pane relative flex flex-col h-full overflow-hidden rounded-lg border transition-colors ${
+          isActive ? 'border-fleet-border-strong' : 'border-fleet-border'
+        } ${ringClass}`}
       >
         {showGlyph && (
           <PaneStatusGlyph state={activityState} className="absolute top-1 right-1 z-10" />
