@@ -26,7 +26,7 @@ export function NotificationsSection(): React.JSX.Element | null {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-4 gap-2 text-xs text-neutral-500 mb-1">
+      <div className="grid grid-cols-4 gap-2 text-xs text-fleet-text-subtle mb-1">
         <div>Event</div>
         <div className="text-center">Badge</div>
         <div className="text-center">Sound</div>
@@ -34,7 +34,7 @@ export function NotificationsSection(): React.JSX.Element | null {
       </div>
       {NOTIFICATION_KEYS.map((key) => (
         <div key={key} className="grid grid-cols-4 gap-2 items-center">
-          <div className="text-sm text-neutral-300">{NOTIFICATION_LABELS[key]}</div>
+          <div className="text-sm text-fleet-text-secondary">{NOTIFICATION_LABELS[key]}</div>
           {NOTIFICATION_CHANNELS.map((channel) => (
             <div key={channel} className="flex justify-center">
               <input

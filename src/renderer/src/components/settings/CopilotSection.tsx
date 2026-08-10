@@ -301,7 +301,7 @@ export function CopilotSection(): React.JSX.Element | null {
                     <span className="flex items-center gap-2">
                       {ws.label}
                       {hasOverride(ws.id) && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        <span className="w-1.5 h-1.5 rounded-full fleet-accent-bg" />
                       )}
                     </span>
                     <span className="text-fleet-text-subtle text-xs">{isExpanded ? '▲' : '▼'}</span>

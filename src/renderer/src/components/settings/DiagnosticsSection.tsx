@@ -72,19 +72,21 @@ export function DiagnosticsSection(): React.JSX.Element {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <div className="text-sm text-neutral-300">{info ? `Fleet v${info.version}` : 'Fleet'}</div>
+        <div className="text-sm text-fleet-text-secondary">
+          {info ? `Fleet v${info.version}` : 'Fleet'}
+        </div>
         {info && (
-          <div className="text-xs text-neutral-500">
+          <div className="text-xs text-fleet-text-subtle">
             {info.platform} {info.arch} · Electron {info.electron} · Chrome {info.chrome}
           </div>
         )}
       </div>
 
-      <p className="text-sm text-neutral-400">
+      <p className="text-sm text-fleet-text-muted">
         Hit a bug? Report a Problem opens a prefilled GitHub issue with your version, OS, and a
         redacted snippet of recent logs. For the full logs, open the logs folder and attach the
-        latest <code className="text-neutral-300">fleet-*.log</code> file. Nothing is sent anywhere
-        until you submit the issue.
+        latest <code className="text-fleet-text-secondary">fleet-*.log</code> file. Nothing is sent
+        anywhere until you submit the issue.
       </p>
 
       <div className="flex gap-2">
@@ -93,7 +95,7 @@ export function DiagnosticsSection(): React.JSX.Element {
             void reportProblem();
           }}
           disabled={busy}
-          className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] disabled:active:scale-100"
+          className="px-3 py-1.5 text-sm fleet-accent-bg fleet-accent-bg-hover text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] disabled:active:scale-100"
         >
           {busy ? 'Opening…' : 'Report a Problem'}
         </button>
@@ -101,7 +103,7 @@ export function DiagnosticsSection(): React.JSX.Element {
           onClick={() => {
             void window.fleet.diagnostics.openLogsFolder();
           }}
-          className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 text-white rounded-md transition-colors active:scale-[0.97]"
+          className="px-3 py-1.5 text-sm bg-fleet-surface-3 hover:bg-fleet-surface-3 text-fleet-text rounded-md transition-colors active:scale-[0.97]"
         >
           Open Logs Folder
         </button>

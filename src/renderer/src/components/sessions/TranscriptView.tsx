@@ -148,7 +148,7 @@ function Message({ message }: { message: TranscriptMessage }): React.JSX.Element
       </span>
       <div
         className={`min-w-0 max-w-[85%] rounded-md px-3 py-2 ${
-          isUser ? 'bg-blue-600/20' : 'bg-fleet-surface-2/60'
+          isUser ? 'fleet-accent-bg-soft' : 'bg-fleet-surface-2/60'
         } flex flex-col gap-1`}
       >
         {message.blocks.map((b, i) => (
@@ -211,7 +211,7 @@ export function TranscriptView({
           </button>
           <button
             onClick={() => openResumeTab(s.cwd, resumeCommand(s), s.title)}
-            className="rounded bg-blue-600/80 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600"
+            className="rounded fleet-accent-bg fleet-accent-bg-hover px-3 py-1.5 text-xs font-medium text-white"
           >
             Resume ▸
           </button>

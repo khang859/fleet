@@ -70,25 +70,25 @@ export function AnnotateTab(): React.JSX.Element {
   // ── Detail View ──
   if (selectedId && detail) {
     return (
-      <div className="h-full flex flex-col bg-neutral-950 text-white">
+      <div className="h-full flex flex-col bg-fleet-surface text-fleet-text">
         {/* Header */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-800">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-fleet-border">
           <button
             onClick={() => setSelectedId(null)}
-            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800 transition active:scale-90"
+            className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-2 transition active:scale-90"
           >
             <ArrowLeft size={16} />
           </button>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium truncate">{detail.url ?? 'Unknown URL'}</div>
-            <div className="text-xs text-neutral-500">
+            <div className="text-xs text-fleet-text-subtle">
               {detail.elements?.length ?? 0} elements
               {detail.viewport && ` \u00b7 ${detail.viewport.width}\u00d7${detail.viewport.height}`}
             </div>
           </div>
           <button
             onClick={() => handleCopyPath(selectedId)}
-            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800 transition active:scale-90"
+            className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-2 transition active:scale-90"
             title="Copy path"
           >
             <ClipboardCopy size={14} />
@@ -98,7 +98,7 @@ export function AnnotateTab(): React.JSX.Element {
               void deleteAnnotation(selectedId);
               setSelectedId(null);
             }}
-            className="p-1 text-neutral-400 hover:text-red-400 rounded hover:bg-neutral-800 transition active:scale-90"
+            className="p-1 text-fleet-text-muted hover:text-red-400 rounded hover:bg-fleet-surface-2 transition active:scale-90"
             title="Delete"
           >
             <Trash2 size={14} />
@@ -107,20 +107,20 @@ export function AnnotateTab(): React.JSX.Element {
 
         {/* Context */}
         {detail.context && (
-          <div className="px-3 py-2 border-b border-neutral-800">
-            <div className="text-xs text-neutral-500 mb-1">Context</div>
-            <div className="text-sm text-neutral-300">{detail.context}</div>
+          <div className="px-3 py-2 border-b border-fleet-border">
+            <div className="text-xs text-fleet-text-subtle mb-1">Context</div>
+            <div className="text-sm text-fleet-text-secondary">{detail.context}</div>
           </div>
         )}
 
         {/* Drawing overlay screenshot */}
         {detail.drawingOverlayPath && (
-          <div className="px-3 py-2 border-b border-neutral-800">
-            <div className="text-xs text-neutral-500 mb-1">Drawing</div>
+          <div className="px-3 py-2 border-b border-fleet-border">
+            <div className="text-xs text-fleet-text-subtle mb-1">Drawing</div>
             <img
               src={toFleetImageUrl(detail.drawingOverlayPath)}
               alt="Drawing overlay"
-              className="rounded border border-neutral-700 max-w-full max-h-60 object-contain"
+              className="rounded border border-fleet-border-strong max-w-full max-h-60 object-contain"
             />
           </div>
         )}
@@ -128,22 +128,24 @@ export function AnnotateTab(): React.JSX.Element {
         {/* Elements */}
         <div className="flex-1 overflow-y-auto">
           {detail.elements?.map((el, i) => (
-            <div key={i} className="border-b border-neutral-800">
+            <div key={i} className="border-b border-fleet-border">
               {/* Element header — always visible */}
               <button
                 onClick={() => toggleElement(i)}
-                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-neutral-900 text-left transition active:scale-[0.97]"
+                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-fleet-surface-2 text-left transition active:scale-[0.97]"
               >
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-cyan-900 text-cyan-300 text-xs flex items-center justify-center">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full fleet-accent-bg-soft fleet-accent-text text-xs flex items-center justify-center">
                   {i + 1}
                 </span>
                 {expandedElements.has(i) ? (
-                  <ChevronDown size={12} className="text-neutral-500" />
+                  <ChevronDown size={12} className="text-fleet-text-subtle" />
                 ) : (
-                  <ChevronRight size={12} className="text-neutral-500" />
+                  <ChevronRight size={12} className="text-fleet-text-subtle" />
                 )}
-                <code className="text-xs text-neutral-300 truncate flex-1">{el.selector}</code>
-                <span className="text-xs text-neutral-600">{el.tag}</span>
+                <code className="text-xs text-fleet-text-secondary truncate flex-1">
+                  {el.selector}
+                </code>
+                <span className="text-xs text-fleet-text-subtle">{el.tag}</span>
               </button>
 
               {/* Expanded detail */}
@@ -153,12 +155,12 @@ export function AnnotateTab(): React.JSX.Element {
                     <div className="text-sm text-amber-300">&ldquo;{el.comment}&rdquo;</div>
                   )}
                   {el.text && (
-                    <div className="text-xs text-neutral-400">
-                      Text: <span className="text-neutral-300">{el.text}</span>
+                    <div className="text-xs text-fleet-text-muted">
+                      Text: <span className="text-fleet-text-secondary">{el.text}</span>
                     </div>
                   )}
                   {el.boxModel && (
-                    <div className="text-xs text-neutral-400">
+                    <div className="text-xs text-fleet-text-muted">
                       Box: {el.rect.width}&times;{el.rect.height}
                       {' (pad: '}
                       {el.boxModel.padding.top} {el.boxModel.padding.right}{' '}
@@ -166,14 +168,14 @@ export function AnnotateTab(): React.JSX.Element {
                     </div>
                   )}
                   {el.accessibility && (
-                    <div className="text-xs text-neutral-400">
+                    <div className="text-xs text-fleet-text-muted">
                       A11y: role={el.accessibility.role ?? 'none'}
                       {el.accessibility.name && ` name="${el.accessibility.name}"`}
                       {el.accessibility.focusable && ' focusable'}
                     </div>
                   )}
                   {el.keyStyles && Object.keys(el.keyStyles).length > 0 && (
-                    <div className="text-xs text-neutral-400">
+                    <div className="text-xs text-fleet-text-muted">
                       Styles:{' '}
                       {Object.entries(el.keyStyles)
                         .map(([k, v]) => `${k}: ${v}`)
@@ -184,7 +186,7 @@ export function AnnotateTab(): React.JSX.Element {
                     <img
                       src={toFleetImageUrl(el.screenshotPath)}
                       alt={`Element ${i + 1}`}
-                      className="mt-1 rounded border border-neutral-700 max-w-full max-h-40 object-contain"
+                      className="mt-1 rounded border border-fleet-border-strong max-w-full max-h-40 object-contain"
                     />
                   )}
                 </div>
@@ -198,16 +200,16 @@ export function AnnotateTab(): React.JSX.Element {
 
   // ── List View ──
   return (
-    <div className="h-full flex flex-col bg-neutral-950 text-white">
+    <div className="h-full flex flex-col bg-fleet-surface text-fleet-text">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-fleet-border">
         <div className="flex items-center gap-2">
-          <Crosshair size={16} className="text-cyan-400" />
+          <Crosshair size={16} className="fleet-accent-text" />
           <span className="text-sm font-medium">Annotations</span>
         </div>
         <button
           onClick={() => openAnnotateModal()}
-          className="px-2.5 py-1 text-xs bg-cyan-600 text-white rounded hover:bg-cyan-500 transition active:scale-[0.97]"
+          className="px-2.5 py-1 text-xs fleet-accent-bg fleet-accent-bg-hover text-white rounded-md transition active:scale-[0.97]"
         >
           New
         </button>
@@ -215,16 +217,16 @@ export function AnnotateTab(): React.JSX.Element {
 
       {/* List or empty state */}
       {!isLoaded ? (
-        <div className="flex-1 flex items-center justify-center text-neutral-500 text-sm">
+        <div className="flex-1 flex items-center justify-center text-fleet-text-subtle text-sm">
           Loading...
         </div>
       ) : annotations.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-neutral-500">
-          <Crosshair size={32} className="text-neutral-700" />
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-fleet-text-subtle">
+          <Crosshair size={32} className="text-fleet-text-subtle" />
           <p className="text-sm">No annotations yet</p>
           <button
             onClick={() => openAnnotateModal()}
-            className="px-3 py-1.5 text-xs bg-cyan-600 text-white rounded hover:bg-cyan-500 transition active:scale-[0.97]"
+            className="px-3 py-1.5 text-xs fleet-accent-bg fleet-accent-bg-hover text-white rounded-md transition active:scale-[0.97]"
           >
             New Annotation
           </button>
@@ -236,7 +238,7 @@ export function AnnotateTab(): React.JSX.Element {
               key={ann.id}
               role="button"
               tabIndex={0}
-              className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-neutral-900 border-b border-neutral-800/50 cursor-pointer"
+              className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-fleet-surface-2 border-b border-fleet-border/50 cursor-pointer"
               onClick={() => setSelectedId(ann.id)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -246,8 +248,8 @@ export function AnnotateTab(): React.JSX.Element {
               }}
             >
               <div className="flex-1 min-w-0 text-left">
-                <div className="text-sm text-neutral-200 truncate">{ann.url}</div>
-                <div className="text-xs text-neutral-500">
+                <div className="text-sm text-fleet-text truncate">{ann.url}</div>
+                <div className="text-xs text-fleet-text-subtle">
                   {timeAgo(ann.timestamp)} &middot; {ann.elementCount} element
                   {ann.elementCount !== 1 ? 's' : ''}
                 </div>
@@ -258,7 +260,7 @@ export function AnnotateTab(): React.JSX.Element {
                     e.stopPropagation();
                     handleCopyPath(ann.id);
                   }}
-                  className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800 transition active:scale-90"
+                  className="p-1 text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-2 transition active:scale-90"
                   title="Copy path"
                 >
                   <ClipboardCopy size={14} />
@@ -269,7 +271,7 @@ export function AnnotateTab(): React.JSX.Element {
                     void deleteAnnotation(ann.id);
                     if (selectedId === ann.id) setSelectedId(null);
                   }}
-                  className="p-1 text-neutral-400 hover:text-red-400 rounded hover:bg-neutral-800 transition active:scale-90"
+                  className="p-1 text-fleet-text-muted hover:text-red-400 rounded hover:bg-fleet-surface-2 transition active:scale-90"
                   title="Delete"
                 >
                   <Trash2 size={14} />

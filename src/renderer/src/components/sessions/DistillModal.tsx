@@ -194,24 +194,24 @@ export function DistillModal({
         role="dialog"
         aria-modal="true"
         aria-label="Distill learning"
-        className="flex max-h-[80vh] w-[560px] flex-col rounded-lg border border-neutral-800 bg-neutral-900 p-4"
+        className="flex max-h-[80vh] w-[560px] flex-col rounded-lg border border-fleet-border bg-fleet-surface-2 p-4"
       >
-        <h2 className="mb-3 flex-shrink-0 text-sm font-semibold text-neutral-100">
+        <h2 className="mb-3 flex-shrink-0 text-sm font-semibold text-fleet-text">
           Distill learning
-          {shown ? <span className="ml-2 text-neutral-500">· {shown.title}</span> : null}
+          {shown ? <span className="ml-2 text-fleet-text-subtle">· {shown.title}</span> : null}
         </h2>
 
         {phase === 'loading' && (
-          <div className="py-10 text-center text-sm text-neutral-400">
+          <div className="py-10 text-center text-sm text-fleet-text-muted">
             Reading the session and distilling a learning…
-            <div className="mt-1 text-xs text-neutral-600">
+            <div className="mt-1 text-xs text-fleet-text-subtle">
               Running a headless Claude pass — this can take a moment.
             </div>
           </div>
         )}
 
         {phase === 'nothing' && (
-          <div className="py-10 text-center text-sm text-neutral-400">
+          <div className="py-10 text-center text-sm text-fleet-text-muted">
             Nothing notable to record from this session.
           </div>
         )}
@@ -252,44 +252,44 @@ export function DistillModal({
               </div>
             )}
 
-            <label className="block text-xs text-neutral-300">
+            <label className="block text-xs text-fleet-text-secondary">
               Title
               <input
                 autoFocus
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 disabled={mergeTarget !== null}
-                className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500 disabled:opacity-50"
+                className="mt-1 w-full rounded border border-fleet-border-strong bg-fleet-surface px-2 py-1 text-xs focus-ring disabled:opacity-50"
               />
             </label>
-            <label className="flex min-h-0 flex-1 flex-col text-xs text-neutral-300">
+            <label className="flex min-h-0 flex-1 flex-col text-xs text-fleet-text-secondary">
               Body (markdown)
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                className="mt-1 min-h-[220px] flex-1 resize-none rounded border border-neutral-700 bg-neutral-950 px-2 py-1 font-mono text-xs leading-relaxed outline-none focus:border-blue-500"
+                className="mt-1 min-h-[220px] flex-1 resize-none rounded border border-fleet-border-strong bg-fleet-surface px-2 py-1 font-mono text-xs leading-relaxed focus-ring"
               />
             </label>
-            <label className="block text-xs text-neutral-300">
-              Tags <span className="text-neutral-500">(comma-separated)</span>
+            <label className="block text-xs text-fleet-text-secondary">
+              Tags <span className="text-fleet-text-subtle">(comma-separated)</span>
               <input
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
                 placeholder="e.g. sqlite, testing"
-                className="mt-1 w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
+                className="mt-1 w-full rounded border border-fleet-border-strong bg-fleet-surface px-2 py-1 text-xs focus-ring"
               />
             </label>
             {suggestions.length > 0 && (
               <div className="flex flex-wrap items-center gap-1">
-                <span className="text-[10px] text-neutral-500">Existing tags:</span>
+                <span className="text-[10px] text-fleet-text-subtle">Existing tags:</span>
                 {suggestions.map((v) => (
                   <button
                     key={v.tag}
                     onClick={() => addTag(v.tag)}
-                    className="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-300 hover:bg-neutral-700"
+                    className="rounded bg-fleet-surface-3 px-1.5 py-0.5 text-[10px] text-fleet-text-secondary hover:bg-fleet-surface-3"
                   >
                     {v.tag}
-                    <span className="ml-1 text-neutral-500">{v.count}</span>
+                    <span className="ml-1 text-fleet-text-subtle">{v.count}</span>
                   </button>
                 ))}
               </div>
@@ -301,14 +301,14 @@ export function DistillModal({
           {phase === 'error' || phase === 'nothing' ? (
             <button
               onClick={() => shown && void run(shown)}
-              className="rounded px-3 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 active:scale-[0.97]"
+              className="rounded px-3 py-1 text-xs text-fleet-text-secondary transition hover:bg-fleet-surface-3 active:scale-[0.97]"
             >
               Try again
             </button>
           ) : phase === 'ready' ? (
             <button
               onClick={() => shown && void run(shown)}
-              className="rounded px-3 py-1 text-xs text-neutral-400 transition hover:bg-neutral-800 active:scale-[0.97]"
+              className="rounded px-3 py-1 text-xs text-fleet-text-muted transition hover:bg-fleet-surface-3 active:scale-[0.97]"
             >
               Regenerate
             </button>
@@ -318,7 +318,7 @@ export function DistillModal({
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="rounded px-3 py-1 text-xs text-neutral-400 transition hover:bg-neutral-800 active:scale-[0.97]"
+              className="rounded px-3 py-1 text-xs text-fleet-text-muted transition hover:bg-fleet-surface-3 active:scale-[0.97]"
             >
               {phase === 'ready' ? 'Cancel' : 'Close'}
             </button>
@@ -326,7 +326,7 @@ export function DistillModal({
               <button
                 onClick={() => void save()}
                 disabled={saving || title.trim() === ''}
-                className="rounded bg-blue-600 px-3 py-1 text-xs text-white transition hover:bg-blue-500 active:scale-[0.97] disabled:opacity-50"
+                className="rounded fleet-accent-bg fleet-accent-bg-hover px-3 py-1 text-xs text-white transition active:scale-[0.97] disabled:opacity-50"
               >
                 {saving ? 'Saving…' : mergeTarget ? 'Merge learning' : 'Save learning'}
               </button>

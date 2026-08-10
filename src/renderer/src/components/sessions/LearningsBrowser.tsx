@@ -24,7 +24,7 @@ function searchModeBadge(
     return {
       label: 'Semantic',
       title: 'Searches rank by meaning (vector) + keywords.',
-      tone: 'text-blue-400'
+      tone: 'fleet-accent-text'
     };
   }
   return {
@@ -197,7 +197,7 @@ export function LearningsBrowser({
                 <div
                   key={l.id}
                   onClick={() => open(l)}
-                  className={`cursor-pointer border-b border-fleet-border/40 px-3 py-2 ${isSel ? 'bg-blue-600/15' : 'hover:bg-fleet-surface-2/50'}`}
+                  className={`cursor-pointer border-b border-fleet-border/40 px-3 py-2 ${isSel ? 'fleet-accent-bg-soft' : 'hover:bg-fleet-surface-2/50'}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm text-fleet-text">{l.title}</span>
@@ -283,7 +283,7 @@ export function LearningsBrowser({
                   <button
                     onClick={() => void saveEdit()}
                     disabled={draft.title.trim() === ''}
-                    className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                    className="rounded fleet-accent-bg fleet-accent-bg-hover px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                   >
                     Save
                   </button>

@@ -7,16 +7,16 @@ export function AnnotateSection(): React.JSX.Element {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-medium text-white mb-1">Annotations</h2>
-        <p className="text-sm text-neutral-400">
+        <h2 className="text-lg font-medium text-fleet-text mb-1">Annotations</h2>
+        <p className="text-sm text-fleet-text-muted">
           Configure how webpage annotations are stored and cleaned up.
         </p>
       </div>
 
       <div className="space-y-3">
-        <h3 className="text-sm font-medium text-neutral-300">Storage</h3>
+        <h3 className="text-sm font-medium text-fleet-text-secondary">Storage</h3>
         <div className="flex items-center justify-between">
-          <label className="text-sm text-neutral-400">Delete annotations older than</label>
+          <label className="text-sm text-fleet-text-muted">Delete annotations older than</label>
           <div className="flex items-center gap-1.5">
             <input
               type="number"
@@ -27,9 +27,9 @@ export function AnnotateSection(): React.JSX.Element {
                 const days = Math.max(1, Math.min(365, Number(e.target.value) || 3));
                 void updateSettings({ annotate: { retentionDays: days } });
               }}
-              className="w-16 px-2 py-1 bg-neutral-800 border border-neutral-700 rounded text-sm text-white text-center"
+              className="w-16 px-2 py-1 bg-fleet-surface-3 border border-fleet-border-strong rounded text-sm text-fleet-text text-center"
             />
-            <span className="text-sm text-neutral-400">days</span>
+            <span className="text-sm text-fleet-text-muted">days</span>
           </div>
         </div>
       </div>

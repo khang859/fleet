@@ -55,6 +55,7 @@ import { ShellEnvModal } from './components/shell-env/ShellEnvModal';
 import { AgentFolderDialog } from './components/agent/AgentFolderDialog';
 import { AnnotateTab } from './components/AnnotateTab';
 import { SessionsTab } from './components/sessions/SessionsTab';
+import { ToolPaneFrame } from './components/ToolPaneFrame';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
 import { getAccentCssVars, getGlassCssVars } from './lib/theme';
@@ -790,9 +791,12 @@ export function App(): React.JSX.Element {
       {/* Top bar — drag region for window movement, houses OS window controls */}
       {/* Transparent rather than a solid band: on a canvas the strip the window
           drags by is part of the canvas. It holds nothing but the shortcut hint
-          at its right edge, so there is no text for the picture to fight. */}
+          at its right edge, so there is no text for the picture to fight.
+          Height is set by the traffic lights, not by content: they are placed at
+          y=10 and are 12px tall, so 24px leaves them the same 10px underneath
+          they have above. The cards' own 8px gutter then starts at 32. */}
       <div
-        className="relative z-10 h-9 shrink-0 flex items-center"
+        className="relative z-10 h-6 shrink-0 flex items-center"
         style={{ WebkitAppRegion: 'drag' }}
       >
         <ShortcutsHint />
@@ -1003,11 +1007,17 @@ export function App(): React.JSX.Element {
                     style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
                   >
                     {tab.type === 'annotate' ? (
-                      <AnnotateTab />
+                      <ToolPaneFrame overCanvas={canvasActive}>
+                        <AnnotateTab />
+                      </ToolPaneFrame>
                     ) : tab.type === 'settings' ? (
-                      <SettingsTab />
+                      <ToolPaneFrame overCanvas={canvasActive}>
+                        <SettingsTab />
+                      </ToolPaneFrame>
                     ) : tab.type === 'sessions' ? (
-                      <SessionsTab />
+                      <ToolPaneFrame overCanvas={canvasActive}>
+                        <SessionsTab />
+                      </ToolPaneFrame>
                     ) : (
                       <PaneGrid
                         root={tab.splitRoot}

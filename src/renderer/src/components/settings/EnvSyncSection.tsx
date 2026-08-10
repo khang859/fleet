@@ -27,7 +27,7 @@ const STATUS_LABEL: Record<TargetSyncState, string> = {
 };
 
 const inputCls =
-  'bg-neutral-800 text-sm text-neutral-200 rounded px-2 py-1 border border-neutral-700';
+  'bg-fleet-surface-3 text-sm text-fleet-text rounded px-2 py-1 border border-fleet-border-strong';
 
 function PassphraseControl({
   id,
@@ -58,7 +58,7 @@ function PassphraseControl({
 
   return present ? (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-neutral-400">●●●●●●●● (set)</span>
+      <span className="text-sm text-fleet-text-muted">●●●●●●●● (set)</span>
       <button
         className="text-xs text-red-400 transition active:scale-[0.97]"
         onClick={() => void clear()}
@@ -79,7 +79,7 @@ function PassphraseControl({
       <button
         disabled={!draft || !encAvailable}
         onClick={() => void save()}
-        className="text-xs bg-neutral-700 rounded px-2 py-1 disabled:text-neutral-500 transition active:scale-[0.97] disabled:active:scale-100"
+        className="text-xs bg-fleet-surface-3 rounded px-2 py-1 disabled:text-fleet-text-subtle transition active:scale-[0.97] disabled:active:scale-100"
       >
         Save
       </button>
@@ -168,7 +168,7 @@ function AuthControl({
       {mode === 'static' && (
         <div className="flex flex-col gap-2">
           {redacted?.mode === 'static' && redacted.hasAccessKeyId ? (
-            <span className="text-sm text-neutral-400">
+            <span className="text-sm text-fleet-text-muted">
               Static keys ●●●● (set) — re-enter below to replace
             </span>
           ) : null}
@@ -202,7 +202,7 @@ function AuthControl({
       <div className="flex items-center gap-2">
         <button
           onClick={() => void save()}
-          className="text-xs bg-neutral-700 rounded px-2 py-1 transition active:scale-[0.97]"
+          className="text-xs bg-fleet-surface-3 rounded px-2 py-1 transition active:scale-[0.97]"
         >
           Save
         </button>
@@ -318,9 +318,9 @@ function RepoCard({
   };
 
   return (
-    <div className="rounded border border-neutral-800 p-3">
+    <div className="rounded border border-fleet-border p-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-neutral-200">{config.id}</span>
+        <span className="text-sm text-fleet-text">{config.id}</span>
         {editing ? (
           <div className="flex items-center gap-2">
             <input
@@ -336,13 +336,13 @@ function RepoCard({
               className={`${inputCls} w-28`}
             />
             <button
-              className="text-xs text-blue-400 transition active:scale-[0.97]"
+              className="text-xs fleet-accent-text transition active:scale-[0.97]"
               onClick={() => void saveBucketRegion()}
             >
               Save
             </button>
             <button
-              className="text-xs text-neutral-400 transition active:scale-[0.97]"
+              className="text-xs text-fleet-text-muted transition active:scale-[0.97]"
               onClick={() => setEditing(false)}
             >
               Cancel
@@ -350,11 +350,11 @@ function RepoCard({
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-neutral-500">
+            <span className="text-xs text-fleet-text-subtle">
               {config.bucket} · {config.region}
             </span>
             <button
-              className="text-xs text-blue-400 transition active:scale-[0.97]"
+              className="text-xs fleet-accent-text transition active:scale-[0.97]"
               onClick={startEdit}
             >
               Edit
@@ -366,8 +366,8 @@ function RepoCard({
       <table className="mt-2 w-full text-xs">
         <tbody>
           {statuses.map((t) => (
-            <tr key={t.envFile} className="border-t border-neutral-800">
-              <td className="py-1 text-neutral-300">{t.envFile}</td>
+            <tr key={t.envFile} className="border-t border-fleet-border">
+              <td className="py-1 text-fleet-text-secondary">{t.envFile}</td>
               <td className="py-1">
                 <select
                   value={t.delivery}
@@ -375,22 +375,22 @@ function RepoCard({
                     const v = e.target.value;
                     if (v === 'file' || v === 'inject') void changeDelivery(t.envFile, v);
                   }}
-                  className="rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-neutral-400"
+                  className="rounded border border-fleet-border-strong bg-fleet-surface-3 px-1 py-0.5 text-fleet-text-muted"
                 >
                   <option value="file">file</option>
                   <option value="inject">inject</option>
                 </select>
               </td>
-              <td className="py-1 text-neutral-400">{STATUS_LABEL[t.state]}</td>
+              <td className="py-1 text-fleet-text-muted">{STATUS_LABEL[t.state]}</td>
               <td className="py-1 text-right">
                 <button
-                  className="text-xs text-blue-400 mr-2 transition active:scale-[0.97]"
+                  className="text-xs fleet-accent-text mr-2 transition active:scale-[0.97]"
                   onClick={() => void doSync(repoDir, t.envFile, 'pull')}
                 >
                   Pull
                 </button>
                 <button
-                  className="text-xs text-blue-400 transition active:scale-[0.97]"
+                  className="text-xs fleet-accent-text transition active:scale-[0.97]"
                   onClick={() => void doSync(repoDir, t.envFile, 'push')}
                 >
                   Push
@@ -404,19 +404,22 @@ function RepoCard({
       <div className="mt-2">
         {candidates === null ? (
           <button
-            className="text-xs text-blue-400 transition active:scale-[0.97]"
+            className="text-xs fleet-accent-text transition active:scale-[0.97]"
             onClick={() => void runScan()}
           >
             Scan for env files
           </button>
         ) : (
-          <div className="rounded border border-neutral-800 p-2">
+          <div className="rounded border border-fleet-border p-2">
             {candidates.length === 0 ? (
-              <p className="text-xs text-neutral-500">No new env files found.</p>
+              <p className="text-xs text-fleet-text-subtle">No new env files found.</p>
             ) : (
               <div className="space-y-1">
                 {candidates.map((path) => (
-                  <label key={path} className="flex items-center gap-2 text-xs text-neutral-300">
+                  <label
+                    key={path}
+                    className="flex items-center gap-2 text-xs text-fleet-text-secondary"
+                  >
                     <input
                       type="checkbox"
                       checked={selected.has(path)}
@@ -430,13 +433,13 @@ function RepoCard({
             <div className="mt-2 flex items-center gap-2">
               <button
                 disabled={selected.size === 0}
-                className="text-xs bg-neutral-700 rounded px-2 py-1 disabled:text-neutral-500 transition active:scale-[0.97] disabled:active:scale-100"
+                className="text-xs bg-fleet-surface-3 rounded px-2 py-1 disabled:text-fleet-text-subtle transition active:scale-[0.97] disabled:active:scale-100"
                 onClick={() => void addSelected()}
               >
                 Add selected
               </button>
               <button
-                className="text-xs text-neutral-400 transition active:scale-[0.97]"
+                className="text-xs text-fleet-text-muted transition active:scale-[0.97]"
                 onClick={closeScan}
               >
                 Cancel
@@ -446,9 +449,9 @@ function RepoCard({
         )}
       </div>
 
-      <div className="mt-3 space-y-2 border-t border-neutral-800 pt-2">
+      <div className="mt-3 space-y-2 border-t border-fleet-border pt-2">
         <div className="flex items-center justify-between gap-2">
-          <span className="w-32 text-xs text-neutral-500">Passphrase override</span>
+          <span className="w-32 text-xs text-fleet-text-subtle">Passphrase override</span>
           <PassphraseControl
             id={config.id}
             present={Boolean(secrets.repoOverrides[config.id]?.present)}
@@ -458,7 +461,7 @@ function RepoCard({
           />
         </div>
         <div className="flex items-start justify-between gap-2">
-          <span className="w-32 pt-1 text-xs text-neutral-500">AWS auth override</span>
+          <span className="w-32 pt-1 text-xs text-fleet-text-subtle">AWS auth override</span>
           <AuthControl
             id={config.id}
             redacted={secrets.authRepoOverrides[config.id]}
@@ -541,7 +544,7 @@ export function EnvSyncSection(): React.JSX.Element {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-neutral-200">Env Sync</h2>
+      <h2 className="text-lg font-semibold text-fleet-text">Env Sync</h2>
 
       {!encAvailable && (
         <div className="rounded border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
@@ -577,9 +580,9 @@ export function EnvSyncSection(): React.JSX.Element {
       </SettingRow>
 
       <div className="space-y-3">
-        <h3 className="text-sm font-medium text-neutral-300">Projects</h3>
+        <h3 className="text-sm font-medium text-fleet-text-secondary">Projects</h3>
         {repos.length === 0 && (
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-fleet-text-subtle">
             No projects with a <code>.fleet/env-sync.json</code> among open workspaces.
           </p>
         )}

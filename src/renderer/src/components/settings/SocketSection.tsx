@@ -23,7 +23,7 @@ export function SocketSection(): React.JSX.Element | null {
         <input
           type="text"
           value={settings.socketApi.socketPath || '~/.fleet/fleet.sock'}
-          className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-64 border border-neutral-700"
+          className="bg-fleet-surface-3 text-fleet-text text-sm rounded px-2 py-1 w-64 border border-fleet-border-strong"
           disabled
         />
       </SettingRow>

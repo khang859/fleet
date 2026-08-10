@@ -24,12 +24,12 @@ export function UpdatesSection(): React.JSX.Element {
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <div className="text-sm text-neutral-300">Fleet v{appVersion}</div>
+        <div className="text-sm text-fleet-text-secondary">Fleet v{appVersion}</div>
 
         {updateStatus.state === 'ready' ? (
           <button
             onClick={() => window.fleet.updates.installUpdate()}
-            className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors active:scale-[0.97]"
+            className="px-3 py-1.5 text-sm fleet-accent-bg fleet-accent-bg-hover text-white rounded-md transition-colors active:scale-[0.97]"
           >
             Restart to Update
           </button>
@@ -39,7 +39,7 @@ export function UpdatesSection(): React.JSX.Element {
               void window.fleet.updates.checkForUpdates();
             }}
             disabled={updateStatus.state === 'checking' || updateStatus.state === 'downloading'}
-            className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] disabled:active:scale-100"
+            className="px-3 py-1.5 text-sm bg-fleet-surface-3 hover:bg-fleet-surface-3 text-fleet-text rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] disabled:active:scale-100"
           >
             {updateStatus.state === 'checking' ? 'Checking...' : 'Check for Updates'}
           </button>
@@ -55,12 +55,12 @@ export function UpdatesSection(): React.JSX.Element {
 
         {updateStatus.state === 'downloading' && (
           <div className="space-y-2">
-            <div className="text-sm text-neutral-300">
+            <div className="text-sm text-fleet-text-secondary">
               Downloading v{updateStatus.version}... {updateStatus.percent}%
             </div>
-            <div className="w-full h-1.5 bg-neutral-700 rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-fleet-surface-3 rounded-full overflow-hidden">
               <div
-                className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                className="h-full fleet-accent-bg rounded-full transition-all duration-300"
                 style={{ width: `${updateStatus.percent}%` }}
               />
             </div>
@@ -68,16 +68,18 @@ export function UpdatesSection(): React.JSX.Element {
         )}
 
         {updateStatus.state === 'ready' && (
-          <div className="text-sm text-blue-400">v{updateStatus.version} is ready to install.</div>
+          <div className="text-sm fleet-accent-text">
+            v{updateStatus.version} is ready to install.
+          </div>
         )}
 
         {(updateStatus.state === 'downloading' || updateStatus.state === 'ready') &&
           updateStatus.releaseNotes && (
             <div className="mt-2">
-              <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">
+              <div className="text-xs text-fleet-text-subtle uppercase tracking-wider mb-1">
                 Release Notes
               </div>
-              <div className="text-sm text-neutral-400 bg-neutral-800 rounded-md p-3 max-h-[150px] overflow-y-auto whitespace-pre-wrap border border-neutral-700">
+              <div className="text-sm text-fleet-text-muted bg-fleet-surface-3 rounded-md p-3 max-h-[150px] overflow-y-auto whitespace-pre-wrap border border-fleet-border-strong">
                 {updateStatus.releaseNotes}
               </div>
             </div>
