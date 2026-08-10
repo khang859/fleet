@@ -34,6 +34,10 @@ const ok = (
   timedOut: false
 });
 
+/** `ok` as a resolved promise — an `execInContext` mock has to return one. */
+const okAsync = async (stdout: string): Promise<ReturnType<typeof ok>> =>
+  Promise.resolve(ok(stdout));
+
 // A stub WslService whose home is a known posix path (resolved in beforeEach).
 const wslStub = { homeDir: vi.fn() };
 
@@ -75,7 +79,9 @@ describe('WorktreeService', () => {
 
     beforeEach(() => {
       mockMkdir.mockResolvedValue(undefined);
-      mockExecInContext.mockImplementation(async (_ctx, _cmd, args: string[]) => routeGit(args));
+      mockExecInContext.mockImplementation(async (_ctx, _cmd, args: string[]) =>
+        Promise.resolve(routeGit(args))
+      );
     });
 
     it('create runs git inside the distro and bases the worktree under the distro home', async () => {
@@ -115,8 +121,8 @@ describe('WorktreeService', () => {
     it('remove resolves the main repo and prunes inside the distro', async () => {
       mockExecInContext.mockImplementation(async (_ctx, _cmd, args: string[]) => {
         const a = args.join(' ');
-        if (a.includes('--git-common-dir')) return ok('/home/khang/projects/proj/.git\n');
-        return ok('');
+        if (a.includes('--git-common-dir')) return okAsync('/home/khang/projects/proj/.git\n');
+        return okAsync('');
       });
       await service.remove('/home/khang/.fleet/worktrees/proj/proj-bold-mast-cove', wsl);
 

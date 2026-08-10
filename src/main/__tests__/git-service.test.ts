@@ -30,6 +30,10 @@ const ok = (
   timedOut: false
 });
 
+/** `ok` as a resolved promise — an `execInContext` mock has to return one. */
+const okAsync = async (stdout: string): Promise<ReturnType<typeof ok>> =>
+  Promise.resolve(ok(stdout));
+
 describe('GitService', () => {
   let service: GitService;
 
@@ -153,7 +157,9 @@ describe('GitService', () => {
     }
 
     beforeEach(() => {
-      mockExecInContext.mockImplementation(async (_ctx, _cmd, args: string[]) => routeGit(args));
+      mockExecInContext.mockImplementation(async (_ctx, _cmd, args: string[]) =>
+        Promise.resolve(routeGit(args))
+      );
     });
 
     it('checkIsRepo runs rev-parse inside the distro', async () => {
@@ -204,12 +210,12 @@ describe('GitService', () => {
     it('getFullStatus handles a rename in porcelain output', async () => {
       mockExecInContext.mockImplementation(async (_ctx, _cmd, args: string[]) => {
         const a = args.join(' ');
-        if (a.includes('rev-parse --is-inside-work-tree')) return ok('true\n');
-        if (a.includes('branch --show-current')) return ok('main\n');
-        if (a.includes('status --porcelain=v1')) return ok('R  old.ts -> new.ts\n');
-        if (a.includes('--numstat')) return ok('1\t1\tnew.ts\n');
-        if (a.includes('diff HEAD')) return ok('diff --git a/new.ts b/new.ts\n');
-        return ok('');
+        if (a.includes('rev-parse --is-inside-work-tree')) return okAsync('true\n');
+        if (a.includes('branch --show-current')) return okAsync('main\n');
+        if (a.includes('status --porcelain=v1')) return okAsync('R  old.ts -> new.ts\n');
+        if (a.includes('--numstat')) return okAsync('1\t1\tnew.ts\n');
+        if (a.includes('diff HEAD')) return okAsync('diff --git a/new.ts b/new.ts\n');
+        return okAsync('');
       });
       const result = await service.getFullStatus('/home/khang/repo', undefined, wsl);
       expect(result.files).toHaveLength(1);

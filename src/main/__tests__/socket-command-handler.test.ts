@@ -48,14 +48,14 @@ describe('FleetCommandHandler', () => {
     handler = new FleetCommandHandler(ptyManager, layoutStore, eventBus, notificationState);
   });
 
-  it('handles list-workspaces', async () => {
-    const result = await handler.handleCommand({ type: 'list-workspaces' });
+  it('handles list-workspaces', () => {
+    const result = handler.handleCommand({ type: 'list-workspaces' });
     expect(result.ok).toBe(true);
     expect(result.workspaces).toEqual([]);
   });
 
-  it('handles new-tab', async () => {
-    const result = await handler.handleCommand({
+  it('handles new-tab', () => {
+    const result = handler.handleCommand({
       type: 'new-tab',
       label: 'test',
       cmd: 'echo hello',
@@ -66,13 +66,13 @@ describe('FleetCommandHandler', () => {
     expect(result.paneId).toBeDefined();
   });
 
-  it('handles list-panes after new-tab', async () => {
-    const tabResult = await handler.handleCommand({
+  it('handles list-panes after new-tab', () => {
+    const tabResult = handler.handleCommand({
       type: 'new-tab',
       label: 'test',
       cwd: '/tmp'
     });
-    const result = await handler.handleCommand({
+    const result = handler.handleCommand({
       type: 'list-panes',
       tabId: tabResult.tabId
     });
@@ -80,21 +80,21 @@ describe('FleetCommandHandler', () => {
     expect(result.panes).toHaveLength(1);
   });
 
-  it('handles get-state', async () => {
-    const result = await handler.handleCommand({ type: 'get-state' });
+  it('handles get-state', () => {
+    const result = handler.handleCommand({ type: 'get-state' });
     expect(result.ok).toBe(true);
     expect(result.workspace).toBeDefined();
     expect(result.notifications).toBeDefined();
   });
 
-  it('returns error for unknown command', async () => {
-    const result = await handler.handleCommand({ type: 'nonexistent' });
+  it('returns error for unknown command', () => {
+    const result = handler.handleCommand({ type: 'nonexistent' });
     expect(result.ok).toBe(false);
     expect(result.error).toContain('Unknown command');
   });
 
-  it('returns error for invalid paneId', async () => {
-    const result = await handler.handleCommand({
+  it('returns error for invalid paneId', () => {
+    const result = handler.handleCommand({
       type: 'focus-pane',
       paneId: 'does-not-exist'
     });

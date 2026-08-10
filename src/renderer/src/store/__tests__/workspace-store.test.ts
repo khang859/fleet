@@ -80,8 +80,8 @@ beforeEach(() => {
   // fire-and-forget updateSettings; the bare window.fleet stub from test-setup
   // would make that call reject unhandled and fail the run.
   (window.fleet as { settings: unknown }).settings = {
-    set: async () => undefined,
-    get: async () => ({})
+    set: async () => Promise.resolve(undefined),
+    get: async () => Promise.resolve({})
   };
   useWorkspaceStore.setState({
     workspace: WS_A,
