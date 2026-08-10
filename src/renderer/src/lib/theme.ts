@@ -79,10 +79,42 @@ export function getGlassCssVars(active: boolean): FleetThemeCssProperties | unde
     `color-mix(in srgb, var(${token}) ${percent}%, transparent)`;
   return {
     '--fleet-glass-bg': glass('--fleet-bg', 55),
+    // The sidebar is a wall of small text, so it holds far more of its own
+    // colour than a pane does. It reads as the same material as the rest of the
+    // chrome, only thicker - enough that the picture behind it never competes
+    // with a session name.
+    '--fleet-glass-chrome': glass('--fleet-bg', 88),
+    // The scrim an assistant turn sits on once the pane is glass. Prose and
+    // muted tool rows have no ground of their own over a picture, and the
+    // transcript is the one surface in the app that is read a paragraph at a
+    // time. Off entirely without an image, so a plain theme keeps the flat
+    // transcript it has today.
+    '--fleet-turn-scrim': glass('--fleet-surface', 55),
+    '--fleet-turn-pad': '0.5rem 0.75rem',
     '--fleet-glass-surface': glass('--fleet-surface', 70),
     '--fleet-glass-surface-2': glass('--fleet-surface-2', 65),
     '--fleet-glass-surface-3': glass('--fleet-surface-3', 70)
   };
+}
+
+/**
+ * How much of its own colour a pane keeps once it is sitting on the app
+ * background canvas. Terminals go to glass - monospace on a tinted picture is
+ * the look the wallpaper exists for, and the image's own opacity setting is
+ * the knob that tunes it. Prose panes stay near-solid: a transcript is read a
+ * paragraph at a time, and a picture moving underneath it costs more than it
+ * gives.
+ */
+export const PANE_GLASS = 22;
+export const PANE_SOLID = 88;
+
+/**
+ * A pane's own ground colour over the canvas. With no image showing this is the
+ * identity, so panes stay fully opaque and nothing about the plain themes moves.
+ */
+export function paneGround(color: string, overCanvas: boolean, percent = PANE_SOLID): string {
+  if (!overCanvas) return color;
+  return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 }
 
 // ── App theme (UI chrome) ──────────────────────────────────────────────────

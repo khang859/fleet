@@ -66,18 +66,18 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
   return (
     <Overlay open={isOpen} onClose={handleClose}>
       <div
-        className="relative w-[480px] bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-6"
+        className="relative w-[480px] bg-fleet-surface-2 border border-fleet-border-strong rounded-lg shadow-xl p-6"
         onKeyDown={handleKeyDown}
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Crosshair size={18} className="text-cyan-400" />
-            <h2 className="text-base font-medium text-white">New Annotation</h2>
+            <Crosshair size={18} className="fleet-accent-text" />
+            <h2 className="text-base font-medium text-fleet-text">New Annotation</h2>
           </div>
           <button
             onClick={handleClose}
-            className="p-1 text-neutral-500 hover:text-white rounded transition hover:bg-neutral-800 active:scale-90"
+            className="p-1 text-fleet-text-subtle hover:text-fleet-text rounded transition hover:bg-fleet-surface-3 active:scale-90"
           >
             <X size={16} />
           </button>
@@ -85,28 +85,28 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
 
         {/* URL input */}
         <div className="mb-4">
-          <label className="block text-sm text-neutral-400 mb-1.5">URL</label>
+          <label className="block text-sm text-fleet-text-muted mb-1.5">URL</label>
           <input
             ref={inputRef}
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com"
-            className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500"
+            className="w-full px-3 py-2 bg-fleet-surface-3 border border-fleet-border-strong rounded-md text-sm text-fleet-text placeholder:text-fleet-text-subtle focus-ring"
           />
-          <p className="mt-1 text-xs text-neutral-500">Leave empty to open a blank page</p>
+          <p className="mt-1 text-xs text-fleet-text-subtle">Leave empty to open a blank page</p>
         </div>
 
         {/* Mode selection */}
         <div className="mb-4">
-          <label className="block text-sm text-neutral-400 mb-1.5">Mode</label>
+          <label className="block text-sm text-fleet-text-muted mb-1.5">Mode</label>
           <div className="flex gap-2">
             <button
               onClick={() => setMode('select')}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border text-sm transition active:scale-[0.97] ${
                 mode === 'select'
-                  ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
-                  : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
+                  ? 'border-[color:var(--fleet-accent)] fleet-accent-bg-soft fleet-accent-text'
+                  : 'border-fleet-border bg-fleet-surface-3 text-fleet-text-muted hover:border-fleet-border-strong'
               }`}
             >
               <MousePointer size={16} />
@@ -116,8 +116,8 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
               onClick={() => setMode('draw')}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border text-sm transition active:scale-[0.97] ${
                 mode === 'draw'
-                  ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
-                  : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
+                  ? 'border-[color:var(--fleet-accent)] fleet-accent-bg-soft fleet-accent-text'
+                  : 'border-fleet-border bg-fleet-surface-3 text-fleet-text-muted hover:border-fleet-border-strong'
               }`}
             >
               <Pencil size={16} />
@@ -130,13 +130,13 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
         <div className="flex justify-end gap-2">
           <button
             onClick={handleClose}
-            className="px-3 py-1.5 text-sm text-neutral-400 hover:text-white rounded-md transition hover:bg-neutral-800 active:scale-[0.97]"
+            className="px-3 py-1.5 text-sm text-fleet-text-muted hover:text-fleet-text rounded-md transition hover:bg-fleet-surface-3 active:scale-[0.97]"
           >
             Cancel
           </button>
           <button
             onClick={handleStart}
-            className="px-3 py-1.5 text-sm bg-cyan-600 text-white rounded-md transition hover:bg-cyan-500 active:scale-[0.97]"
+            className="px-3 py-1.5 text-sm fleet-accent-bg fleet-accent-bg-hover text-white rounded-md transition active:scale-[0.97]"
           >
             Start
           </button>

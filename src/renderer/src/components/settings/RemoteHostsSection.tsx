@@ -8,7 +8,7 @@ import { useToastStore } from '../../store/toast-store';
 type TestState = 'idle' | 'testing' | 'ok' | 'failed';
 
 const inputClass =
-  'w-full px-2 py-1 bg-neutral-800 border border-neutral-700 rounded text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500';
+  'w-full px-2 py-1 bg-fleet-surface-3 border border-fleet-border-strong rounded text-sm text-fleet-text placeholder:text-fleet-text-subtle focus-ring';
 
 function emptyHost(): RemoteHost {
   return { id: crypto.randomUUID(), label: '', host: '' };
@@ -63,8 +63,8 @@ export function RemoteHostsSection(): React.JSX.Element {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-medium text-white mb-1">Remote Hosts</h2>
-        <p className="text-sm text-neutral-400">
+        <h2 className="text-lg font-medium text-fleet-text mb-1">Remote Hosts</h2>
+        <p className="text-sm text-fleet-text-muted">
           SSH targets you can browse as a file pane. Fleet stores only the connection coordinates -
           authentication uses your existing OpenSSH setup (<code>~/.ssh/config</code>, agent keys),
           and no passwords or key material are ever saved here.
@@ -73,8 +73,8 @@ export function RemoteHostsSection(): React.JSX.Element {
 
       <div className="space-y-2">
         {hosts.length === 0 && draft === null && (
-          <div className="flex flex-col items-center gap-2 py-8 text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-md">
-            <Server size={22} className="text-neutral-700" />
+          <div className="flex flex-col items-center gap-2 py-8 text-sm text-fleet-text-subtle border border-dashed border-fleet-border rounded-md">
+            <Server size={22} className="text-fleet-text-subtle" />
             No hosts saved yet
           </div>
         )}
@@ -91,16 +91,16 @@ export function RemoteHostsSection(): React.JSX.Element {
           ) : (
             <div
               key={host.id}
-              className="flex items-center gap-3 px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md"
+              className="flex items-center gap-3 px-3 py-2 bg-fleet-surface-2 border border-fleet-border rounded-md"
             >
-              <Server size={14} className="text-neutral-500 shrink-0" />
+              <Server size={14} className="text-fleet-text-subtle shrink-0" />
               <button
                 className="flex-1 min-w-0 text-left"
                 onClick={() => setDraft(host)}
                 title="Edit host"
               >
-                <div className="text-sm text-neutral-200 truncate">{host.label}</div>
-                <div className="text-xs text-neutral-500 font-mono truncate">
+                <div className="text-sm text-fleet-text truncate">{host.label}</div>
+                <div className="text-xs text-fleet-text-subtle font-mono truncate">
                   {host.user ? `${host.user}@` : ''}
                   {host.host}
                   {host.port ? `:${host.port}` : ''}
@@ -109,7 +109,7 @@ export function RemoteHostsSection(): React.JSX.Element {
               </button>
               <TestBadge state={tests[host.id] ?? 'idle'} onTest={() => void testHost(host)} />
               <button
-                className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-white/10 transition-colors active:scale-[0.97]"
+                className="p-1.5 rounded text-fleet-text-muted hover:text-fleet-text hover:bg-white/10 transition-colors active:scale-[0.97]"
                 title="Browse files"
                 aria-label={`Browse ${host.label}`}
                 onClick={() => openSshBrowser(host)}
@@ -117,7 +117,7 @@ export function RemoteHostsSection(): React.JSX.Element {
                 <FolderOpen size={14} />
               </button>
               <button
-                className="p-1.5 rounded text-neutral-400 hover:text-red-400 hover:bg-white/10 transition-colors active:scale-[0.97]"
+                className="p-1.5 rounded text-fleet-text-muted hover:text-red-400 hover:bg-white/10 transition-colors active:scale-[0.97]"
                 title="Remove host"
                 aria-label={`Remove ${host.label}`}
                 onClick={() => void persist(hosts.filter((h) => h.id !== host.id))}
@@ -139,7 +139,7 @@ export function RemoteHostsSection(): React.JSX.Element {
 
         {draft === null && (
           <button
-            className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-neutral-400 hover:text-white rounded hover:bg-neutral-800/60 transition-colors active:scale-[0.97]"
+            className="flex items-center gap-1.5 px-2 py-1.5 text-sm text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3/60 transition-colors active:scale-[0.97]"
             onClick={() => setDraft(emptyHost())}
           >
             <Plus size={14} />
@@ -154,7 +154,7 @@ export function RemoteHostsSection(): React.JSX.Element {
 function TestBadge({ state, onTest }: { state: TestState; onTest: () => void }): React.JSX.Element {
   if (state === 'testing') {
     return (
-      <span className="flex items-center gap-1 text-xs text-neutral-500 px-1.5">
+      <span className="flex items-center gap-1 text-xs text-fleet-text-subtle px-1.5">
         <Loader2 size={12} className="animate-spin" />
         Testing
       </span>
@@ -167,7 +167,7 @@ function TestBadge({ state, onTest }: { state: TestState; onTest: () => void }):
           ? 'text-emerald-400'
           : state === 'failed'
             ? 'text-red-400'
-            : 'text-neutral-500'
+            : 'text-fleet-text-subtle'
       }`}
       onClick={onTest}
       title="Test connection"
@@ -189,7 +189,7 @@ function HostForm({
   onCancel: () => void;
 }): React.JSX.Element {
   return (
-    <div className="p-3 bg-neutral-900 border border-neutral-700 rounded-md space-y-2">
+    <div className="p-3 bg-fleet-surface-2 border border-fleet-border-strong rounded-md space-y-2">
       <div className="grid grid-cols-2 gap-2">
         <Field label="Name">
           <input
@@ -246,14 +246,14 @@ function HostForm({
       </div>
       <div className="flex items-center justify-end gap-1.5 pt-1">
         <button
-          className="flex items-center gap-1 px-2 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-white/10 transition-colors active:scale-[0.97]"
+          className="flex items-center gap-1 px-2 py-1 text-xs text-fleet-text-muted hover:text-fleet-text rounded hover:bg-white/10 transition-colors active:scale-[0.97]"
           onClick={onCancel}
         >
           <X size={12} />
           Cancel
         </button>
         <button
-          className="flex items-center gap-1 px-2 py-1 text-xs text-neutral-200 rounded bg-neutral-700 hover:bg-neutral-600 transition-colors active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none"
+          className="flex items-center gap-1 px-2 py-1 text-xs text-fleet-text rounded bg-fleet-surface-3 hover:bg-fleet-surface-3 transition-colors active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none"
           disabled={draft.host.trim() === ''}
           onClick={onSave}
         >
@@ -274,7 +274,7 @@ function Field({
 }): React.JSX.Element {
   return (
     <label className="block space-y-1">
-      <span className="text-xs text-neutral-500">{label}</span>
+      <span className="text-xs text-fleet-text-subtle">{label}</span>
       {children}
     </label>
   );

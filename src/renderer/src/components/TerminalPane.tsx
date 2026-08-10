@@ -2,9 +2,10 @@ import { useRef, useState, useEffect } from 'react';
 import { useTerminal } from '../hooks/use-terminal';
 import { useTerminalDrop } from '../hooks/use-terminal-drop';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
-import { BackgroundLayer } from './BackgroundLayer';
 import { resolveBackgroundSrc } from '../lib/pane-background';
+import { paneGround, PANE_GLASS } from '../lib/theme';
 import { PaneToolbar } from './PaneToolbar';
+import { PaneHeader } from './PaneHeader';
 import { SearchBar } from './SearchBar';
 import { openAnnotateModal } from '../lib/annotate-modal-bridge';
 import { useCwdStore } from '../store/cwd-store';
@@ -17,6 +18,9 @@ type TerminalPaneProps = {
   paneId: string;
   cwd: string;
   isActive: boolean;
+  /** Shown in the pane's own title bar, which every pane now carries. */
+  label?: string;
+  labelIsCustom?: boolean;
   onFocus: () => void;
   serializedContent?: string;
   fontFamily?: string;
@@ -35,6 +39,8 @@ export function TerminalPane({
   paneId,
   cwd,
   isActive,
+  label,
+  labelIsCustom,
   onFocus,
   serializedContent,
   fontFamily,
@@ -129,13 +135,42 @@ export function TerminalPane({
     return () => document.removeEventListener('fleet:refocus-pane', handler);
   }, [paneId, focus]);
 
+  // The actions belong to the title bar, so they are built here and handed to
+  // it rather than floated over the terminal - which is what used to put them
+  // on top of the first line of output.
+  const toolbar = (
+    <PaneToolbar
+      visible={hovered}
+      isGitRepo={isGitRepo}
+      onSplitHorizontal={() => onSplitHorizontal?.()}
+      onSplitVertical={() => onSplitVertical?.()}
+      onClose={() => onClose?.()}
+      onSearch={() => setSearchOpen(true)}
+      onGitChanges={() => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes'))}
+      onFileSearch={() => document.dispatchEvent(new CustomEvent('fleet:toggle-file-search'))}
+      onClipboardHistory={() =>
+        document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))
+      }
+      onAnnotate={() => openAnnotateModal()}
+      onTelescope={() => document.dispatchEvent(new CustomEvent('fleet:toggle-telescope'))}
+      onNotes={() => document.dispatchEvent(new CustomEvent('fleet:toggle-notes'))}
+      onEnvSync={() => document.dispatchEvent(new CustomEvent('fleet:toggle-env-sync'))}
+      onEnvEditor={() => document.dispatchEvent(new CustomEvent('fleet:toggle-env-editor'))}
+    />
+  );
+
   return (
     <div
-      className="relative h-full w-full overflow-hidden p-4 transition-[box-shadow] duration-0"
+      className="flex h-full w-full flex-col"
       style={{
-        backgroundColor: isActive
-          ? terminalThemeDef.background
-          : terminalThemeDef.inactiveBackground
+        // Glass over the app canvas: the terminal keeps only a tint of its own
+        // theme colour so the picture behind the window reads straight through
+        // it. With no image it stays fully opaque.
+        backgroundColor: paneGround(
+          isActive ? terminalThemeDef.background : terminalThemeDef.inactiveBackground,
+          hasBackgroundImage,
+          PANE_GLASS
+        )
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -146,66 +181,48 @@ export function TerminalPane({
       }}
       {...dragHandlers}
     >
-      {terminalBackground && (
-        <BackgroundLayer background={terminalBackground} frame={slideshowFrame} />
-      )}
-      <PaneToolbar
-        visible={hovered}
-        isGitRepo={isGitRepo}
-        onSplitHorizontal={() => onSplitHorizontal?.()}
-        onSplitVertical={() => onSplitVertical?.()}
-        onClose={() => onClose?.()}
-        onSearch={() => setSearchOpen(true)}
-        onGitChanges={() => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes'))}
-        onFileSearch={() => document.dispatchEvent(new CustomEvent('fleet:toggle-file-search'))}
-        onClipboardHistory={() =>
-          document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))
-        }
-        onAnnotate={() => openAnnotateModal()}
-        onTelescope={() => document.dispatchEvent(new CustomEvent('fleet:toggle-telescope'))}
-        onNotes={() => document.dispatchEvent(new CustomEvent('fleet:toggle-notes'))}
-        onEnvSync={() => document.dispatchEvent(new CustomEvent('fleet:toggle-env-sync'))}
-        onEnvEditor={() => document.dispatchEvent(new CustomEvent('fleet:toggle-env-editor'))}
-      />
-      <SearchBar
-        isOpen={searchOpen}
-        onClose={() => {
-          setSearchOpen(false);
-          clearSearch();
-          focus();
-        }}
-        onSearch={(q) => search(q)}
-        onSearchPrevious={(q) => searchPrevious(q)}
-      />
-      <div ref={containerRef} className="relative z-10 h-full w-full" />
-      {isScrolledUp && (
-        <button
-          className="absolute bottom-3 right-3 z-40 flex items-center gap-1.5 rounded-md bg-fleet-surface-2/90 px-2.5 py-1.5 text-xs text-fleet-text-secondary shadow-lg backdrop-blur-sm hover:bg-fleet-surface-3 transition-colors active:scale-[0.97]"
-          onClick={(e) => {
-            e.stopPropagation();
-            scrollToBottom();
+      <PaneHeader paneId={paneId} label={label} labelIsCustom={labelIsCustom} actions={toolbar} />
+      <div className="relative min-h-0 flex-1 overflow-hidden p-4">
+        <SearchBar
+          isOpen={searchOpen}
+          onClose={() => {
+            setSearchOpen(false);
+            clearSearch();
             focus();
           }}
-          tabIndex={-1}
-          aria-label="Scroll to bottom"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path
-              d="M2 4l4 4 4-4"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <span>Bottom</span>
-        </button>
-      )}
-      {isDragOver && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center fleet-accent-bg-soft border-2 border-dashed fleet-accent-border rounded pointer-events-none">
-          <span className="fleet-accent-text text-sm font-medium">Drop to paste file path</span>
-        </div>
-      )}
+          onSearch={(q) => search(q)}
+          onSearchPrevious={(q) => searchPrevious(q)}
+        />
+        <div ref={containerRef} className="relative z-10 h-full w-full" />
+        {isScrolledUp && (
+          <button
+            className="absolute bottom-3 right-3 z-40 flex items-center gap-1.5 rounded-md bg-fleet-surface-2/90 px-2.5 py-1.5 text-xs text-fleet-text-secondary shadow-lg backdrop-blur-sm hover:bg-fleet-surface-3 transition-colors active:scale-[0.97]"
+            onClick={(e) => {
+              e.stopPropagation();
+              scrollToBottom();
+              focus();
+            }}
+            tabIndex={-1}
+            aria-label="Scroll to bottom"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M2 4l4 4 4-4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span>Bottom</span>
+          </button>
+        )}
+        {isDragOver && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center fleet-accent-bg-soft border-2 border-dashed fleet-accent-border rounded pointer-events-none">
+            <span className="fleet-accent-text text-sm font-medium">Drop to paste file path</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

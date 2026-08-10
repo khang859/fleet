@@ -12,11 +12,11 @@ import { scheduleRows, showSchedulePanel } from './schedule-view';
 import { cancelSchedule } from '../../store/agent-schedule';
 import { SIDE_COLUMN_WIDTH_PX, centeringGutterPx } from './side-column';
 import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
-import { BackgroundLayer } from '../BackgroundLayer';
+
 import { useAgentStore } from '../../store/agent-store';
 import { useElementWidth } from '../../hooks/use-element-width';
 import { resolveBackgroundSrc } from '../../lib/pane-background';
-import { getGlassCssVars } from '../../lib/theme';
+import { getGlassCssVars, paneGround, PANE_GLASS } from '../../lib/theme';
 import type { AgentTodoItem } from '../../../../shared/agent-todos';
 import type { AgentScheduleRecord } from '../../../../shared/agent-schedule';
 import type { AgentMessage, AgentPermissionAsk } from '../../../../shared/agent-types';
@@ -157,21 +157,19 @@ export function AgentPane({
   const hasBackgroundImage = resolveBackgroundSrc(terminalBackground, slideshowFrame) !== null;
 
   return (
-    // The floor stays opaque and the image blends onto it at the user's
-    // opacity, which is what a terminal pane does - blending against nothing
-    // instead would make the same setting read far stronger here than there.
-    // `relative` so the layer's absolute children anchor here rather than to
-    // the pane frame two levels up.
+    // The image is one canvas behind the whole window (see App), so this pane
+    // only supplies its own ground over it - glass, at the same strength the
+    // terminals use, so a window of mixed panes reads as one material. The
+    // transcript is prose rather than a glanced-at stream, so it carries its own
+    // scrim (see AgentThread) instead of thickening the whole pane.
     <div
       ref={frameRef}
-      className="relative flex h-full w-full flex-col bg-fleet-bg"
-      style={getGlassCssVars(hasBackgroundImage)}
+      className="relative flex h-full w-full flex-col"
+      style={{
+        ...getGlassCssVars(hasBackgroundImage),
+        backgroundColor: paneGround('var(--fleet-bg)', hasBackgroundImage, PANE_GLASS)
+      }}
     >
-      {terminalBackground && (
-        <BackgroundLayer background={terminalBackground} frame={slideshowFrame} />
-      )}
-      {/* The layer sits at z-0, so everything the user sees is lifted above it
-          in one wrapper - which is also what puts all three views over it. */}
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         <AgentTabs value={view} onChange={setView} />
         {view === 'agent' && (
@@ -266,7 +264,10 @@ function AgentTabs({
           e.preventDefault();
           move(e.key === 'ArrowRight' ? 1 : -1);
         }}
-        className="flex items-center gap-0.5 rounded-lg border border-fleet-border bg-fleet-glass-surface p-0.5 backdrop-blur-md"
+        // The agent pane has no title bar, so this pill is the chrome that
+        // carries the focus cue the other panes carry in their header: lit and
+        // firmly edged when the pane has focus, quiet when it does not.
+        className="flex items-center gap-0.5 rounded-lg border border-fleet-border bg-fleet-glass-surface p-0.5 backdrop-blur-md transition-colors group-data-[pane-active=true]/pane:border-fleet-border-strong group-data-[pane-active=true]/pane:bg-fleet-glass-surface-3"
       >
         {TABS.map(({ value: tab, label, Icon }) => {
           const selected = tab === value;

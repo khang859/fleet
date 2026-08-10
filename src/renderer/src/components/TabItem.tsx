@@ -188,7 +188,7 @@ export function TabItem({
         <div
           data-tab-id={id}
           className={`
-            group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm relative min-h-[44px] transition-colors
+            group flex items-center gap-2 px-2.5 py-1 cursor-pointer rounded-md text-sm relative min-h-[28px] transition-colors
             ${indentLevel > 0 ? 'ml-4 border-l-2 border-l-teal-500/50' : ''}
             ${
               isActive
@@ -258,21 +258,28 @@ export function TabItem({
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <div className="flex-1 min-w-0" onDoubleClick={handleDoubleClick}>
-              <div className="flex items-center gap-1.5">
-                <span className="truncate text-sm leading-tight">
-                  {labelIsCustom ? label : cwdBasename(cwd, pathContext ?? 'posix')}
+            // One line, not two. The name is what the row is scanned for; the
+            // branch, freshness or path is context, so it trails the name as a
+            // muted chip and gives up its width first. A sidebar holding a
+            // dozen sessions is the normal case, and at two lines each that
+            // list stopped fitting on screen long before it stopped being
+            // useful.
+            <div
+              className="flex-1 min-w-0 flex items-baseline gap-1.5"
+              onDoubleClick={handleDoubleClick}
+            >
+              <span className="truncate text-sm leading-tight">
+                {labelIsCustom ? label : cwdBasename(cwd, pathContext ?? 'posix')}
+              </span>
+              {isRemote && (
+                <span
+                  className="flex-shrink-0 rounded bg-purple-500/20 px-1 py-px text-[9px] font-medium uppercase leading-none tracking-wide text-purple-300"
+                  aria-label="remote session"
+                >
+                  remote
                 </span>
-                {isRemote && (
-                  <span
-                    className="flex-shrink-0 rounded bg-purple-500/20 px-1 py-px text-[9px] font-medium uppercase leading-none tracking-wide text-purple-300"
-                    aria-label="remote session"
-                  >
-                    remote
-                  </span>
-                )}
-              </div>
-              <div className="truncate text-xs leading-tight text-fleet-text-muted">
+              )}
+              <span className="ml-auto min-w-0 truncate text-[11px] leading-tight text-fleet-text-muted">
                 {worktreeBranch ? (
                   <span className="text-teal-400/60">{worktreeBranch}</span>
                 ) : freshness ? (
@@ -290,7 +297,7 @@ export function TabItem({
                 ) : (
                   shortenPath(cwd)
                 )}
-              </div>
+              </span>
             </div>
           )}
 

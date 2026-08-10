@@ -49,19 +49,23 @@ export function SidebarResizeHandle({
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize sidebar"
-      className={`absolute top-0 bottom-0 -right-0.5 w-1 cursor-col-resize z-20 group ${
-        isDragging ? '' : 'hover:bg-blue-500/0'
-      }`}
+      // Sits in the canvas gutter between the sidebar card and the first pane
+      // rather than on the card's rounded edge, so grabbing it never means
+      // clicking the last few pixels of a row.
+      className="absolute top-0 bottom-0 -right-2 w-2 cursor-col-resize z-20 group flex items-center justify-center"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onDoubleClick={onReset}
     >
-      {/* Visual accent — transparent by default, blue on hover/active */}
+      {/* The same pill the pane splitters use, so every gutter in the window
+          reveals its handle the same way. */}
       <div
-        className={`absolute top-0 bottom-0 left-0 right-0 transition-colors ${
-          isDragging ? 'bg-blue-500/80' : 'bg-transparent group-hover:bg-blue-500/50'
+        className={`w-[3px] h-8 rounded-full transition-opacity ${
+          isDragging
+            ? 'fleet-accent-bg opacity-100'
+            : 'bg-fleet-border-strong opacity-0 group-hover:opacity-100'
         }`}
       />
     </div>

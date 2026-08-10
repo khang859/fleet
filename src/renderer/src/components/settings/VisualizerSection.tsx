@@ -39,15 +39,15 @@ export function VisualizerSection(): React.JSX.Element | null {
             const panelMode = e.target.value === 'tab' ? 'tab' : 'drawer';
             void updateSettings({ visualizer: { ...settings.visualizer, panelMode } });
           }}
-          className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
+          className="bg-fleet-surface-3 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong"
         >
           <option value="drawer">Bottom Drawer</option>
           <option value="tab">Dedicated Tab</option>
         </select>
       </SettingRow>
 
-      <div className="border-t border-neutral-800 pt-3 mt-3">
-        <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">Ambient</div>
+      <div className="border-t border-fleet-border pt-3 mt-3">
+        <div className="text-xs text-fleet-text-subtle uppercase tracking-wider mb-2">Ambient</div>
         <div className="space-y-2">
           {effectToggle('nebulaClouds', 'Nebula Clouds')}
           {effectToggle('auroraBands', 'Aurora Bands')}
@@ -60,8 +60,8 @@ export function VisualizerSection(): React.JSX.Element | null {
         </div>
       </div>
 
-      <div className="border-t border-neutral-800 pt-3 mt-3">
-        <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">Ships</div>
+      <div className="border-t border-fleet-border pt-3 mt-3">
+        <div className="text-xs text-fleet-text-subtle uppercase tracking-wider mb-2">Ships</div>
         <div className="space-y-2">
           {effectToggle('coloredTrails', 'Colored Engine Trails')}
           {effectToggle('enhancedIdle', 'Enhanced Idle Animation')}
@@ -70,8 +70,10 @@ export function VisualizerSection(): React.JSX.Element | null {
         </div>
       </div>
 
-      <div className="border-t border-neutral-800 pt-3 mt-3">
-        <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">Environment</div>
+      <div className="border-t border-fleet-border pt-3 mt-3">
+        <div className="text-xs text-fleet-text-subtle uppercase tracking-wider mb-2">
+          Environment
+        </div>
         <div className="space-y-2">
           {effectToggle('distantPlanets', 'Distant Planets')}
           {effectToggle('spaceStation', 'Space Station')}
@@ -80,21 +82,25 @@ export function VisualizerSection(): React.JSX.Element | null {
         </div>
       </div>
 
-      <div className="border-t border-neutral-800 pt-3 mt-3">
-        <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">Interactive</div>
+      <div className="border-t border-fleet-border pt-3 mt-3">
+        <div className="text-xs text-fleet-text-subtle uppercase tracking-wider mb-2">
+          Interactive
+        </div>
         <div className="space-y-2">
           {effectToggle('followCamera', 'Click-to-Follow Camera')}
           {effectToggle('zoomEnabled', 'Scroll Zoom')}
         </div>
       </div>
 
-      <div className="border-t border-neutral-800 pt-3 mt-3">
-        <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">Visual Quality</div>
+      <div className="border-t border-fleet-border pt-3 mt-3">
+        <div className="text-xs text-fleet-text-subtle uppercase tracking-wider mb-2">
+          Visual Quality
+        </div>
         <div className="space-y-2">{effectToggle('bloomGlow', 'Bloom Glow')}</div>
       </div>
 
-      <div className="border-t border-neutral-800 pt-3 mt-3">
-        <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">Audio</div>
+      <div className="border-t border-fleet-border pt-3 mt-3">
+        <div className="text-xs text-fleet-text-subtle uppercase tracking-wider mb-2">Audio</div>
         <div className="space-y-2">
           {effectToggle('ambientSound', 'Ambient Soundscape')}
           {settings.visualizer.effects.ambientSound && (

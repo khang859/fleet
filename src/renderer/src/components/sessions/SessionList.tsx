@@ -54,7 +54,7 @@ export function SessionList(): React.JSX.Element {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search sessions…"
-          className="flex-1 rounded bg-fleet-surface px-2 py-1 text-sm text-fleet-text border border-fleet-border-strong"
+          className="flex-1 rounded-md bg-fleet-surface px-2.5 py-1.5 text-sm text-fleet-text border border-fleet-border-strong placeholder:text-fleet-text-subtle focus-ring"
         />
       </div>
       <div className="flex-1 overflow-y-auto">
@@ -63,17 +63,27 @@ export function SessionList(): React.JSX.Element {
         ) : (
           groups.map((g) => (
             <div key={g.cwd}>
-              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-fleet-text-subtle bg-fleet-surface/40 truncate">
+              {/* Sticky, so you can still tell which project you are scrolling
+                  through a hundred sessions down. Sentence case rather than
+                  letter-spaced caps, like every other group header now. */}
+              <div className="sticky top-0 z-10 truncate bg-fleet-surface px-3 py-1.5 text-[11px] font-medium text-fleet-text-subtle">
                 {g.project}
               </div>
               {g.sessions.map((s) => {
                 const sel = selected;
                 const isSel = sel !== null && sel.id === s.id;
                 return (
+                  // No rule under every row: separating a list with a hairline
+                  // per item is what made this read as a table. Hover and
+                  // selection carry it, with the accent bar the sidebar rows use.
                   <div
                     key={s.id}
                     onClick={() => void select(s)}
-                    className={`cursor-pointer px-3 py-2 border-b border-fleet-border/40 ${isSel ? 'bg-blue-600/15' : 'hover:bg-fleet-surface-2/50'}`}
+                    className={`cursor-pointer border-l-2 px-3 py-1.5 transition-colors ${
+                      isSel
+                        ? 'border-l-[color:var(--fleet-accent)] bg-fleet-surface-3'
+                        : 'border-l-transparent hover:bg-fleet-surface-2'
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-sm text-fleet-text">{s.title}</span>
@@ -90,7 +100,12 @@ export function SessionList(): React.JSX.Element {
                       )}
                       <span className="flex-shrink-0">{s.messageCount} msgs</span>
                       <span
-                        className="ml-auto flex-shrink-0 font-mono fleet-tnum text-fleet-text"
+                        className={`ml-auto flex-shrink-0 font-mono fleet-tnum ${
+                          // A dash means "no price for this model". Rendering it
+                          // at full strength put the eye on the one cell that
+                          // says nothing.
+                          s.costUsd === undefined ? 'text-fleet-text-subtle' : 'text-fleet-text'
+                        }`}
                         title={
                           s.costUsd === undefined
                             ? 'Cost unavailable — a model in this session is not in the pricing table'

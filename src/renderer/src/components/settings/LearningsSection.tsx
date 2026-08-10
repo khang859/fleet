@@ -54,34 +54,34 @@ export function LearningsSection(): React.JSX.Element {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-medium text-white mb-1">Learnings</h2>
-        <p className="text-sm text-neutral-400">
+        <h2 className="text-lg font-medium text-fleet-text mb-1">Learnings</h2>
+        <p className="text-sm text-fleet-text-muted">
           Semantic search over your cross-project Learnings knowledge base. Embeddings run locally —
           nothing leaves your machine.
         </p>
       </div>
 
       <div className="space-y-3">
-        <h3 className="text-sm font-medium text-neutral-300">Semantic search</h3>
+        <h3 className="text-sm font-medium text-fleet-text-secondary">Semantic search</h3>
         <div className="flex items-center justify-between">
-          <label className="text-sm text-neutral-400">Status</label>
-          <span className="text-sm text-white">{statusLabel(status)}</span>
+          <label className="text-sm text-fleet-text-muted">Status</label>
+          <span className="text-sm text-fleet-text">{statusLabel(status)}</span>
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <label className="text-sm text-neutral-400 block">Model cache</label>
-            <span className="text-xs text-neutral-500">
+            <label className="text-sm text-fleet-text-muted block">Model cache</label>
+            <span className="text-xs text-fleet-text-subtle">
               all-MiniLM-L6-v2, downloaded on first use
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-white">
+            <span className="text-sm text-fleet-text">
               {cacheBytes === null ? '…' : formatBytes(cacheBytes)}
             </span>
             <button
               onClick={() => void clearCache()}
               disabled={clearing || !cacheBytes}
-              className="px-2.5 py-1 text-sm rounded-md bg-neutral-800 border border-neutral-700 text-neutral-200 hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] transition"
+              className="px-2.5 py-1 text-sm rounded-md bg-fleet-surface-3 border border-fleet-border-strong text-fleet-text hover:bg-fleet-surface-3 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] transition"
             >
               {clearing ? 'Clearing…' : 'Clear cache'}
             </button>

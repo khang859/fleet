@@ -60,23 +60,23 @@ export function SettingsNav({
   onChange: (section: SettingsSection) => void;
 }): React.JSX.Element {
   return (
-    <nav className="w-[200px] shrink-0 border-r border-neutral-800 bg-neutral-900/50 p-3 space-y-0.5">
-      <div className="text-xs text-neutral-500 uppercase tracking-wider px-2 py-1.5 mb-1">
-        Settings
-      </div>
+    <nav className="w-[200px] shrink-0 border-r border-fleet-border p-3 space-y-0.5">
+      {/* The tab is already labelled "Settings" in the sidebar and the title
+          bar, so the old heading here was the third copy of the word on screen.
+          Sentence-case group headers, like every other list in the app. */}
       {GROUPS.map((group) => (
-        <div key={group.heading} className="pt-2 first:pt-0">
-          <div className="text-[10px] font-medium text-neutral-600 uppercase tracking-wider px-2 pb-1">
+        <div key={group.heading} className="pt-3 first:pt-0">
+          <div className="text-[11px] font-medium text-fleet-text-subtle px-2 pb-1">
             {group.heading}
           </div>
           {group.items.map((section) => (
             <button
               key={section.id}
               onClick={() => onChange(section.id)}
-              className={`w-full text-left px-2 py-1.5 text-sm rounded-md transition-colors active:scale-[0.97] ${
+              className={`w-full text-left border-l-2 pl-[6px] pr-2 py-1.5 text-sm rounded-md transition-colors ${
                 active === section.id
-                  ? 'text-white bg-neutral-800 border-l-2 fleet-accent-border pl-[6px]'
-                  : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'
+                  ? 'text-fleet-text bg-fleet-surface-3 fleet-accent-border'
+                  : 'text-fleet-text-secondary border-l-transparent hover:text-fleet-text hover:bg-fleet-surface-2'
               }`}
             >
               {section.label}
