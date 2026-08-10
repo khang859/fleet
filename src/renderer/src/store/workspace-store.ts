@@ -131,14 +131,9 @@ function applyToolVisibility(workspace: Workspace, vis: ToolVisibility): Workspa
   if (vis.sessions) ws = ensureSessionsTab(ws);
   if (vis.annotate) ws = ensureAnnotateTab(ws);
   const tabs = ws.tabs.filter((t) => {
-    switch (t.type) {
-      case 'annotate':
-        return vis.annotate;
-      case 'sessions':
-        return vis.sessions;
-      default:
-        return true;
-    }
+    if (t.type === 'annotate') return vis.annotate;
+    if (t.type === 'sessions') return vis.sessions;
+    return true;
   });
   return tabs.length === ws.tabs.length ? ws : { ...ws, tabs };
 }

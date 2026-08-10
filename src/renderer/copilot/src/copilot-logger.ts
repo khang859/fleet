@@ -1,7 +1,16 @@
 const PREFIX = '%c[copilot]';
 const STYLE = 'color: #a78bfa; font-weight: bold';
 
-export function createLogger(tag: string) {
+type LogFn = (msg: string, meta?: Record<string, unknown>) => void;
+
+export interface CopilotLogger {
+  debug: LogFn;
+  info: LogFn;
+  warn: LogFn;
+  error: LogFn;
+}
+
+export function createLogger(tag: string): CopilotLogger {
   const fullPrefix = `${PREFIX}%c[${tag}]`;
   const tagStyle = 'color: #60a5fa';
   return {

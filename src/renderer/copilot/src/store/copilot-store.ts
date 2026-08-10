@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import { createLogger } from '../copilot-logger';
 import type { CopilotSession, CopilotSettings, CopilotChatMessage } from '../../../../shared/types';
+import type { CopilotApi } from '../../../../preload/copilot';
 
 const log = createLogger('store');
 
 declare global {
   interface Window {
-    copilot: import('../../../../preload/copilot').CopilotApi;
+    copilot: CopilotApi;
   }
 }
 
