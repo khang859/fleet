@@ -5,7 +5,7 @@ import {
   resolveTerminalTheme,
   resolveXtermTheme
 } from '../theme';
-import { TERMINAL_THEMES } from '../../../../shared/theme-presets';
+import { TERMINAL_THEMES, type TerminalThemeId } from '../../../../shared/theme-presets';
 import { contrastRatio } from '../contrast';
 
 describe('theme resolvers', () => {
@@ -18,10 +18,24 @@ describe('theme resolvers', () => {
     const resolved = resolveXtermTheme('fleet-dark');
     expect(resolved).toEqual({
       ...TERMINAL_THEMES['fleet-dark'].xterm,
-      selectionInactiveBackground: resolved.selectionInactiveBackground
+      selectionInactiveBackground: resolved.selectionInactiveBackground,
+      scrollbarSliderBackground: resolved.scrollbarSliderBackground,
+      scrollbarSliderHoverBackground: resolved.scrollbarSliderHoverBackground,
+      scrollbarSliderActiveBackground: resolved.scrollbarSliderActiveBackground
     });
     expect(resolved.selectionInactiveBackground).toMatch(/^#[0-9a-f]{6}$/i);
     expect(resolved).not.toBe(TERMINAL_THEMES['fleet-dark'].xterm);
+  });
+
+  it('gives every preset the same teal scrollbar slider as the rest of the app', () => {
+    // xterm 6 draws its own scrollbar; without this it would default to the
+    // theme foreground at 20% and be the only non-teal scroll port in Fleet.
+    for (const id of Object.keys(TERMINAL_THEMES) as TerminalThemeId[]) {
+      const resolved = resolveXtermTheme(id);
+      expect(resolved.scrollbarSliderBackground).toBe('#2dd4bf33');
+      expect(resolved.scrollbarSliderHoverBackground).toBe('#2dd4bf66');
+      expect(resolved.scrollbarSliderActiveBackground).toBe('#2dd4bf99');
+    }
   });
 
   it('dims selectionInactiveBackground toward the pane background, not toward the selection color', () => {

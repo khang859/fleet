@@ -25,6 +25,9 @@ export type TerminalThemeColors = {
   selectionBackground?: string;
   selectionForeground?: string;
   selectionInactiveBackground?: string;
+  scrollbarSliderBackground?: string;
+  scrollbarSliderHoverBackground?: string;
+  scrollbarSliderActiveBackground?: string;
   black?: string;
   red?: string;
   green?: string;
