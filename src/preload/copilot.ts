@@ -7,9 +7,17 @@ import type {
   CopilotChatMessage
 } from '../shared/types';
 
+// Typed wrapper for ipcRenderer.invoke to avoid unsafe-return at every IPC call site.
+// The cast is safe: callers declare the return type, and main process implements it.
+// eslint-disable-next-line @typescript-eslint/promise-function-async
+function typedInvoke<T>(channel: string, ...args: unknown[]): Promise<T> {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return ipcRenderer.invoke(channel, ...args) as Promise<T>;
+}
+
 const copilotApi = {
   getSessions: async (): Promise<CopilotSession[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SESSIONS),
+    typedInvoke<CopilotSession[]>(IPC_CHANNELS.COPILOT_SESSIONS),
 
   onSessions: (cb: (sessions: CopilotSession[]) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, sessions: CopilotSession[]): void => {
@@ -24,34 +32,34 @@ const copilotApi = {
     decision: 'allow' | 'deny',
     reason?: string
   ): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_RESPOND_PERMISSION, {
+    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_RESPOND_PERMISSION, {
       toolUseId,
       decision,
       reason
     }),
 
   getSettings: async (): Promise<CopilotSettings> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_GET_SETTINGS),
+    typedInvoke<CopilotSettings>(IPC_CHANNELS.COPILOT_GET_SETTINGS),
 
   setSettings: async (partial: Partial<CopilotSettings>): Promise<void> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SET_SETTINGS, partial),
+    typedInvoke<void>(IPC_CHANNELS.COPILOT_SET_SETTINGS, partial),
 
   installHooks: async (): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS),
+    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_INSTALL_HOOKS),
 
   uninstallHooks: async (): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS),
+    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS),
 
-  hookStatus: async (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS),
+  hookStatus: async (): Promise<boolean> => typedInvoke<boolean>(IPC_CHANNELS.COPILOT_HOOK_STATUS),
 
   installHooksTo: async (configDir: string): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS_TO, configDir),
+    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_INSTALL_HOOKS_TO, configDir),
 
   uninstallHooksFrom: async (configDir: string): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS_FROM, configDir),
+    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS_FROM, configDir),
 
   hookStatusFor: async (configDir: string): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
+    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
 
   onActiveWorkspace: (
     cb: (payload: { workspaceId: string; workspaceName: string }) => void
@@ -67,16 +75,20 @@ const copilotApi = {
   },
 
   getActiveWorkspace: async (): Promise<{ workspaceId: string; workspaceName: string } | null> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_GET_ACTIVE_WORKSPACE),
+    typedInvoke<{ workspaceId: string; workspaceName: string } | null>(
+      IPC_CHANNELS.COPILOT_GET_ACTIVE_WORKSPACE
+    ),
 
   serviceStatus: async (): Promise<{ hookInstalled: boolean; claudeDetected: boolean }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SERVICE_STATUS),
+    typedInvoke<{ hookInstalled: boolean; claudeDetected: boolean }>(
+      IPC_CHANNELS.COPILOT_SERVICE_STATUS
+    ),
 
   getPosition: async (): Promise<CopilotPosition | null> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_POSITION_GET),
+    typedInvoke<CopilotPosition | null>(IPC_CHANNELS.COPILOT_POSITION_GET),
 
   setPosition: async (x: number, y: number): Promise<void> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_POSITION_SET, { x, y }),
+    typedInvoke<void>(IPC_CHANNELS.COPILOT_POSITION_SET, { x, y }),
 
   setExpanded: (expanded: boolean): void => ipcRenderer.send('copilot:set-expanded', expanded),
 
@@ -91,7 +103,7 @@ const copilotApi = {
   },
 
   getChatHistory: async (sessionId: string, cwd: string): Promise<CopilotChatMessage[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_CHAT_HISTORY, { sessionId, cwd }),
+    typedInvoke<CopilotChatMessage[]>(IPC_CHANNELS.COPILOT_CHAT_HISTORY, { sessionId, cwd }),
 
   onChatUpdated: (
     cb: (data: { sessionId: string; messages: CopilotChatMessage[] }) => void
@@ -107,10 +119,10 @@ const copilotApi = {
   },
 
   sendMessage: async (sessionId: string, message: string): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SEND_MESSAGE, { sessionId, message }),
+    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_SEND_MESSAGE, { sessionId, message }),
 
   focusTerminal: async (sessionId: string): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_FOCUS_TERMINAL, { sessionId })
+    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_FOCUS_TERMINAL, { sessionId })
 };
 
 contextBridge.exposeInMainWorld('copilot', copilotApi);

@@ -4,12 +4,12 @@ import type { completeOnce } from '../agent/openrouter';
 
 /** A stand-in for `completeOnce` that answers with the given text. */
 function answering(text: string): typeof completeOnce {
-  return vi.fn(() => Promise.resolve({ text, usage: null }));
+  return vi.fn(async () => Promise.resolve({ text, usage: null }));
 }
 
 /** A stand-in for `completeOnce` that fails the way a rate-limited call does. */
 function failing(message: string): typeof completeOnce {
-  return vi.fn(() => Promise.reject(new Error(message)));
+  return vi.fn(async () => Promise.reject(new Error(message)));
 }
 
 describe('sanitizeSummary', () => {

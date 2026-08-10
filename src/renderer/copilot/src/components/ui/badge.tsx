@@ -32,6 +32,8 @@ function StatusIcon({ status }: { status: BadgeProps['status'] }): React.JSX.Ele
     case 'complete':
       return <Check size={size} />;
     case 'idle':
+    case null:
+    case undefined:
     default:
       return <Circle size={size} />;
   }

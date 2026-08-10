@@ -53,17 +53,24 @@ function ToolUseBlock({
 function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): React.JSX.Element {
   const selectedSessionId = useCopilotStore((s) => s.selectedSessionId);
   const sendMessage = useCopilotStore((s) => s.sendMessage);
-  const question = (input['question'] as string) ?? 'Claude needs your input';
-  const options = (input['options'] as Array<Record<string, unknown>>) ?? [];
+  const rawQuestion = input['question'];
+  const question = typeof rawQuestion === 'string' ? rawQuestion : 'Claude needs your input';
+  const rawOptions = input['options'];
+  const options = Array.isArray(rawOptions)
+    ? rawOptions.filter(
+        (o): o is Record<string, unknown> =>
+          typeof o === 'object' && o !== null && !Array.isArray(o)
+      )
+    : [];
 
   const handleSelect = (index: number): void => {
     if (!selectedSessionId) return;
-    sendMessage(selectedSessionId, String(index + 1));
+    void sendMessage(selectedSessionId, String(index + 1));
   };
 
   const handleGoToTerminal = (): void => {
     if (selectedSessionId) {
-      window.copilot.focusTerminal(selectedSessionId);
+      void window.copilot.focusTerminal(selectedSessionId);
     }
   };
 
@@ -87,7 +94,9 @@ function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): Re
                 onClick={() => handleSelect(i)}
               >
                 <span className="text-xs text-amber-400 font-medium mr-1.5">{i + 1}.</span>
-                <span className="text-sm text-neutral-200">{(opt['label'] as string) ?? ''}</span>
+                <span className="text-sm text-neutral-200">
+                  {typeof opt['label'] === 'string' ? opt['label'] : ''}
+                </span>
                 {typeof opt['description'] === 'string' && (
                   <span className="text-xs text-neutral-500 ml-1">{opt['description']}</span>
                 )}

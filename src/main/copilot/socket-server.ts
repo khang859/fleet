@@ -12,6 +12,44 @@ type PendingSocket = {
   socket: Socket;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseHookEvent(buffer: string): HookEvent | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(buffer);
+  } catch {
+    return null;
+  }
+  if (!isRecord(data)) return null;
+  const { session_id, cwd, event, status } = data;
+  if (
+    typeof session_id !== 'string' ||
+    typeof cwd !== 'string' ||
+    typeof event !== 'string' ||
+    typeof status !== 'string'
+  ) {
+    return null;
+  }
+  const parsed: HookEvent = {
+    session_id,
+    cwd,
+    event,
+    status
+  };
+  const optional = data as Partial<HookEvent>;
+  if (typeof optional.pid === 'number') parsed.pid = optional.pid;
+  if (typeof optional.tty === 'string') parsed.tty = optional.tty;
+  if (typeof optional.tool === 'string') parsed.tool = optional.tool;
+  if (isRecord(optional.tool_input)) parsed.tool_input = optional.tool_input;
+  if (typeof optional.tool_use_id === 'string') parsed.tool_use_id = optional.tool_use_id;
+  if (typeof optional.notification_type === 'string') parsed.notification_type = optional.notification_type;
+  if (typeof optional.message === 'string') parsed.message = optional.message;
+  return parsed;
+}
+
 export class CopilotSocketServer {
   private server: Server | null = null;
   private pendingSockets = new Map<string, PendingSocket>();
@@ -151,7 +189,12 @@ export class CopilotSocketServer {
 
       let event: HookEvent;
       try {
-        event = JSON.parse(buffer);
+        const parsed = parseHookEvent(buffer);
+        if (!parsed) {
+          log.warn('invalid hook event', { data: buffer.substring(0, 200) });
+          return;
+        }
+        event = parsed;
       } catch {
         log.warn('invalid JSON from hook', { data: buffer.substring(0, 200) });
         return;

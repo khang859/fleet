@@ -15,6 +15,8 @@ export default defineConfig(
       '.claude/**',
       '.worktrees/**',
       'resources/pi-extensions/**',
+      'resources/opencode-plugin/fleet.ts',
+      'scripts/copy-pdfjs-assets.mjs',
       'eslint.config.mjs'
     ]
   },
@@ -43,6 +45,9 @@ export default defineConfig(
       'react-refresh': eslintPluginReactRefresh
     },
     rules: {
+      // TypeScript prop types are the source of truth here; the plugin can't see
+      // through forwardRef generics and asks for runtime propTypes we don't use.
+      'react/prop-types': 'off',
       // Classic react-hooks rules only (not React Compiler rules from v7)
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',

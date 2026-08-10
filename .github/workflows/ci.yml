@@ -26,5 +26,7 @@ jobs:
         run: cd hooks/fleet-copilot-go && go test -v -count=1 ./...
       - name: Type check
         run: npm run typecheck
+      - name: Lint
+        run: npm run lint
       - name: Run tests
         run: npm test

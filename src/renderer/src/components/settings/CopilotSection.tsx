@@ -47,11 +47,6 @@ export function CopilotSection(): React.JSX.Element | null {
       .catch(() => {});
   }, []);
 
-  if (!settings) return null;
-  if (window.fleet.platform !== 'darwin') return null;
-
-  const copilot = settings.copilot;
-
   const restartAllTerminals = useCallback((): void => {
     const wsState = useWorkspaceStore.getState();
     const cwds = useCwdStore.getState().cwds;
@@ -77,6 +72,11 @@ export function CopilotSection(): React.JSX.Element | null {
       });
     }, 800);
   }, [showToast, restartAllTerminals]);
+
+  if (!settings) return null;
+  if (window.fleet.platform !== 'darwin') return null;
+
+  const copilot = settings.copilot;
 
   const updateCopilot = (patch: Partial<typeof copilot>): void => {
     if ('claudeConfigDir' in patch) {

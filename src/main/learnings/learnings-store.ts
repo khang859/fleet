@@ -26,6 +26,21 @@ export type PendingEmbedding = { id: string; rowid: number; title: string; body:
 /** One vector-search hit: the learning id and its distance to the query (lower = nearer). */
 export type VecHit = { id: string; distance: number };
 
+/** Raw column shape of a `learnings` row, as it comes back from sqlite. */
+type LearningRow = {
+  id: string;
+  title: string;
+  body: string;
+  tags: string;
+  source_agent: string | null;
+  source_session_id: string | null;
+  source_cwd: string | null;
+  source_project: string | null;
+  model: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
 // FTS5 external-content index over the canonical `learnings` table. Triggers keep
 // `learnings_fts` in sync on insert/update/delete, so store methods just do normal
 // writes. content_rowid uses each row's implicit rowid (TEXT PRIMARY KEY does not
@@ -81,6 +96,25 @@ function toFtsQuery(raw: string): string {
   // Quote each token (escaping embedded quotes) and add a prefix `*` so partial
   // words match. Quoting neutralizes FTS5 operators in user input.
   return tokens.map((t) => `"${t.replace(/"/g, '""')}"*`).join(' ');
+}
+
+/**
+ * Decode the `tags` column, which is JSON written by this store. Tolerates a
+ * malformed or non-array value rather than throwing out of a read path.
+ */
+function parseTags(raw: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw || '[]');
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const tags: string[] = [];
+  for (const tag of parsed) {
+    if (typeof tag === 'string') tags.push(tag);
+  }
+  return tags;
 }
 
 export interface LearningsStoreOptions {
@@ -163,8 +197,11 @@ export class LearningsStore {
     // title already exists for this source session, return it instead of inserting.
     if (input.sourceSessionId) {
       const dup = this.db
-        .prepare('SELECT * FROM learnings WHERE source_session_id = ? AND title = ? LIMIT 1')
-        .get(input.sourceSessionId, input.title) as Record<string, unknown> | undefined;
+        .prepare<
+          [string, string],
+          LearningRow
+        >('SELECT * FROM learnings WHERE source_session_id = ? AND title = ? LIMIT 1')
+        .get(input.sourceSessionId, input.title);
       if (dup) return this.rowToLearning(dup);
     }
     const ts = this.now();
@@ -245,9 +282,9 @@ export class LearningsStore {
   }
 
   get(id: string): Learning | null {
-    const r = this.db.prepare('SELECT * FROM learnings WHERE id = ?').get(id) as
-      | Record<string, unknown>
-      | undefined;
+    const r = this.db
+      .prepare<[string], LearningRow>('SELECT * FROM learnings WHERE id = ?')
+      .get(id);
     return r ? this.rowToLearning(r) : null;
   }
 
@@ -284,7 +321,7 @@ export class LearningsStore {
         WHERE ${where.join(' AND ')}
         ORDER BY rank
         LIMIT @limit`;
-      const rows = this.db.prepare(sql).all(params) as Array<Record<string, unknown>>;
+      const rows = this.db.prepare<Record<string, unknown>, LearningRow>(sql).all(params);
       return rows.map((r) => this.rowToLearning(r));
     }
 
@@ -293,7 +330,7 @@ export class LearningsStore {
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       ORDER BY l.created_at DESC
       LIMIT @limit`;
-    const rows = this.db.prepare(sql).all(params) as Array<Record<string, unknown>>;
+    const rows = this.db.prepare<Record<string, unknown>, LearningRow>(sql).all(params);
     return rows.map((r) => this.rowToLearning(r));
   }
 
@@ -311,14 +348,14 @@ export class LearningsStore {
     if (tokens.length === 0) return [];
     const fts = tokens.map((t) => `"${t}"*`).join(' OR ');
     const rows = this.db
-      .prepare(
+      .prepare<{ fts: string; limit: number }, LearningRow>(
         `SELECT l.* FROM learnings l
          JOIN learnings_fts f ON f.rowid = l.rowid
          WHERE learnings_fts MATCH @fts
          ORDER BY rank
          LIMIT @limit`
       )
-      .all({ fts, limit }) as Array<Record<string, unknown>>;
+      .all({ fts, limit });
     return rows.map((r) => this.rowToLearning(r));
   }
 
@@ -327,13 +364,13 @@ export class LearningsStore {
     // Aggregate in SQL via json_each rather than loading every row and JSON.parsing
     // tags in JS on the synchronous main thread.
     return this.db
-      .prepare(
+      .prepare<[], TagCount>(
         `SELECT je.value AS tag, COUNT(*) AS count
          FROM learnings l, json_each(l.tags) je
          GROUP BY je.value
          ORDER BY count DESC, tag ASC`
       )
-      .all() as TagCount[];
+      .all();
   }
 
   /**
@@ -421,19 +458,19 @@ export class LearningsStore {
     this.db.close();
   }
 
-  private rowToLearning(r: Record<string, unknown>): Learning {
+  private rowToLearning(r: LearningRow): Learning {
     return {
-      id: r.id as string,
-      title: r.title as string,
-      body: r.body as string,
-      tags: JSON.parse((r.tags as string) || '[]') as string[],
-      sourceAgent: (r.source_agent as string | null) ?? null,
-      sourceSessionId: (r.source_session_id as string | null) ?? null,
-      sourceCwd: (r.source_cwd as string | null) ?? null,
-      sourceProject: (r.source_project as string | null) ?? null,
-      model: (r.model as string | null) ?? null,
-      createdAt: r.created_at as number,
-      updatedAt: r.updated_at as number
+      id: r.id,
+      title: r.title,
+      body: r.body,
+      tags: parseTags(r.tags),
+      sourceAgent: r.source_agent,
+      sourceSessionId: r.source_session_id,
+      sourceCwd: r.source_cwd,
+      sourceProject: r.source_project,
+      model: r.model,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at
     };
   }
 }

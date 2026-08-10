@@ -40,7 +40,10 @@ const releaseNotes = notes.join('\n').trim();
 // --config <file> in electron-builder REPLACES the default config entirely,
 // so we must include all base settings, not just releaseInfo.
 const baseConfigText = readFileSync(join(root, 'electron-builder.yml'), 'utf8');
-const baseConfig = parseYaml(baseConfigText) as Record<string, unknown>;
+const baseConfig: unknown = parseYaml(baseConfigText);
+if (typeof baseConfig !== 'object' || baseConfig === null || Array.isArray(baseConfig)) {
+  throw new Error('electron-builder.yml did not parse to an object');
+}
 
 const mergedConfig = {
   ...baseConfig,

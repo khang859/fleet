@@ -40,9 +40,9 @@ describe('FakeEmbedder', () => {
 describe('LearningsSearchService.hybridSearch', () => {
   let store: LearningsStore;
 
-  const embedAll = async (embedder: FakeEmbedder): Promise<void> => {
+  const embedAll = (embedder: FakeEmbedder): void => {
     for (const l of store.search({})) {
-      const v = await embedder.embed(`${l.title}\n${l.body}`);
+      const v = embedder.embed(`${l.title}\n${l.body}`);
       if (v) store.setEmbedding(l.id, v);
     }
   };
@@ -65,7 +65,7 @@ describe('LearningsSearchService.hybridSearch', () => {
     });
     store.create({ title: 'sqlite WAL mode', body: 'journal_mode improves concurrency' });
     store.create({ title: 'use zod for validation', body: 'never unsafe casts' });
-    await embedAll(embedder);
+    embedAll(embedder);
 
     const svc = new LearningsSearchService(store, embedder);
     const results = await svc.hybridSearch('terminal dimensions miscalculates', {}, 5);
@@ -75,7 +75,7 @@ describe('LearningsSearchService.hybridSearch', () => {
   it('respects the limit', async () => {
     const embedder = new FakeEmbedder();
     for (let i = 0; i < 6; i++) store.create({ title: `react hooks ${i}`, body: 'deps array' });
-    await embedAll(embedder);
+    embedAll(embedder);
 
     const svc = new LearningsSearchService(store, embedder);
     expect(await svc.hybridSearch('react hooks deps', {}, 3)).toHaveLength(3);
@@ -95,7 +95,7 @@ describe('LearningsSearchService.hybridSearch', () => {
       sourceProject: 'other',
       tags: ['perf']
     });
-    await embedAll(embedder);
+    embedAll(embedder);
 
     const svc = new LearningsSearchService(store, embedder);
     const results = await svc.hybridSearch('caching lru', { project: 'fleet' }, 5);
@@ -106,7 +106,7 @@ describe('LearningsSearchService.hybridSearch', () => {
   it('clamps a non-positive limit to one result instead of returning none', async () => {
     const embedder = new FakeEmbedder();
     store.create({ title: 'react hooks deps', body: 'array' });
-    await embedAll(embedder);
+    embedAll(embedder);
 
     const svc = new LearningsSearchService(store, embedder);
     expect(await svc.hybridSearch('react hooks', {}, 0)).toHaveLength(1);
