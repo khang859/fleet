@@ -50,6 +50,8 @@ import { buildMemorySpec, type MemoryDefinition } from '../../shared/agent-memor
 import { loadMemory } from './memory/definitions';
 import { renderProjectInstructions } from '../../shared/agent-project-instructions';
 import { loadProjectInstructions } from './project-instructions';
+import { renderTimeBlock } from '../../shared/agent-environment';
+import { readEnvironment } from './environment';
 import type { McpManager } from './mcp/manager';
 import type { AgentToolEvent } from '../../shared/agent-types';
 import {
@@ -504,6 +506,17 @@ export function withClearedWireResults(
 export const FLEET_WIRE_PREFIX = 'Note from Fleet, not from the user:';
 
 /**
+ * The clock, in the one voice Fleet speaks to the model in.
+ *
+ * Read here rather than passed in: the time this says is the time the request
+ * goes out, and a clock handed down from the caller is a clock that stopped
+ * whenever the caller looked at it.
+ */
+export function wireTime(timeZone: string): string {
+  return `${FLEET_WIRE_PREFIX}\n\n${renderTimeBlock(new Date(), timeZone)}`;
+}
+
+/**
  * A user message on the wire: what they typed, and whatever rode with it.
  *
  * A message with nothing attached stays a plain string, which is what every
@@ -637,10 +650,17 @@ async function toolImageMessages(call: AgentToolCall, cwd: string): Promise<Agen
  * transcript: what the pane holds and what the model is sent are allowed to
  * differ, and this is the only place the difference is made. See
  * `withClearedResults`.
+ *
+ * `timeFragment` is the clock, and it goes in front of the message it is the
+ * time of rather than into the system prompt - see `agent-environment.ts` for
+ * why. It rides as a user message because that is the only mid-conversation
+ * role every provider agrees on, the same conclusion `SUMMARY_WIRE_PREFIX`
+ * reached, and it says what it is in its own text for the same reason.
  */
 export async function toWireHistory(
   req: AgentSendRequest,
-  systemPrompt: string
+  systemPrompt: string,
+  timeFragment: string | null = null
 ): Promise<AgentWireMessage[]> {
   const ctx: WireContext = { cwd: req.cwd, threadId: req.threadId };
   const history = await Promise.all(
@@ -649,12 +669,22 @@ export async function toWireHistory(
   // A turn with nothing said is the pane picking the conversation back up after
   // a subagent reported - see `resume`. The transcript already ends on that
   // report, which is the shape that means "carry on", and an empty user message
-  // pushed after it would be a question the user did not ask.
+  // pushed after it would be a question the user did not ask. The clock is left
+  // off for that same reason, and costs nothing by being: the report it is
+  // resuming from landed a moment ago.
   const opening =
     req.text === '' && req.attachments.length === 0
       ? []
-      : [await toUserMessage(req.text, req.attachments, ctx)];
+      : [
+          ...timeMessages(timeFragment),
+          await toUserMessage(req.text, req.attachments, ctx)
+        ];
   return [{ role: 'system', content: systemPrompt }, ...history.flat(), ...opening];
+}
+
+/** The clock as a message, or nothing when there is no clock to send. */
+function timeMessages(timeFragment: string | null): AgentWireMessage[] {
+  return timeFragment === null ? [] : [{ role: 'user', content: timeFragment }];
 }
 
 /**
@@ -862,9 +892,13 @@ export class AgentService {
     const memories = await loadMemory(req.cwd);
     const memorySpec = buildMemorySpec(memories);
     const instructions = await loadProjectInstructions(req.cwd);
+    // Read per turn, so a pane pointed at a new folder - or a folder that has
+    // since become a repo - is described as it is now rather than as it was.
+    const env = await readEnvironment(req.cwd, ctx.model);
     const messages = await toWireHistory(
       req,
       buildSystemPrompt(req.cwd, ctx.settings.systemPrompt, {
+        env,
         image: imageModel !== null,
         mcp: mcpSpecs.length > 0,
         task: taskSpec !== null,
@@ -879,7 +913,8 @@ export class AgentService {
           instructions === null
             ? null
             : renderProjectInstructions(instructions.filename, instructions.text)
-      })
+      }),
+      wireTime(env.timeZone)
     );
 
     await this.runRounds(
@@ -1213,6 +1248,9 @@ export class AgentService {
       const memories = await loadMemory(run.cwd);
       const memorySpec = buildMemorySpec(memories);
       const instructions = await loadProjectInstructions(run.cwd);
+      // And once more: a child runs `bash` on this machine and has no
+      // conversation to have been told which machine that is.
+      const env = await readEnvironment(run.cwd, run.model);
 
       const report = await this.runRounds(
         {
@@ -1223,6 +1261,7 @@ export class AgentService {
             {
               role: 'system',
               content: buildSystemPrompt(run.cwd, run.definition.systemPrompt, {
+                env,
                 // A child is never given the image tool, an MCP server, or a
                 // subagent of its own. Skills and memory are the exception -
                 // they are text, not a capability.
@@ -1239,6 +1278,7 @@ export class AgentService {
                     : renderProjectInstructions(instructions.filename, instructions.text)
               })
             },
+            { role: 'user', content: wireTime(env.timeZone) },
             { role: 'user', content: run.prompt }
           ],
           tools: toolSpecsFor({
