@@ -106,6 +106,20 @@ export default defineConfig(
       '@typescript-eslint/no-unsafe-type-assertion': 'error'
     }
   },
+  // `no-console` exists to push app code through the loggers. These files are the two
+  // ends that exemption is for: the logger implementations themselves (the sanctioned
+  // console wrapper everyone else is funneled into) and the build/dev scripts, which are
+  // CLIs whose entire output channel IS stdout.
+  {
+    files: [
+      'scripts/**/*.{ts,tsx,mts}',
+      'src/renderer/src/logger.ts',
+      'src/renderer/copilot/src/copilot-logger.ts'
+    ],
+    rules: {
+      'no-console': 'off'
+    }
+  },
   // Relax rules in test files — allow `as any` casts and their downstream effects
   {
     files: ['**/__tests__/**/*.{ts,tsx}', 'src/test-setup.ts'],

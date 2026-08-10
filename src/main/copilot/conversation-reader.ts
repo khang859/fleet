@@ -113,7 +113,7 @@ function formatToolInputPreview(toolName: string, input: Record<string, unknown>
       // Strip MCP prefix for cleaner display: mcp__server__tool → tool
       if (toolName.startsWith('mcp__')) {
         const parts = toolName.split('__');
-        const mcpTool = parts.length >= 3 ? parts.slice(2).join('__') : parts[parts.length - 1];
+        const mcpTool = parts.length >= 3 ? parts.slice(2).join('__') : parts.at(-1);
         for (const val of Object.values(input)) {
           if (typeof val === 'string' && val.length > 0) return `${mcpTool}: ${val.slice(0, 50)}`;
         }

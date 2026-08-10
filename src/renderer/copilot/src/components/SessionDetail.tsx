@@ -23,12 +23,16 @@ export function SessionDetail(): React.JSX.Element | null {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const session = sessions.find((s) => s.sessionId === selectedSessionId);
+  // Depend on the identity fields, not the object: `sessions` is rebuilt on every store
+  // update, so keying the effect on `session` itself would refetch the history constantly.
+  const sessionId = session?.sessionId;
+  const sessionCwd = session?.cwd;
 
   useEffect(() => {
-    if (session) {
-      void loadChatHistory(session.sessionId, session.cwd);
+    if (sessionId !== undefined && sessionCwd !== undefined) {
+      void loadChatHistory(sessionId, sessionCwd);
     }
-  }, [session?.sessionId, session?.cwd, loadChatHistory]);
+  }, [sessionId, sessionCwd, loadChatHistory]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

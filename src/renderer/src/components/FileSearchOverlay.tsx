@@ -249,7 +249,7 @@ export function FileSearchOverlay({
       setSelectedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const file = sortedResults[selectedIndex];
+      const file = sortedResults.at(selectedIndex);
       if (file) handleSelect(file);
     } else if (e.key === 'Tab') {
       // Swallowed so focus never leaves the overlay's input.

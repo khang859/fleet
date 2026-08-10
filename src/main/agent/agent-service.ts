@@ -675,10 +675,7 @@ export async function toWireHistory(
   const opening =
     req.text === '' && req.attachments.length === 0
       ? []
-      : [
-          ...timeMessages(timeFragment),
-          await toUserMessage(req.text, req.attachments, ctx)
-        ];
+      : [...timeMessages(timeFragment), await toUserMessage(req.text, req.attachments, ctx)];
   return [{ role: 'system', content: systemPrompt }, ...history.flat(), ...opening];
 }
 

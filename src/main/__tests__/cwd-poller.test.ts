@@ -25,7 +25,8 @@ function makeMockPtyManager(cwd = '/old-cwd'): PtyManager {
 
 describe('CwdPoller', () => {
   let eventBus: EventBus;
-  let poller: CwdPoller;
+  // Undefined until a test constructs one, so the afterEach teardown must cope.
+  let poller: CwdPoller | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers();

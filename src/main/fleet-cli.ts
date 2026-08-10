@@ -98,7 +98,7 @@ export function parseArgs(argv: string[]): Record<string, unknown> {
 
     if (token.startsWith('--')) {
       const key = token.slice(2);
-      const next = argv[i + 1];
+      const next = argv.at(i + 1);
 
       if (next !== undefined && !next.startsWith('--')) {
         if (key === 'depends-on' || key === 'worker') {

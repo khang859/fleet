@@ -787,6 +787,14 @@ export function useTerminal(
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const serializeAddonRef = useRef<SerializeAddon | null>(null);
 
+  // `options` is a fresh object on every render, so it can never be an effect dependency:
+  // re-running the create effect would dispose and rebuild the terminal - losing scrollback
+  // and the PTY binding - on every parent render. Latch it instead, so creation still reads
+  // the newest options while the effect stays keyed on the pane it belongs to.
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const { paneId } = options;
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -803,7 +811,7 @@ export function useTerminal(
       resizeObserver,
       cleanupResizeTimer,
       cursorSuppressor
-    } = createTerminal(container, options);
+    } = createTerminal(container, optionsRef.current);
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -811,15 +819,15 @@ export function useTerminal(
     scrollToBottomRef.current = scrollToBottom;
     searchAddonRef.current = searchAddon;
     serializeAddonRef.current = serializeAddon;
-    serializeRegistry.set(options.paneId, serializeAddon);
-    terminalRegistry.set(options.paneId, term);
+    serializeRegistry.set(paneId, serializeAddon);
+    terminalRegistry.set(paneId, term);
 
     return () => {
-      log.debug('terminal dispose', { paneId: options.paneId });
+      log.debug('terminal dispose', { paneId });
       termRef.current = null;
       scrollToBottomRef.current = null;
-      serializeRegistry.delete(options.paneId);
-      terminalRegistry.delete(options.paneId);
+      serializeRegistry.delete(paneId);
+      terminalRegistry.delete(paneId);
       cleanupResizeTimer();
       cursorSuppressor.dispose();
       ipcCleanup();
@@ -827,7 +835,7 @@ export function useTerminal(
       resizeObserver.disconnect();
       term.dispose();
     };
-  }, [options.paneId]);
+  }, [containerRef, paneId]);
 
   // Update font settings on existing terminal without re-creating it.
   // We force-load the new font via document.fonts.load() before applying it,

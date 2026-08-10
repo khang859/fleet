@@ -195,9 +195,12 @@ export function FileEditorPane({
   const showToast = useToastStore((s) => s.show);
 
   const save = useCallback(async () => {
-    if (!viewRef.current) return;
+    // Read through the optional chain rather than an early `if (!viewRef.current)` guard:
+    // the guard would narrow the ref for the whole body, and that narrowing does not
+    // survive the await below - unmount nulls the ref while the write is in flight.
+    const content = viewRef.current?.state.doc.toString();
+    if (content === undefined) return;
     setIsSaving(true);
-    const content = viewRef.current.state.doc.toString();
     const result = remote
       ? await writeRemote(remote, content, remoteMtimeRef, showToast)
       : await window.fleet.file.write(filePath, content, pathContext);
@@ -228,7 +231,7 @@ export function FileEditorPane({
   // Load file on mount
   useEffect(() => {
     void window.fleet.file.read(filePath, pathContext).then((result) => {
-      if (result.success && result.data) {
+      if (result.success) {
         if (result.data.size > MAX_FILE_SIZE) {
           setTooLarge(true);
           setFileSize(result.data.size);

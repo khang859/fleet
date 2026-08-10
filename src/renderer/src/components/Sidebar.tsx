@@ -47,6 +47,12 @@ import { SessionsTabCard } from './sessions/SessionsTabCard';
 import { useSettingsStore } from '../store/settings-store';
 import { TOGGLEABLE_TOOLS } from '../../../shared/tools';
 
+// Platform constant, so resolve it once at module load (same pattern as CommandPalette).
+const NEW_TAB_HINT = (() => {
+  const def = getShortcut('new-tab');
+  return def ? ` (${formatShortcut(def)})` : '';
+})();
+
 function getFirstDirtyPaneId(tab: Tab): string | null {
   function check(node: Tab['splitRoot']): string | null {
     if (node.type === 'leaf') return node.isDirty ? node.id : null;
@@ -597,8 +603,10 @@ export function Sidebar({
       const target = e.currentTarget;
       if (!(target instanceof HTMLElement)) return;
 
-      const draggedTab = workspace.tabs[dragIndex];
-      const targetTab = workspace.tabs[index];
+      // `.at` rather than `[i]`: indexing types as `Tab` even when the index is past the
+      // end, which is exactly what the guard below is here to catch.
+      const draggedTab = workspace.tabs.at(dragIndex);
+      const targetTab = workspace.tabs.at(index);
       if (!draggedTab || !targetTab) return;
 
       const dragGroup = draggedTab.groupId;
@@ -644,7 +652,7 @@ export function Sidebar({
       return;
     }
 
-    const draggedTab = workspace.tabs[dragIndex];
+    const draggedTab = workspace.tabs.at(dragIndex);
 
     if (dragType === 'group' && draggedTab?.groupId) {
       // Group drag: move the entire group as a unit
@@ -654,7 +662,7 @@ export function Sidebar({
     } else if (dragType === 'userGroup' && draggedTab?.userGroupId) {
       const userGroups = workspace.userGroups ?? [];
       const ugIndex = userGroups.findIndex((g) => g.id === draggedTab.userGroupId);
-      const targetTab = workspace.tabs[dropTarget.index];
+      const targetTab = workspace.tabs.at(dropTarget.index);
       const targetUgIdx = targetTab?.userGroupId
         ? userGroups.findIndex((g) => g.id === targetTab.userGroupId)
         : userGroups.length;
@@ -665,10 +673,10 @@ export function Sidebar({
       return;
     } else {
       // Tab drag
-      const targetTab = workspace.tabs[dropTarget.index];
+      const targetTab = workspace.tabs.at(dropTarget.index);
       if (draggedTab?.groupId && draggedTab.groupId !== targetTab?.groupId) {
         logDnd.debug('drop blocked: cross-group', {
-          dragGroup: draggedTab?.groupId,
+          dragGroup: draggedTab.groupId,
           targetGroup: targetTab?.groupId
         });
         setDragIndex(null);
@@ -743,10 +751,15 @@ export function Sidebar({
 
   const [gitRepoTabs, setGitRepoTabs] = useState<Set<string>>(new Set());
 
+  // Key the git probe on exactly what it reads - each tab's id, type and cwd. `workspace.tabs`
+  // is a fresh array on every workspace mutation (so it would re-probe constantly), while
+  // `workspace.tabs.length` misses a tab's cwd changing under a constant tab count.
+  const gitProbeKey = workspace.tabs.map((t) => [t.id, t.type ?? '', t.cwd].join(':')).join('|');
+
   useEffect(() => {
     const checkGitRepos = async (): Promise<void> => {
       const newSet = new Set<string>();
-      for (const tab of workspace.tabs) {
+      for (const tab of useWorkspaceStore.getState().workspace.tabs) {
         if (tab.type && tab.type !== 'terminal') continue;
         const firstPaneId = collectPaneIds(tab.splitRoot)[0];
         const cwd = (firstPaneId ? liveCwds.get(firstPaneId) : undefined) ?? tab.cwd;
@@ -760,7 +773,7 @@ export function Sidebar({
       setGitRepoTabs(newSet);
     };
     void checkGitRepos();
-  }, [workspace.tabs.length, liveCwds]);
+  }, [gitProbeKey, liveCwds]);
 
   // Clear drag state on drag end (even if drop didn't fire)
   useEffect(() => {
@@ -1246,7 +1259,7 @@ export function Sidebar({
           <button
             className="text-fleet-text-subtle hover:text-fleet-text text-lg leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
             onClick={() => addTab(undefined, window.fleet.homeDir)}
-            title={`New Tab (${formatShortcut(getShortcut('new-tab')!)})`}
+            title={`New Tab${NEW_TAB_HINT}`}
           >
             +
           </button>
@@ -1411,7 +1424,7 @@ export function Sidebar({
                   key={tab.id}
                   id={tab.id}
                   label={displayLabel}
-                  labelIsCustom={tab.labelIsCustom ?? false}
+                  labelIsCustom={tab.labelIsCustom}
                   cwd={displayCwd}
                   drivingPaneId={drivingPaneId}
                   isActive={tab.id === activeTabId}

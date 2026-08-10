@@ -131,7 +131,7 @@ export function MarkdownPane({ paneId, filePath, pathContext, remote }: Props): 
   // Load file content on mount
   useEffect(() => {
     void window.fleet.file.read(filePath, pathContext).then((result) => {
-      if (result.success && result.data) {
+      if (result.success) {
         if (result.data.size > MAX_FILE_SIZE) {
           setTooLarge(true);
           setFileSize(result.data.size);

@@ -14,6 +14,7 @@ import { MarkdownPreview } from '../markdown/MarkdownPreview';
 import { basename } from '../../lib/path-utils';
 import type { NoteReadResult } from '../../../../shared/notes-types';
 import type { PathContext } from '../../../../shared/shell-profiles';
+import { createCancellation } from '../../lib/cancellation';
 
 type Layout = 'split' | 'editor' | 'preview';
 
@@ -110,29 +111,29 @@ export function NotesModal({
   // unsaved edits.
   useEffect(() => {
     if (!isOpen) return;
-    let cancelled = false;
+    const run = createCancellation();
     void (async () => {
       let base = cwd;
       if (paneId) {
         const live = await window.fleet.pty.resolveCwd(paneId, pathContext);
-        if (cancelled) return;
+        if (run.isCancelled()) return;
         if (live) base = live;
       }
       let scope = base;
       if (base) {
         try {
           const { root } = await window.fleet.git.repoRoot(base, pathContext);
-          if (!cancelled && root) scope = root;
+          if (!run.isCancelled() && root) scope = root;
         } catch {
           /* not a repo / git unavailable — key on the folder itself */
         }
       }
-      if (cancelled || scope === scopeRef.current) return;
+      if (run.isCancelled() || scope === scopeRef.current) return;
       // Switching to a different project: flush any unsaved edit to the previous
       // note before swapping the buffer.
       if (scopeRef.current && textRef.current !== originalTextRef.current) {
         await save(false);
-        if (cancelled) return;
+        if (run.isCancelled()) return;
       }
       setLoading(true);
       setError(null);
@@ -145,16 +146,16 @@ export function NotesModal({
       }
       try {
         const res = await window.fleet.notes.read(scope, pathContext);
-        if (cancelled) return;
+        if (run.isCancelled()) return;
         applyLoadedNote(res);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load note');
+        if (!run.isCancelled()) setError(e instanceof Error ? e.message : 'Failed to load note');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!run.isCancelled()) setLoading(false);
       }
     })();
     return () => {
-      cancelled = true;
+      run.cancel();
     };
   }, [isOpen, cwd, paneId, pathContext, save, applyLoadedNote]);
 

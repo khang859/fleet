@@ -122,7 +122,7 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
       settings,
       hookInstalled,
       claudeDetected,
-      showAllWorkspaces: settings.showAllWorkspaces ?? false
+      showAllWorkspaces: settings.showAllWorkspaces
     });
   },
 

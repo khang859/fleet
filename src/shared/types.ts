@@ -350,7 +350,8 @@ export type CopilotSettings = {
   notificationSound: string;
   autoStart: boolean;
   claudeConfigDir: string;
-  workspaceOverrides: Record<string, CopilotWorkspaceOverride>;
+  /** Keyed by workspace id: only workspaces with an override appear, so a lookup can miss. */
+  workspaceOverrides: Record<string, CopilotWorkspaceOverride | undefined>;
   showAllWorkspaces: boolean;
 };
 

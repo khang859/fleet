@@ -15,7 +15,13 @@ export interface SpriteRegion {
   frameDuration: number;
 }
 
-export const SPRITE_ATLAS: Record<string, SpriteRegion> = {
+/**
+ * Keyed by sprite name. A lookup can miss: keys are built at the call sites from runtime
+ * values (hull index, asteroid variant, celestial kind), and a sheet regenerated without
+ * some sprite simply stops carrying that key. Hence the `undefined` - the guards at the
+ * read sites are load-bearing, not defensive noise.
+ */
+export const SPRITE_ATLAS: Record<string, SpriteRegion | undefined> = {
   'parent-1-idle': { x: 0, y: 0, w: 32, h: 32, frames: 2, frameDuration: 500 },
   'parent-1-thrust': { x: 64, y: 0, w: 32, h: 32, frames: 3, frameDuration: 100 },
   'parent-1-warp-in': { x: 160, y: 0, w: 32, h: 32, frames: 4, frameDuration: 125 },
@@ -65,18 +71,18 @@ export const SPRITE_ATLAS: Record<string, SpriteRegion> = {
 export const PARENT_HULL_COUNT = 6;
 export const SUBAGENT_HULL_COUNT = 2;
 
-/** Get sprite region for a parent ship hull (1-indexed) */
+/** Get sprite region for a parent ship hull (1-indexed). Undefined if the hull has no sprite. */
 export function getParentSprite(
   hullIndex: number,
   anim: 'idle' | 'thrust' | 'warp-in' | 'warp-out'
-): SpriteRegion {
+): SpriteRegion | undefined {
   return SPRITE_ATLAS[`parent-${hullIndex}-${anim}`];
 }
 
-/** Get sprite region for a subagent ship hull (1-indexed) */
+/** Get sprite region for a subagent ship hull (1-indexed). Undefined if the hull has no sprite. */
 export function getSubagentSprite(
   hullIndex: number,
   anim: 'idle' | 'thrust' | 'warp-in' | 'warp-out'
-): SpriteRegion {
+): SpriteRegion | undefined {
   return SPRITE_ATLAS[`subagent-${hullIndex}-${anim}`];
 }

@@ -18,9 +18,14 @@ export type StoredAuth = {
 
 export type EnvSyncSecretsData = {
   globalPassphraseEnc?: string;
-  repoOverrides: Record<string, { passphraseEnc?: string }>;
+  /**
+   * Keyed by repo id, so both halves can come up empty: a file written before this field
+   * existed carries no map at all, and a lookup for a repo with no override finds nothing.
+   * Spelling that out keeps the guards at the read sites from looking redundant.
+   */
+  repoOverrides?: Record<string, { passphraseEnc?: string } | undefined>;
   globalAuth?: StoredAuth;
-  authRepoOverrides?: Record<string, StoredAuth>;
+  authRepoOverrides?: Record<string, StoredAuth | undefined>;
 };
 
 interface SecretsStore {
@@ -64,7 +69,7 @@ export class EnvSyncSecrets {
     const raw = this.store.get();
     const repoOverrides: Record<string, { present: boolean }> = {};
     for (const [id, v] of Object.entries(raw.repoOverrides ?? {})) {
-      repoOverrides[id] = { present: Boolean(v.passphraseEnc) };
+      repoOverrides[id] = { present: Boolean(v?.passphraseEnc) };
     }
     const authRepoOverrides: Record<string, RedactedEnvSyncAuth> = {};
     for (const [id, v] of Object.entries(raw.authRepoOverrides ?? {})) {

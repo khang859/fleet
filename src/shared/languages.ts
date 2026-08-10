@@ -3,7 +3,9 @@ export interface LanguageInfo {
   label: string;
 }
 
-const extensionMap: Record<string, LanguageInfo> = {
+// Both maps are looked up by strings taken from a filename, so a miss is the normal
+// case for any file whose type is not in the table - hence the `undefined`.
+const extensionMap: Record<string, LanguageInfo | undefined> = {
   sh: { id: 'bash', label: 'Bash' },
   bash: { id: 'bash', label: 'Bash' },
   zsh: { id: 'bash', label: 'Bash' },
@@ -51,7 +53,7 @@ const extensionMap: Record<string, LanguageInfo> = {
 };
 
 /** Filenames (no extension) that map to a language */
-const filenameMap: Record<string, LanguageInfo> = {
+const filenameMap: Record<string, LanguageInfo | undefined> = {
   Dockerfile: { id: 'dockerfile', label: 'Dockerfile' },
   Makefile: { id: 'makefile', label: 'Makefile' }
 };

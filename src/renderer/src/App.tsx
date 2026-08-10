@@ -33,6 +33,7 @@ import { initRemoteListener } from './store/remote-store';
 import { initRemoteTransferListener } from './store/remote-ssh-store';
 import { useSettingsStore } from './store/settings-store';
 import { useShellProfilesStore } from './store/shell-profiles-store';
+import { isWslContext } from '../../shared/shell-profiles';
 import { useHomesStore } from './store/homes-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
@@ -270,7 +271,7 @@ export function App(): React.JSX.Element {
   // Load settings on startup
   useEffect(() => {
     void loadSettings();
-  }, []);
+  }, [loadSettings]);
 
   // Reconcile pinned tool tabs whenever the visibility preference changes
   // (also corrects the settings-load-vs-workspace-load race on startup).
@@ -289,7 +290,7 @@ export function App(): React.JSX.Element {
       .load()
       .then(() => {
         for (const p of useShellProfilesStore.getState().profiles) {
-          if (typeof p.pathContext === 'object' && p.pathContext.kind === 'wsl') {
+          if (isWslContext(p.pathContext)) {
             void useHomesStore.getState().ensureWslHome(p.pathContext.distro);
           }
         }
@@ -528,15 +529,17 @@ export function App(): React.JSX.Element {
         workspaces.find((w) => w.id === 'default');
       const others = workspaces.filter((w) => w.id !== targetWs?.id);
 
+      // Read through the store rather than the render closure: this runs inside an async
+      // `.then` after mount, so the captured `workspace` could already be stale.
       if (targetWs) {
         useWorkspaceStore.getState().loadWorkspace(targetWs);
         // If the restored workspace has no tabs, create a fresh one
         if (targetWs.tabs.length === 0) {
-          addTab(undefined, window.fleet.homeDir);
+          useWorkspaceStore.getState().addTab(undefined, window.fleet.homeDir);
           useWorkspaceStore.getState().reconcileToolTabs();
         }
-      } else if (workspace.tabs.length === 0) {
-        addTab(undefined, window.fleet.homeDir);
+      } else if (useWorkspaceStore.getState().workspace.tabs.length === 0) {
+        useWorkspaceStore.getState().addTab(undefined, window.fleet.homeDir);
         useWorkspaceStore.getState().reconcileToolTabs();
       }
 
@@ -1084,15 +1087,13 @@ export function App(): React.JSX.Element {
                   onClick={() => {
                     setShowUndoToast(false);
                     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-                    if (lastClosedTab) {
-                      killClosedTabPtys(collectPaneIds(lastClosedTab.tab.splitRoot));
-                      pendingKillRef.current = [];
-                      if (lastClosedTab.tab.worktreePath) {
-                        void window.fleet.worktree.remove({
-                          worktreePath: lastClosedTab.tab.worktreePath,
-                          pathContext: lastClosedTab.tab.pathContext
-                        });
-                      }
+                    killClosedTabPtys(collectPaneIds(lastClosedTab.tab.splitRoot));
+                    pendingKillRef.current = [];
+                    if (lastClosedTab.tab.worktreePath) {
+                      void window.fleet.worktree.remove({
+                        worktreePath: lastClosedTab.tab.worktreePath,
+                        pathContext: lastClosedTab.tab.pathContext
+                      });
                     }
                   }}
                 >

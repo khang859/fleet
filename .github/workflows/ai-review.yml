@@ -72,8 +72,15 @@ jobs:
           persist-credentials: false
 
       - name: Install opencode
+        env:
+          # Pinned deliberately. Left unpinned, the installer resolves "latest" through an
+          # UNAUTHENTICATED api.github.com call, which is rate-limited per-IP on shared
+          # Actions runners - when the quota is spent the installer prints "Failed to fetch
+          # version information" and exits 1, taking the whole review with it. Pinning also
+          # matches how every action in this file is pinned. Bump this on purpose.
+          OPENCODE_VERSION: 1.18.16
         run: |
-          curl -fsSL https://opencode.ai/install | bash
+          curl -fsSL https://opencode.ai/install | bash -s -- --version "$OPENCODE_VERSION"
           echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
 
       # Build the prompt as a file (quoted heredoc → no shell expansion) so the

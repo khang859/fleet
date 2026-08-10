@@ -16,6 +16,7 @@ import type {
 } from '../../../../shared/env-sync-types';
 import type { PathContext } from '../../../../shared/shell-profiles';
 import { toWindowsAccessiblePath } from '../../../../shared/path-platform';
+import { createCancellation } from '../../lib/cancellation';
 
 const STATUS_LABEL: Record<TargetSyncState, string> = {
   'in-sync': 'In sync',
@@ -877,19 +878,19 @@ export function EnvSyncModal({
   // On open, resolve which repo dir this pane maps to and load its state.
   useEffect(() => {
     if (!isOpen) return;
-    let active = true;
+    const run = createCancellation();
     setLoading(true);
     void (async () => {
       void window.fleet.envSync.encryptionAvailable().then((r) => {
-        if (!active) return;
+        if (run.isCancelled()) return;
         setEncAvailable(r.available);
         setEncBackend(r.backend);
       });
       await reloadSecrets();
-      if (!active) return;
+      if (run.isCancelled()) return;
 
       if (!cwd) {
-        if (active) {
+        if (!run.isCancelled()) {
           setRepoDir(null);
           setConfig(null);
           setStatuses([]);
@@ -901,7 +902,7 @@ export function EnvSyncModal({
       const discovered = await window.fleet.envSync.discover(cwd, pathContext);
       if (discovered) {
         const status = await window.fleet.envSync.status(discovered.repoDir);
-        if (!active) return;
+        if (run.isCancelled()) return;
         setRepoDir(discovered.repoDir);
         setConfig(discovered.config);
         setStatuses(status);
@@ -910,7 +911,7 @@ export function EnvSyncModal({
         // the repoDir we hand to writeConfig/status is Windows-accessible, matching
         // the form discover() returns. Idempotent / passthrough for native panes.
         const { root } = await window.fleet.git.repoRoot(cwd, pathContext);
-        if (!active) return;
+        if (run.isCancelled()) return;
         const resolved = root ?? cwd;
         setRepoDir(
           typeof pathContext === 'object'
@@ -920,10 +921,10 @@ export function EnvSyncModal({
         setConfig(null);
         setStatuses([]);
       }
-      if (active) setLoading(false);
+      if (!run.isCancelled()) setLoading(false);
     })();
     return () => {
-      active = false;
+      run.cancel();
     };
   }, [isOpen, cwd, pathContext, reloadSecrets]);
 

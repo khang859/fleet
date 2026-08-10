@@ -8,6 +8,21 @@
  */
 export type PathContext = 'posix' | 'win32' | { kind: 'wsl'; distro: string };
 
+/** The WSL member of `PathContext`, for the callers that need its `distro`. */
+export type WslPathContext = Extract<PathContext, object>;
+
+/**
+ * Narrow a `PathContext` to its WSL variant.
+ *
+ * The object member is the only non-string one, so `typeof` settles it on its own; also
+ * testing `kind === 'wsl'` would only re-check what the type already guarantees. Should a
+ * second object-shaped context ever join it (ssh, container), this is the single place
+ * that has to start discriminating on `kind`.
+ */
+export function isWslContext(ctx: PathContext | undefined): ctx is WslPathContext {
+  return typeof ctx === 'object';
+}
+
 export type WslDistroState = 'running' | 'stopped' | 'installing' | 'error';
 
 export type WslDistro = {

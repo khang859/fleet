@@ -254,7 +254,7 @@ export class Starfield {
 
   // Task 2: O(n²) constellation edge computation, called every 500ms
   private recomputeConstellationEdges(): void {
-    const midLayer = this.layers[1];
+    const midLayer = this.layers.at(1);
     if (!midLayer) {
       this.constellationEdges = [];
       return;
@@ -310,7 +310,7 @@ export class Starfield {
   }
 
   renderConstellations(ctx: CanvasRenderingContext2D): void {
-    const midLayer = this.layers[1];
+    const midLayer = this.layers.at(1);
     if (!midLayer) return;
 
     // Task 2: Draw cached edges with single beginPath/stroke

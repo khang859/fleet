@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess, type StdioOptions } from 'child_process';
-import type { PathContext } from '../shared/shell-profiles';
+import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { wslExePath } from './wsl-service';
 
 /**
@@ -17,10 +17,6 @@ import { wslExePath } from './wsl-service';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024;
-
-function isWslContext(ctx: PathContext): ctx is { kind: 'wsl'; distro: string } {
-  return typeof ctx === 'object' && ctx.kind === 'wsl';
-}
 
 /**
  * Resolve the executable + argv to run `cmd args...` in the given context.

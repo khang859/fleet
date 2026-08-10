@@ -116,9 +116,16 @@ export class CopilotWindow {
     if (isDev) {
       // electron-vite doesn't serve secondary HTML entries in dev.
       // Write a bootstrap HTML file that loads the copilot app from the Vite dev server.
-      const bootstrapPath = getDevBootstrapPath(process.env.ELECTRON_RENDERER_URL!);
-      log.info('loading copilot renderer (dev bootstrap)', { bootstrapPath });
-      void this.win.loadFile(bootstrapPath);
+      const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+      if (rendererUrl) {
+        const bootstrapPath = getDevBootstrapPath(rendererUrl);
+        log.info('loading copilot renderer (dev bootstrap)', { bootstrapPath });
+        void this.win.loadFile(bootstrapPath);
+      } else {
+        // Interpolating `undefined` into the bootstrap HTML would just yield a blank window
+        // and a cryptic did-fail-load, so name the actual cause instead.
+        log.error('ELECTRON_RENDERER_URL is unset - cannot bootstrap the copilot renderer in dev');
+      }
     } else {
       const filePath = fileURLToPath(new URL('../renderer/copilot/index.html', import.meta.url));
       log.info('loading copilot renderer (prod)', { filePath, exists: existsSync(filePath) });

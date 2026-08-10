@@ -1140,11 +1140,10 @@ function Composer({
       ref.current?.focus();
       return;
     }
-    switch (command.name) {
-      case 'clear':
-        runClear();
-        return;
-    }
+    // Keyed by the builtin-name union rather than switched on: a builtin added to the
+    // union then fails to compile until it is given a handler here.
+    const builtins: Record<typeof command.name, () => void> = { clear: runClear };
+    builtins[command.name]();
   };
 
   /** Take a file out of the pending row. It was never sent, so nothing else changes. */

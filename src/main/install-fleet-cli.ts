@@ -233,15 +233,8 @@ export async function installSkillFile(): Promise<void> {
     join(mainDir, '..', '..', 'resources', 'skills', 'fleet', 'SKILL.md'),
     // Packaged mode: the extraResources copy the agent's own loader reads, with
     // the asar-unpacked path kept as a fallback for a build that has only that.
-    join(process.resourcesPath ?? '', 'resources', 'skills', 'fleet', 'SKILL.md'),
-    join(
-      process.resourcesPath ?? '',
-      'app.asar.unpacked',
-      'resources',
-      'skills',
-      'fleet',
-      'SKILL.md'
-    )
+    join(process.resourcesPath, 'resources', 'skills', 'fleet', 'SKILL.md'),
+    join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'skills', 'fleet', 'SKILL.md')
   ];
 
   let sourceContent: string | null = null;
@@ -291,24 +284,12 @@ export async function installOpencodePlugin(): Promise<void> {
 
   const candidatePluginPaths = [
     join(mainDir, '..', '..', 'resources', 'opencode-plugin', 'fleet.ts'),
-    join(
-      process.resourcesPath ?? '',
-      'app.asar.unpacked',
-      'resources',
-      'opencode-plugin',
-      'fleet.ts'
-    )
+    join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'opencode-plugin', 'fleet.ts')
   ];
 
   const candidateSkillPaths = [
     join(mainDir, '..', '..', 'resources', 'opencode-plugin', 'SKILL.md'),
-    join(
-      process.resourcesPath ?? '',
-      'app.asar.unpacked',
-      'resources',
-      'opencode-plugin',
-      'SKILL.md'
-    )
+    join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'opencode-plugin', 'SKILL.md')
   ];
 
   // ── Install plugin file ──────────────────────────────────────────────────
@@ -376,7 +357,6 @@ export async function installOpencodePlugin(): Promise<void> {
   const pkgJsonPath = join(opencodeHome, 'package.json');
   let rawJson: string;
   let pkgJson: { dependencies?: Record<string, string> };
-  let parsed = false;
 
   if (existsSync(pkgJsonPath)) {
     rawJson = await readFile(pkgJsonPath, 'utf8');
@@ -396,11 +376,9 @@ export async function installOpencodePlugin(): Promise<void> {
       return;
     }
     pkgJson = result.data;
-    parsed = true;
   } else {
     rawJson = '{}';
     pkgJson = {};
-    parsed = true;
   }
 
   pkgJson.dependencies = pkgJson.dependencies ?? {};
@@ -419,8 +397,8 @@ export async function installOpencodePlugin(): Promise<void> {
       await writeFile(pkgJsonPath, newRaw, 'utf8');
       log.info('added @opencode-ai/plugin dependency to opencode package.json');
     }
-  } else if (parsed) {
-    // Update formatting only if we successfully parsed and did add/change
+  } else {
+    // Already present: only rewrite if the pin above actually changed something.
     const newRaw = JSON.stringify(pkgJson, null, 2) + '\n';
     if (newRaw !== rawJson) {
       await writeFile(pkgJsonPath, newRaw, 'utf8');

@@ -140,7 +140,7 @@ export function GitChangesModal({
       if (e.key === 'Enter' && !isInputFocused) {
         e.preventDefault();
         e.stopPropagation();
-        const activeFile = filteredFiles[activeFileIndex];
+        const activeFile = filteredFiles.at(activeFileIndex);
         if (activeFile) scrollToFile(activeFile.path);
         return;
       }
@@ -414,7 +414,8 @@ function FileEntry({
   onClick: () => void;
 }): React.JSX.Element {
   const parts = file.path.split('/');
-  const filename = parts.pop()!;
+  // `split` always yields at least one element, so this only falls back if `path` is empty.
+  const filename = parts.pop() ?? file.path;
   const dir = parts.join('/');
 
   return (

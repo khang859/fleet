@@ -48,7 +48,8 @@ function getTintedFrame(
 
   // Create a result canvas sized to the sprite
   const result = new OffscreenCanvas(region.w, region.h);
-  const rctx = result.getContext('2d')!;
+  const rctx = result.getContext('2d');
+  if (!rctx) return null;
 
   // Draw the original sprite frame
   const sx = region.x + frameIndex * region.w;

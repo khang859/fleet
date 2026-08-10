@@ -2,7 +2,7 @@ import { readlink } from 'fs/promises';
 import pidCwd from 'pid-cwd';
 import type { EventBus } from './event-bus';
 import type { PtyManager } from './pty-manager';
-import type { PathContext } from '../shared/shell-profiles';
+import { isWslContext, type PathContext } from '../shared/shell-profiles';
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -20,7 +20,7 @@ export class CwdPoller {
     // WSL panes only update via OSC 7 (installed by Phase 3's ensureFleetCli hook).
     // Polling the wsl.exe pid on the Windows side returns the wrong cwd because
     // the Linux-side shell's cwd is invisible to the Windows kernel.
-    if (typeof pathContext === 'object' && pathContext.kind === 'wsl') {
+    if (isWslContext(pathContext)) {
       return;
     }
 
@@ -50,7 +50,7 @@ export class CwdPoller {
    * WSL pane where pidCwd is unreliable — those only update via OSC 7).
    */
   async resolveNow(paneId: string, pathContext: PathContext = 'posix'): Promise<string | null> {
-    if (typeof pathContext === 'object' && pathContext.kind === 'wsl') {
+    if (isWslContext(pathContext)) {
       return null;
     }
     const pid = this.ptyManager.getPid(paneId);

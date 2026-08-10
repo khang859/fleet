@@ -45,7 +45,8 @@ function parseHookEvent(buffer: string): HookEvent | null {
   if (typeof optional.tool === 'string') parsed.tool = optional.tool;
   if (isRecord(optional.tool_input)) parsed.tool_input = optional.tool_input;
   if (typeof optional.tool_use_id === 'string') parsed.tool_use_id = optional.tool_use_id;
-  if (typeof optional.notification_type === 'string') parsed.notification_type = optional.notification_type;
+  if (typeof optional.notification_type === 'string')
+    parsed.notification_type = optional.notification_type;
   if (typeof optional.message === 'string') parsed.message = optional.message;
   return parsed;
 }
@@ -119,12 +120,13 @@ export class CopilotSocketServer {
     }
     this.pendingSockets.clear();
 
-    if (!this.server) return;
+    const server = this.server;
+    if (!server) return;
 
     const STOP_TIMEOUT_MS = 5000;
     await Promise.race([
       new Promise<void>((resolve) => {
-        this.server!.close(() => {
+        server.close(() => {
           this.cleanupSocket();
           log.info('socket server stopped');
           resolve();

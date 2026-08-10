@@ -1,15 +1,11 @@
 import type { ChildProcess } from 'child_process';
 import { relative, posix as posixPath } from 'path';
 import type { FileGrepRequest, FileGrepResponse, FileGrepResult } from '../shared/ipc-api';
-import type { PathContext } from '../shared/shell-profiles';
+import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { captureBoundedStdout } from './bounded-stdout';
 import { spawnInContext } from './run-in-context';
 
 let activeProcess: ChildProcess | null = null;
-
-function isWslContext(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
-  return typeof ctx === 'object' && ctx.kind === 'wsl';
-}
 
 function killActive(): void {
   if (activeProcess && !activeProcess.killed) {

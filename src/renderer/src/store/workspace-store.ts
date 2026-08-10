@@ -147,7 +147,9 @@ function resolveActiveTab(
   if (!activeTabId || ws.tabs.some((t) => t.id === activeTabId)) {
     return { activeTabId, activePaneId };
   }
-  const next = pickNextTab(ws.tabs, 0) ?? ws.tabs[0] ?? null;
+  // `.at` rather than `[0]`: indexing an empty tab list types as `Tab` but is `undefined`,
+  // which is exactly the case the `?? null` below exists to catch.
+  const next = pickNextTab(ws.tabs, 0) ?? ws.tabs.at(0) ?? null;
   return {
     activeTabId: next?.id ?? null,
     activePaneId: next ? (collectPaneIds(next.splitRoot)[0] ?? null) : null
@@ -347,7 +349,14 @@ function getFirstLeafCwd(node: PaneNode | undefined): string | undefined {
 // tab's cwd is resynced from its first pane leaf because pane cwds are always
 // up to date. Agent tabs shed their group as well - they render in their own
 // sidebar section now, where a group means nothing.
-function migrateTab(t: Tab): Tab {
+/**
+ * A tab as it may exist on disk. `labelIsCustom` is required on `Tab` but postdates the
+ * first saved workspaces, so the layout file is not guaranteed to carry it - which is the
+ * whole reason `migrateTab` defaults it.
+ */
+type SavedTab = Omit<Tab, 'labelIsCustom'> & { labelIsCustom?: boolean };
+
+function migrateTab(t: SavedTab): Tab {
   const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
   return {
     ...t,
@@ -574,7 +583,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       // Pinned tabs (Annotate/Sessions) are not closeable.
       if (target && SPECIAL_TAB_TYPES.has(target.type ?? '')) return state;
       const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
-      const rawTab = state.workspace.tabs[tabIndex];
+      // Guard the index rather than `.at(tabIndex)`: `findIndex` returns -1 when the tab is
+      // already gone, and `.at(-1)` would hand back the LAST tab as the closed one.
+      const rawTab = tabIndex >= 0 ? state.workspace.tabs[tabIndex] : undefined;
       // Inject live CWDs so undo-close restores the PTY at the correct directory
       const closedTab = rawTab ? { ...rawTab, splitRoot: injectLiveCwd(rawTab.splitRoot) } : rawTab;
       const tabs = state.workspace.tabs.filter((t) => t.id !== tabId);
@@ -1116,7 +1127,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
         : undefined) ??
       migrated.tabs.find((t) => t.type !== 'annotate' && t.type !== 'sessions') ??
-      migrated.tabs[0];
+      migrated.tabs.at(0);
 
     const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
     const restoredPane =
@@ -1206,7 +1217,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
           : undefined) ??
         migrated.tabs.find((t) => t.type !== 'annotate' && t.type !== 'sessions') ??
-        migrated.tabs[0];
+        migrated.tabs.at(0);
 
       const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
       const restoredPane =
@@ -1570,13 +1581,26 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   }
 }));
 
+/**
+ * The preload API as this module can actually find it.
+ *
+ * The types say `window.fleet.copilot` is always installed, and in the running app it
+ * is. But this module's subscriber fires on the first `setState` from anywhere - unit
+ * tests import the store against a bare `window.fleet = {}` polyfill - so the call below
+ * has to survive the API not being there. Read through a function: a `const` would be
+ * narrowed straight back to the non-nullable declared type by its own initializer.
+ */
+function copilotApi(): Window['fleet']['copilot'] | undefined {
+  return window.fleet.copilot;
+}
+
 // Notify copilot of workspace changes + persist last active workspace for restart
 let lastNotifiedWorkspaceId: string | null = null;
 useWorkspaceStore.subscribe((state) => {
   const wsId = state.workspace.id;
   if (wsId !== lastNotifiedWorkspaceId) {
     lastNotifiedWorkspaceId = wsId;
-    window.fleet.copilot?.notifyActiveWorkspace(wsId, state.workspace.label);
+    copilotApi()?.notifyActiveWorkspace(wsId, state.workspace.label);
     try {
       localStorage.setItem('fleet:last-workspace-id', wsId);
     } catch {
