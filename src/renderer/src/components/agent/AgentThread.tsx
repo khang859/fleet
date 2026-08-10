@@ -695,7 +695,15 @@ const Message = memo(function Message({
   }
   const lastPart = message.parts.length - 1;
   return (
-    <div className="flex flex-col gap-2">
+    // The scrim and its padding are both zero unless a background image is on
+    // (see `getGlassCssVars`), so with a plain theme this is the same bare
+    // column of text it has always been. Over a picture it becomes the quiet
+    // container the turn needs - the muted tool rows are the first thing to
+    // become unreadable on glass, and they live in here too.
+    <div
+      className="flex w-fit max-w-full flex-col items-start gap-2 rounded-xl"
+      style={{ background: 'var(--fleet-turn-scrim)', padding: 'var(--fleet-turn-pad)' }}
+    >
       {message.reasoning !== '' && (
         <ReasoningBlock
           text={message.reasoning}

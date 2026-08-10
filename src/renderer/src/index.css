@@ -194,6 +194,10 @@
   --fleet-glass-surface: var(--fleet-surface);
   --fleet-glass-surface-2: var(--fleet-surface-2);
   --fleet-glass-surface-3: var(--fleet-surface-3);
+  /* No image, no scrim: an assistant turn stays flat text, which is the whole
+     point of the asymmetric transcript. Both are retargeted together. */
+  --fleet-turn-scrim: transparent;
+  --fleet-turn-pad: 0;
 
   /* shadcn semantic tokens consumed by Streamdown, aliased to the fleet
      palette above so agent markdown re-themes live with the rest of the app. */

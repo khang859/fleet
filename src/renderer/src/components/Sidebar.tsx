@@ -352,33 +352,23 @@ function AnnotateTabCard({
   return (
     <div
       onClick={onClick}
-      className="cursor-pointer rounded-md overflow-hidden relative transition-all"
-      style={{
-        background: isActive ? '#0a1a1a' : 'rgba(10,26,26,0.4)',
-        border: isActive ? '1px solid rgba(45,212,191,0.35)' : '1px solid rgba(255,255,255,0.05)',
-        boxShadow: isActive
-          ? '0 0 10px rgba(45,212,191,0.15), inset 0 0 20px rgba(45,212,191,0.03)'
-          : 'none'
-      }}
+      // Same treatment as the Sessions card: theme tokens, no CRT scanline
+      // overlay and no teal glow. The tool keeps its colour on the icon, which
+      // is where an identity belongs once the label stops shouting.
+      className={`cursor-pointer rounded-md overflow-hidden relative border transition-colors ${
+        isActive
+          ? 'bg-fleet-glass-surface-2 border-fleet-border-strong'
+          : 'bg-fleet-glass-surface border-fleet-border hover:bg-fleet-glass-surface-2'
+      }`}
     >
-      {/* Subtle noise overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none z-10 opacity-[0.03]"
-        style={{
-          backgroundImage:
-            'repeating-linear-gradient(transparent 0px, transparent 1px, rgba(255,255,255,0.15) 1px, rgba(255,255,255,0.15) 2px)',
-          backgroundSize: '100% 2px'
-        }}
-      />
-
       <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
         {/* Icon */}
-        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-fleet-surface-2/50 flex items-center justify-center">
+        <div className="flex-shrink-0 w-8 h-8 rounded-md overflow-hidden bg-fleet-surface-2/50 flex items-center justify-center">
           <svg
             className="w-4 h-4"
             viewBox="0 0 24 24"
             fill="none"
-            stroke={isActive ? 'rgb(94,234,212)' : 'rgba(94,234,212,0.4)'}
+            stroke={isActive ? 'rgb(94,234,212)' : 'rgba(94,234,212,0.6)'}
             strokeWidth="1.5"
           >
             <path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -388,11 +378,9 @@ function AnnotateTabCard({
         {/* Label */}
         <div className="flex-1 min-w-0">
           <div
-            className="font-mono uppercase tracking-widest leading-none"
-            style={{
-              fontSize: '9px',
-              color: isActive ? 'rgb(94,234,212)' : 'rgba(94,234,212,0.5)'
-            }}
+            className={`text-xs font-medium leading-tight ${
+              isActive ? 'text-fleet-text' : 'text-fleet-text-secondary'
+            }`}
           >
             Annotate
           </div>
@@ -1149,7 +1137,12 @@ export function Sidebar({
   return (
     <div
       ref={sidebarRootRef}
-      className="relative flex flex-col h-full bg-fleet-glass-chrome border-r border-fleet-border shrink-0"
+      // A card on the canvas like the panes, not a wall welded to the window
+      // edge. No right margin on purpose: the pane grid's own padding already
+      // supplies 8px there, which is the gutter panes have with each other and
+      // with the window. The width style is the content box, so these margins
+      // sit outside it and the resize maths is unaffected.
+      className="relative flex flex-col my-2 ml-2 rounded-lg bg-fleet-glass-chrome border border-fleet-border shadow-md shadow-black/20 shrink-0"
       style={{ width: currentSidebarWidth }}
     >
       {/* Drag region + workspace label with add button */}

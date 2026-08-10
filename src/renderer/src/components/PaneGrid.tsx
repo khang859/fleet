@@ -113,10 +113,17 @@ function computeLayout(node: PaneNode, rect: Rect, path: number[]): Layout {
   };
 }
 
-// Half the gap between two panes. Applied inside each leaf's rect and again on
-// the grid, so panes are separated by 8px of canvas and sit 8px off the window
-// edge - the split maths keeps working on the full rect and never sees this.
-const PANE_GUTTER = 'p-1';
+// The canvas gutter is 8px, and two things already contribute to it between a
+// pair of panes: each leaf's own padding, twice, plus the HANDLE_PX seam the
+// split maths carves out for the resize handle. So the leaf padding is what is
+// left over - (8 - 6) / 2 = 1 - and the grid's outer inset is the rest, 7, to
+// bring the window edge to the same 8.
+//
+// The outer inset cannot live on the grid element itself: leaves are absolutely
+// positioned, and an absolute child resolves against its ancestor's padding
+// box, so padding there moves nothing. It goes on a wrapper instead.
+const PANE_GUTTER = 'p-px';
+const GRID_INSET = 'p-[7px]';
 
 function rectStyle(rect: Rect): React.CSSProperties {
   return {
@@ -168,7 +175,12 @@ function PaneFrame({
         isActive ? 'shadow-lg shadow-black/30' : 'shadow-md shadow-black/20'
       }`}
     >
-      <div className={`relative flex flex-col h-full overflow-hidden rounded-lg ${ringClass}`}>
+      {/* The hairline is not decoration: a glass terminal over a busy picture
+          has no ground of its own to end against, so without an edge an
+          inactive card stops reading as a card at all. */}
+      <div
+        className={`relative flex flex-col h-full overflow-hidden rounded-lg border border-fleet-border ${ringClass}`}
+      >
         {showGlyph && (
           <PaneStatusGlyph state={activityState} className="absolute top-1 right-1 z-10" />
         )}
@@ -272,115 +284,117 @@ export function PaneGrid({
   const layout = useMemo(() => computeLayout(root, fullRect.current, []), [root]);
 
   return (
-    <div ref={gridRef} className="h-full w-full p-1" style={{ position: 'relative' }}>
-      {/* Terminal panes — flat keyed siblings, never unmounted by tree changes */}
-      {layout.leaves.map((leaf) => {
-        if (leaf.node.paneType === 'agent') {
-          return (
-            <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
-              {/* No PaneHeader: like the other non-terminal panes, the agent
+    <div className={`h-full w-full ${GRID_INSET}`}>
+      <div ref={gridRef} className="h-full w-full" style={{ position: 'relative' }}>
+        {/* Terminal panes — flat keyed siblings, never unmounted by tree changes */}
+        {layout.leaves.map((leaf) => {
+          if (leaf.node.paneType === 'agent') {
+            return (
+              <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
+                {/* No PaneHeader: like the other non-terminal panes, the agent
                   pane owns its own chrome and has no live cwd to show. */}
-              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                <AgentPane
-                  paneId={leaf.id}
-                  cwd={leaf.node.cwd}
-                  sessionId={leaf.node.agentSessionId}
-                  terminalBackground={terminalBackground}
-                  slideshowFrame={slideshowFrame}
-                />
-              </PaneFrame>
-            </div>
-          );
-        }
-        if (leaf.node.paneType === 'ssh-browser' && leaf.node.remoteHost) {
-          const host = leaf.node.remoteHost;
-          return (
-            <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
-              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                <SshBrowserPane paneId={leaf.id} host={host} initialPath={leaf.node.remotePath} />
-              </PaneFrame>
-            </div>
-          );
-        }
-        const viewerType = leaf.node.paneType;
-        if (isViewerPaneType(viewerType)) {
-          const node = leaf.node;
-          const remote =
-            node.remoteHost && node.remotePath
-              ? { host: node.remoteHost, path: node.remotePath }
-              : null;
-          // Remote files are materialised into the local cache first, so every
-          // viewer below sees an ordinary local path and needs no SSH awareness.
-          return (
-            <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
-              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                {remote ? (
-                  <RemoteFileGate host={remote.host} remotePath={remote.path}>
-                    {(fetched) => (
-                      <ViewerPane
-                        paneType={viewerType}
-                        paneId={leaf.id}
-                        filePath={fetched.localPath}
-                        remote={{ ...remote, mtimeMs: fetched.mtimeMs }}
-                      />
-                    )}
-                  </RemoteFileGate>
-                ) : (
-                  <ViewerPane
-                    paneType={viewerType}
+                <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
+                  <AgentPane
                     paneId={leaf.id}
-                    filePath={node.filePath ?? ''}
-                    pathContext={node.pathContext}
+                    cwd={leaf.node.cwd}
+                    sessionId={leaf.node.agentSessionId}
+                    terminalBackground={terminalBackground}
+                    slideshowFrame={slideshowFrame}
                   />
-                )}
+                </PaneFrame>
+              </div>
+            );
+          }
+          if (leaf.node.paneType === 'ssh-browser' && leaf.node.remoteHost) {
+            const host = leaf.node.remoteHost;
+            return (
+              <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
+                <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
+                  <SshBrowserPane paneId={leaf.id} host={host} initialPath={leaf.node.remotePath} />
+                </PaneFrame>
+              </div>
+            );
+          }
+          const viewerType = leaf.node.paneType;
+          if (isViewerPaneType(viewerType)) {
+            const node = leaf.node;
+            const remote =
+              node.remoteHost && node.remotePath
+                ? { host: node.remoteHost, path: node.remotePath }
+                : null;
+            // Remote files are materialised into the local cache first, so every
+            // viewer below sees an ordinary local path and needs no SSH awareness.
+            return (
+              <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
+                <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
+                  {remote ? (
+                    <RemoteFileGate host={remote.host} remotePath={remote.path}>
+                      {(fetched) => (
+                        <ViewerPane
+                          paneType={viewerType}
+                          paneId={leaf.id}
+                          filePath={fetched.localPath}
+                          remote={{ ...remote, mtimeMs: fetched.mtimeMs }}
+                        />
+                      )}
+                    </RemoteFileGate>
+                  ) : (
+                    <ViewerPane
+                      paneType={viewerType}
+                      paneId={leaf.id}
+                      filePath={node.filePath ?? ''}
+                      pathContext={node.pathContext}
+                    />
+                  )}
+                </PaneFrame>
+              </div>
+            );
+          }
+          return (
+            <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
+              {/* The glyph moved into the title bar, which the terminal draws
+                itself - leaving it here too would put it under the actions. */}
+              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
+                <div className="flex-1 min-h-0">
+                  {/* The title bar is the terminal's own now, so that the pane
+                    actions can live in it instead of over the output. */}
+                  <TerminalPane
+                    paneId={leaf.id}
+                    cwd={leaf.node.cwd}
+                    isActive={leaf.id === activePaneId}
+                    label={leaf.node.label}
+                    labelIsCustom={leaf.node.labelIsCustom}
+                    onFocus={() => onPaneFocus(leaf.id)}
+                    serializedContent={serializedPanes?.get(leaf.id) ?? leaf.node.serializedContent}
+                    fontFamily={fontFamily}
+                    fontSize={fontSize}
+                    terminalTheme={terminalTheme}
+                    terminalBackground={terminalBackground}
+                    slideshowFrame={slideshowFrame}
+                    onSplitHorizontal={() => splitPane(leaf.id, 'horizontal')}
+                    onSplitVertical={() => splitPane(leaf.id, 'vertical')}
+                    onClose={() => closePane(leaf.id)}
+                    shellProfileId={leaf.node.shellProfileId}
+                    cmd={leaf.node.cmd}
+                  />
+                </div>
               </PaneFrame>
             </div>
           );
-        }
-        return (
-          <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
-            {/* The glyph moved into the title bar, which the terminal draws
-                itself - leaving it here too would put it under the actions. */}
-            <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-              <div className="flex-1 min-h-0">
-                {/* The title bar is the terminal's own now, so that the pane
-                    actions can live in it instead of over the output. */}
-                <TerminalPane
-                  paneId={leaf.id}
-                  cwd={leaf.node.cwd}
-                  isActive={leaf.id === activePaneId}
-                  label={leaf.node.label}
-                  labelIsCustom={leaf.node.labelIsCustom}
-                  onFocus={() => onPaneFocus(leaf.id)}
-                  serializedContent={serializedPanes?.get(leaf.id) ?? leaf.node.serializedContent}
-                  fontFamily={fontFamily}
-                  fontSize={fontSize}
-                  terminalTheme={terminalTheme}
-                  terminalBackground={terminalBackground}
-                  slideshowFrame={slideshowFrame}
-                  onSplitHorizontal={() => splitPane(leaf.id, 'horizontal')}
-                  onSplitVertical={() => splitPane(leaf.id, 'vertical')}
-                  onClose={() => closePane(leaf.id)}
-                  shellProfileId={leaf.node.shellProfileId}
-                  cmd={leaf.node.cmd}
-                />
-              </div>
-            </PaneFrame>
-          </div>
-        );
-      })}
+        })}
 
-      {/* Resize handles */}
-      {layout.handles.map((h) => (
-        <AbsoluteResizeHandle
-          key={h.key}
-          direction={h.direction}
-          path={h.path}
-          rect={h.rect}
-          splitRect={h.splitRect}
-          gridRef={gridRef}
-        />
-      ))}
+        {/* Resize handles */}
+        {layout.handles.map((h) => (
+          <AbsoluteResizeHandle
+            key={h.key}
+            direction={h.direction}
+            path={h.path}
+            rect={h.rect}
+            splitRect={h.splitRect}
+            gridRef={gridRef}
+          />
+        ))}
+      </div>
     </div>
   );
 }

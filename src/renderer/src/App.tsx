@@ -788,8 +788,11 @@ export function App(): React.JSX.Element {
         <BackgroundLayer background={terminalBackground} frame={slideshowFrame} />
       )}
       {/* Top bar — drag region for window movement, houses OS window controls */}
+      {/* Transparent rather than a solid band: on a canvas the strip the window
+          drags by is part of the canvas. It holds nothing but the shortcut hint
+          at its right edge, so there is no text for the picture to fight. */}
       <div
-        className="relative z-10 h-9 shrink-0 bg-fleet-glass-chrome flex items-center"
+        className="relative z-10 h-9 shrink-0 flex items-center"
         style={{ WebkitAppRegion: 'drag' }}
       >
         <ShortcutsHint />
@@ -803,7 +806,7 @@ export function App(): React.JSX.Element {
           />
         ) : (
           <div
-            className="flex flex-col items-center h-full w-11 bg-fleet-surface border-r border-fleet-border shrink-0 py-2 gap-1"
+            className="flex flex-col items-center w-11 my-2 ml-2 rounded-lg bg-fleet-glass-chrome border border-fleet-border shadow-md shadow-black/20 shrink-0 py-2 gap-1"
             style={{ WebkitAppRegion: 'no-drag' }}
           >
             {/* Expand sidebar button */}

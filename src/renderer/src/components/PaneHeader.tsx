@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { RotateCcw } from 'lucide-react';
 import { useCwdStore } from '../store/cwd-store';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
@@ -131,13 +132,16 @@ export function PaneHeader({
         </span>
       )}
       {labelIsCustom && !isEditing && (
+        // An icon, not the words "clear title". As running text in a bar whose
+        // other job is showing a path, it read as part of the title rather than
+        // as a control.
         <button
-          className="ml-1 text-fleet-text-subtle hover:text-fleet-text-secondary transition-colors active:scale-[0.97]"
+          className="shrink-0 rounded p-0.5 text-fleet-text-subtle hover:text-fleet-text hover:bg-fleet-surface-3 transition-colors active:scale-90 focus-ring"
           onClick={() => resetPaneLabel(paneId)}
           title="Clear custom title and show path"
           aria-label="Clear pane title"
         >
-          clear title
+          <RotateCcw size={12} />
         </button>
       )}
       {actions}

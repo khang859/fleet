@@ -21,34 +21,31 @@ export function SessionsTabCard({
   }, [load]);
 
   return (
+    // Theme tokens rather than the hardcoded near-black purple this used to
+    // paint itself: on the canvas a card that ignores the theme reads as a
+    // sticker rather than as part of the app.
     <div
       onClick={onClick}
-      className="cursor-pointer rounded-md overflow-hidden relative transition-all"
-      style={{
-        background: isActive ? '#0d0a1a' : 'rgba(13,10,26,0.4)',
-        border: isActive ? '1px solid rgba(96,165,250,0.35)' : '1px solid rgba(255,255,255,0.05)'
-      }}
+      className={`cursor-pointer rounded-md overflow-hidden relative border transition-colors ${
+        isActive
+          ? 'bg-fleet-glass-surface-2 border-fleet-border-strong'
+          : 'bg-fleet-glass-surface border-fleet-border hover:bg-fleet-glass-surface-2'
+      }`}
     >
       <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
-        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-fleet-surface-2/50 flex items-center justify-center">
-          <History size={16} className={isActive ? 'text-blue-400' : 'text-blue-400/50'} />
+        <div className="flex-shrink-0 w-8 h-8 rounded-md overflow-hidden bg-fleet-surface-2/50 flex items-center justify-center">
+          <History size={16} className={isActive ? 'text-blue-400' : 'text-blue-400/60'} />
         </div>
         <div className="flex-1 min-w-0">
           <div
-            className="font-mono uppercase tracking-widest leading-none mb-1"
-            style={{
-              fontSize: '9px',
-              color: isActive ? 'rgb(96,165,250)' : 'rgba(96,165,250,0.5)'
-            }}
+            className={`text-xs font-medium leading-tight ${
+              isActive ? 'text-fleet-text' : 'text-fleet-text-secondary'
+            }`}
           >
             Sessions
           </div>
-          <span className="text-[9px] font-mono text-fleet-text-subtle">
-            {sessions.length > 0 ? (
-              <span className="text-blue-300/70">{sessions.length} saved</span>
-            ) : (
-              <span>none yet</span>
-            )}
+          <span className="text-[11px] leading-tight text-fleet-text-muted tabular-nums">
+            {sessions.length > 0 ? `${sessions.length} saved` : 'none yet'}
           </span>
         </div>
       </div>

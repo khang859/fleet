@@ -84,6 +84,13 @@ export function getGlassCssVars(active: boolean): FleetThemeCssProperties | unde
     // chrome, only thicker - enough that the picture behind it never competes
     // with a session name.
     '--fleet-glass-chrome': glass('--fleet-bg', 88),
+    // The scrim an assistant turn sits on once the pane is glass. Prose and
+    // muted tool rows have no ground of their own over a picture, and the
+    // transcript is the one surface in the app that is read a paragraph at a
+    // time. Off entirely without an image, so a plain theme keeps the flat
+    // transcript it has today.
+    '--fleet-turn-scrim': glass('--fleet-surface', 55),
+    '--fleet-turn-pad': '0.5rem 0.75rem',
     '--fleet-glass-surface': glass('--fleet-surface', 70),
     '--fleet-glass-surface-2': glass('--fleet-surface-2', 65),
     '--fleet-glass-surface-3': glass('--fleet-surface-3', 70)

@@ -16,7 +16,7 @@ import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
 import { useAgentStore } from '../../store/agent-store';
 import { useElementWidth } from '../../hooks/use-element-width';
 import { resolveBackgroundSrc } from '../../lib/pane-background';
-import { getGlassCssVars, paneGround } from '../../lib/theme';
+import { getGlassCssVars, paneGround, PANE_GLASS } from '../../lib/theme';
 import type { AgentTodoItem } from '../../../../shared/agent-todos';
 import type { AgentScheduleRecord } from '../../../../shared/agent-schedule';
 import type { AgentMessage, AgentPermissionAsk } from '../../../../shared/agent-types';
@@ -158,14 +158,16 @@ export function AgentPane({
 
   return (
     // The image is one canvas behind the whole window (see App), so this pane
-    // only supplies its own ground over it - near-solid, because a transcript
-    // is read rather than glanced at.
+    // only supplies its own ground over it - glass, at the same strength the
+    // terminals use, so a window of mixed panes reads as one material. The
+    // transcript is prose rather than a glanced-at stream, so it carries its own
+    // scrim (see AgentThread) instead of thickening the whole pane.
     <div
       ref={frameRef}
       className="relative flex h-full w-full flex-col"
       style={{
         ...getGlassCssVars(hasBackgroundImage),
-        backgroundColor: paneGround('var(--fleet-bg)', hasBackgroundImage)
+        backgroundColor: paneGround('var(--fleet-bg)', hasBackgroundImage, PANE_GLASS)
       }}
     >
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
