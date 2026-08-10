@@ -5,6 +5,7 @@ import { AGENT_TODO_INSTRUCTIONS, type AgentTodoItem } from './agent-todos';
 import { AGENT_SKILL_INSTRUCTIONS } from './agent-skills';
 import { AGENT_MEMORY_INSTRUCTIONS } from './agent-memory';
 import { AGENT_SCHEDULE_INSTRUCTIONS } from './agent-schedule';
+import { renderEnvBlock, type AgentEnvironment } from './agent-environment';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
 import type { McpServersConfig } from './agent-mcp';
 
@@ -336,6 +337,12 @@ export const AGENT_TASK_INSTRUCTIONS = [
  * prompt is replacing Fleet's instructions, not the project's. It is never
  * shortened, however long it is - see `agent-project-instructions.ts` for why
  * that is the safe direction rather than the reckless one.
+ *
+ * `env` widens that working folder line into everything else about the machine
+ * that does not change while the conversation runs. It is optional because it
+ * has to be read off the disk and this function is pure; with nothing passed,
+ * the folder goes out on its own as it always did. The clock is deliberately
+ * not part of it - see `agent-environment.ts` for where that goes instead.
  */
 export function buildSystemPrompt(
   cwd: string,
@@ -349,6 +356,8 @@ export function buildSystemPrompt(
     schedule?: boolean;
     /** The framed contents of `AGENTS.md` or `CLAUDE.md`, whole. */
     projectInstructions?: string | null;
+    /** What the machine is, when it has been read. */
+    env?: AgentEnvironment | null;
   } = { image: false }
 ): string {
   const custom = override?.trim() ?? '';
@@ -369,7 +378,13 @@ export function buildSystemPrompt(
   // the other way round.
   const memory = options.memory === true ? `\n\n${AGENT_MEMORY_INSTRUCTIONS}` : '';
   const schedule = options.schedule === true ? `\n\n${AGENT_SCHEDULE_INSTRUCTIONS}` : '';
-  return `${base}${project}${image}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\nWorking folder: ${cwd}`;
+  // Last, so it is the thing the model has most recently read when the turn
+  // starts, and so a custom prompt cannot displace it.
+  const machine =
+    options.env === undefined || options.env === null
+      ? `Working folder: ${cwd}`
+      : renderEnvBlock(cwd, options.env);
+  return `${base}${project}${image}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
 }
 
 /*

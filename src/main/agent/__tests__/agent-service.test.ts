@@ -20,6 +20,7 @@ import {
   type AgentToolCall
 } from '../../../shared/agent-tools';
 import type { AgentTodoItem } from '../../../shared/agent-todos';
+import type { AgentEnvironment } from '../../../shared/agent-environment';
 import {
   CLEARED_RESULT_TEXT,
   CLEAR_KEEP_RECENT,
@@ -32,6 +33,7 @@ import {
   toCompactMessages,
   toReasoningParam,
   toWireHistory,
+  wireTime,
   withClearedWireResults,
   withResumeNote,
   withScheduleReminder,
@@ -140,6 +142,15 @@ const REQUEST: AgentSendRequest = {
   text: 'what does this do?',
   attachments: [],
   todos: []
+};
+
+const ENVIRONMENT: AgentEnvironment = {
+  platform: 'darwin',
+  osVersion: 'Darwin 25.5.0',
+  shell: '/bin/zsh',
+  isGitRepo: true,
+  timeZone: 'Asia/Ho_Chi_Minh',
+  model: 'anthropic/claude-sonnet-4.5'
 };
 
 const COMPACT_REQUEST: AgentCompactRequest = {
@@ -333,6 +344,37 @@ describe('buildSystemPrompt', () => {
 
   it('treats a blank override as no override, so the field can be cleared', () => {
     expect(buildSystemPrompt('/repo', '   \n ')).toContain(DEFAULT_AGENT_SYSTEM_PROMPT);
+  });
+
+  // Same reasoning as the working folder, and the same test: a custom prompt
+  // replaces Fleet's instructions, not the machine the agent is standing on.
+  it('describes the machine whatever the prompt says', () => {
+    for (const override of [null, 'Answer only in haiku.']) {
+      const prompt = buildSystemPrompt('/repo', override, { image: false, env: ENVIRONMENT });
+
+      expect(prompt).toContain('Working folder: /repo');
+      expect(prompt).toContain('Platform: darwin');
+      expect(prompt).toContain('Shell: /bin/zsh');
+      expect(prompt).toContain('Model: anthropic/claude-sonnet-4.5');
+    }
+  });
+
+  /*
+   * The other half of why the clock is a message. A system prompt is built once
+   * per turn and a turn can run for an hour, so a time in here would be wrong
+   * long before it was replaced - on top of costing the cache prefix.
+   */
+  it('states no time, however long the turn runs', () => {
+    const prompt = buildSystemPrompt('/repo', null, { image: false, env: ENVIRONMENT });
+
+    expect(prompt).not.toContain('Current time');
+    expect(prompt).not.toMatch(/\d{2}:\d{2}:\d{2}/);
+  });
+
+  // Not every caller has read the disk - the pane's own preview has not - and
+  // the folder is the one fact that was always there to send.
+  it('falls back to the working folder alone when the machine was not read', () => {
+    expect(buildSystemPrompt('/repo', null)).toContain('Working folder: /repo');
   });
 });
 
@@ -582,6 +624,54 @@ describe('toWireHistory', () => {
       { role: 'assistant', content: 'hello' },
       { role: 'user', content: 'what does this do?' }
     ]);
+  });
+
+  /*
+   * The clock's placement is the whole point of it being a message at all. In
+   * front of the newest user message it sits in the part of the request that is
+   * re-sent uncached every turn regardless, so it costs nothing; in the system
+   * prompt it would rewrite the cache prefix every round.
+   */
+  it('puts the clock immediately before the message it is the time of', async () => {
+    const clock = wireTime('UTC');
+    const messages = await toWireHistory(REQUEST, 'be brief', clock);
+
+    expect(messages.at(-2)).toEqual({ role: 'user', content: clock });
+    expect(messages.at(-1)).toEqual({ role: 'user', content: 'what does this do?' });
+    // Everything ahead of it is byte-for-byte what it was, which is what keeps
+    // the prefix cacheable.
+    const unclocked = await toWireHistory(REQUEST, 'be brief');
+    expect(messages.slice(0, -2)).toEqual(unclocked.slice(0, -1));
+  });
+
+  /*
+   * A round can carry the clock, a task list and a subagent roster at once. In
+   * one voice that is Fleet saying three things; in two it is two different
+   * things talking to the model, one of them unnamed.
+   */
+  it('speaks the clock in the same voice as every other note from Fleet', () => {
+    const clock = wireTime('UTC');
+
+    expect(clock.startsWith(FLEET_WIRE_PREFIX)).toBe(true);
+    expect(clock).toContain('Current time: ');
+  });
+
+  /*
+   * A turn with nothing said is the pane resuming after a subagent reported.
+   * The transcript ending on that report is the shape that means "carry on",
+   * and a trailing message stating the time would make the last thing in the
+   * conversation something the model might answer.
+   */
+  it('leaves the clock off a turn the user did not open', async () => {
+    const clock = wireTime('UTC');
+    const messages = await toWireHistory(
+      { ...REQUEST, text: '', attachments: [] },
+      'be brief',
+      clock
+    );
+
+    expect(messages.at(-1)).toEqual({ role: 'assistant', content: 'hello' });
+    for (const message of messages) expect(message.content).not.toContain('Current time');
   });
 
   it('sends a summary as a labelled user message, not as the assistant speaking', async () => {
