@@ -20,12 +20,10 @@ export class StreamBuffer {
   push(delta: string): void {
     if (!delta) return;
     this.pending += delta;
-    if (this.timer === null) {
-      this.timer = setTimeout(() => {
-        this.timer = null;
-        this.flush();
-      }, this.flushMs);
-    }
+    this.timer ??= setTimeout(() => {
+      this.timer = null;
+      this.flush();
+    }, this.flushMs);
   }
 
   /** Emit any buffered text immediately and cancel the pending timer. */

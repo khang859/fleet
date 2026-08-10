@@ -42,9 +42,9 @@ function handle<Args extends unknown[], R>(
   fn: (e: IpcMainInvokeEvent, ...args: Args) => R | Promise<R>
 ): void {
   ipcMain.removeHandler(channel);
-  ipcMain.handle(channel, async (e, ...args): Promise<R> => {
+  ipcMain.handle(channel, async (e, ...args: Args): Promise<R> => {
     try {
-      return await fn(e, ...(args as Args));
+      return await fn(e, ...args);
     } catch (err) {
       if (err instanceof IpcError) throw err;
       log.error('learnings IPC handler failed', {

@@ -12,6 +12,7 @@ import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import { z } from 'zod';
 
 import { createLogger } from './logger';
 const log = createLogger('fleet-cli');
@@ -379,13 +380,23 @@ export async function installOpencodePlugin(): Promise<void> {
 
   if (existsSync(pkgJsonPath)) {
     rawJson = await readFile(pkgJsonPath, 'utf8');
+    let json: unknown;
     try {
-      pkgJson = JSON.parse(rawJson) as { dependencies?: Record<string, string> };
-      parsed = true;
+      json = JSON.parse(rawJson);
     } catch {
       log.warn('could not parse opencode package.json, leaving unchanged');
       return;
     }
+    // passthrough: the file is rewritten from this object, so every field we
+    // don't care about has to survive the parse.
+    const schema = z.object({ dependencies: z.record(z.string(), z.string()).optional() });
+    const result = schema.passthrough().safeParse(json);
+    if (!result.success) {
+      log.warn('could not parse opencode package.json, leaving unchanged');
+      return;
+    }
+    pkgJson = result.data;
+    parsed = true;
   } else {
     rawJson = '{}';
     pkgJson = {};

@@ -5,10 +5,20 @@ import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import { EventEmitter } from 'events';
+import { z } from 'zod';
 import { createLogger } from './logger';
 import { IPC_CHANNELS } from '../shared/constants';
 import type { AnnotationResult, AnnotateStartRequest, ElementRect } from '../shared/annotate-types';
 import type { AnnotationStore, AnnotationScreenshot } from './annotation-store';
+
+/** The rect + devicePixelRatio the renderer measures for an element before cropping. */
+const MeasuredRectSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+  dpr: z.number()
+});
 
 const log = createLogger('annotate');
 const SCREENSHOT_PADDING = 20;
@@ -262,7 +272,7 @@ export class AnnotateService extends EventEmitter {
       const pageImage = nativeImage.createFromBuffer(pagePng);
       const pageDataURL = pageImage.toDataURL();
 
-      const compositedDataURL = (await this.window.webContents.executeJavaScript(`
+      const compositedDataURL: unknown = await this.window.webContents.executeJavaScript(`
         (function() {
           return new Promise(function(resolve) {
             var base = new Image();
@@ -285,9 +295,9 @@ export class AnnotateService extends EventEmitter {
             base.src = ${JSON.stringify(pageDataURL)};
           });
         })()
-      `)) as string | null;
+      `);
 
-      if (!compositedDataURL) return pagePng;
+      if (typeof compositedDataURL !== 'string') return pagePng;
 
       const b64 = compositedDataURL.replace(/^data:image\/png;base64,/, '');
       return Buffer.from(b64, 'base64');
@@ -334,7 +344,7 @@ export class AnnotateService extends EventEmitter {
           }
 
           // Scroll element into view, wait for repaint, then get fresh viewport-relative rect
-          const freshInfo = (await this.window.webContents.executeJavaScript(`
+          const rawInfo: unknown = await this.window.webContents.executeJavaScript(`
             (() => {
               const el = document.querySelector(${JSON.stringify(el.selector)});
               if (!el) return Promise.resolve(null);
@@ -346,10 +356,12 @@ export class AnnotateService extends EventEmitter {
                 });
               });
             })()
-          `)) as (ElementRect & { dpr: number }) | null;
+          `);
           await new Promise((r) => setTimeout(r, 150));
 
-          if (!freshInfo) continue;
+          const parsedInfo = MeasuredRectSchema.safeParse(rawInfo);
+          if (!parsedInfo.success) continue;
+          const freshInfo = parsedInfo.data;
 
           const fullPng = await this.captureScreenshot();
           if (!fullPng) continue;

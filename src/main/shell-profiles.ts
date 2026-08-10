@@ -17,9 +17,7 @@ export class ShellProfileRegistry {
   constructor(private deps: RegistryDeps) {}
 
   async enumerate(): Promise<ShellProfile[]> {
-    if (!this.cachedProfiles) {
-      this.cachedProfiles = this.doEnumerate();
-    }
+    this.cachedProfiles ??= this.doEnumerate();
     return this.cachedProfiles;
   }
 

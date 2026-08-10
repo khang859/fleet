@@ -397,7 +397,8 @@ export function registerIpcHandlers(
     // Clean up copilot workspace overrides
     const settings = settingsStore.get();
     if (settings.copilot.workspaceOverrides[workspaceId]) {
-      const { [workspaceId]: _, ...remaining } = settings.copilot.workspaceOverrides;
+      const remaining = { ...settings.copilot.workspaceOverrides };
+      delete remaining[workspaceId];
       settingsStore.set({
         copilot: { ...settings.copilot, workspaceOverrides: remaining }
       });
