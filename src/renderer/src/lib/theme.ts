@@ -109,13 +109,35 @@ export function getGlassCssVars(active: boolean): FleetThemeCssProperties | unde
 /**
  * How much of its own colour a pane keeps once it is sitting on the app
  * background canvas. Terminals go to glass - monospace on a tinted picture is
- * the look the wallpaper exists for, and the image's own opacity setting is
- * the knob that tunes it. Prose panes stay near-solid: a transcript is read a
- * paragraph at a time, and a picture moving underneath it costs more than it
- * gives.
+ * the look the wallpaper exists for - and `paneTint` in the background settings
+ * is the knob that tunes it; `PANE_GLASS` is only the fallback for callers with
+ * no settings to hand. Prose panes stay near-solid at `PANE_SOLID`, and are not
+ * user-tunable: a transcript is read a paragraph at a time, and a picture moving
+ * underneath it costs more than it gives.
  */
 export const PANE_GLASS = 22;
 export const PANE_SOLID = 88;
+
+/**
+ * The `backdrop-filter` a glass pane carries over the canvas: frost, and a
+ * saturation lift for the colour that dimming the image took out.
+ *
+ * Returns undefined unless something is actually dialled in, because a
+ * backdrop-filter of any value promotes the pane to its own compositing layer
+ * and makes it a containing block for fixed descendants. A user who has not
+ * asked for glass should not pay for the layer or inherit the layout change.
+ */
+export function paneBackdrop(
+  overCanvas: boolean,
+  frost: number,
+  saturation: number
+): string | undefined {
+  if (!overCanvas) return undefined;
+  const parts: string[] = [];
+  if (frost > 0) parts.push(`blur(${frost}px)`);
+  if (saturation !== 1) parts.push(`saturate(${saturation})`);
+  return parts.length > 0 ? parts.join(' ') : undefined;
+}
 
 /**
  * A pane's own ground colour over the canvas. With no image showing this is the

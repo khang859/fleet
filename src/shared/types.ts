@@ -209,6 +209,19 @@ export type TerminalBackground = {
   edgeFadeY: number;
   fit: TerminalBackgroundFit;
   slideshow: TerminalBackgroundSlideshow;
+  /** How much of its own theme colour a terminal or agent pane keeps once it is
+   * sitting over the image, 0–100. Higher is more solid and more legible; lower
+   * lets more of the picture through. */
+  paneTint: number;
+  /** Backdrop blur behind a pane, in pixels. Unlike `blur`, which softens the
+   * image everywhere, this frosts only what shows through a pane - the gutter
+   * between panes stays sharp, which is what makes them read as sheets of
+   * glass. 0 disables the filter entirely. */
+  paneFrost: number;
+  /** Saturation multiplier applied to what shows through a pane. Dimming an
+   * image with `opacity` drains its colour along with its brightness; this
+   * puts the colour back without making the picture any brighter. 1 = off. */
+  paneSaturation: number;
 };
 
 /** Default terminal background. Lives here (not constants.ts) so the renderer can
@@ -228,7 +241,12 @@ export const DEFAULT_TERMINAL_BACKGROUND: TerminalBackground = {
     intervalSeconds: 60,
     shuffle: true,
     transitionMs: 1000
-  }
+  },
+  // The values the panes were hardcoded to before these were settings, so an
+  // upgrade changes nothing until the user moves a slider.
+  paneTint: 22,
+  paneFrost: 0,
+  paneSaturation: 1
 };
 
 export type FleetSettings = {

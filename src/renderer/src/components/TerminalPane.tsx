@@ -3,7 +3,7 @@ import { useTerminal } from '../hooks/use-terminal';
 import { useTerminalDrop } from '../hooks/use-terminal-drop';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
 import { resolveBackgroundSrc } from '../lib/pane-background';
-import { paneGround, PANE_GLASS } from '../lib/theme';
+import { paneGround, paneBackdrop, PANE_GLASS } from '../lib/theme';
 import { PaneToolbar } from './PaneToolbar';
 import { PaneHeader } from './PaneHeader';
 import { SearchBar } from './SearchBar';
@@ -169,7 +169,12 @@ export function TerminalPane({
         backgroundColor: paneGround(
           isActive ? terminalThemeDef.background : terminalThemeDef.inactiveBackground,
           hasBackgroundImage,
-          PANE_GLASS
+          terminalBackground?.paneTint ?? PANE_GLASS
+        ),
+        backdropFilter: paneBackdrop(
+          hasBackgroundImage,
+          terminalBackground?.paneFrost ?? 0,
+          terminalBackground?.paneSaturation ?? 1
         )
       }}
       onMouseEnter={() => setHovered(true)}

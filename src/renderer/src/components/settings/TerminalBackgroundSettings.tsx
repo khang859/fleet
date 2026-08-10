@@ -50,6 +50,15 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
   const [localEdgeFadeY, setLocalEdgeFadeY] = useState(bg?.edgeFadeY ?? 0);
   const [localInterval, setLocalInterval] = useState(bg?.slideshow.intervalSeconds ?? 60);
   const [localTransitionMs, setLocalTransitionMs] = useState(bg?.slideshow.transitionMs ?? 1000);
+  const [localPaneTint, setLocalPaneTint] = useState(
+    bg?.paneTint ?? DEFAULT_TERMINAL_BACKGROUND.paneTint
+  );
+  const [localPaneFrost, setLocalPaneFrost] = useState(
+    bg?.paneFrost ?? DEFAULT_TERMINAL_BACKGROUND.paneFrost
+  );
+  const [localPaneSaturation, setLocalPaneSaturation] = useState(
+    bg?.paneSaturation ?? DEFAULT_TERMINAL_BACKGROUND.paneSaturation
+  );
 
   const [mode, setMode] = useState<BgMode>(() => deriveMode(bg));
   // Remember the last picked image so switching None → Image restores it instead
@@ -72,6 +81,9 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
     setLocalEdgeFadeY(tb.edgeFadeY);
     setLocalInterval(tb.slideshow.intervalSeconds);
     setLocalTransitionMs(tb.slideshow.transitionMs);
+    setLocalPaneTint(tb.paneTint);
+    setLocalPaneFrost(tb.paneFrost);
+    setLocalPaneSaturation(tb.paneSaturation);
   }, [adjustmentsVisible]);
 
   // Seed the mode + stashed image once settings finish loading. This component is
@@ -130,6 +142,9 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
     setLocalEdgeFadeY(d.edgeFadeY);
     setLocalInterval(d.slideshow.intervalSeconds);
     setLocalTransitionMs(d.slideshow.transitionMs);
+    setLocalPaneTint(d.paneTint);
+    setLocalPaneFrost(d.paneFrost);
+    setLocalPaneSaturation(d.paneSaturation);
   };
 
   const pickBackgroundImage = async (): Promise<void> => {
@@ -465,6 +480,53 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
               <option value="center">Center</option>
               <option value="tile">Tile</option>
             </select>
+          </SettingRow>
+
+          {/* The picture is set; these three shape the glass the panes are made
+              of, which is a separate question from how the picture looks. */}
+          <GroupHeader>Pane Glass</GroupHeader>
+          <SettingRow label="Tint">
+            <SliderInput
+              ariaLabel="Pane tint"
+              value={localPaneTint}
+              min={0}
+              max={100}
+              step={1}
+              unit="%"
+              onChange={(v) => {
+                setLocalPaneTint(v);
+                debouncedSaveBackground({ paneTint: v });
+              }}
+            />
+          </SettingRow>
+          <SettingRow label="Frost">
+            <SliderInput
+              ariaLabel="Pane frost"
+              value={localPaneFrost}
+              min={0}
+              max={30}
+              step={1}
+              unit="px"
+              onChange={(v) => {
+                setLocalPaneFrost(v);
+                debouncedSaveBackground({ paneFrost: v });
+              }}
+            />
+          </SettingRow>
+          <SettingRow label="Saturation">
+            <SliderInput
+              ariaLabel="Pane saturation"
+              value={localPaneSaturation}
+              min={0}
+              max={3}
+              step={0.1}
+              unit="×"
+              format={(v) => v.toFixed(1)}
+              onChange={(v) => {
+                setLocalPaneSaturation(v);
+                debouncedSaveBackground({ paneSaturation: v });
+              }}
+            />
           </SettingRow>
         </>
       )}

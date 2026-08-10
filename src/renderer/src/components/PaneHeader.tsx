@@ -107,50 +107,81 @@ export function PaneHeader({
   );
 
   return (
-    // Clicking the bar focuses the pane and double-clicking renames it, so it
-    // has to look like it will do something. Without a hover state it read as
-    // a dead strip of chrome.
+    // Clicking here focuses the pane and double-clicking renames it, so it has
+    // to look like it will do something - but the affordance lives on the pill,
+    // not on the row, since the row is invisible.
     //
-    // The bar is also where the pane says whether it has focus: lit ground and
+    // The pill is also where the pane says whether it has focus: lit ground and
     // brighter text when it does, flat and grey when it does not. See the note
-    // on `PaneFrame` for why focus is not an accent ring. Hover has to be
-    // declared for both states or the active variant, being the more specific
-    // selector, would swallow it.
+    // on `PaneFrame` for why focus is not an accent ring. `group/header` is
+    // what lets hovering anywhere on the row light the pill, so the whole width
+    // still feels live even though only part of it is drawn.
     <div
-      className="group/header flex items-center gap-1.5 h-7 pl-2 pr-1 bg-fleet-glass-surface hover:bg-fleet-glass-surface-2 group-data-[pane-active=true]/pane:bg-fleet-glass-surface-3 group-data-[pane-active=true]/pane:hover:bg-fleet-glass-surface-3 border-b border-fleet-border text-xs text-fleet-text-subtle group-data-[pane-active=true]/pane:text-fleet-text-secondary select-none shrink-0 transition-colors"
+      className="group/header flex items-center gap-1.5 h-7 px-1.5 text-xs text-fleet-text-subtle group-data-[pane-active=true]/pane:text-fleet-text-secondary select-none shrink-0"
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       title={isEditing ? undefined : `${liveCwd ?? ''}\nDouble-click to rename`}
     >
-      <PaneStatusGlyph state={activityState} className="shrink-0" />
-      {isEditing ? (
-        <input
-          ref={inputRef}
-          className="flex-1 bg-transparent text-fleet-text text-xs font-mono outline-none border-none px-0"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={commitRename}
-          onKeyDown={handleKeyDown}
-        />
-      ) : (
-        <span className="flex-1 truncate font-mono cursor-default group-hover/header:text-fleet-text transition-colors">
-          {displayText}
-        </span>
+      {/* The ground rides on the pill, not on the row. The row still spans the
+          pane - it is the click and double-click target, and a full-width
+          target is the whole reason rename is easy to hit - but it paints
+          nothing, so the terminal reads as one surface with a label floating on
+          it rather than as output stacked under a strip of chrome.
+
+          Crucially the row is still in flow. An absolutely positioned chip
+          would need the terminal padded by exactly its height to avoid covering
+          the first row, and that number would drift the moment either side
+          changed. A flow element cannot overlap what follows it. */}
+      {/* Hover has to be declared for both focus states, or the active variant -
+          being the more specific selector - would swallow it and hovering a
+          focused pane would visibly dim its title.
+
+          Both pills are pinned to the same height rather than left to their own
+          padding: the toolbar's is set by its icon buttons and the title's by
+          its line box, and those land 2px apart, which reads as a wobble
+          between two things that sit on the same line. */}
+      <div className="flex h-[22px] min-w-0 items-center gap-1.5 rounded-full px-2 bg-fleet-glass-surface group-hover/header:bg-fleet-glass-surface-2 group-data-[pane-active=true]/pane:bg-fleet-glass-surface-3 group-data-[pane-active=true]/pane:group-hover/header:bg-fleet-glass-surface-3 transition-colors">
+        <PaneStatusGlyph state={activityState} className="shrink-0" />
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            className="min-w-0 flex-1 bg-transparent text-fleet-text text-xs font-mono outline-none border-none px-0"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={handleKeyDown}
+          />
+        ) : (
+          <span className="truncate font-mono cursor-default group-hover/header:text-fleet-text transition-colors">
+            {displayText}
+          </span>
+        )}
+        {labelIsCustom && !isEditing && (
+          // An icon, not the words "clear title". As running text in a bar whose
+          // other job is showing a path, it read as part of the title rather than
+          // as a control.
+          <button
+            className="shrink-0 rounded p-0.5 text-fleet-text-subtle hover:text-fleet-text hover:bg-fleet-surface-3 transition-colors active:scale-90 focus-ring"
+            onClick={() => resetPaneLabel(paneId)}
+            title="Clear custom title and show path"
+            aria-label="Clear pane title"
+          >
+            <RotateCcw size={12} />
+          </button>
+        )}
+      </div>
+      {/* Pushes the actions to the far edge and, while they are hidden, gives
+          the row something to fill it so the pill does not stretch. */}
+      <div className="min-w-0 flex-1" />
+      {/* Icons floating bare over a wallpaper are hard to read, so they get a
+          pill of their own. The toolbar hides itself when the pane is not
+          hovered, and this ground is keyed to the same hover, so the icons and
+          the pill they sit on arrive together. */}
+      {actions && (
+        <div className="flex h-[22px] shrink-0 items-center rounded-full px-0.5 transition-colors group-hover/pane:bg-fleet-glass-surface">
+          {actions}
+        </div>
       )}
-      {labelIsCustom && !isEditing && (
-        // An icon, not the words "clear title". As running text in a bar whose
-        // other job is showing a path, it read as part of the title rather than
-        // as a control.
-        <button
-          className="shrink-0 rounded p-0.5 text-fleet-text-subtle hover:text-fleet-text hover:bg-fleet-surface-3 transition-colors active:scale-90 focus-ring"
-          onClick={() => resetPaneLabel(paneId)}
-          title="Clear custom title and show path"
-          aria-label="Clear pane title"
-        >
-          <RotateCcw size={12} />
-        </button>
-      )}
-      {actions}
     </div>
   );
 }

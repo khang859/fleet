@@ -140,15 +140,15 @@ function rectStyle(rect: Rect): React.CSSProperties {
 type PaneFrameProps = {
   paneId: string;
   isActive: boolean;
-  /** Non-terminal panes (file/markdown/image/pdf) have no activity tracking and aren't "agents" - they still get the focus/status ring, but not the status glyph. */
+  /** Non-terminal panes (file/markdown/image/pdf) have no activity tracking and aren't "agents" - they still get the focus lift and status ring, but not the status glyph. */
   showGlyph?: boolean;
   children: React.ReactNode;
 };
 
 /**
- * Wraps a leaf pane so it can subscribe to its own activity state - the border
- * ring reflects state color, and a corner glyph encodes state + process
- * liveness always.
+ * Wraps a leaf pane so it can subscribe to its own activity state - a ring
+ * appears in the colour of that state when it wants attention, and a corner
+ * glyph encodes state + process liveness always.
  *
  * Focus is carried by elevation and by the pane's own title bar, never by a
  * colour. The focused card keeps its shadow and its title bar lights up; every
@@ -180,15 +180,15 @@ function PaneFrame({
         isActive ? 'shadow-lg shadow-black/30' : ''
       }`}
     >
-      {/* The hairline is not decoration: a glass terminal over a busy picture
-          has no ground of its own to end against, so without an edge an
-          inactive card stops reading as a card at all. It firms up on the
-          focused pane, which is the quietest half of the focus cue. */}
+      {/* No border. A pane is bounded by the gutter around it, its own rounded
+          ground, and its title bar; drawing an edge as well only restated what
+          those already said, and against a background image the extra line read
+          as an outline pasted over the picture rather than the card's own edge.
+          What is left - the focused card's lift, and a status ring when a pane
+          actually wants you - is the part that carries information. */}
       <div
         data-pane-active={isActive ? 'true' : 'false'}
-        className={`group/pane relative flex flex-col h-full overflow-hidden rounded-lg border transition-colors ${
-          isActive ? 'border-fleet-border-strong' : 'border-fleet-border'
-        } ${ringClass}`}
+        className={`group/pane relative flex flex-col h-full overflow-hidden rounded-lg ${ringClass}`}
       >
         {showGlyph && (
           <PaneStatusGlyph state={activityState} className="absolute top-1 right-1 z-10" />
