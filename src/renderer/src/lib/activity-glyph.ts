@@ -42,13 +42,18 @@ const HUE_BORDER: Record<Hue, string> = {
   neutral: 'border-fleet-text-subtle'
 };
 
-/** Pane border ring - reserved for states that warrant attention; `working`/`idle` stay neutral so a busy pane isn't visually loud. */
+/**
+ * Pane status ring - drawn only for states that warrant attention. `working`
+ * and `idle` draw nothing at all: a pane at rest has no edge, so the ring
+ * appearing is itself the signal. They used to carry a neutral hairline, which
+ * meant every pane was ringed all the time and the ring said nothing.
+ */
 const RING_CLASS: Record<Hue, string> = {
   amber: 'ring-2 ring-amber-400',
   red: 'ring-2 ring-red-500/70',
   green: 'ring-1 ring-green-500/50',
-  blue: 'ring-1 ring-fleet-border/50',
-  neutral: 'ring-1 ring-fleet-border/50'
+  blue: '',
+  neutral: ''
 };
 
 function hue(state: ActivityState | undefined): Hue {
