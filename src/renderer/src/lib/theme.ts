@@ -38,6 +38,15 @@ export function resolveXtermTheme(
   if (theme.selectionBackground && theme.background) {
     theme.selectionInactiveBackground = mixHex(theme.selectionBackground, theme.background, 0.6);
   }
+  // xterm 6 draws its own scrollbar (5.5 used the native one, which picked up
+  // the global rules in index.css). Its default slider is the theme foreground
+  // at 20%, which would make the terminal the one scroll port in the app that
+  // is not teal. Same values as the `*::-webkit-scrollbar-thumb` rules, set
+  // here for the same reason as selectionInactiveBackground above: derived once
+  // so all 14 presets stay consistent.
+  theme.scrollbarSliderBackground = '#2dd4bf33';
+  theme.scrollbarSliderHoverBackground = '#2dd4bf66';
+  theme.scrollbarSliderActiveBackground = '#2dd4bf99';
   // When a terminal background image is active, render xterm's default cell
   // background transparently so the image layer behind it shows through.
   if (transparentBackground) {

@@ -607,11 +607,15 @@ function createTerminal(
     return true;
   };
 
-  // Re-pin when content scrolls us to bottom (e.g. new output while following).
-  // IMPORTANT: onScroll only fires for content-driven scroll (new lines added),
-  // NOT for user wheel/keyboard scroll. During fast output, viewportY can briefly
-  // lag behind baseY, so we must NOT unpin here — only re-pin when at bottom.
-  // Unpinning is handled exclusively by the wheel event listener below.
+  // Re-pin whenever a scroll lands us at the bottom, whether the content pushed
+  // us there or the user did. As of xterm 6 this fires for user wheel and
+  // keyboard scrolling too, not just content-driven scroll, which is what makes
+  // it a sufficient re-pin signal on its own.
+  //
+  // We still must NOT unpin here: during fast output viewportY briefly lags
+  // baseY, and treating that as "the user scrolled up" would drop a pane out of
+  // follow mode exactly when it is busiest. Unpinning stays with the wheel and
+  // keyboard handlers below, which only fire on real user input.
   term.onScroll(() => {
     if (container.offsetParent === null) return;
     if (isAtBottom()) {
@@ -620,12 +624,22 @@ function createTerminal(
     }
   });
 
-  // User-initiated scroll detection: wheel (trackpad/mouse) and keyboard (PageUp/PageDown).
-  // These are the ONLY events that should unpin — onScroll is content-driven only.
+  // User-initiated scroll detection: wheel (trackpad/mouse) and keyboard
+  // (PageUp/PageDown). These are the ONLY events that unpin a pane - onScroll
+  // above re-pins but never unpins, because viewportY lags baseY during fast
+  // output and that lag is not the user scrolling away.
+  //
+  // Both listen in the CAPTURE phase, and must. xterm 6 scrolls through VS
+  // Code's scrollable element, which calls stopPropagation() on the wheel and
+  // key events it consumes, so neither one ever reaches this container by
+  // bubbling. A bubble-phase listener here silently never fires, which leaves
+  // pinnedToBottom stuck at true while the user is reading scrollback - and
+  // writeToTerm then yanks the view back down on every chunk of new output,
+  // making scrollback unreadable in any pane that is still producing output.
   const wheelHandler = (): void => {
     requestAnimationFrame(() => updatePinnedState());
   };
-  container.addEventListener('wheel', wheelHandler, { passive: true });
+  container.addEventListener('wheel', wheelHandler, { passive: true, capture: true });
 
   const keyScrollHandler = (e: KeyboardEvent): void => {
     if (
@@ -636,30 +650,25 @@ function createTerminal(
       requestAnimationFrame(() => updatePinnedState());
     }
   };
-  container.addEventListener('keydown', keyScrollHandler);
+  container.addEventListener('keydown', keyScrollHandler, true);
 
-  // Re-pin when the user scrolls the viewport back to the bottom.
-  // term.onScroll only fires on content-driven buffer scroll (new lines added),
-  // NOT on user viewport scroll. On macOS trackpad momentum scrolling, wheel events
-  // stop firing before the scroll actually settles — the wheelHandler's rAF may read
-  // a stale position slightly above baseY, leaving pinnedToBottom=false indefinitely.
-  // The DOM 'scroll' event on .xterm-viewport fires on every scrollTop change
-  // including the final resting position, giving reliable bottom detection.
-  const xtermViewport = container.querySelector('.xterm-viewport');
-  const viewportScrollHandler = (): void => {
-    if (container.offsetParent === null) return;
-    if (isAtBottom()) {
-      pinnedToBottom = true;
-      options.onScrollStateChange?.(false);
-    }
-  };
-  xtermViewport?.addEventListener('scroll', viewportScrollHandler, { passive: true });
+  // The macOS trackpad momentum case used to need its own listener here: wheel
+  // events stop firing before the scroll settles, so the wheelHandler's rAF
+  // could read a position slightly above baseY and leave pinnedToBottom=false
+  // for good. It was covered by the DOM 'scroll' event on `.xterm-viewport`.
+  //
+  // That element no longer scrolls natively. xterm 6 renders the viewport
+  // through VS Code's scrollable element, which moves content by transform and
+  // leaves scrollTop pinned at 0, so a 'scroll' listener on it never fires.
+  // term.onScroll above covers the case instead, because it now reports user
+  // scrolling as well as content scrolling.
 
   const scrollCleanup = (): void => {
-    container.removeEventListener('wheel', wheelHandler);
-    container.removeEventListener('keydown', keyScrollHandler);
+    // The capture flag is part of a listener's identity - removing without it
+    // would leave both of these attached for the life of the document.
+    container.removeEventListener('wheel', wheelHandler, { capture: true });
+    container.removeEventListener('keydown', keyScrollHandler, true);
     container.removeEventListener('contextmenu', contextMenuHandler);
-    xtermViewport?.removeEventListener('scroll', viewportScrollHandler);
   };
 
   // Debounced PTY resize — sends SIGWINCH once after resizing settles,
@@ -851,11 +860,22 @@ export function useTerminal(
 
   // Update terminal colors without re-creating the xterm instance or PTY.
   useEffect(() => {
+    const theme = resolveXtermTheme(options.terminalTheme, options.backgroundImageActive);
+    // As of xterm 6 nothing in the library paints the theme's background: that
+    // was the Viewport component's job through 5.5, and v6 replaced it with a
+    // scrollable element that leaves the property alone. All that is left is
+    // xterm.css's hardcoded opaque #000, which would bury both the theme colour
+    // and anything behind the pane. So the colour is published here and picked
+    // up by the `.xterm-viewport` rule in index.css.
+    //
+    // Set before the term guard: on mount this effect can run before the one
+    // that creates the terminal, and the deps would not fire again to correct it.
+    containerRef.current?.style.setProperty('--fleet-term-bg', theme.background ?? 'transparent');
     const term = termRef.current;
     if (!term) return;
-    term.options.theme = resolveXtermTheme(options.terminalTheme, options.backgroundImageActive);
+    term.options.theme = theme;
     term.refresh(0, term.rows - 1);
-  }, [options.terminalTheme, options.backgroundImageActive]);
+  }, [options.terminalTheme, options.backgroundImageActive, containerRef]);
 
   // Focus and refresh the xterm instance when this pane becomes active.
   // The refresh call is needed when the terminal was hidden with display:none and

@@ -302,6 +302,45 @@ body,
   background: #2dd4bf66;
 }
 
+/* xterm.css hardcodes `.xterm .xterm-viewport { background-color: #000 }`, for
+   a reason its own comment gives as "on OS X this is required in order for the
+   scroll bar to appear fully opaque". Through xterm 5.5 that never showed,
+   because the Viewport component rewrote the property from the theme on every
+   refresh, alpha and all. xterm 6 replaced that component with a scrollable
+   element that does not touch the background, so the hardcoded black is what
+   paints - an opaque slab over the theme's own background and over anything
+   behind the pane.
+
+   The reason it was there is gone with it: v6 scrolls through a DIV scrollbar,
+   so there is no native macOS scrollbar left to keep opaque. Nothing else in
+   the library paints the theme background either, so `use-terminal` publishes
+   it as --fleet-term-bg and this is where it lands. The fallback covers the
+   moment before that first runs, and a terminal background image resolves the
+   colour to transparent so the picture reads through.
+
+   The class is doubled to outrank xterm's own two-class rule without an
+   `!important`, since the two sheets' relative order is a build detail. */
+.xterm .xterm-viewport.xterm-viewport {
+  background-color: var(--fleet-term-bg, transparent);
+}
+
+/* xterm 6 scrolls through its own DIV scrollbar rather than a native one, so
+   the rules above never reach it and its slider is a fixed 14px - more than
+   twice the width of every other scrollbar in the app.
+
+   Narrow what is painted to --fleet-scrollbar without touching the element's
+   width: the slider's geometry is written inline by xterm on every scroll, and
+   the full 14px is a much better grab target than 6px. A transparent left
+   border clipped out of the background leaves the hit area intact and paints
+   only the visible strip. The colour comes from the theme object in
+   `resolveXtermTheme`, which is the supported way to set it. */
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  box-sizing: border-box;
+  border-left: calc(14px - var(--fleet-scrollbar)) solid transparent;
+  background-clip: content-box;
+  border-radius: 3px;
+}
+
 /* A scrolling column and the rows under it that do not scroll, made to line up.
 
    The scrollbar takes its width off the right of the port only, so a column
