@@ -57,7 +57,9 @@ import { AnnotateTab } from './components/AnnotateTab';
 import { SessionsTab } from './components/sessions/SessionsTab';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
-import { getAccentCssVars } from './lib/theme';
+import { getAccentCssVars, getGlassCssVars } from './lib/theme';
+import { BackgroundLayer } from './components/BackgroundLayer';
+import { resolveBackgroundSrc } from './lib/pane-background';
 import { tooltipAnim, popperAnim } from './lib/motion';
 import { useAppThemeVars } from './hooks/use-app-theme';
 import { useSlideshow } from './hooks/use-slideshow';
@@ -756,11 +758,18 @@ export function App(): React.JSX.Element {
 
   const accentVars = getAccentCssVars(settings?.general.accentColor);
   const appThemeVars = useAppThemeVars(settings?.general.theme, settings?.general.terminalTheme);
-  const themeVars = { ...accentVars, ...appThemeVars };
 
   // One global slideshow clock so every pane (including hidden background
   // workspaces) shows the same image and crossfades in sync.
   const slideshowFrame = useSlideshow(settings?.general.terminalBackground);
+
+  // The background image is one canvas behind the whole window rather than a
+  // copy inside every pane: `background-position: center` resolves against the
+  // window, so a split shows one continuous picture instead of the same image
+  // re-centered per pane. Panes sit on it as translucent cards.
+  const terminalBackground = settings?.general.terminalBackground;
+  const canvasActive = resolveBackgroundSrc(terminalBackground, slideshowFrame) !== null;
+  const themeVars = { ...accentVars, ...appThemeVars, ...getGlassCssVars(canvasActive) };
 
   // The collapsed rail splits its icons the same way the expanded sidebar does:
   // agents are a pinned run of their own rather than mixed into the tab list.
@@ -772,17 +781,20 @@ export function App(): React.JSX.Element {
 
   return (
     <div
-      className="flex flex-col h-screen w-screen bg-fleet-bg text-fleet-text overflow-hidden"
+      className="relative flex flex-col h-screen w-screen bg-fleet-bg text-fleet-text overflow-hidden"
       style={themeVars}
     >
+      {terminalBackground && (
+        <BackgroundLayer background={terminalBackground} frame={slideshowFrame} />
+      )}
       {/* Top bar — drag region for window movement, houses OS window controls */}
       <div
-        className="h-9 shrink-0 bg-fleet-bg flex items-center"
+        className="relative z-10 h-9 shrink-0 bg-fleet-glass-chrome flex items-center"
         style={{ WebkitAppRegion: 'drag' }}
       >
         <ShortcutsHint />
       </div>
-      <div className="flex flex-1 min-h-0">
+      <div className="relative z-10 flex flex-1 min-h-0">
         {!sidebarCollapsed ? (
           <Sidebar
             updateReady={updateReady}

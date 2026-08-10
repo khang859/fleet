@@ -252,7 +252,7 @@ function GroupHeader({
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
         <div
-          className="group/header flex items-center gap-1.5 px-2 py-2 mt-2 cursor-pointer rounded-md text-xs text-fleet-text-secondary hover:text-fleet-text hover:bg-fleet-surface-2/50 transition-colors relative select-none uppercase tracking-wider"
+          className="group/header flex items-center gap-1.5 px-2 py-2 mt-2 cursor-pointer rounded-md text-xs text-fleet-text-secondary hover:text-fleet-text hover:bg-fleet-surface-2/50 transition-colors relative select-none"
           onClick={onToggle}
           draggable
           onDragStart={(e) => {
@@ -284,7 +284,7 @@ function GroupHeader({
           {isEditing ? (
             <input
               ref={inputRef}
-              className="flex-1 bg-fleet-surface-3 text-fleet-text text-xs rounded px-1 py-0 outline-none border border-blue-500 min-w-0 uppercase tracking-wider"
+              className="flex-1 bg-fleet-surface-3 text-fleet-text text-xs rounded px-1 py-0 outline-none border border-blue-500 min-w-0"
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               onKeyDown={(e) => {
@@ -1149,7 +1149,7 @@ export function Sidebar({
   return (
     <div
       ref={sidebarRootRef}
-      className="relative flex flex-col h-full bg-fleet-bg border-r border-fleet-border shrink-0"
+      className="relative flex flex-col h-full bg-fleet-glass-chrome border-r border-fleet-border shrink-0"
       style={{ width: currentSidebarWidth }}
     >
       {/* Drag region + workspace label with add button */}
@@ -1158,7 +1158,7 @@ export function Sidebar({
           {isEditingWsLabel ? (
             <input
               ref={wsLabelInputRef}
-              className="w-full bg-fleet-surface-3 text-fleet-text text-xs font-semibold uppercase tracking-wider rounded px-1 py-0.5 outline-none border border-blue-500"
+              className="w-full bg-fleet-surface-3 text-fleet-text text-[11px] font-medium rounded px-1 py-0.5 outline-none border border-blue-500"
               value={wsLabelEdit}
               onChange={(e) => setWsLabelEdit(e.target.value)}
               onKeyDown={(e) => {
@@ -1173,7 +1173,7 @@ export function Sidebar({
           ) : (
             <ContextMenu.Root>
               <ContextMenu.Trigger asChild>
-                <span className="text-xs font-semibold text-fleet-text-subtle uppercase tracking-wider cursor-default select-none">
+                <span className="text-[11px] font-medium text-fleet-text-subtle cursor-default select-none">
                   {workspace.label}
                 </span>
               </ContextMenu.Trigger>
@@ -1552,9 +1552,7 @@ export function Sidebar({
       {/* Pinned agents section */}
       <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
         <div className="flex items-center justify-between px-2 py-1">
-          <span className="text-xs font-semibold text-fleet-text-subtle uppercase tracking-wider">
-            Agents
-          </span>
+          <span className="text-[11px] font-medium text-fleet-text-subtle">Agents</span>
           <div className="flex items-center gap-1.5">
             {agentRows.length > 0 && (
               <span className="text-[10px] font-medium tabular-nums text-fleet-text-subtle">
@@ -1623,9 +1621,7 @@ export function Sidebar({
       {/* Pinned tools section */}
       <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
         <div className="flex items-center justify-between px-2 py-1">
-          <span className="text-xs font-semibold text-fleet-text-subtle uppercase tracking-wider">
-            Tools
-          </span>
+          <span className="text-[11px] font-medium text-fleet-text-subtle">Tools</span>
           <div className="flex items-center gap-1.5">
             <span
               className="text-[10px] font-medium tabular-nums text-fleet-text-subtle"
@@ -1667,9 +1663,7 @@ export function Sidebar({
       {/* Bottom section: workspaces */}
       <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
         <div className="flex items-center justify-between px-2 py-1">
-          <span className="text-xs font-semibold text-fleet-text-subtle uppercase tracking-wider">
-            Workspaces
-          </span>
+          <span className="text-[11px] font-medium text-fleet-text-subtle">Workspaces</span>
           <button
             className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
             onClick={() => {

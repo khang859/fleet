@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Columns2,
   Rows2,
@@ -10,11 +11,13 @@ import {
   Telescope,
   NotebookPen,
   FolderSync,
-  FilePenLine
+  FilePenLine,
+  MoreHorizontal
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
+import * as Popover from '@radix-ui/react-popover';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
-import { tooltipAnim } from '../lib/motion';
+import { tooltipAnim, popperAnim } from '../lib/motion';
 
 function shortcutLabel(id: string): string {
   const def = getShortcut(id);
@@ -46,12 +49,39 @@ function ToolbarTooltip({
 }
 
 const BUTTON_CLASS =
-  'p-1.5 text-fleet-text-secondary hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90 focus-ring';
+  'p-1 text-fleet-text-subtle hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-90 focus-ring';
 
 // Destructive action: telegraph danger on hover so a mis-click near Search
 // reads as risky before it happens.
 const CLOSE_BUTTON_CLASS =
-  'p-1.5 text-fleet-text-secondary hover:text-red-400 rounded hover:bg-red-500/10 transition active:scale-90 focus-ring';
+  'p-1 text-fleet-text-subtle hover:text-red-400 rounded hover:bg-red-500/10 transition active:scale-90 focus-ring';
+
+function MenuItem({
+  icon,
+  label,
+  shortcut,
+  onSelect
+}: {
+  icon: React.ReactNode;
+  label: string;
+  shortcut?: string;
+  onSelect: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-fleet-text-secondary transition-colors hover:bg-fleet-surface-3 hover:text-fleet-text"
+    >
+      <span className="shrink-0">{icon}</span>
+      <span className="flex-1 truncate">{label}</span>
+      {shortcut && <span className="shrink-0 text-fleet-text-subtle">{shortcut}</span>}
+    </button>
+  );
+}
 
 type PaneToolbarProps = {
   visible: boolean;
@@ -86,10 +116,60 @@ export function PaneToolbar({
   onEnvSync,
   onEnvEditor
 }: PaneToolbarProps): React.JSX.Element {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const pick =
+    (run: () => void): (() => void) =>
+    () => {
+      setMenuOpen(false);
+      run();
+    };
+
+  // Everything that is about the pane's *contents* rather than its *shape*.
+  // These used to sit in the row as eight more icons, which made the toolbar
+  // wider than the title it shares a line with.
+  const menuActions = [
+    isGitRepo && {
+      icon: <GitBranch size={14} />,
+      label: 'Git Changes',
+      shortcut: shortcutLabel('git-changes'),
+      onSelect: onGitChanges
+    },
+    onFileSearch && {
+      icon: <FileSearch size={14} />,
+      label: 'Search Files',
+      shortcut: shortcutLabel('file-search'),
+      onSelect: onFileSearch
+    },
+    onClipboardHistory && {
+      icon: <Clipboard size={14} />,
+      label: 'Clipboard History',
+      shortcut: shortcutLabel('clipboard-history'),
+      onSelect: onClipboardHistory
+    },
+    onTelescope && {
+      icon: <Telescope size={14} />,
+      label: 'Telescope',
+      shortcut: shortcutLabel('telescope'),
+      onSelect: onTelescope
+    },
+    onAnnotate && {
+      icon: <Crosshair size={14} />,
+      label: 'Annotate webpage',
+      onSelect: onAnnotate
+    },
+    onNotes && { icon: <NotebookPen size={14} />, label: 'Project Notes', onSelect: onNotes },
+    onEnvSync && { icon: <FolderSync size={14} />, label: 'Env Sync', onSelect: onEnvSync },
+    onEnvEditor && { icon: <FilePenLine size={14} />, label: 'Edit .env', onSelect: onEnvEditor }
+  ].filter((a) => a !== false && a !== undefined);
+
   return (
     <Tooltip.Provider delayDuration={300}>
       <div
-        className={`absolute top-2 right-2 z-20 transition-opacity flex items-center gap-0.5 bg-fleet-surface-2/90 backdrop-blur-md rounded-md border border-fleet-border/70 shadow-sm p-0.5 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        // Kept mounted but out of the layout when hidden: as a flex sibling of
+        // the title it would otherwise reserve its full width at all times,
+        // squeezing the path down to nothing and - worse - covering the part of
+        // the bar you double-click to rename.
+        className={`shrink-0 transition-opacity flex items-center gap-0.5 ${visible || menuOpen ? 'opacity-100' : 'hidden'}`}
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         {onSplitHorizontal && (
@@ -120,118 +200,6 @@ export function PaneToolbar({
             </button>
           </ToolbarTooltip>
         )}
-        {isGitRepo && (
-          <ToolbarTooltip label={`Git Changes (${shortcutLabel('git-changes')})`}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onGitChanges();
-              }}
-              className={BUTTON_CLASS}
-              aria-label="Git changes"
-            >
-              <GitBranch size={14} />
-            </button>
-          </ToolbarTooltip>
-        )}
-        {onFileSearch && (
-          <ToolbarTooltip label={`Search Files (${shortcutLabel('file-search')})`}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onFileSearch();
-              }}
-              className={BUTTON_CLASS}
-              aria-label="Search files"
-            >
-              <FileSearch size={14} />
-            </button>
-          </ToolbarTooltip>
-        )}
-        {onClipboardHistory && (
-          <ToolbarTooltip label={`Clipboard History (${shortcutLabel('clipboard-history')})`}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClipboardHistory();
-              }}
-              className={BUTTON_CLASS}
-              aria-label="Clipboard history"
-            >
-              <Clipboard size={14} />
-            </button>
-          </ToolbarTooltip>
-        )}
-        {onAnnotate && (
-          <ToolbarTooltip label="Annotate webpage">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onAnnotate();
-              }}
-              className={BUTTON_CLASS}
-              aria-label="Annotate webpage"
-            >
-              <Crosshair size={14} />
-            </button>
-          </ToolbarTooltip>
-        )}
-        {onTelescope && (
-          <ToolbarTooltip label={`Telescope (${shortcutLabel('telescope')})`}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onTelescope();
-              }}
-              className={BUTTON_CLASS}
-              aria-label="Telescope"
-            >
-              <Telescope size={14} />
-            </button>
-          </ToolbarTooltip>
-        )}
-        {onNotes && (
-          <ToolbarTooltip label="Project Notes">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onNotes();
-              }}
-              className={BUTTON_CLASS}
-              aria-label="Project notes"
-            >
-              <NotebookPen size={14} />
-            </button>
-          </ToolbarTooltip>
-        )}
-        {onEnvSync && (
-          <ToolbarTooltip label="Env Sync">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onEnvSync();
-              }}
-              className={BUTTON_CLASS}
-              aria-label="Env sync"
-            >
-              <FolderSync size={14} />
-            </button>
-          </ToolbarTooltip>
-        )}
-        {onEnvEditor && (
-          <ToolbarTooltip label="Edit .env">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onEnvEditor();
-              }}
-              className={`${BUTTON_CLASS.replace('transition ', 'transition-colors ')}`}
-              aria-label="Edit .env"
-            >
-              <FilePenLine size={14} />
-            </button>
-          </ToolbarTooltip>
-        )}
         <ToolbarTooltip label={`Search in Pane (${shortcutLabel('search')})`}>
           <button
             onClick={(e) => {
@@ -244,6 +212,39 @@ export function PaneToolbar({
             <Search size={14} />
           </button>
         </ToolbarTooltip>
+        {menuActions.length > 0 && (
+          <Popover.Root open={menuOpen} onOpenChange={setMenuOpen}>
+            <ToolbarTooltip label="More actions">
+              <Popover.Trigger asChild>
+                <button
+                  onClick={(e) => e.stopPropagation()}
+                  className={BUTTON_CLASS}
+                  aria-label="More pane actions"
+                >
+                  <MoreHorizontal size={14} />
+                </button>
+              </Popover.Trigger>
+            </ToolbarTooltip>
+            <Popover.Portal>
+              <Popover.Content
+                align="end"
+                sideOffset={4}
+                onClick={(e) => e.stopPropagation()}
+                className={`z-50 w-52 overflow-hidden rounded-md border border-fleet-border-strong bg-fleet-surface-2 py-1 shadow-xl ${popperAnim}`}
+              >
+                {menuActions.map((a) => (
+                  <MenuItem
+                    key={a.label}
+                    icon={a.icon}
+                    label={a.label}
+                    shortcut={a.shortcut}
+                    onSelect={pick(a.onSelect)}
+                  />
+                ))}
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
+        )}
         {/* Separate the destructive Close from Search so a slightly-off click
             can't kill a running pane. */}
         <div className="mx-0.5 h-4 w-px bg-fleet-border/70" aria-hidden />

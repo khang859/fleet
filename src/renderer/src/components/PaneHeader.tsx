@@ -1,18 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useCwdStore } from '../store/cwd-store';
 import { useWorkspaceStore } from '../store/workspace-store';
+import { useNotificationStore } from '../store/notification-store';
+import { PaneStatusGlyph } from './PaneStatusGlyph';
 import { shortenPath } from '../lib/shorten-path';
 
 type PaneHeaderProps = {
   paneId: string;
   label?: string;
   labelIsCustom?: boolean;
+  /**
+   * Pane actions, laid out after the title rather than floated over the pane.
+   * Being a flex sibling is the point: the title truncates to whatever room the
+   * actions leave, so the two can never overlap however wide either one gets.
+   */
+  actions?: React.ReactNode;
 };
 
-export function PaneHeader({ paneId, label, labelIsCustom }: PaneHeaderProps): React.JSX.Element {
+export function PaneHeader({
+  paneId,
+  label,
+  labelIsCustom,
+  actions
+}: PaneHeaderProps): React.JSX.Element {
   const liveCwd = useCwdStore((s) => s.cwds.get(paneId));
   const renamePane = useWorkspaceStore((s) => s.renamePane);
   const resetPaneLabel = useWorkspaceStore((s) => s.resetPaneLabel);
+  // The glyph used to float in the pane's top-right corner, which is where the
+  // actions now live. It belongs at the head of the title bar anyway: status
+  // reads as a property of the pane's name, not as a mark on its output.
+  const activityState = useNotificationStore((s) => s.activities.get(paneId)?.state);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -51,10 +68,31 @@ export function PaneHeader({ paneId, label, labelIsCustom }: PaneHeaderProps): R
     setIsEditing(false);
   }, [editValue, displayText, renamePane, paneId]);
 
-  const handleDoubleClick = useCallback(() => {
-    setEditValue(displayText);
-    setIsEditing(true);
-  }, [displayText]);
+  // On the bar rather than on the title text. The title is only as wide as the
+  // path is long, and the actions take the rest of the row, so hanging rename
+  // off the text alone left a target most double-clicks miss. Anything that
+  // handles its own clicks (the action buttons) is excluded.
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.target instanceof Element && e.target.closest('button')) return;
+      setEditValue(displayText);
+      setIsEditing(true);
+    },
+    [displayText]
+  );
+
+  // While the rename field is open the bar stops being a click-through to the
+  // pane. `TerminalPane`'s container `onClick` focuses xterm, and xterm taking
+  // focus blurs this input - which commits and closes the rename on the
+  // trailing click of the double-click that opened it, and again the moment you
+  // click into the field to edit. Bubble phase, so the input itself still gets
+  // the click and can put the caret where it was aimed.
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (isEditing) e.stopPropagation();
+    },
+    [isEditing]
+  );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -68,7 +106,16 @@ export function PaneHeader({ paneId, label, labelIsCustom }: PaneHeaderProps): R
   );
 
   return (
-    <div className="flex items-center h-7 px-2 bg-fleet-surface-2/80 border-b border-fleet-border text-xs text-fleet-text-secondary select-none shrink-0">
+    // Clicking the bar focuses the pane and double-clicking renames it, so it
+    // has to look like it will do something. Without a hover state it read as
+    // a dead strip of chrome.
+    <div
+      className="group/header flex items-center gap-1.5 h-7 pl-2 pr-1 bg-fleet-glass-surface-2 hover:bg-fleet-glass-surface-3 border-b border-fleet-border text-xs text-fleet-text-secondary select-none shrink-0 transition-colors"
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
+      title={isEditing ? undefined : `${liveCwd ?? ''}\nDouble-click to rename`}
+    >
+      <PaneStatusGlyph state={activityState} className="shrink-0" />
       {isEditing ? (
         <input
           ref={inputRef}
@@ -79,11 +126,7 @@ export function PaneHeader({ paneId, label, labelIsCustom }: PaneHeaderProps): R
           onKeyDown={handleKeyDown}
         />
       ) : (
-        <span
-          className="flex-1 truncate font-mono cursor-default"
-          onDoubleClick={handleDoubleClick}
-          title={liveCwd ?? ''}
-        >
+        <span className="flex-1 truncate font-mono cursor-default group-hover/header:text-fleet-text transition-colors">
           {displayText}
         </span>
       )}
@@ -97,6 +140,7 @@ export function PaneHeader({ paneId, label, labelIsCustom }: PaneHeaderProps): R
           clear title
         </button>
       )}
+      {actions}
     </div>
   );
 }

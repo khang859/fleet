@@ -12,11 +12,11 @@ import { scheduleRows, showSchedulePanel } from './schedule-view';
 import { cancelSchedule } from '../../store/agent-schedule';
 import { SIDE_COLUMN_WIDTH_PX, centeringGutterPx } from './side-column';
 import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
-import { BackgroundLayer } from '../BackgroundLayer';
+
 import { useAgentStore } from '../../store/agent-store';
 import { useElementWidth } from '../../hooks/use-element-width';
 import { resolveBackgroundSrc } from '../../lib/pane-background';
-import { getGlassCssVars } from '../../lib/theme';
+import { getGlassCssVars, paneGround } from '../../lib/theme';
 import type { AgentTodoItem } from '../../../../shared/agent-todos';
 import type { AgentScheduleRecord } from '../../../../shared/agent-schedule';
 import type { AgentMessage, AgentPermissionAsk } from '../../../../shared/agent-types';
@@ -157,21 +157,17 @@ export function AgentPane({
   const hasBackgroundImage = resolveBackgroundSrc(terminalBackground, slideshowFrame) !== null;
 
   return (
-    // The floor stays opaque and the image blends onto it at the user's
-    // opacity, which is what a terminal pane does - blending against nothing
-    // instead would make the same setting read far stronger here than there.
-    // `relative` so the layer's absolute children anchor here rather than to
-    // the pane frame two levels up.
+    // The image is one canvas behind the whole window (see App), so this pane
+    // only supplies its own ground over it - near-solid, because a transcript
+    // is read rather than glanced at.
     <div
       ref={frameRef}
-      className="relative flex h-full w-full flex-col bg-fleet-bg"
-      style={getGlassCssVars(hasBackgroundImage)}
+      className="relative flex h-full w-full flex-col"
+      style={{
+        ...getGlassCssVars(hasBackgroundImage),
+        backgroundColor: paneGround('var(--fleet-bg)', hasBackgroundImage)
+      }}
     >
-      {terminalBackground && (
-        <BackgroundLayer background={terminalBackground} frame={slideshowFrame} />
-      )}
-      {/* The layer sits at z-0, so everything the user sees is lifted above it
-          in one wrapper - which is also what puts all three views over it. */}
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         <AgentTabs value={view} onChange={setView} />
         {view === 'agent' && (

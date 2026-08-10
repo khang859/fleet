@@ -32,6 +32,7 @@
      pane's background image. Identical to the opaque tokens until a pane
      overrides them on its own root (see getGlassCssVars in lib/theme.ts). */
   --color-fleet-glass-bg: var(--fleet-glass-bg);
+  --color-fleet-glass-chrome: var(--fleet-glass-chrome);
   --color-fleet-glass-surface: var(--fleet-glass-surface);
   --color-fleet-glass-surface-2: var(--fleet-glass-surface-2);
   --color-fleet-glass-surface-3: var(--fleet-glass-surface-3);
@@ -186,6 +187,10 @@
      its own root and its whole subtree turns to glass. The alpha lives in the
      token rather than in a `/40` on the class so the two cannot compound. */
   --fleet-glass-bg: color-mix(in srgb, var(--fleet-bg) 40%, transparent);
+  /* Thicker glass for the app chrome that holds running text - the sidebar.
+     Solid until there is a canvas to see, so a themed app with no image is
+     unchanged. */
+  --fleet-glass-chrome: var(--fleet-bg);
   --fleet-glass-surface: var(--fleet-surface);
   --fleet-glass-surface-2: var(--fleet-surface-2);
   --fleet-glass-surface-3: var(--fleet-surface-3);
@@ -253,8 +258,15 @@ body,
   accent-color: var(--fleet-accent);
 }
 
+/* A hairline plus a soft halo out into the pane gutter, rather than one 2px
+   line. The pane's title bar starts at the same y as the ring, so a solid 2px
+   edge sat directly on the bar and cut across it through the corner radius -
+   the bar read as part of the frame instead of as something to click. The halo
+   is 4px, which is exactly the gutter, so it never reaches a neighbour. */
 .fleet-accent-ring-pane {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fleet-accent) 70%, transparent);
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, var(--fleet-accent) 90%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--fleet-accent) 16%, transparent);
 }
 
 .fleet-shadow-overlay {
