@@ -123,7 +123,19 @@ export const AgentToolRow = memo(function AgentToolRow({
       </button>
       {open &&
         (image !== null ? (
-          <AgentImage src={image} alt={target === '' ? 'Generated image' : target} />
+          <>
+            <AgentImage src={image} alt={target === '' ? 'Generated image' : target} />
+            {/* The prompt under the picture it asked for, whole and wrapped.
+                The row can only hold the first few words of one, and a
+                generated image has nothing else that says what was wanted: the
+                file is a hash, and the picture cannot tell you what it was
+                asked for and missed. Only for `image` - a picture that came
+                back from `read` has its path on the row already, and repeating
+                it underneath would be the same line twice. */}
+            {call.name === 'image' && target !== '' && (
+              <p className="text-[11px] leading-relaxed text-fleet-text-subtle">{target}</p>
+            )}
+          </>
         ) : diff !== null ? (
           <DiffBody lines={diff} />
         ) : (

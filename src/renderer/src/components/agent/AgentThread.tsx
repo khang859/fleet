@@ -700,8 +700,17 @@ const Message = memo(function Message({
     // column of text it has always been. Over a picture it becomes the quiet
     // container the turn needs - the muted tool rows are the first thing to
     // become unreadable on glass, and they live in here too.
+    //
+    // Every child is capped at the column, and that has to be said here rather
+    // than on each of them: `items-start` sizes a child to its own content, and
+    // a tool row's target is one unbreakable line, so a `truncate` span reports
+    // the whole of an image prompt as its minimum width. Left to size itself
+    // such a row comes out four thousand pixels wide, runs off the side of the
+    // pane, and never shows the ellipsis it asked for - a box that is never
+    // narrower than its text has nothing to trim. The cap is what makes
+    // `truncate` mean anything, here and on every row added after it.
     <div
-      className="flex w-fit max-w-full flex-col items-start gap-2 rounded-xl"
+      className="flex w-fit max-w-full flex-col items-start gap-2 rounded-xl [&>*]:max-w-full"
       style={{ background: 'var(--fleet-turn-scrim)', padding: 'var(--fleet-turn-pad)' }}
     >
       {message.reasoning !== '' && (
