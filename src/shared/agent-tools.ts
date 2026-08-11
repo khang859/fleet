@@ -447,7 +447,7 @@ const TERMINAL_DESCRIPTION = [
 const IMAGE_DESCRIPTION = [
   'Generate an image from a description, or edit existing ones by naming them in `references`.',
   'One image per call - call it again for a variation rather than expecting several from one.',
-  'Write `prompt` as a description of the finished picture: subject, composition, style, colours. When editing, describe the result you want, not the change as an instruction.',
+  'Write `prompt` as a description of the finished picture: subject, composition, style, colours. When editing, name the one thing that changes and spell out what must stay exactly as it is, or the rest of the picture gets redrawn along with it.',
   'References are paths to images in the working folder, or to images you generated earlier in this conversation.',
   'The file is saved outside the working folder and its path comes back to you; copy it in with `bash` if it belongs in the project. The user is shown the image, so do not describe it back to them.'
 ].join(' ');
