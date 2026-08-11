@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { usePresence } from '../hooks/use-presence';
 import { overlayExitMs, overlayTiming } from '../lib/motion';
 
@@ -24,6 +25,13 @@ type OverlayProps = {
  * slides on enter/exit. Centralizes backdrop-click-to-close and Escape so the
  * individual overlays only describe their panel. Exit animations work because
  * {@link usePresence} keeps the tree mounted for the duration of the close.
+ *
+ * Rendered into `document.body` rather than where it was written. `z-50` only
+ * ranks an element against its siblings inside whatever stacking context it
+ * finds itself in, and the panes of this app sit in one - so an overlay opened
+ * from a pane was being painted under the sidebar beside it, which is a lower
+ * z-index in a higher context. A modal covers the window, so it has to be a
+ * child of the window.
  */
 export function Overlay({
   open,
@@ -53,7 +61,7 @@ export function Overlay({
 
   if (!mounted) return null;
 
-  return (
+  return createPortal(
     <div
       data-state={state}
       onPointerDown={(e) => {
@@ -70,6 +78,7 @@ export function Overlay({
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
