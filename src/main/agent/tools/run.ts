@@ -12,6 +12,7 @@ import {
   TodoAddArgs,
   TaskArgs,
   TodoUpdateArgs,
+  WebFetchArgs,
   WriteArgs,
   type AgentToolContext,
   type AgentToolResult
@@ -34,6 +35,7 @@ import { runSkill } from './skill';
 import { runMemoryRead } from './memory';
 import { writeMemoryEntry } from '../memory/write';
 import { writeSkillBody } from '../skills/write';
+import { runWebFetch } from './web-fetch';
 import { runWrite } from './write';
 import { AgentImageStore } from '../image-store';
 
@@ -86,6 +88,8 @@ export async function runAgentTool(
       return runTerminal(checked(TerminalArgs, args, name), ctx);
     case 'image':
       return runImage(checked(ImageArgs, args, name), ctx, images);
+    case 'web_fetch':
+      return runWebFetch(checked(WebFetchArgs, args, name), ctx);
     case 'skill':
       return runSkill(checked(SkillArgs, args, name), ctx);
     case 'memory':

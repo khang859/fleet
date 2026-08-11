@@ -39,6 +39,7 @@ import {
   type AgentToolCall,
   type AgentScheduleCapability,
   type AgentToolContext,
+  type AgentUrlFetcher,
   type ToolSpec
 } from '../../shared/agent-tools';
 import { SCHEDULE_WIRE_PREFIX, renderScheduleBlock } from '../../shared/agent-schedule';
@@ -79,6 +80,7 @@ import {
   type TaskRun
 } from './subagents/manager';
 import { generateImage } from './images';
+import { capResult, fetchUrl as defaultFetchUrl, type UrlFetch } from './web';
 import type { PermissionGate } from './permissions/gate';
 
 /**
@@ -109,6 +111,8 @@ type Deps = {
   stream?: typeof streamCompletion;
   /** Injectable for tests; defaults to the real OpenRouter image call. */
   image?: typeof generateImage;
+  /** Injectable for tests; defaults to the real fetch-and-extract pipeline. */
+  fetchUrl?: UrlFetch;
 };
 
 /** Everything a model call needs, resolved once before the work starts. */
@@ -895,6 +899,7 @@ export class AgentService {
     const messages = await toWireHistory(
       req,
       buildSystemPrompt(req.cwd, ctx.settings.systemPrompt, {
+        webFetch: ctx.settings.webFetch.enabled,
         env,
         image: imageModel !== null,
         mcp: mcpSpecs.length > 0,
@@ -922,6 +927,7 @@ export class AgentService {
         messages,
         tools: toolSpecsFor({
           image: imageModel !== null,
+          webFetch: ctx.settings.webFetch.enabled,
           mcp: mcpSpecs,
           task: taskSpec,
           skill: skillSpec,
@@ -1091,6 +1097,7 @@ export class AgentService {
           // Built per call rather than per turn, because a partial render has
           // to land on the row that asked for it, and only here is that known.
           generateImage: this.imageGenerator(ctx, streamId, call.id),
+          fetchUrl: this.urlFetcher(ctx),
           todos: {
             list: () => todos.items,
             save: (items) => {
@@ -1263,6 +1270,9 @@ export class AgentService {
                 // subagent of its own. Skills and memory are the exception -
                 // they are text, not a capability.
                 image: false,
+                // And so is this one: a child sent to find something out needs
+                // the same warning about what a fetched page is worth.
+                webFetch: ctx.settings.webFetch.enabled && run.tools.includes('web_fetch'),
                 skill: skillSpec !== null,
                 // Conditional here where it is unconditional for a turn, and
                 // that difference is the whole of requirement 7 showing through:
@@ -1280,6 +1290,10 @@ export class AgentService {
           ],
           tools: toolSpecsFor({
             image: false,
+            // Unlike `image`, this one follows the setting rather than being
+            // off for a child: reading a page is how a subagent sent to find
+            // something out finds it out, and it costs the parent nothing.
+            webFetch: ctx.settings.webFetch.enabled,
             skill: skillSpec,
             memory: memorySpec,
             only: run.tools
@@ -1309,6 +1323,25 @@ export class AgentService {
       // A question nobody answered does not outlive the subagent that asked it.
       this.deps.gate.endTurn(run.taskId);
     }
+  }
+
+  /**
+   * The page-reading capability, or `null` when the user has turned it off -
+   * which is also when the tool was never offered, so a call that gets this far
+   * is one the model invented or replayed out of an older transcript.
+   *
+   * The settings are closed over rather than handed to the tool, for the reason
+   * they are with `generateImage`: whether a local address may be read is the
+   * user's decision, and a decision reachable through an argument a model wrote
+   * is not a decision.
+   */
+  private urlFetcher(ctx: CallContext): AgentUrlFetcher | null {
+    const config = ctx.settings.webFetch;
+    if (!config.enabled) return null;
+    const fetchPage = this.deps.fetchUrl ?? defaultFetchUrl;
+
+    return async (url, signal) =>
+      capResult(await fetchPage(url, config.allowLocal, signal), config.maxChars);
   }
 
   /**

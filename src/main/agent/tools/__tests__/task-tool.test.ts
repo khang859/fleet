@@ -35,6 +35,7 @@ function context(dispatch: AgentToolContext['dispatchTask']): AgentToolContext {
     approve: async () => Promise.resolve(true),
     wasRefused: () => false,
     generateImage: null,
+    fetchUrl: null,
     todos: { list: () => [], save: () => {} },
     mcp: null,
     dispatchTask: dispatch,

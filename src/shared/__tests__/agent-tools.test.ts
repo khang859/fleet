@@ -54,6 +54,7 @@ describe('toolSpecsFor', () => {
   it('puts memory ahead of skill, which is ahead of task', () => {
     const offered = toolSpecsFor({
       image: false,
+      webFetch: false,
       memory: named('memory'),
       skill: named('skill'),
       task: named('task')
@@ -64,7 +65,9 @@ describe('toolSpecsFor', () => {
   });
 
   it('leaves memory out when nothing was recorded', () => {
-    const offered = toolSpecsFor({ image: false, memory: null }).map((s) => s.function.name);
+    const offered = toolSpecsFor({ image: false, webFetch: false, memory: null }).map(
+      (s) => s.function.name
+    );
     expect(offered).not.toContain('memory');
     // The write tool is not conditional on it, which is the whole point.
     expect(offered).toContain('memory_write');
@@ -78,6 +81,7 @@ describe('toolSpecsFor', () => {
   it('drops both writes for a run narrowed to a subagent’s tools', () => {
     const offered = toolSpecsFor({
       image: false,
+      webFetch: false,
       memory: named('memory'),
       only: SUBAGENT_TOOL_NAMES
     }).map((s) => s.function.name);
@@ -90,6 +94,7 @@ describe('toolSpecsFor', () => {
   it('drops the reader too when the run was narrowed past it', () => {
     const offered = toolSpecsFor({
       image: false,
+      webFetch: false,
       memory: named('memory'),
       only: ['read', 'grep']
     }).map((s) => s.function.name);

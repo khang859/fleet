@@ -3,7 +3,8 @@ import { Code2, RefreshCw, TriangleAlert } from 'lucide-react';
 import type {
   AgentImageConfig,
   AgentModelConfig,
-  AgentToolMode
+  AgentToolMode,
+  AgentWebFetchConfig
 } from '../../../../../shared/agent-types';
 import { AGENT_TOOL_MODES, DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
 import {
@@ -16,6 +17,7 @@ import { SectionShell, FieldGroup, Field } from './primitives';
 import { SecretInput } from './SecretInput';
 import { AgentRoleSettings } from './AgentRoleSettings';
 import { AgentImageSettings } from './AgentImageSettings';
+import { AgentWebSettings } from './AgentWebSettings';
 import { SystemPromptField } from './SystemPromptField';
 import { CompactionField } from './CompactionField';
 import { MaxToolRoundsField } from './MaxToolRoundsField';
@@ -110,6 +112,10 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
     void updateSettings({ ai: { agent: { image: { ...agent.image, ...patch } } } });
   };
 
+  const patchWebFetch = (patch: Partial<AgentWebFetchConfig>): void => {
+    void updateSettings({ ai: { agent: { webFetch: { ...agent.webFetch, ...patch } } } });
+  };
+
   return (
     <div className="mx-auto w-full max-w-2xl px-6 py-6">
       <SectionShell title="Agent settings" description="Shared by every agent pane in Fleet.">
@@ -141,6 +147,7 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
             onChange={patchCoding}
           />
           <AgentImageSettings models={imageModels} config={agent.image} onChange={patchImage} />
+          <AgentWebSettings config={agent.webFetch} onChange={patchWebFetch} />
         </FieldGroup>
 
         <FieldGroup title="Sessions">

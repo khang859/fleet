@@ -30,7 +30,8 @@ const LabelArgs = z.object({
   prompt: z.string().optional(),
   references: z.array(z.string()).optional(),
   cron: z.string().optional(),
-  id: z.string().optional()
+  id: z.string().optional(),
+  url: z.string().optional()
 });
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
@@ -90,6 +91,12 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
         verb: (args.references?.length ?? 0) > 0 ? 'Edit image' : 'Generate',
         target: (args.prompt ?? '').replace(/\s*\n\s*/g, ' ')
       };
+    // The address without its scheme, which is how a person says a URL and how
+    // every browser has shown one for a decade. Kept whole otherwise: the path
+    // is what distinguishes one page of a documentation site from the next, so
+    // shortening to the host would make every row on a research turn identical.
+    case 'web_fetch':
+      return { verb: 'Fetch', target: shortenUrl(args.url ?? '') };
     // When rather than what: the note is a paragraph written for a turn that
     // has not happened yet, and the expression is both short enough for a row
     // and the thing the user would check if the check-in arrived on the wrong
@@ -131,6 +138,23 @@ function parseArgs(raw: string): z.infer<typeof LabelArgs> {
   }
   const parsed = LabelArgs.safeParse(json);
   return parsed.success ? parsed.data : {};
+}
+
+/**
+ * A URL as a person would read it: no scheme, no `www.`, no trailing slash.
+ *
+ * Left alone if it does not parse, because the row has to draw while the model
+ * is still streaming the argument and half a URL is not a URL yet.
+ */
+function shortenUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    const host = url.host.replace(/^www\./, '');
+    const path = url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '');
+    return `${host}${path}${url.search}`;
+  } catch {
+    return raw;
+  }
 }
 
 /** "*.ts in src" - the second half only when the call narrowed the search. */

@@ -124,6 +124,7 @@ export class SettingsStore {
           ...saved.ai?.agent,
           coding: { ...DEFAULT_SETTINGS.ai.agent.coding, ...saved.ai?.agent?.coding },
           image: { ...DEFAULT_SETTINGS.ai.agent.image, ...saved.ai?.agent?.image },
+          webFetch: { ...DEFAULT_SETTINGS.ai.agent.webFetch, ...saved.ai?.agent?.webFetch },
           permissions: {
             ...DEFAULT_SETTINGS.ai.agent.permissions,
             ...saved.ai?.agent?.permissions,
@@ -183,6 +184,7 @@ export class SettingsStore {
           ...(partial.ai?.agent ?? {}),
           coding: { ...current.ai.agent.coding, ...(partial.ai?.agent?.coding ?? {}) },
           image: { ...current.ai.agent.image, ...(partial.ai?.agent?.image ?? {}) },
+          webFetch: { ...current.ai.agent.webFetch, ...(partial.ai?.agent?.webFetch ?? {}) },
           permissions: {
             ...current.ai.agent.permissions,
             ...(partial.ai?.agent?.permissions ?? {})
