@@ -128,13 +128,13 @@ Writing effective prompts dramatically improves image generation results. Follow
 
 ### Prompt Structure
 
-Use this order: **Subject → Style → Setting → Lighting → Composition → Quality modifiers**
+Use this order: **Scene → Subject → Key details → Use case → Constraints**
 
-Front-load the most important elements — models weight tokens near the beginning more heavily. Aim for 30-75 words. Too short gives too much freedom; too long causes concept blending.
+Current models read a prompt as instructions rather than as a bag of tags, so write plain descriptive language and let it run as long as it needs to. Naming the artifact you want - "an editorial product photograph", "a shipped app screenshot" - sets the polish level better than any adjective.
 
 ```bash
 # Good: specific, structured
-fleet images generate --prompt "A weathered lighthouse on a rocky coastline, oil painting style, dramatic sunset lighting, wide angle shot, muted tones"
+fleet images generate --prompt "A weathered lighthouse on a rocky coastline at dusk, oil painting, thick visible brushwork, dramatic sunset backlight, wide angle, muted tones. No text, no watermark."
 
 # Bad: vague
 fleet images generate --prompt "a cool lighthouse"
@@ -177,9 +177,19 @@ Lighting is one of the highest-impact prompt elements:
 1. **Contradictory styles.** "A photorealistic watercolor" confuses the model — pick one
 2. **Too many subjects.** Keep to 1-2 focal subjects; more creates chaotic results
 3. **Wrong aspect ratio.** Use `--aspect-ratio 9:16` for portraits, `16:9` for landscapes
-4. **Over-stacking quality terms.** One or two quality modifiers is enough; spend tokens on description instead
-5. **Describing what you DON'T want.** "A dog but not a poodle" often generates a poodle — describe what you DO want
-6. **Expecting perfect text.** Keep text in images to 1-3 short words maximum
+4. **Quality-token spam.** "4k, masterpiece, trending on artstation, highly detailed" does nothing on current models. Spend the words on visual facts instead: "35mm feel, soft bounce light"
+5. **Describing what you DON'T want.** "A dog but not a poodle" often generates a poodle — describe what you DO want. The exception is a short list of hard exclusions models do honour: "no watermark", "no extra text", "no logos"
+6. **Under-specifying text.** Current models render full headlines and paragraphs accurately — see below
+
+### Text in Images
+
+The default model (`fal-ai/nano-banana-2`) and the other current frontier models render long, accurate text, including non-Latin scripts. Getting it right is a matter of wording:
+
+- **Quote the literal string**, or write it in ALL CAPS — both read as "render exactly this"
+- **Specify the typography** as a constraint: family, weight, size, colour, placement. "The word 'GLOW' in a flowing script, centred above the jar" beats "with nice text"
+- **Spell odd or invented words letter by letter** to improve character accuracy
+- **Write non-Latin script directly.** `A sign reading 拉麺` works; "a sign with Japanese text" does not
+- **Suppress volunteered copy.** Models add captions and credits uninvited, so clean product shots want "no additional text or decorative elements"
 
 ### Consistent Series
 
@@ -194,7 +204,8 @@ To maintain visual consistency across multiple generations:
 
 When using `fleet images edit`:
 
-- **Be explicit about what to change and what to keep.** "Change the sky to a sunset while keeping the building exactly the same"
+- **Name what changes and what must not.** "Change only the sky to a sunset. Keep everything else exactly the same — the building, its lighting and the composition." Without an explicit preserve list the model treats the whole image as editable, and repeating that list on every follow-up is what stops drift
+- **One change per run.** Small single-change edits beat a rewritten prompt
 - **Describe changes in relative terms.** "Make the lighting warmer" or "Add more contrast"
 - **For additions:** describe only the new element. "Add a red sports car in the parking spot"
 - **For style transfer:** describe the target look. "Apply a cool blue-teal color grade"
@@ -226,7 +237,8 @@ AI-generated logos and icons typically need post-processing (vectorization, back
 [Lighting description],
 [Camera/composition],
 [Color palette or mood],
-[1-2 quality modifiers]
+[Use case: what finished artifact this is],
+[Constraints: any literal text, and what must not appear]
 ```
 
 ## Tips
