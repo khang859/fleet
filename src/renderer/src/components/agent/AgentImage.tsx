@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, Copy, RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-react';
 import {
   TransformComponent,
   TransformWrapper,
@@ -23,7 +23,22 @@ const MAX_SCALE = 8;
  * composition, and a thumbnail that trims the edges off is showing something
  * the model did not make.
  */
-export function AgentImage({ src, alt }: { src: string; alt: string }): React.JSX.Element {
+export function AgentImage({
+  src,
+  alt,
+  path
+}: {
+  src: string;
+  alt: string;
+  /**
+   * Where the file is, when the viewer should offer to copy it. Opened full
+   * size is where a picture is actually judged, and it is also the moment the
+   * user decides to do something with it - so the path has to be reachable
+   * from in here and not only from the row underneath, which is by then
+   * covered up.
+   */
+  path?: string;
+}): React.JSX.Element {
   const [zoomed, setZoomed] = useState(false);
 
   return (
@@ -41,7 +56,7 @@ export function AgentImage({ src, alt }: { src: string; alt: string }): React.JS
 
       <Overlay open={zoomed} onClose={() => setZoomed(false)} panelClassName="relative">
         <TransformWrapper maxScale={MAX_SCALE} doubleClick={{ mode: 'toggle', step: 1 }}>
-          <Viewer src={src} alt={alt} onClose={() => setZoomed(false)} />
+          <Viewer src={src} alt={alt} path={path} onClose={() => setZoomed(false)} />
         </TransformWrapper>
       </Overlay>
     </>
@@ -57,10 +72,12 @@ export function AgentImage({ src, alt }: { src: string; alt: string }): React.JS
 function Viewer({
   src,
   alt,
+  path,
   onClose
 }: {
   src: string;
   alt: string;
+  path?: string;
   onClose: () => void;
 }): React.JSX.Element {
   const { zoomIn, zoomOut, resetTransform } = useControls();
@@ -73,6 +90,7 @@ function Viewer({
   return (
     <>
       <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-md border border-white/10 bg-black/60 p-0.5 backdrop-blur-sm">
+        {path !== undefined && <CopyPath path={path} />}
         <Tool label="Zoom out" onClick={() => zoomOut()} disabled={!magnified}>
           <ZoomOut size={15} />
         </Tool>
@@ -97,6 +115,40 @@ function Viewer({
         <img src={src} alt={alt} className="block max-h-[88vh] max-w-[92vw] object-contain" />
       </TransformComponent>
     </>
+  );
+}
+
+/**
+ * The path, onto the clipboard, from inside the viewer.
+ *
+ * Says so with a tick rather than a toast: a toast is drawn by the app behind
+ * this overlay, and an answer that appears somewhere the user is not looking is
+ * no answer. The tick is also the truth - it is set once the write has actually
+ * happened, so a clipboard that refuses says nothing rather than lying.
+ */
+function CopyPath({ path }: { path: string }): React.JSX.Element {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    };
+  }, []);
+
+  return (
+    <Tool
+      label={copied ? 'Path copied' : 'Copy path'}
+      onClick={() => {
+        void navigator.clipboard.writeText(path).then(() => {
+          setCopied(true);
+          if (timer.current !== null) clearTimeout(timer.current);
+          timer.current = setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+    >
+      {copied ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+    </Tool>
   );
 }
 

@@ -28,7 +28,13 @@ export function toolBody(call: AgentToolCall): string | null {
 }
 
 /**
- * The picture a finished call has to show, as something an `<img>` can load.
+ * The picture a finished call has to show: where it is on disk, and the same
+ * thing as something an `<img>` can load.
+ *
+ * Both, because the file is as much of the result as the pixels are. The row
+ * draws the picture from `src`, and `path` is what the user needs when they
+ * want to do anything else with it - and for a generated image that path
+ * exists nowhere else on screen.
  *
  * Two calls produce one, and they say so differently because they mean
  * different things. `image` made a file, and writes its path below the
@@ -37,10 +43,14 @@ export function toolBody(call: AgentToolCall): string | null {
  * cannot silently stop the picture showing. `read` did not make anything; it
  * looked at a file that was already there, and says which one on the call.
  */
-export function imageBody(call: AgentToolCall): string | null {
+export function imageBody(call: AgentToolCall): { path: string; src: string } | null {
   if (call.error !== null) return null;
-  if (call.image !== null) return toFleetImageUrl(call.image.path);
+  if (call.image !== null) return located(call.image.path);
   if (call.name !== 'image' || call.result === null) return null;
   const path = outputBody(call.result).trim();
-  return path === '' ? null : toFleetImageUrl(path);
+  return path === '' ? null : located(path);
+}
+
+function located(path: string): { path: string; src: string } {
+  return { path, src: toFleetImageUrl(path) };
 }

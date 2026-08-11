@@ -1,7 +1,8 @@
 import { memo, useMemo, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Copy } from 'lucide-react';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 import { diffLineKind } from '../../../../shared/agent-diff';
+import { useToastStore } from '../../store/toast-store';
 import { diffBody } from './diff-body';
 import { imageBody, toolBody } from './output-body';
 import { toolLabel, toolStatus } from './tool-label';
@@ -124,16 +125,26 @@ export const AgentToolRow = memo(function AgentToolRow({
       {open &&
         (image !== null ? (
           <>
-            <AgentImage src={image} alt={target === '' ? 'Generated image' : target} />
+            <AgentImage
+              src={image.src}
+              alt={target === '' ? 'Generated image' : target}
+              path={image.path}
+            />
             {/* The prompt under the picture it asked for, whole and wrapped.
                 The row can only hold the first few words of one, and a
                 generated image has nothing else that says what was wanted: the
                 file is a hash, and the picture cannot tell you what it was
                 asked for and missed. Only for `image` - a picture that came
                 back from `read` has its path on the row already, and repeating
-                it underneath would be the same line twice. */}
-            {call.name === 'image' && target !== '' && (
-              <p className="text-[11px] leading-relaxed text-fleet-text-subtle">{target}</p>
+                it underneath would be the same line twice, and the same goes
+                for where the file is. */}
+            {call.name === 'image' && (
+              <>
+                {target !== '' && (
+                  <p className="text-[11px] leading-relaxed text-fleet-text-subtle">{target}</p>
+                )}
+                <ImagePath path={image.path} />
+              </>
             )}
           </>
         ) : diff !== null ? (
@@ -148,6 +159,49 @@ export const AgentToolRow = memo(function AgentToolRow({
     </div>
   );
 });
+
+/**
+ * Where the picture actually is, and a way to take it with you.
+ *
+ * A generated image is written outside the working folder under a name nobody
+ * chose, so this line is the only place its path is ever said - without it the
+ * user has a picture they can look at and cannot find. Clicking copies the
+ * absolute path, which is the form anything else will want it in; what is
+ * drawn is that path with the home folder written the way a person writes it.
+ *
+ * The line gives way in the middle rather than at the end. A store path is two
+ * long ids and a name, and it does not fit - but the folders are the same for
+ * every picture in the session while the file name is the only part that says
+ * which one this is, so the folders are what the ellipsis takes.
+ */
+function ImagePath({ path }: { path: string }): React.JSX.Element {
+  const showToast = useToastStore((s) => s.show);
+  const home = window.fleet.homeDir;
+  const shown = home !== '' && path.startsWith(home) ? `~${path.slice(home.length)}` : path;
+  const cut = Math.max(shown.lastIndexOf('/'), shown.lastIndexOf('\\')) + 1;
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        // Announced from the outcome, not from the click: a clipboard write is
+        // a permission the window can be refused, and a toast fired alongside
+        // the call says it worked either way.
+        void navigator.clipboard
+          .writeText(path)
+          .then(() => showToast('Image path copied to clipboard'));
+      }}
+      title={`Copy ${path}`}
+      className="flex w-full items-center gap-1.5 text-left font-mono text-[11px] text-fleet-text-subtle transition-colors hover:text-fleet-text focus-ring"
+    >
+      <Copy size={11} className="shrink-0" />
+      <span className="flex min-w-0 items-center">
+        <span className="truncate">{shown.slice(0, cut)}</span>
+        <span className="max-w-full shrink-0 truncate">{shown.slice(cut)}</span>
+      </span>
+    </button>
+  );
+}
 
 /**
  * A summary that is an outcome rather than a size. A command that exits 1 did

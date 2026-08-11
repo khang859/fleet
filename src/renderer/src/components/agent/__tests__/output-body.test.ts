@@ -64,7 +64,10 @@ describe('imageBody', () => {
       '/home/k/.fleet/agent/images/t/a.png'
     ].join('\n');
 
-    expect(imageBody(image({ result }))).toBe('fleet-image:///home/k/.fleet/agent/images/t/a.png');
+    expect(imageBody(image({ result }))).toEqual({
+      path: '/home/k/.fleet/agent/images/t/a.png',
+      src: 'fleet-image:///home/k/.fleet/agent/images/t/a.png'
+    });
   });
 
   // What `read` returns when the file was a picture. Any tool may say it looked
@@ -76,7 +79,10 @@ describe('imageBody', () => {
       image: { path: '/repo/docs/shot.png', mimeType: 'image/png' }
     });
 
-    expect(imageBody(read)).toBe('fleet-image:///repo/docs/shot.png');
+    expect(imageBody(read)).toEqual({
+      path: '/repo/docs/shot.png',
+      src: 'fleet-image:///repo/docs/shot.png'
+    });
   });
 
   it('has nothing for a call that is not an image, or failed, or is still running', () => {
