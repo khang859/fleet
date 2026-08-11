@@ -430,11 +430,20 @@ void app.whenReady().then(async () => {
   createWindow();
 
   // Electron's default refuses getUserMedia outright, so granting it has to be
-  // explicit. Deny-by-default is preserved for everything else: only `media`,
+  // explicit. Deny-by-default is preserved for everything else: only these two,
   // and only on the app's own window.
+  //
+  // `clipboard-sanitized-write` is every copy button in the app. Writing to the
+  // clipboard is a permission a page has to be granted even from a click, so a
+  // handler that answers no to everything it does not recognise turns
+  // `navigator.clipboard.writeText` into a rejected promise - and the copy
+  // buttons, which all show their "copied" toast without waiting for the write,
+  // go on saying they worked. Sanitized rather than the raw write: the app only
+  // ever puts text on the clipboard.
+  const ALLOWED_PERMISSIONS = new Set(['media', 'clipboard-sanitized-write']);
   electronSession.defaultSession.setPermissionRequestHandler(
     (webContents, permission, callback) => {
-      callback(permission === 'media' && webContents === mainWindow?.webContents);
+      callback(ALLOWED_PERMISSIONS.has(permission) && webContents === mainWindow?.webContents);
     }
   );
 
