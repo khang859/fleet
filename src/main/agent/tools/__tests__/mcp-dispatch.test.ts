@@ -39,6 +39,7 @@ function ctx(output: McpToolOutput | null, threadId = randomUUID()): AgentToolCo
     approve: async () => Promise.resolve(true),
     wasRefused: () => false,
     generateImage: null,
+    fetchUrl: null,
     todos: { list: () => [], save: () => {} },
     mcp:
       output === null

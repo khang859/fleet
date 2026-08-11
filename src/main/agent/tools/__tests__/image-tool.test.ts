@@ -46,6 +46,7 @@ const ctx = (generateImage: AgentToolContext['generateImage']): AgentToolContext
   approve: async () => Promise.resolve(true),
   wasRefused: () => false,
   generateImage,
+  fetchUrl: null,
   mcp: null,
   dispatchTask: null,
   findSubagent: null,

@@ -233,6 +233,7 @@ function readOnlyContext(ctx: { cwd: string; threadId: string }): AgentToolConte
     approve: async () => Promise.resolve(false),
     wasRefused: () => false,
     generateImage: null,
+    fetchUrl: null,
     mcp: null,
     dispatchTask: null,
     findSubagent: null,
