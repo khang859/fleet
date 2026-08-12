@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Check, Copy, Images, RotateCcw, Wallpaper, X, ZoomIn, ZoomOut } from 'lucide-react';
 import {
   TransformComponent,
   TransformWrapper,
@@ -7,6 +7,7 @@ import {
   useTransformEffect
 } from 'react-zoom-pan-pinch';
 import { Overlay } from '../Overlay';
+import { addToSlideshow, setAsBackground } from '../../lib/background-actions';
 
 /** How far in the viewer will go. Past this a generated image is only pixels. */
 const MAX_SCALE = 8;
@@ -44,21 +45,57 @@ export function AgentImage({
   return (
     <>
       {/* `w-fit`, or the border draws a box the width of the transcript with the
-          picture parked in the left of it. */}
-      <button
-        type="button"
-        onClick={() => setZoomed(true)}
-        aria-label={`View full size: ${alt}`}
-        className="block w-fit max-w-full cursor-zoom-in overflow-hidden rounded-lg border border-fleet-border focus-ring"
-      >
-        <img src={src} alt={alt} className="block max-h-80 w-auto max-w-full object-contain" />
-      </button>
+          picture parked in the left of it. The wrapper is what the hover
+          actions hang off: they cannot live inside the button that opens the
+          picture, because a button inside a button is not a thing a browser
+          will render, and clicking one would open the viewer as well. */}
+      <div className="group relative w-fit max-w-full">
+        <button
+          type="button"
+          onClick={() => setZoomed(true)}
+          aria-label={`View full size: ${alt}`}
+          className="block w-fit max-w-full cursor-zoom-in overflow-hidden rounded-lg border border-fleet-border focus-ring"
+        >
+          <img src={src} alt={alt} className="block max-h-80 w-auto max-w-full object-contain" />
+        </button>
+        {path !== undefined && (
+          <div className="absolute right-2 top-2 flex items-center gap-0.5 rounded-md border border-white/10 bg-black/60 p-0.5 opacity-0 backdrop-blur-sm transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <BackgroundActions path={path} />
+          </div>
+        )}
+      </div>
 
       <Overlay open={zoomed} onClose={() => setZoomed(false)} panelClassName="relative">
         <TransformWrapper maxScale={MAX_SCALE} doubleClick={{ mode: 'toggle', step: 1 }}>
           <Viewer src={src} alt={alt} path={path} onClose={() => setZoomed(false)} />
         </TransformWrapper>
       </Overlay>
+    </>
+  );
+}
+
+/**
+ * Send this picture to the window behind everything.
+ *
+ * Both actions are here rather than only in the settings pane because this is
+ * where the user is when they decide: they have just looked at what came back,
+ * and the alternative is copying a path, opening Settings and browsing back to
+ * a folder full of uuids to find the one they were already looking at.
+ *
+ * Drawn twice - over the thumbnail on hover, and in the viewer's toolbar - for
+ * the same reason. Whether a picture is worth looking at all day is not a
+ * judgement anyone makes from a thumbnail, so the actions have to survive
+ * opening it.
+ */
+function BackgroundActions({ path }: { path: string }): React.JSX.Element {
+  return (
+    <>
+      <Tool label="Set as background" onClick={() => void setAsBackground(path)}>
+        <Wallpaper size={15} />
+      </Tool>
+      <Tool label="Add to slideshow" onClick={() => void addToSlideshow(path)}>
+        <Images size={15} />
+      </Tool>
     </>
   );
 }
@@ -90,7 +127,13 @@ function Viewer({
   return (
     <>
       <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-md border border-white/10 bg-black/60 p-0.5 backdrop-blur-sm">
-        {path !== undefined && <CopyPath path={path} />}
+        {path !== undefined && (
+          <>
+            <BackgroundActions path={path} />
+            <CopyPath path={path} />
+            <span aria-hidden className="mx-0.5 h-4 w-px bg-white/15" />
+          </>
+        )}
         <Tool label="Zoom out" onClick={() => zoomOut()} disabled={!magnified}>
           <ZoomOut size={15} />
         </Tool>

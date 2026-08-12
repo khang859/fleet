@@ -139,6 +139,11 @@ export type ReaddirResponse =
   | { success: true; entries: DirEntry[] }
   | { success: false; error: string; entries: [] };
 
+/** Where a picture landed once copied somewhere a background can safely point. */
+export type BackgroundAdoptResponse =
+  | { success: true; path: string }
+  | { success: false; error: string };
+
 export type FileSearchRequest = {
   requestId: number;
   query: string;

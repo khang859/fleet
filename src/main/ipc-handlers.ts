@@ -153,6 +153,7 @@ import type { CwdPoller } from './cwd-poller';
 import type { ActivityTracker } from './activity-tracker';
 import { toError } from './errors';
 import { scanImageFolder } from './slideshow-scanner';
+import { adoptBackgroundImage } from './background-store';
 import type { GitService } from './git-service';
 import type { WorktreeService } from './worktree-service';
 import type { AnnotationStore } from './annotation-store';
@@ -186,6 +187,7 @@ import { listEnvFilesWsl } from './env-editor/env-editor-wsl';
 import { noteKey, readNote, writeNote } from './notes/notes-fs';
 import type { EnvFileEntry } from '../shared/env-editor-types';
 import type {
+  BackgroundAdoptResponse,
   EnvSyncSetPassphraseRequest,
   EnvSyncClearPassphraseRequest,
   EnvSyncSetAuthRequest,
@@ -670,6 +672,14 @@ export function registerIpcHandlers(
     IPC_CHANNELS.FILE_SCAN_IMAGE_FOLDER,
     async (_event, { folderPath }: { folderPath: string }): Promise<string[]> =>
       scanImageFolder(folderPath)
+  );
+
+  // Copy an image into ~/.fleet/backgrounds so a wallpaper outlives whatever
+  // made the picture - an agent's images go when its conversation does.
+  ipcMain.handle(
+    IPC_CHANNELS.BACKGROUND_ADOPT,
+    (_event, { sourcePath }: { sourcePath: string }): BackgroundAdoptResponse =>
+      adoptBackgroundImage(sourcePath)
   );
 
   // Check which entries in a directory are gitignored (returns ignored names)

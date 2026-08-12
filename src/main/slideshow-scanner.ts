@@ -1,7 +1,10 @@
 import { readdir } from 'fs/promises';
 import { extname, join } from 'path';
 
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']);
+/** What a background may be. Shared, because a picture the scanner would skip
+ *  cannot be adopted as one either - it would work as a single image and go
+ *  missing from a slideshow. */
+export const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']);
 
 /**
  * List image files in a folder (non-recursive), sorted by name.

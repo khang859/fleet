@@ -17,6 +17,7 @@ import type {
   GitRepoRootPayload,
   HostPlatform,
   FileOpenInTabPayload,
+  BackgroundAdoptResponse,
   ReaddirResponse,
   FileSearchRequest,
   FileSearchResponse,
@@ -261,6 +262,11 @@ const fleetApi = {
     get: async (): Promise<FleetSettings> => typedInvoke(IPC_CHANNELS.SETTINGS_GET),
     set: async (settings: FleetSettingsPatch): Promise<void> =>
       typedInvoke(IPC_CHANNELS.SETTINGS_SET, settings)
+  },
+  background: {
+    /** Copy an image somewhere a wallpaper can safely point at, and say where. */
+    adopt: async (sourcePath: string): Promise<BackgroundAdoptResponse> =>
+      typedInvoke(IPC_CHANNELS.BACKGROUND_ADOPT, { sourcePath })
   },
   git: {
     isRepo: async (cwd: string, pathContext?: PathContext): Promise<GitIsRepoPayload> =>
