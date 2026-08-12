@@ -6,6 +6,7 @@ import { SliderInput, NumberStepper, SegmentedControl } from './background-contr
 import { BackgroundThumbnails } from './BackgroundThumbnails';
 import { BackgroundPreview } from './BackgroundPreview';
 import { backgroundLegibilityHint } from '../../lib/contrast';
+import { nextSlideshowFiles } from '../../lib/background-actions';
 import { TERMINAL_THEMES } from '../../../../shared/theme-presets';
 import {
   DEFAULT_TERMINAL_BACKGROUND,
@@ -165,9 +166,7 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
     if (paths.length === 0) return;
     const current = useSettingsStore.getState().settings;
     if (!current) return;
-    const merged = [...current.general.terminalBackground.slideshow.filePaths];
-    for (const p of paths) if (!merged.includes(p)) merged.push(p);
-    saveSlideshow({ source: 'files', filePaths: merged });
+    saveSlideshow(nextSlideshowFiles(current.general.terminalBackground.slideshow, paths));
   };
 
   const clearSlideshowFiles = (): void => {
