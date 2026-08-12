@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { Suspense, lazy, useCallback, useMemo, useRef } from 'react';
 import type { PaneNode, PaneLeaf, TerminalBackground } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
@@ -6,12 +6,6 @@ import type { TerminalThemeId } from '../../../shared/theme-presets';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
 import { TerminalPane } from './TerminalPane';
 import { PaneStatusGlyph } from './PaneStatusGlyph';
-import { ImageViewerPane } from './ImageViewerPane';
-import { PdfViewerPane } from './PdfViewerPane';
-import { FileEditorPane } from './FileEditorPane';
-import { MarkdownPane } from './MarkdownPane';
-import { SshBrowserPane } from './ssh/SshBrowserPane';
-import { AgentPane } from './agent/AgentPane';
 import { RemoteFileGate } from './ssh/RemoteFileGate';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
@@ -19,6 +13,33 @@ import { activityRingClass } from '../lib/activity-glyph';
 import { createLogger } from '../logger';
 
 const log = createLogger('layout:panes');
+
+// Only TerminalPane is imported eagerly. Every other pane type drags in a large
+// dependency it alone needs — pdfjs, CodeMirror, highlight.js, shiki — and a
+// window that opens on terminals should not pay to parse any of them. These are
+// local disk reads inside Electron, so the chunk resolves within a frame or two.
+const ImageViewerPane = lazy(async () => ({
+  default: (await import('./ImageViewerPane')).ImageViewerPane
+}));
+const PdfViewerPane = lazy(async () => ({
+  default: (await import('./PdfViewerPane')).PdfViewerPane
+}));
+const FileEditorPane = lazy(async () => ({
+  default: (await import('./FileEditorPane')).FileEditorPane
+}));
+const MarkdownPane = lazy(async () => ({
+  default: (await import('./MarkdownPane')).MarkdownPane
+}));
+const SshBrowserPane = lazy(async () => ({
+  default: (await import('./ssh/SshBrowserPane')).SshBrowserPane
+}));
+const AgentPane = lazy(async () => ({
+  default: (await import('./agent/AgentPane')).AgentPane
+}));
+
+// Panes sit on the themed pane background, so an empty box is the right
+// placeholder — anything more would flash in and out within a couple of frames.
+const PANE_FALLBACK = <div className="h-full w-full" />;
 
 // --- Calc-based absolute positioning system ---
 // Each dimension is expressed as `calc(pct% + px)` to handle the 6px resize
@@ -303,13 +324,15 @@ export function PaneGrid({
                 {/* No PaneHeader: like the other non-terminal panes, the agent
                   pane owns its own chrome and has no live cwd to show. */}
                 <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                  <AgentPane
-                    paneId={leaf.id}
-                    cwd={leaf.node.cwd}
-                    sessionId={leaf.node.agentSessionId}
-                    terminalBackground={terminalBackground}
-                    slideshowFrame={slideshowFrame}
-                  />
+                  <Suspense fallback={PANE_FALLBACK}>
+                    <AgentPane
+                      paneId={leaf.id}
+                      cwd={leaf.node.cwd}
+                      sessionId={leaf.node.agentSessionId}
+                      terminalBackground={terminalBackground}
+                      slideshowFrame={slideshowFrame}
+                    />
+                  </Suspense>
                 </PaneFrame>
               </div>
             );
@@ -319,7 +342,13 @@ export function PaneGrid({
             return (
               <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
                 <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                  <SshBrowserPane paneId={leaf.id} host={host} initialPath={leaf.node.remotePath} />
+                  <Suspense fallback={PANE_FALLBACK}>
+                    <SshBrowserPane
+                      paneId={leaf.id}
+                      host={host}
+                      initialPath={leaf.node.remotePath}
+                    />
+                  </Suspense>
                 </PaneFrame>
               </div>
             );
@@ -336,25 +365,27 @@ export function PaneGrid({
             return (
               <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
                 <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                  {remote ? (
-                    <RemoteFileGate host={remote.host} remotePath={remote.path}>
-                      {(fetched) => (
-                        <ViewerPane
-                          paneType={viewerType}
-                          paneId={leaf.id}
-                          filePath={fetched.localPath}
-                          remote={{ ...remote, mtimeMs: fetched.mtimeMs }}
-                        />
-                      )}
-                    </RemoteFileGate>
-                  ) : (
-                    <ViewerPane
-                      paneType={viewerType}
-                      paneId={leaf.id}
-                      filePath={node.filePath ?? ''}
-                      pathContext={node.pathContext}
-                    />
-                  )}
+                  <Suspense fallback={PANE_FALLBACK}>
+                    {remote ? (
+                      <RemoteFileGate host={remote.host} remotePath={remote.path}>
+                        {(fetched) => (
+                          <ViewerPane
+                            paneType={viewerType}
+                            paneId={leaf.id}
+                            filePath={fetched.localPath}
+                            remote={{ ...remote, mtimeMs: fetched.mtimeMs }}
+                          />
+                        )}
+                      </RemoteFileGate>
+                    ) : (
+                      <ViewerPane
+                        paneType={viewerType}
+                        paneId={leaf.id}
+                        filePath={node.filePath ?? ''}
+                        pathContext={node.pathContext}
+                      />
+                    )}
+                  </Suspense>
                 </PaneFrame>
               </div>
             );
