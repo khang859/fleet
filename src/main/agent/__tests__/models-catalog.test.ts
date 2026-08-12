@@ -60,19 +60,71 @@ const OPENROUTER_RESPONSE = {
   ]
 };
 
-/** Routes by URL, since a download reads models.dev and OpenRouter together. */
+/**
+ * The images endpoint's own register. Overlaps the catalog above by one entry
+ * on purpose: the two lists are separate registers rather than two views of
+ * one, and most of what is here never appears in a completions catalog.
+ */
+const IMAGES_RESPONSE = {
+  data: [
+    {
+      id: 'black-forest-labs/flux.2-pro',
+      name: 'Black Forest Labs: FLUX.2 Pro',
+      description: 'A text-to-image model.',
+      supports_streaming: false,
+      supported_parameters: {
+        aspect_ratio: { type: 'enum', values: ['1:1', '16:9', '4:5'] },
+        n: { type: 'range', min: 1, max: 6 },
+        input_references: { type: 'range', min: 0, max: 10 },
+        seed: { type: 'boolean' },
+        output_format: { type: 'enum', values: ['png', 'jpeg'] }
+      }
+    },
+    {
+      id: 'openai/gpt-image-2',
+      name: 'OpenAI: GPT Image 2',
+      supports_streaming: true,
+      supported_parameters: {
+        aspect_ratio: { type: 'enum', values: ['1:1', '3:2'] },
+        quality: { type: 'enum', values: ['low', 'medium', 'high'] },
+        input_references: { type: 'range', min: 0, max: 16 }
+      }
+    },
+    {
+      id: 'google/gemini-3-pro-image',
+      name: 'Google: Nano Banana Pro',
+      supported_parameters: {
+        resolution: { type: 'enum', values: ['1K', '2K', '4K'] },
+        aspect_ratio: { type: 'enum', values: ['1:1'] }
+      }
+    }
+  ]
+};
+
+/**
+ * Routes by URL, since a download reads models.dev, OpenRouter's model list and
+ * its images register together.
+ */
 function fakeFetch(
   body: unknown,
   {
     ok = true,
-    openrouter = OPENROUTER_RESPONSE as unknown
-  }: { ok?: boolean; openrouter?: unknown } = {}
+    openrouter = OPENROUTER_RESPONSE as unknown,
+    images = IMAGES_RESPONSE as unknown
+  }: { ok?: boolean; openrouter?: unknown; images?: unknown } = {}
 ): typeof fetch {
   return vi.fn(async (url: string) =>
     Promise.resolve({
       ok,
       status: ok ? 200 : 500,
-      json: async () => Promise.resolve(url.includes('openrouter.ai') ? openrouter : body)
+      json: async () =>
+        Promise.resolve(
+          url.includes('/images/models')
+            ? images
+            : url.includes('openrouter.ai')
+              ? openrouter
+              : body
+        )
     })
   ) as unknown as typeof fetch;
 }
@@ -213,15 +265,16 @@ describe('AgentModelCatalog', () => {
     const file = await cacheFile();
     const fetchImpl = fakeFetch(API_RESPONSE);
     await new AgentModelCatalog(file, fetchImpl).list();
-    // One request each to models.dev and OpenRouter.
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    // One request each to models.dev, OpenRouter's models and its images.
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
 
     // A fresh instance reads the file rather than downloading.
     const second = new AgentModelCatalog(file, fetchImpl);
     const result = await second.list();
     expect(result.source).toBe('cache');
     expect(result.models).toHaveLength(3);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(result.imageModels).toHaveLength(3);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it('falls back to the cached list when the refresh fails', async () => {
@@ -244,7 +297,97 @@ describe('AgentModelCatalog', () => {
     ) as unknown as typeof fetch;
     const result = await new AgentModelCatalog(await cacheFile(), failing).list();
 
-    expect(result).toEqual({ models: [], fetchedAt: 0, source: 'none', error: 'offline' });
+    expect(result).toEqual({
+      models: [],
+      imageModels: [],
+      fetchedAt: 0,
+      source: 'none',
+      error: 'offline'
+    });
+  });
+
+  it('reads image models from the images register, not from the catalog', async () => {
+    const { models, imageModels } = await new AgentModelCatalog(
+      await cacheFile(),
+      fakeFetch(API_RESPONSE)
+    ).list();
+
+    // The completions catalog knows about exactly one of these, which is the
+    // whole reason the second list exists.
+    expect(models.filter((m) => m.outputImage).map((m) => m.id)).toEqual([
+      'google/gemini-3-pro-image'
+    ]);
+    expect(imageModels.map((m) => m.id)).toEqual([
+      'black-forest-labs/flux.2-pro',
+      'google/gemini-3-pro-image',
+      'openai/gpt-image-2'
+    ]);
+  });
+
+  it('reads each image model’s parameters as the lists a control is drawn from', async () => {
+    const { imageModels } = await new AgentModelCatalog(
+      await cacheFile(),
+      fakeFetch(API_RESPONSE)
+    ).list();
+
+    const flux = imageModels.find((m) => m.id === 'black-forest-labs/flux.2-pro');
+    expect(flux?.aspectRatios).toEqual(['1:1', '16:9', '4:5']);
+    expect(flux?.maxReferences).toBe(10);
+    expect(flux?.seed).toBe(true);
+    // Absent parameters are empty lists rather than defaults of ours: this
+    // model has no resolution and no quality, so neither control is drawn.
+    expect(flux?.resolutions).toEqual([]);
+    expect(flux?.qualities).toEqual([]);
+    expect(flux?.streams).toBe(false);
+
+    const gpt = imageModels.find((m) => m.id === 'openai/gpt-image-2');
+    expect(gpt?.qualities).toEqual(['low', 'medium', 'high']);
+    expect(gpt?.seed).toBe(false);
+    expect(gpt?.streams).toBe(true);
+
+    // `supports_streaming` is absent here, which means no rather than unknown.
+    const gemini = imageModels.find((m) => m.id === 'google/gemini-3-pro-image');
+    expect(gemini?.resolutions).toEqual(['1K', '2K', '4K']);
+    expect(gemini?.maxReferences).toBe(0);
+    expect(gemini?.streams).toBe(false);
+  });
+
+  it('fails the refresh when the images register cannot be read', async () => {
+    // Unlike the defaults list, this one is not best effort: an empty image
+    // list is indistinguishable from "image generation is unavailable".
+    const { source, error } = await new AgentModelCatalog(
+      await cacheFile(),
+      fakeFetch(API_RESPONSE, { images: { data: [{ no: 'id' }] } })
+    ).list();
+
+    expect(source).toBe('none');
+    expect(error).toMatch(/no usable image models/i);
+  });
+
+  it('answers what a model takes without touching the network', async () => {
+    const catalog = new AgentModelCatalog(await cacheFile(), fakeFetch(API_RESPONSE));
+
+    // Nothing downloaded yet, so the turn gets no answer rather than a wait.
+    expect(catalog.cachedImageModel('black-forest-labs/flux.2-pro')).toBeNull();
+
+    await catalog.list();
+    expect(catalog.cachedImageModel('black-forest-labs/flux.2-pro')?.maxReferences).toBe(10);
+    expect(catalog.cachedImageModel('openrouter/auto')).toBeNull();
+  });
+
+  it('re-downloads a cache written before image models were fetched', async () => {
+    const file = await cacheFile();
+    await new AgentModelCatalog(file, fakeFetch(API_RESPONSE)).list();
+
+    // What an older Fleet wrote. Its image models were the wrong ones, so the
+    // whole file is discarded rather than half-trusted.
+    const stale = JSON.parse(await readFile(file, 'utf8'));
+    delete stale.imageModels;
+    await writeFile(file, JSON.stringify(stale), 'utf8');
+
+    const result = await new AgentModelCatalog(file, fakeFetch(API_RESPONSE)).list();
+    expect(result.source).toBe('network');
+    expect(result.imageModels).toHaveLength(3);
   });
 
   it('ignores a corrupt cache file', async () => {

@@ -1913,6 +1913,115 @@ describe('the tool loop', () => {
         image: `data:image/png;base64,${Buffer.from('half drawn').toString('base64')}`
       });
     });
+
+    /*
+     * The settings panel offers only what the chosen model takes, so these are
+     * about everything that reaches a turn some other way: a config edited by
+     * hand, one that outlived a catalog refresh, and a model that ignored the
+     * enum it was given. All three cost money to discover at the provider.
+     */
+    describe('what the chosen model actually takes', () => {
+      /** A model that renders two shapes and reads nothing else. */
+      const takes = {
+        id: 'google/gemini-3-pro-image',
+        name: 'Nano Banana Pro',
+        description: null,
+        resolutions: ['1K', '2K'],
+        qualities: [],
+        aspectRatios: ['1:1', '16:9'],
+        seed: false,
+        maxReferences: 4,
+        streams: false
+      };
+
+      /** Runs one turn whose first round calls `image` with `args`. */
+      async function generate(
+        args: Record<string, unknown>,
+        settings: typeof SETTINGS
+      ): Promise<{ image: ReturnType<typeof vi.fn>; results: string[] }> {
+        const { emit, events, ended } = collector();
+        const image = vi.fn(async () =>
+          Promise.resolve({ data: Buffer.from('x'), mimeType: 'image/png', costUsd: null })
+        );
+        let attempt = 0;
+        const stream = vi.fn(async () => {
+          attempt += 1;
+          return Promise.resolve(round(attempt === 1 ? [call('image', args)] : []));
+        });
+
+        new AgentService({
+          schedules: SCHEDULES,
+          gate: PASS_GATE,
+          getSettings: () => settings,
+          subagents: NO_SUBAGENTS,
+          getApiKey: () => 'sk-or-test',
+          imageCapabilities: () => takes,
+          emit,
+          stream,
+          image: image as never
+        }).send({ ...REQUEST, cwd: dir });
+        await ended;
+
+        const results = events
+          .filter((e) => e.channel === IPC_CHANNELS.AGENT_TOOL_END)
+          .map((e) => JSON.stringify(e.payload));
+        return { image, results };
+      }
+
+      it('offers the model its own shapes rather than a list of ours', async () => {
+        const { emit, ended } = collector();
+        const rounds: StreamRequest[] = [];
+        new AgentService({
+          schedules: SCHEDULES,
+          gate: PASS_GATE,
+          getSettings: () => withImage,
+          subagents: NO_SUBAGENTS,
+          getApiKey: () => 'sk-or-test',
+          imageCapabilities: () => takes,
+          emit,
+          stream: async (req: StreamRequest) => {
+            rounds.push(req);
+            return Promise.resolve(round());
+          }
+        }).send({ ...REQUEST, cwd: dir });
+        await ended;
+
+        const spec = (rounds[0].tools ?? []).find((s) => s.function.name === 'image');
+        const params = spec?.function.parameters as {
+          properties: { aspectRatio: { enum: string[] } };
+        };
+        expect(params.properties.aspectRatio.enum).toEqual(['1:1', '16:9']);
+      });
+
+      it('refuses a shape the model does not render before paying for it', async () => {
+        const { image, results } = await generate(
+          { prompt: 'a cap', aspectRatio: '21:9' },
+          withImage
+        );
+
+        expect(image).not.toHaveBeenCalled();
+        // The refusal is addressed to the model: it gets the round back.
+        expect(results.join(' ')).toContain('does not render 21:9');
+      });
+
+      it('drops a setting the model has no parameter for', async () => {
+        const { image } = await generate(
+          { prompt: 'a cap' },
+          {
+            ...withImage,
+            // Left over from a model that had both; this one has neither.
+            image: { ...withImage.image, quality: 'high', seed: 7, resolution: '2K' }
+          }
+        );
+
+        expect(image).toHaveBeenCalledWith(
+          expect.objectContaining({
+            config: expect.objectContaining({ quality: null, seed: null, resolution: '2K' })
+          }),
+          expect.anything()
+        );
+      });
+    });
   });
 
   // The loop this cannot have: a model that keeps calling tools forever costs

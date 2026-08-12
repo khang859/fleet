@@ -16,8 +16,11 @@ import type { McpServersConfig } from './agent-mcp';
  * Models come from the models.dev catalog (openrouter provider), which carries
  * the per-model limits and capabilities the settings UI needs to offer only the
  * controls a model actually supports, merged with the defaults OpenRouter
- * publishes for its own models. The OpenRouter API key itself lives in
- * `openrouter-secrets.ts` - one key per install, not one per pane.
+ * publishes for its own models. Image models come from somewhere else again -
+ * OpenRouter's images registry - because they are a different endpoint with a
+ * different set of parameters, and most of them are absent from a catalog of
+ * things you can hold a conversation with. The OpenRouter API key itself lives
+ * in `openrouter-secrets.ts` - one key per install, not one per pane.
  */
 
 /** How a model exposes its reasoning budget, straight from models.dev. */
@@ -54,6 +57,63 @@ export type AgentCatalogModel = {
   defaultReasoningEffort: string | null;
 };
 
+/**
+ * One model the images endpoint will run, and the parameters it takes.
+ *
+ * A separate type from `AgentCatalogModel` because it comes from a separate
+ * registry: `/api/v1/images/models` rather than the chat-completions catalog.
+ * Filtering the completions catalog for models that emit images is the wrong
+ * question and gives the wrong answer twice over - it misses every model that
+ * only ever produces a picture (Flux, Seedream, Recraft, Qwen Image), and it
+ * offers `openrouter/auto`, which the images endpoint refuses.
+ *
+ * Every parameter is a list rather than a flag because support is per model
+ * rather than per endpoint: most take no `quality` at all, and the ones that do
+ * disagree about what the levels are. An empty list means the model has no such
+ * parameter, and the control for it is not drawn.
+ */
+export type AgentImageModel = {
+  /** OpenRouter model id, e.g. "black-forest-labs/flux.2-pro". */
+  id: string;
+  name: string;
+  description: string | null;
+  /** Size tiers, e.g. `["1K", "2K", "4K"]`. */
+  resolutions: string[];
+  /** Render effort levels, e.g. `["low", "medium", "high", "auto"]`. */
+  qualities: string[];
+  /** Shapes the model accepts, e.g. `["1:1", "16:9", "auto"]`. */
+  aspectRatios: string[];
+  /** Whether a fixed seed makes the same prompt reproducible. */
+  seed: boolean;
+  /** How many reference images one edit may cite; 0 ⇒ generation only. */
+  maxReferences: number;
+  /** Whether partial renders arrive on the way to the finished image. */
+  streams: boolean;
+};
+
+/**
+ * Image settings with anything the chosen model does not read taken out.
+ *
+ * Called in two places for two reasons, and they are the same reason twice. The
+ * settings panel calls it as the model changes, so a quality level that made
+ * sense for the last model does not linger invisibly on one with no quality
+ * parameter. The turn calls it before spending anything, because a config can
+ * also arrive by hand or outlive a catalog refresh that changed what its model
+ * takes - and a picture made under settings the panel showed and the provider
+ * never saw is worse than one made under none.
+ */
+export function supportedImageConfig(
+  config: AgentImageConfig,
+  takes: AgentImageModel
+): AgentImageConfig {
+  return {
+    ...config,
+    resolution: takes.resolutions.includes(config.resolution ?? '') ? config.resolution : null,
+    quality: takes.qualities.includes(config.quality ?? '') ? config.quality : null,
+    seed: takes.seed ? config.seed : null
+  };
+}
+
 export type AgentRole = 'coding' | 'image';
 
 /**
@@ -72,13 +132,6 @@ export type AgentModelConfig = {
   reasoningTokens: number | null;
 };
 
-/** Sizes the images endpoint takes, as tiers rather than pixels. */
-export const IMAGE_RESOLUTIONS = ['512', '1K', '2K', '4K'] as const;
-export type ImageResolution = (typeof IMAGE_RESOLUTIONS)[number];
-
-export const IMAGE_QUALITIES = ['low', 'medium', 'high'] as const;
-export type ImageQuality = (typeof IMAGE_QUALITIES)[number];
-
 /**
  * Settings for image generation. Not an `AgentModelConfig`: the images endpoint
  * shares none of a completion's parameters - no max tokens, no temperature, no
@@ -92,8 +145,14 @@ export type ImageQuality = (typeof IMAGE_QUALITIES)[number];
 export type AgentImageConfig = {
   /** `null` ⇒ image generation is off, and the tool is never offered. */
   model: string | null;
-  resolution: ImageResolution | null;
-  quality: ImageQuality | null;
+  /**
+   * One of the selected model's own `resolutions` / `qualities`, rather than a
+   * value from a list of ours: the two models either side of the one chosen
+   * take different tiers, or none. Kept honest by clearing whatever the new
+   * model does not accept when the model changes.
+   */
+  resolution: string | null;
+  quality: string | null;
   /**
    * Fixed seed for reproducible generations. `null` ⇒ a new one every call,
    * which is what someone asking for another go at the same prompt wants.
@@ -473,6 +532,12 @@ export function defaultThinkingBudget(maxTokens: number): number {
 
 export type AgentCatalog = {
   models: AgentCatalogModel[];
+  /**
+   * What the images endpoint will run. Downloaded and cached beside `models`
+   * rather than derived from it - see `AgentImageModel` for why the two lists
+   * cannot be one.
+   */
+  imageModels: AgentImageModel[];
   /** Epoch ms the catalog was downloaded; 0 when nothing has ever been fetched. */
   fetchedAt: number;
   /** Where these models came from, so the UI can say "offline copy". */

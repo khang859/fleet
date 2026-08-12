@@ -77,7 +77,10 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
   const agent = settings?.ai.agent ?? DEFAULT_AGENT_SETTINGS;
   const models = useMemo(() => catalog?.models ?? [], [catalog]);
   const codingModels = useMemo(() => models.filter((m) => m.supportsTools), [models]);
-  const imageModels = useMemo(() => models.filter((m) => m.outputImage), [models]);
+  // Its own list rather than a filter over the one above: the images endpoint
+  // keeps a separate register, and most of what is on it has no place in a
+  // catalog of models you can hold a conversation with.
+  const imageModels = useMemo(() => catalog?.imageModels ?? [], [catalog]);
   // The curated transcription list, not the whole catalog: it is short enough
   // to be a choice, and each entry states whether choosing it keeps the hints.
   const voiceModels = useMemo(
@@ -275,6 +278,7 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
 
         <CatalogStatus
           count={models.length}
+          imageCount={imageModels.length}
           fetchedAt={catalog?.fetchedAt ?? 0}
           error={catalog?.error ?? null}
           loading={loadingModels}
@@ -285,15 +289,17 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
   );
 }
 
-/** Where the model list came from, and how to get a newer one. */
+/** Where the model lists came from, and how to get newer ones. */
 function CatalogStatus({
   count,
+  imageCount,
   fetchedAt,
   error,
   loading,
   onRefresh
 }: {
   count: number;
+  imageCount: number;
   fetchedAt: number;
   error: string | null;
   loading: boolean;
@@ -307,7 +313,7 @@ function CatalogStatus({
             ? 'Loading models…'
             : count === 0
               ? 'No models loaded yet.'
-              : `${count} OpenRouter models from models.dev${fetchedAt > 0 ? `, updated ${relativeTime(fetchedAt)}` : ''}.`}
+              : `${count} OpenRouter models and ${imageCount} image models${fetchedAt > 0 ? `, updated ${relativeTime(fetchedAt)}` : ''}.`}
         </span>
         <button
           type="button"
@@ -322,7 +328,9 @@ function CatalogStatus({
       {error && (
         <p className="flex items-start gap-1.5 text-xs text-amber-400">
           <TriangleAlert size={12} className="mt-0.5 shrink-0" />
-          <span>Could not reach models.dev ({error}). Showing the last downloaded list.</span>
+          <span>
+            Could not refresh the model lists ({error}). Showing the last downloaded ones.
+          </span>
         </p>
       )}
     </div>

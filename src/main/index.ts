@@ -1013,6 +1013,13 @@ void app.whenReady().then(async () => {
         schedules
       } satisfies AgentScheduleChanged)
   });
+  const agentCatalog = new AgentModelCatalog(
+    join(app.getPath('userData'), 'agent-models-dev.json')
+  );
+  // Warmed here rather than waited for at the first turn: what an image model
+  // takes is asked for synchronously while a turn is being assembled, and the
+  // answer is only useful if it is already on hand.
+  void agentCatalog.list();
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
@@ -1020,6 +1027,7 @@ void app.whenReady().then(async () => {
     mcp: agentMcp,
     subagents: agentSubagents,
     schedules: agentSchedules,
+    imageCapabilities: (modelId) => agentCatalog.cachedImageModel(modelId),
     emit: agentEmit
   });
   // Ticks once as it starts, which is the whole of the catch-up for schedules
@@ -1031,7 +1039,7 @@ void app.whenReady().then(async () => {
   // picture that has not been sent yet is a folder with no session behind it.
   agentSessions.sweep();
   registerAgentIpc({
-    catalog: new AgentModelCatalog(join(app.getPath('userData'), 'agent-models-dev.json')),
+    catalog: agentCatalog,
     service: agentService,
     gate: agentGate,
     sessions: agentSessions,

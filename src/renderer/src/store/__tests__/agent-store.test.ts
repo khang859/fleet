@@ -232,7 +232,13 @@ beforeEach(async () => {
   notificationStore = await import('../notification-store');
   activityApi.report.mockClear();
   agentStore.useAgentStore.setState({
-    catalog: { models: [catalogModel], fetchedAt: 1, source: 'cache', error: null },
+    catalog: {
+      models: [catalogModel],
+      imageModels: [],
+      fetchedAt: 1,
+      source: 'cache',
+      error: null
+    },
     threads: {}
   });
   setThreshold(0.8);
@@ -376,6 +382,7 @@ describe('automatic compaction', () => {
     agentStore.useAgentStore.setState({
       catalog: {
         models: [{ ...catalogModel, contextLimit: null }],
+        imageModels: [],
         fetchedAt: 1,
         source: 'cache',
         error: null

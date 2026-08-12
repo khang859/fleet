@@ -6,16 +6,33 @@ import { fuzzyMatch } from '../../../lib/commands';
 import { popperAnim } from '../../../lib/motion';
 import { formatTokens, formatCost } from './format';
 
+/** The least a picker row needs: something to show, and something to choose. */
+type PickerModel = { id: string; name: string };
+
+/**
+ * Rows mounted before the list has been scrolled, and how many more arrive each
+ * time it nears the bottom.
+ *
+ * A page rather than the whole list because mounting a row is the entire cost of
+ * opening this picker: measured on the OpenRouter catalog it runs about 0.3ms a
+ * row, so the 200 the completions list used to mount cost 80ms - five frames,
+ * every open and every close, for rows nobody had scrolled to yet.
+ */
+const PAGE = 24;
+
+/** How near the bottom counts as near enough to want the next page. */
+const NEXT_PAGE_WITHIN_PX = 160;
+
 /**
  * Orders matches so a literal query wins over a merely fuzzy one. Subsequence
  * matching alone puts "GPT-3.5-turbo" above "GPT-5" for the query "gpt-5",
  * which is wrong in a list this long.
  */
-function rank(models: AgentCatalogModel[], query: string): AgentCatalogModel[] {
+function rank<T extends PickerModel>(models: T[], query: string): T[] {
   const needle = query.trim().toLowerCase();
-  if (needle === '') return models.slice(0, 200);
+  if (needle === '') return models;
 
-  const scored: Array<{ model: AgentCatalogModel; score: number }> = [];
+  const scored: Array<{ model: T; score: number }> = [];
   for (const model of models) {
     const haystack = `${model.name} ${model.id}`.toLowerCase();
     if (haystack.includes(needle)) {
@@ -27,27 +44,34 @@ function rank(models: AgentCatalogModel[], query: string): AgentCatalogModel[] {
   }
   return scored
     .sort((a, b) => a.score - b.score || a.model.id.localeCompare(b.model.id))
-    .slice(0, 200)
     .map((s) => s.model);
 }
 
 /**
- * Full-width model picker over the models.dev catalog. This is a settings
- * control rather than a compact composer picker, so each row spells out what
- * the settings below it will let you change: context, output ceiling, price,
- * capabilities.
+ * Full-width searchable model picker. This is a settings control rather than a
+ * compact composer picker, so each row spells out what the settings below it
+ * will let you change - but *what* is worth spelling out belongs to the list,
+ * which is why the row's second line is the caller's to draw.
+ *
+ * Generic because the two lists behind it are genuinely different records: a
+ * completions model has a context window and a price per token, an image model
+ * has neither and has resolutions instead. Sharing the shell rather than the
+ * row is what lets both stay honest.
  */
-export function ModelSelect({
+export function ModelPicker<T extends PickerModel>({
   models,
   value,
   onChange,
+  renderMeta,
   allowNone = false,
   noneLabel = 'None',
   placeholder = 'Select a model'
 }: {
-  models: AgentCatalogModel[];
+  models: T[];
   value: string | null;
   onChange: (modelId: string | null) => void;
+  /** The line under the id, drawn per row. */
+  renderMeta?: (model: T) => React.ReactNode;
   allowNone?: boolean;
   noneLabel?: string;
   placeholder?: string;
@@ -56,14 +80,30 @@ export function ModelSelect({
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [shown, setShown] = useState(PAGE);
+
   const selected = models.find((m) => m.id === value) ?? null;
   const filtered = useMemo(() => rank(models, query), [models, query]);
+  const visible = filtered.slice(0, shown);
 
   useEffect(() => {
     if (!open) return;
     setQuery('');
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [open]);
+
+  // A new set of matches is a new list to walk, so it starts at the top with a
+  // page in hand rather than however far the last one had been scrolled.
+  useEffect(() => setShown(PAGE), [query, open]);
+
+  /** Pulls in the next page as the end of the current one comes into view. */
+  const onScroll = (e: React.UIEvent<HTMLDivElement>): void => {
+    const list = e.currentTarget;
+    const remaining = list.scrollHeight - list.scrollTop - list.clientHeight;
+    if (remaining < NEXT_PAGE_WITHIN_PX) {
+      setShown((n) => (n >= filtered.length ? n : n + PAGE));
+    }
+  };
 
   const choose = (modelId: string | null): void => {
     onChange(modelId);
@@ -105,21 +145,21 @@ export function ModelSelect({
               className="w-full bg-transparent text-sm text-fleet-text outline-none placeholder:text-fleet-text-subtle"
             />
           </div>
-          <div className="overflow-y-auto py-1">
+          <div className="overflow-y-auto py-1" onScroll={onScroll}>
             {allowNone && (
               <Row selected={value === null} onSelect={() => choose(null)} title={noneLabel} />
             )}
             {filtered.length === 0 && !allowNone && (
               <p className="px-3 py-4 text-sm text-fleet-text-muted">No models match.</p>
             )}
-            {filtered.map((m) => (
+            {visible.map((m) => (
               <Row
                 key={m.id}
                 selected={m.id === value}
                 onSelect={() => choose(m.id)}
                 title={m.name}
                 subtitle={m.id}
-                meta={<ModelMeta model={m} />}
+                meta={renderMeta?.(m)}
               />
             ))}
           </div>
@@ -127,6 +167,18 @@ export function ModelSelect({
       </Popover.Portal>
     </Popover.Root>
   );
+}
+
+/** The picker over the models.dev completions catalog. */
+export function ModelSelect(props: {
+  models: AgentCatalogModel[];
+  value: string | null;
+  onChange: (modelId: string | null) => void;
+  allowNone?: boolean;
+  noneLabel?: string;
+  placeholder?: string;
+}): React.JSX.Element {
+  return <ModelPicker {...props} renderMeta={(model) => <ModelMeta model={model} />} />;
 }
 
 function Row({

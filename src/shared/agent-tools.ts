@@ -236,27 +236,30 @@ function isControlChar(c: string): boolean {
 }
 
 /**
- * Aspect ratios the images endpoint normalizes. A closed list rather than a
- * free string: a model that invents `1920:1080` gets an error from the provider
- * halfway through a paid call, where a rejected argument costs nothing.
+ * Aspect ratios to offer when nothing is known about the image model - the
+ * catalog has not been downloaded yet, or the id is not in it. The shapes every
+ * image model in the register accepts, so an answer from this list is never the
+ * reason a call fails.
+ *
+ * A closed list either way rather than a free string: a model that invents
+ * `1920:1080` gets an error from the provider halfway through a paid call,
+ * where a rejected argument costs nothing.
  */
-export const IMAGE_ASPECT_RATIOS = [
-  '1:1',
-  '16:9',
-  '9:16',
-  '4:3',
-  '3:4',
-  '3:2',
-  '2:3',
-  '21:9'
-] as const;
+export const FALLBACK_IMAGE_ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4'] as const;
 
 /**
- * Reference images one edit may cite. Each one is uploaded with the request, so
- * the ceiling is about what the call costs and what providers accept rather
- * than about anything Fleet cannot do.
+ * Reference images one edit may cite when the model's own ceiling is unknown.
+ * Each one is uploaded with the request, so the ceiling is about what the call
+ * costs and what providers accept rather than about anything Fleet cannot do.
  */
 export const IMAGE_MAX_REFERENCES = 4;
+
+/**
+ * References no image call may exceed, whatever the model claims to take. Each
+ * one is inlined into the request body, so this is a bound on what Fleet will
+ * put on the wire rather than a statement about any provider.
+ */
+export const IMAGE_REFERENCE_CEILING = 16;
 
 export const ImageArgs = z.object({
   prompt: z.string().min(1),
@@ -264,8 +267,13 @@ export const ImageArgs = z.object({
    * Images to work from, turning generation into editing. Paths, not bytes:
    * the pixels never travel through the model's arguments.
    */
-  references: z.array(z.string().min(1)).max(IMAGE_MAX_REFERENCES).optional(),
-  aspectRatio: z.enum(IMAGE_ASPECT_RATIOS).optional()
+  references: z.array(z.string().min(1)).max(IMAGE_REFERENCE_CEILING).optional(),
+  /**
+   * Left as a plain string rather than an enum: which shapes are legal is a
+   * question about the image model the user picked, and the one place that
+   * knows the answer checks it before spending anything.
+   */
+  aspectRatio: z.string().min(1).optional()
 });
 
 export const WebFetchArgs = z.object({
@@ -562,8 +570,9 @@ const SCHEDULE_CANCEL_DESCRIPTION = [
  * What the model is told it can call. Kept next to the zod schemas above so the
  * shape advertised and the shape enforced cannot drift apart.
  *
- * Everything here is offered on every turn except `image` - see `toolSpecsFor`,
- * which is what a turn should actually send.
+ * Everything here is offered on every turn. `image` is not here at all: it is
+ * built per turn from the chosen model - see `buildImageSpec` - and joins this
+ * list in `toolSpecsFor`, which is what a turn should actually send.
  */
 export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
   {
@@ -705,33 +714,6 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
           }
         },
         required: ['command'],
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'image',
-      description: IMAGE_DESCRIPTION,
-      parameters: {
-        type: 'object',
-        properties: {
-          prompt: { type: 'string', description: 'A description of the finished image.' },
-          references: {
-            type: 'array',
-            items: { type: 'string' },
-            maxItems: IMAGE_MAX_REFERENCES,
-            description:
-              'Paths of images to work from. Present means editing rather than generating.'
-          },
-          aspectRatio: {
-            type: 'string',
-            enum: [...IMAGE_ASPECT_RATIOS],
-            description: "Shape of the image. Defaults to the model's own."
-          }
-        },
-        required: ['prompt'],
         additionalProperties: false
       }
     }
@@ -1023,6 +1005,71 @@ export function buildTaskSpec(definitions: SubagentDefinition[]): AgentToolSpec 
   };
 }
 
+/** What the chosen image model takes, as much of it as the tool spec needs. */
+export type ImageCapabilities = {
+  aspectRatios: readonly string[];
+  maxReferences: number;
+};
+
+/**
+ * Making a picture, described in the terms of the model that will make it.
+ *
+ * Built per turn rather than sitting in `AGENT_TOOL_SPECS`, because two of its
+ * three arguments are answered by the image model rather than by Fleet: the
+ * shapes on offer differ model to model, three of them take no shape at all,
+ * and how many references one edit may cite runs from one to sixteen. A fixed
+ * spec means the model picks a legal-looking `21:9`, the provider rejects it,
+ * and the user pays for the round that discovered it.
+ *
+ * `null` ⇒ nothing is known about the model yet, and the fallbacks stand in:
+ * the shapes every model accepts, and a modest reference count.
+ */
+export function buildImageSpec(model: ImageCapabilities | null): AgentToolSpec {
+  const ratios = model === null ? [...FALLBACK_IMAGE_ASPECT_RATIOS] : model.aspectRatios;
+  const references = Math.min(
+    model === null ? IMAGE_MAX_REFERENCES : model.maxReferences,
+    IMAGE_REFERENCE_CEILING
+  );
+  return {
+    type: 'function',
+    function: {
+      name: 'image',
+      description: IMAGE_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          prompt: { type: 'string', description: 'A description of the finished image.' },
+          // Both are dropped rather than advertised as empty when the model has
+          // no use for them: a parameter with nothing valid to put in it is an
+          // invitation to guess.
+          ...(references === 0
+            ? {}
+            : {
+                references: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  maxItems: references,
+                  description:
+                    'Paths of images to work from. Present means editing rather than generating.'
+                }
+              }),
+          ...(ratios.length === 0
+            ? {}
+            : {
+                aspectRatio: {
+                  type: 'string',
+                  enum: [...ratios],
+                  description: "Shape of the image. Defaults to the model's own."
+                }
+              })
+        },
+        required: ['prompt'],
+        additionalProperties: false
+      }
+    }
+  };
+}
+
 /**
  * The tools one turn offers.
  *
@@ -1047,7 +1094,8 @@ export function buildTaskSpec(definitions: SubagentDefinition[]): AgentToolSpec 
  * list no matter how many servers the user has switched on.
  */
 export function toolSpecsFor(options: {
-  image: boolean;
+  /** `null` ⇒ no image model is set, and the tool is not advertised. */
+  image: AgentToolSpec | null;
   /** Off when the user has turned reading web pages off. */
   webFetch: boolean;
   mcp?: ExternalToolSpec[];
@@ -1058,13 +1106,13 @@ export function toolSpecsFor(options: {
 }): ToolSpec[] {
   const allowed = (name: AgentToolName): boolean =>
     options.only === undefined || options.only.includes(name);
-  const switchedOff = (name: string): boolean =>
-    (!options.image && name === 'image') || (!options.webFetch && name === 'web_fetch');
   const own = AGENT_TOOL_SPECS.filter(
-    (spec) => !switchedOff(spec.function.name) && allowed(spec.function.name)
+    (spec) =>
+      !(!options.webFetch && spec.function.name === 'web_fetch') && allowed(spec.function.name)
   );
-  // All three are built per turn rather than living in `AGENT_TOOL_SPECS`, so
-  // all three are filtered here rather than by the loop above.
+  // All four are built per turn rather than living in `AGENT_TOOL_SPECS`, so
+  // all four are filtered here rather than by the loop above.
+  const image = allowed('image') ? (options.image ?? null) : null;
   const task = options.task ?? null;
   const skill = allowed('skill') ? (options.skill ?? null) : null;
   // Ahead of `skill`, because what is already known about this project is
@@ -1073,6 +1121,7 @@ export function toolSpecsFor(options: {
   const memory = allowed('memory') ? (options.memory ?? null) : null;
   return [
     ...own,
+    ...(image === null ? [] : [image]),
     ...(memory === null ? [] : [memory]),
     ...(skill === null ? [] : [skill]),
     ...(task === null ? [] : [task]),
