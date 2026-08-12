@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type {
   AgentCatalog,
   AgentCatalogModel,
+  AgentImageModel,
   AgentReasoningOption
 } from '../../shared/agent-types';
 
@@ -13,6 +14,12 @@ const CATALOG_URL = 'https://models.dev/api.json';
  * numbers a parameter falls back to come from OpenRouter's own model list.
  */
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/models';
+/**
+ * The images endpoint keeps its own register of what it will run, and it is not
+ * a subset of the one above: most image models never appear in a completions
+ * catalog, and at least one entry that does (`openrouter/auto`) is refused here.
+ */
+const OPENROUTER_IMAGES_URL = 'https://openrouter.ai/api/v1/images/models';
 const REFRESH_AFTER_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 20_000;
 
@@ -77,6 +84,27 @@ const openRouterDefaultsSchema = z.object({
   )
 });
 
+/**
+ * A parameter the images endpoint publishes per model. Only the enums say
+ * anything a control can be drawn from; a range matters for `input_references`
+ * alone, and a bare presence is the whole of what `seed` has to say.
+ */
+const imageParameterSchema = z.union([
+  z.object({ type: z.literal('enum'), values: z.array(z.string()) }),
+  z.object({ type: z.literal('range'), min: z.number(), max: z.number() }),
+  z.object({ type: z.literal('boolean') })
+]);
+
+const imageModelSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  supports_streaming: z.boolean().optional(),
+  supported_parameters: z.record(z.string(), imageParameterSchema).optional()
+});
+
+const imagesResponseSchema = z.object({ data: z.array(z.unknown()) });
+
 type ModelDefaults = {
   temperature: number | null;
   reasoningEnabled: boolean | null;
@@ -115,8 +143,26 @@ const cacheSchema = z.object({
       defaultReasoningEnabled: z.boolean().nullable(),
       defaultReasoningEffort: z.string().nullable()
     })
+  ),
+  // Absent in a cache written before image models were fetched separately.
+  // The whole file fails to parse and is re-downloaded, which is what should
+  // happen: the old file's image models were the wrong ones.
+  imageModels: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().nullable(),
+      resolutions: z.array(z.string()),
+      qualities: z.array(z.string()),
+      aspectRatios: z.array(z.string()),
+      seed: z.boolean(),
+      maxReferences: z.number(),
+      streams: z.boolean()
+    })
   )
 });
+
+type Cached = { fetchedAt: number; models: AgentCatalogModel[]; imageModels: AgentImageModel[] };
 
 /** Default floor for a thinking budget the feed leaves unbounded. */
 const MIN_THINKING_BUDGET = 1024;
@@ -185,13 +231,43 @@ function toCatalogModel(
   };
 }
 
+/** The values of an enum parameter, or `[]` when the model has no such knob. */
+function enumValues(
+  params: Record<string, z.infer<typeof imageParameterSchema>> | undefined,
+  name: string
+): string[] {
+  const param = params?.[name];
+  return param?.type === 'enum' ? param.values : [];
+}
+
+function toImageModel(raw: z.infer<typeof imageModelSchema>): AgentImageModel {
+  const params = raw.supported_parameters;
+  const references = params?.input_references;
+  return {
+    id: raw.id,
+    name: raw.name ?? raw.id,
+    description: raw.description ?? null,
+    resolutions: enumValues(params, 'resolution'),
+    qualities: enumValues(params, 'quality'),
+    aspectRatios: enumValues(params, 'aspect_ratio'),
+    seed: params?.seed !== undefined,
+    maxReferences: references?.type === 'range' ? references.max : 0,
+    streams: raw.supports_streaming ?? false
+  };
+}
+
 /**
  * The OpenRouter slice of the models.dev catalog, annotated with OpenRouter's
  * published defaults and cached on disk so the agent settings tab opens
  * instantly and still works offline. Refreshed once a day, or on demand.
+ *
+ * Carries the images register in the same file and on the same schedule. It is
+ * a second endpoint rather than a second view of the first, but from the user's
+ * side it is one list of models with one Refresh button, and splitting the
+ * cache would only mean two of them going stale independently.
  */
 export class AgentModelCatalog {
-  private memo: { fetchedAt: number; models: AgentCatalogModel[] } | null = null;
+  private memo: Cached | null = null;
 
   constructor(
     private readonly cacheFile: string,
@@ -204,36 +280,38 @@ export class AgentModelCatalog {
     if (cached) this.memo = cached;
 
     const fresh = cached !== null && Date.now() - cached.fetchedAt < REFRESH_AFTER_MS;
-    if (fresh && !force) {
-      return { models: cached.models, fetchedAt: cached.fetchedAt, source: 'cache', error: null };
-    }
+    if (fresh && !force) return { ...cached, source: 'cache', error: null };
 
     try {
-      const models = await this.download();
-      const fetchedAt = Date.now();
-      this.memo = { fetchedAt, models };
+      const [models, imageModels] = await this.download();
+      this.memo = { fetchedAt: Date.now(), models, imageModels };
       await this.writeCache(this.memo);
-      return { models, fetchedAt, source: 'network', error: null };
+      return { ...this.memo, source: 'network', error: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // A failed refresh must not take the settings tab down with it - serve
       // whatever was cached and let the UI mention the staleness.
-      if (cached) {
-        return {
-          models: cached.models,
-          fetchedAt: cached.fetchedAt,
-          source: 'cache',
-          error: message
-        };
-      }
-      return { models: [], fetchedAt: 0, source: 'none', error: message };
+      if (cached) return { ...cached, source: 'cache', error: message };
+      return { models: [], imageModels: [], fetchedAt: 0, source: 'none', error: message };
     }
   }
 
-  private async download(): Promise<AgentCatalogModel[]> {
-    const [catalog, defaults] = await Promise.all([
+  /**
+   * What the images endpoint says about a model, from whatever has already been
+   * downloaded. Deliberately not a `Promise`: this is asked while a turn is
+   * being assembled, and the answer is worth having only if it is free. Nothing
+   * cached yet ⇒ `null`, and the caller falls back to asking for nothing in
+   * particular - which is what every call did before this list existed.
+   */
+  cachedImageModel(id: string): AgentImageModel | null {
+    return this.memo?.imageModels.find((model) => model.id === id) ?? null;
+  }
+
+  private async download(): Promise<[AgentCatalogModel[], AgentImageModel[]]> {
+    const [catalog, defaults, imageModels] = await Promise.all([
       this.downloadCatalog(),
-      this.downloadDefaults()
+      this.downloadDefaults(),
+      this.downloadImageModels()
     ]);
     const models: AgentCatalogModel[] = [];
     for (const entry of Object.values(catalog)) {
@@ -243,6 +321,30 @@ export class AgentModelCatalog {
       }
     }
     if (models.length === 0) throw new Error('models.dev returned no usable OpenRouter models');
+    return [models.sort((a, b) => a.id.localeCompare(b.id)), imageModels];
+  }
+
+  /**
+   * Every model the images endpoint will run. Unlike the defaults above this is
+   * not best effort: an empty list here is indistinguishable from "image
+   * generation is unavailable", so a failure fails the refresh and the last good
+   * cache is served with the reason attached.
+   */
+  private async downloadImageModels(): Promise<AgentImageModel[]> {
+    const res = await this.fetchImpl(OPENROUTER_IMAGES_URL, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+    });
+    if (!res.ok) throw new Error(`OpenRouter responded ${res.status} for image models`);
+    const parsed = imagesResponseSchema.safeParse(await res.json());
+    if (!parsed.success) throw new Error('Unexpected response shape from the images endpoint');
+    const models: AgentImageModel[] = [];
+    for (const entry of parsed.data.data) {
+      // One at a time, like the catalog above: an odd entry costs us that model
+      // rather than the whole list.
+      const model = imageModelSchema.safeParse(entry);
+      if (model.success) models.push(toImageModel(model.data));
+    }
+    if (models.length === 0) throw new Error('OpenRouter returned no usable image models');
     return models.sort((a, b) => a.id.localeCompare(b.id));
   }
 
@@ -283,7 +385,7 @@ export class AgentModelCatalog {
     return defaults;
   }
 
-  private async readCache(): Promise<{ fetchedAt: number; models: AgentCatalogModel[] } | null> {
+  private async readCache(): Promise<Cached | null> {
     try {
       const parsed = cacheSchema.safeParse(JSON.parse(await readFile(this.cacheFile, 'utf8')));
       return parsed.success ? parsed.data : null;
@@ -292,10 +394,7 @@ export class AgentModelCatalog {
     }
   }
 
-  private async writeCache(data: {
-    fetchedAt: number;
-    models: AgentCatalogModel[];
-  }): Promise<void> {
+  private async writeCache(data: Cached): Promise<void> {
     try {
       await mkdir(dirname(this.cacheFile), { recursive: true });
       await writeFile(this.cacheFile, JSON.stringify(data), 'utf8');

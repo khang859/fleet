@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   AGENT_TOOL_NAMES,
   AGENT_TOOL_SPECS,
+  FALLBACK_IMAGE_ASPECT_RATIOS,
+  IMAGE_REFERENCE_CEILING,
   SUBAGENT_TOOL_NAMES,
+  buildImageSpec,
   toolSpecsFor,
   type AgentToolName,
   type AgentToolSpec
@@ -50,10 +53,66 @@ describe('the tool lists', () => {
   });
 });
 
+describe('buildImageSpec', () => {
+  /** The properties the model is shown, which is what it may fill in. */
+  const props = (spec: AgentToolSpec): Record<string, { enum?: string[]; maxItems?: number }> =>
+    (spec.function.parameters as { properties: Record<string, never> }).properties;
+
+  it('offers the shapes the chosen model renders and no others', () => {
+    const spec = buildImageSpec({ aspectRatios: ['1:1', '4:5'], maxReferences: 3 });
+
+    expect(props(spec).aspectRatio.enum).toEqual(['1:1', '4:5']);
+    expect(props(spec).references.maxItems).toBe(3);
+  });
+
+  it('drops the arguments a model has no use for', () => {
+    const spec = buildImageSpec({ aspectRatios: [], maxReferences: 0 });
+
+    // A parameter with nothing valid to put in it is an invitation to guess.
+    expect(props(spec)).not.toHaveProperty('aspectRatio');
+    expect(props(spec)).not.toHaveProperty('references');
+    expect(props(spec)).toHaveProperty('prompt');
+  });
+
+  it('falls back to the universal shapes before any catalog is downloaded', () => {
+    const spec = buildImageSpec(null);
+
+    expect(props(spec).aspectRatio.enum).toEqual([...FALLBACK_IMAGE_ASPECT_RATIOS]);
+    expect(props(spec).references.maxItems).toBe(4);
+  });
+
+  it('never advertises more references than Fleet will put on the wire', () => {
+    const spec = buildImageSpec({ aspectRatios: ['1:1'], maxReferences: 64 });
+
+    expect(props(spec).references.maxItems).toBe(IMAGE_REFERENCE_CEILING);
+  });
+});
+
 describe('toolSpecsFor', () => {
+  it('advertises the image tool only when a model was built for it', () => {
+    const withImage = toolSpecsFor({
+      image: buildImageSpec(null),
+      webFetch: false
+    }).map((s) => s.function.name);
+    const without = toolSpecsFor({ image: null, webFetch: false }).map((s) => s.function.name);
+
+    expect(withImage).toContain('image');
+    expect(without).not.toContain('image');
+  });
+
+  it('keeps the image tool out of a run narrowed past it', () => {
+    const offered = toolSpecsFor({
+      image: buildImageSpec(null),
+      webFetch: false,
+      only: ['read', 'grep']
+    }).map((s) => s.function.name);
+
+    expect(offered).toEqual(['read', 'grep']);
+  });
+
   it('puts memory ahead of skill, which is ahead of task', () => {
     const offered = toolSpecsFor({
-      image: false,
+      image: null,
       webFetch: false,
       memory: named('memory'),
       skill: named('skill'),
@@ -65,7 +124,7 @@ describe('toolSpecsFor', () => {
   });
 
   it('leaves memory out when nothing was recorded', () => {
-    const offered = toolSpecsFor({ image: false, webFetch: false, memory: null }).map(
+    const offered = toolSpecsFor({ image: null, webFetch: false, memory: null }).map(
       (s) => s.function.name
     );
     expect(offered).not.toContain('memory');
@@ -80,7 +139,7 @@ describe('toolSpecsFor', () => {
    */
   it('drops both writes for a run narrowed to a subagent’s tools', () => {
     const offered = toolSpecsFor({
-      image: false,
+      image: null,
       webFetch: false,
       memory: named('memory'),
       only: SUBAGENT_TOOL_NAMES
@@ -93,7 +152,7 @@ describe('toolSpecsFor', () => {
 
   it('drops the reader too when the run was narrowed past it', () => {
     const offered = toolSpecsFor({
-      image: false,
+      image: null,
       webFetch: false,
       memory: named('memory'),
       only: ['read', 'grep']

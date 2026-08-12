@@ -7,6 +7,7 @@ import type {
   AgentCompactRequest,
   AgentHandOff,
   AgentImagePartial,
+  AgentImageModel,
   AgentMessage,
   AgentModelConfig,
   AgentPart,
@@ -23,7 +24,8 @@ import {
   MAX_TOOL_ROUNDS_CEILING,
   buildSystemPrompt,
   messageAttachments,
-  messageText
+  messageText,
+  supportedImageConfig
 } from '../../shared/agent-types';
 import { addRound } from '../../shared/agent-spend';
 import { nextStreak, renderTodoBlock, type AgentTodoItem } from '../../shared/agent-todos';
@@ -31,6 +33,7 @@ import { attachmentWireParts, imageWireParts } from './attachments';
 import { expandCommand } from './commands/expand';
 import { toDataUrl } from './image-kinds';
 import {
+  buildImageSpec,
   buildTaskSpec,
   toolSpecsFor,
   type AgentImageGenerator,
@@ -111,6 +114,12 @@ type Deps = {
   stream?: typeof streamCompletion;
   /** Injectable for tests; defaults to the real OpenRouter image call. */
   image?: typeof generateImage;
+  /**
+   * What the images endpoint says the chosen model takes, from whatever the
+   * catalog has already downloaded. Synchronous and allowed to answer `null`:
+   * a turn must not wait on a model list to find out what shapes to offer.
+   */
+  imageCapabilities?: (modelId: string) => AgentImageModel | null;
   /** Injectable for tests; defaults to the real fetch-and-extract pipeline. */
   fetchUrl?: UrlFetch;
 };
@@ -875,6 +884,13 @@ export class AgentService {
    */
   private async turn(req: AgentSendRequest, ctx: CallContext, account: TurnAccount): Promise<void> {
     const imageModel = ctx.settings.image.model;
+    // Described in the chosen model's own terms, so the shapes it is offered are
+    // the shapes that model renders. Unknown until the catalog has been fetched
+    // at least once, in which case the spec falls back to what all of them take.
+    const imageSpec =
+      imageModel === null
+        ? null
+        : buildImageSpec(this.deps.imageCapabilities?.(imageModel) ?? null);
     // Read once per turn rather than per round: a server that comes or goes
     // mid-turn would otherwise change what the model was offered between the
     // call it made and the answer it gets.
@@ -926,7 +942,7 @@ export class AgentService {
         cwd: req.cwd,
         messages,
         tools: toolSpecsFor({
-          image: imageModel !== null,
+          image: imageSpec,
           webFetch: ctx.settings.webFetch.enabled,
           mcp: mcpSpecs,
           task: taskSpec,
@@ -1289,7 +1305,7 @@ export class AgentService {
             { role: 'user', content: run.prompt }
           ],
           tools: toolSpecsFor({
-            image: false,
+            image: null,
             // Unlike `image`, this one follows the setting rather than being
             // off for a child: reading a page is how a subagent sent to find
             // something out finds it out, and it costs the parent nothing.
@@ -1362,14 +1378,35 @@ export class AgentService {
     const model = config.model;
     if (model === null) return null;
     const call = this.deps.image ?? generateImage;
+    const takes = this.deps.imageCapabilities?.(model) ?? null;
 
-    return async (req, signal) =>
-      call(
+    return async (req, signal) => {
+      // A shape the model does not render is refused here rather than by the
+      // provider, which would refuse it after the generation was paid for. The
+      // sentence is addressed to the model: it gets the round back and can
+      // choose again.
+      if (
+        takes !== null &&
+        req.aspectRatio !== null &&
+        !takes.aspectRatios.includes(req.aspectRatio)
+      ) {
+        throw new Error(
+          takes.aspectRatios.length === 0
+            ? `${model} does not take an aspect ratio - leave it out and describe the shape in the prompt instead.`
+            : `${model} does not render ${req.aspectRatio}. It takes: ${takes.aspectRatios.join(', ')}.`
+        );
+      }
+
+      return call(
         {
           ...req,
           apiKey: ctx.apiKey,
           model,
-          config,
+          // Narrowed to what this model actually reads. The settings panel only
+          // offers supported values, so this catches the leftovers: a config
+          // written by hand, or one whose model gained or lost a parameter
+          // between the last catalog refresh and now.
+          config: takes === null ? config : supportedImageConfig(config, takes),
           onPartial: (image) =>
             this.deps.emit(IPC_CHANNELS.AGENT_IMAGE_PARTIAL, {
               streamId,
@@ -1379,6 +1416,7 @@ export class AgentService {
         },
         signal
       );
+    };
   }
 
   /**

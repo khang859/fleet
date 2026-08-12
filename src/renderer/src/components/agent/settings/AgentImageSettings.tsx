@@ -1,16 +1,15 @@
-import { ImagePlus, RotateCcw } from 'lucide-react';
+import { ExternalLink, ImagePlus, RotateCcw } from 'lucide-react';
 import {
-  IMAGE_QUALITIES,
-  IMAGE_RESOLUTIONS,
-  type AgentCatalogModel,
-  type AgentImageConfig
+  supportedImageConfig,
+  type AgentImageConfig,
+  type AgentImageModel
 } from '../../../../../shared/agent-types';
-import { ModelSelect } from './ModelSelect';
+import { ModelPicker } from './ModelSelect';
 import { OptionPills, RoleCard } from './controls';
 
 /**
- * Image generation: the model, and the three things about a picture that are
- * the user's to decide rather than the agent's.
+ * Image generation: the model, and the things about a picture that are the
+ * user's to decide rather than the agent's.
  *
  * Its own component rather than another `AgentRoleSettings`, because the images
  * endpoint shares nothing with a completion - no output limit, no temperature,
@@ -18,52 +17,129 @@ import { OptionPills, RoleCard } from './controls';
  *
  * What the agent chooses instead is what belongs to the picture it was asked
  * for: the prompt, the aspect ratio, and whether it is editing something.
+ *
+ * Every control below is drawn from the chosen model rather than from a list of
+ * ours. Most image models take no `quality` at all and under half take a
+ * `resolution`, so a fixed set of pills is three settings that look identical
+ * for forty-one models and mean something for seven of them.
  */
 export function AgentImageSettings({
   models,
   config,
   onChange
 }: {
-  models: AgentCatalogModel[];
+  models: AgentImageModel[];
   config: AgentImageConfig;
   onChange: (patch: Partial<AgentImageConfig>) => void;
 }): React.JSX.Element {
+  const selected = models.find((m) => m.id === config.model) ?? null;
+
+  /**
+   * Switching model carries over the settings the new one shares and drops the
+   * rest. Keeping them would leave a resolution set on a model with no
+   * resolution parameter: invisible in this panel, and still in the request.
+   */
+  const chooseModel = (model: string | null): void => {
+    const next = models.find((m) => m.id === model) ?? null;
+    onChange(next === null ? { model } : supportedImageConfig({ ...config, model }, next));
+  };
+
   return (
     <RoleCard
       title="Image agent"
       description="Generates and edits images on request. With none selected, the agent is not offered the tool at all."
       icon={<ImagePlus size={16} />}
     >
-      <ModelSelect
+      <ModelPicker
         models={models}
         value={config.model}
-        onChange={(id) => onChange({ model: id })}
+        onChange={chooseModel}
+        renderMeta={(model) => <ImageModelMeta model={model} />}
         allowNone
         noneLabel="None - image generation off"
       />
 
-      {config.model !== null && (
+      {config.model !== null && selected === null && (
+        <p className="text-xs text-amber-400">
+          The images endpoint does not list this model. Pick another, or refresh the catalog below.
+        </p>
+      )}
+
+      {selected !== null && (
         <>
-          <OptionPills
-            label="Resolution"
-            hint="How large the image comes back. Bigger costs more and takes longer."
-            options={IMAGE_RESOLUTIONS}
-            value={config.resolution}
-            onChange={(resolution) => onChange({ resolution })}
-          />
+          {selected.resolutions.length > 0 && (
+            <OptionPills
+              label="Resolution"
+              hint="How large the image comes back. Bigger costs more and takes longer."
+              options={selected.resolutions}
+              value={config.resolution}
+              onChange={(resolution) => onChange({ resolution })}
+            />
+          )}
 
-          <OptionPills
-            label="Quality"
-            hint="How much work the model puts into the render."
-            options={IMAGE_QUALITIES}
-            value={config.quality}
-            onChange={(quality) => onChange({ quality })}
-          />
+          {selected.qualities.length > 0 && (
+            <OptionPills
+              label="Quality"
+              hint="How much work the model puts into the render."
+              options={selected.qualities}
+              value={config.quality}
+              onChange={(quality) => onChange({ quality })}
+            />
+          )}
 
-          <SeedField value={config.seed} onChange={(seed) => onChange({ seed })} />
+          {selected.seed && (
+            <SeedField value={config.seed} onChange={(seed) => onChange({ seed })} />
+          )}
+
+          <ModelLink id={selected.id} />
         </>
       )}
     </RoleCard>
+  );
+}
+
+/**
+ * What a row of the picker says about a model.
+ *
+ * Not price, which is the one thing the completions rows lead with: image
+ * models are billed per megapixel or per image rather than per token, and
+ * OpenRouter publishes that only per model per provider. A number in the shape
+ * of the one above it that means something else is worse than no number, so the
+ * price lives behind the link instead.
+ */
+function ImageModelMeta({ model }: { model: AgentImageModel }): React.JSX.Element {
+  const facts = [
+    model.resolutions.length > 0
+      ? `up to ${model.resolutions[model.resolutions.length - 1]}`
+      : null,
+    model.maxReferences > 0
+      ? `${model.maxReferences} reference${model.maxReferences === 1 ? '' : 's'}`
+      : null,
+    model.qualities.length > 0 ? 'quality' : null,
+    model.seed ? 'seed' : null,
+    model.streams ? 'streams' : null
+  ].filter((fact) => fact !== null);
+
+  return (
+    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-fleet-text-muted">
+      {facts.map((fact) => (
+        <span key={fact}>{fact}</span>
+      ))}
+    </span>
+  );
+}
+
+/** Where the pricing and the sample images are, since neither is shown here. */
+function ModelLink({ id }: { id: string }): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={() => void window.fleet.shell.openExternal(`https://openrouter.ai/${id}`)}
+      className="flex items-center gap-1 text-xs text-fleet-text-muted transition-colors hover:text-fleet-text-secondary focus-ring"
+    >
+      Pricing and samples on OpenRouter
+      <ExternalLink size={11} />
+    </button>
   );
 }
 
