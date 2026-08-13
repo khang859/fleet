@@ -1,19 +1,35 @@
 import { createHash } from 'node:crypto';
-import {
-  S3Client,
-  HeadObjectCommand,
-  GetObjectCommand,
-  PutObjectCommand,
-  CreateBucketCommand,
-  BucketLocationConstraint
-} from '@aws-sdk/client-s3';
-import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
+import type * as S3Sdk from '@aws-sdk/client-s3';
+import type * as AwsCredentialProviders from '@aws-sdk/credential-providers';
+import type { BucketLocationConstraint, S3Client } from '@aws-sdk/client-s3';
 import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from '@smithy/types';
 import type { EnvSyncAuthResolved } from '../../shared/env-sync-types';
 
 export type S3Head = { etag: string } | null;
 export type S3Get = { body: Buffer; etag: string };
 export type S3Put = { etag: string };
+
+type AwsSdk = {
+  s3: typeof S3Sdk;
+  credentials: typeof AwsCredentialProviders;
+};
+
+let sdkPromise: Promise<AwsSdk> | null = null;
+
+/**
+ * The AWS SDK is the single most expensive `require` in the main process - it
+ * and the credential providers cost ~30 ms of every launch, for a feature most
+ * launches never touch. Every entry point below that needs it is already async,
+ * so it loads on the first S3 call instead of at import. The type imports above
+ * are erased at compile time and cost nothing.
+ */
+async function sdk(): Promise<AwsSdk> {
+  sdkPromise ??= Promise.all([
+    import('@aws-sdk/client-s3'),
+    import('@aws-sdk/credential-providers')
+  ]).then(([s3, credentials]) => ({ s3, credentials }));
+  return sdkPromise;
+}
 
 const clients = new Map<string, S3Client>();
 
@@ -34,6 +50,7 @@ export function authFingerprint(auth: EnvSyncAuthResolved): string {
 }
 
 function buildCredentials(
+  aws: AwsSdk,
   auth: EnvSyncAuthResolved
 ): AwsCredentialIdentity | AwsCredentialIdentityProvider {
   if (auth.mode === 'static') {
@@ -48,16 +65,17 @@ function buildCredentials(
   }
   if (auth.mode === 'profile') {
     if (!auth.profile) throw new Error('Profile AWS auth selected but no profile name is set.');
-    return fromNodeProviderChain({ profile: auth.profile });
+    return aws.credentials.fromNodeProviderChain({ profile: auth.profile });
   }
-  return fromNodeProviderChain();
+  return aws.credentials.fromNodeProviderChain();
 }
 
-function client(region: string, auth: EnvSyncAuthResolved): S3Client {
+async function client(region: string, auth: EnvSyncAuthResolved): Promise<S3Client> {
+  const aws = await sdk();
   const cacheKey = `${region}::${authFingerprint(auth)}`;
   let c = clients.get(cacheKey);
   if (!c) {
-    c = new S3Client({ region, credentials: buildCredentials(auth) });
+    c = new aws.s3.S3Client({ region, credentials: buildCredentials(aws, auth) });
     clients.set(cacheKey, c);
   }
   return c;
@@ -167,7 +185,10 @@ export async function head(
   auth: EnvSyncAuthResolved
 ): Promise<S3Head> {
   try {
-    const r = await client(region, auth).send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    const { HeadObjectCommand } = (await sdk()).s3;
+    const r = await (
+      await client(region, auth)
+    ).send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
     return { etag: r.ETag ?? '' };
   } catch (err) {
     if (isNotFound(err)) return null;
@@ -183,7 +204,10 @@ export async function get(
   auth: EnvSyncAuthResolved
 ): Promise<S3Get> {
   try {
-    const r = await client(region, auth).send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    const { GetObjectCommand } = (await sdk()).s3;
+    const r = await (
+      await client(region, auth)
+    ).send(new GetObjectCommand({ Bucket: bucket, Key: key }));
     if (!r.Body) throw new Error(`S3 object ${key} returned an empty body`);
     const bytes = await r.Body.transformToByteArray();
     return { body: Buffer.from(bytes), etag: r.ETag ?? '' };
@@ -207,7 +231,10 @@ export async function put(
   ifMatch?: string
 ): Promise<S3Put> {
   try {
-    const r = await client(region, auth).send(
+    const { PutObjectCommand } = (await sdk()).s3;
+    const r = await (
+      await client(region, auth)
+    ).send(
       new PutObjectCommand({
         Bucket: bucket,
         Key: key,
@@ -230,8 +257,8 @@ export async function put(
  * region must send it. Membership-check the SDK enum rather than casting a raw
  * string, so an unrecognized region simply omits the constraint.
  */
-function locationConstraint(region: string): BucketLocationConstraint | undefined {
-  return Object.values(BucketLocationConstraint).find((v) => v === region);
+function locationConstraint(aws: AwsSdk, region: string): BucketLocationConstraint | undefined {
+  return Object.values(aws.s3.BucketLocationConstraint).find((v) => v === region);
 }
 
 /** Create the bucket. Treats "already owned by you" as success (idempotent). */
@@ -240,10 +267,13 @@ export async function createBucket(
   region: string,
   auth: EnvSyncAuthResolved
 ): Promise<void> {
-  const constraint = locationConstraint(region);
+  const aws = await sdk();
+  const constraint = locationConstraint(aws, region);
   try {
-    await client(region, auth).send(
-      new CreateBucketCommand({
+    await (
+      await client(region, auth)
+    ).send(
+      new aws.s3.CreateBucketCommand({
         Bucket: bucket,
         ...(constraint ? { CreateBucketConfiguration: { LocationConstraint: constraint } } : {})
       })

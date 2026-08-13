@@ -27,7 +27,7 @@ export class SettingsStore {
    * defaulting in `get()` look redundant to both the compiler and the reader, right up
    * until an upgrade hands us a file without one of these keys.
    */
-  private store: Store<{ settings: FleetSettingsPatch }>;
+  private backing: Store<{ settings: FleetSettingsPatch }> | null = null;
   /**
    * The last merged answer, held until something changes it.
    *
@@ -46,17 +46,28 @@ export class SettingsStore {
    */
   private cached: FleetSettings | null = null;
 
-  constructor() {
-    this.store = new Store<{ settings: FleetSettingsPatch }>({
+  /**
+   * Opened on first access rather than in the constructor.
+   *
+   * `conf`, underneath `electron-store`, writes its file atomically as part of
+   * construction - a blocking `fsync` on the main process, and Fleet builds one
+   * of these before the window exists. Nothing about opening a window needs a
+   * setting, so the file work waits until the renderer asks for one.
+   */
+  private get store(): Store<{ settings: FleetSettingsPatch }> {
+    if (this.backing !== null) return this.backing;
+    const store = new Store<{ settings: FleetSettingsPatch }>({
       name: 'fleet-settings',
       defaults: {
         settings: DEFAULT_SETTINGS
       },
       watch: true
     });
-    this.store.onDidAnyChange(() => {
+    store.onDidAnyChange(() => {
       this.cached = null;
     });
+    this.backing = store;
+    return store;
   }
 
   get(): FleetSettings {

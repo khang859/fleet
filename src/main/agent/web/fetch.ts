@@ -2,9 +2,9 @@ import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import type { Readable } from 'node:stream';
-import { parseHTML } from 'linkedom';
-import { Readability } from '@mozilla/readability';
-import TurndownService from 'turndown';
+import type TurndownService from 'turndown';
+import type * as LinkeDom from 'linkedom';
+import type * as MozillaReadability from '@mozilla/readability';
 import { checkUrl, type HostKind } from '../../../shared/agent-web';
 import { DEFAULT_AGENT_WEB_FETCH } from '../../../shared/agent-types';
 import { pinnedLookup, resolveHost, type PinnedHost } from './resolve';
@@ -244,11 +244,35 @@ function decompress(res: IncomingMessage): Readable {
   }
 }
 
-const turndown = new TurndownService({
-  headingStyle: 'atx',
-  codeBlockStyle: 'fenced',
-  bulletListMarker: '-'
-});
+type HtmlPipeline = {
+  parseHTML: typeof LinkeDom.parseHTML;
+  Readability: typeof MozillaReadability.Readability;
+  turndown: TurndownService;
+};
+
+let pipelinePromise: Promise<HtmlPipeline> | null = null;
+
+/**
+ * A DOM, an article extractor and a markdown converter - ~20 ms of `require`
+ * that the main process used to pay on every launch so that it could be ready
+ * for a tool call most sessions never make. Loaded on the first fetch instead.
+ */
+async function htmlPipeline(): Promise<HtmlPipeline> {
+  pipelinePromise ??= Promise.all([
+    import('linkedom'),
+    import('@mozilla/readability'),
+    import('turndown')
+  ]).then(([linkedom, readability, turndown]) => ({
+    parseHTML: linkedom.parseHTML,
+    Readability: readability.Readability,
+    turndown: new turndown.default({
+      headingStyle: 'atx',
+      codeBlockStyle: 'fenced',
+      bulletListMarker: '-'
+    })
+  }));
+  return pipelinePromise;
+}
 
 /** Drop inline base64 images, which are pages of noise, and collapse blank runs. */
 function scrubMarkdown(md: string): string {
@@ -261,7 +285,8 @@ function scrubMarkdown(md: string): string {
 type Extracted = { title: string; markdown: string; textLength: number };
 
 /** The article inside the page, as markdown, or `null` when there is no article. */
-function htmlToMarkdown(html: string): Extracted | null {
+async function htmlToMarkdown(html: string): Promise<Extracted | null> {
+  const { parseHTML, Readability, turndown } = await htmlPipeline();
   const { document } = parseHTML(html);
   const article = new Readability(document, { charThreshold: MIN_READABLE_CHARS }).parse();
   if (!article?.content) return null;
@@ -318,7 +343,7 @@ export async function extractContent(args: {
     return `Cannot read ${page.url}: it is ${base === '' ? 'of no stated type' : `"${base}"`}, and web_fetch only reads web pages and text.`;
   }
 
-  const direct = htmlToMarkdown(page.body);
+  const direct = await htmlToMarkdown(page.body);
   if (direct !== null && direct.textLength >= MIN_READABLE_CHARS) {
     return withHeader(page.url, direct.title, direct.markdown);
   }
@@ -331,11 +356,12 @@ export async function extractContent(args: {
   if (deps.render !== undefined && page.kind !== 'metadata') {
     try {
       const rendered = await deps.render(page.url, page.kind === 'local', deadline);
-      const fromRender = htmlToMarkdown(rendered);
+      const fromRender = await htmlToMarkdown(rendered);
       if (fromRender !== null) return withHeader(page.url, fromRender.title, fromRender.markdown);
 
       // Last resort: the rendered DOM as flat text. Worse than an article and
       // far better than telling the user there was nothing on the page.
+      const { parseHTML } = await htmlPipeline();
       const text = parseHTML(rendered).document.body.textContent.trim();
       if (text !== '') return withHeader(page.url, '', scrubMarkdown(text));
     } catch {

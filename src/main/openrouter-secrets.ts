@@ -28,13 +28,18 @@ interface SafeStorageLike {
 type Options = { store?: KeyStore; safeStorage?: SafeStorageLike };
 
 function defaultStore(): KeyStore {
-  const store = new Store<{ data: SecretsData }>({
-    name: 'fleet-chat-secrets',
-    defaults: { data: {} }
-  });
+  // Opened on first read or write. `conf`, underneath `electron-store`, writes
+  // its file atomically as part of construction - a blocking fsync - and this
+  // store is built during startup for a key most launches never ask for.
+  let store: Store<{ data: SecretsData }> | null = null;
+  const open = (): Store<{ data: SecretsData }> =>
+    (store ??= new Store<{ data: SecretsData }>({
+      name: 'fleet-chat-secrets',
+      defaults: { data: {} }
+    }));
   return {
-    get: () => store.get('data'),
-    set: (next) => store.set('data', next)
+    get: () => open().get('data'),
+    set: (next) => open().set('data', next)
   };
 }
 
