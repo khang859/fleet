@@ -76,13 +76,18 @@ interface SafeStorageLike {
 export type Options = { store?: SecretStore; safeStorage?: SafeStorageLike };
 
 function defaultStore(): SecretStore {
-  const store = new Store<{ data: SecretsData }>({
-    name: 'fleet-agent-mcp-secrets',
-    defaults: { data: {} }
-  });
+  // Opened on first read or write. `conf`, underneath `electron-store`, writes
+  // its file atomically as part of construction - a blocking fsync - and this
+  // store is built during startup for a secret most launches never ask for.
+  let store: Store<{ data: SecretsData }> | null = null;
+  const open = (): Store<{ data: SecretsData }> =>
+    (store ??= new Store<{ data: SecretsData }>({
+      name: 'fleet-agent-mcp-secrets',
+      defaults: { data: {} }
+    }));
   return {
-    get: () => store.get('data'),
-    set: (next) => store.set('data', next)
+    get: () => open().get('data'),
+    set: (next) => open().set('data', next)
   };
 }
 

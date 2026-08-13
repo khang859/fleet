@@ -88,8 +88,7 @@ import { AgentMcpSecrets } from './agent/mcp/secrets';
 import { resolveAuth, signIn as signInToMcp } from './agent/mcp/auth';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
 import { resolveSummary } from './pane-summarizer';
-import pkg from 'electron-updater';
-const { autoUpdater } = pkg;
+import type { AppUpdater } from 'electron-updater';
 
 const log = createLogger('fleet-main');
 const updaterLog = createLogger('auto-updater');
@@ -274,6 +273,22 @@ function createWindow(): void {
       }
     });
   }
+}
+
+/**
+ * Defer work that nobody is waiting on until the renderer has finished loading.
+ *
+ * Anything run straight from `whenReady` competes with the first frame, which
+ * is the one thing the user is actually waiting for. Falls back to the next
+ * tick if there is no window to wait on, so the work still happens.
+ */
+function whenWindowReady(fn: () => void): void {
+  const contents = mainWindow?.webContents;
+  if (!contents?.isLoading()) {
+    setImmediate(fn);
+    return;
+  }
+  contents.once('did-finish-load', fn);
 }
 
 app.setName('Fleet');
@@ -798,11 +813,6 @@ void app.whenReady().then(async () => {
   });
 
   // --- Auto-updater: unified status pipeline ---
-  // Allow checking for updates in dev mode via dev-app-update.yml
-  if (!app.isPackaged) {
-    autoUpdater.forceDevUpdateConfig = true;
-  }
-
   let updateState: 'idle' | 'checking' | 'downloading' | 'ready' = 'idle';
   let pendingVersion = '';
   let pendingReleaseNotes = '';
@@ -823,55 +833,80 @@ void app.whenReady().then(async () => {
     }
   }
 
-  autoUpdater.on('checking-for-update', () => {
-    updateState = 'checking';
-    sendUpdateStatus({ state: 'checking' });
-  });
+  /**
+   * `electron-updater` is the most expensive import the main process has -
+   * ~48 ms of `require` counting the ajv/conf/semver tree it drags behind it,
+   * on every launch, for something that does nothing until an update exists.
+   * Nothing about it is needed to put a window on screen, so it loads on first
+   * use: either the renderer asking to check, or the launch check below, which
+   * now runs after the window is up rather than in front of it.
+   *
+   * The IPC handlers stay registered here, eagerly. The renderer may call them
+   * the moment it mounts, and a handler that is not yet registered rejects.
+   */
+  let updaterPromise: Promise<AppUpdater> | null = null;
+  async function getUpdater(): Promise<AppUpdater> {
+    updaterPromise ??= import('electron-updater').then(({ default: pkg }) => {
+      const { autoUpdater } = pkg;
+      // Allow checking for updates in dev mode via dev-app-update.yml
+      if (!app.isPackaged) {
+        autoUpdater.forceDevUpdateConfig = true;
+      }
 
-  autoUpdater.on('update-available', (info) => {
-    updateState = 'downloading';
-    pendingVersion = info.version;
-    pendingReleaseNotes = normalizeReleaseNotes(info.releaseNotes);
-    sendUpdateStatus({
-      state: 'downloading',
-      version: pendingVersion,
-      releaseNotes: pendingReleaseNotes,
-      percent: 0
+      autoUpdater.on('checking-for-update', () => {
+        updateState = 'checking';
+        sendUpdateStatus({ state: 'checking' });
+      });
+
+      autoUpdater.on('update-available', (info) => {
+        updateState = 'downloading';
+        pendingVersion = info.version;
+        pendingReleaseNotes = normalizeReleaseNotes(info.releaseNotes);
+        sendUpdateStatus({
+          state: 'downloading',
+          version: pendingVersion,
+          releaseNotes: pendingReleaseNotes,
+          percent: 0
+        });
+      });
+
+      autoUpdater.on('download-progress', (progress) => {
+        sendUpdateStatus({
+          state: 'downloading',
+          version: pendingVersion,
+          releaseNotes: pendingReleaseNotes,
+          percent: Math.round(progress.percent)
+        });
+      });
+
+      autoUpdater.on('update-downloaded', () => {
+        updateState = 'ready';
+        sendUpdateStatus({
+          state: 'ready',
+          version: pendingVersion,
+          releaseNotes: pendingReleaseNotes
+        });
+      });
+
+      autoUpdater.on('update-not-available', () => {
+        updateState = 'idle';
+        sendUpdateStatus({ state: 'not-available' });
+      });
+
+      autoUpdater.on('error', (err) => {
+        updateState = 'idle';
+        sendUpdateStatus({ state: 'error', message: err.message });
+      });
+
+      return autoUpdater;
     });
-  });
-
-  autoUpdater.on('download-progress', (progress) => {
-    sendUpdateStatus({
-      state: 'downloading',
-      version: pendingVersion,
-      releaseNotes: pendingReleaseNotes,
-      percent: Math.round(progress.percent)
-    });
-  });
-
-  autoUpdater.on('update-downloaded', () => {
-    updateState = 'ready';
-    sendUpdateStatus({
-      state: 'ready',
-      version: pendingVersion,
-      releaseNotes: pendingReleaseNotes
-    });
-  });
-
-  autoUpdater.on('update-not-available', () => {
-    updateState = 'idle';
-    sendUpdateStatus({ state: 'not-available' });
-  });
-
-  autoUpdater.on('error', (err) => {
-    updateState = 'idle';
-    sendUpdateStatus({ state: 'error', message: err.message });
-  });
+    return updaterPromise;
+  }
 
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
     if (updateState === 'checking' || updateState === 'downloading') return;
     try {
-      await autoUpdater.checkForUpdates();
+      await (await getUpdater()).checkForUpdates();
     } catch (err) {
       sendUpdateStatus({
         state: 'error',
@@ -883,15 +918,23 @@ void app.whenReady().then(async () => {
   ipcMain.handle(IPC_CHANNELS.GET_VERSION, () => app.getVersion());
 
   ipcMain.on(IPC_CHANNELS.UPDATE_INSTALL, () => {
-    autoUpdater.quitAndInstall();
+    void getUpdater().then((updater) => {
+      updater.quitAndInstall();
+    });
   });
 
-  // Silent check on launch (packaged builds only)
+  // Silent check on launch (packaged builds only). Deliberately after the
+  // window has painted: the check talks to the network and nobody is waiting
+  // on its answer, so it has no business delaying the first frame.
   if (app.isPackaged) {
-    autoUpdater.checkForUpdates().catch((err: unknown) => {
-      updaterLog.error('auto-update check failed', {
-        error: err instanceof Error ? err.message : String(err)
-      });
+    whenWindowReady(() => {
+      void getUpdater()
+        .then(async (updater) => updater.checkForUpdates())
+        .catch((err: unknown) => {
+          updaterLog.error('auto-update check failed', {
+            error: err instanceof Error ? err.message : String(err)
+          });
+        });
     });
   }
 
