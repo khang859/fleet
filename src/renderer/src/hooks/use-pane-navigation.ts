@@ -19,22 +19,29 @@ export function getNormalTabs<T extends { type?: string }>(tabs: T[]): T[] {
 }
 
 export function usePaneNavigation(): void {
-  const { workspace, activeTabId, activePaneId, addTab, closePane, splitPane, setActiveTab } =
-    useWorkspaceStore();
-
+  /*
+   * Read on demand, never subscribe. This hook runs inside `App`, so a bare
+   * `useWorkspaceStore()` re-renders every pane in every tab on any workspace
+   * change (#541) and re-binds the listener each time. A keydown handler only
+   * ever needs the state as it stands at the keypress, which `getState()` gives
+   * for free - so the listener binds once and the hook renders never.
+   */
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent): void {
       if (e.defaultPrevented) return;
+      const state = useWorkspaceStore.getState();
+      const { workspace, activeTabId, activePaneId, addTab, closePane, splitPane, setActiveTab } =
+        state;
+
       // Shift+F2 to rename active pane
       if (matchesShortcut(e, sc('rename-pane'))) {
         e.preventDefault();
-        const state = useWorkspaceStore.getState();
-        const activeTab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
+        const activeTab = workspace.tabs.find((t) => t.id === activeTabId);
         // Only fire when there are 2+ panes (header is visible)
-        if (activeTab?.splitRoot.type === 'split' && state.activePaneId) {
+        if (activeTab?.splitRoot.type === 'split' && activePaneId) {
           document.dispatchEvent(
             new CustomEvent('fleet:rename-active-pane', {
-              detail: { paneId: state.activePaneId }
+              detail: { paneId: activePaneId }
             })
           );
         }
@@ -76,8 +83,7 @@ export function usePaneNavigation(): void {
       // Navigate panes
       if (matchesShortcut(e, sc('navigate-prev')) || matchesShortcut(e, sc('navigate-next'))) {
         e.preventDefault();
-        const state = useWorkspaceStore.getState();
-        const activeTab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
+        const activeTab = workspace.tabs.find((t) => t.id === activeTabId);
         if (!activeTab) return;
         const tabPaneIds = collectPaneIds(activeTab.splitRoot);
         const currentIndex = activePaneId ? tabPaneIds.indexOf(activePaneId) : -1;
@@ -193,5 +199,5 @@ export function usePaneNavigation(): void {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [workspace, activeTabId, activePaneId, addTab, closePane, splitPane, setActiveTab]);
+  }, []);
 }

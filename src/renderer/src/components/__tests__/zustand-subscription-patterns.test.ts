@@ -57,6 +57,62 @@ describe('Sidebar.tsx Zustand subscription pattern', () => {
   });
 });
 
+/**
+ * #541: these three all render inside (or as) `App`, so a bare store call in any
+ * of them re-renders every pane in every tab on unrelated store activity.
+ */
+describe('PaneGrid.tsx subscription pattern', () => {
+  const source = readComponent('components/PaneGrid.tsx');
+
+  it('does not use bare useWorkspaceStore() without a selector', () => {
+    expect(source).not.toMatch(/useWorkspaceStore\(\s*\)/);
+  });
+
+  it('memoizes the grid so a stray workspace update cannot re-render every pane', () => {
+    expect(source).toMatch(/export const PaneGrid = memo\(/);
+  });
+
+  it('memoizes the terminal leaf, which owns its own stable handlers', () => {
+    expect(source).toMatch(/const TerminalLeaf = memo\(/);
+  });
+});
+
+describe('use-pane-navigation.ts subscription pattern', () => {
+  const source = readComponent('hooks/use-pane-navigation.ts');
+
+  it('does not subscribe to the workspace store at all', () => {
+    // A keydown handler needs state at keypress time, which getState() gives
+    // without a subscription. Any hook-form call here re-renders App.
+    expect(source).not.toMatch(/=\s*useWorkspaceStore\(/);
+    expect(source).toMatch(/useWorkspaceStore\.getState\(\)/);
+  });
+});
+
+describe('use-notifications.ts subscription pattern', () => {
+  const source = readComponent('hooks/use-notifications.ts');
+
+  it('does not use bare useNotificationStore() without a selector', () => {
+    // The store replaces its notifications/activities maps wholesale on every
+    // set, so a bare call re-renders App on each activity tick.
+    expect(source).not.toMatch(/useNotificationStore\(\s*\)/);
+  });
+
+  it('selects only the two setters, which are stable references', () => {
+    expect(source).toMatch(/useNotificationStore\(\(s\) => s\.setNotification\)/);
+    expect(source).toMatch(/useNotificationStore\(\(s\) => s\.setActivity\)/);
+  });
+});
+
+describe('App.tsx pane-focus callback stability', () => {
+  const source = readComponent('App.tsx');
+
+  it('passes a stable onPaneFocus rather than an inline arrow', () => {
+    // An inline arrow here defeats PaneGrid's memo on every App render.
+    expect(source).toMatch(/onPaneFocus=\{handlePaneFocus\}/);
+    expect(source).not.toMatch(/onPaneFocus=\{\(paneId\) =>/);
+  });
+});
+
 describe('TabItem.tsx CWD subscription pattern', () => {
   const source = readComponent('components/TabItem.tsx');
 

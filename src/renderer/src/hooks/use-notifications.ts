@@ -5,7 +5,15 @@ import { useAgentStore } from '../store/agent-store';
 import { playChime } from '../lib/chime';
 
 export function useNotifications(): void {
-  const { setNotification, setActivity } = useNotificationStore();
+  /*
+   * Actions only. This hook runs inside `App`, and the notification store
+   * replaces its `notifications`/`activities` maps wholesale on every set, so
+   * subscribing to the whole store here re-renders every pane on each activity
+   * tick - exactly what the comment above `MiniTabStatus` in App.tsx warns
+   * against. Selecting the two setters subscribes to nothing that changes.
+   */
+  const setNotification = useNotificationStore((s) => s.setNotification);
+  const setActivity = useNotificationStore((s) => s.setActivity);
 
   // Subscribe to notification events (existing)
   useEffect(() => {

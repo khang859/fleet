@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo, useRef } from 'react';
+import { Suspense, lazy, memo, useCallback, useMemo, useRef } from 'react';
 import type { PaneNode, PaneLeaf, TerminalBackground } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
@@ -277,6 +277,73 @@ function ViewerPane({
   }
 }
 
+type TerminalLeafProps = {
+  paneId: string;
+  node: PaneLeaf;
+  isActive: boolean;
+  onPaneFocus: (paneId: string) => void;
+  serializedContent?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  terminalTheme?: TerminalThemeId;
+  terminalBackground?: TerminalBackground;
+  slideshowFrame?: SlideshowFrame;
+};
+
+/*
+ * The memo boundary for a single terminal. `memo` on `TerminalPane` itself
+ * would be inert: its split/close/focus handlers can only be built per leaf, so
+ * inlining them in the map would hand it four new functions on every grid
+ * render. Owning them here makes them stable, which - together with the
+ * identity-preserving tree walkers in the workspace store - means splitting or
+ * renaming one pane no longer re-renders its siblings.
+ */
+const TerminalLeaf = memo(function TerminalLeaf({
+  paneId,
+  node,
+  isActive,
+  onPaneFocus,
+  serializedContent,
+  fontFamily,
+  fontSize,
+  terminalTheme,
+  terminalBackground,
+  slideshowFrame
+}: TerminalLeafProps): React.JSX.Element {
+  const splitPane = useWorkspaceStore((s) => s.splitPane);
+  const closePane = useWorkspaceStore((s) => s.closePane);
+
+  const handleFocus = useCallback(() => onPaneFocus(paneId), [onPaneFocus, paneId]);
+  const handleSplitHorizontal = useCallback(
+    () => splitPane(paneId, 'horizontal'),
+    [splitPane, paneId]
+  );
+  const handleSplitVertical = useCallback(() => splitPane(paneId, 'vertical'), [splitPane, paneId]);
+  const handleClose = useCallback(() => closePane(paneId), [closePane, paneId]);
+
+  return (
+    <TerminalPane
+      paneId={paneId}
+      cwd={node.cwd}
+      isActive={isActive}
+      label={node.label}
+      labelIsCustom={node.labelIsCustom}
+      onFocus={handleFocus}
+      serializedContent={serializedContent}
+      fontFamily={fontFamily}
+      fontSize={fontSize}
+      terminalTheme={terminalTheme}
+      terminalBackground={terminalBackground}
+      slideshowFrame={slideshowFrame}
+      onSplitHorizontal={handleSplitHorizontal}
+      onSplitVertical={handleSplitVertical}
+      onClose={handleClose}
+      shellProfileId={node.shellProfileId}
+      cmd={node.cmd}
+    />
+  );
+});
+
 type PaneGridProps = {
   root: PaneNode;
   activePaneId: string | null;
@@ -289,7 +356,7 @@ type PaneGridProps = {
   slideshowFrame?: SlideshowFrame;
 };
 
-export function PaneGrid({
+function PaneGridImpl({
   root,
   activePaneId,
   onPaneFocus,
@@ -300,7 +367,6 @@ export function PaneGrid({
   terminalBackground,
   slideshowFrame
 }: PaneGridProps): React.JSX.Element {
-  const { splitPane, closePane } = useWorkspaceStore();
   const gridRef = useRef<HTMLDivElement>(null);
 
   // Stable reference — never changes, safe to omit from deps.
@@ -398,24 +464,17 @@ export function PaneGrid({
                 <div className="flex-1 min-h-0">
                   {/* The title bar is the terminal's own now, so that the pane
                     actions can live in it instead of over the output. */}
-                  <TerminalPane
+                  <TerminalLeaf
                     paneId={leaf.id}
-                    cwd={leaf.node.cwd}
+                    node={leaf.node}
                     isActive={leaf.id === activePaneId}
-                    label={leaf.node.label}
-                    labelIsCustom={leaf.node.labelIsCustom}
-                    onFocus={() => onPaneFocus(leaf.id)}
+                    onPaneFocus={onPaneFocus}
                     serializedContent={serializedPanes?.get(leaf.id) ?? leaf.node.serializedContent}
                     fontFamily={fontFamily}
                     fontSize={fontSize}
                     terminalTheme={terminalTheme}
                     terminalBackground={terminalBackground}
                     slideshowFrame={slideshowFrame}
-                    onSplitHorizontal={() => splitPane(leaf.id, 'horizontal')}
-                    onSplitVertical={() => splitPane(leaf.id, 'vertical')}
-                    onClose={() => closePane(leaf.id)}
-                    shellProfileId={leaf.node.shellProfileId}
-                    cmd={leaf.node.cmd}
                   />
                 </div>
               </PaneFrame>
@@ -438,6 +497,15 @@ export function PaneGrid({
     </div>
   );
 }
+
+/*
+ * Backstop for #541. Every tab renders a grid and all of them stay mounted, so
+ * one whole-object workspace update used to re-render every pane in the app.
+ * The store guards are the real fix; this stops the next one that slips through.
+ *
+ * Requires callers to pass a stable `onPaneFocus` — see App.tsx.
+ */
+export const PaneGrid = memo(PaneGridImpl);
 
 // --- Resize handle (absolute positioned) ---
 
