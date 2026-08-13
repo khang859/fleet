@@ -5,7 +5,7 @@ import { useDebouncedCallback } from '../../hooks/use-debounced-callback';
 import { SettingRow } from './SettingRow';
 import { TerminalBackgroundSettings } from './TerminalBackgroundSettings';
 import type { FontSelection } from '../../../../shared/types';
-import { resolveFontFamily } from '../../../../shared/types';
+import { DEFAULT_SCROLLBACK, resolveFontFamily } from '../../../../shared/types';
 import {
   ACCENT_COLORS,
   TERMINAL_THEMES,
@@ -22,6 +22,13 @@ const TERMINAL_THEME_OPTIONS = Object.values(TERMINAL_THEMES);
 const DARK_THEME_OPTIONS = TERMINAL_THEME_OPTIONS.filter((theme) => theme.kind === 'dark');
 const LIGHT_THEME_OPTIONS = TERMINAL_THEME_OPTIONS.filter((theme) => theme.kind === 'light');
 const ACCENT_COLOR_OPTIONS = Object.values(ACCENT_COLORS);
+
+// Scrollback applies live to every open pane, and shrinking it drops the oldest
+// lines for good. The floor stops a half-typed number ("3" on the way to "3000")
+// from wiping buffers; the ceiling keeps a typo out of gigabyte territory, at
+// roughly 3.2 KB per retained line per pane.
+const MIN_SCROLLBACK = 500;
+const MAX_SCROLLBACK = 100_000;
 
 function parseFontSelection(fontFamily: string): {
   mode: 'bundled' | 'custom';
@@ -157,7 +164,7 @@ export function GeneralSection(): React.JSX.Element {
   const [localScrollback, setLocalScrollback] = useState(
     settings?.general.scrollbackSize !== undefined
       ? String(settings.general.scrollbackSize)
-      : '10000'
+      : String(DEFAULT_SCROLLBACK)
   );
 
   const debouncedSaveShell = useDebouncedCallback((value: string) => {
@@ -171,8 +178,9 @@ export function GeneralSection(): React.JSX.Element {
   }, 300);
 
   const debouncedSaveScrollback = useDebouncedCallback((value: string) => {
+    const parsed = parseInt(value) || DEFAULT_SCROLLBACK;
     void updateSettings({
-      general: { scrollbackSize: parseInt(value) || 10000 }
+      general: { scrollbackSize: Math.min(Math.max(parsed, MIN_SCROLLBACK), MAX_SCROLLBACK) }
     });
   }, 300);
 
@@ -230,6 +238,8 @@ export function GeneralSection(): React.JSX.Element {
       <SettingRow label="Scrollback Lines">
         <input
           type="number"
+          min={MIN_SCROLLBACK}
+          max={MAX_SCROLLBACK}
           value={localScrollback}
           onChange={(e) => {
             setLocalScrollback(e.target.value);

@@ -285,6 +285,7 @@ type TerminalLeafProps = {
   serializedContent?: string;
   fontFamily?: string;
   fontSize?: number;
+  scrollbackSize?: number;
   terminalTheme?: TerminalThemeId;
   terminalBackground?: TerminalBackground;
   slideshowFrame?: SlideshowFrame;
@@ -306,6 +307,7 @@ const TerminalLeaf = memo(function TerminalLeaf({
   serializedContent,
   fontFamily,
   fontSize,
+  scrollbackSize,
   terminalTheme,
   terminalBackground,
   slideshowFrame
@@ -332,6 +334,7 @@ const TerminalLeaf = memo(function TerminalLeaf({
       serializedContent={serializedContent}
       fontFamily={fontFamily}
       fontSize={fontSize}
+      scrollbackSize={scrollbackSize}
       terminalTheme={terminalTheme}
       terminalBackground={terminalBackground}
       slideshowFrame={slideshowFrame}
@@ -351,6 +354,7 @@ type PaneGridProps = {
   serializedPanes?: Map<string, string>;
   fontFamily?: string;
   fontSize?: number;
+  scrollbackSize?: number;
   terminalTheme?: TerminalThemeId;
   terminalBackground?: TerminalBackground;
   slideshowFrame?: SlideshowFrame;
@@ -363,6 +367,7 @@ function PaneGridImpl({
   serializedPanes,
   fontFamily,
   fontSize,
+  scrollbackSize,
   terminalTheme,
   terminalBackground,
   slideshowFrame
@@ -472,6 +477,7 @@ function PaneGridImpl({
                     serializedContent={serializedPanes?.get(leaf.id) ?? leaf.node.serializedContent}
                     fontFamily={fontFamily}
                     fontSize={fontSize}
+                    scrollbackSize={scrollbackSize}
                     terminalTheme={terminalTheme}
                     terminalBackground={terminalBackground}
                     slideshowFrame={slideshowFrame}

@@ -25,6 +25,7 @@ type TerminalPaneProps = {
   serializedContent?: string;
   fontFamily?: string;
   fontSize?: number;
+  scrollbackSize?: number;
   terminalTheme?: TerminalThemeId;
   terminalBackground?: TerminalBackground;
   slideshowFrame?: SlideshowFrame;
@@ -45,6 +46,7 @@ export function TerminalPane({
   serializedContent,
   fontFamily,
   fontSize,
+  scrollbackSize,
   terminalTheme,
   terminalBackground,
   slideshowFrame,
@@ -66,6 +68,7 @@ export function TerminalPane({
     isActive,
     fontFamily,
     fontSize,
+    scrollback: scrollbackSize,
     terminalTheme,
     backgroundImageActive: hasBackgroundImage,
     workspaceId,

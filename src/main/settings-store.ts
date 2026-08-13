@@ -1,6 +1,29 @@
 import Store from 'electron-store';
 import type { CopilotWorkspaceOverride, FleetSettings, FleetSettingsPatch } from '../shared/types';
+import { DEFAULT_SCROLLBACK } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/constants';
+
+/**
+ * The scrollback default from before the setting was wired up to xterm at all.
+ *
+ * `electron-store` writes `defaults` straight into the file, so this landed on
+ * disk for every user even though no terminal ever read it - they all ran on
+ * xterm's 3000-line fallback. Honouring the saved 10,000 now that the setting
+ * works would triple per-pane memory for a value nobody chose, so the one
+ * migration below rewrites exactly that number and leaves any other alone.
+ */
+const LEGACY_DEFAULT_SCROLLBACK = 10_000;
+
+/**
+ * Split out of the migration below so it can be tested directly: the mock the
+ * settings tests run against stands in for `electron-store` and does not
+ * implement `migrations`, which would otherwise leave the one transform that
+ * rewrites persisted user data as the only untested thing in this file.
+ */
+export function migrateLegacyScrollback(saved: FleetSettingsPatch): FleetSettingsPatch {
+  if (saved.general?.scrollbackSize !== LEGACY_DEFAULT_SCROLLBACK) return saved;
+  return { ...saved, general: { ...saved.general, scrollbackSize: DEFAULT_SCROLLBACK } };
+}
 
 /**
  * Rebuild the per-workspace copilot overrides from disk, key by key.
@@ -60,6 +83,20 @@ export class SettingsStore {
       name: 'fleet-settings',
       defaults: {
         settings: DEFAULT_SETTINGS
+      },
+      // Keyed at the version in package.json when this shipped rather than at a
+      // future one: conf runs a migration when its key is <= the running app
+      // version, so a key that is ahead of the current build would sit dormant
+      // through local testing and through any patch release before it.
+      migrations: {
+        '2.106.0': (store) => {
+          const saved = store.get('settings');
+          const migrated = migrateLegacyScrollback(saved);
+          // Returned unchanged for everyone who never had the old default, and
+          // writing it back anyway would cost them the blocking atomic write
+          // that the lazy `store` getter above exists to avoid.
+          if (migrated !== saved) store.set('settings', migrated);
+        }
       },
       watch: true
     });
