@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   Terminal,
@@ -38,7 +38,6 @@ import { useHomesStore } from './store/homes-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
-import { SettingsTab } from './components/settings/SettingsTab';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { GitChangesModal } from './components/GitChangesModal';
@@ -54,8 +53,6 @@ import { EnvEditorModal } from './components/env-editor/EnvEditorModal';
 import { NotesModal } from './components/notes/NotesModal';
 import { ShellEnvModal } from './components/shell-env/ShellEnvModal';
 import { AgentFolderDialog } from './components/agent/AgentFolderDialog';
-import { AnnotateTab } from './components/AnnotateTab';
-import { SessionsTab } from './components/sessions/SessionsTab';
 import { ToolPaneFrame } from './components/ToolPaneFrame';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
@@ -66,6 +63,20 @@ import { tooltipAnim, popperAnim } from './lib/motion';
 import { useAppThemeVars } from './hooks/use-app-theme';
 import { useSlideshow } from './hooks/use-slideshow';
 import { findPaneLocation } from './lib/palette-items';
+
+// The three tool tabs only render when a tab of their type is active, and each
+// one carries weight no terminal window needs - the sessions browser alone pulls
+// react-markdown and highlight.js. Loading them on demand keeps that out of the
+// startup parse. Their chunks come off local disk, so the gap is a frame or two.
+const AnnotateTab = lazy(async () => ({
+  default: (await import('./components/AnnotateTab')).AnnotateTab
+}));
+const SettingsTab = lazy(async () => ({
+  default: (await import('./components/settings/SettingsTab')).SettingsTab
+}));
+const SessionsTab = lazy(async () => ({
+  default: (await import('./components/sessions/SessionsTab')).SessionsTab
+}));
 
 function MiniSidebarTooltip({
   label,
@@ -1011,15 +1022,21 @@ export function App(): React.JSX.Element {
                   >
                     {tab.type === 'annotate' ? (
                       <ToolPaneFrame overCanvas={canvasActive}>
-                        <AnnotateTab />
+                        <Suspense fallback={null}>
+                          <AnnotateTab />
+                        </Suspense>
                       </ToolPaneFrame>
                     ) : tab.type === 'settings' ? (
                       <ToolPaneFrame overCanvas={canvasActive}>
-                        <SettingsTab />
+                        <Suspense fallback={null}>
+                          <SettingsTab />
+                        </Suspense>
                       </ToolPaneFrame>
                     ) : tab.type === 'sessions' ? (
                       <ToolPaneFrame overCanvas={canvasActive}>
-                        <SessionsTab />
+                        <Suspense fallback={null}>
+                          <SessionsTab />
+                        </Suspense>
                       </ToolPaneFrame>
                     ) : (
                       <PaneGrid

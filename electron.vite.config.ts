@@ -35,6 +35,13 @@ export default defineConfig({
   },
   renderer: {
     resolve: {
+      // streamdown and @git-diff-view/shiki both depend on shiki ^3, which npm
+      // nests beside our own shiki 4 as two more private copies. Rollup then
+      // emits all 300-odd language grammars three times over - 25 MB of the
+      // renderer's 35 MB of JS was duplicate chunks. Both dependents only call
+      // createHighlighter/codeToTokens, which shiki 4 still exports, so one
+      // shared copy serves all three.
+      dedupe: ['shiki'],
       alias: {
         '@renderer': resolve('src/renderer/src'),
         '@copilot': resolve('src/renderer/copilot/src')
