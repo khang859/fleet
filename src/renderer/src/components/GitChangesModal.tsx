@@ -1,28 +1,17 @@
-/* eslint-disable react-refresh/only-export-components */
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Suspense, lazy, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { X, Loader2, GitBranch, AlertCircle } from 'lucide-react';
-import { DiffView, DiffModeEnum, DiffFile, type DiffHighlighter } from '@git-diff-view/react';
-import '@git-diff-view/react/styles/diff-view.css';
 import type { GitStatusPayload, GitFileStatus } from '../../../shared/ipc-api';
 import type { PathContext } from '../../../shared/shell-profiles';
-import { getLanguageForPath } from '../../../shared/languages';
 import { Overlay } from './Overlay';
+import type { DiffViewMode } from './git-diff/DiffContent';
 
-type DiffHighlighterInstance = Omit<DiffHighlighter, 'getHighlighterEngine'> | undefined;
-
-// Lazy-load shiki highlighter
-let highlighterPromise: Promise<DiffHighlighterInstance> | null = null;
-
-function useShikiHighlighter(): DiffHighlighterInstance {
-  const [highlighter, setHighlighter] = useState<DiffHighlighterInstance>(undefined);
-  useEffect(() => {
-    highlighterPromise ??= import('@git-diff-view/shiki').then(async (mod) => {
-      return mod.getDiffViewHighlighter();
-    });
-    void highlighterPromise.then(setHighlighter);
-  }, []);
-  return highlighter;
-}
+// `@git-diff-view` and its shiki highlighter are the heaviest thing this modal
+// draws, and the modal stays mounted for the whole session. Overlay renders
+// nothing while closed, so this import fires on first open rather than at
+// startup. See the module for why the parent stays free of DiffModeEnum.
+const DiffContent = lazy(async () => ({
+  default: (await import('./git-diff/DiffContent')).DiffContent
+}));
 
 type GitChangesModalProps = {
   isOpen: boolean;
@@ -45,12 +34,11 @@ export function GitChangesModal({
   const [data, setData] = useState<GitStatusPayload | null>(null);
   const [filterText, setFilterText] = useState('');
   const [activeFileIndex, setActiveFileIndex] = useState(0);
-  const [diffMode, setDiffMode] = useState<DiffModeEnum>(DiffModeEnum.Unified);
+  const [diffMode, setDiffMode] = useState<DiffViewMode>('unified');
   const modalRef = useRef<HTMLDivElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
   const fileListRef = useRef<HTMLDivElement>(null);
   const diffContainerRef = useRef<HTMLDivElement>(null);
-  const highlighter = useShikiHighlighter();
 
   // Scroll diff pane to a specific file's section
   const scrollToFile = useCallback((filePath: string | undefined) => {
@@ -86,12 +74,6 @@ export function GitChangesModal({
     const lower = filterText.toLowerCase();
     return data.files.filter((f) => f.path.toLowerCase().includes(lower));
   }, [data?.files, filterText]);
-
-  // Parse diff into per-file DiffFile instances
-  const diffFiles = useMemo(() => {
-    if (!data?.diff) return [];
-    return parseDiffToFiles(data.diff, highlighter);
-  }, [data?.diff, highlighter]);
 
   // Keyboard handler
   const handleKeyDown = useCallback(
@@ -249,14 +231,10 @@ export function GitChangesModal({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() =>
-              setDiffMode(
-                diffMode === DiffModeEnum.Unified ? DiffModeEnum.Split : DiffModeEnum.Unified
-              )
-            }
+            onClick={() => setDiffMode(diffMode === 'unified' ? 'split' : 'unified')}
             className="px-2 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-[0.97]"
           >
-            {diffMode === DiffModeEnum.Unified ? 'Split' : 'Unified'}
+            {diffMode === 'unified' ? 'Split' : 'Unified'}
           </button>
           <button
             onClick={onClose}
@@ -306,8 +284,10 @@ export function GitChangesModal({
 
         {/* Diff content */}
         <div ref={diffContainerRef} className="flex-1 min-w-0 overflow-auto">
-          {diffFiles.length > 0 ? (
-            <DiffContent diffFiles={diffFiles} diffMode={diffMode} highlighter={highlighter} />
+          {data?.diff ? (
+            <Suspense fallback={null}>
+              <DiffContent rawDiff={data.diff} mode={diffMode} />
+            </Suspense>
           ) : (
             <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
               No diff content
@@ -435,141 +415,5 @@ function FileEntry({
         {file.deletions > 0 && <span className="text-red-400 ml-1">&minus;{file.deletions}</span>}
       </span>
     </button>
-  );
-}
-
-// --- Diff parsing and rendering ---
-
-export type ParsedFileDiff = {
-  fileName: string;
-  hunks: string[];
-};
-
-/**
- * Parse a full unified diff string into per-file sections.
- * Each section has the file name and the full per-file diff as a single hunk string.
- * The library's parse() expects a complete per-file unified diff (including ---/+++ headers).
- */
-export function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
-  const files: ParsedFileDiff[] = [];
-  const lines = rawDiff.split('\n');
-  let currentFile: ParsedFileDiff | null = null;
-  let currentLines: string[] = [];
-
-  for (const line of lines) {
-    // New file diff starts with "diff --git"
-    if (line.startsWith('diff --git')) {
-      // Save previous file
-      if (currentFile) {
-        // Only push if there is actual diff content (not binary files)
-        const hasDiffContent = currentLines.some((l) => l.startsWith('@@'));
-        if (hasDiffContent) {
-          currentFile.hunks.push(currentLines.join('\n'));
-        }
-        files.push(currentFile);
-      }
-
-      // Extract filename from "diff --git a/path b/path"
-      const match = line.match(/diff --git a\/(.+) b\/(.+)/);
-      const fileName = match ? match[2] : 'unknown';
-      currentFile = { fileName, hunks: [] };
-      currentLines = [];
-      continue;
-    }
-
-    // Accumulate all lines for the current file (including ---/+++ headers that the library needs)
-    if (currentFile) {
-      currentLines.push(line);
-    }
-  }
-
-  // Save last file
-  if (currentFile) {
-    // Only push if there is actual diff content (not binary files)
-    const hasDiffContent = currentLines.some((l) => l.startsWith('@@'));
-    if (hasDiffContent) {
-      currentFile.hunks.push(currentLines.join('\n'));
-    }
-    files.push(currentFile);
-  }
-
-  return files;
-}
-
-function getLanguageFromFilename(filename: string): string | undefined {
-  return getLanguageForPath(filename)?.id;
-}
-
-function parseDiffToFiles(rawDiff: string, highlighter: DiffHighlighterInstance): DiffFile[] {
-  const parsed = parseUnifiedDiff(rawDiff);
-  const results: DiffFile[] = [];
-
-  for (const fileDiff of parsed) {
-    if (fileDiff.hunks.length === 0) continue;
-    try {
-      const lang = getLanguageFromFilename(fileDiff.fileName);
-      const diffFile = DiffFile.createInstance({
-        newFile: {
-          fileName: fileDiff.fileName,
-          fileLang: lang ?? null,
-          content: null
-        },
-        oldFile: {
-          fileName: fileDiff.fileName,
-          fileLang: lang ?? null,
-          content: null
-        },
-        hunks: fileDiff.hunks
-      });
-      diffFile.initRaw();
-      if (highlighter) {
-        diffFile.initSyntax({ registerHighlighter: highlighter });
-      }
-      diffFile.buildSplitDiffLines();
-      diffFile.buildUnifiedDiffLines();
-      results.push(diffFile);
-    } catch (e) {
-      console.error('Failed to parse diff for', fileDiff.fileName, e);
-    }
-  }
-
-  return results;
-}
-
-function DiffContent({
-  diffFiles,
-  diffMode,
-  highlighter
-}: {
-  diffFiles: DiffFile[];
-  diffMode: DiffModeEnum;
-  highlighter: DiffHighlighterInstance;
-}): React.JSX.Element {
-  if (diffFiles.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
-        No diff content to display
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-2">
-      {diffFiles.map((file, i) => (
-        <div key={file._newFileName || i} className="mb-4" data-file-path={file._newFileName}>
-          <div className="sticky top-0 z-10 bg-neutral-900 border-b border-neutral-800 px-3 py-1.5 text-xs font-mono text-neutral-300">
-            {file._newFileName}
-          </div>
-          <DiffView
-            diffFile={file}
-            diffViewMode={diffMode}
-            diffViewTheme="dark"
-            diffViewHighlight={!!highlighter}
-            registerHighlighter={highlighter}
-            diffViewFontSize={13}
-          />
-        </div>
-      ))}
-    </div>
   );
 }

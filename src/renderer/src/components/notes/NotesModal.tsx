@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import {
   X,
   Folder,
@@ -10,7 +10,6 @@ import {
   AlertTriangle,
   NotebookPen
 } from 'lucide-react';
-import { MarkdownPreview } from '../markdown/MarkdownPreview';
 import { basename } from '../../lib/path-utils';
 import type { NoteReadResult } from '../../../../shared/notes-types';
 import type { PathContext } from '../../../../shared/shell-profiles';
@@ -19,6 +18,14 @@ import { createCancellation } from '../../lib/cancellation';
 type Layout = 'split' | 'editor' | 'preview';
 
 const AUTOSAVE_DELAY_MS = 800;
+
+// This modal is mounted for the whole session but renders nothing until opened,
+// so importing the preview eagerly would put react-markdown and the whole of
+// highlight.js in the startup parse for a pane most windows never open. The
+// import fires on first open instead, once `isOpen` lets the tree render.
+const MarkdownPreview = lazy(async () => ({
+  default: (await import('../markdown/MarkdownPreview')).MarkdownPreview
+}));
 
 /**
  * Per-project Markdown notes. Keyed by the pane's repo root (or the folder
@@ -340,11 +347,13 @@ export function NotesModal({
                   </p>
                 </div>
               ) : (
-                <MarkdownPreview
-                  content={text}
-                  baseDir={scopePath ?? ''}
-                  className="mx-auto max-w-3xl px-6 py-5 leading-relaxed text-neutral-300 markdown-preview"
-                />
+                <Suspense fallback={null}>
+                  <MarkdownPreview
+                    content={text}
+                    baseDir={scopePath ?? ''}
+                    className="mx-auto max-w-3xl px-6 py-5 leading-relaxed text-neutral-300 markdown-preview"
+                  />
+                </Suspense>
               )}
             </div>
           )}

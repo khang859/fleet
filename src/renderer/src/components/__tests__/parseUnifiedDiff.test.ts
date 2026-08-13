@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseUnifiedDiff } from '../GitChangesModal';
+import { parseUnifiedDiff } from '../git-diff/parse-unified-diff';
 
 const MULTI_FILE_DIFF = `diff --git a/src/main/index.ts b/src/main/index.ts
 index abc1234..def5678 100644
