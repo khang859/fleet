@@ -1060,6 +1060,7 @@ export function App(): React.JSX.Element {
                         serializedPanes={serializedPanes}
                         fontFamily={settings?.general.fontFamily}
                         fontSize={settings?.general.fontSize}
+                        scrollbackSize={settings?.general.scrollbackSize}
                         terminalTheme={settings?.general.terminalTheme}
                         terminalBackground={settings?.general.terminalBackground}
                         slideshowFrame={slideshowFrame}
@@ -1088,6 +1089,7 @@ export function App(): React.JSX.Element {
                     serializedPanes={undefined}
                     fontFamily={settings?.general.fontFamily}
                     fontSize={settings?.general.fontSize}
+                    scrollbackSize={settings?.general.scrollbackSize}
                     terminalTheme={settings?.general.terminalTheme}
                     terminalBackground={settings?.general.terminalBackground}
                     slideshowFrame={slideshowFrame}

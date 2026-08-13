@@ -249,6 +249,17 @@ export const DEFAULT_TERMINAL_BACKGROUND: TerminalBackground = {
   paneSaturation: 1
 };
 
+/**
+ * Lines of scrollback each terminal retains. Kept deliberately low: xterm holds
+ * the buffer in the JS heap at roughly 3.2 KB per retained line, and Fleet's
+ * whole point is running many panes at once. VS Code, the closest precedent
+ * (same engine, many concurrent terminals), still ships 1,000.
+ *
+ * Lives here rather than in `constants.ts` because that module imports Node
+ * built-ins and so cannot be pulled into the renderer.
+ */
+export const DEFAULT_SCROLLBACK = 3000;
+
 export type FleetSettings = {
   general: {
     defaultShell: string;

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SettingsStore } from '../settings-store';
+import { SettingsStore, migrateLegacyScrollback } from '../settings-store';
+import { DEFAULT_SCROLLBACK } from '../../shared/types';
 // Mock electron-store, seeding `defaults` like the real lib does.
 //
 // `reads` and `fireChange` are what let the caching in SettingsStore be tested
@@ -159,5 +160,35 @@ describe('SettingsStore caching', () => {
     store.get();
 
     expect(__counter.reads).toBeGreaterThan(before);
+  });
+});
+
+// The one transform in this file that rewrites data a user already has on
+// disk, and it runs exactly once with no way to undo it - so the cases that
+// must not fire are as worth pinning down as the case that must.
+describe('legacy scrollback migration', () => {
+  it('rewrites the old default nobody ever actually received', () => {
+    const migrated = migrateLegacyScrollback({ general: { scrollbackSize: 10_000 } });
+    expect(migrated.general?.scrollbackSize).toBe(DEFAULT_SCROLLBACK);
+  });
+
+  it('leaves a value the user chose alone', () => {
+    const saved = { general: { scrollbackSize: 5000 } };
+    expect(migrateLegacyScrollback(saved)).toBe(saved);
+  });
+
+  it('carries the rest of the settings through untouched', () => {
+    const migrated = migrateLegacyScrollback({
+      general: { scrollbackSize: 10_000, fontSize: 16, terminalTheme: 'dracula' },
+      annotate: { retentionDays: 7 }
+    });
+    expect(migrated.general?.fontSize).toBe(16);
+    expect(migrated.general?.terminalTheme).toBe('dracula');
+    expect(migrated.annotate?.retentionDays).toBe(7);
+  });
+
+  it('survives a settings file saved before `general` existed', () => {
+    const saved = {};
+    expect(migrateLegacyScrollback(saved)).toBe(saved);
   });
 });

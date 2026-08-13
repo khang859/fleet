@@ -1,7 +1,7 @@
 import { join } from 'path';
 import { homedir } from 'os';
 import type { FleetSettings } from './types';
-import { DEFAULT_TERMINAL_BACKGROUND } from './types';
+import { DEFAULT_SCROLLBACK, DEFAULT_TERMINAL_BACKGROUND } from './types';
 import {
   DEFAULT_ACCENT_COLOR_ID,
   DEFAULT_APP_THEME,
@@ -10,8 +10,6 @@ import {
 import { DEFAULT_TOOL_VISIBILITY } from './tools';
 import { DEFAULT_AI_SETTINGS } from './agent-types';
 export { IPC_CHANNELS } from './ipc-channels';
-
-const DEFAULT_SCROLLBACK = 10_000;
 
 // --- Main-process only (Node.js built-ins) ---
 // Do NOT import these from renderer code.

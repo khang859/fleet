@@ -11,6 +11,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
+import { DEFAULT_SCROLLBACK } from '../../../shared/types';
 import { resolveXtermTheme } from '../lib/theme';
 
 export type UseTerminalOptions = {
@@ -202,7 +203,7 @@ function createTerminal(
   const term = new Terminal({
     fontSize: options.fontSize ?? 14,
     fontFamily: options.fontFamily ?? 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace',
-    scrollback: options.scrollback ?? 3000,
+    scrollback: options.scrollback ?? DEFAULT_SCROLLBACK,
     cursorBlink: true,
     cursorStyle: 'bar',
     cursorInactiveStyle: 'outline',
@@ -884,6 +885,18 @@ export function useTerminal(
     term.options.theme = theme;
     term.refresh(0, term.rows - 1);
   }, [options.terminalTheme, options.backgroundImageActive, containerRef]);
+
+  // Resize the scrollback buffer in place rather than re-creating the terminal,
+  // which would drop the buffer and the PTY binding (see the create effect).
+  // xterm resizes both the normal and alt buffers on this option, and shrinking
+  // trims the oldest lines immediately - so the memory is actually released,
+  // not just capped for future growth.
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    const next = options.scrollback ?? DEFAULT_SCROLLBACK;
+    if (term.options.scrollback !== next) term.options.scrollback = next;
+  }, [options.scrollback]);
 
   // Focus and refresh the xterm instance when this pane becomes active.
   // The refresh call is needed when the terminal was hidden with display:none and
