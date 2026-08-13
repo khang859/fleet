@@ -289,18 +289,26 @@ type WorkspaceStore = {
   getAllPaneIds: () => string[];
 };
 
+/*
+ * Both tree walkers return the node they were given when nothing below it
+ * changed, so an update touches only the spine from the root to the one node it
+ * edits. Callers rely on that identity to skip the enclosing tab entirely (see
+ * `setPaneDirty`), and `PaneGrid`'s `useMemo(..., [root])` relies on it to avoid
+ * recomputing a layout that cannot have moved.
+ */
 function updateRatioAtPath(node: PaneNode, path: number[], ratio: number): PaneNode {
   if (node.type === 'leaf') return node;
   if (path.length === 0) {
-    return { ...node, ratio };
+    return node.ratio === ratio ? node : { ...node, ratio };
   }
   const [head, ...rest] = path;
+  if (head !== 0 && head !== 1) return node;
+  const child = node.children[head];
+  const updated = updateRatioAtPath(child, rest, ratio);
+  if (updated === child) return node;
   return {
     ...node,
-    children: [
-      head === 0 ? updateRatioAtPath(node.children[0], rest, ratio) : node.children[0],
-      head === 1 ? updateRatioAtPath(node.children[1], rest, ratio) : node.children[1]
-    ]
+    children: head === 0 ? [updated, node.children[1]] : [node.children[0], updated]
   };
 }
 
@@ -312,13 +320,11 @@ function updateLeafInTree(
   if (node.type === 'leaf') {
     return node.id === paneId ? updater(node) : node;
   }
-  return {
-    ...node,
-    children: [
-      updateLeafInTree(node.children[0], paneId, updater),
-      updateLeafInTree(node.children[1], paneId, updater)
-    ]
-  };
+  const [left, right] = node.children;
+  const newLeft = updateLeafInTree(left, paneId, updater);
+  const newRight = updateLeafInTree(right, paneId, updater);
+  if (newLeft === left && newRight === right) return node;
+  return { ...node, children: [newLeft, newRight] };
 }
 
 function removePaneFromTree(node: PaneNode, paneId: string): PaneNode | null {
@@ -1034,23 +1040,20 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   setActivePane: (paneId) => set({ activePaneId: paneId }),
 
+  // Called per mousemove while a divider is dragged, so - like `setPaneDirty` -
+  // a ratio that did not actually move must not replace the workspace.
   resizeSplit: (splitNodePath, ratio) => {
     const clampedRatio = Math.max(0.15, Math.min(0.85, ratio));
     set((state) => {
       const activeTabId = state.activeTabId;
       if (!activeTabId) return state;
-      return {
-        workspace: {
-          ...state.workspace,
-          tabs: state.workspace.tabs.map((tab) => {
-            if (tab.id !== activeTabId) return tab;
-            return {
-              ...tab,
-              splitRoot: updateRatioAtPath(tab.splitRoot, splitNodePath, clampedRatio)
-            };
-          })
-        }
-      };
+      const tabs = state.workspace.tabs.map((tab) => {
+        if (tab.id !== activeTabId) return tab;
+        const splitRoot = updateRatioAtPath(tab.splitRoot, splitNodePath, clampedRatio);
+        return splitRoot === tab.splitRoot ? tab : { ...tab, splitRoot };
+      });
+      if (tabs.every((tab, i) => tab === state.workspace.tabs[i])) return state;
+      return { workspace: { ...state.workspace, tabs } };
     });
   },
 
@@ -1313,19 +1316,26 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   markClean: () => set({ isDirty: false }),
 
+  /*
+   * Fires on every editor keystroke, so it must be a no-op when the flag is
+   * already what it is being set to. Without the guard this replaced the
+   * workspace, the tabs array and every tab object per character, which broke
+   * App's `useShallow` and re-rendered every pane in every tab (#541).
+   */
   setPaneDirty: (paneId, dirty) => {
-    set((state) => ({
-      workspace: {
-        ...state.workspace,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({
-            ...leaf,
-            isDirty: dirty
-          }))
-        }))
-      }
-    }));
+    set((state) => {
+      const tabs = state.workspace.tabs.map((tab) => {
+        const splitRoot = updateLeafInTree(tab.splitRoot, paneId, (leaf) =>
+          // `undefined` is how a never-edited leaf spells "clean", and both
+          // readers of this flag (Sidebar) test it truthily, so it must not
+          // count as a change when a pane reports itself clean.
+          (leaf.isDirty ?? false) === dirty ? leaf : { ...leaf, isDirty: dirty }
+        );
+        return splitRoot === tab.splitRoot ? tab : { ...tab, splitRoot };
+      });
+      if (tabs.every((tab, i) => tab === state.workspace.tabs[i])) return state;
+      return { workspace: { ...state.workspace, tabs } };
+    });
   },
 
   openFile: (filePath, pathContext) => {

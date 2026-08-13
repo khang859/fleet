@@ -112,6 +112,9 @@ function RailDivider(): React.JSX.Element {
   return <div className="w-full h-px bg-fleet-border-strong my-0.5" />;
 }
 
+/** Background-workspace grids are never focusable; hoisted so the prop is stable. */
+const NO_PANE_FOCUS = (): void => {};
+
 /**
  * Corner status dot for a rail tab — the same signal the sidebar row shows next
  * to its label, anchored to the icon's top-right and ringed in the rail surface
@@ -246,6 +249,17 @@ export function App(): React.JSX.Element {
       openAgentPane: s.openAgentPane
     }))
   );
+  // Stable so the memoized PaneGrid can actually skip; an inline arrow here
+  // would hand every grid a new prop on every App render (#541).
+  const handlePaneFocus = useCallback(
+    (paneId: string) => {
+      setActivePane(paneId);
+      window.fleet.notifications.paneFocused({ paneId });
+      useNotificationStore.getState().clearPane(paneId);
+    },
+    [setActivePane]
+  );
+
   const settings = useSettingsStore((s) => s.settings);
   const focusedPaneCwd = useCwdStore((s) => (activePaneId ? s.cwds.get(activePaneId) : undefined));
   // Stable per-pane reference so consumers can safely use it in effect deps
@@ -1042,11 +1056,7 @@ export function App(): React.JSX.Element {
                       <PaneGrid
                         root={tab.splitRoot}
                         activePaneId={tab.id === activeTabId ? activePaneId : null}
-                        onPaneFocus={(paneId) => {
-                          setActivePane(paneId);
-                          window.fleet.notifications.paneFocused({ paneId });
-                          useNotificationStore.getState().clearPane(paneId);
-                        }}
+                        onPaneFocus={handlePaneFocus}
                         serializedPanes={serializedPanes}
                         fontFamily={settings?.general.fontFamily}
                         fontSize={settings?.general.fontSize}
@@ -1074,7 +1084,7 @@ export function App(): React.JSX.Element {
                   <PaneGrid
                     root={tab.splitRoot}
                     activePaneId={null}
-                    onPaneFocus={() => {}}
+                    onPaneFocus={NO_PANE_FOCUS}
                     serializedPanes={undefined}
                     fontFamily={settings?.general.fontFamily}
                     fontSize={settings?.general.fontSize}
