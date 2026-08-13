@@ -38,7 +38,7 @@ function hostContext(): PathContext {
 
 /**
  * Make a path from a WSL pane's coordinate system readable by the win32 process
- * (Strategy 1, UNC bridge — see docs/wsl-path-handling-plan.md §3). Idempotent:
+ * (Strategy 1, UNC bridge). Idempotent:
  * already-Windows/UNC paths and every non-WSL context pass through unchanged, so
  * native behaviour is byte-for-byte identical.
  */

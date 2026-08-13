@@ -10,7 +10,7 @@ It does **not** gate `webContents.capturePage()` or Playwright's `page.screensho
 So programmatic screenshots of Fleet were always possible - we were just using the wrong API.
 
 `fleet-drive` (`scripts/drive/`, `npm run drive -- <verb>`) attaches over CDP to the live `npm run dev` window and can screenshot, snapshot (ARIA tree), click, type, send key chords, and eval in the renderer.
-See `scripts/drive/README.md` and the design/plan under `docs/superpowers/`.
+See `scripts/drive/README.md`.
 
 ## Gotchas hit during implementation
 

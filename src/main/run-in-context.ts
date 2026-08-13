@@ -3,7 +3,7 @@ import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { wslExePath } from './wsl-service';
 
 /**
- * Tier-3 spawn boundary (see docs/wsl-path-handling-plan.md §8). Runs a Windows
+ * Tier-3 spawn boundary. Runs a Windows
  * CLI tool either natively or *inside* a WSL distro, keyed on the pane's
  * {@link PathContext}. For a WSL pane the tool runs in the distro via
  *

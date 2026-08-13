@@ -1,6 +1,6 @@
 # Kanban Phase 1: vitest/better-sqlite3 ABI, zod v4 `z.record`, and deferred gaps
 
-Captured while implementing the headless Kanban core (`src/main/kanban/**`, plan `docs/superpowers/plans/2026-05-30-kanban-phase1-core.md`).
+Captured while implementing the headless Kanban core (`src/main/kanban/**`).
 
 ## 1. `better-sqlite3` native addon: Electron ABI vs system Node for vitest
 

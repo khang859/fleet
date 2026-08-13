@@ -452,7 +452,6 @@ async function main(): Promise<void> {
     console.error(`\nMissing ${missing.length} sprite files:`);
     missing.forEach((f) => console.error(`  - sprites-raw/${f}`));
     console.error('\nPlease generate all sprites before running this script.');
-    console.error('See docs/superpowers/specs/2026-03-16-pixel-art-sprite-prompts.md for prompts.');
     process.exit(1);
   }
 

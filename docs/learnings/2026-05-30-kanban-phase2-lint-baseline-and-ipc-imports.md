@@ -1,6 +1,6 @@
 # Kanban Phase 2: dirty lint baseline + banned inline `import()` types
 
-Captured while implementing the Kanban Board UI (`docs/superpowers/plans/2026-05-30-kanban-phase2-board-ui.md`).
+Captured while implementing the Kanban Board UI.
 
 ## 1. The repo's lint baseline is NOT clean — don't gate on "lint clean"
 
