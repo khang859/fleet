@@ -166,7 +166,12 @@ describe('stopping one', () => {
     await run('bash_kill', { id });
 
     // If the group survived, the grandchild would still be holding the name.
-    const { text } = await run('bash', { command: 'sleep 0.3; pgrep -f "sleep 37" || echo none' });
+    // `3[7]` matches `sleep 37` without the probe's own command line matching
+    // it: Linux `pgrep -f` reads every process's arguments and only skips
+    // itself, so a plain `sleep 37` here finds the shell asking the question.
+    const { text } = await run('bash', {
+      command: 'sleep 0.3; pgrep -f "sleep 3[7]" || echo none'
+    });
     expect(text).toContain('none');
   });
 
