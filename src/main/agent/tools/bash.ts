@@ -1,5 +1,3 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import { constants, setPriority } from 'node:os';
 import {
   BASH_DEFAULT_TIMEOUT_MS,
   BASH_MAX_OUTPUT_CHARS,
@@ -9,6 +7,8 @@ import {
   type BashArgs
 } from '../../../shared/agent-tools';
 import { splitLines } from '../../../shared/agent-diff';
+import { startBackgroundCommand } from './background';
+import { GRACE_MS, killTree, shellError, spawnShell } from './shell';
 
 /**
  * Run a shell command in the pane's folder.
@@ -24,9 +24,21 @@ import { splitLines } from '../../../shared/agent-diff';
  * neither does an exported variable - which the tool's description says plainly,
  * because a model that believes otherwise writes commands that quietly run
  * somewhere else.
+ *
+ * A command that is not meant to finish is handed to `background` instead, and
+ * everything above still applies to it: the same permission step, the same
+ * shell, the same process group. The only difference is that this file stops
+ * waiting for it. See `background.ts` for what happens to it after that.
  */
 export async function runBash(args: BashArgs, ctx: AgentToolContext): Promise<AgentToolResult> {
   if (!(await ctx.approve(args.command))) return REFUSED;
+
+  // Behind the permission step, so a command the user said no to is no more
+  // runnable in the background than it was in front of them.
+  if (args.background === true) {
+    const started = startBackgroundCommand(args.command, ctx);
+    return { text: started.text, summary: started.summary };
+  }
 
   const timeoutMs = args.timeoutMs ?? BASH_DEFAULT_TIMEOUT_MS;
   const run = await execute(args.command, ctx, timeoutMs);
@@ -67,39 +79,12 @@ type Run = {
   ms: number;
 };
 
-/**
- * The shell. Non-login and non-interactive on purpose: a login shell runs the
- * user's profile, which prints banners, changes directory and takes a second to
- * do it, none of which belongs in the output of `git status`.
- */
-const SHELL = process.platform === 'win32' ? 'bash.exe' : 'bash';
-
-/** How long a killed command gets to die politely before it is killed hard. */
-const GRACE_MS = 2_000;
-
 async function execute(command: string, ctx: AgentToolContext, timeoutMs: number): Promise<Run> {
   return new Promise<Run>((resolve, reject) => {
     const started = Date.now();
-    const child = spawn(SHELL, ['-c', command], {
-      cwd: ctx.cwd,
-      // The main process resolved the user's real PATH at startup, so the
-      // commands that work in their terminal work here.
-      env: process.env,
-      // Its own process group, so killing it kills what it started. A test run
-      // that hangs is never the shell at the top - it is the child three levels
-      // under it, and that one would survive a kill aimed at its parent.
-      detached: process.platform !== 'win32',
-      // Nothing can be typed in, so a command that stops to ask a question gets
-      // an end of input and fails now rather than holding the turn until the
-      // timeout. It is also why the description says to avoid interactive ones.
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-
-    standAside(child);
+    const child = spawnShell(command, ctx.cwd);
 
     const tape = makeTape();
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
     // Both streams into one, in the order they arrived, the way a terminal
     // shows them: what a failing build has to say is on stderr, and reading it
     // apart from the output it interrupted loses where it happened.
@@ -109,8 +94,8 @@ async function execute(command: string, ctx: AgentToolContext, timeoutMs: number
     const state: { ending: Ending; hard: NodeJS.Timeout | null } = { ending: 'ok', hard: null };
     const stop = (ending: Ending): void => {
       state.ending = ending;
-      kill(child, 'SIGTERM');
-      state.hard = setTimeout(() => kill(child, 'SIGKILL'), GRACE_MS);
+      killTree(child, 'SIGTERM');
+      state.hard = setTimeout(() => killTree(child, 'SIGKILL'), GRACE_MS);
     };
 
     const timer = setTimeout(() => stop('timeout'), timeoutMs);
@@ -125,11 +110,7 @@ async function execute(command: string, ctx: AgentToolContext, timeoutMs: number
 
     child.on('error', (err) => {
       cleanup();
-      reject(
-        'code' in err && err.code === 'ENOENT'
-          ? new Error(`No shell to run it with: ${SHELL} is not installed on this machine`)
-          : err
-      );
+      reject(shellError(err));
     });
 
     child.on('close', (code, signal) => {
@@ -143,46 +124,6 @@ async function execute(command: string, ctx: AgentToolContext, timeoutMs: number
       });
     });
   });
-}
-
-/**
- * Let the app have the processor ahead of the command.
- *
- * A test run or a build saturates every core it is given, and several agents
- * doing it at once will happily take the machine. What loses that fight is
- * Fleet itself - the main process that has to flush a terminal every sixteen
- * milliseconds, and the renderer that has to draw the character the user just
- * typed - and the user experiences it as the app going soft while an agent
- * works, which is the thing this must not do.
- *
- * A lower priority rather than a queue, deliberately. Queueing commands would
- * mean one pane's ten-minute test run holding up another pane's `git status`,
- * which is the same complaint in a new place. This costs the command nothing
- * on an idle machine and only yields when there is something else to run - and
- * the nice value is inherited, so what the shell starts is covered too.
- *
- * Best-effort: a platform that will not have it is not a reason to fail the
- * command, which is why nothing here is reported.
- */
-function standAside(child: ChildProcess): void {
-  if (child.pid === undefined) return;
-  try {
-    setPriority(child.pid, constants.priority.PRIORITY_BELOW_NORMAL);
-  } catch {
-    // Not permitted, or the command was over before we got to it.
-  }
-}
-
-/** The negative pid is the process group - see `detached` above. */
-function kill(child: ChildProcess, signal: NodeJS.Signals): void {
-  const { pid } = child;
-  if (pid === undefined) return;
-  try {
-    if (process.platform === 'win32') child.kill(signal);
-    else process.kill(-pid, signal);
-  } catch {
-    // Already gone, which is the outcome either way.
-  }
 }
 
 /** How much of a cut output is kept from the front rather than the back. */

@@ -84,6 +84,7 @@ import { ScheduleStore } from './agent/schedule-store';
 import { ScheduleTimer } from './agent/schedule-timer';
 import type { AgentScheduleChanged } from '../shared/agent-schedule';
 import { discardAllFetches } from './agent/skills/fetch';
+import { killAllBackgroundCommands } from './agent/tools/background';
 import { AgentMcpSecrets } from './agent/mcp/secrets';
 import { resolveAuth, signIn as signInToMcp } from './agent/mcp/auth';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
@@ -1212,6 +1213,10 @@ function shutdownAll(): void {
   // Kills the running command and settles any permission question still on
   // screen as a refusal, so nothing starts on the way out.
   agentService?.cancelAll();
+  // Background commands are the ones that would otherwise survive this: they
+  // are process groups of our own that nothing is waiting on, so a quit that
+  // skipped this would leave a dev server holding a port after Fleet is gone.
+  killAllBackgroundCommands();
   // And writes down every subagent still running as interrupted, so a card
   // reopened tomorrow says what happened rather than shimmering forever.
   agentSubagents?.cancelAll();

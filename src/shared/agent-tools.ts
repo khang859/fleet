@@ -58,6 +58,15 @@ import {
  * one of them being wrong should not be enough to get a subagent spawning
  * subagents.
  */
+/*
+ * `bash_output` and `bash_kill` are here because a child that may start a
+ * background command has to be able to read it and stop it - a subagent that
+ * could start a server and never look at it would be strictly worse than one
+ * that could not start it at all. What makes that safe is the other end: the
+ * manager kills everything a child started the moment it reports, so a process
+ * outliving the only conversation that knew about it is not a state that
+ * exists. See `killThreadBackgroundCommands`.
+ */
 export const SUBAGENT_TOOL_NAMES = [
   'read',
   'glob',
@@ -65,6 +74,8 @@ export const SUBAGENT_TOOL_NAMES = [
   'edit',
   'write',
   'bash',
+  'bash_output',
+  'bash_kill',
   'terminal',
   'image',
   'web_fetch',
@@ -142,6 +153,16 @@ export const GREP_MAX_FILES = 20_000;
  */
 export const EDIT_MAX_FILE_BYTES = 2_000_000;
 
+/**
+ * Replacements one `edit` may carry.
+ *
+ * High enough that a rename across a file never has to be split, low enough
+ * that a model looping on a bad pattern is stopped by an argument check rather
+ * than by whatever it did to the file. Past this, the change is a rewrite, and
+ * `write` is the honest tool for one of those.
+ */
+export const EDIT_MAX_HUNKS = 50;
+
 /** Lines of diff a change reports back. Past this the change is its own review. */
 export const DIFF_MAX_LINES = 200;
 
@@ -164,6 +185,23 @@ export const BASH_MIN_TIMEOUT_MS = 1_000;
  * few, which is what gets kept.
  */
 export const BASH_MAX_OUTPUT_CHARS = 30_000;
+
+/**
+ * Background commands one conversation may hold at once, running and finished
+ * together. A model doing this properly holds one or two - a server and a watch
+ * build - so a cap this size only ever catches a loop.
+ */
+export const BACKGROUND_MAX_JOBS = 8;
+
+/**
+ * How long a background command may run before it is killed.
+ *
+ * There is no signal for "the user closed the pane" that reaches the process,
+ * so this ceiling is what stops a forgotten dev server from still running at
+ * midnight. Long enough that it never interrupts real work, short enough that
+ * a leak is measured in an hour rather than in a day.
+ */
+export const BACKGROUND_MAX_MS = 60 * 60_000;
 
 /**
  * The line between what a tool says about a command and the command's own
@@ -203,13 +241,31 @@ export const GrepArgs = z.object({
   mode: z.enum(['content', 'files']).optional()
 });
 
-export const EditArgs = z.object({
-  path: z.string().min(1),
+/** One replacement inside a file. */
+const EditHunk = z.object({
   /** Text to find, exactly as it appears in the file. */
   oldString: z.string().min(1),
   newString: z.string(),
   /** Change every occurrence instead of refusing an ambiguous one. */
   replaceAll: z.boolean().optional()
+});
+
+export const EditArgs = z.object({
+  path: z.string().min(1),
+  /**
+   * Several at once, because a change to a file is rarely one place in it.
+   * Rewriting a function means the call sites too, and renaming a field means
+   * every line that names it - work that is one thought and, one hunk per call,
+   * a round trip each with the file half-changed in between.
+   *
+   * One file rather than many. The per-file guards - the freshness check and
+   * the diff that reports back - are what make an edit safe to trust, and both
+   * are about a single file; spanning several would mean either running them
+   * per file inside one call, which is this tool called several times with
+   * extra steps, or weakening them, which is the one thing an edit tool must
+   * not do.
+   */
+  edits: z.array(EditHunk).min(1).max(EDIT_MAX_HUNKS)
 });
 
 export const WriteArgs = z.object({
@@ -223,8 +279,22 @@ export const BashArgs = z.object({
    * Named for its unit: a bare `timeout` invites a number of seconds, and a
    * command killed after 30ms looks like a command that failed.
    */
-  timeoutMs: z.number().int().min(BASH_MIN_TIMEOUT_MS).max(BASH_MAX_TIMEOUT_MS).optional()
+  timeoutMs: z.number().int().min(BASH_MIN_TIMEOUT_MS).max(BASH_MAX_TIMEOUT_MS).optional(),
+  /**
+   * Start it and do not wait for it.
+   *
+   * A flag on `bash` rather than a tool of its own, because the decision is
+   * about this one command rather than about a different way of running
+   * commands: everything else - the folder, the shell, the permission step - is
+   * the same, and a second tool would have to say so twice and be chosen
+   * correctly by a model that has already decided what to run.
+   */
+  background: z.boolean().optional()
 });
+
+export const BashOutputArgs = z.object({ id: z.string().min(1) });
+
+export const BashKillArgs = z.object({ id: z.string().min(1) });
 
 /**
  * A character a terminal acts on rather than shows. Written as a comparison
@@ -363,6 +433,8 @@ export type GrepArgs = z.infer<typeof GrepArgs>;
 export type EditArgs = z.infer<typeof EditArgs>;
 export type WriteArgs = z.infer<typeof WriteArgs>;
 export type BashArgs = z.infer<typeof BashArgs>;
+export type BashOutputArgs = z.infer<typeof BashOutputArgs>;
+export type BashKillArgs = z.infer<typeof BashKillArgs>;
 export type TerminalArgs = z.infer<typeof TerminalArgs>;
 export type ImageArgs = z.infer<typeof ImageArgs>;
 export type TodoAddArgs = z.infer<typeof TodoAddArgs>;
@@ -424,9 +496,11 @@ const GREP_DESCRIPTION = [
 ].join(' ');
 
 const EDIT_DESCRIPTION = [
-  'Change part of a file by replacing exact text.',
-  'Read the file first and copy `oldString` out of what `read` returned, without the line numbers.',
-  'It must match the file character for character, including indentation, and must appear exactly once - include the lines around it to pin down which occurrence you mean, or set `replaceAll` to change every one.',
+  'Change one file by replacing exact text, in as many places at once as the change needs.',
+  'Read the file first and copy each `oldString` out of what `read` returned, without the line numbers.',
+  'It must match the file character for character, including indentation, and must appear exactly once - include the lines around it to pin down which occurrence you mean, or set `replaceAll` on that entry to change every one.',
+  'Put every change to the same file in one call rather than calling this repeatedly: they are applied in the order you list them, each one seeing the result of the one before, and the whole call is refused without writing anything if any single entry does not match. So a rename or a signature change goes in with its call sites, and the file is never left half-changed.',
+  'One file per call - call it again for the next file.',
   'Returns a diff of what changed.'
 ].join(' ');
 
@@ -441,7 +515,23 @@ const BASH_DESCRIPTION = [
   'This is the last tool to reach for, not the first: `read`, `glob`, `grep`, `edit` and `write` do everything they cover better than `cat`, `find`, `grep` and `sed` do here, and they keep their output small enough to be worth reading.',
   'Use the shell for what only the shell can do - running tests, builds, linters, git, package managers and scripts.',
   'Each command runs on its own, so a `cd` or an exported variable is gone by the next call; chain with `&&` in one command when that matters.',
-  `Nothing can be typed into it, so avoid anything interactive. Output is cut at ${BASH_MAX_OUTPUT_CHARS.toLocaleString('en-US')} characters and the command is killed after ${BASH_DEFAULT_TIMEOUT_MS / 1000} seconds unless \`timeoutMs\` says otherwise.`
+  `Nothing can be typed into it, so avoid anything interactive. Output is cut at ${BASH_MAX_OUTPUT_CHARS.toLocaleString('en-US')} characters and the command is killed after ${BASH_DEFAULT_TIMEOUT_MS / 1000} seconds unless \`timeoutMs\` says otherwise.`,
+  'Set `background: true` for a command that is not meant to finish, so that waiting for it is not what ends your turn: a dev server you are about to make requests against, a watch build, a log you want to follow while you work. You get an id back straight away; read what it has printed since with `bash_output`, and stop it with `bash_kill` once you are done with it.',
+  `A background command keeps running after the turn ends, so stop it yourself rather than leaving it - nothing runs past ${Math.round(BACKGROUND_MAX_MS / 60_000)} minutes, and a conversation may hold ${BACKGROUND_MAX_JOBS} of them at once. When it is the *user* who should be watching the command rather than you, use \`terminal\` instead: that one goes in front of them, this one does not.`
+].join(' ');
+
+const BASH_OUTPUT_DESCRIPTION = [
+  'Read what a background command has printed since you last looked, and find out whether it is still running.',
+  'Takes the id `bash` gave you when you started it.',
+  'What comes back is only the new output - each read hands it over and clears it, so nothing is repeated and nothing is shown twice.',
+  'Give a server a moment to start before the first read, and expect an empty answer to mean "nothing new yet" rather than "nothing happened".',
+  'A command that has ended still answers, once, with how it ended and whatever it had left to say.'
+].join(' ');
+
+const BASH_KILL_DESCRIPTION = [
+  'Stop a background command, by the id `bash` gave you.',
+  'The command and everything it started are killed together, and anything it had printed and you had not read comes back with it.',
+  'Do this the moment you are done with it - a dev server left running is a port taken and a process the user did not ask for, and it is yours to clean up rather than theirs.'
 ].join(' ');
 
 const TERMINAL_DESCRIPTION = [
@@ -653,14 +743,34 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
         type: 'object',
         properties: {
           path: { type: 'string', description: 'File to change.' },
-          oldString: { type: 'string', description: 'Text to replace, exactly as it appears.' },
-          newString: { type: 'string', description: 'What to put in its place. May be empty.' },
-          replaceAll: {
-            type: 'boolean',
-            description: 'Replace every occurrence rather than requiring exactly one.'
+          edits: {
+            type: 'array',
+            minItems: 1,
+            maxItems: EDIT_MAX_HUNKS,
+            description:
+              'The changes to make to that file, in the order they should be applied. Every change to one file belongs in a single call.',
+            items: {
+              type: 'object',
+              properties: {
+                oldString: {
+                  type: 'string',
+                  description: 'Text to replace, exactly as it appears.'
+                },
+                newString: {
+                  type: 'string',
+                  description: 'What to put in its place. May be empty.'
+                },
+                replaceAll: {
+                  type: 'boolean',
+                  description: 'Replace every occurrence rather than requiring exactly one.'
+                }
+              },
+              required: ['oldString', 'newString'],
+              additionalProperties: false
+            }
           }
         },
-        required: ['path', 'oldString', 'newString'],
+        required: ['path', 'edits'],
         additionalProperties: false
       }
     }
@@ -692,10 +802,45 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
           command: { type: 'string', description: 'The command line to run.' },
           timeoutMs: {
             type: 'integer',
-            description: `How long to let it run, in milliseconds. Defaults to ${BASH_DEFAULT_TIMEOUT_MS}, at most ${BASH_MAX_TIMEOUT_MS}.`
+            description: `How long to let it run, in milliseconds. Defaults to ${BASH_DEFAULT_TIMEOUT_MS}, at most ${BASH_MAX_TIMEOUT_MS}. Ignored when the command runs in the background.`
+          },
+          background: {
+            type: 'boolean',
+            description:
+              'Start it and carry on without waiting. Returns an id for bash_output and bash_kill instead of the command’s output.'
           }
         },
         required: ['command'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'bash_output',
+      description: BASH_OUTPUT_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'The id of the background command, e.g. `bg_1`.' }
+        },
+        required: ['id'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'bash_kill',
+      description: BASH_KILL_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'The id of the background command to stop.' }
+        },
+        required: ['id'],
         additionalProperties: false
       }
     }

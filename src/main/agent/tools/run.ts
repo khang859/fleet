@@ -1,6 +1,8 @@
 import type { z } from 'zod';
 import {
   BashArgs,
+  BashKillArgs,
+  BashOutputArgs,
   EditArgs,
   GlobArgs,
   GrepArgs,
@@ -22,6 +24,7 @@ import { MemoryArgs, MemoryWriteArgs } from '../../../shared/agent-memory';
 import { isMcpToolName } from '../../../shared/agent-mcp-names';
 import type { McpToolOutput } from '../../../shared/agent-mcp';
 import { runBash } from './bash';
+import { killBackgroundCommand, readBackgroundCommand } from './background';
 import { runEdit } from './edit';
 import { runGlob } from './glob';
 import { runGrep } from './grep';
@@ -84,6 +87,10 @@ export async function runAgentTool(
       return runWrite(checked(WriteArgs, args, name), ctx);
     case 'bash':
       return runBash(checked(BashArgs, args, name), ctx);
+    case 'bash_output':
+      return readBackgroundCommand(checked(BashOutputArgs, args, name), ctx);
+    case 'bash_kill':
+      return killBackgroundCommand(checked(BashKillArgs, args, name), ctx);
     case 'terminal':
       return runTerminal(checked(TerminalArgs, args, name), ctx);
     case 'image':
