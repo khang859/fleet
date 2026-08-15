@@ -12,13 +12,20 @@ import { requireFresh } from './freshness';
 import { checkEditableSize, readTextFile, writeTextFile } from './text-file';
 
 /**
- * Change part of a file.
+ * Change part of a file, in one place or in twenty.
  *
  * The result is a diff rather than a confirmation. A model that is told "done"
  * has to take its own edit on trust and will happily build the next three edits
  * on a mistake in this one; a diff is the only answer that says what actually
  * happened, and it is the same text the pane shows the user, so the two cannot
  * disagree about what was written.
+ *
+ * Several replacements arrive together because a change to a file is rarely one
+ * place in it, and the alternative - one call each - is a round trip per place
+ * with the file readable and wrong in between. They are applied in order to the
+ * text in memory, so a later one may match what an earlier one wrote, and
+ * nothing reaches disk until every one of them has matched. Half a rename is
+ * worse than no rename: it compiles less often, but it reads as finished.
  */
 export async function runEdit(args: EditArgs, ctx: AgentToolContext): Promise<AgentToolResult> {
   const abs = resolveInsideCwd(args.path, ctx.cwd);
@@ -31,7 +38,7 @@ export async function runEdit(args: EditArgs, ctx: AgentToolContext): Promise<Ag
   requireFresh(ctx.threadId, abs, info, shown);
 
   const before = await readTextFile(abs, shown);
-  const edited = applyEdit(before.text, args.oldString, args.newString, args.replaceAll ?? false);
+  const edited = applyAll(before.text, args.edits);
 
   await writeTextFile(ctx.threadId, abs, edited.text, before.crlf);
   const notes = edited.reindented
@@ -40,6 +47,40 @@ export async function runEdit(args: EditArgs, ctx: AgentToolContext): Promise<Ag
       ]
     : [];
   return diffReport(`Edited ${shown}`, before.text, edited.text, notes);
+}
+
+/**
+ * Every replacement, or none of them.
+ *
+ * `applyEdit` throws a sentence written for the model to act on, and that
+ * sentence is about text rather than about position - so on a call carrying
+ * several, it would leave the model unable to tell which of its entries the
+ * complaint is about. The number is prefixed for exactly that, and only when
+ * there is more than one: on the common single-hunk call, "Change 1 of 1" is
+ * noise in front of the part that matters.
+ */
+function applyAll(
+  original: string,
+  edits: EditArgs['edits']
+): { text: string; reindented: boolean } {
+  let text = original;
+  let reindented = false;
+
+  for (const [i, hunk] of edits.entries()) {
+    try {
+      const outcome = applyEdit(text, hunk.oldString, hunk.newString, hunk.replaceAll ?? false);
+      text = outcome.text;
+      reindented ||= outcome.reindented;
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      if (edits.length === 1) throw new Error(why);
+      throw new Error(
+        `Change ${i + 1} of ${edits.length} did not apply, so nothing was written and the file is as it was: ${why}`
+      );
+    }
+  }
+
+  return { text, reindented };
 }
 
 /**

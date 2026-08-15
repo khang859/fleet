@@ -31,7 +31,8 @@ const LabelArgs = z.object({
   references: z.array(z.string()).optional(),
   cron: z.string().optional(),
   id: z.string().optional(),
-  url: z.string().optional()
+  url: z.string().optional(),
+  background: z.boolean().optional()
 });
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
@@ -55,8 +56,21 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       return { verb: 'Write', target: args.path ?? '' };
     // The command itself, not a gloss of it: it is the one thing the user needs
     // to see before it runs, and a newline in it would break the row's line.
+    // "Start" for a background one, because "Run" promises an ending: the row
+    // goes green while the command is still going, and a reader who took that
+    // for "finished" would be wrong about the only thing the row said.
     case 'bash':
-      return { verb: 'Run', target: (args.command ?? '').replace(/\s*\n\s*/g, ' ') };
+      return {
+        verb: args.background === true ? 'Start' : 'Run',
+        target: (args.command ?? '').replace(/\s*\n\s*/g, ' ')
+      };
+    // The id rather than the command. The command is on the row above that
+    // started it, and what these two rows say is which of several a poll or a
+    // stop was aimed at.
+    case 'bash_output':
+      return { verb: 'Check', target: args.id ?? '' };
+    case 'bash_kill':
+      return { verb: 'Stop', target: args.id ?? '' };
     // Not "Run": the command has not run, and the difference is the whole
     // point of the row - it is sitting in a terminal waiting for the user.
     case 'terminal':

@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  EDIT_MAX_HUNKS,
   OUTPUT_SEPARATOR,
   type AgentToolContext,
   type AgentToolResult
@@ -434,10 +435,10 @@ describe('edit', () => {
   /** An edit is only allowed on a file the agent has read, so read it first. */
   const readThen = async (
     rel: string,
-    args: object
+    ...edits: object[]
   ): Promise<{ text: string; summary: string }> => {
     await run('read', { path: rel });
-    return run('edit', { path: rel, ...args });
+    return run('edit', { path: rel, edits });
   };
 
   it('replaces an exact match and reports a diff', async () => {
@@ -461,7 +462,10 @@ describe('edit', () => {
     file('a.ts', 'const a = 1;\n');
 
     await expect(
-      run('edit', { path: 'a.ts', oldString: 'const a = 1;', newString: 'const a = 2;' })
+      run('edit', {
+        path: 'a.ts',
+        edits: [{ oldString: 'const a = 1;', newString: 'const a = 2;' }]
+      })
     ).rejects.toThrow(/Read a.ts before changing it/);
   });
 
@@ -471,7 +475,10 @@ describe('edit', () => {
     file('a.ts', 'const a = 1;\nconst b = 2;\n');
 
     await expect(
-      run('edit', { path: 'a.ts', oldString: 'const a = 1;', newString: 'const a = 2;' })
+      run('edit', {
+        path: 'a.ts',
+        edits: [{ oldString: 'const a = 1;', newString: 'const a = 2;' }]
+      })
     ).rejects.toThrow(/changed on disk since you read it/);
   });
 
@@ -482,8 +489,7 @@ describe('edit', () => {
     await expect(
       runIn('thread-2', 'edit', {
         path: 'a.ts',
-        oldString: 'const a = 1;',
-        newString: 'const a = 2;'
+        edits: [{ oldString: 'const a = 1;', newString: 'const a = 2;' }]
       })
     ).rejects.toThrow(/Read a.ts before changing it/);
   });
@@ -496,15 +502,13 @@ describe('edit', () => {
     // millisecond would otherwise leave the stamps identical on some filesystems.
     await runIn('thread-2', 'edit', {
       path: 'a.ts',
-      oldString: 'const a = 1;',
-      newString: 'const a = 2;\nconst b = 2;'
+      edits: [{ oldString: 'const a = 1;', newString: 'const a = 2;\nconst b = 2;' }]
     });
 
     await expect(
       runIn('thread-1', 'edit', {
         path: 'a.ts',
-        oldString: 'const a = 1;',
-        newString: 'const a = 3;'
+        edits: [{ oldString: 'const a = 1;', newString: 'const a = 3;' }]
       })
     ).rejects.toThrow(/changed on disk since you read it/);
   });
@@ -513,7 +517,7 @@ describe('edit', () => {
     file('a.ts', 'one\ntwo\n');
 
     await readThen('a.ts', { oldString: 'one', newString: '1' });
-    await run('edit', { path: 'a.ts', oldString: 'two', newString: '2' });
+    await run('edit', { path: 'a.ts', edits: [{ oldString: 'two', newString: '2' }] });
 
     expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('1\n2\n');
   });
@@ -598,18 +602,80 @@ describe('edit', () => {
   it('refuses a file that does not exist, and a folder', async () => {
     mkdirSync(join(dir, 'sub'));
 
-    await expect(run('edit', { path: 'nope.ts', oldString: 'a', newString: 'b' })).rejects.toThrow(
+    const hunks = [{ oldString: 'a', newString: 'b' }];
+    await expect(run('edit', { path: 'nope.ts', edits: hunks })).rejects.toThrow(
       /does not exist - use write to create it/
     );
-    await expect(run('edit', { path: 'sub', oldString: 'a', newString: 'b' })).rejects.toThrow(
-      /is a folder/
-    );
+    await expect(run('edit', { path: 'sub', edits: hunks })).rejects.toThrow(/is a folder/);
   });
 
   it('stays inside the working folder', async () => {
     await expect(
-      run('edit', { path: '../../../etc/hosts', oldString: 'a', newString: 'b' })
+      run('edit', { path: '../../../etc/hosts', edits: [{ oldString: 'a', newString: 'b' }] })
     ).rejects.toThrow(/outside the working folder/);
+  });
+
+  it('applies several changes to one file in a single call', async () => {
+    file('a.ts', 'const a = 1;\nconst b = 2;\nconst c = 3;\n');
+
+    const { summary } = await readThen(
+      'a.ts',
+      { oldString: 'const a = 1;', newString: 'const a = 10;' },
+      { oldString: 'const c = 3;', newString: 'const c = 30;' }
+    );
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe(
+      'const a = 10;\nconst b = 2;\nconst c = 30;\n'
+    );
+    expect(summary).toBe('+2 -2');
+  });
+
+  /** Each one is matched against the text as the one before it left it. */
+  it('lets a later change match what an earlier one wrote', async () => {
+    file('a.ts', 'one\n');
+
+    await readThen(
+      'a.ts',
+      { oldString: 'one', newString: 'two' },
+      { oldString: 'two', newString: 'three' }
+    );
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('three\n');
+  });
+
+  it('writes nothing at all when one of several changes does not match', async () => {
+    file('a.ts', 'one\ntwo\n');
+
+    await expect(
+      readThen(
+        'a.ts',
+        { oldString: 'one', newString: '1' },
+        { oldString: 'nowhere', newString: '9' }
+      )
+    ).rejects.toThrow(/Change 2 of 2 did not apply/);
+
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('one\ntwo\n');
+  });
+
+  /** The number is only worth saying when there is more than one to pick from. */
+  it('does not number the failure when there was only one change', async () => {
+    file('a.ts', 'one\n');
+
+    await expect(readThen('a.ts', { oldString: 'nowhere', newString: '9' })).rejects.toThrow(
+      /^That text is not in the file/
+    );
+  });
+
+  it('refuses more changes than one call may carry', async () => {
+    file('a.ts', 'one\n');
+    await run('read', { path: 'a.ts' });
+
+    const many = Array.from({ length: EDIT_MAX_HUNKS + 1 }, (_, i) => ({
+      oldString: 'one',
+      newString: `${i}`
+    }));
+
+    await expect(run('edit', { path: 'a.ts', edits: many })).rejects.toThrow(/Bad arguments/);
   });
 });
 
@@ -678,7 +744,10 @@ describe('what a change tells the model', () => {
     file('a.ts', 'one\n');
     await run('read', { path: 'a.ts' });
 
-    const edited = await run('edit', { path: 'a.ts', oldString: 'one', newString: 'two' });
+    const edited = await run('edit', {
+      path: 'a.ts',
+      edits: [{ oldString: 'one', newString: 'two' }]
+    });
     const created = await run('write', { path: 'b.ts', content: 'hello\n' });
 
     expect(edited.text).toContain('do not repeat the new code');
@@ -700,7 +769,10 @@ describe('what a change tells the model', () => {
     file('a.ts', 'one\ntwo\nthree\n');
     await run('read', { path: 'a.ts' });
 
-    const { text } = await run('edit', { path: 'a.ts', oldString: 'two', newString: 'TWO' });
+    const { text } = await run('edit', {
+      path: 'a.ts',
+      edits: [{ oldString: 'two', newString: 'TWO' }]
+    });
     const lines = text.split('\n');
 
     // The pane shows the diff and drops what comes before it, so nothing the

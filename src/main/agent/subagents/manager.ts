@@ -19,6 +19,7 @@ import type {
 import { sanitizeReport } from '../../../shared/subagent-report';
 import type { AgentSessionReplay } from '../../../shared/agent-session';
 import { AgentSessionStore } from '../session-store';
+import { killThreadBackgroundCommands } from '../tools/background';
 import { createLogger } from '../../logger';
 import { loadSubagents } from './definitions';
 
@@ -323,6 +324,11 @@ export class SubagentManager {
     const entry = this.live.get(taskId);
     if (entry === undefined) return;
     this.live.delete(taskId);
+
+    // A child reports once and is gone, so anything it left running in the
+    // background has nobody left to read it or stop it. `taskId` is the child's
+    // own thread, which is what those commands were filed under.
+    killThreadBackgroundCommands(taskId);
 
     const task: AgentTaskInfo = { ...entry.info, status, summary: summarize(status, report) };
     this.deps.emit(IPC_CHANNELS.AGENT_TASK_DONE, {
