@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown, Eye, Image as ImageIcon, Search, Wrench } from 'lucide-react';
-import type { AgentCatalogModel } from '../../../../../shared/agent-types';
+import type { AgentCatalogLocal, AgentCatalogModel } from '../../../../../shared/agent-types';
 import { fuzzyMatch } from '../../../lib/commands';
 import { popperAnim } from '../../../lib/motion';
 import { formatTokens, formatCost } from './format';
+import { groupBySource } from './picker-groups';
 
-/** The least a picker row needs: something to show, and something to choose. */
-type PickerModel = { id: string; name: string };
+/**
+ * The least a picker row needs: something to show, and something to choose.
+ *
+ * `local` is optional and rides along for the two lists that can carry it, so
+ * the picker shell stays usable by the image and voice lists that cannot.
+ */
+type PickerModel = { id: string; name: string; local?: AgentCatalogLocal };
 
 /**
  * Rows mounted before the list has been scrolled, and how many more arrive each
@@ -84,7 +90,10 @@ export function ModelPicker<T extends PickerModel>({
 
   const selected = models.find((m) => m.id === value) ?? null;
   const filtered = useMemo(() => rank(models, query), [models, query]);
-  const visible = filtered.slice(0, shown);
+  const groups = useMemo(
+    () => groupBySource(filtered.slice(0, shown), query.trim() === ''),
+    [filtered, shown, query]
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -122,7 +131,14 @@ export function ModelPicker<T extends PickerModel>({
               {selected?.name ?? value ?? (allowNone ? noneLabel : placeholder)}
             </span>
             {selected && (
-              <span className="block truncate text-xs text-fleet-text-muted">{selected.id}</span>
+              <span className="block truncate text-xs text-fleet-text-muted">
+                {selected.local === undefined
+                  ? selected.id
+                  : // The wire id of a local model is a `.gguf` path as often as
+                    // it is a name, so the server it is on is the more useful
+                    // second line - and it is what tells two of them apart.
+                    `${selected.local.label}${selected.local.reachable ? '' : ' · offline'}`}
+              </span>
             )}
           </span>
           <ChevronDown size={14} className="shrink-0 text-fleet-text-muted" />
@@ -152,15 +168,31 @@ export function ModelPicker<T extends PickerModel>({
             {filtered.length === 0 && !allowNone && (
               <p className="px-3 py-4 text-sm text-fleet-text-muted">No models match.</p>
             )}
-            {visible.map((m) => (
-              <Row
-                key={m.id}
-                selected={m.id === value}
-                onSelect={() => choose(m.id)}
-                title={m.name}
-                subtitle={m.id}
-                meta={renderMeta?.(m)}
-              />
+            {groups.map((group) => (
+              <div key={group.key}>
+                {group.header !== null && (
+                  <p className="px-3 pt-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-fleet-text-subtle">
+                    {group.header}
+                  </p>
+                )}
+                {group.models.map((m) => (
+                  <Row
+                    key={m.id}
+                    selected={m.id === value}
+                    onSelect={() => choose(m.id)}
+                    title={m.name}
+                    subtitle={m.id}
+                    meta={renderMeta?.(m)}
+                    // Dimmed rather than removed, and still selectable. NN/g:
+                    // taking an option out of a list moves everything under it,
+                    // so a picker that hides what is momentarily unavailable
+                    // rearranges itself under the reader - and the option a
+                    // person is hunting for is often exactly the one that is
+                    // not answering right now.
+                    dimmed={m.local?.reachable === false}
+                  />
+                ))}
+              </div>
             ))}
           </div>
         </Popover.Content>
@@ -186,19 +218,22 @@ function Row({
   onSelect,
   title,
   subtitle,
-  meta
+  meta,
+  dimmed = false
 }: {
   selected: boolean;
   onSelect: () => void;
   title: string;
   subtitle?: string;
   meta?: React.ReactNode;
+  /** Still there and still choosable - just not answering at the moment. */
+  dimmed?: boolean;
 }): React.JSX.Element {
   return (
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors hover:bg-fleet-surface-3"
+      className={`flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors hover:bg-fleet-surface-3 ${dimmed ? 'opacity-55' : ''}`}
     >
       <Check
         size={14}
@@ -217,11 +252,26 @@ function Row({
 
 /** Context / output / price plus capability glyphs, all from models.dev. */
 function ModelMeta({ model }: { model: AgentCatalogModel }): React.JSX.Element {
+  const local = model.local;
   return (
     <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-fleet-text-muted">
+      {/*
+        Text rather than an icon on its own. NN/g: an icon has to be learned
+        before it means anything, and this one is answering "will this model
+        work right now" - which is not a question to make somebody guess at.
+      */}
+      {local !== undefined && (
+        <span
+          className={`rounded px-1 py-px ${local.reachable ? 'bg-fleet-surface-3 text-fleet-text-secondary' : 'bg-amber-500/15 text-amber-300'}`}
+        >
+          {local.reachable ? local.label : `${local.label} · offline`}
+        </span>
+      )}
       {model.contextLimit !== null && <span>{formatTokens(model.contextLimit)} ctx</span>}
       {model.outputLimit !== null && <span>{formatTokens(model.outputLimit)} out</span>}
-      {model.cost && <span>{formatCost(model.cost)}</span>}
+      {/* A model on the user's own hardware is free, and a price of nothing is
+          not a fact worth a column. */}
+      {model.cost && local === undefined && <span>{formatCost(model.cost)}</span>}
       {model.supportsTools && <Wrench size={10} aria-label="Tools" />}
       {model.inputImage && <Eye size={10} aria-label="Vision" />}
       {model.outputImage && <ImageIcon size={10} aria-label="Image generation" />}

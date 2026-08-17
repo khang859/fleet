@@ -155,7 +155,9 @@ function ModelFacts({ model }: { model: AgentCatalogModel }): React.JSX.Element 
   const facts = [
     model.contextLimit !== null ? `${formatTokens(model.contextLimit)} context` : null,
     model.outputLimit !== null ? `${formatTokens(model.outputLimit)} max output` : null,
-    model.cost ? formatCost(model.cost) : null,
+    // A model on the user's own hardware bills nothing, and "$0.00 / $0.00 per
+    // 1M" reads as a price that failed to load rather than as an absence of one.
+    model.cost && model.local === undefined ? formatCost(model.cost) : null,
     model.supportsTools ? 'Tool calling' : 'No tool calling',
     model.releaseDate ? `Released ${model.releaseDate}` : null
   ].filter((f): f is string => f !== null);

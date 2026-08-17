@@ -89,6 +89,11 @@ import type {
   AgentToolEvent
 } from '../shared/agent-types';
 import type { AgentTranscribeRequest, AgentTranscribeResult } from '../shared/agent-voice';
+import type {
+  EndpointProbeResult,
+  LocalEndpointScanHit,
+  LocalEndpointStatus
+} from '../shared/agent-endpoints';
 import type { AgentCommandDescriptor } from '../shared/agent-commands';
 import type { MemoryDescriptor, MemorySource } from '../shared/agent-memory';
 import type {
@@ -533,6 +538,24 @@ const fleetApi = {
     setKey: async (key: string): Promise<void> => typedInvoke(IPC_CHANNELS.AGENT_SET_KEY, key),
     hasKey: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.AGENT_HAS_KEY),
     clearKey: async (): Promise<void> => typedInvoke(IPC_CHANNELS.AGENT_CLEAR_KEY),
+    /**
+     * Inference servers on this machine. The list is saved with the rest of the
+     * agent settings; these are the questions only main can ask of an address.
+     */
+    endpoints: {
+      /** What is at this origin, without saving anything. The Test button. */
+      test: async (baseUrl: string): Promise<EndpointProbeResult> =>
+        typedInvoke<EndpointProbeResult>(IPC_CHANNELS.AGENT_ENDPOINT_TEST, baseUrl),
+      /** The usual ports, for servers Fleet has not been told about. */
+      scan: async (): Promise<LocalEndpointScanHit[]> =>
+        typedInvoke<LocalEndpointScanHit[]>(IPC_CHANNELS.AGENT_ENDPOINT_SCAN),
+      /** Re-ask one saved endpoint, or every one of them when `id` is null. */
+      refresh: async (id: string | null = null): Promise<LocalEndpointStatus[]> =>
+        typedInvoke<LocalEndpointStatus[]>(IPC_CHANNELS.AGENT_ENDPOINT_REFRESH, id),
+      /** Main volunteering the whole set whenever any row changes. */
+      onStatus: (cb: (p: LocalEndpointStatus[]) => void): Unsubscribe =>
+        onChannel(IPC_CHANNELS.AGENT_ENDPOINT_STATUS, cb)
+    },
     send: (req: AgentSendRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_SEND, req),
     compact: (req: AgentCompactRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_COMPACT, req),
     cancel: (streamId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_CANCEL, streamId),

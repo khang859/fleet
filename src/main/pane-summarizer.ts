@@ -1,9 +1,9 @@
-import type { completeOnce } from './agent/openrouter';
+import type { completeOnce, CompletionsTarget } from './agent/completions';
 
 /**
  * The one-line "what is this pane doing" summary in the agent overview.
  *
- * One un-streamed completion against the same OpenRouter key the Agent panes
+ * One un-streamed completion against whatever endpoint the Agent panes
  * use, in the shape `session-title.ts` already established: main computes the
  * text, the renderer decides what to do with it.
  */
@@ -29,10 +29,10 @@ export function sanitizeSummary(raw: string): string {
 /** Ask the title model to summarize a pane's recent output. Throws on API failure. */
 export async function generateSummary(
   complete: typeof completeOnce,
-  opts: { apiKey: string; model: string; tailText: string; signal?: AbortSignal }
+  opts: { target: CompletionsTarget; model: string; tailText: string; signal?: AbortSignal }
 ): Promise<string> {
   const answer = await complete({
-    apiKey: opts.apiKey,
+    target: opts.target,
     model: opts.model,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -51,7 +51,7 @@ export async function generateSummary(
 /** Never throws — returns '' on failure so the caller can keep the previous summary. */
 export async function resolveSummary(
   complete: typeof completeOnce,
-  opts: { apiKey: string; model: string; tailText: string; signal?: AbortSignal }
+  opts: { target: CompletionsTarget; model: string; tailText: string; signal?: AbortSignal }
 ): Promise<string> {
   try {
     return await generateSummary(complete, opts);

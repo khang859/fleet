@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveTitle, sanitizeTitle, toTitleMessages } from '../session-title';
-import type { completeOnce } from '../openrouter';
+import type { completeOnce } from '../completions';
+import { openRouterTarget } from '../openrouter';
 import { EMPTY_AGENT_USAGE, type AgentUsage } from '../../../shared/agent-types';
 
 /**
@@ -22,7 +23,12 @@ const priced = (costUsd: number): AgentUsage => ({
   costUsd
 });
 
-const INPUT = { apiKey: 'k', model: 'm', firstUser: 'why is it slow', firstAssistant: 'because…' };
+const INPUT = {
+  target: openRouterTarget('k'),
+  model: 'm',
+  firstUser: 'why is it slow',
+  firstAssistant: 'because…'
+};
 
 describe('sanitizeTitle', () => {
   it('keeps a title that was already what was asked for', () => {

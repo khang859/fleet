@@ -263,6 +263,16 @@ type AgentStoreState = {
   threads: Record<string, PaneThread | undefined>;
   /** Loads the catalog once per session; `refresh` re-downloads it. */
   loadModels: (refresh?: boolean) => Promise<void>;
+  /**
+   * Read the merged list again without re-downloading the cloud half.
+   *
+   * What a local server coming up or going down calls. The models on this
+   * machine are merged into the catalog in main, so a change there is only
+   * visible after asking again - and asking through `loadModels` would either
+   * do nothing, because a catalog is already loaded, or pull several hundred
+   * cloud models over the network to learn about one on loopback.
+   */
+  remergeModels: () => Promise<void>;
   loadKey: () => Promise<void>;
   saveKey: (key: string) => Promise<void>;
   clearKey: () => Promise<void>;
@@ -332,6 +342,10 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     } finally {
       set({ loadingModels: false });
     }
+  },
+
+  remergeModels: async () => {
+    set({ catalog: await window.fleet.agent.listModels(false) });
   },
 
   loadKey: async () => {

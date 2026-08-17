@@ -71,9 +71,11 @@ import {
 import {
   streamCompletion,
   type AgentWireMessage,
+  type CompletionsTarget,
   type ReasoningParam,
   type StreamOutcome
-} from './openrouter';
+} from './completions';
+import type { ResolvedTarget } from './model-routing';
 import { runAgentTool } from './tools/run';
 import {
   TaskFailure,
@@ -100,7 +102,16 @@ export type AgentEmitter = (channel: string, payload: unknown) => void;
 
 type Deps = {
   getSettings: () => AgentSettings;
+  /**
+   * The OpenRouter key, or `null` when there is none.
+   *
+   * Only the endpoints that are OpenRouter's alone still ask for this - image
+   * generation. A conversation reaches its model through `resolveTarget`, which
+   * may not involve OpenRouter at all.
+   */
   getApiKey: () => string | null;
+  /** Where a call for one model goes. The only place local and cloud differ. */
+  resolveTarget: (modelId: string | null) => ResolvedTarget;
   emit: AgentEmitter;
   /** Decides whether a shell command runs. Only `bash` consults it. */
   gate: PermissionGate;
@@ -126,7 +137,16 @@ type Deps = {
 
 /** Everything a model call needs, resolved once before the work starts. */
 type CallContext = {
-  apiKey: string;
+  /** Where this turn's model is, and how to be let in. */
+  target: CompletionsTarget;
+  /**
+   * The OpenRouter key, which is a different question from the one above now
+   * that a turn can run entirely on this machine. `null` is an ordinary state
+   * rather than a failure: it means the tools that are OpenRouter's alone are
+   * not on offer this turn, and the conversation carries on without them.
+   */
+  openRouterKey: string | null;
+  /** The id as the endpoint knows it, with any local prefix already stripped. */
   model: string;
   settings: AgentSettings;
   signal: AbortSignal;
@@ -844,13 +864,24 @@ export class AgentService {
     this.inflight.set(streamId, controller);
     const account = new TurnAccount();
     try {
-      const apiKey = this.deps.getApiKey();
-      if (!apiKey) throw new Error('No OpenRouter API key configured');
       const settings = this.deps.getSettings();
-      const model = settings.coding.model;
-      if (model === null) throw new Error('No coding model selected');
+      // Resolved before anything is spent, and it answers both questions at
+      // once: whether a model is chosen, and whether there is anywhere to send
+      // it. A cloud model with no key and a local model whose server has been
+      // deleted fail here, each with its own sentence.
+      const resolved = this.deps.resolveTarget(settings.coding.model);
+      if (!resolved.ok) throw new Error(resolved.message);
 
-      await work({ apiKey, model, settings, signal: controller.signal }, account);
+      await work(
+        {
+          target: resolved.target,
+          model: resolved.wireModelId,
+          openRouterKey: this.deps.getApiKey(),
+          settings,
+          signal: controller.signal
+        },
+        account
+      );
     } catch (err) {
       // A cancel is a normal ending, not a failure: the partial reply the user
       // already saw stays, and no error is shown.
@@ -883,7 +914,13 @@ export class AgentService {
    * every round is billed, so every round is counted.
    */
   private async turn(req: AgentSendRequest, ctx: CallContext, account: TurnAccount): Promise<void> {
-    const imageModel = ctx.settings.image.model;
+    // Drawing is OpenRouter's endpoint whatever the conversation is running on,
+    // so it needs a key of its own rather than the turn's target. Until local
+    // models existed a key was guaranteed by the time a turn started, and this
+    // read `imageModel !== null` alone; now a turn can be under way without
+    // one, and offering a tool that cannot run is worse than offering none -
+    // the model spends a round discovering it.
+    const imageModel = ctx.openRouterKey === null ? null : ctx.settings.image.model;
     // Described in the chosen model's own terms, so the shapes it is offered are
     // the shapes that model renders. Unknown until the catalog has been fetched
     // at least once, in which case the spec falls back to what all of them take.
@@ -1251,10 +1288,16 @@ export class AgentService {
   async runTask(run: TaskRun): Promise<TaskOutcome> {
     const account = new TurnAccount();
     try {
-      const apiKey = this.deps.getApiKey();
-      if (!apiKey) throw new Error('No OpenRouter API key configured');
       const settings = this.deps.getSettings();
-      const ctx: CallContext = { apiKey, model: run.model, settings, signal: run.signal };
+      const resolved = this.deps.resolveTarget(run.model);
+      if (!resolved.ok) throw new Error(resolved.message);
+      const ctx: CallContext = {
+        target: resolved.target,
+        model: resolved.wireModelId,
+        openRouterKey: this.deps.getApiKey(),
+        settings,
+        signal: run.signal
+      };
 
       // The one thing a child does get that the parent has. A subagent sent to
       // review a change needs the review checklist as much as the parent would,
@@ -1376,7 +1419,10 @@ export class AgentService {
   ): AgentImageGenerator | null {
     const config = ctx.settings.image;
     const model = config.model;
-    if (model === null) return null;
+    // Both, for the reason `turn` gates the spec on both: the endpoint behind
+    // this is OpenRouter's, and a turn on a local model may have no key at all.
+    if (model === null || ctx.openRouterKey === null) return null;
+    const openRouterKey = ctx.openRouterKey;
     const call = this.deps.image ?? generateImage;
     const takes = this.deps.imageCapabilities?.(model) ?? null;
 
@@ -1400,7 +1446,7 @@ export class AgentService {
       return call(
         {
           ...req,
-          apiKey: ctx.apiKey,
+          apiKey: openRouterKey,
           model,
           // Narrowed to what this model actually reads. The settings panel only
           // offers supported values, so this catches the leftovers: a config
@@ -1528,7 +1574,7 @@ export class AgentService {
   ): Promise<StreamOutcome> {
     const stream = this.deps.stream ?? streamCompletion;
     return stream({
-      apiKey: ctx.apiKey,
+      target: ctx.target,
       model: ctx.model,
       temperature: ctx.settings.coding.temperature,
       signal: ctx.signal,

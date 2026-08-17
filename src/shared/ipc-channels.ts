@@ -155,6 +155,20 @@ export const IPC_CHANNELS = {
   // The OpenRouter slice of the models.dev catalog, disk-cached in main. Agent
   // settings themselves ride on SETTINGS_GET/SET under `ai.agent`.
   AGENT_LIST_MODELS: 'agent:list-models',
+  // Inference servers running on this machine. The list itself rides on
+  // SETTINGS_GET/SET with everything else under `ai.agent`; what needs main is
+  // asking those addresses what they are, which the renderer cannot do - it has
+  // no network of its own, and a probe is a fetch to an arbitrary local port.
+  //
+  // TEST answers about one address without saving it, for the add form's button.
+  // SCAN tries a handful of usual ports for servers Fleet has not been told
+  // about. REFRESH re-asks a saved endpoint. STATUS is main volunteering the
+  // whole set of rows whenever any of them changes, so a probe that finishes
+  // after the settings tab was closed still lands somewhere.
+  AGENT_ENDPOINT_TEST: 'agent:endpoint-test',
+  AGENT_ENDPOINT_SCAN: 'agent:endpoint-scan',
+  AGENT_ENDPOINT_REFRESH: 'agent:endpoint-refresh',
+  AGENT_ENDPOINT_STATUS: 'agent:endpoint-status',
   // The OpenRouter API key, which main stores encrypted and never hands back.
   // App-wide rather than per pane: the key is the user's account.
   AGENT_SET_KEY: 'agent:set-key',

@@ -52,7 +52,18 @@ import {
   type StreamRequest,
   type ToolCallDelta,
   type WireToolCall
-} from '../openrouter';
+} from '../completions';
+import { resolveTarget as route, type ResolvedTarget } from '../model-routing';
+
+/**
+ * Where a call would go, decided the way the app decides it.
+ *
+ * The real router against a fake key rather than a hand-written target, so that
+ * the two tests below asserting on a missing key and a missing model are
+ * asserting on the sentences the app actually produces.
+ */
+const RESOLVE_TARGET = (model: string | null): ResolvedTarget =>
+  route(model, { getOpenRouterKey: () => 'sk-or-test', getEndpoints: () => [] });
 
 /**
  * A machine with no subagent definitions on it, which is what the tests below
@@ -1030,6 +1041,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send(REQUEST);
@@ -1063,6 +1075,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: await oneRunningSubagent(REQUEST.threadId),
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send(REQUEST);
@@ -1094,6 +1107,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send(REQUEST);
@@ -1126,6 +1140,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send({ ...REQUEST, text: '', resumed: true });
@@ -1152,6 +1167,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send(REQUEST);
@@ -1177,6 +1193,7 @@ describe('AgentService', () => {
       }),
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send(REQUEST);
@@ -1202,6 +1219,7 @@ describe('AgentService', () => {
       getSettings: () => ({ ...SETTINGS, systemPrompt: 'Answer only in haiku.' }),
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send(REQUEST);
@@ -1235,6 +1253,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream: async (req) => {
         req.onDelta('an answer');
@@ -1267,6 +1286,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream: vi.fn(async () => Promise.resolve(round()))
     }).send(REQUEST);
@@ -1288,6 +1308,8 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => null,
+      resolveTarget: (model) =>
+        route(model, { getOpenRouterKey: () => null, getEndpoints: () => [] }),
       emit,
       stream: vi.fn()
     }).send(REQUEST);
@@ -1296,7 +1318,12 @@ describe('AgentService', () => {
     expect(events).toEqual([
       {
         channel: IPC_CHANNELS.AGENT_STREAM_ERROR,
-        payload: { streamId: 'stream-1', message: 'No OpenRouter API key configured', usage: null }
+        payload: {
+          streamId: 'stream-1',
+          message:
+            '“anthropic/claude-sonnet-4.5” is an OpenRouter model and no API key is set. Add one in Agent settings, or choose a local model.',
+          usage: null
+        }
       }
     ]);
   });
@@ -1310,6 +1337,7 @@ describe('AgentService', () => {
       getSettings: () => ({ ...SETTINGS, coding: { ...SETTINGS.coding, model: null } }),
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream: vi.fn()
     }).send({ ...REQUEST, streamId: 'stream-2' });
@@ -1317,7 +1345,7 @@ describe('AgentService', () => {
 
     expect(events[0].payload).toEqual({
       streamId: 'stream-2',
-      message: 'No coding model selected',
+      message: 'No model selected.',
       usage: null
     });
   });
@@ -1331,6 +1359,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream: async (req) => {
         req.onDelta('  They chose zod ');
@@ -1383,6 +1412,7 @@ describe('AgentService', () => {
       }),
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       // An empty stream fails the compaction, which is fine: the request has
       // already been made by then, and the request is what this asserts on.
@@ -1404,6 +1434,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream: async (req) => {
         req.onDelta('   \n ');
@@ -1434,6 +1465,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream: async () => {
         service.cancel('compact-1');
@@ -1462,6 +1494,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream: async (req) => {
         req.onDelta('half');
@@ -1494,6 +1527,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream: async (req) => {
         req.onUsage?.({
@@ -1526,6 +1560,7 @@ describe('AgentService', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream: async (req) => {
         req.onUsage?.({
@@ -1641,6 +1676,7 @@ describe('the tool loop', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send({ ...REQUEST, cwd: dir });
@@ -1674,6 +1710,7 @@ describe('the tool loop', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send({ ...REQUEST, cwd: dir });
@@ -1705,6 +1742,7 @@ describe('the tool loop', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send({ ...REQUEST, cwd: dir });
@@ -1734,6 +1772,7 @@ describe('the tool loop', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send({ ...REQUEST, cwd: dir });
@@ -1758,6 +1797,7 @@ describe('the tool loop', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send({ ...REQUEST, cwd: dir });
@@ -1797,6 +1837,7 @@ describe('the tool loop', () => {
         getSettings: () => settings,
         subagents: NO_SUBAGENTS,
         getApiKey: () => 'sk-or-test',
+        resolveTarget: RESOLVE_TARGET,
         emit,
         stream
       }).send({ ...REQUEST, cwd: dir });
@@ -1865,6 +1906,7 @@ describe('the tool loop', () => {
         }),
         subagents: NO_SUBAGENTS,
         getApiKey: () => 'sk-or-test',
+        resolveTarget: RESOLVE_TARGET,
         emit,
         stream,
         image
@@ -1900,6 +1942,7 @@ describe('the tool loop', () => {
         getSettings: () => withImage,
         subagents: NO_SUBAGENTS,
         getApiKey: () => 'sk-or-test',
+        resolveTarget: RESOLVE_TARGET,
         emit,
         stream,
         image: image as never
@@ -1955,6 +1998,7 @@ describe('the tool loop', () => {
           getSettings: () => settings,
           subagents: NO_SUBAGENTS,
           getApiKey: () => 'sk-or-test',
+          resolveTarget: RESOLVE_TARGET,
           imageCapabilities: () => takes,
           emit,
           stream,
@@ -1977,6 +2021,7 @@ describe('the tool loop', () => {
           getSettings: () => withImage,
           subagents: NO_SUBAGENTS,
           getApiKey: () => 'sk-or-test',
+          resolveTarget: RESOLVE_TARGET,
           imageCapabilities: () => takes,
           emit,
           stream: async (req: StreamRequest) => {
@@ -2038,6 +2083,7 @@ describe('the tool loop', () => {
       getSettings: () => ({ ...SETTINGS, maxToolRounds: 12 }),
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send({ ...REQUEST, cwd: dir });
@@ -2065,6 +2111,7 @@ describe('the tool loop', () => {
       getSettings: () => ({ ...SETTINGS, maxToolRounds: MAX_TOOL_ROUNDS_CEILING * 10 }),
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).send({ ...REQUEST, cwd: dir });
@@ -2086,6 +2133,7 @@ describe('the tool loop', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream
     }).compact(COMPACT_REQUEST);
@@ -2235,6 +2283,7 @@ describe('memory and project instructions', () => {
       getSettings: () => settings,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream: async (req) => {
         rounds.push(req);
@@ -2254,6 +2303,7 @@ describe('memory and project instructions', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit: () => {},
       stream: async (req) => {
         rounds.push(req);
@@ -2388,6 +2438,7 @@ describe('memory and project instructions', () => {
       getSettings: () => SETTINGS,
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
       emit,
       stream: async () => Promise.resolve(round())
     }).send({ ...REQUEST, cwd: dir });

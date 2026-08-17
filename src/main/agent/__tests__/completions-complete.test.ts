@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { completeOnce } from '../openrouter';
+import { completeOnce } from '../completions';
+import { openRouterTarget } from '../openrouter';
 
 /**
  * What one un-streamed completion puts on the wire.
@@ -13,7 +14,7 @@ import { completeOnce } from '../openrouter';
  */
 
 const request = {
-  apiKey: 'sk-or-test',
+  target: openRouterTarget('sk-or-test'),
   model: 'openai/gpt-5.6-luna',
   messages: [{ role: 'user' as const, content: 'hi' }],
   maxTokens: 8,

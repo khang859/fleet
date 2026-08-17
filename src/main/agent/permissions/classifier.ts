@@ -1,4 +1,4 @@
-import type { completeOnce, AgentWireMessage } from '../openrouter';
+import type { completeOnce, AgentWireMessage, CompletionsTarget } from '../completions';
 import type { AgentTurnUsage, AgentUsage } from '../../../shared/agent-types';
 import { classifierSystemPrompt } from '../../../shared/agent-classifier';
 import { createLogger } from '../../logger';
@@ -55,7 +55,7 @@ export function readVerdict(raw: string): ClassifierVerdict | null {
 }
 
 export type ClassifyInput = {
-  apiKey: string;
+  target: CompletionsTarget;
   model: string;
   /** The command as it will run, whole. A line is judged the way it is typed. */
   command: string;
@@ -115,7 +115,7 @@ export async function classifyCommand(
 ): Promise<Classification> {
   try {
     const answer = await complete({
-      apiKey: input.apiKey,
+      target: input.target,
       model: input.model,
       messages: toClassifyMessages(input),
       maxTokens: MAX_TOKENS,

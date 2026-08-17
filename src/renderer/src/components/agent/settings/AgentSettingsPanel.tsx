@@ -24,6 +24,7 @@ import { MaxToolRoundsField } from './MaxToolRoundsField';
 import { ClassifierNoteField } from './ClassifierNoteField';
 import { ModelSelect } from './ModelSelect';
 import { selectCls } from './controls';
+import { LocalEndpointsSection } from './endpoints/LocalEndpointsSection';
 import { McpSection } from './mcp/McpSection';
 import { SkillsSection } from './skills/SkillsSection';
 import { MemorySection } from './memory/MemorySection';
@@ -77,6 +78,10 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
   const agent = settings?.ai.agent ?? DEFAULT_AGENT_SETTINGS;
   const models = useMemo(() => catalog?.models ?? [], [catalog]);
   const codingModels = useMemo(() => models.filter((m) => m.supportsTools), [models]);
+  // Counted apart from the download below, because the two halves of this list
+  // are refreshed by entirely different things: one by a button, the other by
+  // somebody starting a server.
+  const localCount = useMemo(() => models.filter((m) => m.local !== undefined).length, [models]);
   // Its own list rather than a filter over the one above: the images endpoint
   // keeps a separate register, and most of what is on it has no place in a
   // catalog of models you can hold a conversation with.
@@ -125,7 +130,7 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
         <FieldGroup title="Provider">
           <Field
             label="OpenRouter API key"
-            description="Stored encrypted on this device, and never sent anywhere but OpenRouter."
+            description="Optional. Stored encrypted on this device, and never sent anywhere but OpenRouter. Without one, Fleet runs on the local servers below - though image generation and voice dictation are OpenRouter's alone and stay off."
             layout="stack"
             htmlFor="agent-openrouter-key"
           >
@@ -139,6 +144,11 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
             />
           </Field>
         </FieldGroup>
+
+        <LocalEndpointsSection
+          endpoints={agent.localEndpoints}
+          onChange={(localEndpoints) => void updateSettings({ ai: { agent: { localEndpoints } } })}
+        />
 
         <FieldGroup title="Models">
           <AgentRoleSettings
@@ -277,7 +287,8 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
         </FieldGroup>
 
         <CatalogStatus
-          count={models.length}
+          count={models.length - localCount}
+          localCount={localCount}
           imageCount={imageModels.length}
           fetchedAt={catalog?.fetchedAt ?? 0}
           error={catalog?.error ?? null}
@@ -292,19 +303,23 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
 /** Where the model lists came from, and how to get newer ones. */
 function CatalogStatus({
   count,
+  localCount,
   imageCount,
   fetchedAt,
   error,
   loading,
   onRefresh
 }: {
+  /** OpenRouter models alone. The local ones are counted separately. */
   count: number;
+  localCount: number;
   imageCount: number;
   fetchedAt: number;
   error: string | null;
   loading: boolean;
   onRefresh: () => void;
 }): React.JSX.Element {
+  const local = localCount === 1 ? '1 local model' : `${localCount} local models`;
   return (
     <div className="space-y-2 border-t border-fleet-border pt-4">
       <div className="flex items-center justify-between gap-3 text-xs text-fleet-text-muted">
@@ -312,8 +327,13 @@ function CatalogStatus({
           {loading
             ? 'Loading models…'
             : count === 0
-              ? 'No models loaded yet.'
-              : `${count} OpenRouter models and ${imageCount} image models${fetchedAt > 0 ? `, updated ${relativeTime(fetchedAt)}` : ''}.`}
+              ? // Not "no models". A local-only setup is a working setup, and
+                // reporting it as an empty catalog would be the panel calling
+                // the user's own servers nothing.
+                localCount === 0
+                ? 'No models loaded yet.'
+                : `${local}. No OpenRouter models downloaded.`
+              : `${count} OpenRouter models and ${imageCount} image models${fetchedAt > 0 ? `, updated ${relativeTime(fetchedAt)}` : ''}${localCount > 0 ? `, plus ${local}` : ''}.`}
         </span>
         <button
           type="button"
@@ -329,7 +349,12 @@ function CatalogStatus({
         <p className="flex items-start gap-1.5 text-xs text-amber-400">
           <TriangleAlert size={12} className="mt-0.5 shrink-0" />
           <span>
-            Could not refresh the model lists ({error}). Showing the last downloaded ones.
+            Could not refresh the OpenRouter model lists ({error}). Showing the last downloaded
+            ones.
+            {/* Said plainly, because the warning above is about a download this
+                user may have no stake in - a local-only setup should not read a
+                network failure as though its own models were affected. */}
+            {localCount > 0 && ' Your local models are unaffected.'}
           </span>
         </p>
       )}
