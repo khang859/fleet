@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { createLogger } from '../logger';
+import { useWorkspaceStore } from './workspace-store';
 
 const log = createLogger('store:cwd');
 
@@ -33,5 +34,8 @@ export function initCwdListener(): () => void {
   return window.fleet.pty.onCwd(({ paneId, cwd }) => {
     log.debug('onCwd IPC received', { paneId, cwd });
     useCwdStore.getState().setCwd(paneId, cwd);
+    // The live cwd is session state; the layout is what a restart reads back.
+    // Without this the pane respawns in the folder it was first opened in.
+    useWorkspaceStore.getState().updatePaneCwd(paneId, cwd);
   });
 }
