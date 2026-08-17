@@ -222,6 +222,13 @@ type WorkspaceStore = {
   renamePane: (paneId: string, label: string) => void;
   resetPaneLabel: (paneId: string) => void;
   /**
+   * Record where a pane's shell actually is. Only the live cwd store used to
+   * know, so a pane the user `cd`'d out of came back in its original folder on
+   * the next restart - and kept showing that stale folder until the poller
+   * caught up. Persisting it makes the restored pane open where it was left.
+   */
+  updatePaneCwd: (paneId: string, cwd: string) => void;
+  /**
    * Point an agent pane at a different session. The id is persisted with the
    * layout, so this is what makes a resumed conversation the one the pane
    * comes back to after a restart rather than a choice that lasts a session.
@@ -1072,6 +1079,27 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       },
       isDirty: true
     }));
+  },
+
+  updatePaneCwd: (paneId, cwd) => {
+    set((state) => {
+      const tabs = state.workspace.tabs.map((tab) => {
+        const splitRoot = updateLeafInTree(tab.splitRoot, paneId, (leaf) =>
+          leaf.cwd === cwd ? leaf : { ...leaf, cwd }
+        );
+        if (splitRoot === tab.splitRoot) return tab;
+        // The tab's own cwd is what the sidebar falls back to and what a new
+        // tab inherits, and it tracks the first pane - so it only follows that
+        // pane, not whichever split happened to move.
+        const isFirstPane = collectPaneIds(tab.splitRoot)[0] === paneId;
+        return isFirstPane ? { ...tab, splitRoot, cwd } : { ...tab, splitRoot };
+      });
+      // The cwd poller fires every 5s whether or not anything moved. Bailing
+      // out when nothing changed keeps that from marking the layout dirty - and
+      // rewriting it to disk - forever.
+      if (tabs.every((tab, i) => tab === state.workspace.tabs[i])) return state;
+      return { workspace: { ...state.workspace, tabs }, isDirty: true };
+    });
   },
 
   setAgentSession: (paneId, sessionId) => {

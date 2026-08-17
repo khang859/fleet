@@ -846,3 +846,40 @@ describe('terminalBeside', () => {
     expect(useWorkspaceStore.getState().terminalBeside('pane-closed')).toBeNull();
   });
 });
+
+// A pane the user `cd`'d out of used to come back in its original folder on
+// every restart, because only the live cwd store knew it had moved.
+describe('updatePaneCwd', () => {
+  beforeEach(() => {
+    useWorkspaceStore.getState().loadWorkspace(WS_A);
+  });
+
+  it('records the new folder on the pane and its tab', () => {
+    useWorkspaceStore.getState().updatePaneCwd('pane-a1', '/var/log');
+
+    const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === 'tab-a1')!;
+    expect(collectPaneLeafs(tab.splitRoot)[0]?.cwd).toBe('/var/log');
+    expect(tab.cwd).toBe('/var/log');
+    expect(useWorkspaceStore.getState().isDirty).toBe(true);
+  });
+
+  it('leaves the layout alone when the folder has not moved', () => {
+    const before = useWorkspaceStore.getState().workspace;
+    useWorkspaceStore.setState({ isDirty: false });
+
+    useWorkspaceStore.getState().updatePaneCwd('pane-a1', '/tmp');
+
+    expect(useWorkspaceStore.getState().workspace).toBe(before);
+    expect(useWorkspaceStore.getState().isDirty).toBe(false);
+  });
+
+  it('does not let a second split rewrite the tab folder', () => {
+    const splitPaneId = useWorkspaceStore.getState().splitPane('pane-a1', 'vertical');
+
+    useWorkspaceStore.getState().updatePaneCwd(splitPaneId, '/var/log');
+
+    const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === 'tab-a1')!;
+    expect(collectPaneLeafs(tab.splitRoot).find((l) => l.id === splitPaneId)?.cwd).toBe('/var/log');
+    expect(tab.cwd).toBe('/tmp');
+  });
+});
