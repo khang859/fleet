@@ -68,8 +68,13 @@ import {
 import { runBackfill } from './learnings/backfill';
 import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
-import { completeOnce } from './agent/openrouter';
+import { completeOnce } from './agent/completions';
 import { AgentModelCatalog } from './agent/models-catalog';
+import { AgentCatalogComposer } from './agent/catalog-composer';
+import { resolveTarget as resolveModelTarget, type ResolvedTarget } from './agent/model-routing';
+import { LocalEndpointManager } from './agent/endpoints/manager';
+import { LocalEndpointConfigSchema, type LocalEndpointConfig } from '../shared/agent-endpoints';
+import { registerAgentEndpointIpc } from './agent/endpoints/endpoint-ipc';
 import { AgentService } from './agent/agent-service';
 import { coalesceStreamDeltas } from './agent/stream-emit';
 import { AgentSessionStore } from './agent/session-store';
@@ -947,6 +952,37 @@ void app.whenReady().then(async () => {
 
   const openRouterSecrets = new OpenRouterSecrets();
 
+  /**
+   * Where a call for one model goes - OpenRouter, or a server on this machine.
+   *
+   * Built here and handed to everything that talks to a model, so that no other
+   * part of main has to know that a model can be either. Reads the settings
+   * fresh on every call rather than closing over them: an endpoint switched off
+   * mid-session has to take effect on the next turn, not the next launch.
+   */
+  /**
+   * The configured endpoints, checked rather than taken on trust.
+   *
+   * This is where main stops treating the settings file as its own and starts
+   * treating it as input: the renderer writes this list, a hand-edited settings
+   * file can hold anything, and a `baseUrl` from here becomes the address a
+   * turn is sent to. Checked per entry rather than all at once, so one
+   * malformed row cannot take the working servers down with it.
+   */
+  const localEndpoints = (): LocalEndpointConfig[] => {
+    const saved: unknown = settingsStore.get().ai.agent.localEndpoints;
+    if (!Array.isArray(saved)) return [];
+    return saved.filter(
+      (entry): entry is LocalEndpointConfig => LocalEndpointConfigSchema.safeParse(entry).success
+    );
+  };
+
+  const resolveTarget = (modelId: string | null): ResolvedTarget =>
+    resolveModelTarget(modelId, {
+      getOpenRouterKey: () => openRouterSecrets.getKey(),
+      getEndpoints: localEndpoints
+    });
+
   // Agent panes.
   const agentSend = (channel: string, payload: unknown): void => {
     const w = mainWindow;
@@ -989,22 +1025,21 @@ void app.whenReady().then(async () => {
       });
     },
     emit: agentEmit,
-    // Auto mode. Every reason not to consult a model - the mode is off, there
-    // is no key, no model is chosen - comes back as `ask`, which is the answer
-    // the gate would have reached without any of this.
+    // Auto mode. Every reason not to consult a model - the mode is off, no
+    // model is chosen, nowhere to send the call - comes back as `ask`, which is
+    // the answer the gate would have reached without any of this.
     autoApprove: async ({ command, cwd, signal }) => {
       const a = settingsStore.get().ai.agent;
-      const apiKey = openRouterSecrets.getKey();
       // Falls through to the coding model rather than to the title model: the
       // one the user already trusts to drive the tools is the honest default,
       // and naming a session is not a judgement about what may run.
-      const model = a.classifierModel ?? a.coding.model;
-      if (a.toolMode !== 'auto' || apiKey === null || model === null) {
+      const resolved = resolveTarget(a.classifierModel ?? a.coding.model);
+      if (a.toolMode !== 'auto' || !resolved.ok) {
         return { verdict: 'ask', usage: null };
       }
       return classifyCommand(completeOnce, {
-        apiKey,
-        model,
+        target: resolved.target,
+        model: resolved.wireModelId,
         command,
         cwd,
         note: a.classifierNote,
@@ -1064,9 +1099,35 @@ void app.whenReady().then(async () => {
   // takes is asked for synchronously while a turn is being assembled, and the
   // answer is only useful if it is already on hand.
   void agentCatalog.list();
+  const agentEndpoints = new LocalEndpointManager({
+    getEndpoints: localEndpoints,
+    // The roster is written back so that a model chosen from a server that
+    // happens to be off is still in the picker after a restart. Only ever the
+    // names - everything else a probe learned is worth exactly as much as the
+    // connection it came from.
+    rememberModels: (endpointId, lastKnownModels) => {
+      // Through the same checked accessor as every other read, rather than
+      // straight off the settings store. This one writes the list back, so
+      // reading it raw would both trip over a malformed row and persist it
+      // again - the one path that could keep a bad entry alive forever.
+      const saved = localEndpoints();
+      const next = saved.map((endpoint) =>
+        endpoint.id === endpointId ? { ...endpoint, lastKnownModels } : endpoint
+      );
+      if (JSON.stringify(next) === JSON.stringify(saved)) return;
+      settingsStore.set({ ai: { agent: { localEndpoints: next } } });
+    },
+    onStatusChange: (statuses) => agentEmit(IPC_CHANNELS.AGENT_ENDPOINT_STATUS, statuses)
+  });
+  // Asked once at startup, so that a server the user left running is already
+  // known about by the time they open a pane - and so that the picker is right
+  // before anyone has visited settings.
+  void agentEndpoints.reload();
+  const agentModels = new AgentCatalogComposer(agentCatalog, agentEndpoints);
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
+    resolveTarget,
     gate: agentGate,
     mcp: agentMcp,
     subagents: agentSubagents,
@@ -1082,8 +1143,9 @@ void app.whenReady().then(async () => {
   // Once, here, before any pane has had the chance to attach anything: a
   // picture that has not been sent yet is a folder with no session behind it.
   agentSessions.sweep();
+  registerAgentEndpointIpc({ manager: agentEndpoints });
   registerAgentIpc({
-    catalog: agentCatalog,
+    catalog: agentModels,
     service: agentService,
     gate: agentGate,
     sessions: agentSessions,
@@ -1100,6 +1162,7 @@ void app.whenReady().then(async () => {
     },
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
+    resolveTarget,
     secrets: openRouterSecrets
   });
 
@@ -1121,17 +1184,15 @@ void app.whenReady().then(async () => {
       const inFlight = paneSummaryInFlight.get(req.paneId);
       if (inFlight) return inFlight;
 
-      const apiKey = openRouterSecrets.getKey();
-      if (!apiKey) return '';
       const a = settingsStore.get().ai.agent;
       // The cheap model a session's title comes from, falling back to the model
       // that writes the code when no separate one is set.
-      const model = a.titleModel ?? a.coding.model;
-      if (model === null) return '';
+      const resolved = resolveTarget(a.titleModel ?? a.coding.model);
+      if (!resolved.ok) return '';
       const request = (async (): Promise<string> => {
         const summary = await resolveSummary(completeOnce, {
-          apiKey,
-          model,
+          target: resolved.target,
+          model: resolved.wireModelId,
           tailText: req.tailText
         });
         if (summary) paneSummaryCache.set(req.paneId, { summary, at: Date.now() });

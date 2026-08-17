@@ -1,4 +1,4 @@
-import type { completeOnce, AgentWireMessage } from './openrouter';
+import type { completeOnce, AgentWireMessage, CompletionsTarget } from './completions';
 import type { AgentTitleResult, AgentTurnUsage, AgentUsage } from '../../shared/agent-types';
 import { createLogger } from '../logger';
 
@@ -42,7 +42,9 @@ export function sanitizeTitle(raw: string): string {
 }
 
 export type TitleInput = {
-  apiKey: string;
+  /** Wherever the title model lives - OpenRouter, or a server on this machine. */
+  target: CompletionsTarget;
+  /** The id as that endpoint knows it. */
   model: string;
   firstUser: string;
   firstAssistant: string;
@@ -90,7 +92,7 @@ export async function resolveTitle(
 ): Promise<AgentTitleResult> {
   try {
     const answer = await complete({
-      apiKey: input.apiKey,
+      target: input.target,
       model: input.model,
       messages: toTitleMessages(input),
       maxTokens: 24,

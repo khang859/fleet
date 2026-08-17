@@ -18,12 +18,12 @@ import type {
   AgentSessionListItem,
   AgentSessionReplay
 } from '../../shared/agent-session';
-import type { AgentModelCatalog } from './models-catalog';
+import type { AgentCatalogComposer } from './catalog-composer';
 import type { AgentService } from './agent-service';
 import type { AgentSessionStore } from './session-store';
 import type { PermissionGate } from './permissions/gate';
 import { AgentPermissionDecision } from '../../shared/agent-types';
-import { completeOnce } from './openrouter';
+import { completeOnce } from './completions';
 import { resolveTitle } from './session-title';
 import { transcribe } from './transcribe';
 import { resolveAttachment } from './attachments';
@@ -40,6 +40,7 @@ import type { SubagentManager } from './subagents/manager';
 import type { ScheduleStore } from './schedule-store';
 import type { AgentScheduleRecord } from '../../shared/agent-schedule';
 import type { OpenRouterSecrets } from '../openrouter-secrets';
+import type { ResolvedTarget } from './model-routing';
 
 /**
  * Everything the Agent pane calls into main. Agent settings themselves ride on
@@ -47,7 +48,8 @@ import type { OpenRouterSecrets } from '../openrouter-secrets';
  * and the turn itself live here.
  */
 export function registerAgentIpc(deps: {
-  catalog: AgentModelCatalog;
+  /** Every model the app can call - OpenRouter's, and this machine's. */
+  catalog: AgentCatalogComposer;
   service: AgentService;
   gate: PermissionGate;
   sessions: AgentSessionStore;
@@ -66,7 +68,10 @@ export function registerAgentIpc(deps: {
   /** The reminders every conversation has set, and the due ones waiting to be collected. */
   schedules: ScheduleStore;
   getSettings: () => AgentSettings;
+  /** Only the OpenRouter-only endpoints still ask: transcription, images. */
   getApiKey: () => string | null;
+  /** Where a call for one model goes, cloud or local. */
+  resolveTarget: (modelId: string | null) => ResolvedTarget;
 }): void {
   registerAgentMcpIpc(deps.mcp);
   // No dependencies of its own: skills are folders on disk, read fresh, with no
@@ -185,14 +190,15 @@ export function registerAgentIpc(deps: {
   ipcMain.handle(
     IPC_CHANNELS.AGENT_GENERATE_TITLE,
     async (_e, req: AgentTitleRequest): Promise<AgentTitleResult> => {
-      const apiKey = deps.getApiKey();
-      if (!apiKey) return { title: null, usage: null };
       const settings = deps.getSettings();
-      const model = settings.titleModel ?? settings.coding.model;
-      if (model === null) return { title: null, usage: null };
+      // The model is chosen before anything is asked about keys, because which
+      // model it is decides whether a key is needed at all: a title written by
+      // a model on this machine wants nothing from OpenRouter.
+      const resolved = deps.resolveTarget(settings.titleModel ?? settings.coding.model);
+      if (!resolved.ok) return { title: null, usage: null };
       return resolveTitle(completeOnce, {
-        apiKey,
-        model,
+        target: resolved.target,
+        model: resolved.wireModelId,
         firstUser: req.firstUser,
         firstAssistant: req.firstAssistant
       });

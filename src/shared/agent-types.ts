@@ -8,6 +8,7 @@ import { AGENT_SCHEDULE_INSTRUCTIONS } from './agent-schedule';
 import { renderEnvBlock, type AgentEnvironment } from './agent-environment';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
 import type { McpServersConfig } from './agent-mcp';
+import type { LocalEndpointConfig } from './agent-endpoints';
 
 /**
  * Settings for the native Agent panes. One configuration, shared by every agent
@@ -28,6 +29,28 @@ export type AgentReasoningOption =
   | { type: 'toggle' }
   | { type: 'effort'; values: string[] }
   | { type: 'budget_tokens'; min: number; max: number };
+
+/**
+ * Where a model in the catalog is served from, when it is not OpenRouter.
+ *
+ * Absent for everything models.dev describes, which is why it is optional
+ * rather than a discriminant: the cached catalog on disk was written before
+ * local servers existed, and a required field here would invalidate every
+ * user's copy of it to say something that is false for all of them.
+ */
+export type AgentCatalogLocal = {
+  endpointId: string;
+  /** The user's name for the server, or its `host:port`. Groups the picker. */
+  label: string;
+  /**
+   * Whether the server answered the last time it was asked.
+   *
+   * A model that is unreachable is still listed - greyed rather than gone.
+   * Dropping it would mean a person's own chosen model vanishing from the
+   * picker because they closed a terminal, with nothing on screen saying so.
+   */
+  reachable: boolean;
+};
 
 /** One selectable model, distilled from models.dev's much larger record. */
 export type AgentCatalogModel = {
@@ -55,6 +78,8 @@ export type AgentCatalogModel = {
   defaultTemperature: number | null;
   defaultReasoningEnabled: boolean | null;
   defaultReasoningEffort: string | null;
+  /** Set only for a model on one of the user's own servers. */
+  local?: AgentCatalogLocal;
 };
 
 /**
@@ -216,6 +241,14 @@ export type AgentToolMode = (typeof AGENT_TOOL_MODES)[number];
 
 export type AgentSettings = {
   provider: 'openrouter';
+  /**
+   * Inference servers on the user's own machines, each serving one model.
+   *
+   * Alongside OpenRouter rather than instead of it: a model slot names either,
+   * and which one it named is read out of the id (see `agent-model-id`). The
+   * OpenRouter key is optional once anything is listed here.
+   */
+  localEndpoints: LocalEndpointConfig[];
   /** The model that writes code and drives tools. */
   coding: AgentModelConfig;
   /** The model behind image generation, and how it is asked. */
@@ -300,6 +333,7 @@ export const EMPTY_AGENT_IMAGE_CONFIG: AgentImageConfig = {
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   provider: 'openrouter',
+  localEndpoints: [],
   coding: { ...EMPTY_AGENT_MODEL_CONFIG, model: 'anthropic/claude-sonnet-4.5' },
   image: { ...EMPTY_AGENT_IMAGE_CONFIG },
   webFetch: { ...DEFAULT_AGENT_WEB_FETCH },

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { sanitizeSummary, generateSummary, resolveSummary } from '../pane-summarizer';
-import type { completeOnce } from '../agent/openrouter';
+import type { completeOnce } from '../agent/completions';
+import { openRouterTarget } from '../agent/openrouter';
 
 /** A stand-in for `completeOnce` that answers with the given text. */
 function answering(text: string): typeof completeOnce {
@@ -35,7 +36,7 @@ describe('sanitizeSummary', () => {
 describe('generateSummary', () => {
   it('sanitizes the model output', async () => {
     const summary = await generateSummary(answering('"needs input: proceed with deploy?"'), {
-      apiKey: 'k',
+      target: openRouterTarget('k'),
       model: 'cheap/model',
       tailText: '> Proceed with deploy? (y/n)'
     });
@@ -46,7 +47,7 @@ describe('generateSummary', () => {
 describe('resolveSummary (never throws)', () => {
   it('returns the model summary when available', async () => {
     const summary = await resolveSummary(answering('Editing CollisionSystem.ts'), {
-      apiKey: 'k',
+      target: openRouterTarget('k'),
       model: 'm',
       tailText: 'diff --git a/CollisionSystem.ts'
     });
@@ -55,7 +56,7 @@ describe('resolveSummary (never throws)', () => {
 
   it('returns empty string when the model throws', async () => {
     const summary = await resolveSummary(failing('rate limited'), {
-      apiKey: 'k',
+      target: openRouterTarget('k'),
       model: 'm',
       tailText: 'output'
     });

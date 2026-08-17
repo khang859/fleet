@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { completeOnce } from '../../openrouter';
+import type { completeOnce } from '../../completions';
 import { classifyCommand, readVerdict, toClassifyMessages } from '../classifier';
+import { openRouterTarget } from '../../openrouter';
 
 /**
  * The classifier can only ever remove a question, so what is checked here is
@@ -9,7 +10,7 @@ import { classifyCommand, readVerdict, toClassifyMessages } from '../classifier'
  */
 
 const input = {
-  apiKey: 'sk-or-test',
+  target: openRouterTarget('sk-or-test'),
   model: 'anthropic/claude-haiku-4.5',
   command: 'npm test',
   cwd: '/repo',

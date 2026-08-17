@@ -8,7 +8,7 @@ import {
   type AgentAttachment
 } from '../../shared/agent-types';
 import type { AgentToolContext, AgentToolImage } from '../../shared/agent-tools';
-import type { WireContentPart } from './openrouter';
+import type { WireContentPart } from './completions';
 import { isAgentImagePath, type AgentImageStore } from './image-store';
 import { formatSize, imageMimeFor, isSendableImage, toDataUrl } from './image-kinds';
 import { parsePdf } from './pdf/parse';
