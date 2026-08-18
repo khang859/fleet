@@ -30,7 +30,7 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
 
   useEffect(() => {
     if (!isOpen) return;
-    navigator.clipboard
+    window.fleet.clipboard
       .readText()
       .then((text) => {
         if (looksLikeUrl(text)) {

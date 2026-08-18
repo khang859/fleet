@@ -441,7 +441,7 @@ function createTerminal(
       !event.altKey &&
       event.key.toLowerCase() === 'v'
     ) {
-      void navigator.clipboard.readText().then((text) => {
+      void window.fleet.clipboard.readText().then((text) => {
         // Normalize CRLF — Windows clipboard uses \r\n, and a bare \r in
         // bash/zsh submits the line before the rest of the paste arrives.
         term.paste(text.replace(/\r\n/g, '\n'));
@@ -470,7 +470,7 @@ function createTerminal(
           }
           break;
         case 'paste':
-          void navigator.clipboard.readText().then((text) => {
+          void window.fleet.clipboard.readText().then((text) => {
             term.paste(text.replace(/\r\n/g, '\n'));
           });
           break;
