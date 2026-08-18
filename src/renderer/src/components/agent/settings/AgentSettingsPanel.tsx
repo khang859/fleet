@@ -220,7 +220,7 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
         <FieldGroup title="Permissions">
           <Field
             label="Who answers"
-            description="What a command your rules have not settled does next. The picker in the composer sets the same thing."
+            description="What a command your rules have not settled does next. The picker in the composer sets the same thing. Full access runs everything but a deny rule, and is back to Ask on the next start."
             htmlFor="agent-tool-mode"
           >
             <select
@@ -235,6 +235,7 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
             >
               <option value="ask">Ask every time</option>
               <option value="auto">Auto: decide the ordinary ones</option>
+              <option value="full">Full access: never ask</option>
             </select>
           </Field>
           <Field

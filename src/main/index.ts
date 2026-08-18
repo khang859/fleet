@@ -448,6 +448,16 @@ void app.whenReady().then(async () => {
     }
   });
 
+  // Full access does not survive a restart. It is the one setting that changes
+  // what runs on this machine without anybody being asked, and the person it
+  // catches out is the one who turned it on for a job that finished days ago -
+  // so the app comes up asking, every time, and turning it back on is a click.
+  // Ahead of the window and of `registerIpcHandlers`, so the renderer cannot
+  // draw a mode that is about to be taken away from it.
+  if (settingsStore.get().ai.agent.toolMode === 'full') {
+    settingsStore.set({ ai: { agent: { toolMode: 'ask' } } });
+  }
+
   createWindow();
 
   // Electron's default refuses getUserMedia outright, so granting it has to be
@@ -1025,6 +1035,9 @@ void app.whenReady().then(async () => {
       });
     },
     emit: agentEmit,
+    // Full access. Read per command rather than closed over, so turning it off
+    // takes effect on the next command and not the next turn.
+    fullAccess: () => settingsStore.get().ai.agent.toolMode === 'full',
     // Auto mode. Every reason not to consult a model - the mode is off, no
     // model is chosen, nowhere to send the call - comes back as `ask`, which is
     // the answer the gate would have reached without any of this.
