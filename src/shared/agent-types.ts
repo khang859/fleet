@@ -229,14 +229,23 @@ export const WEB_FETCH_MAX_CHARS = 200_000;
  * `ask` is the user, every time, which is what the agent has always done.
  * `auto` puts a cheap model in front of the question: it may say the command is
  * safe enough to run unasked, and anything else it says still comes to the user.
+ * `full` answers yes to everything, including the handful `auto` is never even
+ * asked about.
  *
- * A one-way relaxation, deliberately. Auto mode can only remove a question, and
- * never add a refusal - so turning it on cannot make the agent do less than it
- * would have done, and cannot make a command run that the user's own rules or
- * the always-ask list would have stopped. Those are checked first, in code, and
- * a model is never consulted about them.
+ * `auto` is a one-way relaxation, deliberately: it can only remove a question,
+ * and never add a refusal - so turning it on cannot make a command run that the
+ * user's own rules or the always-ask list would have stopped. Those are checked
+ * first, in code, and a model is never consulted about them.
+ *
+ * `full` is the mode where that stops being true, which is the whole point of
+ * it: the always-ask list goes too, so `sudo`, a pipe into a shell, a write
+ * outside the folder and a force-push all run the moment they are asked for.
+ * The one thing it does not override is a deny rule, because that is a
+ * sentence the user wrote by hand about a command they had in mind, and a mode
+ * is not an argument against it. It does not survive a restart either - see
+ * where `index.ts` puts it back to `ask` on the way up.
  */
-export const AGENT_TOOL_MODES = ['ask', 'auto'] as const;
+export const AGENT_TOOL_MODES = ['ask', 'auto', 'full'] as const;
 export type AgentToolMode = (typeof AGENT_TOOL_MODES)[number];
 
 export type AgentSettings = {

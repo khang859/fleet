@@ -47,6 +47,18 @@ type Deps = {
    * to do the same thing about each.
    */
   autoApprove?: (req: AutoApproveRequest) => Promise<AutoApproval>;
+  /**
+   * Whether the user has said yes to everything in advance. Absent ⇒ they have
+   * not, which is what the gate did before the mode existed.
+   *
+   * Asked per command rather than read once, for the reason `getRules` is: the
+   * mode is a setting the user can change mid-turn, and a turn that started in
+   * `ask` must start asking the moment they turn it off.
+   *
+   * Like `autoApprove`, what the mode is called and where it is stored is the
+   * caller's business - the gate only needs the yes or the no.
+   */
+  fullAccess?: () => boolean;
 };
 
 export type AutoApproveRequest = { command: string; cwd: string; signal: AbortSignal };
@@ -139,10 +151,17 @@ export class PermissionGate {
     if (verdict.kind === 'allow') return 'run';
     if (verdict.kind === 'deny') return 'refuse';
 
+    // Below the deny rules and above everything else, which is the whole of
+    // what full access means: a rule the user wrote by hand still holds, and
+    // nothing the gate works out for itself - the always-ask list, a model's
+    // opinion, a question - happens at all.
+    if (this.fullAccess()) return 'run';
+
     // Only what no rule had anything to say about. A command carrying an
-    // always-ask reason is one the user decides whatever the mode is: those are
-    // the handful where being wrong costs a rewritten remote or a leaked key,
-    // and they are not put to a model.
+    // always-ask reason is never put to a model: those are the handful where
+    // being wrong costs a rewritten remote or a leaked key, and a judgement
+    // about them is the user's own. Full access is the user making it in
+    // advance, which is why it sits above this and not below.
     if (verdict.kind === 'unknown' && (await this.autoApproved(req))) return 'run';
 
     // A command that always asks is one no rule may quietly cover later, so
@@ -196,12 +215,18 @@ export class PermissionGate {
    * what `create_issue` on somebody's server does cannot be read off either.
    * Asking a model to guess would be inventing an opinion rather than forming
    * one - so the answer stays the server's `readOnly` claim, or the user.
+   *
+   * Full access does reach here, and for the opposite reason: it is not a
+   * guess about what a tool does but the user saying they do not want to be
+   * asked, and a mode that still stopped on every write an MCP server offers
+   * would not be the thing it says it is.
    */
   async checkMcp(req: McpPermissionRequest): Promise<PermissionGrant> {
     if (this.wasRefused(req.streamId, req.wireName)) return 'refuse';
 
     const verdict = decideMcpTool(this.deps.getRules(), req.wireName);
     if (verdict.kind === 'deny') return 'refuse';
+    if (this.fullAccess()) return 'run';
     if (verdict.kind === 'allow') return 'run';
     if (req.readOnly) return 'run';
 
@@ -276,6 +301,11 @@ export class PermissionGate {
   waitingOn(streamIds: string[]): string[] {
     const asked = new Set([...this.pending.values()].map((entry) => entry.streamId));
     return streamIds.filter((id) => asked.has(id));
+  }
+
+  /** Whether everything but a deny rule is already answered. */
+  private fullAccess(): boolean {
+    return this.deps.fullAccess?.() === true;
   }
 
   private async ask(

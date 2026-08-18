@@ -24,14 +24,20 @@ const emit = vi.fn((channel: string, payload: unknown) => {
 
 type AutoApprove = ConstructorParameters<typeof PermissionGate>[0]['autoApprove'];
 
-function gate(autoApprove?: AutoApprove): PermissionGate {
+function gate(autoApprove?: AutoApprove, fullAccess?: () => boolean): PermissionGate {
   return new PermissionGate({
     getRules: () => rules,
     persistAllow: (rule) => persisted.push(rule),
     persistAllowMcp: (rule) => persistedMcp.push(rule),
     emit,
-    autoApprove
+    autoApprove,
+    fullAccess
   });
+}
+
+/** The gate as it stands when the user has said yes to everything in advance. */
+function fullAccessGate(autoApprove?: AutoApprove): PermissionGate {
+  return gate(autoApprove, () => true);
 }
 
 const request = (
@@ -536,5 +542,71 @@ describe('PermissionGate, on a connected server’s tool', () => {
     rules.allow.push('*');
     void gate().checkMcp(mcpRequest());
     await vi.waitFor(() => expect(asks).toHaveLength(1));
+  });
+});
+
+/*
+ * Full access. Everything the gate would have worked out for itself - the
+ * always-ask list, a model's opinion, the question - is answered in advance,
+ * and the one thing that still is not is a rule the user wrote by hand.
+ */
+describe('PermissionGate, in full access', () => {
+  it('runs a command that would always have asked, without disturbing anybody', async () => {
+    await expect(fullAccessGate().check(request('sudo rm -rf /etc/hosts'))).resolves.toBe('run');
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('runs one no rule covers, without disturbing anybody', async () => {
+    await expect(fullAccessGate().check(request('npm install left-pad'))).resolves.toBe('run');
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  /* The line this mode does not cross, and the only one left. */
+  it('still refuses one the user denied', async () => {
+    rules.deny.push('npm publish');
+
+    await expect(fullAccessGate().check(request('npm publish'))).resolves.toBe('refuse');
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  /*
+   * A refusal is about the command rather than the moment, so switching mode
+   * mid-turn does not reopen one the user has already answered.
+   */
+  it('holds a refusal already given this turn', async () => {
+    let full = false;
+    const g = gate(undefined, () => full);
+    const first = g.check(request('git push --force'));
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'no');
+    await expect(first).resolves.toBe('refuse');
+
+    full = true;
+    await expect(g.check(request('git push --force'))).resolves.toBe('refuse');
+    expect(asks).toHaveLength(1);
+  });
+
+  /* No question to answer means nothing to pay a model for. */
+  it('never consults the classifier', async () => {
+    const seen: string[] = [];
+    const auto: AutoApprove = async ({ command }) => {
+      seen.push(command);
+      return Promise.resolve({ verdict: 'safe' as const, usage: null });
+    };
+
+    await expect(fullAccessGate(auto).check(request('npm test'))).resolves.toBe('run');
+    expect(seen).toEqual([]);
+  });
+
+  it('runs a server’s tool that would have asked, without disturbing anybody', async () => {
+    await expect(fullAccessGate().checkMcp(mcpRequest('create_issue'))).resolves.toBe('run');
+    expect(asks).toEqual([]);
+  });
+
+  it('still refuses a server’s tool the user denied', async () => {
+    rules.mcp.deny.push('mcp__linear__delete_issue');
+
+    await expect(fullAccessGate().checkMcp(mcpRequest('delete_issue'))).resolves.toBe('refuse');
+    expect(asks).toEqual([]);
   });
 });
