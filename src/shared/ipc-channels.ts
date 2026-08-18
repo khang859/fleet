@@ -55,6 +55,7 @@ export const IPC_CHANNELS = {
   BACKGROUND_ADOPT: 'background:adopt',
   FILE_CHECK_IGNORED: 'file:check-ignored',
   CLIPBOARD_HISTORY: 'clipboard:history',
+  CLIPBOARD_READ_TEXT: 'clipboard:read-text',
   CLIPBOARD_CHANGED: 'clipboard:changed',
   SYSTEM_CHECK: 'system:check',
   UPDATE_CHECK: 'fleet:update-check',

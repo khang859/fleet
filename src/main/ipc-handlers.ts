@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, Menu, dialog, safeStorage } from 'electron';
+import { ipcMain, BrowserWindow, Menu, dialog, safeStorage, clipboard } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { safeOpenExternal } from './safe-external';
 import { collectDiagnosticsInfo, readRedactedLogTail, openLogsFolder } from './diagnostics';
@@ -756,6 +756,14 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.CLIPBOARD_HISTORY, () => ({
     entries: getClipboardHistory()
   }));
+
+  // Reading the clipboard happens here rather than in the renderer. Blink gates
+  // `navigator.clipboard.readText` behind the `clipboard-read` permission and
+  // transient user activation, and this app's permission handler answers no to
+  // everything outside a narrow allowlist - so the renderer call rejects, and
+  // every paste path that swallowed the rejection silently did nothing. The
+  // main process has no such gate.
+  ipcMain.handle(IPC_CHANNELS.CLIPBOARD_READ_TEXT, () => clipboard.readText());
 
   startClipboardMonitor();
 
