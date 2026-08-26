@@ -58,6 +58,12 @@ export type Tab = {
   worktreeBranch?: string;
   worktreePath?: string;
   userGroupId?: string;
+  /**
+   * The terminal session this file tab was opened from. Purely a sidebar
+   * nesting relation - the tab is otherwise independent, and a parent that is
+   * gone (session closed) simply renders the file at the top level again.
+   */
+  parentTabId?: string;
   /** ShellProfile id used when this tab was created. Optional for legacy persisted tabs. */
   shellProfileId?: string;
   /** Path semantics for this tab (driven by the chosen shellProfile). Optional for legacy tabs. */

@@ -41,6 +41,7 @@ import {
 } from './sidebar-constants';
 import { ColorPalettePicker } from './ColorPalettePicker';
 import { COLOR_MAP } from './sidebar-constants';
+import { buildTabNesting } from '../lib/tab-nesting';
 import { EnvSyncBadge } from './env-sync/EnvSyncBadge';
 import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 import { SessionsTabCard } from './sessions/SessionsTabCard';
@@ -1315,6 +1316,10 @@ export function Sidebar({
             const rendered: React.ReactNode[] = [];
             const seenWorktreeGroups = new Set<string>();
             const userGroups = workspace.userGroups ?? [];
+            // Files opened from a session hang off it. They are drawn by the
+            // session's own pass rather than at their place in the list, so a
+            // collapsed group or a moved session takes them along for free.
+            const nesting = buildTabNesting(regularTabs);
 
             const USER_GROUP_BORDER_CLASSES: Record<string, string> = {
               blue: 'border-l-blue-500/50',
@@ -1327,7 +1332,11 @@ export function Sidebar({
               purple: 'border-l-purple-500/50'
             };
 
-            const renderTabWithWorktreeGroups = (tab: (typeof regularTabs)[number]): void => {
+            const renderTabWithWorktreeGroups = (
+              tab: (typeof regularTabs)[number],
+              /** Set when the tab is drawn under its session, which fixes its indent. */
+              nestedIndent?: number
+            ): void => {
               if (tab.groupId && !seenWorktreeGroups.has(tab.groupId)) {
                 seenWorktreeGroups.add(tab.groupId);
                 const groupTabs = regularTabs.filter((t) => t.groupId === tab.groupId);
@@ -1364,6 +1373,7 @@ export function Sidebar({
 
               if (tab.groupId && collapsedGroups.has(tab.groupId)) return;
 
+              const indentLevel = nestedIndent ?? (tab.groupId ? 1 : 0);
               const paneIds = collectPaneIds(tab.splitRoot);
               const isFile =
                 tab.type === 'file' ||
@@ -1441,7 +1451,8 @@ export function Sidebar({
                       ? dropTarget.position
                       : null
                   }
-                  indentLevel={tab.groupId ? 1 : 0}
+                  indentLevel={indentLevel}
+                  indentAccent={nestedIndent === undefined ? 'worktree' : 'nested'}
                   worktreeBranch={tab.worktreeBranch}
                   pathContext={tab.pathContext}
                   worktreeDisabledReason={
@@ -1507,16 +1518,24 @@ export function Sidebar({
                   }
                 />
               );
+
+              for (const child of nesting.childrenByParent.get(tab.id) ?? []) {
+                renderTabWithWorktreeGroups(child, indentLevel + 1);
+              }
             };
 
             // 1. Ungrouped tabs render first
-            for (const tab of regularTabs.filter((t) => !t.userGroupId)) {
+            for (const tab of regularTabs.filter(
+              (t) => !t.userGroupId && !nesting.nestedIds.has(t.id)
+            )) {
               renderTabWithWorktreeGroups(tab);
             }
 
             // 2. User groups
             for (const ug of userGroups) {
-              const groupTabs = regularTabs.filter((t) => t.userGroupId === ug.id);
+              const groupTabs = regularTabs.filter(
+                (t) => t.userGroupId === ug.id && !nesting.nestedIds.has(t.id)
+              );
               if (groupTabs.length === 0) continue;
 
               const firstTabIdx = realIndex(groupTabs[0].id);

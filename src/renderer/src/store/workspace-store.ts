@@ -7,6 +7,12 @@ import { getPaneTypeForFilePath } from '../../../shared/file-open';
 import { useCwdStore } from './cwd-store';
 import { useSettingsStore } from './settings-store';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
+import {
+  insertNestedTab,
+  nestedBlockLength,
+  nestInsertIndex,
+  resolveFileParentId
+} from '../lib/tab-nesting';
 import { createLogger } from '../logger';
 import { clampSidebarWidth } from '../components/sidebar-constants';
 import { basename as pathBasename } from '../../../shared/path-platform';
@@ -154,6 +160,11 @@ function resolveActiveTab(
     activeTabId: next?.id ?? null,
     activePaneId: next ? (collectPaneIds(next.splitRoot)[0] ?? null) : null
   };
+}
+
+/** Where a tab's shell actually is, preferring the live CWD over the stale one. */
+function tabLiveCwd(tab: Tab): string {
+  return getFirstPaneLiveCwd(tab.splitRoot) ?? tab.cwd;
 }
 
 /** Extract basename from a path for auto-labeling tabs. ctx defaults to 'posix'. */
@@ -684,8 +695,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (fromIndex < 0 || fromIndex >= tabs.length) return state;
       if (toIndex < 0 || toIndex >= tabs.length) return state;
       if (fromIndex === toIndex) return state;
-      const [moved] = tabs.splice(fromIndex, 1);
-      tabs.splice(toIndex, 0, moved);
+      // A session drags its nested files along; a nested file dragged on its own
+      // leaves the nest and stays where it was dropped.
+      const blockLength = nestedBlockLength(tabs, fromIndex);
+      const [moved, ...rest] = tabs.splice(fromIndex, blockLength);
+      const block = moved.parentTabId
+        ? [{ ...moved, parentTabId: undefined }, ...rest]
+        : [moved, ...rest];
+      // The caller adjusted for one tab leaving the list ahead of the target;
+      // a whole block leaving shifts it by that much more.
+      const insertAt = fromIndex < toIndex ? toIndex - (blockLength - 1) : toIndex;
+      tabs.splice(nestInsertIndex(tabs, insertAt), 0, ...block);
       logTabs.debug('reorderTab result', { movedTabId: moved.id, newOrder: tabs.map((t) => t.id) });
       return {
         workspace: { ...state.workspace, tabs },
@@ -1374,6 +1394,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     // the viewer can bridge it for `fs` access — otherwise a posix path falls back
     // to the win32 host context and `stat` fails (→ `C:\home\...` ENOENT).
     const ctx = pathContext ?? getPaneContextById(get().activePaneId);
+    const parentTabId = resolveFileParentId(
+      get().workspace.tabs,
+      get().activeTabId,
+      filePath,
+      tabLiveCwd
+    );
     const leaf: PaneLeaf = {
       type: 'leaf',
       id: generateId(),
@@ -1388,10 +1414,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       labelIsCustom: true,
       cwd: '/',
       type: tabType,
-      splitRoot: leaf
+      splitRoot: leaf,
+      ...(parentTabId ? { parentTabId } : {})
     };
     set((state) => ({
-      workspace: { ...state.workspace, tabs: [...state.workspace.tabs, tab] },
+      workspace: {
+        ...state.workspace,
+        tabs: insertNestedTab(state.workspace.tabs, tab, parentTabId)
+      },
       activeTabId: tab.id,
       activePaneId: leaf.id,
       isDirty: true
@@ -1533,6 +1563,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         set({ activeTabId: existingTab.id, isDirty: true });
       } else {
         // Create new tab
+        const parentTabId = resolveFileParentId(
+          state.workspace.tabs,
+          state.activeTabId,
+          file.path,
+          tabLiveCwd
+        );
         const leaf: PaneLeaf = {
           type: 'leaf',
           id: generateId(),
@@ -1554,10 +1590,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
                 : file.paneType === 'pdf'
                   ? 'pdf'
                   : 'file',
-          splitRoot: leaf
+          splitRoot: leaf,
+          ...(parentTabId ? { parentTabId } : {})
         };
         set((s) => ({
-          workspace: { ...s.workspace, tabs: [...s.workspace.tabs, tab] },
+          workspace: { ...s.workspace, tabs: insertNestedTab(s.workspace.tabs, tab, parentTabId) },
           activeTabId: tab.id,
           activePaneId: leaf.id,
           isDirty: true
