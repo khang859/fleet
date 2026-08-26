@@ -883,3 +883,170 @@ describe('updatePaneCwd', () => {
     expect(tab.cwd).toBe('/tmp');
   });
 });
+
+// Issue #549: a file opened from a session belongs to it, and the sidebar draws
+// it indented underneath - which only works if the list order agrees.
+describe('openFile — nesting under a session', () => {
+  const NESTED_WS: Workspace = {
+    id: 'ws-nest',
+    label: 'Nest',
+    tabs: [
+      {
+        id: 'tab-s1',
+        label: 'proj',
+        labelIsCustom: false,
+        cwd: '/repo/proj',
+        splitRoot: { type: 'leaf', id: 'pane-s1', cwd: '/repo/proj' }
+      },
+      {
+        id: 'tab-s2',
+        label: 'other',
+        labelIsCustom: false,
+        cwd: '/repo/other',
+        splitRoot: { type: 'leaf', id: 'pane-s2', cwd: '/repo/other' }
+      }
+    ]
+  };
+
+  beforeEach(() => {
+    useWorkspaceStore.setState({
+      workspace: NESTED_WS,
+      activeTabId: 'tab-s1',
+      activePaneId: 'pane-s1'
+    });
+  });
+
+  it('parents the file on the active session and inserts it right below', () => {
+    useWorkspaceStore.getState().openFile('/repo/proj/a.ts');
+
+    const tabs = useWorkspaceStore.getState().workspace.tabs;
+    const file = tabs[1];
+    expect(file.parentTabId).toBe('tab-s1');
+    expect(tabs.map((t) => t.id)).toEqual(['tab-s1', file.id, 'tab-s2']);
+  });
+
+  it('puts the newest file at the top of the nest', () => {
+    useWorkspaceStore.getState().openFile('/repo/proj/a.ts');
+    const firstId = useWorkspaceStore.getState().workspace.tabs[1].id;
+    useWorkspaceStore.getState().openFile('/repo/proj/b.ts');
+
+    const tabs = useWorkspaceStore.getState().workspace.tabs;
+    expect(tabs[1].label).toBe('b.ts');
+    expect(tabs[2].id).toBe(firstId);
+    // Opened from a file tab, so the session had to be found through it.
+    expect(tabs[1].parentTabId).toBe('tab-s1');
+  });
+
+  it('falls back to the session whose folder holds the file', () => {
+    useWorkspaceStore.setState({ activeTabId: null, activePaneId: null });
+
+    useWorkspaceStore.getState().openFile('/repo/other/a.ts');
+
+    const tabs = useWorkspaceStore.getState().workspace.tabs;
+    expect(tabs.map((t) => t.id)).toEqual(['tab-s1', 'tab-s2', tabs[2].id]);
+    expect(tabs[2].parentTabId).toBe('tab-s2');
+  });
+
+  it('prefers the live folder over the stale one', () => {
+    useWorkspaceStore.setState({ activeTabId: null, activePaneId: null });
+    useCwdStore.setState({ cwds: new Map([['pane-s2', '/elsewhere/deep']]) });
+
+    useWorkspaceStore.getState().openFile('/elsewhere/deep/a.ts');
+
+    const tabs = useWorkspaceStore.getState().workspace.tabs;
+    expect(tabs[2].parentTabId).toBe('tab-s2');
+    useCwdStore.setState({ cwds: new Map() });
+  });
+
+  it('leaves a file that belongs to no session at the end', () => {
+    useWorkspaceStore.setState({ activeTabId: null, activePaneId: null });
+
+    useWorkspaceStore.getState().openFile('/nowhere/a.ts');
+
+    const tabs = useWorkspaceStore.getState().workspace.tabs;
+    expect(tabs).toHaveLength(3);
+    expect(tabs[2].parentTabId).toBeUndefined();
+  });
+
+  it('promotes the files when their session closes', () => {
+    useWorkspaceStore.getState().openFile('/repo/proj/a.ts');
+    useWorkspaceStore.getState().closeTab('tab-s1');
+
+    const tabs = useWorkspaceStore.getState().workspace.tabs;
+    // The file survives in place; the sidebar reads a missing parent as "top level".
+    expect(tabs.map((t) => t.label)).toEqual(['a.ts', 'other']);
+  });
+});
+
+describe('reorderTab — nested files', () => {
+  function nestedWorkspace(): Workspace {
+    return {
+      id: 'ws-reorder',
+      label: 'Reorder',
+      tabs: [
+        {
+          id: 'tab-s1',
+          label: 'proj',
+          labelIsCustom: false,
+          cwd: '/repo/proj',
+          splitRoot: { type: 'leaf', id: 'pane-s1', cwd: '/repo/proj' }
+        },
+        {
+          id: 'tab-f1',
+          label: 'a.ts',
+          labelIsCustom: true,
+          cwd: '/',
+          type: 'file',
+          parentTabId: 'tab-s1',
+          splitRoot: {
+            type: 'leaf',
+            id: 'pane-f1',
+            cwd: '/',
+            paneType: 'file',
+            filePath: '/repo/proj/a.ts'
+          }
+        },
+        {
+          id: 'tab-s2',
+          label: 'other',
+          labelIsCustom: false,
+          cwd: '/repo/other',
+          splitRoot: { type: 'leaf', id: 'pane-s2', cwd: '/repo/other' }
+        }
+      ]
+    };
+  }
+
+  beforeEach(() => {
+    useWorkspaceStore.setState({
+      workspace: nestedWorkspace(),
+      activeTabId: 'tab-s1',
+      activePaneId: 'pane-s1'
+    });
+  });
+
+  it('carries the nest along when the session moves', () => {
+    // Sidebar hands over the index the tab lands on once it has left the list.
+    useWorkspaceStore.getState().reorderTab(0, 2);
+
+    const tabs = useWorkspaceStore.getState().workspace.tabs;
+    expect(tabs.map((t) => t.id)).toEqual(['tab-s2', 'tab-s1', 'tab-f1']);
+    expect(tabs[2].parentTabId).toBe('tab-s1');
+  });
+
+  it('never drops a session between another session and its files', () => {
+    // tab-s2 aimed at the gap between tab-s1 and its file: it lands after the nest.
+    useWorkspaceStore.getState().reorderTab(2, 1);
+
+    const tabs = useWorkspaceStore.getState().workspace.tabs;
+    expect(tabs.map((t) => t.id)).toEqual(['tab-s1', 'tab-f1', 'tab-s2']);
+  });
+
+  it('detaches a file dragged out of its nest', () => {
+    useWorkspaceStore.getState().reorderTab(1, 2);
+
+    const tabs = useWorkspaceStore.getState().workspace.tabs;
+    expect(tabs.map((t) => t.id)).toEqual(['tab-s1', 'tab-s2', 'tab-f1']);
+    expect(tabs[2].parentTabId).toBeUndefined();
+  });
+});

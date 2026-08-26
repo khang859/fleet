@@ -53,8 +53,10 @@ type TabItemProps = {
   worktreeBranch?: string;
   /** Path semantics for rendering the auto-label. Undefined = treat as POSIX. */
   pathContext?: PathContext;
-  /** Indentation level (0 = normal, 1 = inside a group) */
+  /** Indentation level (0 = normal, 1 = inside a group, 2 = nested inside one) */
   indentLevel?: number;
+  /** What the indent guide means: a worktree group, or a file under its session. */
+  indentAccent?: 'worktree' | 'nested';
   userGroupColor?: string;
   userGroupId?: string;
   userGroups?: Array<{ id: string; name: string; color: UserGroupColor }>;
@@ -104,6 +106,7 @@ export function TabItem({
   worktreeBranch,
   pathContext,
   indentLevel = 0,
+  indentAccent = 'worktree',
   userGroupColor,
   userGroupId,
   userGroups,
@@ -189,7 +192,7 @@ export function TabItem({
           data-tab-id={id}
           className={`
             group flex items-center gap-2 px-2.5 py-1 cursor-pointer rounded-md text-sm relative min-h-[28px] transition-colors
-            ${indentLevel > 0 ? 'ml-4 border-l-2 border-l-teal-500/50' : ''}
+            ${indentLevel > 0 ? `${indentLevel > 1 ? 'ml-8' : 'ml-4'} border-l-2 ${indentAccent === 'nested' ? 'border-l-fleet-border-strong' : 'border-l-teal-500/50'}` : ''}
             ${
               isActive
                 ? `bg-fleet-surface-3 text-fleet-text ${indentLevel > 0 ? '' : `border-l-2 ${activeBorderColor}`} ${userGroupColor ?? ''}`
