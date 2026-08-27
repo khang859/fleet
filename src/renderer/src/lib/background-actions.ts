@@ -61,20 +61,32 @@ export function nextSlideshowFiles(
 }
 
 /**
- * Save the picture somewhere permanent first, then point a setting at it.
+ * Save the pictures somewhere permanent first, then point a setting at them.
  *
- * Every caller here is holding a path to a file it does not own - an image the
- * agent drew lives under the conversation that made it and is deleted with it -
- * so the copy is what makes a background a background rather than a path that
- * works until the user tidies up.
+ * Every caller is holding a path to a file it does not own - an image the agent
+ * drew lives under the conversation that made it, and one the user browsed to
+ * is theirs to move or delete tomorrow - so the copy is what makes a background
+ * a background rather than a path that works until somebody tidies up.
+ *
+ * Returns only the pictures that landed. One complaint covers the whole batch:
+ * picking a folder's worth of files with a stray `.svg` in it should say so
+ * once, not once per file.
  */
-async function adopt(path: string): Promise<string | null> {
-  const result = await window.fleet.background.adopt(path);
-  if (!result.success) {
-    useToastStore.getState().show(result.error);
-    return null;
+export async function adoptImages(paths: string[]): Promise<string[]> {
+  const results = await Promise.all(paths.map(async (path) => window.fleet.background.adopt(path)));
+
+  const adopted: string[] = [];
+  let firstError: string | null = null;
+  for (const result of results) {
+    if (result.success) adopted.push(result.path);
+    else firstError ??= result.error;
   }
-  return result.path;
+  if (firstError !== null) useToastStore.getState().show(firstError);
+  return adopted;
+}
+
+async function adopt(path: string): Promise<string | null> {
+  return (await adoptImages([path]))[0] ?? null;
 }
 
 /** Read the background as it is right now, not as it was when a component rendered. */
