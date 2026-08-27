@@ -153,7 +153,7 @@ import type { CwdPoller } from './cwd-poller';
 import type { ActivityTracker } from './activity-tracker';
 import { toError } from './errors';
 import { scanImageFolder } from './slideshow-scanner';
-import { adoptBackgroundImage } from './background-store';
+import { adoptBackgroundImage, pruneBackgroundStore } from './background-store';
 import type { GitService } from './git-service';
 import type { WorktreeService } from './worktree-service';
 import type { AnnotationStore } from './annotation-store';
@@ -415,6 +415,13 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, async (_event, settings: FleetSettingsPatch) => {
     settingsStore.set(settings);
+    // A background copy exists only because a setting points at it, so the
+    // write that stopped pointing is the moment it became rubbish. Swept off
+    // the merged settings rather than off the patch: the patch says what
+    // changed, not what is left.
+    if (settings.general?.terminalBackground) {
+      pruneBackgroundStore(settingsStore.get().general.terminalBackground);
+    }
     if (settings.copilot) {
       await onCopilotSettingsChanged();
     }

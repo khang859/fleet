@@ -6,7 +6,7 @@ import { SliderInput, NumberStepper, SegmentedControl } from './background-contr
 import { BackgroundThumbnails } from './BackgroundThumbnails';
 import { BackgroundPreview } from './BackgroundPreview';
 import { backgroundLegibilityHint } from '../../lib/contrast';
-import { nextSlideshowFiles } from '../../lib/background-actions';
+import { adoptImages, nextSlideshowFiles } from '../../lib/background-actions';
 import { TERMINAL_THEMES } from '../../../../shared/theme-presets';
 import {
   DEFAULT_TERMINAL_BACKGROUND,
@@ -62,9 +62,6 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
   );
 
   const [mode, setMode] = useState<BgMode>(() => deriveMode(bg));
-  // Remember the last picked image so switching None → Image restores it instead
-  // of forcing the user to re-browse.
-  const [stashedImagePath, setStashedImagePath] = useState<string | null>(bg?.imagePath ?? null);
 
   const adjustmentsVisible = !!bg && (!!bg.imagePath || bg.slideshow.enabled);
   const settingsLoaded = !!settings;
@@ -87,13 +84,11 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
     setLocalPaneSaturation(tb.paneSaturation);
   }, [adjustmentsVisible]);
 
-  // Seed the mode + stashed image once settings finish loading. This component is
-  // the sole editor of these values, so after the initial load the user drives mode.
+  // Seed the mode once settings finish loading. This component is the sole
+  // editor of it, so after the initial load the user drives mode.
   useEffect(() => {
     if (!settingsLoaded) return;
-    const tb = useSettingsStore.getState().settings?.general.terminalBackground;
-    setMode(deriveMode(tb));
-    setStashedImagePath(tb?.imagePath ?? null);
+    setMode(deriveMode(useSettingsStore.getState().settings?.general.terminalBackground));
   }, [settingsLoaded]);
 
   // The settings merge is shallow within `general`, so always send the full
@@ -120,11 +115,17 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
     if (!current) return;
     const tb = current.general.terminalBackground;
     if (next === 'none') {
-      if (tb.imagePath) setStashedImagePath(tb.imagePath);
-      saveBackground({ imagePath: null, slideshow: { ...tb.slideshow, enabled: false } });
+      // The stash is saved, not merely remembered: the copy behind it is swept
+      // as soon as no setting names it, so a path held only in React state
+      // would restore a picture that had been collected in the meantime.
+      saveBackground({
+        imagePath: null,
+        stashedImagePath: tb.imagePath ?? tb.stashedImagePath,
+        slideshow: { ...tb.slideshow, enabled: false }
+      });
     } else if (next === 'image') {
       saveBackground({
-        imagePath: tb.imagePath ?? stashedImagePath,
+        imagePath: tb.imagePath ?? tb.stashedImagePath,
         slideshow: { ...tb.slideshow, enabled: false }
       });
     } else {
@@ -136,7 +137,6 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
     const d = DEFAULT_TERMINAL_BACKGROUND;
     saveBackground({ ...d, slideshow: { ...d.slideshow } });
     setMode('none');
-    setStashedImagePath(null);
     setLocalOpacity(d.opacity);
     setLocalBlur(d.blur);
     setLocalEdgeFadeX(d.edgeFadeX);
@@ -150,10 +150,12 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
 
   const pickBackgroundImage = async (): Promise<void> => {
     const paths = await window.fleet.file.openDialog({ multi: false, filters: IMAGE_FILTERS });
-    if (paths[0]) {
-      setStashedImagePath(paths[0]);
-      saveBackground({ imagePath: paths[0] });
-    }
+    if (!paths[0]) return;
+    // Point the setting at Fleet's own copy, never at the file the user
+    // browsed to - that one is theirs to move or delete, and the background
+    // has to survive them doing it.
+    const [adopted] = await adoptImages([paths[0]]);
+    if (adopted) saveBackground({ imagePath: adopted });
   };
 
   const pickSlideshowFolder = async (): Promise<void> => {
@@ -164,9 +166,13 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
   const addSlideshowFiles = async (): Promise<void> => {
     const paths = await window.fleet.file.openDialog({ multi: true, filters: IMAGE_FILTERS });
     if (paths.length === 0) return;
+    const adopted = await adoptImages(paths);
+    if (adopted.length === 0) return;
+    // Read after the adopt, not before: the settings the list is rebuilt from
+    // have to be the ones current once every await has settled.
     const current = useSettingsStore.getState().settings;
     if (!current) return;
-    saveSlideshow(nextSlideshowFiles(current.general.terminalBackground.slideshow, paths));
+    saveSlideshow(nextSlideshowFiles(current.general.terminalBackground.slideshow, adopted));
   };
 
   const clearSlideshowFiles = (): void => {

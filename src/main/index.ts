@@ -34,6 +34,7 @@ import {
 import { registerIpcHandlers } from './ipc-handlers';
 import { GitService } from './git-service';
 import { SettingsStore } from './settings-store';
+import { backfillBackgroundStore, pruneBackgroundStore } from './background-store';
 import { IPC_CHANNELS, IS_FLEET_DEV, SOCKET_PATH } from '../shared/constants';
 import { deriveDebugPort, sessionFilePath, type DriveSession } from '../shared/drive-session';
 import { SocketSupervisor } from './socket-supervisor';
@@ -457,6 +458,17 @@ void app.whenReady().then(async () => {
   if (settingsStore.get().ai.agent.toolMode === 'full') {
     settingsStore.set({ ai: { agent: { toolMode: 'ask' } } });
   }
+
+  // Take ownership of any background still pointing at the user's own copy of a
+  // picture, then drop the copies nothing points at any more. Ahead of the
+  // window for the same reason as the line above: nothing tells the renderer a
+  // setting changed under it, so a rewrite that landed after it read the
+  // settings would be undone by its next save. After the first launch this
+  // reads no files at all - every path is already inside the store.
+  const savedBackground = settingsStore.get().general.terminalBackground;
+  const backfilled = backfillBackgroundStore(savedBackground);
+  if (backfilled) settingsStore.set({ general: { terminalBackground: backfilled } });
+  pruneBackgroundStore(backfilled ?? savedBackground);
 
   createWindow();
 

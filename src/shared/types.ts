@@ -203,6 +203,16 @@ export type TerminalBackgroundSlideshow = {
 export type TerminalBackground = {
   /** Absolute path to the image on disk, served via the fleet-image:// protocol. */
   imagePath: string | null;
+  /**
+   * The image mode was showing before the user switched to None, so switching
+   * back restores it instead of asking them to browse again.
+   *
+   * Persisted rather than held in the settings pane because the copy behind it
+   * is swept the moment nothing points at it: a path only React knew about
+   * would have its file collected out from under it, and the restore would put
+   * back a background that no longer exists.
+   */
+  stashedImagePath: string | null;
   /** Image visibility, 0–1. Lower values let the solid theme color show through (dimming). */
   opacity: number;
   /** Gaussian blur radius in pixels. */
@@ -234,6 +244,7 @@ export type TerminalBackground = {
  * import it without dragging node built-ins into the browser bundle. */
 export const DEFAULT_TERMINAL_BACKGROUND: TerminalBackground = {
   imagePath: null,
+  stashedImagePath: null,
   opacity: 0.15,
   blur: 0,
   edgeFadeX: 0,
