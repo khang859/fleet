@@ -129,6 +129,16 @@ export class ActivityTracker {
     return this.panes.get(paneId)?.state;
   }
 
+  /**
+   * Whether the pane's foreground process is a remote-shell client right now.
+   * The same fact `remote-session-change` announces, for callers that need to
+   * ask rather than be told - notably the OSC readers, which have to decide per
+   * sequence whether it came from a local shell or the far side of an ssh.
+   */
+  isRemote(paneId: string): boolean {
+    return this.panes.get(paneId)?.remote ?? false;
+  }
+
   /** Live counts of panes awaiting attention, for OS chrome (window title, dock badge). */
   getCounts(): { needsMe: number; error: number } {
     let needsMe = 0;

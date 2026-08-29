@@ -352,5 +352,11 @@ export const IPC_CHANNELS = {
   REMOTE_SSH_TRANSFER_PROGRESS: 'remote-ssh:transfer-progress',
   REMOTE_SSH_DISCONNECT: 'remote-ssh:disconnect',
   // Best-effort: resolve the ssh destination a terminal pane is connected to.
-  REMOTE_SSH_DETECT_HOST: 'remote-ssh:detect-host'
+  REMOTE_SSH_DETECT_HOST: 'remote-ssh:detect-host',
+  // Fleet's shell snippet on the remote host: is it there, and put it there.
+  REMOTE_SSH_RC_STATUS: 'remote-ssh:rc-status',
+  REMOTE_SSH_RC_INSTALL: 'remote-ssh:rc-install',
+  // Renderer-bound: the working directory of the shell on the far side of an ssh
+  // pane. Separate from PTY_CWD, which is the local pane's own directory.
+  REMOTE_CWD: 'remote:cwd'
 } as const;

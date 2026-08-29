@@ -82,6 +82,22 @@ export type DetectedSshHost = {
   identityFile?: string;
 };
 
+/**
+ * A detected destination as a connectable host. The id is the destination string
+ * rather than a uuid: this host is never saved, so it needs an identity only for
+ * the length of one operation, and the destination is what the user typed.
+ */
+export function toRemoteHost(detected: DetectedSshHost): RemoteHost {
+  return {
+    id: detected.destination,
+    label: detected.destination,
+    host: detected.host,
+    ...(detected.user !== undefined ? { user: detected.user } : {}),
+    ...(detected.port !== undefined ? { port: detected.port } : {}),
+    ...(detected.identityFile !== undefined ? { identityFile: detected.identityFile } : {})
+  };
+}
+
 export type RemoteTransferDirection = 'download' | 'upload';
 
 export type RemoteTransferState = 'active' | 'done' | 'error' | 'cancelled';

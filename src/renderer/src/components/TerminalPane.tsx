@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { useTerminal } from '../hooks/use-terminal';
 import { useTerminalDrop } from '../hooks/use-terminal-drop';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
@@ -9,6 +9,9 @@ import { PaneHeader } from './PaneHeader';
 import { SearchBar } from './SearchBar';
 import { openAnnotateModal } from '../lib/annotate-modal-bridge';
 import { useCwdStore } from '../store/cwd-store';
+import { useRemoteStore } from '../store/remote-store';
+import { useRemoteSshStore, isTransfer } from '../store/remote-ssh-store';
+import { TransferStrip } from './ssh/TransferStrip';
 import { useWorkspaceStore, getPaneContextById } from '../store/workspace-store';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
 import type { TerminalBackground } from '../../../shared/types';
@@ -83,6 +86,20 @@ export function TerminalPane({
   const gitCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { isDragOver, handlers: dragHandlers } = useTerminalDrop(paneId, focus);
   const terminalThemeDef = resolveTerminalTheme(terminalTheme);
+  const isRemote = useRemoteStore((s) => s.remotes.has(paneId));
+  // A remote pane moves files both ways: dropped files upload, `fleet get`
+  // downloads. Both report through the same strip the SSH browser uses, so the
+  // progress sits in the pane that started it.
+  const allTransfers = useRemoteSshStore((s) => s.transfers);
+  const cancelTransfer = useRemoteSshStore((s) => s.cancelTransfer);
+  const dismissTransfer = useRemoteSshStore((s) => s.dismissTransfer);
+  const paneTransfers = useMemo(
+    () =>
+      Object.values(allTransfers)
+        .filter((t) => t?.paneId === paneId)
+        .filter(isTransfer),
+    [allTransfers, paneId]
+  );
 
   // Seed the CWD store with the pane's initial cwd on mount so that
   // git-changes and other CWD-dependent tools work immediately after
@@ -227,10 +244,17 @@ export function TerminalPane({
         )}
         {isDragOver && (
           <div className="absolute inset-0 z-50 flex items-center justify-center fleet-accent-bg-soft border-2 border-dashed fleet-accent-border rounded pointer-events-none">
-            <span className="fleet-accent-text text-sm font-medium">Drop to paste file path</span>
+            <span className="fleet-accent-text text-sm font-medium">
+              {isRemote ? 'Drop to upload to the remote folder' : 'Drop to paste file path'}
+            </span>
           </div>
         )}
       </div>
+      <TransferStrip
+        transfers={paneTransfers}
+        onCancel={cancelTransfer}
+        onDismiss={dismissTransfer}
+      />
     </div>
   );
 }

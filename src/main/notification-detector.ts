@@ -1,4 +1,5 @@
 import type { EventBus } from './event-bus';
+import { isForeignOsc7Host } from './osc-host';
 import type { NotificationLevel } from '../shared/types';
 
 // Permission prompt patterns for CLI tools (generic, not CLI-specific)
@@ -46,9 +47,18 @@ export class NotificationDetector {
   private eventBus: EventBus;
   private carryBuffers = new Map<string, string>();
   private permissionLatches = new Map<string, PermissionLatch>();
+  private isRemote: (paneId: string) => boolean;
 
-  constructor(eventBus: EventBus) {
+  /**
+   * `isRemote` guards OSC 7 only. Once a pane is SSH'd in, the OSC 7 it emits
+   * describes a directory on the *remote* host, and feeding that to
+   * `cwd-changed` would point the pane's local cwd - which drives respawn on
+   * restart and every folder-scoped tool - at a path this machine does not have.
+   * `PtyOscBridge` picks those up instead.
+   */
+  constructor(eventBus: EventBus, isRemote: (paneId: string) => boolean = () => false) {
     this.eventBus = eventBus;
+    this.isRemote = isRemote;
     eventBus.on('pane-closed', (event) => {
       this.carryBuffers.delete(event.paneId);
       const latch = this.permissionLatches.get(event.paneId);
@@ -71,6 +81,10 @@ export class NotificationDetector {
     let lastMatchEnd = -1;
     for (const match of chunk.matchAll(OSC7_RE)) {
       lastMatchEnd = match.index + match[0].length;
+      // Two independent reasons to leave it alone, because neither is enough on
+      // its own: the flag is a poll behind, and a shell that omits the host name
+      // reports nothing to compare.
+      if (this.isRemote(paneId) || isForeignOsc7Host(match[1])) continue;
       try {
         const url = new URL(match[1]);
         const cwd = decodeURIComponent(url.pathname);

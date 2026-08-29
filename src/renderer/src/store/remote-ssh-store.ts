@@ -59,11 +59,16 @@ type RemoteSshStore = {
   transfers: Record<string, RemoteTransfer | undefined>;
   applyTransfer: (transfer: RemoteTransfer) => void;
   dismissTransfer: (id: string) => void;
-  /** Start a transfer and keep the pane's listing in step when it lands. */
+  /**
+   * Start a transfer and keep the pane's listing in step when it lands. Resolves
+   * true once the bytes have landed - the terminal drop path only types the
+   * remote path after that, so a failed upload never leaves a path at the prompt
+   * pointing at a file that is not there.
+   */
   startTransfer: (
     direction: RemoteTransferDirection,
     args: { paneId: string; host: RemoteHost; localPath: string; remotePath: string }
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   cancelTransfer: (id: string) => void;
 
   /**
@@ -75,6 +80,14 @@ type RemoteSshStore = {
   renameEntry: (paneId: string, entry: RemoteDirEntry, newName: string) => Promise<string | null>;
   removeEntry: (paneId: string, entry: RemoteDirEntry) => Promise<string | null>;
 };
+
+/**
+ * `transfers` is keyed for deletion, so reading it back gives `| undefined`.
+ * Panes that render a list narrow through this.
+ */
+export function isTransfer(t: RemoteTransfer | undefined): t is RemoteTransfer {
+  return t !== undefined;
+}
 
 /** How long a finished row lingers before it clears itself. */
 const SETTLED_TRANSFER_MS = 4_000;
@@ -320,10 +333,12 @@ export const useRemoteSshStore = create<RemoteSshStore>((set, get) => ({
         state: 'error',
         error: result.error
       });
-      return;
+      return false;
     }
-    // An upload changes what the pane is looking at; a download does not.
+    // An upload changes what the pane is looking at; a download does not. A
+    // terminal pane has no listing, so `refresh` is a no-op there.
     if (direction === 'upload') await get().refresh(args.paneId);
+    return true;
   },
 
   cancelTransfer: (id) => {

@@ -4,6 +4,23 @@ import { DEFAULT_SCROLLBACK } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/constants';
 
 /**
+ * Read the per-host answer to Fleet's "install the shell snippet?" offer.
+ *
+ * Written narrowly rather than spread: the saved copy is a deep-partial, so its
+ * values are optional, and this is also the point where a hand-edited settings
+ * file with a value Fleet does not recognise gets dropped instead of stored.
+ */
+function readRcConsent(
+  saved: Record<string, unknown> | undefined
+): Record<string, 'installed' | 'declined'> {
+  const out: Record<string, 'installed' | 'declined'> = {};
+  for (const [key, value] of Object.entries(saved ?? {})) {
+    if (value === 'installed' || value === 'declined') out[key] = value;
+  }
+  return out;
+}
+
+/**
  * The scrollback default from before the setting was wired up to xterm at all.
  *
  * `electron-store` writes `defaults` straight into the file, so this landed on
@@ -191,7 +208,8 @@ export class SettingsStore {
         ...saved.remoteSsh,
         // Whole-array replace - a saved host list is
         // authoritative, not something to merge element-wise with defaults.
-        hosts: saved.remoteSsh?.hosts ?? DEFAULT_SETTINGS.remoteSsh.hosts
+        hosts: saved.remoteSsh?.hosts ?? DEFAULT_SETTINGS.remoteSsh.hosts,
+        rcConsent: readRcConsent(saved.remoteSsh?.rcConsent)
       }
     };
     return this.cached;
@@ -243,7 +261,10 @@ export class SettingsStore {
       remoteSsh: {
         ...current.remoteSsh,
         ...(partial.remoteSsh ?? {}),
-        hosts: partial.remoteSsh?.hosts ?? current.remoteSsh.hosts
+        hosts: partial.remoteSsh?.hosts ?? current.remoteSsh.hosts,
+        rcConsent: partial.remoteSsh?.rcConsent
+          ? readRcConsent(partial.remoteSsh.rcConsent)
+          : current.remoteSsh.rcConsent
       }
     };
     // Ahead of the write rather than after it: the watcher that would clear

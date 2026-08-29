@@ -91,5 +91,5 @@ export const DEFAULT_SETTINGS: FleetSettings = {
   },
   tools: DEFAULT_TOOL_VISIBILITY,
   ai: DEFAULT_AI_SETTINGS,
-  remoteSsh: { hosts: [] }
+  remoteSsh: { hosts: [], rcConsent: {} }
 };

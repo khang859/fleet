@@ -194,6 +194,7 @@ import type {
   EnvSyncClearAuthRequest
 } from '../shared/ipc-api';
 import type { EnvSource } from '../shared/shell-env-types';
+import type { PtyOscBridge } from './remote-ssh/pty-osc-bridge';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -212,7 +213,8 @@ export function registerIpcHandlers(
   shellProfileRegistry: ShellProfileRegistry,
   wslService: WslService,
   envSyncManager: EnvSyncManager,
-  envSyncSecrets: EnvSyncSecrets
+  envSyncSecrets: EnvSyncSecrets,
+  ptyOscBridge: PtyOscBridge
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -281,6 +283,7 @@ export function registerIpcHandlers(
       activityTracker.trackPane(req.paneId);
       ptyManager.onData(req.paneId, (data, paused) => {
         notificationDetector.scan(req.paneId, data);
+        ptyOscBridge.scan(req.paneId, data);
         activityTracker.onData(req.paneId);
         const w = getWindow();
         if (w && !w.isDestroyed()) {

@@ -30,6 +30,7 @@ import type {
   ActivityStatePayload,
   ActivityReportPayload,
   RemoteStatePayload,
+  RemoteCwdPayload,
   WorktreeCreateRequest,
   WorktreeCreateResponse,
   WorktreeRemoveRequest,
@@ -252,7 +253,10 @@ const fleetApi = {
   },
   remote: {
     onStateChange: (callback: (payload: RemoteStatePayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.REMOTE_STATE, callback)
+      onChannel(IPC_CHANNELS.REMOTE_STATE, callback),
+    /** The working directory of the shell on the far side of an ssh pane. */
+    onCwdChange: (callback: (payload: RemoteCwdPayload) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.REMOTE_CWD, callback)
   },
   homeDir: getHomeDir(),
   platform: ((): HostPlatform => {
@@ -822,7 +826,15 @@ const fleetApi = {
     disconnect: async (host: RemoteHost): Promise<RemoteResult<void>> =>
       typedInvoke(IPC_CHANNELS.REMOTE_SSH_DISCONNECT, host),
     detectHost: async (paneId: string): Promise<RemoteResult<DetectedSshHost | null>> =>
-      typedInvoke(IPC_CHANNELS.REMOTE_SSH_DETECT_HOST, paneId)
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_DETECT_HOST, paneId),
+    /** Whether Fleet's shell snippet is on the host, and whether it is current. */
+    rcStatus: async (
+      host: RemoteHost
+    ): Promise<RemoteResult<{ installed: boolean; version: number | null; current: boolean }>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_RC_STATUS, host),
+    /** `paneId` sources the snippet into that pane's live shell straight away. */
+    rcInstall: async (host: RemoteHost, paneId?: string): Promise<RemoteResult<void>> =>
+      typedInvoke(IPC_CHANNELS.REMOTE_SSH_RC_INSTALL, host, paneId)
   },
   shellEnv: {
     get: async (paneId: string): Promise<ShellEnvSnapshot | null> =>

@@ -11,6 +11,12 @@ import type { PtyManager } from '../pty-manager';
 import { createLogger } from '../logger';
 import { RemoteSshService } from './remote-ssh-service';
 import { detectSshHost, type DetectedHost } from './ssh-host-detect';
+import {
+  checkRcInstalled,
+  installRcSnippet,
+  FLEET_RC_VERSION,
+  RC_SOURCE_COMMAND
+} from './rc-snippet';
 
 const log = createLogger('remote-ssh:ipc');
 
@@ -109,6 +115,27 @@ export function registerRemoteSshIpcHandlers(ptyManager: PtyManager): RemoteSshS
       if (pid === undefined) return null;
       return detectSshHost(pid);
     })
+  );
+
+  // Fleet's shell snippet on the far side. `current` lets the caller tell an
+  // out-of-date install from a missing one without knowing the version scheme.
+  ipcMain.handle(IPC_CHANNELS.REMOTE_SSH_RC_STATUS, async (_e, host: RemoteHost) =>
+    guard('rcStatus', async () => {
+      const status = await checkRcInstalled(host);
+      return { ...status, current: status.version === FLEET_RC_VERSION };
+    })
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.REMOTE_SSH_RC_INSTALL,
+    async (_e, host: RemoteHost, paneId?: string) =>
+      guard('rcInstall', async () => {
+        await installRcSnippet(host);
+        // The rc files only run for a *new* shell, and the user is looking at
+        // one that is already open. Sourcing it here is the difference between
+        // the feature working now and working after the next login.
+        if (paneId !== undefined) ptyManager.write(paneId, RC_SOURCE_COMMAND);
+      })
   );
 
   return service;

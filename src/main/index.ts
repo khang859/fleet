@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   ipcMain,
   Notification,
   nativeImage,
@@ -94,6 +95,9 @@ import { killAllBackgroundCommands } from './agent/tools/background';
 import { AgentMcpSecrets } from './agent/mcp/secrets';
 import { resolveAuth, signIn as signInToMcp } from './agent/mcp/auth';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
+import { PtyOscBridge } from './remote-ssh/pty-osc-bridge';
+import { detectSshHost } from './remote-ssh/ssh-host-detect';
+import type { RemoteSshService } from './remote-ssh/remote-ssh-service';
 import { resolveSummary } from './pane-summarizer';
 import type { AppUpdater } from 'electron-updater';
 
@@ -120,13 +124,17 @@ const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
 const settingsStore = new SettingsStore();
-const notificationDetector = new NotificationDetector(eventBus);
-const notificationState = new NotificationStateManager(eventBus);
 const activityTracker = new ActivityTracker(eventBus, {
   silenceThresholdMs: 5000,
   processPollingIntervalMs: 2000,
   getProcessName: (paneId) => ptyManager.getProcessName(paneId)
 });
+// Built after the tracker because it asks it whether a pane is SSH'd in: OSC 7
+// from a remote shell describes a directory this machine does not have.
+const notificationDetector = new NotificationDetector(eventBus, (paneId) =>
+  activityTracker.isRemote(paneId)
+);
+const notificationState = new NotificationStateManager(eventBus);
 const reportedActivity = new ReportedActivity();
 /**
  * The panes the user can currently see, as the renderer last described them.
@@ -137,6 +145,29 @@ const reportedActivity = new ReportedActivity();
  */
 let visiblePaneIds = new Set<string>();
 const cwdPoller = new CwdPoller(eventBus, ptyManager);
+/**
+ * Set once `registerRemoteSshIpcHandlers` runs, which is much later in startup
+ * than the OSC bridge has to exist - the bridge is wired into the PTY data
+ * callback, and panes can open before the remote-ssh stack is up.
+ */
+let remoteSshService: RemoteSshService | null = null;
+const ptyOscBridge = new PtyOscBridge({
+  eventBus,
+  isRemote: (paneId) => activityTracker.isRemote(paneId),
+  getPid: (paneId) => ptyManager.getPid(paneId),
+  detectHost: detectSshHost,
+  download: async (request) => {
+    if (!remoteSshService) throw new Error('Remote transfers are not ready yet.');
+    await remoteSshService.download(request);
+  },
+  emitTransfer: (transfer) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(IPC_CHANNELS.REMOTE_SSH_TRANSFER_PROGRESS, transfer);
+    }
+  },
+  writeClipboard: (text) => clipboard.writeText(text),
+  downloadsDir: () => app.getPath('downloads')
+});
 const ANNOTATIONS_DIR = join(homedir(), '.fleet', 'annotations');
 const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
 const annotateService = new AnnotateService(annotationStore);
@@ -556,7 +587,8 @@ void app.whenReady().then(async () => {
     shellProfileRegistry,
     wslService,
     envSyncManager,
-    envSyncSecrets
+    envSyncSecrets,
+    ptyOscBridge
   );
 
   // Clean up old annotations based on retention settings
@@ -648,6 +680,18 @@ void app.whenReady().then(async () => {
     }
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.PTY_CWD, {
+        paneId: event.paneId,
+        cwd: event.cwd
+      });
+    }
+  });
+
+  // Forward the remote shell's working directory. Kept off `cwd-changed` on
+  // purpose: nothing here touches ptyManager or the saved layout, because the
+  // path belongs to another machine.
+  eventBus.on('remote-cwd-changed', (event) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.REMOTE_CWD, {
         paneId: event.paneId,
         cwd: event.cwd
       });
@@ -1239,7 +1283,7 @@ void app.whenReady().then(async () => {
   sessionsService = new SessionsService();
   registerSessionsIpcHandlers(sessionsService);
 
-  registerRemoteSshIpcHandlers(ptyManager);
+  remoteSshService = registerRemoteSshIpcHandlers(ptyManager);
 
   const learningsStoreRef = new LearningsStore(join(learningsHome, 'learnings.db'));
   // Reuse the one shared embed worker constructed above.
