@@ -78,7 +78,6 @@ export const DEFAULT_SETTINGS: FleetSettings = {
   },
   copilot: {
     enabled: false,
-    autoEnabled: false,
     spriteSheet: 'officer',
     notificationSound: 'Pop',
     autoStart: false,

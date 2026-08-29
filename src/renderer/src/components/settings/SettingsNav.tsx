@@ -1,5 +1,6 @@
 export type SettingsSection =
   | 'general'
+  | 'workspaces'
   | 'notifications'
   | 'socket'
   | 'visualizer'
@@ -23,6 +24,7 @@ const NAV_GROUPS: NavGroup[] = [
     heading: 'Application',
     items: [
       { id: 'general', label: 'General' },
+      { id: 'workspaces', label: 'Workspaces' },
       { id: 'notifications', label: 'Notifications' }
     ]
   },
