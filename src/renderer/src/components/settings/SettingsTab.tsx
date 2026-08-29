@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { SettingsNav } from './SettingsNav';
 import type { SettingsSection } from './SettingsNav';
 import { GeneralSection } from './GeneralSection';
+import { WorkspacesSection } from './WorkspacesSection';
 import { NotificationsSection } from './NotificationsSection';
 import { SocketSection } from './SocketSection';
 import { VisualizerSection } from './VisualizerSection';
@@ -15,6 +16,7 @@ import { DiagnosticsSection } from './DiagnosticsSection';
 
 const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   general: GeneralSection,
+  workspaces: WorkspacesSection,
   notifications: NotificationsSection,
   socket: SocketSection,
   visualizer: VisualizerSection,
