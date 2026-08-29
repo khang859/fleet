@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { createLogger } from '../logger';
+import { useRemoteCwdStore } from './remote-cwd-store';
 
 const log = createLogger('store:remote');
 
@@ -29,5 +30,9 @@ export function initRemoteListener(): () => void {
   return window.fleet.remote.onStateChange(({ paneId, remote }) => {
     log.debug('onRemote IPC received', { paneId, remote });
     useRemoteStore.getState().setRemote(paneId, remote);
+    // The remote working directory belonged to the session that just ended. Left
+    // behind, it would aim the next drop at a directory on a host this pane is
+    // no longer connected to.
+    if (!remote) useRemoteCwdStore.getState().removeCwd(paneId);
   });
 }

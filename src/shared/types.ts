@@ -315,6 +315,12 @@ export type FleetSettings = {
   remoteSsh: {
     /** Saved SSH targets. Connection coordinates only - never key material. */
     hosts: RemoteHost[];
+    /**
+     * What the user answered when Fleet offered to install its shell snippet on
+     * a host, keyed by the ssh destination as typed. Kept so a decline is
+     * remembered across restarts rather than asked again on every connect.
+     */
+    rcConsent: Record<string, 'installed' | 'declined'>;
   };
 };
 

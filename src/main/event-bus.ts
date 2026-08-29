@@ -16,7 +16,14 @@ export type FleetEvent =
   | { type: 'command-started'; paneId: string; timestamp: number }
   | { type: 'workspace-loaded'; workspaceId: string }
   | { type: 'cwd-changed'; paneId: string; cwd: string; source: 'osc7' | 'poll' }
-  | { type: 'remote-session-change'; paneId: string; remote: boolean };
+  | { type: 'remote-session-change'; paneId: string; remote: boolean }
+  /**
+   * The working directory of the shell on the far side of an ssh pane, reported
+   * by Fleet's remote rc snippet. Deliberately not `cwd-changed`: that one
+   * drives `ptyManager.updateCwd` and the saved layout, and a remote path there
+   * would respawn the pane in a directory that does not exist locally.
+   */
+  | { type: 'remote-cwd-changed'; paneId: string; cwd: string };
 
 type EventMap = {
   [K in FleetEvent['type']]: Extract<FleetEvent, { type: K }>;

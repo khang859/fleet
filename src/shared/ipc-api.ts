@@ -94,6 +94,16 @@ export type PtyCwdPayload = {
   cwd: string;
 };
 
+/**
+ * The working directory of the shell on the far side of an ssh pane. Session
+ * state only - it is never written back into the saved layout, which describes
+ * where the *local* pane reopens.
+ */
+export type RemoteCwdPayload = {
+  paneId: string;
+  cwd: string;
+};
+
 export type GitFileStatus = {
   path: string;
   status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';

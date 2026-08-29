@@ -30,6 +30,7 @@ import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, restartingPanes, serializePane } from './hooks/use-terminal';
 import { initCwdListener, useCwdStore } from './store/cwd-store';
 import { initRemoteListener } from './store/remote-store';
+import { initRemoteCwdListener } from './store/remote-cwd-store';
 import { initRemoteTransferListener } from './store/remote-ssh-store';
 import { useSettingsStore } from './store/settings-store';
 import { useShellProfilesStore } from './store/shell-profiles-store';
@@ -56,6 +57,7 @@ import { AgentFolderDialog } from './components/agent/AgentFolderDialog';
 import { ToolPaneFrame } from './components/ToolPaneFrame';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
+import { RemoteRcPromptManager } from './components/ssh/RemoteRcPromptManager';
 import { getAccentCssVars, getGlassCssVars } from './lib/theme';
 import { BackgroundLayer } from './components/BackgroundLayer';
 import { resolveBackgroundSrc } from './lib/pane-background';
@@ -335,6 +337,11 @@ export function App(): React.JSX.Element {
   // Subscribe to SSH file transfer progress
   useEffect(() => {
     return initRemoteTransferListener();
+  }, []);
+
+  // Subscribe to the working directory of the shell on the far side of an ssh pane
+  useEffect(() => {
+    return initRemoteCwdListener();
   }, []);
 
   // Listen for focus-pane from main process (copilot "Go to Terminal", OS notifications)
@@ -1216,6 +1223,7 @@ export function App(): React.JSX.Element {
       />
       <AnnotateModal open={false} onClose={() => {}} />
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />
+      <RemoteRcPromptManager />
       <ToastContainer />
     </div>
   );

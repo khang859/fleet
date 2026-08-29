@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotificationDetector } from '../notification-detector';
 import { EventBus } from '../event-bus';
+import { hostname } from 'node:os';
 
 describe('NotificationDetector', () => {
   let eventBus: EventBus;
@@ -9,6 +10,40 @@ describe('NotificationDetector', () => {
   beforeEach(() => {
     eventBus = new EventBus();
     detector = new NotificationDetector(eventBus);
+  });
+
+  describe('OSC 7 working directory', () => {
+    it('emits cwd-changed for this machine', () => {
+      const seen: string[] = [];
+      eventBus.on('cwd-changed', (e) => seen.push(e.cwd));
+
+      detector.scan('pane-1', `\x1b]7;file://${hostname()}/home/me\x07`);
+      detector.scan('pane-1', '\x1b]7;file:///var/tmp\x07');
+
+      expect(seen).toEqual(['/home/me', '/var/tmp']);
+    });
+
+    // A remote path here would become the pane's local cwd, which drives respawn
+    // on restart. The remote flag alone cannot be trusted: it is set by a 2 s
+    // process poll that a remote shell's first prompt can beat.
+    it('skips a path that names another machine', () => {
+      const seen: string[] = [];
+      eventBus.on('cwd-changed', (e) => seen.push(e.cwd));
+
+      detector.scan('pane-1', '\x1b]7;file://build-box/home/me\x07');
+
+      expect(seen).toEqual([]);
+    });
+
+    it('skips a pane already known to be remote', () => {
+      const remoteDetector = new NotificationDetector(eventBus, () => true);
+      const seen: string[] = [];
+      eventBus.on('cwd-changed', (e) => seen.push(e.cwd));
+
+      remoteDetector.scan('pane-1', `\x1b]7;file://${hostname()}/home/me\x07`);
+
+      expect(seen).toEqual([]);
+    });
   });
 
   it('detects OSC 9 task completion and emits info notification', () => {

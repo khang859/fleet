@@ -12,14 +12,10 @@ import {
   ServerCrash,
   Upload
 } from 'lucide-react';
-import type {
-  RemoteDirEntry,
-  RemoteHost,
-  RemoteTransfer
-} from '../../../../shared/remote-ssh-types';
+import type { RemoteDirEntry, RemoteHost } from '../../../../shared/remote-ssh-types';
 import { isBinaryBlockedFilePath } from '../../../../shared/file-open';
 import { remoteChildPath } from '../../lib/remote-names';
-import { useRemoteSshStore } from '../../store/remote-ssh-store';
+import { useRemoteSshStore, isTransfer } from '../../store/remote-ssh-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { useToastStore } from '../../store/toast-store';
 import { RemoteBreadcrumbs } from './RemoteBreadcrumbs';
@@ -39,10 +35,6 @@ type PaneDialog =
   | { kind: 'new-folder' }
   | { kind: 'rename'; entry: RemoteDirEntry }
   | { kind: 'delete'; entry: RemoteDirEntry };
-
-function isTransfer(t: RemoteTransfer | undefined): t is RemoteTransfer {
-  return t !== undefined;
-}
 
 export function SshBrowserPane({ paneId, host, initialPath }: Props): React.JSX.Element {
   const pane = useRemoteSshStore((s) => s.panes[paneId]);
