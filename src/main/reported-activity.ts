@@ -45,13 +45,15 @@ export class ReportedActivity {
   }
 
   /** Live counts awaiting attention, in the shape `ActivityTracker` reports. */
-  getCounts(): { needsMe: number; error: number } {
+  getCounts(): { needsMe: number; error: number; working: number } {
     let needsMe = 0;
     let error = 0;
+    let working = 0;
     for (const { state } of this.panes.values()) {
       if (state === 'needs_me') needsMe++;
       else if (state === 'error') error++;
+      else if (state === 'working') working++;
     }
-    return { needsMe, error };
+    return { needsMe, error, working };
   }
 }

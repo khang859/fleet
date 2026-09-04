@@ -839,6 +839,18 @@ export class AgentService {
   }
 
   /**
+   * Whether any turn is mid-flight - what {@link cancelAll} would cut off.
+   *
+   * A gate rather than a list: these are keyed by stream id, and only the
+   * renderer knows which pane a stream belongs to, so main cannot name them.
+   * It does not need to. Every path that starts a turn marks its pane
+   * `working` first, so the pane row the renderer builds already says so.
+   */
+  hasInflight(): boolean {
+    return this.inflight.size > 0;
+  }
+
+  /**
    * Refuse the questions these streams are stopped on, leaving the streams
    * themselves alone. Only subagents are ever in that position - see
    * `PermissionGate.refusePending`.

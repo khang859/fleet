@@ -209,6 +209,25 @@ export function killThreadBackgroundCommands(threadId: string): void {
   counters.delete(threadId);
 }
 
+/**
+ * Everything still running, on the way out - the describing half of
+ * {@link killAllBackgroundCommands}.
+ *
+ * Labelled by the command itself rather than by owner: jobs are keyed by
+ * thread id, which main has no map from to a pane the user would recognise,
+ * and `npm run dev` is the thing they need to see to judge whether losing it
+ * matters anyway.
+ */
+export function listRunningBackgroundCommands(): Array<{ id: string; command: string }> {
+  const out: Array<{ id: string; command: string }> = [];
+  for (const mine of jobs.values()) {
+    for (const job of mine.values()) {
+      if (job.status === 'running') out.push({ id: job.id, command: job.command });
+    }
+  }
+  return out;
+}
+
 /** Stop everything, on the way out. Anything left here is a process we own. */
 export function killAllBackgroundCommands(): void {
   for (const mine of jobs.values()) for (const job of mine.values()) forget(job);

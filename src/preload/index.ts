@@ -130,6 +130,7 @@ import type {
   RemoteTransferRequest
 } from '../shared/remote-ssh-types';
 import type { ShellEnvSnapshot } from '../shared/shell-env-types';
+import type { QuitConfirmAsk } from '../shared/quit-confirm';
 import type { SessionSummary, SessionTranscript } from '../shared/sessions';
 import type {
   Learning,
@@ -246,6 +247,13 @@ const fleetApi = {
     report: (payload: ActivityReportPayload): void =>
       ipcRenderer.send(IPC_CHANNELS.ACTIVITY_REPORT, payload),
     onChime: (callback: () => void): Unsubscribe => onChannel(IPC_CHANNELS.ACTIVITY_CHIME, callback)
+  },
+  quit: {
+    /** Main is closing and wants the running work confirmed first. */
+    onAsk: (callback: (ask: QuitConfirmAsk) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.APP_QUIT_ASK, callback),
+    decide: (requestId: string, proceed: boolean): void =>
+      ipcRenderer.send(IPC_CHANNELS.APP_QUIT_DECIDE, { requestId, proceed })
   },
   ai: {
     summarizePane: async (paneId: string, tailText: string): Promise<string> =>

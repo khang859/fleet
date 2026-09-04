@@ -139,15 +139,24 @@ export class ActivityTracker {
     return this.panes.get(paneId)?.remote ?? false;
   }
 
-  /** Live counts of panes awaiting attention, for OS chrome (window title, dock badge). */
-  getCounts(): { needsMe: number; error: number } {
+  /**
+   * Live counts of panes awaiting attention, for OS chrome (window title, dock
+   * badge), plus the ones mid-command.
+   *
+   * `working` is not chrome's business - a pane getting on with it is not
+   * asking for anything - but it is the difference between a quit that costs
+   * nothing and one that cuts a command off, so the close guard counts it.
+   */
+  getCounts(): { needsMe: number; error: number; working: number } {
     let needsMe = 0;
     let error = 0;
+    let working = 0;
     for (const [, pane] of this.panes) {
       if (pane.state === 'needs_me') needsMe++;
       else if (pane.state === 'error') error++;
+      else if (pane.state === 'working') working++;
     }
-    return { needsMe, error };
+    return { needsMe, error, working };
   }
 
   dispose(): void {

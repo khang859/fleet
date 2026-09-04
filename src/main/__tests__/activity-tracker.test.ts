@@ -223,7 +223,18 @@ describe('ActivityTracker', () => {
     tracker.onNeedsMe('pane-2');
     tracker.onExit('pane-3', 1);
 
-    expect(tracker.getCounts()).toEqual({ needsMe: 2, error: 1 });
+    expect(tracker.getCounts()).toEqual({ needsMe: 2, error: 1, working: 0 });
+  });
+
+  // The close guard reads this: a pane mid-command is the difference between a
+  // quit that costs nothing and one that cuts work off.
+  it('counts panes that are mid-command', () => {
+    tracker.trackPane('pane-1');
+    tracker.trackPane('pane-2');
+
+    tracker.onData('pane-1');
+
+    expect(tracker.getCounts()).toEqual({ needsMe: 0, error: 0, working: 1 });
   });
 
   it('excludes untracked panes from counts', () => {
@@ -231,6 +242,6 @@ describe('ActivityTracker', () => {
     tracker.onNeedsMe('pane-1');
     tracker.untrackPane('pane-1');
 
-    expect(tracker.getCounts()).toEqual({ needsMe: 0, error: 0 });
+    expect(tracker.getCounts()).toEqual({ needsMe: 0, error: 0, working: 0 });
   });
 });
