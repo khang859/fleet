@@ -1244,7 +1244,17 @@ void app.whenReady().then(async () => {
       // A window someone has just come back to is the moment a pending update
       // is worth knowing about, and it is also when the answer is most likely
       // stale - the machine may have been asleep through several timer periods.
-      mainWindow?.on('focus', () => maybeCheckForUpdates('focus'));
+      //
+      // Bound to the app rather than to the window, because on macOS closing
+      // the window leaves the process running and reopening from the dock
+      // builds a replacement through `createWindow` - a listener attached to
+      // the window this ran on would be sitting on a window that no longer
+      // exists. Compared against `mainWindow` as it is now, so the check
+      // follows the replacement and the copilot, annotate and web-render
+      // windows do not trigger it.
+      app.on('browser-window-focus', (_event, win) => {
+        if (win === mainWindow) maybeCheckForUpdates('focus');
+      });
       powerMonitor.on('resume', () => maybeCheckForUpdates('resume'));
     });
   }

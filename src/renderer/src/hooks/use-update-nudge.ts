@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useToastStore } from '../store/toast-store';
-import { useUpdateStore, pendingUpdate } from '../store/update-store';
+import { useUpdateStore } from '../store/update-store';
 
 const LAST_TOAST_KEY = 'fleet:update-last-toast';
 
@@ -78,7 +78,7 @@ export function useUpdateNudge(): void {
 
   useEffect(() => {
     function nudge(): void {
-      const update = pendingUpdate(useUpdateStore.getState().status);
+      const update = useUpdateStore.getState().staged;
       if (!update) return;
       const now = Date.now();
       if (!shouldToast(now, update.version, readLastToast())) return;

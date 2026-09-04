@@ -62,7 +62,7 @@ import { QuitConfirmDialog } from './components/QuitConfirmDialog';
 import { UpdatePill } from './components/UpdatePill';
 import { WhatsNewDialog } from './components/WhatsNewDialog';
 import { useUpdateNudge } from './hooks/use-update-nudge';
-import { useUpdateStore, pendingUpdate } from './store/update-store';
+import { useUpdateStore } from './store/update-store';
 import { getAccentCssVars, getGlassCssVars } from './lib/theme';
 import { BackgroundLayer } from './components/BackgroundLayer';
 import { resolveBackgroundSrc } from './lib/pane-background';
@@ -298,7 +298,7 @@ export function App(): React.JSX.Element {
   const [notesOpen, setNotesOpen] = useState(false);
   const [shellEnvOpen, setShellEnvOpen] = useState(false);
   const [agentFolderOpen, setAgentFolderOpen] = useState(false);
-  const updateReady = useUpdateStore((s) => pendingUpdate(s.status) !== null);
+  const updateReady = useUpdateStore((s) => s.staged !== null);
 
   // Load settings on startup
   useEffect(() => {

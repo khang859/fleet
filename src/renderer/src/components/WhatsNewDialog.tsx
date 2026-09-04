@@ -1,7 +1,7 @@
 import { ArrowUp } from 'lucide-react';
 import { Overlay } from './Overlay';
 import { AgentMarkdown } from './agent/AgentMarkdown';
-import { useUpdateStore, pendingUpdate } from '../store/update-store';
+import { useUpdateStore } from '../store/update-store';
 
 /**
  * What the staged update contains, and the button that takes it.
@@ -15,10 +15,9 @@ import { useUpdateStore, pendingUpdate } from '../store/update-store';
  * hands should not read a stray keypress as consent to that.
  */
 export function WhatsNewDialog(): React.JSX.Element | null {
-  const status = useUpdateStore((s) => s.status);
+  const update = useUpdateStore((s) => s.staged);
   const open = useUpdateStore((s) => s.whatsNewOpen);
   const setWhatsNewOpen = useUpdateStore((s) => s.setWhatsNewOpen);
-  const update = pendingUpdate(status);
 
   if (!update) return null;
 

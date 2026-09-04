@@ -9,6 +9,8 @@ export function UpdatesSection(): React.JSX.Element {
   // pill and the sidebar dot point at was offering to check for an update it
   // had already been told about.
   const updateStatus = useUpdateStore((s) => s.status);
+  // What can be installed, which outlives whatever the last check said.
+  const staged = useUpdateStore((s) => s.staged);
   const setStatus = useUpdateStore((s) => s.setStatus);
   const [appVersion, setAppVersion] = useState('');
 
@@ -29,7 +31,7 @@ export function UpdatesSection(): React.JSX.Element {
       <div className="space-y-4">
         <div className="text-sm text-fleet-text-secondary">Fleet v{appVersion}</div>
 
-        {updateStatus.state === 'ready' ? (
+        {staged ? (
           <button
             onClick={() => window.fleet.updates.installUpdate()}
             className="px-3 py-1.5 text-sm fleet-accent-bg fleet-accent-bg-hover text-white rounded-md transition-colors active:scale-[0.97]"
@@ -70,25 +72,30 @@ export function UpdatesSection(): React.JSX.Element {
           </div>
         )}
 
-        {updateStatus.state === 'ready' && (
-          <div className="text-sm fleet-accent-text">
-            v{updateStatus.version} is ready to install.
-          </div>
+        {staged && (
+          <div className="text-sm fleet-accent-text">v{staged.version} is ready to install.</div>
         )}
 
-        {(updateStatus.state === 'downloading' || updateStatus.state === 'ready') &&
-          updateStatus.releaseNotes && (
+        {/* The staged update's notes win over a download still in flight: the
+            one you can act on right now is the one worth reading about. */}
+        {(() => {
+          const notes =
+            staged?.releaseNotes ??
+            (updateStatus.state === 'downloading' ? updateStatus.releaseNotes : '');
+          if (!notes) return null;
+          return (
             <div className="mt-2">
               <div className="text-xs text-fleet-text-subtle uppercase tracking-wider mb-1">
                 Release Notes
               </div>
               <div className="text-fleet-text-muted bg-fleet-surface-3 rounded-md p-3 max-h-[260px] overflow-y-auto border border-fleet-border-strong">
                 <AgentMarkdown streaming={false} className="text-xs leading-relaxed">
-                  {updateStatus.releaseNotes}
+                  {notes}
                 </AgentMarkdown>
               </div>
             </div>
-          )}
+          );
+        })()}
       </div>
     </div>
   );

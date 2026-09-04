@@ -1,5 +1,5 @@
 import { ArrowUp } from 'lucide-react';
-import { useUpdateStore, pendingUpdate } from '../store/update-store';
+import { useUpdateStore } from '../store/update-store';
 
 /**
  * The standing "there is a newer Fleet" marker, in the title strip.
@@ -15,9 +15,8 @@ import { useUpdateStore, pendingUpdate } from '../store/update-store';
  * only that *something* was different, which is not enough to act on.
  */
 export function UpdatePill(): React.JSX.Element | null {
-  const status = useUpdateStore((s) => s.status);
+  const update = useUpdateStore((s) => s.staged);
   const setWhatsNewOpen = useUpdateStore((s) => s.setWhatsNewOpen);
-  const update = pendingUpdate(status);
 
   if (!update) return null;
 
