@@ -14,6 +14,7 @@ import {
 } from 'electron';
 import { safeOpenExternal, isSafeExternalUrl } from './safe-external';
 import { shouldCheck, UPDATE_CHECK_INTERVAL_MS } from './update-scheduler';
+import { nextStaged } from './update-staging';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -56,7 +57,12 @@ import { parseFleetUrl } from './protocol-paths';
 import { toWslUncPath } from '../shared/path-platform';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
 import type { HostContextPayload } from '../shared/ipc-api';
-import type { NotificationLevel, UpdateStatus } from '../shared/types';
+import type {
+  NotificationLevel,
+  StagedUpdate,
+  UpdateSnapshot,
+  UpdateStatus
+} from '../shared/types';
 import { createLogger } from './logger';
 import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
 import { SessionsService } from './sessions/service';
@@ -1040,6 +1046,15 @@ void app.whenReady().then(async () => {
   let updateState: 'idle' | 'checking' | 'downloading' | 'ready' = 'idle';
   let pendingVersion = '';
   let pendingReleaseNotes = '';
+  /**
+   * The snapshot the renderer mirrors. Main keeps it because main is the only
+   * side that sees the whole sequence: which error followed a download and so
+   * destroyed the artifact, and which followed a check and so destroyed
+   * nothing. It also outlives a renderer reload, which the renderer's copy
+   * cannot.
+   */
+  let lastUpdateStatus: UpdateStatus = { state: 'idle' };
+  let stagedUpdate: StagedUpdate | null = null;
   /** Null until the first check, which is what makes that one run. */
   let lastUpdateCheckAt: number | null = null;
   /** Set once an install has been confirmed, so a second click is a no-op. */
@@ -1055,9 +1070,14 @@ void app.whenReady().then(async () => {
   }
 
   function sendUpdateStatus(status: UpdateStatus): void {
-    updaterLog.info('status', { state: status.state });
+    stagedUpdate = nextStaged(stagedUpdate, lastUpdateStatus, status);
+    lastUpdateStatus = status;
+    updaterLog.info('status', { state: status.state, staged: stagedUpdate?.version ?? null });
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('fleet:update-status', status);
+      mainWindow.webContents.send(IPC_CHANNELS.UPDATE_STATUS, {
+        status,
+        staged: stagedUpdate
+      } satisfies UpdateSnapshot);
     }
   }
 
@@ -1175,6 +1195,14 @@ void app.whenReady().then(async () => {
 
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => runUpdateCheck());
 
+  // A renderer that has just mounted has heard nothing yet, and a reload is far
+  // more common than a release - without this, reloading a window with an
+  // update waiting hides the pill until the next check hours later.
+  ipcMain.handle(
+    IPC_CHANNELS.UPDATE_SNAPSHOT,
+    (): UpdateSnapshot => ({ status: lastUpdateStatus, staged: stagedUpdate })
+  );
+
   ipcMain.handle(IPC_CHANNELS.GET_VERSION, () => app.getVersion());
 
   /**
@@ -1193,6 +1221,8 @@ void app.whenReady().then(async () => {
    */
   async function requestInstallUpdate(): Promise<void> {
     if (installRequested) return;
+    // Nothing to install: never ask someone to throw work away for it.
+    if (!stagedUpdate) return;
     if (hasRunningWork(true) && !(await quitGuard.ask(mainOwnedWork(true)))) return;
     installRequested = true;
     quitConfirmed = true;

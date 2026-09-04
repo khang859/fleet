@@ -62,6 +62,8 @@ export const IPC_CHANNELS = {
   SYSTEM_CHECK: 'system:check',
   UPDATE_CHECK: 'fleet:update-check',
   UPDATE_STATUS: 'fleet:update-status',
+  /** Main -> renderer, on request: the current snapshot, for a renderer that just mounted. */
+  UPDATE_SNAPSHOT: 'fleet:update-snapshot',
   UPDATE_INSTALL: 'fleet:install-update',
   /** Dev only: push a synthetic UpdateStatus down the real status path. */
   UPDATE_SIMULATE: 'fleet:update-simulate',

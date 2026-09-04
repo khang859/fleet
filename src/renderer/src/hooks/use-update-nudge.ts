@@ -68,8 +68,14 @@ function writeLastToast(last: LastToast): void {
  */
 export function useUpdateNudge(): void {
   useEffect(() => {
-    const cleanup = window.fleet.updates.onUpdateStatus((status) => {
-      useUpdateStore.getState().setStatus(status);
+    const cleanup = window.fleet.updates.onUpdate((snapshot) => {
+      useUpdateStore.getState().setSnapshot(snapshot);
+    });
+    // Main has been checking since launch and does not repeat itself, so a
+    // renderer that just mounted - a reload, with an update already staged -
+    // has to ask for what it missed.
+    void window.fleet.updates.getSnapshot().then((snapshot) => {
+      useUpdateStore.getState().setSnapshot(snapshot);
     });
     return () => {
       cleanup();

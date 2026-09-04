@@ -11,7 +11,7 @@ export function UpdatesSection(): React.JSX.Element {
   const updateStatus = useUpdateStore((s) => s.status);
   // What can be installed, which outlives whatever the last check said.
   const staged = useUpdateStore((s) => s.staged);
-  const setStatus = useUpdateStore((s) => s.setStatus);
+  const dismissStatus = useUpdateStore((s) => s.dismissStatus);
   const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
@@ -22,9 +22,9 @@ export function UpdatesSection(): React.JSX.Element {
   // clears itself rather than standing as a permanent claim.
   useEffect(() => {
     if (updateStatus.state !== 'not-available') return;
-    const timer = setTimeout(() => setStatus({ state: 'idle' }), 3000);
+    const timer = setTimeout(dismissStatus, 3000);
     return () => clearTimeout(timer);
-  }, [updateStatus.state, setStatus]);
+  }, [updateStatus.state, dismissStatus]);
 
   return (
     <div className="space-y-6">

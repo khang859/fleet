@@ -284,6 +284,29 @@ const UPDATE_RENUDGE = `(() => {
   return 'cleared the toast record - run "fixture update-ready" again to see it announce';
 })()`;
 
+/**
+ * A staged update overtaken by a newer one whose download then fails.
+ *
+ * The sequence is the one that used to leave a lie on screen. `electron-updater`
+ * empties its pending directory the moment it starts fetching a build whose
+ * checksum differs from the cached one, and empties it again when that download
+ * throws - so by the end of this, 2.113.0's installer has been deleted twice
+ * over and pressing the pill would fail with "No update filepath provided".
+ * The pill has to go, and Settings has to offer a check again.
+ */
+const UPDATE_SUPERSEDED = `(() => {
+  if (!window.fleet.updates.simulateUpdate) return 'build is too old for this fixture';
+  const u = window.fleet.updates;
+  u.simulateUpdate({ state: 'ready', version: '2.113.0', releaseNotes: '- staged' });
+  setTimeout(() => {
+    u.simulateUpdate({ state: 'downloading', version: '2.114.0', releaseNotes: '- newer', percent: 12 });
+  }, 1500);
+  setTimeout(() => {
+    u.simulateUpdate({ state: 'error', message: 'net::ERR_CONNECTION_RESET' });
+  }, 3000);
+  return 'staged 2.113.0; 2.114.0 starts downloading at 1.5s and fails at 3s - the pill should disappear and Settings should offer Check for Updates again';
+})()`;
+
 export const FIXTURES: Record<string, Fixture> = {
   'agent-cleared-results': {
     describe:
@@ -309,6 +332,11 @@ export const FIXTURES: Record<string, Fixture> = {
     describe:
       'Forgets that the update nudge was already shown, so "update-ready" announces itself again instead of only leaving the pill.',
     source: UPDATE_RENUDGE
+  },
+  'update-superseded': {
+    describe:
+      'A staged update overtaken by a newer one whose download then fails, which deletes both installers. The pill should disappear rather than offer an install that would fail, and Settings should go back to offering Check for Updates.',
+    source: UPDATE_SUPERSEDED
   }
 };
 

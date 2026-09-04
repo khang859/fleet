@@ -1,8 +1,5 @@
 import { create } from 'zustand';
-import type { UpdateStatus } from '../../../shared/types';
-
-/** A downloaded update, sitting on disk waiting to be installed. */
-export type StagedUpdate = { version: string; releaseNotes: string };
+import type { StagedUpdate, UpdateSnapshot, UpdateStatus } from '../../../shared/types';
 
 type UpdateStore = {
   /** The latest thing the updater said. Transient: a check moves it about. */
@@ -11,7 +8,8 @@ type UpdateStore = {
   staged: StagedUpdate | null;
   /** Whether the release-notes dialog is up. */
   whatsNewOpen: boolean;
-  setStatus: (status: UpdateStatus) => void;
+  setSnapshot: (snapshot: UpdateSnapshot) => void;
+  dismissStatus: () => void;
   setWhatsNewOpen: (open: boolean) => void;
 };
 
@@ -24,24 +22,24 @@ type UpdateStore = {
  * opens, and the Settings section - so it lives here rather than being drilled
  * from `App` through `Sidebar`.
  *
- * `staged` is deliberately not derived from `status`. A downloaded update stays
- * on disk and stays installable no matter what the updater says next, and with
- * a check now running every four hours there is always a next thing: the first
- * one to fail offline would otherwise move the status to `error` and take the
- * pill, the sidebar dot and the install button with it, leaving the user unable
- * to install an update that is sitting right there. So `status` carries what
- * just happened and `staged` carries what can be installed, and only a newer
- * `ready` replaces it.
+ * This is a mirror, not a source. `status` and `staged` come apart - a check
+ * runs every four hours, so one failing offline must not take the pill and the
+ * install button down with it - but deciding when a *staged* update stops being
+ * installable needs to know what the updater did to the file on disk, which
+ * only the main process sees. So main decides both and sends them together, and
+ * this holds what it was told. See `nextStaged` in `src/main/update-staging.ts`.
  */
 export const useUpdateStore = create<UpdateStore>((set) => ({
   status: { state: 'idle' },
   staged: null,
   whatsNewOpen: false,
-  setStatus: (status) =>
-    set(
-      status.state === 'ready'
-        ? { status, staged: { version: status.version, releaseNotes: status.releaseNotes } }
-        : { status }
-    ),
+  setSnapshot: ({ status, staged }) => set({ status, staged }),
+  /**
+   * Drop a finished answer without touching what is staged.
+   *
+   * Only for "you're up to date", which is a reply to a button the user just
+   * pressed rather than a state of the world worth keeping on screen.
+   */
+  dismissStatus: () => set({ status: { state: 'idle' } }),
   setWhatsNewOpen: (whatsNewOpen) => set({ whatsNewOpen })
 }));

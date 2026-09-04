@@ -440,3 +440,18 @@ export type UpdateStatus =
   | { state: 'ready'; version: string; releaseNotes: string }
   | { state: 'not-available' }
   | { state: 'error'; message: string };
+
+/** An update sitting on disk, ready for the next launch to be. */
+export type StagedUpdate = { version: string; releaseNotes: string };
+
+/**
+ * Everything the renderer knows about updates: what just happened, and what can
+ * be installed right now.
+ *
+ * The two are separate because they have different lifetimes. A check runs
+ * every few hours, so there is always a later one to say something newer and
+ * less useful - "you're up to date", or an offline error - while an update sits
+ * downloaded and waiting. Only the main process can say which of those events
+ * actually took the installer with it, so it decides, and this carries both.
+ */
+export type UpdateSnapshot = { status: UpdateStatus; staged: StagedUpdate | null };

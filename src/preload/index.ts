@@ -44,6 +44,7 @@ import type {
   Workspace,
   FleetSettings,
   FleetSettingsPatch,
+  UpdateSnapshot,
   UpdateStatus,
   AnnotationMeta
 } from '../shared/types';
@@ -379,7 +380,8 @@ const fleetApi = {
   },
   updates: {
     checkForUpdates: async (): Promise<void> => typedInvoke(IPC_CHANNELS.UPDATE_CHECK),
-    onUpdateStatus: (callback: (status: UpdateStatus) => void): Unsubscribe => {
+    getSnapshot: async (): Promise<UpdateSnapshot> => typedInvoke(IPC_CHANNELS.UPDATE_SNAPSHOT),
+    onUpdate: (callback: (snapshot: UpdateSnapshot) => void): Unsubscribe => {
       return onChannel(IPC_CHANNELS.UPDATE_STATUS, callback);
     },
     installUpdate: (): void => ipcRenderer.send(IPC_CHANNELS.UPDATE_INSTALL),
