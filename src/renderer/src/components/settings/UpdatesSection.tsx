@@ -1,25 +1,28 @@
 import { useState, useEffect } from 'react';
-import type { UpdateStatus } from '../../../../shared/types';
+import { AgentMarkdown } from '../agent/AgentMarkdown';
+import { useUpdateStore } from '../../store/update-store';
 
 export function UpdatesSection(): React.JSX.Element {
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' });
+  // Read from the store rather than subscribing here. This section is mounted
+  // by opening Settings, which is almost always *after* the update was found -
+  // a listener of its own only ever hears what arrives later, so the page the
+  // pill and the sidebar dot point at was offering to check for an update it
+  // had already been told about.
+  const updateStatus = useUpdateStore((s) => s.status);
+  const setStatus = useUpdateStore((s) => s.setStatus);
   const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
     void window.fleet.updates.getVersion().then(setAppVersion);
   }, []);
 
+  // "You're up to date" is an answer to a question the user just asked, so it
+  // clears itself rather than standing as a permanent claim.
   useEffect(() => {
-    const cleanup = window.fleet.updates.onUpdateStatus((status) => {
-      setUpdateStatus(status);
-      if (status.state === 'not-available') {
-        setTimeout(() => setUpdateStatus({ state: 'idle' }), 3000);
-      }
-    });
-    return () => {
-      cleanup();
-    };
-  }, []);
+    if (updateStatus.state !== 'not-available') return;
+    const timer = setTimeout(() => setStatus({ state: 'idle' }), 3000);
+    return () => clearTimeout(timer);
+  }, [updateStatus.state, setStatus]);
 
   return (
     <div className="space-y-6">
@@ -79,8 +82,10 @@ export function UpdatesSection(): React.JSX.Element {
               <div className="text-xs text-fleet-text-subtle uppercase tracking-wider mb-1">
                 Release Notes
               </div>
-              <div className="text-sm text-fleet-text-muted bg-fleet-surface-3 rounded-md p-3 max-h-[150px] overflow-y-auto whitespace-pre-wrap border border-fleet-border-strong">
-                {updateStatus.releaseNotes}
+              <div className="text-fleet-text-muted bg-fleet-surface-3 rounded-md p-3 max-h-[260px] overflow-y-auto border border-fleet-border-strong">
+                <AgentMarkdown streaming={false} className="text-xs leading-relaxed">
+                  {updateStatus.releaseNotes}
+                </AgentMarkdown>
               </div>
             </div>
           )}

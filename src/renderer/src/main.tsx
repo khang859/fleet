@@ -11,6 +11,7 @@ import { useAgentMcpStore } from './store/agent-mcp-store';
 import { useAgentSkillsStore } from './store/agent-skills-store';
 import { useAgentMemoryStore } from './store/agent-memory-store';
 import { useNotificationStore } from './store/notification-store';
+import { useUpdateStore } from './store/update-store';
 import './index.css';
 
 const log = createLogger('renderer');
@@ -89,7 +90,8 @@ if (import.meta.env.DEV) {
       agentMcp: useAgentMcpStore,
       agentSkills: useAgentSkillsStore,
       agentMemory: useAgentMemoryStore,
-      notification: useNotificationStore
+      notification: useNotificationStore,
+      update: useUpdateStore
     }
   };
 }

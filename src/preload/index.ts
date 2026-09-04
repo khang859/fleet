@@ -383,7 +383,14 @@ const fleetApi = {
       return onChannel(IPC_CHANNELS.UPDATE_STATUS, callback);
     },
     installUpdate: (): void => ipcRenderer.send(IPC_CHANNELS.UPDATE_INSTALL),
-    getVersion: async (): Promise<string> => typedInvoke(IPC_CHANNELS.GET_VERSION)
+    getVersion: async (): Promise<string> => typedInvoke(IPC_CHANNELS.GET_VERSION),
+    /**
+     * Dev only, for `npm run drive -- fixture update-ready`. Main registers the
+     * listener under IS_FLEET_DEV, and a `send` to a channel nothing listens on
+     * does nothing, so this is inert in a packaged build rather than guarded.
+     */
+    simulateUpdate: (status: UpdateStatus): void =>
+      ipcRenderer.send(IPC_CHANNELS.UPDATE_SIMULATE, status)
   },
   shell: {
     openExternal: async (url: string): Promise<void> =>

@@ -59,6 +59,10 @@ import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
 import { RemoteRcPromptManager } from './components/ssh/RemoteRcPromptManager';
 import { QuitConfirmDialog } from './components/QuitConfirmDialog';
+import { UpdatePill } from './components/UpdatePill';
+import { WhatsNewDialog } from './components/WhatsNewDialog';
+import { useUpdateNudge } from './hooks/use-update-nudge';
+import { useUpdateStore, pendingUpdate } from './store/update-store';
 import { getAccentCssVars, getGlassCssVars } from './lib/theme';
 import { BackgroundLayer } from './components/BackgroundLayer';
 import { resolveBackgroundSrc } from './lib/pane-background';
@@ -294,7 +298,7 @@ export function App(): React.JSX.Element {
   const [notesOpen, setNotesOpen] = useState(false);
   const [shellEnvOpen, setShellEnvOpen] = useState(false);
   const [agentFolderOpen, setAgentFolderOpen] = useState(false);
-  const [updateReady, setUpdateReady] = useState(false);
+  const updateReady = useUpdateStore((s) => pendingUpdate(s.status) !== null);
 
   // Load settings on startup
   useEffect(() => {
@@ -541,15 +545,8 @@ export function App(): React.JSX.Element {
     };
   }, []);
 
-  // Auto-updater
-  useEffect(() => {
-    const cleanup = window.fleet.updates.onUpdateStatus((status) => {
-      if (status.state === 'ready') setUpdateReady(true);
-    });
-    return () => {
-      cleanup();
-    };
-  }, []);
+  // Auto-updater: keeps the update store fed and fires the arrival toast.
+  useUpdateNudge();
 
   // Restore last active workspace on startup (or default), create a fresh tab if empty
   useEffect(() => {
@@ -835,6 +832,7 @@ export function App(): React.JSX.Element {
         className="relative z-10 h-6 shrink-0 flex items-center"
         style={{ WebkitAppRegion: 'drag' }}
       >
+        <UpdatePill />
         <ShortcutsHint />
       </div>
       <div className="relative z-10 flex flex-1 min-h-0">
@@ -1226,6 +1224,7 @@ export function App(): React.JSX.Element {
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />
       <RemoteRcPromptManager />
       <QuitConfirmDialog />
+      <WhatsNewDialog />
       <ToastContainer />
     </div>
   );

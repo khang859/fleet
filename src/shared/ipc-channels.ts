@@ -63,6 +63,8 @@ export const IPC_CHANNELS = {
   UPDATE_CHECK: 'fleet:update-check',
   UPDATE_STATUS: 'fleet:update-status',
   UPDATE_INSTALL: 'fleet:install-update',
+  /** Dev only: push a synthetic UpdateStatus down the real status path. */
+  UPDATE_SIMULATE: 'fleet:update-simulate',
   GET_VERSION: 'fleet:get-version',
   SHELL_OPEN_EXTERNAL: 'shell:open-external',
   TERMINAL_CONTEXT_MENU: 'terminal:context-menu',
