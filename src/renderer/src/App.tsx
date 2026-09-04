@@ -58,6 +58,7 @@ import { ToolPaneFrame } from './components/ToolPaneFrame';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
 import { RemoteRcPromptManager } from './components/ssh/RemoteRcPromptManager';
+import { QuitConfirmDialog } from './components/QuitConfirmDialog';
 import { getAccentCssVars, getGlassCssVars } from './lib/theme';
 import { BackgroundLayer } from './components/BackgroundLayer';
 import { resolveBackgroundSrc } from './lib/pane-background';
@@ -1224,6 +1225,7 @@ export function App(): React.JSX.Element {
       <AnnotateModal open={false} onClose={() => {}} />
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />
       <RemoteRcPromptManager />
+      <QuitConfirmDialog />
       <ToastContainer />
     </div>
   );

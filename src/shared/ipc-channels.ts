@@ -1,5 +1,7 @@
 export const IPC_CHANNELS = {
   APP_HOST_CONTEXT_GET: 'app:host-context:get',
+  APP_QUIT_ASK: 'app:quit-ask',
+  APP_QUIT_DECIDE: 'app:quit-decide',
   PTY_CREATE: 'pty:create',
   PTY_DATA: 'pty:data',
   PTY_INPUT: 'pty:input',

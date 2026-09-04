@@ -108,7 +108,7 @@ describe('routeActivityReport', () => {
     routeActivityReport({ paneId: 'agent-1', state: 'gone' }, h.deps);
 
     expect(h.reported.has('agent-1')).toBe(false);
-    expect(h.reported.getCounts()).toEqual({ needsMe: 0, error: 0 });
+    expect(h.reported.getCounts()).toEqual({ needsMe: 0, error: 0, working: 0 });
     expect(h.updateChrome).toHaveBeenCalledTimes(2);
   });
 

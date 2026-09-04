@@ -9,7 +9,7 @@ describe('ReportedActivity', () => {
     reported.set('c', 'error');
     reported.set('d', 'working');
 
-    expect(reported.getCounts()).toEqual({ needsMe: 2, error: 1 });
+    expect(reported.getCounts()).toEqual({ needsMe: 2, error: 1, working: 1 });
   });
 
   it('reports a state change once, so one question is not two alerts', () => {
@@ -28,7 +28,7 @@ describe('ReportedActivity', () => {
 
     reported.forget('a');
 
-    expect(reported.getCounts()).toEqual({ needsMe: 0, error: 0 });
+    expect(reported.getCounts()).toEqual({ needsMe: 0, error: 0, working: 0 });
     expect(reported.has('a')).toBe(false);
   });
 

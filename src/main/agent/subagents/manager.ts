@@ -158,6 +158,18 @@ export class SubagentManager {
   }
 
   /**
+   * Every subagent running right now, in enough detail to be named in a
+   * warning - the describing half of what {@link cancelAll} destroys.
+   */
+  describeLive(): LiveSubagent[] {
+    return [...this.live.values()].map((entry) => ({
+      taskId: entry.info.id,
+      agent: entry.info.agent,
+      prompt: entry.info.prompt
+    }));
+  }
+
+  /**
    * The children one conversation started and is still waiting on.
    *
    * By thread rather than by id, because the caller is a turn rather than a

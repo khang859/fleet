@@ -39,6 +39,8 @@ import { backfillBackgroundStore, pruneBackgroundStore } from './background-stor
 import { IPC_CHANNELS, IS_FLEET_DEV, SOCKET_PATH } from '../shared/constants';
 import { deriveDebugPort, sessionFilePath, type DriveSession } from '../shared/drive-session';
 import { SocketSupervisor } from './socket-supervisor';
+import { QuitGuard } from './quit-guard';
+import { QuitDecideSchema, type QuitWorkItem } from '../shared/quit-confirm';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile, installOpencodePlugin } from './install-fleet-cli';
 import { AnnotateService } from './annotate-service';
@@ -91,7 +93,7 @@ import { ScheduleStore } from './agent/schedule-store';
 import { ScheduleTimer } from './agent/schedule-timer';
 import type { AgentScheduleChanged } from '../shared/agent-schedule';
 import { discardAllFetches } from './agent/skills/fetch';
-import { killAllBackgroundCommands } from './agent/tools/background';
+import { killAllBackgroundCommands, listRunningBackgroundCommands } from './agent/tools/background';
 import { AgentMcpSecrets } from './agent/mcp/secrets';
 import { resolveAuth, signIn as signInToMcp } from './agent/mcp/auth';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
@@ -119,6 +121,26 @@ let agentService: AgentService | null = null;
 let agentMcp: AgentMcpManager | undefined;
 let agentSubagents: SubagentManager | null = null;
 let agentScheduleTimer: ScheduleTimer | null = null;
+
+/**
+ * Set once the user has confirmed a close, so the second `close` - the one
+ * this module raises itself to actually shut the window - runs straight
+ * through instead of asking again.
+ */
+let quitConfirmed = false;
+/**
+ * Whether the close being confirmed arrived as a *quit* rather than a window
+ * close.
+ *
+ * Cmd+Q raises `before-quit` and only then closes the window, and preventing
+ * that close aborts the whole quit. So a confirmed close has to finish the way
+ * it started: closing the window would leave a macOS user who pressed Cmd+Q
+ * with an app still sitting in the dock. Cleared when the user cancels, so a
+ * later click on the X does not inherit a quit nobody asked for.
+ */
+let quitRequested = false;
+
+const quitGuard = new QuitGuard(() => mainWindow);
 
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
@@ -196,7 +218,117 @@ ipcMain.handle(
   })
 );
 
+ipcMain.on(IPC_CHANNELS.APP_QUIT_DECIDE, (_event, payload: unknown) => {
+  const parsed = QuitDecideSchema.safeParse(payload);
+  if (!parsed.success) return;
+  quitGuard.decide(parsed.data.requestId, parsed.data.proceed);
+});
+
+/**
+ * Whether this close takes the process down with it.
+ *
+ * On macOS a window close leaves the app in the dock and `shutdownAll` never
+ * runs, so the subagents and background commands main is holding carry on
+ * without a window. Everywhere else, and for a real quit anywhere, the last
+ * window closing ends the process and takes them with it.
+ *
+ * The warning has to know which of the two this is, or it promises a loss that
+ * does not happen.
+ */
+function closeEndsProcess(): boolean {
+  return quitRequested || process.platform !== 'darwin';
+}
+
+/**
+ * The live work this particular close would destroy.
+ *
+ * Deliberately narrow: a shell sitting at a prompt is `idle` and costs nothing
+ * to close, and a warning that fired every time would be clicked through
+ * without being read.
+ *
+ * Panes count whatever kind of close this is. A terminal pane loses its PTY to
+ * the `killAll` below, and an agent pane loses the turn it is in the middle
+ * of - the transcript is written by the renderer, so a window that goes away
+ * mid-turn takes the reply with it even though main keeps generating it.
+ *
+ * Answered here rather than by asking the renderer, because this decides
+ * whether to interrupt the user at all - the same synchronous main-side state
+ * `updateChrome` already reads for the dock badge.
+ */
+function hasRunningWork(endsProcess: boolean): boolean {
+  const watched = activityTracker.getCounts();
+  if (watched.working > 0 || watched.needsMe > 0) return true;
+  const reported = reportedActivity.getCounts();
+  if (reported.working > 0 || reported.needsMe > 0) return true;
+  if (agentService?.hasInflight() === true) return true;
+  if (!endsProcess) return false;
+  if ((agentSubagents?.liveIds().length ?? 0) > 0) return true;
+  if (listRunningBackgroundCommands().length > 0) return true;
+  return false;
+}
+
+/**
+ * What main knows is running that no pane speaks for.
+ *
+ * Panes are left out: only the renderer can name one, and it already tracks
+ * every pane's state for its own UI, so it builds those rows itself.
+ *
+ * Empty when the process is staying up, because that is the honest answer -
+ * a subagent writes its own report from main and a background command is a
+ * process of main's, so neither notices the window closing.
+ */
+function mainOwnedWork(endsProcess: boolean): QuitWorkItem[] {
+  if (!endsProcess) return [];
+
+  const items: QuitWorkItem[] = [];
+  for (const job of listRunningBackgroundCommands()) {
+    items.push({ kind: 'background', id: job.id, label: job.command });
+  }
+  for (const live of agentSubagents?.describeLive() ?? []) {
+    items.push({
+      kind: 'subagent',
+      id: live.taskId,
+      label: `${live.agent}: ${truncateForList(live.prompt)}`
+    });
+  }
+  return items;
+}
+
+function truncateForList(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > 80 ? `${flat.slice(0, 79)}\u2026` : flat;
+}
+
+/**
+ * Ask before throwing away work, then finish the close the way it arrived.
+ *
+ * Cancelling has no side effects at all - nothing has been torn down by this
+ * point - so the app is left exactly as the user found it.
+ */
+async function confirmClose(endsProcess: boolean): Promise<void> {
+  const proceed = await quitGuard.ask(mainOwnedWork(endsProcess));
+  if (!proceed) {
+    quitRequested = false;
+    return;
+  }
+  quitConfirmed = true;
+  if (quitRequested) {
+    // Re-runs the quit from the top, `before-quit` included. The window's
+    // `close` fires again on the way through and is waved past by the flag.
+    app.quit();
+    return;
+  }
+  mainWindow?.close();
+}
+
 function createWindow(): void {
+  // A macOS window that was closed leaves the app in the dock, and reopening
+  // it lands here. Both flags describe one close attempt, so a fresh window
+  // starts with a clean pair - otherwise the first close was the last one that
+  // ever asked.
+  quitConfirmed = false;
+  quitRequested = false;
+
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const iconPath = join(__dirname, '../../build/icon.png');
   const preloadPathJs = fileURLToPath(new URL('../preload/index.js', import.meta.url));
@@ -228,8 +360,24 @@ function createWindow(): void {
     log.info(event.message, { renderer: true });
   });
 
-  mainWindow.on('close', () => {
-    ptyManager.killAll();
+  mainWindow.on('close', (event) => {
+    // Already confirmed - this is the close `confirmClose` asked for.
+    if (quitConfirmed) {
+      ptyManager.killAll();
+      return;
+    }
+    const endsProcess = closeEndsProcess();
+    if (!hasRunningWork(endsProcess)) {
+      ptyManager.killAll();
+      return;
+    }
+    // Preventing this aborts a quit as well as a window close, which is the
+    // point: nothing is torn down until the user has said so.
+    event.preventDefault();
+    // A second attempt while the dialog is up - the X after a Cmd+Q, say -
+    // is the same question, so it waits on the answer already being given.
+    if (quitGuard.isAsking) return;
+    void confirmClose(endsProcess);
   });
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
@@ -1373,6 +1521,17 @@ app.on('window-all-closed', () => {
   }
   // On macOS: app stays running in the dock — keep services alive so the
   // fleet CLI and socket remain usable while the window is closed.
+});
+
+/**
+ * Remember that this close is a quit before the window is asked to close.
+ *
+ * Electron raises this first and only then closes the windows, so by the time
+ * the `close` handler runs it can tell Cmd+Q apart from a click on the X and
+ * finish the same way.
+ */
+app.on('before-quit', () => {
+  quitRequested = true;
 });
 
 app.on('will-quit', () => {
