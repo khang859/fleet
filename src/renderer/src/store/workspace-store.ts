@@ -56,7 +56,14 @@ function loadRecentFolders(): string[] {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is string => typeof item === 'string');
+    return (
+      parsed
+        .filter((item): item is string => typeof item === 'string')
+        // Cleans up the list of anyone who ran a build that recorded the scratch
+        // folder before `addRecentFolder` started refusing it. Cheaper than a
+        // migration, and this function already tolerates whatever is in storage.
+        .filter((item) => item !== scratchDir())
+    );
   } catch {
     return [];
   }
@@ -1733,6 +1740,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   addRecentFolder: (folderPath) => {
+    // The scratch folder is Fleet's, not the user's. It is where a chat with no
+    // project keeps its files, it is opened on every launch whether anyone asked
+    // for it or not, and it is already one click away as a pinned tab - so
+    // listing it as somewhere the user recently worked is both untrue and, since
+    // this list is short, at the cost of a folder they chose themselves.
+    // Refused here rather than at each call site: it is opened from a restore, a
+    // pane split and a new tab, and one of those would be missed.
+    if (folderPath === scratchDir()) return;
     set((state) => {
       const filtered = state.recentFolders.filter((f) => f !== folderPath);
       const updated = [folderPath, ...filtered].slice(0, MAX_RECENT_FOLDERS);
