@@ -35,6 +35,8 @@ import type { AgentGitWatcher } from './git-watch';
 import type { AgentHistoryStore } from './history-store';
 import { registerAgentMcpIpc, type McpIpcDeps } from './mcp/mcp-ipc';
 import { registerAgentMemoryIpc } from './memory/memory-ipc';
+import { registerAgentImageExportIpc } from './image-export-ipc';
+import { registerAgentGalleryIpc } from './gallery-ipc';
 import { registerAgentSkillsIpc } from './skills/skills-ipc';
 import type { SubagentManager } from './subagents/manager';
 import type { ScheduleStore } from './schedule-store';
@@ -79,6 +81,8 @@ export function registerAgentIpc(deps: {
   registerAgentSkillsIpc();
   // Nor here, and for the same reason: memory is folders on disk too.
   registerAgentMemoryIpc();
+  registerAgentImageExportIpc();
+  registerAgentGalleryIpc(deps.sessions);
 
   ipcMain.handle(
     IPC_CHANNELS.AGENT_LIST_MODELS,

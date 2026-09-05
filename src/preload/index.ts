@@ -104,6 +104,8 @@ import type {
   SkillFetchResult,
   SkillInstallOutcome
 } from '../shared/agent-skill-install';
+import type { ImageActionResult } from '../shared/agent-image-export';
+import type { GalleryCursor, GalleryMetadata, GalleryPage } from '../shared/agent-gallery';
 import type {
   AgentSessionAddSpend,
   AgentSessionAppend,
@@ -715,6 +717,37 @@ const fleetApi = {
       /** Pushed whenever a connection changes state, including with nobody asking. */
       onStatus: (cb: (p: AgentMcpStatus[]) => void): Unsubscribe =>
         onChannel(IPC_CHANNELS.AGENT_MCP_STATUS, cb)
+    },
+
+    /**
+     * Getting a picture out of the app.
+     *
+     * `startDrag` is a `send` rather than an invoke because a drag has no
+     * answer: the OS owns the gesture from the moment it begins, and there is
+     * nothing for the caller to wait on.
+     */
+    image: {
+      saveAs: async (path: string, suggestedName: string): Promise<ImageActionResult> =>
+        typedInvoke<ImageActionResult>(IPC_CHANNELS.AGENT_IMAGE_SAVE_AS, { path, suggestedName }),
+      reveal: async (path: string): Promise<ImageActionResult> =>
+        typedInvoke<ImageActionResult>(IPC_CHANNELS.AGENT_IMAGE_REVEAL, path),
+      startDrag: (path: string, icon?: Uint8Array): void => {
+        ipcRenderer.send(IPC_CHANNELS.AGENT_IMAGE_START_DRAG, { path, icon });
+      }
+    },
+
+    /**
+     * Every picture the agent has made, newest first.
+     *
+     * `meta` is separate from the page because it replays a session file, and
+     * the grid would otherwise pay for one per thumbnail to fill in text that
+     * is only read for the picture being looked at.
+     */
+    gallery: {
+      list: async (cursor: GalleryCursor | null): Promise<GalleryPage> =>
+        typedInvoke<GalleryPage>(IPC_CHANNELS.AGENT_GALLERY_LIST, { cursor }),
+      meta: async (path: string): Promise<GalleryMetadata | null> =>
+        typedInvoke<GalleryMetadata | null>(IPC_CHANNELS.AGENT_GALLERY_META, path)
     },
 
     /**

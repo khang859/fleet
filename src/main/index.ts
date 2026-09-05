@@ -84,6 +84,7 @@ import { completeOnce } from './agent/completions';
 import { AgentModelCatalog } from './agent/models-catalog';
 import { AgentCatalogComposer } from './agent/catalog-composer';
 import { resolveTarget as resolveModelTarget, type ResolvedTarget } from './agent/model-routing';
+import { ensureScratchDir } from './agent/scratch-dir';
 import { LocalEndpointManager } from './agent/endpoints/manager';
 import { LocalEndpointConfigSchema, type LocalEndpointConfig } from '../shared/agent-endpoints';
 import { registerAgentEndpointIpc } from './agent/endpoints/endpoint-ipc';
@@ -200,6 +201,7 @@ const ptyOscBridge = new PtyOscBridge({
   writeClipboard: (text) => clipboard.writeText(text),
   downloadsDir: () => app.getPath('downloads')
 });
+ensureScratchDir();
 const ANNOTATIONS_DIR = join(homedir(), '.fleet', 'annotations');
 const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
 const annotateService = new AnnotateService(annotationStore);

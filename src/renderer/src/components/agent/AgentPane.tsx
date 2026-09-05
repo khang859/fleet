@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
-import { Bot, History, SlidersHorizontal } from 'lucide-react';
+import { Bot, History, Images, SlidersHorizontal } from 'lucide-react';
 import { AgentThread } from './AgentThread';
+import { attachToComposer } from './composer-events';
 import { AgentSessionsTab } from './AgentSessionsTab';
+import { AgentGalleryTab } from './AgentGalleryTab';
 import { AgentTodoPanel } from './AgentTodoPanel';
 import { AgentSubagentPanel } from './AgentSubagentPanel';
 import { AgentSchedulePanel } from './AgentSchedulePanel';
@@ -23,7 +25,7 @@ import type { AgentMessage, AgentPermissionAsk } from '../../../../shared/agent-
 import type { TerminalBackground } from '../../../../shared/types';
 import type { SlideshowFrame } from '../../hooks/use-slideshow';
 
-type AgentView = 'agent' | 'sessions' | 'settings';
+type AgentView = 'agent' | 'sessions' | 'images' | 'settings';
 
 /** Stable empty list, so a pane with no thread does not resubscribe every render. */
 const EMPTY_TODOS: AgentTodoItem[] = [];
@@ -46,6 +48,10 @@ const RefocusDetail = z.object({ paneId: z.string() });
 const TABS = [
   { value: 'agent', label: 'Agent', Icon: Bot },
   { value: 'sessions', label: 'Sessions', Icon: History },
+  // Between the conversations and the settings, because it is the same kind of
+  // thing as the sessions list - something the pane has produced and can go
+  // back to - rather than something that configures it.
+  { value: 'images', label: 'Images', Icon: Images },
   { value: 'settings', label: 'Settings', Icon: SlidersHorizontal }
 ] as const satisfies ReadonlyArray<{ value: AgentView; label: string; Icon: typeof Bot }>;
 
@@ -70,6 +76,26 @@ export function AgentPane({
   slideshowFrame?: SlideshowFrame;
 }): React.JSX.Element {
   const [view, setView] = useState<AgentView>('agent');
+  /*
+   * A picture picked out of the gallery, waiting for the composer to exist.
+   *
+   * It cannot be handed over on the click. The gallery and the composer are
+   * alternatives - showing one unmounts the other - so at the moment the button
+   * is pressed there is nothing listening, and dispatching then would drop the
+   * picture on the floor. Held instead until the switch has actually happened:
+   * a child's effects run before its parent's, so by the time this fires the
+   * composer is mounted and listening.
+   */
+  const [pendingReference, setPendingReference] = useState<string | null>(null);
+  useEffect(() => {
+    if (pendingReference === null) return;
+    if (view !== 'agent') {
+      setView('agent');
+      return;
+    }
+    attachToComposer(paneId, pendingReference);
+    setPendingReference(null);
+  }, [pendingReference, view, paneId]);
   const loadModels = useAgentStore((s) => s.loadModels);
   const loadKey = useAgentStore((s) => s.loadKey);
   const openSession = useAgentStore((s) => s.openSession);
@@ -235,6 +261,7 @@ export function AgentPane({
             <AgentSessionsTab paneId={paneId} cwd={cwd} onResumed={() => setView('agent')} />
           </div>
         )}
+        {view === 'images' && <AgentGalleryTab onUseAsReference={setPendingReference} />}
         {view === 'settings' && (
           <div className="min-h-0 flex-1 overflow-y-auto">
             <AgentSettingsPanel cwd={cwd} />

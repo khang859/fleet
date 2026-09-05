@@ -45,6 +45,8 @@ import { buildTabNesting } from '../lib/tab-nesting';
 import { EnvSyncBadge } from './env-sync/EnvSyncBadge';
 import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 import { SessionsTabCard } from './sessions/SessionsTabCard';
+import { ScratchTabCard } from './agent/ScratchTabCard';
+import { isScratchTab } from '../lib/scratch';
 import { useSettingsStore } from '../store/settings-store';
 import { TOGGLEABLE_TOOLS } from '../../../shared/tools';
 
@@ -545,8 +547,12 @@ export function Sidebar({
   // Agent panes get their own pinned section, so they are filtered out of the
   // scrolling tab list rather than listed twice. One pass feeds both the rows
   // and the off-screen summary above them.
+  //
+  // Scratch is an agent tab too, and it is deliberately not one of these: it is
+  // pinned under Tools with the rest of the things that belong to no project,
+  // and a row in both places would make one conversation look like two.
   const agentRows = workspace.tabs
-    .filter((t) => t.type === 'agent')
+    .filter((t) => t.type === 'agent' && !isScratchTab(t))
     .map((tab) => {
       const paneIds = collectPaneIds(tab.splitRoot);
       return {
@@ -1737,6 +1743,14 @@ export function Sidebar({
                   onClick={() => setActiveTab(tab.id)}
                 />
               ))}
+            {/* Scratch tab (pinned, not closeable) */}
+            {workspace.tabs.filter(isScratchTab).map((tab) => (
+              <ScratchTabCard
+                key={tab.id}
+                isActive={tab.id === activeTabId}
+                onClick={() => setActiveTab(tab.id)}
+              />
+            ))}
           </>
         )}
       </div>

@@ -30,6 +30,7 @@ import {
 import { addRound } from '../../shared/agent-spend';
 import { nextStreak, renderTodoBlock, type AgentTodoItem } from '../../shared/agent-todos';
 import { attachmentWireParts, imageWireParts } from './attachments';
+import { SCRATCH_DIR } from './scratch-dir';
 import { expandCommand } from './commands/expand';
 import { toDataUrl } from './image-kinds';
 import {
@@ -248,6 +249,24 @@ export function toReasoningParam(config: AgentModelConfig): ReasoningParam | nul
   if (config.reasoningEffort !== null) return { effort: config.reasoningEffort };
   if (config.reasoningEnabled !== null) return { enabled: config.reasoningEnabled };
   return null;
+}
+
+/**
+ * The working folder, as the model should read it.
+ *
+ * The scratch folder is a real directory and every tool treats it as one, but
+ * the prompt line naming it reads exactly like a project's path, and a model
+ * told it is working in `~/.fleet/scratch` will go looking for the codebase and
+ * the conventions that a path like that implies. Saying what the folder is costs
+ * one clause and saves a turn spent hunting for something that was never there.
+ *
+ * Only the prose changes. Every tool call, every sandbox check and every session
+ * header still uses the real, undecorated path.
+ */
+function promptCwd(cwd: string): string {
+  return cwd === SCRATCH_DIR
+    ? `${cwd} (Fleet's scratch space, not a project: no repository, no codebase, nothing here is a deliverable)`
+    : cwd;
 }
 
 /**
@@ -963,7 +982,7 @@ export class AgentService {
     const env = await readEnvironment(req.cwd, ctx.model);
     const messages = await toWireHistory(
       req,
-      buildSystemPrompt(req.cwd, ctx.settings.systemPrompt, {
+      buildSystemPrompt(promptCwd(req.cwd), ctx.settings.systemPrompt, {
         webFetch: ctx.settings.webFetch.enabled,
         env,
         image: imageModel !== null,
@@ -1335,7 +1354,7 @@ export class AgentService {
           messages: [
             {
               role: 'system',
-              content: buildSystemPrompt(run.cwd, run.definition.systemPrompt, {
+              content: buildSystemPrompt(promptCwd(run.cwd), run.definition.systemPrompt, {
                 env,
                 // A child is never given the image tool, an MCP server, or a
                 // subagent of its own. Skills and memory are the exception -

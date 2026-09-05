@@ -138,6 +138,12 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     other: { key: 'T', ctrl: true, shift: true }
   },
   {
+    id: 'open-scratch',
+    label: 'Open Scratch chat',
+    mac: { key: 'J', meta: true, shift: true },
+    other: { key: 'J', ctrl: true, shift: true }
+  },
+  {
     id: 'agent-overview',
     label: 'Agent overview',
     mac: { key: 'A', meta: true, shift: true },

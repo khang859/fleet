@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, Images, RotateCcw, Wallpaper, X, ZoomIn, ZoomOut } from 'lucide-react';
+import {
+  Check,
+  Copy,
+  Download,
+  FolderOpen,
+  Images,
+  ImagePlus,
+  RotateCcw,
+  Wallpaper,
+  X,
+  ZoomIn,
+  ZoomOut
+} from 'lucide-react';
 import {
   TransformComponent,
   TransformWrapper,
@@ -8,6 +20,12 @@ import {
 } from 'react-zoom-pan-pinch';
 import { Overlay } from '../Overlay';
 import { addToSlideshow, setAsBackground } from '../../lib/background-actions';
+import {
+  copyImageToClipboard,
+  revealImage,
+  saveImageAs,
+  startImageDrag
+} from '../../lib/image-export-actions';
 
 /** How far in the viewer will go. Past this a generated image is only pixels. */
 const MAX_SCALE = 8;
@@ -56,20 +74,112 @@ export function AgentImage({
           aria-label={`View full size: ${alt}`}
           className="block w-fit max-w-full cursor-zoom-in overflow-hidden rounded-lg border border-fleet-border focus-ring"
         >
-          <img src={src} alt={alt} className="block max-h-80 w-auto max-w-full object-contain" />
+          {/* Draggable, so the picture can go straight into a folder or another
+              app the way one from a browser would. `preventDefault` hands the
+              gesture to Electron: the OS drags the real file off disk, rather
+              than Chromium dragging a `file://` URL that most drop targets
+              refuse. */}
+          <img
+            src={src}
+            alt={alt}
+            draggable={path !== undefined}
+            onDragStart={(e) => {
+              if (path === undefined) return;
+              e.preventDefault();
+              void startImageDrag(path);
+            }}
+            className="block max-h-80 w-auto max-w-full object-contain"
+          />
         </button>
         {path !== undefined && (
           <div className="absolute right-2 top-2 flex items-center gap-0.5 rounded-md border border-white/10 bg-black/60 p-0.5 opacity-0 backdrop-blur-sm transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <ExportActions path={path} />
+            <span aria-hidden className="mx-0.5 h-4 w-px bg-white/15" />
             <BackgroundActions path={path} />
           </div>
         )}
       </div>
 
-      <Overlay open={zoomed} onClose={() => setZoomed(false)} panelClassName="relative">
-        <TransformWrapper maxScale={MAX_SCALE} doubleClick={{ mode: 'toggle', step: 1 }}>
-          <Viewer src={src} alt={alt} path={path} onClose={() => setZoomed(false)} />
-        </TransformWrapper>
-      </Overlay>
+      <AgentImageOverlay
+        open={zoomed}
+        src={src}
+        alt={alt}
+        path={path}
+        onClose={() => setZoomed(false)}
+      />
+    </>
+  );
+}
+
+/**
+ * One picture, opened over everything, with its controls.
+ *
+ * Its own export because the gallery opens the same thing from a grid rather
+ * than from a transcript row, and a second viewer would be a second set of
+ * answers to what zooming, saving and closing mean.
+ *
+ * `caption` is what the opener knows about the picture and the viewer cannot:
+ * the transcript has the prompt on the row underneath already, the gallery has
+ * to go and read it. Nothing is drawn when there is none.
+ */
+export function AgentImageOverlay({
+  open,
+  src,
+  alt,
+  path,
+  caption,
+  extraActions,
+  onClose
+}: {
+  open: boolean;
+  src: string;
+  alt: string;
+  path?: string;
+  caption?: React.ReactNode;
+  /** Buttons only one opener has, drawn ahead of the shared ones. */
+  extraActions?: React.ReactNode;
+  onClose: () => void;
+}): React.JSX.Element {
+  return (
+    <Overlay open={open} onClose={onClose} panelClassName="relative">
+      <TransformWrapper maxScale={MAX_SCALE} doubleClick={{ mode: 'toggle', step: 1 }}>
+        <Viewer
+          src={src}
+          alt={alt}
+          path={path}
+          caption={caption}
+          extraActions={extraActions}
+          onClose={onClose}
+        />
+      </TransformWrapper>
+    </Overlay>
+  );
+}
+
+/**
+ * Getting the picture out of Fleet.
+ *
+ * First in the bar, ahead of the background actions, because these are what
+ * someone wants from an image far more often than a desktop wallpaper: a
+ * generated picture lives inside the conversation that made it and is deleted
+ * with it, so leaving without saving is losing it.
+ *
+ * Three rather than one because they are three different destinations, and
+ * making the other two reachable only through the first would mean a file
+ * dialog stands between the user and pasting a picture into a chat window.
+ */
+function ExportActions({ path }: { path: string }): React.JSX.Element {
+  return (
+    <>
+      <Tool label="Save image as..." onClick={() => void saveImageAs(path)}>
+        <Download size={15} />
+      </Tool>
+      <Tool label="Copy image" onClick={() => void copyImageToClipboard(path)}>
+        <ImagePlus size={15} />
+      </Tool>
+      <Tool label="Show in folder" onClick={() => void revealImage(path)}>
+        <FolderOpen size={15} />
+      </Tool>
     </>
   );
 }
@@ -110,11 +220,15 @@ function Viewer({
   src,
   alt,
   path,
+  caption,
+  extraActions,
   onClose
 }: {
   src: string;
   alt: string;
   path?: string;
+  caption?: React.ReactNode;
+  extraActions?: React.ReactNode;
   onClose: () => void;
 }): React.JSX.Element {
   const { zoomIn, zoomOut, resetTransform } = useControls();
@@ -127,8 +241,16 @@ function Viewer({
   return (
     <>
       <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-md border border-white/10 bg-black/60 p-0.5 backdrop-blur-sm">
+        {extraActions !== undefined && (
+          <>
+            {extraActions}
+            <span aria-hidden className="mx-0.5 h-4 w-px bg-white/15" />
+          </>
+        )}
         {path !== undefined && (
           <>
+            <ExportActions path={path} />
+            <span aria-hidden className="mx-0.5 h-4 w-px bg-white/15" />
             <BackgroundActions path={path} />
             <CopyPath path={path} />
             <span aria-hidden className="mx-0.5 h-4 w-px bg-white/15" />
@@ -157,6 +279,16 @@ function Viewer({
       >
         <img src={src} alt={alt} className="block max-h-[88vh] max-w-[92vw] object-contain" />
       </TransformComponent>
+
+      {/* Over the picture rather than under it: the panel is sized to the image,
+          so a bar below would push a tall one off the screen to make room for
+          text about it. Pointer-events off so it cannot swallow a drag that
+          started on the picture behind it. */}
+      {caption !== undefined && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-lg bg-gradient-to-t from-black/80 to-transparent px-4 pt-8 pb-3">
+          {caption}
+        </div>
+      )}
     </>
   );
 }

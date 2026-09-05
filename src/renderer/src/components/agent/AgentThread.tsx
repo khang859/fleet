@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AttachDetail, PrefillDetail, prefillComposer } from './composer-events';
 import {
   ArrowUp,
   Bot,
@@ -50,6 +51,7 @@ import { reasoningLabel } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
 import { AgentSpendMeter } from './AgentSpendMeter';
 import { AgentLocation } from './AgentLocation';
+import { scratchDir } from '../../lib/scratch';
 import { useGitHead } from './use-git-head';
 import { usePromptHistory } from './use-prompt-history';
 import type { HistoryDirection } from '../../../../shared/agent-history';
@@ -268,7 +270,7 @@ export function AgentThread({
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       {messages.length === 0 ? (
-        <EmptyState />
+        <EmptyState scratch={cwd === scratchDir()} paneId={paneId} />
       ) : (
         <Transcript
           messages={messages}
@@ -344,6 +346,7 @@ export function AgentThread({
         )}
 
         <Composer
+          paneId={paneId}
           disabled={model === null}
           streaming={streaming}
           asking={ask !== null}
@@ -371,7 +374,11 @@ export function AgentThread({
           branch={gitHead?.branch ?? null}
         />
 
-        <AgentLocation cwd={cwd} head={gitHead} />
+        <AgentLocation
+          cwd={cwd}
+          head={gitHead}
+          label={cwd === scratchDir() ? 'Scratch' : undefined}
+        />
       </div>
     </div>
   );
@@ -380,16 +387,73 @@ export function AgentThread({
 /**
  * No folder here: the location line under the composer names it, and does so
  * for the whole life of the pane rather than only until the first message.
+ *
+ * The scratch pane says more, because it has to. A project pane is opened on
+ * purpose and the user already knows what it is for; scratch is the one that
+ * gets reached for with nothing particular in mind, and a bare word over an
+ * empty box does not answer "what do I type here". The chips answer it by
+ * example, and by writing into the composer rather than sending, so the first
+ * thing that happens is still the user's own sentence.
  */
-function EmptyState(): React.JSX.Element {
+function EmptyState({ scratch, paneId }: { scratch: boolean; paneId: string }): React.JSX.Element {
+  if (!scratch) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
+        <span className="text-sm font-medium uppercase tracking-[0.3em] text-fleet-text-subtle">
+          Agent
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
-      <span className="text-sm font-medium uppercase tracking-[0.3em] text-fleet-text-subtle">
-        Agent
-      </span>
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 px-6">
+      {/* The same scrim an assistant turn sits on, and for the same reason: this
+          is the one bit of prose in the pane with no ground of its own, and over
+          a background picture a heading in muted text disappears into it. Both
+          tokens are zero without an image, so a plain theme keeps the bare
+          centred column. The chips below carry their own surface already. */}
+      <div
+        className="flex flex-col items-center gap-1.5 rounded-xl"
+        style={{ background: 'var(--fleet-turn-scrim)', padding: 'var(--fleet-turn-pad)' }}
+      >
+        {/* A step brighter than the project pane's watermark label. That one is
+            a single word nobody needs to read; this is a heading with a line of
+            prose under it, and muted-on-glass is the pairing that disappears
+            first over a background picture. */}
+        <span className="text-sm font-medium uppercase tracking-[0.3em] text-fleet-text-secondary">
+          Scratch
+        </span>
+        <span className="text-center text-xs text-fleet-text-muted">
+          A conversation with no project attached.
+        </span>
+      </div>
+      <div className="flex max-w-md flex-wrap justify-center gap-1.5">
+        {SCRATCH_CHIPS.map((chip) => (
+          <button
+            key={chip.label}
+            type="button"
+            onClick={() => prefillComposer(paneId, chip.prompt)}
+            className="rounded-full border border-fleet-border bg-fleet-glass-surface px-3 py-1 text-xs text-fleet-text-secondary transition-colors hover:border-fleet-border-strong hover:bg-fleet-glass-surface-2 hover:text-fleet-text focus-ring"
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
+
+/**
+ * What the chips write. Openings rather than finished requests, deliberately:
+ * each one leaves the caret in a sentence the user still has to finish, which is
+ * the difference between a suggestion and a button that guesses what they meant.
+ */
+const SCRATCH_CHIPS: ReadonlyArray<{ label: string; prompt: string }> = [
+  { label: 'Generate an image', prompt: 'Generate an image of ' },
+  { label: 'Ask a question', prompt: '' },
+  { label: 'Read a web page', prompt: 'Read this page and summarise it: ' }
+];
 
 function Transcript({
   messages,
@@ -882,6 +946,7 @@ function Notice({ children }: { children: React.ReactNode }): React.JSX.Element 
 }
 
 function Composer({
+  paneId,
   disabled,
   streaming,
   asking,
@@ -902,6 +967,8 @@ function Composer({
   /** Stopped on a question, which is the one thing typing here cannot answer. */
   asking: boolean;
   cwd: string;
+  /** Which pane this composer belongs to, so a prefill meant for it lands here. */
+  paneId: string;
   /** The pane's git branch, fed to the dictation recognition hints. */
   branch: string | null;
   /** Run the command being asked about, once. What Enter means while it is up. */
@@ -936,6 +1003,30 @@ function Composer({
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const history = usePromptHistory(cwd);
+
+  /*
+   * A chip in the empty state asking for its words. Scoped by pane id, because
+   * every open agent pane has a composer listening and only one of them was
+   * clicked. Counted as a draft for the same reason typing is: hands are on the
+   * composer, so a permission question waiting to be asked keeps waiting.
+   */
+  useEffect(() => {
+    const handler = (event: Event): void => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = PrefillDetail.safeParse(event.detail);
+      if (!detail.success || detail.data.paneId !== paneId) return;
+      setText(detail.data.text);
+      onDraft();
+      const el = ref.current;
+      if (el === null) return;
+      el.focus();
+      // After the value lands, so the caret goes to the end of the new text
+      // rather than to where it was in the empty box.
+      requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length));
+    };
+    document.addEventListener('fleet:agent-prefill', handler);
+    return () => document.removeEventListener('fleet:agent-prefill', handler);
+  }, [paneId, onDraft]);
 
   const commands = useAgentCommands(cwd, isSlashQuery(text) && !menuDismissed);
   const slashMenu = agentSlashMenu(text, commands, menuDismissed);
@@ -1032,6 +1123,24 @@ function Composer({
     },
     [cwd, threadId, onDraft]
   );
+
+  /*
+   * A picture picked out of the gallery, arriving as an attachment. Scoped by
+   * pane id for the same reason the prefill is, and routed through `attach` so
+   * a file the store no longer holds is refused the way every other attachment
+   * is - with a line under the composer rather than silently nothing.
+   */
+  useEffect(() => {
+    const handler = (event: Event): void => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = AttachDetail.safeParse(event.detail);
+      if (!detail.success || detail.data.paneId !== paneId) return;
+      void attach({ kind: 'path', path: detail.data.path });
+      ref.current?.focus();
+    };
+    document.addEventListener('fleet:agent-attach', handler);
+    return () => document.removeEventListener('fleet:agent-attach', handler);
+  }, [paneId, attach]);
 
   /** Files from a paste, a drop or the picker - all the same thing from here. */
   const attachFiles = useCallback(

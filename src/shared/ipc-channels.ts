@@ -200,6 +200,15 @@ export const IPC_CHANNELS = {
   // that happens to look like the answer, and it is thrown away when the real
   // one lands. Nothing depends on any arriving.
   AGENT_IMAGE_PARTIAL: 'agent:image-partial',
+  AGENT_IMAGE_SAVE_AS: 'agent:image-save-as',
+  AGENT_IMAGE_REVEAL: 'agent:image-reveal',
+  AGENT_IMAGE_START_DRAG: 'agent:image-start-drag',
+  // Every picture the agent has made, across every conversation, and what the
+  // conversation behind one still says about it. Two channels rather than one
+  // because the second replays a session file, and paying that per thumbnail
+  // would make scrolling the grid the slowest thing in the app.
+  AGENT_GALLERY_LIST: 'agent:gallery-list',
+  AGENT_GALLERY_META: 'agent:gallery-meta',
   // A command the agent cannot run itself - a login, a password prompt, an
   // interactive picker - passed to the renderer to type into a terminal pane
   // beside the agent, where there is a person and a real tty.
