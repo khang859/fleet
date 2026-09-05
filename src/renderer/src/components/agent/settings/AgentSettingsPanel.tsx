@@ -10,6 +10,7 @@ import type { AgentWebSearchConfig } from '../../../../../shared/agent-web-searc
 import type { AgentHostedFetchConfig } from '../../../../../shared/agent-hosted-fetch';
 import type { AgentFusionConfig } from '../../../../../shared/agent-fusion';
 import type { AgentAdvisorConfig } from '../../../../../shared/agent-advisor';
+import type { AgentToolSearchConfig } from '../../../../../shared/agent-tool-search';
 import { AGENT_TOOL_MODES, DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
 import {
   AGENT_VOICE_MODELS,
@@ -17,6 +18,7 @@ import {
 } from '../../../../../shared/agent-voice';
 import { useAgentStore } from '../../../store/agent-store';
 import { useSettingsStore } from '../../../store/settings-store';
+import { useAgentMcpStore } from '../../../store/agent-mcp-store';
 import { SectionShell, FieldGroup, Field } from './primitives';
 import { SecretInput } from './SecretInput';
 import { AgentRoleSettings } from './AgentRoleSettings';
@@ -24,6 +26,7 @@ import { AgentImageSettings } from './AgentImageSettings';
 import { AgentWebSettings } from './AgentWebSettings';
 import { AgentWebSearchSettings } from './AgentWebSearchSettings';
 import { AgentHostedFetchSettings } from './AgentHostedFetchSettings';
+import { AgentToolSearchSettings } from './AgentToolSearchSettings';
 import { AgentFusionSettings } from './AgentFusionSettings';
 import { AgentAdvisorSettings } from './AgentAdvisorSettings';
 import { SystemPromptField } from './SystemPromptField';
@@ -84,6 +87,12 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
   }, [loadModels, loadKey]);
 
   const agent = settings?.ai.agent ?? DEFAULT_AGENT_SETTINGS;
+  // Read so the deferral card can say whether it would do anything on this
+  // machine. Connected only: a server that is signed out or broken offers no
+  // tools, so counting it would promise a saving that is not there.
+  const connectedServers = useAgentMcpStore(
+    (s) => s.statuses.filter((status) => status.state === 'connected').length
+  );
   const models = useMemo(() => catalog?.models ?? [], [catalog]);
   const codingModels = useMemo(() => models.filter((m) => m.supportsTools), [models]);
   // Counted apart from the download below, because the two halves of this list
@@ -142,6 +151,10 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
     void updateSettings({ ai: { agent: { advisor: { ...agent.advisor, ...patch } } } });
   };
 
+  const patchToolSearch = (patch: Partial<AgentToolSearchConfig>): void => {
+    void updateSettings({ ai: { agent: { toolSearch: { ...agent.toolSearch, ...patch } } } });
+  };
+
   const patchWebSearch = (patch: Partial<AgentWebSearchConfig>): void => {
     void updateSettings({ ai: { agent: { webSearch: { ...agent.webSearch, ...patch } } } });
   };
@@ -198,6 +211,15 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
           />
           <AgentAdvisorSettings models={models} config={agent.advisor} onChange={patchAdvisor} />
           <AgentFusionSettings models={models} config={agent.fusion} onChange={patchFusion} />
+          {/* Last in the group, because it is the only card here that changes
+              nothing about what the agent can do - only about when it is told.
+              It also reads the server list, which is configured elsewhere. */}
+          <AgentToolSearchSettings
+            config={agent.toolSearch}
+            onChange={patchToolSearch}
+            serverCount={connectedServers}
+            hasKey={keyPresent}
+          />
         </FieldGroup>
 
         <FieldGroup title="Sessions">

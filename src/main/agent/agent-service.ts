@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
+import { createLogger } from '../logger';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type {
   AgentAttachment,
@@ -36,6 +37,7 @@ import { toDataUrl } from './image-kinds';
 import {
   buildImageSpec,
   buildTaskSpec,
+  toolDefinitionTokens,
   toolSpecsFor,
   type AgentImageGenerator,
   type AgentMcpCaller,
@@ -90,6 +92,8 @@ import { webSearchSpec } from '../../shared/agent-web-search';
 import { hostedFetchSpec } from '../../shared/agent-hosted-fetch';
 import { advisorSpec } from '../../shared/agent-advisor';
 import { fusionSpec } from '../../shared/agent-fusion';
+import { splitDeferred, toolSearchSpec } from '../../shared/agent-tool-search';
+import { streamResponse } from './responses';
 import { isFusionTurn } from './commands/expand';
 import { runAgentTool } from './tools/run';
 import {
@@ -102,6 +106,8 @@ import {
 import { generateImage } from './images';
 import { capResult, fetchUrl as defaultFetchUrl, type UrlFetch } from './web';
 import type { PermissionGate } from './permissions/gate';
+
+const log = createLogger('agent');
 
 /**
  * One turn of the agent: take the pane's transcript, stream a reply, run
@@ -138,6 +144,8 @@ type Deps = {
   schedules: ScheduleStore;
   /** Injectable for tests; defaults to the real OpenRouter call. */
   stream?: typeof streamCompletion;
+  /** Swapped in tests. The Responses transport, used only when tools defer. */
+  streamResponses?: typeof streamResponse;
   /** Injectable for tests; defaults to the real OpenRouter image call. */
   image?: typeof generateImage;
   /**
@@ -182,6 +190,14 @@ type RoundsRequest = {
   /** The wire, ready to send. Appended to as the rounds go. */
   messages: AgentWireMessage[];
   tools: ToolSpec[];
+  /**
+   * Tools the model is told about only if it searches for them.
+   *
+   * Empty everywhere but a turn on OpenRouter with deferral switched on, which
+   * is also the only case that reaches the Responses transport. See
+   * `agent-tool-search.ts`.
+   */
+  deferredTools: ToolSpec[];
   /**
    * Tools OpenRouter runs itself, for the rounds of this run only.
    *
@@ -405,12 +421,16 @@ const SERVER_TOOL_MAX_STEPS = 10;
  */
 export function turnServerTools(
   settings: AgentSettings,
-  options: { fusion: boolean } = { fusion: false }
+  options: { fusion: boolean; toolSearch?: boolean } = { fusion: false }
 ): ServerToolSpec[] {
   return [
     advisorSpec(settings.advisor),
     webSearchSpec(settings.webSearch),
     hostedFetchSpec(settings.hostedFetch),
+    // Only where something is actually deferred. Sent on a request with no
+    // deferred tool it is a tool that can only ever answer "nothing found",
+    // which costs a round to learn.
+    options.toolSearch === true ? toolSearchSpec(settings.toolSearch) : null,
     // Last, and only on the turn that asked for it. A panel is nine model calls
     // on one use, so it is armed by the user typing `/fusion` and by nothing
     // else - there is no setting that can put it on an ordinary turn. Last
@@ -1056,6 +1076,12 @@ export class AgentService {
     // call it made and the answer it gets.
     const mcp = this.deps.mcp ?? null;
     const mcpSpecs = mcp?.getToolSpecs() ?? [];
+    // Deferral needs OpenRouter's executor and its Responses endpoint, so a
+    // local target keeps every tool stated in full whatever the setting says.
+    // There is nothing to fall back to and nothing to warn about: the user is
+    // simply on an endpoint where the saving does not exist.
+    const deferring = ctx.settings.toolSearch.enabled && ctx.target.serverTools;
+    const { loaded: mcpLoaded, deferred } = splitDeferred(mcpSpecs, deferring);
     const subagents = await this.deps.subagents.list(req.cwd);
     const taskSpec = buildTaskSpec(subagents);
     // Read per turn for the reason subagents are: the file is the interface, and
@@ -1107,6 +1133,10 @@ export class AgentService {
         // prompt it is handed, and it is present exactly on the turns the panel
         // is.
         fusion: panel === false ? undefined : panel,
+        // Only when something is actually being held back. On a turn with no
+        // servers connected the block would tell the model to search a list
+        // that is empty, which costs a round to find out.
+        toolSearch: deferred.length > 0,
         env,
         image: imageModel !== null,
         mcp: mcpSpecs.length > 0,
@@ -1126,21 +1156,42 @@ export class AgentService {
       wireTime(env.timeZone)
     );
 
+    const tools = toolSpecsFor({
+      image: imageSpec,
+      webFetch: ctx.settings.webFetch.enabled,
+      mcp: mcpLoaded,
+      task: taskSpec,
+      skill: skillSpec,
+      memory: memorySpec
+    });
+    // What the tool list costs before the conversation says anything, logged
+    // once per turn because it is charged once per round: a turn of eight
+    // rounds pays this eight times. It is the figure deferral is judged
+    // against, and it moves with what the user has connected rather than with
+    // anything Fleet ships, so it has to be read from a real machine.
+    log.debug('tool definitions', {
+      tools: tools.length,
+      mcpTools: mcpSpecs.length,
+      deferred: deferred.length,
+      tokens: toolDefinitionTokens(tools),
+      deferredTokens: toolDefinitionTokens(deferred)
+    });
+
     await this.runRounds(
       {
         streamId: req.streamId,
         threadId: req.threadId,
         cwd: req.cwd,
         messages,
-        tools: toolSpecsFor({
-          image: imageSpec,
-          webFetch: ctx.settings.webFetch.enabled,
-          mcp: mcpSpecs,
-          task: taskSpec,
-          skill: skillSpec,
-          memory: memorySpec
+        tools,
+        deferredTools: deferred,
+        serverTools: turnServerTools(ctx.settings, {
+          fusion: panel === 'available',
+          // On what is actually held back rather than on the setting. With
+          // deferral on and no server connected the tool could only ever
+          // answer "nothing found", and the model would spend a round asking.
+          toolSearch: deferred.length > 0
         }),
-        serverTools: turnServerTools(ctx.settings, { fusion: panel === 'available' }),
         serverToolStops:
           panel === 'available'
             ? // A review turn does not take the search brake. That figure bounds
@@ -1256,6 +1307,7 @@ export class AgentService {
         maxTokens: config.maxTokens,
         reasoning: toReasoningParam(config),
         tools,
+        deferredTools: run.deferredTools,
         serverTools: run.serverTools,
         serverToolStops: run.serverToolStops,
         onDelta: (delta) => {
@@ -1558,6 +1610,9 @@ export class AgentService {
           // person, so its spending is one step further from anybody who could
           // have decided to allow it. What a child researches on the public web
           // it researches through the parent, which asked it a question.
+          // A child is not given an MCP server either, so it has nothing that
+          // could be deferred and no search to make.
+          deferredTools: [],
           serverTools: [],
           serverToolStops: null,
           mcp: null,
@@ -1780,6 +1835,7 @@ export class AgentService {
       maxTokens: number | null;
       reasoning: ReasoningParam | null;
       tools?: ToolSpec[];
+      deferredTools?: ToolSpec[];
       serverTools?: ServerToolSpec[];
       serverToolStops?: ServerToolStop[] | null;
       onDelta: (text: string) => void;
@@ -1787,7 +1843,17 @@ export class AgentService {
       onUsage: (usage: AgentUsage) => void;
     }
   ): Promise<StreamOutcome> {
-    const stream = this.deps.stream ?? streamCompletion;
+    // The transport follows the request rather than a setting, and this is the
+    // one line that chooses it. A deferred tool is only ever populated on a
+    // turn against OpenRouter with deferral on, and `openrouter:tool_search` is
+    // a 400 on Chat Completions - so the presence of one is exactly the
+    // condition that needs the other endpoint. Everything else in the app,
+    // including every compaction and every subagent, keeps the transport it
+    // has always used.
+    const deferring = (req.deferredTools?.length ?? 0) > 0;
+    const stream = deferring
+      ? (this.deps.streamResponses ?? streamResponse)
+      : (this.deps.stream ?? streamCompletion);
     return stream({
       target: ctx.target,
       model: ctx.model,

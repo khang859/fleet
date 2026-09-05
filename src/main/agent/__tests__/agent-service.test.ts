@@ -428,6 +428,63 @@ describe('turnServerTools', () => {
       'openrouter:fusion'
     ]);
   });
+
+  /*
+   * Tool search is asked for by the caller rather than read from the settings
+   * alone, because a request with nothing deferred has nothing for it to find:
+   * the tool could only answer "nothing", and would cost a round to say so.
+   */
+  it('leaves tool search out unless the caller says something is deferred', () => {
+    const on = { ...settings, toolSearch: { enabled: true, maxResults: 5 } };
+    expect(turnServerTools(on).map((t) => t.type)).not.toContain('openrouter:tool_search');
+    expect(turnServerTools(on, { fusion: false, toolSearch: true }).map((t) => t.type)).toContain(
+      'openrouter:tool_search'
+    );
+  });
+
+  it('leaves tool search out when the setting is off, whatever the caller asks', () => {
+    expect(
+      turnServerTools(settings, { fusion: false, toolSearch: true }).map((t) => t.type)
+    ).not.toContain('openrouter:tool_search');
+  });
+
+  /* Same rule as the hosted reader: nothing may displace the advisor. */
+  it('adds tool search after the advisor, never before it', () => {
+    const on = turnServerTools(
+      { ...settings, toolSearch: { enabled: true, maxResults: 5 } },
+      { fusion: false, toolSearch: true }
+    );
+    expect(on[0]?.type).toBe('openrouter:advisor');
+    expect(on.map((t) => t.type)).toContain('openrouter:tool_search');
+  });
+});
+
+/*
+ * The block that stops a deferred tool list reading as a short one.
+ *
+ * Without it the failure is silent and expensive: the model reads the twenty
+ * tools it can see, concludes there is no way to reach the user's issue
+ * tracker, and says so - while the tool sits one search away.
+ */
+describe('buildSystemPrompt: deferred tools', () => {
+  it('says the list is incomplete only when something is actually held back', () => {
+    const off = buildSystemPrompt('/repo', null, { image: false, mcp: true });
+    const on = buildSystemPrompt('/repo', null, { image: false, mcp: true, toolSearch: true });
+    expect(off).not.toContain('openrouter:tool_search');
+    expect(on).toContain('openrouter:tool_search');
+  });
+
+  /*
+   * Read together or not at all: the MCP block says what connected servers are
+   * for, and this one says most of them are not in the list. Apart, the first
+   * reads as a complete account.
+   */
+  it('follows the block about connected servers', () => {
+    const on = buildSystemPrompt('/repo', null, { image: false, mcp: true, toolSearch: true });
+    const servers = on.indexOf('come from servers the user connected');
+    expect(servers).toBeGreaterThan(-1);
+    expect(on.indexOf('## Tools you have not been shown')).toBeGreaterThan(servers);
+  });
 });
 
 /**

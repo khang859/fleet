@@ -63,7 +63,7 @@ const RETRY_STATUS = new Set([408, 429, 500, 502, 503, 504]);
  * chunks once the stream is running. A single deadline over the whole thing
  * would cut off a long answer that was arriving perfectly well.
  */
-class IdleDeadline {
+export class IdleDeadline {
   private readonly controller = new AbortController();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private unlink: (() => void) | null = null;
@@ -269,6 +269,17 @@ export type StreamRequest = {
    * `CompletionsTarget`.
    */
   serverTools?: ServerToolSpec[];
+  /**
+   * Tools that may be withheld from the model until it searches for them.
+   *
+   * A separate field rather than a flag on each spec, because whether a tool
+   * can be withheld at all is a property of the transport rather than of the
+   * tool. On Chat Completions there is no such thing: these are appended to
+   * `tools` and stated in full like everything else, which is the correct
+   * degradation - the model is offered every tool, and only the saving is
+   * lost. See `agent-tool-search.ts`.
+   */
+  deferredTools?: ToolSpec[];
   /** When OpenRouter should wind up its own loop. Omitted ⇒ its 30-step default. */
   serverToolStops?: ServerToolStop[] | null;
   signal: AbortSignal;
@@ -513,10 +524,21 @@ const completionSchema = z.object({
  * has handed over its first delta the round is committed, and a failure after
  * that is the caller's to report rather than ours to paper over.
  */
-async function post(
+export async function post(
   target: CompletionsTarget,
   caller: AbortSignal | undefined,
   deadline: IdleDeadline,
+  /**
+   * The path under `baseUrl`, e.g. `/chat/completions` or `/responses`.
+   *
+   * A parameter rather than a constant because the Responses transport in
+   * `responses.ts` reuses this whole function - the retries, the backoff, the
+   * idle clock and the error envelope are the same for both endpoints, and
+   * only the path and the body differ. Two copies of the retry logic that
+   * drifted apart would be a worse outcome than this file exporting one more
+   * thing.
+   */
+  path: string,
   body: Record<string, unknown>
 ): Promise<Response> {
   const payload = JSON.stringify(body);
@@ -528,7 +550,7 @@ async function post(
 
     let res: Response;
     try {
-      res = await fetch(`${target.baseUrl}/chat/completions`, {
+      res = await fetch(`${target.baseUrl}${path}`, {
         method: 'POST',
         headers: {
           // Omitted rather than sent empty when there is no key. A local server
@@ -623,7 +645,7 @@ export async function completeOnce(
 ): Promise<{ text: string; usage: AgentUsage | null }> {
   const deadline = new IdleDeadline(req.signal, req.target.label);
   try {
-    const res = await post(req.target, req.signal, deadline, {
+    const res = await post(req.target, req.signal, deadline, '/chat/completions', {
       model: req.model,
       messages: req.messages,
       stream: false,
@@ -851,7 +873,7 @@ async function errorMessage(res: Response, label: string): Promise<string> {
 export async function streamCompletion(req: StreamRequest): Promise<StreamOutcome> {
   const deadline = new IdleDeadline(req.signal, req.target.label);
   try {
-    const res = await post(req.target, req.signal, deadline, {
+    const res = await post(req.target, req.signal, deadline, '/chat/completions', {
       model: req.model,
       messages: req.messages,
       stream: true,
@@ -929,7 +951,10 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
  * order.
  */
 function toolsBody(req: StreamRequest): Record<string, unknown> {
-  const functions = req.tools ?? [];
+  // Deferral needs the Responses API, so on this transport a deferred tool is
+  // simply a tool. Stating them all is the right failure: the turn costs what
+  // it costs today and nothing stops working.
+  const functions = [...(req.tools ?? []), ...(req.deferredTools ?? [])];
   const server = req.target.serverTools ? (req.serverTools ?? []) : [];
   const stops = server.length === 0 ? null : (req.serverToolStops ?? null);
   if (functions.length === 0 && server.length === 0) return {};

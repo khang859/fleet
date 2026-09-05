@@ -1,0 +1,40 @@
+data: {"type":"response.created","response":{"id":"gen-1788635433-c7TjABMfRfagTrnOo3Ur","object":"response","model":"openai/gpt-5.1-codex-mini","status":"in_progress","output":[],"error":null,"usage":null},"sequence_number":0}
+
+data: {"type":"response.in_progress","response":{"id":"gen-1788635433-c7TjABMfRfagTrnOo3Ur","object":"response","model":"openai/gpt-5.1-codex-mini","status":"in_progress","output":[],"error":null,"usage":null},"sequence_number":1}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"rs_0d9256fe1ec02f66016a9c6929c7608194b1b4698e682c83c3","type":"reasoning","status":"in_progress","summary":[]},"sequence_number":2}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"id":"rs_0d9256fe1ec02f66016a9c6929c7608194b1b4698e682c83c3","type":"reasoning","status":"completed","summary":[],"encrypted_content":"gAAAAABqnGku6CQsv5slWa7BIdR9q80Pd5lx9tYoD5OjqOKry4gKckUslWG-HrSP...TRUNCATED","format":"azure-openai-responses-v1"},"sequence_number":3}
+
+data: {"type":"response.output_item.added","output_index":1,"item":{"id":"st_tmp_t0magi1n2gp","type":"openrouter:tool_search","status":"in_progress"},"sequence_number":4}
+
+data: {"type":"response.output_item.done","output_index":1,"item":{"id":"st_tmp_t0magi1n2gp","type":"openrouter:tool_search","status":"completed","query":"widget"},"sequence_number":5}
+
+data: {"type":"response.output_item.added","output_index":2,"item":{"id":"rs_0d9256fe1ec02f66016a9c692fae088194af328482c66da4ab","type":"reasoning","status":"in_progress","summary":[]},"sequence_number":6}
+
+data: {"type":"response.output_item.done","output_index":2,"item":{"id":"rs_0d9256fe1ec02f66016a9c692fae088194af328482c66da4ab","type":"reasoning","status":"completed","summary":[],"encrypted_content":"gAAAAABqnGkxugUgwLv8_OWFNf6hSssZFE4s_KFAnhtWkAO900rslwvX81mOl_6i...TRUNCATED","format":"azure-openai-responses-v1"},"sequence_number":7}
+
+data: {"type":"response.output_item.added","output_index":3,"item":{"id":"fc_tmp_5wrf06ebt98","type":"function_call","status":"in_progress","call_id":"call_dpiOx0synYf3EeqAWcnlaCRB","name":"widget_registry_lookup","arguments":""},"sequence_number":8}
+
+data: {"type":"response.function_call_arguments.delta","output_index":3,"item_id":"fc_tmp_5wrf06ebt98","delta":"{\"","sequence_number":9}
+
+data: {"type":"response.function_call_arguments.delta","output_index":3,"item_id":"fc_tmp_5wrf06ebt98","delta":"serial","sequence_number":10}
+
+data: {"type":"response.function_call_arguments.delta","output_index":3,"item_id":"fc_tmp_5wrf06ebt98","delta":"\":\"","sequence_number":11}
+
+data: {"type":"response.function_call_arguments.delta","output_index":3,"item_id":"fc_tmp_5wrf06ebt98","delta":"ABC","sequence_number":12}
+
+data: {"type":"response.function_call_arguments.delta","output_index":3,"item_id":"fc_tmp_5wrf06ebt98","delta":"-","sequence_number":13}
+
+data: {"type":"response.function_call_arguments.delta","output_index":3,"item_id":"fc_tmp_5wrf06ebt98","delta":"123","sequence_number":14}
+
+data: {"type":"response.function_call_arguments.delta","output_index":3,"item_id":"fc_tmp_5wrf06ebt98","delta":"\"}","sequence_number":15}
+
+data: {"type":"response.function_call_arguments.done","output_index":3,"item_id":"fc_tmp_5wrf06ebt98","name":"widget_registry_lookup","arguments":"{\"serial\":\"ABC-123\"}","sequence_number":16}
+
+data: {"type":"response.output_item.done","output_index":3,"item":{"id":"fc_tmp_5wrf06ebt98","type":"function_call","status":"completed","call_id":"call_dpiOx0synYf3EeqAWcnlaCRB","name":"widget_registry_lookup","arguments":"{\"serial\":\"ABC-123\"}"},"sequence_number":17}
+
+data: {"type":"response.completed","response":{"id":"gen-1788635433-c7TjABMfRfagTrnOo3Ur","object":"response","created_at":1788635433,"model":"openai/gpt-5.1-codex-mini","status":"completed","completed_at":1788635443,"output":[{"id":"rs_0d9256fe1ec02f66016a9c6929c7608194b1b4698e682c83c3","type":"reasoning","status":"completed","summary":[],"encrypted_content":"gAAAAABqnGku6CQsv5slWa7BIdR9q80Pd5lx9tYoD5OjqOKry4gKckUslWG-HrSP...TRUNCATED","format":"azure-openai-responses-v1"},{"type":"openrouter:tool_search","id":"st_tmp_t0magi1n2gp","status":"completed","query":"widget"},{"id":"rs_0d9256fe1ec02f66016a9c692fae088194af328482c66da4ab","type":"reasoning","status":"completed","summary":[],"encrypted_content":"gAAAAABqnGkxugUgwLv8_OWFNf6hSssZFE4s_KFAnhtWkAO900rslwvX81mOl_6i...TRUNCATED","format":"azure-openai-responses-v1"},{"id":"fc_tmp_5wrf06ebt98","type":"function_call","status":"completed","call_id":"call_dpiOx0synYf3EeqAWcnlaCRB","name":"widget_registry_lookup","arguments":"{\"serial\":\"ABC-123\"}"}],"error":null,"incomplete_details":null,"tools":[{"type":"function","name":"glob","description":"Find files by path pattern.","parameters":{"type":"object","properties":{"pattern":{"type":"string"}},"required":["pattern"],"additionalProperties":false},"strict":null},{"type":"function","name":"widget_registry_lookup","description":"Look up a widget in the widget registry by its serial number.","parameters":{"type":"object","properties":{"serial":{"type":"string"}},"required":["serial"],"additionalProperties":false},"defer_loading":true,"strict":null}],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":3000,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":null,"text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_options":null,"usage":{"input_tokens":1865,"input_tokens_details":{"cached_tokens":0},"output_tokens":883,"output_tokens_details":{"reasoning_tokens":768},"total_tokens":2748,"cost":0.00223225,"cost_details":{"upstream_inference_cost":0.00223225,"upstream_inference_input_cost":0.00046625000000000003,"upstream_inference_output_cost":0.001766},"server_tool_use_details":{"tool_calls_requested":1,"tool_calls_executed":1}}},"sequence_number":18}
+
+data: [DONE]
+
