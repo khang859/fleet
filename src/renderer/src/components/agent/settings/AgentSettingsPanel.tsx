@@ -11,6 +11,11 @@ import type { AgentHostedFetchConfig } from '../../../../../shared/agent-hosted-
 import type { AgentFusionConfig } from '../../../../../shared/agent-fusion';
 import type { AgentAdvisorConfig } from '../../../../../shared/agent-advisor';
 import type { AgentToolSearchConfig } from '../../../../../shared/agent-tool-search';
+import type {
+  AgentCacheConfig,
+  AgentFallbackConfig,
+  AgentProviderConfig
+} from '../../../../../shared/agent-routing';
 import { AGENT_TOOL_MODES, DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
 import {
   AGENT_VOICE_MODELS,
@@ -27,6 +32,11 @@ import { AgentWebSettings } from './AgentWebSettings';
 import { AgentWebSearchSettings } from './AgentWebSearchSettings';
 import { AgentHostedFetchSettings } from './AgentHostedFetchSettings';
 import { AgentToolSearchSettings } from './AgentToolSearchSettings';
+import {
+  AgentCacheSettings,
+  AgentFallbackSettings,
+  AgentProviderSettings
+} from './AgentRoutingSettings';
 import { AgentFusionSettings } from './AgentFusionSettings';
 import { AgentAdvisorSettings } from './AgentAdvisorSettings';
 import { SystemPromptField } from './SystemPromptField';
@@ -155,6 +165,16 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
     void updateSettings({ ai: { agent: { toolSearch: { ...agent.toolSearch, ...patch } } } });
   };
 
+  const patchCache = (patch: Partial<AgentCacheConfig>): void => {
+    void updateSettings({ ai: { agent: { cache: { ...agent.cache, ...patch } } } });
+  };
+  const patchRouting = (patch: Partial<AgentProviderConfig>): void => {
+    void updateSettings({ ai: { agent: { routing: { ...agent.routing, ...patch } } } });
+  };
+  const patchFallback = (patch: Partial<AgentFallbackConfig>): void => {
+    void updateSettings({ ai: { agent: { fallback: { ...agent.fallback, ...patch } } } });
+  };
+
   const patchWebSearch = (patch: Partial<AgentWebSearchConfig>): void => {
     void updateSettings({ ai: { agent: { webSearch: { ...agent.webSearch, ...patch } } } });
   };
@@ -219,6 +239,16 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
             onChange={patchToolSearch}
             serverCount={connectedServers}
             hasKey={keyPresent}
+          />
+          {/* The three below are about how a request is sent rather than about
+              what the agent can do, so they sit at the end of the group: a
+              cached prefix, who serves it, and what to try if nobody will. */}
+          <AgentCacheSettings config={agent.cache} onChange={patchCache} />
+          <AgentProviderSettings config={agent.routing} onChange={patchRouting} />
+          <AgentFallbackSettings
+            models={codingModels}
+            config={agent.fallback}
+            onChange={patchFallback}
           />
         </FieldGroup>
 

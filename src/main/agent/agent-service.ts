@@ -1910,6 +1910,14 @@ export class AgentService {
       target: ctx.target,
       model: ctx.model,
       temperature: ctx.settings.coding.temperature,
+      // On every call rather than only on a turn, because every one of them is
+      // billed and every one of them repeats the same system prompt. Naming a
+      // session, folding one up and judging a command are short calls, and a
+      // short call is exactly where a cached prefix is most of the request.
+      // Each is dropped at the wire for a target that is not OpenRouter.
+      routing: ctx.settings.routing,
+      fallback: ctx.settings.fallback,
+      cache: ctx.settings.cache,
       signal: ctx.signal,
       ...req
     });

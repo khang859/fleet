@@ -29,6 +29,14 @@ import {
   type AgentToolSearchConfig
 } from './agent-tool-search';
 import {
+  DEFAULT_AGENT_CACHE,
+  DEFAULT_AGENT_FALLBACK,
+  DEFAULT_AGENT_PROVIDER,
+  type AgentCacheConfig,
+  type AgentFallbackConfig,
+  type AgentProviderConfig
+} from './agent-routing';
+import {
   AGENT_FUSION_INSTRUCTIONS,
   AGENT_FUSION_UNAVAILABLE_INSTRUCTIONS,
   DEFAULT_AGENT_FUSION,
@@ -318,6 +326,16 @@ export type AgentSettings = {
    */
   toolSearch: AgentToolSearchConfig;
   /**
+   * Which of OpenRouter's providers may serve a request, and in what order.
+   *
+   * Ignored entirely on a local endpoint, where the endpoint is the provider.
+   */
+  routing: AgentProviderConfig;
+  /** Models to try when the chosen one will not take the request. */
+  fallback: AgentFallbackConfig;
+  /** Whether requests mark a prefix the provider may cache and read back cheaply. */
+  cache: AgentCacheConfig;
+  /**
    * Whether and how the agent consults a stronger model.
    *
    * A model setting that is not an `AgentModelConfig`, because Fleet never
@@ -419,6 +437,9 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   webSearch: { ...DEFAULT_AGENT_WEB_SEARCH },
   hostedFetch: { ...DEFAULT_AGENT_HOSTED_FETCH },
   toolSearch: { ...DEFAULT_AGENT_TOOL_SEARCH },
+  routing: { ...DEFAULT_AGENT_PROVIDER },
+  fallback: { ...DEFAULT_AGENT_FALLBACK },
+  cache: { ...DEFAULT_AGENT_CACHE },
   advisor: { ...DEFAULT_AGENT_ADVISOR },
   fusion: { ...DEFAULT_AGENT_FUSION },
   systemPrompt: null,

@@ -200,6 +200,9 @@ export class SettingsStore {
             ...DEFAULT_SETTINGS.ai.agent.toolSearch,
             ...saved.ai?.agent?.toolSearch
           },
+          routing: { ...DEFAULT_SETTINGS.ai.agent.routing, ...saved.ai?.agent?.routing },
+          fallback: { ...DEFAULT_SETTINGS.ai.agent.fallback, ...saved.ai?.agent?.fallback },
+          cache: { ...DEFAULT_SETTINGS.ai.agent.cache, ...saved.ai?.agent?.cache },
           advisor: { ...DEFAULT_SETTINGS.ai.agent.advisor, ...saved.ai?.agent?.advisor },
           fusion: { ...DEFAULT_SETTINGS.ai.agent.fusion, ...saved.ai?.agent?.fusion },
           permissions: {
@@ -307,6 +310,9 @@ export class SettingsStore {
             ...current.ai.agent.toolSearch,
             ...(partial.ai?.agent?.toolSearch ?? {})
           },
+          routing: { ...current.ai.agent.routing, ...(partial.ai?.agent?.routing ?? {}) },
+          fallback: { ...current.ai.agent.fallback, ...(partial.ai?.agent?.fallback ?? {}) },
+          cache: { ...current.ai.agent.cache, ...(partial.ai?.agent?.cache ?? {}) },
           advisor: { ...current.ai.agent.advisor, ...(partial.ai?.agent?.advisor ?? {}) },
           fusion: { ...current.ai.agent.fusion, ...(partial.ai?.agent?.fusion ?? {}) },
           permissions: {
