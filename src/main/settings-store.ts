@@ -216,6 +216,28 @@ export class SettingsStore {
     return this.cached;
   }
 
+  /**
+   * Set or clear one workspace's config-folder override, leaving every other
+   * entry alone.
+   *
+   * `set` merges `copilot` one level deep, so the whole overrides map is
+   * replaced wholesale by whatever a patch carries. A renderer that wanted to
+   * change one workspace therefore had to send back a map it read earlier, and
+   * any entry written in between - by another window, or by workspace creation
+   * running beside a settings edit - was dropped. Reading the current map here,
+   * in the process that owns the file, closes that window.
+   *
+   * An empty or whitespace-only folder removes the override rather than storing
+   * an assignment that assigns nothing.
+   */
+  setWorkspaceOverride(workspaceId: string, claudeConfigDir: string | null): void {
+    const overrides = { ...this.get().copilot.workspaceOverrides };
+    const dir = claudeConfigDir?.trim();
+    if (dir) overrides[workspaceId] = { claudeConfigDir: dir };
+    else delete overrides[workspaceId];
+    this.set({ copilot: { workspaceOverrides: overrides } });
+  }
+
   set(partial: FleetSettingsPatch): void {
     const current = this.get();
     const merged = {

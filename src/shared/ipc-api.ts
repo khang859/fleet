@@ -51,6 +51,16 @@ export type LayoutSaveRequest = {
   workspace: Workspace;
 };
 
+/**
+ * Whether the workspace actually reached disk.
+ *
+ * The save handler used to log its failures and answer `undefined`, which is
+ * fine for the debounced autosave - it runs again in a moment - and wrong for
+ * workspace creation, which has to tell the user whether the thing they just
+ * named exists.
+ */
+export type LayoutSaveResult = { ok: true } | { ok: false; error: string };
+
 export type LayoutListResponse = {
   workspaces: Workspace[];
 };

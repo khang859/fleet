@@ -126,6 +126,7 @@ import type {
   PtyResizePayload,
   PtyExitPayload,
   LayoutSaveRequest,
+  LayoutSaveResult,
   LayoutListResponse,
   PaneFocusedPayload,
   DirEntry,
@@ -367,17 +368,21 @@ export function registerIpcHandlers(
   });
 
   // Layout handlers
-  ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, (_event, req: LayoutSaveRequest) => {
+  ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, (_event, req: LayoutSaveRequest): LayoutSaveResult => {
     log.debug('ipc:layout:save', {
       workspaceId: req.workspace.id,
       tabCount: req.workspace.tabs.length
     });
     try {
       layoutStore.save(req.workspace);
+      return { ok: true };
     } catch (err) {
-      log.error('failed to save workspace', {
-        error: err instanceof Error ? err.message : String(err)
-      });
+      const error = err instanceof Error ? err.message : String(err);
+      log.error('failed to save workspace', { error });
+      // Answered rather than only logged: the autosave still ignores this, but
+      // workspace creation cannot report success for a workspace that is not
+      // on disk.
+      return { ok: false, error };
     }
   });
 
@@ -429,6 +434,23 @@ export function registerIpcHandlers(
       await onCopilotSettingsChanged();
     }
   });
+
+  /**
+   * One workspace's Claude config folder, without sending back the whole map.
+   *
+   * `null` clears the override so the workspace inherits the default again.
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.SETTINGS_SET_WORKSPACE_OVERRIDE,
+    async (_event, req: { workspaceId: string; claudeConfigDir: string | null }) => {
+      log.debug('ipc:settings:set-workspace-override', {
+        workspaceId: req.workspaceId,
+        cleared: !req.claudeConfigDir
+      });
+      settingsStore.setWorkspaceOverride(req.workspaceId, req.claudeConfigDir);
+      await onCopilotSettingsChanged();
+    }
+  );
 
   // Git handlers
   ipcMain.handle(IPC_CHANNELS.GIT_IS_REPO, async (_event, cwd: string, ctx?: PathContext) => {

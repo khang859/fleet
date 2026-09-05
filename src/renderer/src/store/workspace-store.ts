@@ -515,7 +515,7 @@ function isNormalTab(tab: Tab): boolean {
  * rest are pinned by type. Every caller wants both, so they ask this instead of
  * reading `SPECIAL_TAB_TYPES` directly.
  */
-function isPinnedTab(tab: Pick<Tab, 'type' | 'cwd'>): boolean {
+export function isPinnedTab(tab: Pick<Tab, 'type' | 'cwd'>): boolean {
   return SPECIAL_TAB_TYPES.has(tab.type ?? '') || isScratchTab(tab);
 }
 

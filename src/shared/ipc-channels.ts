@@ -19,6 +19,7 @@ export const IPC_CHANNELS = {
   PANE_FOCUSED: 'pane:focused',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  SETTINGS_SET_WORKSPACE_OVERRIDE: 'settings:set-workspace-override',
   ENV_SYNC_GET_CONFIG: 'env-sync:get-config',
   ENV_SYNC_WRITE_CONFIG: 'env-sync:write-config',
   ENV_SYNC_SCAN: 'env-sync:scan',
