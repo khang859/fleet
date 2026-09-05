@@ -100,13 +100,24 @@ export function WorkspacesSection({
       .then(announceChange);
   };
 
-  const setOverride = async (wsId: string, dir: string | null): Promise<void> => {
-    // Creating the folder is slow enough that the user can change their mind
-    // during it. Without this, a pending custom-folder request finishing after
-    // "Use default" was picked wrote the abandoned folder back over the newer
-    // choice. Only the newest request for a workspace is allowed to persist.
+  /**
+   * Abandon every folder request still in flight for a workspace.
+   *
+   * Creating a folder is slow enough that the user can change their mind during
+   * it, so this has to run on *every* committed choice - including the ones
+   * that write nothing, like picking "Use default" on a workspace that already
+   * inherits, or retyping the path that is already saved. Skipping those left
+   * the pending request live, and it saved the abandoned folder when it landed.
+   */
+  const invalidateOverride = (wsId: string): number => {
     const seq = (overrideSeq.current[wsId] ?? 0) + 1;
     overrideSeq.current[wsId] = seq;
+    return seq;
+  };
+
+  const setOverride = async (wsId: string, dir: string | null): Promise<void> => {
+    // Only the newest request for a workspace is allowed to persist.
+    const seq = invalidateOverride(wsId);
     const superseded = (): boolean => overrideSeq.current[wsId] !== seq;
 
     // A typed path can name a folder that is not there yet. Creating it keeps a
@@ -150,6 +161,9 @@ export function WorkspacesSection({
     // default" is how a workspace goes back to the shared folder.
     if (!trimmed) return;
     if (trimmed === copilot.workspaceOverrides[wsId]?.claudeConfigDir) {
+      // Nothing to write, but this is still the user's latest word on the
+      // folder, so anything older has to stop.
+      invalidateOverride(wsId);
       clearDraft(wsId);
       return;
     }
@@ -301,7 +315,10 @@ export function WorkspacesSection({
                             onChange={() => {
                               clearDraft(ws.id);
                               clearMode(ws.id);
+                              // Even with nothing saved to clear: a folder
+                              // request may be in flight for this workspace.
                               if (isCustom) void setOverride(ws.id, null);
+                              else invalidateOverride(ws.id);
                             }}
                             className="fleet-accent-input mt-0.5"
                           />
