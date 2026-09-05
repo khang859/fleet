@@ -11,6 +11,9 @@ let pendingDirs: Array<(result: EnsureConfigDirResult) => void>;
 /** What the settings file holds. The applier must never guess at this itself. */
 let saved: string | null;
 let writes: Array<string | null>;
+/** When set, a save applies immediately but its reply is held until released. */
+let deferWrites: boolean;
+let pendingWrites: Array<() => void>;
 let announce: Mock<() => void>;
 let reload: Mock<() => Promise<void>>;
 let onError: Mock<(message: string) => void>;
@@ -20,6 +23,8 @@ function build(): void {
   pendingDirs = [];
   saved = null;
   writes = [];
+  deferWrites = false;
+  pendingWrites = [];
   announce = vi.fn();
   reload = vi.fn(async () => {
     await Promise.resolve();
@@ -35,6 +40,7 @@ function build(): void {
       writes.push(dir);
       const changed = dir !== saved;
       saved = dir;
+      if (deferWrites) await new Promise<void>((resolve) => pendingWrites.push(resolve));
       return { changed };
     },
     reload,
@@ -130,15 +136,42 @@ describe('createConfigFolderChoice', () => {
     expect(saved).toBe('/configs/a');
   });
 
-  it('says nothing when the choice turns out to change nothing', async () => {
+  it('refreshes but stays quiet when the choice changed nothing on disk', async () => {
     saved = '/configs/a';
     const done = choice.apply(WS, '/configs/a');
     pendingDirs[0]({ ok: true });
     await done;
 
     expect(writes).toEqual(['/configs/a']);
+    // Nothing changed on disk, but the screen can still be behind it.
+    expect(reload).toHaveBeenCalledTimes(1);
     expect(announce).not.toHaveBeenCalled();
-    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the screen when a repeat of a pending choice overtakes it', async () => {
+    // The screen shows A. B is saved but its reply has not come back. The user
+    // picks B again: that second request writes nothing, and the first is
+    // dropped as superseded before it can refresh. Nothing changed on disk and
+    // yet the screen is stale, so the refresh cannot hang off `changed`.
+    deferWrites = true;
+
+    const first = choice.apply(WS, '/configs/b');
+    pendingDirs[0]({ ok: true });
+    await flush();
+
+    const second = choice.apply(WS, '/configs/b');
+    pendingDirs[1]({ ok: true });
+    await flush();
+
+    pendingWrites[1]();
+    await flush();
+    pendingWrites[0]();
+    await Promise.all([first, second]);
+    await flush();
+
+    expect(writes).toEqual(['/configs/b', '/configs/b']);
+    expect(saved).toBe('/configs/b');
+    expect(reload).toHaveBeenCalled();
   });
 
   it('announces a change that did land', async () => {

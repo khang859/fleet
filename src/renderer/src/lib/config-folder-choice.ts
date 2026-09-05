@@ -58,12 +58,15 @@ export function createConfigFolderChoice(deps: ConfigFolderChoiceDeps): ConfigFo
 
       const result = await deps.setWorkspaceOverride(workspaceId, dir);
       if (superseded()) return;
-      // A no-op write still had to be sent - only the settings file could say
-      // it was one - but there is nothing to reload and nothing to announce.
-      if (!result.changed) return;
+      // Reload on the way out of every request that is still current, even one
+      // that changed nothing on disk. An earlier request for this workspace may
+      // have been cancelled after its write but before its reload, which leaves
+      // the renderer behind the file - and "nothing changed" says the file is
+      // right, not that the screen is.
       await deps.reload();
       if (superseded()) return;
-      deps.announce();
+      // The toast is the one thing that really is about a change.
+      if (result.changed) deps.announce();
     }
   };
 }
