@@ -1048,6 +1048,10 @@ export class AgentService {
       req,
       buildSystemPrompt(promptCwd(req.cwd), ctx.settings.systemPrompt, {
         webFetch: ctx.settings.webFetch.enabled,
+        // Only when it is actually offered. The block tells the model which of
+        // the two readers to reach for, and a turn that describes a tool it
+        // was not given teaches it to call something that is not there.
+        webSearch: ctx.settings.webSearch.enabled,
         env,
         image: imageModel !== null,
         mcp: mcpSpecs.length > 0,

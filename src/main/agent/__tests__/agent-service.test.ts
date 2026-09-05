@@ -326,6 +326,30 @@ describe('parseStreamLine', () => {
   });
 });
 
+/**
+ * What the turn tells the model about the tools it was given.
+ *
+ * The instruction block and the tool entry have to be switched by the same
+ * setting: a prompt describing a search tool the request never sent teaches the
+ * model to call something that is not there, and a search tool sent without the
+ * block leaves it with two readers and no account of which is for what.
+ */
+describe('buildSystemPrompt: web search', () => {
+  it('describes searching only when searching is on', () => {
+    const off = buildSystemPrompt('/repo', null, { image: false, webSearch: false });
+    const on = buildSystemPrompt('/repo', null, { image: false, webSearch: true });
+
+    expect(off).not.toContain('## Web search');
+    expect(on).toContain('## Web search');
+  });
+
+  // The failure the block exists to prevent, in one assertion.
+  it('tells the model not to search for anything on this machine', () => {
+    const prompt = buildSystemPrompt('/repo', null, { image: false, webSearch: true });
+    expect(prompt).toContain('this machine');
+  });
+});
+
 describe('toReasoningParam', () => {
   const base = DEFAULT_AGENT_SETTINGS.coding;
 
