@@ -84,6 +84,9 @@ export function resolveTarget(modelId: string | null, deps: RoutingDeps): Resolv
       extraHeaders: {},
       requestUsage: true,
       reasoningDialect: 'chat-template-kwargs',
+      // A server tool is OpenRouter running something on its own machines.
+      // There is nothing on the other side of a loopback address to run it.
+      serverTools: false,
       label
     }
   };

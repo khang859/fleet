@@ -182,6 +182,8 @@ const SETTINGS = {
  */
 const round = (toolCalls: WireToolCall[] = []): StreamOutcome => ({
   toolCalls,
+  serverToolCalls: [],
+  citations: [],
   model: null,
   provider: null
 });
@@ -215,7 +217,15 @@ function collector(): {
 
 describe('parseStreamLine', () => {
   /** A parsed line that carried nothing but the field under test. */
-  const bare = { content: '', reasoning: '', toolCalls: [], model: null, provider: null };
+  const bare = {
+    content: '',
+    reasoning: '',
+    toolCalls: [],
+    serverToolCalls: [],
+    citations: [],
+    model: null,
+    provider: null
+  };
 
   it('reads content and reasoning deltas', () => {
     expect(parseStreamLine('data: {"choices":[{"delta":{"content":"he"}}]}')).toEqual({
@@ -242,7 +252,10 @@ describe('parseStreamLine', () => {
         cachedTokens: 0,
         cacheWriteTokens: 0,
         reasoningTokens: 0,
-        costUsd: null
+        costUsd: null,
+        serverToolCalls: 0,
+        webSearches: 0,
+        serverToolCostUsd: null
       }
     });
   });
@@ -264,7 +277,10 @@ describe('parseStreamLine', () => {
         cachedTokens: 150,
         cacheWriteTokens: 44,
         reasoningTokens: 12,
-        costUsd: 0.0042
+        costUsd: 0.0042,
+        serverToolCalls: 0,
+        webSearches: 0,
+        serverToolCostUsd: null
       }
     });
   });
@@ -758,6 +774,56 @@ describe('toWireHistory', () => {
       { role: 'tool', tool_call_id: 'call_1', content: 'a.ts lines 1-1' },
       { role: 'assistant', content: 'It says 42.' }
     ]);
+  });
+
+  /*
+   * Remote work goes back a different way from local work: a local call is
+   * echoed as a `tool_calls` entry answered by a `tool` message, while a server
+   * tool's record already carries its own result and rides on
+   * `reasoning_details`. Losing it costs the model the memory of a search it
+   * ran - and, for an advisor, the memory of the whole consultation.
+   */
+  it('replays remote work as a reasoning record rather than as a tool call', async () => {
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'server_tool',
+          call: {
+            callId: 'srv_1',
+            toolName: 'openrouter:web_search',
+            args: '{"query":"zod v4"}',
+            result: '[{"url":"https://a.dev"}]',
+            citations: []
+          }
+        },
+        { type: 'text', text: 'Zod 4 renames it.' }
+      ],
+      reasoning: '',
+      reasoningMs: null
+    };
+
+    const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+
+    expect(messages.slice(1, -1)).toEqual([
+      {
+        role: 'assistant',
+        content: 'Zod 4 renames it.',
+        reasoning_details: [
+          {
+            type: 'reasoning.server_tool_call',
+            tool_name: 'openrouter:web_search',
+            arguments: '{"query":"zod v4"}',
+            result: '[{"url":"https://a.dev"}]',
+            tool_call_id: 'srv_1'
+          }
+        ]
+      }
+    ]);
+    // Never as a tool_call: nothing here can dispatch it, and OpenRouter is not
+    // waiting for a result it already has.
+    expect(messages.some((m) => 'tool_calls' in m)).toBe(false);
   });
 
   it('answers a call that never came back, so none is left dangling', async () => {

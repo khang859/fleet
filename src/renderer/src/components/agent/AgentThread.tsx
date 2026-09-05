@@ -38,6 +38,7 @@ import { AgentToolRow } from './AgentToolRow';
 import { AgentToolGroup } from './AgentToolGroup';
 import { groupParts } from './tool-group';
 import { AgentPermissionRow } from './AgentPermissionRow';
+import { AgentServerToolRow } from './AgentServerToolRow';
 import { AgentTaskCard } from './AgentTaskCard';
 import { AgentScheduleFire } from './AgentScheduleFire';
 import { AgentTaskPermissions } from './AgentTaskPermissions';
@@ -800,6 +801,11 @@ const Message = memo(function Message({
         const { part, key: i } = item;
         // Attachments are the user's, so an assistant turn never holds one.
         if (part.type === 'attachment') return null;
+        // Work that happened on OpenRouter's side. Its own row: there is no
+        // permission to ask about it, nothing to stop, and no result to clear.
+        if (part.type === 'server_tool') {
+          return <AgentServerToolRow key={i} call={part.call} />;
+        }
         // The task list is already on screen, either in its column or on the
         // status line. A row here as well would report every tick twice, and
         // fill a long turn's transcript with bookkeeping.

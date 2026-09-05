@@ -47,6 +47,31 @@ describe('addRound', () => {
     expect(total.reasoningTokens).toBe(50);
   });
 
+  /*
+   * Two rounds of a turn may each run searches, and the per-request caps
+   * restart on every one of them - so this sum is the only place a turn's
+   * remote work is counted whole.
+   */
+  it('adds up the remote work of every round', () => {
+    const total = addRound(
+      usage({ serverToolCalls: 2, webSearches: 2, serverToolCostUsd: 0.007 }),
+      usage({ serverToolCalls: 1, webSearches: 1, serverToolCostUsd: 0.007 })
+    );
+    expect(total.serverToolCalls).toBe(3);
+    expect(total.webSearches).toBe(3);
+    expect(total.serverToolCostUsd).toBeCloseTo(0.014, 10);
+  });
+
+  // A breakdown of the total, never an addition to it.
+  it('leaves the total cost alone when only the remote part is known', () => {
+    const total = addRound(
+      usage({ costUsd: 0.02, serverToolCostUsd: 0.007 }),
+      usage({ costUsd: null, serverToolCostUsd: null })
+    );
+    expect(total.costUsd).toBeCloseTo(0.02, 10);
+    expect(total.serverToolCostUsd).toBeCloseTo(0.007, 10);
+  });
+
   it('keeps an unpriced round from erasing a priced one', () => {
     const priced = addRound(EMPTY_AGENT_USAGE, usage({ costUsd: 0.02 }));
     expect(addRound(priced, usage({ costUsd: null })).costUsd).toBe(0.02);

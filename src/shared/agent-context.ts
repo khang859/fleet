@@ -63,6 +63,17 @@ function estimatePartsTokens(message: AgentMessage): number {
   return message.parts.reduce((total, part) => {
     if (part.type === 'text') return total + estimateTokens(part.text);
     if (part.type === 'attachment') return total + estimateAttachmentTokens(part.attachment);
+    // Counted like a local call, because on the wire it is one: the arguments
+    // and the result are replayed as text on the assistant message, and the
+    // model reads them at the same price whoever ran the tool.
+    if (part.type === 'server_tool') {
+      return (
+        total +
+        estimateTokens(part.call.args) +
+        estimateTokens(part.call.result) +
+        PER_MESSAGE_OVERHEAD
+      );
+    }
     const { call } = part;
     return (
       total +

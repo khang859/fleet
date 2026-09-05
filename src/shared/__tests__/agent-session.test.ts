@@ -302,6 +302,44 @@ describe('replaySession', () => {
     expect(replay.messages[0]).toEqual(message);
   });
 
+  /*
+   * A session reopened tomorrow has to still show where an answer came from.
+   * The sources are on the record rather than re-derived, because the result
+   * payload they were read out of is the model's copy, not a stable API.
+   */
+  it('keeps the remote work of a turn, and the sources behind it', () => {
+    const message: AgentMessage = {
+      id: 'a',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'server_tool',
+          call: {
+            callId: 'srv_1',
+            toolName: 'openrouter:web_search',
+            args: '{"query":"zod v4"}',
+            result: '[{"url":"https://a.dev","title":"A"}]',
+            citations: [
+              {
+                url: 'https://a.dev',
+                title: 'A',
+                content: 'excerpt',
+                startIndex: 4,
+                endIndex: 9
+              }
+            ]
+          }
+        },
+        { type: 'text', text: 'Zod 4 renames it.' }
+      ],
+      reasoning: '',
+      reasoningMs: null
+    };
+    const replay = replaySession(log(HEADER, { t: 'message', message }));
+
+    expect(replay.messages[0]).toEqual(message);
+  });
+
   it('round-trips through the encoder', () => {
     const message = { ...msg('a', 'assistant', 'hello'), reasoning: 'hm', reasoningMs: 1200 };
     const replay = replaySession(log(HEADER, { t: 'message', message }));

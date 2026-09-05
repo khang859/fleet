@@ -125,7 +125,10 @@ describe('classifyCommand', () => {
       cachedTokens: 0,
       cacheWriteTokens: 0,
       reasoningTokens: 0,
-      costUsd: 0.0001
+      costUsd: 0.0001,
+      serverToolCalls: 0,
+      webSearches: 0,
+      serverToolCostUsd: null
     };
     const complete: typeof completeOnce = async () => Promise.resolve({ text: 'safe', usage });
 
@@ -147,7 +150,10 @@ describe('classifyCommand', () => {
           cachedTokens: 0,
           cacheWriteTokens: 0,
           reasoningTokens: 0,
-          costUsd: 0.0002
+          costUsd: 0.0002,
+          serverToolCalls: 0,
+          webSearches: 0,
+          serverToolCostUsd: null
         }
       });
 
@@ -182,7 +188,10 @@ describe('classifyCommand', () => {
       cachedTokens: 0,
       cacheWriteTokens: 0,
       reasoningTokens: 512,
-      costUsd: 0.0003
+      costUsd: 0.0003,
+      serverToolCalls: 0,
+      webSearches: 0,
+      serverToolCostUsd: null
     };
     const complete: typeof completeOnce = async () => Promise.resolve({ text: '', usage });
 

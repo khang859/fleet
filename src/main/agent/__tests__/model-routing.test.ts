@@ -39,6 +39,8 @@ describe('resolveTarget', () => {
         apiKey: 'sk-or-test',
         requestUsage: false,
         reasoningDialect: 'reasoning-param',
+        // The gate for every server tool: only this target has an executor.
+        serverTools: true,
         label: 'OpenRouter'
       }
     });
@@ -60,6 +62,8 @@ describe('resolveTarget', () => {
         extraHeaders: {},
         requestUsage: true,
         reasoningDialect: 'chat-template-kwargs',
+        // A llama-server has nothing to run them with, so they are never sent.
+        serverTools: false,
         label: '127.0.0.1:11437'
       }
     });

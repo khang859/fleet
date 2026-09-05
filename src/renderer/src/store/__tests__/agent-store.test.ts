@@ -199,6 +199,7 @@ beforeEach(async () => {
       onStreamDone: listen(IPC_CHANNELS.AGENT_STREAM_DONE),
       onStreamError: listen(IPC_CHANNELS.AGENT_STREAM_ERROR),
       onCompactDone: listen(IPC_CHANNELS.AGENT_COMPACT_DONE),
+      onServerTool: listen(IPC_CHANNELS.AGENT_SERVER_TOOL),
       onToolStart: listen(IPC_CHANNELS.AGENT_TOOL_START),
       onToolEnd: listen(IPC_CHANNELS.AGENT_TOOL_END),
       onImagePartial: listen(IPC_CHANNELS.AGENT_IMAGE_PARTIAL),
