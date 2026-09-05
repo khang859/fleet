@@ -4,7 +4,7 @@ import { Overlay } from '../Overlay';
 import { useSettingsStore } from '../../store/settings-store';
 import { useWorkspaceListStore } from '../../store/workspace-list-store';
 import { persistNewWorkspace } from '../../lib/create-workspace';
-import { resolveClaudeConfig } from '../../../../shared/claude-config';
+import { resolveClaudeConfig, suggestClaudeConfigDir } from '../../../../shared/claude-config';
 import type { Workspace } from '../../../../shared/types';
 
 /**
@@ -29,26 +29,38 @@ export function CreateWorkspaceDialog({
   onCreated: (workspace: Workspace) => void;
 }): React.JSX.Element {
   const settings = useSettingsStore((s) => s.settings);
+  const loadSettings = useSettingsStore((s) => s.loadSettings);
   const refreshList = useWorkspaceListStore((s) => s.refresh);
 
   const [name, setName] = useState('');
   const [useCustom, setUseCustom] = useState(false);
   const [customDir, setCustomDir] = useState('');
+  // Until the user touches the folder box it follows the name, so typing a name
+  // is enough to get a workspace with its own folder. One edit stops that, so a
+  // path the user chose is never overwritten by a later rename.
+  const [customTouched, setCustomTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   // Held across retries so a half-finished save is completed rather than
   // duplicated. Cleared once the workspace is created or the dialog closes.
   const idRef = useRef<string | null>(null);
+  // Bumped every time the dialog opens. A submission captures it and refuses to
+  // report back under a different one, so a create that was dismissed mid-write
+  // cannot hand a workspace to `onCreated` - which, from the sidebar, would
+  // switch the user somewhere they just cancelled out of.
+  const sessionRef = useRef(0);
 
   useEffect(() => {
     if (!open) return;
     setName('');
     setUseCustom(false);
     setCustomDir('');
+    setCustomTouched(false);
     setError(null);
     setSubmitting(false);
     idRef.current = null;
+    sessionRef.current += 1;
     // One frame later: the panel is still animating in when `open` flips.
     const timer = setTimeout(() => nameRef.current?.focus(), 0);
     return () => clearTimeout(timer);
@@ -59,12 +71,19 @@ export function CreateWorkspaceDialog({
     homeDir: window.fleet.homeDir
   });
 
+  // Empty while the name is empty, which is also when Create is disabled.
+  const suggestedDir = suggestClaudeConfigDir(defaultConfig.path, name);
+  const customValue = customTouched ? customDir : suggestedDir;
+
   const trimmedName = name.trim();
   const canSubmit = trimmedName.length > 0 && !submitting;
 
   const handleBrowse = async (): Promise<void> => {
     const dir = await window.fleet.showFolderPicker();
-    if (dir) setCustomDir(dir);
+    if (dir) {
+      setCustomTouched(true);
+      setCustomDir(dir);
+    }
   };
 
   const handleCreate = async (): Promise<void> => {
@@ -73,12 +92,16 @@ export function CreateWorkspaceDialog({
     setError(null);
     idRef.current ??= crypto.randomUUID();
 
-    const custom = useCustom ? customDir.trim() : '';
+    const custom = useCustom ? customValue.trim() : '';
+    const session = sessionRef.current;
     const result = await persistNewWorkspace({
       id: idRef.current,
       name: trimmedName,
       claudeConfigDir: custom || null
     });
+
+    // The workspace is written either way; only the reporting is abandoned.
+    if (session !== sessionRef.current) return;
 
     if (!result.ok) {
       setError(
@@ -91,7 +114,11 @@ export function CreateWorkspaceDialog({
     }
 
     idRef.current = null;
-    await refreshList();
+    // Settings, not just the list: a custom folder was written straight to the
+    // settings file, so the renderer's copy is now behind and the new row would
+    // claim to inherit the default and offer hook actions for the wrong folder.
+    await Promise.all([refreshList(), custom ? loadSettings() : Promise.resolve()]);
+    if (session !== sessionRef.current) return;
     setSubmitting(false);
     onCreated(result.workspace);
     onClose();
@@ -101,6 +128,10 @@ export function CreateWorkspaceDialog({
     <Overlay
       open={open}
       onClose={onClose}
+      // A write is in flight and the workspace may already exist; dismissing
+      // now would leave the user with no idea whether it was created.
+      closeOnEscape={!submitting}
+      closeOnBackdrop={!submitting}
       panelClassName="w-[440px] max-w-[90vw] bg-fleet-surface border border-fleet-border-strong rounded-lg shadow-xl p-4"
     >
       <h2 className="text-sm font-medium text-fleet-text mb-3">New workspace</h2>
@@ -148,8 +179,11 @@ export function CreateWorkspaceDialog({
             <div className="flex gap-2 mt-1.5">
               <input
                 type="text"
-                value={customDir}
-                onChange={(e) => setCustomDir(e.target.value)}
+                value={customValue}
+                onChange={(e) => {
+                  setCustomTouched(true);
+                  setCustomDir(e.target.value);
+                }}
                 placeholder={defaultConfig.path}
                 className="flex-1 min-w-0 bg-fleet-surface-2 text-xs text-fleet-text rounded px-2 py-1 border border-fleet-border-strong placeholder:text-fleet-text-subtle focus-ring"
               />
@@ -163,8 +197,9 @@ export function CreateWorkspaceDialog({
             </div>
           )}
           <p className="text-xs text-fleet-text-subtle mt-2">
-            Leaving this blank keeps the workspace on the default folder. You can add Fleet hooks
-            later.
+            {useCustom
+              ? 'Fleet creates this folder if it does not exist yet. You can add Fleet hooks later.'
+              : 'The workspace uses the default folder. You can give it its own folder later.'}
           </p>
         </div>
 
@@ -173,8 +208,9 @@ export function CreateWorkspaceDialog({
 
       <div className="flex justify-end gap-2 mt-4">
         <button
+          disabled={submitting}
           onClick={onClose}
-          className="px-3 py-1 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary transition active:scale-[0.97]"
+          className="px-3 py-1 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary transition active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Cancel
         </button>

@@ -62,3 +62,25 @@ save: vi.fn(async (): Promise<LayoutSaveResult> => {
 
 This also makes the mock genuinely asynchronous, which matters: after switching a mock from a sync-returning function to a real `async` one, the store's own `.then` chain needed one more tick, and `await Promise.resolve()` in the test was no longer enough to flush it.
 `await new Promise((resolve) => setTimeout(resolve, 0))` is the reliable flush.
+
+## A drive selector that matches two nodes types into the wrong one
+
+Verifying the create dialog, `npm run drive -- type 'input[placeholder="/Users/khangnguyen/.claude"]' ...` was run while the Workspaces settings page was open behind the modal.
+The settings page's *default folder* input carries the same placeholder, so the locator matched two nodes.
+The command printed nothing and the value landed in the settings page's field, which silently rewrote the shared default folder for every workspace.
+The new workspace then showed `Inherited`, which read like a regression in the code under test.
+
+Two habits that avoid it:
+
+- Before typing, count the matches: `drive eval "[...document.querySelectorAll('input')].map(i=>({t:i.type,p:i.placeholder,c:i.checked}))"`.
+  A single unique match is the only safe state.
+- Open a modal from a screen that does not already contain the same controls.
+  Driving the create dialog from the sidebar's "New Workspace" button leaves only the dialog's own inputs in the document.
+
+A `drive` verb that produces no `clicked:` / `typed into:` line did not run. Treat a silent command as a failure, not as success.
+
+## Preload and main changes need a full Electron restart
+
+`location.reload()` reloads the renderer only.
+A new IPC channel plus its preload method stayed invisible (`window.fleet.settings.ensureConfigDir is not a function`) until the whole app was restarted.
+The restart also has to kill the previous Electron completely: a leftover process keeps the CDP port, and the new window logs `bind() failed: Address already in use` and is unreachable to `fleet-drive`.

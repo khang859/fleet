@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { resolveClaudeConfig, defaultClaudeConfigDir } from '../claude-config';
+import {
+  resolveClaudeConfig,
+  defaultClaudeConfigDir,
+  suggestClaudeConfigDir
+} from '../claude-config';
 
 describe('defaultClaudeConfigDir', () => {
   it('appends .claude to a posix home', () => {
@@ -51,5 +55,25 @@ describe('resolveClaudeConfig', () => {
     const after = resolveClaudeConfig({ defaultDir: '/moved/claude', homeDir });
     expect(before.path).not.toBe(after.path);
     expect(after.source).toBe('default');
+  });
+});
+
+describe('suggestClaudeConfigDir', () => {
+  it('puts the workspace slug beside the default folder', () => {
+    expect(suggestClaudeConfigDir('/Users/k/.claude', 'My Work')).toBe('/Users/k/.claude-my-work');
+  });
+
+  it('drops punctuation and collapses runs of separators', () => {
+    expect(suggestClaudeConfigDir('/Users/k/.claude', '  Client: Acme // 2  ')).toBe(
+      '/Users/k/.claude-client-acme-2'
+    );
+  });
+
+  it('offers nothing when the name has no usable characters', () => {
+    expect(suggestClaudeConfigDir('/Users/k/.claude', '  ...  ')).toBe('');
+  });
+
+  it('does not double a trailing separator on the default folder', () => {
+    expect(suggestClaudeConfigDir('/Users/k/.claude/', 'Work')).toBe('/Users/k/.claude-work');
   });
 });

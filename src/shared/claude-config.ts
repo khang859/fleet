@@ -56,3 +56,31 @@ export function resolveClaudeConfig(args: {
   const fallback = args.defaultDir.trim();
   return { path: fallback || defaultClaudeConfigDir(args.homeDir), source: 'default' };
 }
+
+/**
+ * A workspace name reduced to something safe to put in a folder name.
+ *
+ * Empty when the name has nothing usable in it (spaces, punctuation only), so
+ * callers can tell "no suggestion" from "a suggestion that happens to be short".
+ */
+export function workspaceSlug(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * The folder offered to a new workspace that wants its own: the default folder
+ * with the workspace's slug appended.
+ *
+ * Sitting beside the default folder rather than inside it keeps every Claude
+ * config folder in one place and stays hidden, and it cannot be mistaken for a
+ * project-local `.claude` directory.
+ */
+export function suggestClaudeConfigDir(defaultPath: string, name: string): string {
+  const slug = workspaceSlug(name);
+  if (!slug) return '';
+  return `${defaultPath.replace(/[/\\]+$/, '')}-${slug}`;
+}

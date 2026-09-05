@@ -10,6 +10,7 @@ import type {
   PtyCwdPayload,
   LayoutSaveRequest,
   LayoutSaveResult,
+  EnsureConfigDirResult,
   LayoutListResponse,
   NotificationPayload,
   PaneFocusedPayload,
@@ -288,6 +289,9 @@ const fleetApi = {
      * inherit the default again. Narrow on purpose: `set` replaces the whole
      * overrides map, which loses entries written since the caller read it.
      */
+    /** Create a Claude config folder if it is missing, before pointing a workspace at it. */
+    ensureConfigDir: async (dir: string): Promise<EnsureConfigDirResult> =>
+      typedInvoke(IPC_CHANNELS.SETTINGS_ENSURE_CONFIG_DIR, dir),
     setWorkspaceOverride: async (
       workspaceId: string,
       claudeConfigDir: string | null

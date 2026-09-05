@@ -36,6 +36,12 @@ export function WorkspacesSection({
   // toast for every character.
   const [defaultDraft, setDefaultDraft] = useState<string | null>(null);
   const [customDrafts, setCustomDrafts] = useState<Record<string, string | undefined>>({});
+  // Which mode the user has *selected*, separate from what is saved. Deriving
+  // the radio from the persisted override alone meant picking "Use custom
+  // folder" left "Use default" selected until a path was committed, and
+  // blurring the empty box took the input and its Browse button away again.
+  // Undefined means the user has not chosen; the saved state decides.
+  const [customMode, setCustomMode] = useState<Record<string, boolean | undefined>>({});
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   useEffect(() => {
@@ -92,22 +98,50 @@ export function WorkspacesSection({
   };
 
   const setOverride = async (wsId: string, dir: string | null): Promise<void> => {
+    // A typed path can name a folder that is not there yet. Creating it keeps a
+    // workspace from looking configured while Claude starts from scratch and
+    // Fleet hooks have nowhere to go.
+    if (dir) {
+      const created = await window.fleet.settings.ensureConfigDir(dir);
+      if (!created.ok) {
+        showToast(`Could not create ${dir}: ${created.error}`);
+        return;
+      }
+    }
     await window.fleet.settings.setWorkspaceOverride(wsId, dir);
     await loadSettings();
     announceChange();
   };
 
-  const commitCustom = (wsId: string, value: string): void => {
-    const trimmed = value.trim();
+  /** Drop one workspace's unsaved edit, so the saved state shows through again. */
+  const clearDraft = (wsId: string): void => {
     setCustomDrafts((prev) => {
       const next = { ...prev };
       delete next[wsId];
       return next;
     });
-    // An empty custom draft is an unfinished thought, not a request to inherit.
-    // "Use default" is how a workspace goes back to the shared folder.
+  };
+
+  const clearMode = (wsId: string): void => {
+    setCustomMode((prev) => {
+      const next = { ...prev };
+      delete next[wsId];
+      return next;
+    });
+  };
+
+  const commitCustom = (wsId: string, value: string): void => {
+    const trimmed = value.trim();
+    // An empty custom draft is an unfinished thought, not a request to inherit
+    // - the box stays open and selected so the user can type or browse. "Use
+    // default" is how a workspace goes back to the shared folder.
     if (!trimmed) return;
-    if (trimmed === copilot.workspaceOverrides[wsId]?.claudeConfigDir) return;
+    if (trimmed === copilot.workspaceOverrides[wsId]?.claudeConfigDir) {
+      clearDraft(wsId);
+      return;
+    }
+    clearDraft(wsId);
+    clearMode(wsId);
     void setOverride(wsId, trimmed);
   };
 
@@ -122,11 +156,8 @@ export function WorkspacesSection({
   const handleBrowseCustom = async (wsId: string): Promise<void> => {
     const dir = await window.fleet.showFolderPicker();
     if (!dir) return;
-    setCustomDrafts((prev) => {
-      const next = { ...prev };
-      delete next[wsId];
-      return next;
-    });
+    clearDraft(wsId);
+    clearMode(wsId);
     await setOverride(wsId, dir);
   };
 
@@ -199,6 +230,7 @@ export function WorkspacesSection({
               const isCustom = config.source === 'custom';
               const Chevron = isExpanded ? ChevronDown : ChevronRight;
               const draft = customDrafts[ws.id];
+              const showCustom = customMode[ws.id] ?? isCustom;
               const customValue = draft ?? (isCustom ? config.path : '');
               return (
                 <div
@@ -210,7 +242,15 @@ export function WorkspacesSection({
                   className="border border-fleet-border-strong rounded"
                 >
                   <button
-                    onClick={() => setExpandedWs(isExpanded ? null : ws.id)}
+                    onClick={() => {
+                      // Collapsing throws away an uncommitted choice: reopening
+                      // the row should show what is actually saved.
+                      if (isExpanded) {
+                        clearDraft(ws.id);
+                        clearMode(ws.id);
+                      }
+                      setExpandedWs(isExpanded ? null : ws.id);
+                    }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-fleet-text-secondary hover:bg-fleet-surface-2/50 transition text-left"
                   >
                     <Chevron size={14} className="shrink-0 text-fleet-text-subtle" />
@@ -244,8 +284,12 @@ export function WorkspacesSection({
                         <label className="flex items-start gap-2 text-xs text-fleet-text-secondary">
                           <input
                             type="radio"
-                            checked={!isCustom}
-                            onChange={() => void setOverride(ws.id, null)}
+                            checked={!showCustom}
+                            onChange={() => {
+                              clearDraft(ws.id);
+                              clearMode(ws.id);
+                              if (isCustom) void setOverride(ws.id, null);
+                            }}
                             className="fleet-accent-input mt-0.5"
                           />
                           <span className="min-w-0">
@@ -258,15 +302,13 @@ export function WorkspacesSection({
                         <label className="flex items-center gap-2 text-xs text-fleet-text-secondary">
                           <input
                             type="radio"
-                            checked={isCustom}
-                            onChange={() =>
-                              setCustomDrafts((prev) => ({ ...prev, [ws.id]: prev[ws.id] ?? '' }))
-                            }
+                            checked={showCustom}
+                            onChange={() => setCustomMode((prev) => ({ ...prev, [ws.id]: true }))}
                             className="fleet-accent-input"
                           />
                           Use custom folder
                         </label>
-                        {(isCustom || draft !== undefined) && (
+                        {showCustom && (
                           <div className="flex gap-2 pt-1">
                             <input
                               type="text"
@@ -277,7 +319,10 @@ export function WorkspacesSection({
                               onBlur={(e) => commitCustom(ws.id, e.target.value)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') e.currentTarget.blur();
-                                if (e.key === 'Escape') commitCustom(ws.id, '');
+                                if (e.key === 'Escape') {
+                                  clearDraft(ws.id);
+                                  clearMode(ws.id);
+                                }
                               }}
                               placeholder="Pick a Claude config folder"
                               className="flex-1 min-w-0 bg-fleet-surface-2 text-xs text-fleet-text rounded px-2 py-1 border border-fleet-border-strong placeholder:text-fleet-text-subtle focus-ring"

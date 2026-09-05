@@ -61,6 +61,9 @@ export type LayoutSaveRequest = {
  */
 export type LayoutSaveResult = { ok: true } | { ok: false; error: string };
 
+/** Result of creating a Claude config folder that a workspace is about to use. */
+export type EnsureConfigDirResult = { ok: true } | { ok: false; error: string };
+
 export type LayoutListResponse = {
   workspaces: Workspace[];
 };

@@ -33,6 +33,11 @@ export type CreateWorkspaceResult =
  *
  * The override is written before anything can spawn a terminal, so the first
  * terminal in the new workspace already gets the folder that was chosen for it.
+ *
+ * A custom folder is created first, before anything is written. A workspace
+ * pointed at a folder that does not exist looks configured but behaves like a
+ * fresh Claude install, and Fleet hooks have nowhere to go - so a folder that
+ * cannot be created fails the whole creation rather than half of it.
  */
 export async function persistNewWorkspace(
   draft: NewWorkspaceDraft
@@ -40,6 +45,13 @@ export async function persistNewWorkspace(
   // Empty on purpose: the tools and the first terminal are seeded by the
   // activation path, which is the only side that owns pane construction.
   const workspace: Workspace = { id: draft.id, label: draft.name, tabs: [] };
+
+  if (draft.claudeConfigDir) {
+    const dir = await window.fleet.settings.ensureConfigDir(draft.claudeConfigDir);
+    if (!dir.ok) {
+      return { ok: false, error: `folder could not be created: ${dir.error}`, savedLayout: false };
+    }
+  }
 
   const saved = await window.fleet.layout.save({ workspace });
   if (!saved.ok) return { ok: false, error: saved.error, savedLayout: false };

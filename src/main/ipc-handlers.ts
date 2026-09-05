@@ -5,7 +5,7 @@ import { collectDiagnosticsInfo, readRedactedLogTail, openLogsFolder } from './d
 import { createLogger, logger } from './logger';
 
 const log = createLogger('ipc');
-import { readFile, writeFile, stat, readdir } from 'fs/promises';
+import { readFile, writeFile, stat, readdir, mkdir } from 'fs/promises';
 import type { Dirent } from 'fs';
 import { extname, join, relative, posix as posixPath } from 'path';
 import { homedir } from 'node:os';
@@ -127,6 +127,7 @@ import type {
   PtyExitPayload,
   LayoutSaveRequest,
   LayoutSaveResult,
+  EnsureConfigDirResult,
   LayoutListResponse,
   PaneFocusedPayload,
   DirEntry,
@@ -449,6 +450,29 @@ export function registerIpcHandlers(
       });
       settingsStore.setWorkspaceOverride(req.workspaceId, req.claudeConfigDir);
       await onCopilotSettingsChanged();
+    }
+  );
+
+  /**
+   * Make a Claude config folder exist before a workspace is pointed at it.
+   *
+   * A workspace whose folder is missing looks configured but behaves like a
+   * fresh install the first time Claude runs there, and Fleet hooks cannot be
+   * installed into a folder that is not there. Recursive and idempotent, so an
+   * existing folder is a success.
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.SETTINGS_ENSURE_CONFIG_DIR,
+    async (_event, dir: string): Promise<EnsureConfigDirResult> => {
+      log.debug('ipc:settings:ensure-config-dir', { dir });
+      try {
+        await mkdir(dir, { recursive: true });
+        return { ok: true };
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        log.error('failed to create claude config dir', { dir, error });
+        return { ok: false, error };
+      }
     }
   );
 

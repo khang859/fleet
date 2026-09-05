@@ -1,10 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { persistNewWorkspace } from '../create-workspace';
-import type { LayoutSaveRequest, LayoutSaveResult } from '../../../../shared/ipc-api';
+import type {
+  LayoutSaveRequest,
+  LayoutSaveResult,
+  EnsureConfigDirResult
+} from '../../../../shared/ipc-api';
 
 type Fleet = {
   layout: { save: (req: LayoutSaveRequest) => Promise<LayoutSaveResult> };
-  settings: { setWorkspaceOverride: (id: string, dir: string | null) => Promise<void> };
+  settings: {
+    setWorkspaceOverride: (id: string, dir: string | null) => Promise<void>;
+    ensureConfigDir: (dir: string) => Promise<EnsureConfigDirResult>;
+  };
 };
 
 let fleet: Fleet;
@@ -27,7 +34,13 @@ function installFleet(overrides?: Partial<Fleet>): void {
         return { ok: true };
       })
     },
-    settings: { setWorkspaceOverride: vi.fn(roundTrip) },
+    settings: {
+      setWorkspaceOverride: vi.fn(roundTrip),
+      ensureConfigDir: vi.fn(async (): Promise<EnsureConfigDirResult> => {
+        await roundTrip();
+        return { ok: true };
+      })
+    },
     ...overrides
   };
   (globalThis as unknown as { window: { fleet: Fleet } }).window = { fleet };
@@ -66,13 +79,18 @@ describe('persistNewWorkspace', () => {
         setWorkspaceOverride: vi.fn(async () => {
           order.push('override');
           await roundTrip();
+        }),
+        ensureConfigDir: vi.fn(async (): Promise<EnsureConfigDirResult> => {
+          order.push('mkdir');
+          await roundTrip();
+          return { ok: true };
         })
       }
     });
 
     await persistNewWorkspace({ id: 'ws-1', name: 'Work', claudeConfigDir: '/work/.claude' });
 
-    expect(order).toEqual(['layout', 'override']);
+    expect(order).toEqual(['mkdir', 'layout', 'override']);
     expect(fleet.settings.setWorkspaceOverride).toHaveBeenCalledWith('ws-1', '/work/.claude');
   });
 
@@ -98,6 +116,10 @@ describe('persistNewWorkspace', () => {
         setWorkspaceOverride: vi.fn(async () => {
           await roundTrip();
           throw new Error('settings locked');
+        }),
+        ensureConfigDir: vi.fn(async (): Promise<EnsureConfigDirResult> => {
+          await roundTrip();
+          return { ok: true };
         })
       }
     });
@@ -133,5 +155,41 @@ describe('persistNewWorkspace', () => {
     // than leaving a second workspace behind.
     const saves = vi.mocked(fleet.layout.save).mock.calls;
     expect(saves.map(([req]) => req.workspace.id)).toEqual(['ws-1', 'ws-1']);
+  });
+
+  it('creates the custom folder before writing anything', async () => {
+    await persistNewWorkspace({ id: 'ws-1', name: 'Work', claudeConfigDir: '/work/.claude-work' });
+    expect(fleet.settings.ensureConfigDir).toHaveBeenCalledWith('/work/.claude-work');
+  });
+
+  it('touches no folder when the workspace inherits the default', async () => {
+    await persistNewWorkspace({ id: 'ws-1', name: 'Work', claudeConfigDir: null });
+    expect(fleet.settings.ensureConfigDir).not.toHaveBeenCalled();
+  });
+
+  it('saves nothing when the folder cannot be created', async () => {
+    installFleet({
+      settings: {
+        setWorkspaceOverride: vi.fn(roundTrip),
+        ensureConfigDir: vi.fn(async (): Promise<EnsureConfigDirResult> => {
+          await roundTrip();
+          return { ok: false, error: 'read-only volume' };
+        })
+      }
+    });
+
+    const result = await persistNewWorkspace({
+      id: 'ws-1',
+      name: 'Work',
+      claudeConfigDir: '/work/.claude-work'
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'folder could not be created: read-only volume',
+      savedLayout: false
+    });
+    // Nothing half-written: no workspace to clean up after a bad path.
+    expect(fleet.layout.save).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,9 @@ import { useEffect } from 'react';
 import { useHookStatusStore } from '../../store/hook-status-store';
 import type { HookState } from '../../store/hook-status-store';
 
+/** Fleet hooks exist only where the Copilot service does. */
+export const HOOKS_SUPPORTED = window.fleet.platform === 'darwin';
+
 const STATE_LABEL: Record<HookState, string> = {
   checking: 'Checking…',
   installed: 'Hooks installed',
@@ -29,6 +32,12 @@ const STATE_DOT: Record<HookState, string> = {
  * `sharedWith` names every workspace resolving to this folder. Passing more
  * than one name is what turns an install into an action the user is told
  * affects several workspaces before they take it.
+ *
+ * Renders nothing where Copilot does not run. `initCopilot` returns before
+ * registering the hook IPC handlers off macOS, so every check there rejects -
+ * which would fill the Workspaces page with failed checks and buttons that
+ * cannot work. Choosing a config folder stays available on every platform;
+ * only the Copilot-specific setup disappears.
  */
 export function FolderHooks({
   folder,
@@ -36,13 +45,14 @@ export function FolderHooks({
 }: {
   folder: string;
   sharedWith?: string[];
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   const entry = useHookStatusStore((s) => s.byFolder[folder]);
   const check = useHookStatusStore((s) => s.check);
   const install = useHookStatusStore((s) => s.install);
   const remove = useHookStatusStore((s) => s.remove);
 
   useEffect(() => {
+    if (!HOOKS_SUPPORTED) return;
     check(folder);
   }, [folder, check]);
 
@@ -52,6 +62,10 @@ export function FolderHooks({
   // Nothing to install *to* until a check has come back, and offering "Remove"
   // for a folder we could not read would be a guess.
   const actionable = state === 'installed' || state === 'missing';
+
+  // After the hooks above, not before: the early return has to come last so the
+  // hook order stays the same on every render.
+  if (!HOOKS_SUPPORTED) return null;
 
   return (
     <div>
