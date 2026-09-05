@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.115.0
+
+- **Claude config folders are now workspace settings** - each workspace can have its own Claude Code config folder, or inherit a shared default that you set once. The folder choice sits in Application > Workspaces alongside the folder path and its setup status, so all workspace config lives in one place. Fleet hook setup now shows which folder it affects, making the connection between hooks and workspaces clear. New workspaces can be created from Settings without switching away from your current one (#557).
+
 ## v2.114.0
 
 - **Scratch gives you an agent chat without a project** - the pinned Scratch chat lives in `~/.fleet/scratch`, so you can start a conversation without first choosing a folder and reach it from the sidebar, mini rail, command palette, or Cmd/Ctrl+Shift+J.
