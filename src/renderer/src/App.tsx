@@ -8,7 +8,8 @@ import {
   History,
   SlidersHorizontal,
   Bot,
-  Server
+  Server,
+  Sparkles
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
@@ -24,6 +25,7 @@ import {
   collectPaneLeafs,
   getPaneContextById
 } from './store/workspace-store';
+import { isScratchTab } from './lib/scratch';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
@@ -811,7 +813,9 @@ export function App(): React.JSX.Element {
     (t) =>
       t.type !== 'settings' && t.type !== 'annotate' && t.type !== 'sessions' && t.type !== 'agent'
   );
-  const miniRailAgentTabs = workspace.tabs.filter((t) => t.type === 'agent');
+  // Scratch is an agent tab, but it belongs with the pinned tools below rather
+  // than with the projects, exactly as it does in the expanded sidebar.
+  const miniRailAgentTabs = workspace.tabs.filter((t) => t.type === 'agent' && !isScratchTab(t));
 
   return (
     <div
@@ -893,9 +897,9 @@ export function App(): React.JSX.Element {
               </>
             )}
             {/* Pinned tools section (mirrors expanded sidebar: tools above workspaces) */}
-            {workspace.tabs.some((t) => t.type === 'annotate' || t.type === 'sessions') && (
-              <RailDivider />
-            )}
+            {workspace.tabs.some(
+              (t) => t.type === 'annotate' || t.type === 'sessions' || isScratchTab(t)
+            ) && <RailDivider />}
             {/* Annotate pinned icon */}
             {workspace.tabs
               .filter((t) => t.type === 'annotate')
@@ -942,6 +946,27 @@ export function App(): React.JSX.Element {
                   </MiniSidebarTooltip>
                 );
               })}
+            {/* Scratch pinned icon */}
+            {workspace.tabs.filter(isScratchTab).map((tab) => {
+              const isScratchActive = tab.id === activeTabId;
+              return (
+                <MiniSidebarTooltip label="Scratch" key={tab.id}>
+                  <button
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`p-1.5 rounded transition-colors active:scale-90 ${
+                      isScratchActive
+                        ? 'bg-violet-900/40 ring-1 ring-violet-500/30'
+                        : 'hover:bg-fleet-surface-2'
+                    }`}
+                  >
+                    <Sparkles
+                      size={16}
+                      className={isScratchActive ? 'text-violet-300' : 'text-violet-300/40'}
+                    />
+                  </button>
+                </MiniSidebarTooltip>
+              );
+            })}
             <RailDivider />
             {/* Configure tools */}
             <MiniSidebarTooltip label="Configure tools">

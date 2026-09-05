@@ -144,13 +144,40 @@ describe('switchWorkspace', () => {
     expect(state.backgroundWorkspaces.has('ws-b')).toBe(true);
   });
 
-  it('ensures only the default-visible tool (annotate) for an empty workspace', () => {
+  it('ensures only the default-visible tools (annotate, scratch) for an empty workspace', () => {
     const emptyWs: Workspace = { id: 'ws-empty', label: 'Empty', tabs: [] };
     useWorkspaceStore.getState().switchWorkspace(emptyWs);
     const state = useWorkspaceStore.getState();
-    // Default tool visibility is annotate-only; other tools are opt-in.
-    expect(state.workspace.tabs).toHaveLength(1);
-    expect(state.workspace.tabs[0].type).toBe('annotate');
+    // Annotate and Scratch are on by default; Sessions is opt-in. Scratch is an
+    // `agent` tab rather than a type of its own, so it is identified by its
+    // label here the way the store identifies it by its folder.
+    expect(state.workspace.tabs).toHaveLength(2);
+    expect(state.workspace.tabs.map((t) => t.type).sort()).toEqual(['agent', 'annotate']);
+    expect(state.workspace.tabs.find((t) => t.type === 'agent')?.label).toBe('Scratch');
+  });
+
+  it('does not add a second scratch tab when one is already there', () => {
+    const emptyWs: Workspace = { id: 'ws-scratch-twice', label: 'Twice', tabs: [] };
+    useWorkspaceStore.getState().switchWorkspace(emptyWs);
+    const before = useWorkspaceStore.getState().workspace.tabs.length;
+    // A reconcile is what runs whenever the settings change or a workspace is
+    // switched into, so it is the pass that would duplicate the tab if the
+    // guard looked at `type` rather than at the folder.
+    useWorkspaceStore.getState().reconcileToolTabs();
+    expect(useWorkspaceStore.getState().workspace.tabs).toHaveLength(before);
+  });
+
+  it('strips the scratch tab when the tool is turned off, and brings it back', () => {
+    const emptyWs: Workspace = { id: 'ws-scratch-vis', label: 'Scratch vis', tabs: [] };
+    useWorkspaceStore.getState().switchWorkspace(emptyWs);
+    useWorkspaceStore.getState().setToolVisible('scratch', false);
+    expect(
+      useWorkspaceStore.getState().workspace.tabs.filter((t) => t.type === 'agent')
+    ).toHaveLength(0);
+    useWorkspaceStore.getState().setToolVisible('scratch', true);
+    expect(
+      useWorkspaceStore.getState().workspace.tabs.filter((t) => t.type === 'agent')
+    ).toHaveLength(1);
   });
 
   it('strips a disabled tool tab and recreates it when re-enabled', () => {

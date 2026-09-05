@@ -238,6 +238,15 @@ export function createCommandRegistry(): Command[] {
       execute: () => document.dispatchEvent(new CustomEvent('fleet:new-agent'))
     },
     {
+      id: 'open-scratch',
+      label: 'Open Scratch Chat',
+      category: 'Agent',
+      keywords: ['scratch', 'chat', 'quick', 'image', 'generate', 'ask'],
+      // No folder to pick: that is the whole point of it, and the store both
+      // reveals the tool and lands the user in the tab.
+      execute: () => useWorkspaceStore.getState().openScratch()
+    },
+    {
       id: 'open-sessions',
       label: 'Open Sessions',
       category: 'Tabs',

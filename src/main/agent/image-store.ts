@@ -23,7 +23,9 @@ const log = createLogger('agent:images');
  * the user thought they had deleted.
  */
 
-const AGENT_IMAGES_DIR = join(homedir(), '.fleet', 'agent', 'images');
+/** Where the agent's own output goes, one folder per conversation. Exported so
+ *  the gallery can read the whole store rather than one session at a time. */
+export const AGENT_IMAGES_DIR = join(homedir(), '.fleet', 'agent', 'images');
 
 /** Where an attachment is copied to. Separate from what the agent generated:
  *  they are deleted together, but they are not the same thing, and a folder

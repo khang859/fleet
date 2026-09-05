@@ -181,7 +181,8 @@ export class SettingsStore {
       // drops out on the next write instead of riding along forever.
       tools: {
         annotate: saved.tools?.annotate ?? DEFAULT_SETTINGS.tools.annotate,
-        sessions: saved.tools?.sessions ?? DEFAULT_SETTINGS.tools.sessions
+        sessions: saved.tools?.sessions ?? DEFAULT_SETTINGS.tools.sessions,
+        scratch: saved.tools?.scratch ?? DEFAULT_SETTINGS.tools.scratch
       },
       ai: {
         agent: {

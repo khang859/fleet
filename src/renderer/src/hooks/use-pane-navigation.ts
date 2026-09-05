@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
+import { isScratchTab } from '../lib/scratch';
 import { ALL_SHORTCUTS, matchesShortcut, type ShortcutDef } from '../lib/shortcuts';
 
 function sc(id: string): ShortcutDef {
@@ -11,10 +12,18 @@ function sc(id: string): ShortcutDef {
   return def;
 }
 
-/** Filter out pinned/special tabs (Annotate, Sessions, Settings) - used for Cmd+1-9 tab switching */
-export function getNormalTabs<T extends { type?: string }>(tabs: T[]): T[] {
+/**
+ * Filter out pinned/special tabs (Annotate, Sessions, Settings, Scratch) - used
+ * for Cmd+1-9 tab switching.
+ *
+ * Scratch has to be asked about by folder rather than by type: it is an `agent`
+ * tab, so filtering on `type` alone would leave it in the numbered list and push
+ * every project tab along by one.
+ */
+export function getNormalTabs<T extends { type?: string; cwd: string }>(tabs: T[]): T[] {
   return tabs.filter(
-    (t) => t.type !== 'settings' && t.type !== 'annotate' && t.type !== 'sessions'
+    (t) =>
+      t.type !== 'settings' && t.type !== 'annotate' && t.type !== 'sessions' && !isScratchTab(t)
   );
 }
 
@@ -168,6 +177,12 @@ export function usePaneNavigation(): void {
       if (matchesShortcut(e, sc('telescope'))) {
         e.preventDefault();
         document.dispatchEvent(new CustomEvent('fleet:toggle-telescope'));
+        return;
+      }
+
+      if (matchesShortcut(e, sc('open-scratch'))) {
+        e.preventDefault();
+        useWorkspaceStore.getState().openScratch();
         return;
       }
 

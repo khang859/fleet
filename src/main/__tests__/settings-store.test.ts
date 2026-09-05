@@ -109,7 +109,7 @@ describe('SettingsStore settings merge', () => {
       tools: { annotate: true, kanban: true, images: false, chat: true },
       ai: { chat: { defaultModel: 'someone/old-model' }, agent: { compactThreshold: 0.5 } }
     } as never);
-    expect(store.get().tools).toEqual({ annotate: true, sessions: false });
+    expect(store.get().tools).toEqual({ annotate: true, sessions: false, scratch: true });
     expect(Object.keys(store.get().ai)).toEqual(['agent']);
     expect(store.get().ai.agent.compactThreshold).toBe(0.5);
   });

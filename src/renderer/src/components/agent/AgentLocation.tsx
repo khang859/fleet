@@ -16,10 +16,18 @@ import { headName, truncateBranch, type AgentGitHead } from '../../../../shared/
  */
 export function AgentLocation({
   cwd,
-  head
+  head,
+  label
 }: {
   cwd: string;
   head: AgentGitHead | null;
+  /**
+   * What to call the folder, when its own name is not the useful answer. The
+   * scratch pane passes one: the basename there is `scratch`, which says where
+   * the files are rather than what the pane is, and the path is still in the
+   * tooltip for anyone who wants it.
+   */
+  label?: string;
 }): React.JSX.Element {
   const name = head === null ? null : headName(head);
   const detached = head !== null && head.branch === null;
@@ -29,7 +37,7 @@ export function AgentLocation({
     // lines up with the box above it rather than sitting just inside it.
     <div className="mx-auto flex w-full max-w-2xl shrink-0 items-center gap-2 px-4 pb-3 text-[11px] text-fleet-text-subtle">
       <span className="min-w-0 shrink truncate" title={cwd}>
-        {folderName(cwd)}
+        {label ?? folderName(cwd)}
       </span>
       {name !== null && <BranchChip name={name} op={head?.op ?? null} detached={detached} />}
     </div>

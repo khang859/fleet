@@ -74,6 +74,25 @@ async function resolve(req: AgentAttachRequest, store: AgentImageStore): Promise
     return { kind: 'image', path: store.save(req.threadId, bytes, mimeType), mimeType, name };
   }
 
+  // A picture Fleet itself made, sent back into a conversation from the
+  // gallery. It lives outside the working folder by design, so the sandbox
+  // below would refuse it; the store is the other place a file may be read
+  // from, exactly as it is for the image tool's own `references`. Not copied,
+  // for the same reason a project file is not: it is already somewhere that
+  // outlives the gesture.
+  if (isAgentImagePath(req.source.path)) {
+    const mimeType = imageMimeFor(req.source.path);
+    const info = mimeType === null ? null : await stat(req.source.path).catch(() => null);
+    if (mimeType !== null && info?.isFile() === true) {
+      if (info.size > ATTACHMENT_MAX_IMAGE_BYTES) {
+        throw new Error(
+          `${basename(req.source.path)} is ${formatSize(info.size)}, too large to attach`
+        );
+      }
+      return { kind: 'image', path: req.source.path, mimeType, name: basename(req.source.path) };
+    }
+  }
+
   // A mention. The working folder's sandbox is what decides whether this file
   // may be read at all, and it is also what turns the path into a real one.
   const abs = resolveInsideCwd(req.source.path, req.cwd);
