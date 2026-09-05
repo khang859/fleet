@@ -421,6 +421,19 @@ body,
   overflow: auto;
 }
 
+/* Hanging indent for markdown lists. Streamdown sets `list-style-position:
+   inside` with no padding, so the second line of an item wraps back underneath
+   its own bullet instead of lining up with the text it continues. That is
+   invisible on a one-line item and hard to read on a paragraph - which is what
+   both an agent's explanations and a release note actually are. Task lists set
+   their own `list-style: none` and are left alone, since a checkbox is already
+   the marker. */
+.fleet-markdown ul:not(:has(> li > input[type='checkbox'])),
+.fleet-markdown ol {
+  list-style-position: outside;
+  padding-left: 1.25rem;
+}
+
 /* Zebra-stripe markdown tables — Streamdown ships row dividers only. Uses the
    bridged --muted token so it stays subtle in both light and dark themes. */
 .fleet-markdown tbody tr:nth-child(even) {

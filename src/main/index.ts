@@ -6,12 +6,15 @@ import {
   Notification,
   nativeImage,
   net,
+  powerMonitor,
   protocol,
   session as electronSession,
   shell,
   systemPreferences
 } from 'electron';
 import { safeOpenExternal, isSafeExternalUrl } from './safe-external';
+import { shouldCheck, UPDATE_CHECK_INTERVAL_MS } from './update-scheduler';
+import { nextStaged } from './update-staging';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -54,7 +57,12 @@ import { parseFleetUrl } from './protocol-paths';
 import { toWslUncPath } from '../shared/path-platform';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
 import type { HostContextPayload } from '../shared/ipc-api';
-import type { NotificationLevel, UpdateStatus } from '../shared/types';
+import type {
+  NotificationLevel,
+  StagedUpdate,
+  UpdateSnapshot,
+  UpdateStatus
+} from '../shared/types';
 import { createLogger } from './logger';
 import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
 import { SessionsService } from './sessions/service';
@@ -121,6 +129,8 @@ let agentService: AgentService | null = null;
 let agentMcp: AgentMcpManager | undefined;
 let agentSubagents: SubagentManager | null = null;
 let agentScheduleTimer: ScheduleTimer | null = null;
+/** The periodic update check, cleared on the way out with the other timers. */
+let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Set once the user has confirmed a close, so the second `close` - the one
@@ -1036,6 +1046,19 @@ void app.whenReady().then(async () => {
   let updateState: 'idle' | 'checking' | 'downloading' | 'ready' = 'idle';
   let pendingVersion = '';
   let pendingReleaseNotes = '';
+  /**
+   * The snapshot the renderer mirrors. Main keeps it because main is the only
+   * side that sees the whole sequence: which error followed a download and so
+   * destroyed the artifact, and which followed a check and so destroyed
+   * nothing. It also outlives a renderer reload, which the renderer's copy
+   * cannot.
+   */
+  let lastUpdateStatus: UpdateStatus = { state: 'idle' };
+  let stagedUpdate: StagedUpdate | null = null;
+  /** Null until the first check, which is what makes that one run. */
+  let lastUpdateCheckAt: number | null = null;
+  /** Set once an install has been confirmed, so a second click is a no-op. */
+  let installRequested = false;
 
   function normalizeReleaseNotes(
     notes: string | Array<{ note: string | null }> | null | undefined
@@ -1047,9 +1070,14 @@ void app.whenReady().then(async () => {
   }
 
   function sendUpdateStatus(status: UpdateStatus): void {
-    updaterLog.info('status', { state: status.state });
+    stagedUpdate = nextStaged(stagedUpdate, lastUpdateStatus, status);
+    lastUpdateStatus = status;
+    updaterLog.info('status', { state: status.state, staged: stagedUpdate?.version ?? null });
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('fleet:update-status', status);
+      mainWindow.webContents.send(IPC_CHANNELS.UPDATE_STATUS, {
+        status,
+        staged: stagedUpdate
+      } satisfies UpdateSnapshot);
     }
   }
 
@@ -1072,6 +1100,12 @@ void app.whenReady().then(async () => {
       if (!app.isPackaged) {
         autoUpdater.forceDevUpdateConfig = true;
       }
+
+      // Installing on quit is this app's decision, not the updater's. Left on,
+      // it attaches its own `onQuit` hook the moment a download finishes and
+      // swaps the app out from under any quit at all - including one the user
+      // is still being asked to confirm, and one they then cancel.
+      autoUpdater.autoInstallOnAppQuit = false;
 
       autoUpdater.on('checking-for-update', () => {
         updateState = 'checking';
@@ -1115,6 +1149,13 @@ void app.whenReady().then(async () => {
 
       autoUpdater.on('error', (err) => {
         updateState = 'idle';
+        // An install that errored did not quit, so the waiver it was granted
+        // has to go back. Left set, the next close of the window would skip
+        // the running-work question entirely.
+        if (installRequested) {
+          installRequested = false;
+          quitConfirmed = false;
+        }
         sendUpdateStatus({ state: 'error', message: err.message });
       });
 
@@ -1123,8 +1164,9 @@ void app.whenReady().then(async () => {
     return updaterPromise;
   }
 
-  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
+  async function runUpdateCheck(): Promise<void> {
     if (updateState === 'checking' || updateState === 'downloading') return;
+    lastUpdateCheckAt = Date.now();
     try {
       await (await getUpdater()).checkForUpdates();
     } catch (err) {
@@ -1133,28 +1175,117 @@ void app.whenReady().then(async () => {
         message: err instanceof Error ? err.message : 'Update check failed'
       });
     }
-  });
+  }
+
+  /**
+   * A check asked for by the timer, the window, or the machine waking.
+   *
+   * All three are routed here rather than at the updater because they overlap:
+   * a lid opening fires the wake and the focus together, often with the timer
+   * due as well. The gap in `shouldCheck` is what makes that one check.
+   *
+   * The manual button in Settings deliberately does not come through here - a
+   * user who clicks "Check for Updates" is owed an answer, not a throttle.
+   */
+  function maybeCheckForUpdates(reason: string): void {
+    if (!shouldCheck(Date.now(), lastUpdateCheckAt)) return;
+    updaterLog.info('scheduled check', { reason });
+    void runUpdateCheck();
+  }
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => runUpdateCheck());
+
+  // A renderer that has just mounted has heard nothing yet, and a reload is far
+  // more common than a release - without this, reloading a window with an
+  // update waiting hides the pill until the next check hours later.
+  ipcMain.handle(
+    IPC_CHANNELS.UPDATE_SNAPSHOT,
+    (): UpdateSnapshot => ({ status: lastUpdateStatus, staged: stagedUpdate })
+  );
 
   ipcMain.handle(IPC_CHANNELS.GET_VERSION, () => app.getVersion());
 
+  /**
+   * Install the staged update, having asked first if that throws work away.
+   *
+   * `quitAndInstall` is not a request to quit - on Windows and Linux it spawns
+   * the installer and only then calls `app.quit()`, so the window's own close
+   * handler gets its say after the installer is already running and a user who
+   * answers "cancel" is left in an app being replaced underneath them. On macOS
+   * it reaches native Squirrel and there is no say at all.
+   *
+   * So the question is asked here, before anything is spawned, using the same
+   * `hasRunningWork`/`quitGuard` pair a Cmd+Q goes through. `quitConfirmed`
+   * then waves the close that `quitAndInstall` triggers straight past a second
+   * prompt to the teardown it wants.
+   */
+  async function requestInstallUpdate(): Promise<void> {
+    if (installRequested) return;
+    // Nothing to install: never ask someone to throw work away for it.
+    if (!stagedUpdate) return;
+    if (hasRunningWork(true) && !(await quitGuard.ask(mainOwnedWork(true)))) return;
+    installRequested = true;
+    quitConfirmed = true;
+    try {
+      (await getUpdater()).quitAndInstall();
+    } catch (err) {
+      installRequested = false;
+      quitConfirmed = false;
+      updaterLog.error('install failed', {
+        error: err instanceof Error ? err.message : String(err)
+      });
+      sendUpdateStatus({
+        state: 'error',
+        message: err instanceof Error ? err.message : 'Install failed'
+      });
+    }
+  }
+
   ipcMain.on(IPC_CHANNELS.UPDATE_INSTALL, () => {
-    void getUpdater().then((updater) => {
-      updater.quitAndInstall();
-    });
+    void requestInstallUpdate();
   });
+
+  /**
+   * A synthetic status, so the nudge can be seen without shipping a release.
+   *
+   * Goes out through the same `sendUpdateStatus` a real one does, so what it
+   * exercises is the whole path - IPC, preload, the hook, the store, the toast
+   * and the pill - rather than a store written to directly. Dev only; the
+   * channel does not exist in a packaged build, and `send` to a channel nothing
+   * listens on is a no-op, so the renderer side stays harmless either way.
+   */
+  if (IS_FLEET_DEV) {
+    ipcMain.on(IPC_CHANNELS.UPDATE_SIMULATE, (_event, status: UpdateStatus) => {
+      updaterLog.info('simulated status', { state: status.state });
+      sendUpdateStatus(status);
+    });
+  }
 
   // Silent check on launch (packaged builds only). Deliberately after the
   // window has painted: the check talks to the network and nobody is waiting
   // on its answer, so it has no business delaying the first frame.
+  //
+  // The timer and the two wake-ish triggers join it here for the same reason -
+  // none of them is worth a millisecond of the first frame.
   if (app.isPackaged) {
     whenWindowReady(() => {
-      void getUpdater()
-        .then(async (updater) => updater.checkForUpdates())
-        .catch((err: unknown) => {
-          updaterLog.error('auto-update check failed', {
-            error: err instanceof Error ? err.message : String(err)
-          });
-        });
+      maybeCheckForUpdates('launch');
+      updateCheckTimer = setInterval(() => maybeCheckForUpdates('timer'), UPDATE_CHECK_INTERVAL_MS);
+      // A window someone has just come back to is the moment a pending update
+      // is worth knowing about, and it is also when the answer is most likely
+      // stale - the machine may have been asleep through several timer periods.
+      //
+      // Bound to the app rather than to the window, because on macOS closing
+      // the window leaves the process running and reopening from the dock
+      // builds a replacement through `createWindow` - a listener attached to
+      // the window this ran on would be sitting on a window that no longer
+      // exists. Compared against `mainWindow` as it is now, so the check
+      // follows the replacement and the copilot, annotate and web-render
+      // windows do not trigger it.
+      app.on('browser-window-focus', (_event, win) => {
+        if (win === mainWindow) maybeCheckForUpdates('focus');
+      });
+      powerMonitor.on('resume', () => maybeCheckForUpdates('resume'));
     });
   }
 
@@ -1501,6 +1632,10 @@ function shutdownAll(): void {
   // Nothing is lost by stopping this: what is due is on disk, and the first
   // tick of the next launch finds it exactly as this one would have.
   agentScheduleTimer?.stop();
+  if (updateCheckTimer) {
+    clearInterval(updateCheckTimer);
+    updateCheckTimer = null;
+  }
   // Spawned servers are child processes of this one, so a quit that skipped
   // this would leave them running with nothing to talk to.
   void agentMcp?.closeAll();
