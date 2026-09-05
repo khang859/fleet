@@ -731,8 +731,8 @@ const fleetApi = {
         typedInvoke<ImageActionResult>(IPC_CHANNELS.AGENT_IMAGE_SAVE_AS, { path, suggestedName }),
       reveal: async (path: string): Promise<ImageActionResult> =>
         typedInvoke<ImageActionResult>(IPC_CHANNELS.AGENT_IMAGE_REVEAL, path),
-      startDrag: (path: string): void => {
-        ipcRenderer.send(IPC_CHANNELS.AGENT_IMAGE_START_DRAG, path);
+      startDrag: (path: string, icon?: Uint8Array): void => {
+        ipcRenderer.send(IPC_CHANNELS.AGENT_IMAGE_START_DRAG, { path, icon });
       }
     },
 

@@ -56,11 +56,7 @@ export async function revealImage(path: string): Promise<void> {
  */
 export async function copyImageToClipboard(path: string): Promise<void> {
   try {
-    const response = await fetch(toFleetImageUrl(path));
-    const bitmap = await createImageBitmap(await response.blob());
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-    canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
-    const png = await canvas.convertToBlob({ type: 'image/png' });
+    const png = await toPng(path);
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
     useToastStore.getState().show('Image copied');
   } catch {
@@ -73,15 +69,54 @@ export async function copyImageToClipboard(path: string): Promise<void> {
 }
 
 /**
+ * The picture, decoded by Chromium and re-encoded as a PNG.
+ *
+ * `longestSide` shrinks it on the way, for the one caller that wants a
+ * thumbnail rather than the picture.
+ */
+async function toPng(path: string, longestSide?: number): Promise<Blob> {
+  const response = await fetch(toFleetImageUrl(path));
+  const bitmap = await createImageBitmap(await response.blob());
+  const scale =
+    longestSide === undefined
+      ? 1
+      : Math.min(1, longestSide / Math.max(bitmap.width, bitmap.height));
+  const canvas = new OffscreenCanvas(
+    Math.max(1, Math.round(bitmap.width * scale)),
+    Math.max(1, Math.round(bitmap.height * scale))
+  );
+  canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvas.convertToBlob({ type: 'image/png' });
+}
+
+/** How big the picture under the cursor is while it is being dragged. */
+const DRAG_ICON_PX = 96;
+
+/**
  * Hand the drag to the OS.
  *
- * Not async and not reported: once main calls `startDrag` the gesture belongs
- * to the window manager, and there is nothing to wait for and nothing to say.
- * A drag that main refuses simply does not start, which is what every failed
- * drag looks like anyway.
+ * Not reported: once main calls `startDrag` the gesture belongs to the window
+ * manager, and there is nothing to wait for and nothing to say. A drag that main
+ * refuses simply does not start, which is what every failed drag looks like
+ * anyway.
+ *
+ * The thumbnail that travels under the cursor is made here rather than in main,
+ * for the reason the clipboard copy is: `startDrag` throws on an empty icon
+ * rather than dragging without one, and `nativeImage` decodes PNG and JPEG and
+ * nothing else - so a generated WebP would produce no icon and therefore no
+ * drag at all. Chromium has already decoded this exact file to draw it on
+ * screen. Bytes rather than a data URL: they cross the boundary as they are,
+ * with no base64 in between. If the encode fails main still tries the file
+ * itself, which is right for the formats it can read.
  */
-export function startImageDrag(path: string): void {
-  window.fleet.agent.image.startDrag(path);
+export async function startImageDrag(path: string): Promise<void> {
+  let icon: Uint8Array | undefined;
+  try {
+    icon = new Uint8Array(await (await toPng(path, DRAG_ICON_PX)).arrayBuffer());
+  } catch {
+    // No icon from here; main falls back to reading the file.
+  }
+  window.fleet.agent.image.startDrag(path, icon);
 }
 
 /**

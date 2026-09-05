@@ -77,19 +77,25 @@ async function resolve(req: AgentAttachRequest, store: AgentImageStore): Promise
   // A picture Fleet itself made, sent back into a conversation from the
   // gallery. It lives outside the working folder by design, so the sandbox
   // below would refuse it; the store is the other place a file may be read
-  // from, exactly as it is for the image tool's own `references`. Not copied,
-  // for the same reason a project file is not: it is already somewhere that
-  // outlives the gesture.
+  // from, exactly as it is for the image tool's own `references`.
+  //
+  // Copied, like a pasted screenshot and unlike a project file. The gallery is
+  // global, so the picture usually belongs to a different conversation, and
+  // deleting *that* conversation takes its pictures with it - which would empty
+  // an attachment out of a transcript that has nothing to do with it, turning
+  // every later turn of this conversation into a missing-image notice. A copy
+  // under the receiving thread gives the attachment the lifetime of the
+  // conversation it was actually attached to.
   if (isAgentImagePath(req.source.path)) {
     const mimeType = imageMimeFor(req.source.path);
     const info = mimeType === null ? null : await stat(req.source.path).catch(() => null);
     if (mimeType !== null && info?.isFile() === true) {
+      const name = basename(req.source.path);
       if (info.size > ATTACHMENT_MAX_IMAGE_BYTES) {
-        throw new Error(
-          `${basename(req.source.path)} is ${formatSize(info.size)}, too large to attach`
-        );
+        throw new Error(`${name} is ${formatSize(info.size)}, too large to attach`);
       }
-      return { kind: 'image', path: req.source.path, mimeType, name: basename(req.source.path) };
+      const bytes = new Uint8Array(await readFile(req.source.path));
+      return { kind: 'image', path: store.save(req.threadId, bytes, mimeType), mimeType, name };
     }
   }
 

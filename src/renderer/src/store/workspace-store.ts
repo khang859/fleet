@@ -519,6 +519,24 @@ function isPinnedTab(tab: Pick<Tab, 'type' | 'cwd'>): boolean {
   return SPECIAL_TAB_TYPES.has(tab.type ?? '') || isScratchTab(tab);
 }
 
+/**
+ * Whether one pane of a pinned tab is the tool itself, rather than something
+ * opened beside it.
+ *
+ * Two ways to be. Being the tab's only leaf makes closing it the same gesture as
+ * closing the tab, which is what the pinned tabs exist to refuse. And in Scratch
+ * the conversation is the tool even when it is not alone: a terminal opened for
+ * a handoff, or an ordinary split, is the user's to close, but the conversation
+ * behind it is not - closing that would leave a Scratch tab with no scratch in
+ * it, and nothing would put it back, since the tool is reconciled by tab and not
+ * by pane.
+ */
+function isToolPane(tab: Tab, paneId: string): boolean {
+  if (!isPinnedTab(tab)) return false;
+  if (removePaneFromTree(tab.splitRoot, paneId) === null) return true;
+  return findLeaf(tab.splitRoot, paneId)?.paneType === 'agent';
+}
+
 /** Pick the best next tab after closing one — prefer normal tabs, fall back to null */
 function pickNextTab(tabs: Tab[], closedIndex: number): Tab | null {
   const normalTabs = tabs.filter(isNormalTab);
@@ -651,17 +669,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closeTab: (tabId, serializedPanes) => {
     logTabs.debug('closeTab', { tabId });
-    // Cancel any in-flight Agent turns for panes in this tab and drop their state.
+    // Pinned tabs (Annotate/Sessions/Scratch) are not closeable, and that is
+    // settled before anything is disposed: throwing away the panes' threads and
+    // then refusing the close would leave Scratch open with its conversation
+    // gone, which is worse than either closing it or leaving it alone.
     const closing = get().workspace.tabs.find((t) => t.id === tabId);
+    if (closing && isPinnedTab(closing)) {
+      logTabs.debug('closeTab refused: pinned tab', { tabId });
+      return;
+    }
+    // Cancel any in-flight Agent turns for panes in this tab and drop their state.
     if (closing) {
       for (const pid of collectPaneIds(closing.splitRoot)) {
         disposePaneElsewhere(pid);
       }
     }
     set((state) => {
-      const target = state.workspace.tabs.find((t) => t.id === tabId);
-      // Pinned tabs (Annotate/Sessions/Scratch) are not closeable.
-      if (target && isPinnedTab(target)) return state;
       const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
       // Guard the index rather than `.at(tabIndex)`: `findIndex` returns -1 when the tab is
       // already gone, and `.at(-1)` would hand back the LAST tab as the closed one.
@@ -1079,15 +1102,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closePane: (paneId) => {
     logLayout.debug('closePane', { paneId });
+    // Asked and answered before anything is disposed. Disposal cancels the
+    // pane's turn and throws its thread away, and doing that first would empty
+    // the Scratch conversation on a close the store then refuses - leaving the
+    // tab open, blank, and holding a session the pane will not reload because
+    // none of its props changed.
+    const owner = get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
+    if (owner && isToolPane(owner, paneId)) {
+      logLayout.debug('closePane refused: pinned tool pane', { paneId, tabId: owner.id });
+      return;
+    }
+
     // Cancel any in-flight Agent turn for this pane and drop its state: a turn
     // parked on a permission question is waiting on a click from the pane being
     // closed, and nothing else would ever end it.
     disposePaneElsewhere(paneId);
     set((state) => {
-      // Don't let the close-pane action destroy a pinned tab via its sole leaf.
-      const owner = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
-      if (owner && isPinnedTab(owner)) return state;
-
       // Closing a worktree tab's last pane would otherwise drop the tab silently,
       // skipping the confirmation dialog and the on-disk worktree cleanup. Route it
       // through the same confirmation flow as a regular tab close instead.

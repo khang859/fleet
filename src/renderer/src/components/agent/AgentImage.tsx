@@ -86,7 +86,7 @@ export function AgentImage({
             onDragStart={(e) => {
               if (path === undefined) return;
               e.preventDefault();
-              startImageDrag(path);
+              void startImageDrag(path);
             }}
             className="block max-h-80 w-auto max-w-full object-contain"
           />

@@ -33,6 +33,11 @@ const log = createLogger('agent:image-export');
 
 const ImagePath = z.string().min(1);
 const SaveAsArgs = z.object({ path: ImagePath, suggestedName: z.string().min(1).max(255) });
+/** The thumbnail is optional: the renderer sends one when it could make one. */
+const DragArgs = z.object({ path: ImagePath, icon: z.instanceof(Uint8Array).optional() });
+
+/** How big the picture under the cursor is while it is being dragged. */
+const DRAG_ICON_PX = 96;
 
 /** The one refusal all four share, so it reads the same wherever it surfaces. */
 const NOT_OURS = 'That file is not one Fleet made';
@@ -79,16 +84,34 @@ export function registerAgentImageExportIpc(): void {
    * anyway.
    */
   ipcMain.on(IPC_CHANNELS.AGENT_IMAGE_START_DRAG, (event, input: unknown) => {
-    const parsed = ImagePath.safeParse(input);
-    if (!parsed.success || !isAgentImagePath(parsed.data)) return;
+    const parsed = DragArgs.safeParse(input);
+    if (!parsed.success || !isAgentImagePath(parsed.data.path)) return;
+    const { path, icon } = parsed.data;
+
     // `startDrag` throws on an empty icon rather than dragging without one, so
-    // an undecodable file has to drop out here.
-    const icon = nativeImage.createFromPath(parsed.data).resize({ width: 96, height: 96 });
-    if (icon.isEmpty()) return;
+    // there has to be a picture here or there is no drag.
+    //
+    // The renderer's thumbnail is preferred because `nativeImage` reads PNG and
+    // JPEG and nothing else, and a generated WebP is neither - reading the file
+    // here would come back empty and the gesture would silently do nothing.
+    // Chromium had already decoded this file to draw it, so the icon arrives
+    // as PNG bytes of what the user is looking at. Reading the file is the
+    // fallback for the formats that do decode.
+    const sent =
+      icon === undefined
+        ? nativeImage.createEmpty()
+        : nativeImage.createFromBuffer(Buffer.from(icon));
+    const thumbnail = sent.isEmpty()
+      ? nativeImage.createFromPath(path).resize({ width: DRAG_ICON_PX, height: DRAG_ICON_PX })
+      : sent;
+    if (thumbnail.isEmpty()) {
+      log.warn('no icon to drag with', { path });
+      return;
+    }
     try {
-      event.sender.startDrag({ file: parsed.data, icon });
+      event.sender.startDrag({ file: path, icon: thumbnail });
     } catch (err) {
-      log.warn('drag failed', { path: parsed.data, error: String(err) });
+      log.warn('drag failed', { path, error: String(err) });
     }
   });
 }
