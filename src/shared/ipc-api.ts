@@ -51,6 +51,25 @@ export type LayoutSaveRequest = {
   workspace: Workspace;
 };
 
+/**
+ * Whether the workspace actually reached disk.
+ *
+ * The save handler used to log its failures and answer `undefined`, which is
+ * fine for the debounced autosave - it runs again in a moment - and wrong for
+ * workspace creation, which has to tell the user whether the thing they just
+ * named exists.
+ */
+export type LayoutSaveResult = { ok: true } | { ok: false; error: string };
+
+/** Result of creating a Claude config folder that a workspace is about to use. */
+export type EnsureConfigDirResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Whether pointing a workspace at a folder actually changed anything. The
+ * renderer uses it to decide whether to tell the user a change was made.
+ */
+export type SetWorkspaceOverrideResult = { changed: boolean };
+
 export type LayoutListResponse = {
   workspaces: Workspace[];
 };

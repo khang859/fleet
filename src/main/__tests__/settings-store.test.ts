@@ -192,3 +192,70 @@ describe('legacy scrollback migration', () => {
     expect(migrateLegacyScrollback(saved)).toBe(saved);
   });
 });
+
+// The whole point of the narrow mutation: a caller that wanted to change one
+// workspace used to send back a whole map it had read earlier, which silently
+// discarded anything written in between.
+describe('SettingsStore workspace config overrides', () => {
+  let store: SettingsStore;
+  beforeEach(() => {
+    store = new SettingsStore();
+  });
+
+  it('sets one override and leaves the others alone', () => {
+    store.setWorkspaceOverride('personal', '/home/personal/.claude');
+    store.setWorkspaceOverride('work', '/home/work/.claude');
+
+    const overrides = store.get().copilot.workspaceOverrides;
+    expect(overrides.personal?.claudeConfigDir).toBe('/home/personal/.claude');
+    expect(overrides.work?.claudeConfigDir).toBe('/home/work/.claude');
+  });
+
+  it('removes one override without touching the rest', () => {
+    store.setWorkspaceOverride('personal', '/home/personal/.claude');
+    store.setWorkspaceOverride('work', '/home/work/.claude');
+
+    store.setWorkspaceOverride('personal', null);
+
+    const overrides = store.get().copilot.workspaceOverrides;
+    expect(overrides.personal).toBeUndefined();
+    expect(overrides.work?.claudeConfigDir).toBe('/home/work/.claude');
+  });
+
+  it('reports whether the assignment changed anything', () => {
+    // The renderer cannot answer this: its copy of the settings is stale for as
+    // long as any write is in flight, so it asks the side that owns the file.
+    expect(store.setWorkspaceOverride('work', '/home/work/.claude')).toBe(true);
+    expect(store.setWorkspaceOverride('work', '/home/work/.claude')).toBe(false);
+    expect(store.setWorkspaceOverride('work', null)).toBe(true);
+    expect(store.setWorkspaceOverride('work', null)).toBe(false);
+  });
+
+  it('treats a re-typed folder with stray spaces as no change', () => {
+    store.setWorkspaceOverride('work', '/home/work/.claude');
+    expect(store.setWorkspaceOverride('work', '  /home/work/.claude  ')).toBe(false);
+  });
+
+  it('treats a blank folder as a removal rather than an empty assignment', () => {
+    store.setWorkspaceOverride('personal', '/home/personal/.claude');
+    store.setWorkspaceOverride('personal', '   ');
+    expect(store.get().copilot.workspaceOverrides.personal).toBeUndefined();
+  });
+
+  it('preserves an independent copilot setting written beside it', () => {
+    store.set({ copilot: { claudeConfigDir: '/shared/.claude' } });
+    store.setWorkspaceOverride('work', '/home/work/.claude');
+    store.set({ copilot: { showAllWorkspaces: true } });
+
+    const copilot = store.get().copilot;
+    expect(copilot.claudeConfigDir).toBe('/shared/.claude');
+    expect(copilot.showAllWorkspaces).toBe(true);
+    expect(copilot.workspaceOverrides.work?.claudeConfigDir).toBe('/home/work/.claude');
+  });
+
+  it('round-trips a default folder set before any override existed', () => {
+    store.set({ copilot: { claudeConfigDir: '/shared/.claude' } });
+    expect(store.get().copilot.workspaceOverrides).toEqual({});
+    expect(store.get().copilot.claudeConfigDir).toBe('/shared/.claude');
+  });
+});

@@ -20,8 +20,11 @@ import {
   useWorkspaceStore,
   collectPaneIds,
   collectPaneLeafs,
-  getPaneContextById
+  getPaneContextById,
+  isPinnedTab
 } from '../store/workspace-store';
+import { useWorkspaceListStore } from '../store/workspace-list-store';
+import { CreateWorkspaceDialog } from './workspace/CreateWorkspaceDialog';
 import type { PathContext } from '../../../shared/shell-profiles';
 import { useNotificationStore } from '../store/notification-store';
 import { useSidebarSectionsStore } from '../store/sidebar-sections-store';
@@ -794,13 +797,14 @@ export function Sidebar({
   }, [dragIndex]);
 
   // --- Saved workspaces ---
-  const [savedWorkspaces, setSavedWorkspaces] = useState<Array<{ id: string; label: string }>>([]);
+  // Shared with the Workspaces settings page, which can now create workspaces
+  // too: a list held privately here would not show them until a remount.
+  const savedWorkspaces = useWorkspaceListStore((s) => s.workspaces);
+  const refreshWorkspaceList = useWorkspaceListStore((s) => s.refresh);
 
   useEffect(() => {
-    void window.fleet.layout.list().then((res) => {
-      setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
-    });
-  }, []);
+    void refreshWorkspaceList();
+  }, [refreshWorkspaceList]);
 
   const doSwitchWorkspace = useCallback(async (wsId: string) => {
     // Flush current workspace with live CWDs BEFORE any async gap
@@ -834,10 +838,14 @@ export function Sidebar({
       if (loaded) useWorkspaceStore.getState().switchWorkspace(loaded);
     }
 
-    // Add a default tab if workspace is empty
+    // Give the workspace its first terminal when it has nothing of its own.
+    // The check is for unpinned tabs, not for an empty list: a workspace saved
+    // with no tabs - which is what creating one from Settings writes - has
+    // already been seeded with the pinned tool tabs by `switchWorkspace` by the
+    // time this runs, so a length check would leave it with no terminal.
     setTimeout(() => {
       const s = useWorkspaceStore.getState();
-      if (s.workspace.tabs.length === 0) {
+      if (!s.workspace.tabs.some((tab) => !isPinnedTab(tab))) {
         s.addTab(undefined, window.fleet.homeDir);
       }
     }, 0);
@@ -880,10 +888,7 @@ export function Sidebar({
         })
         .then(() => {
           markClean();
-          // Refresh saved workspaces list
-          void window.fleet.layout.list().then((res) => {
-            setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
-          });
+          void useWorkspaceListStore.getState().refresh();
         });
     }, AUTO_SAVE_DEBOUNCE_MS);
     return () => {
@@ -904,22 +909,13 @@ export function Sidebar({
   }, [currentSidebarWidth, setSidebarWidth]);
 
   // --- New workspace creation ---
-  const [showNewWsInput, setShowNewWsInput] = useState(false);
-  const [newWsName, setNewWsName] = useState('');
-  const newWsInputRef = useRef<HTMLInputElement>(null);
+  // Naming and the optional config folder live in the shared dialog; what is
+  // left here is the part only the sidebar does - switching to the workspace it
+  // just made. The dialog has already written it to disk by this point, so the
+  // switch cannot race the autosave the old inline input relied on.
+  const [showNewWsDialog, setShowNewWsDialog] = useState(false);
 
-  useEffect(() => {
-    if (showNewWsInput && newWsInputRef.current) {
-      newWsInputRef.current.focus();
-    }
-  }, [showNewWsInput]);
-
-  const commitNewWorkspace = useCallback(async () => {
-    const name = newWsName.trim();
-    setShowNewWsInput(false);
-    setNewWsName('');
-    if (!name) return;
-
+  const handleWorkspaceCreated = useCallback(async (newWs: Workspace) => {
     // Flush current workspace to disk before switching away
     const state = useWorkspaceStore.getState();
     await window.fleet.layout.save({
@@ -941,24 +937,14 @@ export function Sidebar({
       }
     });
 
-    // Start empty; switchWorkspace seeds the default-visible tools, and the
+    // Starts empty; switchWorkspace seeds the default-visible tools, and the
     // terminal tab is added right after (below).
-    const newWs: Workspace = {
-      id: crypto.randomUUID(),
-      label: name,
-      tabs: []
-    };
     useWorkspaceStore.getState().switchWorkspace(newWs);
-
-    // Refresh workspace list immediately (don't wait for autosave)
-    void window.fleet.layout.list().then((res) => {
-      setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
-    });
 
     setTimeout(() => {
       useWorkspaceStore.getState().addTab(undefined, window.fleet.homeDir);
     }, 0);
-  }, [newWsName]);
+  }, []);
 
   // --- Current workspace header rename ---
   const [isEditingWsLabel, setIsEditingWsLabel] = useState(false);
@@ -1009,7 +995,7 @@ export function Sidebar({
       const full = await window.fleet.layout.load(id);
       if (!full) return;
       await window.fleet.layout.save({ workspace: { ...full, label: trimmed } });
-      setSavedWorkspaces((prev) => prev.map((w) => (w.id === id ? { ...w, label: trimmed } : w)));
+      useWorkspaceListStore.getState().applyRename(id, trimmed);
     } finally {
       savedWsRenamingRef.current = false;
     }
@@ -1132,7 +1118,7 @@ export function Sidebar({
   const handleDeleteWorkspace = useCallback(async (wsId: string) => {
     await window.fleet.layout.delete(wsId);
     useWorkspaceStore.getState().removeBackgroundWorkspace(wsId);
-    setSavedWorkspaces((prev) => prev.filter((w) => w.id !== wsId));
+    useWorkspaceListStore.getState().applyDelete(wsId);
     setDeleteConfirmId(null);
   }, []);
 
@@ -1766,8 +1752,7 @@ export function Sidebar({
             className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
             onClick={() => {
               expandSection('workspaces');
-              setShowNewWsInput(true);
-              setNewWsName('');
+              setShowNewWsDialog(true);
             }}
             title="New Workspace"
           >
@@ -1775,29 +1760,11 @@ export function Sidebar({
           </button>
         </SectionHeader>
 
-        {/* Inline new workspace name input */}
-        {!workspacesCollapsed && showNewWsInput && (
-          <div className="px-1">
-            <input
-              ref={newWsInputRef}
-              type="text"
-              value={newWsName}
-              onChange={(e) => setNewWsName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void commitNewWorkspace();
-                if (e.key === 'Escape') {
-                  setShowNewWsInput(false);
-                  setNewWsName('');
-                }
-              }}
-              onBlur={() => {
-                void commitNewWorkspace();
-              }}
-              placeholder="Workspace name..."
-              className="w-full px-2 py-1 text-sm bg-fleet-surface-2 text-fleet-text border border-fleet-border-strong rounded focus:border-blue-500 focus:outline-none"
-            />
-          </div>
-        )}
+        <CreateWorkspaceDialog
+          open={showNewWsDialog}
+          onClose={() => setShowNewWsDialog(false)}
+          onCreated={(ws) => void handleWorkspaceCreated(ws)}
+        />
 
         {/* Saved workspaces list */}
         {!workspacesCollapsed &&

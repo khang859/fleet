@@ -9,6 +9,9 @@ import type {
   PtyExitPayload,
   PtyCwdPayload,
   LayoutSaveRequest,
+  LayoutSaveResult,
+  EnsureConfigDirResult,
+  SetWorkspaceOverrideResult,
   LayoutListResponse,
   NotificationPayload,
   PaneFocusedPayload,
@@ -221,7 +224,7 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.PTY_RESOLVE_CWD, paneId, pathContext)
   },
   layout: {
-    save: async (req: LayoutSaveRequest): Promise<void> =>
+    save: async (req: LayoutSaveRequest): Promise<LayoutSaveResult> =>
       typedInvoke(IPC_CHANNELS.LAYOUT_SAVE, req),
     // `undefined` when no workspace is saved under that id - the main handler and the
     // store behind it have always been able to return nothing, and callers already
@@ -281,7 +284,20 @@ const fleetApi = {
   settings: {
     get: async (): Promise<FleetSettings> => typedInvoke(IPC_CHANNELS.SETTINGS_GET),
     set: async (settings: FleetSettingsPatch): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.SETTINGS_SET, settings)
+      typedInvoke(IPC_CHANNELS.SETTINGS_SET, settings),
+    /**
+     * Point one workspace at its own Claude config folder, or `null` to let it
+     * inherit the default again. Narrow on purpose: `set` replaces the whole
+     * overrides map, which loses entries written since the caller read it.
+     */
+    /** Create a Claude config folder if it is missing, before pointing a workspace at it. */
+    ensureConfigDir: async (dir: string): Promise<EnsureConfigDirResult> =>
+      typedInvoke(IPC_CHANNELS.SETTINGS_ENSURE_CONFIG_DIR, dir),
+    setWorkspaceOverride: async (
+      workspaceId: string,
+      claudeConfigDir: string | null
+    ): Promise<SetWorkspaceOverrideResult> =>
+      typedInvoke(IPC_CHANNELS.SETTINGS_SET_WORKSPACE_OVERRIDE, { workspaceId, claudeConfigDir })
   },
   background: {
     /** Copy an image somewhere a wallpaper can safely point at, and say where. */

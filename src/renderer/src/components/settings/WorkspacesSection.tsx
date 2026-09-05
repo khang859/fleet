@@ -1,177 +1,340 @@
-import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, FolderOpen } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { ChevronDown, ChevronRight, FolderOpen, Plus } from 'lucide-react';
 import { useSettingsStore } from '../../store/settings-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
-import { useConfigRestartToast } from '../../hooks/use-config-restart-toast';
-import type { Workspace } from '../../../../shared/types';
+import { useWorkspaceListStore } from '../../store/workspace-list-store';
+import { useToastStore } from '../../store/toast-store';
+import { createConfigFolderChoice } from '../../lib/config-folder-choice';
+import type { ConfigFolderChoice } from '../../lib/config-folder-choice';
+import { resolveClaudeConfig } from '../../../../shared/claude-config';
+import type { ResolvedClaudeConfig } from '../../../../shared/claude-config';
+import { FolderHooks } from './FolderHooks';
+import { CreateWorkspaceDialog } from '../workspace/CreateWorkspaceDialog';
+import type { SettingsSectionProps } from './SettingsTab';
 
-export function WorkspacesSection(): React.JSX.Element | null {
-  const { settings, updateSettings } = useSettingsStore();
+/**
+ * A config folder change only reaches terminals opened afterwards, so this says
+ * so rather than offering to restart anything. The old shared toast restarted
+ * the *active* workspace's terminals, which is the wrong workspace whenever the
+ * row being edited is not the active one.
+ */
+const APPLIES_TO_NEW_TERMINALS =
+  'Folder changes apply to new terminals. Existing terminals keep their current configuration.';
+
+export function WorkspacesSection({
+  focusWorkspaceId
+}: SettingsSectionProps): React.JSX.Element | null {
+  const { settings } = useSettingsStore();
+  const loadSettings = useSettingsStore((s) => s.loadSettings);
   const activeWorkspaceId = useWorkspaceStore((s) => s.workspace.id);
-  const configToast = useConfigRestartToast();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const workspaces = useWorkspaceListStore((s) => s.workspaces);
+  const refreshList = useWorkspaceListStore((s) => s.refresh);
+  const showToast = useToastStore((s) => s.show);
+
   const [expandedWs, setExpandedWs] = useState<string | null>(null);
-  const [wsHookStatus, setWsHookStatus] = useState<Record<string, boolean>>({});
+  const [showCreate, setShowCreate] = useState(false);
+  // Folder text is a draft until the user commits it. Persisting per keystroke
+  // wrote a half-typed path, which then drove a filesystem hook check and a
+  // toast for every character.
+  const [defaultDraft, setDefaultDraft] = useState<string | null>(null);
+  const [customDrafts, setCustomDrafts] = useState<Record<string, string | undefined>>({});
+  // Which mode the user has *selected*, separate from what is saved. Deriving
+  // the radio from the persisted override alone meant picking "Use custom
+  // folder" left "Use default" selected until a path was committed, and
+  // blurring the empty box took the input and its Browse button away again.
+  // Undefined means the user has not chosen; the saved state decides.
+  const [customMode, setCustomMode] = useState<Record<string, boolean | undefined>>({});
+  const announceChange = (): void => {
+    showToast(APPLIES_TO_NEW_TERMINALS, { duration: 6000 });
+  };
+
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Every committed folder choice goes through this, including the ones that
+  // change nothing: claiming the newest request is what cancels an older one.
+  // Above the early return below, so the hook order never changes.
+  const choiceRef = useRef<ConfigFolderChoice | null>(null);
+  choiceRef.current ??= createConfigFolderChoice({
+    ensureConfigDir: window.fleet.settings.ensureConfigDir,
+    setWorkspaceOverride: window.fleet.settings.setWorkspaceOverride,
+    reload: loadSettings,
+    announce: announceChange,
+    onError: showToast
+  });
 
   useEffect(() => {
-    window.fleet.layout
-      .list()
-      .then((res) => setWorkspaces(res.workspaces))
-      .catch(() => {});
-  }, []);
+    void refreshList();
+  }, [refreshList]);
 
-  if (!settings) return null;
+  // Arriving from Copilot's "Manage workspace connection" link. A workspace
+  // deleted since that link was rendered simply leaves the list as it is.
+  useEffect(() => {
+    if (!focusWorkspaceId) return;
+    if (!workspaces.some((w) => w.id === focusWorkspaceId)) return;
+    setExpandedWs(focusWorkspaceId);
+    rowRefs.current.get(focusWorkspaceId)?.scrollIntoView({ block: 'center' });
+  }, [focusWorkspaceId, workspaces]);
 
-  const copilot = settings.copilot;
+  const copilot = settings?.copilot;
 
-  const updateWorkspaceOverride = (wsId: string, patch: { claudeConfigDir?: string }): void => {
-    const current = copilot.workspaceOverrides[wsId] ?? {};
-    const updated = { ...current, ...patch };
-    const newOverrides = { ...copilot.workspaceOverrides };
-    if (!updated.claudeConfigDir) {
-      delete newOverrides[wsId];
-    } else {
-      newOverrides[wsId] = updated;
-    }
-    configToast();
-    void updateSettings({ copilot: { ...copilot, workspaceOverrides: newOverrides } });
+  /** Every workspace paired with the folder its new terminals will get. */
+  const assignments = useMemo(() => {
+    if (!copilot) return [];
+    return workspaces.map((ws) => ({
+      ws,
+      config: resolveClaudeConfig({
+        defaultDir: copilot.claudeConfigDir,
+        overrideDir: copilot.workspaceOverrides[ws.id]?.claudeConfigDir,
+        homeDir: window.fleet.homeDir
+      }) satisfies ResolvedClaudeConfig
+    }));
+  }, [copilot, workspaces]);
+
+  /** Names of every workspace whose terminals land in `folder`. */
+  const sharersOf = (folder: string): string[] =>
+    assignments.filter((a) => a.config.path === folder).map((a) => a.ws.label);
+
+  if (!settings || !copilot) return null;
+
+  const defaultConfig = resolveClaudeConfig({
+    defaultDir: copilot.claudeConfigDir,
+    homeDir: window.fleet.homeDir
+  });
+
+  const commitDefault = (value: string): void => {
+    const trimmed = value.trim();
+    setDefaultDraft(null);
+    if (trimmed === copilot.claudeConfigDir) return;
+    void useSettingsStore
+      .getState()
+      .updateSettings({ copilot: { claudeConfigDir: trimmed } })
+      .then(announceChange);
   };
 
-  const handleBrowseWsConfigDir = async (wsId: string): Promise<void> => {
+  const setOverride = async (wsId: string, dir: string | null): Promise<void> => {
+    await choiceRef.current?.apply(wsId, dir);
+  };
+
+  /** Drop one workspace's unsaved edit, so the saved state shows through again. */
+  const clearDraft = (wsId: string): void => {
+    setCustomDrafts((prev) => {
+      const next = { ...prev };
+      delete next[wsId];
+      return next;
+    });
+  };
+
+  const clearMode = (wsId: string): void => {
+    setCustomMode((prev) => {
+      const next = { ...prev };
+      delete next[wsId];
+      return next;
+    });
+  };
+
+  const commitCustom = (wsId: string, value: string): void => {
+    const trimmed = value.trim();
+    // An empty custom draft is an unfinished thought, not a request to inherit
+    // - the box stays open and selected so the user can type or browse. "Use
+    // default" is how a workspace goes back to the shared folder.
+    if (!trimmed) return;
+    clearDraft(wsId);
+    clearMode(wsId);
+    void setOverride(wsId, trimmed);
+  };
+
+  const handleBrowseDefault = async (): Promise<void> => {
     const dir = await window.fleet.showFolderPicker();
-    if (dir) {
-      updateWorkspaceOverride(wsId, { claudeConfigDir: dir });
-      refreshWsHookStatus(wsId, dir);
-    }
+    if (!dir) return;
+    setDefaultDraft(null);
+    await useSettingsStore.getState().updateSettings({ copilot: { claudeConfigDir: dir } });
+    announceChange();
   };
 
-  const refreshWsHookStatus = (wsId: string, configDir: string | undefined): void => {
-    if (!configDir) {
-      setWsHookStatus((prev) => {
-        const next = { ...prev };
-        delete next[wsId];
-        return next;
-      });
-      return;
-    }
-    window.fleet.copilot
-      .hookStatusFor(configDir)
-      .then((installed) => {
-        setWsHookStatus((prev) => ({ ...prev, [wsId]: installed }));
-      })
-      .catch(() => {});
-  };
-
-  const handleWsExpandToggle = (wsId: string): void => {
-    const next = expandedWs === wsId ? null : wsId;
-    setExpandedWs(next);
-    if (next) {
-      refreshWsHookStatus(wsId, copilot.workspaceOverrides[wsId]?.claudeConfigDir);
-    }
-  };
-
-  const handleWsInstallHooks = async (wsId: string, configDir: string): Promise<void> => {
-    await window.fleet.copilot.installHooksTo(configDir);
-    setWsHookStatus((prev) => ({ ...prev, [wsId]: true }));
-  };
-
-  const handleWsUninstallHooks = async (wsId: string, configDir: string): Promise<void> => {
-    await window.fleet.copilot.uninstallHooksFrom(configDir);
-    setWsHookStatus((prev) => ({ ...prev, [wsId]: false }));
+  const handleBrowseCustom = async (wsId: string): Promise<void> => {
+    const dir = await window.fleet.showFolderPicker();
+    if (!dir) return;
+    clearDraft(wsId);
+    clearMode(wsId);
+    await setOverride(wsId, dir);
   };
 
   return (
     <div className="space-y-6">
+      <p className="text-xs text-fleet-text-subtle">
+        Choose the Claude Code config folder used by new terminals in each workspace.
+      </p>
+
+      {/* Default folder - inherited by every workspace without its own choice */}
+      <div className="space-y-3">
+        <div>
+          <label className="text-sm text-fleet-text-secondary block mb-1">
+            Default Claude config folder
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={defaultDraft ?? copilot.claudeConfigDir}
+              onChange={(e) => setDefaultDraft(e.target.value)}
+              onBlur={(e) => commitDefault(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') setDefaultDraft(null);
+              }}
+              placeholder={defaultConfig.path}
+              className="flex-1 min-w-0 bg-fleet-surface-2 text-sm text-fleet-text rounded px-2 py-1 border border-fleet-border-strong placeholder:text-fleet-text-subtle focus-ring"
+            />
+            <button
+              onClick={() => void handleBrowseDefault()}
+              className="flex items-center gap-1.5 px-2 py-1 text-sm bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary transition active:scale-[0.97] shrink-0"
+            >
+              <FolderOpen size={13} />
+              Browse
+            </button>
+          </div>
+          {/* Only while the box is empty: once a folder is set, saying what
+              an empty box would fall back to describes a state the user is not
+              in, and the resolved path is already shown beside the hooks. */}
+          {!copilot.claudeConfigDir && (
+            <p className="text-xs text-fleet-text-subtle mt-1 break-all">
+              Empty means Claude Code&apos;s own folder ({defaultConfig.path}).
+            </p>
+          )}
+        </div>
+        <FolderHooks folder={defaultConfig.path} sharedWith={sharersOf(defaultConfig.path)} />
+      </div>
+
+      <p className="text-xs text-fleet-text-subtle">{APPLIES_TO_NEW_TERMINALS}</p>
+
+      {/* Per-workspace assignments */}
       <div>
-        <label className="text-sm text-fleet-text-secondary block mb-1">Workspace Overrides</label>
-        <p className="text-xs text-fleet-text-subtle mb-2">
-          Point a workspace at its own Claude Code config directory instead of the global one set in
-          Copilot settings.
-        </p>
-        {workspaces.length === 0 ? (
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm text-fleet-text-secondary">Workspace config folders</label>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1 px-2 py-1 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary transition active:scale-[0.97]"
+          >
+            <Plus size={12} />
+            Add workspace
+          </button>
+        </div>
+
+        {assignments.length === 0 ? (
           <p className="text-xs text-fleet-text-subtle italic">No workspaces configured.</p>
         ) : (
           <div className="space-y-1">
-            {workspaces.map((ws) => {
+            {assignments.map(({ ws, config }) => {
               const isExpanded = expandedWs === ws.id;
-              const override = copilot.workspaceOverrides[ws.id] ?? {};
+              const isCustom = config.source === 'custom';
               const Chevron = isExpanded ? ChevronDown : ChevronRight;
+              const draft = customDrafts[ws.id];
+              const showCustom = customMode[ws.id] ?? isCustom;
+              const customValue = draft ?? (isCustom ? config.path : '');
               return (
-                <div key={ws.id} className="border border-fleet-border-strong rounded">
+                <div
+                  key={ws.id}
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(ws.id, el);
+                    else rowRefs.current.delete(ws.id);
+                  }}
+                  className="border border-fleet-border-strong rounded"
+                >
                   <button
-                    onClick={() => handleWsExpandToggle(ws.id)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-fleet-text-secondary hover:bg-fleet-surface-2/50 transition"
+                    onClick={() => {
+                      // Collapsing throws away an uncommitted choice: reopening
+                      // the row should show what is actually saved.
+                      if (isExpanded) {
+                        clearDraft(ws.id);
+                        clearMode(ws.id);
+                      }
+                      setExpandedWs(isExpanded ? null : ws.id);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-fleet-text-secondary hover:bg-fleet-surface-2/50 transition text-left"
                   >
                     <Chevron size={14} className="shrink-0 text-fleet-text-subtle" />
-                    <span className="truncate">{ws.label}</span>
+                    <span className="truncate shrink-0 max-w-[40%]">{ws.label}</span>
                     {ws.id === activeWorkspaceId && (
                       <span className="text-[10px] uppercase tracking-wider text-fleet-text-subtle border border-fleet-border-strong rounded px-1 py-px shrink-0">
                         Active
                       </span>
                     )}
-                    {override.claudeConfigDir && (
-                      <span
-                        className="w-1.5 h-1.5 rounded-full fleet-accent-bg shrink-0"
-                        title="Has an override"
-                      />
-                    )}
+                    <span className="text-[10px] uppercase tracking-wider text-fleet-text-subtle border border-fleet-border-strong rounded px-1 py-px shrink-0">
+                      {/* "Inherited", not "Default": the badge says where this
+                          workspace's folder came from, and "Default" read as
+                          the name of a folder rather than as the absence of a
+                          choice. */}
+                      {isCustom ? 'Custom' : 'Inherited'}
+                    </span>
+                    {/* The resolved path in the collapsed row is the point of
+                        this list: every assignment is readable without opening
+                        anything. */}
+                    <span
+                      className="text-xs text-fleet-text-subtle truncate min-w-0 ml-auto"
+                      title={config.path}
+                    >
+                      {config.path}
+                    </span>
                   </button>
+
                   {isExpanded && (
                     <div className="px-3 pb-3 space-y-3 border-t border-fleet-border-strong/50">
-                      <div className="pt-2">
-                        <label className="text-xs text-fleet-text-muted block mb-1">
-                          Config Directory
-                        </label>
-                        <div className="flex gap-2">
+                      <div className="pt-2 space-y-1">
+                        <label className="flex items-start gap-2 text-xs text-fleet-text-secondary">
                           <input
-                            type="text"
-                            value={override.claudeConfigDir ?? ''}
-                            onChange={(e) => {
-                              updateWorkspaceOverride(ws.id, { claudeConfigDir: e.target.value });
-                              refreshWsHookStatus(ws.id, e.target.value || undefined);
+                            type="radio"
+                            checked={!showCustom}
+                            onChange={() => {
+                              clearDraft(ws.id);
+                              clearMode(ws.id);
+                              void setOverride(ws.id, null);
                             }}
-                            placeholder="Use global default"
-                            className="flex-1 bg-fleet-surface-2 text-xs text-fleet-text rounded px-2 py-1 border border-fleet-border-strong placeholder:text-fleet-text-subtle focus-ring"
+                            className="fleet-accent-input mt-0.5"
                           />
-                          <button
-                            onClick={() => void handleBrowseWsConfigDir(ws.id)}
-                            className="flex items-center gap-1.5 px-2 py-1 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary transition active:scale-[0.97]"
-                          >
-                            <FolderOpen size={12} />
-                            Browse
-                          </button>
-                        </div>
-                        {override.claudeConfigDir && (
-                          <p className="text-xs text-amber-500/70 mt-1">New terminals only.</p>
-                        )}
-                      </div>
-                      {override.claudeConfigDir && (
-                        <div>
-                          <label className="text-xs text-fleet-text-muted block mb-1">Hooks</label>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                wsHookStatus[ws.id] ? 'bg-green-500' : 'bg-red-500'
-                              }`}
-                            />
-                            <span className="text-xs text-fleet-text-secondary">
-                              {wsHookStatus[ws.id] ? 'Installed' : 'Not installed'}
+                          <span className="min-w-0">
+                            Use default
+                            <span className="text-fleet-text-subtle block break-all">
+                              {defaultConfig.path}
                             </span>
-                            <button
-                              onClick={() => {
-                                const dir = override.claudeConfigDir;
-                                if (!dir) return;
-                                void (wsHookStatus[ws.id]
-                                  ? handleWsUninstallHooks(ws.id, dir)
-                                  : handleWsInstallHooks(ws.id, dir));
+                          </span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-fleet-text-secondary">
+                          <input
+                            type="radio"
+                            checked={showCustom}
+                            onChange={() => setCustomMode((prev) => ({ ...prev, [ws.id]: true }))}
+                            className="fleet-accent-input"
+                          />
+                          Use custom folder
+                        </label>
+                        {showCustom && (
+                          <div className="flex gap-2 pt-1">
+                            <input
+                              type="text"
+                              value={customValue}
+                              onChange={(e) =>
+                                setCustomDrafts((prev) => ({ ...prev, [ws.id]: e.target.value }))
+                              }
+                              onBlur={(e) => commitCustom(ws.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') e.currentTarget.blur();
+                                if (e.key === 'Escape') {
+                                  clearDraft(ws.id);
+                                  clearMode(ws.id);
+                                }
                               }}
-                              className="px-2 py-0.5 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary transition active:scale-[0.97]"
+                              placeholder="Pick a Claude config folder"
+                              className="flex-1 min-w-0 bg-fleet-surface-2 text-xs text-fleet-text rounded px-2 py-1 border border-fleet-border-strong placeholder:text-fleet-text-subtle focus-ring"
+                            />
+                            <button
+                              onClick={() => void handleBrowseCustom(ws.id)}
+                              className="flex items-center gap-1.5 px-2 py-1 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary transition active:scale-[0.97] shrink-0"
                             >
-                              {wsHookStatus[ws.id] ? 'Uninstall' : 'Install'}
+                              <FolderOpen size={12} />
+                              Browse
                             </button>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                      <FolderHooks folder={config.path} sharedWith={sharersOf(config.path)} />
                     </div>
                   )}
                 </div>
@@ -180,6 +343,18 @@ export function WorkspacesSection(): React.JSX.Element | null {
           </div>
         )}
       </div>
+
+      <CreateWorkspaceDialog
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={(ws) => {
+          // Stays put on purpose: creating a workspace from Settings must not
+          // change which workspace is active, which tab is open, or which
+          // terminals are running.
+          setExpandedWs(ws.id);
+          showToast(`Workspace "${ws.label}" created`);
+        }}
+      />
     </div>
   );
 }

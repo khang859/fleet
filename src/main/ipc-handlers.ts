@@ -5,7 +5,7 @@ import { collectDiagnosticsInfo, readRedactedLogTail, openLogsFolder } from './d
 import { createLogger, logger } from './logger';
 
 const log = createLogger('ipc');
-import { readFile, writeFile, stat, readdir } from 'fs/promises';
+import { readFile, writeFile, stat, readdir, mkdir } from 'fs/promises';
 import type { Dirent } from 'fs';
 import { extname, join, relative, posix as posixPath } from 'path';
 import { homedir } from 'node:os';
@@ -126,6 +126,9 @@ import type {
   PtyResizePayload,
   PtyExitPayload,
   LayoutSaveRequest,
+  LayoutSaveResult,
+  EnsureConfigDirResult,
+  SetWorkspaceOverrideResult,
   LayoutListResponse,
   PaneFocusedPayload,
   DirEntry,
@@ -367,17 +370,21 @@ export function registerIpcHandlers(
   });
 
   // Layout handlers
-  ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, (_event, req: LayoutSaveRequest) => {
+  ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, (_event, req: LayoutSaveRequest): LayoutSaveResult => {
     log.debug('ipc:layout:save', {
       workspaceId: req.workspace.id,
       tabCount: req.workspace.tabs.length
     });
     try {
       layoutStore.save(req.workspace);
+      return { ok: true };
     } catch (err) {
-      log.error('failed to save workspace', {
-        error: err instanceof Error ? err.message : String(err)
-      });
+      const error = err instanceof Error ? err.message : String(err);
+      log.error('failed to save workspace', { error });
+      // Answered rather than only logged: the autosave still ignores this, but
+      // workspace creation cannot report success for a workspace that is not
+      // on disk.
+      return { ok: false, error };
     }
   });
 
@@ -429,6 +436,51 @@ export function registerIpcHandlers(
       await onCopilotSettingsChanged();
     }
   });
+
+  /**
+   * One workspace's Claude config folder, without sending back the whole map.
+   *
+   * `null` clears the override so the workspace inherits the default again.
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.SETTINGS_SET_WORKSPACE_OVERRIDE,
+    async (
+      _event,
+      req: { workspaceId: string; claudeConfigDir: string | null }
+    ): Promise<SetWorkspaceOverrideResult> => {
+      const changed = settingsStore.setWorkspaceOverride(req.workspaceId, req.claudeConfigDir);
+      log.debug('ipc:settings:set-workspace-override', {
+        workspaceId: req.workspaceId,
+        cleared: !req.claudeConfigDir,
+        changed
+      });
+      if (changed) await onCopilotSettingsChanged();
+      return { changed };
+    }
+  );
+
+  /**
+   * Make a Claude config folder exist before a workspace is pointed at it.
+   *
+   * A workspace whose folder is missing looks configured but behaves like a
+   * fresh install the first time Claude runs there, and Fleet hooks cannot be
+   * installed into a folder that is not there. Recursive and idempotent, so an
+   * existing folder is a success.
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.SETTINGS_ENSURE_CONFIG_DIR,
+    async (_event, dir: string): Promise<EnsureConfigDirResult> => {
+      log.debug('ipc:settings:ensure-config-dir', { dir });
+      try {
+        await mkdir(dir, { recursive: true });
+        return { ok: true };
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        log.error('failed to create claude config dir', { dir, error });
+        return { ok: false, error };
+      }
+    }
+  );
 
   // Git handlers
   ipcMain.handle(IPC_CHANNELS.GIT_IS_REPO, async (_event, cwd: string, ctx?: PathContext) => {
