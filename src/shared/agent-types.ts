@@ -18,6 +18,12 @@ import {
   DEFAULT_AGENT_ADVISOR,
   type AgentAdvisorConfig
 } from './agent-advisor';
+import {
+  AGENT_FUSION_INSTRUCTIONS,
+  AGENT_FUSION_UNAVAILABLE_INSTRUCTIONS,
+  DEFAULT_AGENT_FUSION,
+  type AgentFusionConfig
+} from './agent-fusion';
 import type { McpServersConfig } from './agent-mcp';
 import type { LocalEndpointConfig } from './agent-endpoints';
 
@@ -294,6 +300,14 @@ export type AgentSettings = {
    * temperature or a reasoning effort on.
    */
   advisor: AgentAdvisorConfig;
+  /**
+   * How a panel review is run when the user asks for one.
+   *
+   * Not a toggle, unlike everything above it. There is no `enabled` here
+   * because the tool is never offered on an ordinary turn: `/fusion` arms it
+   * and nothing else does. These are the terms it runs on once armed.
+   */
+  fusion: AgentFusionConfig;
   /** Replaces the built-in instructions. `null` ⇒ use the default below. */
   systemPrompt: string | null;
   /**
@@ -378,6 +392,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   webFetch: { ...DEFAULT_AGENT_WEB_FETCH },
   webSearch: { ...DEFAULT_AGENT_WEB_SEARCH },
   advisor: { ...DEFAULT_AGENT_ADVISOR },
+  fusion: { ...DEFAULT_AGENT_FUSION },
   systemPrompt: null,
   compactThreshold: 0.8,
   maxToolRounds: null,
@@ -545,6 +560,14 @@ export function buildSystemPrompt(
     webFetch?: boolean;
     webSearch?: boolean;
     advisor?: boolean;
+    /**
+     * `'available'` on a review turn that can actually run one; `'unavailable'`
+     * when the user asked for a panel and the model they are on cannot reach
+     * OpenRouter's executor. The second is not the same as absent: the request
+     * was made and has to be answered, and a model told nothing about it writes
+     * a review it invented.
+     */
+    fusion?: 'available' | 'unavailable';
     mcp?: boolean;
     task?: boolean;
     skill?: boolean;
@@ -572,6 +595,15 @@ export function buildSystemPrompt(
   // of finding something out, and a model that reads the advice first reaches
   // for it before it has read the file the answer is in.
   const advisor = options.advisor === true ? `\n\n${AGENT_ADVISOR_INSTRUCTIONS}` : '';
+  // Beside the advisor, because both blocks describe a model that cannot see
+  // this folder and both fail the same way when that is forgotten. This one is
+  // present on a review turn and absent on every other.
+  const fusion =
+    options.fusion === 'available'
+      ? `\n\n${AGENT_FUSION_INSTRUCTIONS}`
+      : options.fusion === 'unavailable'
+        ? `\n\n${AGENT_FUSION_UNAVAILABLE_INSTRUCTIONS}`
+        : '';
   const mcp = options.mcp === true ? `\n\n${AGENT_MCP_INSTRUCTIONS}` : '';
   const task = options.task === true ? `\n\n${AGENT_TASK_INSTRUCTIONS}` : '';
   // Ahead of `task`, because a skill is something to read before starting and a
@@ -589,7 +621,7 @@ export function buildSystemPrompt(
     options.env === undefined || options.env === null
       ? `Working folder: ${cwd}`
       : renderEnvBlock(cwd, options.env);
-  return `${base}${project}${image}${web}${search}${advisor}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
+  return `${base}${project}${image}${web}${search}${advisor}${fusion}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
 }
 
 /*

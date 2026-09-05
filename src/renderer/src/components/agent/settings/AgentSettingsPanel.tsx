@@ -7,6 +7,7 @@ import type {
   AgentWebFetchConfig
 } from '../../../../../shared/agent-types';
 import type { AgentWebSearchConfig } from '../../../../../shared/agent-web-search';
+import type { AgentFusionConfig } from '../../../../../shared/agent-fusion';
 import type { AgentAdvisorConfig } from '../../../../../shared/agent-advisor';
 import { AGENT_TOOL_MODES, DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
 import {
@@ -21,6 +22,7 @@ import { AgentRoleSettings } from './AgentRoleSettings';
 import { AgentImageSettings } from './AgentImageSettings';
 import { AgentWebSettings } from './AgentWebSettings';
 import { AgentWebSearchSettings } from './AgentWebSearchSettings';
+import { AgentFusionSettings } from './AgentFusionSettings';
 import { AgentAdvisorSettings } from './AgentAdvisorSettings';
 import { SystemPromptField } from './SystemPromptField';
 import { CompactionField } from './CompactionField';
@@ -128,6 +130,9 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
     void updateSettings({ ai: { agent: { webFetch: { ...agent.webFetch, ...patch } } } });
   };
 
+  const patchFusion = (patch: Partial<AgentFusionConfig>): void => {
+    void updateSettings({ ai: { agent: { fusion: { ...agent.fusion, ...patch } } } });
+  };
   const patchAdvisor = (patch: Partial<AgentAdvisorConfig>): void => {
     void updateSettings({ ai: { agent: { advisor: { ...agent.advisor, ...patch } } } });
   };
@@ -179,6 +184,7 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
             hasKey={keyPresent}
           />
           <AgentAdvisorSettings models={models} config={agent.advisor} onChange={patchAdvisor} />
+          <AgentFusionSettings models={models} config={agent.fusion} onChange={patchFusion} />
         </FieldGroup>
 
         <FieldGroup title="Sessions">

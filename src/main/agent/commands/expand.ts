@@ -1,4 +1,5 @@
 import { parseCommandLine, renderCommandPrompt } from '../../../shared/agent-commands';
+import { FUSION_COMMAND_NAME } from '../../../shared/agent-fusion';
 import { loadCommands } from './definitions';
 
 /**
@@ -27,4 +28,23 @@ export async function expandCommand(text: string, cwd: string): Promise<string> 
   if (definition === undefined) return text;
 
   return renderCommandPrompt(definition.template, line.args);
+}
+
+/**
+ * Whether this turn is the one the user asked for a panel review on.
+ *
+ * The arming check for `openrouter:fusion`, and it is a text match rather than
+ * a flag on the request for one reason: main is stateless and the pane resends
+ * its whole history every turn, so the only thing that reliably says "this turn
+ * is the review" is the message that started it. A flag would have to be minted
+ * in the composer, carried through the send, and then not carried on the rounds
+ * that follow - three places to get wrong for something the text already says.
+ *
+ * It matches the command name and not the prompt behind it. A user or project
+ * file that shadows `fusion.md` still arms the tool, which is the right answer:
+ * they have replaced the brief, not the intent, and a `/fusion` that quietly
+ * ran without a panel would be the confusing one.
+ */
+export function isFusionTurn(text: string): boolean {
+  return parseCommandLine(text)?.name === FUSION_COMMAND_NAME;
 }

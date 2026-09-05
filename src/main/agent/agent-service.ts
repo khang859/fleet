@@ -88,6 +88,8 @@ import {
 } from '../../shared/agent-server-tools';
 import { webSearchSpec } from '../../shared/agent-web-search';
 import { advisorSpec } from '../../shared/agent-advisor';
+import { fusionSpec } from '../../shared/agent-fusion';
+import { isFusionTurn } from './commands/expand';
 import { runAgentTool } from './tools/run';
 import {
   TaskFailure,
@@ -400,10 +402,20 @@ const SERVER_TOOL_MAX_STEPS = 10;
  * moves it every time the user toggles something else. First is the one
  * position nothing else can take.
  */
-export function turnServerTools(settings: AgentSettings): ServerToolSpec[] {
-  return [advisorSpec(settings.advisor), webSearchSpec(settings.webSearch)].filter(
-    (spec): spec is ServerToolSpec => spec !== null
-  );
+export function turnServerTools(
+  settings: AgentSettings,
+  options: { fusion: boolean } = { fusion: false }
+): ServerToolSpec[] {
+  return [
+    advisorSpec(settings.advisor),
+    webSearchSpec(settings.webSearch),
+    // Last, and only on the turn that asked for it. A panel is nine model calls
+    // on one use, so it is armed by the user typing `/fusion` and by nothing
+    // else - there is no setting that can put it on an ordinary turn. Last
+    // because the advisor's position must not move, and this entry comes and
+    // goes with every review.
+    options.fusion ? fusionSpec(settings.fusion) : null
+  ].filter((spec): spec is ServerToolSpec => spec !== null);
 }
 
 /**
@@ -1058,6 +1070,18 @@ export class AgentService {
     // Read per turn, so a pane pointed at a new folder - or a folder that has
     // since become a repo - is described as it is now rather than as it was.
     const env = await readEnvironment(req.cwd, ctx.model);
+    // Read from the message itself rather than from a flag on the request, so
+    // it is decided by the same text `expandCommand` expands and the two cannot
+    // disagree. A turn that carries the review prompt but not the tool would
+    // send the model looking for something it was not given.
+    const fusion = isFusionTurn(req.text);
+    // Whether the panel can actually be reached. Server tools live in
+    // OpenRouter's executor, so a turn on a local endpoint has no way to run
+    // one - `toolsBody` drops the entry, correctly and silently. Silently is
+    // the problem: the user asked for a review out loud, so the prompt has to
+    // say the panel is unavailable rather than leave the model holding an
+    // instruction it cannot follow.
+    const panel = !fusion ? false : ctx.target.serverTools ? 'available' : 'unavailable';
     const messages = await toWireHistory(
       req,
       buildSystemPrompt(promptCwd(req.cwd), ctx.settings.systemPrompt, {
@@ -1065,11 +1089,18 @@ export class AgentService {
         // Only when it is actually offered. The block tells the model which of
         // the two readers to reach for, and a turn that describes a tool it
         // was not given teaches it to call something that is not there.
-        webSearch: ctx.settings.webSearch.enabled,
+        // And only where the request can carry it. `toolsBody` drops server
+        // tools for a target that has none, so on a local endpoint this block
+        // would describe a tool the model was never given.
+        webSearch: ctx.settings.webSearch.enabled && ctx.target.serverTools,
         // Same rule, and the same reason: the block says what this advisor is
         // for and that the question must carry its own context, which is not
         // something the tool description on the wire can say.
-        advisor: advisorSpec(ctx.settings.advisor) !== null,
+        advisor: advisorSpec(ctx.settings.advisor) !== null && ctx.target.serverTools,
+        // Same rule again: the block explains that the panel sees only the
+        // prompt it is handed, and it is present exactly on the turns the panel
+        // is.
+        fusion: panel === false ? undefined : panel,
         env,
         image: imageModel !== null,
         mcp: mcpSpecs.length > 0,
@@ -1103,11 +1134,24 @@ export class AgentService {
           skill: skillSpec,
           memory: memorySpec
         }),
-        serverTools: turnServerTools(ctx.settings),
-        serverToolStops: serverToolStops({
-          steps: SERVER_TOOL_MAX_STEPS,
-          maxSpendUsd: ctx.settings.webSearch.maxSpendUsd
-        }),
+        serverTools: turnServerTools(ctx.settings, { fusion: panel === 'available' }),
+        serverToolStops:
+          panel === 'available'
+            ? // A review turn does not take the search brake. That figure bounds
+              // incidental searching, and one panel of eight models will pass it
+              // on the single call the user explicitly asked for. The documented
+              // behaviour on crossing it is to finish the pending calls and take
+              // one more turn, so the usual case survives - but a turn that
+              // searched a little before calling the panel would cross it early
+              // and answer without ever running the review, having billed for
+              // the searches. The step cap still stands.
+              ([
+                { type: 'step_count_is', step_count: SERVER_TOOL_MAX_STEPS }
+              ] satisfies ServerToolStop[])
+            : serverToolStops({
+                steps: SERVER_TOOL_MAX_STEPS,
+                maxSpendUsd: ctx.settings.webSearch.maxSpendUsd
+              }),
         mcp,
         todos: req.todos,
         resumed: req.resumed ?? false,

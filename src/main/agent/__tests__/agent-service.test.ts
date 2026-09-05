@@ -381,6 +381,33 @@ describe('turnServerTools', () => {
     });
     expect(unchosen.map((t) => t.type)).toEqual(['openrouter:web_search']);
   });
+
+  /*
+   * The whole cost argument for the feature, as a test. A panel is one model
+   * call per member plus the analyst, so it must never be reachable from a turn
+   * the user did not ask for it on - and no setting may make it so.
+   */
+  it('never offers the panel on an ordinary turn', () => {
+    expect(turnServerTools(settings).map((t) => t.type)).not.toContain('openrouter:fusion');
+    expect(turnServerTools(settings, { fusion: false }).map((t) => t.type)).not.toContain(
+      'openrouter:fusion'
+    );
+  });
+
+  it('offers the panel last on a review turn, leaving the advisor where it was', () => {
+    const armed = turnServerTools(settings, { fusion: true });
+    expect(armed.map((t) => t.type)).toEqual([
+      'openrouter:advisor',
+      'openrouter:web_search',
+      'openrouter:fusion'
+    ]);
+  });
+
+  it('offers the panel even when nothing else is switched on', () => {
+    expect(turnServerTools(DEFAULT_AGENT_SETTINGS, { fusion: true }).map((t) => t.type)).toEqual([
+      'openrouter:fusion'
+    ]);
+  });
 });
 
 /**
@@ -422,6 +449,39 @@ describe('buildSystemPrompt: advisor', () => {
   it('says the advisor sees only what the question carries', () => {
     const prompt = buildSystemPrompt('/repo', null, { image: false, advisor: true });
     expect(prompt).toContain('cannot read this folder');
+  });
+});
+
+/**
+ * The same rule for the panel, and it matters more here than anywhere else: the
+ * block is what tells the model the panel cannot see this folder. A turn that
+ * has the tool and not the block sends eight models a prompt that says "review
+ * the changes in this branch", and every one of them guesses.
+ */
+describe('buildSystemPrompt: fusion', () => {
+  it('describes the panel only on a review turn', () => {
+    const off = buildSystemPrompt('/repo', null, { image: false });
+    const on = buildSystemPrompt('/repo', null, { image: false, fusion: 'available' });
+    expect(off).not.toContain('openrouter:fusion');
+    expect(on).toContain('openrouter:fusion');
+  });
+
+  it('says the panel cannot see the folder', () => {
+    const on = buildSystemPrompt('/repo', null, { image: false, fusion: 'available' });
+    expect(on).toContain('cannot see this folder');
+  });
+
+  /*
+   * Observed rather than imagined. Asked for a review on a local model, with
+   * the tool correctly dropped from the request and nothing in the prompt to
+   * say so, the model ran `echo "FUSION_PROMPT"` in a shell and then wrote
+   * "the panel has returned".
+   */
+  it('says the panel is unavailable rather than leaving the request unanswered', () => {
+    const unavailable = buildSystemPrompt('/repo', null, { image: false, fusion: 'unavailable' });
+    expect(unavailable).toContain('not available');
+    expect(unavailable).toContain('Do not simulate a panel');
+    expect(unavailable).not.toContain('Call it once');
   });
 });
 
