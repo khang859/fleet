@@ -7,6 +7,7 @@ import type {
   AgentWebFetchConfig
 } from '../../../../../shared/agent-types';
 import type { AgentWebSearchConfig } from '../../../../../shared/agent-web-search';
+import type { AgentHostedFetchConfig } from '../../../../../shared/agent-hosted-fetch';
 import type { AgentFusionConfig } from '../../../../../shared/agent-fusion';
 import type { AgentAdvisorConfig } from '../../../../../shared/agent-advisor';
 import { AGENT_TOOL_MODES, DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
@@ -22,6 +23,7 @@ import { AgentRoleSettings } from './AgentRoleSettings';
 import { AgentImageSettings } from './AgentImageSettings';
 import { AgentWebSettings } from './AgentWebSettings';
 import { AgentWebSearchSettings } from './AgentWebSearchSettings';
+import { AgentHostedFetchSettings } from './AgentHostedFetchSettings';
 import { AgentFusionSettings } from './AgentFusionSettings';
 import { AgentAdvisorSettings } from './AgentAdvisorSettings';
 import { SystemPromptField } from './SystemPromptField';
@@ -130,6 +132,9 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
     void updateSettings({ ai: { agent: { webFetch: { ...agent.webFetch, ...patch } } } });
   };
 
+  const patchHostedFetch = (patch: Partial<AgentHostedFetchConfig>): void => {
+    void updateSettings({ ai: { agent: { hostedFetch: { ...agent.hostedFetch, ...patch } } } });
+  };
   const patchFusion = (patch: Partial<AgentFusionConfig>): void => {
     void updateSettings({ ai: { agent: { fusion: { ...agent.fusion, ...patch } } } });
   };
@@ -178,6 +183,14 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
           />
           <AgentImageSettings models={imageModels} config={agent.image} onChange={patchImage} />
           <AgentWebSettings config={agent.webFetch} onChange={patchWebFetch} />
+          {/* Directly under Fleet's own reader, because the card is about the
+              boundary between the two and reading them apart is how somebody
+              turns this on expecting a better fetch. */}
+          <AgentHostedFetchSettings
+            config={agent.hostedFetch}
+            onChange={patchHostedFetch}
+            hasKey={keyPresent}
+          />
           <AgentWebSearchSettings
             config={agent.webSearch}
             onChange={patchWebSearch}

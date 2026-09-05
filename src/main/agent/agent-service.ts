@@ -87,6 +87,7 @@ import {
   type ServerToolStop
 } from '../../shared/agent-server-tools';
 import { webSearchSpec } from '../../shared/agent-web-search';
+import { hostedFetchSpec } from '../../shared/agent-hosted-fetch';
 import { advisorSpec } from '../../shared/agent-advisor';
 import { fusionSpec } from '../../shared/agent-fusion';
 import { isFusionTurn } from './commands/expand';
@@ -409,6 +410,7 @@ export function turnServerTools(
   return [
     advisorSpec(settings.advisor),
     webSearchSpec(settings.webSearch),
+    hostedFetchSpec(settings.hostedFetch),
     // Last, and only on the turn that asked for it. A panel is nine model calls
     // on one use, so it is armed by the user typing `/fusion` and by nothing
     // else - there is no setting that can put it on an ordinary turn. Last
@@ -1093,6 +1095,10 @@ export class AgentService {
         // tools for a target that has none, so on a local endpoint this block
         // would describe a tool the model was never given.
         webSearch: ctx.settings.webSearch.enabled && ctx.target.serverTools,
+        // Same gate. The block is entirely about the boundary between the two
+        // readers, and there is no boundary to describe on a target that only
+        // has one of them.
+        hostedFetch: ctx.settings.hostedFetch.enabled && ctx.target.serverTools,
         // Same rule, and the same reason: the block says what this advisor is
         // for and that the question must carry its own context, which is not
         // something the tool description on the wire can say.

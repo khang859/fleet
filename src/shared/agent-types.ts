@@ -19,6 +19,11 @@ import {
   type AgentAdvisorConfig
 } from './agent-advisor';
 import {
+  AGENT_HOSTED_FETCH_INSTRUCTIONS,
+  DEFAULT_AGENT_HOSTED_FETCH,
+  type AgentHostedFetchConfig
+} from './agent-hosted-fetch';
+import {
   AGENT_FUSION_INSTRUCTIONS,
   AGENT_FUSION_UNAVAILABLE_INSTRUCTIONS,
   DEFAULT_AGENT_FUSION,
@@ -292,6 +297,14 @@ export type AgentSettings = {
    */
   webSearch: AgentWebSearchConfig;
   /**
+   * Whether OpenRouter's own page reader is offered beside Fleet's.
+   *
+   * Deliberately not folded into `webFetch`: they are two tools with different
+   * reach, and one setting that switched both would be a setting that could not
+   * say "read public pages over there, and this network here".
+   */
+  hostedFetch: AgentHostedFetchConfig;
+  /**
    * Whether and how the agent consults a stronger model.
    *
    * A model setting that is not an `AgentModelConfig`, because Fleet never
@@ -391,6 +404,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   image: { ...EMPTY_AGENT_IMAGE_CONFIG },
   webFetch: { ...DEFAULT_AGENT_WEB_FETCH },
   webSearch: { ...DEFAULT_AGENT_WEB_SEARCH },
+  hostedFetch: { ...DEFAULT_AGENT_HOSTED_FETCH },
   advisor: { ...DEFAULT_AGENT_ADVISOR },
   fusion: { ...DEFAULT_AGENT_FUSION },
   systemPrompt: null,
@@ -559,6 +573,7 @@ export function buildSystemPrompt(
     image: boolean;
     webFetch?: boolean;
     webSearch?: boolean;
+    hostedFetch?: boolean;
     advisor?: boolean;
     /**
      * `'available'` on a review turn that can actually run one; `'unavailable'`
@@ -591,6 +606,11 @@ export function buildSystemPrompt(
   // decision seen from either end - which of them to reach for - and reading
   // them apart is how a model ends up searching the web for localhost.
   const search = options.webSearch === true ? `\n\n${AGENT_WEB_SEARCH_INSTRUCTIONS}` : '';
+  // Directly after the local reader's own block for the reason the search block
+  // sits there: it is the same decision seen from the other end. A model that
+  // reads about the hosted reader pages away from the local one has two fetch
+  // tools and no account of the boundary between them.
+  const hosted = options.hostedFetch === true ? `\n\n${AGENT_HOSTED_FETCH_INSTRUCTIONS}` : '';
   // After both readers, because consulting is the last resort among the ways
   // of finding something out, and a model that reads the advice first reaches
   // for it before it has read the file the answer is in.
@@ -621,7 +641,7 @@ export function buildSystemPrompt(
     options.env === undefined || options.env === null
       ? `Working folder: ${cwd}`
       : renderEnvBlock(cwd, options.env);
-  return `${base}${project}${image}${web}${search}${advisor}${fusion}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
+  return `${base}${project}${image}${web}${hosted}${search}${advisor}${fusion}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
 }
 
 /*
