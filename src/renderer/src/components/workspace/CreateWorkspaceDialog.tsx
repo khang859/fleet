@@ -76,7 +76,12 @@ export function CreateWorkspaceDialog({
   const customValue = customTouched ? customDir : suggestedDir;
 
   const trimmedName = name.trim();
-  const canSubmit = trimmedName.length > 0 && !submitting;
+  // Custom with an empty box used to fall through to the default folder, so the
+  // workspace was created inheriting - no folder made, no override written -
+  // while the form said Custom. A name with no ASCII letters or digits (研究)
+  // yields no suggestion, so this is reachable without deleting anything.
+  const customIsEmpty = useCustom && customValue.trim().length === 0;
+  const canSubmit = trimmedName.length > 0 && !customIsEmpty && !submitting;
 
   const handleBrowse = async (): Promise<void> => {
     const dir = await window.fleet.showFolderPicker();
@@ -197,9 +202,11 @@ export function CreateWorkspaceDialog({
             </div>
           )}
           <p className="text-xs text-fleet-text-subtle mt-2">
-            {useCustom
-              ? 'Fleet creates this folder if it does not exist yet. You can add Fleet hooks later.'
-              : 'The workspace uses the default folder. You can give it its own folder later.'}
+            {!useCustom
+              ? 'The workspace uses the default folder. You can give it its own folder later.'
+              : customIsEmpty
+                ? 'Enter a folder for this workspace, or choose Use default.'
+                : 'Fleet creates this folder if it does not exist yet. You can add Fleet hooks later.'}
           </p>
         </div>
 

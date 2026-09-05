@@ -84,3 +84,11 @@ A `drive` verb that produces no `clicked:` / `typed into:` line did not run. Tre
 `location.reload()` reloads the renderer only.
 A new IPC channel plus its preload method stayed invisible (`window.fleet.settings.ensureConfigDir is not a function`) until the whole app was restarted.
 The restart also has to kill the previous Electron completely: a leftover process keeps the CDP port, and the new window logs `bind() failed: Address already in use` and is unreachable to `fleet-drive`.
+
+## `window.fleet` cannot be monkey-patched from the renderer
+
+Trying to force a slow `ensureConfigDir` to reproduce a folder-choice race, `window.fleet.settings.ensureConfigDir = slowVersion` appeared to work - the assignment threw nothing and the eval returned.
+Reading the property back still gave `function () { [native code] }`.
+`contextBridge.exposeInMainWorld` hands the renderer a frozen proxy, so timing cannot be injected this way.
+
+Options when a renderer race needs to be reproduced: add the delay in the main-process handler behind a dev flag, or move the raced logic out of the component into a store or module that a vitest test can drive with hand-held promises, the way `hook-status-store` does.

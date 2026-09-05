@@ -29,6 +29,9 @@ export function WorkspacesSection({
   const refreshList = useWorkspaceListStore((s) => s.refresh);
   const showToast = useToastStore((s) => s.show);
 
+  // Newest folder request per workspace, so a slow one cannot land after it.
+  const overrideSeq = useRef<Record<string, number | undefined>>({});
+
   const [expandedWs, setExpandedWs] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   // Folder text is a draft until the user commits it. Persisting per keystroke
@@ -98,17 +101,27 @@ export function WorkspacesSection({
   };
 
   const setOverride = async (wsId: string, dir: string | null): Promise<void> => {
+    // Creating the folder is slow enough that the user can change their mind
+    // during it. Without this, a pending custom-folder request finishing after
+    // "Use default" was picked wrote the abandoned folder back over the newer
+    // choice. Only the newest request for a workspace is allowed to persist.
+    const seq = (overrideSeq.current[wsId] ?? 0) + 1;
+    overrideSeq.current[wsId] = seq;
+    const superseded = (): boolean => overrideSeq.current[wsId] !== seq;
+
     // A typed path can name a folder that is not there yet. Creating it keeps a
     // workspace from looking configured while Claude starts from scratch and
     // Fleet hooks have nowhere to go.
     if (dir) {
       const created = await window.fleet.settings.ensureConfigDir(dir);
+      if (superseded()) return;
       if (!created.ok) {
         showToast(`Could not create ${dir}: ${created.error}`);
         return;
       }
     }
     await window.fleet.settings.setWorkspaceOverride(wsId, dir);
+    if (superseded()) return;
     await loadSettings();
     announceChange();
   };
