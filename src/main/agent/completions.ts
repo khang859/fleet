@@ -918,6 +918,15 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
  *
  * `stop_server_tools_when` goes only where server tools went. On its own it
  * would be a rule about a loop that is never going to run.
+ *
+ * Server tools go first, ahead of the functions, and that ordering is load
+ * bearing rather than tidy. An advisor's memory of its own earlier
+ * consultations is keyed on its index in this array, and the function half of
+ * it is not stable across the requests of one conversation: an MCP server
+ * connects, a subagent tool appears, the tool mode changes, and every index
+ * after that point shifts. Put ahead of them, a server tool's position depends
+ * only on the other server tools, which `turnServerTools` holds in a fixed
+ * order.
  */
 function toolsBody(req: StreamRequest): Record<string, unknown> {
   const functions = req.tools ?? [];
@@ -925,7 +934,7 @@ function toolsBody(req: StreamRequest): Record<string, unknown> {
   const stops = server.length === 0 ? null : (req.serverToolStops ?? null);
   if (functions.length === 0 && server.length === 0) return {};
   return {
-    tools: [...functions, ...server],
+    tools: [...server, ...functions],
     ...(stops === null || stops.length === 0 ? {} : { stop_server_tools_when: stops })
   };
 }

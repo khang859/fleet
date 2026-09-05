@@ -56,7 +56,12 @@ afterEach(() => {
 });
 
 describe('what reaches the request body', () => {
-  it('sends server tools and local tools in the one array', async () => {
+  /*
+   * Server tools first, and the order is load bearing. An advisor's memory is
+   * keyed on its index in this array, and the function half of it shifts every
+   * time an MCP server connects or the tool mode changes.
+   */
+  it('sends server tools ahead of local tools in the one array', async () => {
     const sent = streaming([{ choices: [{ delta: {} }] }]);
     await streamCompletion({
       ...base,
@@ -65,8 +70,8 @@ describe('what reaches the request body', () => {
       serverTools: [SEARCH]
     });
     expect(sent[0].body.tools).toEqual([
-      { type: 'function', function: { name: 'read', description: 'r', parameters: {} } },
-      SEARCH
+      SEARCH,
+      { type: 'function', function: { name: 'read', description: 'r', parameters: {} } }
     ]);
   });
 

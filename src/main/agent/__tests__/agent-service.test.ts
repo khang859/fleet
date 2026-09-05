@@ -34,6 +34,7 @@ import {
   toCompactMessages,
   toReasoningParam,
   toWireHistory,
+  turnServerTools,
   wireTime,
   withClearedWireResults,
   withResumeNote,
@@ -328,6 +329,61 @@ describe('parseStreamLine', () => {
 });
 
 /**
+ * The remote tools a turn sends, and the order it sends them in.
+ *
+ * An advisor remembers its own earlier consultations, and OpenRouter keys that
+ * memory on where the entry sat in the request. So the ordering here is a
+ * correctness property rather than a style one: an advisor that moves between
+ * requests reconstructs somebody else's history, or none.
+ */
+describe('turnServerTools', () => {
+  const settings = {
+    ...DEFAULT_AGENT_SETTINGS,
+    advisor: {
+      ...DEFAULT_AGENT_SETTINGS.advisor,
+      enabled: true,
+      model: 'anthropic/claude-opus-4.8'
+    },
+    webSearch: { ...DEFAULT_AGENT_SETTINGS.webSearch, enabled: true }
+  };
+
+  it('sends nothing when nothing is switched on', () => {
+    expect(turnServerTools(DEFAULT_AGENT_SETTINGS)).toEqual([]);
+  });
+
+  it('puts the advisor first', () => {
+    expect(turnServerTools(settings).map((t) => t.type)).toEqual([
+      'openrouter:advisor',
+      'openrouter:web_search'
+    ]);
+  });
+
+  /*
+   * The case the ordering is for. Turning search off between two requests of
+   * one conversation must not shift the advisor, or its memory of the earlier
+   * half of that conversation is gone.
+   */
+  it('keeps the advisor at the same index when search is switched off', () => {
+    const before = turnServerTools(settings);
+    const after = turnServerTools({
+      ...settings,
+      webSearch: { ...settings.webSearch, enabled: false }
+    });
+
+    expect(before.findIndex((t) => t.type === 'openrouter:advisor')).toBe(0);
+    expect(after.findIndex((t) => t.type === 'openrouter:advisor')).toBe(0);
+  });
+
+  it('leaves the advisor out until a model has been chosen for it', () => {
+    const unchosen = turnServerTools({
+      ...settings,
+      advisor: { ...settings.advisor, model: null }
+    });
+    expect(unchosen.map((t) => t.type)).toEqual(['openrouter:web_search']);
+  });
+});
+
+/**
  * What the turn tells the model about the tools it was given.
  *
  * The instruction block and the tool entry have to be switched by the same
@@ -348,6 +404,24 @@ describe('buildSystemPrompt: web search', () => {
   it('tells the model not to search for anything on this machine', () => {
     const prompt = buildSystemPrompt('/repo', null, { image: false, webSearch: true });
     expect(prompt).toContain('this machine');
+  });
+});
+
+describe('buildSystemPrompt: advisor', () => {
+  it('describes consulting only when an advisor is on', () => {
+    expect(buildSystemPrompt('/repo', null, { image: false, advisor: false })).not.toContain(
+      '## Advisor'
+    );
+    expect(buildSystemPrompt('/repo', null, { image: false, advisor: true })).toContain(
+      '## Advisor'
+    );
+  });
+
+  // The failure the block exists to prevent: a question written as though the
+  // advisor could see the code the executor has been reading.
+  it('says the advisor sees only what the question carries', () => {
+    const prompt = buildSystemPrompt('/repo', null, { image: false, advisor: true });
+    expect(prompt).toContain('cannot read this folder');
   });
 });
 
