@@ -128,6 +128,7 @@ import type {
   LayoutSaveRequest,
   LayoutSaveResult,
   EnsureConfigDirResult,
+  SetWorkspaceOverrideResult,
   LayoutListResponse,
   PaneFocusedPayload,
   DirEntry,
@@ -443,13 +444,18 @@ export function registerIpcHandlers(
    */
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_SET_WORKSPACE_OVERRIDE,
-    async (_event, req: { workspaceId: string; claudeConfigDir: string | null }) => {
+    async (
+      _event,
+      req: { workspaceId: string; claudeConfigDir: string | null }
+    ): Promise<SetWorkspaceOverrideResult> => {
+      const changed = settingsStore.setWorkspaceOverride(req.workspaceId, req.claudeConfigDir);
       log.debug('ipc:settings:set-workspace-override', {
         workspaceId: req.workspaceId,
-        cleared: !req.claudeConfigDir
+        cleared: !req.claudeConfigDir,
+        changed
       });
-      settingsStore.setWorkspaceOverride(req.workspaceId, req.claudeConfigDir);
-      await onCopilotSettingsChanged();
+      if (changed) await onCopilotSettingsChanged();
+      return { changed };
     }
   );
 

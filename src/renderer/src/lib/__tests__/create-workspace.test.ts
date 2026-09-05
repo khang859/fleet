@@ -3,13 +3,14 @@ import { persistNewWorkspace } from '../create-workspace';
 import type {
   LayoutSaveRequest,
   LayoutSaveResult,
-  EnsureConfigDirResult
+  EnsureConfigDirResult,
+  SetWorkspaceOverrideResult
 } from '../../../../shared/ipc-api';
 
 type Fleet = {
   layout: { save: (req: LayoutSaveRequest) => Promise<LayoutSaveResult> };
   settings: {
-    setWorkspaceOverride: (id: string, dir: string | null) => Promise<void>;
+    setWorkspaceOverride: (id: string, dir: string | null) => Promise<SetWorkspaceOverrideResult>;
     ensureConfigDir: (dir: string) => Promise<EnsureConfigDirResult>;
   };
 };
@@ -35,7 +36,10 @@ function installFleet(overrides?: Partial<Fleet>): void {
       })
     },
     settings: {
-      setWorkspaceOverride: vi.fn(roundTrip),
+      setWorkspaceOverride: vi.fn(async (): Promise<SetWorkspaceOverrideResult> => {
+        await roundTrip();
+        return { changed: true };
+      }),
       ensureConfigDir: vi.fn(async (): Promise<EnsureConfigDirResult> => {
         await roundTrip();
         return { ok: true };
@@ -76,9 +80,10 @@ describe('persistNewWorkspace', () => {
         })
       },
       settings: {
-        setWorkspaceOverride: vi.fn(async () => {
+        setWorkspaceOverride: vi.fn(async (): Promise<SetWorkspaceOverrideResult> => {
           order.push('override');
           await roundTrip();
+          return { changed: true };
         }),
         ensureConfigDir: vi.fn(async (): Promise<EnsureConfigDirResult> => {
           order.push('mkdir');
@@ -113,7 +118,7 @@ describe('persistNewWorkspace', () => {
   it('distinguishes a saved workspace whose folder choice failed', async () => {
     installFleet({
       settings: {
-        setWorkspaceOverride: vi.fn(async () => {
+        setWorkspaceOverride: vi.fn(async (): Promise<SetWorkspaceOverrideResult> => {
           await roundTrip();
           throw new Error('settings locked');
         }),
@@ -170,7 +175,10 @@ describe('persistNewWorkspace', () => {
   it('saves nothing when the folder cannot be created', async () => {
     installFleet({
       settings: {
-        setWorkspaceOverride: vi.fn(roundTrip),
+        setWorkspaceOverride: vi.fn(async (): Promise<SetWorkspaceOverrideResult> => {
+          await roundTrip();
+          return { changed: true };
+        }),
         ensureConfigDir: vi.fn(async (): Promise<EnsureConfigDirResult> => {
           await roundTrip();
           return { ok: false, error: 'read-only volume' };

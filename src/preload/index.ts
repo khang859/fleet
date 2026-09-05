@@ -11,6 +11,7 @@ import type {
   LayoutSaveRequest,
   LayoutSaveResult,
   EnsureConfigDirResult,
+  SetWorkspaceOverrideResult,
   LayoutListResponse,
   NotificationPayload,
   PaneFocusedPayload,
@@ -295,7 +296,7 @@ const fleetApi = {
     setWorkspaceOverride: async (
       workspaceId: string,
       claudeConfigDir: string | null
-    ): Promise<void> =>
+    ): Promise<SetWorkspaceOverrideResult> =>
       typedInvoke(IPC_CHANNELS.SETTINGS_SET_WORKSPACE_OVERRIDE, { workspaceId, claudeConfigDir })
   },
   background: {

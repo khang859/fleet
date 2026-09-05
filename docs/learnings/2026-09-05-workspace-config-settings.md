@@ -92,3 +92,30 @@ Reading the property back still gave `function () { [native code] }`.
 `contextBridge.exposeInMainWorld` hands the renderer a frozen proxy, so timing cannot be injected this way.
 
 Options when a renderer race needs to be reproduced: add the delay in the main-process handler behind a dev flag, or move the raced logic out of the component into a store or module that a vitest test can drive with hand-held promises, the way `hook-status-store` does.
+
+## A renderer must not decide "this is already saved"
+
+Skipping a settings write when the new value matches what the renderer holds looked like a free way to avoid a redundant write and a misleading toast.
+It is not free: the renderer's copy is stale for as long as any write is in flight.
+
+1. The screen shows folder A.
+2. A write of B is sent and its reply has not come back.
+3. The user picks A. The renderer still holds A, so the write is skipped.
+4. B's reply lands and is dropped as superseded.
+
+The file now holds B while Settings shows A.
+Bumping a request counter cannot help here - it stops future work, it cannot undo a write that already happened.
+
+The comparison belongs to whoever owns the file.
+`SettingsStore.setWorkspaceOverride` returns whether it changed anything, and the renderer uses that to decide whether to reload and announce.
+The regression test for this applies the same folder twice with the saved value moved in between; a version that caches locally skips the second write and fails.
+
+## Component logic with a race belongs outside the component
+
+Three review rounds found three variants of the same race in `WorkspacesSection`, because the raced code sat in event handlers where no test could reach it.
+`createConfigFolderChoice` in `src/renderer/src/lib/config-folder-choice.ts` now owns it: dependencies in, one `apply` method, a request counter inside.
+The tests hand-hold each folder creation, so "pick A, then B while A is still creating" is an ordinary test rather than something to reason about.
+
+Worth knowing: `linkedom` *is* installed, and component reproductions with React DOM and `act` do run under the existing node-environment vitest config.
+The earlier claim that this repo has no DOM test tooling was wrong.
+Extracting the module is still the better fix here, but "there is no way to test this" was not the reason.

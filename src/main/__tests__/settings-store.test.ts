@@ -222,6 +222,20 @@ describe('SettingsStore workspace config overrides', () => {
     expect(overrides.work?.claudeConfigDir).toBe('/home/work/.claude');
   });
 
+  it('reports whether the assignment changed anything', () => {
+    // The renderer cannot answer this: its copy of the settings is stale for as
+    // long as any write is in flight, so it asks the side that owns the file.
+    expect(store.setWorkspaceOverride('work', '/home/work/.claude')).toBe(true);
+    expect(store.setWorkspaceOverride('work', '/home/work/.claude')).toBe(false);
+    expect(store.setWorkspaceOverride('work', null)).toBe(true);
+    expect(store.setWorkspaceOverride('work', null)).toBe(false);
+  });
+
+  it('treats a re-typed folder with stray spaces as no change', () => {
+    store.setWorkspaceOverride('work', '/home/work/.claude');
+    expect(store.setWorkspaceOverride('work', '  /home/work/.claude  ')).toBe(false);
+  });
+
   it('treats a blank folder as a removal rather than an empty assignment', () => {
     store.setWorkspaceOverride('personal', '/home/personal/.claude');
     store.setWorkspaceOverride('personal', '   ');

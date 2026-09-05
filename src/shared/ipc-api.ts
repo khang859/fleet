@@ -64,6 +64,12 @@ export type LayoutSaveResult = { ok: true } | { ok: false; error: string };
 /** Result of creating a Claude config folder that a workspace is about to use. */
 export type EnsureConfigDirResult = { ok: true } | { ok: false; error: string };
 
+/**
+ * Whether pointing a workspace at a folder actually changed anything. The
+ * renderer uses it to decide whether to tell the user a change was made.
+ */
+export type SetWorkspaceOverrideResult = { changed: boolean };
+
 export type LayoutListResponse = {
   workspaces: Workspace[];
 };

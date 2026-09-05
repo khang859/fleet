@@ -4,6 +4,8 @@ import { useSettingsStore } from '../../store/settings-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { useWorkspaceListStore } from '../../store/workspace-list-store';
 import { useToastStore } from '../../store/toast-store';
+import { createConfigFolderChoice } from '../../lib/config-folder-choice';
+import type { ConfigFolderChoice } from '../../lib/config-folder-choice';
 import { resolveClaudeConfig } from '../../../../shared/claude-config';
 import type { ResolvedClaudeConfig } from '../../../../shared/claude-config';
 import { FolderHooks } from './FolderHooks';
@@ -29,9 +31,6 @@ export function WorkspacesSection({
   const refreshList = useWorkspaceListStore((s) => s.refresh);
   const showToast = useToastStore((s) => s.show);
 
-  // Newest folder request per workspace, so a slow one cannot land after it.
-  const overrideSeq = useRef<Record<string, number | undefined>>({});
-
   const [expandedWs, setExpandedWs] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   // Folder text is a draft until the user commits it. Persisting per keystroke
@@ -45,7 +44,22 @@ export function WorkspacesSection({
   // blurring the empty box took the input and its Browse button away again.
   // Undefined means the user has not chosen; the saved state decides.
   const [customMode, setCustomMode] = useState<Record<string, boolean | undefined>>({});
+  const announceChange = (): void => {
+    showToast(APPLIES_TO_NEW_TERMINALS, { duration: 6000 });
+  };
+
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Every committed folder choice goes through this, including the ones that
+  // change nothing: claiming the newest request is what cancels an older one.
+  // Above the early return below, so the hook order never changes.
+  const choiceRef = useRef<ConfigFolderChoice | null>(null);
+  choiceRef.current ??= createConfigFolderChoice({
+    ensureConfigDir: window.fleet.settings.ensureConfigDir,
+    setWorkspaceOverride: window.fleet.settings.setWorkspaceOverride,
+    reload: loadSettings,
+    announce: announceChange,
+    onError: showToast
+  });
 
   useEffect(() => {
     void refreshList();
@@ -86,10 +100,6 @@ export function WorkspacesSection({
     homeDir: window.fleet.homeDir
   });
 
-  const announceChange = (): void => {
-    showToast(APPLIES_TO_NEW_TERMINALS, { duration: 6000 });
-  };
-
   const commitDefault = (value: string): void => {
     const trimmed = value.trim();
     setDefaultDraft(null);
@@ -100,44 +110,8 @@ export function WorkspacesSection({
       .then(announceChange);
   };
 
-  /**
-   * Apply one committed folder choice for a workspace.
-   *
-   * *Every* committed choice comes through here, including the ones that turn
-   * out to change nothing - picking "Use default" on a workspace that already
-   * inherits, or retyping the path that is already saved. Creating a folder is
-   * slow enough that the user can change their mind during it, and a choice
-   * routed around this function left the older request live to save a folder
-   * the user had already abandoned. One entry point is what makes that
-   * impossible to forget at a call site.
-   */
   const setOverride = async (wsId: string, dir: string | null): Promise<void> => {
-    // Claiming the newest request for this workspace happens first and
-    // unconditionally, so it still counts when there is nothing to write.
-    const seq = (overrideSeq.current[wsId] ?? 0) + 1;
-    overrideSeq.current[wsId] = seq;
-    const superseded = (): boolean => overrideSeq.current[wsId] !== seq;
-
-    // Nothing to write is not nothing to do: the claim above already cancelled
-    // whatever was in flight. Returning here keeps a re-picked choice from
-    // announcing a change to the user that did not happen.
-    if ((copilot.workspaceOverrides[wsId]?.claudeConfigDir ?? null) === dir) return;
-
-    // A typed path can name a folder that is not there yet. Creating it keeps a
-    // workspace from looking configured while Claude starts from scratch and
-    // Fleet hooks have nowhere to go.
-    if (dir) {
-      const created = await window.fleet.settings.ensureConfigDir(dir);
-      if (superseded()) return;
-      if (!created.ok) {
-        showToast(`Could not create ${dir}: ${created.error}`);
-        return;
-      }
-    }
-    await window.fleet.settings.setWorkspaceOverride(wsId, dir);
-    if (superseded()) return;
-    await loadSettings();
-    announceChange();
+    await choiceRef.current?.apply(wsId, dir);
   };
 
   /** Drop one workspace's unsaved edit, so the saved state shows through again. */

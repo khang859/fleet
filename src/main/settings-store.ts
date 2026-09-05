@@ -230,12 +230,25 @@ export class SettingsStore {
    * An empty or whitespace-only folder removes the override rather than storing
    * an assignment that assigns nothing.
    */
-  setWorkspaceOverride(workspaceId: string, claudeConfigDir: string | null): void {
+  /**
+   * Point one workspace at its own Claude config folder, and say whether that
+   * was a change.
+   *
+   * The comparison belongs here rather than in the renderer: a renderer holds a
+   * copy of the settings that is stale for as long as any write is in flight,
+   * so a renderer-side "this is already saved" check can skip a write that was
+   * genuinely needed and leave the file disagreeing with the screen. This
+   * process owns the file, so its answer cannot be out of date.
+   */
+  setWorkspaceOverride(workspaceId: string, claudeConfigDir: string | null): boolean {
     const overrides = { ...this.get().copilot.workspaceOverrides };
     const dir = claudeConfigDir?.trim();
+    const before = overrides[workspaceId]?.claudeConfigDir ?? null;
+    if ((dir ?? null) === before) return false;
     if (dir) overrides[workspaceId] = { claudeConfigDir: dir };
     else delete overrides[workspaceId];
     this.set({ copilot: { workspaceOverrides: overrides } });
+    return true;
   }
 
   set(partial: FleetSettingsPatch): void {
