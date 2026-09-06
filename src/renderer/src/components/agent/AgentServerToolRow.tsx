@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { ChevronRight, Globe } from 'lucide-react';
+import { ChevronRight, Globe, Link2 } from 'lucide-react';
 import {
   serverToolLabel,
   serverToolQuery,
@@ -67,6 +67,55 @@ export const AgentServerToolRow = memo(function AgentServerToolRow({
           ) : (
             <AgentCitationList citations={sources} />
           )}
+        </div>
+      )}
+    </div>
+  );
+});
+
+/**
+ * The bibliography under a finished answer.
+ *
+ * A row of its own rather than something folded into the search rows above it,
+ * because it answers a different question. A search row says what the agent
+ * went and did; this says what the answer rests on. The two lists overlap when
+ * a search was what found the pages, and they do not overlap at all when the
+ * provider searched natively - that kind of answer arrives with annotations and
+ * no search row to hang them off, and without this it cites pages the reader
+ * cannot open.
+ *
+ * Folded by default, and the count is the whole of the collapsed state: the
+ * number is what a reader checks at a glance, and expanding is what they do
+ * when the answer says something they want to trace.
+ */
+export const AgentSources = memo(function AgentSources({
+  citations
+}: {
+  citations: Citation[];
+}): React.JSX.Element | null {
+  const [open, setOpen] = useState(false);
+  if (citations.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 text-left text-xs text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring"
+      >
+        <ChevronRight
+          size={12}
+          className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+        />
+        <Link2 size={12} className="shrink-0 opacity-70" />
+        <span className="shrink-0">
+          {citations.length} {citations.length === 1 ? 'source' : 'sources'}
+        </span>
+      </button>
+      {open && (
+        <div className="border-l-2 border-fleet-border pl-3">
+          <AgentCitationList citations={citations} />
         </div>
       )}
     </div>

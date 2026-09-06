@@ -26,6 +26,7 @@ import {
   ATTACHMENT_ACCEPT,
   DEFAULT_AGENT_SETTINGS,
   messageAttachments,
+  messageCitations,
   messageText
 } from '../../../../shared/agent-types';
 import { isTodoTool } from '../../../../shared/agent-tools';
@@ -38,7 +39,7 @@ import { AgentToolRow } from './AgentToolRow';
 import { AgentToolGroup } from './AgentToolGroup';
 import { groupParts } from './tool-group';
 import { AgentPermissionRow } from './AgentPermissionRow';
-import { AgentServerToolRow } from './AgentServerToolRow';
+import { AgentServerToolRow, AgentSources } from './AgentServerToolRow';
 import { AgentTaskCard } from './AgentTaskCard';
 import { AgentScheduleFire } from './AgentScheduleFire';
 import { AgentTaskPermissions } from './AgentTaskPermissions';
@@ -842,6 +843,10 @@ const Message = memo(function Message({
           />
         );
       })}
+      {/* Last, because it is what the answer rested on rather than a step in
+          reaching it. Draws nothing when the turn cited nothing, which is most
+          turns. */}
+      <AgentSources citations={messageCitations(message)} />
     </div>
   );
 });
