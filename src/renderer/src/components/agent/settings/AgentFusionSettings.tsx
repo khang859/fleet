@@ -9,7 +9,7 @@ import {
   type AgentFusionConfig
 } from '../../../../../shared/agent-fusion';
 import type { AgentCatalogModel } from '../../../../../shared/agent-types';
-import { RoleCard, inputCls } from './controls';
+import { BoundedNumber, RoleCard } from './controls';
 import { ModelSelect } from './ModelSelect';
 
 /**
@@ -165,23 +165,15 @@ function NumberRow({
         </label>
         <p className="mt-0.5 text-xs text-fleet-text-muted">{hint}</p>
       </div>
-      <input
+      <BoundedNumber
         id={id}
-        type="number"
-        inputMode="numeric"
+        value={value}
         min={min}
         max={max}
         step={step}
-        value={value}
-        onChange={(e) => {
-          const parsed = Number(e.target.value.trim());
-          if (!Number.isFinite(parsed)) {
-            onChange(fallback);
-            return;
-          }
-          onChange(Math.min(max, Math.max(min, Math.round(parsed))));
-        }}
-        className={`${inputCls} w-24 shrink-0 tabular-nums`}
+        fallback={fallback}
+        onCommit={onChange}
+        className="w-24 shrink-0"
       />
     </div>
   );
