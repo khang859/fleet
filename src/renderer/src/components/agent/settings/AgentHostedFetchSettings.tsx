@@ -9,7 +9,7 @@ import {
   type AgentHostedFetchConfig,
   type HostedFetchEngine
 } from '../../../../../shared/agent-hosted-fetch';
-import { RoleCard, inputCls, selectCls } from './controls';
+import { BoundedNumber, LineList, OptionalNumber, RoleCard, selectCls } from './controls';
 import { Toggle } from './Toggle';
 
 /**
@@ -150,7 +150,7 @@ function Row({
   );
 }
 
-/** A bounded count, clamped when committed rather than while typing. */
+/** A bounded count. The limits apply when the field is left, not per keystroke. */
 function NumberRow({
   id,
   label,
@@ -170,19 +170,14 @@ function NumberRow({
 }): React.JSX.Element {
   return (
     <Row id={id} label={label} hint={hint}>
-      <input
+      <BoundedNumber
         id={id}
-        type="number"
-        inputMode="numeric"
+        value={value}
         min={min}
         max={max}
-        value={value}
-        onChange={(e) => {
-          const parsed = Number(e.target.value.trim());
-          if (!Number.isFinite(parsed)) return;
-          onChange(Math.min(max, Math.max(min, Math.round(parsed))));
-        }}
-        className={`${inputCls} w-20 tabular-nums`}
+        fallback={DEFAULT_AGENT_HOSTED_FETCH.maxFetches}
+        onCommit={onChange}
+        className="w-20"
       />
     </Row>
   );
@@ -208,43 +203,23 @@ function ContentTokensRow({
       label="Page length"
       hint="Approximate tokens of one page that reach the model. Leave empty to let the engine decide. Longer pages are cut, not refused."
     >
-      <input
+      <OptionalNumber
         id="agent-hosted-fetch-content-tokens"
-        type="number"
-        inputMode="numeric"
+        value={value}
         min={HOSTED_FETCH_MIN_CONTENT_TOKENS}
         max={HOSTED_FETCH_MAX_CONTENT_TOKENS}
         step={1_000}
-        value={value ?? ''}
         placeholder="engine"
-        onChange={(e) => {
-          const raw = e.target.value.trim();
-          if (raw === '') {
-            onChange(null);
-            return;
-          }
-          const parsed = Number(raw);
-          if (!Number.isFinite(parsed)) return;
-          onChange(
-            Math.min(
-              HOSTED_FETCH_MAX_CONTENT_TOKENS,
-              Math.max(HOSTED_FETCH_MIN_CONTENT_TOKENS, Math.round(parsed))
-            )
-          );
-        }}
-        className={`${inputCls} w-24 tabular-nums`}
+        onCommit={onChange}
       />
     </Row>
   );
 }
 
 /**
- * A host list, edited as lines.
- *
- * A textarea rather than a chip editor because that is what a domain list is:
- * something pasted in from somewhere else and occasionally edited, not
- * something assembled one entry at a time. Blank lines are dropped on the way
- * out, so a trailing newline does not become a rule that matches nothing.
+ * A host list, edited as lines. See `LineList` for why the raw text is kept
+ * while the field has focus: normalising per keystroke eats the newline that
+ * starts the next host.
  */
 function DomainsRow({
   id,
@@ -265,21 +240,7 @@ function DomainsRow({
         {label}
       </label>
       <p className="text-xs text-fleet-text-muted">{hint}</p>
-      <textarea
-        id={id}
-        rows={2}
-        value={value.join('\n')}
-        placeholder="example.com"
-        onChange={(e) =>
-          onChange(
-            e.target.value
-              .split('\n')
-              .map((line) => line.trim())
-              .filter((line) => line !== '')
-          )
-        }
-        className={`${inputCls} resize-y font-mono text-xs`}
-      />
+      <LineList id={id} value={value} placeholder="example.com" onCommit={onChange} />
     </div>
   );
 }

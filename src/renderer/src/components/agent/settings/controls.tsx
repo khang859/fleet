@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { commitNumber, shownNumber } from './bounded-number';
+import { commitLines, shownLines } from './line-list';
 
 /**
  * Shared class strings for the native inputs and selects in these panes, so
@@ -256,6 +257,113 @@ export function BoundedNumber({
         if (e.key === 'Escape') setDraft(null);
       }}
       className={`${inputCls} ${className} tabular-nums`}
+    />
+  );
+}
+
+/**
+ * A bounded whole number that may also be left empty, where empty is a real
+ * answer rather than a missing one - "however much the engine thinks", say.
+ *
+ * Separate from `BoundedNumber` rather than a flag on it because the two hand
+ * back different things, and a caller that can never receive `null` should not
+ * have to prove it cannot.
+ */
+export function OptionalNumber({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step,
+  placeholder,
+  onCommit,
+  className = 'w-24'
+}: {
+  id: string;
+  label?: string;
+  value: number | null;
+  min: number;
+  max: number;
+  step?: number;
+  /** What empty means, said in a word the reader can see in the box. */
+  placeholder: string;
+  onCommit: (next: number | null) => void;
+  className?: string;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = (): void => {
+    if (draft === null) return;
+    setDraft(null);
+    onCommit(draft.trim() === '' ? null : commitNumber(draft, { min, max, fallback: min }));
+  };
+
+  return (
+    <input
+      id={id}
+      aria-label={label}
+      type="number"
+      inputMode="numeric"
+      min={min}
+      max={max}
+      step={step}
+      placeholder={placeholder}
+      value={draft ?? (value === null ? '' : String(value))}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') setDraft(null);
+      }}
+      className={`${inputCls} ${className} tabular-nums`}
+    />
+  );
+}
+
+/**
+ * A list of short strings, edited as lines.
+ *
+ * A textarea rather than a chip editor because that is what these lists are:
+ * something pasted in from somewhere else and occasionally edited, not
+ * something assembled one entry at a time. The raw text is the person's until
+ * they leave the field - see `line-list.ts` for why that matters.
+ */
+export function LineList({
+  id,
+  value,
+  placeholder,
+  rows = 2,
+  onCommit
+}: {
+  id: string;
+  value: string[];
+  placeholder?: string;
+  rows?: number;
+  onCommit: (next: string[]) => void;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = (): void => {
+    if (draft === null) return;
+    setDraft(null);
+    onCommit(commitLines(draft));
+  };
+
+  return (
+    <textarea
+      id={id}
+      rows={rows}
+      placeholder={placeholder}
+      value={shownLines(draft, value)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      // No Enter handling: Enter is how a line is added here, which is the
+      // whole point. Escape still abandons the draft.
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') setDraft(null);
+      }}
+      className={`${inputCls} w-full resize-y font-mono text-xs`}
     />
   );
 }
