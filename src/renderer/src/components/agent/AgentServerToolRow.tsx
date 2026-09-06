@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { ChevronRight, Globe, Lightbulb, Link2 } from 'lucide-react';
+import { ChevronRight, FileDown, Globe, Lightbulb, Link2 } from 'lucide-react';
 import {
   serverToolLabel,
   serverToolQuery,
@@ -8,6 +8,7 @@ import {
 } from '../../../../shared/agent-server-tools';
 import { parseAdvisorPrompt, parseAdvisorResult } from '../../../../shared/agent-advisor';
 import { FUSION_TOOL_NAME } from '../../../../shared/agent-fusion';
+import { parseHostedFetchResult } from '../../../../shared/agent-hosted-fetch';
 import { AgentFusionRow } from './AgentFusionRow';
 import { AgentMarkdown } from './AgentMarkdown';
 
@@ -45,6 +46,9 @@ export const AgentServerToolRow = memo(function AgentServerToolRow({
   // And a panel review is several arguments plus a reading of where they part
   // company, which is neither of the other two shapes.
   if (call.toolName === FUSION_TOOL_NAME) return <AgentFusionRow call={call} />;
+  // And a hosted fetch is one page rather than a list of them, with a status
+  // that has to be read: a failed fetch comes back as a result, not an error.
+  if (call.toolName === HOSTED_FETCH_TOOL_NAME) return <AgentHostedFetchRow call={call} />;
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -256,6 +260,84 @@ export const AgentAdvisorRow = memo(function AgentAdvisorRow({
             </AgentMarkdown>
           ) : (
             <p className="text-[11px] leading-relaxed text-fleet-text-muted">{result.error}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
+/** The wire name of the tool the row below is for. */
+const HOSTED_FETCH_TOOL_NAME = 'openrouter:web_fetch';
+
+/**
+ * A page read on OpenRouter's side.
+ *
+ * One page rather than a list of them, so it borrows the citation row's shape -
+ * title, then host - instead of the search row's count. The collapsed line
+ * carries the address, because with two readers in play the thing a person is
+ * checking is which one went and got this.
+ *
+ * A failure is drawn as a failure. The hosted reader returns a 404 as a result
+ * with `status: 'failed'`, so a row that only rendered content would show an
+ * empty page and say nothing about why.
+ */
+export const AgentHostedFetchRow = memo(function AgentHostedFetchRow({
+  call
+}: {
+  call: ServerToolRecord;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const result = parseHostedFetchResult(call.result);
+  const requested = serverToolQuery(call.args);
+  const address = result === null ? requested : (result.url ?? requested);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 text-left text-xs text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring"
+      >
+        <ChevronRight
+          size={12}
+          className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+        />
+        <FileDown size={12} className="shrink-0 opacity-70" />
+        <span className="shrink-0">Fetched</span>
+        {address !== null && <span className="truncate font-mono text-[11px]">{address}</span>}
+        {result?.status === 'failed' && (
+          <span className="shrink-0 text-fleet-text-subtle">no page</span>
+        )}
+      </button>
+      {open && (
+        <div className="flex flex-col gap-1 border-l-2 border-fleet-border pl-3">
+          {result === null ? (
+            <pre className="max-h-64 overflow-auto text-[11px] leading-relaxed whitespace-pre-wrap text-fleet-text-muted">
+              {call.result}
+            </pre>
+          ) : result.status === 'failed' ? (
+            <p className="text-[11px] leading-relaxed text-fleet-text-muted">
+              {result.error ?? 'The page could not be read.'}
+            </p>
+          ) : (
+            <>
+              <a
+                href={result.url}
+                target="_blank"
+                rel="noreferrer"
+                className="truncate text-[11px] text-fleet-accent hover:underline focus-ring"
+              >
+                {result.title ?? result.url}
+              </a>
+              <span className="truncate text-[10px] text-fleet-text-subtle">
+                {hostOf(result.url)}
+              </span>
+              <p className="line-clamp-6 text-[11px] leading-relaxed text-fleet-text-muted">
+                {result.content}
+              </p>
+            </>
           )}
         </div>
       )}

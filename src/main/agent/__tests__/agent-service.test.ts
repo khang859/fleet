@@ -403,6 +403,26 @@ describe('turnServerTools', () => {
     ]);
   });
 
+  /*
+   * The order below advisor is not load-bearing the way advisor's own position
+   * is, but the hosted reader must not displace it.
+   */
+  it('adds the hosted reader after the advisor, never before it', () => {
+    const withFetch = turnServerTools({
+      ...settings,
+      hostedFetch: { ...settings.hostedFetch, enabled: true }
+    });
+    expect(withFetch.map((t) => t.type)).toEqual([
+      'openrouter:advisor',
+      'openrouter:web_search',
+      'openrouter:web_fetch'
+    ]);
+  });
+
+  it('leaves the hosted reader out while it is off', () => {
+    expect(turnServerTools(settings).map((t) => t.type)).not.toContain('openrouter:web_fetch');
+  });
+
   it('offers the panel even when nothing else is switched on', () => {
     expect(turnServerTools(DEFAULT_AGENT_SETTINGS, { fusion: true }).map((t) => t.type)).toEqual([
       'openrouter:fusion'
@@ -482,6 +502,49 @@ describe('buildSystemPrompt: fusion', () => {
     expect(unavailable).toContain('not available');
     expect(unavailable).toContain('Do not simulate a panel');
     expect(unavailable).not.toContain('Call it once');
+  });
+});
+
+/**
+ * The two readers, and the block that tells them apart.
+ *
+ * The failure this guards against is not a bad fetch. It is a model holding two
+ * fetch tools with interchangeable descriptions, picking one at random, and
+ * sending a localhost address to the one that can never reach it.
+ */
+describe('buildSystemPrompt: hosted fetch', () => {
+  it('describes the second reader only when it is offered', () => {
+    const off = buildSystemPrompt('/repo', null, { image: false, webFetch: true });
+    const on = buildSystemPrompt('/repo', null, {
+      image: false,
+      webFetch: true,
+      hostedFetch: true
+    });
+    expect(off).not.toContain('openrouter:web_fetch');
+    expect(on).toContain('openrouter:web_fetch');
+  });
+
+  it('says which reader reaches this machine', () => {
+    const on = buildSystemPrompt('/repo', null, {
+      image: false,
+      webFetch: true,
+      hostedFetch: true
+    });
+    expect(on).toContain('localhost');
+    expect(on).toContain('public addresses only');
+  });
+
+  it('puts the two blocks together, so the boundary is read in one place', () => {
+    const on = buildSystemPrompt('/repo', null, {
+      image: false,
+      webFetch: true,
+      hostedFetch: true,
+      webSearch: true
+    });
+    expect(on.indexOf('The second reader')).toBeGreaterThan(
+      on.indexOf('`web_fetch` reads a web page')
+    );
+    expect(on.indexOf('The second reader')).toBeLessThan(on.indexOf('## Web search'));
   });
 });
 

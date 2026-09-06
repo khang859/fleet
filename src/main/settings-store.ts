@@ -192,6 +192,10 @@ export class SettingsStore {
           image: { ...DEFAULT_SETTINGS.ai.agent.image, ...saved.ai?.agent?.image },
           webFetch: { ...DEFAULT_SETTINGS.ai.agent.webFetch, ...saved.ai?.agent?.webFetch },
           webSearch: { ...DEFAULT_SETTINGS.ai.agent.webSearch, ...saved.ai?.agent?.webSearch },
+          hostedFetch: {
+            ...DEFAULT_SETTINGS.ai.agent.hostedFetch,
+            ...saved.ai?.agent?.hostedFetch
+          },
           advisor: { ...DEFAULT_SETTINGS.ai.agent.advisor, ...saved.ai?.agent?.advisor },
           fusion: { ...DEFAULT_SETTINGS.ai.agent.fusion, ...saved.ai?.agent?.fusion },
           permissions: {
@@ -291,6 +295,10 @@ export class SettingsStore {
           image: { ...current.ai.agent.image, ...(partial.ai?.agent?.image ?? {}) },
           webFetch: { ...current.ai.agent.webFetch, ...(partial.ai?.agent?.webFetch ?? {}) },
           webSearch: { ...current.ai.agent.webSearch, ...(partial.ai?.agent?.webSearch ?? {}) },
+          hostedFetch: {
+            ...current.ai.agent.hostedFetch,
+            ...(partial.ai?.agent?.hostedFetch ?? {})
+          },
           advisor: { ...current.ai.agent.advisor, ...(partial.ai?.agent?.advisor ?? {}) },
           fusion: { ...current.ai.agent.fusion, ...(partial.ai?.agent?.fusion ?? {}) },
           permissions: {
