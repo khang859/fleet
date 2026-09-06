@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Database, Route, Shuffle } from 'lucide-react';
 import {
   FALLBACK_MAX_MODELS,
@@ -8,7 +9,8 @@ import {
   type ProviderSort
 } from '../../../../../shared/agent-routing';
 import type { AgentCatalogModel } from '../../../../../shared/agent-types';
-import { RoleCard, inputCls, selectCls } from './controls';
+import { LineList, RoleCard, inputCls, selectCls } from './controls';
+import { commitPrice } from './bounded-number';
 import { Toggle } from './Toggle';
 import { ModelSelect } from './ModelSelect';
 
@@ -301,28 +303,53 @@ function PriceRow({
     >
       <div className="flex items-center gap-1">
         <span className="text-sm text-fleet-text-muted">$</span>
-        <input
-          id={id}
-          type="number"
-          inputMode="decimal"
-          min={0}
-          step={0.1}
-          value={value ?? ''}
-          placeholder="any"
-          onChange={(e) => {
-            const text = e.target.value.trim();
-            if (text === '') {
-              onChange(null);
-              return;
-            }
-            const parsed = Number(text);
-            if (!Number.isFinite(parsed) || parsed < 0) return;
-            onChange(parsed);
-          }}
-          className={`${inputCls} w-20 tabular-nums`}
-        />
+        <PriceInput id={id} value={value} onChange={onChange} />
       </div>
     </Row>
+  );
+}
+
+/**
+ * A price ceiling in dollars, held as text until the field is left.
+ *
+ * The only decimal field in these panes, so the draft lives here rather than in
+ * the shared controls; the rule it follows is `commitPrice`, which is where the
+ * reason is written down.
+ */
+function PriceInput({
+  id,
+  value,
+  onChange
+}: {
+  id: string;
+  value: number | null;
+  onChange: (next: number | null) => void;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = (): void => {
+    if (draft === null) return;
+    setDraft(null);
+    onChange(commitPrice(draft));
+  };
+
+  return (
+    <input
+      id={id}
+      type="number"
+      inputMode="decimal"
+      min={0}
+      step={0.1}
+      placeholder="any"
+      value={draft ?? (value === null ? '' : String(value))}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') setDraft(null);
+      }}
+      className={`${inputCls} w-20 tabular-nums`}
+    />
   );
 }
 
@@ -346,21 +373,7 @@ function ListRow({
         {label}
       </label>
       <p className="text-xs text-fleet-text-muted">{hint}</p>
-      <textarea
-        id={id}
-        rows={2}
-        value={value.join('\n')}
-        placeholder="anthropic"
-        onChange={(e) =>
-          onChange(
-            e.target.value
-              .split('\n')
-              .map((line) => line.trim())
-              .filter((line) => line !== '')
-          )
-        }
-        className={`${inputCls} resize-y font-mono text-xs`}
-      />
+      <LineList id={id} value={value} placeholder="anthropic" onCommit={onChange} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commitNumber, shownNumber } from '../bounded-number';
+import { commitNumber, commitPrice, shownNumber } from '../bounded-number';
 
 /*
  * The bug this rule exists to prevent, stated as a test.
@@ -57,5 +57,36 @@ describe('what a finished draft means', () => {
 
   it('reads something that is not a number as the default', () => {
     expect(commitNumber('lots', bounds)).toBe(1024);
+  });
+});
+
+/*
+ * The price ceiling is dollars per million tokens, so the useful values are
+ * fractions of one - and typing one goes through a state that reads as zero.
+ * Committing on each keystroke turned `0.5` into `5`: ten times the intended
+ * rate, from a field that looked like it worked.
+ */
+describe('what a finished price draft means', () => {
+  it('keeps a fraction of a dollar', () => {
+    expect(commitPrice('0.5')).toBe(0.5);
+  });
+
+  it('survives the half-typed state that reads as zero', () => {
+    expect(shownNumber('0.', 1)).toBe('0.');
+  });
+
+  it('reads an empty field as no ceiling', () => {
+    expect(commitPrice('')).toBeNull();
+    expect(commitPrice('  ')).toBeNull();
+  });
+
+  it('reads a negative or unreadable price as no ceiling', () => {
+    expect(commitPrice('-1')).toBeNull();
+    expect(commitPrice('cheap')).toBeNull();
+  });
+
+  /* Not rounded, unlike the counts: these are fractions on purpose. */
+  it('does not round', () => {
+    expect(commitPrice('0.125')).toBe(0.125);
   });
 });

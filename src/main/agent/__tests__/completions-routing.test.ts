@@ -59,6 +59,13 @@ const HISTORY: AgentWireMessage[] = [
   { role: 'user', content: 'hello' }
 ];
 
+/** One tool call, so a round can end the way most rounds actually end. */
+const CALL = {
+  id: 'call_1',
+  type: 'function' as const,
+  function: { name: 'read', arguments: '{}' }
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -208,18 +215,57 @@ describe('where the cache breakpoints go', () => {
   });
 
   /*
-   * A round often ends on a tool result, which is not a message that can carry
-   * a marker. The system prompt still gets one, and the round is unchanged
-   * rather than mangled.
+   * The ordinary shape of a round, and the one this feature exists for. A round
+   * that asked for tools ends on their output, which is most rounds of most
+   * turns - so if the marker stops at the system message here, every file the
+   * turn has read is paid for again on the next round.
+   *
+   * A tool result carries the marker as a content part, which Anthropic accepts
+   * and acts on: a 14,000-token result marked this way reports 14,673 cache
+   * write tokens where the same request marked only on the system message
+   * reports zero.
    */
-  it('leaves a tool result alone when the round ends on one', () => {
+  it('marks the tool result the round ended on', () => {
     const messages: AgentWireMessage[] = [
       { role: 'system', content: 'p' },
-      { role: 'tool', tool_call_id: 'call_1', content: 'result' }
+      { role: 'user', content: 'read the file' },
+      { role: 'assistant', content: '', tool_calls: [CALL] },
+      { role: 'tool', tool_call_id: 'call_1', content: 'the whole file' }
+    ];
+    const marked = withCacheBreakpoints(messages, DEFAULT_AGENT_CACHE);
+    expect(marked[3]).toEqual({
+      role: 'tool',
+      tool_call_id: 'call_1',
+      content: [{ type: 'text', text: 'the whole file', cache_control: { type: 'ephemeral' } }]
+    });
+  });
+
+  /* The user message in the middle is not the end of anything. */
+  it('marks only the system prompt and the end, not every user message', () => {
+    const messages: AgentWireMessage[] = [
+      { role: 'system', content: 'p' },
+      { role: 'user', content: 'read the file' },
+      { role: 'assistant', content: '', tool_calls: [CALL] },
+      { role: 'tool', tool_call_id: 'call_1', content: 'the whole file' }
     ];
     const marked = withCacheBreakpoints(messages, DEFAULT_AGENT_CACHE);
     expect(marked[1]).toEqual(messages[1]);
-    expect(marked[0]).not.toEqual(messages[0]);
+    expect(marked[2]).toEqual(messages[2]);
+  });
+
+  /* Two markers, which is well inside Anthropic's four. */
+  it('never writes more than two', () => {
+    const messages: AgentWireMessage[] = [
+      { role: 'system', content: 'p' },
+      { role: 'user', content: 'one' },
+      { role: 'assistant', content: 'two' },
+      { role: 'user', content: 'three' },
+      { role: 'assistant', content: '', tool_calls: [CALL] },
+      { role: 'tool', tool_call_id: 'call_1', content: 'four' }
+    ];
+    const marked = withCacheBreakpoints(messages, DEFAULT_AGENT_CACHE);
+    const markers = JSON.stringify(marked).split('cache_control').length - 1;
+    expect(markers).toBe(2);
   });
 
   it('asks for the hour when told to', () => {

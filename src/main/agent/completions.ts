@@ -213,9 +213,12 @@ export type WireContentPart =
  * alongside their results, or the results are answers to questions the
  * transcript never asked.
  *
- * Only a user message may be made of parts. That is the API's rule rather than
- * ours, and it is the reason a tool that produces a picture cannot answer with
- * one: the image follows the tool result as a user message of its own.
+ * Only a user message may be made of parts *that this app builds*. That is the
+ * API's rule rather than ours, and it is the reason a tool that produces a
+ * picture cannot answer with one: the image follows the tool result as a user
+ * message of its own. `withCacheBreakpoints` also turns a system or tool
+ * message into parts on its way to the wire, which is a different thing - a
+ * marker has to ride on a part, and there is nowhere else to put it.
  */
 export type AgentWireMessage =
   | { role: 'system'; content: string | WireContentPart[] }
@@ -252,6 +255,19 @@ export type AgentWireMessage =
   | { role: 'tool'; tool_call_id: string; content: string };
 
 /**
+ * A message on its way into a request body, which is a slightly wider thing.
+ *
+ * `withCacheBreakpoints` turns a tool result into content parts so a marker has
+ * somewhere to ride, and nothing but the body ever sees that shape. Kept apart
+ * from `AgentWireMessage` so the transcript the rest of the app carries stays
+ * the simple one: a tool result is a string everywhere it is read, cleared,
+ * counted or converted.
+ */
+export type WireBodyMessage =
+  | AgentWireMessage
+  | { role: 'tool'; tool_call_id: string; content: WireContentPart[] };
+
+/**
  * History with the fields only the other transport understands taken off.
  *
  * `response_output` is Fleet's own carrier rather than something Chat
@@ -260,7 +276,7 @@ export type AgentWireMessage =
  * in a body, so a conversation that switched transports mid-session - which is
  * what toggling deferral does - cannot carry one across.
  */
-export function forCompletionsWire(messages: AgentWireMessage[]): AgentWireMessage[] {
+export function forCompletionsWire(messages: WireBodyMessage[]): WireBodyMessage[] {
   return messages.map((message) => {
     if (message.role !== 'assistant' || message.response_output === undefined) return message;
     const { response_output, ...rest } = message;
@@ -1020,6 +1036,13 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
  * each round writes only its own delta and reads everything before it back at
  * a tenth of the price.
  *
+ * That last message is usually a tool result rather than anything the user
+ * said - a round that asked for tools ends on their output, which is most
+ * rounds of most turns. So a tool result carries a marker too, as a content
+ * part, which Anthropic accepts and acts on: a 14,000-token result marked this
+ * way reports 14,673 cache write tokens where the same request with the marker
+ * on the system message alone reports zero.
+ *
  * Anthropic allows four markers and this uses two, which leaves room and keeps
  * the rule simple enough to hold in the head. A provider that caches on its
  * own ignores both, and a provider that does neither is unchanged: the marker
@@ -1033,7 +1056,7 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
 export function withCacheBreakpoints(
   messages: AgentWireMessage[],
   config: AgentCacheConfig
-): AgentWireMessage[] {
+): WireBodyMessage[] {
   if (!config.enabled || messages.length === 0) return messages;
   const mark = cacheControl(config);
   const last = messages.length - 1;
@@ -1047,6 +1070,20 @@ export function withCacheBreakpoints(
       const text = typeof message.content === 'string' ? message.content : null;
       if (text === null) return message;
       return { role: 'system', content: [{ type: 'text', text, ...mark }] };
+    }
+    // A round that asked for tools ends on its results rather than on anything
+    // the user said, and that is the ordinary shape: most rounds of most turns
+    // end here. Skipped, the marker falls back to the system message alone and
+    // every file the turn has read so far is paid for again on the next round -
+    // which is the whole of what this feature was for.
+    if (message.role === 'tool') {
+      const text = typeof message.content === 'string' ? message.content : null;
+      if (text === null) return message;
+      return {
+        role: 'tool',
+        tool_call_id: message.tool_call_id,
+        content: [{ type: 'text', text, ...mark }]
+      };
     }
     if (message.role !== 'user') return message;
     const parts: WireContentPart[] =

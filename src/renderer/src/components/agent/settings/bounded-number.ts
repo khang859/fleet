@@ -46,3 +46,21 @@ export function commitNumber(draft: string, bounds: NumberBounds): number {
   if (trimmed === '' || !Number.isFinite(parsed)) return bounds.fallback;
   return Math.min(bounds.max, Math.max(bounds.min, Math.round(parsed)));
 }
+
+/**
+ * What a finished draft means as a price ceiling, where empty is no ceiling.
+ *
+ * Not rounded, because this one is dollars per million tokens and the useful
+ * values are fractions of one. Same reason for the draft as the counts next
+ * door, and a sharper failure without it: `0.5` typed a character at a time
+ * passes through `0.`, which reads as zero, so the field would replace itself
+ * with `0` and the `5` after it would make the ceiling `5` rather than `0.5` -
+ * ten times the intended rate, silently.
+ */
+export function commitPrice(draft: string): number | null {
+  const trimmed = draft.trim();
+  if (trimmed === '') return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+}
