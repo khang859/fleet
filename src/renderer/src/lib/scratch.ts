@@ -58,6 +58,19 @@ export function isScratchDir(cwd: string): boolean {
   return cwd === scratchDir() || cwd.startsWith(`${scratchDir()}${separator}`);
 }
 
+/**
+ * The folder to show for a tab, with a scratch chat's own folder collapsed to
+ * the root it sits in.
+ *
+ * A chat's folder is named after its session, so the segment is a uuid: it says
+ * nothing a reader wants and it is long enough to squeeze the tab's name out of
+ * the row. The root is the honest answer to where a scratch chat lives, and it
+ * is what the tab showed before a terminal in it started reporting a live cwd.
+ */
+export function displayDir(cwd: string): string {
+  return isScratchDir(cwd) ? scratchDir() : cwd;
+}
+
 /** Scratch remains an agent tab, identified by its Fleet-owned folder. */
 export function isScratchTab(tab: { type?: string; cwd: string }): boolean {
   return tab.type === 'agent' && isScratchDir(tab.cwd);
