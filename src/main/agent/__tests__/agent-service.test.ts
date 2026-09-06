@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
+import type { Citation, ServerToolRecord } from '../../../shared/agent-server-tools';
 import {
   buildSystemPrompt,
   DEFAULT_AGENT_SETTINGS,
@@ -182,6 +183,8 @@ const SETTINGS = {
  */
 const round = (toolCalls: WireToolCall[] = []): StreamOutcome => ({
   toolCalls,
+  serverToolCalls: [],
+  citations: [],
   model: null,
   provider: null
 });
@@ -215,7 +218,15 @@ function collector(): {
 
 describe('parseStreamLine', () => {
   /** A parsed line that carried nothing but the field under test. */
-  const bare = { content: '', reasoning: '', toolCalls: [], model: null, provider: null };
+  const bare = {
+    content: '',
+    reasoning: '',
+    toolCalls: [],
+    serverToolCalls: [],
+    citations: [],
+    model: null,
+    provider: null
+  };
 
   it('reads content and reasoning deltas', () => {
     expect(parseStreamLine('data: {"choices":[{"delta":{"content":"he"}}]}')).toEqual({
@@ -242,7 +253,10 @@ describe('parseStreamLine', () => {
         cachedTokens: 0,
         cacheWriteTokens: 0,
         reasoningTokens: 0,
-        costUsd: null
+        costUsd: null,
+        serverToolCalls: 0,
+        webSearches: 0,
+        serverToolCostUsd: null
       }
     });
   });
@@ -264,7 +278,10 @@ describe('parseStreamLine', () => {
         cachedTokens: 150,
         cacheWriteTokens: 44,
         reasoningTokens: 12,
-        costUsd: 0.0042
+        costUsd: 0.0042,
+        serverToolCalls: 0,
+        webSearches: 0,
+        serverToolCostUsd: null
       }
     });
   });
@@ -307,6 +324,30 @@ describe('parseStreamLine', () => {
     expect(parseStreamLine('event: message')).toBeNull();
     expect(parseStreamLine('data: {not json')).toBeNull();
     expect(parseStreamLine('data: {"choices":[]}')).toBeNull();
+  });
+});
+
+/**
+ * What the turn tells the model about the tools it was given.
+ *
+ * The instruction block and the tool entry have to be switched by the same
+ * setting: a prompt describing a search tool the request never sent teaches the
+ * model to call something that is not there, and a search tool sent without the
+ * block leaves it with two readers and no account of which is for what.
+ */
+describe('buildSystemPrompt: web search', () => {
+  it('describes searching only when searching is on', () => {
+    const off = buildSystemPrompt('/repo', null, { image: false, webSearch: false });
+    const on = buildSystemPrompt('/repo', null, { image: false, webSearch: true });
+
+    expect(off).not.toContain('## Web search');
+    expect(on).toContain('## Web search');
+  });
+
+  // The failure the block exists to prevent, in one assertion.
+  it('tells the model not to search for anything on this machine', () => {
+    const prompt = buildSystemPrompt('/repo', null, { image: false, webSearch: true });
+    expect(prompt).toContain('this machine');
   });
 });
 
@@ -738,7 +779,8 @@ describe('toWireHistory', () => {
         { type: 'text', text: 'It says 42.' }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
@@ -760,6 +802,57 @@ describe('toWireHistory', () => {
     ]);
   });
 
+  /*
+   * Remote work goes back a different way from local work: a local call is
+   * echoed as a `tool_calls` entry answered by a `tool` message, while a server
+   * tool's record already carries its own result and rides on
+   * `reasoning_details`. Losing it costs the model the memory of a search it
+   * ran - and, for an advisor, the memory of the whole consultation.
+   */
+  it('replays remote work as a reasoning record rather than as a tool call', async () => {
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'server_tool',
+          call: {
+            callId: 'srv_1',
+            toolName: 'openrouter:web_search',
+            args: '{"query":"zod v4"}',
+            result: '[{"url":"https://a.dev"}]',
+            citations: []
+          }
+        },
+        { type: 'text', text: 'Zod 4 renames it.' }
+      ],
+      reasoning: '',
+      reasoningMs: null,
+      citations: []
+    };
+
+    const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+
+    expect(messages.slice(1, -1)).toEqual([
+      {
+        role: 'assistant',
+        content: 'Zod 4 renames it.',
+        reasoning_details: [
+          {
+            type: 'reasoning.server_tool_call',
+            tool_name: 'openrouter:web_search',
+            arguments: '{"query":"zod v4"}',
+            result: '[{"url":"https://a.dev"}]',
+            tool_call_id: 'srv_1'
+          }
+        ]
+      }
+    ]);
+    // Never as a tool_call: nothing here can dispatch it, and OpenRouter is not
+    // waiting for a result it already has.
+    expect(messages.some((m) => 'tool_calls' in m)).toBe(false);
+  });
+
   it('answers a call that never came back, so none is left dangling', async () => {
     const pending: AgentToolCall = {
       id: 'call_1',
@@ -777,7 +870,8 @@ describe('toWireHistory', () => {
       role: 'assistant',
       parts: [{ type: 'tool', call: pending }],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
@@ -798,7 +892,8 @@ describe('toWireHistory', () => {
       role: 'assistant',
       parts: [],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     const messages = await toWireHistory({ ...REQUEST, history: [empty] }, 'be brief');
@@ -929,7 +1024,8 @@ describe('toWireHistory: attachments', () => {
       role: 'assistant',
       parts: [{ type: 'tool', call }],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     const messages = await toWireHistory({ ...REQUEST, cwd: dir, history: [turn] }, 'be brief');
@@ -982,7 +1078,8 @@ describe('toWireHistory: attachments', () => {
         { type: 'tool', call: searched }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     const messages = await toWireHistory({ ...REQUEST, cwd: dir, history: [turn] }, 'be brief');
@@ -2447,5 +2544,77 @@ describe('memory and project instructions', () => {
     expect(events.at(-1)?.payload).toMatchObject({
       projectInstructions: { filename: 'AGENTS.md', tokens: 1_000 }
     });
+  });
+});
+
+/*
+ * What a finished round says it turned up.
+ *
+ * The event carries records and sources, and the two do not always arrive
+ * together: a provider that searches natively answers with annotations on the
+ * reply and no record at all. Keyed on records alone, that round reports
+ * nothing and the answer cites pages the reader cannot open.
+ */
+describe('reporting what a round found', () => {
+  const source = (url: string): Citation => ({
+    url,
+    title: null,
+    content: null,
+    startIndex: null,
+    endIndex: null
+  });
+
+  /** Runs one turn whose single round reports this outcome. */
+  async function reported(
+    over: Partial<StreamOutcome>
+  ): Promise<Array<{ channel: string; payload: unknown }>> {
+    const { emit, events, ended } = collector();
+    new AgentService({
+      schedules: SCHEDULES,
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
+      getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
+      emit,
+      stream: async () => Promise.resolve({ ...round(), ...over })
+    }).send(REQUEST);
+    await ended;
+    return events.filter((e) => e.channel === IPC_CHANNELS.AGENT_SERVER_TOOL);
+  }
+
+  it('reports sources that arrived with no record', async () => {
+    const found = await reported({ citations: [source('https://example.test/a')] });
+
+    expect(found).toHaveLength(1);
+    expect(found[0].payload).toEqual({
+      streamId: 'stream-1',
+      calls: [],
+      citations: [source('https://example.test/a')]
+    });
+  });
+
+  it('reports records and their sources together', async () => {
+    const call: ServerToolRecord = {
+      callId: 'c1',
+      toolName: 'openrouter:web_search',
+      args: '{}',
+      result: '{}',
+      citations: [source('https://example.test/b')]
+    };
+    const found = await reported({
+      serverToolCalls: [call],
+      citations: [source('https://example.test/b')]
+    });
+
+    expect(found[0].payload).toEqual({
+      streamId: 'stream-1',
+      calls: [call],
+      citations: [source('https://example.test/b')]
+    });
+  });
+
+  it('says nothing about a round that ran nothing and cited nothing', async () => {
+    expect(await reported({})).toEqual([]);
   });
 });

@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import type { AgentUsage } from '../../shared/agent-types';
 import type { ToolSpec } from '../../shared/agent-tools';
+import {
+  citationsFromResult,
+  mergeCitations,
+  type Citation,
+  type ServerToolRecord,
+  type ServerToolSpec,
+  type ServerToolStop
+} from '../../shared/agent-server-tools';
 import { sseLines } from './sse';
 
 /**
@@ -141,6 +149,20 @@ export type CompletionsTarget = {
    */
   reasoningDialect: 'reasoning-param' | 'chat-template-kwargs';
   /**
+   * Whether this endpoint runs tools of its own.
+   *
+   * OpenRouter alone. A server tool is an entry in the same `tools` array as a
+   * function, so an endpoint that does not know the type either rejects the
+   * whole request or - worse, and this is why the flag is required rather than
+   * defaulted - accepts it, ignores the entry, and answers as though the model
+   * had simply chosen not to search. The user is then paying for a feature that
+   * is switched on in settings and silently does nothing.
+   *
+   * Required rather than optional so that adding a target is a decision about
+   * this rather than an omission.
+   */
+  serverTools: boolean;
+  /**
    * What to call this endpoint when a message about it reaches the user.
    *
    * Every sentence this file can produce ends up on screen, and "OpenRouter
@@ -181,7 +203,20 @@ export type WireContentPart =
 export type AgentWireMessage =
   | { role: 'system'; content: string }
   | { role: 'user'; content: string | WireContentPart[] }
-  | { role: 'assistant'; content: string; tool_calls?: WireToolCall[] }
+  | {
+      role: 'assistant';
+      content: string;
+      tool_calls?: WireToolCall[];
+      /**
+       * Records of work OpenRouter ran, handed back to it unchanged.
+       *
+       * Not reasoning in the sense the field name suggests, and not something
+       * this app ever writes for itself: it is the channel OpenRouter chose for
+       * server-tool history on Chat Completions, so it is the channel a replay
+       * has to use. See `toReasoningDetails`.
+       */
+      reasoning_details?: Array<Record<string, unknown>>;
+    }
   | { role: 'tool'; tool_call_id: string; content: string };
 
 /** OpenRouter's `reasoning` parameter, in whichever form the model accepts. */
@@ -220,6 +255,22 @@ export type StreamRequest = {
   reasoning: ReasoningParam | null;
   /** Offered to the model when present. Omitted entirely when empty. */
   tools?: ToolSpec[];
+  /**
+   * Tools OpenRouter runs itself, joined to `tools` on the wire.
+   *
+   * Kept a separate field all the way down to the request body rather than
+   * merged into `tools` by the caller, because everything else in this app that
+   * holds a `ToolSpec[]` is holding a list of things it can call. One combined
+   * list would make the moment where the two stop being interchangeable
+   * invisible, and the failure it leads to - dispatching a name nothing
+   * implements - happens in the middle of a turn rather than at the boundary.
+   *
+   * Dropped entirely for a target that does not run them. See `serverTools` on
+   * `CompletionsTarget`.
+   */
+  serverTools?: ServerToolSpec[];
+  /** When OpenRouter should wind up its own loop. Omitted ⇒ its 30-step default. */
+  serverToolStops?: ServerToolStop[] | null;
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onReasoning: (text: string) => void;
@@ -237,6 +288,15 @@ export type StreamRequest = {
  */
 export type StreamOutcome = {
   toolCalls: WireToolCall[];
+  /**
+   * What OpenRouter ran on its own side, already finished.
+   *
+   * Never dispatched. These are here to be shown, counted and replayed - the
+   * work is done and the result is in the record. See `agent-server-tools.ts`.
+   */
+  serverToolCalls: ServerToolRecord[];
+  /** Sources behind the answer, from the annotations and from the results. */
+  citations: Citation[];
   model: string | null;
   provider: string | null;
 };
@@ -250,6 +310,13 @@ const toolCallDeltaSchema = z.object({
   index: z.number(),
   id: z.string().nullish(),
   function: z.object({ name: z.string().nullish(), arguments: z.string().nullish() }).nullish()
+});
+
+/** The two shapes the docs give the same object. Every field is optional. */
+const serverToolUseSchema = z.object({
+  tool_calls_requested: z.number().nullish(),
+  tool_calls_executed: z.number().nullish(),
+  web_search_requests: z.number().nullish()
 });
 
 /**
@@ -275,7 +342,28 @@ const usageSchema = z.object({
       cache_write_tokens: z.number().nullish()
     })
     .nullish(),
-  completion_tokens_details: z.object({ reasoning_tokens: z.number().nullish() }).nullish()
+  completion_tokens_details: z.object({ reasoning_tokens: z.number().nullish() }).nullish(),
+  /**
+   * How much remote work was done, under either of the two names the docs give
+   * it. The feature guide says `server_tool_use`; the API reference says
+   * `server_tool_use_details`. Both are read because only the payload settles
+   * which one a given response actually carries, and a version of this that
+   * picked one would report zero searches on half of them.
+   *
+   * The counts overlap and must not be added together. The reference is
+   * explicit: a search run through OpenRouter's own executor is counted in
+   * `tool_calls_requested` *and* in `web_search_requests`, while a provider's
+   * native search may report only the latter. `toUsage` below therefore carries
+   * the two counts side by side and never adds them.
+   */
+  server_tool_use: serverToolUseSchema.nullish(),
+  server_tool_use_details: serverToolUseSchema.nullish(),
+  /**
+   * A breakdown, never a total. `cost` above is what the invoice will say;
+   * `server_tool_cost` is the part of it that metered remote execution
+   * accounted for, and adding the two would bill the user twice for one search.
+   */
+  cost_details: z.object({ server_tool_cost: z.number().nullish() }).nullish()
 });
 
 /**
@@ -288,6 +376,7 @@ const usageSchema = z.object({
  */
 function toUsage(raw: z.infer<typeof usageSchema> | null | undefined): AgentUsage | null {
   if (raw == null) return null;
+  const serverTools = raw.server_tool_use_details ?? raw.server_tool_use ?? null;
   return {
     promptTokens: raw.prompt_tokens,
     completionTokens: raw.completion_tokens,
@@ -295,9 +384,78 @@ function toUsage(raw: z.infer<typeof usageSchema> | null | undefined): AgentUsag
     cachedTokens: raw.prompt_tokens_details?.cached_tokens ?? 0,
     cacheWriteTokens: raw.prompt_tokens_details?.cache_write_tokens ?? 0,
     reasoningTokens: raw.completion_tokens_details?.reasoning_tokens ?? 0,
-    costUsd: raw.cost ?? null
+    costUsd: raw.cost ?? null,
+    // Requested rather than executed, because a call the executor refused - a
+    // search past its `max_uses` - is a step the model spent and a step the
+    // budget was charged for, whether or not anything came back.
+    serverToolCalls: serverTools?.tool_calls_requested ?? 0,
+    webSearches: serverTools?.web_search_requests ?? 0,
+    serverToolCostUsd: raw.cost_details?.server_tool_cost ?? null
   };
 }
+
+/**
+ * A record of remote work, carried in the reasoning channel.
+ *
+ * This is where a server tool's whole life appears on Chat Completions - the
+ * call and its result in one object, rather than as a `tool_calls` entry
+ * followed by a `tool` message. Which is a relief: it means nothing on the
+ * dispatch path has to learn to recognise a call it must not make.
+ *
+ * `index` is what ties fragments together if a provider splits one record
+ * across chunks. Nothing in the documentation says whether they do, and the
+ * reassembly below is written to survive either answer.
+ */
+const serverToolCallDetailSchema = z.object({
+  type: z.literal('reasoning.server_tool_call'),
+  /*
+   * Everything but the type is optional, because a record may arrive in
+   * fragments the way a tool call does: the name in the first chunk, the
+   * arguments and the result a few characters at a time after it. A schema that
+   * insisted on the name would parse the opening fragment and then drop every
+   * continuation, leaving a call whose arguments stop mid-word - which reads as
+   * a malformed model rather than as a parser that threw half the record away.
+   *
+   * `index` is what ties the fragments of one record together. A record without
+   * one is taken to be whole, since there is nothing to join it to.
+   */
+  tool_name: z.string().nullish(),
+  arguments: z.string().nullish(),
+  result: z.string().nullish(),
+  tool_call_id: z.string().nullish(),
+  index: z.number().nullish()
+});
+
+/**
+ * The array as a whole, read as anything.
+ *
+ * Encrypted blocks, summaries and thinking text travel here too, and this file
+ * already reads the thinking text off `reasoning`. Typing the other members
+ * would mean a chunk carrying a detail kind this build has never seen failing
+ * its parse and taking the whole line - text, tool calls and all - with it. Each
+ * entry is tried against the one shape that matters below instead.
+ */
+const reasoningDetailSchema = z.unknown();
+
+/**
+ * A source tied to a stretch of the answer.
+ *
+ * The Chat API reference does not list `annotations` on the stream delta at all,
+ * while the feature guide documents the shape on the finished message. Rather
+ * than pick a side, this is read where it may appear and the sources found in
+ * the search result itself are merged with whatever turns up - so a provider
+ * that streams annotations and one that does not both end up showing sources.
+ */
+const annotationSchema = z.object({
+  type: z.literal('url_citation'),
+  url_citation: z.object({
+    url: z.string(),
+    title: z.string().nullish(),
+    content: z.string().nullish(),
+    start_index: z.number().nullish(),
+    end_index: z.number().nullish()
+  })
+});
 
 const chunkSchema = z.object({
   choices: z
@@ -307,6 +465,8 @@ const chunkSchema = z.object({
           .object({
             content: z.string().nullish(),
             reasoning: z.string().nullish(),
+            reasoning_details: z.array(reasoningDetailSchema).nullish(),
+            annotations: z.array(annotationSchema).nullish(),
             /**
              * The same thing under the name llama.cpp gives it. Read
              * unconditionally rather than behind a dialect flag: no server
@@ -491,12 +651,29 @@ export type ToolCallDelta = {
   args: string;
 };
 
+/**
+ * One fragment of a server-tool record, as it appeared on the wire.
+ *
+ * Kept as a fragment rather than a finished record for the same reason tool
+ * calls are: if a provider ever does split one across chunks, the half that
+ * arrived first is not something to show.
+ */
+export type ServerToolDelta = {
+  index: number | null;
+  callId: string | null;
+  toolName: string;
+  args: string;
+  result: string;
+};
+
 /** What one SSE line carries: deltas, the end-of-stream marker, or nothing. */
 export type StreamLine =
   | {
       content: string;
       reasoning: string;
       toolCalls: ToolCallDelta[];
+      serverToolCalls: ServerToolDelta[];
+      citations: Citation[];
       usage: AgentUsage | null;
       /** Stated on every chunk, so the last one to say wins - they agree. */
       model: string | null;
@@ -537,7 +714,17 @@ export function parseStreamLine(line: string): StreamLine {
   // read before the choices are checked rather than dropped with them.
   const delta = parsed.data.choices?.[0]?.delta;
   if (!delta) {
-    return usage === null ? null : { content: '', reasoning: '', toolCalls: [], usage, ...served };
+    return usage === null
+      ? null
+      : {
+          content: '',
+          reasoning: '',
+          toolCalls: [],
+          serverToolCalls: [],
+          citations: [],
+          usage,
+          ...served
+        };
   }
   return {
     content: delta.content ?? '',
@@ -548,9 +735,64 @@ export function parseStreamLine(line: string): StreamLine {
       name: call.function?.name ?? null,
       args: call.function?.arguments ?? ''
     })),
+    serverToolCalls: (delta.reasoning_details ?? []).flatMap((detail) => {
+      const record = serverToolCallDetailSchema.safeParse(detail);
+      if (!record.success) return [];
+      return [
+        {
+          index: record.data.index ?? null,
+          callId: record.data.tool_call_id ?? null,
+          toolName: record.data.tool_name ?? '',
+          args: record.data.arguments ?? '',
+          result: record.data.result ?? ''
+        }
+      ];
+    }),
+    citations: (delta.annotations ?? []).map((annotation) => ({
+      url: annotation.url_citation.url,
+      title: annotation.url_citation.title ?? null,
+      content: annotation.url_citation.content ?? null,
+      startIndex: annotation.url_citation.start_index ?? null,
+      endIndex: annotation.url_citation.end_index ?? null
+    })),
     usage,
     ...served
   };
+}
+
+/**
+ * Rebuild whole server-tool records from the fragments of a stream.
+ *
+ * Keyed on `index` where the provider states one and on arrival order where it
+ * does not, since a stream that numbers nothing is a stream where every record
+ * came whole. Text is concatenated rather than replaced, which is right in both
+ * cases: a record delivered in one piece concatenates onto an empty string.
+ *
+ * The sources each record found are read out of its result here rather than
+ * later, because this is the last point at which the result and the tool that
+ * produced it are certainly together.
+ */
+export function collectServerToolCalls(deltas: ServerToolDelta[]): ServerToolRecord[] {
+  const byKey = new Map<
+    string,
+    { callId: string | null; toolName: string; args: string; result: string }
+  >();
+  let unnumbered = 0;
+
+  for (const delta of deltas) {
+    const key = delta.index === null ? `seq_${(unnumbered += 1)}` : `idx_${delta.index}`;
+    const existing = byKey.get(key) ?? { callId: null, toolName: '', args: '', result: '' };
+    byKey.set(key, {
+      callId: delta.callId ?? existing.callId,
+      toolName: delta.toolName === '' ? existing.toolName : delta.toolName,
+      args: existing.args + delta.args,
+      result: existing.result + delta.result
+    });
+  }
+
+  return [...byKey.values()]
+    .filter((record) => record.toolName !== '')
+    .map((record) => ({ ...record, citations: citationsFromResult(record.result) }));
 }
 
 /**
@@ -621,12 +863,14 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
       ...(req.maxTokens === null ? {} : { max_tokens: req.maxTokens }),
       ...(req.temperature === null ? {} : { temperature: req.temperature }),
       ...reasoningBody(req.reasoning, req.target.reasoningDialect),
-      ...(req.tools === undefined || req.tools.length === 0 ? {} : { tools: req.tools })
+      ...toolsBody(req)
     });
 
     if (!res.body) throw new Error(`${req.target.label} returned an empty response`);
 
     const toolDeltas: ToolCallDelta[] = [];
+    const serverDeltas: ServerToolDelta[] = [];
+    const annotated: Citation[] = [];
     const served: { model: string | null; provider: string | null } = {
       model: null,
       provider: null
@@ -643,12 +887,45 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
       if (parsed.content) req.onDelta(parsed.content);
       if (parsed.reasoning) req.onReasoning(parsed.reasoning);
       if (parsed.toolCalls.length > 0) toolDeltas.push(...parsed.toolCalls);
+      if (parsed.serverToolCalls.length > 0) serverDeltas.push(...parsed.serverToolCalls);
+      if (parsed.citations.length > 0) annotated.push(...parsed.citations);
       if (parsed.usage) req.onUsage?.(parsed.usage);
       if (parsed.model !== null) served.model = parsed.model;
       if (parsed.provider !== null) served.provider = parsed.provider;
     }
-    return { toolCalls: collectToolCalls(toolDeltas), ...served };
+    const serverToolCalls = collectServerToolCalls(serverDeltas);
+    return {
+      toolCalls: collectToolCalls(toolDeltas),
+      serverToolCalls,
+      // The annotations first, so where a page arrives by both routes the copy
+      // that knows which sentence it backs is the one that survives.
+      citations: mergeCitations(annotated, ...serverToolCalls.map((call) => call.citations)),
+      ...served
+    };
   } finally {
     deadline.clear();
   }
+}
+
+/**
+ * The tools half of a request body, or nothing when there is none to send.
+ *
+ * The one place the two kinds of tool are put in the same array, and the only
+ * place a server tool may reach a request at all. An endpoint that does not run
+ * them has them dropped here rather than at every call site, because the call
+ * sites do not know which endpoint they resolved to - `resolveTarget` answered
+ * that question once, and this is where the answer is spent.
+ *
+ * `stop_server_tools_when` goes only where server tools went. On its own it
+ * would be a rule about a loop that is never going to run.
+ */
+function toolsBody(req: StreamRequest): Record<string, unknown> {
+  const functions = req.tools ?? [];
+  const server = req.target.serverTools ? (req.serverTools ?? []) : [];
+  const stops = server.length === 0 ? null : (req.serverToolStops ?? null);
+  if (functions.length === 0 && server.length === 0) return {};
+  return {
+    tools: [...functions, ...server],
+    ...(stops === null || stops.length === 0 ? {} : { stop_server_tools_when: stops })
+  };
 }

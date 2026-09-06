@@ -20,6 +20,7 @@ const LOCAL: CompletionsTarget = {
   extraHeaders: {},
   requestUsage: true,
   reasoningDialect: 'chat-template-kwargs',
+  serverTools: false,
   label: '127.0.0.1:11437'
 };
 

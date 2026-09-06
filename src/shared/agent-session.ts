@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AGENT_TASK_STATUSES } from './agent-tools';
+import { CitationSchema, ServerToolCallSchema } from './agent-server-tools';
 import { TODO_STATUSES, type AgentTodoItem } from './agent-todos';
 import { EMPTY_SESSION_SPEND, type AgentSessionSpend } from './agent-spend';
 import { messageText, type AgentMessage, type AgentTurnUsage } from './agent-types';
@@ -27,7 +28,7 @@ import { messageText, type AgentMessage, type AgentTurnUsage } from './agent-typ
  * carries its own shape and the reader accepts the older ones (see
  * `LegacyMessage`) rather than branching on this number.
  */
-export const SESSION_LOG_VERSION = 6;
+export const SESSION_LOG_VERSION = 7;
 
 const ToolImageSchema = z.object({ path: z.string(), mimeType: z.string() });
 
@@ -104,6 +105,16 @@ const AttachmentSchema = z.discriminatedUnion('kind', [
 const PartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string() }),
   z.object({ type: z.literal('tool'), call: ToolCallSchema }),
+  /**
+   * Remote work, new in version 7.
+   *
+   * Written whole and read back whole. This is the record OpenRouter needs
+   * handed back to it for an advisor to recall an earlier consultation, so
+   * unlike a tool result it is never cleared to save context and never
+   * reconstructed - a re-encoded copy is not the same bytes, and the same bytes
+   * are what the replay contract asks for.
+   */
+  z.object({ type: z.literal('server_tool'), call: ServerToolCallSchema }),
   z.object({ type: z.literal('attachment'), attachment: AttachmentSchema })
 ]);
 
@@ -111,7 +122,15 @@ const CommonMessageFields = {
   id: z.string(),
   role: z.enum(['user', 'assistant', 'summary', 'scheduled']),
   reasoning: z.string(),
-  reasoningMs: z.number().nullable()
+  reasoningMs: z.number().nullable(),
+  /**
+   * Sources with no call to hang off, new in version 7 alongside the records.
+   *
+   * Defaulted rather than required so a session written before native search
+   * annotations were kept replays as one that cited nothing loose, which is
+   * what it was.
+   */
+  citations: z.array(CitationSchema).default([])
 };
 
 const CurrentMessage = z.object({ ...CommonMessageFields, parts: z.array(PartSchema) });

@@ -31,6 +31,8 @@ export function openRouterTarget(apiKey: string): CompletionsTarget {
     // harmless and is left off so the request body says only what it means.
     requestUsage: false,
     reasoningDialect: 'reasoning-param',
+    // The only target that runs tools of its own.
+    serverTools: true,
     label: 'OpenRouter'
   };
 }

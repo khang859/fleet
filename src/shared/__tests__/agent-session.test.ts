@@ -239,7 +239,8 @@ describe('replaySession', () => {
         { type: 'attachment', attachment: { kind: 'mention', path: '/repo/src/a.ts' } }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     expect(replaySession(log(HEADER, { t: 'message', message })).messages[0]).toEqual(message);
@@ -268,7 +269,8 @@ describe('replaySession', () => {
         }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     expect(replaySession(log(HEADER, { t: 'message', message })).messages[0]).toEqual(message);
@@ -295,7 +297,47 @@ describe('replaySession', () => {
         { type: 'text', text: 'It says 42.' }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
+    };
+    const replay = replaySession(log(HEADER, { t: 'message', message }));
+
+    expect(replay.messages[0]).toEqual(message);
+  });
+
+  /*
+   * A session reopened tomorrow has to still show where an answer came from.
+   * The sources are on the record rather than re-derived, because the result
+   * payload they were read out of is the model's copy, not a stable API.
+   */
+  it('keeps the remote work of a turn, and the sources behind it', () => {
+    const message: AgentMessage = {
+      id: 'a',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'server_tool',
+          call: {
+            callId: 'srv_1',
+            toolName: 'openrouter:web_search',
+            args: '{"query":"zod v4"}',
+            result: '[{"url":"https://a.dev","title":"A"}]',
+            citations: [
+              {
+                url: 'https://a.dev',
+                title: 'A',
+                content: 'excerpt',
+                startIndex: 4,
+                endIndex: 9
+              }
+            ]
+          }
+        },
+        { type: 'text', text: 'Zod 4 renames it.' }
+      ],
+      reasoning: '',
+      reasoningMs: null,
+      citations: []
     };
     const replay = replaySession(log(HEADER, { t: 'message', message }));
 

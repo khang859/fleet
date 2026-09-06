@@ -46,6 +46,10 @@ export function agentPhase(
   if (part.type === 'text') return 'writing';
   // An attachment is the user's, so an assistant turn cannot end on one.
   if (part.type === 'attachment') return 'waiting';
+  // Remote work is reported only once it has finished, so a turn sitting on one
+  // is not waiting for it - it is waiting for the model to say what it made of
+  // it, which is the same state as having just finished a local tool.
+  if (part.type === 'server_tool') return 'waiting';
   return part.call.result === null && part.call.error === null ? 'tooling' : 'waiting';
 }
 

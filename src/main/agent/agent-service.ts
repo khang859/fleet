@@ -58,7 +58,7 @@ import { loadProjectInstructions } from './project-instructions';
 import { renderTimeBlock } from '../../shared/agent-environment';
 import { readEnvironment } from './environment';
 import type { McpManager } from './mcp/manager';
-import type { AgentToolEvent } from '../../shared/agent-types';
+import type { AgentServerToolEvent, AgentToolEvent } from '../../shared/agent-types';
 import {
   CLEARED_RESULT_TEXT,
   CLEAR_KEEP_RECENT,
@@ -77,6 +77,16 @@ import {
   type StreamOutcome
 } from './completions';
 import type { ResolvedTarget } from './model-routing';
+import {
+  isServerToolName,
+  serverToolStops,
+  toReasoningDetails,
+  type Citation,
+  type ServerToolRecord,
+  type ServerToolSpec,
+  type ServerToolStop
+} from '../../shared/agent-server-tools';
+import { webSearchSpec } from '../../shared/agent-web-search';
 import { runAgentTool } from './tools/run';
 import {
   TaskFailure,
@@ -168,6 +178,17 @@ type RoundsRequest = {
   /** The wire, ready to send. Appended to as the rounds go. */
   messages: AgentWireMessage[];
   tools: ToolSpec[];
+  /**
+   * Tools OpenRouter runs itself, for the rounds of this run only.
+   *
+   * Empty for a subagent and for every non-turn call. A remote tool is a second
+   * meter on every round it is offered in, and the calls that are not a turn -
+   * naming a session, folding one up, judging one command - are short, frequent
+   * and have nothing to search for.
+   */
+  serverTools: ServerToolSpec[];
+  /** When OpenRouter should wind up its own loop within a round. */
+  serverToolStops: ServerToolStop[] | null;
   /** The connected servers, or `null` for a run that may not reach them. */
   mcp: McpManager | null;
   todos: AgentTodoItem[];
@@ -327,17 +348,53 @@ type WireContext = { cwd: string; threadId: string };
  * the calls, which is the order `toWireMessages` reads a message back in, so a
  * child's log replays into the same shape a pane's does.
  */
-function roundMessage(text: string, calls: AgentToolCall[]): AgentMessage {
+function roundMessage(
+  text: string,
+  calls: AgentToolCall[],
+  remote: ServerToolRecord[] = [],
+  citations: Citation[] = []
+): AgentMessage {
   return {
     id: randomUUID(),
     role: 'assistant',
     reasoning: '',
     reasoningMs: null,
+    // Kept beside the records rather than derived from them, so a subagent's
+    // transcript holds the sources a native search reported with no record.
+    citations,
     parts: [
+      // Remote work first, because it happened first: OpenRouter finished its
+      // own loop before it sent a byte of the text the model wrote about it.
+      ...remote.map((call) => ({ type: 'server_tool' as const, call })),
       ...(text === '' ? [] : [{ type: 'text' as const, text }]),
       ...calls.map((call) => ({ type: 'tool' as const, call }))
     ]
   };
+}
+
+/**
+ * Steps of OpenRouter's own loop one request may take.
+ *
+ * Restated rather than left to their default because it is only sent when a
+ * spend stop is, and a `stop_server_tools_when` array replaces `max_tool_calls`
+ * outright: an array carrying only a spend condition would have quietly given
+ * up the 30-step ceiling as well. Ten rather than thirty because this is one
+ * round of one turn, and a turn is many rounds - the number that actually
+ * bounds a turn is the spend condition beside it.
+ */
+const SERVER_TOOL_MAX_STEPS = 10;
+
+/**
+ * The remote tools a turn is offered, which today is search or nothing.
+ *
+ * A function rather than a field so that every call that is not a turn gets an
+ * empty list by construction. Naming a session, folding one up and judging a
+ * command all go through `call` too, and none of them should be able to run a
+ * search - a title that cost a web search is a title nobody would have paid for.
+ */
+function turnServerTools(ctx: CallContext): ServerToolSpec[] {
+  const search = webSearchSpec(ctx.settings.webSearch);
+  return search === null ? [] : [search];
 }
 
 /**
@@ -631,10 +688,19 @@ async function toWireMessages(
   const wire: AgentWireMessage[] = [];
   let text = '';
   let calls: AgentToolCall[] = [];
+  /**
+   * The remote work of the round being gathered.
+   *
+   * Held beside `calls` rather than in it because it goes back a different way:
+   * a local call is echoed as a `tool_calls` entry answered by a `tool` message,
+   * and a server-tool record is echoed as one entry in `reasoning_details` that
+   * already contains its own result. Two channels for two kinds of history.
+   */
+  let remote: ServerToolRecord[] = [];
 
   /** One round: what was said, what it asked for, and what came back. */
   const flush = async (): Promise<void> => {
-    if (text === '' && calls.length === 0) return;
+    if (text === '' && calls.length === 0 && remote.length === 0) return;
     wire.push({
       role: 'assistant',
       content: text,
@@ -646,7 +712,8 @@ async function toWireMessages(
               function: { name: call.name, arguments: call.args }
             }))
           }
-        : {})
+        : {}),
+      ...(remote.length > 0 ? { reasoning_details: toReasoningDetails(remote) } : {})
     });
     const images: AgentWireMessage[] = [];
     for (const call of calls) {
@@ -663,6 +730,7 @@ async function toWireMessages(
     wire.push(...images);
     text = '';
     calls = [];
+    remote = [];
   };
 
   for (const part of message.parts) {
@@ -671,6 +739,7 @@ async function toWireMessages(
     if (part.type === 'text' && calls.length > 0) await flush();
     if (part.type === 'text') text += part.text;
     else if (part.type === 'tool') calls.push(part.call);
+    else if (part.type === 'server_tool') remote.push(part.call);
     // An attachment on an assistant message cannot happen - only the composer
     // makes them - and there is nothing sensible to send if one ever did.
   }
@@ -984,6 +1053,10 @@ export class AgentService {
       req,
       buildSystemPrompt(promptCwd(req.cwd), ctx.settings.systemPrompt, {
         webFetch: ctx.settings.webFetch.enabled,
+        // Only when it is actually offered. The block tells the model which of
+        // the two readers to reach for, and a turn that describes a tool it
+        // was not given teaches it to call something that is not there.
+        webSearch: ctx.settings.webSearch.enabled,
         env,
         image: imageModel !== null,
         mcp: mcpSpecs.length > 0,
@@ -1016,6 +1089,11 @@ export class AgentService {
           task: taskSpec,
           skill: skillSpec,
           memory: memorySpec
+        }),
+        serverTools: turnServerTools(ctx),
+        serverToolStops: serverToolStops({
+          steps: SERVER_TOOL_MAX_STEPS,
+          maxSpendUsd: ctx.settings.webSearch.maxSpendUsd
         }),
         mcp,
         todos: req.todos,
@@ -1115,6 +1193,8 @@ export class AgentService {
         maxTokens: config.maxTokens,
         reasoning: toReasoningParam(config),
         tools,
+        serverTools: run.serverTools,
+        serverToolStops: run.serverToolStops,
         onDelta: (delta) => {
           round.content += delta;
           if (run.quiet) return;
@@ -1128,15 +1208,37 @@ export class AgentService {
       });
       account.served(outcome);
 
+      // Told about before the round is judged finished or not, because it is
+      // true either way: OpenRouter ran these whichever way the model then went.
+      // A search that led to a final answer would otherwise never be shown.
+      //
+      // Sources are checked as well as records because a provider that searches
+      // natively reports one and not the other: annotations on the reply, no
+      // record. Keying the event on records alone loses those sources entirely,
+      // and the answer is left citing pages the reader cannot open.
+      if ((outcome.serverToolCalls.length > 0 || outcome.citations.length > 0) && !run.quiet) {
+        emit(IPC_CHANNELS.AGENT_SERVER_TOOL, {
+          streamId,
+          calls: outcome.serverToolCalls,
+          citations: outcome.citations
+        } satisfies AgentServerToolEvent);
+      }
+
       if (outcome.toolCalls.length === 0) {
-        run.onRound?.(roundMessage(round.content, []));
+        run.onRound?.(roundMessage(round.content, [], outcome.serverToolCalls, outcome.citations));
         return round.content;
       }
 
       messages.push({
         role: 'assistant',
         content: round.content,
-        tool_calls: outcome.toolCalls
+        tool_calls: outcome.toolCalls,
+        // Handed straight back on the next round of this same turn. Without
+        // this a model that consulted an advisor in round one is answered in
+        // round two by an advisor with no memory of having been asked.
+        ...(outcome.serverToolCalls.length === 0
+          ? {}
+          : { reasoning_details: toReasoningDetails(outcome.serverToolCalls) })
       });
       const images: AgentWireMessage[] = [];
       const before = todos.items;
@@ -1220,7 +1322,7 @@ export class AgentService {
       // results, and a picture in the middle of one is not a result.
       messages.push(...images);
       todos.streak = nextStreak(todos.streak, before, todos.items);
-      run.onRound?.(roundMessage(round.content, drawn));
+      run.onRound?.(roundMessage(round.content, drawn, outcome.serverToolCalls, outcome.citations));
     }
 
     throw new Error(
@@ -1388,6 +1490,13 @@ export class AgentService {
             memory: memorySpec,
             only: run.tools
           }),
+          // A child is not given remote tools, for the reason it is not given
+          // the image tool: it is dispatched by the model rather than by a
+          // person, so its spending is one step further from anybody who could
+          // have decided to allow it. What a child researches on the public web
+          // it researches through the parent, which asked it a question.
+          serverTools: [],
+          serverToolStops: null,
           mcp: null,
           todos: [],
           // A child answers once and is done. There is nothing for it to be
@@ -1531,6 +1640,16 @@ export class AgentService {
     let finished: AgentToolCall;
     let costUsd: number | null = null;
     try {
+      // A name in OpenRouter's namespace is work OpenRouter has already done,
+      // and nothing here implements it. On Chat Completions these arrive
+      // through `reasoning_details` and never reach this loop at all - this is
+      // the guard for the day a beta API changes its mind, and it says what
+      // happened rather than letting the dispatcher report an unknown tool.
+      if (isServerToolName(call.function.name)) {
+        throw new Error(
+          `${call.function.name} runs on OpenRouter, not here. Its result was already returned to you.`
+        );
+      }
       const output = await runAgentTool(call.function.name, call.function.arguments, tools);
       finished = {
         ...started,
@@ -1598,6 +1717,8 @@ export class AgentService {
       maxTokens: number | null;
       reasoning: ReasoningParam | null;
       tools?: ToolSpec[];
+      serverTools?: ServerToolSpec[];
+      serverToolStops?: ServerToolStop[] | null;
       onDelta: (text: string) => void;
       onReasoning: (text: string) => void;
       onUsage: (usage: AgentUsage) => void;

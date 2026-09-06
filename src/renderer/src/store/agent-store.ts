@@ -16,6 +16,11 @@ import {
 } from '../../../shared/agent-spend';
 import { messageText, textMessage, userMessageWithAttachments } from '../../../shared/agent-types';
 import type { AgentTaskInfo, AgentToolCall } from '../../../shared/agent-tools';
+import {
+  mergeCitations,
+  type Citation,
+  type ServerToolRecord
+} from '../../../shared/agent-server-tools';
 import { sanitizeReport } from '../../../shared/subagent-report';
 import { hasOpenWork, type AgentTodoItem } from '../../../shared/agent-todos';
 import {
@@ -416,7 +421,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       role: 'assistant',
       parts: [],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
     // The placeholder goes in before the request leaves, so the first delta
     // always has somewhere to land.
@@ -462,7 +468,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       role: 'assistant',
       parts: [],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
     set({
       threads: {
@@ -689,6 +696,35 @@ function recordToolCall(streamId: string, call: AgentToolCall): void {
   });
   // A call that has stopped running has nothing left to preview.
   if (call.result !== null || call.error !== null) forgetImagePartial(streamId, call.id);
+}
+
+/**
+ * Put a round's worth of remote work on the message this turn is writing.
+ *
+ * Appended rather than matched-and-replaced, which is the difference from
+ * `recordToolCall`: a record arrives once, already finished, so there is no
+ * later event that has to find the row it made. Appending twice would need two
+ * events for one call, and there is only ever one.
+ *
+ * Kept ahead of the text the model is writing about it, so a reader sees the
+ * search before the sentence that cites it - which is the order it happened in
+ * and the order the model's own reply assumes.
+ */
+function recordServerToolCalls(
+  streamId: string,
+  calls: ServerToolRecord[],
+  citations: Citation[]
+): void {
+  if (calls.length === 0 && citations.length === 0) return;
+  updateStreaming(streamId, (m) => ({
+    ...m,
+    // Merged rather than appended, because a turn is many rounds and two rounds
+    // that both cite a page should leave the reader one link, not two. The
+    // message's own go first so the earliest description of a page is the one
+    // that survives, which is the order `messageCitations` reads them back in.
+    citations: mergeCitations(m.citations, citations),
+    parts: [...m.parts, ...calls.map((call) => ({ type: 'server_tool' as const, call }))]
+  }));
 }
 
 /**
@@ -1455,6 +1491,10 @@ window.fleet.agent.onHandOff(({ streamId, command }) => handOff(streamId, comman
 window.fleet.agent.onPermissionAsk((ask) => askPermission(ask));
 window.fleet.agent.onTaskStart(({ threadId, task }) => startTask(threadId, task));
 window.fleet.agent.onTaskDone((done) => finishTask(done));
+window.fleet.agent.onServerTool(({ streamId, calls, citations }) => {
+  // A subagent is never offered remote tools, so nothing here can be a task's.
+  recordServerToolCalls(streamId, calls, citations);
+});
 window.fleet.agent.onToolStart(({ streamId, call }) => {
   // A stream id that is a task id belongs to a subagent, whose calls are not
   // this pane's transcript: they are what its card says it is doing.

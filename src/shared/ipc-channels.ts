@@ -195,6 +195,7 @@ export const IPC_CHANNELS = {
   AGENT_STREAM_REASONING: 'agent:stream-reasoning',
   AGENT_STREAM_DONE: 'agent:stream-done',
   AGENT_STREAM_ERROR: 'agent:stream-error',
+  AGENT_SERVER_TOOL: 'agent:server-tool',
   AGENT_TOOL_START: 'agent:tool-start',
   AGENT_TOOL_END: 'agent:tool-end',
   // A half-drawn image, on its way to the finished one. Sent as bytes rather

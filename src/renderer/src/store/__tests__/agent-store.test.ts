@@ -1,7 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IPC_CHANNELS } from '../../../../shared/ipc-channels';
 import { DEFAULT_SETTINGS } from '../../../../shared/constants';
-import { EMPTY_AGENT_USAGE, messageText, textMessage } from '../../../../shared/agent-types';
+import {
+  EMPTY_AGENT_USAGE,
+  messageCitations,
+  messageServerToolCalls,
+  messageText,
+  textMessage
+} from '../../../../shared/agent-types';
+import type { Citation, ServerToolRecord } from '../../../../shared/agent-server-tools';
 import type {
   AgentCatalogModel,
   AgentMessage,
@@ -199,6 +206,7 @@ beforeEach(async () => {
       onStreamDone: listen(IPC_CHANNELS.AGENT_STREAM_DONE),
       onStreamError: listen(IPC_CHANNELS.AGENT_STREAM_ERROR),
       onCompactDone: listen(IPC_CHANNELS.AGENT_COMPACT_DONE),
+      onServerTool: listen(IPC_CHANNELS.AGENT_SERVER_TOOL),
       onToolStart: listen(IPC_CHANNELS.AGENT_TOOL_START),
       onToolEnd: listen(IPC_CHANNELS.AGENT_TOOL_END),
       onImagePartial: listen(IPC_CHANNELS.AGENT_IMAGE_PARTIAL),
@@ -1733,5 +1741,104 @@ describe('naming a session', () => {
       .filter((req) => req.event.t === 'title');
     expect(written[0].sessionId).toBe('session-1');
     expect(written[0].sessionId).not.toBe(cleared);
+  });
+});
+
+/*
+ * A page arrives by one of two routes and the transcript has to keep both.
+ *
+ * A search run as a server tool leaves a record with the pages hanging off it.
+ * A provider that searches natively leaves annotations on the reply and no
+ * record at all, so there is nothing for the pages to hang off - and a store
+ * that only reads records shows an answer citing sources the reader cannot
+ * open.
+ */
+describe('sources a round found', () => {
+  const source = (url: string, over: Partial<Citation> = {}): Citation => ({
+    url,
+    title: null,
+    content: null,
+    startIndex: null,
+    endIndex: null,
+    ...over
+  });
+
+  /** Starts a turn and reports one round of remote work into it. */
+  function round(calls: ServerToolRecord[], citations: Citation[]): void {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'what is new?');
+    emit(IPC_CHANNELS.AGENT_SERVER_TOOL, { streamId: liveStreamId(), calls, citations });
+  }
+
+  const answer = (): AgentMessage => {
+    const last = thread().messages.at(-1);
+    if (last === undefined) throw new Error('no message');
+    return last;
+  };
+
+  it('keeps a source that arrived with no call to hang it off', () => {
+    round([], [source('https://example.test/a', { title: 'A' })]);
+
+    expect(messageCitations(answer()).map((c) => c.url)).toEqual(['https://example.test/a']);
+  });
+
+  it('shows the searches as rows and the sources under the answer', () => {
+    const record: ServerToolRecord = {
+      callId: 'c1',
+      toolName: 'openrouter:web_search',
+      args: '{}',
+      result: '{}',
+      citations: [source('https://example.test/b')]
+    };
+    round([record], [source('https://example.test/b')]);
+
+    expect(messageServerToolCalls(answer())).toHaveLength(1);
+    expect(messageCitations(answer())).toHaveLength(1);
+  });
+
+  /*
+   * The annotation is the copy that knows which sentence it backs. Losing that
+   * to the record's copy of the same page is the quiet half of this bug.
+   */
+  it('prefers the annotation where both routes found the same page', () => {
+    const record: ServerToolRecord = {
+      callId: 'c1',
+      toolName: 'openrouter:web_search',
+      args: '{}',
+      result: '{}',
+      citations: [source('https://example.test/c', { title: 'from the record' })]
+    };
+    round([record], [source('https://example.test/c', { startIndex: 4, endIndex: 9 })]);
+
+    const merged = messageCitations(answer());
+    expect(merged).toHaveLength(1);
+    expect(merged[0].startIndex).toBe(4);
+    expect(merged[0].title).toBe('from the record');
+  });
+
+  it('leaves one link when two rounds cite the same page', () => {
+    agentStore.useAgentStore.getState().send(PANE, '/repo', 'what is new?');
+    const streamId = liveStreamId();
+    emit(IPC_CHANNELS.AGENT_SERVER_TOOL, {
+      streamId,
+      calls: [],
+      citations: [source('https://example.test/d')]
+    });
+    emit(IPC_CHANNELS.AGENT_SERVER_TOOL, {
+      streamId,
+      calls: [],
+      citations: [source('https://example.test/d'), source('https://example.test/e')]
+    });
+
+    expect(messageCitations(answer()).map((c) => c.url)).toEqual([
+      'https://example.test/d',
+      'https://example.test/e'
+    ]);
+  });
+
+  it('writes nothing down for a round that found neither', () => {
+    round([], []);
+
+    expect(answer().citations).toEqual([]);
+    expect(messageServerToolCalls(answer())).toEqual([]);
   });
 });

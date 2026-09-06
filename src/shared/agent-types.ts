@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AgentTaskInfo, AgentToolCall } from './agent-tools';
+import { mergeCitations, type Citation, type ServerToolRecord } from './agent-server-tools';
 import { DEFAULT_AGENT_VOICE_SETTINGS, type AgentVoiceSettings } from './agent-voice';
 import { AGENT_TODO_INSTRUCTIONS, type AgentTodoItem } from './agent-todos';
 import { AGENT_SKILL_INSTRUCTIONS } from './agent-skills';
@@ -7,6 +8,11 @@ import { AGENT_MEMORY_INSTRUCTIONS } from './agent-memory';
 import { AGENT_SCHEDULE_INSTRUCTIONS } from './agent-schedule';
 import { renderEnvBlock, type AgentEnvironment } from './agent-environment';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
+import {
+  AGENT_WEB_SEARCH_INSTRUCTIONS,
+  DEFAULT_AGENT_WEB_SEARCH,
+  type AgentWebSearchConfig
+} from './agent-web-search';
 import type { McpServersConfig } from './agent-mcp';
 import type { LocalEndpointConfig } from './agent-endpoints';
 
@@ -264,6 +270,16 @@ export type AgentSettings = {
   image: AgentImageConfig;
   /** Whether and how the agent reads web pages. */
   webFetch: AgentWebFetchConfig;
+  /**
+   * Whether and how the agent searches the web.
+   *
+   * Beside `webFetch` rather than inside it, because they are not two settings
+   * for one thing: fetching is Fleet reading a page the model already named, and
+   * searching is OpenRouter running a query the model wrote, on OpenRouter's
+   * machines, at a price per search. One is a local capability and the other is
+   * a remote service with a second meter on it.
+   */
+  webSearch: AgentWebSearchConfig;
   /** Replaces the built-in instructions. `null` ⇒ use the default below. */
   systemPrompt: string | null;
   /**
@@ -346,6 +362,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   coding: { ...EMPTY_AGENT_MODEL_CONFIG, model: 'anthropic/claude-sonnet-4.5' },
   image: { ...EMPTY_AGENT_IMAGE_CONFIG },
   webFetch: { ...DEFAULT_AGENT_WEB_FETCH },
+  webSearch: { ...DEFAULT_AGENT_WEB_SEARCH },
   systemPrompt: null,
   compactThreshold: 0.8,
   maxToolRounds: null,
@@ -511,6 +528,7 @@ export function buildSystemPrompt(
   options: {
     image: boolean;
     webFetch?: boolean;
+    webSearch?: boolean;
     mcp?: boolean;
     task?: boolean;
     skill?: boolean;
@@ -530,6 +548,10 @@ export function buildSystemPrompt(
       : `\n\n${options.projectInstructions}`;
   const image = options.image ? `\n\n${AGENT_IMAGE_INSTRUCTIONS}` : '';
   const web = options.webFetch === true ? `\n\n${AGENT_WEB_INSTRUCTIONS}` : '';
+  // Immediately after the reader, because the two blocks are about the same
+  // decision seen from either end - which of them to reach for - and reading
+  // them apart is how a model ends up searching the web for localhost.
+  const search = options.webSearch === true ? `\n\n${AGENT_WEB_SEARCH_INSTRUCTIONS}` : '';
   const mcp = options.mcp === true ? `\n\n${AGENT_MCP_INSTRUCTIONS}` : '';
   const task = options.task === true ? `\n\n${AGENT_TASK_INSTRUCTIONS}` : '';
   // Ahead of `task`, because a skill is something to read before starting and a
@@ -547,7 +569,7 @@ export function buildSystemPrompt(
     options.env === undefined || options.env === null
       ? `Working folder: ${cwd}`
       : renderEnvBlock(cwd, options.env);
-  return `${base}${project}${image}${web}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
+  return `${base}${project}${image}${web}${search}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
 }
 
 /*
@@ -667,6 +689,16 @@ export const ATTACHMENT_MAX_PDF_PAGES = 300;
 export type AgentPart =
   | { type: 'text'; text: string }
   | { type: 'tool'; call: AgentToolCall }
+  /**
+   * Work OpenRouter did on its own side during this turn.
+   *
+   * A part of its own rather than an `AgentToolCall` with a flag, because
+   * everything that walks the parts looking for tools is looking for something
+   * it can act on: a row with a stop button, a result to clear from the wire,
+   * a call to retry. None of those apply here. The work is finished, it happened
+   * elsewhere, and the only thing to do with it is show it and hand it back.
+   */
+  | { type: 'server_tool'; call: ServerToolRecord }
   | { type: 'attachment'; attachment: AgentAttachment };
 
 export type AgentMessage = {
@@ -697,11 +729,29 @@ export type AgentMessage = {
    * means there is no duration to show rather than a duration of zero.
    */
   reasoningMs: number | null;
+  /**
+   * Sources the message cited that no single call owns.
+   *
+   * A provider that searches natively answers with annotations on the reply and
+   * no server-tool record at all, so there is nothing for those sources to hang
+   * off. They belong to the message because that is the smallest thing that
+   * still holds them, and they are kept even when a record covers the same page:
+   * an annotation knows which sentence it backs and a record does not, so the
+   * two are merged rather than one standing in for the other.
+   */
+  citations: Citation[];
 };
 
 /** A message that is only words: what the user typed, or a summary. */
 export function textMessage(id: string, role: AgentMessage['role'], text: string): AgentMessage {
-  return { id, role, parts: [{ type: 'text', text }], reasoning: '', reasoningMs: null };
+  return {
+    id,
+    role,
+    parts: [{ type: 'text', text }],
+    reasoning: '',
+    reasoningMs: null,
+    citations: []
+  };
 }
 
 /** Everything the message said, with what it looked at left out. */
@@ -715,6 +765,31 @@ export function messageText(message: AgentMessage): string {
 /** The calls the message made, in the order it made them. */
 export function messageToolCalls(message: AgentMessage): AgentToolCall[] {
   return message.parts.filter((part) => part.type === 'tool').map((part) => part.call);
+}
+
+/** The remote work done during the message, in the order it was reported. */
+export function messageServerToolCalls(message: AgentMessage): ServerToolRecord[] {
+  return message.parts.filter((part) => part.type === 'server_tool').map((part) => part.call);
+}
+
+/**
+ * Every source the message cited, each once.
+ *
+ * Two sources of sources, because there are two ways a page arrives. A search
+ * that ran as a server tool leaves a record and the pages hang off it; a
+ * provider that searches natively answers with annotations and leaves no record
+ * at all, and those hang off the message. Reading only the records loses the
+ * second kind entirely.
+ *
+ * The message's own go first: where both know the same page, the annotation is
+ * the copy that knows which sentence it backs, and `mergeCitations` fills the
+ * gaps in the first copy from the later ones rather than replacing it.
+ */
+export function messageCitations(message: AgentMessage): Citation[] {
+  return mergeCitations(
+    message.citations,
+    ...messageServerToolCalls(message).map((call) => call.citations)
+  );
 }
 
 /** What was attached to the message, in the order it was attached. */
@@ -742,7 +817,8 @@ export function userMessageWithAttachments(
       ...attachments.map((attachment) => ({ type: 'attachment' as const, attachment }))
     ],
     reasoning: '',
-    reasoningMs: null
+    reasoningMs: null,
+    citations: []
   };
 }
 
@@ -769,6 +845,24 @@ export type AgentUsage = {
   reasoningTokens: number;
   /** USD OpenRouter charged. `null` when the provider did not say. */
   costUsd: number | null;
+  /**
+   * Remote tool calls OpenRouter ran during this call, and web searches among
+   * them.
+   *
+   * Two counts rather than one, and they are not added together: a search run
+   * through OpenRouter's executor appears in both, while a provider's own
+   * native search appears only in `webSearches`. `serverToolCalls` is therefore
+   * the count of *steps taken*, and `webSearches` the count of *searches made*,
+   * and either can be the larger.
+   */
+  serverToolCalls: number;
+  webSearches: number;
+  /**
+   * The part of `costUsd` that metered remote execution accounted for. A
+   * breakdown of the total, never something to add to it. `null` when nothing
+   * metered ran, which is not the same as it having run for free.
+   */
+  serverToolCostUsd: number | null;
 };
 
 export const EMPTY_AGENT_USAGE: AgentUsage = {
@@ -778,7 +872,10 @@ export const EMPTY_AGENT_USAGE: AgentUsage = {
   cachedTokens: 0,
   cacheWriteTokens: 0,
   reasoningTokens: 0,
-  costUsd: null
+  costUsd: null,
+  serverToolCalls: 0,
+  webSearches: 0,
+  serverToolCostUsd: null
 };
 
 /**
@@ -1062,6 +1159,28 @@ export type AgentPermissionDecision = z.infer<typeof AgentPermissionDecision>;
 
 /** Every stream event carries its request's id, so panes can tell theirs apart. */
 export type AgentStreamDelta = { streamId: string; delta: string };
+
+/**
+ * What OpenRouter ran during one round, reported once the round is over.
+ *
+ * A round's worth at a time rather than one call per event, because that is the
+ * granularity the wire gives: the records arrive together on the stream that
+ * carried the model's reply, already finished. There is no start event to pair
+ * with this and no progress to report between them.
+ */
+export type AgentServerToolEvent = {
+  streamId: string;
+  calls: ServerToolRecord[];
+  /**
+   * Every source the round found, records and annotations merged.
+   *
+   * Rides with the calls rather than on a channel of its own because it is the
+   * same event: one round finished and this is what it turned up. It is sent
+   * even when `calls` is empty, which is exactly the native-search case that
+   * has sources and nothing to attach them to.
+   */
+  citations: Citation[];
+};
 /**
  * `projectInstructions` is what the project's own `AGENTS.md` cost this turn,
  * for the context meter to name in its tooltip.

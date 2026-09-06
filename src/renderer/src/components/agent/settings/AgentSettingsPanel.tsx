@@ -6,6 +6,7 @@ import type {
   AgentToolMode,
   AgentWebFetchConfig
 } from '../../../../../shared/agent-types';
+import type { AgentWebSearchConfig } from '../../../../../shared/agent-web-search';
 import { AGENT_TOOL_MODES, DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
 import {
   AGENT_VOICE_MODELS,
@@ -18,6 +19,7 @@ import { SecretInput } from './SecretInput';
 import { AgentRoleSettings } from './AgentRoleSettings';
 import { AgentImageSettings } from './AgentImageSettings';
 import { AgentWebSettings } from './AgentWebSettings';
+import { AgentWebSearchSettings } from './AgentWebSearchSettings';
 import { SystemPromptField } from './SystemPromptField';
 import { CompactionField } from './CompactionField';
 import { MaxToolRoundsField } from './MaxToolRoundsField';
@@ -124,6 +126,10 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
     void updateSettings({ ai: { agent: { webFetch: { ...agent.webFetch, ...patch } } } });
   };
 
+  const patchWebSearch = (patch: Partial<AgentWebSearchConfig>): void => {
+    void updateSettings({ ai: { agent: { webSearch: { ...agent.webSearch, ...patch } } } });
+  };
+
   return (
     <div className="mx-auto w-full max-w-2xl px-6 py-6">
       <SectionShell title="Agent settings" description="Shared by every agent pane in Fleet.">
@@ -161,6 +167,11 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
           />
           <AgentImageSettings models={imageModels} config={agent.image} onChange={patchImage} />
           <AgentWebSettings config={agent.webFetch} onChange={patchWebFetch} />
+          <AgentWebSearchSettings
+            config={agent.webSearch}
+            onChange={patchWebSearch}
+            hasKey={keyPresent}
+          />
         </FieldGroup>
 
         <FieldGroup title="Sessions">

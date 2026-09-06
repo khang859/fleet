@@ -91,7 +91,8 @@ import type {
   AgentTaskStart,
   AgentTitleRequest,
   AgentTitleResult,
-  AgentToolEvent
+  AgentToolEvent,
+  AgentServerToolEvent
 } from '../shared/agent-types';
 import type { AgentTranscribeRequest, AgentTranscribeResult } from '../shared/agent-voice';
 import type {
@@ -609,6 +610,15 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.AGENT_STREAM_ERROR, cb),
     onCompactDone: (cb: (p: AgentCompactDone) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_COMPACT_DONE, cb),
+    /**
+     * Work OpenRouter ran during a round, reported once it is over.
+     *
+     * One event per round rather than a start and an end pair: the records
+     * arrive already finished, so there is no moment at which one of these is
+     * in progress for a pane to draw.
+     */
+    onServerTool: (cb: (p: AgentServerToolEvent) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_SERVER_TOOL, cb),
     onToolStart: (cb: (p: AgentToolEvent) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_TOOL_START, cb),
     onToolEnd: (cb: (p: AgentToolEvent) => void): Unsubscribe =>

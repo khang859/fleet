@@ -84,7 +84,15 @@ export function addRound(billed: AgentUsage, round: AgentUsage): AgentUsage {
     cachedTokens: billed.cachedTokens + round.cachedTokens,
     cacheWriteTokens: billed.cacheWriteTokens + round.cacheWriteTokens,
     reasoningTokens: billed.reasoningTokens + round.reasoningTokens,
-    costUsd: addCost(billed.costUsd, round.costUsd)
+    costUsd: addCost(billed.costUsd, round.costUsd),
+    // Added across rounds like everything else here. The two counts are summed
+    // separately and never with each other - see `AgentUsage` for why one
+    // search can appear in both, and why adding them would say two happened.
+    serverToolCalls: billed.serverToolCalls + round.serverToolCalls,
+    webSearches: billed.webSearches + round.webSearches,
+    // Part of `costUsd` rather than beside it, so this sum is a breakdown of
+    // that sum rather than something to add to it.
+    serverToolCostUsd: addCost(billed.serverToolCostUsd, round.serverToolCostUsd)
   };
 }
 

@@ -3,7 +3,15 @@ import type { AgentMessage, AgentPart } from '../../../../../shared/agent-types'
 import { agentPhase, formatElapsed, phaseShimmers, reasoningLabel } from '../activity';
 
 function message(over: Partial<AgentMessage> = {}): AgentMessage {
-  return { id: 'm1', role: 'assistant', parts: [], reasoning: '', reasoningMs: null, ...over };
+  return {
+    id: 'm1',
+    role: 'assistant',
+    parts: [],
+    reasoning: '',
+    reasoningMs: null,
+    citations: [],
+    ...over
+  };
 }
 
 const text = (text: string): AgentPart => ({ type: 'text', text });

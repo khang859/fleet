@@ -3,8 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every pull request, whatever it is based on. Narrowing this to `main` meant
+  # a stacked PR - one opened against the branch below it in a series - ran no
+  # checks at all, and an unchecked PR looks exactly like a passing one.
   pull_request:
-    branches: [main]
 
 jobs:
   ci:
