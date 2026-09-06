@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.117.0
+
+- **Each scratch chat gets its own folder** - a scratch chat now runs in its own session-based subfolder under `~/.fleet/scratch` rather than sharing the root, so file work stays organized by conversation, files you made in one chat stay off-screen in another, and shell history stays separate.
+- **Splitting a pane opens it in the right folder** - when you split a pane from a scratch chat, the new pane opens in that chat's own folder rather than the shared root.
+- **The sidebar shows the scratch root, not the chat id** - a scratch chat's path in the sidebar displays `~/.fleet/scratch` instead of the session uuid, keeping the label readable (#572).
+
 ## v2.116.0
 
 - **The agent can search the web itself** - OpenRouter runs the search on its own side and hands back the pages it read, so a question about something newer than the model gets a real answer instead of a guess. Each search is a row in the transcript with the sites it went to, and the sources an answer rests on are listed under it, folded until you want them (#564).
