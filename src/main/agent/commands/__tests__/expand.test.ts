@@ -7,7 +7,7 @@ const loadCommands = vi.fn<(cwd: string) => Promise<AgentCommandDefinition[]>>()
 // to a line once the folder has been read, so the read is stood in for.
 vi.mock('../definitions', () => ({ loadCommands: async (cwd: string) => loadCommands(cwd) }));
 
-const { expandCommand } = await import('../expand');
+const { expandCommand, isFusionTurn } = await import('../expand');
 
 const REVIEW: AgentCommandDefinition = {
   name: 'pr-review',
@@ -73,5 +73,28 @@ describe('expandCommand', () => {
     expect(await expandCommand('/not-a-command 1', '/repo')).toBe('/not-a-command 1');
     loadCommands.mockResolvedValue([]);
     expect(await expandCommand('/pr-review 123', '/repo')).toBe('/pr-review 123');
+  });
+});
+
+/**
+ * Which turns get the panel.
+ *
+ * The check has to be exact both ways. Too loose and a message that merely
+ * mentions the word arms nine model calls; too tight and the review the user
+ * asked for runs without the tool it needs.
+ */
+describe('isFusionTurn', () => {
+  it('arms the turn the command was typed on, with or without an argument', () => {
+    expect(isFusionTurn('/fusion')).toBe(true);
+    expect(isFusionTurn('/fusion focus on the retry loop')).toBe(true);
+    expect(isFusionTurn('  /Fusion  ')).toBe(true);
+  });
+
+  it('leaves every other turn alone', () => {
+    expect(isFusionTurn('')).toBe(false);
+    expect(isFusionTurn('run a fusion review of this branch')).toBe(false);
+    expect(isFusionTurn('what does /fusion do?')).toBe(false);
+    expect(isFusionTurn('/pr-review 123')).toBe(false);
+    expect(isFusionTurn('/fusion-notes')).toBe(false);
   });
 });

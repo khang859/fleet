@@ -7,6 +7,8 @@ import {
   type ServerToolRecord
 } from '../../../../shared/agent-server-tools';
 import { parseAdvisorPrompt, parseAdvisorResult } from '../../../../shared/agent-advisor';
+import { FUSION_TOOL_NAME } from '../../../../shared/agent-fusion';
+import { AgentFusionRow } from './AgentFusionRow';
 import { AgentMarkdown } from './AgentMarkdown';
 
 /**
@@ -40,6 +42,9 @@ export const AgentServerToolRow = memo(function AgentServerToolRow({
   // A consultation is prose rather than a list of links, so it gets its own
   // row. Everything else here is a search-shaped thing and shares this one.
   if (call.toolName === ADVISOR_TOOL_NAME) return <AgentAdvisorRow call={call} />;
+  // And a panel review is several arguments plus a reading of where they part
+  // company, which is neither of the other two shapes.
+  if (call.toolName === FUSION_TOOL_NAME) return <AgentFusionRow call={call} />;
 
   return (
     <div className="flex flex-col gap-1.5">
