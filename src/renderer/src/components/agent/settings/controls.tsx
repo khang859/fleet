@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { RotateCcw } from 'lucide-react';
+import { commitNumber, shownNumber } from './bounded-number';
 
 /**
  * Shared class strings for the native inputs and selects in these panes, so
@@ -186,5 +187,75 @@ export function RoleCard({
       </header>
       <div className="space-y-4">{children}</div>
     </section>
+  );
+}
+
+/**
+ * A bounded whole number, held as text until the user is done with it.
+ *
+ * A controlled `<input type="number">` that clamps inside `onChange` cannot be
+ * typed into. Select `256` and type `4096`: the first `4` is clamped to the
+ * minimum on the keystroke, and the remaining digits build on that replacement
+ * instead of on what was meant. Clearing the field snaps to a number the moment
+ * the last digit goes. Both are the field fighting the person using it.
+ *
+ * So the draft is a string and it is the person's until they leave the field.
+ * Nothing is clamped, parsed or persisted until then, which makes every
+ * intermediate state a legal one - including the empty one, and including a
+ * half-typed number below the minimum.
+ *
+ * Enter commits, because a settings pane has no submit button and a field that
+ * only saves on blur leaves people wondering whether it did. Escape puts the
+ * stored value back.
+ */
+export function BoundedNumber({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step,
+  /** What an empty or unreadable field means. */
+  fallback,
+  onCommit,
+  className = 'w-24'
+}: {
+  id: string;
+  /** For screen readers where the visible label is not tied to the input. */
+  label?: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  fallback: number;
+  onCommit: (next: number) => void;
+  className?: string;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = (): void => {
+    if (draft === null) return;
+    setDraft(null);
+    onCommit(commitNumber(draft, { min, max, fallback }));
+  };
+
+  return (
+    <input
+      id={id}
+      aria-label={label}
+      type="number"
+      inputMode="numeric"
+      min={min}
+      max={max}
+      step={step}
+      value={shownNumber(draft, value)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') setDraft(null);
+      }}
+      className={`${inputCls} ${className} tabular-nums`}
+    />
   );
 }

@@ -6,7 +6,7 @@ import {
   type AgentAdvisorConfig
 } from '../../../../../shared/agent-advisor';
 import type { AgentCatalogModel } from '../../../../../shared/agent-types';
-import { RoleCard, inputCls } from './controls';
+import { BoundedNumber, RoleCard, inputCls } from './controls';
 import { ModelSelect } from './ModelSelect';
 import { Toggle } from './Toggle';
 
@@ -128,8 +128,8 @@ function Row({
  *
  * Paid for twice, which is what the hint has to get across: once to produce, at
  * the stronger model's rate, and again on every round afterwards, because the
- * advice stays in the transcript the executor re-reads. Clamped on the way out
- * rather than while typing, like the page limit next door.
+ * advice stays in the transcript the executor re-reads. The budget is clamped
+ * when the field is left rather than on each keystroke, so it can be typed.
  */
 function MaxTokensField({
   value,
@@ -144,23 +144,14 @@ function MaxTokensField({
       label="Advice length"
       hint="Tokens for one consultation, thinking included. Paid for twice: once to write, and again every round it stays in the transcript."
     >
-      <input
+      <BoundedNumber
         id="agent-advisor-max-tokens"
-        type="number"
-        inputMode="numeric"
+        value={value}
         min={ADVISOR_MIN_TOKENS}
         max={ADVISOR_MAX_TOKENS}
         step={256}
-        value={value}
-        onChange={(e) => {
-          const parsed = Number(e.target.value.trim());
-          if (!Number.isFinite(parsed)) {
-            onChange(DEFAULT_AGENT_ADVISOR.maxTokens);
-            return;
-          }
-          onChange(Math.min(ADVISOR_MAX_TOKENS, Math.max(ADVISOR_MIN_TOKENS, Math.round(parsed))));
-        }}
-        className={`${inputCls} w-24 tabular-nums`}
+        fallback={DEFAULT_AGENT_ADVISOR.maxTokens}
+        onCommit={onChange}
       />
     </Row>
   );
