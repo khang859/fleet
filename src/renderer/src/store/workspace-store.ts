@@ -1016,9 +1016,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   splitPane: (paneId, direction) => {
     logLayout.debug('splitPane', { paneId, direction });
     const liveCwd = useCwdStore.getState().cwds.get(paneId);
-    const tabCwd =
-      get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId))?.cwd ?? '/';
-    const newLeaf = createLeaf(liveCwd ?? tabCwd);
+    const tab = get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
+    // The leaf before the tab, the same order `duplicateTab` uses. Only terminals
+    // report a live cwd, so for an agent pane the leaf is the only record of
+    // where it works - and a scratch chat's leaf sits in its own folder while the
+    // tab still names the shared root.
+    const sourceLeaf = tab ? findLeaf(tab.splitRoot, paneId) : null;
+    const newLeaf = createLeaf(liveCwd ?? sourceLeaf?.cwd ?? tab?.cwd ?? '/');
 
     function splitNode(node: PaneNode): PaneNode {
       if (node.type === 'leaf' && node.id === paneId) {

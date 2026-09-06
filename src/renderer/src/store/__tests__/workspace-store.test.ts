@@ -712,6 +712,40 @@ describe('splitPane — live CWD', () => {
     expect(newLeaf?.cwd).toBe('/live/path');
   });
 
+  // Agent panes never report a live cwd, so the leaf is the only record of where
+  // a scratch chat actually works. A split that read the tab instead would open
+  // in the shared scratch root and miss the chat's files.
+  it('follows the source leaf when the pane has moved off the tab cwd', () => {
+    useCwdStore.setState({ cwds: new Map() });
+    const chatDir = `${scratchDir()}/chat-1`;
+    useWorkspaceStore.setState({
+      workspace: {
+        ...WS_A,
+        tabs: [
+          {
+            id: 'tab-scratch',
+            label: 'Scratch chat',
+            labelIsCustom: true,
+            cwd: scratchDir(),
+            type: 'agent',
+            splitRoot: {
+              type: 'leaf',
+              id: 'pane-scratch',
+              cwd: chatDir,
+              paneType: 'agent'
+            }
+          }
+        ]
+      }
+    });
+
+    const newPaneId = useWorkspaceStore.getState().splitPane('pane-scratch', 'vertical');
+
+    const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === 'tab-scratch')!;
+    const newLeaf = collectPaneLeafs(tab.splitRoot).find((l) => l.id === newPaneId);
+    expect(newLeaf?.cwd).toBe(chatDir);
+  });
+
   it('falls back to tab.cwd when no live CWD in cwd-store', () => {
     useCwdStore.setState({ cwds: new Map() });
 
