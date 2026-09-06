@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.116.0
+
+- **The agent can search the web itself** - OpenRouter runs the search on its own side and hands back the pages it read, so a question about something newer than the model gets a real answer instead of a guess. Each search is a row in the transcript with the sites it went to, and the sources an answer rests on are listed under it, folded until you want them (#564).
+- **A second opinion, on request** - the coding model can consult a stronger one mid-turn and carry the reply into its work. There is a budget you set, so a consultation cannot quietly become the expensive part of a turn (#565).
+- **Review a change with a panel of models** - `/fusion` puts the same change in front of several models at once and gathers what they each found. It is armed by typing the command and by nothing else, because a panel is many model calls on one use (#567).
+- **The agent can read a page properly** - a hosted page reader fetches a URL through OpenRouter and returns the article rather than the markup around it. The domain lists that decide what it may reach are typed one host per line (#568).
+- **Tools are discovered when they are needed** - a large MCP setup no longer states every tool on every request. The agent searches for the tool it wants, which keeps a big toolbox from taking up the room the conversation needs (#569).
+- **Prompt caching, provider routing and fallbacks** - repeated context is cached between turns, requests can be pinned to the providers you trust, and a model that is down falls through to the next one you named rather than ending the turn (#570).
+- **Scratch stays out of your recent folders** - the Scratch chat has no project behind it, so its folder no longer shows up in the list of folders you have been working in (#566).
+
 ## v2.115.0
 
 - **Claude config folders are now workspace settings** - each workspace can have its own Claude Code config folder, or inherit a shared default that you set once. The folder choice sits in Application > Workspaces alongside the folder path and its setup status, so all workspace config lives in one place. Fleet hook setup now shows which folder it affects, making the connection between hooks and workspaces clear. New workspaces can be created from Settings without switching away from your current one (#557).
