@@ -9,6 +9,14 @@ import {
   type ServerToolSpec,
   type ServerToolStop
 } from '../../shared/agent-server-tools';
+import {
+  cacheControl,
+  modelsBody,
+  providerBody,
+  type AgentCacheConfig,
+  type AgentFallbackConfig,
+  type AgentProviderConfig
+} from '../../shared/agent-routing';
 import { sseLines } from './sse';
 
 /**
@@ -188,7 +196,16 @@ export type WireToolCall = {
  * order, because of how the parts are parsed on the way to the provider.
  */
 export type WireContentPart =
-  | { type: 'text'; text: string }
+  | {
+      type: 'text';
+      text: string;
+      /**
+       * "Cache everything up to here", for the providers that only cache where
+       * a request says so. Written by `withCacheBreakpoints` and by nothing
+       * else, so the parts every other producer builds stay as they were.
+       */
+      cache_control?: { type: 'ephemeral'; ttl?: string };
+    }
   | { type: 'image_url'; image_url: { url: string } };
 
 /**
@@ -196,12 +213,15 @@ export type WireContentPart =
  * alongside their results, or the results are answers to questions the
  * transcript never asked.
  *
- * Only a user message may be made of parts. That is the API's rule rather than
- * ours, and it is the reason a tool that produces a picture cannot answer with
- * one: the image follows the tool result as a user message of its own.
+ * Only a user message may be made of parts *that this app builds*. That is the
+ * API's rule rather than ours, and it is the reason a tool that produces a
+ * picture cannot answer with one: the image follows the tool result as a user
+ * message of its own. `withCacheBreakpoints` also turns a system or tool
+ * message into parts on its way to the wire, which is a different thing - a
+ * marker has to ride on a part, and there is nowhere else to put it.
  */
 export type AgentWireMessage =
-  | { role: 'system'; content: string }
+  | { role: 'system'; content: string | WireContentPart[] }
   | { role: 'user'; content: string | WireContentPart[] }
   | {
       role: 'assistant';
@@ -235,6 +255,19 @@ export type AgentWireMessage =
   | { role: 'tool'; tool_call_id: string; content: string };
 
 /**
+ * A message on its way into a request body, which is a slightly wider thing.
+ *
+ * `withCacheBreakpoints` turns a tool result into content parts so a marker has
+ * somewhere to ride, and nothing but the body ever sees that shape. Kept apart
+ * from `AgentWireMessage` so the transcript the rest of the app carries stays
+ * the simple one: a tool result is a string everywhere it is read, cleared,
+ * counted or converted.
+ */
+export type WireBodyMessage =
+  | AgentWireMessage
+  | { role: 'tool'; tool_call_id: string; content: WireContentPart[] };
+
+/**
  * History with the fields only the other transport understands taken off.
  *
  * `response_output` is Fleet's own carrier rather than something Chat
@@ -243,7 +276,7 @@ export type AgentWireMessage =
  * in a body, so a conversation that switched transports mid-session - which is
  * what toggling deferral does - cannot carry one across.
  */
-export function forCompletionsWire(messages: AgentWireMessage[]): AgentWireMessage[] {
+export function forCompletionsWire(messages: WireBodyMessage[]): WireBodyMessage[] {
   return messages.map((message) => {
     if (message.role !== 'assistant' || message.response_output === undefined) return message;
     const { response_output, ...rest } = message;
@@ -313,6 +346,12 @@ export type StreamRequest = {
    * lost. See `agent-tool-search.ts`.
    */
   deferredTools?: ToolSpec[];
+  /** Where this request may be served from. Dropped for a local endpoint. */
+  routing?: AgentProviderConfig;
+  /** What to try when the chosen model will not take it. Same gate. */
+  fallback?: AgentFallbackConfig;
+  /** Whether to mark a cacheable prefix. Off means the messages go untouched. */
+  cache?: AgentCacheConfig;
   /** When OpenRouter should wind up its own loop. Omitted ⇒ its 30-step default. */
   serverToolStops?: ServerToolStop[] | null;
   signal: AbortSignal;
@@ -916,7 +955,16 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
   try {
     const res = await post(req.target, req.signal, deadline, '/chat/completions', {
       model: req.model,
-      messages: forCompletionsWire(req.messages),
+      // Marked for caching only where a target could act on it. A local server
+      // has nothing to read the markers with, and turning every system prompt
+      // into a one-element array for it would be a change to every request for
+      // no gain at all. The strip is outermost either way: it takes off a field
+      // this endpoint would reject, so nothing may run after it.
+      messages: forCompletionsWire(
+        req.cache === undefined || !req.target.serverTools
+          ? req.messages
+          : withCacheBreakpoints(req.messages, req.cache)
+      ),
       stream: true,
       // Asked for only where it has to be. OpenRouter sends usage on the last
       // message regardless; an OpenAI-compatible server sends none without
@@ -926,6 +974,7 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
       ...(req.maxTokens === null ? {} : { max_tokens: req.maxTokens }),
       ...(req.temperature === null ? {} : { temperature: req.temperature }),
       ...reasoningBody(req.reasoning, req.target.reasoningDialect),
+      ...routingBody(req),
       ...toolsBody(req)
     });
 
@@ -968,6 +1017,105 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
   } finally {
     deadline.clear();
   }
+}
+
+/**
+ * The transcript with cache breakpoints on it, or the transcript unchanged.
+ *
+ * Two markers, and both earn their place for a different reason.
+ *
+ * The first goes on the system prompt, which is the same text on every round
+ * of every turn of the whole session. It is also the single largest fixed cost
+ * Fleet has - several thousand tokens of tool instructions and project rules -
+ * and it is paid again on every request.
+ *
+ * The second goes on the last message of the request, and that one is about
+ * the shape of an agent loop rather than about the prompt. Round five's
+ * request is round four's request plus what round four produced, so the whole
+ * of the earlier rounds is a prefix that repeats. Marking the end of it means
+ * each round writes only its own delta and reads everything before it back at
+ * a tenth of the price.
+ *
+ * That last message is usually a tool result rather than anything the user
+ * said - a round that asked for tools ends on their output, which is most
+ * rounds of most turns. So a tool result carries a marker too, as a content
+ * part, which Anthropic accepts and acts on: a 14,000-token result marked this
+ * way reports 14,673 cache write tokens where the same request with the marker
+ * on the system message alone reports zero.
+ *
+ * Anthropic allows four markers and this uses two, which leaves room and keeps
+ * the rule simple enough to hold in the head. A provider that caches on its
+ * own ignores both, and a provider that does neither is unchanged: the marker
+ * is an extra key on a content part, not a different request.
+ *
+ * The messages are copied rather than marked in place. `runRounds` keeps its
+ * array across rounds and appends to it, so a marker written into it would
+ * still be there on the next round - two stale breakpoints deeper in the
+ * transcript, and one more each round after that.
+ */
+export function withCacheBreakpoints(
+  messages: AgentWireMessage[],
+  config: AgentCacheConfig
+): WireBodyMessage[] {
+  if (!config.enabled || messages.length === 0) return messages;
+  const mark = cacheControl(config);
+  const last = messages.length - 1;
+  return messages.map((message, index) => {
+    const wanted = message.role === 'system' || index === last;
+    if (!wanted) return message;
+    // Only a message made of text can carry a marker, and only the last part
+    // of it should: the marker means "up to here", so on the first part of two
+    // it would cache less than the message.
+    if (message.role === 'system') {
+      const text = typeof message.content === 'string' ? message.content : null;
+      if (text === null) return message;
+      return { role: 'system', content: [{ type: 'text', text, ...mark }] };
+    }
+    // A round that asked for tools ends on its results rather than on anything
+    // the user said, and that is the ordinary shape: most rounds of most turns
+    // end here. Skipped, the marker falls back to the system message alone and
+    // every file the turn has read so far is paid for again on the next round -
+    // which is the whole of what this feature was for.
+    if (message.role === 'tool') {
+      const text = typeof message.content === 'string' ? message.content : null;
+      if (text === null) return message;
+      return {
+        role: 'tool',
+        tool_call_id: message.tool_call_id,
+        content: [{ type: 'text', text, ...mark }]
+      };
+    }
+    if (message.role !== 'user') return message;
+    const parts: WireContentPart[] =
+      typeof message.content === 'string'
+        ? [{ type: 'text', text: message.content }]
+        : message.content;
+    const target = parts.findLastIndex((part) => part.type === 'text');
+    if (target === -1) return message;
+    return {
+      role: 'user',
+      content: parts.map((part, i) => (i === target ? { ...part, ...mark } : part))
+    };
+  });
+}
+
+/**
+ * Where the request may go and what to try if it will not, or nothing.
+ *
+ * Dropped entirely for a target that is not OpenRouter, at this one place, for
+ * the reason `toolsBody` drops server tools here: the call sites do not know
+ * which endpoint they resolved to, and a `provider` key sent to a
+ * `llama-server` is at best ignored and at worst a 400 on a body it cannot
+ * parse.
+ */
+function routingBody(req: StreamRequest): Record<string, unknown> {
+  if (!req.target.serverTools) return {};
+  const provider = req.routing === undefined ? null : providerBody(req.routing);
+  const models = req.fallback === undefined ? null : modelsBody(req.fallback, req.model);
+  return {
+    ...(provider === null ? {} : { provider }),
+    ...(models === null ? {} : { models })
+  };
 }
 
 /**

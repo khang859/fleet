@@ -15,6 +15,7 @@ import {
   type StreamRequest,
   type WireToolCall
 } from './completions';
+import { modelsBody, providerBody } from '../../shared/agent-routing';
 import { sseLines, sseData } from './sse';
 
 /**
@@ -43,6 +44,24 @@ import { sseLines, sseData } from './sse';
 
 /** Where the round is sent. Relative to the target's `baseUrl`. */
 const RESPONSES_PATH = '/responses';
+
+/**
+ * Where the request may go and what to try if it will not.
+ *
+ * The same two fields the other transport sends, under the same names. Both
+ * are dropped for a target that is not OpenRouter - which cannot happen on
+ * this transport today, since nothing else has a `/responses` at all, and is
+ * checked anyway so that stays true rather than being remembered.
+ */
+function routingBody(req: StreamRequest): Record<string, unknown> {
+  if (!req.target.serverTools) return {};
+  const provider = req.routing === undefined ? null : providerBody(req.routing);
+  const models = req.fallback === undefined ? null : modelsBody(req.fallback, req.model);
+  return {
+    ...(provider === null ? {} : { provider }),
+    ...(models === null ? {} : { models })
+  };
+}
 
 /**
  * One item in the `input` array, which is what this API calls history.
@@ -411,7 +430,17 @@ export async function streamResponse(req: StreamRequest): Promise<StreamOutcome>
       ...(req.temperature === null ? {} : { temperature: req.temperature }),
       ...(req.reasoning === null ? {} : { reasoning: req.reasoning }),
       ...(tools.length === 0 ? {} : { tools }),
-      ...(stops === null || stops.length === 0 ? {} : { stop_server_tools_when: stops })
+      ...(stops === null || stops.length === 0 ? {} : { stop_server_tools_when: stops }),
+      // Routing preferences and fallbacks are top-level fields under the same
+      // names on both endpoints, so they carry over unchanged.
+      //
+      // Cache breakpoints deliberately do not. The marker rides on a message
+      // content part, and this endpoint's parts are `input_text` rather than
+      // `text` - a shape that has not been checked against a real request, and
+      // an unrecognised key here is a 400 rather than something ignored. A
+      // turn with deferral on therefore gets no explicit caching. Worth fixing
+      // by capturing a request the way the rest of this file was written.
+      ...routingBody(req)
       // `tool_choice` is deliberately never sent. With deferral active the API
       // accepts it only as `auto` or `allowed_tools` and 400s on anything else,
       // and Fleet has never had a reason to send it. Written down so that stays
