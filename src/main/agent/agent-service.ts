@@ -797,11 +797,19 @@ async function toWireMessages(
     // Text after a call opens the next round, so the round that just ended goes
     // out before it rather than swallowing it.
     if (part.type === 'text' && calls.length > 0) await flush();
+    // So does a second raw round, and this is the only thing that marks the
+    // boundary when a model calls tools twice with nothing said in between -
+    // which is most of what a working turn looks like. Without it the second
+    // round's items overwrite the first's, and since the items are replayed in
+    // place of the message they came from, the first round's `function_call`
+    // disappears while the `tool` result answering it does not. That is an
+    // unmatched result, which the API rejects outright.
+    if (part.type === 'responses' && output.length > 0) await flush();
     if (part.type === 'text') text += part.text;
     else if (part.type === 'tool') calls.push(part.call);
     else if (part.type === 'server_tool') remote.push(part.call);
-    // Assigned rather than appended: one round has one of these, and a second
-    // would mean two rounds ran into each other without a flush between them.
+    // Assigned rather than appended: a round has exactly one of these, and the
+    // flush above is what keeps that true.
     else if (part.type === 'responses') output = part.items;
     // An attachment on an assistant message cannot happen - only the composer
     // makes them - and there is nothing sensible to send if one ever did.

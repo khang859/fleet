@@ -1196,6 +1196,73 @@ describe('toWireHistory', () => {
     ]);
   });
 
+  /*
+   * Two tool rounds with nothing said between them, which is most of what a
+   * working turn looks like: a model that calls a tool, reads the result and
+   * calls another rarely writes a sentence in between.
+   *
+   * Nothing but the raw round marks that boundary, so without it both rounds
+   * fold into one message carrying the second round's items. Those items are
+   * replayed in place of the message, so the first round's `function_call` goes
+   * missing while the `tool` result answering it stays - an unmatched result,
+   * which is a 400 rather than a degraded reply.
+   */
+  it('splits two tool rounds that had nothing said between them', async () => {
+    const first = [
+      { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'read', arguments: '{}' }
+    ];
+    const second = [
+      { type: 'function_call', id: 'fc_2', call_id: 'call_2', name: 'read', arguments: '{}' }
+    ];
+    const call = (id: string): AgentToolCall => ({
+      id,
+      name: 'read',
+      args: '{}',
+      result: `${id} came back`,
+      error: null,
+      summary: null,
+      image: null,
+      todos: null,
+      task: null
+    });
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [
+        { type: 'responses', items: first },
+        { type: 'tool', call: call('call_1') },
+        { type: 'responses', items: second },
+        { type: 'tool', call: call('call_2') }
+      ],
+      reasoning: '',
+      reasoningMs: null,
+      citations: []
+    };
+
+    const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+
+    expect(messages.slice(1, -1)).toEqual([
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'call_1', type: 'function', function: { name: 'read', arguments: '{}' } }
+        ],
+        response_output: first
+      },
+      { role: 'tool', tool_call_id: 'call_1', content: 'call_1 came back' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'call_2', type: 'function', function: { name: 'read', arguments: '{}' } }
+        ],
+        response_output: second
+      },
+      { role: 'tool', tool_call_id: 'call_2', content: 'call_2 came back' }
+    ]);
+  });
+
   it('answers a call that never came back, so none is left dangling', async () => {
     const pending: AgentToolCall = {
       id: 'call_1',
