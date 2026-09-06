@@ -791,6 +791,24 @@ export type AgentPart =
    * elsewhere, and the only thing to do with it is show it and hand it back.
    */
   | { type: 'server_tool'; call: ServerToolRecord }
+  /**
+   * One round exactly as the Responses API finished it.
+   *
+   * Drawn as nothing. It is here because a round rebuilt from the parts beside
+   * it is not the same round: the reasoning items carry `encrypted_content`
+   * that only the provider can read and that no reconstruction can invent, and
+   * a server-tool item carries arguments this side never modelled. Handing back
+   * a rebuilt copy loses both, so the bytes are kept and handed back verbatim.
+   *
+   * A part rather than a field on the message because a message may hold
+   * several rounds, and a part sits in the sequence at the point the round
+   * ended - which is the only place that says which round it belongs to.
+   *
+   * Chat Completions turns never carry one; it has its own carrier in
+   * `reasoning_details`, which is rebuilt from the records because that is all
+   * that channel ever held.
+   */
+  | { type: 'responses'; items: Array<Record<string, unknown>> }
   | { type: 'attachment'; attachment: AgentAttachment };
 
 export type AgentMessage = {
@@ -1272,6 +1290,15 @@ export type AgentServerToolEvent = {
    * has sources and nothing to attach them to.
    */
   citations: Citation[];
+  /**
+   * The round as the Responses API finished it, for the pane to keep.
+   *
+   * Empty on Chat Completions, and empty on a Responses round the transport
+   * returned nothing for. Sent on this event because it is reported at the same
+   * moment and about the same thing - what the round was - and a second channel
+   * for it would arrive out of order with this one.
+   */
+  outputItems: Array<Record<string, unknown>>;
 };
 /**
  * `projectInstructions` is what the project's own `AGENTS.md` cost this turn,

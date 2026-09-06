@@ -50,6 +50,8 @@ export function agentPhase(
   // is not waiting for it - it is waiting for the model to say what it made of
   // it, which is the same state as having just finished a local tool.
   if (part.type === 'server_tool') return 'waiting';
+  // Written at the end of a round, so a turn sitting on one is between rounds.
+  if (part.type === 'responses') return 'waiting';
   return part.call.result === null && part.call.error === null ? 'tooling' : 'waiting';
 }
 

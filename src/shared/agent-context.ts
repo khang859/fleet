@@ -74,6 +74,10 @@ function estimatePartsTokens(message: AgentMessage): number {
         PER_MESSAGE_OVERHEAD
       );
     }
+    // Counted as nothing, because it is the round the parts beside it already
+    // describe: the same text, the same calls, in OpenRouter's own encoding.
+    // Adding it would bill the turn twice for one round.
+    if (part.type === 'responses') return total;
     const { call } = part;
     return (
       total +

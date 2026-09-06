@@ -372,7 +372,8 @@ function roundMessage(
   text: string,
   calls: AgentToolCall[],
   remote: ServerToolRecord[] = [],
-  citations: Citation[] = []
+  citations: Citation[] = [],
+  outputItems: Array<Record<string, unknown>> = []
 ): AgentMessage {
   return {
     id: randomUUID(),
@@ -387,6 +388,9 @@ function roundMessage(
       // own loop before it sent a byte of the text the model wrote about it.
       ...remote.map((call) => ({ type: 'server_tool' as const, call })),
       ...(text === '' ? [] : [{ type: 'text' as const, text }]),
+      // The round whole, between what it said and what it asked for, which is
+      // where `toWireHistory` reads it back from.
+      ...(outputItems.length === 0 ? [] : [{ type: 'responses' as const, items: outputItems }]),
       ...calls.map((call) => ({ type: 'tool' as const, call }))
     ]
   };
@@ -740,10 +744,21 @@ async function toWireMessages(
    * already contains its own result. Two channels for two kinds of history.
    */
   let remote: ServerToolRecord[] = [];
+  /**
+   * The round as the Responses API finished it, when it was one.
+   *
+   * Handed straight back rather than rebuilt from the parts beside it, which is
+   * what the transport asks for: the reasoning items carry an
+   * `encrypted_content` nothing on this side can regenerate, and a rebuilt copy
+   * of it is not a copy. `toResponsesInput` replays this in place of everything
+   * else the round would have become; Chat Completions has no use for it and
+   * drops it on the way out.
+   */
+  let output: Array<Record<string, unknown>> = [];
 
   /** One round: what was said, what it asked for, and what came back. */
   const flush = async (): Promise<void> => {
-    if (text === '' && calls.length === 0 && remote.length === 0) return;
+    if (text === '' && calls.length === 0 && remote.length === 0 && output.length === 0) return;
     wire.push({
       role: 'assistant',
       content: text,
@@ -756,7 +771,8 @@ async function toWireMessages(
             }))
           }
         : {}),
-      ...(remote.length > 0 ? { reasoning_details: toReasoningDetails(remote) } : {})
+      ...(remote.length > 0 ? { reasoning_details: toReasoningDetails(remote) } : {}),
+      ...(output.length > 0 ? { response_output: output } : {})
     });
     const images: AgentWireMessage[] = [];
     for (const call of calls) {
@@ -774,6 +790,7 @@ async function toWireMessages(
     text = '';
     calls = [];
     remote = [];
+    output = [];
   };
 
   for (const part of message.parts) {
@@ -783,6 +800,9 @@ async function toWireMessages(
     if (part.type === 'text') text += part.text;
     else if (part.type === 'tool') calls.push(part.call);
     else if (part.type === 'server_tool') remote.push(part.call);
+    // Assigned rather than appended: one round has one of these, and a second
+    // would mean two rounds ran into each other without a flush between them.
+    else if (part.type === 'responses') output = part.items;
     // An attachment on an assistant message cannot happen - only the composer
     // makes them - and there is nothing sensible to send if one ever did.
   }
@@ -1331,16 +1351,30 @@ export class AgentService {
       // natively reports one and not the other: annotations on the reply, no
       // record. Keying the event on records alone loses those sources entirely,
       // and the answer is left citing pages the reader cannot open.
-      if ((outcome.serverToolCalls.length > 0 || outcome.citations.length > 0) && !run.quiet) {
+      //
+      // The raw round is checked too, and for the same kind of reason: a
+      // Responses round with neither records nor sources still has to reach the
+      // pane, because the pane is where the transcript lives and the transcript
+      // is what the next user turn is answered from.
+      const outputItems = outcome.outputItems ?? [];
+      if (
+        (outcome.serverToolCalls.length > 0 ||
+          outcome.citations.length > 0 ||
+          outputItems.length > 0) &&
+        !run.quiet
+      ) {
         emit(IPC_CHANNELS.AGENT_SERVER_TOOL, {
           streamId,
           calls: outcome.serverToolCalls,
-          citations: outcome.citations
+          citations: outcome.citations,
+          outputItems
         } satisfies AgentServerToolEvent);
       }
 
       if (outcome.toolCalls.length === 0) {
-        run.onRound?.(roundMessage(round.content, [], outcome.serverToolCalls, outcome.citations));
+        run.onRound?.(
+          roundMessage(round.content, [], outcome.serverToolCalls, outcome.citations, outputItems)
+        );
         return round.content;
       }
 
@@ -1361,9 +1395,7 @@ export class AgentService {
         ...(outcome.serverToolCalls.length === 0
           ? {}
           : { reasoning_details: toReasoningDetails(outcome.serverToolCalls) }),
-        ...((outcome.outputItems?.length ?? 0) === 0
-          ? {}
-          : { response_output: outcome.outputItems })
+        ...(outputItems.length === 0 ? {} : { response_output: outputItems })
       });
       const images: AgentWireMessage[] = [];
       const before = todos.items;
@@ -1447,7 +1479,9 @@ export class AgentService {
       // results, and a picture in the middle of one is not a result.
       messages.push(...images);
       todos.streak = nextStreak(todos.streak, before, todos.items);
-      run.onRound?.(roundMessage(round.content, drawn, outcome.serverToolCalls, outcome.citations));
+      run.onRound?.(
+        roundMessage(round.content, drawn, outcome.serverToolCalls, outcome.citations, outputItems)
+      );
     }
 
     throw new Error(

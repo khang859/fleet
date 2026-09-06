@@ -1107,6 +1107,95 @@ describe('toWireHistory', () => {
     expect(messages.some((m) => 'tool_calls' in m)).toBe(false);
   });
 
+  /*
+   * The Responses transport is handed its own history back verbatim, and the
+   * only place the bytes survive a finished turn is the transcript. Rebuilding
+   * the round from the parts beside it loses the reasoning `encrypted_content`,
+   * which is the memory the round was kept for.
+   */
+  it('replays a Responses round from the transcript, whole', async () => {
+    const items = [
+      { type: 'reasoning', id: 'rs_1', encrypted_content: 'opaque', summary: [] },
+      {
+        type: 'message',
+        id: 'msg_1',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'Zod 4 renames it.' }]
+      }
+    ];
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Zod 4 renames it.' },
+        { type: 'responses', items }
+      ],
+      reasoning: '',
+      reasoningMs: null,
+      citations: []
+    };
+
+    const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+
+    expect(messages.slice(1, -1)).toEqual([
+      { role: 'assistant', content: 'Zod 4 renames it.', response_output: items }
+    ]);
+  });
+
+  /*
+   * A turn is many rounds, and each one goes back as the round it was. One
+   * carrier standing in for the whole turn would replay the last round twice
+   * and lose every round before it.
+   */
+  it('keeps one Responses round per round of a turn', async () => {
+    const first = [{ type: 'reasoning', id: 'rs_1', encrypted_content: 'one' }];
+    const second = [{ type: 'reasoning', id: 'rs_2', encrypted_content: 'two' }];
+    const call: AgentToolCall = {
+      id: 'call_1',
+      name: 'read',
+      args: '{"path":"a.ts"}',
+      result: 'a.ts lines 1-1',
+      error: null,
+      summary: null,
+      image: null,
+      todos: null,
+      task: null
+    };
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Let me look.' },
+        { type: 'responses', items: first },
+        { type: 'tool', call },
+        { type: 'text', text: 'It says 42.' },
+        { type: 'responses', items: second }
+      ],
+      reasoning: '',
+      reasoningMs: null,
+      citations: []
+    };
+
+    const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+
+    expect(messages.slice(1, -1)).toEqual([
+      {
+        role: 'assistant',
+        content: 'Let me look.',
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'read', arguments: '{"path":"a.ts"}' }
+          }
+        ],
+        response_output: first
+      },
+      { role: 'tool', tool_call_id: 'call_1', content: 'a.ts lines 1-1' },
+      { role: 'assistant', content: 'It says 42.', response_output: second }
+    ]);
+  });
+
   it('answers a call that never came back, so none is left dangling', async () => {
     const pending: AgentToolCall = {
       id: 'call_1',
@@ -2844,7 +2933,8 @@ describe('reporting what a round found', () => {
     expect(found[0].payload).toEqual({
       streamId: 'stream-1',
       calls: [],
-      citations: [source('https://example.test/a')]
+      citations: [source('https://example.test/a')],
+      outputItems: []
     });
   });
 
@@ -2864,11 +2954,30 @@ describe('reporting what a round found', () => {
     expect(found[0].payload).toEqual({
       streamId: 'stream-1',
       calls: [call],
-      citations: [source('https://example.test/b')]
+      citations: [source('https://example.test/b')],
+      outputItems: []
     });
   });
 
   it('says nothing about a round that ran nothing and cited nothing', async () => {
     expect(await reported({})).toEqual([]);
+  });
+
+  /*
+   * A Responses round that ran no remote tool still has to reach the pane. The
+   * pane holds the transcript, the next user turn is answered from it, and a
+   * round missing from there is a round the model is asked to remember without
+   * being shown - which is exactly the reasoning it was told to keep encrypted.
+   */
+  it('reports a Responses round that ran nothing, for the transcript to keep', async () => {
+    const items = [{ type: 'reasoning', id: 'rs_1', encrypted_content: 'opaque' }];
+    const found = await reported({ outputItems: items });
+
+    expect(found[0].payload).toEqual({
+      streamId: 'stream-1',
+      calls: [],
+      citations: [],
+      outputItems: items
+    });
   });
 });

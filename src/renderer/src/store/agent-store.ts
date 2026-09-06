@@ -713,9 +713,10 @@ function recordToolCall(streamId: string, call: AgentToolCall): void {
 function recordServerToolCalls(
   streamId: string,
   calls: ServerToolRecord[],
-  citations: Citation[]
+  citations: Citation[],
+  outputItems: Array<Record<string, unknown>>
 ): void {
-  if (calls.length === 0 && citations.length === 0) return;
+  if (calls.length === 0 && citations.length === 0 && outputItems.length === 0) return;
   updateStreaming(streamId, (m) => ({
     ...m,
     // Merged rather than appended, because a turn is many rounds and two rounds
@@ -723,7 +724,16 @@ function recordServerToolCalls(
     // message's own go first so the earliest description of a page is the one
     // that survives, which is the order `messageCitations` reads them back in.
     citations: mergeCitations(m.citations, citations),
-    parts: [...m.parts, ...calls.map((call) => ({ type: 'server_tool' as const, call }))]
+    parts: [
+      ...m.parts,
+      ...calls.map((call) => ({ type: 'server_tool' as const, call })),
+      // Last of the round's parts, and before the local calls that follow it,
+      // which is where the round ended. Kept on the message rather than only in
+      // main because main forgets it when the turn does: the next user message
+      // is answered from the transcript, and a round missing from there is a
+      // round the model is asked to remember without being shown.
+      ...(outputItems.length === 0 ? [] : [{ type: 'responses' as const, items: outputItems }])
+    ]
   }));
 }
 
@@ -1491,9 +1501,9 @@ window.fleet.agent.onHandOff(({ streamId, command }) => handOff(streamId, comman
 window.fleet.agent.onPermissionAsk((ask) => askPermission(ask));
 window.fleet.agent.onTaskStart(({ threadId, task }) => startTask(threadId, task));
 window.fleet.agent.onTaskDone((done) => finishTask(done));
-window.fleet.agent.onServerTool(({ streamId, calls, citations }) => {
+window.fleet.agent.onServerTool(({ streamId, calls, citations, outputItems }) => {
   // A subagent is never offered remote tools, so nothing here can be a task's.
-  recordServerToolCalls(streamId, calls, citations);
+  recordServerToolCalls(streamId, calls, citations, outputItems);
 });
 window.fleet.agent.onToolStart(({ streamId, call }) => {
   // A stream id that is a task id belongs to a subagent, whose calls are not
