@@ -1,11 +1,13 @@
 import { memo, useState } from 'react';
-import { ChevronRight, Globe, Link2 } from 'lucide-react';
+import { ChevronRight, Globe, Lightbulb, Link2 } from 'lucide-react';
 import {
   serverToolLabel,
   serverToolQuery,
   type Citation,
   type ServerToolRecord
 } from '../../../../shared/agent-server-tools';
+import { parseAdvisorPrompt, parseAdvisorResult } from '../../../../shared/agent-advisor';
+import { AgentMarkdown } from './AgentMarkdown';
 
 /**
  * Work OpenRouter did, on one line.
@@ -34,6 +36,10 @@ export const AgentServerToolRow = memo(function AgentServerToolRow({
   const [open, setOpen] = useState(false);
   const query = serverToolQuery(call.args);
   const sources = call.citations;
+
+  // A consultation is prose rather than a list of links, so it gets its own
+  // row. Everything else here is a search-shaped thing and shares this one.
+  if (call.toolName === ADVISOR_TOOL_NAME) return <AgentAdvisorRow call={call} />;
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -177,3 +183,77 @@ function hostOf(url: string): string {
     return url;
   }
 }
+
+/** The wire name of the tool the row below is for. */
+const ADVISOR_TOOL_NAME = 'openrouter:advisor';
+
+/**
+ * A consultation with a stronger model.
+ *
+ * Drawn apart from the search row because what came back is different in kind:
+ * a search returns a list of places to look and an advisor returns an argument,
+ * written to be read. Collapsed it says who was asked and about what; opened it
+ * shows the advice as prose, rendered the way the assistant's own text is,
+ * because it was written by a model for the same reader.
+ *
+ * The question is shown too. Advice read without the question it answers is how
+ * a reader ends up believing the advisor was told more than it was - it sees
+ * only what the executor typed, not the folder, not the transcript.
+ */
+export const AgentAdvisorRow = memo(function AgentAdvisorRow({
+  call
+}: {
+  call: ServerToolRecord;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const prompt = parseAdvisorPrompt(call.args);
+  const result = parseAdvisorResult(call.result);
+  const failed = result?.status === 'error';
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 text-left text-xs text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring"
+      >
+        <ChevronRight
+          size={12}
+          className={`shrink-0 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+        />
+        <Lightbulb size={12} className="shrink-0 opacity-70" />
+        <span className="shrink-0">Asked</span>
+        <span className="shrink-0 font-mono text-[11px]">
+          {result?.status === 'ok' ? (result.model ?? 'an advisor') : 'an advisor'}
+        </span>
+        {prompt !== null && <span className="truncate">{prompt}</span>}
+        {/*
+         * A failed consultation is not a failed turn - the model carried on
+         * without the advice - so this is a note rather than an error state.
+         */}
+        {failed && <span className="shrink-0 text-fleet-text-subtle">no answer</span>}
+      </button>
+      {open && (
+        <div className="flex flex-col gap-2 border-l-2 border-fleet-border pl-3">
+          {prompt !== null && (
+            <p className="text-[11px] leading-relaxed whitespace-pre-wrap text-fleet-text-subtle">
+              {prompt}
+            </p>
+          )}
+          {result === null ? (
+            <pre className="max-h-64 overflow-auto text-[11px] leading-relaxed whitespace-pre-wrap text-fleet-text-muted">
+              {call.result}
+            </pre>
+          ) : result.status === 'ok' ? (
+            <AgentMarkdown streaming={false} className="text-[13px] leading-relaxed">
+              {result.advice}
+            </AgentMarkdown>
+          ) : (
+            <p className="text-[11px] leading-relaxed text-fleet-text-muted">{result.error}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});

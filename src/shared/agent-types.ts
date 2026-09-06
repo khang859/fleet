@@ -13,6 +13,11 @@ import {
   DEFAULT_AGENT_WEB_SEARCH,
   type AgentWebSearchConfig
 } from './agent-web-search';
+import {
+  AGENT_ADVISOR_INSTRUCTIONS,
+  DEFAULT_AGENT_ADVISOR,
+  type AgentAdvisorConfig
+} from './agent-advisor';
 import type { McpServersConfig } from './agent-mcp';
 import type { LocalEndpointConfig } from './agent-endpoints';
 
@@ -280,6 +285,15 @@ export type AgentSettings = {
    * a remote service with a second meter on it.
    */
   webSearch: AgentWebSearchConfig;
+  /**
+   * Whether and how the agent consults a stronger model.
+   *
+   * A model setting that is not an `AgentModelConfig`, because Fleet never
+   * calls this model: it names it to OpenRouter, which runs the consultation
+   * inside the executor's own turn. There is no request here to put a
+   * temperature or a reasoning effort on.
+   */
+  advisor: AgentAdvisorConfig;
   /** Replaces the built-in instructions. `null` ⇒ use the default below. */
   systemPrompt: string | null;
   /**
@@ -363,6 +377,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   image: { ...EMPTY_AGENT_IMAGE_CONFIG },
   webFetch: { ...DEFAULT_AGENT_WEB_FETCH },
   webSearch: { ...DEFAULT_AGENT_WEB_SEARCH },
+  advisor: { ...DEFAULT_AGENT_ADVISOR },
   systemPrompt: null,
   compactThreshold: 0.8,
   maxToolRounds: null,
@@ -529,6 +544,7 @@ export function buildSystemPrompt(
     image: boolean;
     webFetch?: boolean;
     webSearch?: boolean;
+    advisor?: boolean;
     mcp?: boolean;
     task?: boolean;
     skill?: boolean;
@@ -552,6 +568,10 @@ export function buildSystemPrompt(
   // decision seen from either end - which of them to reach for - and reading
   // them apart is how a model ends up searching the web for localhost.
   const search = options.webSearch === true ? `\n\n${AGENT_WEB_SEARCH_INSTRUCTIONS}` : '';
+  // After both readers, because consulting is the last resort among the ways
+  // of finding something out, and a model that reads the advice first reaches
+  // for it before it has read the file the answer is in.
+  const advisor = options.advisor === true ? `\n\n${AGENT_ADVISOR_INSTRUCTIONS}` : '';
   const mcp = options.mcp === true ? `\n\n${AGENT_MCP_INSTRUCTIONS}` : '';
   const task = options.task === true ? `\n\n${AGENT_TASK_INSTRUCTIONS}` : '';
   // Ahead of `task`, because a skill is something to read before starting and a
@@ -569,7 +589,7 @@ export function buildSystemPrompt(
     options.env === undefined || options.env === null
       ? `Working folder: ${cwd}`
       : renderEnvBlock(cwd, options.env);
-  return `${base}${project}${image}${web}${search}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
+  return `${base}${project}${image}${web}${search}${advisor}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
 }
 
 /*

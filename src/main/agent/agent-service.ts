@@ -87,6 +87,7 @@ import {
   type ServerToolStop
 } from '../../shared/agent-server-tools';
 import { webSearchSpec } from '../../shared/agent-web-search';
+import { advisorSpec } from '../../shared/agent-advisor';
 import { runAgentTool } from './tools/run';
 import {
   TaskFailure,
@@ -385,16 +386,24 @@ function roundMessage(
 const SERVER_TOOL_MAX_STEPS = 10;
 
 /**
- * The remote tools a turn is offered, which today is search or nothing.
+ * The remote tools a turn is offered.
  *
  * A function rather than a field so that every call that is not a turn gets an
  * empty list by construction. Naming a session, folding one up and judging a
  * command all go through `call` too, and none of them should be able to run a
  * search - a title that cost a web search is a title nobody would have paid for.
+ *
+ * The order is fixed and the advisor is first, which is not a style choice. An
+ * advisor's memory of its own earlier consultations is keyed on where its entry
+ * sits in the request, so an advisor that moves is an advisor that has
+ * forgotten - and a list built by appending whatever happens to be switched on
+ * moves it every time the user toggles something else. First is the one
+ * position nothing else can take.
  */
-function turnServerTools(ctx: CallContext): ServerToolSpec[] {
-  const search = webSearchSpec(ctx.settings.webSearch);
-  return search === null ? [] : [search];
+export function turnServerTools(settings: AgentSettings): ServerToolSpec[] {
+  return [advisorSpec(settings.advisor), webSearchSpec(settings.webSearch)].filter(
+    (spec): spec is ServerToolSpec => spec !== null
+  );
 }
 
 /**
@@ -1057,6 +1066,10 @@ export class AgentService {
         // the two readers to reach for, and a turn that describes a tool it
         // was not given teaches it to call something that is not there.
         webSearch: ctx.settings.webSearch.enabled,
+        // Same rule, and the same reason: the block says what this advisor is
+        // for and that the question must carry its own context, which is not
+        // something the tool description on the wire can say.
+        advisor: advisorSpec(ctx.settings.advisor) !== null,
         env,
         image: imageModel !== null,
         mcp: mcpSpecs.length > 0,
@@ -1090,7 +1103,7 @@ export class AgentService {
           skill: skillSpec,
           memory: memorySpec
         }),
-        serverTools: turnServerTools(ctx),
+        serverTools: turnServerTools(ctx.settings),
         serverToolStops: serverToolStops({
           steps: SERVER_TOOL_MAX_STEPS,
           maxSpendUsd: ctx.settings.webSearch.maxSpendUsd

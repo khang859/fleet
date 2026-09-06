@@ -7,6 +7,7 @@ import type {
   AgentWebFetchConfig
 } from '../../../../../shared/agent-types';
 import type { AgentWebSearchConfig } from '../../../../../shared/agent-web-search';
+import type { AgentAdvisorConfig } from '../../../../../shared/agent-advisor';
 import { AGENT_TOOL_MODES, DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
 import {
   AGENT_VOICE_MODELS,
@@ -20,6 +21,7 @@ import { AgentRoleSettings } from './AgentRoleSettings';
 import { AgentImageSettings } from './AgentImageSettings';
 import { AgentWebSettings } from './AgentWebSettings';
 import { AgentWebSearchSettings } from './AgentWebSearchSettings';
+import { AgentAdvisorSettings } from './AgentAdvisorSettings';
 import { SystemPromptField } from './SystemPromptField';
 import { CompactionField } from './CompactionField';
 import { MaxToolRoundsField } from './MaxToolRoundsField';
@@ -126,6 +128,10 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
     void updateSettings({ ai: { agent: { webFetch: { ...agent.webFetch, ...patch } } } });
   };
 
+  const patchAdvisor = (patch: Partial<AgentAdvisorConfig>): void => {
+    void updateSettings({ ai: { agent: { advisor: { ...agent.advisor, ...patch } } } });
+  };
+
   const patchWebSearch = (patch: Partial<AgentWebSearchConfig>): void => {
     void updateSettings({ ai: { agent: { webSearch: { ...agent.webSearch, ...patch } } } });
   };
@@ -172,6 +178,7 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
             onChange={patchWebSearch}
             hasKey={keyPresent}
           />
+          <AgentAdvisorSettings models={models} config={agent.advisor} onChange={patchAdvisor} />
         </FieldGroup>
 
         <FieldGroup title="Sessions">
