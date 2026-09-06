@@ -24,6 +24,11 @@ import {
   type AgentHostedFetchConfig
 } from './agent-hosted-fetch';
 import {
+  AGENT_TOOL_SEARCH_INSTRUCTIONS,
+  DEFAULT_AGENT_TOOL_SEARCH,
+  type AgentToolSearchConfig
+} from './agent-tool-search';
+import {
   AGENT_FUSION_INSTRUCTIONS,
   AGENT_FUSION_UNAVAILABLE_INSTRUCTIONS,
   DEFAULT_AGENT_FUSION,
@@ -305,6 +310,14 @@ export type AgentSettings = {
    */
   hostedFetch: AgentHostedFetchConfig;
   /**
+   * Whether the tools from connected servers are withheld until asked for.
+   *
+   * A setting about money and accuracy rather than about capability: every
+   * tool stays reachable either way. See `agent-tool-search.ts` for the
+   * measured figures and for why it is off by default.
+   */
+  toolSearch: AgentToolSearchConfig;
+  /**
    * Whether and how the agent consults a stronger model.
    *
    * A model setting that is not an `AgentModelConfig`, because Fleet never
@@ -405,6 +418,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   webFetch: { ...DEFAULT_AGENT_WEB_FETCH },
   webSearch: { ...DEFAULT_AGENT_WEB_SEARCH },
   hostedFetch: { ...DEFAULT_AGENT_HOSTED_FETCH },
+  toolSearch: { ...DEFAULT_AGENT_TOOL_SEARCH },
   advisor: { ...DEFAULT_AGENT_ADVISOR },
   fusion: { ...DEFAULT_AGENT_FUSION },
   systemPrompt: null,
@@ -575,6 +589,8 @@ export function buildSystemPrompt(
     webSearch?: boolean;
     hostedFetch?: boolean;
     advisor?: boolean;
+    /** On when this turn's tool list is actually being withheld in part. */
+    toolSearch?: boolean;
     /**
      * `'available'` on a review turn that can actually run one; `'unavailable'`
      * when the user asked for a panel and the model they are on cannot reach
@@ -625,6 +641,10 @@ export function buildSystemPrompt(
         ? `\n\n${AGENT_FUSION_UNAVAILABLE_INSTRUCTIONS}`
         : '';
   const mcp = options.mcp === true ? `\n\n${AGENT_MCP_INSTRUCTIONS}` : '';
+  // Directly after the block that describes connected servers, because it is a
+  // correction to it: the model has just been told what those servers are for,
+  // and this says that most of them are not in the list it can see.
+  const toolSearch = options.toolSearch === true ? `\n\n${AGENT_TOOL_SEARCH_INSTRUCTIONS}` : '';
   const task = options.task === true ? `\n\n${AGENT_TASK_INSTRUCTIONS}` : '';
   // Ahead of `task`, because a skill is something to read before starting and a
   // subagent is something to hand off once started, and the order these are read
@@ -641,7 +661,7 @@ export function buildSystemPrompt(
     options.env === undefined || options.env === null
       ? `Working folder: ${cwd}`
       : renderEnvBlock(cwd, options.env);
-  return `${base}${project}${image}${web}${hosted}${search}${advisor}${fusion}${mcp}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
+  return `${base}${project}${image}${web}${hosted}${search}${advisor}${fusion}${mcp}${toolSearch}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
 }
 
 /*
@@ -771,6 +791,24 @@ export type AgentPart =
    * elsewhere, and the only thing to do with it is show it and hand it back.
    */
   | { type: 'server_tool'; call: ServerToolRecord }
+  /**
+   * One round exactly as the Responses API finished it.
+   *
+   * Drawn as nothing. It is here because a round rebuilt from the parts beside
+   * it is not the same round: the reasoning items carry `encrypted_content`
+   * that only the provider can read and that no reconstruction can invent, and
+   * a server-tool item carries arguments this side never modelled. Handing back
+   * a rebuilt copy loses both, so the bytes are kept and handed back verbatim.
+   *
+   * A part rather than a field on the message because a message may hold
+   * several rounds, and a part sits in the sequence at the point the round
+   * ended - which is the only place that says which round it belongs to.
+   *
+   * Chat Completions turns never carry one; it has its own carrier in
+   * `reasoning_details`, which is rebuilt from the records because that is all
+   * that channel ever held.
+   */
+  | { type: 'responses'; items: Array<Record<string, unknown>> }
   | { type: 'attachment'; attachment: AgentAttachment };
 
 export type AgentMessage = {
@@ -1252,6 +1290,15 @@ export type AgentServerToolEvent = {
    * has sources and nothing to attach them to.
    */
   citations: Citation[];
+  /**
+   * The round as the Responses API finished it, for the pane to keep.
+   *
+   * Empty on Chat Completions, and empty on a Responses round the transport
+   * returned nothing for. Sent on this event because it is reported at the same
+   * moment and about the same thing - what the round was - and a second channel
+   * for it would arrive out of order with this one.
+   */
+  outputItems: Array<Record<string, unknown>>;
 };
 /**
  * `projectInstructions` is what the project's own `AGENTS.md` cost this turn,

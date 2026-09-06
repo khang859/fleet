@@ -1764,9 +1764,18 @@ describe('sources a round found', () => {
   });
 
   /** Starts a turn and reports one round of remote work into it. */
-  function round(calls: ServerToolRecord[], citations: Citation[]): void {
+  function round(
+    calls: ServerToolRecord[],
+    citations: Citation[],
+    outputItems: Array<Record<string, unknown>> = []
+  ): void {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'what is new?');
-    emit(IPC_CHANNELS.AGENT_SERVER_TOOL, { streamId: liveStreamId(), calls, citations });
+    emit(IPC_CHANNELS.AGENT_SERVER_TOOL, {
+      streamId: liveStreamId(),
+      calls,
+      citations,
+      outputItems
+    });
   }
 
   const answer = (): AgentMessage => {
@@ -1821,18 +1830,33 @@ describe('sources a round found', () => {
     emit(IPC_CHANNELS.AGENT_SERVER_TOOL, {
       streamId,
       calls: [],
-      citations: [source('https://example.test/d')]
+      citations: [source('https://example.test/d')],
+      outputItems: []
     });
     emit(IPC_CHANNELS.AGENT_SERVER_TOOL, {
       streamId,
       calls: [],
-      citations: [source('https://example.test/d'), source('https://example.test/e')]
+      citations: [source('https://example.test/d'), source('https://example.test/e')],
+      outputItems: []
     });
 
     expect(messageCitations(answer()).map((c) => c.url)).toEqual([
       'https://example.test/d',
       'https://example.test/e'
     ]);
+  });
+
+  /*
+   * The transcript is what the next user turn is answered from, so a Responses
+   * round that ran no remote tool still has to land in it. Without this the
+   * encrypted reasoning is gone the moment the turn ends, and the model is
+   * asked to carry on from thinking it can no longer see.
+   */
+  it('keeps a Responses round on the message, drawing nothing', () => {
+    const items = [{ type: 'reasoning', id: 'rs_1', encrypted_content: 'opaque' }];
+    round([], [], items);
+
+    expect(answer().parts).toEqual([{ type: 'responses', items }]);
   });
 
   it('writes nothing down for a round that found neither', () => {

@@ -196,6 +196,10 @@ export class SettingsStore {
             ...DEFAULT_SETTINGS.ai.agent.hostedFetch,
             ...saved.ai?.agent?.hostedFetch
           },
+          toolSearch: {
+            ...DEFAULT_SETTINGS.ai.agent.toolSearch,
+            ...saved.ai?.agent?.toolSearch
+          },
           advisor: { ...DEFAULT_SETTINGS.ai.agent.advisor, ...saved.ai?.agent?.advisor },
           fusion: { ...DEFAULT_SETTINGS.ai.agent.fusion, ...saved.ai?.agent?.fusion },
           permissions: {
@@ -298,6 +302,10 @@ export class SettingsStore {
           hostedFetch: {
             ...current.ai.agent.hostedFetch,
             ...(partial.ai?.agent?.hostedFetch ?? {})
+          },
+          toolSearch: {
+            ...current.ai.agent.toolSearch,
+            ...(partial.ai?.agent?.toolSearch ?? {})
           },
           advisor: { ...current.ai.agent.advisor, ...(partial.ai?.agent?.advisor ?? {}) },
           fusion: { ...current.ai.agent.fusion, ...(partial.ai?.agent?.fusion ?? {}) },

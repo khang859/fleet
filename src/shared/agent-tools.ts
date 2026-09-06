@@ -6,6 +6,7 @@ import {
   type AgentScheduleRecord
 } from './agent-schedule';
 import type { McpToolOutput } from './agent-mcp';
+import { estimateTokens } from './agent-context';
 import type { SubagentDefinition } from './agent-subagents';
 import { SKILL_DESCRIPTION_MAX, SKILL_NAME_MAX, type SkillDefinition } from './agent-skills';
 import {
@@ -1272,6 +1273,24 @@ export function toolSpecsFor(options: {
     ...(task === null ? [] : [task]),
     ...(options.mcp ?? [])
   ];
+}
+
+/**
+ * What a tool list costs to state, before a single word of the conversation.
+ *
+ * The number the deferral work exists to bring down, and the reason it is
+ * measured rather than assumed. Every definition in the array is serialised on
+ * every request of every round: a turn of eight rounds pays for the whole list
+ * eight times, and the list grows with each MCP server the user connects
+ * rather than with anything they asked for.
+ *
+ * Serialised the way the wire serialises it, so the figure moves when a
+ * description is reworded. An estimate rather than a count - see
+ * `estimateTokens` for why a tokenizer per model is not worth shipping to
+ * answer a question whose real answer arrives from the provider afterwards.
+ */
+export function toolDefinitionTokens(specs: ToolSpec[]): number {
+  return estimateTokens(JSON.stringify(specs));
 }
 
 /**

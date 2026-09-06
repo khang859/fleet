@@ -63,7 +63,7 @@ const RETRY_STATUS = new Set([408, 429, 500, 502, 503, 504]);
  * chunks once the stream is running. A single deadline over the whole thing
  * would cut off a long answer that was arriving perfectly well.
  */
-class IdleDeadline {
+export class IdleDeadline {
   private readonly controller = new AbortController();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private unlink: (() => void) | null = null;
@@ -216,8 +216,41 @@ export type AgentWireMessage =
        * has to use. See `toReasoningDetails`.
        */
       reasoning_details?: Array<Record<string, unknown>>;
+      /**
+       * The round exactly as the Responses API finished it, kept for replay.
+       *
+       * That API's history is a list of output items rather than messages, and
+       * several of them cannot be rebuilt from this message: a reasoning item
+       * carries an opaque `encrypted_content` blob that is the model's own
+       * chain of thought, and a server tool's item is what OpenRouter keys an
+       * advisor's memory of an earlier consultation on. Reconstructing a
+       * message from `content` and `tool_calls` throws both away, so the
+       * original is carried alongside and handed back untouched.
+       *
+       * Never sent on the Chat Completions wire - it is not a field that API
+       * has - and `forCompletionsWire` is what makes sure of that.
+       */
+      response_output?: Array<Record<string, unknown>>;
     }
   | { role: 'tool'; tool_call_id: string; content: string };
+
+/**
+ * History with the fields only the other transport understands taken off.
+ *
+ * `response_output` is Fleet's own carrier rather than something Chat
+ * Completions accepts, and an unknown key on that endpoint is a 400 rather
+ * than something quietly ignored. Applied at the two places that put messages
+ * in a body, so a conversation that switched transports mid-session - which is
+ * what toggling deferral does - cannot carry one across.
+ */
+export function forCompletionsWire(messages: AgentWireMessage[]): AgentWireMessage[] {
+  return messages.map((message) => {
+    if (message.role !== 'assistant' || message.response_output === undefined) return message;
+    const { response_output, ...rest } = message;
+    void response_output;
+    return rest;
+  });
+}
 
 /** OpenRouter's `reasoning` parameter, in whichever form the model accepts. */
 export type ReasoningParam = { enabled: boolean } | { effort: string } | { max_tokens: number };
@@ -269,6 +302,17 @@ export type StreamRequest = {
    * `CompletionsTarget`.
    */
   serverTools?: ServerToolSpec[];
+  /**
+   * Tools that may be withheld from the model until it searches for them.
+   *
+   * A separate field rather than a flag on each spec, because whether a tool
+   * can be withheld at all is a property of the transport rather than of the
+   * tool. On Chat Completions there is no such thing: these are appended to
+   * `tools` and stated in full like everything else, which is the correct
+   * degradation - the model is offered every tool, and only the saving is
+   * lost. See `agent-tool-search.ts`.
+   */
+  deferredTools?: ToolSpec[];
   /** When OpenRouter should wind up its own loop. Omitted ⇒ its 30-step default. */
   serverToolStops?: ServerToolStop[] | null;
   signal: AbortSignal;
@@ -297,6 +341,14 @@ export type StreamOutcome = {
   serverToolCalls: ServerToolRecord[];
   /** Sources behind the answer, from the annotations and from the results. */
   citations: Citation[];
+  /**
+   * The finished output items, when the transport that ran the round has them.
+   *
+   * Absent on Chat Completions, which has no such thing. Present on Responses,
+   * where they are the only complete record of the round - see
+   * `response_output` on the wire message.
+   */
+  outputItems?: Array<Record<string, unknown>>;
   model: string | null;
   provider: string | null;
 };
@@ -513,10 +565,21 @@ const completionSchema = z.object({
  * has handed over its first delta the round is committed, and a failure after
  * that is the caller's to report rather than ours to paper over.
  */
-async function post(
+export async function post(
   target: CompletionsTarget,
   caller: AbortSignal | undefined,
   deadline: IdleDeadline,
+  /**
+   * The path under `baseUrl`, e.g. `/chat/completions` or `/responses`.
+   *
+   * A parameter rather than a constant because the Responses transport in
+   * `responses.ts` reuses this whole function - the retries, the backoff, the
+   * idle clock and the error envelope are the same for both endpoints, and
+   * only the path and the body differ. Two copies of the retry logic that
+   * drifted apart would be a worse outcome than this file exporting one more
+   * thing.
+   */
+  path: string,
   body: Record<string, unknown>
 ): Promise<Response> {
   const payload = JSON.stringify(body);
@@ -528,7 +591,7 @@ async function post(
 
     let res: Response;
     try {
-      res = await fetch(`${target.baseUrl}/chat/completions`, {
+      res = await fetch(`${target.baseUrl}${path}`, {
         method: 'POST',
         headers: {
           // Omitted rather than sent empty when there is no key. A local server
@@ -623,9 +686,9 @@ export async function completeOnce(
 ): Promise<{ text: string; usage: AgentUsage | null }> {
   const deadline = new IdleDeadline(req.signal, req.target.label);
   try {
-    const res = await post(req.target, req.signal, deadline, {
+    const res = await post(req.target, req.signal, deadline, '/chat/completions', {
       model: req.model,
-      messages: req.messages,
+      messages: forCompletionsWire(req.messages),
       stream: false,
       max_tokens: req.maxTokens,
       temperature: req.temperature,
@@ -851,9 +914,9 @@ async function errorMessage(res: Response, label: string): Promise<string> {
 export async function streamCompletion(req: StreamRequest): Promise<StreamOutcome> {
   const deadline = new IdleDeadline(req.signal, req.target.label);
   try {
-    const res = await post(req.target, req.signal, deadline, {
+    const res = await post(req.target, req.signal, deadline, '/chat/completions', {
       model: req.model,
-      messages: req.messages,
+      messages: forCompletionsWire(req.messages),
       stream: true,
       // Asked for only where it has to be. OpenRouter sends usage on the last
       // message regardless; an OpenAI-compatible server sends none without
@@ -929,7 +992,10 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
  * order.
  */
 function toolsBody(req: StreamRequest): Record<string, unknown> {
-  const functions = req.tools ?? [];
+  // Deferral needs the Responses API, so on this transport a deferred tool is
+  // simply a tool. Stating them all is the right failure: the turn costs what
+  // it costs today and nothing stops working.
+  const functions = [...(req.tools ?? []), ...(req.deferredTools ?? [])];
   const server = req.target.serverTools ? (req.serverTools ?? []) : [];
   const stops = server.length === 0 ? null : (req.serverToolStops ?? null);
   if (functions.length === 0 && server.length === 0) return {};

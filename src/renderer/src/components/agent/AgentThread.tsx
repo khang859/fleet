@@ -802,6 +802,9 @@ const Message = memo(function Message({
         const { part, key: i } = item;
         // Attachments are the user's, so an assistant turn never holds one.
         if (part.type === 'attachment') return null;
+        // The round kept whole for the model to be handed back. Nothing to
+        // draw: everything in it is already on screen as the parts beside it.
+        if (part.type === 'responses') return null;
         // Work that happened on OpenRouter's side. Its own row: there is no
         // permission to ask about it, nothing to stop, and no result to clear.
         if (part.type === 'server_tool') {

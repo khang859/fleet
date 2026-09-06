@@ -101,7 +101,11 @@ export function groupParts(parts: AgentPart[], askCallId: string | null): Transc
     // middle of a sweep is bookkeeping the transcript already declines to show,
     // and letting it split the sweep in two would put a seam on screen where
     // the reader can see no reason for one. Worth a third of the folding.
-    if (part.type === 'attachment' || (part.type === 'tool' && isTodoTool(part.call.name))) {
+    if (
+      part.type === 'attachment' ||
+      part.type === 'responses' ||
+      (part.type === 'tool' && isTodoTool(part.call.name))
+    ) {
       if (run === null) single(i);
       else run.passed.push(i);
       continue;

@@ -1,0 +1,60 @@
+data: {"type":"response.created","response":{"id":"gen-1788635443-nwPYvarXDCOrJwHg2nvI","object":"response","model":"openai/gpt-5.1-codex-mini","status":"in_progress","output":[],"error":null,"usage":null},"sequence_number":0}
+
+data: {"type":"response.in_progress","response":{"id":"gen-1788635443-nwPYvarXDCOrJwHg2nvI","object":"response","model":"openai/gpt-5.1-codex-mini","status":"in_progress","output":[],"error":null,"usage":null},"sequence_number":1}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_tmp_d3taq1tfkwu","type":"message","status":"in_progress","role":"assistant","content":[]},"sequence_number":2}
+
+data: {"type":"response.content_part.added","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"part":{"type":"output_text","text":"","annotations":[],"logprobs":[]},"sequence_number":3}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":"Found","logprobs":[],"sequence_number":4}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":" ","logprobs":[],"sequence_number":5}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":"2","logprobs":[],"sequence_number":6}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":" files","logprobs":[],"sequence_number":7}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":" with","logprobs":[],"sequence_number":8}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":" the","logprobs":[],"sequence_number":9}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":" `.","logprobs":[],"sequence_number":10}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":"ts","logprobs":[],"sequence_number":11}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":"`","logprobs":[],"sequence_number":12}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":" extension","logprobs":[],"sequence_number":13}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":":\n\n","logprobs":[],"sequence_number":14}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":"-","logprobs":[],"sequence_number":15}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":" a","logprobs":[],"sequence_number":16}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":".ts","logprobs":[],"sequence_number":17}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":"\n","logprobs":[],"sequence_number":18}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":"-","logprobs":[],"sequence_number":19}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":" b","logprobs":[],"sequence_number":20}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":".ts","logprobs":[],"sequence_number":21}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":"\n\n","logprobs":[],"sequence_number":22}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":"Done","logprobs":[],"sequence_number":23}
+
+data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"delta":".","logprobs":[],"sequence_number":24}
+
+data: {"type":"response.output_text.done","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"text":"Found 2 files with the `.ts` extension:\n\n- a.ts\n- b.ts\n\nDone.","logprobs":[],"sequence_number":25}
+
+data: {"type":"response.content_part.done","output_index":0,"item_id":"msg_tmp_d3taq1tfkwu","content_index":0,"part":{"type":"output_text","text":"Found 2 files with the `.ts` extension:\n\n- a.ts\n- b.ts\n\nDone.","annotations":[],"logprobs":[]},"sequence_number":26}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_tmp_d3taq1tfkwu","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Found 2 files with the `.ts` extension:\n\n- a.ts\n- b.ts\n\nDone.","annotations":[],"logprobs":[]}]},"sequence_number":27}
+
+data: {"type":"response.completed","response":{"id":"gen-1788635443-nwPYvarXDCOrJwHg2nvI","object":"response","created_at":1788635443,"model":"openai/gpt-5.1-codex-mini","status":"completed","completed_at":1788635444,"output":[{"id":"msg_tmp_d3taq1tfkwu","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Found 2 files with the `.ts` extension:\n\n- a.ts\n- b.ts\n\nDone.","annotations":[],"logprobs":[]}]}],"error":null,"incomplete_details":null,"tools":[{"type":"function","name":"glob","description":"Find files by path pattern.","parameters":{"type":"object","properties":{"pattern":{"type":"string"}},"required":["pattern"],"additionalProperties":false},"strict":null},{"type":"function","name":"widget_registry_lookup","description":"Look up a widget in the widget registry by its serial number.","parameters":{"type":"object","properties":{"serial":{"type":"string"}},"required":["serial"],"additionalProperties":false},"defer_loading":true,"strict":null}],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":3000,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":null,"text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_options":null,"usage":{"input_tokens":551,"input_tokens_details":{"cached_tokens":0},"output_tokens":25,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":576,"cost":0.00018775,"cost_details":{"upstream_inference_cost":0.00018775,"upstream_inference_input_cost":0.00013775,"upstream_inference_output_cost":5e-05}}},"sequence_number":28}
+
+data: [DONE]
+

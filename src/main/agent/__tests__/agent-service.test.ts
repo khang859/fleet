@@ -428,6 +428,63 @@ describe('turnServerTools', () => {
       'openrouter:fusion'
     ]);
   });
+
+  /*
+   * Tool search is asked for by the caller rather than read from the settings
+   * alone, because a request with nothing deferred has nothing for it to find:
+   * the tool could only answer "nothing", and would cost a round to say so.
+   */
+  it('leaves tool search out unless the caller says something is deferred', () => {
+    const on = { ...settings, toolSearch: { enabled: true, maxResults: 5 } };
+    expect(turnServerTools(on).map((t) => t.type)).not.toContain('openrouter:tool_search');
+    expect(turnServerTools(on, { fusion: false, toolSearch: true }).map((t) => t.type)).toContain(
+      'openrouter:tool_search'
+    );
+  });
+
+  it('leaves tool search out when the setting is off, whatever the caller asks', () => {
+    expect(
+      turnServerTools(settings, { fusion: false, toolSearch: true }).map((t) => t.type)
+    ).not.toContain('openrouter:tool_search');
+  });
+
+  /* Same rule as the hosted reader: nothing may displace the advisor. */
+  it('adds tool search after the advisor, never before it', () => {
+    const on = turnServerTools(
+      { ...settings, toolSearch: { enabled: true, maxResults: 5 } },
+      { fusion: false, toolSearch: true }
+    );
+    expect(on[0]?.type).toBe('openrouter:advisor');
+    expect(on.map((t) => t.type)).toContain('openrouter:tool_search');
+  });
+});
+
+/*
+ * The block that stops a deferred tool list reading as a short one.
+ *
+ * Without it the failure is silent and expensive: the model reads the twenty
+ * tools it can see, concludes there is no way to reach the user's issue
+ * tracker, and says so - while the tool sits one search away.
+ */
+describe('buildSystemPrompt: deferred tools', () => {
+  it('says the list is incomplete only when something is actually held back', () => {
+    const off = buildSystemPrompt('/repo', null, { image: false, mcp: true });
+    const on = buildSystemPrompt('/repo', null, { image: false, mcp: true, toolSearch: true });
+    expect(off).not.toContain('openrouter:tool_search');
+    expect(on).toContain('openrouter:tool_search');
+  });
+
+  /*
+   * Read together or not at all: the MCP block says what connected servers are
+   * for, and this one says most of them are not in the list. Apart, the first
+   * reads as a complete account.
+   */
+  it('follows the block about connected servers', () => {
+    const on = buildSystemPrompt('/repo', null, { image: false, mcp: true, toolSearch: true });
+    const servers = on.indexOf('come from servers the user connected');
+    expect(servers).toBeGreaterThan(-1);
+    expect(on.indexOf('## Tools you have not been shown')).toBeGreaterThan(servers);
+  });
 });
 
 /**
@@ -1048,6 +1105,162 @@ describe('toWireHistory', () => {
     // Never as a tool_call: nothing here can dispatch it, and OpenRouter is not
     // waiting for a result it already has.
     expect(messages.some((m) => 'tool_calls' in m)).toBe(false);
+  });
+
+  /*
+   * The Responses transport is handed its own history back verbatim, and the
+   * only place the bytes survive a finished turn is the transcript. Rebuilding
+   * the round from the parts beside it loses the reasoning `encrypted_content`,
+   * which is the memory the round was kept for.
+   */
+  it('replays a Responses round from the transcript, whole', async () => {
+    const items = [
+      { type: 'reasoning', id: 'rs_1', encrypted_content: 'opaque', summary: [] },
+      {
+        type: 'message',
+        id: 'msg_1',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'Zod 4 renames it.' }]
+      }
+    ];
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Zod 4 renames it.' },
+        { type: 'responses', items }
+      ],
+      reasoning: '',
+      reasoningMs: null,
+      citations: []
+    };
+
+    const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+
+    expect(messages.slice(1, -1)).toEqual([
+      { role: 'assistant', content: 'Zod 4 renames it.', response_output: items }
+    ]);
+  });
+
+  /*
+   * A turn is many rounds, and each one goes back as the round it was. One
+   * carrier standing in for the whole turn would replay the last round twice
+   * and lose every round before it.
+   */
+  it('keeps one Responses round per round of a turn', async () => {
+    const first = [{ type: 'reasoning', id: 'rs_1', encrypted_content: 'one' }];
+    const second = [{ type: 'reasoning', id: 'rs_2', encrypted_content: 'two' }];
+    const call: AgentToolCall = {
+      id: 'call_1',
+      name: 'read',
+      args: '{"path":"a.ts"}',
+      result: 'a.ts lines 1-1',
+      error: null,
+      summary: null,
+      image: null,
+      todos: null,
+      task: null
+    };
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Let me look.' },
+        { type: 'responses', items: first },
+        { type: 'tool', call },
+        { type: 'text', text: 'It says 42.' },
+        { type: 'responses', items: second }
+      ],
+      reasoning: '',
+      reasoningMs: null,
+      citations: []
+    };
+
+    const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+
+    expect(messages.slice(1, -1)).toEqual([
+      {
+        role: 'assistant',
+        content: 'Let me look.',
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'read', arguments: '{"path":"a.ts"}' }
+          }
+        ],
+        response_output: first
+      },
+      { role: 'tool', tool_call_id: 'call_1', content: 'a.ts lines 1-1' },
+      { role: 'assistant', content: 'It says 42.', response_output: second }
+    ]);
+  });
+
+  /*
+   * Two tool rounds with nothing said between them, which is most of what a
+   * working turn looks like: a model that calls a tool, reads the result and
+   * calls another rarely writes a sentence in between.
+   *
+   * Nothing but the raw round marks that boundary, so without it both rounds
+   * fold into one message carrying the second round's items. Those items are
+   * replayed in place of the message, so the first round's `function_call` goes
+   * missing while the `tool` result answering it stays - an unmatched result,
+   * which is a 400 rather than a degraded reply.
+   */
+  it('splits two tool rounds that had nothing said between them', async () => {
+    const first = [
+      { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'read', arguments: '{}' }
+    ];
+    const second = [
+      { type: 'function_call', id: 'fc_2', call_id: 'call_2', name: 'read', arguments: '{}' }
+    ];
+    const call = (id: string): AgentToolCall => ({
+      id,
+      name: 'read',
+      args: '{}',
+      result: `${id} came back`,
+      error: null,
+      summary: null,
+      image: null,
+      todos: null,
+      task: null
+    });
+    const turn: AgentMessage = {
+      id: 'b',
+      role: 'assistant',
+      parts: [
+        { type: 'responses', items: first },
+        { type: 'tool', call: call('call_1') },
+        { type: 'responses', items: second },
+        { type: 'tool', call: call('call_2') }
+      ],
+      reasoning: '',
+      reasoningMs: null,
+      citations: []
+    };
+
+    const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
+
+    expect(messages.slice(1, -1)).toEqual([
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'call_1', type: 'function', function: { name: 'read', arguments: '{}' } }
+        ],
+        response_output: first
+      },
+      { role: 'tool', tool_call_id: 'call_1', content: 'call_1 came back' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'call_2', type: 'function', function: { name: 'read', arguments: '{}' } }
+        ],
+        response_output: second
+      },
+      { role: 'tool', tool_call_id: 'call_2', content: 'call_2 came back' }
+    ]);
   });
 
   it('answers a call that never came back, so none is left dangling', async () => {
@@ -2787,7 +3000,8 @@ describe('reporting what a round found', () => {
     expect(found[0].payload).toEqual({
       streamId: 'stream-1',
       calls: [],
-      citations: [source('https://example.test/a')]
+      citations: [source('https://example.test/a')],
+      outputItems: []
     });
   });
 
@@ -2807,11 +3021,30 @@ describe('reporting what a round found', () => {
     expect(found[0].payload).toEqual({
       streamId: 'stream-1',
       calls: [call],
-      citations: [source('https://example.test/b')]
+      citations: [source('https://example.test/b')],
+      outputItems: []
     });
   });
 
   it('says nothing about a round that ran nothing and cited nothing', async () => {
     expect(await reported({})).toEqual([]);
+  });
+
+  /*
+   * A Responses round that ran no remote tool still has to reach the pane. The
+   * pane holds the transcript, the next user turn is answered from it, and a
+   * round missing from there is a round the model is asked to remember without
+   * being shown - which is exactly the reasoning it was told to keep encrypted.
+   */
+  it('reports a Responses round that ran nothing, for the transcript to keep', async () => {
+    const items = [{ type: 'reasoning', id: 'rs_1', encrypted_content: 'opaque' }];
+    const found = await reported({ outputItems: items });
+
+    expect(found[0].payload).toEqual({
+      streamId: 'stream-1',
+      calls: [],
+      citations: [],
+      outputItems: items
+    });
   });
 });

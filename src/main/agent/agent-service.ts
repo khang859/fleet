@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
+import { createLogger } from '../logger';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type {
   AgentAttachment,
@@ -36,6 +37,7 @@ import { toDataUrl } from './image-kinds';
 import {
   buildImageSpec,
   buildTaskSpec,
+  toolDefinitionTokens,
   toolSpecsFor,
   type AgentImageGenerator,
   type AgentMcpCaller,
@@ -90,6 +92,8 @@ import { webSearchSpec } from '../../shared/agent-web-search';
 import { hostedFetchSpec } from '../../shared/agent-hosted-fetch';
 import { advisorSpec } from '../../shared/agent-advisor';
 import { fusionSpec } from '../../shared/agent-fusion';
+import { splitDeferred, toolSearchSpec } from '../../shared/agent-tool-search';
+import { streamResponse } from './responses';
 import { isFusionTurn } from './commands/expand';
 import { runAgentTool } from './tools/run';
 import {
@@ -102,6 +106,8 @@ import {
 import { generateImage } from './images';
 import { capResult, fetchUrl as defaultFetchUrl, type UrlFetch } from './web';
 import type { PermissionGate } from './permissions/gate';
+
+const log = createLogger('agent');
 
 /**
  * One turn of the agent: take the pane's transcript, stream a reply, run
@@ -138,6 +144,8 @@ type Deps = {
   schedules: ScheduleStore;
   /** Injectable for tests; defaults to the real OpenRouter call. */
   stream?: typeof streamCompletion;
+  /** Swapped in tests. The Responses transport, used only when tools defer. */
+  streamResponses?: typeof streamResponse;
   /** Injectable for tests; defaults to the real OpenRouter image call. */
   image?: typeof generateImage;
   /**
@@ -182,6 +190,14 @@ type RoundsRequest = {
   /** The wire, ready to send. Appended to as the rounds go. */
   messages: AgentWireMessage[];
   tools: ToolSpec[];
+  /**
+   * Tools the model is told about only if it searches for them.
+   *
+   * Empty everywhere but a turn on OpenRouter with deferral switched on, which
+   * is also the only case that reaches the Responses transport. See
+   * `agent-tool-search.ts`.
+   */
+  deferredTools: ToolSpec[];
   /**
    * Tools OpenRouter runs itself, for the rounds of this run only.
    *
@@ -356,7 +372,8 @@ function roundMessage(
   text: string,
   calls: AgentToolCall[],
   remote: ServerToolRecord[] = [],
-  citations: Citation[] = []
+  citations: Citation[] = [],
+  outputItems: Array<Record<string, unknown>> = []
 ): AgentMessage {
   return {
     id: randomUUID(),
@@ -371,6 +388,9 @@ function roundMessage(
       // own loop before it sent a byte of the text the model wrote about it.
       ...remote.map((call) => ({ type: 'server_tool' as const, call })),
       ...(text === '' ? [] : [{ type: 'text' as const, text }]),
+      // The round whole, between what it said and what it asked for, which is
+      // where `toWireHistory` reads it back from.
+      ...(outputItems.length === 0 ? [] : [{ type: 'responses' as const, items: outputItems }]),
       ...calls.map((call) => ({ type: 'tool' as const, call }))
     ]
   };
@@ -405,12 +425,16 @@ const SERVER_TOOL_MAX_STEPS = 10;
  */
 export function turnServerTools(
   settings: AgentSettings,
-  options: { fusion: boolean } = { fusion: false }
+  options: { fusion: boolean; toolSearch?: boolean } = { fusion: false }
 ): ServerToolSpec[] {
   return [
     advisorSpec(settings.advisor),
     webSearchSpec(settings.webSearch),
     hostedFetchSpec(settings.hostedFetch),
+    // Only where something is actually deferred. Sent on a request with no
+    // deferred tool it is a tool that can only ever answer "nothing found",
+    // which costs a round to learn.
+    options.toolSearch === true ? toolSearchSpec(settings.toolSearch) : null,
     // Last, and only on the turn that asked for it. A panel is nine model calls
     // on one use, so it is armed by the user typing `/fusion` and by nothing
     // else - there is no setting that can put it on an ordinary turn. Last
@@ -720,10 +744,21 @@ async function toWireMessages(
    * already contains its own result. Two channels for two kinds of history.
    */
   let remote: ServerToolRecord[] = [];
+  /**
+   * The round as the Responses API finished it, when it was one.
+   *
+   * Handed straight back rather than rebuilt from the parts beside it, which is
+   * what the transport asks for: the reasoning items carry an
+   * `encrypted_content` nothing on this side can regenerate, and a rebuilt copy
+   * of it is not a copy. `toResponsesInput` replays this in place of everything
+   * else the round would have become; Chat Completions has no use for it and
+   * drops it on the way out.
+   */
+  let output: Array<Record<string, unknown>> = [];
 
   /** One round: what was said, what it asked for, and what came back. */
   const flush = async (): Promise<void> => {
-    if (text === '' && calls.length === 0 && remote.length === 0) return;
+    if (text === '' && calls.length === 0 && remote.length === 0 && output.length === 0) return;
     wire.push({
       role: 'assistant',
       content: text,
@@ -736,7 +771,8 @@ async function toWireMessages(
             }))
           }
         : {}),
-      ...(remote.length > 0 ? { reasoning_details: toReasoningDetails(remote) } : {})
+      ...(remote.length > 0 ? { reasoning_details: toReasoningDetails(remote) } : {}),
+      ...(output.length > 0 ? { response_output: output } : {})
     });
     const images: AgentWireMessage[] = [];
     for (const call of calls) {
@@ -754,15 +790,27 @@ async function toWireMessages(
     text = '';
     calls = [];
     remote = [];
+    output = [];
   };
 
   for (const part of message.parts) {
     // Text after a call opens the next round, so the round that just ended goes
     // out before it rather than swallowing it.
     if (part.type === 'text' && calls.length > 0) await flush();
+    // So does a second raw round, and this is the only thing that marks the
+    // boundary when a model calls tools twice with nothing said in between -
+    // which is most of what a working turn looks like. Without it the second
+    // round's items overwrite the first's, and since the items are replayed in
+    // place of the message they came from, the first round's `function_call`
+    // disappears while the `tool` result answering it does not. That is an
+    // unmatched result, which the API rejects outright.
+    if (part.type === 'responses' && output.length > 0) await flush();
     if (part.type === 'text') text += part.text;
     else if (part.type === 'tool') calls.push(part.call);
     else if (part.type === 'server_tool') remote.push(part.call);
+    // Assigned rather than appended: a round has exactly one of these, and the
+    // flush above is what keeps that true.
+    else if (part.type === 'responses') output = part.items;
     // An attachment on an assistant message cannot happen - only the composer
     // makes them - and there is nothing sensible to send if one ever did.
   }
@@ -1056,6 +1104,12 @@ export class AgentService {
     // call it made and the answer it gets.
     const mcp = this.deps.mcp ?? null;
     const mcpSpecs = mcp?.getToolSpecs() ?? [];
+    // Deferral needs OpenRouter's executor and its Responses endpoint, so a
+    // local target keeps every tool stated in full whatever the setting says.
+    // There is nothing to fall back to and nothing to warn about: the user is
+    // simply on an endpoint where the saving does not exist.
+    const deferring = ctx.settings.toolSearch.enabled && ctx.target.serverTools;
+    const { loaded: mcpLoaded, deferred } = splitDeferred(mcpSpecs, deferring);
     const subagents = await this.deps.subagents.list(req.cwd);
     const taskSpec = buildTaskSpec(subagents);
     // Read per turn for the reason subagents are: the file is the interface, and
@@ -1107,6 +1161,10 @@ export class AgentService {
         // prompt it is handed, and it is present exactly on the turns the panel
         // is.
         fusion: panel === false ? undefined : panel,
+        // Only when something is actually being held back. On a turn with no
+        // servers connected the block would tell the model to search a list
+        // that is empty, which costs a round to find out.
+        toolSearch: deferred.length > 0,
         env,
         image: imageModel !== null,
         mcp: mcpSpecs.length > 0,
@@ -1126,21 +1184,42 @@ export class AgentService {
       wireTime(env.timeZone)
     );
 
+    const tools = toolSpecsFor({
+      image: imageSpec,
+      webFetch: ctx.settings.webFetch.enabled,
+      mcp: mcpLoaded,
+      task: taskSpec,
+      skill: skillSpec,
+      memory: memorySpec
+    });
+    // What the tool list costs before the conversation says anything, logged
+    // once per turn because it is charged once per round: a turn of eight
+    // rounds pays this eight times. It is the figure deferral is judged
+    // against, and it moves with what the user has connected rather than with
+    // anything Fleet ships, so it has to be read from a real machine.
+    log.debug('tool definitions', {
+      tools: tools.length,
+      mcpTools: mcpSpecs.length,
+      deferred: deferred.length,
+      tokens: toolDefinitionTokens(tools),
+      deferredTokens: toolDefinitionTokens(deferred)
+    });
+
     await this.runRounds(
       {
         streamId: req.streamId,
         threadId: req.threadId,
         cwd: req.cwd,
         messages,
-        tools: toolSpecsFor({
-          image: imageSpec,
-          webFetch: ctx.settings.webFetch.enabled,
-          mcp: mcpSpecs,
-          task: taskSpec,
-          skill: skillSpec,
-          memory: memorySpec
+        tools,
+        deferredTools: deferred,
+        serverTools: turnServerTools(ctx.settings, {
+          fusion: panel === 'available',
+          // On what is actually held back rather than on the setting. With
+          // deferral on and no server connected the tool could only ever
+          // answer "nothing found", and the model would spend a round asking.
+          toolSearch: deferred.length > 0
         }),
-        serverTools: turnServerTools(ctx.settings, { fusion: panel === 'available' }),
         serverToolStops:
           panel === 'available'
             ? // A review turn does not take the search brake. That figure bounds
@@ -1256,6 +1335,7 @@ export class AgentService {
         maxTokens: config.maxTokens,
         reasoning: toReasoningParam(config),
         tools,
+        deferredTools: run.deferredTools,
         serverTools: run.serverTools,
         serverToolStops: run.serverToolStops,
         onDelta: (delta) => {
@@ -1279,16 +1359,30 @@ export class AgentService {
       // natively reports one and not the other: annotations on the reply, no
       // record. Keying the event on records alone loses those sources entirely,
       // and the answer is left citing pages the reader cannot open.
-      if ((outcome.serverToolCalls.length > 0 || outcome.citations.length > 0) && !run.quiet) {
+      //
+      // The raw round is checked too, and for the same kind of reason: a
+      // Responses round with neither records nor sources still has to reach the
+      // pane, because the pane is where the transcript lives and the transcript
+      // is what the next user turn is answered from.
+      const outputItems = outcome.outputItems ?? [];
+      if (
+        (outcome.serverToolCalls.length > 0 ||
+          outcome.citations.length > 0 ||
+          outputItems.length > 0) &&
+        !run.quiet
+      ) {
         emit(IPC_CHANNELS.AGENT_SERVER_TOOL, {
           streamId,
           calls: outcome.serverToolCalls,
-          citations: outcome.citations
+          citations: outcome.citations,
+          outputItems
         } satisfies AgentServerToolEvent);
       }
 
       if (outcome.toolCalls.length === 0) {
-        run.onRound?.(roundMessage(round.content, [], outcome.serverToolCalls, outcome.citations));
+        run.onRound?.(
+          roundMessage(round.content, [], outcome.serverToolCalls, outcome.citations, outputItems)
+        );
         return round.content;
       }
 
@@ -1299,9 +1393,17 @@ export class AgentService {
         // Handed straight back on the next round of this same turn. Without
         // this a model that consulted an advisor in round one is answered in
         // round two by an advisor with no memory of having been asked.
+        //
+        // Two carriers because the two transports keep this in different
+        // places, and each is read only by the one that understands it.
+        // `reasoning_details` is the channel OpenRouter chose on Chat
+        // Completions; `response_output` is the round as the Responses API
+        // finished it, which also carries the reasoning `encrypted_content`
+        // that has no equivalent in a rebuilt message.
         ...(outcome.serverToolCalls.length === 0
           ? {}
-          : { reasoning_details: toReasoningDetails(outcome.serverToolCalls) })
+          : { reasoning_details: toReasoningDetails(outcome.serverToolCalls) }),
+        ...(outputItems.length === 0 ? {} : { response_output: outputItems })
       });
       const images: AgentWireMessage[] = [];
       const before = todos.items;
@@ -1385,7 +1487,9 @@ export class AgentService {
       // results, and a picture in the middle of one is not a result.
       messages.push(...images);
       todos.streak = nextStreak(todos.streak, before, todos.items);
-      run.onRound?.(roundMessage(round.content, drawn, outcome.serverToolCalls, outcome.citations));
+      run.onRound?.(
+        roundMessage(round.content, drawn, outcome.serverToolCalls, outcome.citations, outputItems)
+      );
     }
 
     throw new Error(
@@ -1558,6 +1662,9 @@ export class AgentService {
           // person, so its spending is one step further from anybody who could
           // have decided to allow it. What a child researches on the public web
           // it researches through the parent, which asked it a question.
+          // A child is not given an MCP server either, so it has nothing that
+          // could be deferred and no search to make.
+          deferredTools: [],
           serverTools: [],
           serverToolStops: null,
           mcp: null,
@@ -1780,6 +1887,7 @@ export class AgentService {
       maxTokens: number | null;
       reasoning: ReasoningParam | null;
       tools?: ToolSpec[];
+      deferredTools?: ToolSpec[];
       serverTools?: ServerToolSpec[];
       serverToolStops?: ServerToolStop[] | null;
       onDelta: (text: string) => void;
@@ -1787,7 +1895,17 @@ export class AgentService {
       onUsage: (usage: AgentUsage) => void;
     }
   ): Promise<StreamOutcome> {
-    const stream = this.deps.stream ?? streamCompletion;
+    // The transport follows the request rather than a setting, and this is the
+    // one line that chooses it. A deferred tool is only ever populated on a
+    // turn against OpenRouter with deferral on, and `openrouter:tool_search` is
+    // a 400 on Chat Completions - so the presence of one is exactly the
+    // condition that needs the other endpoint. Everything else in the app,
+    // including every compaction and every subagent, keeps the transport it
+    // has always used.
+    const deferring = (req.deferredTools?.length ?? 0) > 0;
+    const stream = deferring
+      ? (this.deps.streamResponses ?? streamResponse)
+      : (this.deps.stream ?? streamCompletion);
     return stream({
       target: ctx.target,
       model: ctx.model,

@@ -28,7 +28,7 @@ import { messageText, type AgentMessage, type AgentTurnUsage } from './agent-typ
  * carries its own shape and the reader accepts the older ones (see
  * `LegacyMessage`) rather than branching on this number.
  */
-export const SESSION_LOG_VERSION = 7;
+export const SESSION_LOG_VERSION = 8;
 
 const ToolImageSchema = z.object({ path: z.string(), mimeType: z.string() });
 
@@ -115,6 +115,19 @@ const PartSchema = z.discriminatedUnion('type', [
    * are what the replay contract asks for.
    */
   z.object({ type: z.literal('server_tool'), call: ServerToolCallSchema }),
+  /**
+   * A Responses round kept whole, new in version 8.
+   *
+   * `z.unknown()` on the values rather than a shape, because the shape is
+   * OpenRouter's and the contract is that the bytes go back as they came. A
+   * schema that named the fields it knew would drop the ones it did not - the
+   * encrypted reasoning among them - which is the whole thing this part exists
+   * to keep.
+   */
+  z.object({
+    type: z.literal('responses'),
+    items: z.array(z.record(z.string(), z.unknown()))
+  }),
   z.object({ type: z.literal('attachment'), attachment: AttachmentSchema })
 ]);
 
