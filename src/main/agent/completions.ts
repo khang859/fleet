@@ -216,8 +216,41 @@ export type AgentWireMessage =
        * has to use. See `toReasoningDetails`.
        */
       reasoning_details?: Array<Record<string, unknown>>;
+      /**
+       * The round exactly as the Responses API finished it, kept for replay.
+       *
+       * That API's history is a list of output items rather than messages, and
+       * several of them cannot be rebuilt from this message: a reasoning item
+       * carries an opaque `encrypted_content` blob that is the model's own
+       * chain of thought, and a server tool's item is what OpenRouter keys an
+       * advisor's memory of an earlier consultation on. Reconstructing a
+       * message from `content` and `tool_calls` throws both away, so the
+       * original is carried alongside and handed back untouched.
+       *
+       * Never sent on the Chat Completions wire - it is not a field that API
+       * has - and `forCompletionsWire` is what makes sure of that.
+       */
+      response_output?: Array<Record<string, unknown>>;
     }
   | { role: 'tool'; tool_call_id: string; content: string };
+
+/**
+ * History with the fields only the other transport understands taken off.
+ *
+ * `response_output` is Fleet's own carrier rather than something Chat
+ * Completions accepts, and an unknown key on that endpoint is a 400 rather
+ * than something quietly ignored. Applied at the two places that put messages
+ * in a body, so a conversation that switched transports mid-session - which is
+ * what toggling deferral does - cannot carry one across.
+ */
+export function forCompletionsWire(messages: AgentWireMessage[]): AgentWireMessage[] {
+  return messages.map((message) => {
+    if (message.role !== 'assistant' || message.response_output === undefined) return message;
+    const { response_output, ...rest } = message;
+    void response_output;
+    return rest;
+  });
+}
 
 /** OpenRouter's `reasoning` parameter, in whichever form the model accepts. */
 export type ReasoningParam = { enabled: boolean } | { effort: string } | { max_tokens: number };
@@ -308,6 +341,14 @@ export type StreamOutcome = {
   serverToolCalls: ServerToolRecord[];
   /** Sources behind the answer, from the annotations and from the results. */
   citations: Citation[];
+  /**
+   * The finished output items, when the transport that ran the round has them.
+   *
+   * Absent on Chat Completions, which has no such thing. Present on Responses,
+   * where they are the only complete record of the round - see
+   * `response_output` on the wire message.
+   */
+  outputItems?: Array<Record<string, unknown>>;
   model: string | null;
   provider: string | null;
 };
@@ -647,7 +688,7 @@ export async function completeOnce(
   try {
     const res = await post(req.target, req.signal, deadline, '/chat/completions', {
       model: req.model,
-      messages: req.messages,
+      messages: forCompletionsWire(req.messages),
       stream: false,
       max_tokens: req.maxTokens,
       temperature: req.temperature,
@@ -875,7 +916,7 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
   try {
     const res = await post(req.target, req.signal, deadline, '/chat/completions', {
       model: req.model,
-      messages: req.messages,
+      messages: forCompletionsWire(req.messages),
       stream: true,
       // Asked for only where it has to be. OpenRouter sends usage on the last
       // message regardless; an OpenAI-compatible server sends none without

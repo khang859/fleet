@@ -74,12 +74,15 @@ export type ResponsesItem = Record<string, unknown>;
  *   output answers which call, and every call must have its output before the
  *   next assistant turn or the request is rejected.
  *
- * Server-tool records replay through `reasoning_details` on Chat Completions.
- * They have no equivalent here - the items OpenRouter streams for its own
- * tools are its own to remember - so they are not resent, and an advisor's
- * cross-request memory does not survive this transport. That is a real
- * limitation and the reason `AgentService` only reaches for this transport
- * when deferral is actually on.
+ * An assistant round that this transport produced is replayed from the items it
+ * finished with rather than rebuilt from `content` and `tool_calls`. Rebuilding
+ * loses the two things that only exist as items: a reasoning item's opaque
+ * `encrypted_content`, which is the model's own chain of thought carried
+ * between rounds, and a server tool's item, which is what an advisor's memory
+ * of an earlier consultation is keyed on. Both are handed back byte for byte.
+ *
+ * A round that came from Chat Completions has no items, and is rebuilt the
+ * mechanical way - which is right, because there was never anything more to it.
  */
 export function toResponsesInput(messages: AgentWireMessage[]): ResponsesItem[] {
   const items: ResponsesItem[] = [];
@@ -93,6 +96,14 @@ export function toResponsesInput(messages: AgentWireMessage[]): ResponsesItem[] 
       continue;
     }
     if (message.role === 'assistant') {
+      // The round as this API finished it, when this API is what ran it. Handed
+      // back untouched: re-encoding is not the same bytes, and the same bytes
+      // are what the replay contract asks for.
+      const finished = message.response_output ?? [];
+      if (finished.length > 0) {
+        items.push(...finished);
+        continue;
+      }
       // An assistant turn that only asked for tools has no text, and an empty
       // message item is rejected rather than ignored.
       if (message.content !== '') {
@@ -160,8 +171,16 @@ export function toResponsesTool(spec: ToolSpec, deferred: boolean): Record<strin
  * round on the kind that does not have it. Unknown types are kept rather than
  * dropped: OpenRouter adds server tools faster than this file can follow, and
  * a record for a tool this build has not heard of should still be shown.
+ *
+ * Loose rather than plain for the same reason, and it is load bearing. A plain
+ * `z.object` drops every key it was not told about, which here would be most of
+ * what an item carries: a reasoning item's `encrypted_content`, an advisor
+ * item's `instance_name`, and whatever a server tool this build has never heard
+ * of states as its arguments. Those keys are exactly the ones a replay has to
+ * hand back byte for byte, so a narrowing parse would quietly empty the round
+ * out on its way through and leave the shape of it behind.
  */
-const outputItemSchema = z.object({
+const outputItemSchema = z.looseObject({
   type: z.string(),
   id: z.string().nullish(),
   status: z.string().nullish(),
@@ -360,11 +379,23 @@ export function collectOutput(items: Array<z.infer<typeof outputItemSchema>>): {
 export async function streamResponse(req: StreamRequest): Promise<StreamOutcome> {
   const deadline = new IdleDeadline(req.signal, req.target.label);
   try {
+    // The same rule Chat Completions follows: a stop condition goes only where
+    // server tools went, since on its own it is a rule about a loop that will
+    // never run. Left off, the spend brake and the step ceiling the user
+    // configured simply do not apply to a deferred turn - the two settings
+    // would be on screen and doing nothing.
+    //
+    // The endpoint parses this rather than ignoring it: an invented condition
+    // type comes back 400 naming `step_count_is`, `has_tool_call`,
+    // `max_tokens_used`, `max_cost` and `finish_reason_is` as the ones it
+    // knows, which is the set `serverToolStops` already builds from.
+    const server = req.serverTools ?? [];
+    const stops = server.length === 0 ? null : (req.serverToolStops ?? null);
     const tools = [
       // Server tools first, for the reason `toolsBody` gives: an advisor's
       // position in this array is what its own memory is keyed on, and the
       // function half of the list is not stable across a conversation.
-      ...(req.serverTools ?? []),
+      ...server,
       ...(req.tools ?? []).map((spec) => toResponsesTool(spec, false)),
       ...(req.deferredTools ?? []).map((spec) => toResponsesTool(spec, true))
     ];
@@ -379,7 +410,8 @@ export async function streamResponse(req: StreamRequest): Promise<StreamOutcome>
       ...(req.maxTokens === null ? {} : { max_output_tokens: req.maxTokens }),
       ...(req.temperature === null ? {} : { temperature: req.temperature }),
       ...(req.reasoning === null ? {} : { reasoning: req.reasoning }),
-      ...(tools.length === 0 ? {} : { tools })
+      ...(tools.length === 0 ? {} : { tools }),
+      ...(stops === null || stops.length === 0 ? {} : { stop_server_tools_when: stops })
       // `tool_choice` is deliberately never sent. With deferral active the API
       // accepts it only as `auto` or `allowed_tools` and 400s on anything else,
       // and Fleet has never had a reason to send it. Written down so that stays
@@ -458,6 +490,10 @@ export async function streamResponse(req: StreamRequest): Promise<StreamOutcome>
         collected.citations,
         ...collected.serverToolCalls.map((call) => call.citations)
       ),
+      // The round as the API finished it, so the next request can hand it back
+      // rather than describe it. Parsed rather than raw only in the sense that
+      // zod validated the envelope - the items themselves are passed through.
+      outputItems: final.output ?? [],
       model: final.model ?? null,
       provider: final.provider ?? null
     };

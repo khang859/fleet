@@ -1351,9 +1351,19 @@ export class AgentService {
         // Handed straight back on the next round of this same turn. Without
         // this a model that consulted an advisor in round one is answered in
         // round two by an advisor with no memory of having been asked.
+        //
+        // Two carriers because the two transports keep this in different
+        // places, and each is read only by the one that understands it.
+        // `reasoning_details` is the channel OpenRouter chose on Chat
+        // Completions; `response_output` is the round as the Responses API
+        // finished it, which also carries the reasoning `encrypted_content`
+        // that has no equivalent in a rebuilt message.
         ...(outcome.serverToolCalls.length === 0
           ? {}
-          : { reasoning_details: toReasoningDetails(outcome.serverToolCalls) })
+          : { reasoning_details: toReasoningDetails(outcome.serverToolCalls) }),
+        ...((outcome.outputItems?.length ?? 0) === 0
+          ? {}
+          : { response_output: outcome.outputItems })
       });
       const images: AgentWireMessage[] = [];
       const before = todos.items;

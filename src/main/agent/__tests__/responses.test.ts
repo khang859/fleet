@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { streamResponse, toResponsesInput, toResponsesTool } from '../responses';
 import { openRouterTarget } from '../openrouter';
+import { forCompletionsWire, type AgentWireMessage } from '../completions';
 import type { AgentUsage } from '../../../shared/agent-types';
 
 /**
@@ -304,5 +305,153 @@ describe('when the round does not finish', () => {
     const outcome = await streamResponse({ ...base, target: openRouterTarget('sk-or-test') });
     expect(outcome.model).toBe('m');
     expect(outcome.toolCalls).toEqual([]);
+  });
+});
+
+/*
+ * The spend brake and the step ceiling, which used to stop existing the moment
+ * deferral was switched on.
+ *
+ * `AgentService` builds the same conditions for both transports, and this one
+ * simply never serialised them - so a turn with an MCP server connected ran
+ * OpenRouter's loop under its defaults while the two settings sat on screen
+ * saying otherwise. The endpoint does parse the field: an invented condition
+ * type comes back 400 naming the five it knows.
+ */
+describe('stop conditions', () => {
+  const stops = [
+    { type: 'step_count_is' as const, step_count: 10 },
+    { type: 'max_cost' as const, max_cost_in_dollars: 0.25 }
+  ];
+  const searchTool = { type: 'openrouter:tool_search', parameters: { max_results: 5 } };
+
+  it('sends them when server tools went', async () => {
+    const sent = replaying(fixture('history-replay'));
+    await streamResponse({
+      ...base,
+      target: openRouterTarget('sk-or-test'),
+      serverTools: [searchTool],
+      serverToolStops: stops
+    });
+    expect(sent[0]?.body.stop_server_tools_when).toEqual(stops);
+  });
+
+  /* On its own it is a rule about a loop that will never run. */
+  it('leaves them off when no server tool went', async () => {
+    const sent = replaying(fixture('history-replay'));
+    await streamResponse({
+      ...base,
+      target: openRouterTarget('sk-or-test'),
+      tools: [{ type: 'function', function: { name: 'read', description: 'r', parameters: {} } }],
+      serverToolStops: stops
+    });
+    expect(sent[0]?.body).not.toHaveProperty('stop_server_tools_when');
+  });
+
+  it('leaves them off when there are none to send', async () => {
+    const sent = replaying(fixture('history-replay'));
+    await streamResponse({
+      ...base,
+      target: openRouterTarget('sk-or-test'),
+      serverTools: [searchTool],
+      serverToolStops: []
+    });
+    expect(sent[0]?.body).not.toHaveProperty('stop_server_tools_when');
+  });
+});
+
+/*
+ * What a finished round has to keep, and what happens to it on the way back.
+ *
+ * This API's history is items rather than messages, and two of them cannot be
+ * rebuilt from an assistant message: a reasoning item carries an opaque
+ * `encrypted_content` that is the model's own chain of thought, and a server
+ * tool's item is what an advisor's memory of an earlier consultation is keyed
+ * on. Rebuilding drops both, and the failure is silent - the model simply
+ * starts thinking over each round and the advisor forgets it was ever asked.
+ */
+describe('carrying a round back to the next request', () => {
+  /** The items a real deferred-tool round finished with. */
+  async function finished(): Promise<Array<Record<string, unknown>>> {
+    replaying(fixture('tool-search'));
+    const outcome = await streamResponse({ ...base, target: openRouterTarget('sk-or-test') });
+    return outcome.outputItems ?? [];
+  }
+
+  it('reports the items the round finished with', async () => {
+    const items = await finished();
+
+    expect(items.map((item) => item.type)).toContain('reasoning');
+    expect(items.map((item) => item.type)).toContain('openrouter:tool_search');
+  });
+
+  /*
+   * The parse used to be a narrowing one, which dropped every key it had not
+   * been told about - which is most of what an item is. The keys it dropped
+   * were exactly the ones a replay exists to hand back.
+   */
+  it('keeps the keys the schema was never told about', async () => {
+    const items = await finished();
+    const reasoning = items.find((item) => item.type === 'reasoning');
+
+    expect(reasoning).toBeDefined();
+    expect(reasoning).toHaveProperty('encrypted_content');
+    expect(String(reasoning?.encrypted_content)).not.toBe('');
+  });
+
+  it('hands the items back byte for byte on the next request', async () => {
+    const items = await finished();
+    vi.unstubAllGlobals();
+    const sent = replaying(fixture('history-replay'));
+    await streamResponse({
+      ...base,
+      target: openRouterTarget('sk-or-test'),
+      messages: [
+        { role: 'user', content: 'find me a widget' },
+        { role: 'assistant', content: 'looking', response_output: items }
+      ]
+    });
+
+    const input = sent[0]?.body.input as Array<Record<string, unknown>>;
+    expect(input.slice(1)).toEqual(items);
+  });
+
+  /*
+   * A round that came from the other transport has no items, and there was
+   * never anything more to it than the message - so it is rebuilt as before.
+   */
+  it('still rebuilds a round that has no items', () => {
+    const items = toResponsesInput([{ role: 'assistant', content: 'done', tool_calls: [] }]);
+
+    expect(items).toEqual([
+      { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'done' }] }
+    ]);
+  });
+});
+
+/*
+ * `response_output` is Fleet's own carrier, not a field Chat Completions
+ * accepts, and an unknown key on that endpoint is a 400 rather than something
+ * quietly ignored. Toggling deferral mid-conversation is exactly what would
+ * carry one across.
+ */
+describe('what the other transport is allowed to see', () => {
+  it('takes the carried items off before a Chat Completions body', () => {
+    const kept = forCompletionsWire([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'there', response_output: [{ type: 'reasoning' }] }
+    ]);
+
+    expect(kept[1]).toEqual({ role: 'assistant', content: 'there' });
+  });
+
+  it('leaves everything else exactly as it was', () => {
+    const messages: AgentWireMessage[] = [
+      { role: 'system', content: 'be brief' },
+      { role: 'assistant', content: 'ok', reasoning_details: [{ type: 'x' }] },
+      { role: 'tool', tool_call_id: 'c1', content: 'result' }
+    ];
+
+    expect(forCompletionsWire(messages)).toEqual(messages);
   });
 });
