@@ -7,6 +7,7 @@ import {
   registerPaneDisposer
 } from '../workspace-store';
 import { useCwdStore } from '../cwd-store';
+import { scratchDir } from '../../lib/scratch';
 import type { Workspace } from '../../../../shared/types';
 
 const ANNOTATE_TAB_A = {
@@ -1140,5 +1141,46 @@ describe('reorderTab — nested files', () => {
     const tabs = useWorkspaceStore.getState().workspace.tabs;
     expect(tabs.map((t) => t.id)).toEqual(['tab-s1', 'tab-s2', 'tab-f1']);
     expect(tabs[2].parentTabId).toBeUndefined();
+  });
+});
+
+/**
+ * Which folders count as somewhere the user recently worked.
+ *
+ * The list is short and it is the first thing the new-agent dialog offers, so
+ * anything in it that the user did not choose costs a slot one of their own
+ * folders would have had.
+ */
+describe('addRecentFolder', () => {
+  beforeEach(() => {
+    useWorkspaceStore.setState({ recentFolders: [] });
+  });
+
+  it('remembers a folder the user opened', () => {
+    useWorkspaceStore.getState().addRecentFolder('/repo/api');
+    expect(useWorkspaceStore.getState().recentFolders).toEqual(['/repo/api']);
+  });
+
+  it('moves a folder opened again back to the front', () => {
+    useWorkspaceStore.getState().addRecentFolder('/repo/api');
+    useWorkspaceStore.getState().addRecentFolder('/repo/web');
+    useWorkspaceStore.getState().addRecentFolder('/repo/api');
+
+    expect(useWorkspaceStore.getState().recentFolders).toEqual(['/repo/api', '/repo/web']);
+  });
+
+  /*
+   * The scratch folder is Fleet's own. It is opened on every launch whether or
+   * not anybody asked for it, and it is already a pinned tab - so listing it as
+   * recent is untrue, and it displaces a folder the user actually chose.
+   */
+  it('never records the scratch folder', () => {
+    useWorkspaceStore.getState().addRecentFolder(scratchDir());
+    expect(useWorkspaceStore.getState().recentFolders).toEqual([]);
+  });
+
+  it('still records a folder that merely sits near it', () => {
+    useWorkspaceStore.getState().addRecentFolder(`${scratchDir()}-notes`);
+    expect(useWorkspaceStore.getState().recentFolders).toEqual([`${scratchDir()}-notes`]);
   });
 });
