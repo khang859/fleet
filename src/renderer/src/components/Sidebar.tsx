@@ -8,6 +8,8 @@ import {
   ImageIcon,
   ChevronRight,
   Bot,
+  MessageCircle,
+  MessageCirclePlus,
   SlidersHorizontal,
   Server
 } from 'lucide-react';
@@ -48,7 +50,6 @@ import { buildTabNesting } from '../lib/tab-nesting';
 import { EnvSyncBadge } from './env-sync/EnvSyncBadge';
 import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 import { SessionsTabCard } from './sessions/SessionsTabCard';
-import { ScratchTabCard } from './agent/ScratchTabCard';
 import { isScratchTab } from '../lib/scratch';
 import { useSettingsStore } from '../store/settings-store';
 import { TOGGLEABLE_TOOLS } from '../../../shared/tools';
@@ -550,12 +551,8 @@ export function Sidebar({
   // Agent panes get their own pinned section, so they are filtered out of the
   // scrolling tab list rather than listed twice. One pass feeds both the rows
   // and the off-screen summary above them.
-  //
-  // Scratch is an agent tab too, and it is deliberately not one of these: it is
-  // pinned under Tools with the rest of the things that belong to no project,
-  // and a row in both places would make one conversation look like two.
   const agentRows = workspace.tabs
-    .filter((t) => t.type === 'agent' && !isScratchTab(t))
+    .filter((t) => t.type === 'agent')
     .map((tab) => {
       const paneIds = collectPaneIds(tab.splitRoot);
       return {
@@ -1626,6 +1623,18 @@ export function Sidebar({
             </span>
           )}
           <button
+            type="button"
+            className="text-fleet-text-subtle hover:text-violet-300 rounded p-0.5 hover:bg-fleet-surface-2 transition active:scale-90"
+            onClick={() => {
+              expandSection('agents');
+              useWorkspaceStore.getState().openScratch();
+            }}
+            title="New scratch chat"
+            aria-label="New scratch chat"
+          >
+            <MessageCirclePlus size={14} />
+          </button>
+          <button
             className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
             // The pane needs a folder to work in, so the same event the
             // command palette fires opens the picker first.
@@ -1661,7 +1670,14 @@ export function Sidebar({
                   isActive={tab.id === activeTabId}
                   badge={badge}
                   activity={activity}
-                  icon={<Bot size={14} />}
+                  icon={
+                    isScratchTab(tab) ? (
+                      <MessageCircle size={14} className="text-violet-300" />
+                    ) : (
+                      <Bot size={14} />
+                    )
+                  }
+                  disableReset={isScratchTab(tab)}
                   index={realIndex(tab.id)}
                   pathContext={tab.pathContext}
                   onClick={() => {
@@ -1729,14 +1745,6 @@ export function Sidebar({
                   onClick={() => setActiveTab(tab.id)}
                 />
               ))}
-            {/* Scratch tab (pinned, not closeable) */}
-            {workspace.tabs.filter(isScratchTab).map((tab) => (
-              <ScratchTabCard
-                key={tab.id}
-                isActive={tab.id === activeTabId}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
           </>
         )}
       </div>

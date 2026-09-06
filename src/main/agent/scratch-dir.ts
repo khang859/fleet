@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
+import { AgentSessionId } from '../../shared/agent-session';
 import { createLogger } from '../logger';
 
 const log = createLogger('agent:scratch');
@@ -44,4 +45,22 @@ export function ensureScratchDir(): void {
     // those failures would otherwise look like a bug in the tool.
     log.warn('could not create the scratch folder', { dir: SCRATCH_DIR, error: String(err) });
   }
+}
+
+/** Includes legacy chats in the shared root and chats in individual folders. */
+export function isScratchDir(cwd: string): boolean {
+  return cwd === SCRATCH_DIR || cwd.startsWith(`${SCRATCH_DIR}${sep}`);
+}
+
+/** Create before exposing the chat, so shell tools have a real working folder. */
+export function ensureScratchSessionDir(
+  sessionId: string,
+  existingCwd: string | null,
+  root: string = SCRATCH_DIR
+): string {
+  const id = AgentSessionId.parse(sessionId);
+  // Existing transcripts retain their folder, including legacy shared chats.
+  const cwd = existingCwd ?? join(root, id);
+  mkdirSync(cwd, { recursive: true });
+  return cwd;
 }

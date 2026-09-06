@@ -118,7 +118,7 @@ export function AgentSessionsTab({
                 type="button"
                 disabled={isCurrent || busy}
                 onClick={() => {
-                  void resumeSession(paneId, cwd, session.id);
+                  void resumeSession(paneId, session.cwd, session.id);
                   onResumed();
                 }}
                 className="flex min-w-0 flex-1 items-baseline gap-2 rounded-md px-3 py-2 text-left transition-colors hover:bg-fleet-surface-2 disabled:cursor-default disabled:hover:bg-transparent focus-ring"

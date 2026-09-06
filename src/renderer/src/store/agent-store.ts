@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isScratchDir, scratchDir } from '../lib/scratch';
 import type {
   AgentAttachment,
   AgentCatalog,
@@ -382,9 +383,10 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     if (!canSwitch(paneId)) return;
     const sessionId = crypto.randomUUID();
     log.debug('startNewSession', { paneId, sessionId });
-    // The file itself waits for a first event, so a session cleared and never
-    // used leaves nothing behind, and there is nothing to read back.
-    switchTo(paneId, cwd, sessionId);
+    // The transcript waits for a first event. Scratch still prepares a working
+    // folder before the new chat can use any tools.
+    switchTo(paneId, isScratchDir(cwd) ? scratchDir() : cwd, sessionId);
+    if (isScratchDir(cwd)) void replayInto(paneId, sessionId);
   },
 
   resumeSession: async (paneId, cwd, sessionId) => {
@@ -1283,7 +1285,7 @@ function refuseTaskQuestions(paneId: string): void {
  */
 function switchTo(paneId: string, cwd: string, sessionId: string): void {
   claimSession(paneId, cwd, sessionId);
-  useWorkspaceStore.getState().setAgentSession(paneId, sessionId);
+  useWorkspaceStore.getState().setAgentSession(paneId, sessionId, cwd);
   reportActivity(paneId, 'idle');
 }
 
@@ -1303,18 +1305,34 @@ function setLoading(paneId: string, sessionId: string, loading: boolean): void {
  * after the history rather than instead of it.
  */
 async function replayInto(paneId: string, sessionId: string): Promise<void> {
-  // Marked here rather than where the session is claimed, because this is the
-  // only thing `loading` describes: a pane switched to a fresh session has
-  // nothing to read, and would otherwise wait for a read that never happens.
+  // Scratch also prepares its working folder during this read, including for
+  // fresh chats. Keep sends blocked until both the folder and history are ready.
   setLoading(paneId, sessionId, true);
 
+  const scratch = isScratchDir(useAgentStore.getState().threads[paneId]?.cwd ?? '');
   let replay: AgentSessionReplay;
   try {
-    replay = await window.fleet.agent.loadSession(sessionId);
+    replay = await window.fleet.agent.loadSession(sessionId, scratch);
   } catch (err) {
     // The pane keeps whatever it has and stops waiting; a history that cannot
     // be read is not a reason to leave the composer disabled forever.
     log.warn('replay failed', { paneId, sessionId, error: String(err) });
+    if (scratch) {
+      useAgentStore.setState((s) => {
+        const current = s.threads[paneId];
+        if (current?.sessionId !== sessionId) return s;
+        return {
+          threads: {
+            ...s.threads,
+            [paneId]: {
+              ...current,
+              error: 'Could not open the scratch folder. Start a new chat to retry.'
+            }
+          }
+        };
+      });
+      return;
+    }
     replay = emptyReplay();
   }
   const thread = useAgentStore.getState().threads[paneId];
@@ -1322,12 +1340,15 @@ async function replayInto(paneId: string, sessionId: string): Promise<void> {
   // or cleared. What this load carries belongs to a conversation nobody is
   // looking at any more.
   if (thread?.sessionId !== sessionId) return;
+  const cwd = scratch && replay.cwd !== null ? replay.cwd : thread.cwd;
+  if (cwd !== thread.cwd) useWorkspaceStore.getState().setAgentSession(paneId, sessionId, cwd);
   log.debug('replayInto', { paneId, sessionId, messages: replay.messages.length });
   useAgentStore.setState((s) => ({
     threads: {
       ...s.threads,
       [paneId]: {
         ...thread,
+        cwd,
         loading: false,
         messages: [...replay.messages, ...thread.messages],
         contextTokens: thread.contextTokens ?? replay.contextTokens,

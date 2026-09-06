@@ -11,6 +11,7 @@ import { cwdBasename } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
 import { useRemoteStore } from '../store/remote-store';
 import { shortenPath } from '../lib/shorten-path';
+import { displayDir } from '../lib/scratch';
 import { popperAnim } from '../lib/motion';
 import { TabStatusIndicator } from './TabStatusIndicator';
 import { COLOR_MAP } from './sidebar-constants';
@@ -298,7 +299,7 @@ export function TabItem({
                     {freshness}
                   </span>
                 ) : (
-                  shortenPath(cwd)
+                  shortenPath(displayDir(cwd))
                 )}
               </span>
             </div>

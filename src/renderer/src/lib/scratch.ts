@@ -52,19 +52,26 @@ export function scratchDir(): string {
   return cached;
 }
 
+/** The legacy shared folder or one conversation's own scratch folder. */
+export function isScratchDir(cwd: string): boolean {
+  const separator = bridge()?.platform === 'win32' ? '\\' : '/';
+  return cwd === scratchDir() || cwd.startsWith(`${scratchDir()}${separator}`);
+}
+
 /**
- * Whether a tab is the pinned scratch chat.
+ * The folder to show for a tab, with a scratch chat's own folder collapsed to
+ * the root it sits in.
  *
- * By folder rather than by type, which is what makes the tab possible at all: it
- * is an `agent` tab like any other, so the pane, the session list and the layout
- * all work on it unchanged, and the only thing that marks it out is where it is
- * rooted. Every place that treats the pinned tools as a class has to ask this as
- * well as reading `type`, because `type` alone cannot tell a scratch tab from a
- * project one.
- *
- * Typed structurally rather than as `Pick<Tab, ...>` so the tab-cycling filter,
- * which is generic over anything with a type and a cwd, can call it too.
+ * A chat's folder is named after its session, so the segment is a uuid: it says
+ * nothing a reader wants and it is long enough to squeeze the tab's name out of
+ * the row. The root is the honest answer to where a scratch chat lives, and it
+ * is what the tab showed before a terminal in it started reporting a live cwd.
  */
+export function displayDir(cwd: string): string {
+  return isScratchDir(cwd) ? scratchDir() : cwd;
+}
+
+/** Scratch remains an agent tab, identified by its Fleet-owned folder. */
 export function isScratchTab(tab: { type?: string; cwd: string }): boolean {
-  return tab.type === 'agent' && tab.cwd === scratchDir();
+  return tab.type === 'agent' && isScratchDir(tab.cwd);
 }

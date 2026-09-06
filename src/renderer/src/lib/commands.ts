@@ -239,11 +239,10 @@ export function createCommandRegistry(): Command[] {
     },
     {
       id: 'open-scratch',
-      label: 'Open Scratch Chat',
+      label: 'New Scratch Chat',
       category: 'Agent',
       keywords: ['scratch', 'chat', 'quick', 'image', 'generate', 'ask'],
-      // No folder to pick: that is the whole point of it, and the store both
-      // reveals the tool and lands the user in the tab.
+      // No folder picker: every invocation starts a separate scratch chat.
       execute: () => useWorkspaceStore.getState().openScratch()
     },
     {

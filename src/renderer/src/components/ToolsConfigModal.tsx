@@ -8,7 +8,7 @@ type ToolsConfigModalProps = {
   onClose: () => void;
 };
 
-/** Lets the user choose which pinned tools appear in the sidebar Tools section. */
+/** Lets the user choose which pinned features appear in the sidebar. */
 export function ToolsConfigModal({
   open,
   onClose

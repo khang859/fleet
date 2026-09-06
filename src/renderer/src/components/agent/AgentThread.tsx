@@ -53,7 +53,7 @@ import { reasoningLabel } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
 import { AgentSpendMeter } from './AgentSpendMeter';
 import { AgentLocation } from './AgentLocation';
-import { scratchDir } from '../../lib/scratch';
+import { isScratchDir } from '../../lib/scratch';
 import { useGitHead } from './use-git-head';
 import { usePromptHistory } from './use-prompt-history';
 import type { HistoryDirection } from '../../../../shared/agent-history';
@@ -272,7 +272,7 @@ export function AgentThread({
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       {messages.length === 0 ? (
-        <EmptyState scratch={cwd === scratchDir()} paneId={paneId} />
+        <EmptyState scratch={isScratchDir(cwd)} paneId={paneId} />
       ) : (
         <Transcript
           messages={messages}
@@ -376,11 +376,7 @@ export function AgentThread({
           branch={gitHead?.branch ?? null}
         />
 
-        <AgentLocation
-          cwd={cwd}
-          head={gitHead}
-          label={cwd === scratchDir() ? 'Scratch' : undefined}
-        />
+        <AgentLocation cwd={cwd} head={gitHead} label={isScratchDir(cwd) ? 'Scratch' : undefined} />
       </div>
     </div>
   );
