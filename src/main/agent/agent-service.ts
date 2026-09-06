@@ -31,7 +31,7 @@ import {
 import { addRound } from '../../shared/agent-spend';
 import { nextStreak, renderTodoBlock, type AgentTodoItem } from '../../shared/agent-todos';
 import { attachmentWireParts, imageWireParts } from './attachments';
-import { SCRATCH_DIR } from './scratch-dir';
+import { isScratchDir } from './scratch-dir';
 import { expandCommand } from './commands/expand';
 import { toDataUrl } from './image-kinds';
 import {
@@ -305,7 +305,7 @@ export function toReasoningParam(config: AgentModelConfig): ReasoningParam | nul
  * header still uses the real, undecorated path.
  */
 function promptCwd(cwd: string): string {
-  return cwd === SCRATCH_DIR
+  return isScratchDir(cwd)
     ? `${cwd} (Fleet's scratch space, not a project: no repository, no codebase, nothing here is a deliverable)`
     : cwd;
 }

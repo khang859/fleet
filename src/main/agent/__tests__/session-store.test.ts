@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AgentImageStore } from '../image-store';
 import { AgentSessionStore } from '../session-store';
+import { SCRATCH_DIR } from '../scratch-dir';
 import { emptyReplay } from '../../../shared/agent-session';
 import { EMPTY_SESSION_SPEND, type AgentSessionSpend } from '../../../shared/agent-spend';
 import {
@@ -67,6 +68,25 @@ const lines = (sessionId: string): unknown[] =>
     .map((l) => JSON.parse(l));
 
 describe('AgentSessionStore', () => {
+  it('lists individual scratch chats together with legacy shared-folder chats', () => {
+    store.append(S1, SCRATCH_DIR, { t: 'message', message: msg('a', 'legacy') });
+    store.append(S2, join(SCRATCH_DIR, S2), { t: 'message', message: msg('b', 'new') });
+    store.append(S3, `${SCRATCH_DIR}-notes`, { t: 'message', message: msg('c', 'project') });
+    expect(
+      store
+        .list(join(SCRATCH_DIR, S2))
+        .map((s) => s.id)
+        .sort()
+    ).toEqual([S1, S2]);
+    expect(
+      store
+        .list(SCRATCH_DIR)
+        .map((s) => s.id)
+        .sort()
+    ).toEqual([S1, S2]);
+    expect(store.list(`${SCRATCH_DIR}-notes`).map((s) => s.id)).toEqual([S3]);
+  });
+
   it('writes a header once, on the first event only', () => {
     store.append(S1, '/repo', { t: 'message', message: msg('a', 'hi') });
     store.append(S1, '/repo', { t: 'message', message: msg('b', 'again') });

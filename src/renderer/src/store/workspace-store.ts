@@ -19,7 +19,7 @@ import { basename as pathBasename } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteHost } from '../../../shared/remote-ssh-types';
 import { useShellProfilesStore } from './shell-profiles-store';
-import { scratchDir, isScratchTab } from '../lib/scratch';
+import { scratchDir, isScratchDir } from '../lib/scratch';
 
 const logTabs = createLogger('sidebar:tabs');
 const logLayout = createLogger('layout:state');
@@ -62,7 +62,7 @@ function loadRecentFolders(): string[] {
         // Cleans up the list of anyone who ran a build that recorded the scratch
         // folder before `addRecentFolder` started refusing it. Cheaper than a
         // migration, and this function already tolerates whatever is in storage.
-        .filter((item) => item !== scratchDir())
+        .filter((item) => !isScratchDir(item))
     );
   } catch {
     return [];
@@ -131,43 +131,6 @@ function ensureAnnotateTab(workspace: Workspace): Workspace {
   return { ...workspace, tabs: [annotateTab, ...workspace.tabs] };
 }
 
-/**
- * Ensure workspace has a pinned Scratch tab; returns the workspace.
- *
- * An ordinary `agent` tab, deliberately: the pane, the session list and the
- * layout all treat it as one, and the only thing that makes it the scratch chat
- * is the folder it is rooted in. That is why the guard asks `isScratchTab`
- * rather than checking `type` the way the two above do - every project pane is
- * an `agent` tab too, and a workspace with one open would otherwise look like it
- * already had a scratch tab.
- *
- * The session id is minted here for the same reason `openAgentPane` mints one:
- * it belongs in the saved layout before anything can be said, so the pane comes
- * back to the same conversation after a restart rather than starting a new one.
- */
-function ensureScratchTab(workspace: Workspace): Workspace {
-  if (workspace.tabs.some(isScratchTab)) return workspace;
-  const dir = scratchDir();
-  const ctx: PathContext = window.fleet.platform === 'win32' ? 'win32' : 'posix';
-  const leaf: PaneLeaf = {
-    type: 'leaf',
-    id: generateId(),
-    cwd: dir,
-    paneType: 'agent',
-    pathContext: ctx,
-    agentSessionId: crypto.randomUUID()
-  };
-  const scratchTab: Tab = {
-    id: generateId(),
-    label: 'Scratch',
-    labelIsCustom: true,
-    cwd: dir,
-    type: 'agent',
-    splitRoot: leaf
-  };
-  return { ...workspace, tabs: [scratchTab, ...workspace.tabs] };
-}
-
 /** Current global tool visibility, falling back to defaults before settings load. */
 function currentToolVisibility(): ToolVisibility {
   return useSettingsStore.getState().settings?.tools ?? DEFAULT_TOOL_VISIBILITY;
@@ -181,14 +144,9 @@ function applyToolVisibility(workspace: Workspace, vis: ToolVisibility): Workspa
   let ws = workspace;
   if (vis.sessions) ws = ensureSessionsTab(ws);
   if (vis.annotate) ws = ensureAnnotateTab(ws);
-  if (vis.scratch) ws = ensureScratchTab(ws);
   const tabs = ws.tabs.filter((t) => {
     if (t.type === 'annotate') return vis.annotate;
     if (t.type === 'sessions') return vis.sessions;
-    // Ahead of nothing in particular, but it has to be asked before the
-    // catch-all: a scratch tab is an `agent` tab, so `return true` would keep it
-    // forever once the tool was turned off.
-    if (isScratchTab(t)) return vis.scratch;
     return true;
   });
   return tabs.length === ws.tabs.length ? ws : { ...ws, tabs };
@@ -294,7 +252,7 @@ type WorkspaceStore = {
    * layout, so this is what makes a resumed conversation the one the pane
    * comes back to after a restart rather than a choice that lasts a session.
    */
-  setAgentSession: (paneId: string, sessionId: string) => void;
+  setAgentSession: (paneId: string, sessionId: string, cwd?: string) => void;
 
   // Workspace actions
   loadWorkspace: (workspace: Workspace) => void;
@@ -425,6 +383,13 @@ function getFirstLeafCwd(node: PaneNode | undefined): string | undefined {
 // up to date. Agent tabs shed their group as well - they render in their own
 // sidebar section now, where a group means nothing.
 /**
+ * The name every scratch chat carries. Pinned scratch tabs saved before the
+ * per-chat folders shipped were called just 'Scratch', and two names for one
+ * thing reads as two features.
+ */
+const SCRATCH_TAB_LABEL = 'Scratch chat';
+
+/**
  * A tab as it may exist on disk. `labelIsCustom` is required on `Tab` but postdates the
  * first saved workspaces, so the layout file is not guaranteed to carry it - which is the
  * whole reason `migrateTab` defaults it.
@@ -433,10 +398,15 @@ type SavedTab = Omit<Tab, 'labelIsCustom'> & { labelIsCustom?: boolean };
 
 function migrateTab(t: SavedTab): Tab {
   const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
+  const cwd = firstLeafCwd ?? t.cwd;
   return {
     ...t,
+    // The old pinned scratch tab was called 'Scratch'; new ones are named for
+    // the chat they hold. Only that exact name is renamed, so a scratch tab the
+    // user titled themselves keeps its title.
+    label: t.label === 'Scratch' && isScratchDir(cwd) ? SCRATCH_TAB_LABEL : t.label,
     labelIsCustom: t.labelIsCustom ?? false,
-    cwd: firstLeafCwd ?? t.cwd,
+    cwd,
     userGroupId: t.type === 'agent' ? undefined : t.userGroupId
   };
 }
@@ -514,34 +484,14 @@ function isNormalTab(tab: Tab): boolean {
   return !isPinnedTab(tab);
 }
 
-/**
- * Whether a tab is one of the pinned tools, which are not closeable and are not
- * what the app should fall back to when it needs "some other tab".
- *
- * Two questions rather than one because Scratch is pinned by folder while the
- * rest are pinned by type. Every caller wants both, so they ask this instead of
- * reading `SPECIAL_TAB_TYPES` directly.
- */
+/** Pinned tool tabs cannot be closed or selected as the next regular tab. */
 export function isPinnedTab(tab: Pick<Tab, 'type' | 'cwd'>): boolean {
-  return SPECIAL_TAB_TYPES.has(tab.type ?? '') || isScratchTab(tab);
+  return SPECIAL_TAB_TYPES.has(tab.type ?? '');
 }
 
-/**
- * Whether one pane of a pinned tab is the tool itself, rather than something
- * opened beside it.
- *
- * Two ways to be. Being the tab's only leaf makes closing it the same gesture as
- * closing the tab, which is what the pinned tabs exist to refuse. And in Scratch
- * the conversation is the tool even when it is not alone: a terminal opened for
- * a handoff, or an ordinary split, is the user's to close, but the conversation
- * behind it is not - closing that would leave a Scratch tab with no scratch in
- * it, and nothing would put it back, since the tool is reconciled by tab and not
- * by pane.
- */
+/** Protect the tool itself while allowing auxiliary split panes to close. */
 function isToolPane(tab: Tab, paneId: string): boolean {
-  if (!isPinnedTab(tab)) return false;
-  if (removePaneFromTree(tab.splitRoot, paneId) === null) return true;
-  return findLeaf(tab.splitRoot, paneId)?.paneType === 'agent';
+  return isPinnedTab(tab) && removePaneFromTree(tab.splitRoot, paneId) === null;
 }
 
 /** Pick the best next tab after closing one — prefer normal tabs, fall back to null */
@@ -676,10 +626,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closeTab: (tabId, serializedPanes) => {
     logTabs.debug('closeTab', { tabId });
-    // Pinned tabs (Annotate/Sessions/Scratch) are not closeable, and that is
-    // settled before anything is disposed: throwing away the panes' threads and
-    // then refusing the close would leave Scratch open with its conversation
-    // gone, which is worse than either closing it or leaving it alone.
+    // Check pinned tools before disposing any pane resources.
     const closing = get().workspace.tabs.find((t) => t.id === tabId);
     if (closing && isPinnedTab(closing)) {
       logTabs.debug('closeTab refused: pinned tab', { tabId });
@@ -1109,11 +1056,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closePane: (paneId) => {
     logLayout.debug('closePane', { paneId });
-    // Asked and answered before anything is disposed. Disposal cancels the
-    // pane's turn and throws its thread away, and doing that first would empty
-    // the Scratch conversation on a close the store then refuses - leaving the
-    // tab open, blank, and holding a session the pane will not reload because
-    // none of its props changed.
+    // Check pinned tools before disposing any pane resources.
     const owner = get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
     if (owner && isToolPane(owner, paneId)) {
       logLayout.debug('closePane refused: pinned tool pane', { paneId, tabId: owner.id });
@@ -1215,7 +1158,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     });
   },
 
-  setAgentSession: (paneId, sessionId) => {
+  setAgentSession: (paneId, sessionId, cwd) => {
     set((state) => ({
       workspace: {
         ...state.workspace,
@@ -1223,7 +1166,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           ...tab,
           splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({
             ...leaf,
-            agentSessionId: sessionId
+            agentSessionId: sessionId,
+            ...(cwd === undefined ? {} : { cwd })
           }))
         }))
       },
@@ -1316,27 +1260,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     });
   },
 
-  /**
-   * Reveal the scratch chat and put the user in it.
-   *
-   * Turning the tool on is part of opening it: someone who asked for the scratch
-   * chat from the palette or the keyboard has said what they want more clearly
-   * than the setting has, and a command that silently did nothing because a
-   * checkbox in another modal was off would be a command that looks broken.
-   */
+  /** Each invocation opens a separate chat with its own persisted session id. */
   openScratch: () => {
-    if (!currentToolVisibility().scratch) {
-      get().setToolVisible('scratch', true);
-    } else {
-      set((state) => {
-        const updatedWs = applyToolVisibility(state.workspace, currentToolVisibility());
-        if (updatedWs === state.workspace) return state;
-        return { workspace: updatedWs, isDirty: true };
-      });
-    }
-    const tab = get().workspace.tabs.find(isScratchTab);
-    if (tab === undefined) return;
-    get().setActiveTab(tab.id);
+    get().openAgentPane(scratchDir());
   },
 
   reconcileToolTabs: () => {
@@ -1564,7 +1490,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       id: generateId(),
       // The branch is what distinguishes one worktree from another; the folder
       // name is the repository's, and every worktree of it would share it.
-      label: worktree ? worktree.branchName : cwdBasename(folderPath, ctx),
+      label: isScratchDir(folderPath)
+        ? SCRATCH_TAB_LABEL
+        : worktree
+          ? worktree.branchName
+          : cwdBasename(folderPath, ctx),
       labelIsCustom: true,
       cwd: folderPath,
       type: 'agent',
@@ -1747,7 +1677,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     // this list is short, at the cost of a folder they chose themselves.
     // Refused here rather than at each call site: it is opened from a restore, a
     // pane split and a new tab, and one of those would be missed.
-    if (folderPath === scratchDir()) return;
+    if (isScratchDir(folderPath)) return;
     set((state) => {
       const filtered = state.recentFolders.filter((f) => f !== folderPath);
       const updated = [folderPath, ...filtered].slice(0, MAX_RECENT_FOLDERS);

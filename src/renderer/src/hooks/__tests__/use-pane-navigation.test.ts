@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getNormalTabs } from '../use-pane-navigation';
+import { scratchDir } from '../../lib/scratch';
 
 const leaf = { type: 'leaf' as const, id: 'p', cwd: '/' };
 
@@ -8,6 +9,13 @@ function tab(id: string, type?: string) {
 }
 
 describe('getNormalTabs', () => {
+  it('includes scratch chats alongside project agents in numbered navigation', () => {
+    const scratch = { ...tab('scratch', 'agent'), cwd: scratchDir() };
+    expect(
+      getNormalTabs([tab('ann', 'annotate'), scratch, tab('project', 'agent')]).map((t) => t.id)
+    ).toEqual(['scratch', 'project']);
+  });
+
   it('excludes settings tabs', () => {
     const tabs = [tab('a'), tab('settings', 'settings'), tab('b')];
     expect(getNormalTabs(tabs).map((t) => t.id)).toEqual(['a', 'b']);

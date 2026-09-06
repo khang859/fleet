@@ -149,7 +149,8 @@ export function registerAgentIpc(deps: {
 
   ipcMain.handle(
     IPC_CHANNELS.AGENT_SESSION_LOAD,
-    (_e, sessionId: string): AgentSessionReplay => deps.sessions.load(sessionId)
+    (_e, sessionId: string, scratch = false): AgentSessionReplay =>
+      scratch ? deps.sessions.loadScratch(sessionId) : deps.sessions.load(sessionId)
   );
 
   ipcMain.handle(IPC_CHANNELS.AGENT_SESSION_LIST, (_e, cwd: string): AgentSessionListItem[] =>

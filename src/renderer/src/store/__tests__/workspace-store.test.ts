@@ -7,7 +7,7 @@ import {
   registerPaneDisposer
 } from '../workspace-store';
 import { useCwdStore } from '../cwd-store';
-import { scratchDir } from '../../lib/scratch';
+import { scratchDir, isScratchTab } from '../../lib/scratch';
 import type { Workspace } from '../../../../shared/types';
 
 const ANNOTATE_TAB_A = {
@@ -151,97 +151,146 @@ describe('switchWorkspace', () => {
     expect(state.backgroundWorkspaces.has('ws-b')).toBe(true);
   });
 
-  it('ensures only the default-visible tools (annotate, scratch) for an empty workspace', () => {
-    const emptyWs: Workspace = { id: 'ws-empty', label: 'Empty', tabs: [] };
-    useWorkspaceStore.getState().switchWorkspace(emptyWs);
-    const state = useWorkspaceStore.getState();
-    // Annotate and Scratch are on by default; Sessions is opt-in. Scratch is an
-    // `agent` tab rather than a type of its own, so it is identified by its
-    // label here the way the store identifies it by its folder.
-    expect(state.workspace.tabs).toHaveLength(2);
-    expect(state.workspace.tabs.map((t) => t.type).sort()).toEqual(['agent', 'annotate']);
-    expect(state.workspace.tabs.find((t) => t.type === 'agent')?.label).toBe('Scratch');
+  it('does not create a scratch conversation when opening an empty workspace', () => {
+    useWorkspaceStore.getState().switchWorkspace({ id: 'ws-empty', label: 'Empty', tabs: [] });
+    expect(useWorkspaceStore.getState().workspace.tabs.map((t) => t.type)).toEqual(['annotate']);
   });
 
-  it('does not add a second scratch tab when one is already there', () => {
-    const emptyWs: Workspace = { id: 'ws-scratch-twice', label: 'Twice', tabs: [] };
-    useWorkspaceStore.getState().switchWorkspace(emptyWs);
-    const before = useWorkspaceStore.getState().workspace.tabs.length;
-    // A reconcile is what runs whenever the settings change or a workspace is
-    // switched into, so it is the pass that would duplicate the tab if the
-    // guard looked at `type` rather than at the folder.
-    useWorkspaceStore.getState().reconcileToolTabs();
-    expect(useWorkspaceStore.getState().workspace.tabs).toHaveLength(before);
-  });
-
-  it('strips the scratch tab when the tool is turned off, and brings it back', () => {
-    const emptyWs: Workspace = { id: 'ws-scratch-vis', label: 'Scratch vis', tabs: [] };
-    useWorkspaceStore.getState().switchWorkspace(emptyWs);
-    useWorkspaceStore.getState().setToolVisible('scratch', false);
-    expect(
-      useWorkspaceStore.getState().workspace.tabs.filter((t) => t.type === 'agent')
-    ).toHaveLength(0);
-    useWorkspaceStore.getState().setToolVisible('scratch', true);
-    expect(
-      useWorkspaceStore.getState().workspace.tabs.filter((t) => t.type === 'agent')
-    ).toHaveLength(1);
-  });
-
-  /**
-   * What a refused close must not do on its way to being refused.
-   *
-   * Scratch is the first pinned tab that holds a conversation, so it is the
-   * first one for which "the close did nothing" and "the close was refused"
-   * are different outcomes. Disposing a pane cancels its turn and throws its
-   * thread away, and doing that before the guard would leave the tab open and
-   * empty - with the pane unable to notice, since none of its props changed.
-   */
-  describe('closing the scratch tab', () => {
-    function scratchTab(): { id: string; paneId: string } {
-      const emptyWs: Workspace = { id: 'ws-scratch-close', label: 'Close', tabs: [] };
-      useWorkspaceStore.getState().switchWorkspace(emptyWs);
-      const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.type === 'agent');
-      if (!tab) throw new Error('no scratch tab');
+  describe('scratch chat creation', () => {
+    function openScratch(): { id: string; paneId: string } {
+      useWorkspaceStore.getState().openScratch();
+      const state = useWorkspaceStore.getState();
+      const tab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
+      if (!tab || !isScratchTab(tab)) throw new Error('no active scratch chat');
       return { id: tab.id, paneId: collectPaneIds(tab.splitRoot)[0] };
     }
 
-    it('does not dispose the conversation when the tab close is refused', () => {
-      const { id } = scratchTab();
+    it('opens and focuses a separate chat on every click without replacing the previous one', () => {
+      const first = openScratch();
+      const firstTab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === first.id)!;
+      const firstSession = collectPaneLeafs(firstTab.splitRoot)[0].agentSessionId;
+      const second = openScratch();
+      const state = useWorkspaceStore.getState();
+      const secondTab = state.workspace.tabs.find((t) => t.id === second.id)!;
+      expect(second.id).not.toBe(first.id);
+      expect(second.paneId).not.toBe(first.paneId);
+      expect(collectPaneLeafs(secondTab.splitRoot)[0].agentSessionId).not.toBe(firstSession);
+      expect(state.workspace.tabs.find((t) => t.id === first.id)).toEqual(firstTab);
+      expect(state.workspace.tabs.filter(isScratchTab)).toHaveLength(2);
+      expect(state.activeTabId).toBe(second.id);
+      expect(state.activePaneId).toBe(second.paneId);
+      expect(secondTab.label).toBe('Scratch chat');
+    });
+
+    it('preserves existing chats during tool reconciliation and ignores the legacy toggle', () => {
+      const first = openScratch();
+      useWorkspaceStore.getState().reconcileToolTabs();
+      useWorkspaceStore.getState().setToolVisible('scratch', false);
+      expect(
+        useWorkspaceStore
+          .getState()
+          .workspace.tabs.filter(isScratchTab)
+          .map((t) => t.id)
+      ).toEqual([first.id]);
+      openScratch();
+      expect(useWorkspaceStore.getState().workspace.tabs.filter(isScratchTab)).toHaveLength(2);
+    });
+
+    it('keeps a legacy shared-folder conversation on workspace restore', () => {
+      const first = openScratch();
+      const saved = useWorkspaceStore.getState().workspace;
+      useWorkspaceStore.getState().switchWorkspace({ id: 'other', label: 'Other', tabs: [] });
+      useWorkspaceStore.getState().switchWorkspace(saved);
+      expect(
+        useWorkspaceStore
+          .getState()
+          .workspace.tabs.filter(isScratchTab)
+          .map((t) => t.id)
+      ).toEqual([first.id]);
+    });
+
+    it('renames a legacy pinned Scratch tab to match new chats, but leaves custom titles', () => {
+      const ws: Workspace = {
+        id: 'ws-legacy',
+        label: 'Legacy',
+        tabs: [
+          {
+            id: 'tab-legacy',
+            label: 'Scratch',
+            labelIsCustom: true,
+            cwd: scratchDir(),
+            type: 'agent',
+            splitRoot: { type: 'leaf', id: 'pane-legacy', cwd: scratchDir() }
+          },
+          {
+            id: 'tab-titled',
+            label: 'Trip notes',
+            labelIsCustom: true,
+            cwd: `${scratchDir()}/abc`,
+            type: 'agent',
+            splitRoot: { type: 'leaf', id: 'pane-titled', cwd: `${scratchDir()}/abc` }
+          },
+          {
+            id: 'tab-project',
+            label: 'Scratch',
+            labelIsCustom: true,
+            cwd: '/repo',
+            type: 'agent',
+            splitRoot: { type: 'leaf', id: 'pane-project', cwd: '/repo' }
+          }
+        ]
+      };
+      useWorkspaceStore.getState().loadWorkspace(ws);
+      const labels = new Map(
+        useWorkspaceStore.getState().workspace.tabs.map((t) => [t.id, t.label])
+      );
+      expect(labels.get('tab-legacy')).toBe('Scratch chat');
+      expect(labels.get('tab-titled')).toBe('Trip notes');
+      // A project folder someone happened to call Scratch is not a scratch chat.
+      expect(labels.get('tab-project')).toBe('Scratch');
+    });
+
+    it('closes and disposes one scratch chat without closing another', () => {
+      const first = openScratch();
+      const second = openScratch();
       const disposed: string[] = [];
       registerPaneDisposer((paneId) => disposed.push(paneId));
-
-      useWorkspaceStore.getState().closeTab(id);
-
-      expect(useWorkspaceStore.getState().workspace.tabs.some((t) => t.id === id)).toBe(true);
-      expect(disposed).toEqual([]);
+      useWorkspaceStore.getState().closeTab(second.id);
+      expect(
+        useWorkspaceStore
+          .getState()
+          .workspace.tabs.filter(isScratchTab)
+          .map((t) => t.id)
+      ).toEqual([first.id]);
+      expect(disposed).toEqual([second.paneId]);
       registerPaneDisposer(() => {});
     });
 
-    it('does not dispose the conversation when the pane close is refused', () => {
-      const { paneId } = scratchTab();
-      const disposed: string[] = [];
-      registerPaneDisposer((id) => disposed.push(id));
-
+    it('allows closing the scratch pane', () => {
+      const { id, paneId } = openScratch();
       useWorkspaceStore.getState().closePane(paneId);
+      expect(useWorkspaceStore.getState().workspace.tabs.some((t) => t.id === id)).toBe(false);
+    });
 
-      expect(useWorkspaceStore.getState().workspace.tabs.some((t) => t.type === 'agent')).toBe(
-        true
+    it('reopens the same scratch session with undo close tab', () => {
+      const { id } = openScratch();
+      const before = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === id)!;
+      useWorkspaceStore.getState().closeTab(id);
+      expect(useWorkspaceStore.getState().workspace.tabs.some((t) => t.id === id)).toBe(false);
+      useWorkspaceStore.getState().undoCloseTab();
+      const restored = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === id)!;
+      expect(collectPaneLeafs(restored.splitRoot)[0].agentSessionId).toBe(
+        collectPaneLeafs(before.splitRoot)[0].agentSessionId
       );
-      expect(disposed).toEqual([]);
-      registerPaneDisposer(() => {});
     });
 
     it('lets a terminal opened beside the conversation be closed again', () => {
-      const { id, paneId } = scratchTab();
+      const { id, paneId } = openScratch();
       const terminalId = useWorkspaceStore.getState().terminalBeside(paneId);
       expect(terminalId).not.toBeNull();
       if (terminalId === null) return;
-
       useWorkspaceStore.getState().closePane(terminalId);
-
       const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === id);
-      // The terminal is gone and the conversation is not: the guard protects
-      // the tool, not everything that happens to share a tab with it.
       expect(tab && collectPaneIds(tab.splitRoot)).toEqual([paneId]);
     });
   });

@@ -31,6 +31,7 @@ import {
 } from '../../shared/agent-spend';
 import type { AgentTurnUsage } from '../../shared/agent-types';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './image-store';
+import { ensureScratchSessionDir, isScratchDir } from './scratch-dir';
 import { createLogger } from '../logger';
 
 const log = createLogger('agent:sessions');
@@ -168,6 +169,13 @@ export class AgentSessionStore {
     }
   }
 
+  /** Resolve a Scratch chat's folder while restoring its transcript. */
+  loadScratch(sessionId: string): AgentSessionReplay {
+    const replay = this.load(sessionId);
+    if (replay.cwd !== null && !isScratchDir(replay.cwd)) return replay;
+    return { ...replay, cwd: ensureScratchSessionDir(sessionId, replay.cwd) };
+  }
+
   /**
    * The sessions started in `cwd`, most recently used first.
    *
@@ -195,7 +203,8 @@ export class AgentSessionStore {
         const replay = replaySession(readHead(path));
         // No header means this is not one of ours, which is how a stray file
         // in the folder stays out of the list.
-        if (replay.cwd !== cwd) continue;
+        if (isScratchDir(cwd) ? !isScratchDir(replay.cwd ?? '') : replay.cwd !== cwd) continue;
+        if (replay.cwd === null) continue;
         items.push({
           id,
           cwd: replay.cwd,

@@ -62,7 +62,7 @@ const TABS = [
  */
 export function AgentPane({
   paneId,
-  cwd,
+  cwd: paneCwd,
   sessionId,
   terminalBackground,
   slideshowFrame
@@ -75,6 +75,7 @@ export function AgentPane({
   terminalBackground?: TerminalBackground;
   slideshowFrame?: SlideshowFrame;
 }): React.JSX.Element {
+  const cwd = useAgentStore((s) => s.threads[paneId]?.cwd) ?? paneCwd;
   const [view, setView] = useState<AgentView>('agent');
   /*
    * A picture picked out of the gallery, waiting for the composer to exist.

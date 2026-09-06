@@ -9,7 +9,8 @@ import {
   SlidersHorizontal,
   Bot,
   Server,
-  Sparkles
+  MessageCirclePlus,
+  MessageCircle
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
@@ -172,7 +173,9 @@ function MiniTabButton({
     tab.type === 'file' || tab.type === 'image' || tab.type === 'markdown' || tab.type === 'pdf';
 
   let icon: React.ReactNode;
-  if (tab.type === 'agent') {
+  if (isScratchTab(tab)) {
+    icon = <MessageCircle size={16} className="text-violet-300" />;
+  } else if (tab.type === 'agent') {
     icon = <Bot size={16} className={tint} />;
   } else if (tab.type === 'ssh-browser') {
     icon = <Server size={16} className={tint} />;
@@ -813,9 +816,7 @@ export function App(): React.JSX.Element {
     (t) =>
       t.type !== 'settings' && t.type !== 'annotate' && t.type !== 'sessions' && t.type !== 'agent'
   );
-  // Scratch is an agent tab, but it belongs with the pinned tools below rather
-  // than with the projects, exactly as it does in the expanded sidebar.
-  const miniRailAgentTabs = workspace.tabs.filter((t) => t.type === 'agent' && !isScratchTab(t));
+  const miniRailAgentTabs = workspace.tabs.filter((t) => t.type === 'agent');
 
   return (
     <div
@@ -883,23 +884,29 @@ export function App(): React.JSX.Element {
             ))}
             <div className="flex-1" />
             {/* Pinned agents section (mirrors expanded sidebar: agents above tools) */}
-            {miniRailAgentTabs.length > 0 && (
-              <>
-                <RailDivider />
-                {miniRailAgentTabs.map((tab) => (
-                  <MiniTabButton
-                    key={tab.id}
-                    tab={tab}
-                    isActive={tab.id === activeTabId}
-                    onClick={() => setActiveTab(tab.id)}
-                  />
-                ))}
-              </>
-            )}
+            <RailDivider />
+            <MiniSidebarTooltip label="New scratch chat">
+              <button
+                type="button"
+                aria-label="New scratch chat"
+                onClick={() => useWorkspaceStore.getState().openScratch()}
+                className="p-1.5 rounded text-fleet-text-subtle hover:text-violet-300 hover:bg-fleet-surface-2 transition-colors active:scale-90"
+              >
+                <MessageCirclePlus size={16} />
+              </button>
+            </MiniSidebarTooltip>
+            {miniRailAgentTabs.map((tab) => (
+              <MiniTabButton
+                key={tab.id}
+                tab={tab}
+                isActive={tab.id === activeTabId}
+                onClick={() => setActiveTab(tab.id)}
+              />
+            ))}
             {/* Pinned tools section (mirrors expanded sidebar: tools above workspaces) */}
-            {workspace.tabs.some(
-              (t) => t.type === 'annotate' || t.type === 'sessions' || isScratchTab(t)
-            ) && <RailDivider />}
+            {workspace.tabs.some((t) => t.type === 'annotate' || t.type === 'sessions') && (
+              <RailDivider />
+            )}
             {/* Annotate pinned icon */}
             {workspace.tabs
               .filter((t) => t.type === 'annotate')
@@ -946,27 +953,6 @@ export function App(): React.JSX.Element {
                   </MiniSidebarTooltip>
                 );
               })}
-            {/* Scratch pinned icon */}
-            {workspace.tabs.filter(isScratchTab).map((tab) => {
-              const isScratchActive = tab.id === activeTabId;
-              return (
-                <MiniSidebarTooltip label="Scratch" key={tab.id}>
-                  <button
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`p-1.5 rounded transition-colors active:scale-90 ${
-                      isScratchActive
-                        ? 'bg-violet-900/40 ring-1 ring-violet-500/30'
-                        : 'hover:bg-fleet-surface-2'
-                    }`}
-                  >
-                    <Sparkles
-                      size={16}
-                      className={isScratchActive ? 'text-violet-300' : 'text-violet-300/40'}
-                    />
-                  </button>
-                </MiniSidebarTooltip>
-              );
-            })}
             <RailDivider />
             {/* Configure tools */}
             <MiniSidebarTooltip label="Configure tools">

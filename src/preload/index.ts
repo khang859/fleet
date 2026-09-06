@@ -653,8 +653,8 @@ const fleetApi = {
     /** The same, for a bill a session has to add to its own total. */
     addSessionSpend: (req: AgentSessionAddSpend): void =>
       ipcRenderer.send(IPC_CHANNELS.AGENT_SESSION_ADD_SPEND, req),
-    loadSession: async (sessionId: string): Promise<AgentSessionReplay> =>
-      typedInvoke<AgentSessionReplay>(IPC_CHANNELS.AGENT_SESSION_LOAD, sessionId),
+    loadSession: async (sessionId: string, scratch = false): Promise<AgentSessionReplay> =>
+      typedInvoke<AgentSessionReplay>(IPC_CHANNELS.AGENT_SESSION_LOAD, sessionId, scratch),
     listSessions: async (cwd: string): Promise<AgentSessionListItem[]> =>
       typedInvoke<AgentSessionListItem[]>(IPC_CHANNELS.AGENT_SESSION_LIST, cwd),
     deleteSession: async (sessionId: string): Promise<boolean> =>

@@ -1532,6 +1532,60 @@ describe('switching sessions', () => {
     expect(leafSession(workspace)).toBe(thread().sessionId);
   });
 
+  it('prepares a separate scratch folder, persists it, and reuses it on resume', async () => {
+    const workspace = await workspaceWith();
+    const { scratchDir } = await import('../../lib/scratch');
+    const root = scratchDir();
+    const load = vi.fn(async (id: string) =>
+      Promise.resolve({ ...emptyReplay(), cwd: `${root}/${id}` })
+    );
+    Object.assign(window.fleet.agent, { loadSession: load });
+
+    await agentStore.useAgentStore.getState().openSession(PANE, 'scratch-one', root);
+    const firstCwd = thread().cwd;
+    expect(firstCwd).toBe(`${root}/scratch-one`);
+    expect(load).toHaveBeenCalledWith('scratch-one', true);
+
+    agentStore.useAgentStore.getState().startNewSession(PANE, firstCwd);
+    expect(thread().loading).toBe(true);
+    agentStore.useAgentStore.getState().send(PANE, firstCwd, 'too early');
+    expect(agentApi.send).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(thread().loading).toBe(false));
+    expect(thread().cwd).not.toBe(firstCwd);
+    expect(thread().cwd).toBe(`${root}/${thread().sessionId}`);
+    const leaf = workspace.collectPaneLeafs(
+      workspace.useWorkspaceStore.getState().workspace.tabs[0].splitRoot
+    )[0];
+    expect(leaf.cwd).toBe(thread().cwd);
+    expect(leaf.agentSessionId).toBe(thread().sessionId);
+
+    await agentStore.useAgentStore.getState().resumeSession(PANE, firstCwd, 'scratch-one');
+    expect(thread().cwd).toBe(firstCwd);
+    agentStore.useAgentStore.getState().send(PANE, thread().cwd, 'hello');
+    expect(agentApi.send).toHaveBeenCalledWith(expect.objectContaining({ cwd: firstCwd }));
+    expect(agentApi.appendSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: firstCwd }));
+  });
+
+  it('preserves the shared folder when resuming a legacy scratch chat', async () => {
+    await workspaceWith();
+    const { scratchDir } = await import('../../lib/scratch');
+    replay = { ...emptyReplay(), cwd: scratchDir() };
+    await agentStore.useAgentStore.getState().openSession(PANE, 'legacy', scratchDir());
+    expect(thread().cwd).toBe(scratchDir());
+  });
+
+  it('does not send into an old scratch folder if preparing the new one fails', async () => {
+    await workspaceWith();
+    const { scratchDir } = await import('../../lib/scratch');
+    Object.assign(window.fleet.agent, {
+      loadSession: vi.fn().mockRejectedValue(new Error('permission denied'))
+    });
+    await agentStore.useAgentStore.getState().openSession(PANE, 'scratch-one', scratchDir());
+    agentStore.useAgentStore.getState().send(PANE, scratchDir(), 'hello');
+    expect(agentApi.send).not.toHaveBeenCalled();
+    expect(thread().error).toContain('Could not open the scratch folder');
+  });
+
   // The conversation being replaced is the one still being written.
   it('refuses to clear while a turn is running', async () => {
     await workspaceWith();
