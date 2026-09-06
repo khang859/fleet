@@ -33,7 +33,8 @@ const message = (parts: AgentPart[]): AgentMessage => ({
   role: 'assistant',
   parts,
   reasoning: '',
-  reasoningMs: null
+  reasoningMs: null,
+  citations: []
 });
 
 const ask = (command: string): AgentPermissionAsk => ({

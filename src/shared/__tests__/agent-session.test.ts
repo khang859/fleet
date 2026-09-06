@@ -239,7 +239,8 @@ describe('replaySession', () => {
         { type: 'attachment', attachment: { kind: 'mention', path: '/repo/src/a.ts' } }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     expect(replaySession(log(HEADER, { t: 'message', message })).messages[0]).toEqual(message);
@@ -268,7 +269,8 @@ describe('replaySession', () => {
         }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     expect(replaySession(log(HEADER, { t: 'message', message })).messages[0]).toEqual(message);
@@ -295,7 +297,8 @@ describe('replaySession', () => {
         { type: 'text', text: 'It says 42.' }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
     const replay = replaySession(log(HEADER, { t: 'message', message }));
 
@@ -333,7 +336,8 @@ describe('replaySession', () => {
         { type: 'text', text: 'Zod 4 renames it.' }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
     const replay = replaySession(log(HEADER, { t: 'message', message }));
 

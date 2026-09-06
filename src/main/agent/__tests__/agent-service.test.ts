@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
+import type { Citation, ServerToolRecord } from '../../../shared/agent-server-tools';
 import {
   buildSystemPrompt,
   DEFAULT_AGENT_SETTINGS,
@@ -778,7 +779,8 @@ describe('toWireHistory', () => {
         { type: 'text', text: 'It says 42.' }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
@@ -825,7 +827,8 @@ describe('toWireHistory', () => {
         { type: 'text', text: 'Zod 4 renames it.' }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
@@ -867,7 +870,8 @@ describe('toWireHistory', () => {
       role: 'assistant',
       parts: [{ type: 'tool', call: pending }],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     const messages = await toWireHistory({ ...REQUEST, history: [turn] }, 'be brief');
@@ -888,7 +892,8 @@ describe('toWireHistory', () => {
       role: 'assistant',
       parts: [],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     const messages = await toWireHistory({ ...REQUEST, history: [empty] }, 'be brief');
@@ -1019,7 +1024,8 @@ describe('toWireHistory: attachments', () => {
       role: 'assistant',
       parts: [{ type: 'tool', call }],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     const messages = await toWireHistory({ ...REQUEST, cwd: dir, history: [turn] }, 'be brief');
@@ -1072,7 +1078,8 @@ describe('toWireHistory: attachments', () => {
         { type: 'tool', call: searched }
       ],
       reasoning: '',
-      reasoningMs: null
+      reasoningMs: null,
+      citations: []
     };
 
     const messages = await toWireHistory({ ...REQUEST, cwd: dir, history: [turn] }, 'be brief');
@@ -2537,5 +2544,77 @@ describe('memory and project instructions', () => {
     expect(events.at(-1)?.payload).toMatchObject({
       projectInstructions: { filename: 'AGENTS.md', tokens: 1_000 }
     });
+  });
+});
+
+/*
+ * What a finished round says it turned up.
+ *
+ * The event carries records and sources, and the two do not always arrive
+ * together: a provider that searches natively answers with annotations on the
+ * reply and no record at all. Keyed on records alone, that round reports
+ * nothing and the answer cites pages the reader cannot open.
+ */
+describe('reporting what a round found', () => {
+  const source = (url: string): Citation => ({
+    url,
+    title: null,
+    content: null,
+    startIndex: null,
+    endIndex: null
+  });
+
+  /** Runs one turn whose single round reports this outcome. */
+  async function reported(
+    over: Partial<StreamOutcome>
+  ): Promise<Array<{ channel: string; payload: unknown }>> {
+    const { emit, events, ended } = collector();
+    new AgentService({
+      schedules: SCHEDULES,
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
+      getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
+      emit,
+      stream: async () => Promise.resolve({ ...round(), ...over })
+    }).send(REQUEST);
+    await ended;
+    return events.filter((e) => e.channel === IPC_CHANNELS.AGENT_SERVER_TOOL);
+  }
+
+  it('reports sources that arrived with no record', async () => {
+    const found = await reported({ citations: [source('https://example.test/a')] });
+
+    expect(found).toHaveLength(1);
+    expect(found[0].payload).toEqual({
+      streamId: 'stream-1',
+      calls: [],
+      citations: [source('https://example.test/a')]
+    });
+  });
+
+  it('reports records and their sources together', async () => {
+    const call: ServerToolRecord = {
+      callId: 'c1',
+      toolName: 'openrouter:web_search',
+      args: '{}',
+      result: '{}',
+      citations: [source('https://example.test/b')]
+    };
+    const found = await reported({
+      serverToolCalls: [call],
+      citations: [source('https://example.test/b')]
+    });
+
+    expect(found[0].payload).toEqual({
+      streamId: 'stream-1',
+      calls: [call],
+      citations: [source('https://example.test/b')]
+    });
+  });
+
+  it('says nothing about a round that ran nothing and cited nothing', async () => {
+    expect(await reported({})).toEqual([]);
   });
 });

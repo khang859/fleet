@@ -81,6 +81,7 @@ import {
   isServerToolName,
   serverToolStops,
   toReasoningDetails,
+  type Citation,
   type ServerToolRecord,
   type ServerToolSpec,
   type ServerToolStop
@@ -350,13 +351,17 @@ type WireContext = { cwd: string; threadId: string };
 function roundMessage(
   text: string,
   calls: AgentToolCall[],
-  remote: ServerToolRecord[] = []
+  remote: ServerToolRecord[] = [],
+  citations: Citation[] = []
 ): AgentMessage {
   return {
     id: randomUUID(),
     role: 'assistant',
     reasoning: '',
     reasoningMs: null,
+    // Kept beside the records rather than derived from them, so a subagent's
+    // transcript holds the sources a native search reported with no record.
+    citations,
     parts: [
       // Remote work first, because it happened first: OpenRouter finished its
       // own loop before it sent a byte of the text the model wrote about it.
@@ -1206,15 +1211,21 @@ export class AgentService {
       // Told about before the round is judged finished or not, because it is
       // true either way: OpenRouter ran these whichever way the model then went.
       // A search that led to a final answer would otherwise never be shown.
-      if (outcome.serverToolCalls.length > 0 && !run.quiet) {
+      //
+      // Sources are checked as well as records because a provider that searches
+      // natively reports one and not the other: annotations on the reply, no
+      // record. Keying the event on records alone loses those sources entirely,
+      // and the answer is left citing pages the reader cannot open.
+      if ((outcome.serverToolCalls.length > 0 || outcome.citations.length > 0) && !run.quiet) {
         emit(IPC_CHANNELS.AGENT_SERVER_TOOL, {
           streamId,
-          calls: outcome.serverToolCalls
+          calls: outcome.serverToolCalls,
+          citations: outcome.citations
         } satisfies AgentServerToolEvent);
       }
 
       if (outcome.toolCalls.length === 0) {
-        run.onRound?.(roundMessage(round.content, [], outcome.serverToolCalls));
+        run.onRound?.(roundMessage(round.content, [], outcome.serverToolCalls, outcome.citations));
         return round.content;
       }
 
@@ -1311,7 +1322,7 @@ export class AgentService {
       // results, and a picture in the middle of one is not a result.
       messages.push(...images);
       todos.streak = nextStreak(todos.streak, before, todos.items);
-      run.onRound?.(roundMessage(round.content, drawn, outcome.serverToolCalls));
+      run.onRound?.(roundMessage(round.content, drawn, outcome.serverToolCalls, outcome.citations));
     }
 
     throw new Error(

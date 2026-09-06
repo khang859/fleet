@@ -129,23 +129,22 @@ export type ServerToolRecord = {
   citations: Citation[];
 };
 
+/** One cited page as it is written to a session file and read back. */
+export const CitationSchema = z.object({
+  url: z.string(),
+  title: z.string().nullable(),
+  content: z.string().nullable(),
+  startIndex: z.number().nullable(),
+  endIndex: z.number().nullable()
+});
+
 /** A server-tool record as it is written to a session file and read back. */
 export const ServerToolCallSchema = z.object({
   callId: z.string().nullable(),
   toolName: z.string(),
   args: z.string(),
   result: z.string(),
-  citations: z
-    .array(
-      z.object({
-        url: z.string(),
-        title: z.string().nullable(),
-        content: z.string().nullable(),
-        startIndex: z.number().nullable(),
-        endIndex: z.number().nullable()
-      })
-    )
-    .default([])
+  citations: z.array(CitationSchema).default([])
 });
 
 /**

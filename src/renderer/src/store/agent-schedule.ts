@@ -189,7 +189,8 @@ function deliver(paneId: string, sessionId: string, records: AgentScheduleRecord
     role: 'assistant',
     parts: [],
     reasoning: '',
-    reasoningMs: null
+    reasoningMs: null,
+    citations: []
   };
   log.debug('delivering', { paneId, sessionId, count: fires.length });
 

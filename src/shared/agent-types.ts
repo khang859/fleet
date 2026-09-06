@@ -729,11 +729,29 @@ export type AgentMessage = {
    * means there is no duration to show rather than a duration of zero.
    */
   reasoningMs: number | null;
+  /**
+   * Sources the message cited that no single call owns.
+   *
+   * A provider that searches natively answers with annotations on the reply and
+   * no server-tool record at all, so there is nothing for those sources to hang
+   * off. They belong to the message because that is the smallest thing that
+   * still holds them, and they are kept even when a record covers the same page:
+   * an annotation knows which sentence it backs and a record does not, so the
+   * two are merged rather than one standing in for the other.
+   */
+  citations: Citation[];
 };
 
 /** A message that is only words: what the user typed, or a summary. */
 export function textMessage(id: string, role: AgentMessage['role'], text: string): AgentMessage {
-  return { id, role, parts: [{ type: 'text', text }], reasoning: '', reasoningMs: null };
+  return {
+    id,
+    role,
+    parts: [{ type: 'text', text }],
+    reasoning: '',
+    reasoningMs: null,
+    citations: []
+  };
 }
 
 /** Everything the message said, with what it looked at left out. */
@@ -757,12 +775,21 @@ export function messageServerToolCalls(message: AgentMessage): ServerToolRecord[
 /**
  * Every source the message cited, each once.
  *
- * Gathered from the records rather than kept on the message, because a turn is
- * many rounds and each round's sources belong to the round that found them. What
- * the footer under an answer shows is this, flattened.
+ * Two sources of sources, because there are two ways a page arrives. A search
+ * that ran as a server tool leaves a record and the pages hang off it; a
+ * provider that searches natively answers with annotations and leaves no record
+ * at all, and those hang off the message. Reading only the records loses the
+ * second kind entirely.
+ *
+ * The message's own go first: where both know the same page, the annotation is
+ * the copy that knows which sentence it backs, and `mergeCitations` fills the
+ * gaps in the first copy from the later ones rather than replacing it.
  */
 export function messageCitations(message: AgentMessage): Citation[] {
-  return mergeCitations(...messageServerToolCalls(message).map((call) => call.citations));
+  return mergeCitations(
+    message.citations,
+    ...messageServerToolCalls(message).map((call) => call.citations)
+  );
 }
 
 /** What was attached to the message, in the order it was attached. */
@@ -790,7 +817,8 @@ export function userMessageWithAttachments(
       ...attachments.map((attachment) => ({ type: 'attachment' as const, attachment }))
     ],
     reasoning: '',
-    reasoningMs: null
+    reasoningMs: null,
+    citations: []
   };
 }
 
@@ -1140,7 +1168,19 @@ export type AgentStreamDelta = { streamId: string; delta: string };
  * carried the model's reply, already finished. There is no start event to pair
  * with this and no progress to report between them.
  */
-export type AgentServerToolEvent = { streamId: string; calls: ServerToolRecord[] };
+export type AgentServerToolEvent = {
+  streamId: string;
+  calls: ServerToolRecord[];
+  /**
+   * Every source the round found, records and annotations merged.
+   *
+   * Rides with the calls rather than on a channel of its own because it is the
+   * same event: one round finished and this is what it turned up. It is sent
+   * even when `calls` is empty, which is exactly the native-search case that
+   * has sources and nothing to attach them to.
+   */
+  citations: Citation[];
+};
 /**
  * `projectInstructions` is what the project's own `AGENTS.md` cost this turn,
  * for the context meter to name in its tooltip.

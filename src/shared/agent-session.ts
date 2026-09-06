@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AGENT_TASK_STATUSES } from './agent-tools';
-import { ServerToolCallSchema } from './agent-server-tools';
+import { CitationSchema, ServerToolCallSchema } from './agent-server-tools';
 import { TODO_STATUSES, type AgentTodoItem } from './agent-todos';
 import { EMPTY_SESSION_SPEND, type AgentSessionSpend } from './agent-spend';
 import { messageText, type AgentMessage, type AgentTurnUsage } from './agent-types';
@@ -122,7 +122,15 @@ const CommonMessageFields = {
   id: z.string(),
   role: z.enum(['user', 'assistant', 'summary', 'scheduled']),
   reasoning: z.string(),
-  reasoningMs: z.number().nullable()
+  reasoningMs: z.number().nullable(),
+  /**
+   * Sources with no call to hang off, new in version 7 alongside the records.
+   *
+   * Defaulted rather than required so a session written before native search
+   * annotations were kept replays as one that cited nothing loose, which is
+   * what it was.
+   */
+  citations: z.array(CitationSchema).default([])
 };
 
 const CurrentMessage = z.object({ ...CommonMessageFields, parts: z.array(PartSchema) });
