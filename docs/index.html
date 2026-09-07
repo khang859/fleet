@@ -3,28 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Fleet — Terminal Multiplexer for AI Agents</title>
+    <title>Fleet - Terminal Multiplexer for AI Agents</title>
     <meta
       name="description"
-      content="A lightweight terminal multiplexer for macOS built for running multiple AI coding agents side by side. Free and open source."
+      content="A lightweight terminal multiplexer for macOS, Windows, and Linux, built for running multiple AI coding agents side by side - with a coding agent of its own built in. Free and open source."
     />
     <link rel="icon" type="image/webp" href="images/favicon.webp" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Fleet — Terminal Multiplexer for AI Agents" />
+    <meta property="og:title" content="Fleet - Terminal Multiplexer for AI Agents" />
     <meta
       property="og:description"
-      content="A lightweight terminal multiplexer for macOS built for running multiple AI coding agents side by side. Free and open source."
+      content="A lightweight terminal multiplexer for macOS, Windows, and Linux, built for running multiple AI coding agents side by side - with a coding agent of its own built in. Free and open source."
     />
     <meta property="og:image" content="https://khang859.github.io/fleet/images/hero-ship.webp" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Fleet — Terminal Multiplexer for AI Agents" />
+    <meta name="twitter:title" content="Fleet - Terminal Multiplexer for AI Agents" />
     <meta
       name="twitter:description"
-      content="A lightweight terminal multiplexer for macOS built for running multiple AI coding agents side by side."
+      content="A lightweight terminal multiplexer for macOS, Windows, and Linux, built for running multiple AI coding agents side by side."
     />
     <meta name="twitter:image" content="https://khang859.github.io/fleet/images/hero-ship.webp" />
 
@@ -36,37 +36,10 @@
     />
 
     <!--
-  IMAGE PROMPTS FOR DESIGNERS / AI GENERATION:
-
-  1. Hero ship (1200x400):
-     "Pixel art spaceship approaching from distance in deep space, single cyan-glowing vessel against star field, cinematic wide aspect ratio, dark navy background, retro game aesthetic with modern lighting"
-
-  2. Visualizer / Mission Control (1200x600):
-     "Pixel art space scene, 5 spaceships in formation with colored trails, dark navy, stars, retro game aesthetic"
-
-  3. App screenshot 1 (1200x750):
-     "Dark terminal multiplexer, 3 split panes, vertical tabs, activity badges, dark navy, cyan accents"
-
-  4. Mascot — Admiral Byte (128x128):
-     "Pixel art portrait of a small robot admiral with a captain hat, teal and navy colors, dark background, retro game style, 128x128"
-
-  5. Mascot — Navigator Nova (128x128):
-     "Pixel art portrait of a glowing star navigator character, cyan energy aura, dark background, retro game style, 128x128"
-
-  6. Mascot — Engineer Sprocket (128x128):
-     "Pixel art portrait of a mechanical engineer robot with gears and wrench, amber accents, dark background, retro game style, 128x128"
-
-  7. Mascot — Comms Officer Signal (128x128):
-     "Pixel art portrait of a communications officer with headset and radio waves, green accents, dark background, retro game style, 128x128"
-
-  8. Mascot — Cadet Pixel (128x128):
-     "Pixel art portrait of a young space cadet character, bright blue uniform, dark background, retro game style, 128x128"
-
-  9. Copilot overlay (1200x750):
-     "Floating overlay on dark terminal, pixel art mascot, dark navy cyan"
-
-  10. Git view (1200x750):
-      "Dark file diff viewer, syntax highlighting, dark navy"
+  IMAGE ASSETS (images/):
+    hero-ship.webp  - 1200x400 pixel-art ship, deep space, dark navy + cyan
+    <mascot>.webp   - 1152x128 nine-frame sprite sheet, one per mascot in src/shared/mascots.ts
+                      (the crew cards below show frame 0 only)
 -->
 
     <style>
@@ -360,6 +333,21 @@
         background: rgba(0, 229, 229, 0.05);
       }
 
+      .hero__alt {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: var(--text-secondary);
+        text-decoration: none;
+        letter-spacing: 1px;
+        margin-top: -40px;
+        margin-bottom: 60px;
+        transition: color 0.2s ease;
+      }
+
+      .hero__alt:hover {
+        color: var(--primary);
+      }
+
       .hero__arrow {
         position: absolute;
         bottom: 32px;
@@ -477,6 +465,20 @@
         line-height: 1.6;
       }
 
+      .objective-card__desc code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: var(--primary);
+        background: rgba(0, 229, 229, 0.07);
+        border-radius: 4px;
+        padding: 1px 5px;
+        white-space: nowrap;
+      }
+
+      .objective-card--plain {
+        padding-top: 28px;
+      }
+
       /* ── Mid CTA ── */
       .mid-cta {
         text-align: center;
@@ -509,8 +511,9 @@
       }
 
       .crew-card__portrait {
-        width: 128px;
-        height: 128px;
+        width: 100%;
+        max-width: 128px;
+        aspect-ratio: 1;
         background: rgba(0, 229, 229, 0.05);
         border: 1px solid var(--card-border);
         border-radius: 50%;
@@ -520,11 +523,11 @@
       }
 
       .crew-card__portrait img {
-        width: 1152px;
-        height: 128px;
+        /* nine square frames on one sheet - 900% wide, clipped to frame 0 */
+        width: 900%;
+        height: 100%;
         max-width: none;
-        object-fit: none;
-        object-position: 0 0;
+        object-fit: fill;
         image-rendering: pixelated;
       }
 
@@ -675,8 +678,12 @@
         }
 
         .crew__grid {
-          grid-template-columns: repeat(2, 1fr);
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 16px;
+        }
+
+        .crew-card {
+          padding: 16px;
         }
 
         .overview__grid {
@@ -716,6 +723,8 @@
         aria-label="Mission Overview"
       ></button>
       <div class="progress-nav__line"></div>
+      <button class="progress-nav__dot" data-section="agent" aria-label="Built-in Agent"></button>
+      <div class="progress-nav__line"></div>
       <button
         class="progress-nav__dot"
         data-section="objectives"
@@ -736,21 +745,24 @@
         <h1 class="hero__title">Command your AI fleet</h1>
         <p class="hero__subtitle">
           A lightweight terminal multiplexer built for running multiple AI coding agents side by
-          side. See what each agent is doing, approve permissions, and stay in control — all from
-          one window.
+          side - with a coding agent of its own built in. See what every agent is doing, approve
+          what it asks for, and stay in control from one window.
         </p>
         <div class="hero__ship">
           <img src="images/hero-ship.webp" alt="Fleet spaceship flying through deep space" />
         </div>
         <div class="hero__ctas">
           <a
-            href="https://github.com/khang859/fleet/releases"
+            href="https://github.com/khang859/fleet/releases/latest"
             class="btn btn--primary"
-            data-download="arm64-dmg"
-            >Download for macOS</a
+            data-download="primary"
+            >Download</a
           >
           <a href="https://github.com/khang859/fleet" class="btn btn--ghost">View on GitHub</a>
         </div>
+        <a href="https://github.com/khang859/fleet/releases/latest" class="hero__alt"
+          >All builds - Intel Mac, Windows, Linux &#8594;</a
+        >
         <a href="#overview" class="hero__arrow" aria-label="Scroll to continue">&#8595;</a>
       </section>
 
@@ -764,15 +776,104 @@
             </div>
             <div class="overview__item">
               <span class="overview__label">Platform</span>
-              <span class="overview__value">macOS</span>
+              <span class="overview__value">macOS &middot; Windows &middot; Linux</span>
             </div>
             <div class="overview__item">
               <span class="overview__label">Built For</span>
               <span class="overview__value">AI Coding Agents</span>
             </div>
             <div class="overview__item">
-              <span class="overview__label">Status</span>
-              <span class="overview__value">Active</span>
+              <span class="overview__label">Latest</span>
+              <span class="overview__value" data-latest-version>Active</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ════════════════ BUILT-IN AGENT ════════════════ -->
+      <section class="section" id="agent" data-section>
+        <div class="container">
+          <div class="classified-header">Built-in Agent</div>
+          <h2 class="section__title">A coding agent already on board</h2>
+          <p class="section__subtitle">
+            Fleet runs its own agent chat in a pane, right next to your terminals. Bring one
+            OpenRouter key, pick any model per conversation, and approve every action before it
+            touches your machine.
+          </p>
+
+          <div class="objectives__grid">
+            <div class="objective-card objective-card--plain">
+              <div class="objective-card__title">Any model, one key</div>
+              <div class="objective-card__label">Flight Plan</div>
+              <p class="objective-card__desc">
+                Choose from the whole OpenRouter catalog per conversation, pin the providers you
+                trust, and fall through to a backup when one is down. A spend meter shows what the
+                turn cost as it runs.
+              </p>
+            </div>
+
+            <div class="objective-card objective-card--plain">
+              <div class="objective-card__title">Real tools, gated</div>
+              <div class="objective-card__label">Rules of Engagement</div>
+              <p class="objective-card__desc">
+                Read, write, edit, grep, glob, shell, web fetch, and web search. Anything that
+                touches your files or runs a command asks first - allow it once or for the session.
+              </p>
+            </div>
+
+            <div class="objective-card objective-card--plain">
+              <div class="objective-card__title">Subagents &amp; to-dos</div>
+              <div class="objective-card__label">Away Team</div>
+              <p class="objective-card__desc">
+                Hand a side quest to a subagent that works in the background and reports back, while
+                a to-do panel keeps the plan for the main thread visible.
+              </p>
+            </div>
+
+            <div class="objective-card objective-card--plain">
+              <div class="objective-card__title">MCP servers</div>
+              <div class="objective-card__label">Docking Ports</div>
+              <p class="objective-card__desc">
+                Import the MCP setup you already have from Claude Code. Tools are searched for when
+                they are needed, so a large toolbox never crowds out the conversation.
+              </p>
+            </div>
+
+            <div class="objective-card objective-card--plain">
+              <div class="objective-card__title">Skills &amp; memory</div>
+              <div class="objective-card__label">Standing Orders</div>
+              <p class="objective-card__desc">
+                Markdown skills, slash commands, and project instructions the agent picks up on its
+                own - plus memory it can write to and read back in a later session.
+              </p>
+            </div>
+
+            <div class="objective-card objective-card--plain">
+              <div class="objective-card__title">Second opinions &amp; panels</div>
+              <div class="objective-card__label">War Room</div>
+              <p class="objective-card__desc">
+                The coding model can consult a stronger one mid-turn, inside a budget you set. Or
+                run <code>/fusion</code> to put the same change in front of several models at once.
+              </p>
+            </div>
+
+            <div class="objective-card objective-card--plain">
+              <div class="objective-card__title">Images &amp; voice</div>
+              <div class="objective-card__label">Visual Ops</div>
+              <p class="objective-card__desc">
+                Generate and edit images inside the thread; a cross-session Images tab keeps every
+                one with its prompt. Speak into the composer when typing is the slow part.
+              </p>
+            </div>
+
+            <div class="objective-card objective-card--plain">
+              <div class="objective-card__title">Scratch &amp; schedules</div>
+              <div class="objective-card__label">Standing Watch</div>
+              <p class="objective-card__desc">
+                <code>Cmd+Shift+J</code> opens a chat with no project attached, in a folder of its
+                own. Give a prompt a schedule and it fires on its own, with the answer waiting in
+                the thread.
+              </p>
             </div>
           </div>
         </div>
@@ -784,7 +885,8 @@
           <div class="classified-header">Features</div>
           <h2 class="section__title">What's on board</h2>
           <p class="section__subtitle">
-            Everything you need to run multiple AI coding agents from one window.
+            The terminal around it: everything you need to run Claude Code, Codex, or any other
+            agent from one window.
           </p>
 
           <div class="objectives__grid">
@@ -803,7 +905,7 @@
               <div class="objective-card__title">Split Panes</div>
               <div class="objective-card__label">Formation Control</div>
               <p class="objective-card__desc">
-                Divide your terminal into any layout — horizontal, vertical, or nested splits.
+                Divide your terminal into any layout - horizontal, vertical, or nested splits.
               </p>
             </div>
 
@@ -822,8 +924,8 @@
               <div class="objective-card__title">Activity Badges</div>
               <div class="objective-card__label">Signal Detection</div>
               <p class="objective-card__desc">
-                See agent status at a glance — amber for permission needed, green for working, red
-                for errors.
+                See agent status at a glance - amber for permission needed, blue for done, red for
+                errors. The same alerts reach your OS, batched so they never pile up.
               </p>
             </div>
 
@@ -839,11 +941,12 @@
 
             <div class="objective-card">
               <div class="objective-card__number">06</div>
-              <div class="objective-card__title">Image Generation</div>
-              <div class="objective-card__label">Visual Ops</div>
+              <div class="objective-card__title">Editors &amp; Viewers</div>
+              <div class="objective-card__label">Reading Room</div>
               <p class="objective-card__desc">
-                Generate and edit images with FAL AI without leaving Fleet. A dedicated gallery tab
-                tracks every run with status and history.
+                Open files in a CodeMirror editor with syntax highlighting and auto-save. Markdown
+                gets a preview pane, and images and PDFs open inline - each one nested under the
+                session you opened it from.
               </p>
             </div>
 
@@ -864,6 +967,46 @@
                 Pull up previous clipboard entries with Cmd+Shift+H across all your sessions.
               </p>
             </div>
+
+            <div class="objective-card">
+              <div class="objective-card__number">09</div>
+              <div class="objective-card__title">Annotate</div>
+              <div class="objective-card__label">Recon Photos</div>
+              <p class="objective-card__desc">
+                Mark up a live webpage with an element picker or free-draw canvas, then hand the
+                annotated screenshot straight to an agent.
+              </p>
+            </div>
+
+            <div class="objective-card">
+              <div class="objective-card__number">10</div>
+              <div class="objective-card__title">SSH Panes</div>
+              <div class="objective-card__label">Long Range</div>
+              <p class="objective-card__desc">
+                Copy out of vim on a remote host into your own clipboard, drop a file on the pane to
+                upload it where you are standing, and pull one back with <code>fleet get</code>.
+              </p>
+            </div>
+
+            <div class="objective-card">
+              <div class="objective-card__number">11</div>
+              <div class="objective-card__title">CLI &amp; Socket API</div>
+              <div class="objective-card__label">Remote Control</div>
+              <p class="objective-card__desc">
+                A <code>fleet</code> command opens files and panes from any shell, and a local
+                socket lets scripts list panes, send input, and subscribe to events.
+              </p>
+            </div>
+
+            <div class="objective-card">
+              <div class="objective-card__number">12</div>
+              <div class="objective-card__title">Auto-Updates</div>
+              <div class="objective-card__label">Resupply</div>
+              <p class="objective-card__desc">
+                Fleet checks for new versions on a schedule, on focus, and on wake - then asks
+                before it stops anything you have running.
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -874,9 +1017,9 @@
           <p class="section__label">Ready to go</p>
           <h2 class="section__title">Free and open source</h2>
           <a
-            href="https://github.com/khang859/fleet/releases"
+            href="https://github.com/khang859/fleet/releases/latest"
             class="btn btn--primary"
-            data-download="arm64-dmg"
+            data-download="secondary"
             >Download Fleet</a
           >
         </div>
@@ -885,16 +1028,16 @@
       <!-- ════════════════ COPILOT (primary showcase) ════════════════ -->
       <section class="section" id="copilot" data-section>
         <div class="container">
-          <div class="classified-header">Desktop Companion</div>
+          <div class="classified-header">Desktop Companion &middot; macOS</div>
           <h2 class="section__title">Copilot for Claude Code</h2>
           <p class="section__subtitle">
             A floating desktop mascot that monitors all your Claude Code sessions. Approve
-            permissions, read chat history, and send messages to Claude — without leaving whatever
+            permissions, read chat history, and send messages to Claude - without leaving whatever
             you're working on.
           </p>
 
           <p class="section__subtitle" style="margin-top: 24px">
-            When Claude needs permission to run a command, Allow/Deny buttons appear instantly — no
+            When Claude needs permission to run a command, Allow/Deny buttons appear instantly - no
             terminal switching. See every session's status at a glance and type messages directly
             when Claude is waiting for input.
           </p>
@@ -917,7 +1060,7 @@
                 <img src="images/officer.webp" alt="Officer mascot" />
               </div>
               <div class="crew-card__name">Officer</div>
-              <p class="crew-card__role">The classic Fleet officer — disciplined and dependable.</p>
+              <p class="crew-card__role">The classic Fleet officer - disciplined and dependable.</p>
             </div>
 
             <div class="crew-card">
@@ -925,13 +1068,13 @@
                 <img src="images/robot.webp" alt="Robot mascot" />
               </div>
               <div class="crew-card__name">Robot</div>
-              <p class="crew-card__role">A friendly automaton — efficient and tireless.</p>
+              <p class="crew-card__role">A friendly automaton - efficient and tireless.</p>
             </div>
 
             <div class="crew-card">
               <div class="crew-card__portrait"><img src="images/cat.webp" alt="Cat mascot" /></div>
               <div class="crew-card__name">Cat</div>
-              <p class="crew-card__role">A curious space cat — always exploring.</p>
+              <p class="crew-card__role">A curious space cat - always exploring.</p>
             </div>
 
             <div class="crew-card">
@@ -939,7 +1082,7 @@
                 <img src="images/bear.webp" alt="Bear mascot" />
               </div>
               <div class="crew-card__name">Bear</div>
-              <p class="crew-card__role">An armored polar bear warrior — strong and protective.</p>
+              <p class="crew-card__role">An armored polar bear warrior - strong and protective.</p>
             </div>
 
             <div class="crew-card">
@@ -947,7 +1090,7 @@
                 <img src="images/kraken.webp" alt="Kraken mascot" />
               </div>
               <div class="crew-card__name">Kraken</div>
-              <p class="crew-card__role">An astral space kraken — mysterious and powerful.</p>
+              <p class="crew-card__role">An astral space kraken - mysterious and powerful.</p>
             </div>
 
             <div class="crew-card">
@@ -955,7 +1098,7 @@
                 <img src="images/dragon.webp" alt="Dragon mascot" />
               </div>
               <div class="crew-card__name">Dragon</div>
-              <p class="crew-card__role">A cosmic space dragon — fierce and unstoppable.</p>
+              <p class="crew-card__role">An armored cybernetic dragon - fierce and unstoppable.</p>
             </div>
 
             <div class="crew-card">
@@ -963,7 +1106,9 @@
                 <img src="images/owl.webp" alt="Owl mascot" />
               </div>
               <div class="crew-card__name">Owl</div>
-              <p class="crew-card__role">A wise star owl — keen-eyed and ever-watching.</p>
+              <p class="crew-card__role">
+                A bioluminescent clockwork owl - keen-eyed and ever-watching.
+              </p>
             </div>
           </div>
         </div>
@@ -974,15 +1119,13 @@
         <div class="container">
           <p class="section__label">Get Started</p>
           <h2 class="launch__title">Ready to fly?</h2>
-          <p class="launch__subtitle">
-            Download Fleet and start running your AI coding agents together.
-          </p>
+          <p class="launch__subtitle">Free and open source, for macOS, Windows, and Linux.</p>
           <div class="launch__buttons">
             <a
-              href="https://github.com/khang859/fleet/releases"
+              href="https://github.com/khang859/fleet/releases/latest"
               class="btn btn--primary"
-              data-download="arm64-dmg"
-              >Download for macOS</a
+              data-download="primary"
+              >Download</a
             >
             <a href="https://github.com/khang859/fleet" class="btn btn--ghost">View on GitHub</a>
           </div>
@@ -997,6 +1140,7 @@
             <a href="https://github.com/khang859/fleet">GitHub</a>
             <a href="https://github.com/khang859/fleet/releases">Releases</a>
             <a href="https://github.com/khang859/fleet/blob/main/CHANGELOG.md">Changelog</a>
+            <a href="https://github.com/khang859/fleet#readme">Docs</a>
           </div>
         </div>
       </footer>
@@ -1006,7 +1150,7 @@
       (function () {
         'use strict';
 
-        var sections = document.querySelectorAll('[data-section]');
+        var sections = document.querySelectorAll('section[data-section]');
         var dots = document.querySelectorAll('.progress-nav__dot');
 
         // Click-to-scroll for dots
@@ -1050,20 +1194,43 @@
         }
       })();
 
-      // Resolve latest arm64 dmg download link
+      // Resolve the download links, and the version, against the latest release
       (function () {
-        var buttons = document.querySelectorAll('[data-download="arm64-dmg"]');
+        var buttons = document.querySelectorAll('[data-download]');
+        var versionEl = document.querySelector('[data-latest-version]');
         if (!buttons.length) return;
+
+        var ua = navigator.userAgent;
+        var os = /Windows/i.test(ua)
+          ? 'win'
+          : /Linux|X11/i.test(ua) && !/Android/i.test(ua)
+            ? 'linux'
+            : 'mac';
+
+        var LABEL = {
+          mac: 'Download for macOS',
+          win: 'Download for Windows',
+          linux: 'Download for Linux'
+        };
+        // macOS defaults to Apple Silicon - the browser cannot tell us the arch,
+        // and the "All builds" link covers Intel.
+        var PATTERN = { mac: /arm64\.dmg$/, win: /\.exe$/, linux: /\.AppImage$/ };
+
+        buttons.forEach(function (btn) {
+          if (btn.getAttribute('data-download') === 'primary') btn.textContent = LABEL[os];
+        });
 
         fetch('https://api.github.com/repos/khang859/fleet/releases/latest')
           .then(function (r) {
             return r.json();
           })
           .then(function (release) {
+            if (versionEl && release.tag_name) versionEl.textContent = release.tag_name;
+
             var asset =
               release.assets &&
               release.assets.find(function (a) {
-                return a.name.match(/arm64\.dmg$/);
+                return PATTERN[os].test(a.name);
               });
             if (asset) {
               buttons.forEach(function (btn) {
@@ -1072,7 +1239,7 @@
             }
           })
           .catch(function () {
-            /* fallback: links stay pointed at /releases */
+            /* fallback: links stay pointed at /releases/latest */
           });
       })();
     </script>
