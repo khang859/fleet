@@ -3,12 +3,35 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import type { Components } from 'react-markdown';
+import type { ElementContent, Element as HastElement } from 'hast';
 import { CodeBlock } from './CodeBlock';
+import { MermaidDiagram } from './MermaidDiagram';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { resolve } from '../../lib/path-utils';
 import { toFleetImageUrl } from '../../../../shared/path-platform';
 
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
+
+/** Concatenates the text of a hast subtree, ignoring any element wrappers. */
+function hastText(nodes: readonly ElementContent[]): string {
+  return nodes
+    .map((n) => (n.type === 'text' ? n.value : 'children' in n ? hastText(n.children) : ''))
+    .join('');
+}
+
+/**
+ * Raw source of a ```mermaid fence, or null for any other `pre`.
+ *
+ * Read off the hast node rather than React children because rehype-highlight
+ * may have split the code into token `<span>`s by the time it reaches us.
+ */
+function mermaidSource(node: HastElement | undefined): string | null {
+  const code = node?.children.find((c) => c.type === 'element' && c.tagName === 'code');
+  if (code?.type !== 'element') return null;
+  const classes = code.properties.className;
+  const isMermaid = Array.isArray(classes) && classes.includes('language-mermaid');
+  return isMermaid ? hastText(code.children) : null;
+}
 
 function stripFragmentAndQuery(href: string): string {
   return href.split(/[?#]/)[0];
@@ -46,7 +69,13 @@ export const MarkdownPreview = forwardRef<HTMLDivElement, Props>(function Markdo
 
   const components = useMemo<Components>(
     () => ({
-      pre: CodeBlock,
+      // A ```mermaid fence becomes a diagram; every other fence keeps the
+      // existing CodeBlock chrome. `node` is dropped either way — it is
+      // react-markdown metadata, not a DOM attribute.
+      pre: ({ node, ...props }) => {
+        const diagram = mermaidSource(node);
+        return diagram === null ? <CodeBlock {...props} /> : <MermaidDiagram code={diagram} />;
+      },
       // Local image links (`![alt](./foo.png)`) resolve against baseDir and load
       // through the fleet-image protocol — the app's HTML base can't resolve a
       // path relative to the document on disk, and a bare file:// path is not
