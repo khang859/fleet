@@ -122,18 +122,9 @@ The `onClick` handler calls `fit()` which triggers `getBoundingClientRect`, `fit
 
 ---
 
-### 5. ~~`workspaceToAgents` Not Memoized (Medium Impact)~~ ✅ Fixed
+### 5. ~~`workspaceToAgents` Not Memoized (Medium Impact)~~ ✅ Obsolete
 
-**Files:** `src/renderer/src/components/visualizer/SpaceCanvas.tsx:185`
-
-`workspaceToAgents(workspace.tabs)` is called on every render without `useMemo`. It iterates all tabs and recursively walks their split trees via `collectPaneIds`. Runs on every workspace store change.
-
-**Fix:** Wrap in `useMemo`:
-
-```typescript
-const agents = useMemo(() => workspaceToAgents(workspace.tabs), [workspace.tabs]);
-agentsRef.current = agents;
-```
+The visualizer was removed from Fleet, so this code no longer exists.
 
 ---
 

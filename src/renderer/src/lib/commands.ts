@@ -1,6 +1,5 @@
 import { ALL_SHORTCUTS, formatShortcut, type ShortcutDef } from './shortcuts';
 import { useWorkspaceStore } from '../store/workspace-store';
-import { useVisualizerStore } from '../store/visualizer-store';
 import { useToastStore } from '../store/toast-store';
 import type { RemoteHost } from '../../../shared/remote-ssh-types';
 
@@ -114,12 +113,6 @@ export function createCommandRegistry(): Command[] {
           new CustomEvent('fleet:toggle-search', { detail: { paneId: activePaneId } })
         );
       }
-    },
-    {
-      id: 'toggle-visualizer',
-      label: 'Toggle Visualizer',
-      category: 'View',
-      execute: () => useVisualizerStore.getState().toggleVisible()
     },
     {
       id: 'settings',

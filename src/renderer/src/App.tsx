@@ -40,7 +40,6 @@ import { useShellProfilesStore } from './store/shell-profiles-store';
 import { isWslContext } from '../../shared/shell-profiles';
 import { useHomesStore } from './store/homes-store';
 import { injectLiveCwd } from './lib/workspace-utils';
-import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
@@ -1148,23 +1147,6 @@ export function App(): React.JSX.Element {
               </div>
             )}
           </main>
-          <VisualizerPanel
-            onShipClick={(id) => {
-              // id might be a tab ID (parent ship) or pane ID (child ship)
-              const tab = workspace.tabs.find((t) => t.id === id);
-              if (tab) {
-                // Clicked a tab ship — switch to that tab and focus its first pane
-                const { setActiveTab } = useWorkspaceStore.getState();
-                setActiveTab(tab.id);
-                const paneIds = collectPaneIds(tab.splitRoot);
-                if (paneIds[0]) setActivePane(paneIds[0]);
-              } else {
-                // Clicked a pane ship — focus that pane
-                setActivePane(id);
-                window.fleet.notifications.paneFocused({ paneId: id });
-              }
-            }}
-          />
         </div>
         {/* end content column */}
       </div>

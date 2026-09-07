@@ -3,7 +3,6 @@ export type SettingsSection =
   | 'workspaces'
   | 'notifications'
   | 'socket'
-  | 'visualizer'
   | 'updates'
   | 'copilot'
   | 'annotate'
@@ -33,7 +32,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'copilot', label: 'Copilot', darwinOnly: true },
       { id: 'learnings', label: 'Learnings' },
-      { id: 'visualizer', label: 'Visualizer' },
       { id: 'annotate', label: 'Annotate' },
       { id: 'envSync', label: 'Env Sync' }
     ]

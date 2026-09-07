@@ -60,12 +60,6 @@ Notifications are forwarded to your OS (macOS/Windows) and batched to prevent al
 
 A floating overlay panel that monitors active Claude Code sessions across all your panes. Surfaces permission requests, tracks session activity, and displays conversation threads — so you can keep an eye on multiple agents without switching tabs. Comes with selectable animated mascots (Officer, Robot, Cat, Bear, Kraken, Dragon, Owl).
 
-### Agent Visualizer
-
-A space-themed canvas (`Cmd+Shift+V`) that shows each agent as an animated ship. Ships change color based on activity — green when writing code, blue when reading, amber when waiting for permission. Sub-agents appear as smaller ships near their parent. Hover for details, click to focus the pane.
-
-20 toggleable visual effects across five categories: ambient (nebula clouds, aurora bands, shooting stars, twinkling/colored stars, constellations, day/night cycle, bloom glow, depth of field), ships (engine trails, idle animations, uptime badges, V-formation), environment (distant planets, space station, asteroids, space weather), interactive (click-to-follow camera, scroll zoom), and audio (ambient soundscape with volume control).
-
 ### Command Palette
 
 Open the command palette with `Cmd+Shift+P` to quickly access any action — new tabs, splits, settings, git changes, and more.
@@ -125,7 +119,7 @@ Fleet installs a `fleet` command to `~/.fleet/bin` for opening files, images, an
 
 ### Settings
 
-Configurable default shell, font size/family (bundled JetBrains Mono + custom font support), scrollback buffer, theme (dark/light), notification preferences per alert level (badge, sound, and OS notification toggles), visualizer effects, and copilot options.
+Configurable default shell, font size/family (bundled JetBrains Mono + custom font support), scrollback buffer, theme (dark/light), notification preferences per alert level (badge, sound, and OS notification toggles), and copilot options.
 
 ### Auto-Updates
 
@@ -150,7 +144,6 @@ Fleet checks GitHub Releases on launch and prompts you to install new versions.
 | Search in pane       | `Cmd+F`          | `Ctrl+Shift+F`     |
 | Git changes          | `Cmd+Shift+G`    | `Ctrl+Shift+G`     |
 | Clipboard history    | `Cmd+Shift+H`    | `Ctrl+Shift+H`     |
-| Toggle visualizer    | `Cmd+Shift+V`    | `Ctrl+Shift+V`     |
 | Open file            | `Cmd+O`          | `Ctrl+O`           |
 | Rename tab           | `F2`             | `F2`               |
 | Rename pane          | `Shift+F2`       | `Shift+F2`         |

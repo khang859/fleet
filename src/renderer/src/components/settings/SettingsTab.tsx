@@ -5,7 +5,6 @@ import { GeneralSection } from './GeneralSection';
 import { WorkspacesSection } from './WorkspacesSection';
 import { NotificationsSection } from './NotificationsSection';
 import { SocketSection } from './SocketSection';
-import { VisualizerSection } from './VisualizerSection';
 import { UpdatesSection } from './UpdatesSection';
 import { CopilotSection } from './CopilotSection';
 import { AnnotateSection } from './AnnotateSection';
@@ -31,7 +30,6 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType<SettingsSe
   workspaces: WorkspacesSection,
   notifications: NotificationsSection,
   socket: SocketSection,
-  visualizer: VisualizerSection,
   updates: UpdatesSection,
   copilot: CopilotSection,
   annotate: AnnotateSection,

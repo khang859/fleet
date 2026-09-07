@@ -165,11 +165,6 @@ export class SettingsStore {
         }
       },
       socketApi: { ...DEFAULT_SETTINGS.socketApi, ...saved.socketApi },
-      visualizer: {
-        ...DEFAULT_SETTINGS.visualizer,
-        ...saved.visualizer,
-        effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...saved.visualizer?.effects }
-      },
       copilot: {
         ...DEFAULT_SETTINGS.copilot,
         ...saved.copilot,
@@ -284,11 +279,6 @@ export class SettingsStore {
       },
       notifications: { ...current.notifications, ...(partial.notifications ?? {}) },
       socketApi: { ...current.socketApi, ...(partial.socketApi ?? {}) },
-      visualizer: {
-        ...current.visualizer,
-        ...(partial.visualizer ?? {}),
-        effects: { ...current.visualizer.effects, ...(partial.visualizer?.effects ?? {}) }
-      },
       copilot: { ...current.copilot, ...(partial.copilot ?? {}) },
       annotate: { ...current.annotate, ...(partial.annotate ?? {}) },
       tools: { ...current.tools, ...(partial.tools ?? {}) },
