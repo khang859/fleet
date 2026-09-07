@@ -18,26 +18,28 @@ Past mistakes and fixes are documented in `docs/learnings/`. **After every mista
 - **Lint:** `npm run lint`
 - **Build:** `npm run build` (runs typecheck first, then electron-vite build)
 
-## Knowledge Graph (graphify)
+## Codebase Questions (ripwire first)
 
-`graphify-out/` holds a committed knowledge graph of `src/`, so a fresh clone can answer architecture questions without building anything.
-Query it with `/graphify query "<question>"` rather than rebuilding - the graph is already there.
-`GRAPH_REPORT.md` carries the god nodes, community map, and import cycles; `graph.html` is the interactive view.
+`ripwire` is on PATH and re-indexes this whole repo in under half a second, so its answers are never stale and cover `scripts/` too, not just `src/`.
+Reach for it before Grep/Glob, and before opening more than two files to work something out.
+The bundled `ripwire-*` skills in `~/.claude/skills` document each verb; `/ripwire-router` maps a moment to the right skill.
 
-**Query the graph first, grep second.** For any question about architecture, relationships, or where something lives in `src/` - "what depends on X", "where does this flow go", "what is in the chat subsystem", "what breaks if I delete this" - run `/graphify query "<question>"` before reaching for Grep/Glob.
-The default reflex is to grep; override it.
-Fall back to grep when the question is a literal string or symbol lookup, when the target is outside `src/` (`scripts/`, `docs/`, `resources/`, config), when the code changed after the last graph refresh, or when the graph comes back thin.
+Use ripwire for symbol-level and change-level questions:
 
-**Refresh on a cadence, not on every change.** Regenerate at releases, or when the graph has drifted far enough to give wrong answers - not as a routine step after editing code.
-The reason is that Louvain clustering is nondeterministic: a rebuild that finds no code changes still reassigns ~80% of nodes to different communities, so every refresh is a ~6,000-line diff and two branches that both rebuild will conflict irreconcilably.
-`.gitattributes` marks these files generated so review collapses them, but that hides the noise rather than removing it.
+| Question | Command |
+| --- | --- |
+| Cold start on the repo or one subsystem | `ripwire .` or `ripwire src/main/agent` |
+| Context for a specific task | `ripwire . --for="<task>"` |
+| Who calls this, and what does it call | `ripwire . --callers=SYM` / `--callees=SYM` |
+| Blast radius before changing a symbol | `ripwire . --impact=SYM` |
+| Which tests my diff should run | `ripwire . --affected` |
+| Did my edit change a contract | `ripwire . --edit-check=SYM` |
+| Does a helper for this already exist | `ripwire . --exemplar="<what you are about to write>"` |
 
-Two gotchas when you do refresh:
+Run `ripwire . --quality-delta` before calling any non-trivial change done.
+It reports only what the change made worse and exits non-zero on new complexity, duplication, or dead code.
 
-- The bare `graphify update` CLI **overwrites the curated community labels** with mechanical ones (`Reported Activity` becomes `ReportedActivity`). Refresh through the `/graphify` skill so the labelling step reruns, and check `GRAPH_REPORT.md` before committing.
-- `graphify-out/.graphify_root` points at `src`, so a bare `graphify update` writes a stray `src/graphify-out/` directory. Delete it if it appears; it is not the real output.
-
-`graph.json` is 7.8 MB (about 360 KB compressed in git). Only `cost.json`, `cache/`, and the two absolute-path `.graphify_*` files are ignored.
+Fall back to grep for literal strings, for targets outside the index, and when ripwire comes back thin.
 
 ## Driving the UI (fleet-drive)
 
