@@ -58,4 +58,4 @@ Deriving it from a status stream works only if every event that changes the unde
 The pill should disappear rather than offer an install that would fail, and the Updates page should go back to an enabled `Check for Updates` with the error under it.
 
 One process note that cost more time than the bug: `npm run drive` attached to an Electron instance left running from a *previous* session, which had grabbed the single-instance lock, so the freshly built main never started and the payloads coming back were the old shape.
-`ps -o lstart= -p <pid>` on the electron process is the quick check - see [`fleet-drive-stale-electron-steals-port`](./2026-08-05-fleet-drive-stale-electron-steals-port.md).
+`ps -o lstart= -p <pid>` on the electron process is the quick check - see [`the-dev-app-runs-stale-main-code`](./2026-08-05-the-dev-app-runs-stale-main-code.md).

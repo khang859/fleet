@@ -130,5 +130,5 @@ Both of the fake-input reproductions here returned a clean bill of health for a 
 
 ## Related
 
-- `docs/learnings/2026-08-05-fleet-drive-stale-electron-steals-port.md` - hit again on the way to this one. An orphaned Electron held the derived debug port while `session.json` named a different pid, so fleet-drive timed out connecting. The documented `pkill` sequence fixed it.
+- `docs/learnings/2026-08-05-the-dev-app-runs-stale-main-code.md` - hit again on the way to this one. An orphaned Electron held the derived debug port while `session.json` named a different pid, so fleet-drive timed out connecting. The documented `pkill` sequence fixed it.
 - xterm 6's addons are published on the `beta` dist-tag only (`addon-webgl@0.20.0-beta`, `addon-fit@0.12.0-beta`), and those betas peer-depend on the beta core `^6.1.0-beta.301`. The 5.x-era stable addons do work against stable 6.0.0, which is the combination Fleet ships.
