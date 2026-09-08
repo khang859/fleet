@@ -43,6 +43,7 @@ import type {
   WslHomeDirResponse
 } from '../shared/ipc-api';
 import type { WslDistroState, PathContext } from '../shared/shell-profiles';
+import type { ReleaseNote } from '../shared/release-notes';
 import type {
   Workspace,
   FleetSettings,
@@ -405,6 +406,9 @@ const fleetApi = {
     },
     installUpdate: (): void => ipcRenderer.send(IPC_CHANNELS.UPDATE_INSTALL),
     getVersion: async (): Promise<string> => typedInvoke(IPC_CHANNELS.GET_VERSION),
+    /** Every version this build ships notes for, newest first. */
+    getReleaseHistory: async (): Promise<ReleaseNote[]> =>
+      typedInvoke(IPC_CHANNELS.RELEASE_NOTES_HISTORY),
     /**
      * Dev only, for `npm run drive -- fixture update-ready`. Main registers the
      * listener under IS_FLEET_DEV, and a `send` to a channel nothing listens on

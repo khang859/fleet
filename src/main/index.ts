@@ -15,6 +15,7 @@ import {
 import { safeOpenExternal, isSafeExternalUrl } from './safe-external';
 import { shouldCheck, UPDATE_CHECK_INTERVAL_MS } from './update-scheduler';
 import { nextStaged } from './update-staging';
+import { loadReleaseHistory } from './release-notes-history';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -1206,6 +1207,8 @@ void app.whenReady().then(async () => {
   );
 
   ipcMain.handle(IPC_CHANNELS.GET_VERSION, () => app.getVersion());
+
+  ipcMain.handle(IPC_CHANNELS.RELEASE_NOTES_HISTORY, async () => loadReleaseHistory());
 
   /**
    * Install the staged update, having asked first if that throws work away.

@@ -8,11 +8,18 @@ files:
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  # CHANGELOG.md stays excluded from the asar above and is copied to resources/
+  # below instead: Settings reads it at runtime, and every other bundled data
+  # file in this app lives in resources/ where a shipped build can be inspected.
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!reference/**'
   - '!docs/**'
 extraResources:
+  # The release-note history Settings > Updates shows. Read at runtime by
+  # src/main/release-notes-history.ts.
+  - from: CHANGELOG.md
+    to: CHANGELOG.md
   - from: hooks/bin/
     to: hooks/
   - from: resources/mascots/

@@ -307,6 +307,27 @@ const UPDATE_SUPERSEDED = `(() => {
   return 'staged 2.113.0; 2.114.0 starts downloading at 1.5s and fails at 3s - the pill should disappear and Settings should offer Check for Updates again';
 })()`;
 
+/**
+ * The shipped release-note history, as Settings > Updates has it on a normal
+ * launch - nothing simulated.
+ *
+ * Worth a fixture because the failure mode is silence: the list is fed by a
+ * file read in main whose path differs between a dev run and a packaged build,
+ * and a wrong path there produces an empty section rather than an error. This
+ * reports what the page is actually holding so an empty list can be told apart
+ * from a changelog that legitimately parsed to nothing.
+ */
+const RELEASE_HISTORY = `(async () => {
+  if (!window.fleet.updates.getReleaseHistory) return 'build is too old for this fixture';
+  const history = await window.fleet.updates.getReleaseHistory();
+  const version = await window.fleet.updates.getVersion();
+  if (history.length === 0) return 'EMPTY history - main could not read CHANGELOG.md; check the resolved path in release-notes-history.ts';
+  const current = history.some((e) => e.version === version);
+  return \`\${history.length} versions, \${history[0].version} down to \${history[history.length - 1].version}\` +
+    (current ? \`; v\${version} is in the list and its row should be open and badged Current\`
+             : \`; v\${version} is NOT in this build's changelog, so every row should be collapsed and none badged\`);
+})()`;
+
 export const FIXTURES: Record<string, Fixture> = {
   'agent-cleared-results': {
     describe:
@@ -332,6 +353,11 @@ export const FIXTURES: Record<string, Fixture> = {
     describe:
       'Forgets that the update nudge was already shown, so "update-ready" announces itself again instead of only leaving the pill.',
     source: UPDATE_RENUDGE
+  },
+  'release-history': {
+    describe:
+      'The release-note history Settings > Updates ships with. Open Settings > Updates: there should be one collapsible row per version, newest first, with only the running version open and badged "Current", its notes rendered as Markdown rather than literal punctuation, and the list scrolling inside its own box. Run "update-ready" alongside it to see a pending version pinned above the history, expanded and badged "Pending", and listed once rather than twice.',
+    source: RELEASE_HISTORY
   },
   'update-superseded': {
     describe:
