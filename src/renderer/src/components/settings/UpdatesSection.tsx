@@ -1,6 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { AgentMarkdown } from '../agent/AgentMarkdown';
 import { useUpdateStore } from '../../store/update-store';
+import type { ReleaseNote } from '../../../../shared/release-notes';
+
+/** A version in the list, and why it is worth pointing at. */
+type Row = ReleaseNote & { badge: 'pending' | 'current' | null };
 
 export function UpdatesSection(): React.JSX.Element {
   // Read from the store rather than subscribing here. This section is mounted
@@ -13,10 +18,25 @@ export function UpdatesSection(): React.JSX.Element {
   const staged = useUpdateStore((s) => s.staged);
   const dismissStatus = useUpdateStore((s) => s.dismissStatus);
   const [appVersion, setAppVersion] = useState('');
+  // Every version this build ships notes for. Constant for the life of the
+  // process, so it is asked for once rather than pushed with the status.
+  const [history, setHistory] = useState<ReleaseNote[]>([]);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const seeded = useRef(false);
 
   useEffect(() => {
     void window.fleet.updates.getVersion().then(setAppVersion);
+    void window.fleet.updates.getReleaseHistory().then(setHistory);
   }, []);
+
+  // Open the row for the version you are running, once both halves have
+  // arrived. Only once: after that the open rows are the user's business, and a
+  // late re-render must not spring the list back to how it started.
+  useEffect(() => {
+    if (seeded.current || appVersion === '' || history.length === 0) return;
+    seeded.current = true;
+    if (history.some((e) => e.version === appVersion)) setExpanded(new Set([appVersion]));
+  }, [appVersion, history]);
 
   // "You're up to date" is an answer to a question the user just asked, so it
   // clears itself rather than standing as a permanent claim.
@@ -25,6 +45,36 @@ export function UpdatesSection(): React.JSX.Element {
     const timer = setTimeout(dismissStatus, 3000);
     return () => clearTimeout(timer);
   }, [updateStatus.state, dismissStatus]);
+
+  function toggle(version: string): void {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(version)) next.add(version);
+      return next;
+    });
+  }
+
+  // The update you can act on right now, which this build's changelog may know
+  // nothing about - so the updater's copy of its notes is the authority, and it
+  // sits above the history rather than in it.
+  const pending = staged ?? (updateStatus.state === 'downloading' ? updateStatus : null);
+  const rows: Row[] = [];
+  if (pending) {
+    rows.push({
+      version: pending.version,
+      // A pending version already in the changelog (dev builds, a re-download)
+      // would otherwise show an empty body when the updater sent no notes.
+      notes:
+        pending.releaseNotes.trim() ||
+        (history.find((e) => e.version === pending.version)?.notes ?? ''),
+      badge: 'pending'
+    });
+  }
+  for (const entry of history) {
+    // Shown once, in the pending position.
+    if (entry.version === pending?.version) continue;
+    rows.push({ ...entry, badge: entry.version === appVersion ? 'current' : null });
+  }
 
   return (
     <div className="space-y-6">
@@ -76,27 +126,81 @@ export function UpdatesSection(): React.JSX.Element {
           <div className="text-sm fleet-accent-text">v{staged.version} is ready to install.</div>
         )}
 
-        {/* The staged update's notes win over a download still in flight: the
-            one you can act on right now is the one worth reading about. */}
-        {(() => {
-          const notes =
-            staged?.releaseNotes ??
-            (updateStatus.state === 'downloading' ? updateStatus.releaseNotes : '');
-          if (!notes) return null;
-          return (
-            <div className="mt-2">
-              <div className="text-xs text-fleet-text-subtle uppercase tracking-wider mb-1">
-                Release Notes
-              </div>
-              <div className="text-fleet-text-muted bg-fleet-surface-3 rounded-md p-3 max-h-[260px] overflow-y-auto border border-fleet-border-strong">
-                <AgentMarkdown streaming={false} className="text-xs leading-relaxed">
-                  {notes}
-                </AgentMarkdown>
-              </div>
+        {rows.length > 0 && (
+          <div className="mt-2">
+            <div className="text-xs text-fleet-text-subtle uppercase tracking-wider mb-1">
+              Release Notes
             </div>
-          );
-        })()}
+            {/* Bounded: one row per release, and there is a release every few
+                days, so the page must not grow with the project's age. */}
+            <div className="max-h-[360px] overflow-y-auto rounded-md border border-fleet-border-strong bg-fleet-surface-3">
+              {rows.map((row) => (
+                <VersionRow
+                  key={row.version}
+                  row={row}
+                  // A pending update is the reason the page is open: it stays
+                  // open rather than being one more thing to click.
+                  open={row.badge === 'pending' || expanded.has(row.version)}
+                  onToggle={row.badge === 'pending' ? null : () => toggle(row.version)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function VersionRow({
+  row,
+  open,
+  onToggle
+}: {
+  row: Row;
+  open: boolean;
+  onToggle: (() => void) | null;
+}): React.JSX.Element {
+  const Chevron = open ? ChevronDown : ChevronRight;
+  const header = (
+    <>
+      {/* No chevron on a row that cannot be closed - it would promise a
+          control that is not there. */}
+      {onToggle ? (
+        <Chevron size={14} className="shrink-0 text-fleet-text-subtle" />
+      ) : (
+        <span className="w-[14px] shrink-0" />
+      )}
+      <span className="text-fleet-text-secondary">v{row.version}</span>
+      {row.badge && (
+        <span className="text-[10px] uppercase tracking-wider text-fleet-text-subtle border border-fleet-border-strong rounded px-1 py-px shrink-0">
+          {row.badge === 'pending' ? 'Pending' : 'Current'}
+        </span>
+      )}
+    </>
+  );
+
+  return (
+    <div className="border-b border-fleet-border-strong last:border-b-0">
+      {onToggle ? (
+        <button
+          onClick={onToggle}
+          aria-expanded={open}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-fleet-surface-2/50 transition text-left"
+        >
+          {header}
+        </button>
+      ) : (
+        <div className="w-full flex items-center gap-2 px-3 py-2 text-sm">{header}</div>
+      )}
+
+      {open && row.notes !== '' && (
+        <div className="px-3 pb-3 pl-[34px] text-fleet-text-muted">
+          <AgentMarkdown streaming={false} className="text-xs leading-relaxed">
+            {row.notes}
+          </AgentMarkdown>
+        </div>
+      )}
     </div>
   );
 }

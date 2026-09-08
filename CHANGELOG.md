@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.118.0
+
+- **Every version's release notes, in the app** - Fleet showed you the notes for one version: the one the updater was offering, and only until you installed it.
+Then they were gone, and Settings > Updates was a version number and a button.
+At a release every two or three days, a window left open for a week is several versions behind, and installing one update taught you nothing about the ones it skipped past.
+The changelog now ships inside the app and Settings > Updates lists every version it documents, newest first, one row per release, with the version you are running open and marked.
+It reads offline, because the file travels with the build rather than being fetched.
+An update that is waiting to install still leads: its notes sit above the history, expanded, marked pending, and listed once rather than twice.
+
 ## v2.117.0
 
 - **Each scratch chat gets its own folder** - a scratch chat now runs in its own session-based subfolder under `~/.fleet/scratch` rather than sharing the root, so file work stays organized by conversation, files you made in one chat stay off-screen in another, and shell history stays separate.

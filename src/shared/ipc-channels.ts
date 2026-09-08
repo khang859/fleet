@@ -70,6 +70,14 @@ export const IPC_CHANNELS = {
   /** Dev only: push a synthetic UpdateStatus down the real status path. */
   UPDATE_SIMULATE: 'fleet:update-simulate',
   GET_VERSION: 'fleet:get-version',
+  /**
+   * The notes for every version this build ships with, newest first.
+   *
+   * Asked for rather than pushed with UPDATE_STATUS: the history is constant
+   * for the life of the process, while a snapshot is re-sent on every
+   * download-progress tick.
+   */
+  RELEASE_NOTES_HISTORY: 'fleet:release-notes-history',
   SHELL_OPEN_EXTERNAL: 'shell:open-external',
   TERMINAL_CONTEXT_MENU: 'terminal:context-menu',
   LOG_BATCH: 'log:batch',
