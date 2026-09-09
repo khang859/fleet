@@ -9,6 +9,10 @@ The changelog now ships inside the app and Settings > Updates lists every versio
 It reads offline, because the file travels with the build rather than being fetched.
 An update that is waiting to install still leads: its notes sit above the history, expanded, marked pending, and listed once rather than twice.
 
+- **Diagrams in the Markdown preview** - a `mermaid` code block in the Markdown pane (and the Notes pane, which shares the renderer) now draws as a diagram instead of sitting there as plain code.
+A diagram that fails to parse shows its source alongside mermaid's error, so a typo is visible rather than silently blank.
+The library loads on first use, so a file without a diagram does not pay for it (#574).
+
 ## v2.117.0
 
 - **Each scratch chat gets its own folder** - a scratch chat now runs in its own session-based subfolder under `~/.fleet/scratch` rather than sharing the root, so file work stays organized by conversation, files you made in one chat stay off-screen in another, and shell history stays separate.
