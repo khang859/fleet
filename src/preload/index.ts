@@ -72,6 +72,13 @@ import type {
   EnvPathResult,
   EnvTrashResult
 } from '../shared/env-editor-types';
+import type {
+  ClaudeReadRequest,
+  ClaudeWriteRequest,
+  ClaudeReadResult,
+  ClaudeWriteResult,
+  LocalSettingsRootResult
+} from '../shared/claude-config-types';
 import type { NoteReadResult, NoteWriteResult } from '../shared/notes-types';
 import type {
   AgentAttachRequest,
@@ -554,6 +561,23 @@ const fleetApi = {
     restore: async (trashPath: string, absPath: string): Promise<{ ok: true }> =>
       typedInvoke<{ ok: true }>(IPC_CHANNELS.ENV_EDITOR_RESTORE, trashPath, absPath)
   },
+  /**
+   * Claude Code's own config files, for Settings > Claude Config.
+   *
+   * Deliberately takes a scope and a set of directories rather than a path:
+   * main derives the path and checks it against a five-file allowlist, so the
+   * renderer cannot name a file outside it.
+   */
+  claudeConfig: {
+    read: async (req: ClaudeReadRequest): Promise<ClaudeReadResult & { path: string | null }> =>
+      typedInvoke<ClaudeReadResult & { path: string | null }>(IPC_CHANNELS.CLAUDE_CONFIG_READ, req),
+    write: async (req: ClaudeWriteRequest): Promise<ClaudeWriteResult> =>
+      typedInvoke<ClaudeWriteResult>(IPC_CHANNELS.CLAUDE_CONFIG_WRITE, req),
+    /** Where `settings.local.json` goes for this session directory, and why. */
+    resolveLocalRoot: async (sessionDir: string): Promise<LocalSettingsRootResult> =>
+      typedInvoke<LocalSettingsRootResult>(IPC_CHANNELS.CLAUDE_CONFIG_RESOLVE_ROOT, sessionDir)
+  },
+
   notes: {
     read: async (scopePath: string, pathContext?: PathContext): Promise<NoteReadResult> =>
       typedInvoke<NoteReadResult>(IPC_CHANNELS.NOTES_READ, scopePath, pathContext),

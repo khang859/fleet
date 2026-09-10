@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, statSync } from 'node:fs';
 import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
+import { isRecord } from '../shared/is-record';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -13,10 +14,6 @@ export interface CLIResponse {
   data?: unknown;
   error?: string;
   code?: string;
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return v != null && typeof v === 'object' && !Array.isArray(v);
 }
 
 function isCLIResponse(v: unknown): v is CLIResponse {

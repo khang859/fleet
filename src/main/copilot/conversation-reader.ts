@@ -2,6 +2,7 @@ import { existsSync, statSync, watch, openSync, readSync, closeSync, type FSWatc
 import { homedir } from 'os';
 import { join } from 'path';
 import { createLogger } from '../logger';
+import { isRecord } from '../../shared/is-record';
 import type { CopilotChatMessage, CopilotMessageBlock } from '../../shared/types';
 
 const log = createLogger('copilot:conversation-reader');
@@ -125,10 +126,6 @@ function formatToolInputPreview(toolName: string, input: Record<string, unknown>
       return '';
     }
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function parseMessageLine(
