@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.119.0
+
+- **Claude Code's settings, in Fleet** - Settings > Claude Config edits `.claude/settings.json` and `CLAUDE.md` without leaving Fleet, so a permission rule or an env var no longer means hunting for a dotfile.
+Three scopes sit behind one picker, each labelled with who it reaches: User is everywhere, Project is shared with your team, Project local is only you and is never committed.
+The resolved path is printed above the editor with the rule that produced it, and you can point the project scopes at a different folder.
+Every file has a Form tab and a Raw tab on the same document, so you can fill in a field or edit the JSON and switch between the two mid-edit.
+The raw editor has JSON syntax, schema-aware completion and inline diagnostics, and it will not let you save text that does not parse.
+- **What Claude Code actually uses** - the hard part of these files is that two rules run at once: a single value is replaced by the narrowest file that sets it, while lists such as the permission rules combine across all three.
+A strip at the top of the page shows the resolved value for each setting with its sources attached, in the rule's own words, so the behaviour is demonstrated rather than only described.
+- **Hooks you can read** - the hooks Claude Code runs are listed per event, with their matcher and command.
+The rows Fleet installs for the Copilot are shown at full contrast but locked, because a hook that runs is a hook you need to be able to see, and Fleet writes those from disk so your edits here can never remove them.
+- **Saving that tells you what it is about to do** - a floating bar names the change ("2 unsaved changes in Permissions"), the Project scope warns that the file is committed to git, and a file that changed underneath you offers three plain choices rather than a yes/no (#576).
+
 ## v2.118.0
 
 - **Every version's release notes, in the app** - Fleet showed you the notes for one version: the one the updater was offering, and only until you installed it.
