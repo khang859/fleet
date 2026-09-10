@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useClaudeConfigStore } from '../../store/claude-config-store';
 import { resolveClaudeFilePath } from '../../../../shared/claude-config';
 import type { ClaudeConfigScope, ClaudeConfigDirs } from '../../../../shared/claude-config';
@@ -19,6 +19,8 @@ import {
   applySettingsEdit
 } from '../../lib/claude-json-edit';
 import { SCALAR_FIELDS, LIST_FIELDS } from '../../lib/claude-settings-fields';
+import { adoptRows, commitRows, rowsMatchDocument } from '../../lib/claude-key-value-rows';
+import type { KeyValueRow } from '../../lib/claude-key-value-rows';
 import { ClaudeConfigHooks } from './ClaudeConfigHooks';
 import { ClaudeConfigEffective } from './ClaudeConfigEffective';
 
@@ -215,77 +217,108 @@ function StringList({
   );
 }
 
+/**
+ * One row of a key/value map: its name, its value, and the button that drops it.
+ *
+ * Split out of the list because the value side has two shapes - a text box and
+ * an on/off select - and the branch between them is longer than the list that
+ * holds it.
+ */
+function KeyValueRowFields({
+  row,
+  valuePlaceholder,
+  autoFocus,
+  onChange,
+  onRemove
+}: {
+  row: KeyValueRow;
+  valuePlaceholder: string;
+  autoFocus: boolean;
+  onChange: (next: KeyValueRow) => void;
+  onRemove: () => void;
+}): React.JSX.Element {
+  const [key, value] = row;
+  // Anything that is not text or a switch has no honest control here.
+  const editable = typeof value === 'string' || typeof value === 'boolean';
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        className={`${inputCls} flex-1 font-mono text-xs`}
+        value={key}
+        placeholder="Name"
+        autoFocus={autoFocus}
+        onChange={(e) => onChange([e.target.value, value])}
+      />
+      {typeof value === 'boolean' ? (
+        <select
+          className={`${fieldCls} w-[92px] flex-none`}
+          value={value ? 'true' : 'false'}
+          onChange={(e) => onChange([key, e.target.value === 'true'])}
+        >
+          <option value="true">on</option>
+          <option value="false">off</option>
+        </select>
+      ) : (
+        <input
+          className={`${inputCls} flex-1 font-mono text-xs disabled:opacity-50`}
+          value={typeof value === 'string' ? value : JSON.stringify(value)}
+          placeholder={valuePlaceholder}
+          disabled={!editable}
+          title={editable ? undefined : 'This value is not plain text. Edit it in the Raw view.'}
+          onChange={(e) => onChange([key, e.target.value])}
+        />
+      )}
+      <button
+        onClick={onRemove}
+        className="shrink-0 text-xs text-red-400 transition active:scale-[0.97]"
+      >
+        Remove
+      </button>
+    </div>
+  );
+}
+
 function KeyValueList({
   entries,
   onChange,
   valuePlaceholder
 }: {
-  entries: Array<[string, unknown]>;
+  entries: KeyValueRow[];
   onChange: (next: Record<string, unknown> | undefined) => void;
   valuePlaceholder: string;
 }): React.JSX.Element {
-  const commit = (next: Array<[string, unknown]>): void => {
-    const object: Record<string, unknown> = {};
-    for (const [key, value] of next) if (key !== '') object[key] = value;
-    onChange(Object.keys(object).length === 0 ? undefined : object);
+  // Rows, not the object. A row the user has just added has no name yet, and a
+  // nameless key cannot exist in the document, so deriving rows from the object
+  // would delete every new row before it could be typed into.
+  const [rows, setRows] = useState<KeyValueRow[]>(entries);
+  useEffect(() => {
+    setRows((current) => adoptRows(current, entries));
+  }, [entries]);
+
+  const update = (next: KeyValueRow[]): void => {
+    setRows(next);
+    // Adding an empty row changes nothing the document can hold, and reporting
+    // a change there would mark the file dirty for a row that is not in it.
+    if (!rowsMatchDocument(next, entries)) onChange(commitRows(next));
   };
+
+  const blankRow: KeyValueRow = ['', valuePlaceholder === 'on / off' ? true : ''];
 
   return (
     <div className="w-full space-y-1">
-      {entries.map(([key, value], index) => {
-        const editable = typeof value === 'string' || typeof value === 'boolean';
-        return (
-          <div key={index} className="flex items-center gap-2">
-            <input
-              className={`${inputCls} flex-1 font-mono text-xs`}
-              value={key}
-              placeholder="Name"
-              onChange={(e) => {
-                const next = [...entries];
-                next[index] = [e.target.value, value];
-                commit(next);
-              }}
-            />
-            {typeof value === 'boolean' ? (
-              <select
-                className={`${fieldCls} w-[92px] flex-none`}
-                value={value ? 'true' : 'false'}
-                onChange={(e) => {
-                  const next = [...entries];
-                  next[index] = [key, e.target.value === 'true'];
-                  commit(next);
-                }}
-              >
-                <option value="true">on</option>
-                <option value="false">off</option>
-              </select>
-            ) : (
-              <input
-                className={`${inputCls} flex-1 font-mono text-xs disabled:opacity-50`}
-                value={typeof value === 'string' ? value : JSON.stringify(value)}
-                placeholder={valuePlaceholder}
-                disabled={!editable}
-                title={
-                  editable ? undefined : 'This value is not plain text. Edit it in the Raw view.'
-                }
-                onChange={(e) => {
-                  const next = [...entries];
-                  next[index] = [key, e.target.value];
-                  commit(next);
-                }}
-              />
-            )}
-            <button
-              onClick={() => commit(entries.filter((_, i) => i !== index))}
-              className="shrink-0 text-xs text-red-400 transition active:scale-[0.97]"
-            >
-              Remove
-            </button>
-          </div>
-        );
-      })}
+      {rows.map((row, index) => (
+        <KeyValueRowFields
+          key={index}
+          row={row}
+          valuePlaceholder={valuePlaceholder}
+          autoFocus={row[0] === '' && index === rows.length - 1}
+          onChange={(next) => update(rows.map((r, i) => (i === index ? next : r)))}
+          onRemove={() => update(rows.filter((_, i) => i !== index))}
+        />
+      ))}
       <button
-        onClick={() => commit([...entries, ['', valuePlaceholder === 'on / off' ? true : '']])}
+        onClick={() => update([...rows, blankRow])}
         className="rounded border border-fleet-border-strong px-2 py-0.5 text-xs text-fleet-text-secondary transition hover:text-fleet-text active:scale-[0.97]"
       >
         Add

@@ -1,4 +1,5 @@
 import { isRecord } from '../../../shared/is-record';
+import { jsonEqual } from '../../../shared/json-equal';
 import { parseSettings } from './claude-json-edit';
 
 /**
@@ -32,10 +33,6 @@ const SECTION_OF: Record<string, string> = {
 
 export type ChangeSummary = { count: number; sections: string[]; label: string };
 
-function same(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
 /** How many settings changed under one top-level key. */
 function countUnder(before: unknown, after: unknown): number {
   // Two objects are compared field by field, so a permissions edit is counted
@@ -43,7 +40,7 @@ function countUnder(before: unknown, after: unknown): number {
   if (!isRecord(before) || !isRecord(after)) return 1;
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   let changed = 0;
-  for (const key of keys) if (!same(before[key], after[key])) changed += 1;
+  for (const key of keys) if (!jsonEqual(before[key], after[key])) changed += 1;
   return changed === 0 ? 1 : changed;
 }
 
@@ -66,7 +63,7 @@ export function summarizeChanges(savedText: string, text: string): ChangeSummary
   let count = 0;
   const sections: string[] = [];
   for (const key of keys) {
-    if (same(before[key], after[key])) continue;
+    if (jsonEqual(before[key], after[key])) continue;
     count += countUnder(before[key], after[key]);
     const section = SECTION_OF[key] ?? 'Other settings';
     if (!sections.includes(section)) sections.push(section);
@@ -86,5 +83,5 @@ export function changedKeys(aText: string, bText: string): string[] {
   const b = parseSettings(bText);
   if (a === null || b === null) return [];
   const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])];
-  return keys.filter((key) => !same(a[key], b[key])).sort();
+  return keys.filter((key) => !jsonEqual(a[key], b[key])).sort();
 }

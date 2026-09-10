@@ -181,8 +181,27 @@ export const useClaudeConfigStore = create<ClaudeConfigState>((set, get) => {
         }
       }));
 
+      // The editors stay usable while a read is in flight, so the draft has to
+      // be rechecked after the await as well as before it. Without this, typing
+      // during a load is overwritten by the disk text that arrives a moment
+      // later, and the document is marked clean on top of it.
+      const textAtRequest = get().documents[path]?.text;
+
       try {
         const result = await window.fleet.claudeConfig.read({ scope, kind, dirs: get().dirs() });
+        const now = get().documents[path];
+        const typedWhileLoading = now !== undefined && now.text !== textAtRequest;
+
+        // A forced reload is the user asking for the disk version, so it still
+        // wins. An ordinary background load never takes an edit away.
+        if (typedWhileLoading && !opts?.force) {
+          patch(path, { revision: result.revision, exists: result.exists, loading: false });
+          if (result.text !== now.savedText) {
+            set((s) => ({ staleOnDisk: { ...s.staleOnDisk, [path]: true } }));
+          }
+          return;
+        }
+
         patch(path, {
           text: result.text,
           savedText: result.text,

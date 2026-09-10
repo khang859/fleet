@@ -1,4 +1,5 @@
 import { isRecord } from './is-record';
+import { jsonEqual } from './json-equal';
 
 /**
  * Reading, editing and merging the `hooks` block of a Claude settings file.
@@ -98,5 +99,5 @@ export function mergeHooks(incoming: ClaudeHooks, onDisk: ClaudeHooks): ClaudeHo
  * hooks block simply came back identical.
  */
 export function hooksDiffer(a: ClaudeHooks, b: ClaudeHooks): boolean {
-  return JSON.stringify(a) !== JSON.stringify(b);
+  return !jsonEqual(a, b);
 }

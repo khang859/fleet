@@ -344,3 +344,55 @@ describe('surviving navigation', () => {
     expect(doc(projectPath)?.text).toBe('{"model":"project draft"}');
   });
 });
+
+describe('load while the user is typing', () => {
+  beforeEach(() => {
+    installFleet();
+    reset();
+  });
+
+  it('keeps an edit made while the read was in flight', async () => {
+    const path = '/u/.claude/settings.json';
+    await useClaudeConfigStore.getState().load('user', 'settings', path);
+
+    let release: (value: unknown) => void = () => {};
+    read.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      })
+    );
+    const pending = useClaudeConfigStore.getState().load('user', 'settings', path);
+
+    useClaudeConfigStore.getState().edit(path, '{"model":"mine"}');
+    release({ path, text: '{"model":"fromDisk"}', revision: REV(3000, 21), exists: true });
+    await pending;
+
+    const doc = useClaudeConfigStore.getState().documents[path];
+    expect(doc?.text).toBe('{"model":"mine"}');
+    expect(isDirty(doc)).toBe(true);
+    // The read still happened, so the write guard knows what disk looks like.
+    expect(doc?.revision).toEqual(REV(3000, 21));
+    expect(useClaudeConfigStore.getState().staleOnDisk[path]).toBe(true);
+  });
+
+  it('lets a forced reload take the disk version anyway', async () => {
+    const path = '/u/.claude/settings.json';
+    await useClaudeConfigStore.getState().load('user', 'settings', path);
+
+    let release: (value: unknown) => void = () => {};
+    read.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      })
+    );
+    const pending = useClaudeConfigStore.getState().load('user', 'settings', path, { force: true });
+
+    useClaudeConfigStore.getState().edit(path, '{"model":"mine"}');
+    release({ path, text: '{"model":"fromDisk"}', revision: REV(3000, 21), exists: true });
+    await pending;
+
+    const doc = useClaudeConfigStore.getState().documents[path];
+    expect(doc?.text).toBe('{"model":"fromDisk"}');
+    expect(isDirty(doc)).toBe(false);
+  });
+});

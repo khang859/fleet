@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState, Compartment, Transaction } from '@codemirror/state';
 import {
   EditorView,
   keymap,
@@ -29,6 +29,11 @@ import type { ClaudeFileKind } from '../../../../shared/claude-config';
  * survives the unmount that navigating to another settings page causes. The
  * editor is only re-seeded when the store's text and the editor's text differ,
  * which happens on a load or a reload but never on the user's own typing.
+ *
+ * The whole editor is rebuilt for each file rather than re-seeded, because
+ * `history()` would otherwise carry its entries across the switch: an undo in
+ * one file would write the previous file's text into it, and a save would then
+ * copy private user values into a shared project file.
  */
 
 const READONLY_HINT = 'Hooks are managed on the Copilot page and are not written from here.';
@@ -47,15 +52,17 @@ export function ClaudeConfigRawEditor({
   const text = useClaudeConfigStore((s) => s.documents[path]?.text ?? '');
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
 
-  const pathRef = useRef(path);
-  pathRef.current = path;
+  // Read at creation time only, so the editor opens on the current draft
+  // instead of on an empty document it then has to undo its way out of.
+  const textRef = useRef(text);
+  textRef.current = text;
 
   useEffect(() => {
     if (!host.current) return;
     const instance = new EditorView({
       parent: host.current,
       state: EditorState.create({
-        doc: '',
+        doc: textRef.current,
         extensions: [
           lineNumbers(),
           highlightActiveLineGutter(),
@@ -69,7 +76,7 @@ export function ClaudeConfigRawEditor({
           EditorView.theme({ '&': { fontSize: '12px' }, '.cm-scroller': { maxHeight: '420px' } }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return;
-            edit(pathRef.current, update.state.doc.toString());
+            edit(path, update.state.doc.toString());
           })
         ]
       })
@@ -79,7 +86,7 @@ export function ClaudeConfigRawEditor({
       instance.destroy();
       view.current = null;
     };
-  }, [edit]);
+  }, [edit, path]);
 
   // The language, the linter and completion all depend on which file is open,
   // so they are swapped together rather than rebuilt with the whole editor.
@@ -107,7 +114,10 @@ export function ClaudeConfigRawEditor({
     if (!instance) return;
     if (instance.state.doc.toString() === text) return;
     instance.dispatch({
-      changes: { from: 0, to: instance.state.doc.length, insert: text }
+      changes: { from: 0, to: instance.state.doc.length, insert: text },
+      // A load or a reload is not something the user did, so undo must not walk
+      // back into the text it replaced.
+      annotations: Transaction.addToHistory.of(false)
     });
   }, [text, path]);
 
