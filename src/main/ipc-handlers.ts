@@ -186,6 +186,9 @@ import {
   softDeleteEnvFile,
   restoreEnvFile
 } from './env-editor/env-editor-fs';
+import { readClaudeScope, writeClaudeScope } from './claude-config/claude-config-fs';
+import { resolveLocalSettingsRoot } from './claude-config/local-settings-root';
+import type { ClaudeReadRequest, ClaudeWriteRequest } from '../shared/claude-config-types';
 import { listEnvFilesWsl } from './env-editor/env-editor-wsl';
 import { noteKey, readNote, writeNote } from './notes/notes-fs';
 import type { EnvFileEntry } from '../shared/env-editor-types';
@@ -1033,6 +1036,23 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_RESTORE, (_e, trashPath: string, absPath: string) =>
     restoreEnvFile(trashPath, absPath)
+  );
+
+  // ── Claude Config ─────────────────────────────────────────────────────────
+  // The renderer sends the scope, the kind, and the three directories - never
+  // a path. Main derives the path itself and checks it against the allowlist,
+  // so this surface cannot be aimed at an arbitrary file. The `hooks` key is
+  // substituted from disk inside writeClaudeScope, on every write path.
+  ipcMain.handle(IPC_CHANNELS.CLAUDE_CONFIG_READ, (_e, req: ClaudeReadRequest) =>
+    readClaudeScope(req)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.CLAUDE_CONFIG_WRITE, (_e, req: ClaudeWriteRequest) =>
+    writeClaudeScope(req)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.CLAUDE_CONFIG_RESOLVE_ROOT, async (_e, sessionDir: string) =>
+    resolveLocalSettingsRoot(sessionDir)
   );
 
   // ── Project Notes ─────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ export type SettingsSection =
   | 'socket'
   | 'updates'
   | 'copilot'
+  | 'claudeConfig'
   | 'annotate'
   | 'envSync'
   | 'remoteHosts'
@@ -31,6 +32,7 @@ const NAV_GROUPS: NavGroup[] = [
     heading: 'Tools & Agents',
     items: [
       { id: 'copilot', label: 'Copilot', darwinOnly: true },
+      { id: 'claudeConfig', label: 'Claude Config' },
       { id: 'learnings', label: 'Learnings' },
       { id: 'annotate', label: 'Annotate' },
       { id: 'envSync', label: 'Env Sync' }

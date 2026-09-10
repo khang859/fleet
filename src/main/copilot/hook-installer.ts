@@ -10,6 +10,7 @@ import {
 import { join } from 'path';
 import { homedir } from 'os';
 import { createLogger } from '../logger';
+import { isRecord } from '../../shared/is-record';
 
 const log = createLogger('copilot:hooks');
 
@@ -17,10 +18,6 @@ const DEFAULT_CLAUDE_DIR = join(homedir(), '.claude');
 
 // Old Python script name — used for cleanup during migration
 const LEGACY_SCRIPT_NAME = 'fleet-copilot.py';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function parseClaudeSettings(text: string): ClaudeSettings | null {
   const data: unknown = JSON.parse(text);

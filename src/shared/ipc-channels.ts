@@ -158,6 +158,10 @@ export const IPC_CHANNELS = {
   ENV_EDITOR_RENAME: 'env-editor:rename',
   ENV_EDITOR_DELETE: 'env-editor:delete',
   ENV_EDITOR_RESTORE: 'env-editor:restore',
+  // Claude Config (Settings > Claude Config)
+  CLAUDE_CONFIG_READ: 'claude-config:read',
+  CLAUDE_CONFIG_WRITE: 'claude-config:write',
+  CLAUDE_CONFIG_RESOLVE_ROOT: 'claude-config:resolve-root',
   // Project Notes
   NOTES_READ: 'notes:read',
   NOTES_WRITE: 'notes:write',

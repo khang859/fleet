@@ -7,6 +7,7 @@ import { NotificationsSection } from './NotificationsSection';
 import { SocketSection } from './SocketSection';
 import { UpdatesSection } from './UpdatesSection';
 import { CopilotSection } from './CopilotSection';
+import { ClaudeConfigSection } from './ClaudeConfigSection';
 import { AnnotateSection } from './AnnotateSection';
 import { EnvSyncSection } from './EnvSyncSection';
 import { LearningsSection } from './LearningsSection';
@@ -32,6 +33,7 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType<SettingsSe
   socket: SocketSection,
   updates: UpdatesSection,
   copilot: CopilotSection,
+  claudeConfig: ClaudeConfigSection,
   annotate: AnnotateSection,
   envSync: EnvSyncSection,
   remoteHosts: RemoteHostsSection,

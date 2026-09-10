@@ -11,6 +11,7 @@ import { useAgentMcpStore } from './store/agent-mcp-store';
 import { useAgentSkillsStore } from './store/agent-skills-store';
 import { useAgentMemoryStore } from './store/agent-memory-store';
 import { useNotificationStore } from './store/notification-store';
+import { useClaudeConfigStore } from './store/claude-config-store';
 import { useUpdateStore } from './store/update-store';
 import './index.css';
 
@@ -91,7 +92,8 @@ if (import.meta.env.DEV) {
       agentSkills: useAgentSkillsStore,
       agentMemory: useAgentMemoryStore,
       notification: useNotificationStore,
-      update: useUpdateStore
+      update: useUpdateStore,
+      claudeConfig: useClaudeConfigStore
     }
   };
 }

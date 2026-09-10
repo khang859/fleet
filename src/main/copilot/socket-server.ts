@@ -1,6 +1,7 @@
 import { createServer, type Server, type Socket } from 'net';
 import { unlinkSync, existsSync, chmodSync } from 'fs';
 import { createLogger } from '../logger';
+import { isRecord } from '../../shared/is-record';
 import { COPILOT_SOCKET_PATH } from '../../shared/constants';
 import type { CopilotSessionStore, HookEvent } from './session-store';
 
@@ -11,10 +12,6 @@ type PendingSocket = {
   toolUseId: string;
   socket: Socket;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function parseHookEvent(buffer: string): HookEvent | null {
   let data: unknown;
