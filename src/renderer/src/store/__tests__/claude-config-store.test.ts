@@ -370,9 +370,52 @@ describe('load while the user is typing', () => {
     const doc = useClaudeConfigStore.getState().documents[path];
     expect(doc?.text).toBe('{"model":"mine"}');
     expect(isDirty(doc)).toBe(true);
-    // The read still happened, so the write guard knows what disk looks like.
-    expect(doc?.revision).toEqual(REV(3000, 21));
     expect(useClaudeConfigStore.getState().staleOnDisk[path]).toBe(true);
+  });
+
+  it('keeps the old revision when disk moved on, so the next save is refused', async () => {
+    const path = '/u/.claude/settings.json';
+    await useClaudeConfigStore.getState().load('user', 'settings', path);
+
+    let release: (value: unknown) => void = () => {};
+    read.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      })
+    );
+    const pending = useClaudeConfigStore.getState().load('user', 'settings', path);
+
+    useClaudeConfigStore.getState().edit(path, '{"model":"mine"}');
+    release({ path, text: '{"model":"someoneElse"}', revision: REV(3000, 21), exists: true });
+    await pending;
+
+    // Adopting REV(3000, 21) here would hand the next ordinary save a lock that
+    // matches disk, and the save would overwrite the change nobody has seen.
+    expect(useClaudeConfigStore.getState().documents[path]?.revision).toEqual(REV(1000, 13));
+
+    await useClaudeConfigStore.getState().save('user', 'settings', path);
+    expect(write.mock.calls[0][0].expected).toEqual(REV(1000, 13));
+  });
+
+  it('takes the new revision when disk still matches the draft baseline', async () => {
+    const path = '/u/.claude/settings.json';
+    await useClaudeConfigStore.getState().load('user', 'settings', path);
+
+    let release: (value: unknown) => void = () => {};
+    read.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      })
+    );
+    const pending = useClaudeConfigStore.getState().load('user', 'settings', path);
+
+    useClaudeConfigStore.getState().edit(path, '{"model":"mine"}');
+    // Same text, fresh stat: a touch, not an edit. Nothing to protect.
+    release({ path, text: '{"model":"a"}', revision: REV(3000, 13), exists: true });
+    await pending;
+
+    expect(useClaudeConfigStore.getState().documents[path]?.revision).toEqual(REV(3000, 13));
+    expect(useClaudeConfigStore.getState().staleOnDisk[path]).toBeUndefined();
   });
 
   it('lets a forced reload take the disk version anyway', async () => {

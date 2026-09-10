@@ -195,8 +195,20 @@ export const useClaudeConfigStore = create<ClaudeConfigState>((set, get) => {
         // A forced reload is the user asking for the disk version, so it still
         // wins. An ordinary background load never takes an edit away.
         if (typedWhileLoading && !opts?.force) {
-          patch(path, { revision: result.revision, exists: result.exists, loading: false });
-          if (result.text !== now.savedText) {
+          // The revision is the write's optimistic lock, and it belongs to the
+          // text this draft was based on. Taking the one just read would let
+          // the next ordinary Save pass the lock and silently overwrite the
+          // change that landed while the user was typing - the stale banner
+          // alone does not guard the write. So the token only moves when disk
+          // still matches the draft's baseline; otherwise it stays behind and
+          // the write is refused into the conflict flow.
+          const sameOnDisk = result.text === now.savedText;
+          patch(path, {
+            ...(sameOnDisk ? { revision: result.revision } : {}),
+            exists: result.exists,
+            loading: false
+          });
+          if (!sameOnDisk) {
             set((s) => ({ staleOnDisk: { ...s.staleOnDisk, [path]: true } }));
           }
           return;

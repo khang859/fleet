@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { EditorState, Compartment, Transaction } from '@codemirror/state';
+import { EditorState, Transaction } from '@codemirror/state';
 import {
   EditorView,
   keymap,
@@ -15,6 +15,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { linter, lintGutter } from '@codemirror/lint';
 import { autocompletion } from '@codemirror/autocomplete';
 import { oneDark } from '@codemirror/theme-one-dark';
+import type { Extension } from '@codemirror/state';
 import type { Diagnostic } from '@codemirror/lint';
 import { useClaudeConfigStore } from '../../store/claude-config-store';
 import { isKnownTopLevelKey } from '../../../../shared/claude-settings-schema';
@@ -34,7 +35,26 @@ import type { ClaudeFileKind } from '../../../../shared/claude-config';
  * `history()` would otherwise carry its entries across the switch: an undo in
  * one file would write the previous file's text into it, and a save would then
  * copy private user values into a shared project file.
+ *
+ * Because the editor is rebuilt per file, the language support is part of the
+ * initial state rather than a compartment reconfigured afterwards. A
+ * compartment only pays for itself when the language changes *within* one
+ * editor, and here it cannot: settings.json and CLAUDE.md are different files.
  */
+
+/** Syntax, diagnostics and completion for one kind of file. */
+function languageSupport(
+  kind: ClaudeFileKind,
+  onDiagnostics: (diagnostics: Diagnostic[]) => void
+): Extension[] {
+  if (kind !== 'settings') return [markdown()];
+  return [
+    json(),
+    lintGutter(),
+    linter(claudeSettingsLintSource(isKnownTopLevelKey, onDiagnostics)),
+    autocompletion({ override: [claudeSettingsCompletions] })
+  ];
+}
 
 const READONLY_HINT = 'Hooks are managed on the Copilot page and are not written from here.';
 
@@ -47,7 +67,6 @@ export function ClaudeConfigRawEditor({
 }): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const language = useRef(new Compartment());
   const edit = useClaudeConfigStore((s) => s.edit);
   const text = useClaudeConfigStore((s) => s.documents[path]?.text ?? '');
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
@@ -59,6 +78,9 @@ export function ClaudeConfigRawEditor({
 
   useEffect(() => {
     if (!host.current) return;
+    // Diagnostics belong to the file that produced them, and this editor is
+    // about to be a different file.
+    setDiagnostics([]);
     const instance = new EditorView({
       parent: host.current,
       state: EditorState.create({
@@ -71,7 +93,7 @@ export function ClaudeConfigRawEditor({
           history(),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
-          language.current.of([]),
+          ...languageSupport(kind, setDiagnostics),
           oneDark,
           EditorView.theme({ '&': { fontSize: '12px' }, '.cm-scroller': { maxHeight: '420px' } }),
           EditorView.updateListener.of((update) => {
@@ -86,25 +108,7 @@ export function ClaudeConfigRawEditor({
       instance.destroy();
       view.current = null;
     };
-  }, [edit, path]);
-
-  // The language, the linter and completion all depend on which file is open,
-  // so they are swapped together rather than rebuilt with the whole editor.
-  useEffect(() => {
-    const instance = view.current;
-    if (!instance) return;
-    const extensions =
-      kind === 'settings'
-        ? [
-            json(),
-            lintGutter(),
-            linter(claudeSettingsLintSource(isKnownTopLevelKey, setDiagnostics)),
-            autocompletion({ override: [claudeSettingsCompletions] })
-          ]
-        : [markdown()];
-    instance.dispatch({ effects: language.current.reconfigure(extensions) });
-    if (kind !== 'settings') setDiagnostics([]);
-  }, [kind]);
+  }, [edit, path, kind]);
 
   // Adopt the store's text whenever it diverges from what is on screen: a load,
   // a reload, or a switch to another file. Typing never reaches this branch,
