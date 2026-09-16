@@ -33,6 +33,19 @@ export type DetectedPath = {
 
 export type StatResult = { exists: boolean; isDirectory: boolean };
 
+/** The entry names of one directory, in the order-free form the matching wants. */
+export type DirListing = { names: string[]; dirNames: string[] };
+
+/**
+ * Cap on the directory a pane will read to match bare names.
+ *
+ * Above this the pane is sitting in something like `node_modules` or
+ * `/usr/bin`, where reading the whole listing every few seconds is real work and
+ * a bare token matching one of ten thousand names is mostly noise. Paths that
+ * carry a separator are unaffected there.
+ */
+export const MAX_DIR_ENTRIES = 5_000;
+
 export type PathLinkDeps = {
   /** The pane's live working directory, which relative paths resolve against. */
   getCwd(): string;
@@ -41,6 +54,11 @@ export type PathLinkDeps = {
   /** True while the pane's foreground process is ssh or mosh. */
   isRemote(): boolean;
   statPath(path: string, ctx: PathContext): Promise<StatResult>;
+  /**
+   * Entry names of one directory, single level. `null` turns bare-name matching
+   * off for that directory: unreadable, or too large to be worth listing.
+   */
+  listDir(dir: string, ctx: PathContext): Promise<DirListing | null>;
   /** Cmd/Ctrl+click. Plain clicks never reach this. */
   onActivate(detected: DetectedPath): void;
 };
@@ -62,11 +80,60 @@ const STAT_TTL_MS = 3_000;
  */
 const CACHE_CAP = 500;
 
-type CacheEntry = { result: StatResult; at: number };
+/**
+ * An answer held for {@link STAT_TTL_MS}, with one request in flight per key.
+ *
+ * Two things are cached against this - whether a path exists, and what a
+ * directory holds - and they want exactly the same treatment, so the treatment
+ * lives here once rather than twice inside the provider.
+ *
+ * `fetch` is expected to have swallowed its own failures: a rejection would be
+ * remembered as nothing and retried on every hover.
+ */
+class TtlCache<T> {
+  private readonly entries = new Map<string, { value: T; at: number }>();
+  private readonly inFlight = new Map<string, Promise<T>>();
+  private closed = false;
+
+  async get(key: string, fetch: () => Promise<T>): Promise<T> {
+    const fresh = this.entries.get(key);
+    if (fresh && Date.now() - fresh.at < STAT_TTL_MS) return fresh.value;
+
+    const existing = this.inFlight.get(key);
+    if (existing) return existing;
+
+    const request = fetch().then((value) => {
+      this.inFlight.delete(key);
+      // A pane closed while its answer was in flight has nothing to remember.
+      if (this.closed) return value;
+      // Re-inserting moves the key to the end of the Map's order, which is what
+      // makes the eviction below oldest-first.
+      this.entries.delete(key);
+      this.entries.set(key, { value, at: Date.now() });
+      if (this.entries.size > CACHE_CAP) {
+        const oldest = this.entries.keys().next();
+        if (!oldest.done) this.entries.delete(oldest.value);
+      }
+      return value;
+    });
+
+    this.inFlight.set(key, request);
+    return request;
+  }
+
+  dispose(): void {
+    this.closed = true;
+    this.entries.clear();
+    this.inFlight.clear();
+  }
+}
+
+/** The listing, as the matching wants it: two sets, built once per read. */
+type ListingSets = { names: Set<string>; dirNames: Set<string> } | null;
 
 export class PathLinkProvider implements ILinkProvider {
-  private readonly cache = new Map<string, CacheEntry>();
-  private readonly inFlight = new Map<string, Promise<StatResult>>();
+  private readonly stats = new TtlCache<StatResult>();
+  private readonly listings = new TtlCache<ListingSets>();
   private hovered: DetectedPath | null = null;
   private disposed = false;
 
@@ -81,30 +148,33 @@ export class PathLinkProvider implements ILinkProvider {
    * path is all that is ever seen, and half a path matches nothing.
    */
   provideLinks(bufferLineNumber: number, callback: (links: ILink[] | undefined) => void): void {
+    void this.computeLinks(bufferLineNumber).then(callback);
+  }
+
+  /** The work behind {@link provideLinks}, in a form that can simply await. */
+  private async computeLinks(bufferLineNumber: number): Promise<ILink[] | undefined> {
     // A path printed inside an ssh session names a file on the far machine. The
     // local filesystem may well have something at the same place, and opening
     // that instead would be wrong in the quiet way that is worst: a real file,
     // just not the one on screen.
-    if (this.disposed || this.deps.isRemote()) {
-      callback(undefined);
-      return;
-    }
+    if (this.disposed || this.deps.isRemote()) return undefined;
 
     const stitched = stitchWrappedLine(this.getBuffer(), bufferLineNumber - 1);
-    if (!stitched) {
-      callback(undefined);
-      return;
-    }
-
-    const candidates = findCandidatePaths(stitched.text);
-    if (candidates.length === 0) {
-      callback(undefined);
-      return;
-    }
+    if (!stitched) return undefined;
 
     const cwd = this.deps.getCwd();
     const ctx = this.deps.getPathContext();
     const homes = this.deps.getHomes();
+
+    // Asked for before the line is even scanned, because whether a bare token
+    // like `package.json` is a filename is a question only the listing can
+    // answer. Cached, so a pointer crossing a screen of `ls` output costs one
+    // directory read rather than one per row.
+    const listing = await this.listingCached(cwd, ctx);
+    if (this.isDisposed()) return undefined;
+
+    const candidates = findCandidatePaths(stitched.text, listing?.names);
+    if (candidates.length === 0) return undefined;
 
     // Resolving a candidate touches no buffer, so it is safe to do now: the
     // filesystem question is asked for every viable path at once.
@@ -114,82 +184,83 @@ export class PathLinkProvider implements ILinkProvider {
       return [{ candidate, resolved }];
     });
 
-    if (located.length === 0) {
-      callback(undefined);
-      return;
+    if (located.length === 0) return undefined;
+
+    const results = await Promise.all(
+      located.map(async ({ candidate, resolved }) => {
+        // A bare candidate was matched against the listing, which is a stronger
+        // answer than a `stat` would be and already says what kind of thing it
+        // is. Asking the filesystem again would be the probe per token this
+        // whole approach exists to avoid.
+        if (candidate.bare) {
+          const isDirectory = listing?.dirNames.has(candidate.text) ?? false;
+          return { candidate, resolved, stat: { exists: true, isDirectory } };
+        }
+        const stat = await this.statCached(resolved, ctx);
+        if (!stat.exists) return null;
+        return { candidate, resolved, stat };
+      })
+    );
+
+    if (this.isDisposed()) return undefined;
+
+    // The buffer is live, and nothing read before the `stat` can be assumed to
+    // still be true. Two different things can have happened while it was in
+    // flight:
+    //
+    //   - the row was rewritten, by a TUI repainting in place (most of what
+    //     Claude Code does) or by the scrollback trimming and shifting every
+    //     absolute index down. The text that was matched is simply not there.
+    //   - the pane was resized, reflowing a wrapped path across a different
+    //     number of rows. The text is unchanged and so is its start row, but
+    //     every cell it occupies has moved.
+    //
+    // So the row is re-read and required to be identical, and the ranges are
+    // then measured against that re-read buffer rather than the one scanned
+    // earlier. Checking the text alone would let the resize case through with
+    // stale coordinates; measuring without checking would put ranges on text
+    // that is no longer the path.
+    const buffer = this.getBuffer();
+    const current = stitchWrappedLine(buffer, bufferLineNumber - 1);
+    if (current?.text !== stitched.text || current.startRow !== stitched.startRow) {
+      return undefined;
     }
 
-    const pending = located.map(async ({ candidate, resolved }) => {
-      const stat = await this.statCached(resolved, ctx);
-      if (!stat.exists) return null;
-      return { candidate, resolved, stat };
+    const links = results.flatMap((result) => {
+      if (!result) return [];
+      const { candidate, resolved, stat } = result;
+      const range = this.rangeFor(buffer, current.startRow, candidate.index, candidate.text);
+      if (!range) return [];
+
+      const detected: DetectedPath = {
+        resolvedPath: resolved,
+        pathContext: ctx,
+        isDirectory: stat.isDirectory,
+        ...(candidate.line !== undefined ? { line: candidate.line } : {}),
+        ...(candidate.col !== undefined ? { col: candidate.col } : {})
+      };
+
+      const link: ILink = {
+        range,
+        text: candidate.text,
+        decorations: { pointerCursor: true, underline: true },
+        // Gated the way the URL links already are, so a plain click still
+        // places the cursor and drags still select.
+        activate: (event) => {
+          if (!event.metaKey && !event.ctrlKey) return;
+          this.deps.onActivate(detected);
+        },
+        hover: () => {
+          this.hovered = detected;
+        },
+        leave: () => {
+          if (this.hovered === detected) this.hovered = null;
+        }
+      };
+      return [link];
     });
 
-    void Promise.all(pending).then((results) => {
-      if (this.disposed) {
-        callback(undefined);
-        return;
-      }
-
-      // The buffer is live, and nothing read before the `stat` can be assumed to
-      // still be true. Two different things can have happened while it was in
-      // flight:
-      //
-      //   - the row was rewritten, by a TUI repainting in place (most of what
-      //     Claude Code does) or by the scrollback trimming and shifting every
-      //     absolute index down. The text that was matched is simply not there.
-      //   - the pane was resized, reflowing a wrapped path across a different
-      //     number of rows. The text is unchanged and so is its start row, but
-      //     every cell it occupies has moved.
-      //
-      // So the row is re-read and required to be identical, and the ranges are
-      // then measured against that re-read buffer rather than the one scanned
-      // earlier. Checking the text alone would let the resize case through with
-      // stale coordinates; measuring without checking would put ranges on text
-      // that is no longer the path.
-      const buffer = this.getBuffer();
-      const current = stitchWrappedLine(buffer, bufferLineNumber - 1);
-      if (current?.text !== stitched.text || current.startRow !== stitched.startRow) {
-        callback(undefined);
-        return;
-      }
-
-      const links = results.flatMap((result) => {
-        if (!result) return [];
-        const { candidate, resolved, stat } = result;
-        const range = this.rangeFor(buffer, current.startRow, candidate.index, candidate.text);
-        if (!range) return [];
-
-        const detected: DetectedPath = {
-          resolvedPath: resolved,
-          pathContext: ctx,
-          isDirectory: stat.isDirectory,
-          ...(candidate.line !== undefined ? { line: candidate.line } : {}),
-          ...(candidate.col !== undefined ? { col: candidate.col } : {})
-        };
-
-        const link: ILink = {
-          range,
-          text: candidate.text,
-          decorations: { pointerCursor: true, underline: true },
-          // Gated the way the URL links already are, so a plain click still
-          // places the cursor and drags still select.
-          activate: (event) => {
-            if (!event.metaKey && !event.ctrlKey) return;
-            this.deps.onActivate(detected);
-          },
-          hover: () => {
-            this.hovered = detected;
-          },
-          leave: () => {
-            if (this.hovered === detected) this.hovered = null;
-          }
-        };
-        return [link];
-      });
-
-      callback(links.length > 0 ? links : undefined);
-    });
+    return links.length > 0 ? links : undefined;
   }
 
   /**
@@ -205,10 +276,15 @@ export class PathLinkProvider implements ILinkProvider {
     return this.hovered;
   }
 
+  /** Read through a call, so a check after an `await` is not narrowed to dead code. */
+  private isDisposed(): boolean {
+    return this.disposed;
+  }
+
   dispose(): void {
     this.disposed = true;
-    this.cache.clear();
-    this.inFlight.clear();
+    this.stats.dispose();
+    this.listings.dispose();
     this.hovered = null;
   }
 
@@ -217,32 +293,28 @@ export class PathLinkProvider implements ILinkProvider {
    * request, so a line naming the same file three times costs one `stat`.
    */
   private async statCached(path: string, ctx: PathContext): Promise<StatResult> {
-    const fresh = this.cache.get(path);
-    if (fresh && Date.now() - fresh.at < STAT_TTL_MS) return fresh.result;
+    return this.stats.get(path, async () =>
+      this.deps.statPath(path, ctx).catch(() => ({ exists: false, isDirectory: false }))
+    );
+  }
 
-    const existing = this.inFlight.get(path);
-    if (existing) return existing;
-
-    const request = this.deps
-      .statPath(path, ctx)
-      .catch(() => ({ exists: false, isDirectory: false }))
-      .then((result) => {
-        this.inFlight.delete(path);
-        // A pane closed while its answer was in flight has nothing to remember.
-        if (this.disposed) return result;
-        // Re-inserting moves the key to the end of the Map's order, which is
-        // what makes the eviction below oldest-first.
-        this.cache.delete(path);
-        this.cache.set(path, { result, at: Date.now() });
-        if (this.cache.size > CACHE_CAP) {
-          const oldest = this.cache.keys().next();
-          if (!oldest.done) this.cache.delete(oldest.value);
-        }
-        return result;
-      });
-
-    this.inFlight.set(path, request);
-    return request;
+  /**
+   * What a directory holds, remembered on the same terms.
+   *
+   * Built into sets once per read rather than per row, because the caller asks
+   * this question on every hover and answers it with `has`.
+   */
+  private async listingCached(dir: string, ctx: PathContext): Promise<ListingSets> {
+    return this.listings.get(dir, async () =>
+      this.deps
+        .listDir(dir, ctx)
+        .catch(() => null)
+        .then((listing) =>
+          listing === null
+            ? null
+            : { names: new Set(listing.names), dirNames: new Set(listing.dirNames) }
+        )
+    );
   }
 
   /**

@@ -5,6 +5,7 @@ import {
   PathLinkProvider,
   actionForDetectedPath,
   type DetectedPath,
+  type DirListing,
   type PathLinkDeps,
   type StatResult
 } from '../terminal-path-links';
@@ -49,15 +50,29 @@ function buffer(rows: string[]): BufferReader {
 type Harness = {
   provider: PathLinkProvider;
   stat: ReturnType<typeof vi.fn>;
+  listDir: ReturnType<typeof vi.fn>;
   activated: DetectedPath[];
   links: (row: number) => Promise<ILink[] | undefined>;
 };
 
 function harness(
   rows: string[],
-  overrides: Partial<PathLinkDeps> & { statResult?: StatResult } = {}
+  overrides: Partial<PathLinkDeps> & {
+    statResult?: StatResult;
+    /** Entry names of the pane's cwd. A name ending in `/` is listed as a folder. */
+    entries?: string[];
+  } = {}
 ): Harness {
   const activated: DetectedPath[] = [];
+  const entries = overrides.entries;
+  const listDir = vi.fn(async (): Promise<DirListing | null> => {
+    await Promise.resolve();
+    if (!entries) return null;
+    return {
+      names: entries.map((name) => name.replace(/\/$/, '')),
+      dirNames: entries.filter((name) => name.endsWith('/')).map((name) => name.slice(0, -1))
+    };
+  });
   const statResult = overrides.statResult ?? { exists: true, isDirectory: false };
   // A tick of latency, the way the real `stat` crosses IPC - so the provider is
   // exercised against a promise that genuinely settles later.
@@ -72,6 +87,9 @@ function harness(
     getHomes: () => ({ homeDir: '/home/k', wslHomeByDistro: {} }),
     isRemote: () => false,
     statPath: stat as unknown as PathLinkDeps['statPath'],
+    // Nothing listed unless a test says so, which is the old behaviour: only
+    // tokens carrying a separator can become links.
+    listDir: listDir as unknown as PathLinkDeps['listDir'],
     onActivate: (d) => activated.push(d),
     ...overrides
   };
@@ -80,6 +98,7 @@ function harness(
   return {
     provider,
     stat,
+    listDir,
     activated,
     links: async (row) =>
       new Promise((resolve) => {
@@ -307,7 +326,7 @@ describe('PathLinkProvider: ranges', () => {
 
 describe('PathLinkProvider: the buffer moving underfoot', () => {
   /** A `stat` that hangs until the test lets it finish. */
-  function heldStat(): { deps: Partial<PathLinkDeps>; settle: () => void } {
+  function heldStat(): { deps: Partial<PathLinkDeps>; settle: () => Promise<void> } {
     let release: (() => void) | undefined;
     return {
       deps: {
@@ -318,7 +337,14 @@ describe('PathLinkProvider: the buffer moving underfoot', () => {
             };
           })
       },
-      settle: () => release?.()
+      // Yields until the provider has actually asked, rather than guessing at a
+      // number of microtasks: the work before the `stat` - reading the pane's
+      // directory - is itself asynchronous, and how many ticks it takes is not
+      // this test's business.
+      settle: async () => {
+        while (!release) await Promise.resolve();
+        release();
+      }
     };
   }
 
@@ -335,7 +361,7 @@ describe('PathLinkProvider: the buffer moving underfoot', () => {
     const pending = h.links(1);
     await Promise.resolve();
     rows[0] = 'ls src/other/thing.ts';
-    settle();
+    await settle();
 
     expect(await pending).toBeUndefined();
   });
@@ -351,7 +377,7 @@ describe('PathLinkProvider: the buffer moving underfoot', () => {
     const pending = h.links(1);
     await Promise.resolve();
     rows[0] = 'gone';
-    settle();
+    await settle();
 
     expect(await pending).toBeUndefined();
   });
@@ -371,7 +397,7 @@ describe('PathLinkProvider: the buffer moving underfoot', () => {
     // Wider pane: the path fits on one row and the continuation is gone.
     rows[0] = '/home/k/fleet/src/main/index.ts';
     rows[1] = 'next command';
-    settle();
+    await settle();
 
     const links = await pending;
     expect(links).toHaveLength(1);
@@ -388,7 +414,7 @@ describe('PathLinkProvider: the buffer moving underfoot', () => {
 
     const pending = h.links(1);
     await Promise.resolve();
-    settle();
+    await settle();
 
     const links = await pending;
     expect(links).toHaveLength(1);
@@ -447,5 +473,73 @@ describe('actionForDetectedPath', () => {
     expect(actionForDetectedPath(detected({ resolvedPath: '/tmp/build.zip' }))).toEqual({
       kind: 'reveal'
     });
+  });
+});
+
+describe('PathLinkProvider: bare filenames from the pane directory', () => {
+  it('links a name printed by `ls`', async () => {
+    const h = harness(['package.json  README.md  src'], { entries: ['package.json', 'src/'] });
+    const links = await h.links(1);
+
+    expect(links?.map((l) => l.text)).toEqual(['package.json', 'src']);
+    // README.md is not in the listing, so it is not a file here.
+    expect(links?.some((l) => l.text === 'README.md')).toBe(false);
+  });
+
+  it('costs no stat, because the listing already answered', async () => {
+    const h = harness(['package.json  src'], { entries: ['package.json', 'src/'] });
+    await h.links(1);
+
+    expect(h.stat).not.toHaveBeenCalled();
+  });
+
+  it('takes isDirectory from the listing, so a folder reveals', async () => {
+    const h = harness(['src'], { entries: ['src/'] });
+    const links = await h.links(1);
+    click(links![0]);
+
+    expect(actionForDetectedPath(h.activated[0])).toEqual({ kind: 'reveal' });
+    expect(h.activated[0].resolvedPath).toBe('/home/k/fleet/src');
+  });
+
+  it('leaves the classify suffix of `ls -F` out of the link', async () => {
+    const h = harness(['build.sh*  docs@'], { entries: ['build.sh', 'docs'] });
+    const links = await h.links(1);
+
+    expect(links?.map((l) => l.text)).toEqual(['build.sh', 'docs']);
+    expect(links?.[0].range).toEqual({ start: { x: 1, y: 1 }, end: { x: 8, y: 1 } });
+  });
+
+  it('honours a position suffix on a bare name', async () => {
+    const h = harness(['README.md:12:5'], { entries: ['README.md'] });
+    const links = await h.links(1);
+    click(links![0]);
+
+    expect(h.activated[0]).toMatchObject({ line: 12, col: 5 });
+    expect(links?.[0].text).toBe('README.md');
+  });
+
+  it('matches nothing when the directory is unreadable or too large', async () => {
+    const h = harness(['package.json  src/main/index.ts'], { entries: undefined });
+    const links = await h.links(1);
+
+    expect(links?.map((l) => l.text)).toEqual(['src/main/index.ts']);
+  });
+
+  it('reads the directory once for a screen of output', async () => {
+    const h = harness(['package.json', 'package.json', 'package.json'], {
+      entries: ['package.json']
+    });
+    await h.links(1);
+    await h.links(2);
+    await h.links(3);
+
+    expect(h.listDir).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays silent in a remote pane, where the names are the far machine’s', async () => {
+    const h = harness(['package.json'], { entries: ['package.json'], isRemote: () => true });
+
+    expect(await h.links(1)).toBeUndefined();
   });
 });

@@ -10,10 +10,12 @@
  * Two rules shape everything below.
  *
  * A candidate must carry a separator or an unambiguous prefix (`~`, `./`, `../`,
- * a drive letter). A bare `index.ts` is not matched. That loses the occasional
- * real filename, and it is still the right trade: without a separator there is
- * nothing to tell a filename from ordinary prose, so `v1.2.3`, `Node.js` and
- * `e.g.` would all become candidates and each would cost a `stat` to reject.
+ * a drive letter) - or else be the name of something the caller says is really
+ * there. Grammar alone cannot tell `index.ts` from `Node.js`, `v1.2.3` or
+ * `e.g.`, and guessing would cost a `stat` per word to find that out. So the
+ * caller may pass the entry names of the directory the text was printed in, and
+ * a bare token is a path exactly when it is one of them: `ls` output becomes
+ * clickable, and prose costs nothing, because membership is a set lookup.
  *
  * `\\server\share` is never matched. Not a simplification - a safety property.
  * A path like that handed to `shell.showItemInFolder` on Windows makes the OS
@@ -32,6 +34,11 @@ export type PathCandidate = {
   /** 1-based, as printed. */
   line?: number;
   col?: number;
+  /**
+   * Matched by name against a directory listing rather than by grammar, which
+   * means its existence is already settled and the caller owes it no `stat`.
+   */
+  bare?: true;
 };
 
 /**
@@ -139,6 +146,31 @@ function segmentsAreSane(s: string): boolean {
   return parts.every((p) => p === '~' || p === '.' || p === '..' || SEGMENT_CHARS.test(p));
 }
 
+/**
+ * What `ls -F` appends to say what kind of thing an entry is. None is part of
+ * the name, and none may be part of the text that gets underlined. `/` is absent
+ * because a trailing separator already means "folder" to the grammar above.
+ */
+const CLASSIFY_SUFFIXES = new Set(['*', '@', '=', '|']);
+
+/**
+ * The entry name `word` refers to, if any.
+ *
+ * This is the escape hatch from the separator rule in the header: a token with
+ * nothing path-shaped about it is a path when the directory it would live in
+ * actually holds something by that name. Membership answers what grammar cannot,
+ * so the caller supplies the names and this stays as pure as everything else.
+ */
+function bareNameOf(word: string, names: ReadonlySet<string>): string | null {
+  let name = word;
+  if (name.length > 1 && CLASSIFY_SUFFIXES.has(name[name.length - 1])) {
+    name = name.slice(0, -1);
+  }
+  if (name === '.' || name === '..') return null;
+  if (!SEGMENT_CHARS.test(name)) return null;
+  return names.has(name) ? name : null;
+}
+
 /** The trailing position on `word`, in whichever of the two spellings it uses. */
 function matchLineColSuffix(word: string): RegExpExecArray | null {
   for (const re of LINE_COL_SUFFIX_RES) {
@@ -157,58 +189,94 @@ function matchLineColSuffix(word: string): RegExpExecArray | null {
  * them back onto terminal cells and an off-by-one there underlines the wrong
  * characters.
  */
-export function findCandidatePaths(lineText: string): PathCandidate[] {
+/**
+ * Strip what a path is wrapped in: enclosing punctuation, and the `Read(` of a
+ * Claude Code tool label. The offset moves with it, so the caller's index stays
+ * true to the original line.
+ */
+function unwrapOpeners(word: string, start: number): { word: string; start: number } {
+  while (word.length > 0 && OPENERS.has(word[0])) {
+    word = word.slice(1);
+    start += 1;
+  }
+  const call = CALL_PREFIX_RE.exec(word);
+  if (call) {
+    word = word.slice(call[0].length);
+    start += call[0].length;
+  }
+  return { word, start };
+}
+
+/**
+ * Peel a trailing position and any closing punctuation off the end.
+ *
+ * The two interleave, because `)` is both a closer and part of tsc's
+ * `a.ts(12,5)`. Peeling one layer at a time and retrying lets `(a.ts(12,5))`
+ * come apart correctly, in either order.
+ *
+ * `isCandidate` decides whether a position may be taken at all: what is left
+ * once the suffix is gone has to read as a path, so a lone `(12,5)` or a bare
+ * `:80` is never mistaken for one.
+ */
+function peelTail(
+  word: string,
+  isCandidate: (s: string) => boolean
+): { word: string; line?: number; col?: number } {
+  let line: number | undefined;
+  let col: number | undefined;
+
+  for (;;) {
+    const suffix = line === undefined ? matchLineColSuffix(word) : null;
+    if (suffix && isCandidate(word.slice(0, suffix.index))) {
+      word = word.slice(0, suffix.index);
+      line = Number(suffix[1]);
+      // The column group is optional in both spellings, so `at` rather than an
+      // index: a missing group is genuinely undefined at runtime.
+      const colText = suffix.at(2);
+      col = colText === undefined ? undefined : Number(colText);
+      continue;
+    }
+    if (word.length > 0 && CLOSERS.has(word[word.length - 1])) {
+      word = word.slice(0, -1);
+      continue;
+    }
+    break;
+  }
+
+  return {
+    word,
+    ...(line !== undefined ? { line } : {}),
+    ...(col !== undefined ? { col } : {})
+  };
+}
+
+export function findCandidatePaths(
+  lineText: string,
+  dirEntryNames?: ReadonlySet<string>
+): PathCandidate[] {
   const out: PathCandidate[] = [];
-  const wordRe = /\S+/g;
-  let match: RegExpExecArray | null;
 
-  while ((match = wordRe.exec(lineText)) !== null) {
-    let word = match[0];
-    let start = match.index;
+  // A token is a candidate by grammar or by the listing, and every test in here
+  // wants both halves together.
+  const isCandidate = (s: string): boolean =>
+    isPathShaped(s) || (dirEntryNames !== undefined && bareNameOf(s, dirEntryNames) !== null);
 
-    while (word.length > 0 && OPENERS.has(word[0])) {
-      word = word.slice(1);
-      start += 1;
-    }
+  for (const match of lineText.matchAll(/\S+/g)) {
+    const unwrapped = unwrapOpeners(match[0], match.index);
+    const { word, line, col } = peelTail(unwrapped.word, isCandidate);
 
-    const call = CALL_PREFIX_RE.exec(word);
-    if (call) {
-      word = word.slice(call[0].length);
-      start += call[0].length;
-    }
-
-    // Unwrapping and suffix-stripping interleave, because `)` is both a closer
-    // and part of tsc's `a.ts(12,5)`. Peeling one layer at a time and retrying
-    // lets `(a.ts(12,5))` come apart correctly, in either order.
-    let line: number | undefined;
-    let col: number | undefined;
-    for (;;) {
-      if (line === undefined) {
-        const suffix = matchLineColSuffix(word);
-        // Only honoured when what is left still reads as a path, so a lone
-        // `(12,5)` or a bare `:80` is never mistaken for one.
-        if (suffix && isPathShaped(word.slice(0, suffix.index))) {
-          word = word.slice(0, suffix.index);
-          line = Number(suffix[1]);
-          // The column group is optional in both spellings, so `at` rather than
-          // an index: a missing group is genuinely undefined at runtime.
-          const colText = suffix.at(2);
-          col = colText === undefined ? undefined : Number(colText);
-          continue;
-        }
-      }
-      if (word.length > 0 && CLOSERS.has(word[word.length - 1])) {
-        word = word.slice(0, -1);
-        continue;
-      }
-      break;
-    }
-
-    if (!isPathShaped(word)) continue;
+    // Grammar first, listing second. A classify suffix is part of the token and
+    // not part of the name, so the text pushed is what `bareNameOf` returned -
+    // the underline is measured from it.
+    let text: string | null = isPathShaped(word) ? word : null;
+    const bare = text === null && dirEntryNames !== undefined;
+    if (bare) text = bareNameOf(word, dirEntryNames);
+    if (text === null) continue;
 
     out.push({
-      text: word,
-      index: start,
+      text,
+      index: unwrapped.start,
+      ...(bare ? { bare: true as const } : {}),
       ...(line !== undefined ? { line } : {}),
       ...(col !== undefined ? { col } : {})
     });

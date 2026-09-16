@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findCandidatePaths } from '../terminal-path-detect';
+import { findCandidatePaths, type PathCandidate } from '../terminal-path-detect';
 
 /** The common case: one candidate per line, checked for text and suffix only. */
 function one(lineText: string): { text: string; line?: number; col?: number } | null {
@@ -240,5 +240,53 @@ describe('findCandidatePaths: offsets and multiple candidates', () => {
     expect(one(' ✓ src/shared/__tests__/path-platform.test.ts (42 tests) 15ms')).toEqual({
       text: 'src/shared/__tests__/path-platform.test.ts'
     });
+  });
+});
+
+describe('bare names, matched against a directory listing', () => {
+  const listing = new Set(['package.json', 'src', 'build.sh', 'Makefile', 'README.md']);
+  const bare = (line: string): PathCandidate[] => findCandidatePaths(line, listing);
+
+  it('matches a name the directory holds', () => {
+    expect(bare('package.json')).toEqual([{ text: 'package.json', index: 0, bare: true }]);
+  });
+
+  it('matches a name with no extension', () => {
+    expect(bare('Makefile').map((c) => c.text)).toEqual(['Makefile']);
+  });
+
+  it('matches every column of an `ls` row', () => {
+    expect(bare('Makefile  README.md  package.json  src').map((c) => c.text)).toEqual([
+      'Makefile',
+      'README.md',
+      'package.json',
+      'src'
+    ]);
+  });
+
+  it('leaves a name the directory does not hold', () => {
+    expect(bare('Node.js v1.2.3 index.ts either/or')).toEqual([]);
+  });
+
+  it('drops the classify suffix of `ls -F` but keeps the offset', () => {
+    expect(bare('  build.sh*')).toEqual([{ text: 'build.sh', index: 2, bare: true }]);
+  });
+
+  it('honours a position suffix', () => {
+    expect(bare('README.md:12:5')).toEqual([
+      { text: 'README.md', index: 0, bare: true, line: 12, col: 5 }
+    ]);
+  });
+
+  it('does not match the directory itself', () => {
+    expect(bare('. ..')).toEqual([]);
+  });
+
+  it('matches nothing at all without a listing', () => {
+    expect(findCandidatePaths('package.json  Makefile')).toEqual([]);
+  });
+
+  it('leaves separator paths to the grammar, unmarked', () => {
+    expect(bare('src/main/index.ts')).toEqual([{ text: 'src/main/index.ts', index: 0 }]);
   });
 });

@@ -10,13 +10,16 @@ import { SerializeAddon } from '@xterm/addon-serialize';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
+import type { PathContext } from '../../../shared/shell-profiles';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
 import { DEFAULT_SCROLLBACK } from '../../../shared/types';
 import { resolveXtermTheme } from '../lib/theme';
 import {
   PathLinkProvider,
   actionForDetectedPath,
-  type DetectedPath
+  MAX_DIR_ENTRIES,
+  type DetectedPath,
+  type DirListing
 } from '../lib/terminal-path-links';
 import { useWorkspaceStore, getPaneContextById } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
@@ -194,6 +197,22 @@ export function getPaneTailText(paneId: string, lines = 40): string | undefined 
   return out.join('\n');
 }
 
+/**
+ * What the pane's directory holds, for matching the bare names `ls` prints.
+ *
+ * `null` turns that matching off: a directory that cannot be read, or one large
+ * enough that reading it every few seconds is real work for a match that would
+ * mostly be noise. Paths carrying a separator are unaffected either way.
+ */
+async function readPaneDir(dir: string, ctx: PathContext): Promise<DirListing | null> {
+  const result = await window.fleet.file.readdir(dir, ctx);
+  if (!result.success || result.entries.length > MAX_DIR_ENTRIES) return null;
+  return {
+    names: result.entries.map((entry) => entry.name),
+    dirNames: result.entries.filter((entry) => entry.isDirectory).map((entry) => entry.name)
+  };
+}
+
 /** Show a path in the OS file manager. */
 function revealDetectedPath(detected: DetectedPath): void {
   void window.fleet.file.reveal(detected.resolvedPath, detected.pathContext);
@@ -287,6 +306,7 @@ function createTerminal(
       const result = await window.fleet.file.stat(path, ctx);
       return { exists: result.success, isDirectory: result.data?.isDirectory ?? false };
     },
+    listDir: readPaneDir,
     onActivate: openDetectedPath
   });
   const pathLinkRegistration = term.registerLinkProvider(pathLinkProvider);
