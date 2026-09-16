@@ -55,7 +55,7 @@ import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
 import { WslService } from './wsl-service';
 import { parseFleetUrl } from './protocol-paths';
-import { toWslUncPath } from '../shared/path-platform';
+import { toWslUncPath, isUncPath } from '../shared/path-platform';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
 import type { HostContextPayload } from '../shared/ipc-api';
 import type {
@@ -548,8 +548,6 @@ void app.whenReady().then(async () => {
     const distro = distros.find((d) => d.isDefault)?.name ?? distros[0]?.name;
     return distro ? toWslUncPath(distro, parsed.posixPath) : null;
   };
-
-  const isUncPath = (p: string): boolean => p.startsWith('\\\\') || p.startsWith('//');
 
   const IMAGE_MIME: Record<string, string> = {
     png: 'image/png',

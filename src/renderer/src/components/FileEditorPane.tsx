@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { EditorState, StateEffect } from '@codemirror/state';
+import { EditorState, EditorSelection, StateEffect } from '@codemirror/state';
 import {
   EditorView,
   keymap,
@@ -16,12 +16,14 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { getLanguageForPath } from '../../../shared/languages';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { registerFileSave, unregisterFileSave } from '../lib/file-save-registry';
+import { offsetForTarget } from '../lib/editor-open-target';
 import { useDelayedFlag } from '../hooks/use-delayed-flag';
 import { Skeleton } from './Skeleton';
 import { PathChromeHeader } from './PathChromeHeader';
 import { useToastStore } from '../store/toast-store';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
+import type { FileOpenTarget } from '../../../shared/types';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
@@ -161,6 +163,11 @@ type Props = {
    * over SSH, guarded by the remote mtime observed at fetch time.
    */
   remote?: RemoteFileRef;
+  /**
+   * Where to put the cursor once the file is loaded. Set when whatever opened
+   * this pane named a line, such as a Cmd+clicked `a.ts:42` in a terminal.
+   */
+  openTarget?: FileOpenTarget;
 };
 
 export function FileEditorPane({
@@ -169,7 +176,8 @@ export function FileEditorPane({
   pathContext,
   onContentChange,
   showPathChrome = true,
-  remote
+  remote,
+  openTarget
 }: Props): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const showLoadingSkeleton = useDelayedFlag(loading);
@@ -227,6 +235,12 @@ export function FileEditorPane({
 
   const onContentChangeRef = useRef(onContentChange);
   onContentChangeRef.current = onContentChange;
+
+  // Read inside the editor-creation effect, which deliberately does not list it
+  // as a dependency: the target belongs to the pane, and a pane is created anew
+  // each time a path is opened, so it never changes under an existing editor.
+  const openTargetRef = useRef(openTarget);
+  openTargetRef.current = openTarget;
 
   // Load file on mount
   useEffect(() => {
@@ -312,6 +326,18 @@ export function FileEditorPane({
     });
 
     viewRef.current = view;
+
+    // Jump to the line the path named. Dispatching this immediately after
+    // construction is safe: CodeMirror widens the viewport it measures to take
+    // in a pending scroll target, so the line is laid out before it is scrolled
+    // to rather than being scrolled past an empty viewport.
+    if (openTargetRef.current) {
+      const pos = offsetForTarget(view.state.doc, openTargetRef.current);
+      view.dispatch({
+        selection: EditorSelection.cursor(pos),
+        effects: EditorView.scrollIntoView(pos, { y: 'center' })
+      });
+    }
 
     // Lazy-load and apply syntax highlighting
     if (langInfo) {

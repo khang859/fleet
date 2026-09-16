@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import type { Workspace, Tab, PaneNode, PaneLeaf, UserGroup } from '../../../shared/types';
+import type {
+  Workspace,
+  Tab,
+  PaneNode,
+  PaneLeaf,
+  UserGroup,
+  FileOpenTarget
+} from '../../../shared/types';
 import type { UserGroupColor } from '../../../shared/group-colors';
 import type { ToolType, ToolVisibility } from '../../../shared/tools';
 import { DEFAULT_TOOL_VISIBILITY } from '../../../shared/tools';
@@ -270,7 +277,7 @@ type WorkspaceStore = {
   openScratch: () => void;
 
   // File/image pane helpers
-  openFile: (filePath: string, pathContext?: PathContext) => string;
+  openFile: (filePath: string, pathContext?: PathContext, target?: FileOpenTarget) => string;
   openFileInTab: (
     files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf'; label: string }>
   ) => void;
@@ -1432,7 +1439,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     });
   },
 
-  openFile: (filePath, pathContext) => {
+  openFile: (filePath, pathContext, target) => {
     const paneType = getPaneTypeForFilePath(filePath);
     const tabType = paneType;
     const fileName = filePath.split('/').pop() ?? filePath;
@@ -1452,7 +1459,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       cwd: '/',
       paneType,
       filePath,
-      pathContext: ctx
+      pathContext: ctx,
+      ...(target ? { openTarget: target } : {})
     };
     const tab: Tab = {
       id: generateId(),

@@ -2741,15 +2741,25 @@ describe('withClearedWireResults', () => {
  */
 describe('memory and project instructions', () => {
   let dir: string;
+  let home: string;
 
   beforeEach(() => {
     // Symlinks resolved, because a `Working folder:` assertion compares against
     // what the turn was handed and macOS temp paths are links.
     dir = realpathSync(mkdtempSync(join(tmpdir(), 'fleet-agent-memory-')));
+    // The user tier reads `homedir()`, so without this the assertions about
+    // having nothing recorded pass only on a machine whose own
+    // `~/.fleet/memory` happens to be empty. Kept separate from `dir`: pointing
+    // it at the project folder would make one entry appear in both tiers.
+    home = realpathSync(mkdtempSync(join(tmpdir(), 'fleet-agent-home-')));
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('USERPROFILE', home);
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     rmSync(dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   });
 
   /** One recorded note, in the project tier of the folder a turn opens on. */

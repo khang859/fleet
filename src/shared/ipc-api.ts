@@ -331,3 +331,19 @@ export type EnvSyncClearPassphraseRequest = { id?: string };
 /** AWS auth set request: either global (no id) or per-repo (id set). */
 export type EnvSyncSetAuthRequest = { id?: string; auth: EnvSyncAuthInput };
 export type EnvSyncClearAuthRequest = { id?: string };
+
+/**
+ * What a click in a terminal pane's right-click menu resolves to.
+ *
+ * Main builds the menu and reports which item was chosen; the renderer carries
+ * the action out, because the things being acted on - the xterm selection, the
+ * hovered path - only exist there.
+ */
+export type TerminalMenuAction =
+  | 'copy'
+  | 'paste'
+  | 'selectAll'
+  | 'clear'
+  | 'openInFleet'
+  | 'reveal'
+  | 'copyPath';

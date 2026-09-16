@@ -1,4 +1,4 @@
-import type { PathContext } from './shell-profiles';
+import { isWslContext, type PathContext } from './shell-profiles';
 
 const WINDOWS_PATH_RE = /^[A-Za-z]:[\\/]/;
 
@@ -8,6 +8,21 @@ export function isWindowsPath(p: string): boolean {
 
 export function isWslPath(p: string): boolean {
   return p.startsWith('/');
+}
+
+/**
+ * A Windows network path, in either spelling.
+ *
+ * Worth a name of its own because one caller uses the answer to gate a security
+ * decision rather than a formatting one: handed to the shell on Windows,
+ * `\\host\share` makes the OS authenticate to that host, so any path that
+ * reaches a reveal or an open has to be checked. The `fleet-image` and
+ * `fleet-pdf` handlers ask the same question for a milder reason - Node `fs`
+ * reads the WSL 9P share natively where `net.fetch` does not. One copy, so the
+ * two uses cannot drift apart.
+ */
+export function isUncPath(p: string): boolean {
+  return p.startsWith('\\\\') || p.startsWith('//');
 }
 
 function separators(ctx: PathContext): RegExp {
@@ -146,6 +161,95 @@ export function toFleetImageUrl(absPath: string): string {
 
 export function toFleetPdfUrl(absPath: string): string {
   return buildFleetUrl('fleet-pdf', absPath);
+}
+
+/**
+ * The inverse of {@link displayPath}: a leading `~` becomes the home directory
+ * the pane's context actually has. Anything else passes through, so this is safe
+ * to call on every candidate without checking first.
+ *
+ * A WSL pane prefers its distro's own home and falls back to the Windows home
+ * seen through `/mnt`, matching the order `displayPath` collapses them in. With
+ * no home to substitute the `~` is left alone, which then fails to resolve -
+ * better than inventing a path.
+ */
+export function expandHome(p: string, ctx: PathContext, homes: DisplayPathHomes): string {
+  if (p !== '~' && !/^~[\\/]/.test(p)) return p;
+  const rest = p.slice(1).replace(/^[\\/]/, '');
+
+  if (isWslContext(ctx)) {
+    // The map only holds distros whose home has been read, so a miss is an
+    // empty lookup rather than an error; the Windows home mounted into the
+    // distro is the fallback.
+    const distroHome = homes.wslHomeByDistro[ctx.distro];
+    const home = distroHome || winToWslMountPath(homes.homeDir);
+    if (!home) return p;
+    return rest ? join(ctx, home, rest) : home;
+  }
+
+  if (!homes.homeDir) return p;
+  return rest ? join(ctx, homes.homeDir, rest) : homes.homeDir;
+}
+
+/**
+ * Turn a path printed in a terminal into an absolute one, using the folder that
+ * pane is standing in.
+ *
+ * Already-absolute paths pass through untouched, so `cwd` is only consulted for
+ * the relative ones. `.` and `..` segments are collapsed here rather than left
+ * for the OS, because the result is compared against a cache key and shown to
+ * the user, and `/a/b/../c` and `/a/c` should not be two different things.
+ *
+ * Returns null when there is nothing to resolve against - a relative path in a
+ * pane whose cwd has not been reported yet. The caller treats that as "no
+ * candidate" rather than guessing at a root.
+ */
+export function resolveAgainstCwd(p: string, cwd: string, ctx: PathContext): string | null {
+  if (!p) return null;
+
+  const absolute = ctx === 'win32' ? isWindowsPath(p) : isWslPath(p);
+  if (!absolute && !cwd) return null;
+
+  // Concatenated rather than `join`ed, because `join` strips trailing separators
+  // from its leading segment - which turns a cwd of `/` into nothing at all and
+  // quietly demotes the result to a relative path. After `cd /`, every relative
+  // path in the pane would then be statted against the Electron process's own
+  // cwd. `normalizeSegments` does the real work and keeps whichever prefix
+  // survives here.
+  const sep = ctx === 'win32' ? '\\' : '/';
+  const combined = absolute ? p : `${cwd}${/[\\/]$/.test(cwd) ? '' : sep}${p}`;
+  return normalizeSegments(combined, ctx);
+}
+
+/**
+ * Collapse `.` and `..` without letting `..` escape the root or the drive.
+ *
+ * The prefix is preserved verbatim (`/`, `C:\`, `//`) and only the segments
+ * after it are walked, which is what keeps a drive letter from being eaten by a
+ * leading `..`. A trailing separator is dropped, since nothing downstream cares
+ * and it would otherwise split one real directory into two cache keys.
+ */
+function normalizeSegments(p: string, ctx: PathContext): string {
+  const sep = ctx === 'win32' ? '\\' : '/';
+  const driveMatch = /^([A-Za-z]:)[\\/]/.exec(p);
+  const prefix = driveMatch ? `${driveMatch[1]}${sep}` : /^[\\/]/.test(p) ? sep : '';
+  const body = p.slice(driveMatch ? driveMatch[0].length : prefix.length);
+
+  const out: string[] = [];
+  for (const segment of body.split(/[\\/]+/)) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') {
+      // Relative with no prefix keeps a leading `..` - there is no root to stop
+      // at, and dropping it would silently change which directory is meant.
+      if (out.length > 0 && out[out.length - 1] !== '..') out.pop();
+      else if (!prefix) out.push('..');
+      continue;
+    }
+    out.push(segment);
+  }
+
+  const joined = out.join(sep);
+  return prefix ? prefix + joined : joined;
 }
 
 export function displayPath(p: string, ctx: PathContext, homes: DisplayPathHomes): string {

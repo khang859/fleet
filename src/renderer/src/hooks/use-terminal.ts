@@ -13,6 +13,15 @@ import '@xterm/xterm/css/xterm.css';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
 import { DEFAULT_SCROLLBACK } from '../../../shared/types';
 import { resolveXtermTheme } from '../lib/theme';
+import {
+  PathLinkProvider,
+  actionForDetectedPath,
+  type DetectedPath
+} from '../lib/terminal-path-links';
+import { useWorkspaceStore, getPaneContextById } from '../store/workspace-store';
+import { useCwdStore } from '../store/cwd-store';
+import { useHomesStore } from '../store/homes-store';
+import { useRemoteStore } from '../store/remote-store';
 
 export type UseTerminalOptions = {
   paneId: string;
@@ -52,6 +61,9 @@ const serializeRegistry = new Map<string, SerializeAddon>();
 
 // Registry of live xterm Terminal instances (for clearing buffers on restart)
 const terminalRegistry = new Map<string, Terminal>();
+
+/** The same registry, for `npm run drive -- eval` to read a pane's buffer. Dev only. */
+export const terminalRegistryForDev = terminalRegistry;
 
 /** Panes currently being restarted — onExit handler should skip tab close for these. */
 export const restartingPanes = new Set<string>();
@@ -182,6 +194,29 @@ export function getPaneTailText(paneId: string, lines = 40): string | undefined 
   return out.join('\n');
 }
 
+/** Show a path in the OS file manager. */
+function revealDetectedPath(detected: DetectedPath): void {
+  void window.fleet.file.reveal(detected.resolvedPath, detected.pathContext);
+}
+
+/**
+ * Act on a path the user Cmd+clicked.
+ *
+ * A click carries no opinion about what should happen, so the kind of thing the
+ * path names decides: anything Fleet cannot show in a pane - a folder, an
+ * archive - is handed to the file manager, which is the nearest useful thing to
+ * opening it. The context menu does not come through here, because picking
+ * `Reveal` out of a menu *is* an opinion and overrides that rule.
+ */
+function openDetectedPath(detected: DetectedPath): void {
+  const action = actionForDetectedPath(detected);
+  if (action.kind === 'reveal') {
+    revealDetectedPath(detected);
+    return;
+  }
+  useWorkspaceStore.getState().openFile(detected.resolvedPath, detected.pathContext, action.target);
+}
+
 function createTerminal(
   container: HTMLElement,
   options: UseTerminalOptions
@@ -197,6 +232,7 @@ function createTerminal(
   resizeObserver: ResizeObserver;
   cleanupResizeTimer: () => void;
   cursorSuppressor: { dispose(): void };
+  pathLinks: { dispose(): void };
 } {
   log.debug('createTerminal', { paneId: options.paneId, cwd: options.cwd });
 
@@ -236,6 +272,30 @@ function createTerminal(
     { urlRegex: /https?:\/\/[^\s"'<>()[\]{}]+/i }
   );
   term.loadAddon(webLinksAddon);
+
+  // Same gesture for file paths that agents and build tools print. Whether a
+  // candidate is real is settled by a `stat`, so only paths that exist are
+  // underlined; everything the provider needs about the pane is read live,
+  // because the cwd changes with every `cd` and an ssh session can start at any
+  // time.
+  const pathLinkProvider = new PathLinkProvider(() => term.buffer.active, {
+    getCwd: () => useCwdStore.getState().cwds.get(options.paneId) ?? options.cwd,
+    getPathContext: () => getPaneContextById(options.paneId),
+    getHomes: () => useHomesStore.getState().snapshot(),
+    isRemote: () => useRemoteStore.getState().remotes.has(options.paneId),
+    statPath: async (path, ctx) => {
+      const result = await window.fleet.file.stat(path, ctx);
+      return { exists: result.success, isDirectory: result.data?.isDirectory ?? false };
+    },
+    onActivate: openDetectedPath
+  });
+  const pathLinkRegistration = term.registerLinkProvider(pathLinkProvider);
+  const pathLinks = {
+    dispose: () => {
+      pathLinkRegistration.dispose();
+      pathLinkProvider.dispose();
+    }
+  };
 
   term.open(container);
   log.debug('xterm mounted', { paneId: options.paneId });
@@ -461,27 +521,45 @@ function createTerminal(
   const contextMenuHandler = (e: MouseEvent): void => {
     e.preventDefault();
     const hasSelection = term.hasSelection();
-    void window.fleet.terminal.showContextMenu({ hasSelection }).then(({ action }) => {
-      if (!action) return;
-      switch (action) {
-        case 'copy':
-          if (term.hasSelection()) {
-            void navigator.clipboard.writeText(term.getSelection());
-          }
-          break;
-        case 'paste':
-          void window.fleet.clipboard.readText().then((text) => {
-            term.paste(text.replace(/\r\n/g, '\n'));
-          });
-          break;
-        case 'selectAll':
-          term.selectAll();
-          break;
-        case 'clear':
-          term.clear();
-          break;
-      }
-    });
+    // Whatever path the pointer is over as the menu opens is the one the path
+    // items act on, which is also the one showing an underline.
+    const hovered = pathLinkProvider.getHovered();
+    const hoveredAction = hovered ? actionForDetectedPath(hovered) : null;
+    void window.fleet.terminal
+      .showContextMenu({
+        hasSelection,
+        path: hoveredAction ? { canOpenInFleet: hoveredAction.kind === 'open' } : null
+      })
+      .then(({ action }) => {
+        if (!action) return;
+        switch (action) {
+          case 'copy':
+            if (term.hasSelection()) {
+              void navigator.clipboard.writeText(term.getSelection());
+            }
+            break;
+          case 'paste':
+            void window.fleet.clipboard.readText().then((text) => {
+              term.paste(text.replace(/\r\n/g, '\n'));
+            });
+            break;
+          case 'selectAll':
+            term.selectAll();
+            break;
+          case 'clear':
+            term.clear();
+            break;
+          case 'openInFleet':
+            if (hovered) openDetectedPath(hovered);
+            break;
+          case 'reveal':
+            if (hovered) revealDetectedPath(hovered);
+            break;
+          case 'copyPath':
+            if (hovered) void navigator.clipboard.writeText(hovered.resolvedPath);
+            break;
+        }
+      });
   };
   container.addEventListener('contextmenu', contextMenuHandler);
 
@@ -763,7 +841,8 @@ function createTerminal(
     scrollCleanup,
     resizeObserver,
     cleanupResizeTimer,
-    cursorSuppressor
+    cursorSuppressor,
+    pathLinks
   };
 }
 
@@ -811,7 +890,8 @@ export function useTerminal(
       scrollCleanup,
       resizeObserver,
       cleanupResizeTimer,
-      cursorSuppressor
+      cursorSuppressor,
+      pathLinks
     } = createTerminal(container, optionsRef.current);
 
     termRef.current = term;
@@ -831,6 +911,7 @@ export function useTerminal(
       terminalRegistry.delete(paneId);
       cleanupResizeTimer();
       cursorSuppressor.dispose();
+      pathLinks.dispose();
       ipcCleanup();
       scrollCleanup();
       resizeObserver.disconnect();
