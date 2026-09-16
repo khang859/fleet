@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.120.0
+
+- **File paths in terminal output are clickable** - when Claude Code prints `Read(src/main/index.ts)`, or `tsc` prints a diagnostic, the path is a link.
+Cmd/Ctrl+click opens it in Fleet, at the line the text named.
+A plain click still selects text, so copying a path out of a pane works exactly as before.
+- **Right-click knows what it is pointing at** - Open in Fleet, Reveal in Finder (Show in File Explorer or File Manager elsewhere) and Copy Path sit at the top of the pane's menu.
+A folder or an archive goes to the file manager rather than an editor tab, because there is nothing useful to show in a pane.
+- **Only real files light up** - the detector is generous on purpose and the filesystem has the last word, so a path is underlined only once Fleet has confirmed something is actually there.
+That is what stops a URL in an agent's banner, or a word with a slash in it, from pretending to be a file.
+- **The line number comes along** - both spellings are understood: `src/app.ts:42:7` from ripgrep and stack traces, and `src/app.ts(24,44)` from `tsc`.
+The editor opens scrolled to that line, and Telescope's grep results now do the same instead of discarding the line they matched on.
+- Paths printed inside an ssh session are deliberately left alone, since they name a file on the far machine and the local file at that path would be the wrong one opened quietly (#577).
+
 ## v2.119.0
 
 - **Claude Code's settings, in Fleet** - Settings > Claude Config edits `.claude/settings.json` and `CLAUDE.md` without leaving Fleet, so a permission rule or an env var no longer means hunting for a dotfile.
