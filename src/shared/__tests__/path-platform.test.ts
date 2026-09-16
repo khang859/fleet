@@ -333,6 +333,20 @@ describe('resolveAgainstCwd', () => {
       '/home/khang/fleet/a.ts'
     );
   });
+  // `cd /` is unusual but entirely legal, and `join` used to strip the trailing
+  // separator off the leading segment - leaving nothing, and a result that was
+  // still relative. Everything downstream then measured it against the Electron
+  // process's own cwd.
+  it('keeps the posix root when the pane is standing in it', () => {
+    expect(resolveAgainstCwd('etc/hosts', '/', 'posix')).toBe('/etc/hosts');
+  });
+  it('keeps a windows drive root when the pane is standing in it', () => {
+    expect(resolveAgainstCwd('dev\\a.ts', 'C:\\', 'win32')).toBe('C:\\dev\\a.ts');
+  });
+  it('keeps the root for a WSL pane standing in it', () => {
+    expect(resolveAgainstCwd('etc/hosts', '/', wsl)).toBe('/etc/hosts');
+  });
+
   it('passes an absolute posix path through and ignores the cwd', () => {
     expect(resolveAgainstCwd('/etc/hosts', '/home/khang', 'posix')).toBe('/etc/hosts');
   });

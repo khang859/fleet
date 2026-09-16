@@ -210,7 +210,14 @@ export function resolveAgainstCwd(p: string, cwd: string, ctx: PathContext): str
   const absolute = ctx === 'win32' ? isWindowsPath(p) : isWslPath(p);
   if (!absolute && !cwd) return null;
 
-  const combined = absolute ? p : join(ctx, cwd, p);
+  // Concatenated rather than `join`ed, because `join` strips trailing separators
+  // from its leading segment - which turns a cwd of `/` into nothing at all and
+  // quietly demotes the result to a relative path. After `cd /`, every relative
+  // path in the pane would then be statted against the Electron process's own
+  // cwd. `normalizeSegments` does the real work and keeps whichever prefix
+  // survives here.
+  const sep = ctx === 'win32' ? '\\' : '/';
+  const combined = absolute ? p : `${cwd}${/[\\/]$/.test(cwd) ? '' : sep}${p}`;
   return normalizeSegments(combined, ctx);
 }
 

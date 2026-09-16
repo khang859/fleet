@@ -90,8 +90,7 @@ export class PathLinkProvider implements ILinkProvider {
       return;
     }
 
-    const buffer = this.getBuffer();
-    const stitched = stitchWrappedLine(buffer, bufferLineNumber - 1);
+    const stitched = stitchWrappedLine(this.getBuffer(), bufferLineNumber - 1);
     if (!stitched) {
       callback(undefined);
       return;
@@ -107,17 +106,12 @@ export class PathLinkProvider implements ILinkProvider {
     const ctx = this.deps.getPathContext();
     const homes = this.deps.getHomes();
 
-    // Everything that reads the buffer happens here, before the first `await`.
-    // The buffer is live: once the scrollback is full, each new line trims one
-    // off the front and every absolute row index shifts down beneath us. Mapping
-    // offsets to cells after waiting on a `stat` would measure whatever text had
-    // scrolled into those cells in the meantime, and underline that instead.
+    // Resolving a candidate touches no buffer, so it is safe to do now: the
+    // filesystem question is asked for every viable path at once.
     const located = candidates.flatMap((candidate) => {
       const resolved = resolveAgainstCwd(expandHome(candidate.text, ctx, homes), cwd, ctx);
       if (!resolved) return [];
-      const range = this.rangeFor(buffer, stitched.startRow, candidate.index, candidate.text);
-      if (!range) return [];
-      return [{ candidate, resolved, range }];
+      return [{ candidate, resolved }];
     });
 
     if (located.length === 0) {
@@ -125,64 +119,76 @@ export class PathLinkProvider implements ILinkProvider {
       return;
     }
 
-    const pending = located.map(async ({ candidate, resolved, range }) => {
+    const pending = located.map(async ({ candidate, resolved }) => {
       const stat = await this.statCached(resolved, ctx);
       if (!stat.exists) return null;
-
-      const detected: DetectedPath = {
-        resolvedPath: resolved,
-        pathContext: ctx,
-        isDirectory: stat.isDirectory,
-        ...(candidate.line !== undefined ? { line: candidate.line } : {}),
-        ...(candidate.col !== undefined ? { col: candidate.col } : {})
-      };
-
-      const link: ILink = {
-        range,
-        text: candidate.text,
-        decorations: { pointerCursor: true, underline: true },
-        // Gated the way the URL links already are, so a plain click still
-        // places the cursor and drags still select.
-        activate: (event) => {
-          if (!event.metaKey && !event.ctrlKey) return;
-          this.deps.onActivate(detected);
-        },
-        hover: () => {
-          this.hovered = detected;
-        },
-        leave: () => {
-          if (this.hovered === detected) this.hovered = null;
-        }
-      };
-      return link;
+      return { candidate, resolved, stat };
     });
 
-    void Promise.all(pending).then((links) => {
+    void Promise.all(pending).then((results) => {
       if (this.disposed) {
         callback(undefined);
         return;
       }
 
-      // The geometry was settled before the `stat`, but that only makes the
-      // ranges faithful to the text as it was read - it cannot make them still
-      // true. A TUI redrawing in place (which is most of what Claude Code does)
-      // can replace this row while the `stat` is in flight, leaving cells that
-      // hold different text at coordinates xterm will happily underline, and a
-      // click that opens a file no longer on screen. Re-reading the row and
-      // insisting it is unchanged is the only honest check.
+      // The buffer is live, and nothing read before the `stat` can be assumed to
+      // still be true. Two different things can have happened while it was in
+      // flight:
       //
-      // Scrolling is caught downstream too, because xterm recomputes the mouse
-      // row against the current `ydisp` and drops a link that no longer sits
-      // under the pointer - but relying on that leaves the in-place case open,
-      // and depends on internals this provider should not have to know.
-      const current = stitchWrappedLine(this.getBuffer(), bufferLineNumber - 1);
+      //   - the row was rewritten, by a TUI repainting in place (most of what
+      //     Claude Code does) or by the scrollback trimming and shifting every
+      //     absolute index down. The text that was matched is simply not there.
+      //   - the pane was resized, reflowing a wrapped path across a different
+      //     number of rows. The text is unchanged and so is its start row, but
+      //     every cell it occupies has moved.
+      //
+      // So the row is re-read and required to be identical, and the ranges are
+      // then measured against that re-read buffer rather than the one scanned
+      // earlier. Checking the text alone would let the resize case through with
+      // stale coordinates; measuring without checking would put ranges on text
+      // that is no longer the path.
+      const buffer = this.getBuffer();
+      const current = stitchWrappedLine(buffer, bufferLineNumber - 1);
       if (current?.text !== stitched.text || current.startRow !== stitched.startRow) {
         callback(undefined);
         return;
       }
 
-      const found = links.filter((l): l is ILink => l !== null);
-      callback(found.length > 0 ? found : undefined);
+      const links = results.flatMap((result) => {
+        if (!result) return [];
+        const { candidate, resolved, stat } = result;
+        const range = this.rangeFor(buffer, current.startRow, candidate.index, candidate.text);
+        if (!range) return [];
+
+        const detected: DetectedPath = {
+          resolvedPath: resolved,
+          pathContext: ctx,
+          isDirectory: stat.isDirectory,
+          ...(candidate.line !== undefined ? { line: candidate.line } : {}),
+          ...(candidate.col !== undefined ? { col: candidate.col } : {})
+        };
+
+        const link: ILink = {
+          range,
+          text: candidate.text,
+          decorations: { pointerCursor: true, underline: true },
+          // Gated the way the URL links already are, so a plain click still
+          // places the cursor and drags still select.
+          activate: (event) => {
+            if (!event.metaKey && !event.ctrlKey) return;
+            this.deps.onActivate(detected);
+          },
+          hover: () => {
+            this.hovered = detected;
+          },
+          leave: () => {
+            if (this.hovered === detected) this.hovered = null;
+          }
+        };
+        return [link];
+      });
+
+      callback(links.length > 0 ? links : undefined);
     });
   }
 

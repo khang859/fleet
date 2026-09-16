@@ -356,6 +356,28 @@ describe('PathLinkProvider: the buffer moving underfoot', () => {
     expect(await pending).toBeUndefined();
   });
 
+  it('re-measures the range when a resize reflowed the row during the stat', async () => {
+    // The nastiest of the three, because the two cheap checks both pass: a
+    // widened pane puts the whole path on one row, so the stitched text is
+    // character-for-character what was matched and its start row has not moved.
+    // Only the cells it occupies changed. Measuring against the re-read buffer
+    // is what catches it - the old range ended on row 2.
+    const rows = ['/home/k/fleet/src/ma', '|in/index.ts'];
+    const { deps, settle } = heldStat();
+    const h = harness(rows, deps);
+
+    const pending = h.links(1);
+    await Promise.resolve();
+    // Wider pane: the path fits on one row and the continuation is gone.
+    rows[0] = '/home/k/fleet/src/main/index.ts';
+    rows[1] = 'next command';
+    settle();
+
+    const links = await pending;
+    expect(links).toHaveLength(1);
+    expect(links![0].range).toEqual({ start: { x: 1, y: 1 }, end: { x: 31, y: 1 } });
+  });
+
   it('keeps the range it scanned when the row is untouched', async () => {
     // The other half of the rule, and the reason the geometry is settled before
     // the `stat` rather than after: a quiet pane must still produce a link, with
