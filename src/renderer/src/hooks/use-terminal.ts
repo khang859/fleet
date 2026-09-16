@@ -194,16 +194,24 @@ export function getPaneTailText(paneId: string, lines = 40): string | undefined 
   return out.join('\n');
 }
 
+/** Show a path in the OS file manager. */
+function revealDetectedPath(detected: DetectedPath): void {
+  void window.fleet.file.reveal(detected.resolvedPath, detected.pathContext);
+}
+
 /**
- * Act on a path the user Cmd+clicked, or picked out of the context menu.
+ * Act on a path the user Cmd+clicked.
  *
- * Anything Fleet cannot show in a pane - a folder, an archive - is handed to the
- * OS file manager instead, which is the nearest useful thing to opening it.
+ * A click carries no opinion about what should happen, so the kind of thing the
+ * path names decides: anything Fleet cannot show in a pane - a folder, an
+ * archive - is handed to the file manager, which is the nearest useful thing to
+ * opening it. The context menu does not come through here, because picking
+ * `Reveal` out of a menu *is* an opinion and overrides that rule.
  */
 function openDetectedPath(detected: DetectedPath): void {
   const action = actionForDetectedPath(detected);
   if (action.kind === 'reveal') {
-    void window.fleet.file.reveal(detected.resolvedPath, detected.pathContext);
+    revealDetectedPath(detected);
     return;
   }
   useWorkspaceStore.getState().openFile(detected.resolvedPath, detected.pathContext, action.target);
@@ -542,8 +550,10 @@ function createTerminal(
             term.clear();
             break;
           case 'openInFleet':
-          case 'reveal':
             if (hovered) openDetectedPath(hovered);
+            break;
+          case 'reveal':
+            if (hovered) revealDetectedPath(hovered);
             break;
           case 'copyPath':
             if (hovered) void navigator.clipboard.writeText(hovered.resolvedPath);

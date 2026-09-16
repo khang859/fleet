@@ -162,6 +162,25 @@ export class PathLinkProvider implements ILinkProvider {
         callback(undefined);
         return;
       }
+
+      // The geometry was settled before the `stat`, but that only makes the
+      // ranges faithful to the text as it was read - it cannot make them still
+      // true. A TUI redrawing in place (which is most of what Claude Code does)
+      // can replace this row while the `stat` is in flight, leaving cells that
+      // hold different text at coordinates xterm will happily underline, and a
+      // click that opens a file no longer on screen. Re-reading the row and
+      // insisting it is unchanged is the only honest check.
+      //
+      // Scrolling is caught downstream too, because xterm recomputes the mouse
+      // row against the current `ydisp` and drops a link that no longer sits
+      // under the pointer - but relying on that leaves the in-place case open,
+      // and depends on internals this provider should not have to know.
+      const current = stitchWrappedLine(this.getBuffer(), bufferLineNumber - 1);
+      if (current?.text !== stitched.text || current.startRow !== stitched.startRow) {
+        callback(undefined);
+        return;
+      }
+
       const found = links.filter((l): l is ILink => l !== null);
       callback(found.length > 0 ? found : undefined);
     });

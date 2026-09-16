@@ -306,27 +306,67 @@ describe('PathLinkProvider: ranges', () => {
 });
 
 describe('PathLinkProvider: the buffer moving underfoot', () => {
-  it('keeps the range it scanned when the pane scrolls during the stat', async () => {
-    // xterm's buffer trims from the front once the scrollback fills, so every
-    // absolute row index shifts down while a `stat` is in flight. The geometry
-    // has to be settled before that can happen.
+  /** A `stat` that hangs until the test lets it finish. */
+  function heldStat(): { deps: Partial<PathLinkDeps>; settle: () => void } {
+    let release: (() => void) | undefined;
+    return {
+      deps: {
+        statPath: async () =>
+          new Promise<StatResult>((resolve) => {
+            release = () => {
+              resolve({ exists: true, isDirectory: false });
+            };
+          })
+      },
+      settle: () => release?.()
+    };
+  }
+
+  it('offers nothing when the row it scanned was rewritten during the stat', async () => {
+    // The case a TUI produces constantly: Claude Code repaints its frame in
+    // place, so the cells are still at the same coordinates and still under the
+    // pointer - they just hold different text now. Returning the link anyway
+    // would underline the replacement and open a file that is no longer on
+    // screen.
     const rows = ['ls src/main/index.ts'];
-    let settle: (() => void) | undefined;
-    const h = harness(rows, {
-      statPath: async () =>
-        new Promise<StatResult>((resolve) => {
-          settle = () => {
-            resolve({ exists: true, isDirectory: false });
-          };
-        })
-    });
+    const { deps, settle } = heldStat();
+    const h = harness(rows, deps);
 
     const pending = h.links(1);
     await Promise.resolve();
-    // The row that held the path now holds something else, and something
-    // shorter - so a late re-read could not even reach the old end column.
+    rows[0] = 'ls src/other/thing.ts';
+    settle();
+
+    expect(await pending).toBeUndefined();
+  });
+
+  it('offers nothing when the pane scrolled the row away during the stat', async () => {
+    // xterm's buffer trims from the front once the scrollback fills, so every
+    // absolute row index shifts down while a `stat` is in flight. Whatever now
+    // sits at the index that was scanned is not what was measured.
+    const rows = ['ls src/main/index.ts'];
+    const { deps, settle } = heldStat();
+    const h = harness(rows, deps);
+
+    const pending = h.links(1);
+    await Promise.resolve();
     rows[0] = 'gone';
-    settle?.();
+    settle();
+
+    expect(await pending).toBeUndefined();
+  });
+
+  it('keeps the range it scanned when the row is untouched', async () => {
+    // The other half of the rule, and the reason the geometry is settled before
+    // the `stat` rather than after: a quiet pane must still produce a link, with
+    // the range measured against the text that was read.
+    const rows = ['ls src/main/index.ts'];
+    const { deps, settle } = heldStat();
+    const h = harness(rows, deps);
+
+    const pending = h.links(1);
+    await Promise.resolve();
+    settle();
 
     const links = await pending;
     expect(links).toHaveLength(1);
