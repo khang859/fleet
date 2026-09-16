@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.121.0
+
+- **Filenames from `ls` are clickable** - a name with no folder in front of it, printed on its own by `ls`, `ls -l` or `ls -F`, is now a link like any other path.
+Cmd/Ctrl+click opens it, a folder reveals it, and the rest of the gesture is unchanged.
+- **The markers `ls -F` adds stay out of the way** - `build.sh*` underlines `build.sh`, and the `*` is neither underlined nor part of what is opened.
+The same goes for `@`, `=` and `|`.
+- **A name is a link only when it is really there** - Fleet reads the pane's own folder, once, and a bare word is a file exactly when that folder holds something by that name.
+A word in a sentence costs nothing to rule out, so a screen of output is one folder read rather than a check per word.
+The folder is re-read every few seconds, so a file created after it was printed becomes clickable on the next hover.
+- A name printed by `ls` in some other folder, such as `ls src`, is still left alone: those names belong to a folder that is not the pane's own, and opening the same name from the wrong place would be worse than doing nothing (#578).
+
 ## v2.120.0
 
 - **File paths in terminal output are clickable** - when Claude Code prints `Read(src/main/index.ts)`, or `tsc` prints a diagnostic, the path is a link.
