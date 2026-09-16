@@ -1,5 +1,5 @@
 import { Suspense, lazy, memo, useCallback, useMemo, useRef } from 'react';
-import type { PaneNode, PaneLeaf, TerminalBackground } from '../../../shared/types';
+import type { PaneNode, PaneLeaf, TerminalBackground, FileOpenTarget } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
@@ -241,13 +241,15 @@ function ViewerPane({
   paneId,
   filePath,
   pathContext,
-  remote
+  remote,
+  openTarget
 }: {
   paneType: ViewerPaneType;
   paneId: string;
   filePath: string;
   pathContext?: PathContext;
   remote?: RemoteFileRef;
+  openTarget?: FileOpenTarget;
 }): React.JSX.Element {
   switch (paneType) {
     // The image and PDF viewers are read-only - they render straight from the
@@ -272,6 +274,7 @@ function ViewerPane({
           filePath={filePath}
           pathContext={pathContext}
           remote={remote}
+          openTarget={openTarget}
         />
       );
   }
@@ -454,6 +457,7 @@ function PaneGridImpl({
                         paneId={leaf.id}
                         filePath={node.filePath ?? ''}
                         pathContext={node.pathContext}
+                        openTarget={node.openTarget}
                       />
                     )}
                   </Suspense>

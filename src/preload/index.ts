@@ -42,6 +42,7 @@ import type {
   WslPathResponse,
   WslHomeDirResponse
 } from '../shared/ipc-api';
+import type { TerminalMenuAction } from '../shared/ipc-api';
 import type { WslDistroState, PathContext } from '../shared/shell-profiles';
 import type { ReleaseNote } from '../shared/release-notes';
 import type {
@@ -384,9 +385,15 @@ const fleetApi = {
       pathContext?: PathContext
     ): Promise<{
       success: boolean;
-      data?: { size: number; modifiedAt: number; mimeType: string };
+      data?: { size: number; modifiedAt: number; mimeType: string; isDirectory: boolean };
       error?: string;
     }> => typedInvoke(IPC_CHANNELS.FILE_STAT, filePath, pathContext),
+    /** Show the file in Finder/Explorer. Never opens it with its OS handler. */
+    reveal: async (
+      filePath: string,
+      pathContext?: PathContext
+    ): Promise<{ success: boolean; error?: string }> =>
+      typedInvoke(IPC_CHANNELS.FILE_REVEAL, { filePath, pathContext }),
     search: async (req: FileSearchRequest): Promise<FileSearchResponse> =>
       typedInvoke(IPC_CHANNELS.FILE_SEARCH, req),
     grep: async (req: FileGrepRequest): Promise<FileGrepResponse> =>
@@ -437,7 +444,9 @@ const fleetApi = {
   terminal: {
     showContextMenu: async (params: {
       hasSelection: boolean;
-    }): Promise<{ action: string | null }> =>
+      /** Present when the pointer is over a detected path; adds the path items. */
+      path?: { canOpenInFleet: boolean } | null;
+    }): Promise<{ action: TerminalMenuAction | null }> =>
       typedInvoke(IPC_CHANNELS.TERMINAL_CONTEXT_MENU, params)
   },
   log: {

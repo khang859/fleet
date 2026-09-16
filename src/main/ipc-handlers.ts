@@ -1,5 +1,6 @@
-import { ipcMain, BrowserWindow, Menu, dialog, safeStorage, clipboard } from 'electron';
-import type { MenuItemConstructorOptions } from 'electron';
+import { ipcMain, BrowserWindow, Menu, dialog, safeStorage, clipboard, shell } from 'electron';
+import { buildTerminalContextMenuTemplate } from './terminal-context-menu';
+import type { TerminalMenuAction } from '../shared/ipc-api';
 import { safeOpenExternal } from './safe-external';
 import { collectDiagnosticsInfo, readRedactedLogTail, openLogsFolder } from './diagnostics';
 import { createLogger, logger } from './logger';
@@ -164,7 +165,7 @@ import type { AnnotateService } from './annotate-service';
 import type { ShellProfileRegistry } from './shell-profiles';
 import type { WslService } from './wsl-service';
 import { isWslContext, type PathContext } from '../shared/shell-profiles';
-import { toWslUncPath, toWindowsAccessiblePath } from '../shared/path-platform';
+import { toWslUncPath, toWindowsAccessiblePath, isUncPath } from '../shared/path-platform';
 import type { FleetSettingsPatch } from '../shared/types';
 import { checkSystemDeps } from './system-checker';
 import { searchFiles } from './file-search';
@@ -519,26 +520,29 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_OPEN_LOGS, async () => openLogsFolder());
 
   // Native right-click context menu for terminal panes.
-  // Renderer passes { hasSelection } so Copy is disabled when nothing is selected;
-  // we resolve with the chosen action id (or null on dismissal) and the renderer
-  // performs the operation against its xterm instance.
+  // Renderer passes { hasSelection } so Copy is disabled when nothing is selected,
+  // plus `path` when the pointer is over a detected file path; we resolve with the
+  // chosen action id (or null on dismissal) and the renderer performs the
+  // operation against its xterm instance.
   ipcMain.handle(
     IPC_CHANNELS.TERMINAL_CONTEXT_MENU,
-    async (event, { hasSelection }: { hasSelection: boolean }) => {
-      return new Promise<{ action: string | null }>((resolve) => {
+    async (
+      event,
+      { hasSelection, path }: { hasSelection: boolean; path?: { canOpenInFleet: boolean } | null }
+    ) => {
+      return new Promise<{ action: TerminalMenuAction | null }>((resolve) => {
         let resolved = false;
-        const done = (action: string | null): void => {
+        const done = (action: TerminalMenuAction | null): void => {
           if (resolved) return;
           resolved = true;
           resolve({ action });
         };
-        const template: MenuItemConstructorOptions[] = [
-          { label: 'Copy', enabled: hasSelection, click: () => done('copy') },
-          { label: 'Paste', click: () => done('paste') },
-          { type: 'separator' },
-          { label: 'Select All', click: () => done('selectAll') },
-          { label: 'Clear', click: () => done('clear') }
-        ];
+        const template = buildTerminalContextMenuTemplate({
+          hasSelection,
+          path: path ?? null,
+          platform: process.platform,
+          onAction: done
+        });
         const window = BrowserWindow.fromWebContents(event.sender);
         if (!window) {
           done(null);
@@ -709,7 +713,47 @@ export function registerIpcHandlers(
         const stats = await stat(resolveCtxPath(pathContext, filePath));
         const ext = extname(filePath).toLowerCase().slice(1);
         const mimeType = mimeTypeForExt(ext);
-        return { success: true, data: { size: stats.size, modifiedAt: stats.mtimeMs, mimeType } };
+        return {
+          success: true,
+          data: {
+            size: stats.size,
+            modifiedAt: stats.mtimeMs,
+            mimeType,
+            isDirectory: stats.isDirectory()
+          }
+        };
+      } catch (err) {
+        return { success: false, error: toError(err).message };
+      }
+    }
+  );
+
+  /**
+   * Show a file or folder in the OS file manager.
+   *
+   * `showItemInFolder`, never `openPath`: revealing a file puts it on screen in
+   * Finder or Explorer, while opening it hands it to whatever the OS has
+   * registered as its handler, which for the wrong extension is code execution.
+   *
+   * The UNC check is a second lock on a door the path detector already keeps
+   * shut. Handing `\\host\share` to the shell on Windows makes the OS
+   * authenticate to that host, so a build log printing one is how an NTLM hash
+   * leaves the machine. This handler is reachable on its own, so it does not
+   * rely on the detector's grammar to have refused first.
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_REVEAL,
+    async (_event, { filePath, pathContext }: { filePath: string; pathContext?: PathContext }) => {
+      if (isUncPath(filePath)) {
+        return { success: false, error: 'Network paths cannot be revealed.' };
+      }
+      try {
+        const resolved = resolveCtxPath(pathContext, filePath);
+        // Reveal fails silently when the target is gone, so the existence of the
+        // thing is confirmed here in order to have something to report.
+        await stat(resolved);
+        shell.showItemInFolder(resolved);
+        return { success: true };
       } catch (err) {
         return { success: false, error: toError(err).message };
       }

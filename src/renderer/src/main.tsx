@@ -13,6 +13,7 @@ import { useAgentMemoryStore } from './store/agent-memory-store';
 import { useNotificationStore } from './store/notification-store';
 import { useClaudeConfigStore } from './store/claude-config-store';
 import { useUpdateStore } from './store/update-store';
+import { terminalRegistryForDev } from './hooks/use-terminal';
 import './index.css';
 
 const log = createLogger('renderer');
@@ -94,7 +95,8 @@ if (import.meta.env.DEV) {
       notification: useNotificationStore,
       update: useUpdateStore,
       claudeConfig: useClaudeConfigStore
-    }
+    },
+    terminals: terminalRegistryForDev
   };
 }
 

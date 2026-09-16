@@ -79,6 +79,15 @@ export type PaneSplit = {
   children: [PaneNode, PaneNode];
 };
 
+/**
+ * A position inside a file, 1-based the way every tool that prints one counts:
+ * `a.ts:42:7`, ripgrep, tsc, a stack trace.
+ */
+export type FileOpenTarget = {
+  line: number;
+  col?: number;
+};
+
 export type PaneLeaf = {
   type: 'leaf';
   id: string;
@@ -95,6 +104,12 @@ export type PaneLeaf = {
     | 'agent'
     | 'ssh-browser';
   filePath?: string;
+  /**
+   * Where to put the cursor when a `file` pane opens. Set when the path that
+   * opened the pane named a line - a Cmd+clicked `a.ts:42` in a terminal, a
+   * grep hit - and left unset otherwise, which means the top of the file.
+   */
+  openTarget?: FileOpenTarget;
   /**
    * The SSH target this pane's content lives on. Deliberately orthogonal to
    * `pathContext`: that field answers "how do I reach this path with local fs /

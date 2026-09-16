@@ -12,7 +12,9 @@ import {
   toWindowsAccessiblePath,
   pathForPaneContext,
   toFleetImageUrl,
-  toFleetPdfUrl
+  toFleetPdfUrl,
+  expandHome,
+  resolveAgainstCwd
 } from '../path-platform';
 
 const wsl = { kind: 'wsl', distro: 'Ubuntu-24.04' } as const;
@@ -264,5 +266,113 @@ describe('toFleetImageUrl / toFleetPdfUrl', () => {
   });
   it('uses the fleet-pdf scheme for pdfs', () => {
     expect(toFleetPdfUrl('C:\\docs\\a.pdf')).toBe('fleet-pdf:///C%3A/docs/a.pdf');
+  });
+});
+
+const homes = {
+  homeDir: '/home/khang',
+  wslHomeByDistro: { 'Ubuntu-24.04': '/home/khang' }
+};
+const winHomes = {
+  homeDir: 'C:\\Users\\khang',
+  wslHomeByDistro: {}
+};
+
+describe('expandHome', () => {
+  it('expands a lone tilde to the posix home', () => {
+    expect(expandHome('~', 'posix', homes)).toBe('/home/khang');
+  });
+  it('expands a tilde path to the posix home', () => {
+    expect(expandHome('~/dev/fleet', 'posix', homes)).toBe('/home/khang/dev/fleet');
+  });
+  it('expands a tilde path to the windows home with backslashes', () => {
+    expect(expandHome('~/Documents/a.txt', 'win32', winHomes)).toBe(
+      'C:\\Users\\khang\\Documents/a.txt'
+    );
+  });
+  it('expands using the distro home for a WSL pane', () => {
+    expect(expandHome('~/dev', wsl, homes)).toBe('/home/khang/dev');
+  });
+  it('falls back to the mounted windows home when the distro home is unknown', () => {
+    expect(expandHome('~/dev', wsl, winHomes)).toBe('/mnt/c/Users/khang/dev');
+  });
+  it('round-trips with displayPath', () => {
+    const abs = '/home/khang/dev/fleet/src/a.ts';
+    expect(expandHome(displayPath(abs, 'posix', homes), 'posix', homes)).toBe(abs);
+  });
+  it('leaves a non-tilde path alone', () => {
+    expect(expandHome('/etc/hosts', 'posix', homes)).toBe('/etc/hosts');
+    expect(expandHome('src/a.ts', 'posix', homes)).toBe('src/a.ts');
+  });
+  it('leaves the tilde alone when there is no home to substitute', () => {
+    expect(expandHome('~/dev', 'posix', { homeDir: '', wslHomeByDistro: {} })).toBe('~/dev');
+  });
+  it('does not treat a tilde inside a filename as a home marker', () => {
+    expect(expandHome('src/a~b.ts', 'posix', homes)).toBe('src/a~b.ts');
+  });
+});
+
+describe('resolveAgainstCwd', () => {
+  it('joins a bare relative path onto the cwd', () => {
+    expect(resolveAgainstCwd('src/a.ts', '/home/khang/fleet', 'posix')).toBe(
+      '/home/khang/fleet/src/a.ts'
+    );
+  });
+  it('resolves a dot-relative path', () => {
+    expect(resolveAgainstCwd('./src/a.ts', '/home/khang/fleet', 'posix')).toBe(
+      '/home/khang/fleet/src/a.ts'
+    );
+  });
+  it('resolves parent segments', () => {
+    expect(resolveAgainstCwd('../lib/a.ts', '/home/khang/fleet/src', 'posix')).toBe(
+      '/home/khang/fleet/lib/a.ts'
+    );
+  });
+  it('resolves repeated parent segments', () => {
+    expect(resolveAgainstCwd('../../a.ts', '/home/khang/fleet/src/main', 'posix')).toBe(
+      '/home/khang/fleet/a.ts'
+    );
+  });
+  it('passes an absolute posix path through and ignores the cwd', () => {
+    expect(resolveAgainstCwd('/etc/hosts', '/home/khang', 'posix')).toBe('/etc/hosts');
+  });
+  it('passes an absolute windows path through and ignores the cwd', () => {
+    expect(resolveAgainstCwd('C:\\Users\\khang\\a.ts', 'D:\\other', 'win32')).toBe(
+      'C:\\Users\\khang\\a.ts'
+    );
+  });
+  it('joins a relative path onto a windows cwd with backslashes', () => {
+    expect(resolveAgainstCwd('src/a.ts', 'C:\\dev\\fleet', 'win32')).toBe(
+      'C:\\dev\\fleet\\src\\a.ts'
+    );
+  });
+  it('joins a relative path onto a WSL cwd', () => {
+    expect(resolveAgainstCwd('src/a.ts', '/home/khang/fleet', wsl)).toBe(
+      '/home/khang/fleet/src/a.ts'
+    );
+  });
+  it('collapses redundant separators and dot segments', () => {
+    expect(resolveAgainstCwd('./a//./b/c.ts', '/root', 'posix')).toBe('/root/a/b/c.ts');
+  });
+  it('drops a trailing separator so one directory is one path', () => {
+    expect(resolveAgainstCwd('src/', '/root', 'posix')).toBe('/root/src');
+  });
+  it('never walks past the posix root', () => {
+    expect(resolveAgainstCwd('../../../../etc', '/home', 'posix')).toBe('/etc');
+  });
+  it('never eats the windows drive', () => {
+    expect(resolveAgainstCwd('..\\..\\..\\..\\x', 'C:\\a', 'win32')).toBe('C:\\x');
+  });
+  it('returns null for a relative path with no cwd to resolve against', () => {
+    expect(resolveAgainstCwd('src/a.ts', '', 'posix')).toBeNull();
+  });
+  it('resolves an absolute path even with no cwd', () => {
+    expect(resolveAgainstCwd('/etc/hosts', '', 'posix')).toBe('/etc/hosts');
+  });
+  it('returns null for an empty path', () => {
+    expect(resolveAgainstCwd('', '/root', 'posix')).toBeNull();
+  });
+  it('keeps a leading parent segment when there is no root to anchor to', () => {
+    expect(resolveAgainstCwd('../a.ts', '', 'posix')).toBeNull();
   });
 });
