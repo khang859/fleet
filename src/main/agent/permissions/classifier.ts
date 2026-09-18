@@ -144,7 +144,7 @@ export async function classifyCommand(
 }
 
 /** One un-streamed call, in the shape a session's total adds up. */
-function toTurnUsage(usage: AgentUsage | null, model: string): AgentTurnUsage | null {
+export function toTurnUsage(usage: AgentUsage | null, model: string): AgentTurnUsage | null {
   if (usage === null) return null;
   return {
     billed: usage,

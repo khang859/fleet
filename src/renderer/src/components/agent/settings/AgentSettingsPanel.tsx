@@ -17,6 +17,7 @@ import type {
   AgentProviderConfig
 } from '../../../../../shared/agent-routing';
 import { AGENT_TOOL_MODES, DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
+import { AGENT_DECISION_MODELS } from '../../../../../shared/agent-decision-models';
 import {
   AGENT_VOICE_MODELS,
   DEFAULT_AGENT_VOICE_SETTINGS
@@ -105,6 +106,10 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
   );
   const models = useMemo(() => catalog?.models ?? [], [catalog]);
   const codingModels = useMemo(() => models.filter((m) => m.supportsTools), [models]);
+  // Decision models answer a typed question rather than writing text, which is
+  // what this one setting asks for and no other does. OpenRouter keeps them off
+  // the catalog, so they are added here and nowhere else.
+  const classifierModels = useMemo(() => [...AGENT_DECISION_MODELS, ...models], [models]);
   // Counted apart from the download below, because the two halves of this list
   // are refreshed by entirely different things: one by a button, the other by
   // somebody starting a server.
@@ -333,7 +338,7 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
             layout="stack"
           >
             <ModelSelect
-              models={models}
+              models={classifierModels}
               value={agent.classifierModel}
               onChange={(classifierModel) =>
                 void updateSettings({ ai: { agent: { classifierModel } } })

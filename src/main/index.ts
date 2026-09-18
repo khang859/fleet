@@ -95,6 +95,8 @@ import { AgentSessionStore } from './agent/session-store';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './agent/image-store';
 import { PermissionGate } from './agent/permissions/gate';
 import { classifyCommand } from './agent/permissions/classifier';
+import { classifyWithDecision } from './agent/permissions/decisions';
+import { isDecisionModel } from '../shared/agent-decision-models';
 import { AgentGitWatcher } from './agent/git-watch';
 import { AgentHistoryStore } from './agent/history-store';
 import { McpManager as AgentMcpManager } from './agent/mcp/manager';
@@ -1381,11 +1383,26 @@ void app.whenReady().then(async () => {
     // the answer the gate would have reached without any of this.
     autoApprove: async ({ command, cwd, signal }) => {
       const a = settingsStore.get().ai.agent;
+      if (a.toolMode !== 'auto') return { verdict: 'ask', usage: null };
+      // A decision model answers on its own endpoint, not on chat completions,
+      // so it skips the routing below and goes straight to OpenRouter.
+      const decisionModel = a.classifierModel;
+      if (decisionModel !== null && isDecisionModel(decisionModel)) {
+        const apiKey = openRouterSecrets.getKey();
+        if (apiKey === null) return { verdict: 'ask', usage: null };
+        return classifyWithDecision(apiKey, {
+          model: decisionModel,
+          command,
+          cwd,
+          note: a.classifierNote,
+          signal
+        });
+      }
       // Falls through to the coding model rather than to the title model: the
       // one the user already trusts to drive the tools is the honest default,
       // and naming a session is not a judgement about what may run.
       const resolved = resolveTarget(a.classifierModel ?? a.coding.model);
-      if (a.toolMode !== 'auto' || !resolved.ok) {
+      if (!resolved.ok) {
         return { verdict: 'ask', usage: null };
       }
       return classifyCommand(completeOnce, {
