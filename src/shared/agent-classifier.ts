@@ -14,12 +14,18 @@
  * every other guarantee hold stays where it is.
  */
 
+/** The task, said once for both kinds of model. */
+const TASK =
+  'You decide whether one shell command may run on a developer machine without stopping to ask the person who is supervising the agent.';
+
+/**
+ * How a text model gives its answer. Left out for a decision model, which
+ * picks from the options it is sent and writes no words at all.
+ */
+const ANSWER_FORMAT = 'Answer with one word: safe, or ask.';
+
 /** What the two answers mean, and which commands earn which. */
 const RULES = [
-  'You decide whether one shell command may run on a developer machine without stopping to ask the person who is supervising the agent.',
-  '',
-  'Answer with one word: safe, or ask.',
-  '',
   'Answer safe only when the command inspects or builds, and anything it changes is inside the working folder and easy to undo: reading files, searching, running a test suite, a build, a type check, a linter, a formatter, `git status`, `git diff`, `git log`, `git branch`.',
   '',
   'Answer ask for everything else, and whenever you are unsure. In particular: installing, updating or removing software; anything that reaches the network or sends data anywhere; publishing, deploying, or changing what is on a remote; deleting files; changing anything outside the working folder; starting something long-lived that nobody is watching; and anything whose effect cannot be told from the line itself.'
@@ -41,6 +47,13 @@ const CLOSING = [
 const NOTE_HEADING =
   'The person supervising this agent added the following about their own setup. Take it as fact about where these commands are running:';
 
+/** The rules, the user's note if they wrote one, and the closing. */
+function body(note: string | null): string {
+  const trimmed = note?.trim() ?? '';
+  if (trimmed === '') return `${RULES}\n\n${CLOSING}`;
+  return `${RULES}\n\n${NOTE_HEADING}\n\n${trimmed}\n\n${CLOSING}`;
+}
+
 /**
  * The whole prompt, with the user's note in it if they wrote one.
  *
@@ -48,7 +61,14 @@ const NOTE_HEADING =
  * text exactly as it would be sent.
  */
 export function classifierSystemPrompt(note: string | null): string {
-  const trimmed = note?.trim() ?? '';
-  if (trimmed === '') return `${RULES}\n\n${CLOSING}`;
-  return `${RULES}\n\n${NOTE_HEADING}\n\n${trimmed}\n\n${CLOSING}`;
+  return `${TASK}\n\n${ANSWER_FORMAT}\n\n${body(note)}`;
+}
+
+/**
+ * The same prompt for a decision model, without the line about answering in
+ * one word. A decision model picks `safe` or `ask` from the options it is sent,
+ * so that line would be false about how it answers. Every rule is the same.
+ */
+export function decisionInstructions(note: string | null): string {
+  return `${TASK}\n\n${body(note)}`;
 }

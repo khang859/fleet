@@ -77,6 +77,14 @@ describe('toDecisionBody', () => {
     expect(Object.keys(question.criteria as object)).toEqual(['safe', 'ask']);
     expect(question.instructions).toContain('Installs are fine here.');
   });
+
+  it('does not tell a model that picks options to answer in one word', () => {
+    const question = (toDecisionBody(input).questions as Record<string, Record<string, unknown>>)
+      .verdict;
+
+    expect(question.instructions).not.toContain('one word');
+    expect(question.instructions).toContain('Answer ask for everything else');
+  });
 });
 
 describe('classifyWithDecision', () => {

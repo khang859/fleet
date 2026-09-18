@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { AgentUsage } from '../../../shared/agent-types';
-import { classifierSystemPrompt } from '../../../shared/agent-classifier';
+import { decisionInstructions } from '../../../shared/agent-classifier';
 import { APP_HEADERS } from '../openrouter';
 import { toTurnUsage, type Classification, type ClassifyInput } from './classifier';
 import { createLogger } from '../../logger';
@@ -17,7 +17,8 @@ const log = createLogger('agent:decisions');
  * what comes back is read as a choice rather than parsed out of a sentence.
  *
  * The rules are the ones the settings screen shows, the user's note included.
- * Only the delivery differs, which keeps one text for both kinds of model.
+ * Only the line that tells a text model to answer in one word is left out,
+ * because a decision model picks an option and writes no words.
  *
  * Everything else holds from `classifier.ts`: it can only ever remove a
  * question, it never throws, and every failure asks the user.
@@ -77,7 +78,7 @@ export function toDecisionBody(input: DecisionInput): Record<string, unknown> {
     questions: {
       [QUESTION]: {
         type: 'choice',
-        instructions: classifierSystemPrompt(input.note),
+        instructions: decisionInstructions(input.note),
         criteria: CRITERIA
       }
     }

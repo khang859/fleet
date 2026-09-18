@@ -10,6 +10,10 @@ import type { AgentCatalogModel } from './agent-types';
  *
  * Only the auto-approval model can be one. It is the only setting whose answer
  * is a choice rather than prose.
+ *
+ * Keep these ids current. Nothing checks them against OpenRouter, so an id that
+ * OpenRouter renames or retires fails quietly: every call errors, and auto mode
+ * asks about every command with no message saying why.
  */
 export const AGENT_DECISION_MODELS: AgentCatalogModel[] = [
   {
