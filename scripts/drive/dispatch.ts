@@ -70,7 +70,9 @@ export function parseVerbArgs(args: string[]): { values: FlagValues; positionals
       positionals.push(arg);
       continue;
     }
-    const [, name, inline] = flag;
+    const name = flag[1];
+    // `.at` keeps the undefined an unmatched optional group really is; `[2]` types it string.
+    const inline = flag.at(2);
     if (isOneOf(BOOLEAN_FLAGS, name)) {
       if (inline !== undefined) throw new Error(`--${name} takes no value`);
       values[name] = true;
