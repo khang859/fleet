@@ -1596,6 +1596,40 @@ describe('AgentService', () => {
   });
 
   /*
+   * The cache marker goes on the conversation, not on the notes after it. The
+   * notes are left off the next round, so a marker on one caches a prefix no
+   * request ever sends again - every round wrote the whole transcript and read
+   * none of it back.
+   */
+  it('ends the cacheable prefix before the notes that belong to this round only', async () => {
+    const { emit, ended } = collector();
+    const rounds: StreamRequest[] = [];
+    const stream = async (req: StreamRequest): Promise<StreamOutcome> => {
+      rounds.push(req);
+      return Promise.resolve(round());
+    };
+
+    new AgentService({
+      schedules: SCHEDULES,
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      subagents: await oneRunningSubagent(REQUEST.threadId),
+      getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
+      emit,
+      stream
+    }).send(REQUEST);
+    await ended;
+
+    const { messages, cacheUpTo } = rounds[0];
+    expect(cacheUpTo).toBeDefined();
+    expect(messages[(cacheUpTo ?? 0) - 1]).toEqual({ role: 'user', content: REQUEST.text });
+    for (const note of messages.slice(cacheUpTo)) {
+      expect(note.content).toContain(FLEET_WIRE_PREFIX);
+    }
+  });
+
+  /*
    * The reason this is affordable. Most turns of most conversations start no
    * subagents at all, and a line saying so on every round of every one of them
    * would be the whole cost of the feature paid where it has nothing to say.
@@ -2708,6 +2742,21 @@ describe('withClearedWireResults', () => {
     const wire = [...exchange('old1', 'read', 1000), ...recent()];
 
     expect(withClearedWireResults(wire)).toBe(wire);
+  });
+
+  /*
+   * The recent window slides by one call a round. A line that slid with it
+   * would rewrite the transcript at a new place every round and lose the cache
+   * behind it every round; it moves only once another CLEAR_MIN_TOKENS is
+   * waiting.
+   */
+  it('holds the line still until clearing again is worth another cache miss', () => {
+    const first = [...exchange('old1', 'read'), ...exchange('old2', 'read'), ...recent()];
+    const next = [...first, ...exchange('later', 'read', 10)];
+
+    // `new0` has aged out of the window, but ten characters is not worth it.
+    expect(contentOf(withClearedWireResults(next), 'new0')).toBe('x'.repeat(10));
+    expect(contentOf(withClearedWireResults(next), 'old2')).toBe(CLEARED_RESULT_TEXT);
   });
 
   /*

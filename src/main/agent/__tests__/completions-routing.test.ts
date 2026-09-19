@@ -184,6 +184,20 @@ describe('where the cache breakpoints go', () => {
     expect(original[0]).toEqual({ role: 'system', content: 'p' });
   });
 
+  /*
+   * A round's own notes come after the conversation and are gone by the next
+   * round, so the marker belongs on the last message that will be sent again.
+   */
+  it('marks the end of the conversation rather than a note after it', () => {
+    const note: AgentWireMessage = { role: 'user', content: 'Note from Fleet: tasks' };
+    const marked = withCacheBreakpoints([...HISTORY, note], DEFAULT_AGENT_CACHE, HISTORY.length);
+    expect(marked[1]).toEqual({
+      role: 'user',
+      content: [{ type: 'text', text: 'hello', cache_control: { type: 'ephemeral' } }]
+    });
+    expect(marked[2]).toBe(note);
+  });
+
   it('leaves everything alone when caching is off', () => {
     expect(withCacheBreakpoints(HISTORY, { enabled: false, longTtl: false })).toBe(HISTORY);
   });

@@ -452,6 +452,7 @@ export async function streamResponse(req: StreamRequest): Promise<StreamOutcome>
     let final: z.infer<typeof responseSchema> | null = null;
     const annotated: Citation[] = [];
     let failure: string | null = null;
+    let drafting = false;
 
     for await (const line of sseLines(res.body)) {
       deadline.touch();
@@ -473,6 +474,11 @@ export async function streamResponse(req: StreamRequest): Promise<StreamOutcome>
         event.type === 'response.reasoning_summary_text.delta'
       ) {
         if (event.delta != null) req.onReasoning(event.delta);
+        continue;
+      }
+      if (event.type === 'response.function_call_arguments.delta') {
+        if (!drafting) req.onToolCall?.();
+        drafting = true;
         continue;
       }
       if (event.type === 'response.output_text.annotation.added') {

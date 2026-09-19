@@ -17,6 +17,7 @@ import type {
   AgentStreamDelta,
   AgentStreamDone,
   AgentStreamError,
+  AgentStreamStep,
   AgentTurnUsage,
   AgentUsage
 } from '../../shared/agent-types';
@@ -64,9 +65,9 @@ import type { AgentServerToolEvent, AgentToolEvent } from '../../shared/agent-ty
 import {
   CLEARED_RESULT_TEXT,
   CLEAR_KEEP_RECENT,
-  CLEAR_MIN_TOKENS,
   COMPACT_SYSTEM_PROMPT,
   SUMMARY_WIRE_PREFIX,
+  clearedPrefix,
   estimateTokens,
   isReproducibleTool,
   withClearedResults
@@ -634,15 +635,21 @@ export function withClearedWireResults(
 
   const results = messages.filter((m): m is WireToolResult => m.role === 'tool');
   const older = results.slice(0, Math.max(0, results.length - keepRecent));
-  const clearable = older.filter(
-    (m) => isReproducibleTool(names.get(m.tool_call_id) ?? '') && m.content !== CLEARED_RESULT_TEXT
-  );
+  const clearable = (m: WireToolResult): boolean =>
+    isReproducibleTool(names.get(m.tool_call_id) ?? '') && m.content !== CLEARED_RESULT_TEXT;
 
   const placeholder = estimateTokens(CLEARED_RESULT_TEXT);
-  const freed = clearable.reduce((total, m) => total + estimateTokens(m.content) - placeholder, 0);
-  if (freed < CLEAR_MIN_TOKENS) return messages;
+  const line = clearedPrefix(older, (m) =>
+    clearable(m) ? estimateTokens(m.content) - placeholder : 0
+  );
+  if (line === 0) return messages;
 
-  const ids = new Set(clearable.map((m) => m.tool_call_id));
+  const ids = new Set(
+    older
+      .slice(0, line)
+      .filter(clearable)
+      .map((m) => m.tool_call_id)
+  );
   return messages.map((m) =>
     m.role === 'tool' && ids.has(m.tool_call_id) ? { ...m, content: CLEARED_RESULT_TEXT } : m
   );
@@ -1306,6 +1313,7 @@ export class AgentService {
 
     for (let attempt = 0; attempt < rounds; attempt++) {
       round.content = '';
+      const conversation = withClearedWireResults(messages);
 
       const outcome: StreamOutcome = await this.call(ctx, {
         // A copy, spliced rather than appended. The reminders are about this
@@ -1323,15 +1331,15 @@ export class AgentService {
         // recent thing said.
         messages: withTodoReminder(
           withScheduleReminder(
-            this.withRunningSubagents(
-              withResumeNote(withClearedWireResults(messages), run.resumed),
-              run.threadId
-            ),
+            this.withRunningSubagents(withResumeNote(conversation, run.resumed), run.threadId),
             run.schedule
           ),
           todos.items,
           todos.streak
         ),
+        // Everything after the conversation is this round's alone, so the
+        // cache marker must not land on it. See `withCacheBreakpoints`.
+        cacheUpTo: conversation.length,
         maxTokens: config.maxTokens,
         reasoning: toReasoningParam(config),
         tools,
@@ -1346,6 +1354,13 @@ export class AgentService {
         onReasoning: (delta) => {
           if (run.quiet) return;
           emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta } satisfies AgentStreamDelta);
+        },
+        onToolCall: () => {
+          if (run.quiet) return;
+          emit(IPC_CHANNELS.AGENT_STREAM_STEP, {
+            streamId,
+            step: 'drafting'
+          } satisfies AgentStreamStep);
         },
         onUsage: (usage) => account.round(usage)
       });
@@ -1884,6 +1899,7 @@ export class AgentService {
     ctx: CallContext,
     req: {
       messages: AgentWireMessage[];
+      cacheUpTo?: number;
       maxTokens: number | null;
       reasoning: ReasoningParam | null;
       tools?: ToolSpec[];
@@ -1892,6 +1908,7 @@ export class AgentService {
       serverToolStops?: ServerToolStop[] | null;
       onDelta: (text: string) => void;
       onReasoning: (text: string) => void;
+      onToolCall?: () => void;
       onUsage: (usage: AgentUsage) => void;
     }
   ): Promise<StreamOutcome> {

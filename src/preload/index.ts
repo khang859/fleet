@@ -96,6 +96,7 @@ import type {
   AgentStreamDelta,
   AgentStreamDone,
   AgentStreamError,
+  AgentStreamStep,
   AgentTaskDone,
   AgentTaskStart,
   AgentTitleRequest,
@@ -641,6 +642,8 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.AGENT_STREAM_CHUNK, cb),
     onStreamReasoning: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_STREAM_REASONING, cb),
+    onStreamStep: (cb: (p: AgentStreamStep) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_STREAM_STEP, cb),
     onStreamDone: (cb: (p: AgentStreamDone) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_STREAM_DONE, cb),
     onStreamError: (cb: (p: AgentStreamError) => void): Unsubscribe =>

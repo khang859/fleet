@@ -1,37 +1,50 @@
-import type { AgentMessage } from '../../../../shared/agent-types';
-
 /**
  * What the agent is doing right now, as far as the screen can honestly tell.
  *
  * Deliberately not a rotating list of whimsical verbs. The word is worth
- * animating only if it says something true, and these four are the only
- * distinctions the pane can actually observe: nothing back yet, reasoning
- * arriving, answer arriving, or folding the transcript up.
+ * animating only if it says something true, and each of these is a wait the
+ * pane can actually observe: nothing back yet, reasoning arriving, answer
+ * arriving, a tool call being written, a command being checked, a tool
+ * running, the transcript being folded up, or the user being asked.
  */
-export type AgentPhase = 'waiting' | 'reasoning' | 'writing' | 'tooling' | 'compacting' | 'asking';
+export type AgentPhase =
+  | 'waiting'
+  | 'reasoning'
+  | 'writing'
+  | 'drafting'
+  | 'checking'
+  | 'tooling'
+  | 'compacting'
+  | 'asking';
 
 export const PHASE_LABEL: Record<AgentPhase, string> = {
   waiting: 'Thinking',
   reasoning: 'Reasoning',
   writing: 'Writing',
+  drafting: 'Preparing tool call',
+  checking: 'Checking permission',
   tooling: 'Working',
   compacting: 'Compacting context',
   asking: 'Waiting for you'
 };
 
 /**
- * The phase a turn is in, read off the message being streamed into.
+ * The step a turn is on, and when it began. Set by the store as each stream
+ * event arrives, so the clock beside the label counts this step rather than
+ * the whole turn - "Thinking… 2:18" over a turn of forty quick steps reads as
+ * one step stuck for two minutes.
+ */
+export type AgentStep = { phase: AgentPhase; since: number };
+
+/**
+ * The phase to show.
  *
- * `compacting` is not derivable from the transcript - it is the one case where
- * the work is not writing into any message - so it is passed in.
- *
- * The last part is what says which phase this is, because it is the thing that
- * most recently happened: text means the answer is arriving, a running call
- * means the wait is the tool's, and a finished call means the model has what it
- * asked for and is deciding what to do with it.
+ * `compacting` and `asking` are passed in rather than read off the step: a
+ * compaction writes into no message, and the question may be a subagent's,
+ * whose events are not this turn's.
  */
 export function agentPhase(
-  last: AgentMessage | undefined,
+  step: AgentStep | null,
   compacting: boolean,
   asking = false
 ): AgentPhase {
@@ -39,20 +52,7 @@ export function agentPhase(
   // turn is stopped on a question until the user answers it.
   if (asking) return 'asking';
   if (compacting) return 'compacting';
-  if (last?.role !== 'assistant') return 'waiting';
-
-  const part = last.parts.at(-1);
-  if (part === undefined) return last.reasoning === '' ? 'waiting' : 'reasoning';
-  if (part.type === 'text') return 'writing';
-  // An attachment is the user's, so an assistant turn cannot end on one.
-  if (part.type === 'attachment') return 'waiting';
-  // Remote work is reported only once it has finished, so a turn sitting on one
-  // is not waiting for it - it is waiting for the model to say what it made of
-  // it, which is the same state as having just finished a local tool.
-  if (part.type === 'server_tool') return 'waiting';
-  // Written at the end of a round, so a turn sitting on one is between rounds.
-  if (part.type === 'responses') return 'waiting';
-  return part.call.result === null && part.call.error === null ? 'tooling' : 'waiting';
+  return step?.phase ?? 'waiting';
 }
 
 /**
@@ -60,9 +60,16 @@ export function agentPhase(
  * once text is streaming in, the text is the animation, and two things moving
  * for one event is one too many. A running tool has its own shimmering row,
  * which is the more specific of the two, so this one stays still.
+ *
+ * Reasoning is visible only in the first round, while its block is open. In a
+ * later round the block is folded above the calls, so the label is the only
+ * sign of it and shimmers like any other silent wait.
  */
-export function phaseShimmers(phase: AgentPhase): boolean {
-  return phase === 'waiting' || phase === 'compacting';
+export function phaseShimmers(phase: AgentPhase, reasoningShown = false): boolean {
+  if (phase === 'reasoning') return !reasoningShown;
+  return (
+    phase === 'waiting' || phase === 'compacting' || phase === 'drafting' || phase === 'checking'
+  );
 }
 
 /**

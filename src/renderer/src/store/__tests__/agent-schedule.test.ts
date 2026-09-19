@@ -132,6 +132,7 @@ beforeEach(async () => {
       generateTitle: agentApi.generateTitle,
       onStreamChunk: listen(IPC_CHANNELS.AGENT_STREAM_CHUNK),
       onStreamReasoning: listen(IPC_CHANNELS.AGENT_STREAM_REASONING),
+      onStreamStep: listen(IPC_CHANNELS.AGENT_STREAM_STEP),
       onStreamDone: listen(IPC_CHANNELS.AGENT_STREAM_DONE),
       onStreamError: listen(IPC_CHANNELS.AGENT_STREAM_ERROR),
       onCompactDone: listen(IPC_CHANNELS.AGENT_COMPACT_DONE),

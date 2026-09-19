@@ -54,6 +54,24 @@ describe('decideCommand', () => {
     expect(decideCommand(rules(['npm run']), 'npm run build')).toEqual({ kind: 'allow' });
   });
 
+  // `cd <folder> && gh pr diff` is the `gh pr` rule's business: the cd moves
+  // nowhere the rule would not already cover.
+  it('lets an allow rule cover a line that first moves inside the folder', () => {
+    const cwd = '/Users/me/repo';
+    expect(decideCommand(rules(['gh pr']), 'cd /Users/me/repo && gh pr diff 5', cwd)).toEqual({
+      kind: 'allow'
+    });
+    expect(decideCommand(rules(['npm test']), 'cd src && npm test', cwd)).toEqual({
+      kind: 'allow'
+    });
+    // A cd on its own is still nothing any rule settled.
+    expect(decideCommand(rules(['gh pr']), 'cd /Users/me/repo', cwd)).toEqual({ kind: 'unknown' });
+    // Leaving the folder still asks, whatever rule covers the rest.
+    expect(decideCommand(rules(['gh pr']), 'cd /tmp && gh pr diff 5', cwd)).toMatchObject({
+      kind: 'ask'
+    });
+  });
+
   it('refuses what the user denied', () => {
     expect(decideCommand(rules(['npm'], ['npm publish']), 'npm publish')).toEqual({ kind: 'deny' });
   });
@@ -184,6 +202,28 @@ describe('alwaysAskReason', () => {
     // On its own it changes nothing: each command is its own process.
     expect(alwaysAskReason('cd /tmp')).toBeNull();
     expect(alwaysAskReason('cd src && npm test')).toBeNull();
+  });
+
+  // Models often spell the working folder out in full. That is not leaving it.
+  it('does not count the working folder, or a path inside it, as somewhere else', () => {
+    const cwd = '/Users/me/repo';
+    expect(alwaysAskReason('cd /Users/me/repo && git status', cwd)).toBeNull();
+    expect(alwaysAskReason('cd /Users/me/repo/ && npm test', cwd)).toBeNull();
+    expect(alwaysAskReason('cd /Users/me/repo/src && ls', cwd)).toBeNull();
+    expect(alwaysAskReason('echo hi > /Users/me/repo/out.txt', cwd)).toBeNull();
+    expect(alwaysAskReason('rm -rf /Users/me/repo/dist', cwd)).toBeNull();
+    // A sibling that shares the prefix, and a climb back out, are still outside.
+    expect(alwaysAskReason('cd /Users/me/repo2 && ls', cwd)).toMatch(/Runs somewhere other/);
+    expect(alwaysAskReason('cd /Users/me/repo/.. && ls', cwd)).toMatch(/Runs somewhere other/);
+    expect(alwaysAskReason('rm -rf /Users/me', cwd)).toMatch(/Deletes a folder/);
+    expect(alwaysAskReason("bash -c 'cd / && rm -rf tmp'", cwd)).toMatch(/Runs somewhere other/);
+  });
+
+  // A bare `cd` goes home, `cd -` goes back, and a variable can hold anything.
+  it('treats a cd it cannot place as leaving', () => {
+    expect(alwaysAskReason('cd && rm -rf src')).toMatch(/Runs somewhere other/);
+    expect(alwaysAskReason('cd - && rm -rf src')).toMatch(/Runs somewhere other/);
+    expect(alwaysAskReason('cd $DIR && rm -rf src')).toMatch(/Runs somewhere other/);
   });
 
   it('reads the command inside an interpreter’s quotes', () => {

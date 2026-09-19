@@ -203,6 +203,7 @@ beforeEach(async () => {
       generateTitle: agentApi.generateTitle,
       onStreamChunk: listen(IPC_CHANNELS.AGENT_STREAM_CHUNK),
       onStreamReasoning: listen(IPC_CHANNELS.AGENT_STREAM_REASONING),
+      onStreamStep: listen(IPC_CHANNELS.AGENT_STREAM_STEP),
       onStreamDone: listen(IPC_CHANNELS.AGENT_STREAM_DONE),
       onStreamError: listen(IPC_CHANNELS.AGENT_STREAM_ERROR),
       onCompactDone: listen(IPC_CHANNELS.AGENT_COMPACT_DONE),
@@ -656,6 +657,72 @@ describe('reasoning duration', () => {
     emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
 
     expect(assistant().reasoningMs).toBeNull();
+  });
+});
+
+/**
+ * The step the status line names, and when it began. Each wait in a long turn
+ * must read as its own wait: a label that says "Thinking" through a slow check
+ * and a clock that counts the whole turn is what made quick commands look hung.
+ */
+describe('turn step', () => {
+  const call = (done: boolean): AgentToolCall => ({
+    id: 'c1',
+    name: 'bash',
+    args: '{"command":"ls"}',
+    result: done ? 'a' : null,
+    error: null,
+    summary: done ? '1 line' : null,
+    image: null,
+    todos: null,
+    task: null
+  });
+
+  it('follows the turn through a tool call, and restarts the clock on each step', () => {
+    vi.useFakeTimers();
+    try {
+      agentStore.useAgentStore.getState().send(PANE, '/repo', 'list it');
+      const streamId = liveStreamId();
+      const phases: string[] = [];
+      const note = (): void => {
+        phases.push(thread().step?.phase ?? 'none');
+      };
+
+      emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta: 'hm' });
+      note();
+      vi.advanceTimersByTime(3_000);
+      emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta: 'm' });
+      // Still the same step, so still the same clock.
+      expect(Date.now() - (thread().step?.since ?? 0)).toBe(3_000);
+      emit(IPC_CHANNELS.AGENT_STREAM_STEP, { streamId, step: 'drafting' });
+      note();
+      expect(thread().step?.since).toBe(Date.now());
+      emit(IPC_CHANNELS.AGENT_TOOL_START, { streamId, call: call(false) });
+      note();
+      emit(IPC_CHANNELS.AGENT_STREAM_STEP, { streamId, step: 'checking' });
+      note();
+      emit(IPC_CHANNELS.AGENT_STREAM_STEP, { streamId, step: 'running' });
+      note();
+      emit(IPC_CHANNELS.AGENT_TOOL_END, { streamId, call: call(true) });
+      note();
+      emit(IPC_CHANNELS.AGENT_STREAM_REASONING, { streamId, delta: 'so' });
+      note();
+      emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
+      note();
+
+      expect(phases).toEqual([
+        'reasoning',
+        'drafting',
+        'tooling',
+        'checking',
+        'tooling',
+        'waiting',
+        'reasoning',
+        'none'
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

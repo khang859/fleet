@@ -363,3 +363,31 @@ describe('what it cost', () => {
     });
   });
 });
+
+describe('a local tool call', () => {
+  /*
+   * Its arguments stream in without a word on screen, and a long `write` takes
+   * seconds. The pane is told once, when the first fragment lands, so it can
+   * say what the wait is.
+   */
+  it('is announced once, when its first fragment arrives', async () => {
+    const call = (fields: Record<string, unknown>): unknown => ({
+      choices: [{ delta: { tool_calls: [{ index: 0, ...fields }] } }]
+    });
+    streaming([
+      { choices: [{ delta: { content: 'Let me look.' } }] },
+      call({
+        id: 'call_1',
+        type: 'function',
+        function: { name: 'bash', arguments: '{"command":' }
+      }),
+      call({ function: { arguments: '"ls"}' } })
+    ]);
+    const onToolCall = vi.fn();
+
+    const out = await streamCompletion({ ...base, target: LOCAL, onToolCall });
+
+    expect(onToolCall).toHaveBeenCalledTimes(1);
+    expect(out.toolCalls).toHaveLength(1);
+  });
+});

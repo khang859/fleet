@@ -98,7 +98,11 @@ function escapeRegex(s: string): string {
  * broad rule the user picked up by clicking "always allow" on `git push` must
  * not go on to cover `git push --force`.
  */
-export function decideCommand(rules: AgentPermissionRules, command: string): CommandVerdict {
+export function decideCommand(
+  rules: AgentPermissionRules,
+  command: string,
+  cwd: string | null = null
+): CommandVerdict {
   const parts = splitShellCommand(command);
 
   if (parts.some((part) => rules.deny.some((rule) => matchCommand(rule, part)))) {
@@ -108,14 +112,19 @@ export function decideCommand(rules: AgentPermissionRules, command: string): Com
   // Against the subcommands as they were written, which is a different list
   // from the one the rules are matched against: getting a part a rule can match
   // means dropping `sudo`, and `sudo` is exactly what this looks for.
-  const reason = alwaysAskReason(command);
+  const reason = alwaysAskReason(command, cwd);
   if (reason !== null) return { kind: 'ask', reason, remember: false };
+
+  // A `cd` that stays in the working folder does nothing a rule is about:
+  // `cd <folder> && gh pr diff` is the `gh pr` rule's business. One that leaves
+  // was already asked about above.
+  const work = parts.filter((part) => !staysInFolder(part, cwd));
 
   // Nothing left that a rule could be about, which no rule can therefore
   // settle. Every command reaching here has already cleared the checks above.
-  if (parts.length === 0) return { kind: 'unknown' };
+  if (work.length === 0) return { kind: 'unknown' };
 
-  if (parts.every((part) => rules.allow.some((rule) => matchCommand(rule, part)))) {
+  if (work.every((part) => rules.allow.some((rule) => matchCommand(rule, part)))) {
     return { kind: 'allow' };
   }
   return { kind: 'unknown' };
@@ -180,6 +189,40 @@ const INTERPRETERS = new Set([
  */
 const OUTSIDE = /^([/~]|\.\.|\$\{?HOME\b)/;
 
+/**
+ * Whether `path` is somewhere other than the working folder.
+ *
+ * An absolute path inside `cwd` is not: models often spell the folder out in
+ * full, and `cd /Users/me/repo && git status` does not leave `/Users/me/repo`.
+ * A `..` anywhere is treated as leaving, since nothing here resolves it. With
+ * no `cwd` every absolute path is outside, which is the safe reading.
+ */
+function isOutside(path: string, cwd: string | null): boolean {
+  if (!OUTSIDE.test(path)) return false;
+  if (cwd === null || !path.startsWith('/') || path.split('/').includes('..')) return true;
+  const root = cwd.replace(/\/+$/, '');
+  const target = path.replace(/\/+$/, '');
+  return target !== root && !target.startsWith(`${root}/`);
+}
+
+/**
+ * Whether a `cd` with these arguments leaves the working folder.
+ *
+ * A bare `cd` goes home and `cd -` goes wherever the shell was before, and a
+ * variable can hold anything - none of them can be read as staying.
+ */
+function cdLeaves(args: string[], cwd: string | null): boolean {
+  const target = args.find((t) => t === '-' || !t.startsWith('-'));
+  if (target === undefined || target === '-' || target.startsWith('$')) return true;
+  return isOutside(target, cwd);
+}
+
+/** A subcommand that is only a `cd` somewhere inside the working folder. */
+function staysInFolder(part: string, cwd: string | null): boolean {
+  const [program, ...args] = tokenizeCommand(part);
+  return program === 'cd' && !cdLeaves(args, cwd);
+}
+
 /** Redirection targets that discard rather than write. */
 const DISCARDS = /^\/dev\/(null|stdout|stderr|fd\/\d+)$/;
 
@@ -192,6 +235,7 @@ const DISCARDS = /^\/dev\/(null|stdout|stderr|fd\/\d+)$/;
  */
 export function alwaysAskReason(
   command: string,
+  cwd: string | null = null,
   segments = splitShellSegments(command)
 ): string | null {
   const invocations = segments.map(invocation).filter((inv) => inv !== null);
@@ -210,7 +254,7 @@ export function alwaysAskReason(
   }
 
   for (const [i, inv] of invocations.entries()) {
-    const reason = invocationReason(inv, i < invocations.length - 1);
+    const reason = invocationReason(inv, i < invocations.length - 1, cwd);
     if (reason !== null) return reason;
   }
   return null;
@@ -252,9 +296,13 @@ function basename(token: string): string {
   return token.slice(token.lastIndexOf('/') + 1);
 }
 
-function invocationReason(inv: Invocation, hasFollowing: boolean): string | null {
+function invocationReason(
+  inv: Invocation,
+  hasFollowing: boolean,
+  cwd: string | null
+): string | null {
   for (const target of redirectTargets(inv.args)) {
-    if (OUTSIDE.test(target) && !DISCARDS.test(target)) {
+    if (isOutside(target, cwd) && !DISCARDS.test(target)) {
       return 'Writes to a file outside the working folder.';
     }
   }
@@ -266,18 +314,18 @@ function invocationReason(inv: Invocation, hasFollowing: boolean): string | null
   if (INTERPRETERS.has(inv.program)) {
     const flag = inv.args.findIndex((t) => t === '-c' || t === '-e');
     const code = flag === -1 ? undefined : inv.args[flag + 1];
-    if (code !== undefined) return alwaysAskReason(code);
+    if (code !== undefined) return alwaysAskReason(code, cwd);
   }
 
   if (inv.program === 'rm') {
     const recursive = inv.args.some((t) => /^-[a-zA-Z]*r/.test(t) || t === '--recursive');
-    const outside = inv.args.some((t) => !t.startsWith('-') && OUTSIDE.test(t));
+    const outside = inv.args.some((t) => !t.startsWith('-') && isOutside(t, cwd));
     if (recursive && outside) return 'Deletes a folder outside the working folder.';
   }
 
   // Moving first makes every relative path after it relative to somewhere
   // else, so `cd / && rm -rf tmp` is not the local delete it reads as.
-  if (inv.program === 'cd' && hasFollowing && inv.args.some((t) => OUTSIDE.test(t))) {
+  if (inv.program === 'cd' && hasFollowing && cdLeaves(inv.args, cwd)) {
     return 'Runs somewhere other than the working folder.';
   }
 

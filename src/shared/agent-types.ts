@@ -1292,6 +1292,18 @@ export type AgentPermissionDecision = z.infer<typeof AgentPermissionDecision>;
 export type AgentStreamDelta = { streamId: string; delta: string };
 
 /**
+ * A step of a turn that shows nowhere in the transcript, so the pane can name
+ * the wait: the model writing a tool call's arguments (`drafting`), auto mode
+ * asking a model whether a command may run (`checking`), and the command
+ * running once that model said yes (`running`).
+ *
+ * Without these, a long tool call being written and a slow permission check
+ * both read as the model sitting silent, and a command that ran in no time
+ * reads as a command that took as long as its check did.
+ */
+export type AgentStreamStep = { streamId: string; step: 'drafting' | 'checking' | 'running' };
+
+/**
  * What OpenRouter ran during one round, reported once the round is over.
  *
  * A round's worth at a time rather than one call per event, because that is the

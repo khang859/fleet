@@ -10,6 +10,7 @@ import { serverRulePattern } from '../../../shared/agent-mcp-names';
 import type {
   AgentPermissionAsk,
   AgentPermissionOutcome,
+  AgentStreamStep,
   AgentTurnUsage
 } from '../../../shared/agent-types';
 import type { ClassifierVerdict } from './classifier';
@@ -24,6 +25,9 @@ import type { ClassifierVerdict } from './classifier';
  */
 
 export type PermissionGrant = 'run' | 'refuse';
+
+/** How long a failed auto-mode check must have taken to count as a timeout. */
+const SLOW_FAILURE_MS = 5_000;
 
 type Deps = {
   getRules: () => AgentPermissionRules;
@@ -142,12 +146,24 @@ export class PermissionGate {
    */
   private readonly judged = new Map<string, Map<string, ClassifierVerdict>>();
 
+  /**
+   * The turns whose auto-mode model has already failed slowly once.
+   *
+   * A slow failure is a timeout, and a timeout is up to 20 seconds. Asking
+   * again on every later command makes each one wait that long before the user
+   * is asked anyway - a turn of ten commands stalls for minutes on a model that
+   * is down. So one slow failure sends the rest of the turn straight to the
+   * user. A fast one (a 502) is a blip and is tried again, per `judged`. The
+   * next turn tries the model again either way.
+   */
+  private readonly unanswered = new Set<string>();
+
   constructor(private readonly deps: Deps) {}
 
   async check(req: PermissionRequest): Promise<PermissionGrant> {
     if (this.wasRefused(req.streamId, req.command)) return 'refuse';
 
-    const verdict = decideCommand(this.deps.getRules(), req.command);
+    const verdict = decideCommand(this.deps.getRules(), req.command, req.cwd);
     if (verdict.kind === 'allow') return 'run';
     if (verdict.kind === 'deny') return 'refuse';
 
@@ -189,15 +205,27 @@ export class PermissionGate {
     const seen = this.judged.get(req.streamId) ?? new Map<string, ClassifierVerdict>();
     const remembered = seen.get(req.command);
     if (remembered !== undefined) return remembered === 'safe';
+    if (this.unanswered.has(req.streamId)) return false;
 
+    this.step(req.streamId, 'checking');
+    const began = Date.now();
     const answer = await ask({ command: req.command, cwd: req.cwd, signal: req.signal });
     // Before the verdict is used, so a call that was billed is billed even if
     // what came back is about to be thrown away.
     if (answer.usage !== null) req.onUsage?.(answer.usage);
-    if (answer.verdict === null) return false;
+    if (answer.verdict === null) {
+      if (Date.now() - began >= SLOW_FAILURE_MS) this.unanswered.add(req.streamId);
+      return false;
+    }
     seen.set(req.command, answer.verdict);
     this.judged.set(req.streamId, seen);
+    if (answer.verdict === 'safe') this.step(req.streamId, 'running');
     return answer.verdict === 'safe';
+  }
+
+  /** Tell the pane what the wait is, since the transcript cannot show it. */
+  private step(streamId: string, step: AgentStreamStep['step']): void {
+    this.deps.emit(IPC_CHANNELS.AGENT_STREAM_STEP, { streamId, step } satisfies AgentStreamStep);
   }
 
   /**
@@ -271,6 +299,7 @@ export class PermissionGate {
   endTurn(streamId: string): void {
     this.refused.delete(streamId);
     this.judged.delete(streamId);
+    this.unanswered.delete(streamId);
     this.refusePending(streamId);
   }
 
