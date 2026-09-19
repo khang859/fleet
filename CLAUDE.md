@@ -43,14 +43,21 @@ Fall back to grep for literal strings, for targets outside the index, and when r
 
 ## Driving the UI (fleet-drive)
 
-To see and control the running app during development, use `fleet-drive`. Start `npm run dev`, then from the repo root:
+To see and control the running app during development, use `fleet-drive`. From the repo root:
 
-- `npm run drive -- screenshot` — PNG of the live window to `.fleet-drive/screenshots/` (read it to *see* the UI)
-- `npm run drive -- snapshot` — ARIA tree (text sense of what's on screen)
-- `npm run drive -- click '<sel>'` / `type '<sel>' '<text>'` / `keys 'Meta+K'`
-- `npm run drive -- eval '<js>'` — runs in the renderer; `__FLEET__.stores.<name>.getState()` reads live zustand state
+- `npm run drive -- up` - start this checkout's `npm run dev` detached and wait for the window (`stop` / `restart` too)
+- `npm run drive -- screenshot` - JPEG of the live window to `.fleet-drive/screenshots/` (read it to *see* the UI; `--png` for lossless)
+- `npm run drive -- snapshot --refs` - ARIA tree with `[ref=eN]`; pass a ref to `click`/`type` as the selector
+- `npm run drive -- click '<sel>'` / `type '<sel>' '<text>'` / `keys 'Meta+K'` - add `--shot` to get a screenshot of the result
+- `npm run drive -- eval '<js>'` - runs in the renderer; `__FLEET__.stores.<name>.getState()` reads live zustand state
+- `npm run drive -- cmd [id]` - list or run command-palette commands
+- `npm run drive -- term-send '<text>' --enter` / `term-key ctrl-c` / `term-wait '<regex>'` / `term` - drive a terminal pane, e.g. run Claude Code in it
+- `npm run drive -- run <file>` - many verbs in one call, one per line
 
-Selectors are Playwright `page.locator()` syntax: `role=button[name="Chat"]`, `text=Settings`, CSS, or `testid=<id>`. It attaches over CDP to the dev window (dev-only, enabled in `src/main/index.ts` behind `IS_FLEET_DEV`) — no macOS Screen Recording permission needed, since capture goes through Chromium's compositor, not the OS. This is the correct way to visually verify UI changes yourself. Full details: `scripts/drive/README.md`.
+A background daemon keeps the connection warm, so a call takes about 60 ms with `node scripts/drive/client.mts <verb>` (the npm form adds about 100 ms).
+Only one `npm run dev` runs per checkout: a second one exits with the running one's pid instead of opening another window.
+
+Selectors are Playwright `page.locator()` syntax: `role=button[name="Chat"]`, `text=Settings`, CSS, `testid=<id>`, or a snapshot ref. It attaches over CDP to the dev window (dev-only, enabled in `src/main/index.ts` behind `IS_FLEET_DEV`) - no macOS Screen Recording permission needed, since capture goes through Chromium's compositor, not the OS. This is the correct way to visually verify UI changes yourself. Full details: `scripts/drive/README.md`.
 
 ## Release Notes
 

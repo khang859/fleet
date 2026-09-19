@@ -29,4 +29,18 @@ describe('resolveLocator', () => {
     resolveLocator(page, '.sidebar button');
     expect(page.locator).toHaveBeenCalledWith('.sidebar button');
   });
+
+  it('maps a snapshot ref to aria-ref=', () => {
+    const page = fakePage();
+    resolveLocator(page, 'e12');
+    resolveLocator(page, 'f1e3');
+    expect(page.locator).toHaveBeenCalledWith('aria-ref=e12');
+    expect(page.locator).toHaveBeenCalledWith('aria-ref=f1e3');
+  });
+
+  it('does not take a word that only looks like a ref for one', () => {
+    const page = fakePage();
+    resolveLocator(page, 'e12x');
+    expect(page.locator).toHaveBeenCalledWith('e12x');
+  });
 });

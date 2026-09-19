@@ -56,7 +56,7 @@ export default defineConfig(
   },
   // Strict TypeScript rules for all TS files
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ['**/*.{ts,tsx,mts}'],
     rules: {
       // Consistency — auto-fixable
       '@typescript-eslint/consistent-type-imports': [
@@ -100,7 +100,7 @@ export default defineConfig(
   },
   // Ban unsafe type assertions in source files (not tests)
   {
-    files: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
+    files: ['src/**/*.{ts,tsx}', 'scripts/**/*.{ts,mts}'],
     ignores: ['**/__tests__/**'],
     rules: {
       '@typescript-eslint/no-unsafe-type-assertion': 'error'

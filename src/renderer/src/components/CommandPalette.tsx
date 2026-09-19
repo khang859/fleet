@@ -322,7 +322,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
       }}
     >
       {scopePaneId !== null ? (
-        <div className="flex items-center border-b border-neutral-800 px-4">
+        <div className="flex items-center border-b border-neutral-800 py-1.5 pl-4 pr-2">
           <span className="mr-2 shrink-0 rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-300">
             {scopeLabel}
           </span>
@@ -331,7 +331,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
             onValueChange={setSearch}
             placeholder="Search actions..."
             autoFocus
-            className="h-12 w-full bg-transparent text-[15px] text-white outline-none placeholder:text-neutral-500 focus-ring"
+            className="h-9 w-full rounded-md bg-transparent px-2 text-[15px] text-white outline-none placeholder:text-neutral-500 focus-ring"
           />
         </div>
       ) : (

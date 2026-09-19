@@ -45,10 +45,12 @@ export function CommandInput(
   props: React.ComponentProps<typeof CommandPrimitive.Input>
 ): React.JSX.Element {
   return (
-    <div className="flex items-center border-b border-neutral-800 px-4">
+    // The row pads the input so its focus ring has room: flush against the
+    // palette's top edge, the ring was clipped.
+    <div className="flex items-center border-b border-neutral-800 px-2 py-1.5">
       <CommandPrimitive.Input
         {...props}
-        className="h-12 w-full bg-transparent text-[15px] text-white outline-none placeholder:text-neutral-500 focus-ring"
+        className="h-9 w-full rounded-md bg-transparent px-2 text-[15px] text-white outline-none placeholder:text-neutral-500 focus-ring"
       />
     </div>
   );

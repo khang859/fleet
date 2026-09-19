@@ -14,6 +14,7 @@ import { useNotificationStore } from './store/notification-store';
 import { useClaudeConfigStore } from './store/claude-config-store';
 import { useUpdateStore } from './store/update-store';
 import { terminalRegistryForDev } from './hooks/use-terminal';
+import { createCommandRegistry } from './lib/commands';
 import './index.css';
 
 const log = createLogger('renderer');
@@ -96,7 +97,9 @@ if (import.meta.env.DEV) {
       update: useUpdateStore,
       claudeConfig: useClaudeConfigStore
     },
-    terminals: terminalRegistryForDev
+    terminals: terminalRegistryForDev,
+    // A function, not a list: commands read the stores when they run.
+    commands: createCommandRegistry
   };
 }
 
