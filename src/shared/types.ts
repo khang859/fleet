@@ -44,7 +44,6 @@ export type Tab = {
     | 'settings'
     | 'annotate'
     | 'markdown'
-    | 'artifacts'
     | 'pdf'
     | 'sessions'
     | 'agent'
@@ -94,15 +93,7 @@ export type PaneLeaf = {
   ptyPid?: number;
   shell?: string;
   cwd: string;
-  paneType?:
-    | 'terminal'
-    | 'file'
-    | 'image'
-    | 'markdown'
-    | 'artifacts'
-    | 'pdf'
-    | 'agent'
-    | 'ssh-browser';
+  paneType?: 'terminal' | 'file' | 'image' | 'markdown' | 'pdf' | 'agent' | 'ssh-browser';
   filePath?: string;
   /**
    * Where to put the cursor when a `file` pane opens. Set when the path that
