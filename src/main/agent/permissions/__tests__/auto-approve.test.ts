@@ -12,7 +12,12 @@ import type { ResolvedTarget } from '../../model-routing';
 
 const JEV = 'typesafe/jev-1.13';
 const CHAT = 'inclusionai/ling-3.0-flash';
-const req = { command: 'npm test', cwd: '/repo', signal: new AbortController().signal };
+const req = {
+  command: 'npm test',
+  cwd: '/repo',
+  request: 'run the tests',
+  signal: new AbortController().signal
+};
 const answer = { verdict: 'safe' as const, usage: null };
 
 function setup(opts: {
@@ -61,6 +66,7 @@ describe('createAutoApprove', () => {
       model: JEV,
       command: 'npm test',
       cwd: '/repo',
+      request: 'run the tests',
       note: 'a note',
       signal: req.signal
     });

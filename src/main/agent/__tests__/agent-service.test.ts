@@ -34,6 +34,7 @@ import {
   toCompactMessages,
   toReasoningParam,
   toWireHistory,
+  latestRequest,
   turnServerTools,
   wireTime,
   withClearedWireResults,
@@ -917,6 +918,25 @@ describe('withSubagentReminder', () => {
     const content = withSubagentReminder(history, wrapped, new Set()).at(-1)?.content ?? '';
 
     expect(content).toContain('- explore: find the column width');
+  });
+});
+
+describe('latestRequest', () => {
+  it('is the new message, as typed', () => {
+    expect(latestRequest({ ...REQUEST, text: '/pr-review 12' })).toBe('/pr-review 12');
+  });
+
+  /* A resumed turn says nothing new, so what was asked is still the last thing said. */
+  it('is the last thing the user said or scheduled on a turn that says nothing', () => {
+    expect(latestRequest({ ...REQUEST, text: '' })).toBe('hi');
+    const scheduled = textMessage('c', 'scheduled', 'check the build');
+    expect(latestRequest({ ...REQUEST, text: ' ', history: [...REQUEST.history, scheduled] })).toBe(
+      'check the build'
+    );
+  });
+
+  it('is nothing when the user has said nothing', () => {
+    expect(latestRequest({ ...REQUEST, text: '', history: [] })).toBeNull();
   });
 });
 

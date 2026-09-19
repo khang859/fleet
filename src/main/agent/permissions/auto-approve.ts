@@ -29,7 +29,7 @@ const ASK: AutoApproval = { verdict: 'ask', usage: null };
  * without any of this.
  */
 export function createAutoApprove(deps: Deps): (req: AutoApproveRequest) => Promise<AutoApproval> {
-  return async ({ command, cwd, signal }) => {
+  return async ({ command, cwd, request, signal }) => {
     const a = deps.getSettings();
     if (a.toolMode !== 'auto') return ASK;
 
@@ -45,6 +45,7 @@ export function createAutoApprove(deps: Deps): (req: AutoApproveRequest) => Prom
         model,
         command,
         cwd,
+        request,
         note: a.classifierNote,
         signal
       });

@@ -65,7 +65,13 @@ type Deps = {
   fullAccess?: () => boolean;
 };
 
-export type AutoApproveRequest = { command: string; cwd: string; signal: AbortSignal };
+export type AutoApproveRequest = {
+  command: string;
+  cwd: string;
+  /** What the user last asked for, or `null` when no user asked. See `PermissionRequest`. */
+  request: string | null;
+  signal: AbortSignal;
+};
 
 /** What the model said, or `null` if it did not answer, and what asking cost. */
 export type AutoApproval = { verdict: ClassifierVerdict | null; usage: AgentTurnUsage | null };
@@ -94,6 +100,12 @@ type Question = {
 export type PermissionRequest = Question & {
   /** Where the command would run. Most of what "outside the folder" means. */
   cwd: string;
+  /**
+   * What the user last asked for, or `null` for a run no user spoke to - a
+   * subagent. Auto mode weighs a command against it: `gh pr comment` after
+   * "post it" is the job, and the same line after "do not post" is not.
+   */
+  request: string | null;
   /**
    * Bills a model call this question needed - which in auto mode it may. The
    * turn's account is the caller's, and this is the only side of the wall that
@@ -209,7 +221,12 @@ export class PermissionGate {
 
     this.step(req.streamId, 'checking');
     const began = Date.now();
-    const answer = await ask({ command: req.command, cwd: req.cwd, signal: req.signal });
+    const answer = await ask({
+      command: req.command,
+      cwd: req.cwd,
+      request: req.request,
+      signal: req.signal
+    });
     // Before the verdict is used, so a call that was billed is billed even if
     // what came back is about to be thrown away.
     if (answer.usage !== null) req.onUsage?.(answer.usage);

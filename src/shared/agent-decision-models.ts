@@ -19,7 +19,8 @@ export const AGENT_DECISION_MODELS: AgentCatalogModel[] = [
   {
     id: 'typesafe/jev-1.13',
     name: 'TypeSafe: Jev 1.13',
-    description: 'A structured decision model. Returns a typed choice with a confidence, not text.',
+    description:
+      'A structured decision model. Answers a yes-or-no question with a probability, not text.',
     contextLimit: 32_000,
     outputLimit: null,
     supportsTools: false,

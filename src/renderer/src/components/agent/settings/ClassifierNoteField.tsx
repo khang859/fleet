@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight, RotateCcw } from 'lucide-react';
-import { classifierSystemPrompt } from '../../../../../shared/agent-classifier';
+import {
+  classifierSystemPrompt,
+  decisionInstructions
+} from '../../../../../shared/agent-classifier';
 import { Field } from './primitives';
 
 /**
@@ -21,9 +24,12 @@ import { Field } from './primitives';
  */
 export function ClassifierNoteField({
   value,
+  decisionModel,
   onChange
 }: {
   value: string | null;
+  /** Whether the chosen model is a decision model, which is told other rules. */
+  decisionModel: boolean;
   onChange: (value: string | null) => void;
 }): React.JSX.Element {
   const [draft, setDraft] = useState(value ?? '');
@@ -73,7 +79,7 @@ export function ClassifierNoteField({
           </button>
         )}
       </div>
-      <BuiltIn />
+      <BuiltIn decisionModel={decisionModel} />
     </Field>
   );
 }
@@ -85,7 +91,7 @@ export function ClassifierNoteField({
  * and showing the assembled prompt would make the box above look like it had
  * been applied twice.
  */
-function BuiltIn(): React.JSX.Element {
+function BuiltIn({ decisionModel }: { decisionModel: boolean }): React.JSX.Element {
   return (
     <details className="group rounded-md border border-fleet-border bg-fleet-surface">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2.5 py-1.5 text-xs text-fleet-text-muted transition-colors hover:text-fleet-text-secondary focus-ring">
@@ -96,7 +102,7 @@ function BuiltIn(): React.JSX.Element {
         What the model is always told
       </summary>
       <p className="border-t border-fleet-border px-2.5 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-fleet-text-muted">
-        {classifierSystemPrompt(null)}
+        {decisionModel ? decisionInstructions(null) : classifierSystemPrompt(null)}
       </p>
     </details>
   );

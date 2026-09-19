@@ -1,16 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { classifyWithDecision, readDecision, toDecisionBody } from '../decisions';
+import {
+  classifyWithDecision,
+  MIN_SAFE_PROBABILITY,
+  readDecision,
+  toDecisionBody
+} from '../decisions';
 
 /**
  * The decision-model path of auto-approval. Like the text classifier, it can
  * only ever remove a question, so what is checked is that every way it can go
- * wrong - a low confidence, an odd answer, an outage - lands on `ask` or `null`.
+ * wrong - a low chance of yes, an odd answer, an outage - lands on `ask` or `null`.
  */
 
 const input = {
   model: 'typesafe/jev-1.13',
   command: 'npm test',
   cwd: '/repo',
+  request: 'run the tests',
   note: null
 };
 
@@ -32,58 +38,60 @@ afterEach(() => {
 });
 
 describe('readDecision', () => {
-  it('runs a likely safe', () => {
-    expect(
-      readDecision({
-        type: 'choice',
-        choice: 'safe',
-        probabilities: { safe: 0.95, ask: 0.05 },
-        confidence: 0.71
-      })
-    ).toBe('safe');
+  it('runs a likely yes', () => {
+    expect(readDecision({ type: 'noul', noul: 0.92 })).toBe('safe');
+    expect(readDecision({ type: 'noul', noul: MIN_SAFE_PROBABILITY })).toBe('safe');
   });
 
-  it('asks on a safe that is not likely enough', () => {
-    expect(
-      readDecision({ type: 'choice', choice: 'safe', probabilities: { safe: 0.7, ask: 0.3 } })
-    ).toBe('ask');
-  });
-
-  it('ignores a high confidence without the probability behind it', () => {
-    expect(readDecision({ type: 'choice', choice: 'safe', confidence: 0.99 })).toBe('ask');
-  });
-
-  it('asks on any other choice', () => {
-    for (const choice of ['ask', 'Safe', 'unsafe', '']) {
-      expect(readDecision({ type: 'choice', choice, probabilities: { [choice]: 1 } })).toBe('ask');
-    }
+  it('asks on a yes that is not likely enough', () => {
+    expect(readDecision({ type: 'noul', noul: 0.69 })).toBe('ask');
+    expect(readDecision({ type: 'noul', noul: 0 })).toBe('ask');
   });
 
   it('reports a missing or malformed answer as no answer', () => {
-    for (const answer of [undefined, null, {}, { type: 'noul', noul: 1 }, 'safe']) {
+    for (const answer of [
+      undefined,
+      null,
+      {},
+      { type: 'noul' },
+      { type: 'noul', noul: '0.9' },
+      { type: 'choice', choice: 'safe', probabilities: { safe: 1 } },
+      'safe'
+    ]) {
       expect(readDecision(answer)).toBeNull();
     }
   });
 });
 
 describe('toDecisionBody', () => {
-  it('sends the command as state and the verdicts as one choice question', () => {
+  const question = (body: Record<string, unknown>): Record<string, unknown> =>
+    (body.questions as Record<string, Record<string, unknown>>).safe_to_run;
+
+  it('sends the request, folder and command as state and one yes-or-no question', () => {
     const body = toDecisionBody({ ...input, note: 'Installs are fine here.' });
 
     expect(body.model).toBe('typesafe/jev-1.13');
-    expect(body.state).toEqual({ working_folder: '/repo', command: 'npm test' });
-    const question = (body.questions as Record<string, Record<string, unknown>>).verdict;
-    expect(question.type).toBe('choice');
-    expect(Object.keys(question.criteria as object)).toEqual(['safe', 'ask']);
-    expect(question.instructions).toContain('Installs are fine here.');
+    expect(body.state).toBe(
+      'The developer asked the agent:\nrun the tests\n\nWorking folder: /repo\n\nProposed shell command:\nnpm test'
+    );
+    expect(question(body).type).toBe('noul');
+    expect(Object.keys(question(body).criteria as object)).toEqual(['true', 'false']);
+    expect(question(body).instructions).toContain('Installs are fine here.');
   });
 
-  it('does not tell a model that picks options to answer in one word', () => {
-    const question = (toDecisionBody(input).questions as Record<string, Record<string, unknown>>)
-      .verdict;
+  it('says the request is not known when there is none', () => {
+    for (const request of [null, '  ']) {
+      expect(toDecisionBody({ ...input, request }).state).toContain(
+        'The developer asked the agent:\n(not known)'
+      );
+    }
+  });
 
-    expect(question.instructions).not.toContain('one word');
-    expect(question.instructions).toContain('Answer ask for everything else');
+  it('cuts a long request down', () => {
+    const state = toDecisionBody({ ...input, request: 'x'.repeat(10_000) }).state as string;
+
+    expect(state.length).toBeLessThan(2_200);
+    expect(state).toContain('Proposed shell command:\nnpm test');
   });
 });
 
@@ -92,7 +100,7 @@ describe('classifyWithDecision', () => {
     const fetchMock = respond({
       model: input.model,
       answers: {
-        verdict: { type: 'choice', choice: 'safe', probabilities: { safe: 0.99, ask: 0.01 } }
+        safe_to_run: { type: 'noul', noul: 0.98 }
       },
       usage
     });
@@ -108,7 +116,7 @@ describe('classifyWithDecision', () => {
     respond({
       model: input.model,
       answers: {
-        verdict: { type: 'choice', choice: 'safe', probabilities: { safe: 0.99, ask: 0.01 } }
+        safe_to_run: { type: 'noul', noul: 0.98 }
       },
       usage
     });
