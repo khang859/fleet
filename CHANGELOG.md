@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.123.0
+
+- **Long agent turns no longer slow down with every tool call** - the prompt cache now works on Anthropic models, so each round reuses the transcript instead of paying for all of it again.
+- **The status line names every wait** - you now see "Reasoning", "Preparing tool call" and "Checking permission" instead of "Thinking" for all of them.
+The clock counts the current step, not the whole turn.
+- **Auto mode stops asking about commands in your own folder** - `cd <your folder> && …` no longer counts as running somewhere else, and your allow rules now cover it.
+- **A slow permission check no longer stalls a whole turn** - if the auto-approval model times out once, the rest of the turn asks you directly.
+- **Safer `cd` handling** - a bare `cd`, `cd -` or `cd $VAR` before another command now asks you first (#580).
+
 ## v2.122.0
 
 - **TypeSafe's Jev can make auto-approval decisions** - pick `TypeSafe: Jev 1.13` as the Auto-approval model in Agent settings.
