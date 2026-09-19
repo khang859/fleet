@@ -1,6 +1,5 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { parseArgs } from 'util';
 import type { Page } from 'playwright';
 import {
   screenshot,
@@ -37,19 +36,54 @@ interface VerbResult {
   warnings: string[];
 }
 
-const OPTIONS = {
-  selector: { type: 'string' },
-  out: { type: 'string' },
-  timeout: { type: 'string' },
-  png: { type: 'boolean' },
-  refs: { type: 'boolean' },
-  shot: { type: 'boolean' },
-  pane: { type: 'string' },
-  all: { type: 'boolean' },
-  enter: { type: 'boolean' }
-} as const;
+const STRING_FLAGS = ['selector', 'out', 'timeout', 'pane'] as const;
+const BOOLEAN_FLAGS = ['png', 'refs', 'shot', 'all', 'enter'] as const;
 
-type Flag = keyof typeof OPTIONS;
+type StringFlag = (typeof STRING_FLAGS)[number];
+type BooleanFlag = (typeof BOOLEAN_FLAGS)[number];
+type Flag = StringFlag | BooleanFlag;
+
+type FlagValues = Partial<Record<StringFlag, string> & Record<BooleanFlag, boolean>>;
+
+function isOneOf<T extends string>(list: readonly T[], name: string): name is T {
+  return list.some((item) => item === name);
+}
+
+/**
+ * Split a verb's arguments into flags and text. Not `util.parseArgs`: verbs
+ * take free text (`eval '-1+1'`, `term-send 'echo -n hi'`), and parseArgs reads
+ * any leading dash as a flag - it rejects the text, or with `strict: false`
+ * quietly turns it into flags. Here only `--name` or `--name=value` for a known
+ * flag is a flag, and `--` makes everything after it text.
+ */
+export function parseVerbArgs(args: string[]): { values: FlagValues; positionals: string[] } {
+  const values: FlagValues = {};
+  const positionals: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--') {
+      positionals.push(...args.slice(i + 1));
+      break;
+    }
+    const flag = /^--([a-z]+)(?:=(.*))?$/s.exec(arg);
+    if (!flag) {
+      positionals.push(arg);
+      continue;
+    }
+    const [, name, inline] = flag;
+    if (isOneOf(BOOLEAN_FLAGS, name)) {
+      if (inline !== undefined) throw new Error(`--${name} takes no value`);
+      values[name] = true;
+    } else if (isOneOf(STRING_FLAGS, name)) {
+      const value = inline ?? args.at(++i);
+      if (value === undefined) throw new Error(`--${name} needs a value`);
+      values[name] = value;
+    } else {
+      throw new Error(`Unknown flag: ${arg}. To pass it as text, put it after \`--\`.`);
+    }
+  }
+  return { values, positionals };
+}
 
 /** Every verb takes `--timeout`; these are the rest each one accepts. */
 const VERB_FLAGS: Partial<Record<string, Flag[]>> = {
@@ -84,13 +118,9 @@ export async function runVerb(ctx: VerbContext, argv: string[]): Promise<VerbRes
   const allowed = VERB_FLAGS[verb];
   if (!allowed) throw new Error(`Unknown verb: ${verb}. Try one of: ${VERBS.join(', ')}`);
 
-  const { values, positionals } = parseArgs({
-    args: rest,
-    options: OPTIONS,
-    allowPositionals: true
-  });
+  const { values, positionals } = parseVerbArgs(rest);
   for (const name of Object.keys(values)) {
-    if (name !== 'timeout' && !allowed.some((flag) => flag === name)) {
+    if (name !== 'timeout' && !isOneOf(allowed, name)) {
       throw new Error(`${verb} does not take --${name}`);
     }
   }

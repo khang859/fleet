@@ -28,6 +28,12 @@ The rest of this document is the plan as it was approved, kept for the reasoning
 - **`up` strips `CLAUDECODE` and `CLAUDE_*` from the app's environment.**
   Without that, Claude Code started in a pane inherits the driving agent's child-session marker and turns transcript saving off.
 - **`scripts/drive/cli.ts` is gone.** Dispatch lives in `dispatch.ts`, the dev-app lifecycle in `dev-app.ts`.
+- **Flags are parsed by hand, not with `util.parseArgs`.**
+  parseArgs reads any leading dash as a flag, so `eval '-1+1'` and `term-send 'echo -n hi'` failed.
+- **`stop` ends with SIGKILL** when SIGTERM and the renderer crash both fail, or the window cannot be reached.
+- **`package.json` sets `engines.node` to `>=22.18`,** the first 22.x that strips types without a flag, which the `.mts` client needs.
+- **The call-site audit and file manifest below are updated to what was built.**
+  The architecture sections still say `client.mjs` and `cli.ts`; read them as `client.mts`, and `dispatch.ts` plus `dev-app.ts`.
 
 Measured on the live dev window, median of repeated runs:
 
@@ -112,7 +118,7 @@ Do not reopen these. If you think one is wrong, say so and stop.
 | Per-checkout CDP port, no collisions between worktrees | `deriveDebugPort` in `src/shared/drive-session.ts:17`, switch at `src/main/index.ts:507` |
 | Know which app pid owns the session | session file written at `src/main/index.ts:470` |
 | Know whether a dev app is up, without Playwright | `runningDevInstance()` in `scripts/drive/instance.ts` |
-| Stop the dev app cleanly, past the quit dialog | `stopDevInstance()` in `scripts/drive/cli.ts` |
+| Stop the dev app cleanly, past the quit dialog | `stopDevInstance()` in `scripts/drive/cli.ts` (as built: `stopDevApp()` in `scripts/drive/dev-app.ts`) |
 | Renderer never throttled while in the background | `backgroundThrottling: !IS_FLEET_DEV` at `src/main/index.ts:362` |
 | All verbs as functions of a `Page` | `scripts/drive/verbs.ts` |
 | Named app actions with an `execute()` | `createCommandRegistry()` at `src/renderer/src/lib/commands.ts:65`, used by the palette at `src/renderer/src/components/CommandPalette.tsx:103` |
@@ -236,17 +242,20 @@ And `restart` is the safe way to load new main-process code, the step that the 2
 
 | Site | Change |
 | --- | --- |
-| `package.json` `drive` script | Point at `node scripts/drive/client.mjs` |
+| `package.json` `drive` script | Point at `node scripts/drive/client.mts`; add `engines.node >=22.18` |
 | `package.json` `playwright` | `^1.61.1` to `^1.63.0` for `mode: 'ai'` |
-| `scripts/drive/cli.ts` | Split: request dispatch moves to the daemon, argument parsing moves to the client. Removed when empty |
+| `scripts/drive/cli.ts` | Removed. Dispatch moved to `dispatch.ts`, dev-app start and stop to `dev-app.ts` |
 | `scripts/drive/verbs.ts` | Screenshot defaults, blank check, `--shot`, refs, timeouts |
 | `scripts/drive/core.ts` | No change; the daemon calls `attach()` as is |
 | `scripts/drive/selectors.ts` | Add the `e<number>` to `aria-ref=` mapping |
 | `scripts/drive/fixtures.ts` | No change; fixtures are strings run through `evalExpr` |
-| `scripts/drive/instance.ts`, `dev-guard.ts` | No change; `up` and `restart` reuse them |
+| `scripts/drive/instance.ts`, `dev-guard.ts` | `instance.ts` exports `sessionPid()` for `up`; otherwise reused as is |
 | `scripts/drive/__tests__/verbs.test.ts` | Update if the blank check changes shape |
 | `src/renderer/src/main.tsx:84-101` | Add `commands` to `__FLEET__` |
 | `src/renderer/src/env.d.ts:17` | Type for `commands` |
+| `src/shared/drive-session.ts` | `driveFilePath()`, one helper for paths under `.fleet-drive/` |
+| `eslint.config.mjs` | Strict rules also cover `**/*.mts` |
+| `src/renderer/src/components/ui/command.tsx`, `CommandPalette.tsx` | Pad the search row so the input's focus ring is not clipped |
 | `src/main/index.ts` | No change |
 | `src/preload/index.ts` | No change |
 | `scripts/drive/README.md`, `CLAUDE.md` | New verbs, `node` client path, JPEG default, `up`/`restart` |
@@ -258,10 +267,13 @@ And `restart` is the safe way to load new main-process code, the step that the 2
 New:
 
 - `scripts/drive/daemon.ts`: holds the connection, serves requests, handles lifecycle.
-- `scripts/drive/client.mjs`: thin client, starts the daemon when needed.
+- `scripts/drive/client.mts`: thin client, starts the daemon when needed.
 - `scripts/drive/protocol.ts`: request and response types shared by both sides.
 - `scripts/drive/run-script.ts`: splits `drive run` lines into verb and arguments, with quotes.
-- Tests for the protocol, the line splitter and the ref mapping.
+- `scripts/drive/dispatch.ts`: parses flags and runs one verb, or a `run` script.
+- `scripts/drive/dev-app.ts`: `up`, `stop` and `restart`.
+- `scripts/drive/terminal.ts`: the `term` verbs.
+- Tests for the protocol, the flag parser, the line splitter, the ref mapping and the terminal keys.
 
 Modified: the rows marked with a change in the call-site audit.
 

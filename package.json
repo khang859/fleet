@@ -4,6 +4,9 @@
   "version": "2.123.0",
   "description": "A cross-platform terminal multiplexer for AI coding agents",
   "main": "./out/main/index.mjs",
+  "engines": {
+    "node": ">=22.18"
+  },
   "author": {
     "name": "Khang Nguyen",
     "email": "khang859@users.noreply.github.com"

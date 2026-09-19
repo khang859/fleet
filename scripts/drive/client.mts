@@ -37,7 +37,8 @@ const USAGE = `Usage: npm run drive -- <verb> [args]   (or: node scripts/drive/c
   run [file]                              one verb per line, from a file or stdin
   up | stop | restart                     start, stop or restart this checkout's npm run dev
 
-Every verb takes --timeout <ms> (default 5000).`;
+Every verb takes --timeout <ms> (default 5000).
+Text may start with a dash (eval '-1+1'). Text that looks like a flag goes after --.`;
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const INFO_PATH = join(ROOT, '.fleet-drive', 'daemon.json');

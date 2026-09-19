@@ -28,6 +28,12 @@ npm run drive -- stop | restart
 
 Every verb takes `--timeout <ms>` (default 5000, `term-wait` 30000).
 
+Text may start with a dash: `eval '-1+1'` and `term-send 'echo -n hi'` work as written.
+Only `--name` for a known flag is read as a flag.
+To pass text that looks like one, put it after `--`: `term-send -- '--help'`.
+
+The client runs on bare Node and needs Node 22.18 or newer (`engines` in `package.json`), for its built-in TypeScript support.
+
 `node scripts/drive/client.mts <verb>` is the same thing without npm, and about 100 ms faster per call.
 Use it in loops.
 
@@ -35,6 +41,8 @@ Only one `npm run dev` runs per checkout.
 A second one exits at once with the pid of the running one, so it is safe to run `npm run dev` when unsure whether the app is up.
 `up` is the better way to start it: it runs detached (logs in `.fleet-drive/dev.log`), so no shell owns it and none can lose track of it.
 `restart` proves the app that answers afterwards is a new process, which is what a change to main-process code needs.
+`stop` sends SIGTERM, then crashes the renderer to get past the "Close Fleet?" dialog, then, as a last resort, sends SIGKILL.
+After a SIGKILL the app's shutdown cleanup does not run, and `stop` says so.
 
 ## The daemon
 
@@ -86,6 +94,8 @@ Keys: `enter escape tab shift-tab backspace up down left right ctrl-c ctrl-d ctr
 
 `up` starts the app without the `CLAUDECODE` and `CLAUDE_*` variables of the agent that ran it.
 Otherwise Claude Code in a pane thinks it is a child session of that agent.
+Only Claude Code's markers are removed.
+If another agent (Codex, Cursor) runs `up`, its own markers still reach the panes.
 
 ## Fixtures
 

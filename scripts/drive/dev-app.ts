@@ -34,7 +34,8 @@ function devLogPath(root: string): string {
  * Electron turns SIGTERM into an ordinary quit, so a running terminal puts the
  * "Close Fleet?" dialog in its way. Crashing the renderer answers that dialog
  * with "close anyway" (see `QuitGuard`), and the quit then finishes through
- * `will-quit`, so child processes are still cleaned up.
+ * `will-quit`, so child processes are still cleaned up. `getPage` is only
+ * called on that path, so a plain stop never waits to attach.
  */
 export async function stopDevApp(getPage: () => Promise<Page>): Promise<string> {
   const instance = await runningDevInstance();
@@ -48,11 +49,22 @@ export async function stopDevApp(getPage: () => Promise<Page>): Promise<string> 
   process.kill(pid, 'SIGTERM');
   if (await exitsWithin(pid, 3000)) return `Stopped Fleet dev (pid ${pid}).`;
 
-  const page = await getPage();
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Page.crash').catch(() => {});
-  if (await exitsWithin(pid, 10000)) return `Stopped Fleet dev (pid ${pid}).`;
-  throw new Error(`Fleet dev (pid ${pid}) is still running after SIGTERM and a renderer crash.`);
+  try {
+    const page = await getPage();
+    const cdp = await page.context().newCDPSession(page);
+    // The crash drops the CDP session, so this call never gets its answer.
+    await cdp.send('Page.crash').catch(() => {});
+    if (await exitsWithin(pid, 10000)) return `Stopped Fleet dev (pid ${pid}).`;
+  } catch {
+    // The window cannot be reached. Nothing is left to try but the kill below.
+  }
+
+  // Last resort, so `stop` always ends with the app gone: no quit handlers run.
+  process.kill(pid, 'SIGKILL');
+  if (await exitsWithin(pid, 3000)) {
+    return `Killed Fleet dev (pid ${pid}): it did not quit, so its shutdown cleanup did not run.`;
+  }
+  throw new Error(`Fleet dev (pid ${pid}) is still running after SIGKILL.`);
 }
 
 /** The session's pid, once a window started after `since` has finished loading. */

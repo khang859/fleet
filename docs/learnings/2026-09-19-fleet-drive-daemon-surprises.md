@@ -34,6 +34,20 @@ Claude Code started in a pane then saw `CLAUDE_CODE_CHILD_SESSION` and other `CL
 The pane was not testing what a user sees.
 `startDevApp` now removes `CLAUDECODE` and every `CLAUDE_*` variable before it spawns the app.
 
+## `util.parseArgs` eats text that starts with a dash
+
+The verbs parsed flags with `util.parseArgs`.
+It reads any argument that starts with `-` as a flag, so `eval '-1+1'` failed with "Unknown option '-1'".
+With `strict: false` it is worse: `-1+1` silently became the flags `1` and `+`, and the expression was gone.
+`allowNegative` does not help.
+Verbs that take free text now use a small parser where only `--name` for a known flag is a flag, and `--` makes the rest text.
+
+## Deleting a focus ring is not the fix for a clipped one
+
+The command palette's search input had its focus ring clipped by the palette's top edge.
+The first fix removed the ring, which removes the keyboard-focus indicator from a shared UI primitive.
+The right fix was room: the row got vertical padding and the input got shorter, so the ring shows in full and the row height does not change.
+
 ## Lesson
 
 Before designing around a platform behavior, check the docs for the mode the app actually runs in.
