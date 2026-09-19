@@ -1,6 +1,7 @@
 // src/main/learnings/learnings-mcp-server.ts
 // A loopback MCP server exposing the Learnings KB to agents (Claude Code).
-// Read-only, no auth token — the 127.0.0.1 bind is the security boundary.
+// Read-only, no auth token: the 127.0.0.1 bind plus the Host/Origin checks in
+// `rejectStatus` (which block DNS rebinding from a browser) are the security boundary.
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http';
 import { z } from 'zod';
 import { createLogger } from '../logger';
@@ -16,6 +17,26 @@ const PROTOCOL_VERSION = '2024-11-05';
  *  a multi-GB body would exhaust the main process's heap. 1 MiB is far above any real
  *  tools/call payload. */
 const MAX_BODY_BYTES = 1024 * 1024;
+
+/** The only path served; matches the URL learnings-mcp-registrar writes. */
+const MCP_PATH = '/mcp';
+
+/**
+ * Status to refuse `req` with, or null to serve it. Per the MCP Streamable HTTP
+ * security guidance: a DNS-rebinding page reaches 127.0.0.1 with a foreign Host,
+ * and any browser request carries Origin. The only client is a local CLI (Claude
+ * Code), which sends neither, so both are refused outright.
+ */
+function rejectStatus(req: IncomingMessage, port: number): number | null {
+  if (req.url !== MCP_PATH) return 404;
+  if (req.method !== 'POST') return 405;
+  const host = req.headers.host;
+  if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return 403;
+  if (req.headers.origin !== undefined) return 403;
+  const mediaType = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+  if (mediaType !== 'application/json') return 415;
+  return null;
+}
 
 /** Sentinel so the handler can answer an over-limit body with 413 specifically. */
 class BodyTooLargeError extends Error {}
@@ -104,6 +125,7 @@ function renderHit(l: Learning): string {
 
 export class LearningsMcpServer {
   private server: Server | null = null;
+  private port = 0;
 
   constructor(
     private readonly store: LearningsStore,
@@ -136,6 +158,7 @@ export class LearningsMcpServer {
         const addr = server.address();
         const bound = typeof addr === 'object' && addr ? addr.port : preferredPort;
         this.server = server;
+        this.port = bound;
         log.info('learnings mcp server listening', { port: bound });
         resolve(bound);
       });
@@ -171,8 +194,9 @@ export class LearningsMcpServer {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method !== 'POST') {
-      this.send(res, 405, { error: 'method not allowed' });
+    const rejected = rejectStatus(req, this.port);
+    if (rejected !== null) {
+      this.send(res, rejected, { error: 'rejected' });
       return;
     }
     let raw: string;
