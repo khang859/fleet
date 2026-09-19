@@ -69,7 +69,7 @@ import { getAccentCssVars, getGlassCssVars } from './lib/theme';
 import { BackgroundLayer } from './components/BackgroundLayer';
 import { resolveBackgroundSrc } from './lib/pane-background';
 import { tooltipAnim, popperAnim } from './lib/motion';
-import { useAppThemeVars } from './hooks/use-app-theme';
+import { useAppThemeVars, useRootCssVars } from './hooks/use-app-theme';
 import { useSlideshow } from './hooks/use-slideshow';
 import { findPaneLocation } from './lib/palette-items';
 
@@ -807,7 +807,7 @@ export function App(): React.JSX.Element {
   // re-centered per pane. Panes sit on it as translucent cards.
   const terminalBackground = settings?.general.terminalBackground;
   const canvasActive = resolveBackgroundSrc(terminalBackground, slideshowFrame) !== null;
-  const themeVars = { ...accentVars, ...appThemeVars, ...getGlassCssVars(canvasActive) };
+  useRootCssVars({ ...accentVars, ...appThemeVars, ...getGlassCssVars(canvasActive) });
 
   // The collapsed rail splits its icons the same way the expanded sidebar does:
   // agents are a pinned run of their own rather than mixed into the tab list.
@@ -818,10 +818,7 @@ export function App(): React.JSX.Element {
   const miniRailAgentTabs = workspace.tabs.filter((t) => t.type === 'agent');
 
   return (
-    <div
-      className="relative flex flex-col h-screen w-screen bg-fleet-bg text-fleet-text overflow-hidden"
-      style={themeVars}
-    >
+    <div className="relative flex flex-col h-screen w-screen bg-fleet-bg text-fleet-text overflow-hidden">
       {terminalBackground && (
         <BackgroundLayer background={terminalBackground} frame={slideshowFrame} />
       )}
