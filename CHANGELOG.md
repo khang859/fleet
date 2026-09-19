@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.122.0
+
+- **TypeSafe's Jev can make auto-approval decisions** - pick `TypeSafe: Jev 1.13` as the Auto-approval model in Agent settings.
+Jev is a decision model: it picks "safe" or "ask" for each command instead of writing an answer, at about $0.04 per million input tokens.
+- **Jev only runs a command when it is sure** - a command runs unasked only when Jev gives "safe" a 90% chance or more.
+Anything less, an error, or no answer asks you, as before.
+- **Jev is new and sometimes slow** - most answers take under a second, but some calls hang for up to 20 seconds and then ask you.
+A call that hangs or fails never runs the command (#579).
+
 ## v2.121.0
 
 - **Filenames from `ls` are clickable** - a name with no folder in front of it, printed on its own by `ls`, `ls -l` or `ls -F`, is now a link like any other path.
