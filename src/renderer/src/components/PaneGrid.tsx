@@ -240,9 +240,9 @@ type ViewerPaneType = 'file' | 'markdown' | 'image' | 'pdf';
  */
 function UnsupportedPane({ paneType }: { paneType: string }): React.JSX.Element {
   return (
-    <div className="h-full w-full flex flex-col items-center justify-center gap-2 bg-neutral-900 text-sm px-6 text-center">
-      <div className="text-neutral-400">This pane can&apos;t be shown</div>
-      <div className="text-neutral-500 font-mono text-xs break-all">{paneType}</div>
+    <div className="h-full w-full flex flex-col items-center justify-center gap-2 bg-fleet-glass-chrome text-sm px-6 text-center">
+      <div className="text-fleet-text-muted">This pane can&apos;t be shown</div>
+      <div className="text-fleet-text-subtle font-mono text-xs break-all">{paneType}</div>
     </div>
   );
 }
