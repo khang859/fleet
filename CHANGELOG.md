@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.124.0
+
+- **Auto mode with Jev asks far less often** - ordinary commands such as `date`, `git commit` and `gh pr view` now run without a question.
+Jev asks only when a command can lose work or reach other people, and it runs a command when it gives "safe" a 70% chance or more.
+- **Jev reads your latest message** - `gh pr comment` runs after you say "post it", and asks after you say "do not post anything".
+Posts from subagents are always asked about (#582).
+- **Settings shows the Jev instructions** when Jev is the chosen auto-approval model.
+- **The command palette's search box shows its full focus ring** - the ring was cut off by the palette's top edge (#581).
+
 ## v2.123.0
 
 - **Long agent turns no longer slow down with every tool call** - the prompt cache now works on Anthropic models, so each round reuses the transcript instead of paying for all of it again.
