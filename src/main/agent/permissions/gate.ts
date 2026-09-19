@@ -163,7 +163,7 @@ export class PermissionGate {
   async check(req: PermissionRequest): Promise<PermissionGrant> {
     if (this.wasRefused(req.streamId, req.command)) return 'refuse';
 
-    const verdict = decideCommand(this.deps.getRules(), req.command);
+    const verdict = decideCommand(this.deps.getRules(), req.command, req.cwd);
     if (verdict.kind === 'allow') return 'run';
     if (verdict.kind === 'deny') return 'refuse';
 
