@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { request } from 'http';
 import { mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -13,13 +14,14 @@ describe('LearningsMcpServer', () => {
   let store: LearningsStore;
   let server: LearningsMcpServer;
   let url: string;
+  let port: number;
 
   beforeEach(async () => {
     mkdirSync(TEST_DIR, { recursive: true });
     store = new LearningsStore(join(TEST_DIR, 'learnings.db'));
     const search = new LearningsSearchService(store, new FakeEmbedder());
     server = new LearningsMcpServer(store, search);
-    const port = await server.start(0);
+    port = await server.start(0);
     url = `http://127.0.0.1:${port}/mcp`;
   });
 
@@ -95,6 +97,48 @@ describe('LearningsMcpServer', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', pad: huge })
     });
     expect(res.status).toBe(413);
+  });
+
+  /** Raw POST so the Host header can be forged (fetch forbids setting it). */
+  const post = async (headers: Record<string, string>, path = '/mcp'): Promise<number> =>
+    new Promise((resolve, reject) => {
+      const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+      const req = request({ host: '127.0.0.1', port, path, method: 'POST', headers }, (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      });
+      req.on('error', reject);
+      req.end(body);
+    });
+
+  it('accepts a normal request with Host 127.0.0.1 or localhost', async () => {
+    const json = { 'Content-Type': 'application/json' };
+    expect(await post({ ...json, Host: `127.0.0.1:${port}` })).toBe(200);
+    expect(await post({ ...json, Host: `localhost:${port}` })).toBe(200);
+  });
+
+  it('rejects a foreign Host header with 403 (DNS rebinding)', async () => {
+    const status = await post({ 'Content-Type': 'application/json', Host: `evil.example:${port}` });
+    expect(status).toBe(403);
+  });
+
+  it('rejects any request carrying an Origin header with 403', async () => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects a non-JSON content type with 415', async () => {
+    const status = await post({ 'Content-Type': 'text/plain', Host: `127.0.0.1:${port}` });
+    expect(status).toBe(415);
+  });
+
+  it('only serves the /mcp path', async () => {
+    const status = await post({ 'Content-Type': 'application/json' }, '/other');
+    expect(status).toBe(404);
   });
 
   it('rejects non-POST methods', async () => {
