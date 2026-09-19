@@ -43,6 +43,7 @@ import { useSettingsStore } from './settings-store';
 import { useNotificationStore } from './notification-store';
 import { registerPaneDisposer, useWorkspaceStore } from './workspace-store';
 import { toolLabel } from '../components/agent/tool-label';
+import type { AgentPhase, AgentStep } from '../components/agent/activity';
 import { draftInto } from '../hooks/use-terminal';
 import { createLogger } from '../logger';
 import type { ActivityState } from '../../../shared/types';
@@ -145,6 +146,12 @@ export type PaneThread = {
    * long the turn has really been running.
    */
   startedAt: number | null;
+  /**
+   * The step the in-flight work is on, and since when, for the status line.
+   * Kept apart from `startedAt` because the clock beside the label counts the
+   * step, while the reasoning duration still counts from the send.
+   */
+  step: AgentStep | null;
   error: string | null;
   /**
    * Roughly what the next turn will resend, from the provider's own count where
@@ -244,6 +251,7 @@ const EMPTY_THREAD: PaneThread = {
   pendingCompact: null,
   pendingPermission: null,
   startedAt: null,
+  step: null,
   error: null,
   contextTokens: null,
   projectInstructions: null,
@@ -438,6 +446,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
           todos,
           streamId,
           startedAt: Date.now(),
+          step: { phase: 'waiting', since: Date.now() },
           error: null
         }
       }
@@ -481,6 +490,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
           messages: [...thread.messages, assistant],
           streamId,
           startedAt: Date.now(),
+          step: { phase: 'waiting', since: Date.now() },
           error: null
         }
       }
@@ -521,6 +531,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
           streamId,
           pendingCompact: { keep: recent },
           startedAt: Date.now(),
+          step: { phase: 'waiting', since: Date.now() },
           error: null
         }
       }
@@ -549,7 +560,13 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     // Cleared here rather than on an answer from main: the question has been
     // answered, and leaving the buttons up while the command starts reads as
     // though the click was missed.
-    set({ threads: { ...get().threads, [paneId]: { ...thread, pendingPermission: null } } });
+    // The command runs now, or is refused and its row finishes at once.
+    set({
+      threads: {
+        ...get().threads,
+        [paneId]: { ...thread, pendingPermission: null, step: nextStep(thread.step, 'tooling') }
+      }
+    });
     // Answered, so the turn is the agent's again and the pane stops asking for
     // attention it no longer needs.
     reportActivity(paneId, 'working');
@@ -636,40 +653,66 @@ function threadOf(streamId: string): { paneId: string; thread: PaneThread } | nu
  * to what was written before the call is exactly the ordering this avoids.
  */
 function appendText(streamId: string, delta: string): void {
-  updateStreaming(streamId, (m, startedAt) => {
-    const last = m.parts.at(-1);
-    const parts =
-      last?.type === 'text'
-        ? [...m.parts.slice(0, -1), { type: 'text' as const, text: last.text + delta }]
-        : [...m.parts, { type: 'text' as const, text: delta }];
-    // The first answer token ends the thinking. Measured from the send rather
-    // than from the first reasoning token, so the number the block settles on
-    // is the one the live clock was showing the moment it settled.
-    const stamp = m.reasoningMs === null && m.reasoning !== '' && messageText(m) === '';
-    return {
-      ...m,
-      parts,
-      ...(stamp && startedAt !== null ? { reasoningMs: Date.now() - startedAt } : {})
-    };
-  });
+  updateStreaming(
+    streamId,
+    (m, startedAt) => {
+      const last = m.parts.at(-1);
+      const parts =
+        last?.type === 'text'
+          ? [...m.parts.slice(0, -1), { type: 'text' as const, text: last.text + delta }]
+          : [...m.parts, { type: 'text' as const, text: delta }];
+      // The first answer token ends the thinking. Measured from the send rather
+      // than from the first reasoning token, so the number the block settles on
+      // is the one the live clock was showing the moment it settled.
+      const stamp = m.reasoningMs === null && m.reasoning !== '' && messageText(m) === '';
+      return {
+        ...m,
+        parts,
+        ...(stamp && startedAt !== null ? { reasoningMs: Date.now() - startedAt } : {})
+      };
+    },
+    'writing'
+  );
 }
 
 function appendReasoning(streamId: string, delta: string): void {
-  updateStreaming(streamId, (m) => ({ ...m, reasoning: m.reasoning + delta }));
+  updateStreaming(streamId, (m) => ({ ...m, reasoning: m.reasoning + delta }), 'reasoning');
 }
 
-/** Rewrite the message this stream is writing into, leaving the rest alone. */
+/**
+ * Rewrite the message this stream is writing into, leaving the rest alone, and
+ * move the turn onto `phase` when the change says what it is doing now.
+ */
 function updateStreaming(
   streamId: string,
-  change: (message: AgentMessage, startedAt: number | null) => AgentMessage
+  change: (message: AgentMessage, startedAt: number | null) => AgentMessage,
+  phase?: AgentPhase
 ): void {
   const found = threadOf(streamId);
   if (found === null) return;
   const messages = found.thread.messages.map((m) =>
     m.id === streamId ? change(m, found.thread.startedAt) : m
   );
+  const step = phase === undefined ? found.thread.step : nextStep(found.thread.step, phase);
   useAgentStore.setState((s) => ({
-    threads: { ...s.threads, [found.paneId]: { ...found.thread, messages } }
+    threads: { ...s.threads, [found.paneId]: { ...found.thread, messages, step } }
+  }));
+}
+
+/** The same step when the phase has not changed, so its clock keeps counting. */
+function nextStep(step: AgentStep | null, phase: AgentPhase): AgentStep {
+  return step?.phase === phase ? step : { phase, since: Date.now() };
+}
+
+/** Move a turn onto `phase` without touching its transcript. */
+function markStep(streamId: string, phase: AgentPhase): void {
+  const found = threadOf(streamId);
+  if (found === null || found.thread.step?.phase === phase) return;
+  useAgentStore.setState((s) => ({
+    threads: {
+      ...s.threads,
+      [found.paneId]: { ...found.thread, step: nextStep(found.thread.step, phase) }
+    }
   }));
 }
 
@@ -683,19 +726,25 @@ function updateStreaming(
  */
 function recordToolCall(streamId: string, call: AgentToolCall): void {
   if (call.todos !== null) recordTodos(streamId, call.todos);
-  updateStreaming(streamId, (m) => {
-    // Stripped on the way in: the list travelled on this call so the pane
-    // would hear about it, and it has now been heard. Left on the part it
-    // would be written to the log as well, giving the file two accounts of the
-    // same list - one of them a snapshot from whenever this call happened.
-    const stored = { ...call, todos: null };
-    const at = m.parts.findIndex((p) => p.type === 'tool' && p.call.id === call.id);
-    const parts =
-      at === -1
-        ? [...m.parts, { type: 'tool' as const, call: stored }]
-        : m.parts.map((p, i) => (i === at ? { type: 'tool' as const, call: stored } : p));
-    return { ...m, parts };
-  });
+  updateStreaming(
+    streamId,
+    (m) => {
+      // Stripped on the way in: the list travelled on this call so the pane
+      // would hear about it, and it has now been heard. Left on the part it
+      // would be written to the log as well, giving the file two accounts of the
+      // same list - one of them a snapshot from whenever this call happened.
+      const stored = { ...call, todos: null };
+      const at = m.parts.findIndex((p) => p.type === 'tool' && p.call.id === call.id);
+      const parts =
+        at === -1
+          ? [...m.parts, { type: 'tool' as const, call: stored }]
+          : m.parts.map((p, i) => (i === at ? { type: 'tool' as const, call: stored } : p));
+      return { ...m, parts };
+    },
+    // A finished call hands the turn back to the model, which is silent until
+    // it says something.
+    call.result === null && call.error === null ? 'tooling' : 'waiting'
+  );
   // A call that has stopped running has nothing left to preview.
   if (call.result !== null || call.error !== null) forgetImagePartial(streamId, call.id);
 }
@@ -1097,7 +1146,14 @@ function askPermission(ask: AgentPermissionAsk): void {
     return;
   }
   useAgentStore.setState((s) => ({
-    threads: { ...s.threads, [found.paneId]: { ...found.thread, pendingPermission: ask } }
+    threads: {
+      ...s.threads,
+      [found.paneId]: {
+        ...found.thread,
+        pendingPermission: ask,
+        step: nextStep(found.thread.step, 'asking')
+      }
+    }
   }));
   reportActivity(found.paneId, 'needs_me');
 }
@@ -1182,6 +1238,7 @@ function endTurn(
         // it on its side when the turn ends, so the row must not keep asking.
         pendingPermission: null,
         startedAt: null,
+        step: null,
         error,
         contextTokens,
         projectInstructions:
@@ -1490,6 +1547,7 @@ function applySummary(streamId: string, summary: string, usage: AgentTurnUsage |
         streamId: null,
         pendingCompact: null,
         startedAt: null,
+        step: null,
         error: null,
         // The provider's count for the summarizing call describes that call,
         // not this transcript, so the new size is estimated until a real turn
@@ -1509,6 +1567,9 @@ function applySummary(streamId: string, summary: string, usage: AgentTurnUsage |
 // event carries the id of the turn that produced it.
 window.fleet.agent.onStreamChunk(({ streamId, delta }) => appendText(streamId, delta));
 window.fleet.agent.onStreamReasoning(({ streamId, delta }) => appendReasoning(streamId, delta));
+window.fleet.agent.onStreamStep(({ streamId, step }) =>
+  markStep(streamId, step === 'running' ? 'tooling' : step)
+);
 window.fleet.agent.onStreamDone(({ streamId, usage, projectInstructions }) =>
   endTurn(streamId, null, usage, projectInstructions ?? null)
 );

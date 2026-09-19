@@ -313,10 +313,11 @@ export function AgentThread({
           <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pb-1.5 text-[11px] text-fleet-text-subtle">
             {streaming && (
               <AgentActivity
-                last={messages.at(-1)}
+                step={thread?.step ?? null}
                 compacting={compacting}
                 asking={ask !== null}
-                startedAt={thread?.startedAt ?? null}
+                // The same rule that opens the block live in `Message`.
+                reasoningShown={messages.at(-1)?.parts.length === 0}
               />
             )}
             {todos !== null && <TodoChip progress={todos} items={todoItems} />}

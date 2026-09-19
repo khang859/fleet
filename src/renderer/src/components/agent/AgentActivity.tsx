@@ -1,34 +1,35 @@
 import { useEffect, useState } from 'react';
-import type { AgentMessage } from '../../../../shared/agent-types';
-import { agentPhase, formatElapsed, phaseShimmers, PHASE_LABEL } from './activity';
+import { agentPhase, formatElapsed, phaseShimmers, PHASE_LABEL, type AgentStep } from './activity';
 
 /**
  * What the agent is doing, while it is doing it.
  *
  * A waiting model gives no output at all, sometimes for a minute - the gap the
- * indicator exists to fill. It says which of the two silences this is (no
- * tokens yet, or reasoning the answer isn't in), and how long it has lasted,
- * because "is it stuck?" is the actual question and only the clock answers it.
+ * indicator exists to fill. It says which silence this is (no tokens yet,
+ * reasoning, a tool call being written, a command being checked), and how long
+ * this step has lasted, because "is it stuck?" is the actual question and only
+ * the clock answers it.
  *
  * The shimmer sweeps across the word rather than spinning next to it: a
  * spinner is a second thing on the row, and this one has to share it with the
  * context meter.
  */
 export function AgentActivity({
-  last,
+  step,
   compacting,
   asking,
-  startedAt
+  reasoningShown
 }: {
-  /** The message being streamed into, which is what says how far the turn got. */
-  last: AgentMessage | undefined;
+  /** The step the turn is on, and since when. */
+  step: AgentStep | null;
   compacting: boolean;
   /** Stopped on a command the user has to decide about. */
   asking: boolean;
-  startedAt: number | null;
+  /** Whether the reasoning block is open and streaming, so already moving. */
+  reasoningShown: boolean;
 }): React.JSX.Element {
-  const phase = agentPhase(last, compacting, asking);
-  const elapsed = useElapsed(startedAt);
+  const phase = agentPhase(step, compacting, asking);
+  const elapsed = useElapsed(step?.since ?? null);
 
   return (
     <span className="flex min-w-0 items-center gap-1.5">
@@ -43,7 +44,7 @@ export function AgentActivity({
             ? // Amber carries the meaning here, so it has to survive the light
               // themes too - amber-400 on a near-white pane is about 1.6:1.
               'text-amber-700 dark:text-amber-400/90'
-            : phaseShimmers(phase)
+            : phaseShimmers(phase, reasoningShown)
               ? 'fleet-shimmer-text'
               : 'text-fleet-text-muted'
         }`}
@@ -60,10 +61,10 @@ export function AgentActivity({
 }
 
 /**
- * Milliseconds since the turn began, refreshed once a second.
+ * Milliseconds since the step began, refreshed once a second.
  *
  * The start time comes from the store rather than a mount effect, so leaving
- * the pane for the Settings tab and coming back shows how long the turn has
+ * the pane for the Settings tab and coming back shows how long the step has
  * really been running instead of restarting the clock.
  */
 function useElapsed(startedAt: number | null): number | null {

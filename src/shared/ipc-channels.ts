@@ -206,6 +206,7 @@ export const IPC_CHANNELS = {
   AGENT_COMPACT_DONE: 'agent:compact-done',
   AGENT_STREAM_CHUNK: 'agent:stream-chunk',
   AGENT_STREAM_REASONING: 'agent:stream-reasoning',
+  AGENT_STREAM_STEP: 'agent:stream-step',
   AGENT_STREAM_DONE: 'agent:stream-done',
   AGENT_STREAM_ERROR: 'agent:stream-error',
   AGENT_SERVER_TOOL: 'agent:server-tool',

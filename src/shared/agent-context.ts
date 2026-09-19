@@ -282,21 +282,49 @@ export function clearedCallIds(
 ): Set<string> {
   const calls = messages.flatMap(messageToolCalls);
   const older = calls.slice(0, Math.max(0, calls.length - keepRecent));
-  const clearable = older.filter(isClearable);
 
-  // What the pass would actually save: the results go, but each leaves the
-  // sentence saying so behind, and an image read is carrying a picture the
+  // What clearing each one would actually save: the result goes, but it leaves
+  // the sentence saying so behind, and an image read is carrying a picture the
   // placeholder replaces as well.
-  const freed = clearable.reduce(
-    (total, call) =>
-      total +
-      estimateTokens(call.result ?? '') +
-      (call.image === null ? 0 : IMAGE_TOKENS) -
-      estimateTokens(CLEARED_RESULT_TEXT),
-    0
+  const cleared = older.slice(
+    0,
+    clearedPrefix(older, (call) =>
+      isClearable(call)
+        ? estimateTokens(call.result ?? '') +
+          (call.image === null ? 0 : IMAGE_TOKENS) -
+          estimateTokens(CLEARED_RESULT_TEXT)
+        : 0
+    )
   );
-  if (freed < CLEAR_MIN_TOKENS) return new Set();
-  return new Set(clearable.map((call) => call.id));
+  return new Set(cleared.filter(isClearable).map((call) => call.id));
+}
+
+/**
+ * How many of the oldest results a pass clears, given what each would free.
+ *
+ * The line moves in steps of at least CLEAR_MIN_TOKENS rather than following
+ * the recent window one call at a time. Clearing rewrites the transcript at the
+ * line, and a provider's cache is lost from the first changed byte on - so a
+ * line that moved every round, as the window slides by one call per round,
+ * rebuilt everything after it on every round of a long turn. Held until another
+ * CLEAR_MIN_TOKENS is waiting behind it, the line moves only when what it saves
+ * pays for the cache it costs, which is the trade CLEAR_MIN_TOKENS stands for.
+ *
+ * Worked out from the start of the transcript every time rather than
+ * remembered, so the pane and the wire, and every round of a turn, reach the
+ * same line from the same calls: a longer transcript only adds steps after the
+ * ones already taken.
+ */
+export function clearedPrefix<T>(older: T[], freed: (item: T) => number): number {
+  let line = 0;
+  let waiting = 0;
+  older.forEach((item, i) => {
+    waiting += freed(item);
+    if (waiting < CLEAR_MIN_TOKENS) return;
+    line = i + 1;
+    waiting = 0;
+  });
+  return line;
 }
 
 /**

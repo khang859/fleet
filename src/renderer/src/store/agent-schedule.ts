@@ -202,6 +202,7 @@ function deliver(paneId: string, sessionId: string, records: AgentScheduleRecord
         messages: [...thread.messages, ...fires, assistant],
         streamId,
         startedAt: Date.now(),
+        step: { phase: 'waiting', since: Date.now() },
         error: null
       }
     }

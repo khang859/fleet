@@ -274,7 +274,7 @@ describe('PermissionGate, in auto mode', () => {
 
     await expect(gate(auto).check(request('npm test'))).resolves.toBe('run');
     expect(seen).toEqual([{ command: 'npm test', cwd: '/repo' }]);
-    expect(emit).not.toHaveBeenCalled();
+    expect(asks).toHaveLength(0);
   });
 
   it('asks the user about one it does not', async () => {
@@ -390,6 +390,53 @@ describe('PermissionGate, in auto mode', () => {
     // Same command, and nobody is disturbed about it a second time.
     await expect(g.check(request('git status'))).resolves.toBe('run');
     expect(asks).toHaveLength(1);
+  });
+
+  /*
+   * A timeout is the other kind of no answer, and it costs 20 seconds a time.
+   * Asking again on every command stalls the turn for minutes on a model that
+   * is down, only to ask the user anyway.
+   */
+  it('stops consulting a classifier that timed out, for the rest of the turn', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const seen: string[] = [];
+      const auto: AutoApprove = async ({ command }) => {
+        seen.push(command);
+        vi.setSystemTime(Date.now() + 20_000);
+        return Promise.resolve({ verdict: null, usage: null });
+      };
+      const g = gate(auto);
+
+      const first = g.check(request('git status'));
+      await vi.waitFor(() => expect(asks).toHaveLength(1));
+      g.decide(asks[0].requestId, 'once');
+      await first;
+
+      void g.check(request('git log'));
+      await vi.waitFor(() => expect(asks).toHaveLength(2));
+      expect(seen).toEqual(['git status']);
+
+      // A new turn gives the model another chance.
+      g.endTurn('stream-1');
+      void g.check(request('git log'));
+      await vi.waitFor(() => expect(seen).toEqual(['git status', 'git log']));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tells the pane while the classifier is checking, and when the command runs', async () => {
+    const { auto } = classifier('safe');
+    await gate(auto).check(request('npm test'));
+
+    const steps = emit.mock.calls
+      .filter(([channel]) => channel === IPC_CHANNELS.AGENT_STREAM_STEP)
+      .map(([, payload]) => payload);
+    expect(steps).toEqual([
+      { streamId: 'stream-1', step: 'checking' },
+      { streamId: 'stream-1', step: 'running' }
+    ]);
   });
 
   it('forgets what it judged once the turn is over', async () => {

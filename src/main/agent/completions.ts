@@ -352,11 +352,23 @@ export type StreamRequest = {
   fallback?: AgentFallbackConfig;
   /** Whether to mark a cacheable prefix. Off means the messages go untouched. */
   cache?: AgentCacheConfig;
+  /**
+   * How many of `messages` are the conversation, when the ones after it are
+   * notes for this round only. The end-of-request cache marker goes on the last
+   * of these rather than on the last message. Omitted ⇒ every message is the
+   * conversation. See `withCacheBreakpoints`.
+   */
+  cacheUpTo?: number;
   /** When OpenRouter should wind up its own loop. Omitted ⇒ its 30-step default. */
   serverToolStops?: ServerToolStop[] | null;
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onReasoning: (text: string) => void;
+  /**
+   * Fires once per round, when the model starts writing its first tool call.
+   * The arguments stream in silently, and a long one can take seconds.
+   */
+  onToolCall?: () => void;
   /** Fires at most once, from the last message of the stream. */
   onUsage?: (usage: AgentUsage) => void;
 };
@@ -963,7 +975,7 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
       messages: forCompletionsWire(
         req.cache === undefined || !req.target.serverTools
           ? req.messages
-          : withCacheBreakpoints(req.messages, req.cache)
+          : withCacheBreakpoints(req.messages, req.cache, req.cacheUpTo)
       ),
       stream: true,
       // Asked for only where it has to be. OpenRouter sends usage on the last
@@ -998,7 +1010,10 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
       if (parsed === null) continue;
       if (parsed.content) req.onDelta(parsed.content);
       if (parsed.reasoning) req.onReasoning(parsed.reasoning);
-      if (parsed.toolCalls.length > 0) toolDeltas.push(...parsed.toolCalls);
+      if (parsed.toolCalls.length > 0) {
+        if (toolDeltas.length === 0) req.onToolCall?.();
+        toolDeltas.push(...parsed.toolCalls);
+      }
       if (parsed.serverToolCalls.length > 0) serverDeltas.push(...parsed.serverToolCalls);
       if (parsed.citations.length > 0) annotated.push(...parsed.citations);
       if (parsed.usage) req.onUsage?.(parsed.usage);
@@ -1043,6 +1058,16 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
  * way reports 14,673 cache write tokens where the same request with the marker
  * on the system message alone reports zero.
  *
+ * Except where the request ends on notes that belong to this round alone - the
+ * task list, the subagent roster - which `runRounds` appends after the
+ * conversation and leaves off the next round. A marker on one of those caches a
+ * prefix no later request will ever send, because Anthropic writes an entry only
+ * where a marker is and the next round's prefix has a different message there.
+ * Every round then writes the whole transcript and reads none of it back, which
+ * is what a long turn was observed doing: 11.2M tokens written, 7K read, and
+ * each round slower than the last. `upTo` is where the conversation ends, so the
+ * marker lands on the last message the next round will send again.
+ *
  * Anthropic allows four markers and this uses two, which leaves room and keeps
  * the rule simple enough to hold in the head. A provider that caches on its
  * own ignores both, and a provider that does neither is unchanged: the marker
@@ -1055,11 +1080,12 @@ export async function streamCompletion(req: StreamRequest): Promise<StreamOutcom
  */
 export function withCacheBreakpoints(
   messages: AgentWireMessage[],
-  config: AgentCacheConfig
+  config: AgentCacheConfig,
+  upTo = messages.length
 ): WireBodyMessage[] {
   if (!config.enabled || messages.length === 0) return messages;
   const mark = cacheControl(config);
-  const last = messages.length - 1;
+  const last = Math.min(upTo, messages.length) - 1;
   return messages.map((message, index) => {
     const wanted = message.role === 'system' || index === last;
     if (!wanted) return message;
