@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.124.1
+
+- **Light themes are light everywhere** - inline code in agent replies, menus and code blocks in markdown previews no longer show up as dark boxes (#584).
+- **Old saved layouts no longer open stray terminals** - a pane type Fleet no longer knows shows a "can't be shown" message instead of starting a shell (#585).
+- **Clicking a file, agent or SSH pane makes it the active pane**, so pane shortcuts act on the pane you clicked (#585).
+- **The learnings server only answers local tools** - requests from web pages and unknown hosts are rejected (#583).
+- **Updated streamdown and shiki** so a routine dependency refresh no longer breaks the build (#586).
+
 ## v2.124.0
 
 - **Auto mode with Jev asks far less often** - ordinary commands such as `date`, `git commit` and `gh pr view` now run without a question.
