@@ -17,7 +17,10 @@ import type {
   AgentProviderConfig
 } from '../../../../../shared/agent-routing';
 import { AGENT_TOOL_MODES, DEFAULT_AGENT_SETTINGS } from '../../../../../shared/agent-types';
-import { AGENT_DECISION_MODELS } from '../../../../../shared/agent-decision-models';
+import {
+  AGENT_DECISION_MODELS,
+  isDecisionModel
+} from '../../../../../shared/agent-decision-models';
 import {
   AGENT_VOICE_MODELS,
   DEFAULT_AGENT_VOICE_SETTINGS
@@ -349,6 +352,7 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
           </Field>
           <ClassifierNoteField
             value={agent.classifierNote}
+            decisionModel={isDecisionModel(agent.classifierModel)}
             onChange={(classifierNote) =>
               void updateSettings({ ai: { agent: { classifierNote } } })
             }

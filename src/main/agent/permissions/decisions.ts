@@ -11,14 +11,13 @@ const log = createLogger('agent:decisions');
  * The auto-approval question, put to a decision model.
  *
  * The same question `classifyCommand` asks, sent where decision models answer.
- * A decision model such as TypeSafe's Jev does not write text. It picks one of
- * the options it is given and says how sure it is. So the command goes up as
- * `state`, the two verdicts go up as the options of one `choice` question, and
- * what comes back is read as a choice rather than parsed out of a sentence.
+ * A decision model such as TypeSafe's Jev does not write text. It answers a
+ * typed question with a number. So the developer's request, the folder and the
+ * command go up as `state` in plain words, "may this run unasked?" goes up as
+ * one yes-or-no (`noul`) question, and what comes back is the chance of yes.
  *
- * The rules are the ones the settings screen shows, the user's note included.
- * Only the line that tells a text model to answer in one word is left out,
- * because a decision model picks an option and writes no words.
+ * The rules are `decisionInstructions`, the user's note included. They differ
+ * from the text model's on purpose - see `agent-classifier`.
  *
  * Everything else holds from `classifier.ts`: it can only ever remove a
  * question, it never throws, and every failure asks the user.
@@ -28,15 +27,13 @@ const log = createLogger('agent:decisions');
 const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
 
 /**
- * How likely `safe` has to be before a command runs unasked.
+ * How likely "yes" has to be before a command runs unasked.
  *
- * Read from `probabilities` rather than `confidence`. TypeSafe derives
- * `confidence` from the shape of the whole distribution, which is a measure of
- * certainty, not the chance that this command is safe. The probability of
- * `safe` is the plain number this decision needs. The bar stays high, because
- * the cost of being wrong the other way is one keypress.
+ * Measured, not guessed: on 180 commands from real sessions and 22 destructive
+ * ones, every destructive command scored 0.15 or less, and 0.7 asked about 3 of
+ * the 180. Higher asks about ordinary work for no gain; the gap below is wide.
  */
-export const MIN_SAFE_PROBABILITY = 0.9;
+export const MIN_SAFE_PROBABILITY = 0.7;
 
 /**
  * Long enough for a slow alpha endpoint, short enough that a hung one does not
@@ -44,19 +41,24 @@ export const MIN_SAFE_PROBABILITY = 0.9;
  */
 const TIMEOUT_MS = 20_000;
 
-/** The key both the question and the answer are filed under. */
-const QUESTION = 'verdict';
+/**
+ * The most of the developer's request that is sent. A `/command` or a pasted
+ * log can be long, and the start of a request is where it says what it wants.
+ */
+const MAX_REQUEST_CHARS = 2_000;
 
-/** What each option means, in the model's own terms. */
+/** The key both the question and the answer are filed under. */
+const QUESTION = 'safe_to_run';
+
+/** What yes and no mean, in the model's own terms. */
 const CRITERIA = {
-  safe: 'The command inspects or builds, and anything it changes is inside the working folder and easy to undo.',
-  ask: 'Anything else, and whenever it is not plainly safe.'
+  true: 'Low-impact or easy to undo, and in line with what the developer asked.',
+  false: 'Could lose work, reaches other people, or goes beyond what the developer asked.'
 };
 
 const answerSchema = z.object({
-  type: z.literal('choice'),
-  choice: z.string(),
-  probabilities: z.record(z.string(), z.number()).nullish()
+  type: z.literal('noul'),
+  noul: z.number()
 });
 
 const responseSchema = z.object({
@@ -68,16 +70,33 @@ const responseSchema = z.object({
   })
 });
 
-export type DecisionInput = Omit<ClassifyInput, 'target'>;
+export type DecisionInput = Omit<ClassifyInput, 'target'> & {
+  /**
+   * What the developer last asked the agent for, or `null` when there is no
+   * such thing - a subagent, whose task was written by another model. Without
+   * it the command is judged alone, so anything that posts or pushes is asked.
+   */
+  request: string | null;
+};
+
+/** What the model is shown: the request, then where, then the command. */
+function toState(input: DecisionInput): string {
+  const request = input.request?.trim() ?? '';
+  return [
+    `The developer asked the agent:\n${request === '' ? '(not known)' : request.slice(0, MAX_REQUEST_CHARS)}`,
+    `Working folder: ${input.cwd}`,
+    `Proposed shell command:\n${input.command}`
+  ].join('\n\n');
+}
 
 /** The request body, whole. Exported so the tests can check the shape. */
 export function toDecisionBody(input: DecisionInput): Record<string, unknown> {
   return {
     model: input.model,
-    state: { working_folder: input.cwd, command: input.command },
+    state: toState(input),
     questions: {
       [QUESTION]: {
-        type: 'choice',
+        type: 'noul',
         instructions: decisionInstructions(input.note),
         criteria: CRITERIA
       }
@@ -88,17 +107,13 @@ export function toDecisionBody(input: DecisionInput): Record<string, unknown> {
 /**
  * The verdict in one parsed answer, or `null` when there is no usable answer.
  *
- * `safe` needs both the choice and a probability of `safe` above the bar. A
- * `safe` that comes back without probabilities is `ask`: the bar cannot be
- * checked, so it is not met. Any choice other than `safe` is `ask`, so this
- * cannot fail open.
+ * `safe` needs the chance of yes at or above the bar; anything below is `ask`,
+ * so this cannot fail open.
  */
 export function readDecision(answer: unknown): Classification['verdict'] {
   const parsed = answerSchema.safeParse(answer);
   if (!parsed.success) return null;
-  const { choice, probabilities } = parsed.data;
-  if (choice !== 'safe') return 'ask';
-  return (probabilities?.safe ?? 0) >= MIN_SAFE_PROBABILITY ? 'safe' : 'ask';
+  return parsed.data.noul >= MIN_SAFE_PROBABILITY ? 'safe' : 'ask';
 }
 
 /** The Decisions usage block, in the shape every other call reports. */

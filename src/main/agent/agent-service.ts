@@ -190,6 +190,11 @@ type RoundsRequest = {
   cwd: string;
   /** The wire, ready to send. Appended to as the rounds go. */
   messages: AgentWireMessage[];
+  /**
+   * What the user last asked for, for auto mode to weigh a command against.
+   * `null` for a subagent, whose task another model wrote. See `latestRequest`.
+   */
+  request: string | null;
   tools: ToolSpec[];
   /**
    * Tools the model is told about only if it searches for them.
@@ -878,6 +883,20 @@ export async function toWireHistory(
   return [{ role: 'system', content: systemPrompt }, ...history.flat(), ...opening];
 }
 
+/**
+ * What the user last asked for, as they typed it.
+ *
+ * The new message, or - on a turn resumed after a subagent reported, which
+ * says nothing new - the last one they sent or scheduled. Raw rather than
+ * expanded: `/pr-review <url>` says what was asked in a line, where the prompt
+ * behind it says how to do it in a page.
+ */
+export function latestRequest(req: AgentSendRequest): string | null {
+  if (req.text.trim() !== '') return req.text;
+  const said = req.history.findLast((m) => m.role === 'user' || m.role === 'scheduled');
+  return said === undefined ? null : messageText(said);
+}
+
 /** The clock as a message, or nothing when there is no clock to send. */
 function timeMessages(timeFragment: string | null): AgentWireMessage[] {
   return timeFragment === null ? [] : [{ role: 'user', content: timeFragment }];
@@ -1218,6 +1237,7 @@ export class AgentService {
         threadId: req.threadId,
         cwd: req.cwd,
         messages,
+        request: latestRequest(req),
         tools,
         deferredTools: deferred,
         serverTools: turnServerTools(ctx.settings, {
@@ -1452,6 +1472,7 @@ export class AgentService {
               callId: call.id,
               command,
               cwd: run.cwd,
+              request: run.request,
               signal: ctx.signal,
               // Auto mode answers some of these with a model, and a model that
               // was asked was billed. It lands in the turn that caused it
@@ -1635,6 +1656,7 @@ export class AgentService {
           streamId: run.taskId,
           threadId: run.taskId,
           cwd: run.cwd,
+          request: null,
           messages: [
             {
               role: 'system',

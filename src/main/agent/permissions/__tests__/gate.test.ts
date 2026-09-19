@@ -49,6 +49,7 @@ const request = (
   callId: 'call-1',
   command,
   cwd: '/repo',
+  request: 'run the tests',
   signal,
   ...overrides
 });
@@ -259,11 +260,11 @@ describe('PermissionGate, in auto mode', () => {
     verdict: 'safe' | 'ask' | null,
     usage: AgentTurnUsage | null = null
   ): { auto: AutoApprove; seen: Array<{ command: string; cwd: string }> } {
-    const seen: Array<{ command: string; cwd: string }> = [];
+    const seen: Array<{ command: string; cwd: string; request: string | null }> = [];
     return {
       seen,
-      auto: async ({ command, cwd }) => {
-        seen.push({ command, cwd });
+      auto: async ({ command, cwd, request }) => {
+        seen.push({ command, cwd, request });
         return Promise.resolve({ verdict, usage });
       }
     };
@@ -273,7 +274,7 @@ describe('PermissionGate, in auto mode', () => {
     const { auto, seen } = classifier('safe');
 
     await expect(gate(auto).check(request('npm test'))).resolves.toBe('run');
-    expect(seen).toEqual([{ command: 'npm test', cwd: '/repo' }]);
+    expect(seen).toEqual([{ command: 'npm test', cwd: '/repo', request: 'run the tests' }]);
     expect(asks).toHaveLength(0);
   });
 
