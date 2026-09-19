@@ -479,11 +479,28 @@ export function collectPaneIds(node: PaneNode): string[] {
 
 /** Special/pinned tabs that should not be auto-selected when normal tabs are closed */
 /**
- * Tab types for pinned tools Fleet no longer has: Artifacts (folded into the
- * old Kanban view) and Kanban itself. A saved workspace still carries them, and
- * nothing renders them, so a load that kept them would show a blank tab.
+ * Tab and pane types for tools Fleet no longer has: Artifacts (folded into the
+ * old Kanban view), Kanban itself, and the Pi agent. A saved workspace still
+ * carries them, and nothing renders them, so a load that kept them would show a
+ * blank tab - or, for a leaf, fall back to a terminal.
  */
-const DEFUNCT_TAB_TYPES = new Set(['artifacts', 'kanban', 'images', 'chat']);
+const DEFUNCT_TAB_TYPES = new Set(['artifacts', 'kanban', 'images', 'chat', 'pi']);
+
+/** Drop leaves of a defunct pane type from a saved split; null when none are left. */
+function pruneDefunctLeaves(root: PaneNode): PaneNode | null {
+  return collectPaneLeafs(root)
+    .filter((leaf) => DEFUNCT_TAB_TYPES.has(leaf.paneType ?? ''))
+    .reduce<PaneNode | null>((node, leaf) => node && removePaneFromTree(node, leaf.id), root);
+}
+
+/** Saved tabs as a load should see them: defunct tabs and panes gone, then migrated. */
+function restoreTabs(tabs: SavedTab[]): Tab[] {
+  return tabs.flatMap((t) => {
+    if (DEFUNCT_TAB_TYPES.has(t.type ?? '')) return [];
+    const splitRoot = pruneDefunctLeaves(t.splitRoot);
+    return splitRoot ? [migrateTab({ ...t, splitRoot })] : [];
+  });
+}
 
 const SPECIAL_TAB_TYPES = new Set(['annotate', 'settings', 'sessions']);
 
@@ -1209,9 +1226,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       label: workspace.label,
       tabCount: workspace.tabs.length
     });
-    const migratedTabs = workspace.tabs
-      .filter((t) => !DEFUNCT_TAB_TYPES.has(t.type ?? ''))
-      .map(migrateTab);
+    const migratedTabs = restoreTabs(workspace.tabs);
     const migrated = applyToolVisibility(
       {
         ...workspace,
@@ -1304,9 +1319,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       getFirstLeafCwd(resolvedTarget.tabs[0]?.splitRoot) ?? resolvedTarget.tabs[0]?.cwd;
     set((state) => {
       const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
-      const migratedTabs = target.tabs
-        .filter((t) => !DEFUNCT_TAB_TYPES.has(t.type ?? ''))
-        .map(migrateTab);
+      const migratedTabs = restoreTabs(target.tabs);
       const migrated = applyToolVisibility(
         {
           ...target,

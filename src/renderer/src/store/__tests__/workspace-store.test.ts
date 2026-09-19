@@ -337,8 +337,49 @@ describe('switchWorkspace', () => {
     } as unknown as Workspace;
     useWorkspaceStore.getState().switchWorkspace(legacy);
     const state = useWorkspaceStore.getState();
-    expect(state.workspace.tabs.some((t) => t.type === 'artifacts')).toBe(false);
+    expect(state.workspace.tabs.some((t) => t.id === 'tab-art')).toBe(false);
     expect(state.workspace.tabs.some((t) => t.id === 'tab-kanban')).toBe(false);
+  });
+
+  it('drops a legacy Pi tab and Pi split panes on load (#469)', () => {
+    // Pi left the union in #493; a saved layout is the only place it survives.
+    const legacy = {
+      id: 'ws-pi',
+      label: 'Legacy Pi',
+      activePaneId: 'leaf-pi-split',
+      tabs: [
+        {
+          id: 'tab-pi',
+          label: 'Pi Agent',
+          labelIsCustom: true,
+          cwd: '/home',
+          type: 'pi',
+          splitRoot: { type: 'leaf', id: 'leaf-pi', cwd: '/home', paneType: 'pi' }
+        },
+        {
+          id: 'tab-term',
+          label: 'Shell',
+          labelIsCustom: false,
+          cwd: '/home',
+          type: 'terminal',
+          splitRoot: {
+            type: 'split',
+            direction: 'horizontal',
+            ratio: 0.5,
+            children: [
+              { type: 'leaf', id: 'leaf-term', cwd: '/home', paneType: 'terminal' },
+              { type: 'leaf', id: 'leaf-pi-split', cwd: '/home', paneType: 'pi' }
+            ]
+          }
+        }
+      ]
+    } as unknown as Workspace;
+    useWorkspaceStore.getState().loadWorkspace(legacy);
+    const state = useWorkspaceStore.getState();
+    expect(state.workspace.tabs.some((t) => t.id === 'tab-pi')).toBe(false);
+    const term = state.workspace.tabs.find((t) => t.id === 'tab-term');
+    expect(term && collectPaneIds(term.splitRoot)).toEqual(['leaf-term']);
+    expect(state.activePaneId).toBe('leaf-term');
   });
 });
 

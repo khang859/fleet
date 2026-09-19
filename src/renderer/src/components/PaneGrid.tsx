@@ -163,6 +163,12 @@ type PaneFrameProps = {
   isActive: boolean;
   /** Non-terminal panes (file/markdown/image/pdf) have no activity tracking and aren't "agents" - they still get the focus lift and status ring, but not the status glyph. */
   showGlyph?: boolean;
+  /**
+   * Makes a press anywhere in the pane focus it, before the pane's own handlers
+   * (and so before any pane shortcut) run. Terminals leave it unset: they claim
+   * focus themselves on focus and click, and a third handler would only repeat it.
+   */
+  onPaneFocus?: (paneId: string) => void;
   children: React.ReactNode;
 };
 
@@ -187,6 +193,7 @@ function PaneFrame({
   paneId,
   isActive,
   showGlyph = true,
+  onPaneFocus,
   children
 }: PaneFrameProps): React.JSX.Element {
   const activityState = useNotificationStore((s) => s.activities.get(paneId)?.state);
@@ -200,6 +207,7 @@ function PaneFrame({
       className={`h-full rounded-lg transition-shadow duration-150 ${
         isActive ? 'shadow-lg shadow-black/30' : ''
       }`}
+      onPointerDownCapture={onPaneFocus ? () => onPaneFocus(paneId) : undefined}
     >
       {/* No border. A pane is bounded by the gutter around it, its own rounded
           ground, and its title bar; drawing an edge as well only restated what
@@ -225,9 +233,17 @@ function PaneFrame({
 
 type ViewerPaneType = 'file' | 'markdown' | 'image' | 'pdf';
 
-function isViewerPaneType(paneType: PaneLeaf['paneType']): paneType is ViewerPaneType {
+/**
+ * What a leaf gets when Fleet has nothing to render it with: a pane type from
+ * an older build, or an SSH browser that lost its host. Deliberately inert -
+ * falling back to a terminal here is how a stale layout used to spawn shells.
+ */
+function UnsupportedPane({ paneType }: { paneType: string }): React.JSX.Element {
   return (
-    paneType === 'file' || paneType === 'markdown' || paneType === 'image' || paneType === 'pdf'
+    <div className="h-full w-full flex flex-col items-center justify-center gap-2 bg-neutral-900 text-sm px-6 text-center">
+      <div className="text-neutral-400">This pane can&apos;t be shown</div>
+      <div className="text-neutral-500 font-mono text-xs break-all">{paneType}</div>
+    </div>
   );
 }
 
@@ -392,104 +408,113 @@ function PaneGridImpl({
       <div ref={gridRef} className="h-full w-full" style={{ position: 'relative' }}>
         {/* Terminal panes — flat keyed siblings, never unmounted by tree changes */}
         {layout.leaves.map((leaf) => {
-          if (leaf.node.paneType === 'agent') {
-            return (
-              <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
-                {/* No PaneHeader: like the other non-terminal panes, the agent
-                  pane owns its own chrome and has no live cwd to show. */}
-                <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                  <Suspense fallback={PANE_FALLBACK}>
-                    <AgentPane
-                      paneId={leaf.id}
-                      cwd={leaf.node.cwd}
-                      sessionId={leaf.node.agentSessionId}
-                      terminalBackground={terminalBackground}
-                      slideshowFrame={slideshowFrame}
-                    />
-                  </Suspense>
-                </PaneFrame>
-              </div>
-            );
-          }
-          if (leaf.node.paneType === 'ssh-browser' && leaf.node.remoteHost) {
-            const host = leaf.node.remoteHost;
-            return (
-              <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
-                <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                  <Suspense fallback={PANE_FALLBACK}>
-                    <SshBrowserPane
-                      paneId={leaf.id}
-                      host={host}
-                      initialPath={leaf.node.remotePath}
-                    />
-                  </Suspense>
-                </PaneFrame>
-              </div>
-            );
-          }
-          const viewerType = leaf.node.paneType;
-          if (isViewerPaneType(viewerType)) {
-            const node = leaf.node;
-            const remote =
-              node.remoteHost && node.remotePath
-                ? { host: node.remoteHost, path: node.remotePath }
-                : null;
-            // Remote files are materialised into the local cache first, so every
-            // viewer below sees an ordinary local path and needs no SSH awareness.
-            return (
-              <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
-                <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                  <Suspense fallback={PANE_FALLBACK}>
-                    {remote ? (
-                      <RemoteFileGate host={remote.host} remotePath={remote.path}>
-                        {(fetched) => (
-                          <ViewerPane
-                            paneType={viewerType}
-                            paneId={leaf.id}
-                            filePath={fetched.localPath}
-                            remote={{ ...remote, mtimeMs: fetched.mtimeMs }}
-                          />
-                        )}
-                      </RemoteFileGate>
-                    ) : (
-                      <ViewerPane
-                        paneType={viewerType}
-                        paneId={leaf.id}
-                        filePath={node.filePath ?? ''}
-                        pathContext={node.pathContext}
-                        openTarget={node.openTarget}
-                      />
-                    )}
-                  </Suspense>
-                </PaneFrame>
-              </div>
-            );
-          }
-          return (
+          const node = leaf.node;
+          const isActive = leaf.id === activePaneId;
+          const frame = (content: React.ReactNode): React.JSX.Element => (
             <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
-              {/* The glyph moved into the title bar, which the terminal draws
-                itself - leaving it here too would put it under the actions. */}
-              <PaneFrame paneId={leaf.id} isActive={leaf.id === activePaneId} showGlyph={false}>
-                <div className="flex-1 min-h-0">
-                  {/* The title bar is the terminal's own now, so that the pane
-                    actions can live in it instead of over the output. */}
-                  <TerminalLeaf
-                    paneId={leaf.id}
-                    node={leaf.node}
-                    isActive={leaf.id === activePaneId}
-                    onPaneFocus={onPaneFocus}
-                    serializedContent={serializedPanes?.get(leaf.id) ?? leaf.node.serializedContent}
-                    fontFamily={fontFamily}
-                    fontSize={fontSize}
-                    scrollbackSize={scrollbackSize}
-                    terminalTheme={terminalTheme}
-                    terminalBackground={terminalBackground}
-                    slideshowFrame={slideshowFrame}
-                  />
-                </div>
+              {/* No PaneHeader: the non-terminal panes own their chrome. */}
+              <PaneFrame
+                paneId={leaf.id}
+                isActive={isActive}
+                showGlyph={false}
+                onPaneFocus={onPaneFocus}
+              >
+                <Suspense fallback={PANE_FALLBACK}>{content}</Suspense>
               </PaneFrame>
             </div>
           );
+          switch (node.paneType) {
+            // No paneType is the legacy terminal leaf.
+            case undefined:
+            case 'terminal':
+              return (
+                <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
+                  {/* The glyph moved into the title bar, which the terminal draws
+                    itself - leaving it here too would put it under the actions. */}
+                  <PaneFrame paneId={leaf.id} isActive={isActive} showGlyph={false}>
+                    <div className="flex-1 min-h-0">
+                      {/* The title bar is the terminal's own now, so that the pane
+                        actions can live in it instead of over the output. */}
+                      <TerminalLeaf
+                        paneId={leaf.id}
+                        node={node}
+                        isActive={isActive}
+                        onPaneFocus={onPaneFocus}
+                        serializedContent={serializedPanes?.get(leaf.id) ?? node.serializedContent}
+                        fontFamily={fontFamily}
+                        fontSize={fontSize}
+                        scrollbackSize={scrollbackSize}
+                        terminalTheme={terminalTheme}
+                        terminalBackground={terminalBackground}
+                        slideshowFrame={slideshowFrame}
+                      />
+                    </div>
+                  </PaneFrame>
+                </div>
+              );
+            case 'agent':
+              return frame(
+                <AgentPane
+                  paneId={leaf.id}
+                  cwd={node.cwd}
+                  sessionId={node.agentSessionId}
+                  terminalBackground={terminalBackground}
+                  slideshowFrame={slideshowFrame}
+                />
+              );
+            case 'ssh-browser':
+              return frame(
+                node.remoteHost ? (
+                  <SshBrowserPane
+                    paneId={leaf.id}
+                    host={node.remoteHost}
+                    initialPath={node.remotePath}
+                  />
+                ) : (
+                  <UnsupportedPane paneType={node.paneType} />
+                )
+              );
+            case 'file':
+            case 'markdown':
+            case 'image':
+            case 'pdf': {
+              const viewerType = node.paneType;
+              const remote =
+                node.remoteHost && node.remotePath
+                  ? { host: node.remoteHost, path: node.remotePath }
+                  : null;
+              // Remote files are materialised into the local cache first, so every
+              // viewer below sees an ordinary local path and needs no SSH awareness.
+              return frame(
+                remote ? (
+                  <RemoteFileGate host={remote.host} remotePath={remote.path}>
+                    {(fetched) => (
+                      <ViewerPane
+                        paneType={viewerType}
+                        paneId={leaf.id}
+                        filePath={fetched.localPath}
+                        remote={{ ...remote, mtimeMs: fetched.mtimeMs }}
+                      />
+                    )}
+                  </RemoteFileGate>
+                ) : (
+                  <ViewerPane
+                    paneType={viewerType}
+                    paneId={leaf.id}
+                    filePath={node.filePath ?? ''}
+                    pathContext={node.pathContext}
+                    openTarget={node.openTarget}
+                  />
+                )
+              );
+            }
+            default: {
+              // A paneType added to the union without a branch above fails to
+              // typecheck here. At runtime this is a value from older saved data.
+              const unhandled: never = node.paneType;
+              return frame(<UnsupportedPane paneType={String(unhandled)} />);
+            }
+          }
         })}
 
         {/* Resize handles */}
