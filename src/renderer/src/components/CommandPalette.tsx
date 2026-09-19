@@ -331,7 +331,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
             onValueChange={setSearch}
             placeholder="Search actions..."
             autoFocus
-            className="h-12 w-full bg-transparent text-[15px] text-white outline-none placeholder:text-neutral-500 focus-ring"
+            className="h-12 w-full bg-transparent text-[15px] text-white outline-none placeholder:text-neutral-500"
           />
         </div>
       ) : (

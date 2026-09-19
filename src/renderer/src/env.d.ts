@@ -2,6 +2,7 @@
 
 import type { FleetApi } from '../../preload/index';
 import type { Terminal } from '@xterm/xterm';
+import type { Command } from './lib/commands';
 
 declare module 'react' {
   interface CSSProperties {
@@ -18,6 +19,8 @@ declare global {
       stores: Record<string, { getState: () => unknown }>;
       /** Live xterm instances by paneId, for inspecting a pane's buffer. */
       terminals: Map<string, Terminal>;
+      /** The command palette's commands, for `npm run drive -- cmd`. */
+      commands: () => Command[];
     };
   }
 }

@@ -46,9 +46,11 @@ export function CommandInput(
 ): React.JSX.Element {
   return (
     <div className="flex items-center border-b border-neutral-800 px-4">
+      {/* No focus-ring: the palette's search box always holds focus, and the
+          ring was clipped by the palette's top edge. */}
       <CommandPrimitive.Input
         {...props}
-        className="h-12 w-full bg-transparent text-[15px] text-white outline-none placeholder:text-neutral-500 focus-ring"
+        className="h-12 w-full bg-transparent text-[15px] text-white outline-none placeholder:text-neutral-500"
       />
     </div>
   );

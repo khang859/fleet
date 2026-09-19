@@ -26,6 +26,11 @@ export function deriveDebugPort(appPath: string, override?: string): number {
   return PORT_BASE + (hash % PORT_SPAN);
 }
 
+/** A path under the checkout's `.fleet-drive/` directory (gitignored). */
+export function driveFilePath(cwd: string, ...parts: string[]): string {
+  return join(cwd, '.fleet-drive', ...parts);
+}
+
 export function sessionFilePath(cwd: string): string {
-  return join(cwd, '.fleet-drive', 'session.json');
+  return driveFilePath(cwd, 'session.json');
 }

@@ -32,3 +32,8 @@ curl -s http://localhost:<cdp-port>/json/list | grep '"url"'
 ```
 
 `lsof -nP -iTCP -sTCP:LISTEN | grep Electron` finds the CDP port when the session file is untrustworthy.
+
+## Update (2026-09-19): prevented at the source
+
+A second `npm run dev` in the same checkout now exits before it starts anything, and `npm run drive -- stop` stops the running one.
+See `2026-09-19-duplicate-dev-instances-and-sigterm.md`.
