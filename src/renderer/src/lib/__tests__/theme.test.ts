@@ -101,8 +101,8 @@ describe('fleet-dark / fleet-light cool-gray retint', () => {
     expect(t.surface3).toBe('#e5e8eb');
     expect(t.text).toBe('#16181b');
     expect(t.textSecondary).toBe('#3e4043');
-    expect(t.textMuted).toBe('#717376');
-    expect(t.textSubtle).toBe('#9fa2a5');
+    expect(t.textMuted).toBe('#5f6164');
+    expect(t.textSubtle).toBe('#6b6d70');
   });
 
   it('does not regress WCAG contrast for fleet-dark after retinting', () => {
@@ -119,7 +119,24 @@ describe('fleet-dark / fleet-light cool-gray retint', () => {
     expect(contrastRatio(t.text, t.bg)).toBeCloseTo(16.58, 1);
     expect(contrastRatio(t.text, t.surface)).toBeCloseTo(17.72, 1);
     expect(contrastRatio(t.textSecondary, t.bg)).toBeCloseTo(9.7, 1);
-    expect(contrastRatio(t.textMuted, t.bg)).toBeCloseTo(4.43, 1);
-    expect(contrastRatio(t.textSubtle, t.bg)).toBeCloseTo(2.39, 1);
+    expect(contrastRatio(t.textMuted, t.bg)).toBeCloseTo(5.79, 1);
+    expect(contrastRatio(t.textSubtle, t.bg)).toBeCloseTo(4.84, 1);
+  });
+
+  it('keeps every fleet-light text token at or above the WCAG AA 4.5:1 floor', () => {
+    // textMuted was 4.43 and textSubtle 2.39, so the sidebar section labels
+    // ("Agents", "Tools", "Workspaces") read as disabled controls.
+    const t = deriveAppTheme(TERMINAL_THEMES['fleet-light']);
+    for (const token of ['text', 'textSecondary', 'textMuted', 'textSubtle'] as const) {
+      expect(contrastRatio(t[token], t.bg)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('keeps the fleet-light text tokens in descending contrast order', () => {
+    const t = deriveAppTheme(TERMINAL_THEMES['fleet-light']);
+    const ratios = [t.text, t.textSecondary, t.textMuted, t.textSubtle].map((c) =>
+      contrastRatio(c, t.bg)
+    );
+    expect(ratios).toEqual([...ratios].sort((a, b) => b - a));
   });
 });

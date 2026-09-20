@@ -158,10 +158,14 @@ export const TERMINAL_THEMES: Record<TerminalThemeId, TerminalThemeDefinition> =
       surface: '#fdffff',
       surface2: '#eff2f6',
       surface3: '#e5e8eb',
+      // Contrast ratios against bg (#f5f7fb): 16.58, 9.70, 5.79, 4.84. The two
+      // lower tokens were #717376 (4.43) and #9fa2a5 (2.39), both under the
+      // 4.5 WCAG AA floor, which left the sidebar section labels reading as
+      // disabled controls rather than headings.
       text: '#16181b',
       textSecondary: '#3e4043',
-      textMuted: '#717376',
-      textSubtle: '#9fa2a5'
+      textMuted: '#5f6164',
+      textSubtle: '#6b6d70'
     }
   },
   dracula: {
