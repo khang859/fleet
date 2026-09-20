@@ -3,12 +3,14 @@ import { CopilotSessionStore } from './session-store';
 import { CopilotSocketServer } from './socket-server';
 import { CopilotWindow } from './copilot-window';
 import { ConversationReader } from './conversation-reader';
-import { registerCopilotIpcHandlers } from './ipc-handlers';
+import { registerCopilotIpcHandlers, findPaneForPid } from './ipc-handlers';
+import { CopilotPaneActivity } from './pane-activity';
 import * as hookInstaller from './hook-installer';
 import type { SettingsStore } from '../settings-store';
 import type { BrowserWindow } from 'electron';
 import type { PtyManager } from '../pty-manager';
 import type { LayoutStore } from '../layout-store';
+import type { ActivityTracker } from '../activity-tracker';
 import { IPC_CHANNELS } from '../../shared/constants';
 
 const log = createLogger('copilot');
@@ -19,6 +21,7 @@ let sessionStore: CopilotSessionStore | null = null;
 let socketServer: CopilotSocketServer | null = null;
 let copilotWindow: CopilotWindow | null = null;
 let conversationReader: ConversationReader | null = null;
+let paneActivity: CopilotPaneActivity | null = null;
 let serviceState: CopilotServiceState = 'idle';
 let cachedSettingsStore: SettingsStore | null = null;
 /** Queued toggle to run after current transition completes */
@@ -27,7 +30,8 @@ export async function initCopilot(
   settingsStore: SettingsStore,
   ptyManager: PtyManager,
   layoutStore: LayoutStore,
-  getMainWindow: () => BrowserWindow | null
+  getMainWindow: () => BrowserWindow | null,
+  activityTracker: ActivityTracker
 ): Promise<void> {
   log.info('initCopilot called', { platform: process.platform });
 
@@ -41,6 +45,10 @@ export async function initCopilot(
   socketServer = new CopilotSocketServer(sessionStore);
   copilotWindow = new CopilotWindow();
   conversationReader = new ConversationReader();
+  paneActivity = new CopilotPaneActivity(
+    (paneId, state) => activityTracker.setHookState(paneId, state),
+    (pid) => findPaneForPid(ptyManager, pid)
+  );
   registerCopilotIpcHandlers(
     sessionStore,
     socketServer,
@@ -123,7 +131,12 @@ async function startCopilotServices(): Promise<void> {
       return;
     }
 
-    copilotWindow.send(IPC_CHANNELS.COPILOT_SESSIONS, sessionStore.getSessions());
+    const sessions = sessionStore.getSessions();
+    copilotWindow.send(IPC_CHANNELS.COPILOT_SESSIONS, sessions);
+
+    // The hooks know what each agent is really doing; hand that to the main
+    // window's pane badges, which otherwise guess from terminal output.
+    paneActivity?.sync(sessions);
 
     if (conversationReader) {
       const activeSessions = sessionStore.getSessions();
@@ -211,6 +224,7 @@ async function stopCopilotServices(): Promise<void> {
   if (sessionStore) {
     sessionStore.clear();
   }
+  paneActivity?.clear();
 
   serviceState = 'idle';
   log.info('copilot services stopped');

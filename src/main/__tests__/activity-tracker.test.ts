@@ -244,4 +244,110 @@ describe('ActivityTracker', () => {
 
     expect(tracker.getCounts()).toEqual({ needsMe: 0, error: 0, working: 0 });
   });
+  describe('hook state', () => {
+    it('lets a hook state override the heuristic one', () => {
+      tracker.trackPane('pane-1');
+      tracker.onData('pane-1');
+      expect(tracker.getState('pane-1')).toBe('working');
+
+      tracker.setHookState('pane-1', 'needs_me');
+
+      expect(tracker.getState('pane-1')).toBe('needs_me');
+    });
+
+    it('ignores output bursts while a hook owns the pane', () => {
+      tracker.trackPane('pane-1');
+      tracker.setHookState('pane-1', 'idle');
+
+      tracker.onData('pane-1');
+
+      expect(tracker.getState('pane-1')).toBe('idle');
+    });
+
+    it('ignores the permission regex while a hook owns the pane', () => {
+      tracker.trackPane('pane-1');
+      tracker.setHookState('pane-1', 'working');
+
+      // A `(y/n)` in a build log is what onNeedsMe fires on — the hook says the
+      // agent is busy, so the false alarm must not reach the badge.
+      tracker.onNeedsMe('pane-1');
+
+      expect(tracker.getState('pane-1')).toBe('working');
+    });
+
+    it('ignores the silence timer while a hook owns the pane', () => {
+      getProcessName.mockReturnValue('claude');
+      tracker.trackPane('pane-1');
+      tracker.onData('pane-1');
+      tracker.setHookState('pane-1', 'working');
+
+      vi.advanceTimersByTime(5001);
+
+      expect(tracker.getState('pane-1')).toBe('working');
+    });
+
+    it('hands the pane back to the heuristics when the hook state is cleared', () => {
+      tracker.trackPane('pane-1');
+      tracker.setHookState('pane-1', 'idle');
+      tracker.setHookState('pane-1', null);
+
+      tracker.onData('pane-1');
+
+      expect(tracker.getState('pane-1')).toBe('working');
+    });
+
+    it('lets exit win over a live hook state', () => {
+      tracker.trackPane('pane-1');
+      tracker.setHookState('pane-1', 'working');
+
+      tracker.onExit('pane-1', 1);
+
+      expect(tracker.getState('pane-1')).toBe('error');
+    });
+
+    it('emits a state change for the hook state', () => {
+      const callback = vi.fn();
+      eventBus.on('activity-state-change', callback);
+
+      tracker.trackPane('pane-1');
+      tracker.setHookState('pane-1', 'needs_me');
+
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({ paneId: 'pane-1', state: 'needs_me' })
+      );
+    });
+
+    it('releases a stale hook state once the pane is back at a shell prompt', () => {
+      // Quitting Claude Code with `/exit` sends no closing hook, so the poll is
+      // the only thing that can notice the agent has gone.
+      getProcessName.mockReturnValue('claude');
+      tracker.trackPane('pane-1');
+      tracker.setHookState('pane-1', 'working');
+
+      getProcessName.mockReturnValue('zsh');
+      vi.advanceTimersByTime(2000);
+      tracker.onData('pane-1');
+      vi.advanceTimersByTime(5001);
+
+      expect(tracker.getState('pane-1')).toBe('idle');
+    });
+
+    it('keeps the hook state while the agent is still the foreground process', () => {
+      getProcessName.mockReturnValue('claude');
+      tracker.trackPane('pane-1');
+      tracker.setHookState('pane-1', 'working');
+
+      vi.advanceTimersByTime(2000);
+      tracker.onNeedsMe('pane-1');
+
+      expect(tracker.getState('pane-1')).toBe('working');
+    });
+
+    it('counts a hook needs_me pane for the OS chrome badge', () => {
+      tracker.trackPane('pane-1');
+      tracker.setHookState('pane-1', 'needs_me');
+
+      expect(tracker.getCounts().needsMe).toBe(1);
+    });
+  });
 });

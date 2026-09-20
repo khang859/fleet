@@ -26,7 +26,7 @@ function isClaudeInstalled(): boolean {
  * Find the Fleet pane whose shell is the parent of the given PID.
  * Returns the paneId or null if no match found.
  */
-function findPaneForPid(ptyManager: PtyManager, pid: number): string | null {
+export function findPaneForPid(ptyManager: PtyManager, pid: number): string | null {
   const paneIds = ptyManager.paneIds();
   const ptyPids = paneIds.map((id) => ({ paneId: id, pid: ptyManager.getPid(id) }));
   log.debug('findPaneForPid', { claudePid: pid, ptyPids });

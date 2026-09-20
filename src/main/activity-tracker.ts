@@ -24,6 +24,8 @@ type PaneState = {
   lastOutputAt: number;
   exited: boolean;
   remote: boolean;
+  /** Ground truth from a Claude Code hook, or null when no hook session owns the pane. */
+  hookState: ActivityState | null;
 };
 
 export type ActivityTrackerOptions = {
@@ -52,7 +54,8 @@ export class ActivityTracker {
       silenceTimer: null,
       lastOutputAt: 0,
       exited: false,
-      remote: false
+      remote: false,
+      hookState: null
     });
   }
 
@@ -93,6 +96,23 @@ export class ActivityTracker {
     this.setState(paneId, 'needs_me');
   }
 
+  /**
+   * Report what a Claude Code hook says this pane is doing. Hooks are the agent
+   * describing itself, so they outrank every heuristic in here - the output
+   * bursts, the silence timer, and the permission regex that cannot tell a real
+   * prompt from a `(y/n)` in a build log.
+   *
+   * Pass null when the session ends, which hands the pane back to the
+   * heuristics without changing its current state.
+   */
+  setHookState(paneId: string, state: ActivityState | null): void {
+    const pane = this.panes.get(paneId);
+    if (!pane || pane.exited) return;
+
+    pane.hookState = state;
+    if (state) this.setState(paneId, state, true);
+  }
+
   // The user typed into the pane — the resolution edge for a permission prompt.
   // Clears needs_me so the pane reflects that the agent is no longer blocked.
   onUserInput(paneId: string): void {
@@ -115,6 +135,10 @@ export class ActivityTracker {
         remote: false
       });
     }
+
+    // The process is gone, so no hook speaks for this pane any more. Clearing
+    // first lets the exit state through the hook guard in setState.
+    pane.hookState = null;
 
     pane.exited = true;
     if (pane.silenceTimer) {
@@ -189,6 +213,16 @@ export class ActivityTracker {
 
       const isAtShell = SHELL_NAMES.has(processName);
 
+      // A hook state can outlive its session: quitting Claude Code with `/exit`
+      // sends no closing hook, so nothing would ever release the pane. The
+      // foreground process dropping back to a plain shell means no agent is left
+      // to speak for it, so hand the pane back to the heuristics. A hook event
+      // that arrives after a false release simply takes the pane again.
+      if (pane.hookState !== null && isAtShell) {
+        log.debug('releasing stale hook state', { paneId, processName });
+        pane.hookState = null;
+      }
+
       // If shell is at prompt and we're currently working, the command finished.
       // Let the silence timer handle the transition — process polling just
       // provides a confirming signal, not an override.
@@ -212,9 +246,14 @@ export class ActivityTracker {
     }
   }
 
-  private setState(paneId: string, newState: ActivityState): void {
+  private setState(paneId: string, newState: ActivityState, fromHook = false): void {
     const pane = this.panes.get(paneId);
     if (!pane) return;
+
+    // A live hook session owns the pane's state. Heuristic callers still run -
+    // they keep lastOutputAt and the silence timer current - but they may not
+    // move a pane that the agent is reporting on itself.
+    if (pane.hookState !== null && !fromHook) return;
 
     // Dedup — don't emit if state hasn't changed
     if (pane.state === newState) return;
