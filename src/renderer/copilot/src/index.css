@@ -1,6 +1,16 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/* This window is dark whatever the app theme is - every surface in it is a
+   fixed neutral, and nothing here reads the theme. Say so, or Chromium paints
+   the native controls in light chrome whenever the OS is set to light, and a
+   checkbox or a text field lands pale on a dark panel. The main window sets
+   the same property from the resolved app theme; this one has no theme to
+   resolve, so it states the constant. */
+:root {
+  color-scheme: dark;
+}
+
 /* Pixel art rendering */
 .pixelated {
   image-rendering: pixelated;
