@@ -46,7 +46,7 @@ export async function initCopilot(
   copilotWindow = new CopilotWindow();
   conversationReader = new ConversationReader();
   paneActivity = new CopilotPaneActivity(
-    (paneId, state) => activityTracker.setHookState(paneId, state),
+    (paneId, state, pid) => activityTracker.setHookState(paneId, state, pid),
     (pid) => findPaneForPid(ptyManager, pid)
   );
   registerCopilotIpcHandlers(

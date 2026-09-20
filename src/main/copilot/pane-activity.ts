@@ -1,10 +1,11 @@
 import { createLogger } from '../logger';
+import { isProcessAlive } from '../process-liveness';
 import type { ActivityState, CopilotSession, CopilotSessionPhase } from '../../shared/types';
 
 const log = createLogger('copilot:pane-activity');
 
 /** Sets the hook-derived state for a pane, or clears it when given null. */
-export type SetHookState = (paneId: string, state: ActivityState | null) => void;
+export type SetHookState = (paneId: string, state: ActivityState | null, pid?: number) => void;
 
 /** Resolves the Fleet pane that owns a Claude Code process, or null. */
 export type FindPaneForPid = (pid: number) => string | null;
@@ -45,7 +46,8 @@ export class CopilotPaneActivity {
 
   constructor(
     private readonly setHookState: SetHookState,
-    private readonly findPaneForPid: FindPaneForPid
+    private readonly findPaneForPid: FindPaneForPid,
+    private readonly isAlive: (pid: number) => boolean = isProcessAlive
   ) {}
 
   /** Apply the live session list. Sessions that have gone release their pane. */
@@ -60,8 +62,14 @@ export class CopilotPaneActivity {
       const paneId = this.resolvePane(session);
       if (!paneId) continue;
 
-      const state = phaseToActivityState(session.phase);
-      if (state) this.setHookState(paneId, state);
+      // A session whose process is gone is not describing anything any more.
+      // Claude Code quit with `/exit` sends no closing hook, so the store keeps
+      // the session, and without this check the next hook event from any other
+      // agent would re-assert this dead state onto its pane.
+      const alive = session.pid !== undefined && this.isAlive(session.pid);
+      const state = alive ? phaseToActivityState(session.phase) : null;
+
+      this.setHookState(paneId, state, session.pid);
     }
 
     for (const [sessionId, paneId] of this.paneBySession) {
