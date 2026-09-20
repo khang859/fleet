@@ -50,7 +50,12 @@ export class ErrorBoundary extends Component<Props, State> {
           </pre>
           <button
             onClick={() => window.location.reload()}
-            className="rounded-md bg-fleet-surface-3 px-3 py-1.5 text-sm text-fleet-text transition-colors hover:bg-fleet-surface-3 active:scale-[0.97]"
+            // surface-3 is the top of the ladder, so there is no token above it
+            // to hover to. Mixing toward the text token moves away from the
+            // background in whichever direction the active theme runs, which
+            // stepping to surface-2 would not: that is lighter on a light theme
+            // and darker on a dark one, backwards in both.
+            className="rounded-md bg-fleet-surface-3 px-3 py-1.5 text-sm text-fleet-text transition-colors hover:bg-[color-mix(in_srgb,var(--fleet-surface-3)_85%,var(--fleet-text))] active:scale-[0.97]"
           >
             Reload
           </button>

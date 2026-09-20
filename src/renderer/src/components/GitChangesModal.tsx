@@ -259,7 +259,7 @@ export function GitChangesModal({
                 setFilterText(e.target.value);
                 setActiveFileIndex(0);
               }}
-              className="w-full px-2 py-1 text-xs bg-fleet-surface-2 border border-fleet-border-strong rounded text-fleet-text placeholder-fleet-text-subtle outline-none focus:border-fleet-border-strong"
+              className="w-full px-2 py-1 text-xs bg-fleet-surface-2 border border-fleet-border-strong rounded text-fleet-text placeholder-fleet-text-subtle outline-none focus-ring"
             />
             {filterText && (
               <span className="text-[10px] text-fleet-text-subtle mt-1 block">

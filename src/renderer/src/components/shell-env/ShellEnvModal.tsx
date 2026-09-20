@@ -166,7 +166,7 @@ export function ShellEnvModal({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter variables…"
             aria-label="Filter environment variables"
-            className="h-8 w-full rounded-md border border-white/10 bg-fleet-bg pl-8 pr-3 font-mono text-xs text-fleet-text-secondary placeholder:font-sans placeholder:text-fleet-text-subtle focus-visible:border-fleet-border-strong focus-visible:outline-none"
+            className="h-8 w-full rounded-md border border-fleet-border bg-fleet-bg pl-8 pr-3 font-mono text-xs text-fleet-text-secondary placeholder:font-sans placeholder:text-fleet-text-subtle focus-visible:border-fleet-border-strong focus-visible:outline-none"
           />
         </div>
 
@@ -212,7 +212,7 @@ export function ShellEnvModal({
                         style={{ gridTemplateColumns: `minmax(0, ${keyCh}ch) minmax(0, 1fr) auto` }}
                         className={`group mx-2 grid h-8 items-center rounded-md px-3 font-mono ${
                           isSelected
-                            ? 'bg-fleet-surface-2/60 ring-1 ring-inset ring-white/10'
+                            ? 'bg-fleet-surface-2/60 ring-1 ring-inset ring-fleet-border-strong'
                             : 'hover:bg-fleet-surface-2/50'
                         }`}
                       >
