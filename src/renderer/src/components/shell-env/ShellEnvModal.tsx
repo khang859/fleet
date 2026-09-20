@@ -119,12 +119,12 @@ export function ShellEnvModal({
       <div
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
-        className="flex max-h-[72vh] w-[640px] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900 shadow-2xl duration-150 animate-in fade-in-0 zoom-in-95"
+        className="flex max-h-[72vh] w-[640px] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-fleet-border bg-fleet-surface shadow-2xl duration-150 animate-in fade-in-0 zoom-in-95"
       >
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-neutral-800 px-5 py-3">
-          <div className="flex items-center gap-2 text-neutral-100">
-            <Terminal size={16} className="text-neutral-400" />
+        <div className="flex items-center gap-3 border-b border-fleet-border px-5 py-3">
+          <div className="flex items-center gap-2 text-fleet-text">
+            <Terminal size={16} className="text-fleet-text-muted" />
             <h2 className="text-sm font-semibold">
               {snapshot ? snapshot.shellName : 'Shell Environment'}
             </h2>
@@ -132,7 +132,7 @@ export function ShellEnvModal({
           {snapshot?.cwd && (
             <div
               title={snapshot.cwd}
-              className="flex items-center gap-1.5 rounded-md bg-neutral-800 px-2.5 py-1 text-xs text-neutral-300"
+              className="flex items-center gap-1.5 rounded-md bg-fleet-surface-2 px-2.5 py-1 text-xs text-fleet-text-secondary"
             >
               <span className="max-w-[260px] truncate font-mono">{snapshot.cwd}</span>
             </div>
@@ -140,14 +140,14 @@ export function ShellEnvModal({
           <button
             onClick={() => setRevealAll((v) => !v)}
             onMouseDown={(e) => e.preventDefault()}
-            className="ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 active:scale-95"
+            className="ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-fleet-text-secondary transition hover:bg-fleet-surface-2 active:scale-95"
           >
             {revealAll ? <EyeOff size={13} /> : <Eye size={13} />}
             {revealAll ? 'Hide all' : 'Reveal all'}
           </button>
           <button
             onClick={onClose}
-            className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-white active:scale-90"
+            className="rounded-md p-1.5 text-fleet-text-subtle transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text active:scale-90"
             aria-label="Close shell environment"
           >
             <X size={16} />
@@ -158,7 +158,7 @@ export function ShellEnvModal({
         <div className="relative px-5 py-2.5">
           <Search
             size={14}
-            className="pointer-events-none absolute left-7 top-1/2 -translate-y-1/2 text-neutral-500"
+            className="pointer-events-none absolute left-7 top-1/2 -translate-y-1/2 text-fleet-text-subtle"
           />
           <input
             ref={inputRef}
@@ -166,21 +166,23 @@ export function ShellEnvModal({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter variables…"
             aria-label="Filter environment variables"
-            className="h-8 w-full rounded-md border border-white/10 bg-neutral-950 pl-8 pr-3 font-mono text-xs text-neutral-200 placeholder:font-sans placeholder:text-neutral-600 focus-visible:border-neutral-600 focus-visible:outline-none"
+            className="h-8 w-full rounded-md border border-fleet-border bg-fleet-bg pl-8 pr-3 font-mono text-xs text-fleet-text-secondary placeholder:font-sans placeholder:text-fleet-text-subtle focus-visible:border-fleet-border-strong focus-visible:outline-none"
           />
         </div>
 
         {/* Body */}
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-2">
           {loading ? null : !snapshot ? (
-            <div className="flex h-40 flex-col items-center justify-center gap-2 text-neutral-500">
-              <Terminal size={24} className="text-neutral-600" />
+            <div className="flex h-40 flex-col items-center justify-center gap-2 text-fleet-text-subtle">
+              <Terminal size={24} className="text-fleet-text-subtle" />
               <p className="text-sm">No shell in this pane</p>
             </div>
           ) : visible.length === 0 ? (
             <div className="flex h-40 flex-col items-center justify-center gap-2">
-              <SearchX size={24} className="text-neutral-600" />
-              <p className="text-sm text-neutral-400">No variables match &lsquo;{query}&rsquo;</p>
+              <SearchX size={24} className="text-fleet-text-subtle" />
+              <p className="text-sm text-fleet-text-muted">
+                No variables match &lsquo;{query}&rsquo;
+              </p>
             </div>
           ) : (
             SECTIONS.map((section) => {
@@ -192,12 +194,12 @@ export function ShellEnvModal({
               const keyCh = Math.min(40, Math.max(...rows.map((r) => r.key.length)));
               return (
                 <div key={section.source}>
-                  <div className="sticky top-0 z-10 flex items-center gap-2 bg-neutral-900/95 px-5 pb-2 pt-5 backdrop-blur-sm">
+                  <div className="sticky top-0 z-10 flex items-center gap-2 bg-fleet-surface/95 px-5 pb-2 pt-5 backdrop-blur-sm">
                     <span className={`h-2 w-2 rounded-full ${section.dotClass}`} />
-                    <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-fleet-text-subtle">
                       {section.label}
                     </span>
-                    <span className="text-[11px] text-neutral-600">· {rows.length}</span>
+                    <span className="text-[11px] text-fleet-text-subtle">· {rows.length}</span>
                   </div>
                   {rows.map((v) => {
                     const reveal = revealAll || revealed.has(v.key);
@@ -210,20 +212,20 @@ export function ShellEnvModal({
                         style={{ gridTemplateColumns: `minmax(0, ${keyCh}ch) minmax(0, 1fr) auto` }}
                         className={`group mx-2 grid h-8 items-center rounded-md px-3 font-mono ${
                           isSelected
-                            ? 'bg-neutral-800/60 ring-1 ring-inset ring-white/10'
-                            : 'hover:bg-neutral-800/50'
+                            ? 'bg-fleet-surface-2/60 ring-1 ring-inset ring-fleet-border-strong'
+                            : 'hover:bg-fleet-surface-2/50'
                         }`}
                       >
                         <span
                           className={`truncate pr-4 font-mono text-xs font-medium ${
-                            isSelected ? 'text-neutral-50' : 'text-neutral-200'
+                            isSelected ? 'text-fleet-text' : 'text-fleet-text-secondary'
                           }`}
                         >
                           {v.key}
                         </span>
                         <span
                           title={masked ? undefined : v.value}
-                          className={`truncate font-mono text-xs ${masked ? 'text-neutral-500' : 'text-neutral-400'}`}
+                          className={`truncate font-mono text-xs ${masked ? 'text-fleet-text-subtle' : 'text-fleet-text-muted'}`}
                         >
                           {masked ? '••••••••' : v.value}
                         </span>
@@ -239,7 +241,7 @@ export function ShellEnvModal({
                               title={reveal ? 'Hide value' : 'Reveal value'}
                               aria-label={reveal ? 'Hide value' : 'Reveal value'}
                               aria-pressed={reveal}
-                              className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+                              className="flex h-6 w-6 items-center justify-center rounded-md text-fleet-text-subtle hover:bg-fleet-surface-2 hover:text-fleet-text-secondary"
                             >
                               {reveal ? <EyeOff size={13} /> : <Eye size={13} />}
                             </button>
@@ -249,7 +251,7 @@ export function ShellEnvModal({
                             onMouseDown={(e) => e.preventDefault()}
                             title="Copy value"
                             aria-label="Copy value"
-                            className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+                            className="flex h-6 w-6 items-center justify-center rounded-md text-fleet-text-subtle hover:bg-fleet-surface-2 hover:text-fleet-text-secondary"
                           >
                             {copiedKey === v.key ? (
                               <Check size={13} className="text-emerald-400" />
@@ -269,7 +271,7 @@ export function ShellEnvModal({
 
         {/* Footer */}
         {snapshot && (
-          <div className="flex items-center justify-between border-t border-neutral-800 px-5 py-2 text-[11px] text-neutral-500">
+          <div className="flex items-center justify-between border-t border-fleet-border px-5 py-2 text-[11px] text-fleet-text-subtle">
             <span>
               Snapshot at shell launch ({formatSpawnTime(snapshot.spawnedAt)}) · variables exported
               after launch aren&rsquo;t shown.

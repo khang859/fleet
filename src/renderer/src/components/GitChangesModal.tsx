@@ -215,13 +215,13 @@ export function GitChangesModal({
       showCloseButton={false}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-fleet-border shrink-0">
         <div className="flex items-center gap-3">
-          <GitBranch size={16} className="text-neutral-400" />
-          <span className="text-sm font-medium text-white">
+          <GitBranch size={16} className="text-fleet-text-muted" />
+          <span className="text-sm font-medium text-fleet-text">
             {data?.branch || 'Working Changes'}
           </span>
-          <span className="text-xs text-neutral-500">
+          <span className="text-xs text-fleet-text-subtle">
             {data?.files.length} file{data?.files.length !== 1 ? 's' : ''} changed
             {totalInsertions > 0 && <span className="text-green-400 ml-2">+{totalInsertions}</span>}
             {totalDeletions > 0 && (
@@ -232,13 +232,13 @@ export function GitChangesModal({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setDiffMode(diffMode === 'unified' ? 'split' : 'unified')}
-            className="px-2 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-[0.97]"
+            className="px-2 py-1 text-xs text-fleet-text-muted hover:text-fleet-text rounded hover:bg-fleet-surface-3 transition active:scale-[0.97]"
           >
             {diffMode === 'unified' ? 'Split' : 'Unified'}
           </button>
           <button
             onClick={onClose}
-            className="p-1 text-neutral-500 hover:text-white transition active:scale-90"
+            className="p-1 text-fleet-text-subtle hover:text-fleet-text transition active:scale-90"
           >
             <X size={16} />
           </button>
@@ -248,8 +248,8 @@ export function GitChangesModal({
       {/* Body: sidebar + diff */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* File list sidebar */}
-        <div className="w-60 border-r border-neutral-800 flex flex-col shrink-0">
-          <div className="p-2 border-b border-neutral-800">
+        <div className="w-60 border-r border-fleet-border flex flex-col shrink-0">
+          <div className="p-2 border-b border-fleet-border">
             <input
               ref={filterInputRef}
               type="text"
@@ -259,10 +259,10 @@ export function GitChangesModal({
                 setFilterText(e.target.value);
                 setActiveFileIndex(0);
               }}
-              className="w-full px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded text-white placeholder-neutral-500 outline-none focus:border-neutral-600"
+              className="w-full px-2 py-1 text-xs bg-fleet-surface-2 border border-fleet-border-strong rounded text-fleet-text placeholder-fleet-text-subtle outline-none focus-ring"
             />
             {filterText && (
-              <span className="text-[10px] text-neutral-500 mt-1 block">
+              <span className="text-[10px] text-fleet-text-subtle mt-1 block">
                 {filteredFiles.length} of {data?.files.length} files
               </span>
             )}
@@ -289,7 +289,7 @@ export function GitChangesModal({
               <DiffContent rawDiff={data.diff} mode={diffMode} />
             </Suspense>
           ) : (
-            <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
+            <div className="flex items-center justify-center h-full text-fleet-text-subtle text-sm">
               No diff content
             </div>
           )}
@@ -326,13 +326,13 @@ function ModalShell({
         ref={modalRef}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="relative bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl flex flex-col outline-none"
+        className="relative bg-fleet-surface border border-fleet-border-strong rounded-lg shadow-xl flex flex-col outline-none"
         style={{ width: 'calc(100vw - 64px)', height: 'calc(100vh - 48px)' }}
       >
         {showCloseButton && (
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 z-10 p-1 text-neutral-500 hover:text-white transition active:scale-90"
+            className="absolute top-3 right-3 z-10 p-1 text-fleet-text-subtle hover:text-fleet-text transition active:scale-90"
           >
             <X size={16} />
           </button>
@@ -353,13 +353,13 @@ function StateMessage({
   onClose?: () => void;
 }): React.JSX.Element {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-neutral-500">
+    <div className="flex flex-col items-center justify-center h-full gap-3 text-fleet-text-subtle">
       {icon}
       <span className="text-sm">{message}</span>
       {onClose && (
         <button
           onClick={onClose}
-          className="text-xs text-neutral-600 hover:text-white mt-2 transition active:scale-[0.97]"
+          className="text-xs text-fleet-text-subtle hover:text-fleet-text mt-2 transition active:scale-[0.97]"
         >
           Close
         </button>
@@ -401,16 +401,16 @@ function FileEntry({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-neutral-800 transition-colors active:scale-[0.97] flex items-center gap-2 ${active ? 'bg-neutral-800' : ''}`}
+      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-fleet-surface-2 transition-colors active:scale-[0.97] flex items-center gap-2 ${active ? 'bg-fleet-surface-2' : ''}`}
     >
       <span className={`font-mono text-[10px] ${STATUS_COLORS[file.status]}`}>
         {STATUS_LABELS[file.status]}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="font-medium text-white truncate">{filename}</div>
-        {dir && <div className="text-neutral-500 truncate">{dir}</div>}
+        <div className="font-medium text-fleet-text truncate">{filename}</div>
+        {dir && <div className="text-fleet-text-subtle truncate">{dir}</div>}
       </div>
-      <span className="text-[10px] text-neutral-500 shrink-0">
+      <span className="text-[10px] text-fleet-text-subtle shrink-0">
         {file.insertions > 0 && <span className="text-green-400">+{file.insertions}</span>}
         {file.deletions > 0 && <span className="text-red-400 ml-1">&minus;{file.deletions}</span>}
       </span>

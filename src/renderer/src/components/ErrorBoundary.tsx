@@ -37,20 +37,25 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children;
 
     return (
-      <div className="flex h-full w-full items-center justify-center bg-neutral-950 p-8">
+      <div className="flex h-full w-full items-center justify-center bg-fleet-bg p-8">
         <div className="max-w-md space-y-4 text-center">
-          <div className="text-lg font-medium text-neutral-100">Something went wrong</div>
-          <p className="text-sm text-neutral-400">
+          <div className="text-lg font-medium text-fleet-text">Something went wrong</div>
+          <p className="text-sm text-fleet-text-muted">
             Fleet hit an unexpected error and this view crashed. The details were saved to your
             local logs. You can reload, or send them to us via Settings → Diagnostics → Report a
             Problem.
           </p>
-          <pre className="max-h-32 overflow-auto rounded-md border border-neutral-800 bg-neutral-900 p-3 text-left text-xs text-red-400">
+          <pre className="max-h-32 overflow-auto rounded-md border border-fleet-border bg-fleet-surface p-3 text-left text-xs text-red-400">
             {error.message}
           </pre>
           <button
             onClick={() => window.location.reload()}
-            className="rounded-md bg-neutral-700 px-3 py-1.5 text-sm text-white transition-colors hover:bg-neutral-600 active:scale-[0.97]"
+            // surface-3 is the top of the ladder, so there is no token above it
+            // to hover to. Mixing toward the text token moves away from the
+            // background in whichever direction the active theme runs, which
+            // stepping to surface-2 would not: that is lighter on a light theme
+            // and darker on a dark one, backwards in both.
+            className="rounded-md bg-fleet-surface-3 px-3 py-1.5 text-sm text-fleet-text transition-colors hover:bg-[color-mix(in_srgb,var(--fleet-surface-3)_85%,var(--fleet-text))] active:scale-[0.97]"
           >
             Reload
           </button>

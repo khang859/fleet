@@ -14,12 +14,12 @@ type ShortcutsPanelProps = {
 export function ShortcutsPanel({ isOpen, onClose }: ShortcutsPanelProps): React.JSX.Element | null {
   return (
     <Overlay open={isOpen} onClose={onClose}>
-      <div className="bg-neutral-900 border border-neutral-700 rounded-lg w-[360px] shadow-xl">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
-          <h2 className="text-sm font-semibold text-white">Keyboard Shortcuts</h2>
+      <div className="bg-fleet-surface border border-fleet-border-strong rounded-lg w-[360px] shadow-xl">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-fleet-border">
+          <h2 className="text-sm font-semibold text-fleet-text">Keyboard Shortcuts</h2>
           <button
             onClick={onClose}
-            className="text-neutral-500 transition hover:text-white active:scale-90"
+            className="text-fleet-text-subtle transition hover:text-fleet-text active:scale-90"
           >
             &times;
           </button>
@@ -27,8 +27,8 @@ export function ShortcutsPanel({ isOpen, onClose }: ShortcutsPanelProps): React.
         <div className="p-4 space-y-2">
           {SHORTCUTS.map(({ keys, action }) => (
             <div key={keys} className="flex items-center justify-between">
-              <span className="text-sm text-neutral-300">{action}</span>
-              <kbd className="text-xs bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded border border-neutral-700">
+              <span className="text-sm text-fleet-text-secondary">{action}</span>
+              <kbd className="text-xs bg-fleet-surface-2 text-fleet-text-muted px-2 py-0.5 rounded border border-fleet-border-strong">
                 {keys}
               </kbd>
             </div>
