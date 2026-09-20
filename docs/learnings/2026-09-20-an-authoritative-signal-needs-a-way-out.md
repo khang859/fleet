@@ -43,6 +43,29 @@ The unit tests all passed with a single release path, because they only exercise
 This is the reason `CLAUDE.md` asks for an E2E reproduction as closely aligned with the end user's experience as possible.
 Running the real app, typing `/exit` like a person would, and reading the main-process log is what exposed the missing hook.
 
+## What review found that the first fix still got wrong
+
+The first fix added a way out, but a narrow one, and all three gaps were the same mistake in different clothes.
+
+**Dropping the lock is not the same as fixing the state.**
+Release cleared `hookState` and deliberately left `pane.state` alone.
+But `needs_me` is unreachable by every heuristic - `onData` and `onSilence` both refuse to touch it - so a released pane stayed lit until the user typed in it.
+A release has to leave the pane in a state the fallback can actually move.
+
+**A stale record kept re-asserting itself.**
+The bridge re-ran over every session on every hook event, so any other agent's event put the dead session's state back.
+Releasing once means nothing if the thing that set it is still in the list.
+
+**A list that was decoration became load-bearing.**
+`SHELL_NAMES` held seven names and gated a log line, so nobody minded that it missed `nu`, `ksh` and `dash`.
+Reusing it as the release condition made its incompleteness into stuck badges.
+
+Check what a condition was previously responsible for before promoting it.
+Code that was only ever advisory has not been under any pressure to be complete.
+
+The fix for all three was to stop inferring and ask directly: record the agent's PID with the hook state, and release when that process is gone.
+Liveness does not care which shell the pane runs.
+
 ## Also worth knowing
 
 - `findPaneForPid` shells out to `ps` up to five times per call, and hook events arrive on every tool call. Cache the result per session, including the misses, or an agent running in a terminal Fleet does not own pays for that walk forever.
