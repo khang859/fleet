@@ -24,12 +24,17 @@ type PaneState = {
   lastOutputAt: number;
   exited: boolean;
   remote: boolean;
+  /** Ground truth from a Claude Code hook, or null when no hook session owns the pane. */
+  hookState: ActivityState | null;
+  /** The agent process `hookState` speaks for, so the poll can tell when it is gone. */
+  hookPid: number | null;
 };
 
 export type ActivityTrackerOptions = {
   silenceThresholdMs: number;
   processPollingIntervalMs: number;
   getProcessName: (paneId: string) => string | undefined;
+  isProcessAlive: (pid: number) => boolean;
 };
 
 export class ActivityTracker {
@@ -52,7 +57,9 @@ export class ActivityTracker {
       silenceTimer: null,
       lastOutputAt: 0,
       exited: false,
-      remote: false
+      remote: false,
+      hookState: null,
+      hookPid: null
     });
   }
 
@@ -93,6 +100,30 @@ export class ActivityTracker {
     this.setState(paneId, 'needs_me');
   }
 
+  /**
+   * Report what a Claude Code hook says this pane is doing. Hooks are the agent
+   * describing itself, so they outrank every heuristic in here - the output
+   * bursts, the silence timer, and the permission regex that cannot tell a real
+   * prompt from a `(y/n)` in a build log.
+   *
+   * Pass null to release the pane back to the heuristics. `pid` is the agent
+   * process the state speaks for, which is what lets the poll notice a session
+   * that went away without saying so.
+   */
+  setHookState(paneId: string, state: ActivityState | null, pid?: number): void {
+    const pane = this.panes.get(paneId);
+    if (!pane || pane.exited) return;
+
+    if (!state) {
+      this.releaseHookState(paneId, 'session ended');
+      return;
+    }
+
+    pane.hookState = state;
+    pane.hookPid = pid ?? null;
+    this.setState(paneId, state, true);
+  }
+
   // The user typed into the pane — the resolution edge for a permission prompt.
   // Clears needs_me so the pane reflects that the agent is no longer blocked.
   onUserInput(paneId: string): void {
@@ -115,6 +146,11 @@ export class ActivityTracker {
         remote: false
       });
     }
+
+    // The process is gone, so no hook speaks for this pane any more. Clearing
+    // first lets the exit state through the hook guard in setState.
+    pane.hookState = null;
+    pane.hookPid = null;
 
     pane.exited = true;
     if (pane.silenceTimer) {
@@ -180,7 +216,48 @@ export class ActivityTracker {
     this.setState(paneId, 'idle');
   }
 
+  /**
+   * Drop hook states whose agent has gone.
+   *
+   * A hook state outlives its session whenever the agent quits without a
+   * closing hook - `/exit` in Claude Code does exactly that. Asking whether the
+   * agent's PID is still alive is the only release that holds for every pane:
+   * the foreground process name cannot be trusted for this, because a pane
+   * running an unlisted shell would never look like it was back at a prompt.
+   */
+  private releaseDeadHookStates(): void {
+    for (const [paneId, pane] of this.panes) {
+      if (pane.exited || pane.hookState === null || pane.hookPid === null) continue;
+      if (this.opts.isProcessAlive(pane.hookPid)) continue;
+
+      this.releaseHookState(paneId, 'agent process gone');
+    }
+  }
+
+  /**
+   * Hand a pane back to the heuristics.
+   *
+   * Dropping the lock is not enough on its own. A `needs_me` left behind is
+   * unreachable - `onData` and `onSilence` both refuse to touch it - so the
+   * badge and the dock count would stay lit until the user clicked into that
+   * pane and typed. Nothing is waiting on them any more, so clear it.
+   */
+  private releaseHookState(paneId: string, reason: string): void {
+    const pane = this.panes.get(paneId);
+    // Every ActivityState is a non-empty string, so this only catches the
+    // untracked pane and the one with no hook state to release.
+    if (!pane?.hookState) return;
+
+    log.debug('releasing hook state', { paneId, reason, state: pane.hookState });
+    pane.hookState = null;
+    pane.hookPid = null;
+
+    if (pane.state === 'needs_me') this.setState(paneId, 'idle', true);
+  }
+
   private pollProcesses(): void {
+    this.releaseDeadHookStates();
+
     for (const [paneId, pane] of this.panes) {
       if (pane.exited) continue;
 
@@ -212,15 +289,27 @@ export class ActivityTracker {
     }
   }
 
-  private setState(paneId: string, newState: ActivityState): void {
+  /**
+   * `authoritative` marks a caller that outranks the pane's current state: the
+   * agent reporting on itself through a hook, or the release of a hook state
+   * whose agent has gone. Everything else is a heuristic.
+   */
+  private setState(paneId: string, newState: ActivityState, authoritative = false): void {
     const pane = this.panes.get(paneId);
     if (!pane) return;
+
+    // A live hook session owns the pane's state. Heuristic callers still run -
+    // they keep lastOutputAt and the silence timer current - but they may not
+    // move a pane that the agent is reporting on itself.
+    if (pane.hookState !== null && !authoritative) return;
 
     // Dedup — don't emit if state hasn't changed
     if (pane.state === newState) return;
 
-    // State priority: needs_me can only be cleared by new data or exit
-    if (pane.state === 'needs_me' && newState === 'idle') return;
+    // State priority: needs_me can only be cleared by new data or exit. An
+    // authoritative caller is neither guessing nor stale, so it goes through:
+    // an agent that reports itself idle has stopped waiting on anyone.
+    if (pane.state === 'needs_me' && newState === 'idle' && !authoritative) return;
 
     const prevState = pane.state;
     pane.state = newState;

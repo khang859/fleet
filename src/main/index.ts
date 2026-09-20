@@ -66,6 +66,7 @@ import type {
 } from '../shared/types';
 import { createLogger } from './logger';
 import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
+import { isProcessAlive } from './process-liveness';
 import { SessionsService } from './sessions/service';
 import { registerSessionsIpcHandlers } from './sessions/ipc-handlers';
 import { LearningsStore } from './learnings/learnings-store';
@@ -163,7 +164,8 @@ const settingsStore = new SettingsStore();
 const activityTracker = new ActivityTracker(eventBus, {
   silenceThresholdMs: 5000,
   processPollingIntervalMs: 2000,
-  getProcessName: (paneId) => ptyManager.getProcessName(paneId)
+  getProcessName: (paneId) => ptyManager.getProcessName(paneId),
+  isProcessAlive
 });
 // Built after the tracker because it asks it whether a pane is SSH'd in: OSC 7
 // from a remote shell describes a directory this machine does not have.
@@ -777,7 +779,7 @@ void app.whenReady().then(async () => {
   });
 
   // Start copilot (macOS only, gated internally)
-  await initCopilot(settingsStore, ptyManager, layoutStore, () => mainWindow);
+  await initCopilot(settingsStore, ptyManager, layoutStore, () => mainWindow, activityTracker);
 
   // Set dock icon on macOS — must happen AFTER copilot init because the copilot
   // window's setVisibleOnAllWorkspaces triggers an Electron bug (electron/electron#26350)
