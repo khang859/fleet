@@ -63,7 +63,7 @@ export function CompactionField({
             onPointerUp={commit}
             onKeyUp={commit}
             onBlur={commit}
-            className="w-full fleet-accent-input [color-scheme:dark]"
+            className="w-full fleet-accent-input"
           />
         </div>
       )}

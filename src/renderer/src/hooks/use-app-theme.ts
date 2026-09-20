@@ -28,8 +28,13 @@ export function useAppThemeVars(appTheme?: string, terminalTheme?: string): CSSP
   // Streamdown's Shiki dual themes, and by the few places that state a literal
   // color - the amber the agent pane warns in - which the --fleet-* tokens
   // cannot carry because they only describe the neutral chrome.
+  // `color-scheme` is what tells the engine which chrome to paint native form
+  // controls in. Without it Chromium paints every checkbox, radio, range and
+  // scrollbar in light chrome, so an *unchecked* box renders as a filled white
+  // square on the dark app and reads as checked.
   useEffect(() => {
     document.documentElement.classList.toggle('dark', def.kind === 'dark');
+    document.documentElement.style.colorScheme = def.kind === 'dark' ? 'dark' : 'light';
   }, [def.kind]);
   return getAppThemeCssVars(def);
 }
