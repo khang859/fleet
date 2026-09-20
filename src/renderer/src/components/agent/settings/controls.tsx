@@ -96,9 +96,7 @@ export function ParamSlider({
         onPointerUp={commit}
         onKeyUp={commit}
         onBlur={commit}
-        // color-scheme keeps Chromium from painting the unfilled track in its
-        // light-theme grey, which reads as a bright bar at full width.
-        className="w-full fleet-accent-input [color-scheme:dark]"
+        className="w-full fleet-accent-input"
       />
     </div>
   );
