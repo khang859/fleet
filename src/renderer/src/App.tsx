@@ -28,6 +28,7 @@ import {
 } from './store/workspace-store';
 import { isScratchTab } from './lib/scratch';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
+import { useDeferredTabMount } from './hooks/use-deferred-tab-mount';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, restartingPanes, serializePane } from './hooks/use-terminal';
@@ -276,6 +277,17 @@ export function App(): React.JSX.Element {
   // Stable per-pane reference so consumers can safely use it in effect deps
   // (getPaneContextById returns a fresh object for WSL panes on every call).
   const activePathContext = useMemo(() => getPaneContextById(activePaneId), [activePaneId]);
+
+  // Mount order for everything that is not the active tab: this workspace's
+  // other tabs first, then the background workspaces (#621).
+  const deferredTabIds = useMemo(
+    () => [
+      ...workspace.tabs.map((tab) => tab.id),
+      ...Array.from(backgroundWorkspaces.values()).flatMap((bgWs) => bgWs.tabs.map((tab) => tab.id))
+    ],
+    [workspace.tabs, backgroundWorkspaces]
+  );
+  const isTabMounted = useDeferredTabMount(deferredTabIds, activeTabId);
 
   // Track serialized pane content for restored tabs (consumed once on mount)
   const restoredPanesRef = useRef<Map<string, Map<string, string>>>(new Map());
@@ -1065,7 +1077,7 @@ export function App(): React.JSX.Element {
                           <SessionsTab />
                         </Suspense>
                       </ToolPaneFrame>
-                    ) : (
+                    ) : isTabMounted(tab.id) ? (
                       <PaneGrid
                         root={tab.splitRoot}
                         activePaneId={tab.id === activeTabId ? activePaneId : null}
@@ -1078,7 +1090,7 @@ export function App(): React.JSX.Element {
                         terminalBackground={settings?.general.terminalBackground}
                         slideshowFrame={slideshowFrame}
                       />
-                    )}
+                    ) : null}
                   </div>
                 );
               })
@@ -1091,24 +1103,27 @@ export function App(): React.JSX.Element {
                 onOpenFolder={(folderPath) => addTab(undefined, folderPath)}
               />
             )}
-            {/* Background workspace tabs (hidden, keep PTYs warm) */}
+            {/* Background workspace tabs (hidden, keep PTYs warm). They join the
+                mount queue rather than render with the first frame (#621). */}
             {Array.from(backgroundWorkspaces.values()).flatMap((bgWs) =>
-              bgWs.tabs.map((tab) => (
-                <div key={tab.id} className="h-full w-full" style={{ display: 'none' }}>
-                  <PaneGrid
-                    root={tab.splitRoot}
-                    activePaneId={null}
-                    onPaneFocus={NO_PANE_FOCUS}
-                    serializedPanes={undefined}
-                    fontFamily={settings?.general.fontFamily}
-                    fontSize={settings?.general.fontSize}
-                    scrollbackSize={settings?.general.scrollbackSize}
-                    terminalTheme={settings?.general.terminalTheme}
-                    terminalBackground={settings?.general.terminalBackground}
-                    slideshowFrame={slideshowFrame}
-                  />
-                </div>
-              ))
+              bgWs.tabs
+                .filter((tab) => isTabMounted(tab.id))
+                .map((tab) => (
+                  <div key={tab.id} className="h-full w-full" style={{ display: 'none' }}>
+                    <PaneGrid
+                      root={tab.splitRoot}
+                      activePaneId={null}
+                      onPaneFocus={NO_PANE_FOCUS}
+                      serializedPanes={undefined}
+                      fontFamily={settings?.general.fontFamily}
+                      fontSize={settings?.general.fontSize}
+                      scrollbackSize={settings?.general.scrollbackSize}
+                      terminalTheme={settings?.general.terminalTheme}
+                      terminalBackground={settings?.general.terminalBackground}
+                      slideshowFrame={slideshowFrame}
+                    />
+                  </div>
+                ))
             )}
             {/* Undo close tab toast (NNG: undo > confirmation dialogs for divided-attention UX) */}
             {showUndoToast && lastClosedTab && (
