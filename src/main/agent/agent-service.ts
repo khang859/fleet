@@ -1675,6 +1675,10 @@ export class AgentService {
                 // a child has no `memory_write`, so with nothing recorded there
                 // is nothing to describe.
                 memory: memorySpec !== null,
+                // Same rule again, and the one place it actually bites: a
+                // definition's `tools` decides whether this child has a task
+                // list at all, and both bundled ones leave it out.
+                todo: run.tools.includes('todo_add'),
                 projectInstructions:
                   instructions === null
                     ? null

@@ -480,26 +480,40 @@ export const MAX_TOOL_ROUNDS_CEILING = 1000;
 export const MAX_TOOL_ROUNDS_MIN = 5;
 
 /**
- * The instructions the agent runs with unless the user replaces them. The
- * Markdown paragraph is not decoration: the transcript renders Markdown, so a
- * model answering in plain prose is the one that looks wrong.
+ * The instructions the agent runs with unless the user replaces them.
+ *
+ * What is deliberately not here: how any individual tool works. Every tool
+ * carries its own description, and that is the better place for it - the text
+ * sits beside the schema the model is filling in, it is withheld along with the
+ * tool when the tool is not offered, and saying a thing twice spends the
+ * instruction budget without buying any more compliance. So `bash` being the
+ * last tool to reach for lives in `BASH_DESCRIPTION`, read-before-edit lives in
+ * `EDIT_DESCRIPTION` and is enforced outright in `freshness.ts`, and what is
+ * left here is only the part no one tool's description can carry: how to go
+ * about the work, and how to write the reply.
+ *
+ * The Markdown paragraph is not decoration: the transcript renders Markdown, so
+ * a model answering in plain prose is the one that looks wrong. The diff
+ * sentence is the same kind of fact about the surface rather than about the
+ * model - the pane already shows every change and every command's output, and
+ * repeating them writes the reply twice.
  */
 export const DEFAULT_AGENT_SYSTEM_PROMPT = [
-  "You are Fleet's coding agent.",
+  "You are Fleet's coding agent. You work in one pane of a terminal multiplexer, on the project in the working folder, while the user has terminals and sometimes other agents running in the panes beside you.",
   '',
-  'You can look at the code in the working folder: `grep` searches file contents, `glob` finds files by path, and `read` returns a numbered window of one file. Use them. An answer that guesses at what the code says, when the code was there to be read, is worth nothing. Search before you read - one `grep` usually settles what three reads would only suggest - and follow what you find rather than stopping at the first plausible hit.',
+  'Find out before you change. An answer that guesses at what the code says, when the code was there to be read, is worth nothing, and an edit built on a guess is worse. Search before you read - one search usually settles what three reads would only suggest - and follow what you find rather than stopping at the first plausible hit.',
   '',
-  'You can change the code too: `edit` replaces exact text in a file, and `write` creates a file or replaces one whole. Read a file before you change it, and prefer `edit` - a rewrite quietly drops everything you did not repeat.',
+  'Write code that the file it lands in could already have contained. Match the naming, the structure, the error handling and the comment density of what is around it, even where you would have done it differently, and check that a library is already a dependency before reaching for it. The surrounding code is the style guide.',
   '',
-  '`bash` runs a command in the working folder, and it is the last tool to reach for rather than the first. Use it for what only a shell can do: running tests, builds, linters, git, package managers, scripts. Do not use it to look at code - `read`, `glob` and `grep` do that better than `cat`, `find` and `grep` do there, and they keep the output to a size worth reading. Each command runs on its own, so a `cd` is gone by the next call; chain with `&&` when it matters.',
+  'Do what was asked and no more. No extra features, no refactor of code that was not in the way, no tests or files nobody asked for. Where you notice something else wrong, say so rather than fixing that too. Stop and ask when the request has more than one reasonable reading, rather than picking one quietly and building on it.',
   '',
-  'Nothing can be typed into that shell, so a command that needs a person - a login, a password, an interactive picker, a dev server they should watch - goes to `terminal` instead. It types the command into a terminal beside you and leaves it for the user to run. Never try to answer a prompt yourself, and never put a secret on a command line.',
+  "A change you have not checked is a change you believe you made. Most projects say somewhere how to check them - a script in `package.json`, a `Makefile`, the project's own instructions - so find what this one uses for types, lint and tests, and run whatever your change could have broken. Where there is nothing to run, say what you could not verify rather than letting the reply imply you did.",
   '',
-  'A change is written to disk the moment you make it, and most commands run the moment you call them - some stop for the user to approve first. One they turn down is a decision rather than an obstacle: say what you were trying to do and leave it with them, instead of looking for another way to do the same thing. Nothing else asks, so do what was asked and no more, and stop to ask when the request has more than one reasonable reading.',
+  'Two failed attempts at the same thing mean the approach is wrong, not that a third will land. Stop, say what you tried and what happened, and either change approach or leave it with the user. A call whose result has not changed is not worth making again.',
   '',
-  'Every change is shown to the user as a diff, so do not paste the new code back into your reply. Say what you changed and why.',
+  'A change is written to disk the moment you make it, and most commands run the moment you call them - some stop for the user to approve first. One they turn down is a decision rather than an obstacle: say what you were trying to do and leave it with them, instead of looking for another way to do the same thing.',
   '',
-  'Write your replies in GitHub-flavoured Markdown. Put code in fenced blocks tagged with their language, wrap file paths and identifiers in backticks, and reach for a short list or table wherever it reads better than a paragraph.'
+  'Write your replies in GitHub-flavoured Markdown, and keep them short: a few lines for a question, a short paragraph for a change. Put code in fenced blocks tagged with their language, wrap file paths and identifiers in backticks, and reach for a list or a table wherever it reads better than a paragraph. Fleet already shows the user every change as a diff and every command with its output, so do not paste the new code back or replay what a command printed - say what you changed and why, and what the output means.'
 ].join('\n');
 
 /**
@@ -579,9 +593,14 @@ export const AGENT_TASK_INSTRUCTIONS = [
  * one fact the agent has no other way to learn. Whether image generation is on
  * is the same kind of fact, and is appended the same way.
  *
- * The task list is appended unconditionally, because unlike `image` its two
- * tools are always offered. A user who replaces the prompt is replacing how the
- * agent works, not switching off a pane of the UI they can still see.
+ * The task list is appended unless `todo` is explicitly `false`, which is the
+ * opposite default to every capability block above it. For a pane turn its two
+ * tools are always offered, and a user who replaces the prompt is replacing how
+ * the agent works rather than switching off a pane of the UI they can still see
+ * - so the default has to be on. The exception is a subagent, whose tools come
+ * from its own frontmatter: both bundled definitions omit the task list, and
+ * describing a tool a caller was never given is the `image` mistake made from
+ * the other direction.
  *
  * The schedule block is not unconditional for the reason `task` is not: a
  * subagent is never offered those tools, and describing a tool that is not there
@@ -625,6 +644,14 @@ export function buildSystemPrompt(
     skill?: boolean;
     memory?: boolean;
     schedule?: boolean;
+    /**
+     * Off only for a turn whose tool list has no `todo_add`. Defaults to on,
+     * because a pane turn always has both task-list tools - see the note above
+     * on why a user replacing the prompt does not switch this off. A subagent is
+     * the case this exists for: its `tools` frontmatter decides what it gets,
+     * and both bundled definitions leave the task list out.
+     */
+    todo?: boolean;
     /** The framed contents of `AGENTS.md` or `CLAUDE.md`, whole. */
     projectInstructions?: string | null;
     /** What the machine is, when it has been read. */
@@ -676,13 +703,18 @@ export function buildSystemPrompt(
   // the other way round.
   const memory = options.memory === true ? `\n\n${AGENT_MEMORY_INSTRUCTIONS}` : '';
   const schedule = options.schedule === true ? `\n\n${AGENT_SCHEDULE_INSTRUCTIONS}` : '';
+  // Gated the other way round from every block above: absent only when it has
+  // been asked for explicitly, so the pane's own turn cannot lose it. The rule
+  // it obeys is still the one `image` obeys - instructions for a tool that is
+  // not there are instructions to hallucinate a call.
+  const todo = options.todo === false ? '' : `\n\n${AGENT_TODO_INSTRUCTIONS}`;
   // Last, so it is the thing the model has most recently read when the turn
   // starts, and so a custom prompt cannot displace it.
   const machine =
     options.env === undefined || options.env === null
       ? `Working folder: ${cwd}`
       : renderEnvBlock(cwd, options.env);
-  return `${base}${project}${image}${web}${hosted}${search}${advisor}${fusion}${mcp}${toolSearch}${memory}${skill}${task}${schedule}\n\n${AGENT_TODO_INSTRUCTIONS}\n\n${machine}`;
+  return `${base}${project}${image}${web}${hosted}${search}${advisor}${fusion}${mcp}${toolSearch}${memory}${skill}${task}${schedule}${todo}\n\n${machine}`;
 }
 
 /*

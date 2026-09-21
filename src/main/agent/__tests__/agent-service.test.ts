@@ -637,6 +637,40 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Markdown');
   });
 
+  /*
+   * The base prompt's job is the part a tool description cannot carry. Anything
+   * about how one tool works belongs beside that tool's schema, where it is
+   * withheld with the tool and not said twice - so these three sentences having
+   * moved out is the property worth pinning, not an accident to be restored.
+   */
+  it('leaves per-tool mechanics to the tool descriptions', () => {
+    expect(DEFAULT_AGENT_SYSTEM_PROMPT).not.toContain('`grep` searches file contents');
+    expect(DEFAULT_AGENT_SYSTEM_PROMPT).not.toContain('chain with `&&`');
+    expect(DEFAULT_AGENT_SYSTEM_PROMPT).not.toContain(
+      'quietly drops everything you did not repeat'
+    );
+  });
+
+  it('says how to approach the work, which no tool description can', () => {
+    expect(DEFAULT_AGENT_SYSTEM_PROMPT).toContain('Do what was asked and no more');
+    expect(DEFAULT_AGENT_SYSTEM_PROMPT).toContain('Search before you read');
+    expect(DEFAULT_AGENT_SYSTEM_PROMPT).toContain('types, lint and tests');
+    expect(DEFAULT_AGENT_SYSTEM_PROMPT).toContain('The surrounding code is the style guide');
+  });
+
+  /*
+   * The only block whose default is on rather than off, so it is the only one
+   * that can reach a caller that was never given the tool. Both bundled
+   * subagents are exactly that caller.
+   */
+  it('describes the task list by default, and not when its tools are absent', () => {
+    expect(buildSystemPrompt('/repo', null, { image: false })).toContain('todo_add');
+    expect(buildSystemPrompt('/repo', null, { image: false, todo: true })).toContain('todo_add');
+    expect(buildSystemPrompt('/repo', null, { image: false, todo: false })).not.toContain(
+      'todo_add'
+    );
+  });
+
   it('replaces the instructions with the user override', () => {
     const prompt = buildSystemPrompt('/repo', 'Answer only in haiku.');
 
