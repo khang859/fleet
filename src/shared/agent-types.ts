@@ -283,6 +283,29 @@ export const WEB_FETCH_MAX_CHARS = 200_000;
 export const AGENT_TOOL_MODES = ['ask', 'auto', 'full'] as const;
 export type AgentToolMode = (typeof AGENT_TOOL_MODES)[number];
 
+/**
+ * How full is too full, said either way round.
+ *
+ * A fraction is the right unit when the window is what you are budgeting
+ * against - 80% leaves the same proportional headroom whether the model holds
+ * 200k or a million. An absolute count is the right unit when the number you
+ * care about is the number itself: a local endpoint the catalog has never heard
+ * of, where a fraction has nothing to be a fraction of, or a paid model where
+ * what matters is what a turn costs rather than how much of the window is left.
+ *
+ * One value, not two. The unit is a way of saying the same threshold, so
+ * switching it converts what is there rather than swapping in a second setting
+ * the user cannot see.
+ */
+export type CompactThreshold =
+  /** Of the model's context window, between `COMPACT_THRESHOLD_MIN` and `MAX`. */
+  | { unit: 'fraction'; value: number }
+  /** Tokens, flat. Needs no context limit, so it works where a fraction cannot. */
+  | { unit: 'tokens'; value: number };
+
+/** Four fifths of the window: enough room left to summarize in, rarely early. */
+export const DEFAULT_COMPACT_THRESHOLD: CompactThreshold = { unit: 'fraction', value: 0.8 };
+
 export type AgentSettings = {
   provider: 'openrouter';
   /**
@@ -355,10 +378,11 @@ export type AgentSettings = {
   /** Replaces the built-in instructions. `null` ⇒ use the default below. */
   systemPrompt: string | null;
   /**
-   * Fraction of the model's context window at which a transcript is compacted
-   * automatically. `null` ⇒ only ever compact when the user asks.
+   * How full a transcript gets before it is compacted automatically, as a
+   * fraction of the model's context window or as a flat token count.
+   * `null` ⇒ only ever compact when the user asks.
    */
-  compactThreshold: number | null;
+  compactThreshold: CompactThreshold | null;
   /**
    * How many rounds of tool calls one turn may take before it is stopped.
    * `null` ⇒ as many as it needs, up to `MAX_TOOL_ROUNDS_CEILING`.
@@ -443,7 +467,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   advisor: { ...DEFAULT_AGENT_ADVISOR },
   fusion: { ...DEFAULT_AGENT_FUSION },
   systemPrompt: null,
-  compactThreshold: 0.8,
+  compactThreshold: DEFAULT_COMPACT_THRESHOLD,
   maxToolRounds: null,
   permissions: DEFAULT_AGENT_PERMISSION_RULES,
   // Off until it is chosen. Auto mode spends money on a second model and hands

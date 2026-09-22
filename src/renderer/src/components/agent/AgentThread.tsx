@@ -31,7 +31,7 @@ import {
 } from '../../../../shared/agent-types';
 import { isTodoTool } from '../../../../shared/agent-tools';
 import { renderTodoList, type AgentTodoItem } from '../../../../shared/agent-todos';
-import { canCompact, clearedCallIds } from '../../../../shared/agent-context';
+import { canCompact, clearedCallIds, compactAt } from '../../../../shared/agent-context';
 import { todoProgress, type TodoProgress } from './todo-view';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentActivity } from './AgentActivity';
@@ -338,7 +338,10 @@ export function AgentThread({
                 <AgentContextMeter
                   used={contextTokens}
                   limit={modelCard?.contextLimit ?? null}
-                  threshold={agent?.compactThreshold ?? null}
+                  compactAt={compactAt(
+                    agent?.compactThreshold ?? null,
+                    modelCard?.contextLimit ?? null
+                  )}
                   canCompact={!streaming && canCompact(messages)}
                   onCompact={() => compact(paneId)}
                   projectInstructions={thread?.projectInstructions ?? null}

@@ -375,6 +375,9 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
         <FieldGroup title="Context">
           <CompactionField
             value={agent.compactThreshold}
+            contextLimit={
+              codingModels.find((m) => m.id === agent.coding.model)?.contextLimit ?? null
+            }
             onChange={(compactThreshold) =>
               void updateSettings({ ai: { agent: { compactThreshold } } })
             }

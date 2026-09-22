@@ -23,15 +23,15 @@ import { formatTokens } from './settings/format';
 export function AgentContextMeter({
   used,
   limit,
-  threshold,
+  compactAt,
   canCompact,
   onCompact,
   projectInstructions
 }: {
   used: number;
   limit: number | null;
-  /** Where automatic compaction kicks in, as a fraction. `null` ⇒ manual only. */
-  threshold: number | null;
+  /** The token count automatic compaction fires at. `null` ⇒ manual only. */
+  compactAt: number | null;
   canCompact: boolean;
   onCompact: () => void;
   /** The instructions file this folder has, if the last turn found one. */
@@ -45,8 +45,7 @@ export function AgentContextMeter({
   // Forced on past the threshold whatever the fill is: a window that is barely
   // used is still carrying the file, and it will be carrying it on every round
   // of every turn for as long as this folder is open.
-  const high =
-    (fraction !== null && threshold !== null && fraction >= threshold) || (notice?.warn ?? false);
+  const high = (compactAt !== null && used >= compactAt) || (notice?.warn ?? false);
 
   return (
     <span className="flex shrink-0 items-center gap-2">
@@ -69,7 +68,11 @@ export function AgentContextMeter({
         className={`tabular-nums ${high ? 'text-amber-400' : ''}`}
         title={[
           limit === null
-            ? 'The catalog does not list this model’s context window, so Fleet will not compact on its own.'
+            ? // A flat threshold needs no window, so an unlisted model is only
+              // a dead end for the percentage kind.
+              compactAt === null
+              ? 'The catalog does not list this model’s context window, so Fleet will not compact on its own.'
+              : `Tokens the next turn will send. The catalog does not list this model’s context window, so Fleet compacts at the ${formatTokens(compactAt)} you set.`
             : `Tokens the next turn will send, out of the model's ${formatTokens(limit)} context window.`,
           // Always, not only when it is large: "why does this session start at
           // 6k" is worth answering at any size.

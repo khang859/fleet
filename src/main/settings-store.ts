@@ -2,6 +2,7 @@ import Store from 'electron-store';
 import type { CopilotWorkspaceOverride, FleetSettings, FleetSettingsPatch } from '../shared/types';
 import { DEFAULT_SCROLLBACK } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/constants';
+import { readCompactThreshold } from '../shared/agent-context';
 
 /**
  * Read the per-host answer to Fleet's "install the shell snippet?" offer.
@@ -183,6 +184,12 @@ export class SettingsStore {
         agent: {
           ...DEFAULT_SETTINGS.ai.agent,
           ...saved.ai?.agent,
+          // Read rather than spread: a file written before the unit was a
+          // choice holds a bare fraction here, which the type no longer admits.
+          compactThreshold:
+            saved.ai?.agent === undefined || !('compactThreshold' in saved.ai.agent)
+              ? DEFAULT_SETTINGS.ai.agent.compactThreshold
+              : readCompactThreshold(saved.ai.agent.compactThreshold),
           coding: { ...DEFAULT_SETTINGS.ai.agent.coding, ...saved.ai?.agent?.coding },
           image: { ...DEFAULT_SETTINGS.ai.agent.image, ...saved.ai?.agent?.image },
           webFetch: { ...DEFAULT_SETTINGS.ai.agent.webFetch, ...saved.ai?.agent?.webFetch },

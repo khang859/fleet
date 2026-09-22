@@ -13,7 +13,8 @@ import type {
   AgentCatalogModel,
   AgentMessage,
   AgentTitleResult,
-  AgentTurnUsage
+  AgentTurnUsage,
+  CompactThreshold
 } from '../../../../shared/agent-types';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 import { EMPTY_SESSION_SPEND } from '../../../../shared/agent-spend';
@@ -166,7 +167,7 @@ const usageOf = (total: number): AgentTurnUsage => ({
 });
 
 /** Sets the threshold, or turns automatic compaction off with `null`. */
-function setThreshold(compactThreshold: number | null): void {
+function setThreshold(compactThreshold: CompactThreshold | null): void {
   settingsStore.useSettingsStore.setState({
     settings: {
       ...DEFAULT_SETTINGS,
@@ -250,7 +251,7 @@ beforeEach(async () => {
     },
     threads: {}
   });
-  setThreshold(0.8);
+  setThreshold({ unit: 'fraction', value: 0.8 });
 });
 
 describe('context accounting', () => {

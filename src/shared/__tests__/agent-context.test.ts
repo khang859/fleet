@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+  DEFAULT_COMPACT_THRESHOLD,
   EMPTY_AGENT_USAGE,
   textMessage,
   type AgentAttachment,
   type AgentMessage,
-  type AgentTurnUsage
+  type AgentTurnUsage,
+  type CompactThreshold
 } from '../agent-types';
 import type { AgentToolCall } from '../agent-tools';
 import {
@@ -17,6 +19,13 @@ import {
   contextUsed,
   estimateTokens,
   estimateTranscriptTokens,
+  COMPACT_THRESHOLD_MAX,
+  COMPACT_THRESHOLD_MIN,
+  COMPACT_TOKENS_FALLBACK,
+  COMPACT_TOKENS_MIN,
+  compactAt,
+  convertThreshold,
+  readCompactThreshold,
   shouldCompact,
   splitForCompaction,
   withClearedResults
@@ -301,21 +310,115 @@ describe('contextUsed', () => {
 });
 
 describe('shouldCompact', () => {
+  const fraction = (value: number): CompactThreshold => ({ unit: 'fraction', value });
+  const tokens = (value: number): CompactThreshold => ({ unit: 'tokens', value });
+
   it('fires once the transcript reaches the threshold', () => {
-    expect(shouldCompact(79_000, 100_000, 0.8)).toBe(false);
-    expect(shouldCompact(80_000, 100_000, 0.8)).toBe(true);
-    expect(shouldCompact(95_000, 100_000, 0.8)).toBe(true);
+    expect(shouldCompact(79_000, 100_000, fraction(0.8))).toBe(false);
+    expect(shouldCompact(80_000, 100_000, fraction(0.8))).toBe(true);
+    expect(shouldCompact(95_000, 100_000, fraction(0.8))).toBe(true);
   });
 
   it('never fires without a threshold, which is the user saying no', () => {
     expect(shouldCompact(99_000, 100_000, null)).toBe(false);
   });
 
-  it('never fires without a context limit, rather than guessing one', () => {
+  it('never fires on a fraction without a context limit, rather than guessing one', () => {
     // A model the catalog has never heard of. Compacting a healthy conversation
     // is worse than letting a rare overflow surface as the provider's error.
-    expect(shouldCompact(9_000_000, null, 0.8)).toBe(false);
-    expect(shouldCompact(9_000_000, 0, 0.8)).toBe(false);
+    expect(shouldCompact(9_000_000, null, fraction(0.8))).toBe(false);
+    expect(shouldCompact(9_000_000, 0, fraction(0.8))).toBe(false);
+  });
+
+  it('fires on a flat count whether or not the window is known', () => {
+    // The whole point of the unit: an unlisted model is exactly where a
+    // percentage has nothing to work from, and a count still does.
+    expect(shouldCompact(59_000, null, tokens(60_000))).toBe(false);
+    expect(shouldCompact(60_000, null, tokens(60_000))).toBe(true);
+    expect(shouldCompact(60_000, 200_000, tokens(60_000))).toBe(true);
+  });
+
+  it('ignores the window entirely for a flat count', () => {
+    // Above the window it simply never fires on its own, which is the user's
+    // arithmetic to get right rather than something to second-guess here.
+    expect(shouldCompact(150_000, 100_000, tokens(500_000))).toBe(false);
+  });
+});
+
+describe('compactAt', () => {
+  it('resolves a fraction against the window and a count against nothing', () => {
+    expect(compactAt({ unit: 'fraction', value: 0.8 }, 200_000)).toBe(160_000);
+    expect(compactAt({ unit: 'tokens', value: 160_000 }, null)).toBe(160_000);
+    expect(compactAt({ unit: 'fraction', value: 0.8 }, null)).toBeNull();
+    expect(compactAt(null, 200_000)).toBeNull();
+  });
+});
+
+describe('convertThreshold', () => {
+  it('says the same threshold the other way round', () => {
+    expect(convertThreshold({ unit: 'fraction', value: 0.8 }, 'tokens', 200_000)).toEqual({
+      unit: 'tokens',
+      value: 160_000
+    });
+    expect(convertThreshold({ unit: 'tokens', value: 160_000 }, 'fraction', 200_000)).toEqual({
+      unit: 'fraction',
+      value: 0.8
+    });
+  });
+
+  it('returns the threshold untouched when the unit already matches', () => {
+    const threshold: CompactThreshold = { unit: 'tokens', value: 12_345 };
+    expect(convertThreshold(threshold, 'tokens', 200_000)).toBe(threshold);
+  });
+
+  it('falls back rather than deriving when there is no window', () => {
+    expect(convertThreshold({ unit: 'fraction', value: 0.8 }, 'tokens', null)).toEqual({
+      unit: 'tokens',
+      value: COMPACT_TOKENS_FALLBACK
+    });
+    expect(convertThreshold({ unit: 'tokens', value: 160_000 }, 'fraction', null)).toEqual(
+      DEFAULT_COMPACT_THRESHOLD
+    );
+  });
+
+  it('clamps into the bounds of the new unit, and onto the steps the slider has', () => {
+    // 3M against a 200k window is 15x the window, which is no fraction at all.
+    expect(convertThreshold({ unit: 'tokens', value: 3_000_000 }, 'fraction', 200_000)).toEqual({
+      unit: 'fraction',
+      value: COMPACT_THRESHOLD_MAX
+    });
+    // 0.62 lands between the 5-point stops the slider has, so it rounds to one.
+    expect(convertThreshold({ unit: 'tokens', value: 124_000 }, 'fraction', 200_000)).toEqual({
+      unit: 'fraction',
+      value: 0.6
+    });
+  });
+});
+
+describe('readCompactThreshold', () => {
+  it('reads a file written before the unit was a choice as the fraction it was', () => {
+    expect(readCompactThreshold(0.7)).toEqual({ unit: 'fraction', value: 0.7 });
+  });
+
+  it('keeps an explicit null, which is the user saying no', () => {
+    expect(readCompactThreshold(null)).toBeNull();
+  });
+
+  it('clamps a saved value into the bounds of its unit', () => {
+    expect(readCompactThreshold(0.1)).toEqual({ unit: 'fraction', value: COMPACT_THRESHOLD_MIN });
+    expect(readCompactThreshold({ unit: 'tokens', value: 1 })).toEqual({
+      unit: 'tokens',
+      value: COMPACT_TOKENS_MIN
+    });
+  });
+
+  it('falls back to the default rather than silently turning compaction off', () => {
+    expect(readCompactThreshold(undefined)).toEqual(DEFAULT_COMPACT_THRESHOLD);
+    expect(readCompactThreshold('80%')).toEqual(DEFAULT_COMPACT_THRESHOLD);
+    expect(readCompactThreshold({ unit: 'percent', value: 0.8 })).toEqual(
+      DEFAULT_COMPACT_THRESHOLD
+    );
+    expect(readCompactThreshold({ unit: 'tokens' })).toEqual(DEFAULT_COMPACT_THRESHOLD);
   });
 });
 
