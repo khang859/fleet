@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.126.1
+
+- **Links that Claude Code prints in a terminal now open** - Cmd+click (Ctrl+click off macOS) opens them in your browser.
+  They showed a "Do you want to navigate" popup, and clicking OK did nothing, because xterm's built-in handler opened a blank window that Fleet blocks.
+  They now use the same handler as plain-text URLs, with no popup (#625).
+
 ## v2.126.0
 
 - **Auto-compaction can be set to an exact number of tokens**, not only a percentage of the context window.
