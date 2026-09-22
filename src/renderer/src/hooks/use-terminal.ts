@@ -255,6 +255,14 @@ function createTerminal(
 } {
   log.debug('createTerminal', { paneId: options.paneId, cwd: options.cwd });
 
+  // Cmd+click (macOS) or Ctrl+click (Windows/Linux) opens a URL in the default
+  // browser; a plain click is ignored so text selection still works normally.
+  const openLinkOnModClick = (event: MouseEvent, uri: string): void => {
+    if (event.metaKey || event.ctrlKey) {
+      void window.fleet.shell.openExternal(uri);
+    }
+  };
+
   const term = new Terminal({
     fontSize: options.fontSize ?? 14,
     fontFamily: options.fontFamily ?? 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace',
@@ -266,7 +274,11 @@ function createTerminal(
     // Always allow transparency (negligible cost on the DOM renderer) so a
     // background image can be toggled on/off live without recreating the term.
     allowTransparency: true,
-    theme: resolveXtermTheme(options.terminalTheme, options.backgroundImageActive)
+    theme: resolveXtermTheme(options.terminalTheme, options.backgroundImageActive),
+    // OSC 8 hyperlinks (Claude Code, gh, ls --hyperlink). xterm's default
+    // handler confirms and then `window.open()`s about:blank, which the main
+    // window's open handler refuses, so the link would never open.
+    linkHandler: { activate: openLinkOnModClick }
   });
 
   const fitAddon = new FitAddon();
@@ -280,16 +292,9 @@ function createTerminal(
   term.loadAddon(unicodeAddon);
   term.unicode.activeVersion = '11';
 
-  // Cmd+click (macOS) or Ctrl+click (Windows/Linux) to open URLs in default browser.
-  // The custom handler suppresses plain clicks so text selection still works normally.
-  const webLinksAddon = new WebLinksAddon(
-    (event, uri) => {
-      if (event.metaKey || event.ctrlKey) {
-        void window.fleet.shell.openExternal(uri);
-      }
-    },
-    { urlRegex: /https?:\/\/[^\s"'<>()[\]{}]+/i }
-  );
+  const webLinksAddon = new WebLinksAddon(openLinkOnModClick, {
+    urlRegex: /https?:\/\/[^\s"'<>()[\]{}]+/i
+  });
   term.loadAddon(webLinksAddon);
 
   // Same gesture for file paths that agents and build tools print. Whether a
