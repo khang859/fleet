@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.126.0
+
+- **Auto-compaction can be set to an exact number of tokens**, not only a percentage of the context window.
+  A percentage needs a window to be a percentage of, so on a model the catalog does not list - a local endpoint, most often - Fleet would never compact on its own.
+  A flat count needs no window, and the setting converts between the two units rather than keeping a second hidden value (#624).
+- **The agent's base prompt is an engineering brief** instead of a restatement of what each tool already says.
+  It now carries the part no tool description can: match the conventions of the code you are landing in, do what was asked and no more, run the project's own type, lint and test commands, and stop after two failed attempts at the same thing (#623).
+- **Opening a window with many tabs paints sooner** - only the active tab mounts before the first frame, and the rest follow one per idle callback.
+  The 158ms blocking chunk measured across 14 tabs became about 19ms and a trickle (#622).
+
 ## v2.125.0
 
 - **Agent status in the sidebar now comes from Claude Code itself** rather than being guessed from what the terminal prints.
