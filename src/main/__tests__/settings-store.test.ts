@@ -98,8 +98,19 @@ describe('SettingsStore settings merge', () => {
 
   it('leaves mcpServers alone when an unrelated agent field is patched', () => {
     store.set({ ai: { agent: { mcpServers: { a: { enabled: true, url: 'http://a' } } } } });
-    store.set({ ai: { agent: { compactThreshold: 0.5 } } });
+    store.set({ ai: { agent: { compactThreshold: { unit: 'fraction', value: 0.5 } } } });
     expect(Object.keys(store.get().ai.agent.mcpServers)).toEqual(['a']);
+  });
+
+  it('reads a compactThreshold saved before the unit was a choice as a fraction', () => {
+    // Settings written by any version up to 2.125 hold a bare number here.
+    store.set({ ai: { agent: { compactThreshold: 0.65 } } } as never);
+    expect(store.get().ai.agent.compactThreshold).toEqual({ unit: 'fraction', value: 0.65 });
+  });
+
+  it('keeps a compactThreshold of null, which is automatic compaction turned off', () => {
+    store.set({ ai: { agent: { compactThreshold: null } } });
+    expect(store.get().ai.agent.compactThreshold).toBeNull();
   });
 
   it('drops tools and ai capabilities that no longer exist', () => {
@@ -107,11 +118,14 @@ describe('SettingsStore settings merge', () => {
     // have since been removed. They should not survive the next write.
     store.set({
       tools: { annotate: true, kanban: true, images: false, chat: true },
-      ai: { chat: { defaultModel: 'someone/old-model' }, agent: { compactThreshold: 0.5 } }
+      ai: {
+        chat: { defaultModel: 'someone/old-model' },
+        agent: { compactThreshold: { unit: 'fraction', value: 0.5 } }
+      }
     } as never);
     expect(store.get().tools).toEqual({ annotate: true, sessions: false, scratch: true });
     expect(Object.keys(store.get().ai)).toEqual(['agent']);
-    expect(store.get().ai.agent.compactThreshold).toBe(0.5);
+    expect(store.get().ai.agent.compactThreshold).toEqual({ unit: 'fraction', value: 0.5 });
   });
 });
 

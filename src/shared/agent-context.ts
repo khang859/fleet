@@ -1,5 +1,10 @@
-import type { AgentAttachment, AgentMessage, AgentTurnUsage } from './agent-types';
-import { messageToolCalls } from './agent-types';
+import type {
+  AgentAttachment,
+  AgentMessage,
+  AgentTurnUsage,
+  CompactThreshold
+} from './agent-types';
+import { DEFAULT_COMPACT_THRESHOLD, messageToolCalls } from './agent-types';
 import type { AgentToolCall } from './agent-tools';
 
 /**
@@ -116,26 +121,123 @@ export function contextUsed(usage: AgentTurnUsage | null, estimate: number): num
 }
 
 /**
- * Whether a transcript this full should be compacted before the next turn.
+ * The transcript size the threshold actually names, in tokens. `null` ⇒ there
+ * is no size, so nothing should fire.
  *
- * Every unknown answers "no". Without a context limit from the catalog there is
- * nothing for a percentage to be a percentage of, and with no threshold the
- * user has said not to. Guessing either one would mean compacting healthy
+ * Every unknown answers `null`. With no threshold the user has said not to, and
+ * a fraction without a context limit from the catalog is nothing to be a
+ * fraction *of* - guessing a window there would mean compacting healthy
  * conversations, which is worse than letting a rare overflow surface as the
- * provider's own error.
+ * provider's own error. A flat count is the one case that survives an unknown
+ * window, which is most of why it exists.
  */
+export function compactAt(
+  threshold: CompactThreshold | null,
+  contextLimit: number | null
+): number | null {
+  if (threshold === null) return null;
+  if (threshold.unit === 'tokens') return threshold.value;
+  if (contextLimit === null || contextLimit <= 0) return null;
+  return contextLimit * threshold.value;
+}
+
+/** Whether a transcript this full should be compacted before the next turn. */
 export function shouldCompact(
   used: number,
   contextLimit: number | null,
-  threshold: number | null
+  threshold: CompactThreshold | null
 ): boolean {
-  if (threshold === null || contextLimit === null || contextLimit <= 0) return false;
-  return used >= contextLimit * threshold;
+  const at = compactAt(threshold, contextLimit);
+  return at !== null && used >= at;
 }
 
 /** Bounds for the setting. Below half the window compaction thrashes; above 95% there is no room left to summarize in. */
 export const COMPACT_THRESHOLD_MIN = 0.5;
 export const COMPACT_THRESHOLD_MAX = 0.95;
+
+/**
+ * Bounds for the same setting counted in tokens.
+ *
+ * Wider than the fractional bounds on purpose: the whole point of this unit is
+ * the windows the catalog cannot describe, so the ceiling has to clear the
+ * largest one anybody might be running rather than the largest one listed. The
+ * floor is where a threshold stops being a threshold - below a few thousand
+ * tokens the summary itself would trip it.
+ */
+export const COMPACT_TOKENS_MIN = 2_000;
+export const COMPACT_TOKENS_MAX = 10_000_000;
+
+/**
+ * The flat count to fall back on when there is no window to derive one from -
+ * an unlisted model, or a field cleared rather than typed into. Large enough
+ * not to fire on the next turn, round enough to read as a placeholder somebody
+ * should replace.
+ */
+export const COMPACT_TOKENS_FALLBACK = 100_000;
+
+/** The same threshold said the other way round, clamped into the new unit's bounds. */
+export function convertThreshold(
+  threshold: CompactThreshold,
+  unit: CompactThreshold['unit'],
+  contextLimit: number | null
+): CompactThreshold {
+  if (threshold.unit === unit) return threshold;
+  if (unit === 'tokens') {
+    // The window is what a fraction means, so converting without one has to
+    // fall back rather than derive.
+    const tokens =
+      contextLimit === null || contextLimit <= 0
+        ? COMPACT_TOKENS_FALLBACK
+        : contextLimit * threshold.value;
+    return {
+      unit: 'tokens',
+      value: clamp(Math.round(tokens), COMPACT_TOKENS_MIN, COMPACT_TOKENS_MAX)
+    };
+  }
+  // No window to divide by leaves the fraction undefined, so it falls back to
+  // the default rather than to whatever the token count happens to look like.
+  const fraction =
+    contextLimit === null || contextLimit <= 0
+      ? DEFAULT_COMPACT_THRESHOLD.value
+      : threshold.value / contextLimit;
+  return {
+    unit: 'fraction',
+    // Rounded to the slider's own step, so the value it shows is one it can
+    // also produce - a fraction it cannot reach would snap on the first drag.
+    value: clamp(Math.round(fraction * 20) / 20, COMPACT_THRESHOLD_MIN, COMPACT_THRESHOLD_MAX)
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * The threshold as read back off disk.
+ *
+ * Settings files outlive the shape of the settings in them. This one was a bare
+ * fraction until the unit became a choice, so an upgrade finds a number where
+ * an object now belongs - read as the fraction it was, which is what the user
+ * set and still means. Anything else unrecognisable, including a hand-edited
+ * file, falls back to the default rather than turning compaction off silently;
+ * an explicit `null` is the user saying no and is kept.
+ */
+export function readCompactThreshold(saved: unknown): CompactThreshold | null {
+  if (saved === null) return null;
+  if (typeof saved === 'number' && Number.isFinite(saved)) {
+    return { unit: 'fraction', value: clamp(saved, COMPACT_THRESHOLD_MIN, COMPACT_THRESHOLD_MAX) };
+  }
+  if (typeof saved !== 'object') return DEFAULT_COMPACT_THRESHOLD;
+  const { unit, value } = saved as Partial<CompactThreshold>;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_COMPACT_THRESHOLD;
+  if (unit === 'tokens') {
+    return { unit, value: clamp(Math.round(value), COMPACT_TOKENS_MIN, COMPACT_TOKENS_MAX) };
+  }
+  if (unit === 'fraction') {
+    return { unit, value: clamp(value, COMPACT_THRESHOLD_MIN, COMPACT_THRESHOLD_MAX) };
+  }
+  return DEFAULT_COMPACT_THRESHOLD;
+}
 
 /**
  * Messages kept verbatim. Two exchanges, so a follow-up that points at what was
