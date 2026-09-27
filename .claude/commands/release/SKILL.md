@@ -80,17 +80,18 @@ git tag v<NEW_VERSION> && git push origin v<NEW_VERSION>
 
 ### Step 7: Monitor CI
 
-The tag push triggers the CI workflow. Monitor it:
+The tag push triggers the release workflow (`.github/workflows/release.yml`). Monitor it:
 
 ```bash
 gh run list --limit 5
 gh run watch
 ```
 
-Five jobs run for a tag release:
+Six jobs run for a tag release:
 
+- `verify-version` (ubuntu-latest) - checks that the tag matches `package.json`
 - `release-mac-arm64` (macos-15)
-- `release-mac-x64` (macos-15-intel)
+- `release-mac-x64` (macos-15)
 - `release-win` (windows-latest)
 - `release-linux` (ubuntu-latest)
 - `publish-release` — runs after all four build jobs succeed, automatically publishes the draft release
