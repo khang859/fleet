@@ -105,8 +105,13 @@ import { SubagentManager } from './agent/subagents/manager';
 import { ScheduleStore } from './agent/schedule-store';
 import { ScheduleTimer } from './agent/schedule-timer';
 import type { AgentScheduleChanged } from '../shared/agent-schedule';
+import type { AgentBackgroundChanged } from '../shared/agent-tools';
 import { discardAllFetches } from './agent/skills/fetch';
-import { killAllBackgroundCommands, listRunningBackgroundCommands } from './agent/tools/background';
+import {
+  killAllBackgroundCommands,
+  listRunningBackgroundCommands,
+  setBackgroundListener
+} from './agent/tools/background';
 import { AgentMcpSecrets } from './agent/mcp/secrets';
 import { resolveAuth, signIn as signInToMcp } from './agent/mcp/auth';
 import { registerRemoteSshIpcHandlers } from './remote-ssh/ipc-handlers';
@@ -1435,6 +1440,14 @@ void app.whenReady().then(async () => {
         schedules
       } satisfies AgentScheduleChanged)
   });
+  // A conversation's running background commands, whenever they start, end or
+  // print a new last line - the same one-channel push the schedules use.
+  setBackgroundListener((threadId, jobs) =>
+    agentEmit(IPC_CHANNELS.AGENT_BACKGROUND_CHANGED, {
+      threadId,
+      jobs
+    } satisfies AgentBackgroundChanged)
+  );
   const agentCatalog = new AgentModelCatalog(
     join(app.getPath('userData'), 'agent-models-dev.json')
   );

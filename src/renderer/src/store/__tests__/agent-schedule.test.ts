@@ -47,6 +47,13 @@ const scheduleApi = {
   pullDue: vi.fn()
 };
 
+/** Nothing running in the background unless a test says otherwise. */
+const backgroundApi = {
+  list: vi.fn().mockResolvedValue([]),
+  stop: vi.fn().mockResolvedValue(true),
+  stopAll: vi.fn()
+};
+
 let agentStore: typeof AgentStore;
 let schedule: typeof AgentSchedule;
 
@@ -115,6 +122,7 @@ beforeEach(async () => {
   scheduleApi.list.mockResolvedValue([]);
   scheduleApi.pullDue.mockResolvedValue([]);
   scheduleApi.cancel.mockResolvedValue(true);
+  backgroundApi.list.mockResolvedValue([]);
 
   Object.assign(window.fleet, {
     agent: {
@@ -157,6 +165,12 @@ beforeEach(async () => {
         cancel: scheduleApi.cancel,
         pullDue: scheduleApi.pullDue,
         onChanged: listen(IPC_CHANNELS.AGENT_SCHEDULE_CHANGED)
+      },
+      background: {
+        list: backgroundApi.list,
+        stop: backgroundApi.stop,
+        stopAll: backgroundApi.stopAll,
+        onChanged: listen(IPC_CHANNELS.AGENT_BACKGROUND_CHANGED)
       }
     },
     pty: { input: vi.fn() },

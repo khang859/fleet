@@ -128,6 +128,7 @@ import type {
 } from '../shared/agent-session';
 import type { AgentGitHeadEvent } from '../shared/agent-git';
 import type { AgentScheduleChanged, AgentScheduleRecord } from '../shared/agent-schedule';
+import type { AgentBackgroundChanged, AgentBackgroundJob } from '../shared/agent-tools';
 // Aliased so the generic MCP names read as the Agent pane's at every use site.
 import type {
   McpDetectedServer as AgentMcpDetected,
@@ -891,6 +892,24 @@ const fleetApi = {
         typedInvoke<AgentScheduleRecord[]>(IPC_CHANNELS.AGENT_SCHEDULE_PULL_DUE, sessionId),
       onChanged: (cb: (p: AgentScheduleChanged) => void): Unsubscribe =>
         onChannel(IPC_CHANNELS.AGENT_SCHEDULE_CHANGED, cb)
+    },
+
+    /**
+     * Commands the agent left running in the background, by conversation.
+     *
+     * `stop` is the user's stop button on one row; `stopAll` is a pane closing
+     * on the last view of the conversation. Either way the model is told who
+     * stopped it the next time it looks.
+     */
+    background: {
+      list: async (threadId: string): Promise<AgentBackgroundJob[]> =>
+        typedInvoke<AgentBackgroundJob[]>(IPC_CHANNELS.AGENT_BACKGROUND_LIST, threadId),
+      stop: async (threadId: string, id: string): Promise<boolean> =>
+        typedInvoke<boolean>(IPC_CHANNELS.AGENT_BACKGROUND_STOP, threadId, id),
+      stopAll: (threadId: string): void =>
+        ipcRenderer.send(IPC_CHANNELS.AGENT_BACKGROUND_STOP_ALL, threadId),
+      onChanged: (cb: (p: AgentBackgroundChanged) => void): Unsubscribe =>
+        onChannel(IPC_CHANNELS.AGENT_BACKGROUND_CHANGED, cb)
     }
   },
 

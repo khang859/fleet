@@ -2,7 +2,7 @@ import type { AgentMessage } from '../../../shared/agent-types';
 import { textMessage } from '../../../shared/agent-types';
 import type { AgentScheduleChanged, AgentScheduleRecord } from '../../../shared/agent-schedule';
 import { renderScheduleFire } from '../../../shared/agent-schedule';
-import { record, reportActivity, useAgentStore } from './agent-store';
+import { panesOn, record, reportActivity, useAgentStore } from './agent-store';
 import { createLogger } from '../logger';
 
 const log = createLogger('store:agent-schedule');
@@ -226,9 +226,4 @@ function deliver(paneId: string, sessionId: string, records: AgentScheduleRecord
     // to buy itself another hop.
     scheduleChainDepth: Math.max(...records.map((schedule) => schedule.depth))
   });
-}
-
-function panesOn(sessionId: string): string[] {
-  const threads = useAgentStore.getState().threads;
-  return Object.keys(threads).filter((paneId) => threads[paneId]?.sessionId === sessionId);
 }

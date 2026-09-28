@@ -28,6 +28,12 @@ import { resolveTitle } from './session-title';
 import { transcribe } from './transcribe';
 import { resolveAttachment } from './attachments';
 import { searchMentionFiles } from './mention-search';
+import {
+  listBackgroundCommands,
+  stopBackgroundCommand,
+  stopThreadBackgroundCommands
+} from './tools/background';
+import type { AgentBackgroundJob } from '../../shared/agent-tools';
 import { loadCommands } from './commands/definitions';
 import type { AgentCommandDescriptor } from '../../shared/agent-commands';
 import type { AgentImageStore } from './image-store';
@@ -180,6 +186,23 @@ export function registerAgentIpc(deps: {
   ipcMain.handle(IPC_CHANNELS.AGENT_SCHEDULE_CANCEL, (_e, id: string): boolean =>
     deps.schedules.cancel(id, null)
   );
+
+  // Background commands, by conversation. The thread id is the session id for a
+  // pane's own conversation, which is the only kind a pane shows: a subagent's
+  // commands are stopped with the subagent.
+  ipcMain.handle(IPC_CHANNELS.AGENT_BACKGROUND_LIST, (_e, threadId: string): AgentBackgroundJob[] =>
+    listBackgroundCommands(threadId)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_BACKGROUND_STOP, (_e, threadId: string, id: string): boolean =>
+    stopBackgroundCommand(threadId, id)
+  );
+
+  // The last pane on a conversation closing. Fire-and-forget: the pane asking is
+  // on its way out and has nothing to do with an answer.
+  ipcMain.on(IPC_CHANNELS.AGENT_BACKGROUND_STOP_ALL, (_e, threadId: string) => {
+    stopThreadBackgroundCommands(threadId, 'pane-closed');
+  });
 
   // The only path by which a due schedule is ever consumed. It hands the batch
   // over and clears it in the same synchronous call, which is what makes a pane
