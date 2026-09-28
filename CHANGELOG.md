@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.127.0
+
+- **Commands the agent leaves running in the background now show up in the Agent pane, with a stop button.**
+  A dev server or watch build started by the agent gets a row in a new Background card beside the conversation - the command, how long it has been running, and the last line it printed - or a chip above the composer when the pane is narrow.
+  Stopping one tells the agent the user stopped it, and closing the pane stops the commands it started, instead of leaving them running for up to an hour (#628).
+- **The subagent chip on a narrow pane has a stop button** when one subagent is running, and chips no longer repeat their count ("2 2 subagents") (#628).
+
 ## v2.126.1
 
 - **Links that Claude Code prints in a terminal now open** - Cmd+click (Ctrl+click off macOS) opens them in your browser.
