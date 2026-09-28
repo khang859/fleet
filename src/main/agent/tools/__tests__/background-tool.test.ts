@@ -4,11 +4,20 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   BACKGROUND_MAX_JOBS,
+  type AgentBackgroundJob,
   type AgentToolContext,
   type AgentToolResult
 } from '../../../../shared/agent-tools';
 import { runAgentTool } from '../run';
-import { killAllBackgroundCommands, killThreadBackgroundCommands } from '../background';
+import {
+  killAllBackgroundCommands,
+  killThreadBackgroundCommands,
+  lastLineOf,
+  listBackgroundCommands,
+  setBackgroundListener,
+  stopBackgroundCommand,
+  stopThreadBackgroundCommands
+} from '../background';
 
 /**
  * Commands that outlive their turn, against real processes.
@@ -81,6 +90,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setBackgroundListener(() => {});
   killAllBackgroundCommands();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -226,5 +236,126 @@ describe('clearing up', () => {
     await expect(runIn('thread-2', 'bash_output', { id: 'bg_1' })).rejects.toThrow(
       /no background command/
     );
+  });
+});
+
+describe('what the pane is told', () => {
+  /** Every push, newest last, for the conversations that were told anything. */
+  const heard = (): Array<{ threadId: string; jobs: AgentBackgroundJob[] }> => {
+    const pushes: Array<{ threadId: string; jobs: AgentBackgroundJob[] }> = [];
+    setBackgroundListener((threadId, jobs) => pushes.push({ threadId, jobs }));
+    return pushes;
+  };
+
+  const waitFor = async (check: () => boolean): Promise<void> => {
+    for (let i = 0; i < 100; i++) {
+      if (check()) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error('never got there');
+  };
+
+  it('pushes the running list when one starts, and again when it ends', async () => {
+    const pushes = heard();
+
+    const id = await start('sleep 0.2');
+    expect(pushes.at(-1)).toMatchObject({
+      threadId: 'thread-1',
+      jobs: [{ id, command: 'sleep 0.2' }]
+    });
+
+    await waitFor(() => pushes.at(-1)?.jobs.length === 0);
+    expect(listBackgroundCommands('thread-1')).toEqual([]);
+  });
+
+  it('carries the last line it printed, colour codes and all taken out', async () => {
+    const pushes = heard();
+
+    await start(String.raw`printf '[32mready[0m on :5173
+'; sleep 30`);
+
+    // Output-driven pushes are throttled, so this waits out the second.
+    await waitFor(() => pushes.at(-1)?.jobs[0]?.lastLine === 'ready on :5173');
+    expect(listBackgroundCommands('thread-1')[0].lastLine).toBe('ready on :5173');
+  });
+
+  it('drops a stopped one from the list at once, not when its process gets round to dying', async () => {
+    const pushes = heard();
+    // Ignores the polite signal, so it lives out the whole grace period.
+    const id = await start(`trap '' TERM; sleep 30`);
+
+    expect(stopBackgroundCommand('thread-1', id)).toBe(true);
+
+    expect(pushes.at(-1)?.jobs).toEqual([]);
+  });
+
+  it('keeps only one conversation’s commands in its list', async () => {
+    await start('sleep 30', 'thread-1');
+    await start('sleep 30', 'thread-2');
+
+    expect(listBackgroundCommands('thread-1')).toHaveLength(1);
+    expect(listBackgroundCommands('thread-3')).toEqual([]);
+  });
+});
+
+describe('stopped by someone other than the model', () => {
+  it('tells the model the user stopped it', async () => {
+    const id = await start('sleep 30');
+
+    expect(stopBackgroundCommand('thread-1', id)).toBe(true);
+
+    const after = await run('bash_output', { id });
+    expect(after.text).toContain('was stopped by the user after');
+    expect(after.summary).toMatch(/^stopped by the user/);
+
+    const killed = await run('bash_kill', { id });
+    expect(killed.text).toContain('was stopped by the user after');
+  });
+
+  it('refuses a stop for a command that is not running, or not this conversation’s', async () => {
+    const id = await start('sleep 30', 'thread-1');
+
+    expect(stopBackgroundCommand('thread-2', id)).toBe(false);
+    expect(stopBackgroundCommand('thread-1', 'bg_9')).toBe(false);
+    expect(stopBackgroundCommand('thread-1', id)).toBe(true);
+    expect(stopBackgroundCommand('thread-1', id)).toBe(false);
+  });
+
+  it('stops a whole conversation when its pane closes, and says so', async () => {
+    const a = await start('sleep 30', 'thread-1');
+    const b = await start('sleep 30', 'thread-1');
+    await start('sleep 30', 'thread-2');
+
+    stopThreadBackgroundCommands('thread-1', 'pane-closed');
+
+    expect(listBackgroundCommands('thread-1')).toEqual([]);
+    expect(listBackgroundCommands('thread-2')).toHaveLength(1);
+    for (const id of [a, b]) {
+      const { text } = await run('bash_output', { id });
+      expect(text).toContain('when the pane showing this conversation was closed');
+    }
+  });
+});
+
+describe('the last line', () => {
+  it('is the last line with anything on it', () => {
+    expect(lastLineOf('one\ntwo\n\n  \n')).toBe('two');
+    expect(lastLineOf('')).toBeNull();
+    expect(lastLineOf('\n \n')).toBeNull();
+  });
+
+  it('is what a progress bar last drew, not every redraw of it', () => {
+    expect(lastLineOf('building\n 10%\r 50%\r 90%')).toBe('90%');
+    expect(lastLineOf('built\r\n')).toBe('built');
+  });
+
+  it('loses colour codes and window titles', () => {
+    expect(lastLineOf('\x1b]0;title\x07\x1b[1;32mok\x1b[0m')).toBe('ok');
+  });
+
+  it('is cut short when it runs on', () => {
+    const line = lastLineOf('x'.repeat(500));
+    expect(line).toHaveLength(200);
+    expect(line?.endsWith('\u2026')).toBe(true);
   });
 });

@@ -74,6 +74,13 @@ const scheduleApi = {
   pullDue: vi.fn().mockResolvedValue([])
 };
 
+/** Nothing running in the background unless a test says otherwise. */
+const backgroundApi = {
+  list: vi.fn().mockResolvedValue([]),
+  stop: vi.fn().mockResolvedValue(true),
+  stopAll: vi.fn()
+};
+
 /** What `loadSession` hands back; set per test to stand in for a file. */
 let replay: AgentSessionReplay;
 
@@ -229,6 +236,12 @@ beforeEach(async () => {
         cancel: scheduleApi.cancel,
         pullDue: scheduleApi.pullDue,
         onChanged: listen(IPC_CHANNELS.AGENT_SCHEDULE_CHANGED)
+      },
+      background: {
+        list: backgroundApi.list,
+        stop: backgroundApi.stop,
+        stopAll: backgroundApi.stopAll,
+        onChanged: listen(IPC_CHANNELS.AGENT_BACKGROUND_CHANGED)
       }
     },
     pty: { input: vi.fn() },
@@ -1379,6 +1392,59 @@ describe('disposing a pane', () => {
     agentStore.useAgentStore.getState().disposePane('never-opened');
 
     expect(agentApi.cancel).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Commands the agent left running. Main owns them and pushes the list; what
+ * the pane owes is showing it on the right pane, and stopping them when the
+ * last pane that could show them closes.
+ */
+describe('background commands', () => {
+  const job = { id: 'bg_1', command: 'npm run dev', startedAt: 1_000, lastLine: 'ready' };
+
+  it('reads what the conversation has running when a pane opens it', async () => {
+    backgroundApi.list.mockResolvedValueOnce([job]);
+
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+    await vi.waitFor(() => expect(thread().background).toEqual([job]));
+
+    expect(backgroundApi.list).toHaveBeenCalledWith('session-1');
+  });
+
+  it('mirrors a push onto the pane on that conversation, and no other', async () => {
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+    await agentStore.useAgentStore.getState().openSession('pane-2', 'session-2', '/repo');
+
+    emit(IPC_CHANNELS.AGENT_BACKGROUND_CHANGED, { threadId: 'session-1', jobs: [job] });
+
+    expect(thread().background).toEqual([job]);
+    expect(thread('pane-2').background).toEqual([]);
+  });
+
+  it('stops them when the last pane on the conversation closes', async () => {
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+
+    agentStore.useAgentStore.getState().disposePane(PANE);
+
+    expect(backgroundApi.stopAll).toHaveBeenCalledWith('session-1');
+  });
+
+  it('leaves them to another pane still showing the conversation', async () => {
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+    await agentStore.useAgentStore.getState().openSession('pane-2', 'session-1', '/repo');
+
+    agentStore.useAgentStore.getState().disposePane(PANE);
+
+    expect(backgroundApi.stopAll).not.toHaveBeenCalled();
+  });
+
+  it('leaves them running when the pane moves to another conversation', async () => {
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
+
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-2', '/repo');
+
+    expect(backgroundApi.stopAll).not.toHaveBeenCalled();
   });
 });
 

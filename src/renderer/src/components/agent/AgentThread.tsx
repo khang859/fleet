@@ -10,6 +10,7 @@ import {
   ListChecks,
   Paperclip,
   Square,
+  SquareTerminal,
   TriangleAlert,
   X
 } from 'lucide-react';
@@ -47,6 +48,8 @@ import { pendingTaskAsks, type PendingTaskAsk } from './task-permissions';
 import type { RunningSubagent } from './subagent-view';
 import { scheduleChip, type ScheduleRow } from './schedule-view';
 import { cancelSchedule } from '../../store/agent-schedule';
+import { backgroundChip, type BackgroundRow } from './background-view';
+import { stopBackground } from '../../store/agent-background';
 import { ToolModePicker } from './ToolModePicker';
 import { AgentAttachmentChip, AgentMessageAttachments } from './AgentAttachment';
 import { reasoningLabel } from './activity';
@@ -190,7 +193,9 @@ export function AgentThread({
   running,
   subagentsInPanel,
   schedules,
-  schedulesInPanel
+  schedulesInPanel,
+  background,
+  backgroundInPanel
 }: {
   paneId: string;
   cwd: string;
@@ -212,6 +217,10 @@ export function AgentThread({
   schedules: ScheduleRow[];
   /** The same as `todosInPanel`, for the schedules. */
   schedulesInPanel: boolean;
+  /** The commands this conversation left running, in the order they started. */
+  background: BackgroundRow[];
+  /** The same as `todosInPanel`, for the background commands. */
+  backgroundInPanel: boolean;
 }): React.JSX.Element {
   const thread = useAgentStore((s) => s.threads[paneId]);
   const send = useAgentStore((s) => s.send);
@@ -258,6 +267,7 @@ export function AgentThread({
   const todos = todosInPanel ? null : todoProgress(todoItems);
   const subagents = subagentsInPanel || running.length === 0 ? null : running;
   const scheduleChips = schedulesInPanel || schedules.length === 0 ? null : schedules;
+  const backgroundChips = backgroundInPanel || background.length === 0 ? null : background;
   const gitHead = useGitHead(paneId, cwd);
   // Stable, because it is handed to every message in the transcript and those
   // are memoized. An arrow written inline at the call site is a new function on
@@ -309,6 +319,8 @@ export function AgentThread({
           contextTokens !== null ||
           todos !== null ||
           subagents !== null ||
+          scheduleChips !== null ||
+          backgroundChips !== null ||
           hasSpend(spend)) && (
           <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pb-1.5 text-[11px] text-fleet-text-subtle">
             {streaming && (
@@ -322,11 +334,17 @@ export function AgentThread({
             )}
             {todos !== null && <TodoChip progress={todos} items={todoItems} />}
             {subagents !== null && <SubagentChip running={subagents} />}
+            {backgroundChips !== null && thread?.sessionId != null && (
+              <BackgroundChip rows={backgroundChips} sessionId={thread.sessionId} />
+            )}
             {scheduleChips !== null && <ScheduleChip rows={scheduleChips} />}
             {/* Money first, then room left: what a turn cost is the fact that
                 changes with every turn, and the window is the one that only
                 matters near its end. */}
-            <span className="ml-auto">
+            {/* The meters never give way: the chips on the left truncate, and a
+                long command or subagent activity there would otherwise wrap
+                these onto two lines. */}
+            <span className="ml-auto shrink-0 whitespace-nowrap">
               <AgentSpendMeter
                 spend={spend}
                 model={thread?.served?.model ?? null}
@@ -334,7 +352,7 @@ export function AgentThread({
               />
             </span>
             {contextTokens !== null && (
-              <span>
+              <span className="shrink-0 whitespace-nowrap">
                 <AgentContextMeter
                   used={contextTokens}
                   limit={modelCard?.contextLimit ?? null}
@@ -622,7 +640,7 @@ function SubagentChip({ running }: { running: RunningSubagent[] }): React.JSX.El
       ? `${asking} waiting on you`
       : only !== null
         ? (only.activity ?? 'starting')
-        : `${running.length} subagents`;
+        : 'subagents';
 
   return (
     <span
@@ -637,6 +655,61 @@ function SubagentChip({ running }: { running: RunningSubagent[] }): React.JSX.El
       <span className={`truncate ${asking > 0 ? 'text-amber-700 dark:text-amber-400/90' : ''}`}>
         {label}
       </span>
+      {/* Only for one, for the reason the schedule chip gives: an X beside a
+          count is a button whose target the user cannot see. */}
+      {only !== null && (
+        <button
+          type="button"
+          onClick={() => window.fleet.agent.cancelTask(only.taskId)}
+          aria-label={`Stop the ${only.agent} subagent`}
+          title="Stop this subagent"
+          className="focus-ring shrink-0 text-fleet-text-subtle transition-colors hover:text-fleet-text"
+        >
+          <X size={11} />
+        </button>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The commands the agent left running, for a pane with no column to put them
+ * in.
+ *
+ * The command when there is one and a count when there are several, and a stop
+ * button only for the one - the same bargain the other chips strike. The last
+ * line each printed is behind the hover title.
+ */
+function BackgroundChip({
+  rows,
+  sessionId
+}: {
+  rows: BackgroundRow[];
+  sessionId: string;
+}): React.JSX.Element {
+  const { label, title } = backgroundChip(rows);
+  const only = rows.length === 1 ? rows[0] : null;
+
+  return (
+    <span
+      className="flex min-w-0 items-center gap-1.5"
+      title={title}
+      aria-label={`Background commands: ${rows.length} running`}
+    >
+      <SquareTerminal size={12} className="shrink-0" />
+      <span className="font-mono tabular-nums">{rows.length}</span>
+      <span className={`truncate ${only !== null ? 'font-mono' : ''}`}>{label}</span>
+      {only !== null && (
+        <button
+          type="button"
+          onClick={() => void stopBackground(sessionId, only.id)}
+          aria-label={`Stop ${only.command}`}
+          title="Stop this command"
+          className="focus-ring shrink-0 text-fleet-text-subtle transition-colors hover:text-fleet-text"
+        >
+          <X size={11} />
+        </button>
+      )}
     </span>
   );
 }

@@ -197,12 +197,42 @@ export const BACKGROUND_MAX_JOBS = 8;
 /**
  * How long a background command may run before it is killed.
  *
- * There is no signal for "the user closed the pane" that reaches the process,
- * so this ceiling is what stops a forgotten dev server from still running at
- * midnight. Long enough that it never interrupts real work, short enough that
- * a leak is measured in an hour rather than in a day.
+ * Closing the pane stops them, and so does the user's stop button, but a
+ * pane that never closes - or a window that reloads and forgets - is still
+ * possible, so this ceiling is what stops a forgotten dev server from still
+ * running at midnight. Long enough that it never interrupts real work, short
+ * enough that a leak is measured in an hour rather than in a day.
  */
 export const BACKGROUND_MAX_MS = 60 * 60_000;
+
+/**
+ * A background command still running, as the pane is told about it.
+ *
+ * Only what a row in the pane needs to answer "what is this, how long has it
+ * been going, and is it alive": the output itself stays in main for the model
+ * to read, and `lastLine` is the one line of it worth a glance - the
+ * `ready on :5173` that says a server came up.
+ */
+export type AgentBackgroundJob = {
+  id: string;
+  command: string;
+  startedAt: number;
+  /** The last line it printed, without colour codes; `null` until it prints one. */
+  lastLine: string | null;
+};
+
+/**
+ * One conversation's running background commands, whenever that set or a last
+ * line changes. The whole list rather than a diff, for the reason
+ * `AgentScheduleChanged` gives: it is a handful of small records.
+ */
+export type AgentBackgroundChanged = {
+  threadId: string;
+  jobs: AgentBackgroundJob[];
+};
+
+/** Who stopped a background command other than the model itself. */
+export type BackgroundStopReason = 'user' | 'pane-closed';
 
 /**
  * The line between what a tool says about a command and the command's own

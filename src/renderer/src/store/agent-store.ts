@@ -16,7 +16,7 @@ import {
   type AgentSessionSpend
 } from '../../../shared/agent-spend';
 import { messageText, textMessage, userMessageWithAttachments } from '../../../shared/agent-types';
-import type { AgentTaskInfo, AgentToolCall } from '../../../shared/agent-tools';
+import type { AgentBackgroundJob, AgentTaskInfo, AgentToolCall } from '../../../shared/agent-tools';
 import {
   mergeCitations,
   type Citation,
@@ -39,6 +39,11 @@ import {
 } from '../../../shared/agent-context';
 import type { AgentScheduleRecord } from '../../../shared/agent-schedule';
 import { checkSchedules, loadSchedules, onScheduleChanged } from './agent-schedule';
+import {
+  loadBackground,
+  onBackgroundChanged,
+  stopBackgroundForClosingPane
+} from './agent-background';
 import { useSettingsStore } from './settings-store';
 import { useNotificationStore } from './notification-store';
 import { registerPaneDisposer, useWorkspaceStore } from './workspace-store';
@@ -240,6 +245,12 @@ export type PaneThread = {
    * showing another session is not affected by a list that is not its own.
    */
   schedules: AgentScheduleRecord[];
+  /**
+   * The background commands this conversation has running, as main last
+   * described them. A mirror, like `schedules`: main owns the processes and
+   * pushes the whole list whenever it changes.
+   */
+  background: AgentBackgroundJob[];
 };
 
 const EMPTY_THREAD: PaneThread = {
@@ -261,7 +272,8 @@ const EMPTY_THREAD: PaneThread = {
   imagePartials: {},
   taskActivity: {},
   taskPermissions: {},
-  schedules: []
+  schedules: [],
+  background: []
 };
 
 /**
@@ -583,6 +595,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   disposePane: (paneId) => {
     get().cancel(paneId);
     refuseTaskQuestions(paneId);
+    // Before the thread goes, because which conversation this was is read off it.
+    stopBackgroundForClosingPane(paneId);
     useNotificationStore.getState().clearActivity(paneId);
     // Main is told outright, because it will not find out. `pane-closed` is
     // emitted by the PTY paths, and this pane never had one - so a record left
@@ -617,6 +631,18 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     reportActivity(paneId, 'idle');
   }
 }));
+
+/**
+ * Every pane showing a session. Main pushes by session and knows nothing about
+ * panes, so this is how a push finds the panes it is for.
+ *
+ * Exported for `agent-schedule` and `agent-background`, whose pushes are keyed
+ * that way.
+ */
+export function panesOn(sessionId: string): string[] {
+  const threads = useAgentStore.getState().threads;
+  return Object.keys(threads).filter((paneId) => threads[paneId]?.sessionId === sessionId);
+}
 
 /**
  * Write one event to the thread's session log.
@@ -1430,6 +1456,9 @@ async function replayInto(paneId: string, sessionId: string): Promise<void> {
   // and - for a session whose reminder came due while the app was closed - the
   // fire waiting to be collected.
   void loadSchedules(paneId, sessionId);
+  // And what it left running, which survives the pane being given another
+  // session or the window reloading - main is still holding the processes.
+  void loadBackground(paneId, sessionId);
 }
 
 /**
@@ -1619,6 +1648,7 @@ window.fleet.agent.onCompactDone(({ streamId, summary, usage }) =>
 // the tick claiming one. It carries the list the panel draws, and asking every
 // pane on that session to look is how a due fire finds a pane at all.
 window.fleet.agent.schedule.onChanged((changed) => onScheduleChanged(changed));
+window.fleet.agent.background.onChanged((changed) => onBackgroundChanged(changed));
 
 // A pane closing mid-turn is the one case a turn cannot end on its own: main is
 // waiting on a click, and the pane that would have made it is the one going.

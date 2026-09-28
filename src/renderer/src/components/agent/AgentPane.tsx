@@ -8,10 +8,13 @@ import { AgentGalleryTab } from './AgentGalleryTab';
 import { AgentTodoPanel } from './AgentTodoPanel';
 import { AgentSubagentPanel } from './AgentSubagentPanel';
 import { AgentSchedulePanel } from './AgentSchedulePanel';
+import { AgentBackgroundPanel } from './AgentBackgroundPanel';
 import { showTodoPanel } from './todo-view';
 import { runningSubagents, showSubagentPanel } from './subagent-view';
 import { scheduleRows, showSchedulePanel } from './schedule-view';
 import { cancelSchedule } from '../../store/agent-schedule';
+import { backgroundRows, showBackgroundPanel } from './background-view';
+import { stopBackground } from '../../store/agent-background';
 import { SIDE_COLUMN_WIDTH_PX, centeringGutterPx } from './side-column';
 import { AgentSettingsPanel } from './settings/AgentSettingsPanel';
 
@@ -22,6 +25,7 @@ import { getGlassCssVars, paneGround, paneBackdrop, PANE_GLASS } from '../../lib
 import type { AgentTodoItem } from '../../../../shared/agent-todos';
 import type { AgentScheduleRecord } from '../../../../shared/agent-schedule';
 import type { AgentMessage, AgentPermissionAsk } from '../../../../shared/agent-types';
+import type { AgentBackgroundJob } from '../../../../shared/agent-tools';
 import type { TerminalBackground } from '../../../../shared/types';
 import type { SlideshowFrame } from '../../hooks/use-slideshow';
 
@@ -41,6 +45,9 @@ const EMPTY_TASK_PERMISSIONS: Record<string, AgentPermissionAsk> = {};
 
 /** The same, for a conversation that has set nothing to wake itself up with. */
 const EMPTY_SCHEDULES: AgentScheduleRecord[] = [];
+
+/** The same, for a conversation with nothing running in the background. */
+const EMPTY_BACKGROUND: AgentBackgroundJob[] = [];
 
 /** The pane a `fleet:refocus-pane` event is about. */
 const RefocusDetail = z.object({ paneId: z.string() });
@@ -120,6 +127,9 @@ export function AgentPane({
   // labels are "today 9:00 AM" and "Sep 3", which do not move minute to minute,
   // and a fresh `new Date()` each render would make this memo pointless.
   const schedules = useMemo(() => scheduleRows(records, new Date()), [records]);
+  const threadSessionId = useAgentStore((s) => s.threads[paneId]?.sessionId ?? null);
+  const jobs = useAgentStore((s) => s.threads[paneId]?.background ?? EMPTY_BACKGROUND);
+  const background = useMemo(() => backgroundRows(jobs), [jobs]);
 
   // The pane rather than the window: this is one cell of a split the user
   // drags, so how much room there is here says nothing about how much there is
@@ -144,7 +154,11 @@ export function AgentPane({
   });
   const subagentCard = showSubagentPanel(running, { width: paneWidth, shown: shownRef.current });
   const scheduleCard = showSchedulePanel(schedules, { width: paneWidth, shown: shownRef.current });
-  const columned = todoCard || subagentCard || scheduleCard;
+  const backgroundCard = showBackgroundPanel(background, {
+    width: paneWidth,
+    shown: shownRef.current
+  });
+  const columned = todoCard || subagentCard || backgroundCard || scheduleCard;
   shownRef.current = columned;
   const gutter = centeringGutterPx(paneWidth, columned);
 
@@ -230,6 +244,8 @@ export function AgentPane({
                 subagentsInPanel={subagentCard}
                 schedules={schedules}
                 schedulesInPanel={scheduleCard}
+                background={background}
+                backgroundInPanel={backgroundCard}
               />
             </div>
             {columned && (
@@ -248,6 +264,12 @@ export function AgentPane({
                   <AgentSubagentPanel
                     running={running}
                     onStop={(taskId) => window.fleet.agent.cancelTask(taskId)}
+                  />
+                )}
+                {backgroundCard && threadSessionId !== null && (
+                  <AgentBackgroundPanel
+                    rows={background}
+                    onStop={(id) => void stopBackground(threadSessionId, id)}
                   />
                 )}
                 {scheduleCard && (

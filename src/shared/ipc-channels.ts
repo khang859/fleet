@@ -360,6 +360,14 @@ export const IPC_CHANNELS = {
   AGENT_SCHEDULE_CANCEL: 'agent:schedule-cancel',
   AGENT_SCHEDULE_PULL_DUE: 'agent:schedule-pull-due',
   AGENT_SCHEDULE_CHANGED: 'agent:schedule-changed',
+  // Background commands a conversation has running. CHANGED pushes one
+  // conversation's whole list whenever a command starts, ends or prints a new
+  // last line; LIST is what a pane that has just opened a session asks. STOP is
+  // the user's stop button and STOP_ALL is a pane closing on the conversation.
+  AGENT_BACKGROUND_LIST: 'agent:background-list',
+  AGENT_BACKGROUND_STOP: 'agent:background-stop',
+  AGENT_BACKGROUND_STOP_ALL: 'agent:background-stop-all',
+  AGENT_BACKGROUND_CHANGED: 'agent:background-changed',
 
   // ── Remote (SSH) file browser ──────────────────────────────────────────────
   // Distinct from REMOTE_STATE above, which is the unrelated "is this pane's
