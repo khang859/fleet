@@ -42,6 +42,9 @@ export type AgentAdvisorConfig = {
   maxTokens: number;
 };
 
+/** The wire name of the advisor, on a request's tool entry and on its records. */
+export const ADVISOR_TOOL_NAME = 'openrouter:advisor';
+
 export const DEFAULT_AGENT_ADVISOR: AgentAdvisorConfig = {
   // Off until it is chosen, like every other capability that spends money on a
   // second model without being asked each time.
@@ -71,7 +74,7 @@ export const ADVISOR_MAX_TOKENS = 32_000;
 export function advisorSpec(config: AgentAdvisorConfig): ServerToolSpec | null {
   if (!config.enabled || config.model === null) return null;
   return {
-    type: 'openrouter:advisor',
+    type: ADVISOR_TOOL_NAME,
     parameters: {
       model: config.model,
       forward_transcript: false,
@@ -117,6 +120,42 @@ export function parseAdvisorResult(result: string): AdvisorResult | null {
     return { status: 'error', error: parsed.data.error ?? 'The advisor did not answer.' };
   }
   return null;
+}
+
+/**
+ * One consultation as the Responses API reports it, in the shape Chat
+ * Completions would have delivered.
+ *
+ * Responses states the outcome as fields of the item - `advice` and `model` on
+ * success, `error` on failure - where the row and `parseAdvisorResult` read a
+ * `{ status, ... }` result and the question out of the arguments. Translating
+ * here keeps one reader for both transports.
+ */
+export function advisorRecordFromItem(item: {
+  status?: string | null;
+  prompt?: unknown;
+  model?: unknown;
+  advice?: unknown;
+  error?: unknown;
+}): { args: string; result: string } {
+  const failed = item.status === 'failed' || (typeof item.error === 'string' && item.error !== '');
+  const result: AdvisorResult = failed
+    ? {
+        status: 'error',
+        error:
+          typeof item.error === 'string' && item.error !== ''
+            ? item.error
+            : 'The advisor did not answer.'
+      }
+    : {
+        status: 'ok',
+        model: typeof item.model === 'string' ? item.model : null,
+        advice: typeof item.advice === 'string' ? item.advice : ''
+      };
+  return {
+    args: JSON.stringify({ prompt: typeof item.prompt === 'string' ? item.prompt : null }),
+    result: JSON.stringify(result)
+  };
 }
 
 const advisorResultSchema = z.object({

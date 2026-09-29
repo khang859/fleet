@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AGENT_ADVISOR_INSTRUCTIONS,
   DEFAULT_AGENT_ADVISOR,
+  advisorRecordFromItem,
   advisorSpec,
   parseAdvisorPrompt,
   parseAdvisorResult,
@@ -125,5 +126,43 @@ describe('AGENT_ADVISOR_INSTRUCTIONS', () => {
   it('says the advisor sees only the question', () => {
     expect(AGENT_ADVISOR_INSTRUCTIONS).toContain('sees only');
     expect(AGENT_ADVISOR_INSTRUCTIONS).toContain('cannot read this folder');
+  });
+});
+
+describe('advisorRecordFromItem', () => {
+  // Shapes captured from the Responses endpoint: the outcome is fields of the
+  // item, and the row reads it back through the same parsers as Chat's.
+  it('turns a finished consultation into an ok result and its question', () => {
+    const record = advisorRecordFromItem({
+      status: 'completed',
+      model: 'deepseek/deepseek-v4-pro',
+      advice: 'Yes',
+      prompt: 'Is 17 prime? One word.'
+    });
+    expect(parseAdvisorResult(record.result)).toEqual({
+      status: 'ok',
+      model: 'deepseek/deepseek-v4-pro',
+      advice: 'Yes'
+    });
+    expect(parseAdvisorPrompt(record.args)).toBe('Is 17 prime? One word.');
+  });
+
+  it('turns a failed one into an error result carrying the reason', () => {
+    const record = advisorRecordFromItem({
+      status: 'failed',
+      model: 'nonexistent/model-xyz',
+      error: 'Advisor call failed: nonexistent/model-xyz is not a valid model ID',
+      prompt: 'Is 17 prime?'
+    });
+    expect(parseAdvisorResult(record.result)).toEqual({
+      status: 'error',
+      error: 'Advisor call failed: nonexistent/model-xyz is not a valid model ID'
+    });
+  });
+
+  it('still reads as an error when a failed item states no reason', () => {
+    const record = advisorRecordFromItem({ status: 'failed' });
+    expect(parseAdvisorResult(record.result)?.status).toBe('error');
+    expect(parseAdvisorPrompt(record.args)).toBeNull();
   });
 });

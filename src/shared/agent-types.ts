@@ -612,6 +612,48 @@ export const AGENT_TASK_INSTRUCTIONS = [
 ].join('\n');
 
 /**
+ * What marks a reminder as Fleet talking rather than the user.
+ *
+ * Said plainly instead of wrapped in a tag. `<system-reminder>` is a house
+ * style of one harness and one provider; here the same turn may be answered by
+ * any model OpenRouter routes to, and a tag one of them has never seen is
+ * either ignored or read out loud.
+ *
+ * The same words for every reminder, so a round carrying two of them does not
+ * appear to have two different things talking to the model.
+ */
+export const FLEET_WIRE_PREFIX = 'Note from Fleet, not from the user:';
+
+/**
+ * Where a note from Fleet stops.
+ *
+ * Notes ride as user messages beside the user's own, and some providers merge
+ * consecutive user messages into one. Without an end, the user's request lands
+ * inside the note before it - a note that opens by saying it is not from the
+ * user - and the model reads the request as something Fleet injected.
+ */
+export const FLEET_WIRE_SUFFIX = 'End of note.';
+
+/** One block of context, in the one voice Fleet speaks to the model in. */
+export function fleetNote(block: string): string {
+  return `${FLEET_WIRE_PREFIX}\n\n${block}\n\n${FLEET_WIRE_SUFFIX}`;
+}
+
+/**
+ * What the model is told about those notes.
+ *
+ * Without it a model meets text that says it is not from the user and has to
+ * guess whether it is an injection, and a wary one treats the user's own
+ * request, merged in beside it, with the same suspicion.
+ */
+export const AGENT_FLEET_NOTE_INSTRUCTIONS = [
+  '## Notes from Fleet',
+  '',
+  `Fleet, the app you run in, adds context of its own to the conversation: the time, your task list, what your subagents are doing. Each note starts "${FLEET_WIRE_PREFIX}" and ends "${FLEET_WIRE_SUFFIX}"`,
+  'Everything outside those markers in a user message is what the user wrote. Take it as their request.'
+].join('\n');
+
+/**
  * The system message for a turn. The working folder is appended by Fleet rather
  * than left to the prompt text, so a custom prompt cannot accidentally drop the
  * one fact the agent has no other way to learn. Whether image generation is on
@@ -732,13 +774,16 @@ export function buildSystemPrompt(
   // it obeys is still the one `image` obeys - instructions for a tool that is
   // not there are instructions to hallucinate a call.
   const todo = options.todo === false ? '' : `\n\n${AGENT_TODO_INSTRUCTIONS}`;
+  // Unconditional, like the working folder: every turn carries at least the
+  // clock as a note, and a custom prompt cannot know to explain them.
+  const notes = `\n\n${AGENT_FLEET_NOTE_INSTRUCTIONS}`;
   // Last, so it is the thing the model has most recently read when the turn
   // starts, and so a custom prompt cannot displace it.
   const machine =
     options.env === undefined || options.env === null
       ? `Working folder: ${cwd}`
       : renderEnvBlock(cwd, options.env);
-  return `${base}${project}${image}${web}${hosted}${search}${advisor}${fusion}${mcp}${toolSearch}${memory}${skill}${task}${schedule}${todo}\n\n${machine}`;
+  return `${base}${project}${image}${web}${hosted}${search}${advisor}${fusion}${mcp}${toolSearch}${memory}${skill}${task}${schedule}${todo}${notes}\n\n${machine}`;
 }
 
 /*
