@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { streamResponse, toResponsesInput, toResponsesTool } from '../responses';
+import { collectOutput, streamResponse, toResponsesInput, toResponsesTool } from '../responses';
 import { openRouterTarget } from '../openrouter';
 import { forCompletionsWire, type AgentWireMessage } from '../completions';
 import type { AgentUsage } from '../../../shared/agent-types';
@@ -278,6 +278,30 @@ describe('a captured round replayed from history', () => {
   });
 });
 
+describe('a round with text on both sides of a server tool', () => {
+  // OpenRouter's own loop: the model writes, consults, then writes again, as
+  // two message items. Joined bare they read "is `Yes`.Raw return".
+  it('separates the two messages rather than running them together', async () => {
+    const delta = (item: string, text: string): string =>
+      `data: ${JSON.stringify({ type: 'response.output_text.delta', item_id: item, delta: text })}\n\n`;
+    replaying(
+      delta('msg_1', 'Asking.') +
+        delta('msg_2', 'It said ') +
+        delta('msg_2', 'yes.') +
+        `data: ${JSON.stringify({ type: 'response.completed', response: { output: [] } })}\n\n`
+    );
+    let text = '';
+    await streamResponse({
+      ...base,
+      target: openRouterTarget('sk-or-test'),
+      onDelta: (d) => {
+        text += d;
+      }
+    });
+    expect(text).toBe('Asking.\n\nIt said yes.');
+  });
+});
+
 describe('when the round does not finish', () => {
   it('rejects with the message the stream reported', async () => {
     replaying('data: {"type":"error","error":{"message":"upstream is down"}}\n\n');
@@ -453,5 +477,41 @@ describe('what the other transport is allowed to see', () => {
     ];
 
     expect(forCompletionsWire(messages)).toEqual(messages);
+  });
+});
+
+describe('an advisor item', () => {
+  // Items as captured from a real round, the account id trimmed from the error.
+  it('becomes a record the advisor row can read, for both outcomes', () => {
+    const { toolCalls, serverToolCalls } = collectOutput([
+      {
+        type: 'openrouter:advisor',
+        id: 'st_1',
+        status: 'completed',
+        model: 'deepseek/deepseek-v4-pro',
+        advice: 'Yes',
+        prompt: 'Is 17 prime? One word.'
+      },
+      {
+        type: 'openrouter:advisor',
+        id: 'st_2',
+        status: 'failed',
+        model: 'nonexistent/model-xyz',
+        error: 'Advisor call failed: nonexistent/model-xyz is not a valid model ID',
+        prompt: 'Is 17 prime?'
+      }
+    ]);
+    expect(toolCalls).toEqual([]);
+    expect(serverToolCalls.map((call) => call.toolName)).toEqual([
+      'openrouter:advisor',
+      'openrouter:advisor'
+    ]);
+    expect(JSON.parse(serverToolCalls[0].result)).toEqual({
+      status: 'ok',
+      model: 'deepseek/deepseek-v4-pro',
+      advice: 'Yes'
+    });
+    expect(JSON.parse(serverToolCalls[0].args)).toEqual({ prompt: 'Is 17 prime? One word.' });
+    expect(JSON.parse(serverToolCalls[1].result).status).toBe('error');
   });
 });

@@ -6,7 +6,11 @@ import {
   type Citation,
   type ServerToolRecord
 } from '../../../../shared/agent-server-tools';
-import { parseAdvisorPrompt, parseAdvisorResult } from '../../../../shared/agent-advisor';
+import {
+  ADVISOR_TOOL_NAME,
+  parseAdvisorPrompt,
+  parseAdvisorResult
+} from '../../../../shared/agent-advisor';
 import { FUSION_TOOL_NAME } from '../../../../shared/agent-fusion';
 import { parseHostedFetchResult } from '../../../../shared/agent-hosted-fetch';
 import { AgentFusionRow } from './AgentFusionRow';
@@ -194,7 +198,6 @@ function hostOf(url: string): string {
 }
 
 /** The wire name of the tool the row below is for. */
-const ADVISOR_TOOL_NAME = 'openrouter:advisor';
 
 /**
  * A consultation with a stronger model.

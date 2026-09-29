@@ -15,6 +15,7 @@ import {
   type StreamRequest,
   type WireToolCall
 } from './completions';
+import { ADVISOR_TOOL_NAME, advisorRecordFromItem } from '../../shared/agent-advisor';
 import { modelsBody, providerBody } from '../../shared/agent-routing';
 import { sseLines, sseData } from './sse';
 
@@ -279,6 +280,7 @@ const responseSchema = z.object({
 const eventSchema = z.object({
   type: z.string(),
   delta: z.string().nullish(),
+  item_id: z.string().nullish(),
   response: responseSchema.nullish(),
   error: z.object({ message: z.string().nullish() }).nullish(),
   annotation: z
@@ -364,6 +366,17 @@ export function collectOutput(items: Array<z.infer<typeof outputItemSchema>>): {
       continue;
     }
     if (KNOWN_ITEMS.has(item.type)) continue;
+    if (item.type === ADVISOR_TOOL_NAME) {
+      // Its outcome is fields of the item rather than a `result`, so it is
+      // translated into the record the row reads on either transport.
+      serverToolCalls.push({
+        callId: item.id ?? null,
+        toolName: item.type,
+        ...advisorRecordFromItem(item),
+        citations: []
+      });
+      continue;
+    }
     // Everything left is work OpenRouter did on its own side. The arguments it
     // states vary by tool - a search says `query`, a fetch says `url` - so the
     // whole item minus its bookkeeping is kept as the arguments rather than
@@ -453,6 +466,10 @@ export async function streamResponse(req: StreamRequest): Promise<StreamOutcome>
     const annotated: Citation[] = [];
     let failure: string | null = null;
     let drafting = false;
+    // The message item the text so far belongs to. OpenRouter's own loop can
+    // produce several in one round - text, then a server tool, then more text -
+    // and joined bare they run together mid-sentence.
+    let textItem: string | null = null;
 
     for await (const line of sseLines(res.body)) {
       deadline.touch();
@@ -463,7 +480,11 @@ export async function streamResponse(req: StreamRequest): Promise<StreamOutcome>
       const event = parsed.data;
 
       if (event.type === 'response.output_text.delta') {
-        if (event.delta != null) req.onDelta(event.delta);
+        if (event.delta == null) continue;
+        const item = event.item_id ?? null;
+        if (textItem !== null && item !== null && item !== textItem) req.onDelta('\n\n');
+        if (item !== null) textItem = item;
+        req.onDelta(event.delta);
         continue;
       }
       // Both channels a model may think out loud on. Which one arrives is the

@@ -85,6 +85,7 @@ async function connectedMcp(): Promise<McpManager> {
 async function runTurn(options: {
   toolSearch: boolean;
   mcp: McpManager | null;
+  advisor?: boolean;
 }): Promise<{ completions: StreamRequest[]; responses: StreamRequest[] }> {
   const dir = mkdtempSync(join(tmpdir(), 'fleet-tool-search-'));
   const completions: StreamRequest[] = [];
@@ -104,7 +105,12 @@ async function runTurn(options: {
       getSettings: () => ({
         ...DEFAULT_AGENT_SETTINGS,
         coding: { ...DEFAULT_AGENT_SETTINGS.coding, model: 'anthropic/claude-sonnet-4.5' },
-        toolSearch: { enabled: options.toolSearch, maxResults: 5 }
+        toolSearch: { enabled: options.toolSearch, maxResults: 5 },
+        advisor: {
+          ...DEFAULT_AGENT_SETTINGS.advisor,
+          enabled: options.advisor === true,
+          model: options.advisor === true ? 'anthropic/claude-opus-4.5' : null
+        }
       }),
       subagents: NO_SUBAGENTS,
       getApiKey: () => 'sk-or-test',
@@ -189,5 +195,22 @@ describe('a turn with deferral on but no server connected', () => {
     expect(sent.completions[0]?.serverTools?.map((t) => t.type) ?? []).not.toContain(
       'openrouter:tool_search'
     );
+  });
+});
+
+describe('a turn with the advisor switched on', () => {
+  // Chat Completions never reports a consultation, so a turn that offers one
+  // there shows, stores and replays nothing, and a failed one is invisible.
+  it('goes out on the Responses transport with the advisor first', async () => {
+    const sent = await runTurn({ toolSearch: false, mcp: null, advisor: true });
+    expect(sent.responses).toHaveLength(1);
+    expect(sent.completions).toHaveLength(0);
+    expect(sent.responses[0].serverTools?.[0].type).toBe('openrouter:advisor');
+  });
+
+  it('keeps Chat Completions when the advisor is off', async () => {
+    const sent = await runTurn({ toolSearch: false, mcp: null });
+    expect(sent.completions).toHaveLength(1);
+    expect(sent.responses).toHaveLength(0);
   });
 });

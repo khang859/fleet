@@ -25,6 +25,7 @@ import {
   EMPTY_AGENT_USAGE,
   MAX_TOOL_ROUNDS_CEILING,
   buildSystemPrompt,
+  fleetNote,
   messageAttachments,
   messageText,
   supportedImageConfig
@@ -91,7 +92,7 @@ import {
 } from '../../shared/agent-server-tools';
 import { webSearchSpec } from '../../shared/agent-web-search';
 import { hostedFetchSpec } from '../../shared/agent-hosted-fetch';
-import { advisorSpec } from '../../shared/agent-advisor';
+import { ADVISOR_TOOL_NAME, advisorSpec } from '../../shared/agent-advisor';
 import { fusionSpec } from '../../shared/agent-fusion';
 import { splitDeferred, toolSearchSpec } from '../../shared/agent-tool-search';
 import { streamResponse } from './responses';
@@ -475,7 +476,7 @@ export function withTodoReminder(
 ): AgentWireMessage[] {
   const block = renderTodoBlock(items, streak);
   if (block === null) return messages;
-  return [...messages, { role: 'user', content: `${FLEET_WIRE_PREFIX}\n\n${block}` }];
+  return [...messages, { role: 'user', content: fleetNote(block) }];
 }
 
 /**
@@ -504,10 +505,7 @@ export function withSubagentReminder(
   waiting: Set<string>
 ): AgentWireMessage[] {
   if (running.length === 0) return messages;
-  return [
-    ...messages,
-    { role: 'user', content: `${FLEET_WIRE_PREFIX}\n\n${renderSubagentBlock(running, waiting)}` }
-  ];
+  return [...messages, { role: 'user', content: fleetNote(renderSubagentBlock(running, waiting)) }];
 }
 
 /**
@@ -529,7 +527,7 @@ export function withScheduleReminder(
   if (schedule === null) return messages;
   const block = renderScheduleBlock(schedule.list(), new Date());
   if (block === null) return messages;
-  return [...messages, { role: 'user', content: `${FLEET_WIRE_PREFIX}\n\n${block}` }];
+  return [...messages, { role: 'user', content: fleetNote(block) }];
 }
 
 /**
@@ -556,11 +554,13 @@ export function withResumeNote(messages: AgentWireMessage[], resumed: boolean): 
     ...messages,
     {
       role: 'user',
-      content: `${FLEET_WIRE_PREFIX}\n\n${[
-        'A subagent has just reported back. You have already replied in this conversation.',
-        'Say what this report adds or changes, and nothing you have said already - the user can read your earlier answer and does not want it a second time.',
-        'If it changes nothing worth saying, say only that.'
-      ].join('\n')}`
+      content: fleetNote(
+        [
+          'A subagent has just reported back. You have already replied in this conversation.',
+          'Say what this report adds or changes, and nothing you have said already - the user can read your earlier answer and does not want it a second time.',
+          'If it changes nothing worth saying, say only that.'
+        ].join('\n')
+      )
     }
   ];
 }
@@ -661,19 +661,6 @@ export function withClearedWireResults(
 }
 
 /**
- * What marks a reminder as Fleet talking rather than the user.
- *
- * Said plainly instead of wrapped in a tag. `<system-reminder>` is a house
- * style of one harness and one provider; here the same turn may be answered by
- * any model OpenRouter routes to, and a tag one of them has never seen is
- * either ignored or read out loud.
- *
- * The same words for every reminder, so a round carrying two of them does not
- * appear to have two different things talking to the model.
- */
-export const FLEET_WIRE_PREFIX = 'Note from Fleet, not from the user:';
-
-/**
  * The clock, in the one voice Fleet speaks to the model in.
  *
  * Read here rather than passed in: the time this says is the time the request
@@ -681,7 +668,7 @@ export const FLEET_WIRE_PREFIX = 'Note from Fleet, not from the user:';
  * whenever the caller looked at it.
  */
 export function wireTime(timeZone: string): string {
-  return `${FLEET_WIRE_PREFIX}\n\n${renderTimeBlock(new Date(), timeZone)}`;
+  return fleetNote(renderTimeBlock(new Date(), timeZone));
 }
 
 /**
@@ -855,9 +842,11 @@ async function toolImageMessages(call: AgentToolCall, cwd: string): Promise<Agen
  * differ, and this is the only place the difference is made. See
  * `withClearedResults`.
  *
- * `timeFragment` is the clock, and it goes in front of the message it is the
- * time of rather than into the system prompt - see `agent-environment.ts` for
- * why. It rides as a user message because that is the only mid-conversation
+ * `timeFragment` is the clock, and it goes with the message it is the time of
+ * rather than into the system prompt - see `agent-environment.ts` for why.
+ * After that message rather than before it: some providers merge consecutive
+ * user messages, and a note in front leaves the user's request reading as the
+ * rest of a note that says it is not from the user. It rides as a user message because that is the only mid-conversation
  * role every provider agrees on, the same conclusion `SUMMARY_WIRE_PREFIX`
  * reached, and it says what it is in its own text for the same reason.
  */
@@ -879,7 +868,7 @@ export async function toWireHistory(
   const opening =
     req.text === '' && req.attachments.length === 0
       ? []
-      : [...timeMessages(timeFragment), await toUserMessage(req.text, req.attachments, ctx)];
+      : [await toUserMessage(req.text, req.attachments, ctx), ...timeMessages(timeFragment)];
   return [{ role: 'system', content: systemPrompt }, ...history.flat(), ...opening];
 }
 
@@ -1685,8 +1674,9 @@ export class AgentService {
                     : renderProjectInstructions(instructions.filename, instructions.text)
               })
             },
-            { role: 'user', content: wireTime(env.timeZone) },
-            { role: 'user', content: run.prompt }
+            // The prompt before the clock, for the reason `toWireHistory` gives.
+            { role: 'user', content: run.prompt },
+            { role: 'user', content: wireTime(env.timeZone) }
           ],
           tools: toolSpecsFor({
             image: null,
@@ -1939,16 +1929,21 @@ export class AgentService {
     }
   ): Promise<StreamOutcome> {
     // The transport follows the request rather than a setting, and this is the
-    // one line that chooses it. A deferred tool is only ever populated on a
+    // one place that chooses it. A deferred tool is only ever populated on a
     // turn against OpenRouter with deferral on, and `openrouter:tool_search` is
-    // a 400 on Chat Completions - so the presence of one is exactly the
-    // condition that needs the other endpoint. Everything else in the app,
-    // including every compaction and every subagent, keeps the transport it
-    // has always used.
+    // a 400 on Chat Completions - so the presence of one needs the other
+    // endpoint. The advisor needs it for a different reason: Chat Completions
+    // never reports a consultation, so nothing would be shown, stored or
+    // replayed, and a failed one would be invisible. Responses states each as an
+    // output item. Everything else in the app, including every compaction and
+    // every subagent, keeps the transport it has always used.
     const deferring = (req.deferredTools?.length ?? 0) > 0;
-    const stream = deferring
-      ? (this.deps.streamResponses ?? streamResponse)
-      : (this.deps.stream ?? streamCompletion);
+    const advising =
+      ctx.target.serverTools && (req.serverTools ?? []).some((t) => t.type === ADVISOR_TOOL_NAME);
+    const stream =
+      deferring || advising
+        ? (this.deps.streamResponses ?? streamResponse)
+        : (this.deps.stream ?? streamCompletion);
     return stream({
       target: ctx.target,
       model: ctx.model,

@@ -30,7 +30,6 @@ import {
 } from '../../../shared/agent-context';
 import {
   AgentService,
-  FLEET_WIRE_PREFIX,
   toCompactMessages,
   toReasoningParam,
   toWireHistory,
@@ -43,6 +42,7 @@ import {
   withSubagentReminder,
   withTodoReminder
 } from '../agent-service';
+import { FLEET_WIRE_PREFIX, FLEET_WIRE_SUFFIX } from '../../../shared/agent-types';
 import { ScheduleStore } from '../schedule-store';
 import { SCHEDULE_WIRE_PREFIX } from '../../../shared/agent-schedule';
 import { PermissionGate } from '../permissions/gate';
@@ -629,6 +629,16 @@ describe('toReasoningParam', () => {
   });
 });
 
+describe('buildSystemPrompt: notes from Fleet', () => {
+  // Every turn carries the clock as a note, and a custom prompt cannot know to
+  // explain it, so the explanation survives the prompt being replaced.
+  it('explains the notes even under a custom prompt', () => {
+    const prompt = buildSystemPrompt('/repo', 'You are terse.', { image: false });
+    expect(prompt).toContain(FLEET_WIRE_PREFIX);
+    expect(prompt).toContain(FLEET_WIRE_SUFFIX);
+  });
+});
+
 describe('buildSystemPrompt', () => {
   it('uses the built-in instructions, which ask for Markdown', () => {
     const prompt = buildSystemPrompt('/repo', null);
@@ -987,21 +997,24 @@ describe('toWireHistory', () => {
   });
 
   /*
-   * The clock's placement is the whole point of it being a message at all. In
-   * front of the newest user message it sits in the part of the request that is
+   * The clock's placement is the whole point of it being a message at all.
+   * Beside the newest user message it sits in the part of the request that is
    * re-sent uncached every turn regardless, so it costs nothing; in the system
    * prompt it would rewrite the cache prefix every round.
    */
-  it('puts the clock immediately before the message it is the time of', async () => {
+  // After rather than before: a provider that merges consecutive user messages
+  // would otherwise fold the request into a note that says it is not from the
+  // user, and the model then treats the request as injected.
+  it('puts the clock immediately after the message it is the time of', async () => {
     const clock = wireTime('UTC');
     const messages = await toWireHistory(REQUEST, 'be brief', clock);
 
-    expect(messages.at(-2)).toEqual({ role: 'user', content: clock });
-    expect(messages.at(-1)).toEqual({ role: 'user', content: 'what does this do?' });
+    expect(messages.at(-2)).toEqual({ role: 'user', content: 'what does this do?' });
+    expect(messages.at(-1)).toEqual({ role: 'user', content: clock });
     // Everything ahead of it is byte-for-byte what it was, which is what keeps
     // the prefix cacheable.
     const unclocked = await toWireHistory(REQUEST, 'be brief');
-    expect(messages.slice(0, -2)).toEqual(unclocked.slice(0, -1));
+    expect(messages.slice(0, -1)).toEqual(unclocked);
   });
 
   /*
@@ -1014,6 +1027,24 @@ describe('toWireHistory', () => {
 
     expect(clock.startsWith(FLEET_WIRE_PREFIX)).toBe(true);
     expect(clock).toContain('Current time: ');
+  });
+
+  /*
+   * Some providers merge consecutive user messages. The clock goes out right
+   * before the user's own message, so without an end the request would read as
+   * the rest of a note that says it is not from the user.
+   */
+  it('closes every note, so a merged user message stays outside it', () => {
+    const history: AgentWireMessage[] = [{ role: 'user', content: 'hi' }];
+    const items: AgentTodoItem[] = [
+      { id: '1', content: 'read the file', activeForm: null, status: 'pending' }
+    ];
+    const notes = [
+      wireTime('UTC'),
+      withTodoReminder(history, items, 0).at(-1)?.content,
+      withResumeNote(history, true).at(-1)?.content
+    ];
+    for (const note of notes) expect(note).toMatch(new RegExp(`${FLEET_WIRE_SUFFIX}$`));
   });
 
   /*
@@ -1677,7 +1708,9 @@ describe('AgentService', () => {
 
     const { messages, cacheUpTo } = rounds[0];
     expect(cacheUpTo).toBeDefined();
-    expect(messages[(cacheUpTo ?? 0) - 1]).toEqual({ role: 'user', content: REQUEST.text });
+    expect(messages[(cacheUpTo ?? 0) - 2]).toEqual({ role: 'user', content: REQUEST.text });
+    // The clock belongs to the whole turn, so it is sent again every round.
+    expect(messages[(cacheUpTo ?? 0) - 1].content).toContain('Current time: ');
     for (const note of messages.slice(cacheUpTo)) {
       expect(note.content).toContain(FLEET_WIRE_PREFIX);
     }
