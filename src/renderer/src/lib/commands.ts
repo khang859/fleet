@@ -2,6 +2,7 @@ import { ALL_SHORTCUTS, formatShortcut, type ShortcutDef } from './shortcuts';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useToastStore } from '../store/toast-store';
 import type { RemoteHost } from '../../../shared/remote-ssh-types';
+import type { TeleprompterCommand, TeleprompterSourceRequest } from '../../../shared/teleprompter';
 
 export type Command = {
   id: string;
@@ -49,6 +50,38 @@ async function browseDetectedHost(): Promise<void> {
     port: detected.port,
     identityFile: detected.identityFile
   });
+}
+
+const TELEPROMPTER_KEYWORDS = [
+  'teleprompter',
+  'presenter',
+  'speaker',
+  'notes',
+  'present',
+  'slides'
+];
+
+/**
+ * Run a teleprompter command from the palette, saying so when it could not do
+ * what was asked - the overlay is a separate window, so nothing else here
+ * would show it.
+ */
+async function runTeleprompter(command: TeleprompterCommand): Promise<void> {
+  const show = useToastStore.getState().show;
+  const state = await window.fleet.teleprompter.command(command);
+  if (!state.open && command.type !== 'close') {
+    show('Open the teleprompter first');
+    return;
+  }
+  // Said when the overlay appears, not on every command after.
+  if (command.type === 'toggleVisible' && state.visible && state.hotkeys.some((h) => !h.ok)) {
+    show('Some teleprompter shortcuts are unavailable. See Settings > Teleprompter.');
+  }
+}
+
+async function loadTeleprompterNotes(source: TeleprompterSourceRequest): Promise<void> {
+  const result = await window.fleet.teleprompter.setSource(source);
+  if (!result.ok) useToastStore.getState().show(result.error);
 }
 
 /** One "Browse <host>" command per saved host, so the palette reaches them directly. */
@@ -242,6 +275,41 @@ export function createCommandRegistry(): Command[] {
           .workspace.tabs.find((t) => t.type === 'sessions');
         if (sessions) ws.setActiveTab(sessions.id);
       }
+    },
+    {
+      id: 'teleprompter-toggle',
+      label: 'Show / Hide Teleprompter',
+      category: 'View',
+      keywords: TELEPROMPTER_KEYWORDS,
+      execute: () => void runTeleprompter({ type: 'toggleVisible' })
+    },
+    {
+      id: 'teleprompter-open-file',
+      label: 'Teleprompter: Open Notes File...',
+      category: 'View',
+      keywords: TELEPROMPTER_KEYWORDS,
+      execute: () => void loadTeleprompterNotes({ kind: 'pick' })
+    },
+    {
+      id: 'teleprompter-paste',
+      label: 'Teleprompter: Paste Notes from Clipboard',
+      category: 'View',
+      keywords: TELEPROMPTER_KEYWORDS,
+      execute: () => void loadTeleprompterNotes({ kind: 'clipboard' })
+    },
+    {
+      id: 'teleprompter-toggle-lock',
+      label: 'Teleprompter: Lock / Unlock',
+      category: 'View',
+      keywords: [...TELEPROMPTER_KEYWORDS, 'click through'],
+      execute: () => void runTeleprompter({ type: 'toggleLock' })
+    },
+    {
+      id: 'teleprompter-reset-timer',
+      label: 'Teleprompter: Reset Timer',
+      category: 'View',
+      keywords: TELEPROMPTER_KEYWORDS,
+      execute: () => void runTeleprompter({ type: 'resetTimer' })
     }
   ];
 }

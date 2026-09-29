@@ -7,6 +7,7 @@ export type SettingsSection =
   | 'copilot'
   | 'claudeConfig'
   | 'annotate'
+  | 'teleprompter'
   | 'envSync'
   | 'remoteHosts'
   | 'learnings'
@@ -35,6 +36,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'claudeConfig', label: 'Claude Config' },
       { id: 'learnings', label: 'Learnings' },
       { id: 'annotate', label: 'Annotate' },
+      { id: 'teleprompter', label: 'Teleprompter' },
       { id: 'envSync', label: 'Env Sync' }
     ]
   },

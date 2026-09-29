@@ -46,6 +46,12 @@ import type { TerminalMenuAction } from '../shared/ipc-api';
 import type { WslDistroState, PathContext } from '../shared/shell-profiles';
 import type { ReleaseNote } from '../shared/release-notes';
 import type {
+  SetSourceResult,
+  TeleprompterCommand,
+  TeleprompterSourceRequest,
+  TeleprompterState
+} from '../shared/teleprompter';
+import type {
   Workspace,
   FleetSettings,
   FleetSettingsPatch,
@@ -310,6 +316,14 @@ const fleetApi = {
       claudeConfigDir: string | null
     ): Promise<SetWorkspaceOverrideResult> =>
       typedInvoke(IPC_CHANNELS.SETTINGS_SET_WORKSPACE_OVERRIDE, { workspaceId, claudeConfigDir })
+  },
+  teleprompter: {
+    getState: async (): Promise<TeleprompterState> =>
+      typedInvoke(IPC_CHANNELS.TELEPROMPTER_GET_STATE),
+    command: async (command: TeleprompterCommand): Promise<TeleprompterState> =>
+      typedInvoke(IPC_CHANNELS.TELEPROMPTER_COMMAND, command),
+    setSource: async (source: TeleprompterSourceRequest): Promise<SetSourceResult> =>
+      typedInvoke(IPC_CHANNELS.TELEPROMPTER_SET_SOURCE, source)
   },
   background: {
     /** Copy an image somewhere a wallpaper can safely point at, and say where. */

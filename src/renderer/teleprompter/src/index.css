@@ -1,0 +1,111 @@
+@import 'tailwindcss';
+
+/* A presenter surface: dark and fixed whatever the app theme is, so the notes
+   read the same on every setup. As in the copilot window, say so, or Chromium
+   draws native controls in light chrome when the OS is set to light. */
+:root {
+  color-scheme: dark;
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+*:focus-visible {
+  outline: none;
+}
+
+/* Notes are read at a glance from a distance, so everything scales with the
+   chosen font size (set on the container) rather than using fixed px. */
+.tp-notes {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.tp-notes > * + * {
+  margin-top: 0.5em;
+}
+
+.tp-notes h1,
+.tp-notes h2,
+.tp-notes h3,
+.tp-notes h4 {
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.tp-notes h1 {
+  font-size: 1.3em;
+}
+
+.tp-notes h2 {
+  font-size: 1.15em;
+}
+
+.tp-notes h3,
+.tp-notes h4 {
+  font-size: 1.05em;
+}
+
+.tp-notes ul,
+.tp-notes ol {
+  padding-left: 1.2em;
+}
+
+.tp-notes ul {
+  list-style: disc;
+}
+
+.tp-notes ol {
+  list-style: decimal;
+}
+
+.tp-notes li + li {
+  margin-top: 0.2em;
+}
+
+.tp-notes strong {
+  font-weight: 700;
+  color: #fff;
+}
+
+.tp-notes em {
+  color: #fde68a;
+}
+
+.tp-notes code {
+  font-family: ui-monospace, 'JetBrains Mono', Menlo, monospace;
+  font-size: 0.85em;
+  padding: 0.05em 0.3em;
+  border-radius: 0.25em;
+  background: rgb(255 255 255 / 0.1);
+}
+
+.tp-notes pre code {
+  display: block;
+  padding: 0.5em 0.7em;
+  white-space: pre-wrap;
+}
+
+.tp-notes blockquote {
+  padding-left: 0.6em;
+  border-left: 0.15em solid rgb(255 255 255 / 0.3);
+  color: rgb(255 255 255 / 0.75);
+}
+
+/* The scrollbar shows only while the pointer is over the overlay, like the
+   toolbar, so a glance at the notes never lands on chrome. Text running past
+   the bottom fades out rather than being cut through the middle of a line;
+   the fade is no taller than the bottom padding plus a sliver, so text that
+   fits is untouched. */
+.tp-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
+}
+
+.group:hover .tp-scroll {
+  scrollbar-color: rgb(255 255 255 / 0.2) transparent;
+}

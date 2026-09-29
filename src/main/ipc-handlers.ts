@@ -162,6 +162,7 @@ import type { GitService } from './git-service';
 import type { WorktreeService } from './worktree-service';
 import type { AnnotationStore } from './annotation-store';
 import type { AnnotateService } from './annotate-service';
+import type { TeleprompterService } from './teleprompter/service';
 import type { ShellProfileRegistry } from './shell-profiles';
 import type { WslService } from './wsl-service';
 import { isWslContext, type PathContext } from '../shared/shell-profiles';
@@ -221,7 +222,8 @@ export function registerIpcHandlers(
   wslService: WslService,
   envSyncManager: EnvSyncManager,
   envSyncSecrets: EnvSyncSecrets,
-  ptyOscBridge: PtyOscBridge
+  ptyOscBridge: PtyOscBridge,
+  teleprompter: TeleprompterService
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -438,6 +440,9 @@ export function registerIpcHandlers(
     }
     if (settings.copilot) {
       await onCopilotSettingsChanged();
+    }
+    if (settings.teleprompter) {
+      teleprompter.onSettingsChanged();
     }
   });
 

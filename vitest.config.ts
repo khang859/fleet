@@ -18,6 +18,7 @@ export default defineConfig({
       'src/shared/__tests__/**/*.test.ts',
       'src/renderer/src/**/__tests__/**/*.test.ts',
       'src/renderer/copilot/src/**/__tests__/**/*.test.ts',
+      'src/renderer/teleprompter/src/**/__tests__/**/*.test.ts',
       'scripts/**/__tests__/**/*.test.ts'
     ],
     setupFiles: ['src/test-setup.ts'],

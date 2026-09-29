@@ -172,6 +172,13 @@ export class SettingsStore {
         workspaceOverrides: readWorkspaceOverrides(saved.copilot?.workspaceOverrides)
       },
       annotate: { ...DEFAULT_SETTINGS.annotate, ...(saved.annotate ?? {}) },
+      // Hotkeys one level deeper, so a file that saved one binding still has
+      // the defaults for the rest.
+      teleprompter: {
+        ...DEFAULT_SETTINGS.teleprompter,
+        ...saved.teleprompter,
+        hotkeys: { ...DEFAULT_SETTINGS.teleprompter.hotkeys, ...saved.teleprompter?.hotkeys }
+      },
       // `tools` and `ai` are rebuilt key by key rather than spread from `saved`,
       // so a tool or capability that no longer exists (kanban, images, chat)
       // drops out on the next write instead of riding along forever.
@@ -288,6 +295,11 @@ export class SettingsStore {
       socketApi: { ...current.socketApi, ...(partial.socketApi ?? {}) },
       copilot: { ...current.copilot, ...(partial.copilot ?? {}) },
       annotate: { ...current.annotate, ...(partial.annotate ?? {}) },
+      teleprompter: {
+        ...current.teleprompter,
+        ...(partial.teleprompter ?? {}),
+        hotkeys: { ...current.teleprompter.hotkeys, ...(partial.teleprompter?.hotkeys ?? {}) }
+      },
       tools: { ...current.tools, ...(partial.tools ?? {}) },
       ai: {
         ...current.ai,
