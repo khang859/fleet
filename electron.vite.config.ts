@@ -27,7 +27,8 @@ export default defineConfig({
         input: {
           index: 'src/preload/index.ts',
           copilot: 'src/preload/copilot.ts',
-          annotate: 'src/preload/annotate.ts'
+          annotate: 'src/preload/annotate.ts',
+          teleprompter: 'src/preload/teleprompter.ts'
         },
         output: { format: 'cjs' }
       }
@@ -51,7 +52,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: 'src/renderer/index.html',
-          copilot: 'src/renderer/copilot/index.html'
+          copilot: 'src/renderer/copilot/index.html',
+          teleprompter: 'src/renderer/teleprompter/index.html'
         }
       }
     },

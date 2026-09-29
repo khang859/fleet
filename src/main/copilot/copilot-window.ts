@@ -1,9 +1,7 @@
 import { BrowserWindow, screen } from 'electron';
-import { existsSync, writeFileSync, mkdirSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { join } from 'path';
 import Store from 'electron-store';
 import { createLogger } from '../logger';
+import { loadSecondaryRenderer, secondaryWebPreferences } from '../secondary-renderer';
 import type { CopilotPosition } from '../../shared/types';
 
 const log = createLogger('copilot:window');
@@ -14,45 +12,6 @@ const COLLAPSED_SIZE = SPRITE_SIZE;
 type CopilotWindowStore = {
   position: CopilotPosition | null;
 };
-
-/**
- * In dev mode, electron-vite's dev server doesn't properly serve secondary
- * HTML entry points (returns empty page). Workaround: write a bootstrap HTML
- * file to disk that loads the copilot React app from the Vite dev server.
- */
-function getDevBootstrapPath(viteUrl: string): string {
-  const outDir = join(process.cwd(), 'out');
-  if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
-
-  const bootstrapPath = join(outDir, 'copilot-dev.html');
-  // Use an absolute file path so Vite can resolve and transform the module
-  const mainTsxPath = join(process.cwd(), 'src', 'renderer', 'copilot', 'src', 'main.tsx');
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fleet Copilot</title>
-  <style>
-    html, body, #root { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
-  </style>
-  <script type="module" src="${viteUrl}/@vite/client"></script>
-  <script type="module">
-    import RefreshRuntime from "${viteUrl}/@react-refresh";
-    RefreshRuntime.injectIntoGlobalHook(window);
-    window.$RefreshReg$ = () => {};
-    window.$RefreshSig$ = () => (type) => type;
-    window.__vite_plugin_react_preamble_installed__ = true;
-  </script>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="${viteUrl}/@fs${mainTsxPath}"></script>
-</body>
-</html>`;
-  writeFileSync(bootstrapPath, html, 'utf-8');
-  return bootstrapPath;
-}
 
 export class CopilotWindow {
   private win: BrowserWindow | null = null;
@@ -80,13 +39,6 @@ export class CopilotWindow {
     const saved = this.positionStore.get('position');
     const { x, y } = this.resolvePosition(saved);
 
-    const preloadPathJs = fileURLToPath(new URL('../preload/copilot.js', import.meta.url));
-    const preloadPathMjs = fileURLToPath(new URL('../preload/copilot.mjs', import.meta.url));
-    const preloadPath = existsSync(preloadPathJs) ? preloadPathJs : preloadPathMjs;
-    log.info('preload resolution', { preloadPath, exists: existsSync(preloadPath) });
-
-    const isDev = !!process.env.ELECTRON_RENDERER_URL;
-
     this.win = new BrowserWindow({
       width: COLLAPSED_SIZE,
       height: COLLAPSED_SIZE,
@@ -99,13 +51,7 @@ export class CopilotWindow {
       resizable: false,
       // Keep focusable so clicks work; alwaysOnTop keeps it visible
       focusable: true,
-      webPreferences: {
-        preload: preloadPath,
-        contextIsolation: true,
-        sandbox: false,
-        nodeIntegration: false,
-        webSecurity: !isDev
-      }
+      webPreferences: secondaryWebPreferences('copilot')
     });
 
     // NOTE: Do NOT pass { visibleOnFullScreen: true } here — it triggers
@@ -113,32 +59,7 @@ export class CopilotWindow {
     this.win.setVisibleOnAllWorkspaces(true);
     this.win.setAlwaysOnTop(true, 'floating');
 
-    if (isDev) {
-      // electron-vite doesn't serve secondary HTML entries in dev.
-      // Write a bootstrap HTML file that loads the copilot app from the Vite dev server.
-      const rendererUrl = process.env.ELECTRON_RENDERER_URL;
-      if (rendererUrl) {
-        const bootstrapPath = getDevBootstrapPath(rendererUrl);
-        log.info('loading copilot renderer (dev bootstrap)', { bootstrapPath });
-        void this.win.loadFile(bootstrapPath);
-      } else {
-        // Interpolating `undefined` into the bootstrap HTML would just yield a blank window
-        // and a cryptic did-fail-load, so name the actual cause instead.
-        log.error('ELECTRON_RENDERER_URL is unset - cannot bootstrap the copilot renderer in dev');
-      }
-    } else {
-      const filePath = fileURLToPath(new URL('../renderer/copilot/index.html', import.meta.url));
-      log.info('loading copilot renderer (prod)', { filePath, exists: existsSync(filePath) });
-      void this.win.loadFile(filePath);
-    }
-
-    this.win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
-      log.error('copilot renderer failed to load', { errorCode, errorDescription });
-    });
-
-    this.win.webContents.on('did-finish-load', () => {
-      log.info('copilot renderer loaded');
-    });
+    loadSecondaryRenderer(this.win, { entry: 'copilot', title: 'Fleet Copilot' });
 
     this.win.on('closed', () => {
       this.win = null;

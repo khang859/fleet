@@ -4,6 +4,7 @@ import type { ToolVisibility } from './tools';
 import type { UserGroupColor } from './group-colors';
 import type { AiSettings } from './agent-types';
 import type { RemoteHost } from './remote-ssh-types';
+import type { TeleprompterSettings } from './teleprompter';
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends Array<infer U>
@@ -287,6 +288,7 @@ export type FleetSettings = {
   annotate: {
     retentionDays: number;
   };
+  teleprompter: TeleprompterSettings;
   /** Which sidebar Tools are visible. Disabled tools have no pinned tab. */
   tools: ToolVisibility;
   ai: AiSettings;

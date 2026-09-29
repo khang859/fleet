@@ -7,6 +7,8 @@
     "src/renderer/copilot/src/assets.d.ts",
     "src/renderer/copilot/src/**/*",
     "src/renderer/copilot/src/**/*.tsx",
+    "src/renderer/teleprompter/src/**/*",
+    "src/renderer/teleprompter/src/**/*.tsx",
     "src/preload/*.d.ts",
     "src/shared/**/*"
   ],

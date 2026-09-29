@@ -123,6 +123,14 @@ export const IPC_CHANNELS = {
   ANNOTATE_SNAPSHOT_ELEMENT: 'annotate:snapshot-element',
   // Annotate UI
   ANNOTATE_UI_START: 'annotate:ui:start',
+  // Teleprompter
+  TELEPROMPTER_GET_STATE: 'teleprompter:get-state',
+  /** Main -> overlay: the full TeleprompterState snapshot, on every change. */
+  TELEPROMPTER_STATE: 'teleprompter:state',
+  TELEPROMPTER_COMMAND: 'teleprompter:command',
+  TELEPROMPTER_SET_SOURCE: 'teleprompter:set-source',
+  /** Overlay -> main, fire and forget: the resize grip's new size. */
+  TELEPROMPTER_RESIZE: 'teleprompter:resize',
   ANNOTATE_COMPLETED: 'annotate:completed',
   ANNOTATE_LIST: 'annotate:list',
   ANNOTATE_GET: 'annotate:get',

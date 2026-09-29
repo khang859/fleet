@@ -9,6 +9,7 @@ import { UpdatesSection } from './UpdatesSection';
 import { CopilotSection } from './CopilotSection';
 import { ClaudeConfigSection } from './ClaudeConfigSection';
 import { AnnotateSection } from './AnnotateSection';
+import { TeleprompterSection } from './TeleprompterSection';
 import { EnvSyncSection } from './EnvSyncSection';
 import { LearningsSection } from './LearningsSection';
 import { RemoteHostsSection } from './RemoteHostsSection';
@@ -35,6 +36,7 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType<SettingsSe
   copilot: CopilotSection,
   claudeConfig: ClaudeConfigSection,
   annotate: AnnotateSection,
+  teleprompter: TeleprompterSection,
   envSync: EnvSyncSection,
   remoteHosts: RemoteHostsSection,
   learnings: LearningsSection,

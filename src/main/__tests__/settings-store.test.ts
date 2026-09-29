@@ -127,6 +127,21 @@ describe('SettingsStore settings merge', () => {
     expect(Object.keys(store.get().ai)).toEqual(['agent']);
     expect(store.get().ai.agent.compactThreshold).toEqual({ unit: 'fraction', value: 0.5 });
   });
+
+  it('backfills teleprompter settings for a file saved before they existed', () => {
+    store.set({ annotate: { retentionDays: 5 } });
+    expect(store.get().teleprompter.hotkeys.next).toBe('Control+Alt+PageDown');
+    expect(store.get().teleprompter.fontSize).toBe(28);
+  });
+
+  it('keeps the other teleprompter hotkeys when one is changed', () => {
+    store.set({ teleprompter: { hotkeys: { next: 'Control+Alt+N' } } });
+    store.set({ teleprompter: { fontSize: 40 } });
+    const { teleprompter } = store.get();
+    expect(teleprompter.hotkeys.next).toBe('Control+Alt+N');
+    expect(teleprompter.hotkeys.prev).toBe('Control+Alt+PageUp');
+    expect(teleprompter.fontSize).toBe(40);
+  });
 });
 
 /**

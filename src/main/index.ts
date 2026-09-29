@@ -66,6 +66,9 @@ import type {
 } from '../shared/types';
 import { createLogger } from './logger';
 import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
+import { createTeleprompter } from './teleprompter/index';
+import type { TeleprompterService } from './teleprompter/service';
+import { restoreDockIcon } from './dock-icon';
 import { isProcessAlive } from './process-liveness';
 import { SessionsService } from './sessions/service';
 import { registerSessionsIpcHandlers } from './sessions/ipc-handlers';
@@ -139,6 +142,7 @@ let agentService: AgentService | null = null;
 let agentMcp: AgentMcpManager | undefined;
 let agentSubagents: SubagentManager | null = null;
 let agentScheduleTimer: ScheduleTimer | null = null;
+let teleprompter: TeleprompterService | null = null;
 /** The periodic update check, cleared on the way out with the other timers. */
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -406,6 +410,13 @@ function createWindow(): void {
     log.error('renderer failed to load', { errorCode, errorDescription });
   });
 
+  // Off macOS, closing the main window quits, but only once every window is
+  // gone. An open teleprompter would keep `window-all-closed` from ever firing
+  // and leave Fleet running with no way back in.
+  mainWindow.on('closed', () => {
+    if (process.platform !== 'darwin') teleprompter?.destroy();
+  });
+
   /*
    * A reload throws away everything the renderer knew, including which panes
    * were mid-turn. An agent turn parked on a permission question is waiting on
@@ -505,6 +516,13 @@ app.setName('Fleet');
 // all - no error, no toast - for one it cannot. Matches `appId` in
 // electron-builder.yml, which is what the installed shortcut is stamped with.
 if (process.platform === 'win32') app.setAppUserModelId('com.fleet.app');
+
+// On Wayland an app cannot grab keys itself, so the teleprompter's global
+// hotkeys go through the desktop portal. Electron 39 only uses the portal when
+// this feature is on; without it every registration reports the key as taken.
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
+}
 
 // fleet-drive: enable CDP so `npm run drive` can attach to this dev window.
 // Dev-only, loopback-only, per-checkout port. Never present in packaged builds.
@@ -738,6 +756,8 @@ void app.whenReady().then(async () => {
       }
     });
 
+  teleprompter = createTeleprompter(settingsStore);
+
   registerIpcHandlers(
     ptyManager,
     layoutStore,
@@ -756,7 +776,8 @@ void app.whenReady().then(async () => {
     wslService,
     envSyncManager,
     envSyncSecrets,
-    ptyOscBridge
+    ptyOscBridge,
+    teleprompter
   );
 
   // Clean up old annotations based on retention settings
@@ -786,17 +807,10 @@ void app.whenReady().then(async () => {
   // Start copilot (macOS only, gated internally)
   await initCopilot(settingsStore, ptyManager, layoutStore, () => mainWindow, activityTracker);
 
-  // Set dock icon on macOS — must happen AFTER copilot init because the copilot
-  // window's setVisibleOnAllWorkspaces triggers an Electron bug (electron/electron#26350)
+  // Must happen AFTER copilot init because the copilot window's
+  // setVisibleOnAllWorkspaces triggers an Electron bug (electron/electron#26350)
   // that resets the dock entry.
-  if (process.platform === 'darwin') {
-    const dockIconPath = join(dirname(fileURLToPath(import.meta.url)), '../../build/icon.png');
-    const dockIcon = nativeImage.createFromPath(dockIconPath);
-    if (!dockIcon.isEmpty()) {
-      app.dock?.setIcon(dockIcon);
-      log.info('dock icon set');
-    }
-  }
+  restoreDockIcon();
 
   // Reflect aggregate "awaiting input" state in OS chrome (window title, dock
   // badge). Each half is independently gated by that state's existing `badge`
@@ -1612,7 +1626,10 @@ void app.whenReady().then(async () => {
   });
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    // Asked of the main window itself, not of "any window": the copilot and
+    // the teleprompter are windows too, and either being open would otherwise
+    // leave a dock click with nothing to reopen.
+    if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow();
     }
   });
@@ -1620,6 +1637,7 @@ void app.whenReady().then(async () => {
 
 function shutdownAll(): void {
   void stopCopilot();
+  teleprompter?.destroy();
   ptyManager.killAll();
   cwdPoller.stopAll();
   socketSupervisor?.stop().catch((err: unknown) =>
