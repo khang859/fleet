@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.128.1
+
+- **The advisor's consultations now show up in the Agent pane.**
+  Each one gets an "Asked <model>" row with the question and the advice, or the reason it failed, instead of being invisible behind the agent's own paraphrase.
+  Turns with the advisor switched on now use OpenRouter's Responses endpoint, which is the one that reports consultations (#630).
+- **The agent no longer mistakes your message for a note from Fleet.**
+  Fleet's own notes (the time, the task list) now say where they end, and the time goes after your message, so a model that merges them no longer reads your request as injected and refuses it (#630).
+- **Text the agent writes on both sides of a consultation is now split into paragraphs** instead of running together mid-sentence (#630).
+
 ## v2.128.0
 
 - **Pick an agent's folder from the composer instead of a modal.**
