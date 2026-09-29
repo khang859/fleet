@@ -188,14 +188,20 @@ export function AgentFolderSwitcher({
       <Popover.Trigger asChild>
         <button
           type="button"
-          title={`${cwd} - click to work somewhere else`}
-          aria-label={`Folder: ${label}. Change folder`}
+          title={
+            scratch
+              ? 'No folder yet - choose one before your first message, or chat without one'
+              : `${cwd} - click to work somewhere else`
+          }
+          aria-label={scratch ? 'Choose folder' : `Folder: ${label}. Change folder`}
           // A border at rest, not only a background on hover: this reads as a
           // label until it looks like something you can press.
           className="flex min-w-0 shrink items-center gap-1 rounded border border-fleet-border px-1.5 py-0.5 text-fleet-text-muted transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text-secondary focus-ring data-[state=open]:bg-fleet-surface-2"
         >
-          <FolderIcon scratch={scratch} />
-          <span className="truncate">{label}</span>
+          {/* A new chat has no folder yet, so the button asks for one instead
+              of naming Scratch - "Scratch" is only what it stays if you don't. */}
+          <FolderIcon scratch={false} />
+          <span className="truncate">{scratch ? 'Choose folder' : label}</span>
           <ChevronDown size={11} className="shrink-0" />
         </button>
       </Popover.Trigger>
