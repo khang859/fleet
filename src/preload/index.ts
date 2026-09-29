@@ -126,7 +126,7 @@ import type {
   AgentSessionListItem,
   AgentSessionReplay
 } from '../shared/agent-session';
-import type { AgentGitHeadEvent } from '../shared/agent-git';
+import type { AgentGitHead, AgentGitHeadEvent } from '../shared/agent-git';
 import type { AgentScheduleChanged, AgentScheduleRecord } from '../shared/agent-schedule';
 import type { AgentBackgroundChanged, AgentBackgroundJob } from '../shared/agent-tools';
 // Aliased so the generic MCP names read as the Agent pane's at every use site.
@@ -739,6 +739,9 @@ const fleetApi = {
     refreshGit: (paneId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_GIT_REFRESH, paneId),
     onGitHead: (cb: (p: AgentGitHeadEvent) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_GIT_HEAD, cb),
+    /** One read of a folder's branch, without watching it. `null` outside a repo. */
+    gitHeadAt: async (cwd: string): Promise<AgentGitHead | null> =>
+      typedInvoke<AgentGitHead | null>(IPC_CHANNELS.AGENT_GIT_HEAD_AT, cwd),
     /**
      * What the composer's Up key walks back through. Asked for once when a pane
      * opens - a hundred short strings, held in the renderer after that, because

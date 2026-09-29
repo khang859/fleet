@@ -1,4 +1,4 @@
-import { stripTrailing } from './folder-crumbs';
+import { stripTrailing } from '../../lib/path-utils';
 
 /**
  * Where an agent should open inside a freshly created worktree, given the

@@ -78,7 +78,7 @@ import { VOICE_COUNTDOWN_MS, VOICE_MAX_MS } from '../../../../shared/agent-voice
 import { atTail, lostRoom } from './transcript-tail';
 import { ComposerMenu } from './ComposerMenu';
 import { downscaleImage } from '../../lib/downscale-image';
-import { useAgentStore } from '../../store/agent-store';
+import { canRelocate, useAgentStore } from '../../store/agent-store';
 import { useSettingsStore } from '../../store/settings-store';
 
 /**
@@ -227,6 +227,7 @@ export function AgentThread({
   const cancel = useAgentStore((s) => s.cancel);
   const compact = useAgentStore((s) => s.compact);
   const startNewSession = useAgentStore((s) => s.startNewSession);
+  const relocate = useAgentStore((s) => s.relocate);
   const catalog = useAgentStore((s) => s.catalog);
   const agent = useSettingsStore((s) => s.settings?.ai.agent ?? null);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
@@ -398,7 +399,16 @@ export function AgentThread({
           branch={gitHead?.branch ?? null}
         />
 
-        <AgentLocation cwd={cwd} head={gitHead} label={isScratchDir(cwd) ? 'Scratch' : undefined} />
+        <AgentLocation
+          cwd={cwd}
+          head={gitHead}
+          label={isScratchDir(cwd) ? 'Scratch' : undefined}
+          onMove={
+            thread && canRelocate(thread)
+              ? (folderPath, worktree) => relocate(paneId, folderPath, worktree)
+              : undefined
+          }
+        />
       </div>
     </div>
   );

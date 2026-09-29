@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Bot,
   MessageCircle,
-  MessageCirclePlus,
   SlidersHorizontal,
   Server
 } from 'lucide-react';
@@ -1624,25 +1623,15 @@ export function Sidebar({
           )}
           <button
             type="button"
-            className="text-fleet-text-subtle hover:text-violet-300 rounded p-0.5 hover:bg-fleet-surface-2 transition active:scale-90"
+            className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
+            // Every agent starts as a scratch chat. Its folder label moves it to
+            // a project before the first message, so starting asks nothing.
             onClick={() => {
               expandSection('agents');
               useWorkspaceStore.getState().openScratch();
             }}
-            title="New scratch chat"
-            aria-label="New scratch chat"
-          >
-            <MessageCirclePlus size={14} />
-          </button>
-          <button
-            className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
-            // The pane needs a folder to work in, so the same event the
-            // command palette fires opens the picker first.
-            onClick={() => {
-              expandSection('agents');
-              document.dispatchEvent(new CustomEvent('fleet:new-agent'));
-            }}
-            title="New Agent Pane"
+            title="New agent"
+            aria-label="New agent"
           >
             +
           </button>

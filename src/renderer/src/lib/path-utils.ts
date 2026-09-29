@@ -28,3 +28,9 @@ export function resolve(base: string, relative: string): string {
   }
   return '/' + resolved.join('/');
 }
+
+/** Drop trailing separators, but never turn a posix root into the empty string. */
+export function stripTrailing(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, '');
+  return trimmed === '' ? '/' : trimmed;
+}

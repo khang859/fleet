@@ -2054,3 +2054,106 @@ describe('sources a round found', () => {
     expect(messageServerToolCalls(answer())).toEqual([]);
   });
 });
+
+/**
+ * Moving a conversation that has not started to another folder - what the
+ * folder label under the composer does. It has to keep the session, so what is
+ * already attached stays filed under it, and it has to stop the moment
+ * anything has been said.
+ */
+describe('relocate', () => {
+  const scratchTab = async (): Promise<typeof WorkspaceStore> => {
+    const workspace = await import('../workspace-store');
+    const { scratchDir } = await import('../../lib/scratch');
+    workspace.useWorkspaceStore.setState({
+      workspace: {
+        id: 'ws',
+        label: 'W',
+        tabs: [
+          {
+            id: 'tab-agent',
+            label: 'Scratch chat',
+            labelIsCustom: true,
+            cwd: scratchDir(),
+            type: 'agent',
+            splitRoot: {
+              type: 'leaf',
+              id: PANE,
+              cwd: scratchDir(),
+              paneType: 'agent',
+              agentSessionId: 'session-1'
+            }
+          }
+        ]
+      },
+      activeTabId: 'tab-agent',
+      activePaneId: PANE
+    });
+    return workspace;
+  };
+
+  it('moves an unsent scratch chat to a project, keeping its session', async () => {
+    const workspace = await scratchTab();
+    const { scratchDir } = await import('../../lib/scratch');
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', scratchDir());
+
+    agentStore.useAgentStore.getState().relocate(PANE, '/repo');
+
+    expect(thread().cwd).toBe('/repo');
+    expect(thread().sessionId).toBe('session-1');
+    const tab = workspace.useWorkspaceStore.getState().workspace.tabs[0];
+    expect(tab.cwd).toBe('/repo');
+    expect(tab.label).toBe('repo');
+    expect(workspace.collectPaneLeafs(tab.splitRoot)[0]).toMatchObject({
+      id: PANE,
+      cwd: '/repo',
+      agentSessionId: 'session-1'
+    });
+    agentStore.useAgentStore.getState().send(PANE, thread().cwd, 'hello');
+    expect(agentApi.send).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/repo' }));
+  });
+
+  it('prepares a scratch folder again when moved back to scratch', async () => {
+    await scratchTab();
+    const { scratchDir } = await import('../../lib/scratch');
+    const root = scratchDir();
+    const load = vi.fn(async (id: string) =>
+      Promise.resolve({ ...emptyReplay(), cwd: `${root}/${id}` })
+    );
+    Object.assign(window.fleet.agent, { loadSession: load });
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', root);
+    agentStore.useAgentStore.getState().relocate(PANE, '/repo');
+
+    agentStore.useAgentStore.getState().relocate(PANE, root);
+
+    await vi.waitFor(() => expect(thread().loading).toBe(false));
+    expect(thread().cwd).toBe(`${root}/session-1`);
+  });
+
+  it('refuses once the conversation has started', async () => {
+    const workspace = await scratchTab();
+    const { scratchDir } = await import('../../lib/scratch');
+    await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', scratchDir());
+    agentStore.useAgentStore.getState().send(PANE, thread().cwd, 'hello');
+
+    agentStore.useAgentStore.getState().relocate(PANE, '/repo');
+
+    expect(thread().cwd).not.toBe('/repo');
+    expect(workspace.useWorkspaceStore.getState().workspace.tabs[0].cwd).toBe(scratchDir());
+  });
+});
+
+describe('canRelocate', () => {
+  const idle = { sessionId: 's', messages: [], streamId: null, loading: false };
+
+  it('allows a pane with nothing said, running or loading', () => {
+    expect(agentStore.canRelocate(idle)).toBe(true);
+  });
+
+  it('refuses a pane with a transcript, a turn in flight, history on the way or no session', () => {
+    expect(agentStore.canRelocate({ ...idle, messages: [{} as never] })).toBe(false);
+    expect(agentStore.canRelocate({ ...idle, streamId: 'stream' })).toBe(false);
+    expect(agentStore.canRelocate({ ...idle, loading: true })).toBe(false);
+    expect(agentStore.canRelocate({ ...idle, sessionId: null })).toBe(false);
+  });
+});

@@ -222,20 +222,12 @@ export function createCommandRegistry(): Command[] {
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-agent-overview'))
     },
     {
-      id: 'open-agent',
-      label: 'New Agent Pane',
-      category: 'Agent',
-      keywords: ['agent', 'ai', 'assistant', 'code'],
-      // The pane needs a folder to work in, so the dialog runs first and opens
-      // the pane itself once the user has chosen one.
-      execute: () => document.dispatchEvent(new CustomEvent('fleet:new-agent'))
-    },
-    {
       id: 'open-scratch',
-      label: 'New Scratch Chat',
+      label: 'New Agent',
       category: 'Agent',
-      keywords: ['scratch', 'chat', 'quick', 'image', 'generate', 'ask'],
-      // No folder picker: every invocation starts a separate scratch chat.
+      keywords: ['agent', 'ai', 'assistant', 'code', 'scratch', 'chat', 'quick', 'image', 'ask'],
+      // No folder picker: every agent starts as a scratch chat, and the folder
+      // label under its composer moves it to a project before the first message.
       execute: () => useWorkspaceStore.getState().openScratch()
     },
     {
@@ -255,14 +247,22 @@ export function createCommandRegistry(): Command[] {
 }
 
 export function fuzzyMatch(query: string, label: string): boolean {
-  if (!query) return true;
+  return fuzzyIndices(query, label) !== null;
+}
+
+/**
+ * Where each character of `query` was found in `label`, in order, so a list
+ * can show why a row matched. `null` when it does not match; empty for an
+ * empty query.
+ */
+export function fuzzyIndices(query: string, label: string): number[] | null {
   const q = query.toLowerCase();
   const l = label.toLowerCase();
-  let qi = 0;
-  for (let li = 0; li < l.length && qi < q.length; li++) {
-    if (l[li] === q[qi]) qi++;
+  const found: number[] = [];
+  for (let li = 0; li < l.length && found.length < q.length; li++) {
+    if (l[li] === q[found.length]) found.push(li);
   }
-  return qi === q.length;
+  return found.length === q.length ? found : null;
 }
 
 export function formatCommandShortcut(cmd: Command): string | undefined {
