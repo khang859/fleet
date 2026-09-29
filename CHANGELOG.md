@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.128.0
+
+- **Pick an agent's folder from the composer instead of a modal.**
+  The Agents "+" (and "New Agent" / Cmd+Shift+J) now opens a Scratch chat at once, and the folder label under the composer is a switcher: search, Scratch, open tabs with their branch, recent folders, "+ worktree" per repo (or Alt+Enter) and "Other folder...".
+  Moving keeps the same pane, session and draft, the folder locks after the first message, and a worktree made by the switcher is removed if the chat moves away before sending (#629).
+- **Recent folders now include every tab, not only the first one**, and skip the home folder (#629).
+
 ## v2.127.0
 
 - **Commands the agent leaves running in the background now show up in the Agent pane, with a stop button.**
