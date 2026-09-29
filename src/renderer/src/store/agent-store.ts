@@ -324,13 +324,14 @@ type AgentStoreState = {
    * Move a pane nothing has been said in to another folder, keeping its session
    * id - attachments already added are filed under it. Scratch gets its own
    * working folder prepared again; a project folder is the user's and is used
-   * as it is. Refused once the conversation has started.
+   * as it is. Refused once the conversation has started; `false` then, so a
+   * caller that made something for the move (a worktree) can take it back.
    */
   relocate: (
     paneId: string,
     folderPath: string,
     worktree?: { path: string; branchName: string; repoPath: string }
-  ) => void;
+  ) => boolean;
   send: (paneId: string, cwd: string, text: string, attachments?: AgentAttachment[]) => void;
   /**
    * Take the conversation up again with nothing new said.
@@ -428,12 +429,13 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
 
   relocate: (paneId, folderPath, worktree) => {
     const thread = get().threads[paneId];
-    if (thread?.sessionId == null || !canRelocate(thread)) return;
+    if (thread?.sessionId == null || !canRelocate(thread)) return false;
     const { sessionId } = thread;
     log.debug('relocate', { paneId, folderPath, worktree: worktree?.path });
     useWorkspaceStore.getState().moveAgentTab(paneId, folderPath, worktree);
     switchTo(paneId, folderPath, sessionId);
     if (isScratchDir(folderPath)) void replayInto(paneId, sessionId);
+    return true;
   },
 
   send: (paneId, cwd, text, attachments = []) => {

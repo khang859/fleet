@@ -34,11 +34,12 @@ export function AgentLocation({
   /**
    * Given while the folder can still change - before the first message. The
    * name becomes the menu that changes it; without this it is plain text.
+   * Returns whether the move happened.
    */
   onMove?: (
     folderPath: string,
     worktree?: { path: string; branchName: string; repoPath: string }
-  ) => void;
+  ) => boolean;
 }): React.JSX.Element {
   const name = head === null ? null : headName(head);
   const detached = head !== null && head.branch === null;

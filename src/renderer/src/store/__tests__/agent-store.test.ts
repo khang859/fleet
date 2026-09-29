@@ -2097,7 +2097,7 @@ describe('relocate', () => {
     const { scratchDir } = await import('../../lib/scratch');
     await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', scratchDir());
 
-    agentStore.useAgentStore.getState().relocate(PANE, '/repo');
+    expect(agentStore.useAgentStore.getState().relocate(PANE, '/repo')).toBe(true);
 
     expect(thread().cwd).toBe('/repo');
     expect(thread().sessionId).toBe('session-1');
@@ -2136,7 +2136,8 @@ describe('relocate', () => {
     await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', scratchDir());
     agentStore.useAgentStore.getState().send(PANE, thread().cwd, 'hello');
 
-    agentStore.useAgentStore.getState().relocate(PANE, '/repo');
+    // `false`, so the switcher can remove a worktree it made for this move.
+    expect(agentStore.useAgentStore.getState().relocate(PANE, '/repo')).toBe(false);
 
     expect(thread().cwd).not.toBe('/repo');
     expect(workspace.useWorkspaceStore.getState().workspace.tabs[0].cwd).toBe(scratchDir());

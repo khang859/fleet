@@ -51,7 +51,7 @@ export function AgentFolderSwitcher({
 }: {
   cwd: string;
   label: string;
-  onMove: (folderPath: string, worktree?: Worktree) => void;
+  onMove: (folderPath: string, worktree?: Worktree) => boolean;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -132,11 +132,14 @@ export function AgentFolderSwitcher({
       const { root } = await window.fleet.git.repoRoot(row.path);
       if (!root) throw new Error('Not a git repository.');
       const created = await window.fleet.worktree.create({ repoPath: root });
-      onMove(rerootIntoWorktree(row.path, root, created.worktreePath), {
+      const moved = onMove(rerootIntoWorktree(row.path, root, created.worktreePath), {
         path: created.worktreePath,
         branchName: created.branchName,
         repoPath: root
       });
+      // The chat started while the worktree was being made, so the folder is
+      // locked and no tab owns it. Nothing else would ever remove it.
+      if (!moved) void window.fleet.worktree.remove({ worktreePath: created.worktreePath });
       setCreating(false);
       reset(false);
     } catch (err) {

@@ -27,3 +27,10 @@ Check it live (`__FLEET__.stores.workspace.getState().recentFolders` via fleet-d
 
 A keyboard shortcut that asks for a variant (⌥↵ for "in a new worktree") must do nothing on a row that cannot have that variant.
 It first fell back to the plain action, so ⌥↵ on the Scratch row moved the chat instead of being ignored.
+
+## Also: a slow step can finish after the thing it was for is gone
+
+Making a worktree takes a moment.
+If the user sent a message during that moment, the chat locked, the move was refused, and the new worktree had no owner, so nothing ever removed it.
+`relocate` now returns whether it moved, and the switcher removes the worktree when it did not.
+When an async step creates something for a later action, handle the case where that action is refused.
