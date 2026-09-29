@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { Check, GitBranch, GitCommitHorizontal } from 'lucide-react';
+import { Check, GitBranch, GitCommitHorizontal, Lock } from 'lucide-react';
 import { headName, truncateBranch, type AgentGitHead } from '../../../../shared/agent-git';
+import { AgentFolderSwitcher, FolderIcon } from './AgentFolderSwitcher';
+import { isScratchDir } from '../../lib/scratch';
 
 /**
  * Where the agent is working: the folder, and the branch inside it.
@@ -17,7 +19,8 @@ import { headName, truncateBranch, type AgentGitHead } from '../../../../shared/
 export function AgentLocation({
   cwd,
   head,
-  label
+  label,
+  onMove
 }: {
   cwd: string;
   head: AgentGitHead | null;
@@ -28,6 +31,15 @@ export function AgentLocation({
    * tooltip for anyone who wants it.
    */
   label?: string;
+  /**
+   * Given while the folder can still change - before the first message. The
+   * name becomes the menu that changes it; without this it is plain text.
+   * Returns whether the move happened.
+   */
+  onMove?: (
+    folderPath: string,
+    worktree?: { path: string; branchName: string; repoPath: string }
+  ) => boolean;
 }): React.JSX.Element {
   const name = head === null ? null : headName(head);
   const detached = head !== null && head.branch === null;
@@ -36,9 +48,26 @@ export function AgentLocation({
     // `px-4` to share the composer's left edge exactly, so the folder name
     // lines up with the box above it rather than sitting just inside it.
     <div className="mx-auto flex w-full max-w-2xl shrink-0 items-center gap-2 px-4 pb-3 text-[11px] text-fleet-text-subtle">
-      <span className="min-w-0 shrink truncate" title={cwd}>
-        {label ?? folderName(cwd)}
-      </span>
+      {onMove ? (
+        <AgentFolderSwitcher cwd={cwd} label={label ?? folderName(cwd)} onMove={onMove} />
+      ) : (
+        // Locked once the conversation has started. Same icon and place as the
+        // switcher, so it reads as the same thing, now fixed - with the reason,
+        // because a control that just stops working looks broken.
+        <span
+          // Same box as the switcher, border and all, so locking does not move it.
+          className="flex min-w-0 shrink items-center gap-1 rounded border border-transparent px-1.5 py-0.5"
+          title={`${cwd}\nThe folder is set for this chat. Start a new chat to work somewhere else.`}
+        >
+          <FolderIcon scratch={isScratchDir(cwd)} />
+          <span className="truncate">{label ?? folderName(cwd)}</span>
+          <Lock
+            size={10}
+            className="shrink-0 opacity-70"
+            aria-label="Folder is set for this chat"
+          />
+        </span>
+      )}
       {name !== null && <BranchChip name={name} op={head?.op ?? null} detached={detached} />}
     </div>
   );

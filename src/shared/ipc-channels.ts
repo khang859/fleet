@@ -300,6 +300,10 @@ export const IPC_CHANNELS = {
   AGENT_GIT_UNWATCH: 'agent:git-unwatch',
   AGENT_GIT_REFRESH: 'agent:git-refresh',
   AGENT_GIT_HEAD: 'agent:git-head',
+  // One read of the branch a folder is on, for a folder no pane is in yet - the
+  // composer's folder switcher, which lists several at once. `null` when the
+  // folder is not a repo.
+  AGENT_GIT_HEAD_AT: 'agent:git-head-at',
   // What the composer's Up key walks back through, scoped to a pane's folder.
   // LIST is asked once when a pane opens and answered from a file; ADD is
   // fire-and-forget, because a prompt that failed to be remembered must not be

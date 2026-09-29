@@ -302,6 +302,19 @@ type WorkspaceStore = {
   ) => string;
 
   /**
+   * Point an agent tab that has not been spoken in yet at another folder: the
+   * scratch folder, a project, or a worktree cut for it. The pane keeps its id,
+   * so the composer and whatever is typed in it stay where they are. A worktree
+   * the tab owned and is now leaving is removed, since nothing was ever done in
+   * it and nothing else will close it.
+   */
+  moveAgentTab: (
+    paneId: string,
+    folderPath: string,
+    worktree?: { path: string; branchName: string; repoPath: string }
+  ) => void;
+
+  /**
    * The terminal an agent pane hands work to: the one already in its tab, or a
    * new split below it. Focuses it, and returns its id (null if the pane is
    * gone). Reusing is the point - a conversation that needs the user three
@@ -383,6 +396,22 @@ function getFirstLeafCwd(node: PaneNode | undefined): string | undefined {
   if (!node) return undefined;
   if (node.type === 'leaf') return node.cwd;
   return getFirstLeafCwd(node.children[0]) ?? getFirstLeafCwd(node.children[1]);
+}
+
+/**
+ * The folders a set of tabs is working in, in tab order, for the recent list.
+ *
+ * Every terminal and agent tab, not just the first: a workspace of three
+ * projects is three places the user works, and recording only `tabs[0]` left
+ * the other two out of the list for good. Tools and file tabs are not a folder
+ * anyone chose, and a worktree is gone once its tab closes, so neither is kept.
+ */
+function recentTabFolders(tabs: Tab[]): string[] {
+  return tabs
+    .filter((t) => (t.type ?? 'terminal') === 'terminal' || t.type === 'agent')
+    .filter((t) => !t.worktreePath)
+    .map((t) => getFirstLeafCwd(t.splitRoot) ?? t.cwd)
+    .filter((cwd) => cwd !== '');
 }
 
 // Backward compat for saved workspaces: old ones may lack labelIsCustom, and a
@@ -601,6 +630,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       activePaneId: leaf.id,
       isDirty: true
     }));
+    get().addRecentFolder(cwd);
     return leaf.id;
   },
 
@@ -1259,10 +1289,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       isDirty: false
     });
 
-    const folderCwd = migratedTabs[0]?.cwd;
-    if (folderCwd) {
-      get().addRecentFolder(folderCwd);
-    }
+    // Oldest first, so the first tab ends up at the front of the list.
+    for (const folder of recentTabFolders(migratedTabs).reverse()) get().addRecentFolder(folder);
   },
 
   ensureSessionsTab: () => {
@@ -1315,8 +1343,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   switchWorkspace: (ws) => {
     logLayout.debug('switchWorkspace', { targetId: ws.id, targetLabel: ws.label });
     const resolvedTarget = get().backgroundWorkspaces.get(ws.id) ?? ws;
-    const resolvedFirstCwd =
-      getFirstLeafCwd(resolvedTarget.tabs[0]?.splitRoot) ?? resolvedTarget.tabs[0]?.cwd;
+    const targetFolders = recentTabFolders(resolvedTarget.tabs);
     set((state) => {
       const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
       const migratedTabs = restoreTabs(target.tabs);
@@ -1371,9 +1398,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       };
     });
 
-    if (resolvedFirstCwd) {
-      get().addRecentFolder(resolvedFirstCwd);
-    }
+    for (const folder of targetFolders.reverse()) get().addRecentFolder(folder);
   },
 
   loadBackgroundWorkspaces: (workspaces) => {
@@ -1539,6 +1564,41 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     return leaf.id;
   },
 
+  moveAgentTab: (paneId, folderPath, worktree) => {
+    const tab = get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
+    if (tab?.type !== 'agent') return;
+    const ctx = tab.pathContext ?? (window.fleet.platform === 'win32' ? 'win32' : 'posix');
+    const moved: Tab = {
+      ...tab,
+      // Same naming as `openAgentPane`, so a moved tab reads exactly like one
+      // that was opened there in the first place.
+      label: isScratchDir(folderPath)
+        ? SCRATCH_TAB_LABEL
+        : worktree
+          ? worktree.branchName
+          : cwdBasename(folderPath, ctx),
+      labelIsCustom: true,
+      cwd: folderPath,
+      worktreePath: worktree?.path,
+      worktreeBranch: worktree?.branchName,
+      splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({ ...leaf, cwd: folderPath }))
+    };
+    set((s) => ({
+      workspace: {
+        ...s.workspace,
+        tabs: s.workspace.tabs.map((t) => (t.id === tab.id ? moved : t))
+      },
+      isDirty: true
+    }));
+    if (tab.worktreePath && tab.worktreePath !== worktree?.path) {
+      void window.fleet.worktree.remove({
+        worktreePath: tab.worktreePath,
+        pathContext: tab.pathContext
+      });
+    }
+    get().addRecentFolder(worktree ? worktree.repoPath : folderPath);
+  },
+
   terminalBeside: (agentPaneId) => {
     const tab = get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(agentPaneId));
     if (!tab) return null;
@@ -1701,8 +1761,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     // listing it as somewhere the user recently worked is both untrue and, since
     // this list is short, at the cost of a folder they chose themselves.
     // Refused here rather than at each call site: it is opened from a restore, a
-    // pane split and a new tab, and one of those would be missed.
+    // new tab and a new agent, and one of those would be missed.
     if (isScratchDir(folderPath)) return;
+    // Every new terminal starts at home, so it would sit at the top of the list
+    // after any of them - pushing out a project to name a folder that is not one.
+    if (folderPath === window.fleet.homeDir) return;
     set((state) => {
       const filtered = state.recentFolders.filter((f) => f !== folderPath);
       const updated = [folderPath, ...filtered].slice(0, MAX_RECENT_FOLDERS);

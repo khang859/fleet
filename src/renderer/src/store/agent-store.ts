@@ -38,7 +38,7 @@ import {
   withClearedResults
 } from '../../../shared/agent-context';
 import type { AgentScheduleRecord } from '../../../shared/agent-schedule';
-import { checkSchedules, loadSchedules, onScheduleChanged } from './agent-schedule';
+import { canDeliverTo, checkSchedules, loadSchedules, onScheduleChanged } from './agent-schedule';
 import {
   loadBackground,
   onBackgroundChanged,
@@ -320,6 +320,18 @@ type AgentStoreState = {
    * which is why it cannot be the same call.
    */
   resumeSession: (paneId: string, cwd: string, sessionId: string) => Promise<void>;
+  /**
+   * Move a pane nothing has been said in to another folder, keeping its session
+   * id - attachments already added are filed under it. Scratch gets its own
+   * working folder prepared again; a project folder is the user's and is used
+   * as it is. Refused once the conversation has started; `false` then, so a
+   * caller that made something for the move (a worktree) can take it back.
+   */
+  relocate: (
+    paneId: string,
+    folderPath: string,
+    worktree?: { path: string; branchName: string; repoPath: string }
+  ) => boolean;
   send: (paneId: string, cwd: string, text: string, attachments?: AgentAttachment[]) => void;
   /**
    * Take the conversation up again with nothing new said.
@@ -413,6 +425,17 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     if (!canSwitch(paneId)) return;
     switchTo(paneId, cwd, sessionId);
     await replayInto(paneId, sessionId);
+  },
+
+  relocate: (paneId, folderPath, worktree) => {
+    const thread = get().threads[paneId];
+    if (thread?.sessionId == null || !canRelocate(thread)) return false;
+    const { sessionId } = thread;
+    log.debug('relocate', { paneId, folderPath, worktree: worktree?.path });
+    useWorkspaceStore.getState().moveAgentTab(paneId, folderPath, worktree);
+    switchTo(paneId, folderPath, sessionId);
+    if (isScratchDir(folderPath)) void replayInto(paneId, sessionId);
+    return true;
   },
 
   send: (paneId, cwd, text, attachments = []) => {
@@ -1329,6 +1352,18 @@ function endTurn(
  */
 function canSwitch(paneId: string): boolean {
   return (useAgentStore.getState().threads[paneId]?.streamId ?? null) === null;
+}
+
+/**
+ * Whether a pane's folder can still be changed: free for a turn (a session,
+ * nothing running, no history on its way in) and nothing said yet. After the first message the folder is what the
+ * conversation is about, and moving it would leave the transcript describing
+ * files in some other place.
+ */
+export function canRelocate(
+  thread: Pick<PaneThread, 'sessionId' | 'messages' | 'streamId' | 'loading'>
+): boolean {
+  return canDeliverTo(thread) && thread.messages.length === 0;
 }
 
 /** Point a pane at a session and clear what the last one left on screen. */

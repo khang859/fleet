@@ -56,7 +56,6 @@ import { EnvSyncModal } from './components/env-sync/EnvSyncModal';
 import { EnvEditorModal } from './components/env-editor/EnvEditorModal';
 import { NotesModal } from './components/notes/NotesModal';
 import { ShellEnvModal } from './components/shell-env/ShellEnvModal';
-import { AgentFolderDialog } from './components/agent/AgentFolderDialog';
 import { ToolPaneFrame } from './components/ToolPaneFrame';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
@@ -242,8 +241,7 @@ export function App(): React.JSX.Element {
     undoCloseTab,
     recentFiles,
     recentFolders,
-    openFile,
-    openAgentPane
+    openFile
   } = useWorkspaceStore(
     useShallow((s) => ({
       workspace: s.workspace,
@@ -257,8 +255,7 @@ export function App(): React.JSX.Element {
       undoCloseTab: s.undoCloseTab,
       recentFiles: s.recentFiles,
       recentFolders: s.recentFolders,
-      openFile: s.openFile,
-      openAgentPane: s.openAgentPane
+      openFile: s.openFile
     }))
   );
   // Stable so the memoized PaneGrid can actually skip; an inline arrow here
@@ -313,7 +310,6 @@ export function App(): React.JSX.Element {
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [shellEnvOpen, setShellEnvOpen] = useState(false);
-  const [agentFolderOpen, setAgentFolderOpen] = useState(false);
   const updateReady = useUpdateStore((s) => s.staged !== null);
 
   // Load settings on startup
@@ -500,13 +496,6 @@ export function App(): React.JSX.Element {
     const handler = (): void => setShellEnvOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-shell-env', handler);
     return () => document.removeEventListener('fleet:toggle-shell-env', handler);
-  }, []);
-
-  // New agent: pick the folder first, then open the pane in it
-  useEffect(() => {
-    const handler = (): void => setAgentFolderOpen(true);
-    document.addEventListener('fleet:new-agent', handler);
-    return () => document.removeEventListener('fleet:new-agent', handler);
   }, []);
 
   // Quick open toggle (Cmd+P)
@@ -893,10 +882,10 @@ export function App(): React.JSX.Element {
             <div className="flex-1" />
             {/* Pinned agents section (mirrors expanded sidebar: agents above tools) */}
             <RailDivider />
-            <MiniSidebarTooltip label="New scratch chat">
+            <MiniSidebarTooltip label="New agent">
               <button
                 type="button"
-                aria-label="New scratch chat"
+                aria-label="New agent"
                 onClick={() => useWorkspaceStore.getState().openScratch()}
                 className="p-1.5 rounded text-fleet-text-subtle hover:text-violet-300 hover:bg-fleet-surface-2 transition-colors active:scale-90"
               >
@@ -1216,14 +1205,6 @@ export function App(): React.JSX.Element {
         isOpen={shellEnvOpen}
         onClose={() => setShellEnvOpen(false)}
         paneId={activePaneId}
-      />
-      <AgentFolderDialog
-        open={agentFolderOpen}
-        onCancel={() => setAgentFolderOpen(false)}
-        onConfirm={(folderPath, worktree) => {
-          setAgentFolderOpen(false);
-          openAgentPane(folderPath, worktree);
-        }}
       />
       <AnnotateModal open={false} onClose={() => {}} />
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />

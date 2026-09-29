@@ -38,6 +38,8 @@ import { loadCommands } from './commands/definitions';
 import type { AgentCommandDescriptor } from '../../shared/agent-commands';
 import type { AgentImageStore } from './image-store';
 import type { AgentGitWatcher } from './git-watch';
+import { readGitHeadAt } from './git-head';
+import type { AgentGitHead } from '../../shared/agent-git';
 import type { AgentHistoryStore } from './history-store';
 import { registerAgentMcpIpc, type McpIpcDeps } from './mcp/mcp-ipc';
 import { registerAgentMemoryIpc } from './memory/memory-ipc';
@@ -285,6 +287,11 @@ export function registerAgentIpc(deps: {
   ipcMain.on(IPC_CHANNELS.AGENT_GIT_REFRESH, (_e, paneId: string) => {
     deps.git.refresh(paneId);
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_GIT_HEAD_AT,
+    async (_e, cwd: string): Promise<AgentGitHead | null> => readGitHeadAt(cwd)
+  );
 
   ipcMain.handle(IPC_CHANNELS.AGENT_HISTORY_LIST, (_e, cwd: string): string[] =>
     deps.history.list(cwd)

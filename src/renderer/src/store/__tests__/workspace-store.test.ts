@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   useWorkspaceStore,
   collectPaneLeafs,
@@ -1271,7 +1271,7 @@ describe('reorderTab — nested files', () => {
 /**
  * Which folders count as somewhere the user recently worked.
  *
- * The list is short and it is the first thing the new-agent dialog offers, so
+ * The list is short and it is what the folder switcher offers under the open folders, so
  * anything in it that the user did not choose costs a slot one of their own
  * folders would have had.
  */
@@ -1306,5 +1306,134 @@ describe('addRecentFolder', () => {
   it('still records a folder that merely sits near it', () => {
     useWorkspaceStore.getState().addRecentFolder(`${scratchDir()}-notes`);
     expect(useWorkspaceStore.getState().recentFolders).toEqual([`${scratchDir()}-notes`]);
+  });
+});
+
+/*
+ * Recent has to be every folder the user works in, not the first tab's. Only
+ * `tabs[0]` used to be recorded, so with three projects open the list showed one.
+ */
+describe('recent folders from tabs', () => {
+  const tab = (id: string, cwd: string, extra: object = {}): Workspace['tabs'][number] => ({
+    id,
+    label: id,
+    labelIsCustom: false,
+    cwd,
+    splitRoot: { type: 'leaf', id: `pane-${id}`, cwd },
+    ...extra
+  });
+
+  beforeEach(() => {
+    useWorkspaceStore.setState({ recentFolders: [] });
+  });
+
+  it('records every tab of a loaded workspace, the first tab first', () => {
+    useWorkspaceStore.getState().loadWorkspace({
+      id: 'ws-recent',
+      label: 'R',
+      tabs: [
+        tab('a', '/dev/a'),
+        tab('b', '/dev/b'),
+        tab('wt', '/wt/b-bold', { worktreePath: '/wt/b-bold', worktreeBranch: 'b-bold' }),
+        tab('c', '/dev/c')
+      ]
+    });
+
+    expect(useWorkspaceStore.getState().recentFolders).toEqual(['/dev/a', '/dev/b', '/dev/c']);
+  });
+
+  it('records the folder of a new tab', () => {
+    useWorkspaceStore.getState().addTab(undefined, '/dev/new');
+    expect(useWorkspaceStore.getState().recentFolders[0]).toBe('/dev/new');
+  });
+
+  it('never records the home folder, where a tab opens by default', () => {
+    window.fleet.homeDir = '/home/k';
+    useWorkspaceStore.getState().addRecentFolder('/home/k');
+    expect(useWorkspaceStore.getState().recentFolders).toEqual([]);
+  });
+});
+
+/** The folder switcher under the composer moves the agent tab it lives in. */
+describe('moveAgentTab', () => {
+  const PANE = 'pane-move';
+  const remove = vi.fn();
+
+  const agentTab = (extra: object = {}): void => {
+    useWorkspaceStore.setState({
+      recentFolders: [],
+      workspace: {
+        id: 'ws-move',
+        label: 'M',
+        tabs: [
+          {
+            id: 'tab-move',
+            label: 'Scratch chat',
+            labelIsCustom: true,
+            cwd: scratchDir(),
+            type: 'agent',
+            splitRoot: {
+              type: 'leaf',
+              id: PANE,
+              cwd: scratchDir(),
+              paneType: 'agent',
+              agentSessionId: 's'
+            },
+            ...extra
+          }
+        ]
+      }
+    });
+  };
+  const moved = (): Workspace['tabs'][number] => useWorkspaceStore.getState().workspace.tabs[0];
+
+  beforeEach(() => {
+    remove.mockReset();
+    window.fleet.worktree = { remove } as unknown as typeof window.fleet.worktree;
+  });
+
+  it('moves a scratch chat into a project, keeping the pane', () => {
+    agentTab();
+    useWorkspaceStore.getState().moveAgentTab(PANE, '/dev/fleet');
+
+    expect(moved()).toMatchObject({ cwd: '/dev/fleet', label: 'fleet', worktreePath: undefined });
+    expect(collectPaneLeafs(moved().splitRoot)[0]).toMatchObject({
+      id: PANE,
+      cwd: '/dev/fleet',
+      agentSessionId: 's'
+    });
+    expect(isScratchTab(moved())).toBe(false);
+    expect(useWorkspaceStore.getState().recentFolders).toEqual(['/dev/fleet']);
+  });
+
+  it('owns a new worktree and names the tab after its branch', () => {
+    agentTab();
+    const worktree = { path: '/wt/fleet-bold', branchName: 'fleet-bold', repoPath: '/dev/fleet' };
+    useWorkspaceStore.getState().moveAgentTab(PANE, worktree.path, worktree);
+
+    expect(moved()).toMatchObject({
+      label: 'fleet-bold',
+      worktreePath: '/wt/fleet-bold',
+      worktreeBranch: 'fleet-bold'
+    });
+    expect(useWorkspaceStore.getState().recentFolders).toEqual(['/dev/fleet']);
+  });
+
+  // Nothing was said in it yet, so a worktree the switcher made is only clutter.
+  it('removes the worktree it made when moved away before sending', () => {
+    agentTab({ worktreePath: '/wt/fleet-bold', worktreeBranch: 'fleet-bold' });
+    useWorkspaceStore.getState().moveAgentTab(PANE, scratchDir());
+
+    expect(remove).toHaveBeenCalledWith(
+      expect.objectContaining({ worktreePath: '/wt/fleet-bold' })
+    );
+    expect(moved()).toMatchObject({ label: 'Scratch chat', worktreePath: undefined });
+    expect(isScratchTab(moved())).toBe(true);
+  });
+
+  it('leaves a tab that is not an agent alone', () => {
+    agentTab({ type: 'terminal' });
+    useWorkspaceStore.getState().moveAgentTab(PANE, '/dev/fleet');
+    expect(moved().cwd).toBe(scratchDir());
   });
 });
