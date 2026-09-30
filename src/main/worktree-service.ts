@@ -221,6 +221,7 @@ export class WorktreeService {
 
   async remove(worktreePath: string, ctx?: PathContext): Promise<void> {
     let mainRepoPath: string;
+    let branchName: string;
     try {
       // --git-common-dir returns the main repo's .git dir (not the worktree's)
       const gitCommonDir = (
@@ -231,6 +232,13 @@ export class WorktreeService {
         ? posixPath.join(gitCommonDir, '..')
         : join(gitCommonDir, '..');
       log.info('resolved main repo', { worktreePath, mainRepoPath });
+      // Asked before removal, since the folder name is not the branch name: a
+      // branch with slashes has them replaced in its folder. Only the branch
+      // this folder was made for is deleted, never one the user switched to
+      // in it; none when detached.
+      const current = (await this.git(ctx, worktreePath, ['branch', '--show-current'])).trim();
+      const folder = worktreePath.split(/[\\/]/).pop();
+      branchName = current !== '' && current.replaceAll('/', '-') === folder ? current : '';
     } catch {
       log.warn('worktree dir not accessible, cleaning up directory', { worktreePath });
       // Try to remove the directory directly if git can't resolve
@@ -267,8 +275,7 @@ export class WorktreeService {
 
     // Clean up the branch too
     try {
-      const branchName = worktreePath.split('/').pop();
-      if (branchName) {
+      if (branchName !== '') {
         log.info('deleting branch', { branchName });
         await this.git(ctx, mainRepoPath, ['branch', '-D', branchName]);
       }

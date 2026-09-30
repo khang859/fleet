@@ -102,6 +102,35 @@ describe('WorktreeService', () => {
     });
   });
 
+  describe('remove', () => {
+    it('deletes the branch the worktree has checked out, not one named after its folder', async () => {
+      mockRaw.mockImplementation(async (args: string[]) => {
+        if (args[0] === 'rev-parse') return Promise.resolve('/repo/proj/.git\n');
+        if (args[0] === 'branch' && args[1] === '--show-current') return Promise.resolve('fix/x\n');
+        return Promise.resolve('');
+      });
+      await service.remove('/home/khang/.fleet/worktrees/proj/fix-x');
+      expect(mockRaw).toHaveBeenCalledWith(['branch', '-D', 'fix/x']);
+      expect(mockRaw).not.toHaveBeenCalledWith(['branch', '-D', 'fix-x']);
+    });
+
+    it('deletes no branch for a detached HEAD, or one the user switched to', async () => {
+      for (const current of ['', 'main']) {
+        mockRaw.mockReset();
+        mockRaw.mockImplementation(async (args: string[]) => {
+          if (args[0] === 'rev-parse') return Promise.resolve('/repo/proj/.git\n');
+          if (args[0] === 'branch' && args[1] === '--show-current')
+            return Promise.resolve(`${current}\n`);
+          return Promise.resolve('');
+        });
+        await service.remove('/home/khang/.fleet/worktrees/proj/proj-bold-mast-cove');
+        expect(mockRaw.mock.calls.some((c) => c[0][0] === 'branch' && c[0][1] === '-D')).toBe(
+          false
+        );
+      }
+    });
+  });
+
   describe('WSL context (runs git inside the distro)', () => {
     function routeGit(gitArgs: string[]): ReturnType<typeof ok> {
       const a = gitArgs.join(' ');
@@ -160,8 +189,9 @@ describe('WorktreeService', () => {
       });
       await service.remove('/home/khang/.fleet/worktrees/proj/proj-bold-mast-cove', wsl);
 
-      // Call order in remove(): [0] rev-parse --git-common-dir, [1] worktree remove.
-      const removeCall = mockExecInContext.mock.calls[1];
+      // Call order in remove(): [0] rev-parse --git-common-dir, [1] branch --show-current,
+      // [2] worktree remove.
+      const removeCall = mockExecInContext.mock.calls[2];
       expect(removeCall[2]).toEqual(['worktree', 'remove', expect.any(String)]);
       // worktree remove runs with the resolved main repo (posix) as cwd.
       expect(removeCall[3]).toMatchObject({ cwd: '/home/khang/projects/proj' });
