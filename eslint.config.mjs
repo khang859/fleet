@@ -134,11 +134,11 @@ export default defineConfig(
           paths: [{ name: 'electron', message: 'claude-sessions stays Electron-free; inject it.' }],
           patterns: [
             {
-              group: ['**/copilot', '**/copilot/**', '**/agent', '**/agent/**'],
+              group: ['../copilot', '../copilot/**', '../agent', '../agent/**'],
               message: 'claude-sessions is consumed by these modules and must not import them.'
             },
             {
-              group: ['**/sessions', '**/sessions/**', '../index', '../index.*'],
+              group: ['../sessions', '../sessions/**', '../index', '../index.*'],
               message: 'claude-sessions must not import the Sessions tool or main/index.'
             }
           ]
