@@ -7,7 +7,7 @@ import {
 import { cleanPrompt, promptProblem, type SendResult } from '../../claude-sessions/input';
 import { resolveSession, type FleetHost } from './host';
 import type { FleetLedgerStore } from './ledger-store';
-import type { ActLimiter } from './limiter';
+import { chainRefusal, type ActLimiter } from './limiter';
 
 /** The way into a session's prompt box: `ClaudeSessionsService`, or a test's stand-in. */
 export type FleetPrompter = {
@@ -41,7 +41,8 @@ export async function sendToSession(
   const text = cleanPrompt(`${ORCHESTRATOR_PREFIX} ${args.prompt}`);
   const before = deps.prompter.refusal(session.sessionId) ?? promptProblem(text);
   if (before !== null) throw new Error(before);
-  const limited = deps.limiter.refusal(threadId, deps.host.now());
+  const limited =
+    chainRefusal(deps.ledger, threadId) ?? deps.limiter.refusal(threadId, deps.host.now());
   if (limited !== null) throw new Error(limited);
 
   const allowed = await approve({

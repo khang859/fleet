@@ -20,7 +20,7 @@ import type { FleetActDeps } from '../fleet/capability';
 import { FleetLedgerStore } from '../fleet/ledger-store';
 import { ActLimiter } from '../fleet/limiter';
 import { FleetSpawns } from '../fleet/spawns';
-import { FleetWaits } from '../fleet/wait';
+import { FleetAttention } from '../fleet/attention';
 
 vi.mock('../../logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })
@@ -103,6 +103,7 @@ describe('orchestrator mode', () => {
     history?: AgentSendRequest['history'];
     ledger?: FleetLedgerStore;
     act?: FleetActDeps;
+    text?: string;
   }): Promise<StreamRequest[]> {
     const rounds: StreamRequest[] = [];
     const request: AgentSendRequest = {
@@ -110,7 +111,7 @@ describe('orchestrator mode', () => {
       threadId: '6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b',
       cwd: dir,
       history: options.history ?? [],
-      text: 'what are my sessions doing?',
+      text: options.text ?? 'what are my sessions doing?',
       attachments: [],
       todos: [],
       orchestrator: options.orchestrator
@@ -333,6 +334,20 @@ describe('orchestrator mode', () => {
     }
   });
 
+  it('ends a run of digest turns when the user writes, and only then', async () => {
+    const ledger = new FleetLedgerStore(dir);
+    const thread = '6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b';
+    for (let i = 0; i < 3; i++) ledger.extendChain(thread);
+    // A digest turn: nothing typed.
+    await turn({ orchestrator: true, ledger, text: '' });
+    expect(ledger.chain(thread)).toBe(3);
+    // Typed in a pane that is not orchestrating: not this conversation's chain to end.
+    await turn({ orchestrator: false, ledger });
+    expect(ledger.chain(thread)).toBe(3);
+    await turn({ orchestrator: true, ledger });
+    expect(ledger.chain(thread)).toBe(0);
+  });
+
   it('sends no ledger to a regular pane', async () => {
     const [round] = await turn({ orchestrator: false });
     expect(JSON.stringify(round.messages)).not.toContain('Your fleet ledger');
@@ -355,7 +370,7 @@ describe('orchestrator mode', () => {
       notePaneInput: () => {},
       newPaneId: () => 'unused',
       subscribe: () => () => {},
-      waits: new FleetWaits()
+      attention: new FleetAttention()
     };
     const [round] = await turn({
       orchestrator: true,

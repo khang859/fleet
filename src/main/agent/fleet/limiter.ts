@@ -1,3 +1,6 @@
+import { FLEET_CHAIN_LIMIT } from '../../../shared/fleet-tools';
+import type { FleetLedgerStore } from './ledger-store';
+
 /** Sends and spawns one orchestrator conversation may make in `ACT_WINDOW_MS`. */
 export const ACT_LIMIT = 20;
 export const ACT_WINDOW_MS = 10 * 60_000;
@@ -25,4 +28,10 @@ export class ActLimiter {
   note(threadId: string, now: number): void {
     this.acts.set(threadId, [...(this.acts.get(threadId) ?? []), now]);
   }
+}
+
+/** Why a send or spawn is refused at the chain limit, or null when it is not reached. */
+export function chainRefusal(ledger: FleetLedgerStore, threadId: string): string | null {
+  if (ledger.chain(threadId) < FLEET_CHAIN_LIMIT) return null;
+  return `Not done: Fleet has started ${FLEET_CHAIN_LIMIT} turns in a row from session updates since the user last wrote, so sends and spawns are paused until they write. Tell them what you would do next.`;
 }

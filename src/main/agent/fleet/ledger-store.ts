@@ -64,11 +64,13 @@ const LedgerFile = z.object({
   cursors: z.record(z.string(), FleetCursor),
   entries: z.array(FleetLedgerEntry).default([]),
   /** The number the next entry gets. */
-  next: z.number().int().min(1).default(1)
+  next: z.number().int().min(1).default(1),
+  /** Turns in a row Fleet has started with a digest since the user last wrote. */
+  chain: z.number().int().min(0).default(0)
 });
 type LedgerFile = z.infer<typeof LedgerFile>;
 
-const emptyFile = (): LedgerFile => ({ cursors: {}, entries: [], next: 1 });
+const emptyFile = (): LedgerFile => ({ cursors: {}, entries: [], next: 1, chain: 0 });
 
 /** Sessions one conversation keeps a cursor for; the least recently read go first. */
 const MAX_CURSORS = 100;
@@ -177,6 +179,27 @@ export class FleetLedgerStore {
     }
     this.save(threadId, file);
     return written;
+  }
+
+  /** How many turns in a row a digest has started since the user last wrote. */
+  chain(threadId: string): number {
+    return this.load(threadId).chain;
+  }
+
+  /** A digest started a turn: one more link. */
+  extendChain(threadId: string): number {
+    const file = this.load(threadId);
+    file.chain++;
+    this.save(threadId, file);
+    return file.chain;
+  }
+
+  /** The user wrote. Only written when there was a chain, so a plain chat never gets a file. */
+  resetChain(threadId: string): void {
+    const file = this.load(threadId);
+    if (file.chain === 0) return;
+    file.chain = 0;
+    this.save(threadId, file);
   }
 
   entries(threadId: string): FleetLedgerEntry[] {

@@ -381,6 +381,8 @@ export const IPC_CHANNELS = {
   // renderer owns the layout the tab goes into.
   AGENT_FLEET_OPEN_TAB: 'agent:fleet-open-tab',
   AGENT_FLEET_OPEN_TAB_DONE: 'agent:fleet-open-tab-done',
+  AGENT_FLEET_PULL_DIGEST: 'agent:fleet-pull-digest',
+  AGENT_FLEET_SET_MODE: 'agent:fleet-set-mode',
   // Background commands a conversation has running. CHANGED pushes one
   // conversation's whole list whenever a command starts, ends or prints a new
   // last line; LIST is what a pane that has just opened a session asks. STOP is

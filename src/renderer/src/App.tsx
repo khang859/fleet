@@ -43,6 +43,7 @@ import { useHomesStore } from './store/homes-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { focusPane } from './lib/focus-pane';
 import { initClaudeSessionsListener } from './store/claude-sessions-store';
+import { initAgentFleet } from './store/agent-fleet';
 import { switchToWorkspace } from './lib/switch-workspace';
 import { ShortcutsHint } from './components/ShortcutsHint';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
@@ -368,6 +369,11 @@ export function App(): React.JSX.Element {
   // Keep the sidebar's Claude Code session status current
   useEffect(() => {
     return initClaudeSessionsListener();
+  }, []);
+
+  // Wake orchestrator panes when the sessions they look after need them
+  useEffect(() => {
+    return initAgentFleet();
   }, []);
 
   // Listen for focus-pane from main process (copilot "Go to Terminal", OS notifications)

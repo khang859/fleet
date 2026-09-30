@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ClaudeSessionChange } from '../../../../shared/claude-sessions';
-import type { FleetAsk } from '../../../../shared/fleet-tools';
+import { FLEET_CHAIN_LIMIT, type FleetAsk } from '../../../../shared/fleet-tools';
 import { PromptInput } from '../../../claude-sessions/input';
 import type { FleetHost, FleetSession } from '../host';
 import { FleetLedgerStore } from '../ledger-store';
@@ -160,6 +160,14 @@ describe('fleet_send', () => {
     ]);
     expect(out.text).toContain('Sent to abcdef12 as ledger entry #1.');
     expect(out.summary).toBe('sent to abcdef12');
+  });
+
+  it('refuses without asking once Fleet has woken the conversation too many times in a row', async () => {
+    for (let i = 0; i < FLEET_CHAIN_LIMIT; i++) ledger.extendChain(THREAD);
+    await expect(send()).rejects.toThrow('sends and spawns are paused until they write');
+    expect(asks).toEqual([]);
+    ledger.resetChain(THREAD);
+    await expect(send()).resolves.toMatchObject({ summary: 'sent to abcdef12' });
   });
 
   it('writes nothing when the user says no', async () => {

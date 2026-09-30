@@ -2,7 +2,7 @@ import type { AgentMessage } from '../../../shared/agent-types';
 import { textMessage } from '../../../shared/agent-types';
 import type { AgentScheduleChanged, AgentScheduleRecord } from '../../../shared/agent-schedule';
 import { renderScheduleFire } from '../../../shared/agent-schedule';
-import { panesOn, record, reportActivity, useAgentStore } from './agent-store';
+import { panesOn, record, reportActivity, useAgentStore, type PaneThread } from './agent-store';
 import { isOrchestratorPane, useWorkspaceStore } from './workspace-store';
 import { createLogger } from '../logger';
 
@@ -157,9 +157,7 @@ export function checkSchedules(paneId: string): void {
  * Start a turn from a batch of fires.
  *
  * One message per fire rather than one for the batch: each was set separately,
- * says its own thing, and is as late as it is. They are written down like any
- * other message, because a turn the user did not ask for is exactly the kind
- * they will want to find in the transcript tomorrow.
+ * says its own thing, and is as late as it is.
  */
 function deliver(paneId: string, sessionId: string, records: AgentScheduleRecord[]): void {
   const thread = useAgentStore.getState().threads[paneId];
@@ -184,6 +182,33 @@ function deliver(paneId: string, sessionId: string, records: AgentScheduleRecord
       })
     )
   );
+  log.debug('delivering', { paneId, sessionId, count: fires.length });
+  // How many hops of schedule-set-a-schedule produced this turn. The deepest
+  // of the batch, so a fire that arrives beside a shallower one cannot use it
+  // to buy itself another hop.
+  startUnpromptedTurn(
+    paneId,
+    thread,
+    fires,
+    Math.max(...records.map((schedule) => schedule.depth))
+  );
+}
+
+/**
+ * Start a turn nobody typed: from schedule fires, or from a fleet digest.
+ *
+ * The opening messages are written down like any other, because a turn the
+ * user did not ask for is exactly the kind they will want to find in the
+ * transcript tomorrow. The caller has checked `canDeliverTo`.
+ */
+export function startUnpromptedTurn(
+  paneId: string,
+  thread: PaneThread,
+  opening: AgentMessage[],
+  scheduleChainDepth?: number
+): void {
+  const sessionId = thread.sessionId;
+  if (sessionId === null) return;
   const streamId = crypto.randomUUID();
   const assistant: AgentMessage = {
     id: streamId,
@@ -193,14 +218,13 @@ function deliver(paneId: string, sessionId: string, records: AgentScheduleRecord
     reasoningMs: null,
     citations: []
   };
-  log.debug('delivering', { paneId, sessionId, count: fires.length });
 
   useAgentStore.setState((s) => ({
     threads: {
       ...s.threads,
       [paneId]: {
         ...thread,
-        messages: [...thread.messages, ...fires, assistant],
+        messages: [...thread.messages, ...opening, assistant],
         streamId,
         startedAt: Date.now(),
         step: { phase: 'waiting', since: Date.now() },
@@ -209,23 +233,20 @@ function deliver(paneId: string, sessionId: string, records: AgentScheduleRecord
     }
   }));
   reportActivity(paneId, 'working');
-  for (const fire of fires) record(thread, { t: 'message', message: fire });
+  for (const message of opening) record(thread, { t: 'message', message });
 
   window.fleet.agent.send({
     streamId,
     threadId: sessionId,
     cwd: thread.cwd,
-    // The fires ride in the transcript, as its last messages, rather than as
-    // the turn's opening one - which is what `text: ''` says. They are not the
-    // user speaking, and the empty opening is how main is told nobody did.
-    history: [...thread.messages, ...fires],
+    // The opening rides in the transcript, as its last messages, rather than as
+    // the turn's opening one - which is what `text: ''` says. It is not the user
+    // speaking, and the empty opening is how main is told nobody did.
+    history: [...thread.messages, ...opening],
     text: '',
     attachments: [],
     todos: thread.todos,
-    // How many hops of schedule-set-a-schedule produced this turn. The deepest
-    // of the batch, so a fire that arrives beside a shallower one cannot use it
-    // to buy itself another hop.
-    scheduleChainDepth: Math.max(...records.map((schedule) => schedule.depth)),
+    ...(scheduleChainDepth === undefined ? {} : { scheduleChainDepth }),
     orchestrator: isOrchestratorPane(useWorkspaceStore.getState(), paneId)
   });
 }

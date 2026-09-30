@@ -49,6 +49,8 @@ import { pendingTaskAsks, type PendingTaskAsk } from './task-permissions';
 import type { RunningSubagent } from './subagent-view';
 import { scheduleChip, type ScheduleRow } from './schedule-view';
 import { cancelSchedule } from '../../store/agent-schedule';
+import { useAgentFleetStore } from '../../store/agent-fleet';
+import { FLEET_CHAIN_LIMIT } from '../../../../shared/fleet-tools';
 import { backgroundChip, type BackgroundRow } from './background-view';
 import { stopBackground } from '../../store/agent-background';
 import { ToolModePicker } from './ToolModePicker';
@@ -1098,6 +1100,7 @@ function Composer({
   const [attachments, setAttachments] = useState<AgentAttachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const fleetPaused = useAgentFleetStore((s) => s.paused[paneId] === true);
   const [mentions, setMentions] = useState<AgentMentionMatch[]>([]);
   const [mentionDismissed, setMentionDismissed] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -1503,6 +1506,12 @@ function Composer({
         <p role="status" className="px-1 pb-1.5 text-[11px] text-amber-700 dark:text-amber-400/90">
           Press Escape again to interrupt.
         </p>
+      )}
+      {fleetPaused && (
+        <Notice>
+          Session updates are paused: Fleet started {FLEET_CHAIN_LIMIT} turns in a row from them.
+          Write to resume them and to let the agent send to and start sessions again.
+        </Notice>
       )}
       {attachError !== null && <Notice>{attachError}</Notice>}
       {blind && hasImage && (

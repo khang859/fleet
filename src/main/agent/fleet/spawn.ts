@@ -11,7 +11,7 @@ import {
 import { cleanPrompt, promptProblem } from '../../claude-sessions/input';
 import { sessionRef, type FleetHost } from './host';
 import type { FleetLedgerStore } from './ledger-store';
-import type { ActLimiter } from './limiter';
+import { chainRefusal, type ActLimiter } from './limiter';
 import type { FleetSpawns } from './spawns';
 
 export type FleetSpawnDeps = {
@@ -84,7 +84,8 @@ export async function spawnSession(
   const text = cleanPrompt(`${ORCHESTRATOR_PREFIX} ${args.prompt}`);
   const problem = promptProblem(text);
   if (problem !== null) throw new Error(problem.replace('Not sent', 'Not started'));
-  const limited = deps.limiter.refusal(threadId, deps.host.now());
+  const limited =
+    chainRefusal(deps.ledger, threadId) ?? deps.limiter.refusal(threadId, deps.host.now());
   if (limited !== null) throw new Error(limited);
 
   const where =

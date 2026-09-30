@@ -274,10 +274,13 @@ It reacts to attention transitions arriving on `CLAUDE_SESSIONS_CHANGED`, and it
 - debounces for 2 s;
 - holds the digest while the pane is busy;
 - pulls the digest from main with `AGENT_FLEET_PULL_DIGEST`;
-- writes a `fleet`-role message and sends with `fleetChainDepth`.
+- writes a `fleet`-role message and starts a turn with it, the same way a due schedule does;
+- keeps a digest that arrives after the pane got busy, since main has already moved past what it covers.
 
-Main renders the digest from registry events after the thread's cursor.
-It skips sessions covered by an active `fleet_wait`.
+Main keeps its own attention log, fed from registry changes, because an ended session leaves the registry 30 s later and a digest taken after that must still report it.
+An item is logged only when a session's attention key (phase, waiting kind and phase start) changes into attention, or when its pane goes away, so Claude Code's idle reminders are not news and a `/clear` is not an ending.
+Main renders the digest from the log after the thread's cursor, newest item per pane, and drops items that are no longer true (the session was prompted again before the digest was taken).
+It skips panes covered by a running `fleet_wait`, and panes whose attention a finished wait already reported.
 
 `fleet_wait` follows sessions by pane, so a `/clear`, or a spawned pane whose session reports during the wait, is still the session asked about.
 Its cursor is the state each watched pane had when the wait began: only a later move into `waitingForInput`, `waitingForApproval` or `ended` ends it, so a session already waiting is not news.
@@ -285,7 +288,12 @@ It returns at once when no watched session is working and no watched spawn is st
 It ends on the first attention change, the timeout, or the turn's abort signal, and reports that session's brief delta through the Orchestrator's own read cursor, followed by where the other watched sessions stand.
 Main keeps the set of panes each thread waits on, which is what the digest consults.
 It caps output at 6 sessions and about 1,200 characters per session.
-It advances the cursors, and withholds the digest at the chain limit (6).
+It advances the cursors, including the Orchestrator's read cursor for each brief delta it shows.
+
+Main, not the renderer, holds the chain count, in the thread's ledger file so it survives a restart.
+Each digest turn adds one, and a turn the user wrote (text or attachments) in orchestrator mode resets it.
+At the limit (6) the last digest says so, later digests are held without moving the cursor, `fleet_send` and `fleet_spawn` refuse, and the pane shows a paused notice until the user writes.
+This replaces the planned `fleetChainDepth` on the send request: a count the renderer sends could not survive a reload, and main already owns the other limits.
 `AGENT_FLEET_SET_MODE` resets the cursors to "now" when the mode is turned on.
 
 A token bucket limits sends and spawns to 20 per 10 minutes per thread.

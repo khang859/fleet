@@ -3,7 +3,12 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FleetAsk, FleetOpenTabRequest, FleetSpawnArgs } from '../../../../shared/fleet-tools';
+import {
+  FLEET_CHAIN_LIMIT,
+  type FleetAsk,
+  type FleetOpenTabRequest,
+  type FleetSpawnArgs
+} from '../../../../shared/fleet-tools';
 import { createGitRunner } from '../../../claude-sessions/git-probe';
 import type { FleetHost } from '../host';
 import { FleetLedgerStore } from '../ledger-store';
@@ -185,6 +190,12 @@ describe('fleet_spawn', () => {
   it('counts against the same limit as sends', async () => {
     for (let i = 0; i < ACT_LIMIT; i++) deps.limiter.note(THREAD, 1_000_000);
     await expect(spawn()).rejects.toThrow(`made ${ACT_LIMIT} sends and spawns`);
+    expect(asks).toEqual([]);
+  });
+
+  it('is paused with sends at the chain limit', async () => {
+    for (let i = 0; i < FLEET_CHAIN_LIMIT; i++) deps.ledger.extendChain(THREAD);
+    await expect(spawn()).rejects.toThrow('sends and spawns are paused until they write');
     expect(asks).toEqual([]);
   });
 });

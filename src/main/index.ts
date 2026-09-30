@@ -94,7 +94,8 @@ import { FleetLedgerStore } from './agent/fleet/ledger-store';
 import { ActLimiter } from './agent/fleet/limiter';
 import { RendererRpc } from './agent/fleet/renderer-rpc';
 import { FleetSpawns } from './agent/fleet/spawns';
-import { FleetWaits } from './agent/fleet/wait';
+import { FleetAttention } from './agent/fleet/attention';
+import { pullDigest } from './agent/fleet/digest';
 import { createGitRunner } from './claude-sessions/git-probe';
 import { completeOnce } from './agent/completions';
 import { AgentModelCatalog } from './agent/models-catalog';
@@ -181,7 +182,7 @@ const quitGuard = new QuitGuard(() => mainWindow);
 // `fleet_spawn`'s way to a new tab: the renderer opens it, and the pane's PTY
 // picks its prompt up from `fleetSpawns` when it is created.
 const fleetSpawns = new FleetSpawns();
-const fleetWaits = new FleetWaits();
+const fleetAttention = new FleetAttention();
 const fleetTabs = new RendererRpc(() => mainWindow);
 const worktreeService = new WorktreeService();
 ipcMain.on(IPC_CHANNELS.AGENT_FLEET_OPEN_TAB_DONE, (_event, payload: unknown) => {
@@ -1551,6 +1552,7 @@ void app.whenReady().then(async () => {
   // reporting a spawned pane as starting once its session speaks for itself.
   claudeSessions.registry.subscribe((change) => {
     fleetLedger.observe(change);
+    fleetAttention.observe(change);
     if (change.session) fleetSpawns.settle(change.session.paneId);
   });
   // Read through lazily: the session service is created with the window, and
@@ -1604,7 +1606,7 @@ void app.whenReady().then(async () => {
           claudeSessions?.registry.notePaneInput(paneId, 'orchestrator', text),
         newPaneId: () => randomUUID(),
         subscribe: (listener) => claudeSessions?.registry.subscribe(listener) ?? (() => {}),
-        waits: fleetWaits
+        attention: fleetAttention
       }
     },
     imageCapabilities: (modelId) => agentCatalog.cachedImageModel(modelId),
@@ -1630,6 +1632,14 @@ void app.whenReady().then(async () => {
     subagents: agentSubagents,
     schedules: agentSchedules,
     fleetLedger,
+    fleetDigests: {
+      pull: async (threadId) =>
+        pullDigest({ host: fleetHost, ledger: fleetLedger, attention: fleetAttention }, threadId),
+      setMode: (threadId, on) => {
+        if (on) fleetAttention.startAt(threadId);
+        else fleetAttention.forget(threadId);
+      }
+    },
     mcp: {
       manager: agentMcp,
       secrets: agentMcpSecrets,

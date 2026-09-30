@@ -1,36 +1,20 @@
-import type { ClaudeSession, ClaudeSessionChange } from '../../../shared/claude-sessions';
+import {
+  attentionKey,
+  needsAttention,
+  type ClaudeSession,
+  type ClaudeSessionChange
+} from '../../../shared/claude-sessions';
 import type { FleetToolOutput, FleetWaitArgs } from '../../../shared/fleet-tools';
+import { describeAttention, type FleetAttention } from './attention';
 import { describePhase, describeStarting } from './format';
 import { sessionRef, type FleetHost, type FleetSession } from './host';
-
-/**
- * The panes each conversation is waiting on right now, so a wakeup digest
- * does not tell the Orchestrator about a session its own `fleet_wait` is
- * about to report. `'all'` is a wait on every session, including ones that
- * appear while it runs.
- */
-export class FleetWaits {
-  private readonly active = new Map<string, ReadonlySet<string> | 'all'>();
-
-  /** Mark a wait as running; the returned function ends it. */
-  hold(threadId: string, panes: ReadonlySet<string> | 'all'): () => void {
-    this.active.set(threadId, panes);
-    return () => {
-      if (this.active.get(threadId) === panes) this.active.delete(threadId);
-    };
-  }
-
-  covers(threadId: string, paneId: string): boolean {
-    const panes = this.active.get(threadId);
-    return panes === 'all' || (panes?.has(paneId) ?? false);
-  }
-}
 
 export type FleetWaitDeps = {
   host: FleetHost;
   /** The registry's change feed. */
   subscribe(listener: (change: ClaudeSessionChange) => void): () => void;
-  waits: FleetWaits;
+  /** Where the wait is noted, so a wakeup digest leaves its sessions to it. */
+  attention: Pick<FleetAttention, 'hold'>;
   /** What changed in a session since the Orchestrator last read it, or null when it cannot be read. */
   brief(ref: string): Promise<string | null>;
 };
@@ -40,40 +24,6 @@ function working(session: ClaudeSession): boolean {
   return (
     session.phase === 'processing' || session.phase === 'compacting' || session.phase === 'starting'
   );
-}
-
-/** A phase that asks for the Orchestrator's, or the user's, attention. */
-function attention(session: ClaudeSession): boolean {
-  return (
-    session.phase === 'waitingForInput' ||
-    session.phase === 'waitingForApproval' ||
-    session.phase === 'ended'
-  );
-}
-
-/** Enough of a session's state to tell one phase from the next, even the same phase again. */
-function stateKey(session: ClaudeSession): string {
-  return `${session.sessionId}|${session.phase}|${session.waitingKind}|${session.phaseSince}`;
-}
-
-/** What a session that needs attention is doing, after its name. */
-function what(session: ClaudeSession): string {
-  switch (session.phase) {
-    case 'waitingForApproval': {
-      const tool = session.pendingPermissions.at(0)?.tool.toolName;
-      return `is waiting for the user to approve ${tool ?? 'a tool'}`;
-    }
-    case 'waitingForInput':
-      return session.waitingKind === 'question'
-        ? 'is showing the user a question'
-        : 'finished its turn and is waiting for a prompt';
-    case 'ended':
-      return 'ended';
-    case 'starting':
-    case 'processing':
-    case 'compacting':
-      return 'is working';
-  }
 }
 
 type Outcome =
@@ -152,9 +102,9 @@ export async function waitForSessions(
     };
   }
 
-  const seen = new Map<string, string>(sessions.map((s) => [s.paneId, stateKey(s)]));
+  const seen = new Map<string, string>(sessions.map((s) => [s.paneId, attentionKey(s)]));
   const paneOf = new Map<string, string>(sessions.map((s) => [s.sessionId, s.paneId]));
-  const release = deps.waits.hold(threadId, watched);
+  const release = deps.attention.hold(threadId, watched);
   let stop = (): void => {};
   const outcome = await new Promise<Outcome>((resolve) => {
     const unsubscribe = deps.subscribe((change) => {
@@ -168,10 +118,10 @@ export async function waitForSessions(
       }
       if (!inWatch(session.paneId)) return;
       paneOf.set(session.sessionId, session.paneId);
-      const key = stateKey(session);
+      const key = attentionKey(session);
       if (seen.get(session.paneId) === key) return;
       seen.set(session.paneId, key);
-      if (attention(session)) resolve({ kind: 'attention', paneId: session.paneId, session });
+      if (needsAttention(session)) resolve({ kind: 'attention', paneId: session.paneId, session });
     });
     const timer = setTimeout(() => resolve({ kind: 'timeout' }), args.timeout_s * 1000);
     const onAbort = (): void => resolve({ kind: 'stopped' });
@@ -215,8 +165,7 @@ async function reportAttention(
   const current: FleetSession | undefined = host.sessions().find((s) => s.paneId === paneId);
   const ref = current?.ref ?? sessionRef(paneId);
   const name = current === undefined ? ref : `${ref} (${current.label})`;
-  const headline =
-    session === null ? `${name} ended; its pane is gone.` : `${name} ${what(session)}.`;
+  const headline = `${name} ${describeAttention(session)}.`;
   const changed =
     current !== undefined && session !== null && session.phase !== 'ended'
       ? await deps.brief(current.ref)

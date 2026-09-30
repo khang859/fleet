@@ -58,6 +58,14 @@ export const FLEET_PROMPT_MAX_CHARS = 8_000;
 /** Longest `why` or `expect` a ledger entry keeps. */
 export const FLEET_LEDGER_NOTE_MAX_CHARS = 300;
 
+/**
+ * Turns in a row a digest may start before the user has to write again. The
+ * turn that reaches it is the last: after it, digests are held and sends and
+ * spawns refused, so two sessions can never keep an Orchestrator busy with
+ * each other on their own.
+ */
+export const FLEET_CHAIN_LIMIT = 6;
+
 /** Longest a `fleet_wait` may block the turn. */
 export const FLEET_WAIT_MAX_SECONDS = 600;
 
@@ -135,6 +143,13 @@ export type FleetOpenTabRequest = {
 /** The renderer's answer: `error` is null once the tab is in the layout. */
 export const FleetOpenTabReply = z.object({ requestId: z.string(), error: z.string().nullable() });
 export type FleetOpenTabReply = z.infer<typeof FleetOpenTabReply>;
+
+/**
+ * What an orchestrator pane gets when it asks for a digest: the text of a
+ * `fleet` message, or null when nothing needs it. `paused` once the chain
+ * limit is reached, until the user writes.
+ */
+export type FleetDigestPull = { text: string | null; paused: boolean };
 
 /** What a fleet tool hands back: the text for the model, and the row in the transcript. */
 export type FleetToolOutput = { text: string; summary: string };

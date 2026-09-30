@@ -49,6 +49,7 @@ import { registerAgentSkillsIpc } from './skills/skills-ipc';
 import type { SubagentManager } from './subagents/manager';
 import type { ScheduleStore } from './schedule-store';
 import type { FleetLedgerStore } from './fleet/ledger-store';
+import type { FleetDigestPull } from '../../shared/fleet-tools';
 import type { AgentScheduleRecord } from '../../shared/agent-schedule';
 import type { OpenRouterSecrets } from '../openrouter-secrets';
 import type { ResolvedTarget } from './model-routing';
@@ -80,6 +81,11 @@ export function registerAgentIpc(deps: {
   schedules: ScheduleStore;
   /** What orchestrator conversations remember about the sessions they read. */
   fleetLedger: FleetLedgerStore;
+  /** Wakeup digests for orchestrator panes, and where each one starts reading. */
+  fleetDigests: {
+    pull(threadId: string): Promise<FleetDigestPull>;
+    setMode(threadId: string, on: boolean): void;
+  };
   getSettings: () => AgentSettings;
   /** Only the OpenRouter-only endpoints still ask: transcription, images. */
   getApiKey: () => string | null;
@@ -217,6 +223,19 @@ export function registerAgentIpc(deps: {
     IPC_CHANNELS.AGENT_SCHEDULE_PULL_DUE,
     (_e, sessionId: string): AgentScheduleRecord[] => deps.schedules.pullDue(sessionId)
   );
+
+  // Like the schedule pull, the only way a digest is taken: what it covers is
+  // marked read in the same call, so asking twice cannot deliver it twice.
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_FLEET_PULL_DIGEST,
+    async (_e, threadId: string): Promise<FleetDigestPull> => deps.fleetDigests.pull(threadId)
+  );
+
+  // Orchestrator mode turned on or off for a conversation. On means "from
+  // now": what the sessions did before is not a reason to wake it.
+  ipcMain.on(IPC_CHANNELS.AGENT_FLEET_SET_MODE, (_e, threadId: string, on: boolean) => {
+    deps.fleetDigests.setMode(threadId, on);
+  });
 
   // Nothing is written here. Main works out the words and hands them back; the
   // renderer knows which session asked, and is the only side that can - which

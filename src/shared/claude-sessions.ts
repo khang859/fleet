@@ -156,3 +156,21 @@ export type ClaudeSessionsSnapshot = {
   /** One per pane: a session run by a tool inside a pane is left out. */
   sessions: ClaudeSessionView[];
 };
+
+/** A phase that asks for the attention of an Orchestrator, or the user. */
+export function needsAttention(session: ClaudeSession): boolean {
+  return (
+    session.phase === 'waitingForInput' ||
+    session.phase === 'waitingForApproval' ||
+    session.phase === 'ended'
+  );
+}
+
+/**
+ * Enough of a session's state to tell one phase from the next, and the same
+ * phase entered again. A hook event that changes none of it - Claude Code's
+ * idle reminder a minute into a wait, say - is not news.
+ */
+export function attentionKey(session: ClaudeSession): string {
+  return `${session.sessionId}|${session.phase}|${session.waitingKind}|${session.phaseSince}`;
+}

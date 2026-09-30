@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ClaudeSessionChange } from '../../../../shared/claude-sessions';
 import type { FleetWaitArgs } from '../../../../shared/fleet-tools';
 import type { FleetHost, FleetSession, FleetStarting } from '../host';
-import { FleetWaits, waitForSessions } from '../wait';
+import { FleetAttention } from '../attention';
+import { waitForSessions } from '../wait';
 
 const THREAD = '6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b';
 const AT = 1_000_000;
@@ -43,7 +44,7 @@ describe('fleet_wait', () => {
   let sessions: FleetSession[];
   let starting: FleetStarting[];
   let listeners: Set<(change: ClaudeSessionChange) => void>;
-  let waits: FleetWaits;
+  let waits: FleetAttention;
   let briefs: string[];
 
   const host = (): FleetHost => ({
@@ -77,7 +78,7 @@ describe('fleet_wait', () => {
           listeners.add(listener);
           return () => listeners.delete(listener);
         },
-        waits,
+        attention: waits,
         brief: async (ref) => {
           briefs.push(ref);
           return Promise.resolve(`<session-data ref="${ref}">tests pass</session-data>`);
@@ -93,7 +94,7 @@ describe('fleet_wait', () => {
     sessions = [session()];
     starting = [];
     listeners = new Set();
-    waits = new FleetWaits();
+    waits = new FleetAttention();
     briefs = [];
   });
   afterEach(() => vi.useRealTimers());

@@ -9,7 +9,7 @@ const RECENT_SETTLED = 5;
 /** Sessions named at most, so a crowded workspace does not fill every round. */
 const MAX_SESSION_LINES = 20;
 
-function entryLine(entry: FleetLedgerEntry, now: number): string {
+export function ledgerEntryLine(entry: FleetLedgerEntry, now: number): string {
   const what =
     entry.action === 'send'
       ? `prompted ${entry.ref} ${formatAge(now - entry.at)} ago`
@@ -53,12 +53,12 @@ export function renderLedgerBlock(
 
   const parts: string[] = ['Your fleet ledger, kept by Fleet so it survives compaction.'];
   if (open.length > 0) {
-    parts.push('', 'Waiting on:', ...open.map((e) => entryLine(e, now)));
+    parts.push('', 'Waiting on:', ...open.map((e) => ledgerEntryLine(e, now)));
   } else {
     parts.push('', 'Nothing you asked for is still outstanding.');
   }
   if (settled.length > 0) {
-    parts.push('', 'Recently settled:', ...settled.map((e) => entryLine(e, now)));
+    parts.push('', 'Recently settled:', ...settled.map((e) => ledgerEntryLine(e, now)));
   }
   if (sessions.length + starting.length > 0) {
     const lines = [

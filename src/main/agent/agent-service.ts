@@ -1043,6 +1043,12 @@ export class AgentService {
 
   /** Starts a turn and returns immediately; the reply arrives as stream events. */
   send(req: AgentSendRequest): void {
+    // The user wrote, so an orchestrator conversation's run of turns Fleet
+    // started on its own is over. A turn with nothing typed is a digest, a
+    // schedule or a subagent report, none of which is the user.
+    if (req.orchestrator === true && (req.text.trim() !== '' || req.attachments.length > 0)) {
+      this.deps.fleet?.ledger.resetChain(req.threadId);
+    }
     void this.run(req.streamId, async (ctx, account) => this.turn(req, ctx, account));
   }
 
