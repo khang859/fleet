@@ -480,17 +480,16 @@ function createWindow(): void {
       setTimeout(() => {
         mainWindow?.webContents
           .executeJavaScript(
-            `
-          const root = document.getElementById('root');
-          const xterm = document.querySelector('.xterm');
-          const container = document.querySelector('[class*="h-full"][class*="w-full"]');
+            // In a function, since a second load event in the same document
+            // would otherwise declare `main` again and throw.
+            `(() => {
           const main = document.querySelector('main');
-          JSON.stringify({
+          return JSON.stringify({
             mainHTML: main?.innerHTML.substring(0, 500),
             mainChildren: main?.children.length,
             mainDims: main ? { w: main.clientWidth, h: main.clientHeight } : null,
-          })
-        `
+          });
+        })()`
           )
           .then((r: unknown) => log.debug('debug DOM', { result: String(r) }))
           .catch((e: unknown) => log.debug('debug err', { error: String(e) }));
