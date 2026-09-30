@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BUNDLED_PRICES } from '../../../shared/claude-pricing';
-import { parsePriceTable, loadCachedTable, writeCachedTable } from '../pricing-source';
+import {
+  isAtLeastAsNew,
+  parsePriceTable,
+  loadCachedTable,
+  writeCachedTable
+} from '../pricing-source';
 
 const tmpDirs: string[] = [];
 function tmp(): string {
@@ -54,5 +59,14 @@ describe('cache round-trip', () => {
     const file = join(tmp(), 'claude-pricing.json');
     writeFileSync(file, 'garbage');
     expect(loadCachedTable(file)).toBeNull();
+  });
+});
+
+describe('isAtLeastAsNew', () => {
+  it('keeps the bundled table over an older cached or remote one', () => {
+    const older = { ...BUNDLED_PRICES, updated: '2026-06-12', models: [] };
+    expect(isAtLeastAsNew(older, BUNDLED_PRICES)).toBe(false);
+    expect(isAtLeastAsNew(BUNDLED_PRICES, BUNDLED_PRICES)).toBe(true);
+    expect(isAtLeastAsNew({ ...BUNDLED_PRICES, updated: '2027-01-01' }, BUNDLED_PRICES)).toBe(true);
   });
 });

@@ -27,6 +27,22 @@ describe('resolvePrice', () => {
     expect(resolvePrice('claude-haiku-4-5', BUNDLED_PRICES)?.input).toBe(1);
   });
 
+  it('prices the Claude 5 models at their published rates', () => {
+    expect(resolvePrice('claude-opus-5', BUNDLED_PRICES)).toMatchObject({ input: 5, output: 25 });
+    expect(resolvePrice('claude-opus-5-5', BUNDLED_PRICES)).toMatchObject({
+      input: 4,
+      output: 20,
+      cacheReadMult: 0.05
+    });
+    expect(resolvePrice('claude-sonnet-5-5', BUNDLED_PRICES)).toMatchObject({
+      input: 2,
+      output: 10
+    });
+    expect(resolvePrice('claude-fable-5-1', BUNDLED_PRICES)?.cacheReadMult).toBe(0.025);
+    // Fable 5 reads its cache at the standard rate; only 5.1 is cheaper.
+    expect(resolvePrice('claude-fable-5', BUNDLED_PRICES)?.cacheReadMult).toBe(0.1);
+  });
+
   it('matches a future point release within a family via prefix', () => {
     expect(resolvePrice('claude-opus-4-99', BUNDLED_PRICES)?.input).toBe(5);
   });

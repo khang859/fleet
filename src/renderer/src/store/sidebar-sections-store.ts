@@ -8,7 +8,7 @@ const STORAGE_KEY = 'fleet.sidebar-sections';
  * not one - it is the reason the sidebar exists, and a sidebar whose contents
  * can be hidden entirely is a sidebar you would rather have closed.
  */
-export const SIDEBAR_SECTIONS = ['agents', 'tools', 'workspaces'] as const;
+export const SIDEBAR_SECTIONS = ['claude', 'agents', 'tools', 'workspaces'] as const;
 export type SidebarSection = (typeof SIDEBAR_SECTIONS)[number];
 
 /**

@@ -2,6 +2,15 @@ import type { Socket } from 'net';
 import { createLogger } from '../logger';
 import { resolveClaudeConfig } from '../../shared/claude-config';
 import type { FleetSettings } from '../../shared/types';
+import type { PriceTable } from '../../shared/claude-pricing';
+import type {
+  ClaudeHookInstallProblem,
+  ClaudeSessionChange,
+  ClaudeSessionsSnapshot,
+  ClaudeTrackingStatus,
+  GitSummary
+} from '../../shared/claude-sessions';
+import { createGitRunner, probeGit, type GitRunner } from './git-probe';
 import type { HookEvent } from './hook-events';
 import * as hookInstaller from './hook-installer';
 import { HookServer, PermissionBroker } from './hook-server';
@@ -9,11 +18,19 @@ import { registerClaudeSessionsIpc, type IpcRegistrar } from './ipc-handlers';
 import { PaneActivityBridge, type SetHookState } from './pane-activity-bridge';
 import { PaneResolver, type PaneHost, type WorkspaceLookup } from './pane-resolver';
 import { ClaudeSessionRegistry } from './registry';
+import { SessionUsageTracker } from './session-usage';
+import { transcriptPathFor } from './transcript-path';
 
 const log = createLogger('claude-sessions');
 
 /** How often sessions whose Claude process died silently are swept. */
 const LIVENESS_INTERVAL_MS = 10_000;
+/** Changes landing this close together go to the renderer as one snapshot. */
+const SNAPSHOT_COALESCE_MS = 100;
+/** How often one session's folder is asked about its git state at most. */
+const GIT_THROTTLE_MS = 5_000;
+/** Hook events after which a session's folder may look different to git. */
+const GIT_EVENTS = new Set(['SessionStart', 'PostToolUse', 'PostToolUseFailure', 'Stop']);
 
 export type ClaudeSessionsDeps = {
   platform: NodeJS.Platform;
@@ -23,8 +40,21 @@ export type ClaudeSessionsDeps = {
   workspaceOf: WorkspaceLookup;
   setHookState: SetHookState;
   ipc: IpcRegistrar;
+  /** The price table cost estimates use; it can change while Fleet runs. */
+  priceTable: () => PriceTable;
+  /** Receives the whole status view each time it changes, coalesced. */
+  onSnapshot?: (snapshot: ClaudeSessionsSnapshot) => void;
   socketPath?: string;
   installer?: Pick<typeof hookInstaller, 'ensureHooks' | 'uninstall'>;
+  git?: GitRunner;
+};
+
+type GitState = {
+  summary: GitSummary | null;
+  checkedAt: number;
+  checking: boolean;
+  /** A check that was asked for inside the throttle window, due when it ends. */
+  again: ReturnType<typeof setTimeout> | null;
 };
 
 /** Every Claude config folder Fleet hands to its panes: the default and each workspace's own. */
@@ -60,9 +90,20 @@ export class ClaudeSessionsService {
   private work: Promise<void> = Promise.resolve();
   /** How many consumers can answer a permission request right now. */
   private answerers = 0;
+  private readonly usage: SessionUsageTracker;
+  private readonly git: GitRunner;
+  private readonly gitStates = new Map<string, GitState>();
+  private installProblems: ClaudeHookInstallProblem[] = [];
+  private startError: string | null = null;
+  private snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly deps: ClaudeSessionsDeps) {
     this.installer = deps.installer ?? hookInstaller;
+    this.git = deps.git ?? createGitRunner();
+    this.usage = new SessionUsageTracker({
+      priceTable: deps.priceTable,
+      onChange: () => this.scheduleSnapshot()
+    });
     this.resolver = new PaneResolver(deps.panes, deps.workspaceOf);
     this.bridge = new PaneActivityBridge(deps.setHookState);
     this.broker = new PermissionBroker((sessionId, toolUseId) =>
@@ -83,8 +124,9 @@ export class ClaudeSessionsService {
       if (ownsPane) this.bridge.apply(change);
       const pending = change.session?.pendingPermissions ?? [];
       this.broker.retainOnly(change.sessionId, new Set(pending.map((p) => p.toolUseId)));
+      this.followSession(change);
     });
-    registerClaudeSessionsIpc(deps.ipc);
+    registerClaudeSessionsIpc(deps.ipc, () => this.snapshot());
   }
 
   /** Whether tracking can run on this platform at all. */
@@ -94,6 +136,26 @@ export class ClaudeSessionsService {
 
   get isRunning(): boolean {
     return this.running;
+  }
+
+  get status(): ClaudeTrackingStatus {
+    if (!this.supported) return { state: 'unsupported' };
+    if (this.tracking === false) return { state: 'off' };
+    if (this.startError) return { state: 'failed', detail: this.startError };
+    return { state: this.running ? 'running' : 'starting' };
+  }
+
+  /** The status view: tracking status, install problems, and each pane's session. */
+  snapshot(): ClaudeSessionsSnapshot {
+    const sessions = this.registry
+      .list()
+      .filter((s) => this.registry.getByPane(s.paneId)?.sessionId === s.sessionId)
+      .map((s) => ({
+        ...s,
+        usage: this.usage.get(s.sessionId),
+        git: this.gitStates.get(s.sessionId)?.summary ?? null
+      }));
+    return { status: this.status, installProblems: this.installProblems, sessions };
   }
 
   async start(): Promise<void> {
@@ -132,7 +194,11 @@ export class ClaudeSessionsService {
   }
 
   async stop(): Promise<void> {
-    return this.enqueue(async () => this.halt());
+    return this.enqueue(async () => {
+      await this.halt();
+      if (this.snapshotTimer) clearTimeout(this.snapshotTimer);
+      this.snapshotTimer = null;
+    });
   }
 
   private async enqueue(task: () => Promise<void>): Promise<void> {
@@ -152,6 +218,9 @@ export class ClaudeSessionsService {
     if (!this.supported) return;
 
     if (!wanted) {
+      this.installProblems = [];
+      this.startError = null;
+      this.scheduleSnapshot();
       await this.halt();
       if (turnedOff) {
         for (const dir of dirs) {
@@ -167,13 +236,25 @@ export class ClaudeSessionsService {
 
     // Every time, not only at start: it adds a newly assigned folder and
     // refreshes the binary after an upgrade. Unchanged folders are not written.
-    this.installer.ensureHooks(dirs);
+    const failures = this.installer.ensureHooks(dirs);
+    this.installProblems = [...failures].map(([configDir, error]) => ({
+      configDir,
+      detail: error.message
+    }));
+    this.scheduleSnapshot();
 
     if (this.running) return;
-    await this.server.start();
+    try {
+      await this.server.start();
+    } catch (err) {
+      this.startError = err instanceof Error ? err.message : String(err);
+      throw err;
+    }
+    this.startError = null;
     this.liveness = setInterval(() => this.registry.pruneDead(), LIVENESS_INTERVAL_MS);
     this.liveness.unref();
     this.running = true;
+    this.scheduleSnapshot();
     log.info('claude session tracking started', { configDirs: dirs });
   }
 
@@ -185,7 +266,72 @@ export class ClaudeSessionsService {
     await this.broker.dispose();
     await this.server.stop();
     this.registry.clear();
+    this.usage.dispose();
+    for (const sessionId of [...this.gitStates.keys()]) this.forgetGit(sessionId);
+    this.scheduleSnapshot();
     log.info('claude session tracking stopped');
+  }
+
+  /** Keep a session's usage and git state current as its hook events arrive. */
+  private followSession(change: ClaudeSessionChange): void {
+    const { session, sessionId, event } = change;
+    this.scheduleSnapshot();
+    if (!session) {
+      this.usage.forget(sessionId);
+      this.forgetGit(sessionId);
+      return;
+    }
+    if (session.phase === 'ended') return;
+    const firstSight = !this.gitStates.has(sessionId);
+    if (event || firstSight) {
+      const turnOver = event?.event === 'Stop' || event?.event === 'SessionStart';
+      this.usage.refresh(sessionId, transcriptPathFor(session, this.deps.homeDir), turnOver);
+    }
+    if (firstSight || (event && GIT_EVENTS.has(event.event))) this.checkGit(sessionId, session.cwd);
+  }
+
+  /** Ask git about a session's folder, at most every few seconds, and once more after a skipped ask. */
+  private checkGit(sessionId: string, cwd: string): void {
+    const state = this.gitStates.get(sessionId) ?? {
+      summary: null,
+      checkedAt: 0,
+      checking: false,
+      again: null
+    };
+    this.gitStates.set(sessionId, state);
+    if (state.checking || state.again) return;
+    const wait = GIT_THROTTLE_MS - (Date.now() - state.checkedAt);
+    if (wait > 0) {
+      state.again = setTimeout(() => {
+        state.again = null;
+        if (this.gitStates.get(sessionId) === state) this.checkGit(sessionId, cwd);
+      }, wait);
+      state.again.unref();
+      return;
+    }
+    state.checking = true;
+    state.checkedAt = Date.now();
+    void probeGit(cwd, this.git).then((summary) => {
+      state.checking = false;
+      if (this.gitStates.get(sessionId) !== state) return;
+      if (JSON.stringify(summary) === JSON.stringify(state.summary)) return;
+      state.summary = summary;
+      this.scheduleSnapshot();
+    });
+  }
+
+  private forgetGit(sessionId: string): void {
+    const state = this.gitStates.get(sessionId);
+    if (state?.again) clearTimeout(state.again);
+    this.gitStates.delete(sessionId);
+  }
+
+  private scheduleSnapshot(): void {
+    if (this.snapshotTimer || !this.deps.onSnapshot) return;
+    this.snapshotTimer = setTimeout(() => {
+      this.snapshotTimer = null;
+      this.deps.onSnapshot?.(this.snapshot());
+    }, SNAPSHOT_COALESCE_MS);
   }
 
   private onHookEvent(event: HookEvent, client: Socket): boolean {

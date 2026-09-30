@@ -4,3 +4,7 @@ pnpm-lock.yaml
 LICENSE.md
 tsconfig.json
 tsconfig.*.json
+
+# MCP import fixtures are hand-edited on purpose: comments, trailing commas and
+# half-written JSON are what the import tests read.
+src/main/agent/mcp/import/__tests__/fixtures/

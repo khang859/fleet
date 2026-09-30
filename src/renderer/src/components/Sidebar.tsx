@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { getFileIcon } from '../lib/file-icons';
 import { TabItem } from './TabItem';
+import { SectionHeader } from './SidebarSectionHeader';
+import { ClaudeSessionsPanel } from './ClaudeSessionsPanel';
 import { createLogger } from '../logger';
 
 const logDnd = createLogger('sidebar:dnd');
@@ -21,8 +23,7 @@ import {
   useWorkspaceStore,
   collectPaneIds,
   collectPaneLeafs,
-  getPaneContextById,
-  isPinnedTab
+  getPaneContextById
 } from '../store/workspace-store';
 import { useWorkspaceListStore } from '../store/workspace-list-store';
 import { CreateWorkspaceDialog } from './workspace/CreateWorkspaceDialog';
@@ -33,6 +34,7 @@ import { useCwdStore } from '../store/cwd-store';
 
 import { serializePane } from '../hooks/use-terminal';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
+import { switchToWorkspace } from '../lib/switch-workspace';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 import { getFileSave } from '../lib/file-save-registry';
 import { popperAnim, dialogFadeAnim } from '../lib/motion';
@@ -421,45 +423,6 @@ function OffScreenBadgeSummary({
   );
 }
 
-/**
- * A foldable section header. The chevron is tucked back into the row's own left
- * padding rather than pushing the label right, so the label stays on the column
- * it has always been on and folding does not move the sidebar's vertical rhythm.
- *
- * Only the label and chevron toggle. The controls passed as `children` sit
- * outside the button, so the add and configure buttons keep working while the
- * section is folded and clicking one never folds it by accident.
- */
-function SectionHeader({
-  label,
-  collapsed,
-  onToggle,
-  children
-}: {
-  label: string;
-  collapsed: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <div className="flex items-center justify-between px-2 py-1">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={!collapsed}
-        className="-ml-3 flex items-center gap-1 rounded text-[11px] font-medium text-fleet-text-subtle hover:text-fleet-text-secondary transition-colors"
-      >
-        <ChevronRight
-          size={12}
-          className={`shrink-0 transition-transform ${collapsed ? '' : 'rotate-90'}`}
-        />
-        {label}
-      </button>
-      <div className="flex items-center gap-1.5">{children}</div>
-    </div>
-  );
-}
-
 export function Sidebar({
   updateReady,
   onCollapse,
@@ -802,50 +765,7 @@ export function Sidebar({
     void refreshWorkspaceList();
   }, [refreshWorkspaceList]);
 
-  const doSwitchWorkspace = useCallback(async (wsId: string) => {
-    // Flush current workspace with live CWDs BEFORE any async gap
-    const state = useWorkspaceStore.getState();
-    await window.fleet.layout.save({
-      workspace: {
-        ...state.workspace,
-        activeTabId: state.activeTabId ?? undefined,
-        activePaneId: state.activePaneId ?? undefined,
-        collapsedGroups: Array.from(state.collapsedGroups),
-        tabs: state.workspace.tabs
-          .filter((tab) => tab.type !== 'settings')
-          .map((tab) => {
-            const liveCwd = getFirstPaneLiveCwd(tab.splitRoot);
-            return {
-              ...tab,
-              cwd: liveCwd ?? tab.cwd,
-              splitRoot: injectLiveCwd(tab.splitRoot)
-            };
-          })
-      }
-    });
-
-    // Resolve target (in-memory or disk) and switch
-    const freshState = useWorkspaceStore.getState();
-    const inMemory = freshState.backgroundWorkspaces.get(wsId);
-    if (inMemory) {
-      freshState.switchWorkspace(inMemory);
-    } else {
-      const loaded = await window.fleet.layout.load(wsId);
-      if (loaded) useWorkspaceStore.getState().switchWorkspace(loaded);
-    }
-
-    // Give the workspace its first terminal when it has nothing of its own.
-    // The check is for unpinned tabs, not for an empty list: a workspace saved
-    // with no tabs - which is what creating one from Settings writes - has
-    // already been seeded with the pinned tool tabs by `switchWorkspace` by the
-    // time this runs, so a length check would leave it with no terminal.
-    setTimeout(() => {
-      const s = useWorkspaceStore.getState();
-      if (!s.workspace.tabs.some((tab) => !isPinnedTab(tab))) {
-        s.addTab(undefined, window.fleet.homeDir);
-      }
-    }, 0);
-  }, []);
+  const doSwitchWorkspace = useCallback(async (wsId: string) => switchToWorkspace(wsId), []);
 
   const handleSwitchWorkspace = useCallback(
     (wsId: string) => {
@@ -1608,6 +1528,8 @@ export function Sidebar({
           label="need attention"
         />
       </div>
+
+      <ClaudeSessionsPanel />
 
       {/* Pinned agents section */}
       <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">

@@ -177,6 +177,8 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
   - Subagent capabilities never advance it.
   - Output is fenced as untrusted session data.
 - **`fleet_diff`.** It runs git with a fixed argv, no shell, `--no-ext-diff`, `GIT_OPTIONAL_LOCKS=0`, a timeout and an output cap.
+  - The runner, shared with the sidebar's git probe, turns off the programs a repository's config can make reading run: `core.fsmonitor`, `log.showSignature`, and every configured filter driver (blanked through `GIT_CONFIG_KEY_n` pairs, since `-c` splits at the first `=`).
+    `status` and `diff` also get `--ignore-submodules=all`, because a submodule's own config names its own filters.
   - The cwd comes only from the registry.
   - `path` goes through `resolveInsideCwd(path, session.cwd)`, which reuses the credential checks.
   - The `file` view reuses `runRead` with `cwd` swapped.
@@ -257,9 +259,16 @@ The cost is six touch points and no downgrade compatibility for session files.
 - **Hook contract drift.** `transcript_path`, `/clear` semantics and the `toolUseResult` shape could change between Claude Code versions.
   → Verify each against the installed Claude Code during Phase 1.
   → Fall back to the config-dir path, degrade the brief to the registry-only view, and keep a golden fixture per observed shape.
-- **A permission denied in the terminal sends no hook event.** Checked on Claude Code 2.1.285: after "No" or Esc there is no `Stop`, `PostToolUse` or `Notification`, even after minutes, so the session stays `waitingForApproval` until the next prompt.
+- **A permission denied in the terminal sends no hook event.** Checked on Claude Code 2.1.285: after Esc there is no `Stop`, `PostToolUse` or `Notification`, even after minutes, so the session stays `waitingForApproval` until the next prompt.
+  After "No", an `idle_prompt` notification arrived about a minute later and settled it, but nothing arrives sooner.
+  While the dialog is still open, no `idle_prompt` arrives, so an unanswered request keeps showing as needing the user.
   → Phase 3 settles it from the transcript, which records the rejection (task 4.2a).
-  → Until then the error is on the safe side: `fleet_send` refuses a session that looks like it waits for approval.
+  → Until then the error is on the safe side: `fleet_send` refuses a session that looks like it waits for approval, and the status view shows it as needing the user.
+- **A queued prompt runs its turn without a hook event.** Checked on Claude Code 2.1.285 during the Phase 2 E2E: a prompt typed while a turn runs fires `UserPromptSubmit` when it is queued, not when its turn starts.
+  The running turn's `Stop` then arrives, and the queued turn runs with no event until its first tool or its own `Stop`, so a text-only queued turn shows as ready while it works.
+  A background task finishing queues a turn the same way.
+  Counting prompts against stops cannot fix it: an Esc interrupt sends no `Stop`, and the count would leave the session stuck as working.
+  → Phase 3 settles it from the transcript, which records `queue-operation` lines with `operation: "enqueue"` and `"dequeue"`: a dequeue after the last `Stop` means a turn is running (task 4.2b).
 - **Bracketed paste in the Claude Code TUI.** Paste handling may vary by version.
   → Verify manually before Phase 4 ships.
   → The acknowledgement timeout keeps the tool honest.
@@ -286,7 +295,10 @@ Reverting the PR restores the old macOS-only behavior, and the backup file stays
 
 ## Open Questions
 
-- The exact status-view placement within `Sidebar.tsx`, and whether it can be collapsed.
-  Settle during Phase 2 with a screenshot review.
-- The model-to-context-limit table used for the context percentage.
-  Start at 200k by default and refine.
+- ~~The exact status-view placement within `Sidebar.tsx`, and whether it can be collapsed.~~
+  Settled in Phase 2 after a screenshot review: a "Claude Code" section above Agents, collapsible like the other sidebar sections.
+  Collapsed, its header still shows the session count or the needs-you count.
+  Rows name a pane in a split tab by its custom label or by its position, since panes otherwise share the tab's name.
+- ~~The model-to-context-limit table used for the context percentage.~~
+  Settled in Phase 2 without a table: every current model has a 200k window, and 4.6 and later models can run with 1M at the standard price, which the transcript does not record.
+  So the limit is 200k until a session is seen using more than 200k tokens, then 1M for the rest of that session.

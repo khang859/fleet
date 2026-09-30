@@ -45,7 +45,7 @@ import type {
 import type { TerminalMenuAction } from '../shared/ipc-api';
 import type { WslDistroState, PathContext } from '../shared/shell-profiles';
 import type { ReleaseNote } from '../shared/release-notes';
-import type { HookFolderStatus } from '../shared/claude-sessions';
+import type { ClaudeSessionsSnapshot, HookFolderStatus } from '../shared/claude-sessions';
 import type {
   SetSourceResult,
   TeleprompterCommand,
@@ -482,6 +482,13 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
     notifyActiveWorkspace: (workspaceId: string, workspaceName: string): void =>
       ipcRenderer.send(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, { workspaceId, workspaceName })
+  },
+  claudeSessions: {
+    /** The Claude Code sessions in Fleet panes, and whether tracking works. */
+    list: async (): Promise<ClaudeSessionsSnapshot> =>
+      typedInvoke(IPC_CHANNELS.CLAUDE_SESSIONS_LIST),
+    onChanged: (callback: (snapshot: ClaudeSessionsSnapshot) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.CLAUDE_SESSIONS_CHANGED, callback)
   },
   annotate: {
     list: async (): Promise<AnnotationMeta[]> =>

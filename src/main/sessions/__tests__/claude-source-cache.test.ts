@@ -19,6 +19,15 @@ const TRANSCRIPT = [
   })
 ].join('\n');
 
+/** The projects root holds `proj`, which holds `files`; no session has subagents. */
+function listing(files: string[]): void {
+  readdir.mockImplementation((p: string) => {
+    if (String(p).endsWith('projects')) return ['proj'];
+    if (String(p).endsWith('subagents')) throw new Error('ENOENT');
+    return files;
+  });
+}
+
 describe('listClaudeSessions caching', () => {
   beforeEach(() => {
     __clearClaudeSummaryCache();
@@ -26,9 +35,7 @@ describe('listClaudeSessions caching', () => {
     readdir.mockReset();
     stat.mockReset();
     // root -> one project dir; project dir -> one transcript file
-    readdir.mockImplementation((p: string) =>
-      String(p).endsWith('projects') ? ['proj'] : ['sess.jsonl']
-    );
+    listing(['sess.jsonl']);
     stat.mockResolvedValue({ mtimeMs: 111, size: 222 });
     readFile.mockResolvedValue(TRANSCRIPT);
   });
@@ -59,14 +66,12 @@ describe('listClaudeSessions caching', () => {
     expect(readFile).toHaveBeenCalledTimes(1);
 
     // File is gone now.
-    readdir.mockImplementation((p: string) => (String(p).endsWith('projects') ? ['proj'] : []));
+    listing([]);
     const out = await listClaudeSessions();
     expect(out).toHaveLength(0);
 
     // It comes back -> must be re-read, proving the stale entry was pruned.
-    readdir.mockImplementation((p: string) =>
-      String(p).endsWith('projects') ? ['proj'] : ['sess.jsonl']
-    );
+    listing(['sess.jsonl']);
     await listClaudeSessions();
     expect(readFile).toHaveBeenCalledTimes(2);
   });

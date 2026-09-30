@@ -37,8 +37,48 @@ export type ClaudeUsageInput = {
  */
 export const BUNDLED_PRICES: PriceTable = {
   schemaVersion: 1,
-  updated: '2026-06-12',
+  updated: '2026-09-30',
   models: [
+    {
+      prefix: 'claude-fable-5-1',
+      input: 10,
+      output: 50,
+      cacheReadMult: 0.025,
+      cacheWrite5mMult: 1.25,
+      cacheWrite1hMult: 2
+    },
+    {
+      prefix: 'claude-mythos-5-1',
+      input: 10,
+      output: 50,
+      cacheReadMult: 0.025,
+      cacheWrite5mMult: 1.25,
+      cacheWrite1hMult: 2
+    },
+    {
+      prefix: 'claude-opus-5-5',
+      input: 4,
+      output: 20,
+      cacheReadMult: 0.05,
+      cacheWrite5mMult: 1.25,
+      cacheWrite1hMult: 2
+    },
+    {
+      prefix: 'claude-opus-5',
+      input: 5,
+      output: 25,
+      cacheReadMult: 0.1,
+      cacheWrite5mMult: 1.25,
+      cacheWrite1hMult: 2
+    },
+    {
+      prefix: 'claude-sonnet-5',
+      input: 2,
+      output: 10,
+      cacheReadMult: 0.1,
+      cacheWrite5mMult: 1.25,
+      cacheWrite1hMult: 2
+    },
     {
       prefix: 'claude-fable-',
       input: 10,

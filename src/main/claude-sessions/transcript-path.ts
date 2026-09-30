@@ -1,3 +1,4 @@
+import { readdir } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
 import type { ClaudeSession } from '../../shared/claude-sessions';
@@ -22,4 +23,24 @@ export function transcriptPathFor(
   if (session.transcriptPath) return session.transcriptPath;
   const configDir = session.configDir ?? join(homeDir, '.claude');
   return join(configDir, 'projects', cwdToProjectDir(session.cwd), `${session.sessionId}.jsonl`);
+}
+
+/**
+ * The folder holding a session's subagent transcripts, one `agent-*.jsonl`
+ * each. Claude Code 2.1.285 writes them there, not into the main transcript,
+ * so anything totalling a session's usage must read them too.
+ */
+export function subagentTranscriptDir(transcriptPath: string): string {
+  return join(transcriptPath.replace(/\.jsonl$/, ''), 'subagents');
+}
+
+/** Paths of a session's subagent transcripts; empty when it has none. */
+export async function listSubagentTranscripts(transcriptPath: string): Promise<string[]> {
+  const dir = subagentTranscriptDir(transcriptPath);
+  try {
+    const names = await readdir(dir);
+    return names.filter((n) => n.endsWith('.jsonl')).map((n) => join(dir, n));
+  } catch {
+    return [];
+  }
 }

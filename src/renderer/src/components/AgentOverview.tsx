@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Eye } from 'lucide-react';
 import type { ActivityState } from '../../../shared/types';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
+import { focusPane } from '../lib/focus-pane';
 import { useNotificationStore } from '../store/notification-store';
 import { findLeaf, paneLabel } from '../lib/palette-items';
 import { getPaneTailText } from '../hooks/use-terminal';
@@ -130,15 +131,8 @@ export function AgentOverview({
 
   const jumpTo = useCallback(
     (row: Row) => {
-      const ws = useWorkspaceStore.getState();
-      ws.setActiveTab(row.tabId);
-      ws.setActivePane(row.paneId);
       onClose();
-      requestAnimationFrame(() => {
-        document.dispatchEvent(
-          new CustomEvent('fleet:refocus-pane', { detail: { paneId: row.paneId } })
-        );
-      });
+      void focusPane(row.paneId);
     },
     [onClose]
   );

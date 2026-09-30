@@ -4,160 +4,40 @@ import { homedir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { parseClaudeTranscript } from '../copilot/conversation-reader';
-import { cwdToProjectDir } from '../claude-sessions/transcript-path';
+import { cwdToProjectDir, listSubagentTranscripts } from '../claude-sessions/transcript-path';
+import { UsageAccumulator, addTranscriptFile } from '../claude-sessions/usage-accumulator';
 import type { CopilotChatMessage } from '../../shared/types';
 import type {
-  ClaudeUsage,
   SessionSummary,
   SessionTranscript,
   TranscriptBlock,
   TranscriptMessage
 } from '../../shared/sessions';
-import type { ClaudeUsageInput } from '../../shared/claude-pricing';
 import { estimateSessionCostUsd } from '../../shared/claude-pricing';
 import { getPriceTable } from './pricing-source';
 
 const cwdLineSchema = z.object({ cwd: z.string() }).passthrough();
 
-const usageSchema = z
-  .object({
-    input_tokens: z.number().optional(),
-    output_tokens: z.number().optional(),
-    cache_read_input_tokens: z.number().optional(),
-    cache_creation_input_tokens: z.number().optional(),
-    cache_creation: z
-      .object({
-        ephemeral_5m_input_tokens: z.number().optional(),
-        ephemeral_1h_input_tokens: z.number().optional()
-      })
-      .partial()
-      .optional()
-  })
-  .passthrough();
-
-const assistantLineSchema = z
-  .object({
-    type: z.literal('assistant'),
-    timestamp: z.string().optional(),
-    gitBranch: z.string().optional(),
-    message: z
-      .object({
-        id: z.string().optional(),
-        model: z.string().optional(),
-        usage: usageSchema.optional()
-      })
-      .passthrough()
-  })
-  .passthrough();
-
-const tsLineSchema = z
-  .object({ timestamp: z.string().optional(), gitBranch: z.string().optional() })
-  .passthrough();
-
-export type ClaudeAggregate = {
-  total: ClaudeUsage;
-  perModel: Map<string, ClaudeUsageInput>;
-  models: string[];
-  gitBranch?: string;
-  startedAt?: number;
-  endedAt?: number;
-  hasUsage: boolean;
-};
-
-function emptyUsage(): ClaudeUsage {
-  return { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 };
-}
-
 /**
- * Scan raw transcript JSONL and aggregate assistant token usage. Dedups by
- * message.id (Claude Code writes one line per content block, all repeating the
- * same usage object). Sidechain/subagent entries are included — they cost money.
+ * Cost and usage fields from a transcript's text plus its subagents' files.
+ * The subagents are streamed one at a time: together they can be far larger
+ * than the transcript itself.
  */
-export function aggregateClaudeUsage(content: string): ClaudeAggregate {
-  const total = emptyUsage();
-  const perModel = new Map<string, ClaudeUsageInput>();
-  const models: string[] = [];
-  const seenIds = new Set<string>();
-  let gitBranch: string | undefined;
-  let startedAt: number | undefined;
-  let endedAt: number | undefined;
-  let hasUsage = false;
-
-  for (const line of content.split('\n')) {
-    if (!line) continue;
-    let json: unknown;
+async function claudeCostFields(
+  content: string,
+  transcriptPath: string
+): Promise<Partial<SessionSummary>> {
+  const acc = new UsageAccumulator();
+  acc.addText(content);
+  acc.flush();
+  for (const path of await listSubagentTranscripts(transcriptPath)) {
     try {
-      json = JSON.parse(line);
+      await addTranscriptFile(acc, path);
     } catch {
-      continue;
+      // unreadable subagent transcript; count what the others hold
     }
-
-    const tsParsed = tsLineSchema.safeParse(json);
-    if (tsParsed.success) {
-      if (gitBranch === undefined && tsParsed.data.gitBranch) gitBranch = tsParsed.data.gitBranch;
-      if (tsParsed.data.timestamp) {
-        const t = Date.parse(tsParsed.data.timestamp);
-        if (!Number.isNaN(t)) {
-          if (startedAt === undefined || t < startedAt) startedAt = t;
-          if (endedAt === undefined || t > endedAt) endedAt = t;
-        }
-      }
-    }
-
-    const parsed = assistantLineSchema.safeParse(json);
-    if (!parsed.success) continue;
-    const { message } = parsed.data;
-    const u = message.usage;
-    if (!u) continue;
-    const id = message.id;
-    if (id && seenIds.has(id)) continue; // dedup repeated content-block lines
-    if (id) seenIds.add(id);
-
-    const model = message.model;
-    if (!model) continue; // no model string → can't price these tokens; skip rather than poison the session cost
-    if (!models.includes(model)) models.push(model);
-
-    const input = u.input_tokens ?? 0;
-    const output = u.output_tokens ?? 0;
-    const cacheRead = u.cache_read_input_tokens ?? 0;
-    let write5m = 0;
-    let write1h = 0;
-    if (u.cache_creation) {
-      write5m = u.cache_creation.ephemeral_5m_input_tokens ?? 0;
-      write1h = u.cache_creation.ephemeral_1h_input_tokens ?? 0;
-    } else {
-      write5m = u.cache_creation_input_tokens ?? 0;
-    }
-
-    if (input || output || cacheRead || write5m || write1h) hasUsage = true;
-
-    total.input += input;
-    total.output += output;
-    total.cacheRead += cacheRead;
-    total.cacheWrite5m += write5m;
-    total.cacheWrite1h += write1h;
-
-    const bucket = perModel.get(model) ?? {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite5m: 0,
-      cacheWrite1h: 0
-    };
-    bucket.input += input;
-    bucket.output += output;
-    bucket.cacheRead += cacheRead;
-    bucket.cacheWrite5m += write5m;
-    bucket.cacheWrite1h += write1h;
-    perModel.set(model, bucket);
   }
-
-  return { total, perModel, models, gitBranch, startedAt, endedAt, hasUsage };
-}
-
-/** Build the Claude-only cost/metadata fields for a SessionSummary. */
-function claudeCostFields(content: string): Partial<SessionSummary> {
-  const agg = aggregateClaudeUsage(content);
+  const agg = acc.result();
   if (!agg.hasUsage) return {};
   return {
     claudeUsage: agg.total,
@@ -193,7 +73,12 @@ export function cwdFromTranscript(content: string): string {
 }
 
 /** Build a session summary from raw transcript content, or null if it isn't a real session. */
-function buildClaudeSummary(id: string, content: string, mtimeMs: number): SessionSummary | null {
+async function buildClaudeSummary(
+  id: string,
+  content: string,
+  mtimeMs: number,
+  transcriptPath: string
+): Promise<SessionSummary | null> {
   const cwd = cwdFromTranscript(content);
   if (!cwd) return null;
   const messages = parseClaudeTranscript(content);
@@ -207,7 +92,7 @@ function buildClaudeSummary(id: string, content: string, mtimeMs: number): Sessi
     updatedAt: mtimeMs,
     messageCount: messages.length,
     preview: preview.slice(0, 140),
-    ...claudeCostFields(content)
+    ...(await claudeCostFields(content, transcriptPath))
   };
 }
 
@@ -259,7 +144,7 @@ export async function listClaudeSessions(): Promise<SessionSummary[]> {
         // the "not a session" verdict) so unchanged files never get re-read.
         const id = basename(file, '.jsonl');
         const content = await readFile(full, 'utf8');
-        const summary = buildClaudeSummary(id, content, st.mtimeMs);
+        const summary = await buildClaudeSummary(id, content, st.mtimeMs, full);
         summaryCache.set(full, { mtimeMs: st.mtimeMs, size: st.size, summary });
         if (summary) out.push(summary);
       } catch {
@@ -304,7 +189,7 @@ export async function readClaudeSession(
       updatedAt,
       messageCount: messages.length,
       preview: preview.slice(0, 140),
-      ...claudeCostFields(content)
+      ...(await claudeCostFields(content, full))
     },
     messages: claudeMessagesToTranscriptMessages(messages)
   };

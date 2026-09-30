@@ -4,6 +4,11 @@ import { connect, type Socket } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { HookServer, PermissionBroker } from '../hook-server';
+
+const { warn } = vi.hoisted(() => ({ warn: vi.fn() }));
+vi.mock('../../logger', () => ({
+  createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() })
+}));
 import type { HookEvent } from '../hook-events';
 
 /** Send one event the way the Go hook does, and collect whatever comes back. */
@@ -57,6 +62,18 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     await broker.dispose();
     await server.stop();
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('stops without a timeout warning when it closes in time', async () => {
+    warn.mockClear();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await server.stop();
+      vi.advanceTimersByTime(10_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('is readable and writable by its owner only', () => {

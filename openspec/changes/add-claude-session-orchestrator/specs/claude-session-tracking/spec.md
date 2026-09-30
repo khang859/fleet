@@ -104,6 +104,11 @@ It SHALL record when the phase last changed.
 - **WHEN** the user answers a permission request "No" or cancels it in the terminal, which Claude Code reports through no hook event
 - **THEN** once the transcript records the rejection, the session's pending request is cleared and it is reported waiting for a prompt
 
+#### Scenario: Prompt queued while a turn runs
+
+- **WHEN** the user types a prompt while a turn runs, or a background task finishes and queues a turn, and Claude Code starts that turn after the running turn's `Stop` without a hook event of its own
+- **THEN** once the transcript records the queued turn starting, the session is reported processing until that turn stops
+
 #### Scenario: Nested Claude in the same pane
 
 - **WHEN** a second Claude process starts in a pane whose session is still running, for example `claude -p` run by a tool
