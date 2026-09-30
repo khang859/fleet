@@ -4,6 +4,7 @@ import {
   nextPaneEpoch,
   reducePhase,
   resolvePermission,
+  settlePhase,
   type PhaseInput,
   type PhaseState
 } from '../phase';
@@ -177,5 +178,44 @@ describe('nextPaneEpoch', () => {
     ]
   ])('%s', (_label, current, sessionId, expected) => {
     expect(nextPaneEpoch(current, sessionId)).toEqual(expected);
+  });
+});
+
+describe('settlePhase', () => {
+  const approval: PhaseState = run(bash('t1'));
+  const openQuestion: PhaseState = run(question);
+  const ready: PhaseState = run(input('Stop', 'waiting_for_input'));
+  const waitingForPrompt: PhaseState = {
+    phase: 'waitingForInput',
+    waitingKind: 'prompt',
+    pendingPermissions: []
+  };
+
+  it.each([
+    ['a pending permission', approval],
+    ['a running turn', processing],
+    ['an open question', openQuestion]
+  ])('a stopped turn leaves %s waiting for a prompt', (_name, state) => {
+    expect(settlePhase(state, 'turnStopped')).toEqual(waitingForPrompt);
+  });
+
+  it.each([
+    ['waiting for a prompt', ready],
+    ['starting', INITIAL_PHASE],
+    ['compacting', { ...processing, phase: 'compacting' } as PhaseState]
+  ])('a stopped turn leaves a session %s as it is', (_name, state) => {
+    expect(settlePhase(state, 'turnStopped')).toBe(state);
+  });
+
+  it('a started turn puts a session waiting for a prompt back to work', () => {
+    expect(settlePhase(ready, 'turnStarted')).toEqual(processing);
+  });
+
+  it.each([
+    ['an open question', openQuestion],
+    ['a pending permission', approval],
+    ['a running turn', processing]
+  ])('a started turn leaves %s as it is', (_name, state) => {
+    expect(settlePhase(state, 'turnStarted')).toBe(state);
   });
 });

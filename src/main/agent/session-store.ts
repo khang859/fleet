@@ -49,11 +49,11 @@ const log = createLogger('agent:sessions');
  * disk before the renderer is told the turn ended rather than some time after.
  */
 
-const SESSIONS_DIR = join(homedir(), '.fleet', 'agent', 'sessions');
+export const AGENT_SESSIONS_DIR = join(homedir(), '.fleet', 'agent', 'sessions');
 
 export class AgentSessionStore {
   constructor(
-    private readonly dir: string = SESSIONS_DIR,
+    private readonly dir: string = AGENT_SESSIONS_DIR,
     /** The images those sessions generated, so deleting one removes both. */
     private readonly images: AgentImageStore = new AgentImageStore(),
     /** And the ones the user attached to them, which go the same way. */

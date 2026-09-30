@@ -1,0 +1,8 @@
+waiting for a prompt for 3m · ~$1.23 · context 25% · git main, 2 changed (+10 -3)
+turns: 1 · rev 9
+Goal:
+  Use your task tracking tool (TaskCreate / TaskUpdate, or TodoWrite if that is what you have) to create two tasks: 'alpha' and 'beta'. Then mark alpha in progress, then completed. Then delete beta if you can. Reply 'done'.
+Last reply:
+  done
+Todos:
+  [x] alpha

@@ -129,7 +129,8 @@ async function oneRunningSubagent(threadId: string): Promise<SubagentManager> {
     parentModel: 'a/model',
     threadId,
     callId: 'call-1',
-    cwd: '/repo'
+    cwd: '/repo',
+    fleet: null
   });
   return subagents;
 }
@@ -2970,6 +2971,7 @@ describe('memory and project instructions', () => {
       model: 'anthropic/claude-sonnet-4.5',
       cwd: dir,
       signal: new AbortController().signal,
+      fleet: null,
       onMessage: () => {}
     });
     return rounds;

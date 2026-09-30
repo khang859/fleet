@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'fs';
+import { appendFileSync, mkdtempSync, rmSync, existsSync, writeFileSync } from 'fs';
 import { connect } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -239,6 +239,76 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
 
     expect(service.isRunning).toBe(true);
     expect(installer.ensureHooks).toHaveBeenLastCalledWith(['/home/u/.claude', '/w/.claude-ws']);
+  });
+
+  describe('settling from the transcript', () => {
+    const jsonl = (...lines: object[]): string =>
+      lines.map((l) => `${JSON.stringify(l)}\n`).join('');
+    const bashUse = {
+      type: 'assistant',
+      uuid: 'a1',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'tu-1', name: 'Bash', input: { command: 'rm -rf build' } }
+        ]
+      }
+    };
+
+    it('leaves a permission answered No in the terminal waiting for a prompt', async () => {
+      const transcript = join(dir, 's1.jsonl');
+      writeFileSync(transcript, jsonl(bashUse));
+      await service.start();
+      await send(socketPath, { ...permission('tu-1'), transcript_path: transcript });
+      expect(service.registry.get('s1')?.phase).toBe('waitingForApproval');
+
+      appendFileSync(
+        transcript,
+        jsonl({
+          type: 'user',
+          uuid: 'r1',
+          toolUseResult: 'User rejected tool use',
+          message: {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'tu-1',
+                content: "The user doesn't want to proceed with this tool use.",
+                is_error: true
+              }
+            ]
+          }
+        })
+      );
+      await vi.waitFor(() =>
+        expect(service.registry.get('s1')).toMatchObject({
+          phase: 'waitingForInput',
+          waitingKind: 'prompt',
+          pendingPermissions: []
+        })
+      );
+    });
+
+    it('puts a session back to work when a queued prompt starts after the Stop', async () => {
+      const transcript = join(dir, 's1.jsonl');
+      writeFileSync(
+        transcript,
+        jsonl({ type: 'queue-operation', operation: 'enqueue', content: 'next one' })
+      );
+      await service.start();
+      await send(socketPath, event({ transcript_path: transcript }));
+      await send(
+        socketPath,
+        event({ event: 'Stop', status: 'waiting_for_input', transcript_path: transcript })
+      );
+      expect(service.registry.get('s1')?.phase).toBe('waitingForInput');
+
+      appendFileSync(transcript, jsonl({ type: 'queue-operation', operation: 'dequeue' }));
+      await vi.waitFor(() => expect(service.registry.get('s1')?.phase).toBe('processing'));
+      const brief = await service.transcript('s1');
+      expect(brief?.path).toBe(transcript);
+    });
   });
 
   it('ends a pane’s session when the pane closes', async () => {

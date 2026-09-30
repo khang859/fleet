@@ -17,7 +17,8 @@ import { HookServer, PermissionBroker } from './hook-server';
 import { registerClaudeSessionsIpc, type IpcRegistrar } from './ipc-handlers';
 import { PaneActivityBridge, type SetHookState } from './pane-activity-bridge';
 import { PaneResolver, type PaneHost, type WorkspaceLookup } from './pane-resolver';
-import { ClaudeSessionRegistry } from './registry';
+import { ClaudeSessionRegistry, type NotedInput } from './registry';
+import { SessionTranscripts, type SessionTranscript } from './session-transcripts';
 import { SessionUsageTracker } from './session-usage';
 import { transcriptPathFor } from './transcript-path';
 
@@ -91,6 +92,7 @@ export class ClaudeSessionsService {
   /** How many consumers can answer a permission request right now. */
   private answerers = 0;
   private readonly usage: SessionUsageTracker;
+  private readonly transcripts: SessionTranscripts;
   private readonly git: GitRunner;
   private readonly gitStates = new Map<string, GitState>();
   private installProblems: ClaudeHookInstallProblem[] = [];
@@ -103,6 +105,9 @@ export class ClaudeSessionsService {
     this.usage = new SessionUsageTracker({
       priceTable: deps.priceTable,
       onChange: () => this.scheduleSnapshot()
+    });
+    this.transcripts = new SessionTranscripts({
+      onSignal: (sessionId, signal) => this.registry.settle(sessionId, signal)
     });
     this.resolver = new PaneResolver(deps.panes, deps.workspaceOf);
     this.bridge = new PaneActivityBridge(deps.setHookState);
@@ -189,6 +194,16 @@ export class ClaudeSessionsService {
     };
   }
 
+  /** A live session's transcript, read up to now, with its brief. */
+  async transcript(sessionId: string): Promise<SessionTranscript | null> {
+    return this.transcripts.read(sessionId);
+  }
+
+  /** Prompts typed into a session through Fleet, newest last, with who typed them. */
+  inputsFor(sessionId: string): NotedInput[] {
+    return this.registry.inputsFor(sessionId);
+  }
+
   respondToPermission(toolUseId: string, decision: 'allow' | 'deny', reason?: string): boolean {
     return this.broker.respond(toolUseId, decision, reason);
   }
@@ -267,6 +282,7 @@ export class ClaudeSessionsService {
     await this.server.stop();
     this.registry.clear();
     this.usage.dispose();
+    this.transcripts.dispose();
     for (const sessionId of [...this.gitStates.keys()]) this.forgetGit(sessionId);
     this.scheduleSnapshot();
     log.info('claude session tracking stopped');
@@ -278,14 +294,19 @@ export class ClaudeSessionsService {
     this.scheduleSnapshot();
     if (!session) {
       this.usage.forget(sessionId);
+      this.transcripts.forget(sessionId);
       this.forgetGit(sessionId);
       return;
     }
     if (session.phase === 'ended') return;
     const firstSight = !this.gitStates.has(sessionId);
+    const transcriptPath = transcriptPathFor(session, this.deps.homeDir);
+    // Only a hook event moves the transcript mark; a change the transcript
+    // itself caused must not.
+    if (event) this.transcripts.onHookEvent(sessionId, transcriptPath);
     if (event || firstSight) {
       const turnOver = event?.event === 'Stop' || event?.event === 'SessionStart';
-      this.usage.refresh(sessionId, transcriptPathFor(session, this.deps.homeDir), turnOver);
+      this.usage.refresh(sessionId, transcriptPath, turnOver);
     }
     if (firstSight || (event && GIT_EVENTS.has(event.event))) this.checkGit(sessionId, session.cwd);
   }

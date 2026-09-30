@@ -265,6 +265,7 @@ function readOnlyContext(ctx: { cwd: string; threadId: string }): AgentToolConte
     findSkill: null,
     findMemory: null,
     schedule: null,
+    fleet: null,
     todos: { list: () => [], save: () => {} }
   };
 }

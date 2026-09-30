@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DIFF_MAX_LINES, type AgentToolCall } from '../../../../shared/agent-tools';
 import { diffLineKind } from '../../../../shared/agent-diff';
+import { isFleetTool, unfence } from '../../../../shared/fleet-tools';
 
 /**
  * What to draw as a diff for a tool call, or null when it did not change a file.
@@ -17,7 +18,8 @@ import { diffLineKind } from '../../../../shared/agent-diff';
  * it shows the new file as what it is: every line, added.
  */
 export function diffBody(call: AgentToolCall): string[] | null {
-  const lines = (call.result ?? '').split('\n');
+  const result = call.result ?? '';
+  const lines = (isFleetTool(call.name) ? unfence(result) : result).split('\n');
   const start = lines.findIndex((line) => diffLineKind(line) === 'hunk');
   if (start !== -1) return lines.slice(start);
   // A write with no diff either created the file or found it already correct,

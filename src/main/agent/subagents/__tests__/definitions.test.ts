@@ -92,8 +92,15 @@ describe('loadFrom', () => {
     // files we ship parse and stay read-only; where the app finds them is a
     // question only the app can answer.
     const found = await loadFrom([['bundled', SHIPPED_DIR]]);
-    expect(found.map((d) => d.name)).toEqual(['explore', 'review']);
+    expect(found.map((d) => d.name).sort()).toEqual(['explore', 'fleet-analyst', 'review']);
     // Every shipped one is read-only-ish by intent, and none may write code.
     for (const definition of found) expect(definition.tools).not.toContain('write');
+    // The analyst reads sessions and nothing else, so it is offered only
+    // where the fleet tools are.
+    expect(found.find((d) => d.name === 'fleet-analyst')?.tools).toEqual([
+      'fleet_sessions',
+      'fleet_read',
+      'fleet_diff'
+    ]);
   });
 });

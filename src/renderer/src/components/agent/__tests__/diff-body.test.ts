@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentToolCall } from '../../../../../shared/agent-tools';
+import { fence } from '../../../../../shared/fleet-tools';
 import { diffBody } from '../diff-body';
 
 const call = (over: Partial<AgentToolCall>): AgentToolCall => ({
@@ -67,5 +68,10 @@ describe('diffBody', () => {
     expect(
       diffBody(call({ name: 'write', args: '{"path":"b.ts","cont', summary: '2 lines' }))
     ).toBeNull();
+  });
+
+  it("drops the fence a session's diff is sent to the model in", () => {
+    const result = fence('abcdef12', '@@ -1 +1 @@\n-a\n+b');
+    expect(diffBody(call({ name: 'fleet_diff', result }))).toEqual(['@@ -1 +1 @@', '-a', '+b']);
   });
 });

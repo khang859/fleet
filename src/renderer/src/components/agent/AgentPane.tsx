@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 import { Bot, History, Images, SlidersHorizontal } from 'lucide-react';
 import { AgentThread } from './AgentThread';
+import { OrchestratorBadge } from './OrchestratorToggle';
 import { attachToComposer } from './composer-events';
 import { AgentSessionsTab } from './AgentSessionsTab';
 import { AgentGalleryTab } from './AgentGalleryTab';
@@ -221,7 +222,14 @@ export function AgentPane({
       }}
     >
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-        <AgentTabs value={view} onChange={setView} />
+        <div className="relative">
+          <AgentTabs value={view} onChange={setView} />
+          {/* Out of the flow, so the switcher stays centred on the pane, and
+              the switcher's own box, so the two share a centre line. */}
+          <div className="absolute top-2.5 right-3 flex h-7.5 items-center">
+            <OrchestratorBadge paneId={paneId} />
+          </div>
+        </div>
         {view === 'agent' && (
           // The conversation and the work in flight side by side. The column
           // takes a fixed width and the conversation takes the rest, with a

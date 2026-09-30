@@ -82,6 +82,11 @@ The Orchestrator SHALL be able to see a session's git status, diff, and recent l
 - **WHEN** the Orchestrator asks to view a file the Agent sandbox denies, such as `.env`
 - **THEN** the request is refused
 
+#### Scenario: Whole-folder diff
+
+- **WHEN** the Orchestrator asks for the diff of a session's whole folder and a credential file such as `.env` changed
+- **THEN** the diff leaves that file out
+
 ### Requirement: Deep reads through a subagent
 
 The system SHALL provide a bundled analyst subagent that has only the read-only fleet tools, for reading a session in depth and returning a short report.

@@ -51,6 +51,7 @@ import { cancelSchedule } from '../../store/agent-schedule';
 import { backgroundChip, type BackgroundRow } from './background-view';
 import { stopBackground } from '../../store/agent-background';
 import { ToolModePicker } from './ToolModePicker';
+import { OrchestratorToggle } from './OrchestratorToggle';
 import { AgentAttachmentChip, AgentMessageAttachments } from './AgentAttachment';
 import { reasoningLabel } from './activity';
 import { AgentContextMeter } from './AgentContextMeter';
@@ -1601,6 +1602,7 @@ function Composer({
               what this message will do, and the right-hand side of the box is
               where sending it lives. */}
           <ToolModePicker value={toolMode} disabled={disabled} onChange={onToolMode} />
+          <OrchestratorToggle paneId={paneId} disabled={disabled} />
           <textarea
             ref={ref}
             rows={1}

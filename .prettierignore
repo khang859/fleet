@@ -8,3 +8,5 @@ tsconfig.*.json
 # MCP import fixtures are hand-edited on purpose: comments, trailing commas and
 # half-written JSON are what the import tests read.
 src/main/agent/mcp/import/__tests__/fixtures/
+# Transcript fixtures are Claude Code's own byte layout, and their golden output is compared as written.
+src/main/claude-sessions/__tests__/fixtures/

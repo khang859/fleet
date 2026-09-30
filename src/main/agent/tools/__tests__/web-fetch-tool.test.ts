@@ -26,6 +26,7 @@ const ctx = (fetchUrl: AgentUrlFetcher | null): AgentToolContext => ({
   findSkill: null,
   findMemory: null,
   schedule: null,
+  fleet: null,
   todos: { list: () => [], save: () => {} }
 });
 

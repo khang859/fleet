@@ -48,6 +48,25 @@ const DENIED_NAMES = [
   /\.pfx$/
 ];
 
+/**
+ * `DENIED_NAMES` as git pathspecs that leave those files out, for a git command
+ * that prints file contents - a diff - where no single path is checked. Keep
+ * the two lists in step.
+ */
+export const DENIED_PATHSPECS = [
+  '**/.env',
+  '**/.env.*',
+  '**/.npmrc',
+  '**/.netrc',
+  '**/id_rsa',
+  '**/id_dsa',
+  '**/id_ecdsa',
+  '**/id_ed25519',
+  '**/*.pem',
+  '**/*.p12',
+  '**/*.pfx'
+].map((glob) => `:(exclude,glob)${glob}`);
+
 function samePath(a: string, b: string): boolean {
   const norm = (p: string): string => (process.platform === 'win32' ? p.toLowerCase() : p);
   return norm(a) === norm(b);

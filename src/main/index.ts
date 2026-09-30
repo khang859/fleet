@@ -87,6 +87,9 @@ import {
 import { runBackfill } from './learnings/backfill';
 import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
+import { createFleetHost } from './agent/fleet/host';
+import { FleetLedgerStore } from './agent/fleet/ledger-store';
+import { createGitRunner } from './claude-sessions/git-probe';
 import { completeOnce } from './agent/completions';
 import { AgentModelCatalog } from './agent/models-catalog';
 import { AgentCatalogComposer } from './agent/catalog-composer';
@@ -1519,6 +1522,23 @@ void app.whenReady().then(async () => {
   // before anyone has visited settings.
   void agentEndpoints.reload();
   const agentModels = new AgentCatalogComposer(agentCatalog, agentEndpoints);
+  const fleetLedger = new FleetLedgerStore();
+  // Read through lazily: the session service is created with the window, and
+  // may not exist yet - or at all, while tracking is unsupported.
+  const fleetHost = createFleetHost({
+    sessions: {
+      snapshot: () =>
+        claudeSessions?.snapshot() ?? {
+          status: { state: 'starting' },
+          installProblems: [],
+          sessions: []
+        },
+      transcript: async (sessionId) => claudeSessions?.transcript(sessionId) ?? null,
+      inputsFor: (sessionId) => claudeSessions?.inputsFor(sessionId) ?? []
+    },
+    placeOf: (paneId) => layoutStore.placeOf(paneId),
+    git: createGitRunner()
+  });
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
@@ -1527,6 +1547,7 @@ void app.whenReady().then(async () => {
     mcp: agentMcp,
     subagents: agentSubagents,
     schedules: agentSchedules,
+    fleet: { host: fleetHost, ledger: fleetLedger },
     imageCapabilities: (modelId) => agentCatalog.cachedImageModel(modelId),
     emit: agentEmit
   });
@@ -1549,6 +1570,7 @@ void app.whenReady().then(async () => {
     history: new AgentHistoryStore(),
     subagents: agentSubagents,
     schedules: agentSchedules,
+    fleetLedger,
     mcp: {
       manager: agentMcp,
       secrets: agentMcpSecrets,

@@ -42,7 +42,8 @@ function context(dispatch: AgentToolContext['dispatchTask']): AgentToolContext {
     findSubagent: (name) => (name === DEFINITION.name ? DEFINITION : null),
     findSkill: null,
     findMemory: null,
-    schedule: null
+    schedule: null,
+    fleet: null
   };
 }
 

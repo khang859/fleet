@@ -40,6 +40,16 @@ import { writeMemoryEntry } from '../memory/write';
 import { writeSkillBody } from '../skills/write';
 import { runWebFetch } from './web-fetch';
 import { runWrite } from './write';
+import { fleetMember } from './fleet';
+import {
+  FleetDiffArgs,
+  FleetPermissionArgs,
+  FleetReadArgs,
+  FleetSendArgs,
+  FleetSessionsArgs,
+  FleetSpawnArgs,
+  FleetWaitArgs
+} from '../../../shared/fleet-tools';
 import { AgentImageStore } from '../image-store';
 
 /**
@@ -123,6 +133,36 @@ export async function runAgentTool(
       return runScheduleList(ctx);
     case 'schedule_cancel':
       return runScheduleCancel(checked(ScheduleCancelArgs, args, name), ctx);
+    // Each finds its capability member before checking arguments, so a call
+    // from a pane without the tools hears that rather than about its arguments.
+    case 'fleet_sessions': {
+      const run = fleetMember(ctx, name, 'sessions');
+      return run(checked(FleetSessionsArgs, args, name), ctx.signal);
+    }
+    case 'fleet_read': {
+      const run = fleetMember(ctx, name, 'read');
+      return run(checked(FleetReadArgs, args, name), ctx.signal);
+    }
+    case 'fleet_diff': {
+      const run = fleetMember(ctx, name, 'diff');
+      return run(checked(FleetDiffArgs, args, name), ctx.signal);
+    }
+    case 'fleet_send': {
+      const run = fleetMember(ctx, name, 'send');
+      return run(checked(FleetSendArgs, args, name), ctx.signal);
+    }
+    case 'fleet_spawn': {
+      const run = fleetMember(ctx, name, 'spawn');
+      return run(checked(FleetSpawnArgs, args, name), ctx.signal);
+    }
+    case 'fleet_wait': {
+      const run = fleetMember(ctx, name, 'wait');
+      return run(checked(FleetWaitArgs, args, name), ctx.signal);
+    }
+    case 'fleet_permission': {
+      const run = fleetMember(ctx, name, 'permission');
+      return run(checked(FleetPermissionArgs, args, name), ctx.signal);
+    }
     default:
       throw new Error(`There is no tool called ${name}`);
   }

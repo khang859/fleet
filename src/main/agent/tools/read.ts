@@ -31,7 +31,10 @@ import { remember } from './freshness';
  * than the "that is a binary file" it used to get - and the reason the user can
  * point it at one at all.
  */
-export async function runRead(args: ReadArgs, ctx: AgentToolContext): Promise<AgentToolResult> {
+export async function runRead(
+  args: ReadArgs,
+  ctx: Pick<AgentToolContext, 'cwd' | 'threadId'>
+): Promise<AgentToolResult> {
   const abs = resolveInsideCwd(args.path, ctx.cwd);
   const shown = displayPath(abs, ctx.cwd);
 

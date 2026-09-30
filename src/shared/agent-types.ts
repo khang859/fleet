@@ -6,6 +6,7 @@ import { AGENT_TODO_INSTRUCTIONS, type AgentTodoItem } from './agent-todos';
 import { AGENT_SKILL_INSTRUCTIONS } from './agent-skills';
 import { AGENT_MEMORY_INSTRUCTIONS } from './agent-memory';
 import { AGENT_SCHEDULE_INSTRUCTIONS } from './agent-schedule';
+import { renderFleetInstructions } from './fleet-tools';
 import { renderEnvBlock, type AgentEnvironment } from './agent-environment';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
 import {
@@ -710,6 +711,8 @@ export function buildSystemPrompt(
     skill?: boolean;
     memory?: boolean;
     schedule?: boolean;
+    /** The fleet tools this turn offers, and whose turn it is. Absent outside orchestrator mode. */
+    fleet?: Parameters<typeof renderFleetInstructions>[0] | null;
     /**
      * Off only for a turn whose tool list has no `todo_add`. Defaults to on,
      * because a pane turn always has both task-list tools - see the note above
@@ -769,6 +772,13 @@ export function buildSystemPrompt(
   // the other way round.
   const memory = options.memory === true ? `\n\n${AGENT_MEMORY_INSTRUCTIONS}` : '';
   const schedule = options.schedule === true ? `\n\n${AGENT_SCHEDULE_INSTRUCTIONS}` : '';
+  // After the blocks for the pane's own tools, because the fleet tools are about
+  // other conversations and read best once this one's own tools are clear.
+  const fleetBlock =
+    options.fleet === undefined || options.fleet === null
+      ? ''
+      : renderFleetInstructions(options.fleet);
+  const fleet = fleetBlock === '' ? '' : `\n\n${fleetBlock}`;
   // Gated the other way round from every block above: absent only when it has
   // been asked for explicitly, so the pane's own turn cannot lose it. The rule
   // it obeys is still the one `image` obeys - instructions for a tool that is
@@ -783,7 +793,7 @@ export function buildSystemPrompt(
     options.env === undefined || options.env === null
       ? `Working folder: ${cwd}`
       : renderEnvBlock(cwd, options.env);
-  return `${base}${project}${image}${web}${hosted}${search}${advisor}${fusion}${mcp}${toolSearch}${memory}${skill}${task}${schedule}${todo}${notes}\n\n${machine}`;
+  return `${base}${project}${image}${web}${hosted}${search}${advisor}${fusion}${mcp}${toolSearch}${memory}${skill}${task}${schedule}${fleet}${todo}${notes}\n\n${machine}`;
 }
 
 /*
@@ -1194,6 +1204,12 @@ export type AgentSendRequest = {
    * alternative is threading a cause through every detour a turn can take.
    */
   scheduleChainDepth?: number;
+  /**
+   * Whether the pane is in orchestrator mode, which is what offers the fleet
+   * tools. Travels on every request, like the text, because the pane owns the
+   * flag and main keeps nothing between turns.
+   */
+  orchestrator?: boolean;
 };
 
 /**

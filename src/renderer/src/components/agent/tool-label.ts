@@ -32,7 +32,12 @@ const LabelArgs = z.object({
   cron: z.string().optional(),
   id: z.string().optional(),
   url: z.string().optional(),
-  background: z.boolean().optional()
+  background: z.boolean().optional(),
+  session: z.string().optional(),
+  sessions: z.array(z.string()).optional(),
+  level: z.string().optional(),
+  view: z.string().optional(),
+  decision: z.string().optional()
 });
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
@@ -122,6 +127,34 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       return { verb: 'List schedules', target: '' };
     case 'schedule_cancel':
       return { verb: 'Cancel schedule', target: args.id ?? '' };
+    // The session's short ref is the subject of every fleet row, since that
+    // is what the list printed and what the user can match to a pane. A read
+    // or a diff also says how deep it went: a brief and a full patch are
+    // different amounts of the user's session being looked at.
+    case 'fleet_sessions':
+      return { verb: 'List sessions', target: '' };
+    case 'fleet_read':
+      return { verb: 'Read session', target: joinDetail(args.session, args.level) };
+    case 'fleet_diff':
+      return {
+        verb: 'Review changes',
+        target: joinDetail(args.session, args.path ?? args.view)
+      };
+    // The prompt, like a command: it is what will land in someone's terminal.
+    case 'fleet_send':
+      return {
+        verb: 'Prompt',
+        target: joinDetail(args.session, (args.prompt ?? '').replace(/\s*\n\s*/g, ' '), ': ')
+      };
+    case 'fleet_spawn':
+      return { verb: 'Start session', target: (args.prompt ?? '').replace(/\s*\n\s*/g, ' ') };
+    case 'fleet_wait':
+      return { verb: 'Wait for', target: args.sessions?.join(', ') ?? 'any session' };
+    case 'fleet_permission':
+      return {
+        verb: args.decision === 'deny' ? 'Deny' : 'Allow',
+        target: args.session ?? ''
+      };
     default:
       return mcpLabel(call.name) ?? { verb: call.name, target: '' };
   }
@@ -169,6 +202,12 @@ function shortenUrl(raw: string): string {
   } catch {
     return raw;
   }
+}
+
+/** "abcdef12 · turns" - the detail only once the model has streamed it. */
+function joinDetail(subject: string | undefined, detail: string | undefined, sep = ' · '): string {
+  if (detail === undefined || detail === '') return subject ?? '';
+  return `${subject ?? ''}${sep}${detail}`;
 }
 
 /** "*.ts in src" - the second half only when the call narrowed the search. */

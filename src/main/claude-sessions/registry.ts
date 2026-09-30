@@ -13,9 +13,11 @@ import {
   nextPaneEpoch,
   reducePhase,
   resolvePermission,
+  settlePhase,
   TOOL_FINISHED,
   TURN_BOUNDARIES,
-  type PaneEpoch
+  type PaneEpoch,
+  type TranscriptSignal
 } from './phase';
 
 const log = createLogger('claude-sessions:registry');
@@ -64,7 +66,8 @@ const NOTED_INPUT_LIMIT = 50;
 const IN_PLACE_SOURCES = new Set(['clear', 'resume']);
 
 export function hashPrompt(text: string): string {
-  return createHash('sha256').update(text).digest('hex');
+  // Trimmed, so the text as sent and as the transcript records it agree.
+  return createHash('sha256').update(text.trim()).digest('hex');
 }
 
 function projectNameFromCwd(cwd: string): string {
@@ -263,6 +266,18 @@ export class ClaudeSessionRegistry {
     if (!entry) return;
     const next = resolvePermission(entry.session, toolUseId);
     if (next === entry.session) return;
+    const phaseSince =
+      next.phase === entry.session.phase ? entry.session.phaseSince : this.clock.now();
+    this.commit(entry, { ...entry.session, ...next, phaseSince }, null);
+  }
+
+  /** The transcript showed a turn stop or start that no hook event reported. */
+  settle(sessionId: string, signal: TranscriptSignal): void {
+    const entry = this.entries.get(sessionId);
+    if (!entry || entry.session.phase === 'ended') return;
+    const next = settlePhase(entry.session, signal);
+    if (next === entry.session) return;
+    log.debug('phase settled from transcript', { sessionId, signal, phase: next.phase });
     const phaseSince =
       next.phase === entry.session.phase ? entry.session.phaseSince : this.clock.now();
     this.commit(entry, { ...entry.session, ...next, phaseSince }, null);

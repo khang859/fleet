@@ -34,16 +34,16 @@
 
 ## 4. Phase 3 - read tools (PR 4)
 
-- [ ] 4.1 Add `claude-sessions/transcript.ts` (normalizer and `TranscriptTail` with a turn index and tool byte ranges) and rebuild `conversation-reader` on it; verify its existing tests pass unchanged plus golden JSONL fixtures
-- [ ] 4.2 Add `brief.ts` (goal, todos from TodoWrite and TaskCreate/TaskUpdate, plan, files, commands and failures, last assistant text, pending question, usage, per-item rev, delta, render with a cap); verify that incremental and one-pass builds render the same output on the fixtures
-- [ ] 4.2a Settle a permission answered "No" or cancelled in the terminal from the transcript: a rejected tool result (`toolUseResult: "User rejected tool use"`) or `[Request interrupted by user for tool use]` after a pending permission clears it and leaves the session waiting for a prompt; verify with a fixture test and in the Phase 3 E2E by denying a permission in a real pane
-- [ ] 4.2b Settle a queued prompt from the transcript: a `queue-operation` dequeue written after the session's last `Stop` puts it back in `processing` until the next `Stop`; verify with a fixture test and in the Phase 3 E2E by typing a prompt while a turn runs
-- [ ] 4.3 Add `shared/fleet-tools.ts` (schemas, specs, read and act name lists, capability types); add the read names to `SUBAGENT_TOOL_NAMES`; verify `agent-tools.test.ts` asserts that no act tool is in the subagent list
-- [ ] 4.4 Add the orchestrator flag on the Agent pane leaf and on `AgentSendRequest`, a composer toggle, a palette command, a header badge, and the system prompt block; verify tools are only advertised with the flag set, with a `toolSpecsFor` test
-- [ ] 4.5 Add `agent/fleet/host.ts`, `capability.ts`, and the cursor part of `ledger-store.ts`; wire `ctx.fleet` in `agent-service` (full for orchestrator turns, read-only pick for its subagents, null otherwise); verify with capability tests
-- [ ] 4.6 Implement `fleet_sessions`, `fleet_read` (brief, turns, tool; cursor; epoch reset; untrusted fencing; origin marker checked against `noteInput`), and `fleet_diff` (stat, diff, log, file with path confinement); add dispatch cases and tool labels; verify with tool tests including a spoofed prefix and `.env` refusal
-- [ ] 4.7 Add the bundled `fleet-analyst` subagent definition, offered only on orchestrator turns; verify a subagent read does not move the parent cursor
-- [ ] 4.8 E2E: orchestrator pane lists and reads a live session, and delegates a deep read to `fleet-analyst`
+- [x] 4.1 Add `claude-sessions/transcript.ts` (normalizer and `TranscriptTail` with a turn index and tool byte ranges) and rebuild `conversation-reader` on it; verify its existing tests pass unchanged plus golden JSONL fixtures
+- [x] 4.2 Add `brief.ts` (goal, todos from TodoWrite and TaskCreate/TaskUpdate, plan, files, commands and failures, last assistant text, pending question, usage, per-item rev, delta, render with a cap); verify that incremental and one-pass builds render the same output on the fixtures
+- [x] 4.2a Settle a permission answered "No" or cancelled in the terminal from the transcript: a rejected tool result (`toolUseResult: "User rejected tool use"`) or `[Request interrupted by user for tool use]` after a pending permission clears it and leaves the session waiting for a prompt; verify with a fixture test and in the Phase 3 E2E by denying a permission in a real pane
+- [x] 4.2b Settle a queued prompt from the transcript: a `queue-operation` dequeue written after the session's last `Stop` puts it back in `processing` until the next `Stop`; verify with a fixture test and in the Phase 3 E2E by typing a prompt while a turn runs
+- [x] 4.3 Add `shared/fleet-tools.ts` (schemas, specs, read and act name lists, capability types); add the read names to `SUBAGENT_TOOL_NAMES`; verify `agent-tools.test.ts` asserts that no act tool is in the subagent list
+- [x] 4.4 Add the orchestrator flag on the Agent pane leaf and on `AgentSendRequest`, a composer toggle, a palette command, a header badge, and the system prompt block; verify tools are only advertised with the flag set, with a `toolSpecsFor` test
+- [x] 4.5 Add `agent/fleet/host.ts`, `capability.ts`, and the cursor part of `ledger-store.ts`; wire `ctx.fleet` in `agent-service` (full for orchestrator turns, read-only pick for its subagents, null otherwise); verify with capability tests
+- [x] 4.6 Implement `fleet_sessions`, `fleet_read` (brief, turns, tool; cursor; epoch reset; untrusted fencing; origin marker checked against `noteInput`), and `fleet_diff` (stat, diff, log, file with path confinement); add dispatch cases and tool labels; verify with tool tests including a spoofed prefix and `.env` refusal
+- [x] 4.7 Add the bundled `fleet-analyst` subagent definition, offered only on orchestrator turns; verify a subagent read does not move the parent cursor
+- [x] 4.8 E2E: orchestrator pane lists and reads a live session, and delegates a deep read to `fleet-analyst`
 
 ## 5. Phase 4 - act tools and wakeups (PR 5, may split)
 
