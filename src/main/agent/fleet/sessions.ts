@@ -28,7 +28,8 @@ async function line(host: FleetHost, s: FleetSession, now: number): Promise<stri
   parts.push(describePhase(s, now) + (needsUser(s) ? ' · NEEDS THE USER' : ''));
   if (s.usage.costUsd !== null) parts.push(`~$${s.usage.costUsd.toFixed(2)}`);
   const goal = (await host.transcript(s.sessionId))?.brief.state.goal?.value;
-  const text = `- ${parts.join(' · ')}`;
+  // The folder is what `fleet_spawn` needs to start a session beside this one.
+  const text = `- ${parts.join(' · ')}\n  folder: ${s.cwd}`;
   return goal ? `${text}\n  goal: ${oneLine(goal, 200)}` : text;
 }
 

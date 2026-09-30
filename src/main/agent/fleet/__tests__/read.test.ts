@@ -127,13 +127,13 @@ describe('fleet reads', () => {
 
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  it('lists sessions with their ref, place, phase, cost and goal, fenced', async () => {
+  it('lists sessions with their ref, place, phase, cost, folder and goal, fenced', async () => {
     const out = await orchestrator().sessions({}, signal);
     expect(out.summary).toBe('1 session');
     expect(out.text).toContain(
       '- abcdef12 · work › claude · app · waiting for a prompt for 3m · ~$0.50'
     );
-    expect(out.text).toContain('goal: Add a retry to fetchUser');
+    expect(out.text).toContain('\n  folder: /work/app\n  goal: Add a retry to fetchUser');
     expect(out.text).toMatch(/<session-data session="all">[\s\S]*<\/session-data>$/);
   });
 

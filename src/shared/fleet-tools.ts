@@ -359,7 +359,11 @@ export const FLEET_TOOL_SPECS: AgentToolSpec[] = [
       parameters: {
         type: 'object',
         properties: {
-          cwd: { type: 'string', description: 'The folder to run in.' },
+          cwd: {
+            type: 'string',
+            description:
+              "The folder to run in, as an absolute path, such as a session's folder from fleet_sessions. Defaults to this pane's folder."
+          },
           prompt: { type: 'string', maxLength: FLEET_PROMPT_MAX_CHARS },
           ...ledgerParams,
           worktree: { type: 'boolean', description: 'Run in a new git worktree.' },
