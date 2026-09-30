@@ -62,15 +62,17 @@ export class HookServer {
     this.server = null;
 
     const STOP_TIMEOUT_MS = 5000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([
       new Promise<void>((resolve) => server.close(() => resolve())),
-      new Promise<void>((resolve) =>
-        setTimeout(() => {
+      new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
           log.warn('hook server stop timed out, forcing cleanup');
           resolve();
-        }, STOP_TIMEOUT_MS).unref()
-      )
+        }, STOP_TIMEOUT_MS).unref();
+      })
     ]);
+    clearTimeout(timer);
     this.removeSocketFile();
     log.info('hook server stopped');
   }
