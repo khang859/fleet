@@ -25,7 +25,7 @@
 ## 3. Phase 2 - status view (PR 3)
 
 - [ ] 3.1 Add `CLAUDE_SESSIONS_LIST` and `CLAUDE_SESSIONS_CHANGED` (coalesced full list) IPC and the preload API; verify with an IPC handler test
-- [ ] 3.2 Extract `usage-accumulator.ts` from `aggregateClaudeUsage` and refactor `claude-source` onto it; verify the existing sessions tests pass and a parity test matches
+- [x] 3.2 Extract `usage-accumulator.ts` from `aggregateClaudeUsage` and refactor `claude-source` onto it; verify the existing sessions tests pass and a parity test matches
 - [ ] 3.3 Add `git-probe.ts` (branch, dirty count, diff stat, fixed argv, timeout, output cap); verify with temp-repo tests
 - [ ] 3.4 Put cost and context usage on the session view (throttled, and on Stop), `null` when unknown; verify with unit tests
 - [ ] 3.5 Extract `lib/focus-pane.ts` from `App.tsx` and `AgentOverview.tsx` and switch both callers to it; verify focus still works from both
