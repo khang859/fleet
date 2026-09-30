@@ -66,6 +66,69 @@ describe('WorktreeService', () => {
       const addCall = mockRaw.mock.calls.find((c) => c[0][0] === 'worktree' && c[0][1] === 'add');
       expect(addCall?.[0]).toEqual(['worktree', 'add', worktreePath, '-b', branchName]);
     });
+
+    it('create makes the branch it is given, in a folder without its slashes', async () => {
+      mockMkdir.mockResolvedValue(undefined);
+      mockRaw.mockResolvedValue('');
+
+      const { worktreePath, branchName } = await service.create('/repo/proj', undefined, 'fix/x');
+
+      expect(branchName).toBe('fix/x');
+      expect(worktreePath.endsWith('/proj/fix-x')).toBe(true);
+      expect(mockRaw).toHaveBeenCalledWith(['check-ref-format', '--branch', 'fix/x']);
+      expect(mockRaw).toHaveBeenCalledWith(['worktree', 'add', worktreePath, '-b', 'fix/x']);
+    });
+
+    it('create refuses a branch name that is taken, and one git would not take', async () => {
+      mockMkdir.mockResolvedValue(undefined);
+      mockRaw.mockImplementation(async (args: string[]) =>
+        args[0] === 'branch' ? Promise.resolve('main\nfix/x\n') : Promise.resolve('')
+      );
+      await expect(service.create('/repo/proj', undefined, 'fix/x')).rejects.toThrow(
+        'A branch named fix/x already exists.'
+      );
+
+      mockRaw.mockImplementation(async (args: string[]) =>
+        args[0] === 'check-ref-format'
+          ? Promise.reject(new Error('fatal: not a valid branch name'))
+          : Promise.resolve('')
+      );
+      await expect(service.create('/repo/proj', undefined, 'bad..name')).rejects.toThrow(
+        'not a valid branch name'
+      );
+      expect(mockRaw.mock.calls.some((c) => c[0][0] === 'worktree' && c[0][1] === 'add')).toBe(
+        false
+      );
+    });
+  });
+
+  describe('remove', () => {
+    it('deletes the branch the worktree has checked out, not one named after its folder', async () => {
+      mockRaw.mockImplementation(async (args: string[]) => {
+        if (args[0] === 'rev-parse') return Promise.resolve('/repo/proj/.git\n');
+        if (args[0] === 'branch' && args[1] === '--show-current') return Promise.resolve('fix/x\n');
+        return Promise.resolve('');
+      });
+      await service.remove('/home/khang/.fleet/worktrees/proj/fix-x');
+      expect(mockRaw).toHaveBeenCalledWith(['branch', '-D', 'fix/x']);
+      expect(mockRaw).not.toHaveBeenCalledWith(['branch', '-D', 'fix-x']);
+    });
+
+    it('deletes no branch for a detached HEAD, or one the user switched to', async () => {
+      for (const current of ['', 'main']) {
+        mockRaw.mockReset();
+        mockRaw.mockImplementation(async (args: string[]) => {
+          if (args[0] === 'rev-parse') return Promise.resolve('/repo/proj/.git\n');
+          if (args[0] === 'branch' && args[1] === '--show-current')
+            return Promise.resolve(`${current}\n`);
+          return Promise.resolve('');
+        });
+        await service.remove('/home/khang/.fleet/worktrees/proj/proj-bold-mast-cove');
+        expect(mockRaw.mock.calls.some((c) => c[0][0] === 'branch' && c[0][1] === '-D')).toBe(
+          false
+        );
+      }
+    });
   });
 
   describe('WSL context (runs git inside the distro)', () => {
@@ -126,8 +189,9 @@ describe('WorktreeService', () => {
       });
       await service.remove('/home/khang/.fleet/worktrees/proj/proj-bold-mast-cove', wsl);
 
-      // Call order in remove(): [0] rev-parse --git-common-dir, [1] worktree remove.
-      const removeCall = mockExecInContext.mock.calls[1];
+      // Call order in remove(): [0] rev-parse --git-common-dir, [1] branch --show-current,
+      // [2] worktree remove.
+      const removeCall = mockExecInContext.mock.calls[2];
       expect(removeCall[2]).toEqual(['worktree', 'remove', expect.any(String)]);
       // worktree remove runs with the resolved main repo (posix) as cwd.
       expect(removeCall[3]).toMatchObject({ cwd: '/home/khang/projects/proj' });

@@ -34,6 +34,7 @@ function context(dispatch: AgentToolContext['dispatchTask']): AgentToolContext {
     handOff: () => {},
     approve: async () => Promise.resolve(true),
     wasRefused: () => false,
+    approveFleet: async () => Promise.resolve(false),
     generateImage: null,
     fetchUrl: null,
     todos: { list: () => [], save: () => {} },

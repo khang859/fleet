@@ -82,8 +82,11 @@ type Pending = {
   command: string;
   /** What "always" would remember, or null when that was not offered. */
   rule: string | null;
-  /** Which list a remembered rule belongs in. */
-  rules: 'shell' | 'mcp';
+  /**
+   * Which list a remembered rule belongs in. A `fleet` one is never saved: it
+   * is a grant for one live session, kept in memory until the session ends.
+   */
+  rules: 'shell' | 'mcp' | 'fleet';
   /** Detaches this question's abort listener once it has been answered. */
   release: () => void;
 };
@@ -130,8 +133,30 @@ export type McpPermissionRequest = {
   readOnly: boolean;
 };
 
+/** The Orchestrator asking to type into a Claude Code session, or to start one. */
+export type FleetPermissionRequest = {
+  streamId: string;
+  callId: string;
+  signal: AbortSignal;
+  action: 'send' | 'spawn';
+  /** The session a send types into, which "always for this session" is kept against. Null for a spawn. */
+  sessionId: string | null;
+  /** Where it goes, as the card names it. */
+  target: string;
+  /** The prompt in full, as it will be typed. */
+  prompt: string;
+};
+
 export class PermissionGate {
   private readonly pending = new Map<string, Pending>();
+
+  /**
+   * Sessions the user said the Orchestrator may type into without asking,
+   * each as `send:<sessionId>`. In memory only, and dropped when the session
+   * ends: a grant is about a conversation the user watched begin, not about
+   * whatever runs in that pane next.
+   */
+  private readonly fleetGrants = new Set<string>();
 
   /**
    * What each turn has already been told no about.
@@ -283,12 +308,43 @@ export class PermissionGate {
     );
   }
 
+  /**
+   * Whether the Orchestrator may send a prompt to a session, or start one.
+   *
+   * No rule list covers these: what is being agreed to is a prompt, which no
+   * pattern describes. So a refusal this turn holds for the same prompt, full
+   * access allows it, a grant for the session allows a send, and otherwise the
+   * user is asked with the prompt in front of them. A spawn is asked about
+   * every time, since there is no session yet for a grant to name.
+   */
+  async checkFleet(req: FleetPermissionRequest): Promise<PermissionGrant> {
+    const key = `fleet_${req.action} ${req.sessionId ?? req.target}\n${req.prompt}`;
+    if (this.wasRefused(req.streamId, key)) return 'refuse';
+    if (this.fullAccess()) return 'run';
+    const grant = req.action === 'send' && req.sessionId !== null ? `send:${req.sessionId}` : null;
+    if (grant !== null && this.fleetGrants.has(grant)) return 'run';
+
+    return this.ask(
+      { streamId: req.streamId, callId: req.callId, command: key, signal: req.signal },
+      null,
+      grant,
+      null,
+      { action: req.action, target: req.target, prompt: req.prompt }
+    );
+  }
+
+  /** Drop what the user granted for a session, now that it has ended. */
+  dropFleetGrants(sessionId: string): void {
+    this.fleetGrants.delete(`send:${sessionId}`);
+  }
+
   /** Relay the user's click. A request that already settled is ignored. */
   decide(requestId: string, outcome: AgentPermissionOutcome): void {
     const entry = this.pending.get(requestId);
     if (entry === undefined) return;
     if (outcome === 'always' && entry.rule !== null) {
-      if (entry.rules === 'mcp') this.deps.persistAllowMcp(entry.rule);
+      if (entry.rules === 'fleet') this.fleetGrants.add(entry.rule);
+      else if (entry.rules === 'mcp') this.deps.persistAllowMcp(entry.rule);
       else this.deps.persistAllow(entry.rule);
     }
     if (outcome === 'no') {
@@ -358,7 +414,8 @@ export class PermissionGate {
     req: Question,
     reason: string | null,
     rule: string | null,
-    mcp: AgentPermissionAsk['mcp'] = null
+    mcp: AgentPermissionAsk['mcp'] = null,
+    fleet: AgentPermissionAsk['fleet'] = null
   ): Promise<PermissionGrant> {
     return new Promise<PermissionGrant>((resolve) => {
       if (req.signal.aborted) {
@@ -379,7 +436,7 @@ export class PermissionGate {
         streamId: req.streamId,
         command: req.command,
         rule,
-        rules: mcp === null ? 'shell' : 'mcp',
+        rules: fleet !== null ? 'fleet' : mcp !== null ? 'mcp' : 'shell',
         release: () => req.signal.removeEventListener('abort', onAbort)
       });
 
@@ -390,7 +447,8 @@ export class PermissionGate {
         command: req.command,
         reason,
         rule,
-        mcp
+        mcp,
+        fleet
       } satisfies AgentPermissionAsk);
     });
   }

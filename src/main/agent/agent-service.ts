@@ -100,8 +100,10 @@ import { streamResponse } from './responses';
 import { isFusionTurn } from './commands/expand';
 import { runAgentTool } from './tools/run';
 import { createFleetCapability, type FleetDeps } from './fleet/capability';
+import { renderLedgerBlock } from './fleet/ledger';
 import {
   FLEET_ANALYST,
+  FLEET_DIGEST_WIRE_PREFIX,
   fleetToolNames,
   isFleetTool,
   usesFleetTools,
@@ -266,6 +268,11 @@ type RoundsRequest = {
    * everything else.
    */
   fleet: AgentFleetCapability | null;
+  /**
+   * The orchestrator's ledger, as a note for the end of each round; `null` for
+   * everything but an orchestrator turn. See `withFleetLedger`.
+   */
+  fleetLedger: (() => string | null) | null;
   /**
    * One finished round of this run's own conversation. Set for a subagent,
    * whose transcript main has to keep because it has no pane; `null` for a turn,
@@ -548,6 +555,24 @@ export function withScheduleReminder(
 }
 
 /**
+ * The messages for one round, with the orchestrator's ledger: what it has asked
+ * of which session and is still waiting on, and what each session is doing.
+ *
+ * Pushed every round rather than left to the transcript, because the transcript
+ * is what compaction folds, and a request whose answer is still coming is the
+ * one thing an orchestrator must not forget it made. Read fresh each round for
+ * the reason the roster is: a session can answer in the middle of a long turn.
+ */
+export function withFleetLedger(
+  messages: AgentWireMessage[],
+  ledger: (() => string | null) | null
+): AgentWireMessage[] {
+  const block = ledger?.() ?? null;
+  if (block === null) return messages;
+  return [...messages, { role: 'user', content: fleetNote(block) }];
+}
+
+/**
  * The messages for one round, with the fact that this turn is a continuation.
  *
  * A subagent that reports after its parent has finished resumes the pane, and
@@ -744,6 +769,9 @@ async function toWireMessages(
   if (message.role === 'scheduled') {
     return [{ role: 'user', content: `${SCHEDULE_WIRE_PREFIX}\n\n${messageText(message)}` }];
   }
+  if (message.role === 'fleet') {
+    return [{ role: 'user', content: `${FLEET_DIGEST_WIRE_PREFIX}\n\n${messageText(message)}` }];
+  }
   if (message.role === 'user') {
     return [await toUserMessage(messageText(message), messageAttachments(message), ctx)];
   }
@@ -896,6 +924,10 @@ export async function toWireHistory(
  * says nothing new - the last one they sent or scheduled. Raw rather than
  * expanded: `/pr-review <url>` says what was asked in a line, where the prompt
  * behind it says how to do it in a page.
+ *
+ * Never a `fleet` digest: that is text the watched sessions wrote, and auto
+ * mode weighing a command against it would let a session ask for its own
+ * approval.
  */
 export function latestRequest(req: AgentSendRequest): string | null {
   if (req.text.trim() !== '') return req.text;
@@ -1011,6 +1043,12 @@ export class AgentService {
 
   /** Starts a turn and returns immediately; the reply arrives as stream events. */
   send(req: AgentSendRequest): void {
+    // The user wrote, so an orchestrator conversation's run of turns Fleet
+    // started on its own is over. A turn with nothing typed is a digest, a
+    // schedule or a subagent report, none of which is the user.
+    if (req.orchestrator === true && (req.text.trim() !== '' || req.attachments.length > 0)) {
+      this.deps.fleet?.ledger.resetChain(req.threadId);
+    }
     void this.run(req.streamId, async (ctx, account) => this.turn(req, ctx, account));
   }
 
@@ -1148,12 +1186,12 @@ export class AgentService {
     const fleetDeps = this.deps.fleet ?? null;
     const fleet =
       req.orchestrator === true && fleetDeps !== null
-        ? createFleetCapability(fleetDeps, req.threadId, 'orchestrator')
+        ? createFleetCapability(fleetDeps, req.threadId, 'orchestrator', req.cwd)
         : null;
     const childFleet =
       fleet === null || fleetDeps === null
         ? null
-        : createFleetCapability(fleetDeps, req.threadId, 'subagent');
+        : createFleetCapability(fleetDeps, req.threadId, 'subagent', req.cwd);
     const subagents = (await this.deps.subagents.list(req.cwd)).filter(
       (s) => fleet !== null || !usesFleetTools(s.tools)
     );
@@ -1320,6 +1358,10 @@ export class AgentService {
         findMemory: (name) => memories.find((m) => m.name === name) ?? null,
         schedule: this.scheduleCapability(req),
         fleet,
+        fleetLedger:
+          fleet === null || fleetDeps === null
+            ? null
+            : () => renderLedgerBlock(fleetDeps.host, fleetDeps.ledger, req.threadId),
         // The pane draws this run and writes it down. Only a subagent needs
         // main to keep its transcript, and only a subagent is watched by
         // nobody while it runs.
@@ -1396,7 +1438,10 @@ export class AgentService {
         // recent thing said.
         messages: withTodoReminder(
           withScheduleReminder(
-            this.withRunningSubagents(withResumeNote(conversation, run.resumed), run.threadId),
+            withFleetLedger(
+              this.withRunningSubagents(withResumeNote(conversation, run.resumed), run.threadId),
+              run.fleetLedger
+            ),
             run.schedule
           ),
           todos.items,
@@ -1526,6 +1571,13 @@ export class AgentService {
               onUsage: (usage) => account.side(usage)
             })) === 'run',
           wasRefused: (command) => this.deps.gate.wasRefused(streamId, command),
+          approveFleet: async (ask) =>
+            (await this.deps.gate.checkFleet({
+              ...ask,
+              streamId,
+              callId: call.id,
+              signal: ctx.signal
+            })) === 'run',
           // Built per call rather than per turn, because a partial render has
           // to land on the row that asked for it, and only here is that known.
           generateImage: this.imageGenerator(ctx, streamId, call.id),
@@ -1779,6 +1831,7 @@ export class AgentService {
           // Nothing to schedule against: this conversation ends when the report
           // does, so a fire aimed at it would wake nobody.
           schedule: null,
+          fleetLedger: null,
           // The read-only pick, from an orchestrator turn only: see `TaskRun.fleet`.
           fleet: run.fleet,
           onRound: run.onMessage,

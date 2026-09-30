@@ -42,7 +42,8 @@ export function SessionDetail(): React.JSX.Element | null {
     const text = inputText.trim();
     if (!text || !session) return;
     setInputText('');
-    await sendMessage(session.sessionId, text);
+    // Refused while the user has text in the terminal or is typing there: keep it.
+    if (!(await sendMessage(session.sessionId, text))) setInputText(text);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {

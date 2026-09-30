@@ -257,6 +257,7 @@ function readOnlyContext(ctx: { cwd: string; threadId: string }): AgentToolConte
     handOff: () => {},
     approve: async () => Promise.resolve(false),
     wasRefused: () => false,
+    approveFleet: async () => Promise.resolve(false),
     generateImage: null,
     fetchUrl: null,
     mcp: null,

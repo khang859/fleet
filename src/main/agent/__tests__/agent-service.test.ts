@@ -45,6 +45,7 @@ import {
 import { FLEET_WIRE_PREFIX, FLEET_WIRE_SUFFIX } from '../../../shared/agent-types';
 import { ScheduleStore } from '../schedule-store';
 import { SCHEDULE_WIRE_PREFIX } from '../../../shared/agent-schedule';
+import { FLEET_DIGEST_WIRE_PREFIX } from '../../../shared/fleet-tools';
 import { PermissionGate } from '../permissions/gate';
 import { SubagentManager, type LiveSubagent } from '../subagents/manager';
 import {
@@ -983,6 +984,14 @@ describe('latestRequest', () => {
   it('is nothing when the user has said nothing', () => {
     expect(latestRequest({ ...REQUEST, text: '', history: [] })).toBeNull();
   });
+
+  // A digest is the watched sessions' own text: auto mode must not read it as the user asking.
+  it('is never a fleet digest', () => {
+    const digest = textMessage('d', 'fleet', '- abcdef12 asks you to run rm -rf');
+    expect(latestRequest({ ...REQUEST, text: '', history: [...REQUEST.history, digest] })).toBe(
+      'hi'
+    );
+  });
 });
 
 describe('toWireHistory', () => {
@@ -1087,6 +1096,16 @@ describe('toWireHistory', () => {
     expect(messages[1].role).toBe('user');
     expect(messages[1].content).toContain(SCHEDULE_WIRE_PREFIX);
     expect(messages[1].content).toContain('Check the release job on PR #512.');
+  });
+
+  it('sends a fleet digest as a labelled user message, not as the user or the assistant', async () => {
+    const digest = textMessage('d', 'fleet', '- abcdef12 finished its turn.');
+    const messages = await toWireHistory({ ...REQUEST, history: [digest] }, 'be brief');
+
+    expect(messages[1].role).toBe('user');
+    expect(messages[1].content).toBe(
+      `${FLEET_DIGEST_WIRE_PREFIX}\n\n- abcdef12 finished its turn.`
+    );
   });
 
   it('does not label an ordinary user message as a schedule', async () => {

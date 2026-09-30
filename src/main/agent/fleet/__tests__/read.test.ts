@@ -97,6 +97,7 @@ describe('fleet reads', () => {
   const host = (): FleetHost => ({
     tracking: () => ({ status: { state: 'running' }, installProblems: [] }),
     sessions: () => [current],
+    starting: () => [],
     transcript: async () => {
       await transcript.tail.read(transcript.path);
       return transcript;
@@ -107,7 +108,7 @@ describe('fleet reads', () => {
   });
 
   const orchestrator = () =>
-    createFleetCapability({ host: host(), ledger }, THREAD, 'orchestrator');
+    createFleetCapability({ host: host(), ledger, act: null }, THREAD, 'orchestrator', '/work');
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'fleet-read-'));
@@ -126,13 +127,13 @@ describe('fleet reads', () => {
 
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  it('lists sessions with their ref, place, phase, cost and goal, fenced', async () => {
+  it('lists sessions with their ref, place, phase, cost, folder and goal, fenced', async () => {
     const out = await orchestrator().sessions({}, signal);
     expect(out.summary).toBe('1 session');
     expect(out.text).toContain(
       '- abcdef12 · work › claude · app · waiting for a prompt for 3m · ~$0.50'
     );
-    expect(out.text).toContain('goal: Add a retry to fetchUser');
+    expect(out.text).toContain('\n  folder: /work/app\n  goal: Add a retry to fetchUser');
     expect(out.text).toMatch(/<session-data session="all">[\s\S]*<\/session-data>$/);
   });
 
@@ -143,9 +144,10 @@ describe('fleet reads', () => {
       tracking: () => ({ status: { state: 'off' }, installProblems: [] })
     };
     const out = await createFleetCapability(
-      { host: empty, ledger },
+      { host: empty, ledger, act: null },
       THREAD,
-      'orchestrator'
+      'orchestrator',
+      '/work'
     ).sessions({}, signal);
     expect(out.text).toContain('No Claude Code sessions are running');
     expect(out.text).toContain('turned off in Fleet settings');
@@ -309,7 +311,12 @@ describe('fleet reads', () => {
     const before = ledger.cursor(THREAD, 'abcdef12');
 
     appendFileSync(path, prompt('u2', 'Next step') + reply('a2', 'Next step done.'));
-    const analyst = createFleetCapability({ host: host(), ledger }, THREAD, 'subagent');
+    const analyst = createFleetCapability(
+      { host: host(), ledger, act: null },
+      THREAD,
+      'subagent',
+      '/work'
+    );
     expect(analyst.send).toBeNull();
     const read = await analyst.read({ session: 'abcdef12', level: 'turns' }, signal);
     expect(read.text).toContain('Next step done.');

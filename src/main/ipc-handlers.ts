@@ -174,6 +174,7 @@ import { grepFiles } from './file-grep';
 import { searchRecentImages } from './recent-images';
 import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor';
 import { onCopilotSettingsChanged } from './copilot/index';
+import type { FleetSpawns } from './agent/fleet/spawns';
 import type { ClaudeSessionsService } from './claude-sessions';
 import type { EnvSyncManager } from './env-sync/env-sync-manager';
 import type { EnvSyncSecrets } from './env-sync/env-sync-secrets';
@@ -225,7 +226,8 @@ export function registerIpcHandlers(
   envSyncSecrets: EnvSyncSecrets,
   ptyOscBridge: PtyOscBridge,
   teleprompter: TeleprompterService,
-  claudeSessions: ClaudeSessionsService
+  claudeSessions: ClaudeSessionsService,
+  fleetSpawns: FleetSpawns
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -280,9 +282,18 @@ export function registerIpcHandlers(
       }
     }
 
+    // A pane `fleet_spawn` opened runs Claude Code with its prompt, once. The
+    // prompt is only ever here and in the environment, never in the layout.
+    const spawn = ptyManager.has(req.paneId) ? null : fleetSpawns.take(req.paneId);
+    if (spawn !== null) {
+      Object.assign(extraEnv, spawn.env);
+      for (const k of Object.keys(spawn.env)) envSources[k] = 'fleet-builtin';
+    }
+
     const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create({
       ...req,
+      ...(spawn === null ? {} : { cmd: spawn.cmd, exitOnComplete: false }),
       profile,
       env: Object.keys(extraEnv).length > 0 ? { ...process.env, ...extraEnv } : undefined,
       envSources
@@ -332,6 +343,7 @@ export function registerIpcHandlers(
     // notifications and clear needs_me so the next prompt notifies exactly once.
     notificationDetector.onUserInput(payload.paneId);
     activityTracker.onUserInput(payload.paneId);
+    claudeSessions.onPaneInput(payload.paneId, payload.data);
     ptyManager.write(payload.paneId, payload.data);
   });
 

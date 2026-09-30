@@ -1437,3 +1437,41 @@ describe('moveAgentTab', () => {
     expect(moved().cwd).toBe(scratchDir());
   });
 });
+
+describe('openTerminalTab', () => {
+  it("opens a tab on main's pane id without taking focus, and without a command", () => {
+    useWorkspaceStore.getState().openTerminalTab({
+      paneId: 'pane-spawned',
+      cwd: '/work/wt',
+      label: 'fix/x',
+      worktree: { path: '/work/wt', branch: 'fix/x' }
+    });
+    const state = useWorkspaceStore.getState();
+    const tab = state.workspace.tabs.at(-1);
+    expect(tab).toMatchObject({
+      label: 'fix/x',
+      cwd: '/work/wt',
+      worktreePath: '/work/wt',
+      worktreeBranch: 'fix/x',
+      splitRoot: { type: 'leaf', id: 'pane-spawned', cwd: '/work/wt' }
+    });
+    // A restored layout runs no command in it: the prompt never came here.
+    expect(tab?.splitRoot).not.toHaveProperty('cmd');
+    expect(state.activeTabId).toBe('tab-a1');
+    expect(state.activePaneId).toBe('pane-a1');
+    expect(state.isDirty).toBe(true);
+  });
+
+  it('focuses the new tab when nothing else is open', () => {
+    useWorkspaceStore.setState({
+      workspace: { id: 'empty', label: 'Empty', tabs: [] },
+      activeTabId: null,
+      activePaneId: null
+    });
+    useWorkspaceStore
+      .getState()
+      .openTerminalTab({ paneId: 'pane-spawned', cwd: '/w', label: 'w', worktree: null });
+    expect(useWorkspaceStore.getState().activePaneId).toBe('pane-spawned');
+    expect(useWorkspaceStore.getState().workspace.tabs[0]).not.toHaveProperty('worktreePath');
+  });
+});

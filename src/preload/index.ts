@@ -135,6 +135,11 @@ import type {
 } from '../shared/agent-session';
 import type { AgentGitHead, AgentGitHeadEvent } from '../shared/agent-git';
 import type { AgentScheduleChanged, AgentScheduleRecord } from '../shared/agent-schedule';
+import type {
+  FleetDigestPull,
+  FleetOpenTabReply,
+  FleetOpenTabRequest
+} from '../shared/fleet-tools';
 import type { AgentBackgroundChanged, AgentBackgroundJob } from '../shared/agent-tools';
 // Aliased so the generic MCP names read as the Agent pane's at every use site.
 import type {
@@ -896,6 +901,26 @@ const fleetApi = {
         typedInvoke<void>(IPC_CHANNELS.AGENT_MEMORY_REMOVE, scope, name, cwd),
       reveal: async (path: string): Promise<void> =>
         typedInvoke<void>(IPC_CHANNELS.AGENT_MEMORY_REVEAL, path)
+    },
+
+    /**
+     * The orchestrator side of the fleet tools.
+     *
+     * `onOpenTab` is `fleet_spawn` asking for a tab, answered with `openTabDone`
+     * once the tab is in the layout or with why it could not be opened.
+     * `pullDigest` takes the wakeup digest for a conversation, marking what it
+     * covers read in the same call; `setMode` says orchestrator mode went on or
+     * off, and on means digests start from now.
+     */
+    fleet: {
+      onOpenTab: (cb: (req: FleetOpenTabRequest) => void): Unsubscribe =>
+        onChannel(IPC_CHANNELS.AGENT_FLEET_OPEN_TAB, cb),
+      openTabDone: (reply: FleetOpenTabReply): void =>
+        ipcRenderer.send(IPC_CHANNELS.AGENT_FLEET_OPEN_TAB_DONE, reply),
+      pullDigest: async (threadId: string): Promise<FleetDigestPull> =>
+        typedInvoke<FleetDigestPull>(IPC_CHANNELS.AGENT_FLEET_PULL_DIGEST, threadId),
+      setMode: (threadId: string, on: boolean): void =>
+        ipcRenderer.send(IPC_CHANNELS.AGENT_FLEET_SET_MODE, threadId, on)
     },
 
     /**

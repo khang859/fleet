@@ -230,7 +230,9 @@ describe('BriefBuilder', () => {
     }
     const out = renderBrief(b.state, STATUS, { cap: 600 });
     expect(out.length).toBeLessThanOrEqual(600);
-    expect(out).toMatch(/\[cut to fit: Files changed \(\d+ lines\)\]$/);
+    expect(out).toMatch(
+      /\[cut to fit: Files changed \(\d+ lines\); fleet_read with since "start" shows more\]$/
+    );
     expect(renderBrief(b.state, STATUS).length).toBeLessThanOrEqual(3_500);
   });
 

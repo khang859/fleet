@@ -39,6 +39,7 @@ import {
 } from '../../../shared/agent-context';
 import type { AgentScheduleRecord } from '../../../shared/agent-schedule';
 import { canDeliverTo, checkSchedules, loadSchedules, onScheduleChanged } from './agent-schedule';
+import { checkFleet, clearFleetPaused } from './agent-fleet';
 import {
   loadBackground,
   onBackgroundChanged,
@@ -458,6 +459,10 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     const spent = thread.todos.length > 0 && !hasOpenWork(thread.todos);
     const todos = spent ? [] : thread.todos;
     if (spent) record(thread, { t: 'todos', items: [] });
+
+    // The user writing is what lifts a pause at the chain limit; main resets
+    // its count as this turn starts.
+    clearFleetPaused(paneId);
 
     const streamId = crypto.randomUUID();
     const user = userMessageWithAttachments(crypto.randomUUID(), text, attachments);
@@ -1343,6 +1348,10 @@ function endTurn(
   // turn to run alongside it - `checkSchedules` sees the compaction in flight
   // and leaves the fire where it is.
   checkSchedules(paneId);
+  // A digest that came in while the turn ran, or was held at the chain limit
+  // and freed by the user writing: after the schedules, so a fire that was
+  // due first gets the pane first.
+  checkFleet(paneId);
 }
 
 /**
@@ -1627,6 +1636,7 @@ function applySummary(streamId: string, summary: string, usage: AgentTurnUsage |
   // A compaction ends here rather than in `endTurn`, so a fire that arrived
   // while it was running would otherwise wait for something else to happen.
   checkSchedules(found.paneId);
+  checkFleet(found.paneId);
 }
 
 // Installed once: there is a single main→renderer channel per event, and every

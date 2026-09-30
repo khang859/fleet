@@ -351,6 +351,17 @@ describe('replaySession', () => {
     expect(replay.messages[0]).toEqual(message);
   });
 
+  it('round-trips a fleet digest and a scheduled check-in with their roles', () => {
+    const digest = msg('d', 'fleet', '- abcdef12 finished its turn.\n\ndetail');
+    const fire = msg('f', 'scheduled', 'check the build');
+    const replay = replaySession(
+      log(HEADER, { t: 'message', message: fire }, { t: 'message', message: digest })
+    );
+
+    expect(replay.messages).toEqual([fire, digest]);
+    expect(replay.skipped).toBe(0);
+  });
+
   it('stamps the current version in the header', () => {
     expect(HEADER).toMatchObject({ t: 'session', version: SESSION_LOG_VERSION, cwd: '/repo' });
   });

@@ -1,4 +1,5 @@
 import type { ClaudeSession } from '../../../shared/claude-sessions';
+import type { FleetStarting } from './host';
 
 /** `45s`, `3m`, `2h 5m`: how long, to the precision a person cares about. */
 export function formatAge(ms: number): string {
@@ -39,4 +40,13 @@ export function needsUser(session: ClaudeSession): boolean {
     session.phase === 'waitingForApproval' ||
     (session.phase === 'waitingForInput' && session.waitingKind === 'question')
   );
+}
+
+/**
+ * A spawned pane whose session has not reported yet. Claude Code runs no hooks
+ * until its folder trust dialog is answered, so a long wait here is most often
+ * that dialog - which is the user's to answer, never the Orchestrator's.
+ */
+export function describeStarting(spawn: FleetStarting, now: number): string {
+  return `starting for ${formatAge(now - spawn.at)}; if this lasts, it is probably at the folder trust dialog, which only the user can answer`;
 }

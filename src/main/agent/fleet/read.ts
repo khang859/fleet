@@ -115,7 +115,8 @@ async function readBrief(
   host: FleetHost,
   cursors: FleetCursors,
   session: FleetSession,
-  since: 'last' | 'start'
+  since: 'last' | 'start',
+  cap?: number
 ): Promise<FleetToolOutput> {
   const transcript = await host.transcript(session.sessionId);
   const st = status(session, host.now());
@@ -131,6 +132,7 @@ async function readBrief(
   const inputs = host.inputsFor(session.sessionId);
   const body = renderBrief(state, st, {
     ...(delta ? { since: cursor.rev } : {}),
+    ...(cap === undefined ? {} : { cap }),
     promptBy: (text) =>
       text.startsWith('<task-notification>')
         ? 'a background task finished'
@@ -339,6 +341,20 @@ async function readTool(
     text: [fence(session.ref, body), footer].filter(Boolean).join('\n'),
     summary: `${entry.name} · page ${page}/${pages}`
   };
+}
+
+/**
+ * What changed in a session since the Orchestrator last read it, in at most
+ * `cap` characters: a `fleet_read` at `brief` done for a wakeup digest, which
+ * moves the cursor the same way.
+ */
+export async function readBriefDelta(
+  host: FleetHost,
+  cursors: FleetCursors,
+  session: FleetSession,
+  cap: number
+): Promise<string> {
+  return (await readBrief(host, cursors, session, 'last', cap)).text;
 }
 
 /** `fleet_read`. */

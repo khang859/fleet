@@ -38,6 +38,7 @@ function ctx(output: McpToolOutput | null, threadId = randomUUID()): AgentToolCo
     handOff: () => {},
     approve: async () => Promise.resolve(true),
     wasRefused: () => false,
+    approveFleet: async () => Promise.resolve(false),
     generateImage: null,
     fetchUrl: null,
     todos: { list: () => [], save: () => {} },

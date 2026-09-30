@@ -955,11 +955,17 @@ export type AgentMessage = {
    * nobody in the room wrote, and drawing it as the user's would have the person
    * reading it looking for when they said that.
    *
+   * `fleet` is a digest of the Claude Code sessions an orchestrator pane looks
+   * after, delivered by Fleet when one of them needs attention. Distinct because
+   * nobody in the room wrote it either, and because what it carries is written by
+   * those sessions: drawn or sent as the user's, it would put their words in the
+   * user's mouth.
+   *
    * Note that nothing here is exhaustively switched on - `role` is branched with
    * `if` chains - so adding a member compiles cleanly and silently falls through
    * to the assistant branch everywhere it was not handled.
    */
-  role: 'user' | 'assistant' | 'summary' | 'scheduled';
+  role: 'user' | 'assistant' | 'summary' | 'scheduled' | 'fleet';
   /** What the message is made of, oldest first. One turn, however many rounds. */
   parts: AgentPart[];
   /** Assistant only: the reasoning channel, when the model streams one. */
@@ -1385,6 +1391,20 @@ export type AgentPermissionAsk = {
     tool: string;
     /** The arguments as the model wrote them: JSON, and possibly malformed. */
     args: string;
+  } | null;
+  /**
+   * Set when the Orchestrator asks to type into one of the user's Claude Code
+   * sessions (`send`) or to start one (`spawn`). The card shows where it goes
+   * and the prompt in full, since the prompt is what is being agreed to.
+   * `rule` is then the grant "always for this session" would add, and is null
+   * for a spawn, which is only ever allowed once.
+   */
+  fleet: {
+    action: 'send' | 'spawn';
+    /** The session's ref and name, or the folder a spawn opens in. */
+    target: string;
+    /** The prompt as it will be typed. */
+    prompt: string;
   } | null;
 };
 

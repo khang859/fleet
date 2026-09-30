@@ -58,6 +58,14 @@ export const FLEET_PROMPT_MAX_CHARS = 8_000;
 /** Longest `why` or `expect` a ledger entry keeps. */
 export const FLEET_LEDGER_NOTE_MAX_CHARS = 300;
 
+/**
+ * Turns in a row a digest may start before the user has to write again. The
+ * turn that reaches it is the last: after it, digests are held and sends and
+ * spawns refused, so two sessions can never keep an Orchestrator busy with
+ * each other on their own.
+ */
+export const FLEET_CHAIN_LIMIT = 6;
+
 /** Longest a `fleet_wait` may block the turn. */
 export const FLEET_WAIT_MAX_SECONDS = 600;
 
@@ -118,10 +126,52 @@ export type FleetSpawnArgs = z.infer<typeof FleetSpawnArgs>;
 export type FleetWaitArgs = z.infer<typeof FleetWaitArgs>;
 export type FleetPermissionArgs = z.infer<typeof FleetPermissionArgs>;
 
+/**
+ * A tab `fleet_spawn` asks the renderer to open, without focusing it. The pane
+ * id is main's, so the PTY the tab creates can be matched to the spawn; the
+ * prompt is not here, so it never reaches the layout.
+ */
+export type FleetOpenTabRequest = {
+  requestId: string;
+  paneId: string;
+  cwd: string;
+  label: string;
+  /** Set when the session runs in a worktree Fleet made for it. */
+  worktree: { path: string; branch: string } | null;
+};
+
+/** The renderer's answer: `error` is null once the tab is in the layout. */
+export const FleetOpenTabReply = z.object({ requestId: z.string(), error: z.string().nullable() });
+export type FleetOpenTabReply = z.infer<typeof FleetOpenTabReply>;
+
+/**
+ * What an orchestrator pane gets when it asks for a digest: the text of a
+ * `fleet` message, or null when nothing needs it. `paused` once the chain
+ * limit is reached, until the user writes.
+ */
+export type FleetDigestPull = { text: string | null; paused: boolean };
+
 /** What a fleet tool hands back: the text for the model, and the row in the transcript. */
 export type FleetToolOutput = { text: string; summary: string };
 
 type Run<A> = (args: A, signal: AbortSignal) => Promise<FleetToolOutput>;
+
+/** What the user is asked to approve before a prompt is typed or a session started. */
+export type FleetAsk = {
+  action: 'send' | 'spawn';
+  /** The session a send goes to; `null` for a spawn. */
+  sessionId: string | null;
+  /** Where it goes, as the card names it: a ref and its tab, or a folder. */
+  target: string;
+  /** The prompt exactly as it will be typed. */
+  prompt: string;
+};
+
+/** Ask the user, or their standing answer, whether a fleet action may go ahead. */
+export type FleetApprover = (ask: FleetAsk) => Promise<boolean>;
+
+/** An act tool: like a read, and it may have to ask first. */
+type Act<A> = (args: A, signal: AbortSignal, approve: FleetApprover) => Promise<FleetToolOutput>;
 
 /**
  * What the fleet tools are given.
@@ -139,8 +189,8 @@ export type AgentFleetCapability = {
   sessions: Run<FleetSessionsArgs>;
   read: Run<FleetReadArgs>;
   diff: Run<FleetDiffArgs>;
-  send: Run<FleetSendArgs> | null;
-  spawn: Run<FleetSpawnArgs> | null;
+  send: Act<FleetSendArgs> | null;
+  spawn: Act<FleetSpawnArgs> | null;
   wait: Run<FleetWaitArgs> | null;
   permission: Run<FleetPermissionArgs> | null;
 };
@@ -309,7 +359,11 @@ export const FLEET_TOOL_SPECS: AgentToolSpec[] = [
       parameters: {
         type: 'object',
         properties: {
-          cwd: { type: 'string', description: 'The folder to run in.' },
+          cwd: {
+            type: 'string',
+            description:
+              "The folder to run in, as an absolute path, such as a session's folder from fleet_sessions. Defaults to this pane's folder."
+          },
           prompt: { type: 'string', maxLength: FLEET_PROMPT_MAX_CHARS },
           ...ledgerParams,
           worktree: { type: 'boolean', description: 'Run in a new git worktree.' },
@@ -413,6 +467,24 @@ export function renderFleetInstructions(options: {
           '`fleet_sessions` lists them. Read one with `fleet_read`: start from its `brief`, go to `turns` for what happened in order, and to `tool` only for one result you need in full. Reads default to what changed since you last looked, so read again rather than keeping what you saw in mind.',
           '',
           '`fleet_diff` shows what a session changed, through git in its own folder. Your other file tools stay inside this pane folder.',
+          ...(options.tools.includes('fleet_send')
+            ? [
+                '',
+                '`fleet_send` types a prompt into a session that is waiting for one, marked `[orchestrator]` so the user can tell it from their own. The user approves each one unless they have said to allow that session. Send what the user asked for or plainly wants done, not work of your own devising, and never keep prompting a session in a loop. Each send goes in your fleet ledger, shown to you every round until the session answers it.'
+              ]
+            : []),
+          ...(options.tools.includes('fleet_spawn')
+            ? [
+                '',
+                "`fleet_spawn` starts a new Claude Code session in its own tab with a prompt, in a new git worktree if you ask, after the user approves it. The tab opens behind whatever the user is doing. A new session can sit at Claude Code's folder trust dialog, shown as starting, until the user answers it; never try to answer it yourself."
+              ]
+            : []),
+          ...(options.tools.includes('fleet_wait')
+            ? [
+                '',
+                '`fleet_wait` blocks until a session you are waiting on finishes its turn, needs the user, or ends, and tells you what changed. Use it after a send or a spawn instead of reading the session over and over. Keep the timeout to what the user would sit through: they see the wait and can stop it.'
+              ]
+            : []),
           ...(options.analyst === true
             ? [
                 '',
@@ -462,4 +534,28 @@ export function unfence(text: string): string {
   return text
     .replace(new RegExp(`<${FENCE} session="[^"]*">\\n([\\s\\S]*?)\\n</${FENCE}>`, 'g'), '$1')
     .replaceAll(`<\\/${FENCE}`, `</${FENCE}`);
+}
+
+/**
+ * What a `fleet` message is headed with on the wire: no provider has a role for
+ * "the app is telling you about other sessions", so it crosses as a user message
+ * with a line saying who is really talking.
+ */
+export const FLEET_DIGEST_WIRE_PREFIX =
+  'Claude Code sessions you look after need attention. Fleet is delivering this; the user has not said anything:';
+
+/**
+ * A digest as main writes it: one headline per session, fenced, a blank line, then the
+ * detail for each. The card shows the headlines and folds the rest away.
+ */
+export function splitFleetDigest(text: string): { headlines: string[]; details: string } {
+  const gap = text.indexOf('\n\n');
+  const head = unfence(gap === -1 ? text : text.slice(0, gap));
+  return {
+    headlines: head
+      .split('\n')
+      .map((line) => line.replace(/^- /, '').trim())
+      .filter((line) => line !== ''),
+    details: gap === -1 ? '' : text.slice(gap + 2).trim()
+  };
 }

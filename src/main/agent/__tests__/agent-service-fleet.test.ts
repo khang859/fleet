@@ -16,7 +16,11 @@ import { SubagentManager, type TaskRun } from '../subagents/manager';
 import type { StreamOutcome, StreamRequest, WireToolCall } from '../completions';
 import { resolveTarget as route, type ResolvedTarget } from '../model-routing';
 import type { FleetHost } from '../fleet/host';
+import type { FleetActDeps } from '../fleet/capability';
 import { FleetLedgerStore } from '../fleet/ledger-store';
+import { ActLimiter } from '../fleet/limiter';
+import { FleetSpawns } from '../fleet/spawns';
+import { FleetAttention } from '../fleet/attention';
 
 vi.mock('../../logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })
@@ -60,6 +64,7 @@ const DEFINITIONS = [
 const HOST: FleetHost = {
   tracking: () => ({ status: { state: 'running' }, installProblems: [] }),
   sessions: () => [],
+  starting: () => [],
   transcript: async () => Promise.resolve(null),
   inputsFor: () => [],
   git: async () => Promise.reject(new Error('unused')),
@@ -96,6 +101,9 @@ describe('orchestrator mode', () => {
     wired?: boolean;
     calls?: WireToolCall[][];
     history?: AgentSendRequest['history'];
+    ledger?: FleetLedgerStore;
+    act?: FleetActDeps;
+    text?: string;
   }): Promise<StreamRequest[]> {
     const rounds: StreamRequest[] = [];
     const request: AgentSendRequest = {
@@ -103,7 +111,7 @@ describe('orchestrator mode', () => {
       threadId: '6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b',
       cwd: dir,
       history: options.history ?? [],
-      text: 'what are my sessions doing?',
+      text: options.text ?? 'what are my sessions doing?',
       attachments: [],
       todos: [],
       orchestrator: options.orchestrator
@@ -129,7 +137,14 @@ describe('orchestrator mode', () => {
           },
           definitions: async () => Promise.resolve(DEFINITIONS)
         }),
-        fleet: options.wired === false ? null : { host: HOST, ledger: new FleetLedgerStore(dir) },
+        fleet:
+          options.wired === false
+            ? null
+            : {
+                host: HOST,
+                ledger: options.ledger ?? new FleetLedgerStore(dir),
+                act: options.act ?? null
+              },
         getApiKey: () => 'sk-or-test',
         resolveTarget: RESOLVE_TARGET,
         emit,
@@ -282,5 +297,95 @@ describe('orchestrator mode', () => {
     expect(system(off)).toContain('## Orchestrator mode is off');
     const [fresh] = await turn({ orchestrator: false });
     expect(system(fresh)).not.toContain('Orchestrator mode is off');
+  });
+
+  it('sends the ledger after the cached conversation on every round, even once compacted', async () => {
+    const ledger = new FleetLedgerStore(dir);
+    ledger.addEntry('6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b', {
+      action: 'send',
+      ref: 'abcdef12',
+      paneId: 'abcdef12-pane',
+      sessionId: 's1',
+      epoch: 0,
+      prompt: '[orchestrator] Run the tests',
+      why: 'the refactor is done',
+      expect: 'the failing test names',
+      at: Date.now(),
+      started: true
+    });
+    // Everything before this was folded into one summary, the ledger's entry with it.
+    const compacted: AgentSendRequest['history'] = [
+      { ...textMessage('s', 'summary', 'We refactored the parser.'), role: 'summary' }
+    ];
+    const rounds = await turn({
+      orchestrator: true,
+      history: compacted,
+      ledger,
+      calls: [[call('fleet_sessions', {})]]
+    });
+    expect(rounds).toHaveLength(2);
+    for (const round of rounds) {
+      const at = round.messages.findIndex(
+        (m) => typeof m.content === 'string' && m.content.includes('Your fleet ledger')
+      );
+      expect(at).toBeGreaterThanOrEqual(round.cacheUpTo ?? Infinity);
+      expect(round.messages[at].content).toContain('#1 prompted abcdef12');
+      expect(round.messages[at].content).toContain('expecting: the failing test names');
+    }
+  });
+
+  it('ends a run of digest turns when the user writes, and only then', async () => {
+    const ledger = new FleetLedgerStore(dir);
+    const thread = '6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b';
+    for (let i = 0; i < 3; i++) ledger.extendChain(thread);
+    // A digest turn: nothing typed.
+    await turn({ orchestrator: true, ledger, text: '' });
+    expect(ledger.chain(thread)).toBe(3);
+    // Typed in a pane that is not orchestrating: not this conversation's chain to end.
+    await turn({ orchestrator: false, ledger });
+    expect(ledger.chain(thread)).toBe(3);
+    await turn({ orchestrator: true, ledger });
+    expect(ledger.chain(thread)).toBe(0);
+  });
+
+  it('sends no ledger to a regular pane', async () => {
+    const [round] = await turn({ orchestrator: false });
+    expect(JSON.stringify(round.messages)).not.toContain('Your fleet ledger');
+  });
+
+  it('offers fleet_send, fleet_spawn and fleet_wait once wired up, and never to a subagent', async () => {
+    const act: FleetActDeps = {
+      prompter: {
+        refusal: () => null,
+        send: async () => Promise.resolve({ ok: false, reason: 'unused' })
+      },
+      limiter: new ActLimiter(),
+      spawns: new FleetSpawns(),
+      platform: 'linux',
+      openTab: async () => Promise.resolve('unused'),
+      worktrees: {
+        create: async () => Promise.reject(new Error('unused')),
+        remove: async () => Promise.resolve()
+      },
+      notePaneInput: () => {},
+      newPaneId: () => 'unused',
+      subscribe: () => () => {},
+      attention: new FleetAttention()
+    };
+    const [round] = await turn({
+      orchestrator: true,
+      act,
+      calls: [[call('task', { agent: 'fleet-analyst', prompt: 'read abcdef12' })]]
+    });
+    expect(names(round)).toContain('fleet_send');
+    expect(names(round)).toContain('fleet_spawn');
+    expect(names(round)).toContain('fleet_wait');
+    expect(system(round)).toContain('`fleet_wait` blocks until');
+    expect(system(round)).toContain('`fleet_send` types a prompt into a session');
+    await vi.waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0].fleet?.send).toBeNull();
+    expect(runs[0].tools).not.toContain('fleet_send');
+    expect(runs[0].fleet?.spawn).toBeNull();
+    expect(runs[0].fleet?.wait).toBeNull();
   });
 });

@@ -30,6 +30,7 @@ Each entry SHALL give:
 - the phase, and whether it needs the user;
 - time in phase;
 - estimated cost;
+- the folder it runs in;
 - the goal.
 
 #### Scenario: No sessions

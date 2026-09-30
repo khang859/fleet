@@ -133,7 +133,7 @@ const PartSchema = z.discriminatedUnion('type', [
 
 const CommonMessageFields = {
   id: z.string(),
-  role: z.enum(['user', 'assistant', 'summary', 'scheduled']),
+  role: z.enum(['user', 'assistant', 'summary', 'scheduled', 'fleet']),
   reasoning: z.string(),
   reasoningMs: z.number().nullable(),
   /**

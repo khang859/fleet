@@ -129,13 +129,21 @@ It writes nothing unless all of these hold:
 - the phase is `waitingForInput` with kind `prompt`;
 - the pane's draft is clean;
 - there has been no user keystroke for 3 s;
-- the rate limit passes.
+- no other prompt is being typed into that session.
+
+`fleet_send` adds a rate limit on top: 20 sends and spawns together per 10 minutes per orchestrator conversation, kept across turns so ending a turn does not reset it.
+It is not in `sendPrompt`, because a person sending from the copilot chat is not what it guards against.
+`fleet_send` runs the checks above before the approval card is shown, so the user is never asked about a prompt that could not go in, and `sendPrompt` runs them again as it types, since the user may have started typing while the card was up.
 
 Draft tracking works on renderer-originated PTY writes in main.
 Printable input marks the draft dirty.
 Enter, Ctrl-C, Ctrl-U or a `UserPromptSubmit` hook event marks it clean.
 
-The text is sent as a bracketed paste (`ESC[200~ … ESC[201~`), followed by `\r` about 50 ms later.
+The text is typed, not pasted: control characters other than LF are dropped, a tab becomes four spaces, and it is written in 128-character chunks 25 ms apart, followed by `\r` about 50 ms later.
+Checked on Claude Code 2.1.285 (task 5.1): a bracketed paste of more than one line, or one read of more than about 800 characters, is recorded as `<pasted_content>`, and the model refuses to follow pasted instructions.
+Typed, LF inserts a line break and the transcript records exactly what was written.
+A prompt ending in `\` is refused, since `\` then Enter is a line break.
+The copilot chat's answer to a question dialog is an option number pressed as a key, not a prompt, so it has its own path (`answerQuestion`) that works only while a question dialog is open.
 The send is confirmed only by a `UserPromptSubmit` for that session within 5 s; otherwise it is reported as "not confirmed".
 The registry also records the origin and a hash of the text.
 That is how turn reads tell real Orchestrator prompts from a user typing the prefix.
@@ -143,6 +151,8 @@ The hash is of exactly the delivered text, `[orchestrator]` prefix included and 
 
 _Alternative considered:_ the current `write(text + '\r')`.
 It submits half-typed drafts, can split multi-line text, and lands in whatever dialog is open.
+_Alternative considered:_ a bracketed paste, the first design.
+Claude Code wraps it as pasted content, which its model treats as untrusted and does not act on.
 
 ### D6. Orchestrator mode is a per-pane flag
 
@@ -203,8 +213,13 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
 - **Ledger.**
   - Stored in `<agent sessions dir>/<threadId>.fleet.json`, written atomically, capped, and deleted with the session.
   - `fleet_send` and `fleet_spawn` require `why` and `expect` arguments, and the entry is written automatically.
-  - `withFleetLedger` splices open entries and the live session one-liners into each round.
+  - `withFleetLedger` splices open entries, the few most recently settled, and the live session one-liners into each round.
     It sits next to `withRunningSubagents`, after the cache breakpoint.
+  - An entry is answered once its session has started on the prompt and has waited for a prompt since the entry was written; a question dialog is still the same turn.
+    It ends when its session goes away or is cleared (a new epoch) first.
+    The rule reads the session's state, not the events that led to it, so the same check settles entries live from registry changes and, for a conversation not loaded at the time, when its next round is built.
+  - A spawn's entry has no session until the new tab reports one; it is matched by pane, and stays open while the pane is starting.
+    It ends if the pane closes, or after a restart, before a session reports.
   - _Alternative considered:_ the Agent session log.
     Rejected: compaction folds it, and it is renderer-owned.
 
@@ -217,7 +232,14 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
 5. `PTY_CREATE` takes the pending spawn and overrides `cmd` and env.
 
 The prompt never enters the layout, so restoring a layout cannot re-run it, and it needs no shell quoting.
-Spawn is refused on Windows and WSL profiles.
+Spawn is refused on Windows, which is also the only platform with WSL profiles.
+
+Everything that can refuse the spawn (platform, folder, repository, prompt, rate limit) is checked before the user is asked, and nothing is created until they say yes: the worktree, the pane id and the tab all come after.
+A worktree starts the session at the same place within the new checkout as the folder asked for, on a named branch if one was given.
+If the tab cannot be opened, the worktree is removed again.
+
+Claude Code runs no hooks until its folder trust dialog is answered, so a spawned session held there would be invisible to the registry.
+`FleetSpawns` keeps each spawned pane until a session reports from it or the pane closes, and `fleet_sessions` and the ledger show it as starting, with a note that the trust dialog is the user's to answer.
 
 _Alternative considered:_ shell-quoting the prompt into `cmd`.
 It is fragile across shells, and the prompt would be persisted with the layout.
@@ -252,12 +274,30 @@ It reacts to attention transitions arriving on `CLAUDE_SESSIONS_CHANGED`, and it
 - debounces for 2 s;
 - holds the digest while the pane is busy;
 - pulls the digest from main with `AGENT_FLEET_PULL_DIGEST`;
-- writes a `fleet`-role message and sends with `fleetChainDepth`.
+- writes a `fleet`-role message and starts a turn with it, the same way a due schedule does;
+- keeps a digest that arrives after the pane got busy, since main has already moved past what it covers.
 
-Main renders the digest from registry events after the thread's cursor.
-It skips sessions covered by an active `fleet_wait`.
-It caps output at 6 sessions and about 1,200 characters per session.
-It advances the cursors, and withholds the digest at the chain limit (6).
+Main keeps its own attention log, fed from registry changes, because an ended session leaves the registry 30 s later and a digest taken after that must still report it.
+An item is logged only when a session's attention key (phase, waiting kind and phase start) changes into attention, or when its pane goes away, so Claude Code's idle reminders are not news and a `/clear` is not an ending.
+A session that reaches its prompt through `SessionStart` (a start, a resume, a `/clear`) has finished nothing, so it is not logged either, and `fleet_wait` follows the same rule.
+The E2E found this: a user starting `claude` in a pane woke the Orchestrator with "finished its turn", and it acted on the stale request from its previous turn.
+Main renders the digest from the log after the thread's cursor, newest item per pane, and drops items that are no longer true (the session was prompted again before the digest was taken).
+It skips panes covered by a running `fleet_wait`, and panes whose attention a finished wait already reported.
+The digest covers at most 6 sessions and about 1,200 characters per session.
+Its headlines carry pane labels, which hold the user's tab names and the session's folder name, so they are fenced like any other session data.
+It advances the cursors, including the Orchestrator's read cursor for each brief delta it shows.
+
+`fleet_wait` follows sessions by pane, so a `/clear`, or a spawned pane whose session reports during the wait, is still the session asked about.
+Its cursor is the state each watched pane had when the wait began: only a later move into `waitingForInput`, `waitingForApproval` or `ended` ends it, so a session already waiting is not news.
+It returns at once when no watched session is working and no watched spawn is still starting.
+It ends on the first attention change, the timeout, or the turn's abort signal, and reports that session's brief delta through the Orchestrator's own read cursor, followed by where the other watched sessions stand.
+Its headline names the session by ref only, and the list of other watched sessions is fenced and capped at 6 lines.
+Main keeps the set of panes each thread waits on, which is what the digest consults.
+
+Main, not the renderer, holds the chain count, in the thread's ledger file so it survives a restart.
+Each digest turn adds one, and a turn the user wrote (text or attachments) in orchestrator mode resets it.
+At the limit (6) the last digest says so, later digests are held without moving the cursor, `fleet_send` and `fleet_spawn` refuse, and the pane shows a paused notice until the user writes.
+This replaces the planned `fleetChainDepth` on the send request: a count the renderer sends could not survive a reload, and main already owns the other limits.
 `AGENT_FLEET_SET_MODE` resets the cursors to "now" when the mode is turned on.
 
 A token bucket limits sends and spawns to 20 per 10 minutes per thread.
@@ -283,9 +323,10 @@ The cost is six touch points and no downgrade compatibility for session files.
   A background task finishing queues a turn the same way.
   Counting prompts against stops cannot fix it: an Esc interrupt sends no `Stop`, and the count would leave the session stuck as working.
   → Phase 3 settles it from the transcript, which records `queue-operation` lines with `operation: "enqueue"` and `"dequeue"`: a dequeue after the last `Stop` means a turn is running (task 4.2b).
-- **Bracketed paste in the Claude Code TUI.** Paste handling may vary by version.
-  → Verify manually before Phase 4 ships.
-  → The acknowledgement timeout keeps the tool honest.
+- **Paste detection in the Claude Code TUI.** Typed input that arrives in one read above about 800 characters is taken as a paste, and the threshold may change between versions.
+  A main process stalled long enough for several chunks to pile up in the PTY could also trip it.
+  → Chunks are a sixth of the observed threshold.
+  → The acknowledgement timeout keeps the tool honest, and a wrapped prompt reads back as "typed by the user", since its recorded text does not match the noted hash.
 - **Default hook install edits a user's Claude config.** It already runs on macOS today.
   → Backup, atomic write, abort on parse failure, and a setting to turn it off.
 - **Migration blast radius.** Moving files touches copilot, sessions and the mascot renderer.

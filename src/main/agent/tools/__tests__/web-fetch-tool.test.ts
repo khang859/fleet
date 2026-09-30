@@ -18,6 +18,7 @@ const ctx = (fetchUrl: AgentUrlFetcher | null): AgentToolContext => ({
   handOff: () => {},
   approve: async () => Promise.resolve(true),
   wasRefused: () => false,
+  approveFleet: async () => Promise.resolve(false),
   generateImage: null,
   fetchUrl,
   mcp: null,
