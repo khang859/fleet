@@ -1,5 +1,6 @@
 import {
   attentionKey,
+  cameUp,
   needsAttention,
   type ClaudeSession,
   type ClaudeSessionChange
@@ -121,7 +122,9 @@ export async function waitForSessions(
       const key = attentionKey(session);
       if (seen.get(session.paneId) === key) return;
       seen.set(session.paneId, key);
-      if (needsAttention(session)) resolve({ kind: 'attention', paneId: session.paneId, session });
+      if (needsAttention(session) && !cameUp(change)) {
+        resolve({ kind: 'attention', paneId: session.paneId, session });
+      }
     });
     const timer = setTimeout(() => resolve({ kind: 'timeout' }), args.timeout_s * 1000);
     const onAbort = (): void => resolve({ kind: 'stopped' });

@@ -1,5 +1,6 @@
 import {
   attentionKey,
+  cameUp,
   needsAttention,
   type ClaudeSession,
   type ClaudeSessionChange
@@ -73,7 +74,7 @@ export class FleetAttention {
       const before = this.keys.get(sessionId);
       this.keys.set(sessionId, key);
       this.panes.set(sessionId, session.paneId);
-      if (before !== key && needsAttention(session)) {
+      if (before !== key && needsAttention(session) && !cameUp(change)) {
         this.push({ paneId: session.paneId, sessionId, session });
       }
       return;

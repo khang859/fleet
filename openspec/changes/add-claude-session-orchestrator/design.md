@@ -279,6 +279,8 @@ It reacts to attention transitions arriving on `CLAUDE_SESSIONS_CHANGED`, and it
 
 Main keeps its own attention log, fed from registry changes, because an ended session leaves the registry 30 s later and a digest taken after that must still report it.
 An item is logged only when a session's attention key (phase, waiting kind and phase start) changes into attention, or when its pane goes away, so Claude Code's idle reminders are not news and a `/clear` is not an ending.
+A session that reaches its prompt through `SessionStart` (a start, a resume, a `/clear`) has finished nothing, so it is not logged either, and `fleet_wait` follows the same rule.
+The E2E found this: a user starting `claude` in a pane woke the Orchestrator with "finished its turn", and it acted on the stale request from its previous turn.
 Main renders the digest from the log after the thread's cursor, newest item per pane, and drops items that are no longer true (the session was prompted again before the digest was taken).
 It skips panes covered by a running `fleet_wait`, and panes whose attention a finished wait already reported.
 

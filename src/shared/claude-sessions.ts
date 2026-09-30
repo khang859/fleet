@@ -167,6 +167,15 @@ export function needsAttention(session: ClaudeSession): boolean {
 }
 
 /**
+ * A session coming up at its prompt: a start, a resume or a `/clear`. It has
+ * finished nothing, so it is not news to an Orchestrator even though its phase
+ * is now `waitingForInput`.
+ */
+export function cameUp(change: ClaudeSessionChange): boolean {
+  return change.event?.event === 'SessionStart';
+}
+
+/**
  * Enough of a session's state to tell one phase from the next, and the same
  * phase entered again. A hook event that changes none of it - Claude Code's
  * idle reminder a minute into a wait, say - is not news.

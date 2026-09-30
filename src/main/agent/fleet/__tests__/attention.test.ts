@@ -28,6 +28,18 @@ const change = (s: ClaudeSession): ClaudeSessionChange => ({
   session: s,
   event: null
 });
+const started = (s: ClaudeSession): ClaudeSessionChange => ({
+  sessionId: s.sessionId,
+  session: s,
+  event: {
+    seq: 1,
+    sessionId: s.sessionId,
+    at: 1,
+    event: 'SessionStart',
+    status: '',
+    phase: s.phase
+  }
+});
 const gone = (sessionId: string): ClaudeSessionChange => ({
   sessionId,
   session: null,
@@ -49,6 +61,16 @@ describe('FleetAttention', () => {
     expect(a.pending(THREAD)).toEqual([
       expect.objectContaining({ paneId: 'p1', session: expect.objectContaining({ phaseSince: 3 }) })
     ]);
+  });
+
+  it('does not log a session coming up at its prompt, which has finished nothing', () => {
+    const a = new FleetAttention();
+    a.observe(started(waiting()));
+    a.observe(started(waiting({ sessionId: 's1b', epoch: 1, phaseSince: 3 })));
+    expect(a.pending(THREAD)).toEqual([]);
+    a.observe(change(session({ sessionId: 's1b', epoch: 1, phaseSince: 4 })));
+    a.observe(change(waiting({ sessionId: 's1b', epoch: 1, phaseSince: 5 })));
+    expect(a.pending(THREAD)).toHaveLength(1);
   });
 
   it('logs a pane going away, but not a /clear or the removal of an ended session', () => {

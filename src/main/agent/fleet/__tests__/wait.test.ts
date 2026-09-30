@@ -58,9 +58,13 @@ describe('fleet_wait', () => {
   });
 
   /** Put a session in the registry and tell the listeners, as a hook event would. */
-  const report = (next: FleetSession): void => {
+  const report = (next: FleetSession, hook?: string): void => {
     sessions = [...sessions.filter((s) => s.sessionId !== next.sessionId), next];
-    for (const l of listeners) l({ sessionId: next.sessionId, session: next, event: null });
+    const event =
+      hook === undefined
+        ? null
+        : { seq: 1, sessionId: next.sessionId, at: AT, event: hook, status: '', phase: next.phase };
+    for (const l of listeners) l({ sessionId: next.sessionId, session: next, event });
   };
   const remove = (sessionId: string): void => {
     sessions = sessions.filter((s) => s.sessionId !== sessionId);
@@ -169,8 +173,18 @@ describe('fleet_wait', () => {
 
   it('reports a session whose pane went away, but not one replaced by /clear', async () => {
     const pending = wait({ timeout_s: 60 });
-    // `/clear`: the new session is in the pane before the old one leaves.
-    report(session({ sessionId: 's1b', epoch: 1, phaseSince: AT + 1 }));
+    // `/clear`: the new session is at its prompt before the old one leaves,
+    // which has finished nothing.
+    report(
+      session({
+        sessionId: 's1b',
+        epoch: 1,
+        phase: 'waitingForInput',
+        waitingKind: 'prompt',
+        phaseSince: AT + 1
+      }),
+      'SessionStart'
+    );
     remove('s1');
     remove('s1b');
     const out = await pending;
