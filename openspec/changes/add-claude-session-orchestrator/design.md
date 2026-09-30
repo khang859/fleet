@@ -1,0 +1,272 @@
+## Context
+
+See proposal.md for motivation; the specs hold the requirements.
+
+The current state that shapes this design:
+
+- **Hook pipeline.** The Go hook (`hooks/fleet-copilot-go/main.go`) exits unless `FLEET_SESSION` is set, maps Claude Code hook events to a status, and sends JSON to a unix socket.
+  `CopilotSocketServer` feeds `CopilotSessionStore`, which holds sessions in memory.
+  Everything is created inside `initCopilot` (`src/main/copilot/index.ts`), which returns early unless the platform is darwin and `copilot.enabled` is true.
+- **Pane mapping** is a `ps` parent walk (`findPaneForPid`, `copilot/ipc-handlers.ts:29`).
+  `PtyManager.create` already has the pane id in scope where it builds the env (`pty-manager.ts:135`).
+- **Transcripts** are parsed by `conversation-reader.ts`, which drops `tool_result` blocks and keeps only 60-character tool previews.
+  Cost math lives in `sessions/claude-source.ts` (`aggregateClaudeUsage`).
+  Both hardcode `~/.claude`.
+- **Agent pane** tools are a zod schema plus a spec in `shared/agent-tools.ts`, a handler in `agent/tools/`, and a case in `tools/run.ts`.
+  Main-side services reach tools as nullable capabilities on `AgentToolContext` (the `schedule` capability is the template).
+  Only `bash` and MCP tools ask for permission, through `PermissionGate`.
+- **Scheduled turns.** Main never starts an Agent turn.
+  The pane pulls due work (`renderer/store/agent-schedule.ts`) and sends with `scheduleChainDepth`.
+- **Main-to-renderer requests.** The layout is renderer-owned, so main cannot create tabs itself.
+  `QuitGuard` (`quit-guard.ts`) is the existing request/reply pattern.
+- **Verified pre-existing bugs.** Phase 0 fixes:
+  - `hook-installer.ts:214-221` resets settings to `{}` on a parse failure;
+  - `main.go:251` maps `SubagentStop` to `waiting_for_input`;
+  - `session-store.ts:110-113` folds AskUserQuestion into `waitingForInput`;
+  - `socket-server.ts:90` chmods the socket `0o777`.
+
+## Goals / Non-Goals
+
+**Goals:**
+
+- One platform-neutral source of truth for Claude session state, which the copilot overlay, the status view and the Orchestrator all consume.
+- An Orchestrator that can act with confidence because its context is cheap and current, and its actions are gated and auditable.
+- Every phase ships on its own and is useful on its own.
+
+**Non-Goals:**
+
+- Windows support for tracking and spawn.
+- Tracking Claude sessions outside Fleet panes, or other agent CLIs such as Codex and Gemini.
+- Starting Agent turns from main.
+  Wakeups keep the pane-pulls model.
+- Auto-answering Claude Code's folder trust dialog, or any TUI menu other than the permission hook.
+- An LLM-written session summary as the default context.
+  The brief is deterministic, and LLM reads are opt-in through the analyst subagent.
+
+## Decisions
+
+### D1. New `src/main/claude-sessions/` core module; copilot becomes a consumer
+
+The module contains:
+- `hook-events` (zod-parsed wire format);
+- `hook-server` (the renamed socket server, plus the permission broker);
+- `phase` (a pure reducer from event to phase);
+- `registry`;
+- `pane-resolver`;
+- `hook-installer` (moved);
+- `transcript` (normalizer and incremental tail);
+- `brief`;
+- `usage-accumulator` (extracted from `claude-source`);
+- `git-probe`;
+- `input` (safe delivery and draft tracking);
+- `pane-activity-bridge`;
+- `ipc-handlers`;
+- `index` (the composition root).
+
+An ESLint `no-restricted-imports` override stops this module from importing `copilot`, `agent`, `sessions`, `electron` or `main/index`.
+Pricing and git are injected.
+
+`CopilotSession` types in `shared/types.ts` become aliases of the new types, so the mascot renderer is untouched.
+
+*Alternative considered:* split `copilot/index.ts` into a core half and an overlay half and extend `CopilotSessionStore`.
+That is a smaller diff.
+It would keep a core service inside a module named after a macOS mascot, behind a gate that tracking no longer has, and it would postpone the same move.
+
+### D2. Pane identity: `FLEET_PANE_ID` with the `ps` walk as fallback
+
+`PtyManager` adds `FLEET_PANE_ID` to the env, and the hook forwards it as `pane_id`.
+The resolver accepts it only if `ptyManager.has(paneId)`.
+That also rejects ids forwarded from another Fleet instance or through tmux or ssh.
+When there is no id, it falls back to the `ps` walk, so sessions started before the hook binary updates keep working.
+Only hits are cached.
+
+The hook also forwards `transcript_path` from Claude Code's hook stdin, plus `config_dir` and a protocol version.
+This fixes the `CLAUDE_CONFIG_DIR` bug and the lossy cwd-to-folder encoding.
+
+### D3. Phase model
+
+Phases are `starting | processing | waitingForInput | waitingForApproval | compacting | ended`.
+`waitingForInput` also carries `waitingKind: prompt | question`.
+
+The rules for the awkward cases:
+- `SubagentStop` becomes a new status that the reducer ignores for phase.
+- A new `session_id` on a known pane (from `/clear`) ends the old session and bumps the pane's epoch.
+- `starting` covers a spawned pane that has not sent `SessionStart` yet.
+
+The reducer is pure and table-tested.
+
+### D4. Hooks installed by default, safely
+
+The user chose on-by-default, with a `claudeSessions.trackSessions` setting to turn it off.
+To make that safe, the installer:
+- aborts on an unparseable or non-object `settings.json`, leaves it untouched, and shows the error in the UI;
+- writes `settings.json.fleet-bak` before changing anything;
+- writes to a temp file and renames it into place;
+- quotes the command.
+
+On startup it runs `ensureHooks` for every Claude config folder Fleet uses: the default plus any workspace overrides.
+That also refreshes the binary after an upgrade.
+`FolderHooks` loses its darwin gate.
+
+### D5. Safe input delivery
+
+`input.sendPrompt(sessionId, text, origin)` is the single path for both the copilot chat send (`origin: user`) and `fleet_send` (`origin: orchestrator`).
+It writes nothing unless all of these hold:
+- the phase is `waitingForInput` with kind `prompt`;
+- the pane's draft is clean;
+- there has been no user keystroke for 3 s;
+- the rate limit passes.
+
+Draft tracking works on renderer-originated PTY writes in main.
+Printable input marks the draft dirty.
+Enter, Ctrl-C, Ctrl-U or a `UserPromptSubmit` hook event marks it clean.
+
+The text is sent as a bracketed paste (`ESC[200~ … ESC[201~`), followed by `\r` about 50 ms later.
+The send is confirmed only by a `UserPromptSubmit` for that session within 5 s; otherwise it is reported as "not confirmed".
+The registry also records the origin and a hash of the text.
+That is how turn reads tell real Orchestrator prompts from a user typing the prefix.
+
+*Alternative considered:* the current `write(text + '\r')`.
+It submits half-typed drafts, can split multi-line text, and lands in whatever dialog is open.
+
+### D6. Orchestrator mode is a per-pane flag
+
+The flag lives on the Agent pane leaf and is sent on each `AgentSendRequest` as `orchestrator: true`.
+Fleet tools are defined in `shared/fleet-tools.ts`:
+- `FLEET_READ_TOOL_NAMES` (`sessions`, `read`, `diff`) join `SUBAGENT_TOOL_NAMES`;
+- `FLEET_ACT_TOOL_NAMES` (`send`, `spawn`, `wait`, `permission`) join `AGENT_TOOL_NAMES` only.
+
+Tool specs are built per turn and advertised only when the flag is set.
+Keeping them out of other turns saves about 2-3k tokens per round there, and keeps the act tools' blast radius opt-in.
+
+The Agent side reaches the registry only through a `FleetHost` facade in `agent/fleet/`.
+`AgentToolContext.fleet` holds either the full capability or a read-only pick, and is `null` otherwise.
+
+*Alternative considered:* offering the tools in every Agent pane.
+Rejected: it pays the token cost on every round, and wakeups need a designated pane anyway.
+
+### D7. Context economy
+
+- **Transcript normalizer.**
+  - It emits `user_prompt`, `assistant_text`, `tool_use`, `tool_result`, `clear` and `meta` events, reusing the existing skip rules.
+  - `conversation-reader` is rebuilt on it, and its existing tests pin behavior.
+  - `TranscriptTail` reads only new bytes, resets on truncation, and keeps a turn index plus a bounded `toolUseId → byte range` map.
+  - Tool results are re-read from disk on demand, so memory stays flat.
+- **SessionBrief.**
+  - Every item carries a per-session `rev`, which is what makes deltas possible.
+  - Todos fold both the `TodoWrite` and the `TaskCreate`/`TaskUpdate` shapes.
+  - The git block comes from `git-probe`, cached for 5 s, and runs only when a brief or digest is rendered.
+  - The rendered brief is capped at about 3.5k characters, and truncation says what it cut.
+- **`fleet_read`.** Levels are `brief`, `turns` and `tool`.
+  - The cursor `{epoch, rev, turn}` is kept per `(orchestrator thread, Claude session)` in the ledger file.
+  - Subagent capabilities never advance it.
+  - Output is fenced as untrusted session data.
+- **`fleet_diff`.** It runs git with a fixed argv, no shell, `--no-ext-diff`, `GIT_OPTIONAL_LOCKS=0`, a timeout and an output cap.
+  - The cwd comes only from the registry.
+  - `path` goes through `resolveInsideCwd(path, session.cwd)`, which reuses the credential checks.
+  - The `file` view reuses `runRead` with `cwd` swapped.
+  - *Alternative considered:* widening the Agent sandbox to live session folders.
+    Rejected: it breaks the "a tool touches only its pane cwd" invariant for every file tool.
+- **`fleet-analyst`** is a bundled subagent definition with the read tools only.
+  It is advertised only on orchestrator turns.
+- **Ledger.**
+  - Stored in `<agent sessions dir>/<threadId>.fleet.json`, written atomically, capped, and deleted with the session.
+  - `fleet_send` and `fleet_spawn` require `why` and `expect` arguments, and the entry is written automatically.
+  - `withFleetLedger` splices open entries and the live session one-liners into each round.
+    It sits next to `withRunningSubagents`, after the cache breakpoint.
+  - *Alternative considered:* the Agent session log.
+    Rejected: compaction folds it, and it is renderer-owned.
+
+### D8. `fleet_spawn` through an env var and a renderer RPC
+
+1. Main validates the cwd.
+2. If a worktree was asked for, main creates it with `WorktreeService`.
+3. Main mints a `paneId` and records a pending spawn: `cmd = claude "$FLEET_SPAWN_PROMPT"`, `env = { FLEET_SPAWN_PROMPT: "[orchestrator] …" }`.
+4. Main asks the renderer to open an unfocused tab with that `paneId`, through a `RendererRpc` modeled on `QuitGuard`.
+5. `PTY_CREATE` takes the pending spawn and overrides `cmd` and env.
+
+The prompt never enters the layout, so restoring a layout cannot re-run it, and it needs no shell quoting.
+Spawn is refused on Windows and WSL profiles.
+
+*Alternative considered:* shell-quoting the prompt into `cmd`.
+It is fragile across shells, and the prompt would be persisted with the layout.
+
+### D9. Gate extension
+
+`PermissionGate.checkFleet(req)` follows `checkMcp`.
+For each action it checks, in order:
+- **`send` and `spawn`:**
+  1. the per-turn refusal memory;
+  2. full access, which allows the action;
+  3. an in-memory `fleetGrants` set keyed `send:<sessionId>`;
+  4. otherwise it asks.
+- **`permission`:**
+  1. the user's deny rules, which always refuse;
+  2. full access, which skips only the ask;
+  3. an `alwaysAskReason`, which still asks;
+  4. otherwise it asks.
+
+`AgentPermissionAsk` gets a `fleet` payload.
+`Pending.rules` becomes `'shell' | 'mcp' | 'fleet'`.
+"Always" for a fleet ask adds a grant; it never persists a rule.
+Grants are dropped when the registry removes the session.
+Spawn offers only "once".
+
+### D10. Wakeups
+
+The renderer store `agent-fleet.ts` mirrors `agent-schedule.ts`.
+It reacts to attention transitions arriving on `CLAUDE_SESSIONS_CHANGED`, and it:
+- debounces for 2 s;
+- holds the digest while the pane is busy;
+- pulls the digest from main with `AGENT_FLEET_PULL_DIGEST`;
+- writes a `fleet`-role message and sends with `fleetChainDepth`.
+
+Main renders the digest from registry events after the thread's cursor.
+It skips sessions covered by an active `fleet_wait`.
+It caps output at 6 sessions and about 1,200 characters per session.
+It advances the cursors, and withholds the digest at the chain limit (6).
+`AGENT_FLEET_SET_MODE` resets the cursors to "now" when the mode is turned on.
+
+A token bucket limits sends and spawns to 20 per 10 minutes per thread.
+
+*Alternative considered:* reusing the `scheduled` role.
+Rejected: a distinct `fleet` role is clearer in the transcript and in compaction.
+The cost is six touch points and no downgrade compatibility for session files.
+
+## Risks / Trade-offs
+
+- **Prompt injection.** Session text reaches an agent that can type into other terminals.
+  → Mitigations: untrusted-data fencing, ask by default, rate and chain limits, `fleet_permission` off by default, and deny rules that full access cannot bypass.
+- **Hook contract drift.** `transcript_path`, `/clear` semantics and the `toolUseResult` shape could change between Claude Code versions.
+  → Verify each against the installed Claude Code during Phase 1.
+  → Fall back to the config-dir path, degrade the brief to the registry-only view, and keep a golden fixture per observed shape.
+- **Bracketed paste in the Claude Code TUI.** Paste handling may vary by version.
+  → Verify manually before Phase 4 ships.
+  → The acknowledgement timeout keeps the tool honest.
+- **Default hook install edits a user's Claude config.** It already runs on macOS today.
+  → Backup, atomic write, abort on parse failure, and a setting to turn it off.
+- **Migration blast radius.** Moving files touches copilot, sessions and the mascot renderer.
+  → Alias types, pin behavior with the existing tests, and land Phase 1 as small PRs.
+- **Token spend from wakeups.**
+  → Debounce, batching, the chain limit and the rate limit.
+- **Renderer reload drops an in-flight digest.** This is the same at-most-once trade-off as schedules.
+  → `fleet_read` with `since: start` recovers the missed state.
+
+## Migration Plan
+
+Each phase is a separate PR, and each is revertible on its own:
+
+- **Phase 0 (bug fixes).** Safe to ship first.
+- **Phase 1 (registry).** Keeps the `ps` fallback, so older hook binaries keep working.
+  The Go binary is rebuilt by `npm run build:hook`.
+- **Phases 3-5.** Additive and behind the per-pane mode or a setting.
+
+Rollback for the default install: turning the setting off removes Fleet's entries.
+Reverting the PR restores the old macOS-only behavior, and the backup file stays available.
+
+## Open Questions
+
+- The exact status-view placement within `Sidebar.tsx`, and whether it can be collapsed.
+  Settle during Phase 2 with a screenshot review.
+- The model-to-context-limit table used for the context percentage.
+  Start at 200k by default and refine.
