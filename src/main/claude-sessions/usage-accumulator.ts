@@ -127,7 +127,6 @@ export class UsageAccumulator {
     // Without a model the tokens cannot be priced; skip rather than poison the cost.
     const model = message.model;
     if (!model) return;
-    if (!this.models.includes(model)) this.models.push(model);
 
     const input = u.input_tokens ?? 0;
     const output = u.output_tokens ?? 0;
@@ -142,10 +141,13 @@ export class UsageAccumulator {
     }
 
     const seen = input + cacheRead + write5m + write1h;
-    if (seen || output) this.hasUsage = true;
-    // A zero-usage line (an API error Claude Code records as a message) says
-    // nothing about how full the context is.
-    if (!isSidechain && seen > 0) this.context = { tokens: seen, model };
+    // Claude Code records an API error as a message from model `<synthetic>`
+    // with no usage. Counting it would name a model no price table has and
+    // leave the whole session unpriced.
+    if (!seen && !output) return;
+    this.hasUsage = true;
+    if (!this.models.includes(model)) this.models.push(model);
+    if (!isSidechain) this.context = { tokens: seen, model };
 
     add(this.total, input, output, cacheRead, write5m, write1h);
     const bucket = this.perModel.get(model) ?? emptyUsage();

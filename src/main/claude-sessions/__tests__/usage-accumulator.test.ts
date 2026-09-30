@@ -162,6 +162,12 @@ describe('UsageAccumulator', () => {
     expect(agg.context).toEqual({ tokens: 12_505, model: 'claude-opus-4-8' });
   });
 
+  it('leaves zero-usage API error lines out, so the session stays priced', () => {
+    const agg = aggregateClaudeUsage(transcript);
+    expect(agg.models).toEqual(['claude-opus-4-8', 'claude-haiku-4-5']);
+    expect(agg.perModel.has('<synthetic>')).toBe(false);
+  });
+
   it('reports no context before any main-chain usage', () => {
     const agg = aggregateClaudeUsage(
       assistantLine({
