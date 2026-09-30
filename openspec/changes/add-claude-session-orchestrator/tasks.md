@@ -60,9 +60,9 @@
 
 ## 6. Phase 5 - permission tool (PR 6)
 
-- [ ] 6.1 Add the `ai.agent.orchestrator.answerPermissions` setting (default off) and its settings UI, with help text noting that Claude's own deny list applies before Fleet sees a request; verify with a settings test
-- [ ] 6.2 Implement `fleet_permission` (not advertised when off; deny rules apply even under full access; always-ask commands still ask; answers through the permission broker); verify with gate and tool tests
-- [ ] 6.3 E2E: a session requests Bash permission, and the orchestrator answers it with the setting on and is refused by a deny rule
+- [x] 6.1 Add the `ai.agent.orchestrator.answerPermissions` setting (default off) and its settings UI, with help text noting that Claude's own deny list applies before Fleet sees a request; verify with a settings test
+- [x] 6.2 Implement `fleet_permission` (not advertised when off; deny rules apply even under full access; always-ask commands still ask; answers through the permission broker); verify with gate and tool tests
+- [x] 6.3 E2E: a session requests Bash permission, and the orchestrator answers it with the setting on and is refused by a deny rule
 
 ## 7. Wrap-up per PR
 
