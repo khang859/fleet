@@ -1,0 +1,216 @@
+[
+  {
+    "id": "u1",
+    "role": "user",
+    "timestamp": "2026-09-30T10:00:01.000Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "Add a retry to fetchUser — and keep the tests green"
+      }
+    ]
+  },
+  {
+    "id": "a1",
+    "role": "assistant",
+    "timestamp": "2026-09-30T10:00:02.000Z",
+    "blocks": [
+      {
+        "type": "thinking",
+        "text": "Look at fetchUser first."
+      }
+    ]
+  },
+  {
+    "id": "a2",
+    "role": "assistant",
+    "timestamp": "2026-09-30T10:00:02.100Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "Reading the client."
+      }
+    ]
+  },
+  {
+    "id": "a3",
+    "role": "assistant",
+    "timestamp": "2026-09-30T10:00:02.200Z",
+    "blocks": [
+      {
+        "type": "tool_use",
+        "id": "t1",
+        "name": "Read",
+        "inputPreview": "client.ts"
+      }
+    ]
+  },
+  {
+    "id": "a4",
+    "role": "assistant",
+    "timestamp": "2026-09-30T10:00:03.000Z",
+    "blocks": [
+      {
+        "type": "tool_use",
+        "id": "t2",
+        "name": "Edit",
+        "inputPreview": "client.ts"
+      }
+    ]
+  },
+  {
+    "id": "a5",
+    "role": "assistant",
+    "timestamp": "2026-09-30T10:00:04.000Z",
+    "blocks": [
+      {
+        "type": "tool_use",
+        "id": "t3",
+        "name": "Bash",
+        "inputPreview": "npm test -- client"
+      }
+    ]
+  },
+  {
+    "id": "a6",
+    "role": "assistant",
+    "timestamp": "2026-09-30T10:00:06.000Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "One test fails; the retry count was off by one. Fixed — all green now. ✓"
+      }
+    ]
+  },
+  {
+    "id": "u2",
+    "role": "user",
+    "timestamp": "2026-09-30T10:01:00.020Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>"
+      }
+    ]
+  },
+  {
+    "id": "a7",
+    "role": "assistant",
+    "timestamp": "2026-09-30T10:01:01.000Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "The background build finished."
+      }
+    ]
+  },
+  {
+    "id": "u3",
+    "role": "user",
+    "timestamp": "2026-09-30T10:02:00.001Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "This session is being continued from a previous conversation that ran out of context."
+      }
+    ]
+  },
+  {
+    "id": "u4",
+    "role": "user",
+    "timestamp": "2026-09-30T10:03:00.000Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "now delete the old cache dir"
+      }
+    ]
+  },
+  {
+    "id": "a8",
+    "role": "assistant",
+    "timestamp": "2026-09-30T10:03:01.000Z",
+    "blocks": [
+      {
+        "type": "tool_use",
+        "id": "t4",
+        "name": "Bash",
+        "inputPreview": "rm -rf .cache"
+      }
+    ]
+  },
+  {
+    "id": "u5",
+    "role": "user",
+    "timestamp": "2026-09-30T10:03:30.000Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "ask me which one first"
+      }
+    ]
+  },
+  {
+    "id": "a9",
+    "role": "assistant",
+    "timestamp": "2026-09-30T10:03:31.000Z",
+    "blocks": [
+      {
+        "type": "tool_use",
+        "id": "t5",
+        "name": "AskUserQuestion",
+        "inputPreview": "",
+        "input": {
+          "questions": [
+            {
+              "question": "Which cache?",
+              "header": "Cache",
+              "multiSelect": false,
+              "options": [
+                {
+                  "label": ".cache",
+                  "description": "build cache"
+                },
+                {
+                  "label": "tmp",
+                  "description": "temp files"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "u6",
+    "role": "user",
+    "timestamp": "2026-09-30T10:03:40.000Z",
+    "blocks": [
+      {
+        "type": "interrupted"
+      }
+    ]
+  },
+  {
+    "id": "u7",
+    "role": "user",
+    "timestamp": "2026-09-30T10:04:00.000Z",
+    "blocks": [
+      {
+        "type": "text",
+        "text": "look at this screenshot"
+      }
+    ]
+  },
+  {
+    "id": "a10",
+    "role": "assistant",
+    "timestamp": "2026-09-30T10:04:01.000Z",
+    "blocks": [
+      {
+        "type": "interrupted"
+      }
+    ]
+  }
+]

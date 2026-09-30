@@ -1,252 +1,89 @@
-import { existsSync, statSync, watch, openSync, readSync, closeSync, type FSWatcher } from 'fs';
+import { existsSync, watch, type FSWatcher } from 'fs';
 import { createLogger } from '../logger';
-import { isRecord } from '../../shared/is-record';
+import {
+  normalizeLine,
+  toolInputPreview,
+  TranscriptTail,
+  type TranscriptEvent
+} from '../claude-sessions/transcript';
 import type { CopilotChatMessage, CopilotMessageBlock } from '../../shared/types';
 
 const log = createLogger('copilot:conversation-reader');
 
 type SessionParseState = {
   filePath: string;
-  lastOffset: number;
+  tail: TranscriptTail;
   messages: CopilotChatMessage[];
   seenToolIds: Set<string>;
 };
 
-function formatToolInputPreview(toolName: string, input: Record<string, unknown>): string {
-  switch (toolName) {
-    case 'Read':
-    case 'Write':
-    case 'Edit': {
-      const fp = input['file_path'];
-      if (typeof fp === 'string') {
-        return fp.split('/').pop() ?? fp;
-      }
-      return '';
-    }
-    case 'Bash': {
-      const cmd = input['command'];
-      if (typeof cmd === 'string') {
-        const firstLine = cmd.split('\n')[0] ?? cmd;
-        return firstLine.slice(0, 60);
-      }
-      return '';
-    }
-    case 'Grep':
-    case 'Glob': {
-      const pattern = input['pattern'];
-      return typeof pattern === 'string' ? pattern : '';
-    }
-    case 'Task':
-    case 'Agent': {
-      const desc = input['description'];
-      return typeof desc === 'string' ? desc : '';
-    }
-    case 'WebFetch': {
-      const url = input['url'];
-      return typeof url === 'string' ? url : '';
-    }
-    case 'WebSearch': {
-      const query = input['query'];
-      return typeof query === 'string' ? query : '';
-    }
-    case 'Skill': {
-      const skill = input['skill'];
-      return typeof skill === 'string' ? skill : '';
-    }
-    case 'ToolSearch': {
-      const q = input['query'];
-      return typeof q === 'string' ? q.slice(0, 60) : '';
-    }
-    case 'SendMessage': {
-      const to = input['to'];
-      return typeof to === 'string' ? `→ ${to}` : '';
-    }
-    case 'EnterPlanMode':
-      return 'Planning…';
-    case 'ExitPlanMode':
-      return 'Done planning';
-    case 'TaskCreate': {
-      const subject = input['subject'];
-      return typeof subject === 'string' ? subject.slice(0, 60) : '';
-    }
-    case 'TaskUpdate': {
-      const status = input['status'];
-      const id = input['id'];
-      const parts: string[] = [];
-      if (typeof id === 'string') parts.push(id.slice(0, 8));
-      if (typeof status === 'string') parts.push(status);
-      return parts.join(' → ');
-    }
-    case 'TaskList':
-    case 'TaskGet':
-    case 'TaskStop':
-    case 'TaskOutput': {
-      const id = input['id'];
-      return typeof id === 'string' ? id.slice(0, 8) : '';
-    }
-    case 'NotebookEdit': {
-      const fp = input['notebook_path'] ?? input['file_path'];
-      if (typeof fp === 'string') return fp.split('/').pop() ?? fp;
-      return '';
-    }
-    case 'LSP': {
-      const cmd = input['command'];
-      return typeof cmd === 'string' ? cmd : '';
-    }
-    case 'EnterWorktree': {
-      const branch = input['branch'];
-      return typeof branch === 'string' ? branch : '';
-    }
-    case 'ExitWorktree':
-      return '';
-    default: {
-      // Strip MCP prefix for cleaner display: mcp__server__tool → tool
-      if (toolName.startsWith('mcp__')) {
-        const parts = toolName.split('__');
-        const mcpTool = parts.length >= 3 ? parts.slice(2).join('__') : parts.at(-1);
-        for (const val of Object.values(input)) {
-          if (typeof val === 'string' && val.length > 0) return `${mcpTool}: ${val.slice(0, 50)}`;
-        }
-        return mcpTool ?? '';
-      }
-      for (const val of Object.values(input)) {
-        if (typeof val === 'string' && val.length > 0) return val.slice(0, 60);
-      }
-      return '';
-    }
-  }
-}
-
-function parseMessageLine(
-  json: Record<string, unknown>,
+/**
+ * Turn one transcript line's events into a chat message, or null when the line
+ * shows nothing in the chat. Tool calls already shown are dropped by id.
+ */
+function messageFromLine(
+  events: TranscriptEvent[],
   seenToolIds: Set<string>
 ): CopilotChatMessage | null {
-  const type = json['type'];
-  if (typeof type !== 'string' || (type !== 'user' && type !== 'assistant')) return null;
-  if (json['isMeta'] === true) return null;
-
-  const uuid = json['uuid'];
-  if (typeof uuid !== 'string' || !uuid) return null;
-
-  const messageRaw = json['message'];
-  if (!isRecord(messageRaw)) return null;
-
-  const ts = json['timestamp'];
-  const timestamp = typeof ts === 'string' ? ts : new Date().toISOString();
+  const first = events.at(0);
+  if (!first?.uuid || !first.role) return null;
   const blocks: CopilotMessageBlock[] = [];
-  const content = messageRaw['content'];
-
-  if (typeof content === 'string') {
-    if (
-      content.startsWith('<command-name>') ||
-      content.startsWith('<local-command') ||
-      content.startsWith('Caveat:')
-    ) {
-      return null;
-    }
-    if (content.startsWith('[Request interrupted by user')) {
-      blocks.push({ type: 'interrupted' });
-    } else {
-      blocks.push({ type: 'text', text: content });
-    }
-  } else if (Array.isArray(content)) {
-    for (const block of content) {
-      if (!isRecord(block)) continue;
-      const blockType = block['type'];
-      if (typeof blockType !== 'string') continue;
-      switch (blockType) {
-        case 'text': {
-          const text = block['text'];
-          const textStr = typeof text === 'string' ? text : '';
-          if (textStr.startsWith('[Request interrupted by user')) {
-            blocks.push({ type: 'interrupted' });
-          } else if (textStr) {
-            blocks.push({ type: 'text', text: textStr });
-          }
-          break;
-        }
-        case 'tool_use': {
-          const toolId = block['id'];
-          const toolIdStr = typeof toolId === 'string' ? toolId : '';
-          if (toolIdStr && seenToolIds.has(toolIdStr)) continue;
-          if (toolIdStr) seenToolIds.add(toolIdStr);
-          const nameRaw = block['name'];
-          const name = typeof nameRaw === 'string' ? nameRaw : 'Unknown';
-          const inputRaw = block['input'];
-          const input = isRecord(inputRaw) ? inputRaw : {};
-          const toolBlock: CopilotMessageBlock = {
-            type: 'tool_use',
-            id: toolIdStr,
-            name,
-            inputPreview: formatToolInputPreview(name, input)
-          };
-          // Include full input for interactive tools so the UI can render options
-          if (name === 'AskUserQuestion') {
-            toolBlock.input = input;
-          }
-          blocks.push(toolBlock);
-          break;
-        }
-        case 'thinking': {
-          const thinking = block['thinking'];
-          const thinkingStr = typeof thinking === 'string' ? thinking : '';
-          if (thinkingStr) {
-            blocks.push({ type: 'thinking', text: thinkingStr });
-          }
-          break;
-        }
-        case 'tool_result':
-          // Skip tool results (they're user messages containing output)
-          break;
+  for (const event of events) {
+    switch (event.kind) {
+      case 'user_prompt':
+      case 'assistant_text':
+        blocks.push({ type: 'text', text: event.text });
+        break;
+      case 'thinking':
+        blocks.push({ type: 'thinking', text: event.text });
+        break;
+      case 'interrupted':
+        blocks.push({ type: 'interrupted' });
+        break;
+      case 'tool_use': {
+        if (event.id && seenToolIds.has(event.id)) break;
+        if (event.id) seenToolIds.add(event.id);
+        const block: CopilotMessageBlock = {
+          type: 'tool_use',
+          id: event.id,
+          name: event.name,
+          inputPreview: toolInputPreview(event.name, event.input)
+        };
+        // Include full input for interactive tools so the UI can render options
+        if (event.name === 'AskUserQuestion') block.input = event.input;
+        blocks.push(block);
+        break;
       }
+      case 'tool_result':
+      case 'clear':
+      case 'queue':
+      case 'meta':
+        // Tool results, queue and bookkeeping lines are not shown in the chat.
+        break;
     }
   }
-
   if (blocks.length === 0) return null;
-
   return {
-    id: uuid,
-    role: type,
-    timestamp,
+    id: first.uuid,
+    role: first.role,
+    timestamp: first.timestamp ?? new Date().toISOString(),
     blocks
   };
 }
 
-/**
- * Apply a single JSONL line to an accumulating message list, mirroring the live
- * watcher's parsing rules (skip non-message lines, reset on `/clear`, dedupe tool ids).
- * Shared by the incremental reader and the full-file {@link parseClaudeTranscript}.
- */
-function applyTranscriptLine(
-  line: string,
+/** Apply one line's events to an accumulating message list: `/clear` empties it. */
+function applyLine(
+  events: TranscriptEvent[],
   messages: CopilotChatMessage[],
   seenToolIds: Set<string>
 ): void {
-  if (!line.trim()) return;
-
-  if (line.includes('<command-name>/clear</command-name>')) {
+  if (events.some((e) => e.kind === 'clear')) {
     messages.length = 0;
     seenToolIds.clear();
     return;
   }
-
-  if (
-    !line.includes('"type":"user"') &&
-    !line.includes('"type": "user"') &&
-    !line.includes('"type":"assistant"') &&
-    !line.includes('"type": "assistant"')
-  ) {
-    return;
-  }
-
-  try {
-    const json: unknown = JSON.parse(line);
-    if (!isRecord(json)) return;
-    const msg = parseMessageLine(json, seenToolIds);
-    if (msg) messages.push(msg);
-  } catch {
-    // Skip malformed lines
-  }
+  const msg = messageFromLine(events, seenToolIds);
+  if (msg) messages.push(msg);
 }
 
 /**
@@ -259,7 +96,7 @@ export function parseClaudeTranscript(content: string): CopilotChatMessage[] {
   const messages: CopilotChatMessage[] = [];
   const seenToolIds = new Set<string>();
   for (const line of content.split('\n')) {
-    applyTranscriptLine(line, messages, seenToolIds);
+    applyLine(normalizeLine(line), messages, seenToolIds);
   }
   return messages;
 }
@@ -279,7 +116,7 @@ export class ConversationReader {
 
     let state = this.states.get(sessionId);
     if (!state) {
-      state = { filePath, lastOffset: 0, messages: [], seenToolIds: new Set() };
+      state = this.newState(filePath);
       this.states.set(sessionId, state);
     }
 
@@ -347,34 +184,26 @@ export class ConversationReader {
     this.states.clear();
   }
 
+  private newState(filePath: string): SessionParseState {
+    const messages: CopilotChatMessage[] = [];
+    const seenToolIds = new Set<string>();
+    const state: SessionParseState = {
+      filePath,
+      messages,
+      seenToolIds,
+      tail: new TranscriptTail({
+        onLine: (line) => applyLine(line.events, state.messages, state.seenToolIds),
+        // The file was replaced by a shorter one: its messages start over.
+        onReset: () => {
+          state.messages = [];
+          state.seenToolIds = new Set();
+        }
+      })
+    };
+    return state;
+  }
+
   private parseNewLines(state: SessionParseState): void {
-    if (!existsSync(state.filePath)) return;
-
-    const stats = statSync(state.filePath);
-    const fileSize = stats.size;
-
-    if (fileSize < state.lastOffset) {
-      state.lastOffset = 0;
-      state.messages = [];
-      state.seenToolIds = new Set();
-    }
-
-    if (fileSize === state.lastOffset) return;
-
-    const bytesToRead = fileSize - state.lastOffset;
-    const buf = Buffer.alloc(bytesToRead);
-    const fd = openSync(state.filePath, 'r');
-    try {
-      readSync(fd, buf, 0, bytesToRead, state.lastOffset);
-    } finally {
-      closeSync(fd);
-    }
-
-    const newContent = buf.toString('utf-8');
-    for (const line of newContent.split('\n')) {
-      applyTranscriptLine(line, state.messages, state.seenToolIds);
-    }
-
-    state.lastOffset = fileSize;
+    state.tail.readSync(state.filePath);
   }
 }
