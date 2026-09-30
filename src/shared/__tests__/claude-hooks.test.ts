@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isFleetHookCommand,
+  quoteHookCommand,
   isFleetHookEntry,
   readHooks,
   mergeHooks,
@@ -30,6 +31,30 @@ describe('isFleetHookCommand', () => {
 
   it('recognises the binary when arguments follow it', () => {
     expect(isFleetHookCommand('/u/.claude/hooks/fleet-copilot-darwin-arm64 --verbose')).toBe(true);
+  });
+
+  it.each([
+    ["'/home/Jo Smith/.claude/hooks/fleet-copilot-linux-amd64'", 'linux'],
+    [`'/home/O'\\''Brien/.claude/hooks/fleet-copilot-linux-amd64'`, 'linux'],
+    ['"C:\\Users\\Jo Smith\\.claude\\hooks\\fleet-copilot-windows-amd64.exe"', 'win32'],
+    ['/home/Jo\\ Smith/.claude/hooks/fleet-copilot-linux-amd64', 'escaped space']
+  ])('recognises the quoted command %s (%s)', (command) => {
+    expect(isFleetHookCommand(command)).toBe(true);
+  });
+});
+
+describe('quoteHookCommand', () => {
+  it.each([
+    ['/home/Jo Smith/.claude/hooks/fleet-copilot-linux-amd64', 'linux'],
+    ["/home/O'Brien/.claude/hooks/fleet-copilot-darwin-arm64", 'darwin'],
+    ['C:\\Users\\Jo Smith\\.claude\\hooks\\fleet-copilot-windows-amd64.exe', 'win32']
+  ])('produces a command that is still recognised as Fleet (%s on %s)', (path, platform) => {
+    expect(isFleetHookCommand(quoteHookCommand(path, platform))).toBe(true);
+  });
+
+  it('single-quotes on POSIX and double-quotes on Windows', () => {
+    expect(quoteHookCommand("/a/O'B/x", 'linux')).toBe(`'/a/O'\\''B/x'`);
+    expect(quoteHookCommand('C:\\a b\\x.exe', 'win32')).toBe('"C:\\a b\\x.exe"');
   });
 
   it.each([
