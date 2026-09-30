@@ -220,7 +220,7 @@ describe('pullDigest', () => {
     report(finished(1));
     const detail = (await pull()).text?.split('\n\n').slice(1).join('\n\n') ?? '';
     expect(detail.length).toBeLessThan(1_400);
-    expect(detail).toContain('[cut to fit');
+    expect(detail).toContain('; fleet_read with since "start" shows more]');
   });
 
   it(`pauses at ${FLEET_CHAIN_LIMIT} in a row, holds what comes next, and resumes when the user writes`, async () => {

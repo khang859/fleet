@@ -516,7 +516,8 @@ export function renderBrief(
     const what = [...cut]
       .map(([title, n]) => `${title} (${n} line${n === 1 ? '' : 's'})`)
       .join(', ');
-    out += `\n[cut to fit: ${what}]`;
+    // Said where to look: the cursor moves past these lines all the same.
+    out += `\n[cut to fit: ${what}; fleet_read with since "start" shows more]`;
   }
   return out;
 }
