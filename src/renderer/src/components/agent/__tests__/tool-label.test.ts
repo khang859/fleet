@@ -193,4 +193,29 @@ describe('a call to a server', () => {
     // and the row must not end up claiming a server called "".
     expect(toolLabel(call('mcp__', '{}'))).toEqual({ verb: 'mcp__', target: '' });
   });
+
+  it('names the session a fleet call is about, and how deep it looked', () => {
+    expect(toolLabel(call('fleet_sessions', '{}'))).toEqual({ verb: 'List sessions', target: '' });
+    expect(toolLabel(call('fleet_read', '{"session":"abcdef12","level":"turns"}'))).toEqual({
+      verb: 'Read session',
+      target: 'abcdef12 · turns'
+    });
+    expect(
+      toolLabel(call('fleet_diff', '{"session":"abcdef12","view":"file","path":"src/a.ts"}'))
+    ).toEqual({
+      verb: 'Review changes',
+      target: 'abcdef12 · src/a.ts'
+    });
+    expect(
+      toolLabel(call('fleet_send', '{"session":"abcdef12","prompt":"Run\\nthe tests"}'))
+    ).toEqual({
+      verb: 'Prompt',
+      target: 'abcdef12: Run the tests'
+    });
+    // Half-streamed: the ref has arrived, the level has not.
+    expect(toolLabel(call('fleet_read', '{"session":"abcdef12"}'))).toEqual({
+      verb: 'Read session',
+      target: 'abcdef12'
+    });
+  });
 });

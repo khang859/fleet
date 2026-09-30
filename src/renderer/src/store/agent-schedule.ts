@@ -3,6 +3,7 @@ import { textMessage } from '../../../shared/agent-types';
 import type { AgentScheduleChanged, AgentScheduleRecord } from '../../../shared/agent-schedule';
 import { renderScheduleFire } from '../../../shared/agent-schedule';
 import { panesOn, record, reportActivity, useAgentStore } from './agent-store';
+import { isOrchestratorPane, useWorkspaceStore } from './workspace-store';
 import { createLogger } from '../logger';
 
 const log = createLogger('store:agent-schedule');
@@ -224,6 +225,7 @@ function deliver(paneId: string, sessionId: string, records: AgentScheduleRecord
     // How many hops of schedule-set-a-schedule produced this turn. The deepest
     // of the batch, so a fire that arrives beside a shallower one cannot use it
     // to buy itself another hop.
-    scheduleChainDepth: Math.max(...records.map((schedule) => schedule.depth))
+    scheduleChainDepth: Math.max(...records.map((schedule) => schedule.depth)),
+    orchestrator: isOrchestratorPane(useWorkspaceStore.getState(), paneId)
   });
 }

@@ -1,5 +1,5 @@
 import { ALL_SHORTCUTS, formatShortcut, type ShortcutDef } from './shortcuts';
-import { useWorkspaceStore } from '../store/workspace-store';
+import { collectPaneLeafs, useWorkspaceStore } from '../store/workspace-store';
 import { useToastStore } from '../store/toast-store';
 import type { RemoteHost } from '../../../shared/remote-ssh-types';
 import type { TeleprompterCommand, TeleprompterSourceRequest } from '../../../shared/teleprompter';
@@ -253,6 +253,25 @@ export function createCommandRegistry(): Command[] {
       shortcut: sc('agent-overview'),
       category: 'Agent',
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-agent-overview'))
+    },
+    {
+      id: 'toggle-orchestrator',
+      label: 'Toggle Orchestrator Mode',
+      category: 'Agent',
+      keywords: ['orchestrator', 'fleet', 'claude', 'sessions', 'agent'],
+      execute: () => {
+        const state = useWorkspaceStore.getState();
+        const leaf = state.activePaneId
+          ? state.workspace.tabs
+              .flatMap((tab) => collectPaneLeafs(tab.splitRoot))
+              .find((l) => l.id === state.activePaneId)
+          : undefined;
+        if (leaf?.paneType !== 'agent') {
+          useToastStore.getState().show('Focus an Agent pane to toggle orchestrator mode.');
+          return;
+        }
+        state.setAgentOrchestrator(leaf.id, leaf.agentOrchestrator !== true);
+      }
     },
     {
       id: 'open-scratch',

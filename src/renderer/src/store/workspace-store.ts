@@ -260,6 +260,8 @@ type WorkspaceStore = {
    * comes back to after a restart rather than a choice that lasts a session.
    */
   setAgentSession: (paneId: string, sessionId: string, cwd?: string) => void;
+  /** Turn orchestrator mode on or off for an agent pane. Persisted with the layout. */
+  setAgentOrchestrator: (paneId: string, on: boolean) => void;
 
   // Workspace actions
   loadWorkspace: (workspace: Workspace) => void;
@@ -559,6 +561,23 @@ function pickNextTab(tabs: Tab[], closedIndex: number): Tab | null {
 export function collectPaneLeafs(node: PaneNode): PaneLeaf[] {
   if (node.type === 'leaf') return [node];
   return [...collectPaneLeafs(node.children[0]), ...collectPaneLeafs(node.children[1])];
+}
+
+/**
+ * Whether an agent pane is in orchestrator mode, wherever it is: a pane in a
+ * background workspace can still be mid-turn.
+ */
+export function isOrchestratorPane(
+  state: { workspace: Workspace; backgroundWorkspaces: Map<string, Workspace> },
+  paneId: string
+): boolean {
+  for (const ws of [state.workspace, ...state.backgroundWorkspaces.values()]) {
+    for (const tab of ws.tabs) {
+      const leaf = collectPaneLeafs(tab.splitRoot).find((l) => l.id === paneId);
+      if (leaf) return leaf.agentOrchestrator === true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -1227,6 +1246,21 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
             agentSessionId: sessionId,
             ...(cwd === undefined ? {} : { cwd })
           }))
+        }))
+      },
+      isDirty: true
+    }));
+  },
+
+  setAgentOrchestrator: (paneId, on) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) =>
+            leaf.paneType === 'agent' ? { ...leaf, agentOrchestrator: on } : leaf
+          )
         }))
       },
       isDirty: true

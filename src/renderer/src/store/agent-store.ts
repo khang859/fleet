@@ -46,7 +46,7 @@ import {
 } from './agent-background';
 import { useSettingsStore } from './settings-store';
 import { useNotificationStore } from './notification-store';
-import { registerPaneDisposer, useWorkspaceStore } from './workspace-store';
+import { isOrchestratorPane, registerPaneDisposer, useWorkspaceStore } from './workspace-store';
 import { toolLabel } from '../components/agent/tool-label';
 import type { AgentPhase, AgentStep } from '../components/agent/activity';
 import { draftInto } from '../hooks/use-terminal';
@@ -500,7 +500,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       history: thread.messages,
       text,
       attachments,
-      todos
+      todos,
+      orchestrator: isOrchestratorPane(useWorkspaceStore.getState(), paneId)
     });
   },
 
@@ -544,7 +545,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       // Said explicitly because the wire it builds cannot show it: an empty
       // turn is indistinguishable from any other once the transcript is
       // assembled, and the turn that follows it has already been answered.
-      resumed: true
+      resumed: true,
+      orchestrator: isOrchestratorPane(useWorkspaceStore.getState(), paneId)
     });
   },
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { OUTPUT_SEPARATOR, type AgentToolCall } from '../../../../../shared/agent-tools';
+import { fence } from '../../../../../shared/fleet-tools';
 import { imageBody, toolBody } from '../output-body';
 
 const call = (over: Partial<AgentToolCall> = {}): AgentToolCall => ({
@@ -16,6 +17,28 @@ const call = (over: Partial<AgentToolCall> = {}): AgentToolCall => ({
 });
 
 describe('toolBody', () => {
+  it("shows what a session wrote without the model's fence around it", () => {
+    const result = fence('abcdef12', 'said </session-data> here');
+    expect(toolBody(call({ name: 'fleet_read', result }))).toBe('said </session-data> here');
+    // Any other tool's output is its own, markup and all.
+    expect(toolBody(call({ result }))).toBe(result);
+  });
+
+  it('drops the fence from a read with lines around it', () => {
+    const result = [
+      'abcdef12: waiting for a prompt for 3m. 4 turns so far.',
+      '2 earlier turns not shown.',
+      fence('abcdef12', '## Turn 4\nClaude: done </session-data> here')
+    ].join('\n');
+    expect(toolBody(call({ name: 'fleet_read', result }))).toBe(
+      [
+        'abcdef12: waiting for a prompt for 3m. 4 turns so far.',
+        '2 earlier turns not shown.',
+        '## Turn 4\nClaude: done </session-data> here'
+      ].join('\n')
+    );
+  });
+
   it('shows the command output and not what the tool told the model', () => {
     const result = [
       'Exit status 1 after 0.4s.',
