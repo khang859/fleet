@@ -278,6 +278,12 @@ It reacts to attention transitions arriving on `CLAUDE_SESSIONS_CHANGED`, and it
 
 Main renders the digest from registry events after the thread's cursor.
 It skips sessions covered by an active `fleet_wait`.
+
+`fleet_wait` follows sessions by pane, so a `/clear`, or a spawned pane whose session reports during the wait, is still the session asked about.
+Its cursor is the state each watched pane had when the wait began: only a later move into `waitingForInput`, `waitingForApproval` or `ended` ends it, so a session already waiting is not news.
+It returns at once when no watched session is working and no watched spawn is still starting.
+It ends on the first attention change, the timeout, or the turn's abort signal, and reports that session's brief delta through the Orchestrator's own read cursor, followed by where the other watched sessions stand.
+Main keeps the set of panes each thread waits on, which is what the digest consults.
 It caps output at 6 sessions and about 1,200 characters per session.
 It advances the cursors, and withholds the digest at the chain limit (6).
 `AGENT_FLEET_SET_MODE` resets the cursors to "now" when the mode is turned on.

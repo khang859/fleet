@@ -460,6 +460,12 @@ export function renderFleetInstructions(options: {
                 "`fleet_spawn` starts a new Claude Code session in its own tab with a prompt, in a new git worktree if you ask, after the user approves it. The tab opens behind whatever the user is doing. A new session can sit at Claude Code's folder trust dialog, shown as starting, until the user answers it; never try to answer it yourself."
               ]
             : []),
+          ...(options.tools.includes('fleet_wait')
+            ? [
+                '',
+                '`fleet_wait` blocks until a session you are waiting on finishes its turn, needs the user, or ends, and tells you what changed. Use it after a send or a spawn instead of reading the session over and over. Keep the timeout to what the user would sit through: they see the wait and can stop it.'
+              ]
+            : []),
           ...(options.analyst === true
             ? [
                 '',

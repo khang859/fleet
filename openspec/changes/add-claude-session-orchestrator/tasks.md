@@ -53,7 +53,7 @@
 - [x] 5.4 Add ledger entries (required `why` and `expect`, answered and ended transitions) and `withFleetLedger` placed after the cache breakpoint; verify with ledger tests and that it survives compaction
 - [x] 5.5 Implement `fleet_send` with the rate limiter (20 per 10 min per thread); verify it writes `[orchestrator] …` only when allowed
 - [x] 5.6 Add `agent/fleet/renderer-rpc.ts`, a `PendingSpawnStore` consumed in `PTY_CREATE`, `workspace-store.openTerminalTab` (unfocused, preassigned pane id, worktree fields), and `fleet_spawn` with worktree support; refuse on win32 and WSL; verify the prompt is not in the persisted layout and a restart does not re-run it
-- [ ] 5.7 Implement `fleet_wait` (attention events after a cursor, immediate return when idle, abortable, timeout) with an active-waits set; verify with unit tests
+- [x] 5.7 Implement `fleet_wait` (attention events after a cursor, immediate return when idle, abortable, timeout) with an active-waits set; verify with unit tests
 - [ ] 5.8 Add the `fleet` message role at all touch points and a digest card; verify session-log round trip and rendering
 - [ ] 5.9 Add digest rendering in main (brief delta, pending options, ledger line, caps, cursor advance, wait suppression, chain limit), the `AGENT_FLEET_PULL_DIGEST` and `AGENT_FLEET_SET_MODE` IPC, and the renderer `agent-fleet.ts` store mirroring `agent-schedule.ts`; verify with tests for debounce, hold while busy, and the chain limit
 - [ ] 5.10 E2E: an orchestrator prompts a session (approve the card), is woken when it stops, and spawns a worktree session; confirm the paused state at the chain limit

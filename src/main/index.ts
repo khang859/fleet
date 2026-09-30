@@ -94,6 +94,7 @@ import { FleetLedgerStore } from './agent/fleet/ledger-store';
 import { ActLimiter } from './agent/fleet/limiter';
 import { RendererRpc } from './agent/fleet/renderer-rpc';
 import { FleetSpawns } from './agent/fleet/spawns';
+import { FleetWaits } from './agent/fleet/wait';
 import { createGitRunner } from './claude-sessions/git-probe';
 import { completeOnce } from './agent/completions';
 import { AgentModelCatalog } from './agent/models-catalog';
@@ -180,6 +181,7 @@ const quitGuard = new QuitGuard(() => mainWindow);
 // `fleet_spawn`'s way to a new tab: the renderer opens it, and the pane's PTY
 // picks its prompt up from `fleetSpawns` when it is created.
 const fleetSpawns = new FleetSpawns();
+const fleetWaits = new FleetWaits();
 const fleetTabs = new RendererRpc(() => mainWindow);
 const worktreeService = new WorktreeService();
 ipcMain.on(IPC_CHANNELS.AGENT_FLEET_OPEN_TAB_DONE, (_event, payload: unknown) => {
@@ -1600,7 +1602,9 @@ void app.whenReady().then(async () => {
         },
         notePaneInput: (paneId, text) =>
           claudeSessions?.registry.notePaneInput(paneId, 'orchestrator', text),
-        newPaneId: () => randomUUID()
+        newPaneId: () => randomUUID(),
+        subscribe: (listener) => claudeSessions?.registry.subscribe(listener) ?? (() => {}),
+        waits: fleetWaits
       }
     },
     imageCapabilities: (modelId) => agentCatalog.cachedImageModel(modelId),
