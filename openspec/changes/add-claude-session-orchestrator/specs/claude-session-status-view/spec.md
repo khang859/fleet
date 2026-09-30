@@ -36,6 +36,22 @@ Rows SHALL be ordered with sessions needing the user first, then working session
 - **WHEN** a session requests permission
 - **THEN** its row shows a needs-you badge and moves to the top
 
+### Requirement: A long list folds to the sessions that need the user
+
+When more than five sessions are tracked, the system SHALL give a row only to the sessions needing the user.
+The other sessions SHALL be stood in for by one line counting them by state, which shows their rows when the user opens it.
+
+#### Scenario: Twenty sessions
+
+- **WHEN** twenty sessions are tracked and four of them need the user
+- **THEN** the section shows those four rows and one line such as "6 working · 8 ready · 2 idle"
+- **AND** opening that line shows the other sixteen rows below the four
+
+#### Scenario: A handful of sessions
+
+- **WHEN** five or fewer sessions are tracked
+- **THEN** every session has a row, with no summary line
+
 ### Requirement: Click to focus
 
 The system SHALL switch to the session's tab and focus its pane when the user clicks a row.

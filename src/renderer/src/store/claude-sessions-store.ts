@@ -67,6 +67,43 @@ export function sortSessions(sessions: readonly ClaudeSessionView[]): ClaudeSess
   );
 }
 
+/** Past this many sessions, only those needing the user keep a row of their own. */
+export const FOLD_AFTER = 5;
+
+/** The sessions that do not need the user, when there are too many to list. */
+export type FoldedSessions = {
+  /** Sessions needing the user, in order: these always get a row. */
+  urgent: ClaudeSessionView[];
+  /** The rest, in order, shown only on request. */
+  rest: ClaudeSessionView[];
+  /** How many of `rest` are in each state, for the one line that stands in for them. */
+  counts: Record<Exclude<SessionUrgency, 'needsYou'>, number>;
+};
+
+/**
+ * Split sorted sessions for the sidebar, or null when there are few enough to
+ * list them all. The tab list already has a row per pane, so past a handful
+ * the section only lists the sessions that are blocked on the user.
+ */
+export function foldSessions(sorted: readonly ClaudeSessionView[]): FoldedSessions | null {
+  if (sorted.length <= FOLD_AFTER) return null;
+  const folded: FoldedSessions = {
+    urgent: [],
+    rest: [],
+    counts: { working: 0, ready: 0, idle: 0 }
+  };
+  for (const session of sorted) {
+    const urgency = sessionUrgency(session);
+    if (urgency === 'needsYou') {
+      folded.urgent.push(session);
+    } else {
+      folded.rest.push(session);
+      folded.counts[urgency] += 1;
+    }
+  }
+  return folded;
+}
+
 /** `12s`, `4m`, `2h`, `3d`: how long a session has been in its phase. */
 export function formatPhaseAge(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));

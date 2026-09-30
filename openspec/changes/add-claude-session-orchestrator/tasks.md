@@ -31,6 +31,7 @@
 - [x] 3.5 Extract `lib/focus-pane.ts` from `App.tsx` and `AgentOverview.tsx` and switch both callers to it; verify focus still works from both
 - [x] 3.6 Add `claude-sessions-store.ts` and `ClaudeSessionsPanel.tsx` in the sidebar (rows, urgency sort, needs-you vs ready styling, idle ticker, click to focus, empty and disabled states); verify with store and sort tests
 - [x] 3.7 E2E with fleet-drive: two panes running `claude`; screenshot the panel in idle, working, permission and question states; check alignment, truncation, and light and dark themes; confirm click to focus
+- [x] 3.8 Fold the list past five sessions into rows for the sessions needing the user plus one line counting the rest, which opens to show them; verify with a store test and an E2E screenshot of twenty sessions
 
 ## 4. Phase 3 - read tools (PR 4)
 
