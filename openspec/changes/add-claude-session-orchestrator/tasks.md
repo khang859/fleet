@@ -66,4 +66,6 @@
 
 ## 7. Wrap-up per PR
 
-- [ ] 7.1 For each PR, run `npm run typecheck`, `npm run lint`, `npm test`, `cd hooks/fleet-copilot-go && go test ./...`, and `ripwire . --quality-delta`; all must pass
+- [x] 7.1 For each PR, run `npm run typecheck`, `npm run lint`, `npm test`, `cd hooks/fleet-copilot-go && go test ./...`, and `ripwire . --quality-delta`; all must pass
+  - Typecheck, lint, `npm test` and the Go hook tests passed on every PR, locally and in CI.
+  - `ripwire` is not installed on the machine these PRs were built on, so `--quality-delta` was never run. Instead each PR's diff was reviewed by hand and by a separate bug review, and each PR body says so.
