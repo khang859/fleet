@@ -156,6 +156,34 @@ func sendEvent(state *State, waitForResponse bool) *SocketResponse {
 	return nil
 }
 
+// statusFor maps a Claude Code hook event to the status Fleet tracks.
+//
+// SubagentStop has its own status: a subagent finishing says nothing about
+// whether the parent turn is done, so Fleet must not read it as "waiting for
+// input". Notification is refined by type in main.
+func statusFor(event string) string {
+	switch event {
+	case "UserPromptSubmit", "PostToolUse":
+		return "processing"
+	case "PreToolUse":
+		return "running_tool"
+	case "PermissionRequest":
+		return "waiting_for_approval"
+	case "Notification":
+		return "notification"
+	case "Stop", "SessionStart":
+		return "waiting_for_input"
+	case "SubagentStop":
+		return "subagent_stop"
+	case "SessionEnd":
+		return "ended"
+	case "PreCompact":
+		return "compacting"
+	default:
+		return "unknown"
+	}
+}
+
 func main() {
 	// Ignore SIGINT so the hook binary survives Ctrl+C interrupts.
 	// When the user presses Ctrl+C, SIGINT propagates to the entire
@@ -181,24 +209,15 @@ func main() {
 		TTY:       tty,
 	}
 
+	state.Status = statusFor(input.HookEventName)
+
 	switch input.HookEventName {
-	case "UserPromptSubmit":
-		state.Status = "processing"
-
-	case "PreToolUse":
-		state.Status = "running_tool"
-		state.Tool = input.ToolName
-		state.ToolInput = input.ToolInput
-		state.ToolUseID = input.ToolUseID
-
-	case "PostToolUse":
-		state.Status = "processing"
+	case "PreToolUse", "PostToolUse":
 		state.Tool = input.ToolName
 		state.ToolInput = input.ToolInput
 		state.ToolUseID = input.ToolUseID
 
 	case "PermissionRequest":
-		state.Status = "waiting_for_approval"
 		state.Tool = input.ToolName
 		state.ToolInput = input.ToolInput
 		state.ToolUseID = input.ToolUseID
@@ -239,30 +258,12 @@ func main() {
 			os.Exit(0)
 		} else if input.NotificationType == "idle_prompt" {
 			state.Status = "waiting_for_input"
-		} else {
-			state.Status = "notification"
 		}
 		state.NotificationType = input.NotificationType
 		state.Message = input.Message
 
-	case "Stop":
-		state.Status = "waiting_for_input"
-
-	case "SubagentStop":
-		state.Status = "waiting_for_input"
-
 	case "SessionStart":
-		state.Status = "waiting_for_input"
 		emitSessionStartContext(os.Stdout)
-
-	case "SessionEnd":
-		state.Status = "ended"
-
-	case "PreCompact":
-		state.Status = "compacting"
-
-	default:
-		state.Status = "unknown"
 	}
 
 	sendEvent(state, false)

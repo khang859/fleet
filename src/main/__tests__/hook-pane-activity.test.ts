@@ -12,6 +12,7 @@ function session(phase: CopilotSession['phase']): CopilotSession {
     cwd: '/repo',
     projectName: 'repo',
     phase,
+    waitingKind: null,
     pid: AGENT_PID,
     pendingPermissions: [],
     lastActivity: 0,

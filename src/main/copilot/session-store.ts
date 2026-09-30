@@ -3,7 +3,8 @@ import type {
   CopilotSession,
   CopilotSessionPhase,
   CopilotPendingPermission,
-  CopilotToolInfo
+  CopilotToolInfo,
+  CopilotWaitingKind
 } from '../../shared/types';
 
 const log = createLogger('copilot:session-store');
@@ -22,7 +23,17 @@ export type HookEvent = {
   message?: string;
 };
 
-function statusToPhase(status: string): CopilotSessionPhase {
+/**
+ * The phase a hook status moves a session to, or `null` when the event says
+ * nothing about the phase and the session keeps the one it has.
+ *
+ * A subagent finishing, a notification, or a status from a newer hook binary
+ * must not flip a working session to idle or waiting. `SubagentStop` is checked
+ * by event name too, because hook binaries built before it had its own status
+ * still send `waiting_for_input` for it.
+ */
+function statusToPhase(event: string, status: string): CopilotSessionPhase | null {
+  if (event === 'SubagentStop') return null;
   switch (status) {
     case 'processing':
     case 'running_tool':
@@ -36,8 +47,25 @@ function statusToPhase(status: string): CopilotSessionPhase {
     case 'ended':
       return 'ended';
     default:
-      return 'idle';
+      return null;
   }
+}
+
+/**
+ * An open question stays open through an idle notification: Claude Code sends
+ * `idle_prompt` after a quiet minute whatever is on screen, and that must not
+ * turn a question dialog into a free-text prompt.
+ */
+function waitingKindFor(
+  phase: CopilotSessionPhase,
+  asksQuestion: boolean,
+  event: string,
+  current: CopilotWaitingKind | null
+): CopilotWaitingKind | null {
+  if (phase !== 'waitingForInput') return null;
+  if (asksQuestion) return 'question';
+  if (event === 'Notification' && current === 'question') return 'question';
+  return 'prompt';
 }
 
 function projectNameFromCwd(cwd: string): string {
@@ -67,7 +95,8 @@ export class CopilotSessionStore {
     workspaceInfo?: { workspaceId: string; workspaceName: string }
   ): void {
     const { session_id, cwd, status, pid, tty, tool, tool_input, tool_use_id } = event;
-    let phase = statusToPhase(status);
+    let phase = statusToPhase(event.event, status);
+    let asksQuestion = false;
     const now = Date.now();
 
     let session = this.sessions.get(session_id);
@@ -78,6 +107,7 @@ export class CopilotSessionStore {
         cwd,
         projectName: projectNameFromCwd(cwd),
         phase: 'idle',
+        waitingKind: null,
         pid,
         tty,
         pendingPermissions: [],
@@ -111,6 +141,7 @@ export class CopilotSessionStore {
         // AskUserQuestion is rendered in the chat view with clickable options —
         // treat it as waiting for user input, not a permission request
         phase = 'waitingForInput';
+        asksQuestion = true;
       } else {
         const toolInfo: CopilotToolInfo = {
           toolName: tool,
@@ -135,7 +166,10 @@ export class CopilotSessionStore {
       );
     }
 
-    session.phase = phase;
+    if (phase) {
+      session.waitingKind = waitingKindFor(phase, asksQuestion, event.event, session.waitingKind);
+      session.phase = phase;
+    }
 
     if (phase === 'ended') {
       this.cleanupToolUseCache(session_id);
