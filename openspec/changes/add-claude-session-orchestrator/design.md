@@ -139,6 +139,7 @@ The text is sent as a bracketed paste (`ESC[200~ … ESC[201~`), followed by `\r
 The send is confirmed only by a `UserPromptSubmit` for that session within 5 s; otherwise it is reported as "not confirmed".
 The registry also records the origin and a hash of the text.
 That is how turn reads tell real Orchestrator prompts from a user typing the prefix.
+The hash is of exactly the delivered text, `[orchestrator]` prefix included and trimmed, because that is the text the transcript records and the reader hashes.
 
 _Alternative considered:_ the current `write(text + '\r')`.
 It submits half-typed drafts, can split multi-line text, and lands in whatever dialog is open.
@@ -153,6 +154,8 @@ Fleet tools are defined in `shared/fleet-tools.ts`:
 
 Tool specs are built per turn and advertised only when the flag is set.
 Keeping them out of other turns saves about 2-3k tokens per round there, and keeps the act tools' blast radius opt-in.
+Within an orchestrator turn a tool is advertised only when its capability member is non-null, and `fleetMember` refuses a call to a null one.
+That is how Phase 3 ships the act tool specs and names without offering them: their members stay `null` until Phase 4 wires them.
 
 The Agent side reaches the registry only through a `FleetHost` facade in `agent/fleet/`.
 `AgentToolContext.fleet` holds either the full capability or a read-only pick, and is `null` otherwise.
@@ -173,7 +176,15 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
   - The git block comes from `git-probe`, cached for 5 s, and runs only when a brief or digest is rendered.
   - The rendered brief is capped at about 3.5k characters, and truncation says what it cut.
 - **`fleet_read`.** Levels are `brief`, `turns` and `tool`.
-  - The cursor `{epoch, rev, turn}` is kept per `(orchestrator thread, Claude session)` in the ledger file.
+  - A session is named by a short ref: the first 8 characters of its `paneId`.
+    The pane outlives `/clear`, so the ref the model already holds keeps working after a clear, where a `sessionId` prefix would go stale.
+    `fleet_read` also accepts the full `paneId` or `sessionId`.
+  - The cursor `{sessionId, epoch, rev, turn}` is kept per `(orchestrator thread, ref)` in the ledger file.
+    A changed `sessionId` or `epoch`, or a `rev` or `turn` past the transcript's own, means the session was cleared, and the read says so.
+  - The turn cursor advances only past finished turns, so a turn still running is shown again once it ends.
+    A turn waiting on an approval, or on the answer to the session's own question, is still running.
+  - `turns` shows the latest turns that fit, and names the oldest one shown when it leaves turns out.
+    `before: N` pages back to the turns before turn N. It is a look at older turns, so it neither starts from the cursor nor moves it.
   - Subagent capabilities never advance it.
   - Output is fenced as untrusted session data.
 - **`fleet_diff`.** It runs git with a fixed argv, no shell, `--no-ext-diff`, `GIT_OPTIONAL_LOCKS=0`, a timeout and an output cap.
@@ -181,6 +192,9 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
     `status` and `diff` also get `--ignore-submodules=all`, because a submodule's own config names its own filters.
   - The cwd comes only from the registry.
   - `path` goes through `resolveInsideCwd(path, session.cwd)`, which reuses the credential checks.
+  - Every view also passes `DENIED_PATHSPECS`, `:(exclude,glob)` pathspecs that mirror the sandbox's denied names.
+    Without them a whole-folder diff would print a changed `.env` that the `file` view refuses.
+  - The checked path goes to git as `:(literal)<path>`, so a name like `:(top)` cannot be read as pathspec magic that reaches the repository root above the session folder.
   - The `file` view reuses `runRead` with `cwd` swapped.
   - _Alternative considered:_ widening the Agent sandbox to live session folders.
     Rejected: it breaks the "a tool touches only its pane cwd" invariant for every file tool.
