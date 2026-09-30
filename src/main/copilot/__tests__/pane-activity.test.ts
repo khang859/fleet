@@ -8,6 +8,7 @@ function session(overrides: Partial<CopilotSession> = {}): CopilotSession {
     cwd: '/repo',
     projectName: 'repo',
     phase: 'processing',
+    waitingKind: null,
     pid: 4242,
     pendingPermissions: [],
     lastActivity: 0,

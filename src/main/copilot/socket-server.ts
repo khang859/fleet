@@ -56,7 +56,10 @@ export class CopilotSocketServer {
     | ((pid: number) => { workspaceId: string; workspaceName: string } | null)
     | null = null;
 
-  constructor(sessionStore: CopilotSessionStore) {
+  constructor(
+    sessionStore: CopilotSessionStore,
+    private readonly socketPath: string = COPILOT_SOCKET_PATH
+  ) {
     this.sessionStore = sessionStore;
   }
 
@@ -67,11 +70,11 @@ export class CopilotSocketServer {
   }
 
   async start(): Promise<void> {
-    if (existsSync(COPILOT_SOCKET_PATH)) {
+    if (existsSync(this.socketPath)) {
       try {
-        unlinkSync(COPILOT_SOCKET_PATH);
+        unlinkSync(this.socketPath);
       } catch {
-        log.warn('failed to remove stale socket', { path: COPILOT_SOCKET_PATH });
+        log.warn('failed to remove stale socket', { path: this.socketPath });
       }
     }
 
@@ -85,13 +88,15 @@ export class CopilotSocketServer {
         reject(err);
       });
 
-      this.server.listen(COPILOT_SOCKET_PATH, () => {
+      this.server.listen(this.socketPath, () => {
         try {
-          chmodSync(COPILOT_SOCKET_PATH, 0o777);
+          // Owner only: whoever can connect can forge session events and answer
+          // permission requests, and every hook runs as this same user.
+          chmodSync(this.socketPath, 0o600);
         } catch {
           log.warn('failed to chmod socket');
         }
-        log.info('socket server listening', { path: COPILOT_SOCKET_PATH });
+        log.info('socket server listening', { path: this.socketPath });
         resolve();
       });
     });
@@ -141,9 +146,9 @@ export class CopilotSocketServer {
   }
 
   private cleanupSocket(): void {
-    if (existsSync(COPILOT_SOCKET_PATH)) {
+    if (existsSync(this.socketPath)) {
       try {
-        unlinkSync(COPILOT_SOCKET_PATH);
+        unlinkSync(this.socketPath);
       } catch {
         // ignore
       }

@@ -69,7 +69,8 @@ export function SessionDetail(): React.JSX.Element | null {
     );
   }
 
-  const canSendMessage = session.phase === 'waitingForInput';
+  // A question dialog is answered from its options in the chat, never with free text.
+  const canSendMessage = session.phase === 'waitingForInput' && session.waitingKind !== 'question';
   const status =
     session.pendingPermissions.length > 0
       ? ('permission' as const)

@@ -193,33 +193,23 @@ func TestStatusMapping(t *testing.T) {
 		expected string
 	}{
 		{"UserPromptSubmit", "processing"},
+		{"PreToolUse", "running_tool"},
+		{"PostToolUse", "processing"},
+		{"PermissionRequest", "waiting_for_approval"},
+		{"Notification", "notification"},
 		{"Stop", "waiting_for_input"},
-		{"SubagentStop", "waiting_for_input"},
+		// A subagent finishing must not read as the parent turn ending.
+		{"SubagentStop", "subagent_stop"},
 		{"SessionStart", "waiting_for_input"},
 		{"SessionEnd", "ended"},
 		{"PreCompact", "compacting"},
+		{"SomethingNew", "unknown"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.event, func(t *testing.T) {
-			// Simulate the switch statement from main()
-			state := &State{Event: tc.event}
-			switch tc.event {
-			case "UserPromptSubmit":
-				state.Status = "processing"
-			case "Stop":
-				state.Status = "waiting_for_input"
-			case "SubagentStop":
-				state.Status = "waiting_for_input"
-			case "SessionStart":
-				state.Status = "waiting_for_input"
-			case "SessionEnd":
-				state.Status = "ended"
-			case "PreCompact":
-				state.Status = "compacting"
-			}
-			if state.Status != tc.expected {
-				t.Errorf("%s: expected status %s, got %s", tc.event, tc.expected, state.Status)
+			if got := statusFor(tc.event); got != tc.expected {
+				t.Errorf("%s: expected status %s, got %s", tc.event, tc.expected, got)
 			}
 		})
 	}

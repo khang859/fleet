@@ -339,11 +339,20 @@ export type CopilotPendingPermission = {
   receivedAt: number;
 };
 
+/**
+ * What a session in `waitingForInput` is waiting for: its normal prompt, or an
+ * answer to an AskUserQuestion dialog. Typing free text into the dialog would
+ * answer it with garbage, so anything that sends input must check this.
+ */
+export type CopilotWaitingKind = 'prompt' | 'question';
+
 export type CopilotSession = {
   sessionId: string;
   cwd: string;
   projectName: string;
   phase: CopilotSessionPhase;
+  /** Set only while `phase` is `waitingForInput`. */
+  waitingKind: CopilotWaitingKind | null;
   pid?: number;
   tty?: string;
   workspaceId?: string;

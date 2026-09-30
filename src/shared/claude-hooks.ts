@@ -42,8 +42,54 @@ const FLEET_HOOK_PATTERN = /(^|[/\\])fleet-copilot(-[a-z0-9]+)*(\.exe|\.py)?$/i;
  * grep - stays the user's.
  */
 export function isFleetHookCommand(command: string): boolean {
-  const executable = command.trim().split(/\s+/)[0] ?? '';
-  return FLEET_HOOK_PATTERN.test(executable);
+  return FLEET_HOOK_PATTERN.test(commandHead(command));
+}
+
+/**
+ * The first shell word of a command line, with its quoting removed.
+ *
+ * Fleet quotes its own hook path so a home folder with spaces or an apostrophe
+ * still runs. Quote chars are not part of the path and whitespace inside quotes
+ * does not end the word, so this reads the word the way a POSIX shell would:
+ * single quotes are literal, and elsewhere `\` escapes a quote or whitespace.
+ * A `\` before anything else stays, because it is a Windows path separator.
+ */
+function commandHead(command: string): string {
+  const text = command.trim();
+  let word = '';
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+      else word += ch;
+    } else if (ch === '\\' && /['"\s]/.test(text[i + 1] ?? '')) {
+      word += text[++i];
+    } else if (quote === '"') {
+      if (ch === '"') quote = null;
+      else word += ch;
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+    } else if (/\s/.test(ch)) {
+      break;
+    } else {
+      word += ch;
+    }
+  }
+  return word;
+}
+
+/**
+ * The command line Claude Code should run for a hook binary at `path`.
+ *
+ * Claude Code runs hook commands through a shell, so the path is quoted: single
+ * quotes on POSIX (nothing inside them is special; an apostrophe is closed,
+ * escaped, and reopened), double quotes on Windows, where cmd has no
+ * single-quote form and paths cannot contain `"`.
+ */
+export function quoteHookCommand(path: string, platform: string): string {
+  if (platform === 'win32') return `"${path}"`;
+  return `'${path.replace(/'/g, `'\\''`)}'`;
 }
 
 /** Whether Fleet owns this entry, and therefore whether the page must lock it. */

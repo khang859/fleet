@@ -45,10 +45,37 @@ describe('CopilotSessionStore', () => {
     expect(store.getSessions()[0].phase).toBe('waitingForInput');
   });
 
-  it('maps SubagentStop event to waitingForInput phase', () => {
+  it('keeps the parent processing when a subagent stops', () => {
+    store.processHookEvent(makeEvent({ status: 'processing' }));
+    store.processHookEvent(makeEvent({ event: 'SubagentStop', status: 'subagent_stop' }));
+    expect(store.getSessions()[0].phase).toBe('processing');
+  });
+
+  it('ignores SubagentStop from older hook binaries that report waiting_for_input', () => {
     store.processHookEvent(makeEvent({ status: 'processing' }));
     store.processHookEvent(makeEvent({ event: 'SubagentStop', status: 'waiting_for_input' }));
-    expect(store.getSessions()[0].phase).toBe('waitingForInput');
+    expect(store.getSessions()[0].phase).toBe('processing');
+  });
+
+  it('keeps the phase on notifications and unknown statuses', () => {
+    store.processHookEvent(
+      makeEvent({ event: 'PreToolUse', status: 'running_tool', tool: 'Bash' })
+    );
+    store.processHookEvent(
+      makeEvent({
+        event: 'Notification',
+        status: 'notification',
+        notification_type: 'auth_success'
+      })
+    );
+    store.processHookEvent(makeEvent({ event: 'SomethingNew', status: 'unknown' }));
+    expect(store.getSessions()[0].phase).toBe('processing');
+  });
+
+  it('reports a finished turn as waiting for a prompt', () => {
+    store.processHookEvent(makeEvent({ status: 'processing' }));
+    store.processHookEvent(makeEvent({ event: 'Stop', status: 'waiting_for_input' }));
+    expect(store.getSessions()[0].waitingKind).toBe('prompt');
   });
 
   it('maps SessionEnd to ended phase and removes session after timeout', () => {
@@ -175,6 +202,48 @@ describe('CopilotSessionStore', () => {
 
       // Phase should still be waitingForInput, not processing
       expect(store.getSession('sess-1')!.phase).toBe('waitingForInput');
+    });
+  });
+
+  describe('question dialogs', () => {
+    const question = (): HookEvent =>
+      makeEvent({
+        event: 'PermissionRequest',
+        status: 'waiting_for_approval',
+        tool: 'AskUserQuestion',
+        tool_input: { questions: [] }
+      });
+
+    it('marks an AskUserQuestion as a question, not a prompt or a permission', () => {
+      store.processHookEvent(makeEvent({ status: 'processing' }));
+      store.processHookEvent(question());
+      const session = store.getSession('sess-1')!;
+      expect(session.phase).toBe('waitingForInput');
+      expect(session.waitingKind).toBe('question');
+      expect(session.pendingPermissions).toEqual([]);
+    });
+
+    it('keeps the question open through an idle notification', () => {
+      store.processHookEvent(question());
+      store.processHookEvent(
+        makeEvent({
+          event: 'Notification',
+          status: 'waiting_for_input',
+          notification_type: 'idle_prompt'
+        })
+      );
+      expect(store.getSession('sess-1')!.waitingKind).toBe('question');
+    });
+
+    it('clears the question once it is answered, and a later stop is a prompt again', () => {
+      store.processHookEvent(question());
+      store.processHookEvent(
+        makeEvent({ event: 'PostToolUse', status: 'processing', tool: 'AskUserQuestion' })
+      );
+      expect(store.getSession('sess-1')!.waitingKind).toBeNull();
+
+      store.processHookEvent(makeEvent({ event: 'Stop', status: 'waiting_for_input' }));
+      expect(store.getSession('sess-1')!.waitingKind).toBe('prompt');
     });
   });
 });
