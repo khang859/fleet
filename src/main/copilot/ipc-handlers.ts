@@ -5,7 +5,6 @@ import { createLogger } from '../logger';
 import type { CopilotWindow } from './copilot-window';
 import type { SettingsStore } from '../settings-store';
 import type { ConversationReader } from './conversation-reader';
-import type { PtyManager } from '../pty-manager';
 import type { ClaudeSessionsService } from '../claude-sessions';
 import * as hookInstaller from '../claude-sessions/hook-installer';
 import { transcriptPathFor } from '../claude-sessions/transcript-path';
@@ -26,7 +25,6 @@ export function registerCopilotIpcHandlers(
   copilotWindow: CopilotWindow,
   settingsStore: SettingsStore,
   conversationReader: ConversationReader,
-  ptyManager: PtyManager,
   getMainWindow: () => BrowserWindow | null,
   onSettingsChanged?: () => Promise<void>
 ): void {
@@ -139,18 +137,18 @@ export function registerCopilotIpcHandlers(
 
   ipcMain.handle(
     IPC_CHANNELS.COPILOT_SEND_MESSAGE,
-    (_event, args: { sessionId: string; message: string }) => {
+    async (_event, args: { sessionId: string; message: string }) => {
+      // The chat answers a question dialog with an option number, a key press.
       const session = registry.get(args.sessionId);
-      if (!session || session.phase === 'ended') {
-        log.warn('no live session, cannot send message', { sessionId: args.sessionId });
+      if (session?.waitingKind === 'question') {
+        return claudeSessions.answerQuestion(args.sessionId, args.message);
+      }
+      const result = await claudeSessions.sendPrompt(args.sessionId, args.message, 'user');
+      if (!result.ok) {
+        log.warn('message not sent', { sessionId: args.sessionId, reason: result.reason });
         return false;
       }
-      // Send text then carriage return (Enter), matching what terminal emulators send
-      ptyManager.write(session.paneId, args.message + '\r');
-      log.info('message sent via PTY master', {
-        sessionId: args.sessionId,
-        paneId: session.paneId
-      });
+      log.info('message sent', { sessionId: args.sessionId, confirmed: result.confirmed });
       return true;
     }
   );

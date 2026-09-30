@@ -4,7 +4,6 @@ import { ConversationReader } from './conversation-reader';
 import { registerCopilotIpcHandlers } from './ipc-handlers';
 import type { SettingsStore } from '../settings-store';
 import type { BrowserWindow } from 'electron';
-import type { PtyManager } from '../pty-manager';
 import type { ClaudeSessionsService } from '../claude-sessions';
 import { IPC_CHANNELS } from '../../shared/constants';
 
@@ -30,7 +29,6 @@ let pendingToggle: boolean | null = null;
 export async function initCopilot(
   settingsStore: SettingsStore,
   sessions: ClaudeSessionsService,
-  ptyManager: PtyManager,
   getMainWindow: () => BrowserWindow | null
 ): Promise<void> {
   log.info('initCopilot called', { platform: process.platform });
@@ -49,7 +47,6 @@ export async function initCopilot(
     copilotWindow,
     settingsStore,
     conversationReader,
-    ptyManager,
     getMainWindow,
     onCopilotSettingsChanged
   );

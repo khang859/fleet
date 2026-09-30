@@ -2,6 +2,7 @@ import type { Socket } from 'net';
 import { createLogger } from '../logger';
 import { resolveClaudeConfig } from '../../shared/claude-config';
 import type { FleetSettings } from '../../shared/types';
+import type { ClaudeInputOrigin } from '../../shared/claude-sessions';
 import type { PriceTable } from '../../shared/claude-pricing';
 import type {
   ClaudeHookInstallProblem,
@@ -14,6 +15,7 @@ import { createGitRunner, probeGit, type GitRunner } from './git-probe';
 import type { HookEvent } from './hook-events';
 import * as hookInstaller from './hook-installer';
 import { HookServer, PermissionBroker } from './hook-server';
+import { PromptInput, type SendResult } from './input';
 import { registerClaudeSessionsIpc, type IpcRegistrar } from './ipc-handlers';
 import { PaneActivityBridge, type SetHookState } from './pane-activity-bridge';
 import { PaneResolver, type PaneHost, type WorkspaceLookup } from './pane-resolver';
@@ -40,6 +42,8 @@ export type ClaudeSessionsDeps = {
   panes: PaneHost;
   workspaceOf: WorkspaceLookup;
   setHookState: SetHookState;
+  /** Types into a pane's terminal, as the user's keyboard would. */
+  writeToPane: (paneId: string, data: string) => void;
   ipc: IpcRegistrar;
   /** The price table cost estimates use; it can change while Fleet runs. */
   priceTable: () => PriceTable;
@@ -80,6 +84,7 @@ export function claudeConfigDirs(settings: FleetSettings, homeDir: string): stri
 export class ClaudeSessionsService {
   readonly registry = new ClaudeSessionRegistry();
   readonly broker: PermissionBroker;
+  private readonly input: PromptInput;
   private readonly server: HookServer;
   private readonly resolver: PaneResolver;
   private readonly bridge: PaneActivityBridge;
@@ -108,6 +113,12 @@ export class ClaudeSessionsService {
     });
     this.transcripts = new SessionTranscripts({
       onSignal: (sessionId, signal) => this.registry.settle(sessionId, signal)
+    });
+    this.input = new PromptInput({
+      session: (sessionId) => this.registry.get(sessionId),
+      noteInput: (sessionId, origin, text) => this.registry.noteInput(sessionId, origin, text),
+      subscribe: (listener) => this.registry.subscribe(listener),
+      write: deps.writeToPane
     });
     this.resolver = new PaneResolver(deps.panes, deps.workspaceOf);
     this.bridge = new PaneActivityBridge(deps.setHookState);
@@ -175,6 +186,33 @@ export class ClaudeSessionsService {
   onPaneClosed(paneId: string): void {
     this.registry.releasePane(paneId);
     this.resolver.forgetPane(paneId);
+    this.input.forgetPane(paneId);
+  }
+
+  /** What the user types into any pane, so a prompt is never typed over theirs. */
+  onPaneInput(paneId: string, data: string): void {
+    this.input.onUserInput(paneId, data);
+  }
+
+  /**
+   * Pick an option in the question dialog a session is showing, by its number,
+   * as a key press. Refused unless a question dialog is open.
+   */
+  answerQuestion(sessionId: string, option: string): boolean {
+    const session = this.registry.get(sessionId);
+    if (session?.phase !== 'waitingForInput' || session.waitingKind !== 'question') return false;
+    if (!/^\d+$/.test(option)) return false;
+    this.deps.writeToPane(session.paneId, `${option}\r`);
+    return true;
+  }
+
+  /** Type a prompt into a session and submit it, or refuse without writing; see `PromptInput`. */
+  async sendPrompt(
+    sessionId: string,
+    text: string,
+    origin: ClaudeInputOrigin
+  ): Promise<SendResult> {
+    return this.input.send(sessionId, text, origin);
   }
 
   /**

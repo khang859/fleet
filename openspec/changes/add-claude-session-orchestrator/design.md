@@ -139,6 +139,7 @@ The text is typed, not pasted: control characters other than LF are dropped, a t
 Checked on Claude Code 2.1.285 (task 5.1): a bracketed paste of more than one line, or one read of more than about 800 characters, is recorded as `<pasted_content>`, and the model refuses to follow pasted instructions.
 Typed, LF inserts a line break and the transcript records exactly what was written.
 A prompt ending in `\` is refused, since `\` then Enter is a line break.
+The copilot chat's answer to a question dialog is an option number pressed as a key, not a prompt, so it has its own path (`answerQuestion`) that works only while a question dialog is open.
 The send is confirmed only by a `UserPromptSubmit` for that session within 5 s; otherwise it is reported as "not confirmed".
 The registry also records the origin and a hash of the text.
 That is how turn reads tell real Orchestrator prompts from a user typing the prefix.

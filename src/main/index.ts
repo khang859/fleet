@@ -773,6 +773,7 @@ void app.whenReady().then(async () => {
     panes: ptyManager,
     workspaceOf: (paneId) => layoutStore.findWorkspaceForPane(paneId),
     setHookState: (paneId, state, pid) => activityTracker.setHookState(paneId, state, pid),
+    writeToPane: (paneId, data) => ptyManager.write(paneId, data),
     ipc: ipcMain,
     priceTable: () => {
       void ensurePricesFresh();
@@ -834,7 +835,7 @@ void app.whenReady().then(async () => {
   });
 
   // Start copilot (macOS only, gated internally)
-  await initCopilot(settingsStore, claudeSessions, ptyManager, () => mainWindow);
+  await initCopilot(settingsStore, claudeSessions, () => mainWindow);
 
   // Must happen AFTER copilot init because the copilot window's
   // setVisibleOnAllWorkspaces triggers an Electron bug (electron/electron#26350)

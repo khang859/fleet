@@ -48,7 +48,7 @@
 ## 5. Phase 4 - act tools and wakeups (PR 5, may split)
 
 - [x] 5.1 Manually verify bracketed paste plus a delayed `\r` against the installed Claude Code with multi-line text; record the result in `docs/learnings/`
-- [ ] 5.2 Add `claude-sessions/input.ts` (`sendPrompt` refusals, draft tracking on renderer PTY writes, keystroke recency, bracketed paste, acknowledgement via `UserPromptSubmit`) and route the copilot chat send through it; verify each refusal and the ack timeout with unit tests
+- [x] 5.2 Add `claude-sessions/input.ts` (`sendPrompt` refusals, draft tracking on renderer PTY writes, keystroke recency, bracketed paste, acknowledgement via `UserPromptSubmit`) and route the copilot chat send through it; verify each refusal and the ack timeout with unit tests
 - [ ] 5.3 Add `PermissionGate.checkFleet`, `fleetGrants`, and `Pending.rules` extended with `fleet`, with grants dropped on session removal; add the `AgentPermissionAsk.fleet` payload and the permission card ("Always for this session"); verify with gate tests and a screenshot of the card
 - [ ] 5.4 Add ledger entries (required `why` and `expect`, answered and ended transitions) and `withFleetLedger` placed after the cache breakpoint; verify with ledger tests and that it survives compaction
 - [ ] 5.5 Implement `fleet_send` with the rate limiter (20 per 10 min per thread); verify it writes `[orchestrator] …` only when allowed

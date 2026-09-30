@@ -332,6 +332,7 @@ export function registerIpcHandlers(
     // notifications and clear needs_me so the next prompt notifies exactly once.
     notificationDetector.onUserInput(payload.paneId);
     activityTracker.onUserInput(payload.paneId);
+    claudeSessions.onPaneInput(payload.paneId, payload.data);
     ptyManager.write(payload.paneId, payload.data);
   });
 

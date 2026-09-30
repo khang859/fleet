@@ -65,6 +65,7 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
   let service: ClaudeSessionsService;
   let snapshots: ClaudeSessionsSnapshot[];
   let git: ReturnType<typeof vi.fn<GitRunner>>;
+  let writeToPane: ReturnType<typeof vi.fn<(paneId: string, data: string) => void>>;
 
   const create = (platform: NodeJS.Platform = 'linux'): ClaudeSessionsService =>
     new ClaudeSessionsService({
@@ -74,6 +75,7 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
       panes: { has: (id) => id === 'pane-1', paneIds: () => ['pane-1'], getPid: () => 1 },
       workspaceOf: () => ({ workspaceId: 'ws-1', workspaceName: 'Main' }),
       setHookState,
+      writeToPane,
       ipc: { handle: (channel, listener) => handled.set(channel, listener) },
       socketPath,
       installer: installer as never,
@@ -90,6 +92,7 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     setHookState = vi.fn<SetHookState>();
     handled = new Map();
     snapshots = [];
+    writeToPane = vi.fn();
     git = vi.fn<GitRunner>(async (_cwd, args) =>
       Promise.resolve({
         stdout: args[0] === 'status' ? '## feature/x...origin/feature/x\0 M a.ts\0' : '',
@@ -205,6 +208,12 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
       phase: 'waitingForInput',
       waitingKind: 'question'
     });
+
+    // An option is picked by its number, as a key press; a prompt is refused.
+    expect((await service.sendPrompt('s1', 'use Postgres', 'user')).ok).toBe(false);
+    expect(service.answerQuestion('s1', 'Postgres')).toBe(false);
+    expect(service.answerQuestion('s1', '2')).toBe(true);
+    expect(writeToPane.mock.calls).toEqual([['pane-1', '2\r']]);
   });
 
   it('stops, removes its hooks and forgets sessions when tracking is turned off', async () => {
@@ -309,6 +318,30 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
       const brief = await service.transcript('s1');
       expect(brief?.path).toBe(transcript);
     });
+  });
+
+  it('types a prompt into the pane unless the user is typing there', async () => {
+    await service.start();
+    await send(socketPath, event({ event: 'Stop', status: 'waiting_for_input' }));
+    writeToPane.mockImplementation((_pane, data) => {
+      if (data === '\r') {
+        void send(socketPath, event({ event: 'UserPromptSubmit', status: 'processing' }));
+      }
+    });
+
+    const sent = await service.sendPrompt('s1', 'Run the tests', 'user');
+    expect(sent).toEqual({ ok: true, confirmed: true, text: 'Run the tests' });
+    expect(writeToPane.mock.calls).toEqual([
+      ['pane-1', 'Run the tests'],
+      ['pane-1', '\r']
+    ]);
+    expect(service.inputsFor('s1')).toEqual([expect.objectContaining({ origin: 'user' })]);
+
+    await send(socketPath, event({ event: 'Stop', status: 'waiting_for_input' }));
+    writeToPane.mockClear();
+    service.onPaneInput('pane-1', 'half typed');
+    expect((await service.sendPrompt('s1', 'Run the tests', 'user')).ok).toBe(false);
+    expect(writeToPane).not.toHaveBeenCalled();
   });
 
   it('ends a pane’s session when the pane closes', async () => {
