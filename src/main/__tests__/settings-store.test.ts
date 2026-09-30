@@ -88,6 +88,14 @@ describe('SettingsStore settings merge', () => {
     expect(store.get().ai.agent.systemPrompt).toBe('be brief');
   });
 
+  it('keeps the Orchestrator off permissions unless turned on, including for an older file', () => {
+    store.set({ ai: { agent: { systemPrompt: 'be brief' } } });
+    expect(store.get().ai.agent.orchestrator.answerPermissions).toBe(false);
+    store.set({ ai: { agent: { orchestrator: { answerPermissions: true } } } });
+    store.set({ ai: { agent: { systemPrompt: null } } });
+    expect(store.get().ai.agent.orchestrator.answerPermissions).toBe(true);
+  });
+
   it('replaces the whole mcpServers map rather than merging entries', () => {
     // Removing a server means writing the map without it. An entry-wise merge
     // would make deletion impossible.

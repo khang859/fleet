@@ -1186,7 +1186,13 @@ export class AgentService {
     const fleetDeps = this.deps.fleet ?? null;
     const fleet =
       req.orchestrator === true && fleetDeps !== null
-        ? createFleetCapability(fleetDeps, req.threadId, 'orchestrator', req.cwd)
+        ? createFleetCapability(
+            fleetDeps,
+            req.threadId,
+            'orchestrator',
+            req.cwd,
+            ctx.settings.orchestrator.answerPermissions
+          )
         : null;
     const childFleet =
       fleet === null || fleetDeps === null

@@ -459,6 +459,10 @@ export function registerIpcHandlers(
     if (settings.claudeSessions || settings.copilot) {
       await claudeSessions.onSettingsChanged();
     }
+    // The Orchestrator may no longer answer the hooks it holds.
+    if (settings.ai?.agent?.orchestrator) {
+      claudeSessions.releaseUnanswerable();
+    }
     if (settings.teleprompter) {
       teleprompter.onSettingsChanged();
     }

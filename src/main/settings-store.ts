@@ -225,7 +225,11 @@ export class SettingsStore {
               ...saved.ai?.agent?.permissions?.mcp
             }
           },
-          voice: { ...DEFAULT_SETTINGS.ai.agent.voice, ...saved.ai?.agent?.voice }
+          voice: { ...DEFAULT_SETTINGS.ai.agent.voice, ...saved.ai?.agent?.voice },
+          orchestrator: {
+            ...DEFAULT_SETTINGS.ai.agent.orchestrator,
+            ...saved.ai?.agent?.orchestrator
+          }
         }
       },
       remoteSsh: {
@@ -330,7 +334,11 @@ export class SettingsStore {
             ...current.ai.agent.permissions,
             ...(partial.ai?.agent?.permissions ?? {})
           },
-          voice: { ...current.ai.agent.voice, ...(partial.ai?.agent?.voice ?? {}) }
+          voice: { ...current.ai.agent.voice, ...(partial.ai?.agent?.voice ?? {}) },
+          orchestrator: {
+            ...current.ai.agent.orchestrator,
+            ...(partial.ai?.agent?.orchestrator ?? {})
+          }
         }
       },
       remoteSsh: {

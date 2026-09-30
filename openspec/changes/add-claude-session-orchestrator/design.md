@@ -266,6 +266,16 @@ For each action it checks, in order:
 Grants are dropped when the registry removes the session.
 Spawn offers only "once".
 
+For `permission`, as built:
+
+- Only a shell command has rules to match, so the deny and always-ask checks apply to `Bash` requests; other tools go straight to full access or the ask.
+- A deny rule stops the Orchestrator allowing a command, not denying it.
+- An allow rule does not skip the ask: it says what the Agent may run, not what another session may.
+- The answer card offers "Allow it" or "Deny it", and "Leave it to me", which leaves the request with the user in the terminal. Nothing is remembered.
+- `fleet_permission` answers the oldest request the session is waiting on, and says how many are left.
+- It can only answer a request whose hook Fleet is holding. `addPermissionAnswerer` takes a `canAnswer` predicate, asked as each request arrives; main registers one that is true while the setting is on and some conversation is orchestrating. Claude Code keeps its own prompt up while the hook is held, so the user can still answer in the terminal first. When the setting is turned off, an orchestrating conversation leaves the mode, or an answerer goes away, main calls `releaseUnanswerable`, which releases every held hook if no answerer can still answer: a held hook is not asked again, and one nobody can answer would stall a background subagent.
+- A deny is sent to the session as "Denied by the Fleet Orchestrator", with the model's reason.
+
 ### D10. Wakeups
 
 The renderer store `agent-fleet.ts` mirrors `agent-schedule.ts`.

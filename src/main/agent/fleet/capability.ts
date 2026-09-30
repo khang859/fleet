@@ -4,13 +4,14 @@ import type { FleetHost } from './host';
 import type { FleetLedgerStore } from './ledger-store';
 import { readSession, type FleetCursors } from './read';
 import { sendToSession, type FleetSendDeps } from './send';
+import { answerPermission, type FleetPermissionDeps } from './permission';
 import { listSessions } from './sessions';
 import { spawnSession, type FleetSpawnDeps } from './spawn';
 import { waitForSessions, type FleetWaitDeps } from './wait';
 
 /** What the act tools need beyond reading: `null` where they are not wired up. */
 export type FleetActDeps = Omit<
-  FleetSendDeps & FleetSpawnDeps & FleetWaitDeps,
+  FleetSendDeps & FleetSpawnDeps & FleetWaitDeps & FleetPermissionDeps,
   'host' | 'ledger' | 'brief'
 >;
 
@@ -24,14 +25,16 @@ export type FleetDeps = { host: FleetHost; ledger: FleetLedgerStore; act: FleetA
  * them, so a deep read done on its behalf hides nothing from its own next read.
  *
  * An act member is null for a subagent, where the act tools are not wired up,
- * and until the phase that implements it lands.
+ * and `permission` is null too while the user has not turned it on.
  */
 export function createFleetCapability(
   deps: FleetDeps,
   threadId: string,
   reader: 'orchestrator' | 'subagent',
   /** The pane's folder: where `fleet_spawn` starts a session unless told otherwise. */
-  cwd: string
+  cwd: string,
+  /** The user's setting, read for this turn: without it `fleet_permission` is not offered. */
+  answerPermissions = false
 ): AgentFleetCapability {
   const cursors: FleetCursors = {
     get: (ref) => deps.ledger.cursor(threadId, ref),
@@ -72,6 +75,10 @@ export function createFleetCapability(
               args,
               signal
             ),
-    permission: null
+    permission:
+      act === null || !answerPermissions
+        ? null
+        : async (args, _signal, approve) =>
+            answerPermission({ host: deps.host, answers: act.answers }, args, approve)
   };
 }

@@ -1572,6 +1572,13 @@ void app.whenReady().then(async () => {
     placeOf: (paneId) => layoutStore.placeOf(paneId),
     git: createGitRunner()
   });
+  // Conversations the renderer says are orchestrating. While one is and the
+  // user lets the Orchestrator answer permissions, Fleet holds permission
+  // hooks open for it; otherwise they are released for the terminal at once.
+  const orchestrating = new Set<string>();
+  claudeSessions.addPermissionAnswerer(
+    () => settingsStore.get().ai.agent.orchestrator.answerPermissions && orchestrating.size > 0
+  );
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
@@ -1598,7 +1605,12 @@ void app.whenReady().then(async () => {
           claudeSessions?.registry.notePaneInput(paneId, 'orchestrator', text),
         newPaneId: () => randomUUID(),
         subscribe: (listener) => claudeSessions?.registry.subscribe(listener) ?? (() => {}),
-        attention: fleetAttention
+        attention: fleetAttention,
+        answers: {
+          held: (toolUseId) => claudeSessions?.broker.has(toolUseId) ?? false,
+          respond: (toolUseId, decision, reason) =>
+            claudeSessions?.respondToPermission(toolUseId, decision, reason) ?? false
+        }
       }
     },
     imageCapabilities: (modelId) => agentCatalog.cachedImageModel(modelId),
@@ -1628,8 +1640,14 @@ void app.whenReady().then(async () => {
       pull: async (threadId) =>
         pullDigest({ host: fleetHost, ledger: fleetLedger, attention: fleetAttention }, threadId),
       setMode: (threadId, on) => {
-        if (on) fleetAttention.startAt(threadId);
-        else fleetAttention.forget(threadId);
+        if (on) {
+          fleetAttention.startAt(threadId);
+          orchestrating.add(threadId);
+        } else {
+          fleetAttention.forget(threadId);
+          orchestrating.delete(threadId);
+          claudeSessions?.releaseUnanswerable();
+        }
       }
     },
     mcp: {

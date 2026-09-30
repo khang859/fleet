@@ -161,7 +161,7 @@ export async function runAgentTool(
     }
     case 'fleet_permission': {
       const run = fleetMember(ctx, name, 'permission');
-      return run(checked(FleetPermissionArgs, args, name), ctx.signal);
+      return run(checked(FleetPermissionArgs, args, name), ctx.signal, ctx.approveFleet);
     }
     default:
       throw new Error(`There is no tool called ${name}`);

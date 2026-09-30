@@ -156,16 +156,33 @@ export type FleetToolOutput = { text: string; summary: string };
 
 type Run<A> = (args: A, signal: AbortSignal) => Promise<FleetToolOutput>;
 
-/** What the user is asked to approve before a prompt is typed or a session started. */
-export type FleetAsk = {
-  action: 'send' | 'spawn';
-  /** The session a send goes to; `null` for a spawn. */
-  sessionId: string | null;
-  /** Where it goes, as the card names it: a ref and its tab, or a folder. */
-  target: string;
-  /** The prompt exactly as it will be typed. */
-  prompt: string;
-};
+/**
+ * What the user is asked to approve before a prompt is typed, a session
+ * started, or a session's permission request answered.
+ */
+export type FleetAsk =
+  | {
+      action: 'send' | 'spawn';
+      /** The session a send goes to; `null` for a spawn. */
+      sessionId: string | null;
+      /** Where it goes, as the card names it: a ref and its tab, or a folder. */
+      target: string;
+      /** The prompt exactly as it will be typed. */
+      prompt: string;
+    }
+  | {
+      action: 'permission';
+      sessionId: string;
+      /** The session, as the card names it. */
+      target: string;
+      /** The request as the session made it: the tool and what it would do. */
+      prompt: string;
+      decision: 'allow' | 'deny';
+      /** The shell command, when the request is to run one: what the user's rules are matched against. */
+      command: string | null;
+      /** The session's folder, where that command would run. */
+      cwd: string;
+    };
 
 /** Ask the user, or their standing answer, whether a fleet action may go ahead. */
 export type FleetApprover = (ask: FleetAsk) => Promise<boolean>;
@@ -192,7 +209,7 @@ export type AgentFleetCapability = {
   send: Act<FleetSendArgs> | null;
   spawn: Act<FleetSpawnArgs> | null;
   wait: Run<FleetWaitArgs> | null;
-  permission: Run<FleetPermissionArgs> | null;
+  permission: Act<FleetPermissionArgs> | null;
 };
 
 /** The capability member behind each tool. */
@@ -483,6 +500,12 @@ export function renderFleetInstructions(options: {
             ? [
                 '',
                 '`fleet_wait` blocks until a session you are waiting on finishes its turn, needs the user, or ends, and tells you what changed. Use it after a send or a spawn instead of reading the session over and over. Keep the timeout to what the user would sit through: they see the wait and can stop it.'
+              ]
+            : []),
+          ...(options.tools.includes('fleet_permission')
+            ? [
+                '',
+                "`fleet_permission` allows or denies the permission request a session is waiting on, which a digest or `fleet_read` shows you. The user has turned it on, but still decides: their deny rules win, commands they always want asked about go to them, and otherwise they approve each answer unless they gave full access. Allow only what the session's task plainly needs; when unsure, leave it to the user."
               ]
             : []),
           ...(options.analyst === true

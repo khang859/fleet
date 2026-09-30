@@ -94,8 +94,8 @@ export class ClaudeSessionsService {
   /** The setting as last applied, so turning it off can be told from starting with it off. */
   private tracking: boolean | null = null;
   private work: Promise<void> = Promise.resolve();
-  /** How many consumers can answer a permission request right now. */
-  private answerers = 0;
+  /** The consumers that may answer a permission request, each saying whether it can right now. */
+  private readonly answerers = new Set<() => boolean>();
   private readonly usage: SessionUsageTracker;
   private readonly transcripts: SessionTranscripts;
   private readonly git: GitRunner;
@@ -222,19 +222,28 @@ export class ClaudeSessionsService {
 
   /**
    * Declare that a consumer can answer permission requests, until the returned
-   * function is called. With none, permission hooks are released at once so
-   * Claude Code shows its own prompt: holding one nobody can answer would stall
-   * a background subagent, whose dialog waits for the hook.
+   * function is called. `canAnswer` is asked as each request arrives, for a
+   * consumer that can only sometimes answer. With none that can, the hook is
+   * released at once so Claude Code shows its own prompt: holding one nobody
+   * can answer would stall a background subagent, whose dialog waits for the
+   * hook.
    */
-  addPermissionAnswerer(): () => void {
-    this.answerers++;
-    let removed = false;
+  addPermissionAnswerer(canAnswer: () => boolean = () => true): () => void {
+    // Its own function, so one consumer registering twice counts twice.
+    const answerer = (): boolean => canAnswer();
+    this.answerers.add(answerer);
     return () => {
-      if (removed) return;
-      removed = true;
-      this.answerers--;
-      if (this.answerers === 0) void this.broker.dispose();
+      if (this.answerers.delete(answerer)) this.releaseUnanswerable();
     };
+  }
+
+  /**
+   * Release every held hook if no answerer can answer any more. Call it when
+   * what an answerer's `canAnswer` reads changes, since a held hook is not
+   * asked again.
+   */
+  releaseUnanswerable(): void {
+    if (![...this.answerers].some((canAnswer) => canAnswer())) void this.broker.dispose();
   }
 
   /** A live session's transcript, read up to now, with its brief. */
@@ -406,7 +415,8 @@ export class ClaudeSessionsService {
     }
     const recorded = this.registry.ingest(event, placement);
     const toolUseId = recorded?.toolUseId;
-    if (event.status !== 'waiting_for_approval' || !toolUseId || this.answerers === 0) return false;
+    if (event.status !== 'waiting_for_approval' || !toolUseId) return false;
+    if (![...this.answerers].some((canAnswer) => canAnswer())) return false;
     const pending = this.registry.get(event.sessionId)?.pendingPermissions ?? [];
     if (!pending.some((p) => p.toolUseId === toolUseId)) return false;
     this.broker.hold(event.sessionId, toolUseId, client);

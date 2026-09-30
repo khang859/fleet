@@ -4,7 +4,7 @@ import { IPC_CHANNELS } from '../../../../shared/ipc-channels';
 import type { AgentPermissionAsk, AgentTurnUsage } from '../../../../shared/agent-types';
 import { EMPTY_AGENT_USAGE } from '../../../../shared/agent-types';
 import type { AgentPermissionRules } from '../../../../shared/agent-permissions';
-import { PermissionGate } from '../gate';
+import { PermissionGate, type FleetPermissionRequest } from '../gate';
 
 /**
  * The gate decides in main and asks the renderer only when it has to. What is
@@ -660,9 +660,8 @@ describe('PermissionGate, in full access', () => {
 });
 
 /** The Orchestrator asking to type into a session, with what the card draws. */
-const fleetRequest = (
-  overrides: Partial<Parameters<PermissionGate['checkFleet']>[0]> = {}
-): Parameters<PermissionGate['checkFleet']>[0] => ({
+type FleetActRequest = Extract<FleetPermissionRequest, { action: 'send' | 'spawn' }>;
+const fleetRequest = (overrides: Partial<FleetActRequest> = {}): FleetActRequest => ({
   streamId: 'stream-1',
   callId: 'call-1',
   signal: new AbortController().signal,
@@ -682,7 +681,8 @@ describe('PermissionGate, on the Orchestrator’s sends and spawns', () => {
     expect(asks[0].fleet).toEqual({
       action: 'send',
       target: 'abcdef12 · work › claude',
-      prompt: '[orchestrator] Run the tests'
+      prompt: '[orchestrator] Run the tests',
+      decision: null
     });
     expect(asks[0].mcp).toBeNull();
     expect(asks[0].rule).toBe('send:sess-1');
@@ -754,5 +754,85 @@ describe('PermissionGate, on the Orchestrator’s sends and spawns', () => {
   it('runs without asking under full access', async () => {
     await expect(fullAccessGate().checkFleet(fleetRequest())).resolves.toBe('run');
     expect(asks).toEqual([]);
+  });
+});
+
+/** The Orchestrator asking to answer a session's permission request. */
+type FleetAnswerRequest = Extract<FleetPermissionRequest, { action: 'permission' }>;
+const answerRequest = (overrides: Partial<FleetAnswerRequest> = {}): FleetAnswerRequest => ({
+  streamId: 'stream-1',
+  callId: 'call-1',
+  signal: new AbortController().signal,
+  action: 'permission',
+  sessionId: 'sess-1',
+  target: 'abcdef12 (work › claude)',
+  prompt: 'Bash: npm install left-pad',
+  decision: 'allow',
+  command: 'npm install left-pad',
+  cwd: '/work',
+  ...overrides
+});
+
+describe('PermissionGate, on the Orchestrator answering a session’s permission', () => {
+  it('asks with the request and the answer, offering nothing to remember', async () => {
+    const g = gate();
+    const verdict = g.checkFleet(answerRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    expect(asks[0].fleet).toEqual({
+      action: 'permission',
+      target: 'abcdef12 (work › claude)',
+      prompt: 'Bash: npm install left-pad',
+      decision: 'allow'
+    });
+    expect(asks[0].rule).toBeNull();
+    g.decide(asks[0].requestId, 'once');
+    await expect(verdict).resolves.toBe('run');
+  });
+
+  it('never allows a command a deny rule matches, even under full access', async () => {
+    rules.deny.push('npm install *');
+    await expect(fullAccessGate().checkFleet(answerRequest())).resolves.toBe('refuse');
+    await expect(gate().checkFleet(answerRequest())).resolves.toBe('refuse');
+    expect(asks).toEqual([]);
+  });
+
+  it('lets a denied command be denied', async () => {
+    rules.deny.push('npm install *');
+    await expect(fullAccessGate().checkFleet(answerRequest({ decision: 'deny' }))).resolves.toBe(
+      'run'
+    );
+  });
+
+  it('puts a command that always asks to the user, even under full access', async () => {
+    const g = fullAccessGate();
+    const verdict = g.checkFleet(
+      answerRequest({ prompt: 'Bash: sudo rm -rf /tmp/x', command: 'sudo rm -rf /tmp/x' })
+    );
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    expect(asks[0].reason).toBe('Runs as root.');
+    g.decide(asks[0].requestId, 'no');
+    await expect(verdict).resolves.toBe('refuse');
+  });
+
+  it('answers under full access without asking, and asks otherwise even with an allow rule', async () => {
+    await expect(fullAccessGate().checkFleet(answerRequest())).resolves.toBe('run');
+    await expect(
+      fullAccessGate().checkFleet(answerRequest({ prompt: 'Edit: src/a.ts', command: null }))
+    ).resolves.toBe('run');
+    expect(asks).toEqual([]);
+
+    rules.allow.push('npm install *');
+    void gate().checkFleet(answerRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+  });
+
+  it('does not ask again about an answer refused this turn', async () => {
+    const g = gate();
+    const first = g.checkFleet(answerRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'no');
+    await expect(first).resolves.toBe('refuse');
+    await expect(g.checkFleet(answerRequest())).resolves.toBe('refuse');
+    expect(asks).toHaveLength(1);
   });
 });
