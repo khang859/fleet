@@ -8,6 +8,7 @@ An always-visible view of every tracked Claude Code session, so a developer runn
 
 The system SHALL show tracked sessions in a section pinned to the sidebar that stays visible while the user works in any tab.
 Each row SHALL show:
+
 - the pane or tab label and git branch;
 - a phase indicator;
 - time in the current phase;

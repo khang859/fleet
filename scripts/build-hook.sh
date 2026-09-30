@@ -10,7 +10,7 @@ OUT_DIR="${REPO_ROOT}/hooks/bin"
 
 mkdir -p "$OUT_DIR"
 
-for target in "darwin/arm64" "darwin/amd64" "windows/amd64" "linux/amd64"; do
+for target in "darwin/arm64" "darwin/amd64" "windows/amd64" "linux/amd64" "linux/arm64"; do
   GOOS="${target%/*}"
   GOARCH="${target#*/}"
   OUT="${OUT_DIR}/fleet-copilot-${GOOS}-${GOARCH}"

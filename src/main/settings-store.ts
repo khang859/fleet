@@ -171,6 +171,7 @@ export class SettingsStore {
         ...saved.copilot,
         workspaceOverrides: readWorkspaceOverrides(saved.copilot?.workspaceOverrides)
       },
+      claudeSessions: { ...DEFAULT_SETTINGS.claudeSessions, ...saved.claudeSessions },
       annotate: { ...DEFAULT_SETTINGS.annotate, ...(saved.annotate ?? {}) },
       // Hotkeys one level deeper, so a file that saved one binding still has
       // the defaults for the rest.
@@ -294,6 +295,7 @@ export class SettingsStore {
       notifications: { ...current.notifications, ...(partial.notifications ?? {}) },
       socketApi: { ...current.socketApi, ...(partial.socketApi ?? {}) },
       copilot: { ...current.copilot, ...(partial.copilot ?? {}) },
+      claudeSessions: { ...current.claudeSessions, ...(partial.claudeSessions ?? {}) },
       annotate: { ...current.annotate, ...(partial.annotate ?? {}) },
       teleprompter: {
         ...current.teleprompter,

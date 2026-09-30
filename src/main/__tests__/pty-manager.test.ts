@@ -44,6 +44,15 @@ describe('PtyManager', () => {
     expect(manager.has('pane-1')).toBe(true);
   });
 
+  it('tells the shell which pane it runs in, as a Fleet builtin', () => {
+    manager.create({ paneId: 'pane-9', cwd: '/tmp', shell: '/bin/zsh', env: { PATH: '/bin' } });
+    const spawn = vi.mocked(ptyModule.spawn);
+    const options = spawn.mock.calls.at(-1)?.[2];
+    expect(options?.env).toMatchObject({ FLEET_SESSION: '1', FLEET_PANE_ID: 'pane-9' });
+    const snapshot = manager.getEnvSnapshot('pane-9');
+    expect(snapshot?.vars.find((v) => v.key === 'FLEET_PANE_ID')?.source).toBe('fleet-builtin');
+  });
+
   it('kills a PTY and removes it from the map', () => {
     manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
     manager.kill('pane-1');

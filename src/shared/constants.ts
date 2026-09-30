@@ -60,6 +60,9 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     workspaceOverrides: {},
     showAllWorkspaces: false
   },
+  claudeSessions: {
+    trackSessions: true
+  },
   annotate: {
     retentionDays: 3
   },

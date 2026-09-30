@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useHookStatusStore } from '../hook-status-store';
+import type { HookFolderStatus } from '../../../../shared/claude-sessions';
 
-type Deferred = { resolve: (installed: boolean) => void; reject: (err: Error) => void };
+type Deferred = { resolve: (status: HookFolderStatus) => void; reject: (err: Error) => void };
 
 let pending: Map<string, Deferred[]>;
 let installTo: ReturnType<typeof vi.fn>;
@@ -23,14 +24,12 @@ function installFleet(): void {
     return true;
   });
   const copilot = {
-    hookStatusFor: async (folder: string): Promise<boolean> => {
-      const installed = await new Promise<boolean>((resolve, reject) => {
+    hookStatusFor: async (folder: string): Promise<HookFolderStatus> =>
+      new Promise<HookFolderStatus>((resolve, reject) => {
         const queue = pending.get(folder) ?? [];
         queue.push({ resolve, reject });
         pending.set(folder, queue);
-      });
-      return installed;
-    },
+      }),
     installHooksTo: installTo,
     uninstallHooksFrom: uninstallFrom
   };
@@ -39,7 +38,7 @@ function installFleet(): void {
 
 /** Answer the nth outstanding check for a folder (0 = the oldest). */
 function answer(folder: string, index: number, installed: boolean): void {
-  pending.get(folder)?.[index].resolve(installed);
+  pending.get(folder)?.[index].resolve({ state: installed ? 'installed' : 'missing' });
 }
 
 /** Let every queued microtask and the store's own `.then` chain run. */
@@ -69,6 +68,21 @@ describe('useHookStatusStore', () => {
     pending.get(FOLDER)?.[0].reject(new Error('permission denied'));
     await flush();
     expect(stateOf(FOLDER)).toBe('error');
+  });
+
+  it('reports a folder whose settings cannot be read, with the reason', async () => {
+    useHookStatusStore.getState().check(FOLDER);
+    pending.get(FOLDER)?.[0].resolve({ state: 'unreadable', detail: 'Unexpected token' });
+    await flush();
+    expect(useHookStatusStore.getState().byFolder[FOLDER]).toMatchObject({
+      state: 'unreadable',
+      detail: 'Unexpected token'
+    });
+    // A later good answer clears the stale reason.
+    useHookStatusStore.getState().check(FOLDER);
+    answer(FOLDER, 1, true);
+    await flush();
+    expect(useHookStatusStore.getState().byFolder[FOLDER]?.detail).toBeUndefined();
   });
 
   it('gives every consumer of one folder the same answer', async () => {

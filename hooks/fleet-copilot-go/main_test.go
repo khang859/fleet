@@ -195,6 +195,7 @@ func TestStatusMapping(t *testing.T) {
 		{"UserPromptSubmit", "processing"},
 		{"PreToolUse", "running_tool"},
 		{"PostToolUse", "processing"},
+		{"PostToolUseFailure", "processing"},
 		{"PermissionRequest", "waiting_for_approval"},
 		{"Notification", "notification"},
 		{"Stop", "waiting_for_input"},
@@ -233,5 +234,73 @@ func TestEmitSessionStartContext(t *testing.T) {
 	if !strings.Contains(out.HookSpecificOutput.AdditionalContext, wantPath) {
 		t.Errorf("expected additionalContext to contain skill path %q, got %q",
 			wantPath, out.HookSpecificOutput.AdditionalContext)
+	}
+}
+
+func TestNewState_ForwardsPaneTranscriptAndConfigDir(t *testing.T) {
+	var input HookInput
+	payload := `{"session_id":"s1","hook_event_name":"SessionStart","cwd":"/repo",` +
+		`"transcript_path":"/c/projects/-repo/s1.jsonl","source":"clear"}`
+	if err := json.Unmarshal([]byte(payload), &input); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"FLEET_PANE_ID": "pane-7", "CLAUDE_CONFIG_DIR": "/c"}
+	state := newState(&input, nil, 42, func(k string) string { return env[k] })
+
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]interface{}{
+		"pane_id":         "pane-7",
+		"transcript_path": "/c/projects/-repo/s1.jsonl",
+		"config_dir":      "/c",
+		"source":          "clear",
+		"protocol":        float64(protocolVersion),
+		"pid":             float64(42),
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %v, want %v", k, got[k], v)
+		}
+	}
+}
+
+func TestNewState_OmitsUnsetFields(t *testing.T) {
+	input := HookInput{SessionID: "s1", HookEventName: "Stop", CWD: "/repo"}
+	state := newState(&input, nil, 1, func(string) string { return "" })
+	data, _ := json.Marshal(state)
+	for _, key := range []string{"pane_id", "transcript_path", "config_dir", "source"} {
+		if strings.Contains(string(data), `"`+key+`"`) {
+			t.Errorf("%s should be omitted when empty: %s", key, data)
+		}
+	}
+}
+
+func TestClaudePID_StepsPastTheHookShell(t *testing.T) {
+	comm := map[int]string{100: "claude", 200: "sh", 300: "/bin/bash", 400: "dash"}
+	parent := map[int]int{200: 100, 300: 100, 400: 1}
+	commOf := func(pid int) string { return comm[pid] }
+	parentOf := func(pid int) int { return parent[pid] }
+
+	cases := []struct {
+		name string
+		ppid int
+		want int
+	}{
+		{"claude ran the hook directly", 100, 100},
+		{"dash forked for sh -c", 200, 100},
+		{"macOS ps reports a full path", 300, 100},
+		{"a shell with no usable parent is kept", 400, 400},
+		{"an unreadable parent is kept", 999, 999},
+	}
+	for _, c := range cases {
+		if got := claudePID(c.ppid, commOf, parentOf); got != c.want {
+			t.Errorf("%s: claudePID(%d) = %d, want %d", c.name, c.ppid, got, c.want)
+		}
 	}
 }

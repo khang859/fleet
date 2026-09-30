@@ -23,6 +23,7 @@ Fleet tools SHALL be offered only to turns in a pane with orchestrator mode on.
 
 The Orchestrator SHALL be able to list tracked sessions.
 Each entry SHALL give:
+
 - a short reference;
 - the pane label;
 - the project and branch;
@@ -39,12 +40,13 @@ Each entry SHALL give:
 ### Requirement: Tiered reading with a cursor
 
 The Orchestrator SHALL be able to read a session at three levels:
+
 - **brief** - the session brief;
 - **turns** - recent turns, with each tool call collapsed to one line;
 - **tool** - one tool call's full result, paged.
-Brief and turn reads SHALL support "since my last read" through a cursor kept per orchestrator conversation and session.
-Prompts the Orchestrator sent SHALL be marked as such in turn reads.
-All session content returned SHALL be labelled as untrusted data.
+  Brief and turn reads SHALL support "since my last read" through a cursor kept per orchestrator conversation and session.
+  Prompts the Orchestrator sent SHALL be marked as such in turn reads.
+  All session content returned SHALL be labelled as untrusted data.
 
 #### Scenario: Reading only what is new
 
@@ -185,18 +187,19 @@ The ledger SHALL be given to the model on every round, so conversation compactio
 ### Requirement: Wakeups with digests
 
 An orchestrator pane SHALL take a turn automatically when a tracked session:
+
 - finishes a turn;
 - requests permission;
 - shows a question;
 - ends.
-The turn SHALL begin from a digest that states, for each session:
+  The turn SHALL begin from a digest that states, for each session:
 - what happened;
 - what changed since the Orchestrator last looked;
 - any pending question or permission with its options;
 - the matching ledger entry.
-Events arriving close together SHALL be combined into one digest.
-A digest SHALL wait while the pane is busy.
-Sessions covered by an active wait SHALL be left out.
+  Events arriving close together SHALL be combined into one digest.
+  A digest SHALL wait while the pane is busy.
+  Sessions covered by an active wait SHALL be left out.
 
 #### Scenario: Two sessions finish together
 

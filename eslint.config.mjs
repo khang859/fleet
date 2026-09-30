@@ -120,6 +120,32 @@ export default defineConfig(
       'no-console': 'off'
     }
   },
+  // `claude-sessions` is the core record of Claude sessions that the copilot, the
+  // Agent pane and the Sessions tool consume. It must not depend on any of them, nor
+  // on Electron, so it stays testable under plain Node; Electron-facing pieces such
+  // as `ipcMain` are passed in by the composition root in `main/index.ts`.
+  {
+    files: ['src/main/claude-sessions/**/*.ts'],
+    ignores: ['**/__tests__/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{ name: 'electron', message: 'claude-sessions stays Electron-free; inject it.' }],
+          patterns: [
+            {
+              group: ['**/copilot', '**/copilot/**', '**/agent', '**/agent/**'],
+              message: 'claude-sessions is consumed by these modules and must not import them.'
+            },
+            {
+              group: ['**/sessions', '**/sessions/**', '../index', '../index.*'],
+              message: 'claude-sessions must not import the Sessions tool or main/index.'
+            }
+          ]
+        }
+      ]
+    }
+  },
   // Relax rules in test files — allow `as any` casts and their downstream effects
   {
     files: ['**/__tests__/**/*.{ts,tsx}', 'src/test-setup.ts'],

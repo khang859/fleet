@@ -3,7 +3,8 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import { z } from 'zod';
-import { cwdToProjectDir, parseClaudeTranscript } from '../copilot/conversation-reader';
+import { parseClaudeTranscript } from '../copilot/conversation-reader';
+import { cwdToProjectDir } from '../claude-sessions/transcript-path';
 import type { CopilotChatMessage } from '../../shared/types';
 import type {
   ClaudeUsage,

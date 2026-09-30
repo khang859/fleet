@@ -7,12 +7,20 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync
 } from 'fs';
 import { execSync } from 'child_process';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { install, isInstalled, uninstall, UnreadableSettingsError } from '../hook-installer';
+import {
+  ensureHooks,
+  hookStatus,
+  install,
+  isInstalled,
+  uninstall,
+  UnreadableSettingsError
+} from '../hook-installer';
 import { isFleetHookCommand } from '../../../shared/claude-hooks';
 
 const BINARY = `fleet-copilot-${process.platform === 'win32' ? 'windows' : process.platform}-${
@@ -176,12 +184,71 @@ describe('uninstall', () => {
     expect(readSettings().hooks).toBeUndefined();
   });
 
-  it('leaves unreadable settings untouched', () => {
+  it('leaves unreadable settings and the binary they may name in place', () => {
+    install(configDir);
     const text = '{ broken';
     writeFileSync(settingsPath, text);
 
-    uninstall(configDir);
+    expect(() => uninstall(configDir)).toThrow(UnreadableSettingsError);
 
     expect(readFileSync(settingsPath, 'utf-8')).toBe(text);
+    expect(existsSync(join(configDir, 'hooks', BINARY))).toBe(true);
+  });
+});
+
+describe('hook binary', () => {
+  const dest = (): string => join(configDir, 'hooks', BINARY);
+  const source = (): string => join(root, 'repo', 'hooks', 'bin', BINARY);
+
+  it('leaves an unchanged binary in place', () => {
+    install(configDir);
+    const before = statSync(dest()).ino;
+    install(configDir);
+    expect(statSync(dest()).ino).toBe(before);
+  });
+
+  it('replaces a changed binary with a new file rather than writing into the old one', () => {
+    install(configDir);
+    const before = statSync(dest()).ino;
+    writeFileSync(source(), '#!/bin/sh\necho fleet-hook-v2\n');
+
+    install(configDir);
+
+    expect(statSync(dest()).ino).not.toBe(before);
+    expect(readFileSync(dest(), 'utf-8')).toContain('fleet-hook-v2');
+    expect(statSync(dest()).mode & 0o111).not.toBe(0);
+    expect(readdirSync(join(configDir, 'hooks')).filter((n) => n.includes('fleet-tmp'))).toEqual(
+      []
+    );
+  });
+});
+
+describe('hookStatus', () => {
+  it('tells installed, missing and unreadable apart', () => {
+    expect(hookStatus(configDir)).toEqual({ state: 'missing' });
+    install(configDir);
+    expect(hookStatus(configDir)).toEqual({ state: 'installed' });
+    writeFileSync(settingsPath, '{ broken');
+    expect(hookStatus(configDir)).toEqual({
+      state: 'unreadable',
+      detail: expect.stringContaining('Fleet left the file unchanged') as string
+    });
+  });
+});
+
+describe('ensureHooks', () => {
+  it('installs into every folder and reports the ones it could not', () => {
+    const other = join(root, 'other claude');
+    const broken = join(root, 'broken claude');
+    mkdirSync(broken);
+    writeFileSync(join(broken, 'settings.json'), '{ broken');
+
+    const failures = ensureHooks([configDir, broken, other, configDir]);
+
+    expect([...failures.keys()]).toEqual([broken]);
+    expect(failures.get(broken)).toBeInstanceOf(UnreadableSettingsError);
+    expect(isInstalled(configDir)).toBe(true);
+    expect(isInstalled(other)).toBe(true);
+    expect(readFileSync(join(broken, 'settings.json'), 'utf-8')).toBe('{ broken');
   });
 });

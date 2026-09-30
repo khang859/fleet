@@ -8,7 +8,8 @@ import { createConfigFolderChoice } from '../../lib/config-folder-choice';
 import type { ConfigFolderChoice } from '../../lib/config-folder-choice';
 import { resolveClaudeConfig } from '../../../../shared/claude-config';
 import type { ResolvedClaudeConfig } from '../../../../shared/claude-config';
-import { FolderHooks } from './FolderHooks';
+import { FolderHooks, HOOKS_SUPPORTED } from './FolderHooks';
+import { useHookStatusStore } from '../../store/hook-status-store';
 import { CreateWorkspaceDialog } from '../workspace/CreateWorkspaceDialog';
 import type { SettingsSectionProps } from './SettingsTab';
 
@@ -100,6 +101,14 @@ export function WorkspacesSection({
     homeDir: window.fleet.homeDir
   });
 
+  // Main installs or removes the hooks before the update resolves, so every
+  // folder on screen is checked again once it does.
+  const setTracking = async (trackSessions: boolean): Promise<void> => {
+    await useSettingsStore.getState().updateSettings({ claudeSessions: { trackSessions } });
+    const hooks = useHookStatusStore.getState();
+    for (const folder of Object.keys(hooks.byFolder)) hooks.check(folder);
+  };
+
   const commitDefault = (value: string): void => {
     const trimmed = value.trim();
     setDefaultDraft(null);
@@ -160,6 +169,24 @@ export function WorkspacesSection({
 
   return (
     <div className="space-y-6">
+      <div>
+        <label className="flex items-center gap-2 text-sm text-fleet-text-secondary">
+          <input
+            type="checkbox"
+            disabled={!HOOKS_SUPPORTED}
+            checked={HOOKS_SUPPORTED && settings.claudeSessions.trackSessions}
+            onChange={(e) => void setTracking(e.target.checked)}
+            className="fleet-accent-input"
+          />
+          Track Claude Code sessions
+        </label>
+        <p className="text-xs text-fleet-text-subtle mt-1">
+          {HOOKS_SUPPORTED
+            ? 'Fleet installs its hooks in every config folder below to follow the Claude Code sessions in its panes. Turning this off removes them.'
+            : 'Session tracking is not available on Windows yet.'}
+        </p>
+      </div>
+
       <p className="text-xs text-fleet-text-subtle">
         Choose the Claude Code config folder used by new terminals in each workspace.
       </p>

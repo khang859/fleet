@@ -50,7 +50,7 @@ None. No existing spec covers these areas.
   - new `shared/claude-sessions.ts`, `shared/claude-brief.ts` and `shared/fleet-tools.ts`;
   - `agent-tools.ts` and `agent-types.ts`, including a new `fleet` message role;
   - new IPC channels.
-  Agent session files that contain a `fleet` message cannot be read by older Fleet versions.
+    Agent session files that contain a `fleet` message cannot be read by older Fleet versions.
 - **Renderer:**
   - new status panel in `Sidebar.tsx`;
   - Agent pane orchestrator toggle, permission card and digest card;
