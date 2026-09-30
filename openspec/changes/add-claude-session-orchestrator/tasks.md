@@ -28,15 +28,16 @@
 - [x] 3.2 Extract `usage-accumulator.ts` from `aggregateClaudeUsage` and refactor `claude-source` onto it; verify the existing sessions tests pass and a parity test matches
 - [x] 3.3 Add `git-probe.ts` (branch, dirty count, diff stat, fixed argv, timeout, output cap); verify with temp-repo tests
 - [x] 3.4 Put cost and context usage on the session view (throttled, and on Stop), `null` when unknown; verify with unit tests
-- [ ] 3.5 Extract `lib/focus-pane.ts` from `App.tsx` and `AgentOverview.tsx` and switch both callers to it; verify focus still works from both
+- [x] 3.5 Extract `lib/focus-pane.ts` from `App.tsx` and `AgentOverview.tsx` and switch both callers to it; verify focus still works from both
 - [x] 3.6 Add `claude-sessions-store.ts` and `ClaudeSessionsPanel.tsx` in the sidebar (rows, urgency sort, needs-you vs ready styling, idle ticker, click to focus, empty and disabled states); verify with store and sort tests
-- [ ] 3.7 E2E with fleet-drive: two panes running `claude`; screenshot the panel in idle, working, permission and question states; check alignment, truncation, and light and dark themes; confirm click to focus
+- [x] 3.7 E2E with fleet-drive: two panes running `claude`; screenshot the panel in idle, working, permission and question states; check alignment, truncation, and light and dark themes; confirm click to focus
 
 ## 4. Phase 3 - read tools (PR 4)
 
 - [ ] 4.1 Add `claude-sessions/transcript.ts` (normalizer and `TranscriptTail` with a turn index and tool byte ranges) and rebuild `conversation-reader` on it; verify its existing tests pass unchanged plus golden JSONL fixtures
 - [ ] 4.2 Add `brief.ts` (goal, todos from TodoWrite and TaskCreate/TaskUpdate, plan, files, commands and failures, last assistant text, pending question, usage, per-item rev, delta, render with a cap); verify that incremental and one-pass builds render the same output on the fixtures
 - [ ] 4.2a Settle a permission answered "No" or cancelled in the terminal from the transcript: a rejected tool result (`toolUseResult: "User rejected tool use"`) or `[Request interrupted by user for tool use]` after a pending permission clears it and leaves the session waiting for a prompt; verify with a fixture test and in the Phase 3 E2E by denying a permission in a real pane
+- [ ] 4.2b Settle a queued prompt from the transcript: a `queue-operation` dequeue written after the session's last `Stop` puts it back in `processing` until the next `Stop`; verify with a fixture test and in the Phase 3 E2E by typing a prompt while a turn runs
 - [ ] 4.3 Add `shared/fleet-tools.ts` (schemas, specs, read and act name lists, capability types); add the read names to `SUBAGENT_TOOL_NAMES`; verify `agent-tools.test.ts` asserts that no act tool is in the subagent list
 - [ ] 4.4 Add the orchestrator flag on the Agent pane leaf and on `AgentSendRequest`, a composer toggle, a palette command, a header badge, and the system prompt block; verify tools are only advertised with the flag set, with a `toolSpecsFor` test
 - [ ] 4.5 Add `agent/fleet/host.ts`, `capability.ts`, and the cursor part of `ledger-store.ts`; wire `ctx.fleet` in `agent-service` (full for orchestrator turns, read-only pick for its subagents, null otherwise); verify with capability tests
