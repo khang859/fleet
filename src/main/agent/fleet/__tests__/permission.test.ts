@@ -97,7 +97,7 @@ describe('fleet_permission', () => {
       }
     ]);
     expect(answered).toEqual([['tu-1', 'allow', undefined]]);
-    expect(out.summary).toBe('allowed abcdef12');
+    expect(out.summary).toBe('Bash: npm install left-pad');
     expect(out.text).toContain('<session-data session="abcdef12">\nBash: npm install left-pad');
   });
 

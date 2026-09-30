@@ -5,6 +5,7 @@ import {
   type FleetToolOutput
 } from '../../../shared/fleet-tools';
 import type { ClaudePendingPermission } from '../../../shared/claude-sessions';
+import { toolInputPreview } from '../../claude-sessions/transcript';
 import { resolveSession, type FleetHost } from './host';
 
 /** The most of a tool's input the card and the result show. */
@@ -90,6 +91,7 @@ export async function answerPermission(
       fence(session.ref, prompt),
       ...(more > 0 ? [`It has ${more} more waiting; answer each the same way.`] : [])
     ].join('\n'),
-    summary: `${args.decision === 'allow' ? 'allowed' : 'denied'} ${session.ref}`
+    // The row already names the answer and the session; this says what was answered.
+    summary: `${request.tool.toolName}: ${toolInputPreview(request.tool.toolName, request.tool.toolInput)}`
   };
 }
