@@ -4,6 +4,7 @@ import {
   type FleetSendArgs,
   type FleetToolOutput
 } from '../../../shared/fleet-tools';
+import type { ClaudeSessionsService } from '../../claude-sessions';
 import { cleanPrompt, promptProblem, type SendResult } from '../../claude-sessions/input';
 import { resolveSession, type FleetHost } from './host';
 import type { FleetLedgerStore } from './ledger-store';
@@ -14,6 +15,30 @@ export type FleetPrompter = {
   refusal(sessionId: string): string | null;
   send(sessionId: string, text: string): Promise<SendResult>;
 };
+
+const NOT_TRACKING = 'Session tracking is not running.';
+
+/**
+ * The prompter for the service that may not have started yet, read through
+ * lazily. A refusal of `null` from a running service means "go ahead", so it
+ * must not fall back to the not-running reason.
+ */
+export function lazyPrompter(
+  service: () => Pick<ClaudeSessionsService, 'sendRefusal' | 'sendPrompt'> | null
+): FleetPrompter {
+  return {
+    refusal: (sessionId) => {
+      const s = service();
+      return s === null ? NOT_TRACKING : s.sendRefusal(sessionId);
+    },
+    send: async (sessionId, text) => {
+      const s = service();
+      return s === null
+        ? { ok: false, reason: NOT_TRACKING }
+        : s.sendPrompt(sessionId, text, 'orchestrator');
+    }
+  };
+}
 
 export type FleetSendDeps = {
   host: FleetHost;

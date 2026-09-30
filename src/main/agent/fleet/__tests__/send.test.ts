@@ -8,7 +8,7 @@ import { PromptInput } from '../../../claude-sessions/input';
 import type { FleetHost, FleetSession } from '../host';
 import { FleetLedgerStore } from '../ledger-store';
 import { ACT_LIMIT, ACT_WINDOW_MS, ActLimiter } from '../limiter';
-import { sendToSession } from '../send';
+import { lazyPrompter, sendToSession } from '../send';
 
 vi.mock('../../../logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })
@@ -238,5 +238,24 @@ describe('fleet_send', () => {
     expect(limits.refusal('a', ACT_LIMIT)).toContain('in about 10 minutes');
     expect(limits.refusal('a', ACT_WINDOW_MS)).toBeNull();
     expect(limits.refusal('b', ACT_LIMIT)).toBeNull();
+  });
+});
+
+describe('lazyPrompter', () => {
+  it('lets a send through when the running service has no objection', async () => {
+    const sendPrompt = vi.fn().mockResolvedValue({ ok: true });
+    const prompter = lazyPrompter(() => ({ sendRefusal: () => null, sendPrompt }));
+    expect(prompter.refusal('s1')).toBeNull();
+    expect(await prompter.send('s1', 'hi')).toEqual({ ok: true });
+    expect(sendPrompt).toHaveBeenCalledWith('s1', 'hi', 'orchestrator');
+  });
+
+  it('refuses while session tracking has not started', async () => {
+    const prompter = lazyPrompter(() => null);
+    expect(prompter.refusal('s1')).toBe('Session tracking is not running.');
+    expect(await prompter.send('s1', 'hi')).toEqual({
+      ok: false,
+      reason: 'Session tracking is not running.'
+    });
   });
 });

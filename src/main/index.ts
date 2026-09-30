@@ -92,6 +92,7 @@ import { registerAgentIpc } from './agent/agent-ipc';
 import { createFleetHost } from './agent/fleet/host';
 import { FleetLedgerStore } from './agent/fleet/ledger-store';
 import { ActLimiter } from './agent/fleet/limiter';
+import { lazyPrompter } from './agent/fleet/send';
 import { RendererRpc } from './agent/fleet/renderer-rpc';
 import { FleetSpawns } from './agent/fleet/spawns';
 import { FleetAttention } from './agent/fleet/attention';
@@ -1585,15 +1586,7 @@ void app.whenReady().then(async () => {
       ledger: fleetLedger,
       act: {
         // Read through lazily, for the reason the host is.
-        prompter: {
-          refusal: (sessionId) =>
-            claudeSessions?.sendRefusal(sessionId) ?? 'Session tracking is not running.',
-          send: async (sessionId, text) =>
-            claudeSessions?.sendPrompt(sessionId, text, 'orchestrator') ?? {
-              ok: false,
-              reason: 'Session tracking is not running.'
-            }
-        },
+        prompter: lazyPrompter(() => claudeSessions),
         limiter: new ActLimiter(),
         spawns: fleetSpawns,
         platform: process.platform,
