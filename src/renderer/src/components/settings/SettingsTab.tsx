@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { SettingsNav } from './SettingsNav';
 import type { SettingsSection } from './SettingsNav';
 import { GeneralSection } from './GeneralSection';
@@ -14,6 +14,7 @@ import { EnvSyncSection } from './EnvSyncSection';
 import { LearningsSection } from './LearningsSection';
 import { RemoteHostsSection } from './RemoteHostsSection';
 import { DiagnosticsSection } from './DiagnosticsSection';
+import { useSettingsNavStore } from '../../store/settings-nav-store';
 
 /**
  * What a settings page can be handed. Both are optional and most pages ignore
@@ -52,6 +53,14 @@ export function SettingsTab(): React.JSX.Element {
     setActiveSection(section);
     setFocusWorkspaceId(workspaceId);
   }, []);
+
+  // A section asked for from elsewhere, such as the sidebar's session status.
+  const pending = useSettingsNavStore((s) => s.pending);
+  useEffect(() => {
+    if (!pending) return;
+    navigate(pending);
+    useSettingsNavStore.getState().clear();
+  }, [pending, navigate]);
 
   return (
     <div className="flex h-full">

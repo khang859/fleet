@@ -42,6 +42,7 @@ import { isWslContext } from '../../shared/shell-profiles';
 import { useHomesStore } from './store/homes-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { focusPane } from './lib/focus-pane';
+import { initClaudeSessionsListener } from './store/claude-sessions-store';
 import { switchToWorkspace } from './lib/switch-workspace';
 import { ShortcutsHint } from './components/ShortcutsHint';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
@@ -361,6 +362,11 @@ export function App(): React.JSX.Element {
   // Subscribe to the working directory of the shell on the far side of an ssh pane
   useEffect(() => {
     return initRemoteCwdListener();
+  }, []);
+
+  // Keep the sidebar's Claude Code session status current
+  useEffect(() => {
+    return initClaudeSessionsListener();
   }, []);
 
   // Listen for focus-pane from main process (copilot "Go to Terminal", OS notifications)

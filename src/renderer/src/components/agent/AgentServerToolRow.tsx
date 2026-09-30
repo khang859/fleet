@@ -162,7 +162,7 @@ export function AgentCitationList({ citations }: { citations: Citation[] }): Rea
             href={citation.url}
             target="_blank"
             rel="noreferrer"
-            className="truncate text-[11px] text-fleet-accent hover:underline focus-ring"
+            className="truncate text-[11px] fleet-accent-text hover:underline focus-ring"
           >
             {citation.title ?? citation.url}
           </a>
@@ -330,7 +330,7 @@ export const AgentHostedFetchRow = memo(function AgentHostedFetchRow({
                 href={result.url}
                 target="_blank"
                 rel="noreferrer"
-                className="truncate text-[11px] text-fleet-accent hover:underline focus-ring"
+                className="truncate text-[11px] fleet-accent-text hover:underline focus-ring"
               >
                 {result.title ?? result.url}
               </a>
