@@ -115,6 +115,23 @@ describe('fleet_wait', () => {
     expect((await wait({ timeout_s: 60 })).text).toContain('no sessions to wait for');
   });
 
+  it('lists at most six other sessions, fenced', async () => {
+    sessions = Array.from({ length: 8 }, (_, i) =>
+      other({
+        sessionId: `s${i}`,
+        paneId: `0000000${i}-pane`,
+        ref: `0000000${i}`,
+        phase: 'waitingForInput',
+        waitingKind: 'prompt'
+      })
+    );
+    const lines = (await wait({ timeout_s: 60 })).text.split('\n');
+    expect(lines[1]).toBe('<session-data session="all">');
+    expect(lines.filter((l) => l.includes('· fleet › web ·'))).toHaveLength(6);
+    expect(lines.at(-2)).toBe('- and 2 more; fleet_sessions lists them all');
+    expect(lines.at(-1)).toBe('</session-data>');
+  });
+
   it('only looks at the sessions it was asked about', async () => {
     sessions = [session({ phase: 'waitingForInput', waitingKind: 'prompt' }), other()];
     expect((await wait({ sessions: ['abcdef12'], timeout_s: 60 })).summary).toBe('nothing working');
@@ -132,12 +149,11 @@ describe('fleet_wait', () => {
     report(session({ phase: 'waitingForInput', waitingKind: 'prompt', phaseSince: AT + 2_000 }));
     const out = await pending;
     expect(out.summary).toBe('abcdef12 needs attention');
-    expect(out.text).toContain(
-      'abcdef12 (fleet › api) finished its turn and is waiting for a prompt.'
-    );
+    // Labels are session data, so they stay inside the fence.
+    expect(out.text).toMatch(/^abcdef12 finished its turn and is waiting for a prompt\.\n/);
     expect(out.text).toContain('What changed:\n<session-data ref="abcdef12">tests pass');
     expect(out.text).toContain(
-      'Other watched sessions:\n- 99887766 · fleet › web · working for 1m'
+      'Other watched sessions:\n<session-data session="all">\n- 99887766 · fleet › web · working for 1m\n</session-data>'
     );
     expect(briefs).toEqual(['abcdef12']);
     expect(listeners.size).toBe(0);

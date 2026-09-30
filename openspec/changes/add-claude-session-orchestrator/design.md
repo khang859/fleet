@@ -283,14 +283,16 @@ A session that reaches its prompt through `SessionStart` (a start, a resume, a `
 The E2E found this: a user starting `claude` in a pane woke the Orchestrator with "finished its turn", and it acted on the stale request from its previous turn.
 Main renders the digest from the log after the thread's cursor, newest item per pane, and drops items that are no longer true (the session was prompted again before the digest was taken).
 It skips panes covered by a running `fleet_wait`, and panes whose attention a finished wait already reported.
+The digest covers at most 6 sessions and about 1,200 characters per session.
+Its headlines carry pane labels, which hold the user's tab names and the session's folder name, so they are fenced like any other session data.
+It advances the cursors, including the Orchestrator's read cursor for each brief delta it shows.
 
 `fleet_wait` follows sessions by pane, so a `/clear`, or a spawned pane whose session reports during the wait, is still the session asked about.
 Its cursor is the state each watched pane had when the wait began: only a later move into `waitingForInput`, `waitingForApproval` or `ended` ends it, so a session already waiting is not news.
 It returns at once when no watched session is working and no watched spawn is still starting.
 It ends on the first attention change, the timeout, or the turn's abort signal, and reports that session's brief delta through the Orchestrator's own read cursor, followed by where the other watched sessions stand.
+Its headline names the session by ref only, and the list of other watched sessions is fenced and capped at 6 lines.
 Main keeps the set of panes each thread waits on, which is what the digest consults.
-It caps output at 6 sessions and about 1,200 characters per session.
-It advances the cursors, including the Orchestrator's read cursor for each brief delta it shows.
 
 Main, not the renderer, holds the chain count, in the thread's ledger file so it survives a restart.
 Each digest turn adds one, and a turn the user wrote (text or attachments) in orchestrator mode resets it.

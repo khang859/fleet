@@ -57,8 +57,7 @@ async function sessionPart(
 ): Promise<{ headline: string; detail: string }> {
   const current = deps.host.sessions().find((s) => s.paneId === item.paneId);
   const ref = current?.ref ?? sessionRef(item.paneId);
-  const name = current === undefined ? ref : `${ref} (${current.label})`;
-  const headline = `${name} ${describeAttention(item.session)}.`;
+  const headline = `${current === undefined ? ref : `${ref} (${current.label})`} ${describeAttention(item.session)}.`;
 
   const approval = item.session === null ? null : pendingApproval(item.session);
   const entry = deps.ledger.entries(threadId).findLast((e) => e.paneId === item.paneId);
@@ -73,7 +72,7 @@ async function sessionPart(
       : null;
   return {
     headline,
-    detail: [`${name}:`, ...(changed === null ? [] : [changed]), ...extra].join('\n')
+    detail: [`${ref}:`, ...(changed === null ? [] : [changed]), ...extra].join('\n')
   };
 }
 
@@ -124,7 +123,8 @@ export async function pullDigest(
         ]
       : [];
   return {
-    text: [headlines.join('\n'), ...parts.map((p) => p.detail), ...last].join('\n\n'),
+    // Fenced: a label holds the user's tab names and the session's folder name.
+    text: [fence('all', headlines.join('\n')), ...parts.map((p) => p.detail), ...last].join('\n\n'),
     paused: depth >= FLEET_CHAIN_LIMIT
   };
 }

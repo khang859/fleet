@@ -5,7 +5,7 @@ import {
   type ClaudeSession,
   type ClaudeSessionChange
 } from '../../../shared/claude-sessions';
-import type { FleetToolOutput, FleetWaitArgs } from '../../../shared/fleet-tools';
+import { fence, type FleetToolOutput, type FleetWaitArgs } from '../../../shared/fleet-tools';
 import { describeAttention, type FleetAttention } from './attention';
 import { describePhase, describeStarting } from './format';
 import { sessionRef, type FleetHost, type FleetSession } from './host';
@@ -53,12 +53,22 @@ function watchedPanes(host: FleetHost, refs: readonly string[] | undefined): Set
   return panes;
 }
 
-/** One line per watched session as it stands now. */
-function standing(host: FleetHost, watched: Set<string> | 'all', skip: string | null): string[] {
+/** Watched sessions listed after the one a wait is about. */
+const MAX_STANDING = 6;
+
+/**
+ * One line per watched session as it stands now, fenced, since a label holds
+ * the user's tab names and the session's folder name; or null for none.
+ */
+function standing(
+  host: FleetHost,
+  watched: Set<string> | 'all',
+  skip: string | null
+): string | null {
   const now = host.now();
   const inWatch = (paneId: string): boolean =>
     paneId !== skip && (watched === 'all' || watched.has(paneId));
-  return [
+  const lines = [
     ...host
       .sessions()
       .filter((s) => inWatch(s.paneId))
@@ -68,6 +78,11 @@ function standing(host: FleetHost, watched: Set<string> | 'all', skip: string | 
       .filter((s) => inWatch(s.paneId))
       .map((s) => `- ${s.ref} · ${s.label} · ${describeStarting(s, now)}`)
   ];
+  if (lines.length === 0) return null;
+  const shown = lines.slice(0, MAX_STANDING);
+  const more = lines.length - shown.length;
+  if (more > 0) shown.push(`- and ${more} more; fleet_sessions lists them all`);
+  return fence('all', shown.join('\n'));
 }
 
 /**
@@ -96,9 +111,9 @@ export async function waitForSessions(
     const lines = standing(host, watched, null);
     return {
       text:
-        lines.length === 0
+        lines === null
           ? 'There are no sessions to wait for. Call fleet_sessions to see what is running.'
-          : `None of the watched sessions is working, so there is nothing to wait for:\n${lines.join('\n')}`,
+          : `None of the watched sessions is working, so there is nothing to wait for:\n${lines}`,
       summary: 'nothing working'
     };
   }
@@ -148,7 +163,7 @@ export async function waitForSessions(
       return {
         text: [
           `No watched session needed attention within ${args.timeout_s}s.`,
-          ...(lines.length > 0 ? ['Where they are now:', ...lines] : [])
+          ...(lines !== null ? ['Where they are now:', lines] : [])
         ].join('\n'),
         summary: `timed out after ${args.timeout_s}s`
       };
@@ -167,8 +182,8 @@ async function reportAttention(
   const { host } = deps;
   const current: FleetSession | undefined = host.sessions().find((s) => s.paneId === paneId);
   const ref = current?.ref ?? sessionRef(paneId);
-  const name = current === undefined ? ref : `${ref} (${current.label})`;
-  const headline = `${name} ${describeAttention(session)}.`;
+  // The ref only: the label is session data, and this line is outside a fence.
+  const headline = `${ref} ${describeAttention(session)}.`;
   const changed =
     current !== undefined && session !== null && session.phase !== 'ended'
       ? await deps.brief(current.ref)
@@ -178,7 +193,7 @@ async function reportAttention(
     text: [
       headline,
       ...(changed !== null ? ['What changed:', changed] : []),
-      ...(others.length > 0 ? ['Other watched sessions:', ...others] : [])
+      ...(others !== null ? ['Other watched sessions:', others] : [])
     ].join('\n'),
     summary: `${ref} ${session === null || session.phase === 'ended' ? 'ended' : 'needs attention'}`
   };

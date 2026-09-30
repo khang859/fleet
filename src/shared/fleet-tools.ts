@@ -545,12 +545,12 @@ export const FLEET_DIGEST_WIRE_PREFIX =
   'Claude Code sessions you look after need attention. Fleet is delivering this; the user has not said anything:';
 
 /**
- * A digest as main writes it: one headline per session, a blank line, then the
+ * A digest as main writes it: one headline per session, fenced, a blank line, then the
  * detail for each. The card shows the headlines and folds the rest away.
  */
 export function splitFleetDigest(text: string): { headlines: string[]; details: string } {
   const gap = text.indexOf('\n\n');
-  const head = gap === -1 ? text : text.slice(0, gap);
+  const head = unfence(gap === -1 ? text : text.slice(0, gap));
   return {
     headlines: head
       .split('\n')

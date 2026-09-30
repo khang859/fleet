@@ -157,14 +157,17 @@ describe('pullDigest', () => {
     const out = await pull();
     expect(out.paused).toBe(false);
     const [head, ...details] = (out.text ?? '').split('\n\n');
+    // Fenced, since a label holds tab names and the session's folder name.
     expect(head).toBe(
       [
+        '<session-data session="all">',
         '- pane0001 (work › tab 1) finished its turn and is waiting for a prompt.',
-        '- pane0002 (work › tab 2) is waiting for the user to approve Bash.'
+        '- pane0002 (work › tab 2) is waiting for the user to approve Bash.',
+        '</session-data>'
       ].join('\n')
     );
     const text = details.join('\n\n');
-    expect(text).toContain('pane0001 (work › tab 1):\n<session-data session="pane0001">');
+    expect(text).toContain('pane0001:\n<session-data session="pane0001">');
     expect(text).toContain('All 42 tests pass.');
     expect(text).toMatch(/Ledger:\n- #1 prompted pane0001 30s ago · answered/);
     expect(text).toContain(
@@ -201,7 +204,7 @@ describe('pullDigest', () => {
     const eight = Array.from({ length: 8 }, (_, i) => i + 1);
     report(...eight.map((n) => session(n)));
     report(...eight.map((n) => finished(n)));
-    const head = (await pull()).text?.split('\n\n')[0].split('\n') ?? [];
+    const head = (await pull()).text?.split('\n\n')[0].split('\n').slice(1, -1) ?? [];
     expect(head).toHaveLength(7);
     expect(head[6]).toBe('- 2 more sessions need attention; call fleet_sessions.');
   });

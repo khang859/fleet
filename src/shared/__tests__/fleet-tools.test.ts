@@ -4,8 +4,13 @@ import { fence, splitFleetDigest, unfence } from '../fleet-tools';
 describe('splitFleetDigest', () => {
   it('takes the headlines from the first block and the rest as detail', () => {
     const digest = [
-      '- abcdef12 (fleet › api) finished its turn and is waiting for a prompt.',
-      '- 99887766 (fleet › web) is waiting for the user to approve Bash.',
+      fence(
+        'all',
+        [
+          '- abcdef12 (fleet › api) finished its turn and is waiting for a prompt.',
+          '- 99887766 (fleet › web) is waiting for the user to approve Bash.'
+        ].join('\n')
+      ),
       '',
       fence('abcdef12', 'tests pass'),
       '',
