@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'fs';
 import { connect } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -7,6 +7,10 @@ import { ClaudeSessionsService, claudeConfigDirs } from '../index';
 import { DEFAULT_SETTINGS } from '../../../shared/constants';
 import type { FleetSettings } from '../../../shared/types';
 import type { SetHookState } from '../pane-activity-bridge';
+import type { GitRunner } from '../git-probe';
+import { BUNDLED_PRICES } from '../../../shared/claude-pricing';
+import { IPC_CHANNELS } from '../../../shared/ipc-channels';
+import type { ClaudeSessionsSnapshot } from '../../../shared/claude-sessions';
 
 vi.mock('../../logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })
@@ -59,6 +63,8 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
   let setHookState: ReturnType<typeof vi.fn<SetHookState>>;
   let handled: Map<string, (event: unknown, arg: unknown) => unknown>;
   let service: ClaudeSessionsService;
+  let snapshots: ClaudeSessionsSnapshot[];
+  let git: ReturnType<typeof vi.fn<GitRunner>>;
 
   const create = (platform: NodeJS.Platform = 'linux'): ClaudeSessionsService =>
     new ClaudeSessionsService({
@@ -70,7 +76,10 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
       setHookState,
       ipc: { handle: (channel, listener) => handled.set(channel, listener) },
       socketPath,
-      installer: installer as never
+      installer: installer as never,
+      priceTable: () => BUNDLED_PRICES,
+      onSnapshot: (snapshot) => snapshots.push(snapshot),
+      git
     });
 
   beforeEach(() => {
@@ -80,6 +89,13 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     installer = { ensureHooks: vi.fn(() => new Map()), uninstall: vi.fn() };
     setHookState = vi.fn<SetHookState>();
     handled = new Map();
+    snapshots = [];
+    git = vi.fn<GitRunner>(async (_cwd, args) =>
+      Promise.resolve({
+        stdout: args[0] === 'status' ? '## feature/x...origin/feature/x\0 M a.ts\0' : '',
+        truncated: false
+      })
+    );
     service = create();
   });
 
@@ -251,5 +267,92 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     expect(() => handled.get('copilot:hook-status-for')?.(null, 42)).toThrow(
       'Expected a folder path'
     );
+  });
+  describe('status view', () => {
+    const list = (): ClaudeSessionsSnapshot =>
+      handled.get(IPC_CHANNELS.CLAUDE_SESSIONS_LIST)?.(null, undefined) as ClaudeSessionsSnapshot;
+
+    it('lists each pane session with its usage and git state', async () => {
+      await service.start();
+      const transcript = join(dir, 's1.jsonl');
+      writeFileSync(
+        transcript,
+        `${JSON.stringify({
+          type: 'assistant',
+          message: { id: 'm1', model: 'claude-opus-5', usage: { input_tokens: 1_000_000 } }
+        })}\n`
+      );
+      await send(socketPath, event({ transcript_path: transcript }));
+      await send(
+        socketPath,
+        event({ event: 'Stop', status: 'waiting_for_input', transcript_path: transcript })
+      );
+
+      await vi.waitFor(() =>
+        expect(list().sessions).toEqual([
+          expect.objectContaining({
+            sessionId: 's1',
+            phase: 'waitingForInput',
+            usage: { costUsd: 5, contextTokens: 1_000_000, contextLimit: 1_000_000 },
+            git: expect.objectContaining({ branch: 'feature/x', dirtyFiles: 1 })
+          })
+        ])
+      );
+      expect(list().status).toEqual({ state: 'running' });
+      expect(git).toHaveBeenCalledWith('/repo', expect.arrayContaining(['status']));
+    });
+
+    it('leaves out a claude run by a tool inside the pane', async () => {
+      await service.start();
+      await send(socketPath, event({ event: 'Stop', status: 'waiting_for_input' }));
+      await send(
+        socketPath,
+        event({ session_id: 'nested', pid: process.ppid, event: 'UserPromptSubmit' })
+      );
+      expect(service.registry.list()).toHaveLength(2);
+      expect(list().sessions.map((s) => s.sessionId)).toEqual(['s1']);
+    });
+
+    it('pushes changes as one coalesced snapshot', async () => {
+      await service.start();
+      await vi.waitFor(() => expect(snapshots.length).toBeGreaterThan(0));
+      snapshots.length = 0;
+      await send(socketPath, event());
+      await send(socketPath, event({ event: 'PreToolUse', tool: 'Bash', tool_use_id: 't1' }));
+      await send(socketPath, event({ event: 'Stop', status: 'waiting_for_input' }));
+      await vi.waitFor(() => expect(snapshots.at(-1)?.sessions[0]?.phase).toBe('waitingForInput'));
+      // Three events in quick succession, not three pushes (git may add one more).
+      expect(snapshots.length).toBeLessThanOrEqual(2);
+    });
+
+    it('reports folders it could not install hooks into', async () => {
+      installer.ensureHooks.mockReturnValue(
+        new Map([['/home/u/.claude', new Error('settings.json could not be read')]])
+      );
+      await service.start();
+      expect(list().installProblems).toEqual([
+        { configDir: '/home/u/.claude', detail: 'settings.json could not be read' }
+      ]);
+    });
+
+    it('says when tracking is off, unsupported, or could not start', async () => {
+      settings.claudeSessions.trackSessions = false;
+      await service.start();
+      expect(list().status).toEqual({ state: 'off' });
+
+      await service.stop();
+      handled = new Map();
+      service = create('win32');
+      await service.start();
+      expect(list().status).toEqual({ state: 'unsupported' });
+
+      await service.stop();
+      handled = new Map();
+      settings.claudeSessions.trackSessions = true;
+      socketPath = join(dir, 'missing', 'hook.sock');
+      service = create();
+      await service.start();
+      expect(list().status).toMatchObject({ state: 'failed' });
+    });
   });
 });

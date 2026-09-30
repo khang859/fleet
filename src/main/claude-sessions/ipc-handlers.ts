@@ -1,5 +1,6 @@
 import { IPC_CHANNELS } from '../../shared/constants';
 import { createLogger } from '../logger';
+import type { ClaudeSessionsSnapshot } from '../../shared/claude-sessions';
 import * as hookInstaller from './hook-installer';
 
 const log = createLogger('claude-sessions:ipc');
@@ -17,8 +18,16 @@ function folderArg(arg: unknown): string {
   return arg;
 }
 
-/** Hook install, remove and status for one Claude config folder, on every platform. */
-export function registerClaudeSessionsIpc(ipc: IpcRegistrar): void {
+/**
+ * The status view's snapshot, and hook install, remove and status for one
+ * Claude config folder, on every platform.
+ */
+export function registerClaudeSessionsIpc(
+  ipc: IpcRegistrar,
+  snapshot: () => ClaudeSessionsSnapshot
+): void {
+  ipc.handle(IPC_CHANNELS.CLAUDE_SESSIONS_LIST, () => snapshot());
+
   ipc.handle(IPC_CHANNELS.COPILOT_INSTALL_HOOKS_TO, (_event, arg) => {
     const configDir = folderArg(arg);
     log.debug('install hooks', { configDir });

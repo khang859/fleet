@@ -1,17 +1,5 @@
 import { spawn } from 'child_process';
-
-/** What a session's folder looks like to git, for the status view and briefs. */
-export type GitSummary = {
-  /** The branch name, or a short commit id when HEAD is detached. */
-  branch: string;
-  /** Changed, staged and untracked files. A lower bound when `truncated`. */
-  dirtyFiles: number;
-  /** Lines added and removed against HEAD, across tracked files. */
-  insertions: number;
-  deletions: number;
-  /** The output hit the size cap, so the counts are incomplete. */
-  truncated: boolean;
-};
+import type { GitSummary } from '../../shared/claude-sessions';
 
 export type GitResult = { stdout: string; truncated: boolean };
 

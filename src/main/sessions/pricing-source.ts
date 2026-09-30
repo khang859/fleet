@@ -50,6 +50,15 @@ async function defaultCacheFile(): Promise<string> {
   return join(app.getPath('userData'), 'claude-pricing.json');
 }
 
+/**
+ * Whether a cached or fetched table may replace the current one. An older
+ * table never does: a cache written before this build, or a remote file not
+ * yet updated, would otherwise drop models the bundled table already prices.
+ */
+export function isAtLeastAsNew(table: PriceTable, than: PriceTable): boolean {
+  return table.updated >= than.updated;
+}
+
 /** Synchronous accessor used by the list path. */
 export function getPriceTable(): PriceTable {
   return currentTable;
@@ -71,7 +80,7 @@ export async function ensurePricesFresh(now: number = Date.now()): Promise<void>
     initialized = true;
     if (cacheFile) {
       const cached = loadCachedTable(cacheFile);
-      if (cached) currentTable = cached;
+      if (cached && isAtLeastAsNew(cached, currentTable)) currentTable = cached;
     }
   }
 
@@ -85,7 +94,7 @@ export async function ensurePricesFresh(now: number = Date.now()): Promise<void>
     clearTimeout(timer);
     if (!res.ok) return;
     const table = parsePriceTable(await res.text());
-    if (!table) return;
+    if (!table || !isAtLeastAsNew(table, currentTable)) return;
     currentTable = table;
     if (cacheFile) writeCachedTable(cacheFile, table);
   } catch {

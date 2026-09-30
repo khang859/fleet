@@ -108,3 +108,51 @@ export type ClaudeSessionChange = {
   session: ClaudeSession | null;
   event: ClaudeSessionEvent | null;
 };
+
+/** What a session's folder looks like to git. */
+export type GitSummary = {
+  /** The branch name, or a short commit id when HEAD is detached. */
+  branch: string;
+  /** Changed, staged and untracked files. A lower bound when `truncated`. */
+  dirtyFiles: number;
+  /** Lines added and removed against HEAD, across tracked files. */
+  insertions: number;
+  deletions: number;
+  /** Git's output hit Fleet's size cap, so the counts are incomplete. */
+  truncated: boolean;
+};
+
+/** Estimates from the session's transcript. Each is null until it can be worked out. */
+export type ClaudeSessionUsage = {
+  /** Estimated spend so far, including subagents. Null when a model has no known price. */
+  costUsd: number | null;
+  /** Tokens in the main conversation's context at its latest message. */
+  contextTokens: number | null;
+  /** The context window `contextTokens` is measured against. */
+  contextLimit: number | null;
+};
+
+/** A session as the status view and the Orchestrator see it. */
+export type ClaudeSessionView = ClaudeSession & {
+  usage: ClaudeSessionUsage;
+  git: GitSummary | null;
+};
+
+/**
+ * Whether session tracking is working. `starting` covers the moment before
+ * the hook socket is up; `failed` means it could not start at all.
+ */
+export type ClaudeTrackingStatus =
+  | { state: 'starting' | 'running' | 'off' | 'unsupported' }
+  | { state: 'failed'; detail: string };
+
+/** A Claude config folder Fleet could not install its hooks into, and why. */
+export type ClaudeHookInstallProblem = { configDir: string; detail: string };
+
+/** Everything the status view shows, sent whole on each change. */
+export type ClaudeSessionsSnapshot = {
+  status: ClaudeTrackingStatus;
+  installProblems: ClaudeHookInstallProblem[];
+  /** One per pane: a session run by a tool inside a pane is left out. */
+  sessions: ClaudeSessionView[];
+};

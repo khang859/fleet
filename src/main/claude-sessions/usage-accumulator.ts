@@ -77,20 +77,23 @@ export class UsageAccumulator {
   private endedAt: number | undefined;
   private hasUsage = false;
   private context: ContextUsage | null = null;
-  /** The tail of the last chunk, when it stopped partway through a line. */
-  private partial = '';
+  /** Per source, the tail of its last chunk when that stopped partway through a line. */
+  private readonly partials = new Map<string, string>();
 
-  /** Add raw transcript text. A trailing partial line waits for the next chunk. */
-  addText(chunk: string): void {
-    const lines = (this.partial + chunk).split('\n');
-    this.partial = lines.pop() ?? '';
+  /**
+   * Add raw transcript text. A trailing partial line waits for the next chunk
+   * from the same `source`, so several files can be read into one total.
+   */
+  addText(chunk: string, source = ''): void {
+    const lines = ((this.partials.get(source) ?? '') + chunk).split('\n');
+    this.partials.set(source, lines.pop() ?? '');
     for (const line of lines) this.addLine(line);
   }
 
-  /** Treat a held partial line as complete, for text known to end there. */
-  flush(): void {
-    const line = this.partial;
-    this.partial = '';
+  /** Treat a source's held partial line as complete, for text known to end there. */
+  flush(source = ''): void {
+    const line = this.partials.get(source) ?? '';
+    this.partials.delete(source);
     this.addLine(line);
   }
 

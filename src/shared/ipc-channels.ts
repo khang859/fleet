@@ -93,6 +93,10 @@ export const IPC_CHANNELS = {
   REMOTE_STATE: 'remote:state',
   WORKTREE_CREATE: 'worktree:create',
   WORKTREE_REMOVE: 'worktree:remove',
+  // Claude Code session tracking
+  CLAUDE_SESSIONS_LIST: 'claude-sessions:list',
+  /** Main -> renderer: the whole status view snapshot, coalesced. */
+  CLAUDE_SESSIONS_CHANGED: 'claude-sessions:changed',
   // Copilot
   COPILOT_SESSIONS: 'copilot:sessions',
   COPILOT_RESPOND_PERMISSION: 'copilot:respond-permission',

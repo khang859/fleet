@@ -73,6 +73,7 @@ import { restoreDockIcon } from './dock-icon';
 import { isProcessAlive } from './process-liveness';
 import { SessionsService } from './sessions/service';
 import { registerSessionsIpcHandlers } from './sessions/ipc-handlers';
+import { ensurePricesFresh, getPriceTable } from './sessions/pricing-source';
 import { LearningsStore } from './learnings/learnings-store';
 import { registerLearningsIpcHandlers } from './learnings/ipc-handlers';
 import { WorkerEmbedder } from './learnings/embed-service';
@@ -769,7 +770,16 @@ void app.whenReady().then(async () => {
     panes: ptyManager,
     workspaceOf: (paneId) => layoutStore.findWorkspaceForPane(paneId),
     setHookState: (paneId, state, pid) => activityTracker.setHookState(paneId, state, pid),
-    ipc: ipcMain
+    ipc: ipcMain,
+    priceTable: () => {
+      void ensurePricesFresh();
+      return getPriceTable();
+    },
+    onSnapshot: (snapshot) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.CLAUDE_SESSIONS_CHANGED, snapshot);
+      }
+    }
   });
   void claudeSessions.start();
 
