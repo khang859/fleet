@@ -35,7 +35,7 @@
 ## 4. Phase 3 - read tools (PR 4)
 
 - [x] 4.1 Add `claude-sessions/transcript.ts` (normalizer and `TranscriptTail` with a turn index and tool byte ranges) and rebuild `conversation-reader` on it; verify its existing tests pass unchanged plus golden JSONL fixtures
-- [ ] 4.2 Add `brief.ts` (goal, todos from TodoWrite and TaskCreate/TaskUpdate, plan, files, commands and failures, last assistant text, pending question, usage, per-item rev, delta, render with a cap); verify that incremental and one-pass builds render the same output on the fixtures
+- [x] 4.2 Add `brief.ts` (goal, todos from TodoWrite and TaskCreate/TaskUpdate, plan, files, commands and failures, last assistant text, pending question, usage, per-item rev, delta, render with a cap); verify that incremental and one-pass builds render the same output on the fixtures
 - [ ] 4.2a Settle a permission answered "No" or cancelled in the terminal from the transcript: a rejected tool result (`toolUseResult: "User rejected tool use"`) or `[Request interrupted by user for tool use]` after a pending permission clears it and leaves the session waiting for a prompt; verify with a fixture test and in the Phase 3 E2E by denying a permission in a real pane
 - [ ] 4.2b Settle a queued prompt from the transcript: a `queue-operation` dequeue written after the session's last `Stop` puts it back in `processing` until the next `Stop`; verify with a fixture test and in the Phase 3 E2E by typing a prompt while a turn runs
 - [ ] 4.3 Add `shared/fleet-tools.ts` (schemas, specs, read and act name lists, capability types); add the read names to `SUBAGENT_TOOL_NAMES`; verify `agent-tools.test.ts` asserts that no act tool is in the subagent list
