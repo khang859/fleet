@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { z } from 'zod';
 import { AgentSessionId } from '../../../shared/agent-session';
+import type { ClaudeSession, ClaudeSessionChange } from '../../../shared/claude-sessions';
 import { createLogger } from '../../logger';
 import { AGENT_SESSIONS_DIR } from '../session-store';
 
@@ -28,11 +29,121 @@ export const FleetCursor = z.object({
 });
 export type FleetCursor = z.infer<typeof FleetCursor>;
 
-const LedgerFile = z.object({ cursors: z.record(z.string(), FleetCursor) });
+/**
+ * One prompt the Orchestrator sent, or one session it started, and what it
+ * expects back.
+ *
+ * - `open`: sent, and the session has not finished the turn it started.
+ * - `answered`: the session finished that turn and waits for a prompt again.
+ * - `ended`: the session went away first.
+ */
+export const FleetLedgerEntry = z.object({
+  /** `#1`, `#2`, ... within one conversation. */
+  id: z.string(),
+  action: z.enum(['send', 'spawn']),
+  /** The session's ref, which is its pane's. */
+  ref: z.string(),
+  paneId: z.string(),
+  /** The session typed into. For a spawn, null until the new session reports. */
+  sessionId: z.string().nullable(),
+  /** The session's epoch when the prompt went in; a later one means it was cleared. */
+  epoch: z.number().nullable(),
+  /** The start of the prompt, enough to recognise it. */
+  prompt: z.string(),
+  why: z.string(),
+  expect: z.string(),
+  at: z.number(),
+  /** The session has started working on the prompt. */
+  started: z.boolean(),
+  state: z.enum(['open', 'answered', 'ended']),
+  settledAt: z.number().nullable()
+});
+export type FleetLedgerEntry = z.infer<typeof FleetLedgerEntry>;
+
+const LedgerFile = z.object({
+  cursors: z.record(z.string(), FleetCursor),
+  entries: z.array(FleetLedgerEntry).default([]),
+  /** The number the next entry gets. */
+  next: z.number().int().min(1).default(1)
+});
 type LedgerFile = z.infer<typeof LedgerFile>;
+
+const emptyFile = (): LedgerFile => ({ cursors: {}, entries: [], next: 1 });
 
 /** Sessions one conversation keeps a cursor for; the least recently read go first. */
 const MAX_CURSORS = 100;
+/** Entries one conversation keeps; settled ones are dropped first, oldest first. */
+const MAX_ENTRIES = 50;
+/** How much of a prompt an entry keeps. */
+const PROMPT_EXCERPT_CHARS = 200;
+
+export type NewLedgerEntry = Pick<
+  FleetLedgerEntry,
+  'action' | 'ref' | 'paneId' | 'sessionId' | 'epoch' | 'why' | 'expect' | 'at'
+> & {
+  prompt: string;
+  /** The prompt is known to have gone in: a send Claude Code acknowledged. */
+  started: boolean;
+};
+
+/** How long a spawned tab has to report its session before its entry counts as ended. */
+const SPAWN_GRACE_MS = 120_000;
+
+/**
+ * Bring an open entry up to date with its session as it is now, or with
+ * `undefined` when no running session matches it. True when the entry changed.
+ *
+ * Worked out from the session's state, not from the events that led to it, so
+ * the same rule serves a live change and a conversation opened after a
+ * restart: a session that started on the prompt and has waited for a prompt
+ * since after it was sent has answered it.
+ */
+function settleEntry(
+  entry: FleetLedgerEntry,
+  session: ClaudeSession | undefined,
+  now: number
+): boolean {
+  if (session === undefined) {
+    // A spawned tab that has not reported its session yet is still on its way.
+    if (entry.sessionId === null && now - entry.at < SPAWN_GRACE_MS) return false;
+    return end(entry, now);
+  }
+  let changed = false;
+  if (entry.sessionId === null) {
+    entry.sessionId = session.sessionId;
+    entry.epoch = session.epoch;
+    changed = true;
+  }
+  // Cleared: the conversation the prompt went to is gone.
+  if (session.phase === 'ended' || session.epoch !== entry.epoch) return end(entry, now);
+  const waiting = session.phase === 'waitingForInput' && session.waitingKind === 'prompt';
+  if (!entry.started && !waiting && session.phase !== 'starting') {
+    entry.started = true;
+    changed = true;
+  }
+  if (entry.started && waiting && session.phaseSince >= entry.at) {
+    entry.state = 'answered';
+    entry.settledAt = session.phaseSince;
+    changed = true;
+  }
+  return changed;
+}
+
+function end(entry: FleetLedgerEntry, now: number): true {
+  entry.state = 'ended';
+  entry.settledAt = now;
+  return true;
+}
+
+/** The running session an entry is about: by id, or for a spawn not yet reported, by pane. */
+function sessionFor(
+  entry: FleetLedgerEntry,
+  sessions: readonly ClaudeSession[]
+): ClaudeSession | undefined {
+  return entry.sessionId === null
+    ? sessions.find((s) => s.paneId === entry.paneId)
+    : sessions.find((s) => s.sessionId === entry.sessionId);
+}
 
 export class FleetLedgerStore {
   private readonly cache = new Map<string, LedgerFile>();
@@ -53,6 +164,65 @@ export class FleetLedgerStore {
       delete file.cursors[old];
     }
     this.save(threadId, file);
+  }
+
+  /** Record a send or a spawn. Returns the entry as written. */
+  addEntry(threadId: string, entry: NewLedgerEntry): FleetLedgerEntry {
+    const file = this.load(threadId);
+    const prompt =
+      entry.prompt.length > PROMPT_EXCERPT_CHARS
+        ? `${entry.prompt.slice(0, PROMPT_EXCERPT_CHARS)}…`
+        : entry.prompt;
+    const written: FleetLedgerEntry = {
+      ...entry,
+      prompt,
+      id: `#${file.next}`,
+      state: 'open',
+      settledAt: null
+    };
+    file.next++;
+    file.entries.push(written);
+    while (file.entries.length > MAX_ENTRIES) {
+      const settled = file.entries.findIndex((e) => e.state !== 'open');
+      file.entries.splice(settled === -1 ? 0 : settled, 1);
+    }
+    this.save(threadId, file);
+    return written;
+  }
+
+  entries(threadId: string): FleetLedgerEntry[] {
+    return [...this.load(threadId).entries];
+  }
+
+  /**
+   * Move entries along as a session changes, in every conversation this run of
+   * Fleet has loaded. Conversations it has not are brought up to date by
+   * `reconcile` when they are next used.
+   */
+  observe(change: ClaudeSessionChange, now = Date.now()): void {
+    for (const [threadId, file] of this.cache) {
+      let changed = false;
+      for (const entry of file.entries) {
+        if (entry.state !== 'open') continue;
+        const mine =
+          entry.sessionId === null
+            ? change.session?.paneId === entry.paneId
+            : change.sessionId === entry.sessionId;
+        if (mine && settleEntry(entry, change.session ?? undefined, now)) changed = true;
+      }
+      if (changed) this.save(threadId, file);
+    }
+  }
+
+  /** Bring a conversation's open entries up to date with the running sessions. */
+  reconcile(threadId: string, sessions: readonly ClaudeSession[], now = Date.now()): void {
+    const file = this.load(threadId);
+    let changed = false;
+    for (const entry of file.entries) {
+      if (entry.state !== 'open') continue;
+      if (settleEntry(entry, sessionFor(entry, sessions), now)) changed = true;
+    }
+    if (changed) this.save(threadId, file);
   }
 
   /** Forget a conversation, when its session is deleted. */
@@ -84,12 +254,12 @@ export class FleetLedgerStore {
 
   private read(threadId: string): LedgerFile {
     const path = this.path(threadId);
-    if (path === null) return { cursors: {} };
+    if (path === null) return emptyFile();
     let raw: string;
     try {
       raw = readFileSync(path, 'utf8');
     } catch {
-      return { cursors: {} };
+      return emptyFile();
     }
     try {
       const parsed = LedgerFile.safeParse(JSON.parse(raw));
@@ -98,7 +268,7 @@ export class FleetLedgerStore {
     } catch {
       log.warn('ledger is not JSON; starting a new one', { threadId });
     }
-    return { cursors: {} };
+    return emptyFile();
   }
 
   /** Through a temporary file and a rename, so a crash leaves the old file whole. */

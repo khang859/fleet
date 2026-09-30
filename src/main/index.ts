@@ -1528,6 +1528,8 @@ void app.whenReady().then(async () => {
   void agentEndpoints.reload();
   const agentModels = new AgentCatalogComposer(agentCatalog, agentEndpoints);
   const fleetLedger = new FleetLedgerStore();
+  // Settle ledger entries as their sessions answer or go away.
+  claudeSessions.registry.subscribe((change) => fleetLedger.observe(change));
   // Read through lazily: the session service is created with the window, and
   // may not exist yet - or at all, while tracking is unsupported.
   const fleetHost = createFleetHost({

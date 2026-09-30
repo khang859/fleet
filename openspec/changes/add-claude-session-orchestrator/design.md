@@ -209,8 +209,12 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
 - **Ledger.**
   - Stored in `<agent sessions dir>/<threadId>.fleet.json`, written atomically, capped, and deleted with the session.
   - `fleet_send` and `fleet_spawn` require `why` and `expect` arguments, and the entry is written automatically.
-  - `withFleetLedger` splices open entries and the live session one-liners into each round.
+  - `withFleetLedger` splices open entries, the few most recently settled, and the live session one-liners into each round.
     It sits next to `withRunningSubagents`, after the cache breakpoint.
+  - An entry is answered once its session has started on the prompt and has waited for a prompt since the entry was written; a question dialog is still the same turn.
+    It ends when its session goes away or is cleared (a new epoch) first.
+    The rule reads the session's state, not the events that led to it, so the same check settles entries live from registry changes and, for a conversation not loaded at the time, when its next round is built.
+  - A spawn's entry has no session until the new tab reports one; it is matched by pane, and ends if nothing reports within two minutes.
   - _Alternative considered:_ the Agent session log.
     Rejected: compaction folds it, and it is renderer-owned.
 

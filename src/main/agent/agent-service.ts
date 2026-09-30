@@ -100,6 +100,7 @@ import { streamResponse } from './responses';
 import { isFusionTurn } from './commands/expand';
 import { runAgentTool } from './tools/run';
 import { createFleetCapability, type FleetDeps } from './fleet/capability';
+import { renderLedgerBlock } from './fleet/ledger';
 import {
   FLEET_ANALYST,
   fleetToolNames,
@@ -266,6 +267,11 @@ type RoundsRequest = {
    * everything else.
    */
   fleet: AgentFleetCapability | null;
+  /**
+   * The orchestrator's ledger, as a note for the end of each round; `null` for
+   * everything but an orchestrator turn. See `withFleetLedger`.
+   */
+  fleetLedger: (() => string | null) | null;
   /**
    * One finished round of this run's own conversation. Set for a subagent,
    * whose transcript main has to keep because it has no pane; `null` for a turn,
@@ -543,6 +549,24 @@ export function withScheduleReminder(
 ): AgentWireMessage[] {
   if (schedule === null) return messages;
   const block = renderScheduleBlock(schedule.list(), new Date());
+  if (block === null) return messages;
+  return [...messages, { role: 'user', content: fleetNote(block) }];
+}
+
+/**
+ * The messages for one round, with the orchestrator's ledger: what it has asked
+ * of which session and is still waiting on, and what each session is doing.
+ *
+ * Pushed every round rather than left to the transcript, because the transcript
+ * is what compaction folds, and a request whose answer is still coming is the
+ * one thing an orchestrator must not forget it made. Read fresh each round for
+ * the reason the roster is: a session can answer in the middle of a long turn.
+ */
+export function withFleetLedger(
+  messages: AgentWireMessage[],
+  ledger: (() => string | null) | null
+): AgentWireMessage[] {
+  const block = ledger?.() ?? null;
   if (block === null) return messages;
   return [...messages, { role: 'user', content: fleetNote(block) }];
 }
@@ -1320,6 +1344,10 @@ export class AgentService {
         findMemory: (name) => memories.find((m) => m.name === name) ?? null,
         schedule: this.scheduleCapability(req),
         fleet,
+        fleetLedger:
+          fleet === null || fleetDeps === null
+            ? null
+            : () => renderLedgerBlock(fleetDeps.host, fleetDeps.ledger, req.threadId),
         // The pane draws this run and writes it down. Only a subagent needs
         // main to keep its transcript, and only a subagent is watched by
         // nobody while it runs.
@@ -1396,7 +1424,10 @@ export class AgentService {
         // recent thing said.
         messages: withTodoReminder(
           withScheduleReminder(
-            this.withRunningSubagents(withResumeNote(conversation, run.resumed), run.threadId),
+            withFleetLedger(
+              this.withRunningSubagents(withResumeNote(conversation, run.resumed), run.threadId),
+              run.fleetLedger
+            ),
             run.schedule
           ),
           todos.items,
@@ -1779,6 +1810,7 @@ export class AgentService {
           // Nothing to schedule against: this conversation ends when the report
           // does, so a fire aimed at it would wake nobody.
           schedule: null,
+          fleetLedger: null,
           // The read-only pick, from an orchestrator turn only: see `TaskRun.fleet`.
           fleet: run.fleet,
           onRound: run.onMessage,

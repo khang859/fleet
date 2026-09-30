@@ -96,6 +96,7 @@ describe('orchestrator mode', () => {
     wired?: boolean;
     calls?: WireToolCall[][];
     history?: AgentSendRequest['history'];
+    ledger?: FleetLedgerStore;
   }): Promise<StreamRequest[]> {
     const rounds: StreamRequest[] = [];
     const request: AgentSendRequest = {
@@ -129,7 +130,10 @@ describe('orchestrator mode', () => {
           },
           definitions: async () => Promise.resolve(DEFINITIONS)
         }),
-        fleet: options.wired === false ? null : { host: HOST, ledger: new FleetLedgerStore(dir) },
+        fleet:
+          options.wired === false
+            ? null
+            : { host: HOST, ledger: options.ledger ?? new FleetLedgerStore(dir) },
         getApiKey: () => 'sk-or-test',
         resolveTarget: RESOLVE_TARGET,
         emit,
@@ -282,5 +286,45 @@ describe('orchestrator mode', () => {
     expect(system(off)).toContain('## Orchestrator mode is off');
     const [fresh] = await turn({ orchestrator: false });
     expect(system(fresh)).not.toContain('Orchestrator mode is off');
+  });
+
+  it('sends the ledger after the cached conversation on every round, even once compacted', async () => {
+    const ledger = new FleetLedgerStore(dir);
+    ledger.addEntry('6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b', {
+      action: 'send',
+      ref: 'abcdef12',
+      paneId: 'abcdef12-pane',
+      sessionId: 's1',
+      epoch: 0,
+      prompt: '[orchestrator] Run the tests',
+      why: 'the refactor is done',
+      expect: 'the failing test names',
+      at: Date.now(),
+      started: true
+    });
+    // Everything before this was folded into one summary, the ledger's entry with it.
+    const compacted: AgentSendRequest['history'] = [
+      { ...textMessage('s', 'summary', 'We refactored the parser.'), role: 'summary' }
+    ];
+    const rounds = await turn({
+      orchestrator: true,
+      history: compacted,
+      ledger,
+      calls: [[call('fleet_sessions', {})]]
+    });
+    expect(rounds).toHaveLength(2);
+    for (const round of rounds) {
+      const at = round.messages.findIndex(
+        (m) => typeof m.content === 'string' && m.content.includes('Your fleet ledger')
+      );
+      expect(at).toBeGreaterThanOrEqual(round.cacheUpTo ?? Infinity);
+      expect(round.messages[at].content).toContain('#1 prompted abcdef12');
+      expect(round.messages[at].content).toContain('expecting: the failing test names');
+    }
+  });
+
+  it('sends no ledger to a regular pane', async () => {
+    const [round] = await turn({ orchestrator: false });
+    expect(JSON.stringify(round.messages)).not.toContain('Your fleet ledger');
   });
 });
