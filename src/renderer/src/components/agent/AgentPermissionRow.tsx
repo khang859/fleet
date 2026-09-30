@@ -4,15 +4,28 @@ import type { AgentPermissionAsk, AgentPermissionOutcome } from '../../../../sha
 /** What the announcement says the agent is asking to run. */
 function spoken(ask: AgentPermissionAsk): string {
   if (ask.fleet !== null) {
-    return ask.fleet.action === 'send'
-      ? `send a prompt to the Claude Code session ${ask.fleet.target}`
-      : `start a Claude Code session in ${ask.fleet.target}`;
+    switch (ask.fleet.action) {
+      case 'send':
+        return `send a prompt to the Claude Code session ${ask.fleet.target}`;
+      case 'spawn':
+        return `start a Claude Code session in ${ask.fleet.target}`;
+      case 'permission':
+        return `${ask.fleet.decision ?? 'answer'} a permission request from the Claude Code session ${ask.fleet.target}`;
+    }
   }
   return ask.mcp === null ? ask.command : `${ask.mcp.tool} on the ${ask.mcp.server} server`;
 }
 
-/** The three answers' words: a fleet ask sends or starts rather than runs. */
+/** The three answers' words: a fleet ask sends, starts or answers rather than runs. */
 function answers(ask: AgentPermissionAsk): { once: string; always: string; no: string } {
+  if (ask.fleet?.action === 'permission') {
+    // Saying no leaves the request with the user, which is what the button says.
+    return {
+      once: ask.fleet.decision === 'deny' ? 'Deny it' : 'Allow it',
+      always: '',
+      no: 'Leave it to me'
+    };
+  }
   if (ask.fleet?.action === 'send') {
     return { once: 'Send once', always: 'Always for this session', no: "Don't send" };
   }
@@ -124,7 +137,11 @@ export function AgentPermissionRow({
               {/* Where it goes, then the prompt exactly as it will be typed:
                   the prompt is the thing being agreed to. */}
               <span className="block font-sans text-fleet-text-subtle">
-                {ask.fleet.action === 'send' ? 'Prompt ' : 'New Claude Code session in '}
+                {ask.fleet.action === 'send'
+                  ? 'Prompt '
+                  : ask.fleet.action === 'spawn'
+                    ? 'New Claude Code session in '
+                    : `${ask.fleet.decision === 'deny' ? 'Deny' : 'Allow'} a permission request from `}
                 <span className="font-mono text-fleet-text">{ask.fleet.target}</span>
               </span>
               <span className="block break-normal wrap-break-word">{ask.fleet.prompt}</span>

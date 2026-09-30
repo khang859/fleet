@@ -13,6 +13,7 @@ import type {
   AgentStreamStep,
   AgentTurnUsage
 } from '../../../shared/agent-types';
+import type { FleetAsk } from '../../../shared/fleet-tools';
 import type { ClassifierVerdict } from './classifier';
 
 /**
@@ -133,18 +134,14 @@ export type McpPermissionRequest = {
   readOnly: boolean;
 };
 
-/** The Orchestrator asking to type into a Claude Code session, or to start one. */
-export type FleetPermissionRequest = {
+/**
+ * The Orchestrator asking to type into a Claude Code session, to start one, or
+ * to answer one's permission request: a `FleetAsk`, and the call it is about.
+ */
+export type FleetPermissionRequest = FleetAsk & {
   streamId: string;
   callId: string;
   signal: AbortSignal;
-  action: 'send' | 'spawn';
-  /** The session a send types into, which "always for this session" is kept against. Null for a spawn. */
-  sessionId: string | null;
-  /** Where it goes, as the card names it. */
-  target: string;
-  /** The prompt in full, as it will be typed. */
-  prompt: string;
 };
 
 export class PermissionGate {
@@ -318,6 +315,7 @@ export class PermissionGate {
    * every time, since there is no session yet for a grant to name.
    */
   async checkFleet(req: FleetPermissionRequest): Promise<PermissionGrant> {
+    if (req.action === 'permission') return this.checkFleetAnswer(req);
     const key = `fleet_${req.action} ${req.sessionId ?? req.target}\n${req.prompt}`;
     if (this.wasRefused(req.streamId, key)) return 'refuse';
     if (this.fullAccess()) return 'run';
@@ -329,7 +327,40 @@ export class PermissionGate {
       null,
       grant,
       null,
-      { action: req.action, target: req.target, prompt: req.prompt }
+      { action: req.action, target: req.target, prompt: req.prompt, decision: null }
+    );
+  }
+
+  /**
+   * Whether the Orchestrator may answer a session's permission request.
+   *
+   * The user's own rules come first, as they do for the Agent's commands: a
+   * deny rule means the Orchestrator may never allow that command, full
+   * access or not, and a command that always asks is put to the user even
+   * under full access, since answering it for them is the judgement that list
+   * keeps for them. Otherwise full access lets it through and the user is
+   * asked. There is no "always": each request is its own question.
+   *
+   * Only a shell command has rules to match. An allow rule does not skip the
+   * question: it says what the Agent may run, not what another session may.
+   */
+  private async checkFleetAnswer(
+    req: FleetPermissionRequest & { action: 'permission' }
+  ): Promise<PermissionGrant> {
+    const key = `fleet_permission ${req.sessionId} ${req.decision}\n${req.prompt}`;
+    if (this.wasRefused(req.streamId, key)) return 'refuse';
+    const verdict =
+      req.command === null ? null : decideCommand(this.deps.getRules(), req.command, req.cwd);
+    if (req.decision === 'allow' && verdict?.kind === 'deny') return 'refuse';
+    const reason = verdict?.kind === 'ask' ? verdict.reason : null;
+    if (reason === null && this.fullAccess()) return 'run';
+
+    return this.ask(
+      { streamId: req.streamId, callId: req.callId, command: key, signal: req.signal },
+      reason,
+      null,
+      null,
+      { action: 'permission', target: req.target, prompt: req.prompt, decision: req.decision }
     );
   }
 

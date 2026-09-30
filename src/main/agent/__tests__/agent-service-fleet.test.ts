@@ -104,6 +104,7 @@ describe('orchestrator mode', () => {
     ledger?: FleetLedgerStore;
     act?: FleetActDeps;
     text?: string;
+    answerPermissions?: boolean;
   }): Promise<StreamRequest[]> {
     const rounds: StreamRequest[] = [];
     const request: AgentSendRequest = {
@@ -128,7 +129,10 @@ describe('orchestrator mode', () => {
       new AgentService({
         schedules: new ScheduleStore({ file: join(dir, 'schedules.json') }),
         gate: PASS_GATE,
-        getSettings: () => SETTINGS,
+        getSettings: () => ({
+          ...SETTINGS,
+          orchestrator: { answerPermissions: options.answerPermissions ?? false }
+        }),
         subagents: new SubagentManager({
           emit: () => {},
           run: async (run) => {
@@ -353,28 +357,30 @@ describe('orchestrator mode', () => {
     expect(JSON.stringify(round.messages)).not.toContain('Your fleet ledger');
   });
 
+  const act = (): FleetActDeps => ({
+    prompter: {
+      refusal: () => null,
+      send: async () => Promise.resolve({ ok: false, reason: 'unused' })
+    },
+    limiter: new ActLimiter(),
+    spawns: new FleetSpawns(),
+    platform: 'linux',
+    openTab: async () => Promise.resolve('unused'),
+    worktrees: {
+      create: async () => Promise.reject(new Error('unused')),
+      remove: async () => Promise.resolve()
+    },
+    notePaneInput: () => {},
+    newPaneId: () => 'unused',
+    subscribe: () => () => {},
+    attention: new FleetAttention(),
+    answers: { held: () => false, respond: () => false }
+  });
+
   it('offers fleet_send, fleet_spawn and fleet_wait once wired up, and never to a subagent', async () => {
-    const act: FleetActDeps = {
-      prompter: {
-        refusal: () => null,
-        send: async () => Promise.resolve({ ok: false, reason: 'unused' })
-      },
-      limiter: new ActLimiter(),
-      spawns: new FleetSpawns(),
-      platform: 'linux',
-      openTab: async () => Promise.resolve('unused'),
-      worktrees: {
-        create: async () => Promise.reject(new Error('unused')),
-        remove: async () => Promise.resolve()
-      },
-      notePaneInput: () => {},
-      newPaneId: () => 'unused',
-      subscribe: () => () => {},
-      attention: new FleetAttention()
-    };
     const [round] = await turn({
       orchestrator: true,
-      act,
+      act: act(),
       calls: [[call('task', { agent: 'fleet-analyst', prompt: 'read abcdef12' })]]
     });
     expect(names(round)).toContain('fleet_send');
@@ -387,5 +393,20 @@ describe('orchestrator mode', () => {
     expect(runs[0].tools).not.toContain('fleet_send');
     expect(runs[0].fleet?.spawn).toBeNull();
     expect(runs[0].fleet?.wait).toBeNull();
+  });
+
+  it('offers fleet_permission only when the user turned it on, and says so when it is off', async () => {
+    const off = await turn({
+      orchestrator: true,
+      act: act(),
+      calls: [[call('fleet_permission', { session: 'abcdef12', decision: 'allow' })]]
+    });
+    expect(names(off[0])).not.toContain('fleet_permission');
+    expect(system(off[0])).not.toContain('`fleet_permission`');
+    expect(JSON.stringify(off[1].messages)).toContain('fleet_permission is off');
+
+    const [on] = await turn({ orchestrator: true, act: act(), answerPermissions: true });
+    expect(names(on)).toContain('fleet_permission');
+    expect(system(on)).toContain('`fleet_permission` allows or denies');
   });
 });

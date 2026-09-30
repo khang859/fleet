@@ -18,6 +18,13 @@ export function fleetMember<K extends keyof AgentFleetCapability>(
     );
   }
   const run = ctx.fleet[key];
+  // An orchestrator turn has every act tool but this one only when the user
+  // turned it on, which is the thing to say.
+  if (run === null && key === 'permission' && ctx.fleet.send !== null) {
+    throw new Error(
+      `${name} is off: answering a session's permission requests is a setting the user turns on (Agent settings, Permissions). Until then the user answers them in the session's terminal.`
+    );
+  }
   if (run === null) throw new Error(`${name} is not available in this conversation.`);
   return run as NonNullable<AgentFleetCapability[K]>;
 }

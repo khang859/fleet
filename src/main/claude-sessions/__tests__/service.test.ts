@@ -183,6 +183,18 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     expect(service.registry.get('s1')?.phase).toBe('waitingForApproval');
   });
 
+  it('holds a request only while an answerer says it can answer', async () => {
+    await service.start();
+    let can = false;
+    service.addPermissionAnswerer(() => can);
+    expect(await send(socketPath, permission('tu-1'))).toBe('');
+    expect(service.broker.has('tu-1')).toBe(false);
+
+    can = true;
+    void send(socketPath, permission('tu-2'));
+    await vi.waitFor(() => expect(service.broker.has('tu-2')).toBe(true));
+  });
+
   it('lets go of held requests when the last answerer leaves', async () => {
     await service.start();
     const first = service.addPermissionAnswerer();
