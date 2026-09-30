@@ -6,7 +6,7 @@ What already exists and shapes the approach:
 
 - `src/shared/claude-config.ts` already resolves which Claude config directory a workspace's terminals get (`resolveClaudeConfig`, `defaultClaudeConfigDir`). The new page must reuse it rather than assume `~/.claude`.
 - `src/main/copilot/hook-installer.ts` already reads, mutates and writes the `hooks` block of the same `settings.json` files. Two writers on one file is the central hazard here.
-- `src/main/env-editor/env-editor-fs.ts` solves conflict-safe editing of a config file from the settings UI: `readFileSync` plus `mtimeMs`, an `expectedMtimeMs` guard on write, temp-file-plus-`renameSync`, and typed result shapes. Its *structure* is the right template; its *guard* is not strong enough here (see Decision 6).
+- `src/main/env-editor/env-editor-fs.ts` solves conflict-safe editing of a config file from the settings UI: `readFileSync` plus `mtimeMs`, an `expectedMtimeMs` guard on write, temp-file-plus-`renameSync`, and typed result shapes. Its _structure_ is the right template; its _guard_ is not strong enough here (see Decision 6).
 - `src/renderer/src/components/FileEditorPane.tsx` already builds a CodeMirror 6 editor with lazy-loaded language support, and `@codemirror/lang-json` is already a dependency.
 - Settings pages are registered in exactly two places: the `SettingsSection` union plus `NAV_GROUPS` in `SettingsNav.tsx`, and `SECTION_COMPONENTS` in `SettingsTab.tsx`. `SettingsTab` swaps `SectionComponent` on navigation, so a section's component state is destroyed when the user leaves it.
 - `IPC_CHANNELS.SHOW_FOLDER_PICKER` and `IPC_CHANNELS.GIT_REPO_ROOT` already exist. `simple-git` is a dependency, so `rev-parse --git-common-dir` is available for worktree resolution.
@@ -36,7 +36,7 @@ Constraints from the platform, all confirmed against current Claude Code documen
 - Byte-for-byte file preservation of anything. The page reformats what it writes; preservation is defined by parsed value.
 - A visual hooks editor, managed settings, `~/.claude.json`, MCP servers, agents, commands or skills.
 - Predicting the effective value of a setting in a live session. The page compares three files; it does not read the user's shell or a running session's flags.
-- Live validation against a *remote* schema. The schema is vendored.
+- Live validation against a _remote_ schema. The schema is vendored.
 
 ## Decisions
 
@@ -48,7 +48,7 @@ Why: it is the only machine-readable, maintained description of the key space. I
 
 Alternatives rejected: a hand-maintained key list (rots immediately); fetching at runtime (makes an offline app depend on the network and lets a third-party host change app behaviour silently).
 
-The schema is advisory, never authoritative: an unknown key is a *warning*, never a blocked save. Claude Code ships keys before SchemaStore catches up.
+The schema is advisory, never authoritative: an unknown key is a _warning_, never a blocked save. Claude Code ships keys before SchemaStore catches up.
 
 ### 2. Validate with `ajv`, not `codemirror-json-schema`
 
@@ -83,7 +83,7 @@ Alternative rejected: one folder for both scopes. It is simpler, and it is wrong
 
 ### 5. Scope resolution lives in `src/shared/`, path derivation is re-done in main
 
-Chosen: extend `src/shared/claude-config.ts` with `ClaudeConfigScope`, `ClaudeFileKind` and a pure `resolveClaudeFilePath({ scope, kind, configDir, sessionDir, localSettingsRoot })` returning an absolute path or `null` for the combination with no file (project-local memory). The renderer uses it to *display*; the main process uses the same function to *derive* the path it touches.
+Chosen: extend `src/shared/claude-config.ts` with `ClaudeConfigScope`, `ClaudeFileKind` and a pure `resolveClaudeFilePath({ scope, kind, configDir, sessionDir, localSettingsRoot })` returning an absolute path or `null` for the combination with no file (project-local memory). The renderer uses it to _display_; the main process uses the same function to _derive_ the path it touches.
 
 Why: this is the split `claude-config.ts`'s own header already describes, and it keeps the renderer from inventing paths the main process would have to trust.
 
@@ -91,7 +91,7 @@ The IPC surface takes `{ scope, kind, configDir, sessionDir, localSettingsRoot }
 
 ### 6. A revision token, not a bare mtime
 
-`writeEnvFile`'s guard refuses only a *strictly newer* `mtimeMs`, and skips the check entirely when the file no longer exists. That is adequate for `.env` files and not adequate here, where a restored backup or a hook installer's rewrite can land with an equal or older timestamp.
+`writeEnvFile`'s guard refuses only a _strictly newer_ `mtimeMs`, and skips the check entirely when the file no longer exists. That is adequate for `.env` files and not adequate here, where a restored backup or a hook installer's rewrite can land with an equal or older timestamp.
 
 Chosen: a `ClaudeFileRevision = { exists: boolean; mtimeMs: number; size: number }` captured at read and passed back at write. The write proceeds only when the current state matches the revision on all three fields:
 
@@ -101,7 +101,7 @@ Chosen: a `ClaudeFileRevision = { exists: boolean; mtimeMs: number; size: number
 - present in both, `mtimeMs` and `size` equal → proceed.
 - present in both, either differs → refuse, report external change.
 
-Equal mtime *and* equal size is not a proof of identical content, but same-size same-timestamp different-content is a deliberate adversary rather than an accident. Hashing the file would close it and costs a read of a file we already read; if the size check proves insufficient in practice, a content hash is a drop-in third field. Recorded as a known limit rather than a silent assumption.
+Equal mtime _and_ equal size is not a proof of identical content, but same-size same-timestamp different-content is a deliberate adversary rather than an accident. Hashing the file would close it and costs a read of a file we already read; if the size check proves insufficient in practice, a content hash is a drop-in third field. Recorded as a known limit rather than a silent assumption.
 
 `writeClaudeFile` keeps the env editor's temp-file-plus-`renameSync` and adds `mkdirSync(dirname, { recursive: true })`. This is a new function alongside `writeEnvFile`, not a change to it - the env editor's semantics are fine for `.env` and are not this feature's to alter.
 

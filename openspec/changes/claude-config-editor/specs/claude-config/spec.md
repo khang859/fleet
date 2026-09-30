@@ -100,12 +100,12 @@ Each resolved path SHALL be displayed, and each SHALL be individually overridabl
 
 The page SHALL access only the following exact files, resolved by the rules above, and SHALL refuse any request naming a path outside this allowlist:
 
-| Scope | Kind | File |
-| --- | --- | --- |
-| User | settings | `<claudeConfigDir>/settings.json` |
-| User | memory | `<claudeConfigDir>/CLAUDE.md` |
-| Project | settings | `<sessionDir>/.claude/settings.json` |
-| Project | memory | `<sessionDir>/CLAUDE.md` |
+| Scope         | Kind     | File                                              |
+| ------------- | -------- | ------------------------------------------------- |
+| User          | settings | `<claudeConfigDir>/settings.json`                 |
+| User          | memory   | `<claudeConfigDir>/CLAUDE.md`                     |
+| Project       | settings | `<sessionDir>/.claude/settings.json`              |
+| Project       | memory   | `<sessionDir>/CLAUDE.md`                          |
 | Project local | settings | `<localSettingsRoot>/.claude/settings.local.json` |
 
 The project memory file is at the project folder's root, not inside its `.claude` directory. There is no project-local memory file.
