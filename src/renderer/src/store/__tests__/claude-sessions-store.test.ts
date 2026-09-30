@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   contextPercent,
+  FOLD_AFTER,
+  foldSessions,
   formatCost,
   formatPhaseAge,
   initClaudeSessionsListener,
@@ -80,6 +82,30 @@ describe('sortSessions', () => {
     const input = [session({ sessionId: 'b' }), session({ sessionId: 'a' })];
     expect(sortSessions(input).map((s) => s.sessionId)).toEqual(['a', 'b']);
     expect(input.map((s) => s.sessionId)).toEqual(['b', 'a']);
+  });
+});
+
+describe('foldSessions', () => {
+  const many = (n: number): ClaudeSessionView[] =>
+    Array.from({ length: n }, (_, i) => session({ sessionId: `s${i}` }));
+
+  it('lists a handful of sessions whole', () => {
+    expect(foldSessions(many(FOLD_AFTER))).toBeNull();
+  });
+
+  it('keeps rows for sessions needing the user and counts the rest', () => {
+    const sessions = sortSessions([
+      ...many(3),
+      session({ sessionId: 'q', phase: 'waitingForInput', waitingKind: 'question' }),
+      session({ sessionId: 'r1', phase: 'waitingForInput', waitingKind: 'prompt' }),
+      session({ sessionId: 'r2', phase: 'waitingForInput', waitingKind: 'prompt' }),
+      session({ sessionId: 'a', phase: 'waitingForApproval' }),
+      session({ sessionId: 'n', phase: 'starting' })
+    ]);
+    const folded = foldSessions(sessions);
+    expect(folded?.urgent.map((s) => s.sessionId)).toEqual(['a', 'q']);
+    expect(folded?.rest.map((s) => s.sessionId)).toEqual(['s0', 's1', 's2', 'n', 'r1', 'r2']);
+    expect(folded?.counts).toEqual({ working: 3, ready: 2, idle: 1 });
   });
 });
 

@@ -364,6 +364,9 @@ Reverting the PR restores the old macOS-only behavior, and the backup file stays
   Settled in Phase 2 after a screenshot review: a "Claude Code" section above Agents, collapsible like the other sidebar sections.
   Collapsed, its header still shows the session count or the needs-you count.
   Rows name a pane in a split tab by its custom label or by its position, since panes otherwise share the tab's name.
+  With twenty sessions, a row each crowded out the tab list, which already has a row per pane, and hid most rows behind a scrollbar.
+  Past five sessions the section is now a triage queue: rows only for the sessions needing the user, and one line counting the rest by state, which opens to show their rows.
+  That line sits below the scrolling rows, so it stays under the pointer when they open.
 - ~~The model-to-context-limit table used for the context percentage.~~
   Settled in Phase 2 without a table: every current model has a 200k window, and 4.6 and later models can run with 1M at the standard price, which the transcript does not record.
   So the limit is 200k until a session is seen using more than 200k tokens, then 1M for the rest of that session.

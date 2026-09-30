@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { ChevronRight } from 'lucide-react';
 import { SectionHeader } from './SidebarSectionHeader';
 import { useSidebarSectionsStore } from '../store/sidebar-sections-store';
 import { useWorkspaceStore, collectPaneLeafs } from '../store/workspace-store';
 import {
   useClaudeSessionsStore,
   contextPercent,
+  foldSessions,
   formatCost,
   formatPhaseAge,
   sessionUrgency,
   sortSessions,
+  type FoldedSessions,
   type SessionUrgency
 } from '../store/claude-sessions-store';
 import { openSettings } from '../store/settings-nav-store';
@@ -162,6 +165,14 @@ function SessionRow({
   );
 }
 
+/** `5 working · 9 ready`: the states of the sessions folded into one line. */
+function foldedText(counts: FoldedSessions['counts']): string {
+  return (['working', 'ready', 'idle'] as const)
+    .filter((state) => counts[state] > 0)
+    .map((state) => `${counts[state]} ${state}`)
+    .join(' · ');
+}
+
 /**
  * Why the section cannot list sessions, and what fixes it; null when it can.
  * The sidebar is narrow: `detail` is shown clamped, and `tooltip` only on
@@ -223,7 +234,22 @@ export function ClaudeSessionsPanel(): React.JSX.Element | null {
     [workspace, backgroundWorkspaces]
   );
   const sessions = useMemo(() => sortSessions(snapshot?.sessions ?? []), [snapshot]);
+  const folded = useMemo(() => foldSessions(sessions), [sessions]);
+  const [showRest, setShowRest] = useState(false);
   const now = useNow(!collapsed && sessions.length > 0);
+
+  const row = (session: ClaudeSessionView): React.JSX.Element => (
+    <SessionRow
+      key={session.sessionId}
+      session={session}
+      place={places.get(session.paneId)}
+      isActive={session.paneId === activePaneId}
+      now={now}
+    />
+  );
+
+  // Folded, the rest open below the rows for sessions that need the user.
+  const rows = !folded ? sessions : showRest ? [...folded.urgent, ...folded.rest] : folded.urgent;
 
   if (!snapshot) return null;
   const problem = problemOf(snapshot);
@@ -272,18 +298,24 @@ export function ClaudeSessionsPanel(): React.JSX.Element | null {
           )}
         </div>
       )}
-      {!collapsed && sessions.length > 0 && (
-        <div className="max-h-[30vh] overflow-y-auto space-y-0.5">
-          {sessions.map((session) => (
-            <SessionRow
-              key={session.sessionId}
-              session={session}
-              place={places.get(session.paneId)}
-              isActive={session.paneId === activePaneId}
-              now={now}
-            />
-          ))}
-        </div>
+      {!collapsed && rows.length > 0 && (
+        <div className="max-h-[30vh] overflow-y-auto space-y-0.5">{rows.map(row)}</div>
+      )}
+      {/* Below the scrolling rows, so it stays under the pointer as they open. */}
+      {!collapsed && folded && folded.rest.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowRest((shown) => !shown)}
+          aria-expanded={showRest}
+          className="w-full flex items-center gap-1.5 rounded-md border-l-2 border-l-transparent px-2.5 py-1 text-left text-[11px] leading-tight text-fleet-text-muted hover:bg-fleet-surface-2 hover:text-fleet-text-secondary transition-colors"
+        >
+          <ChevronRight
+            size={12}
+            aria-hidden
+            className={`-ml-0.5 shrink-0 transition-transform ${showRest ? 'rotate-90' : ''}`}
+          />
+          <span className="fleet-tnum truncate">{foldedText(folded.counts)}</span>
+        </button>
       )}
     </div>
   );
