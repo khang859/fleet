@@ -94,6 +94,21 @@ It SHALL record when the phase last changed.
 - **WHEN** the Claude process exits without sending an end event
 - **THEN** the session is marked ended within the periodic liveness check and removed shortly after
 
+#### Scenario: Running session survives the liveness check
+
+- **WHEN** the Claude process is still running, including where the system shell forks to run hooks
+- **THEN** the periodic liveness check keeps the session tracked
+
+#### Scenario: Permission denied in the terminal
+
+- **WHEN** the user answers a permission request "No" or cancels it in the terminal, which Claude Code reports through no hook event
+- **THEN** once the transcript records the rejection, the session's pending request is cleared and it is reported waiting for a prompt
+
+#### Scenario: Nested Claude in the same pane
+
+- **WHEN** a second Claude process starts in a pane whose session is still running, for example `claude -p` run by a tool
+- **THEN** both sessions are tracked, the pane's session is not ended, and the pane keeps reporting its own session
+
 #### Scenario: Clear starts a new epoch
 
 - **WHEN** the user runs `/clear` in a session
@@ -121,6 +136,7 @@ The system SHALL read a session's transcript from the path Claude Code reports, 
 
 The system SHALL maintain a deterministic brief for each session, built without an LLM and kept current as the transcript grows.
 The brief SHALL contain:
+
 - the goal (the first prompt of the epoch);
 - the latest todo list;
 - the latest plan;
@@ -130,7 +146,7 @@ The brief SHALL contain:
 - any pending question with its options;
 - git branch and change summary;
 - estimated cost and context usage.
-Each item SHALL be versioned so a consumer can ask for only what changed since a known version.
+  Each item SHALL be versioned so a consumer can ask for only what changed since a known version.
 
 #### Scenario: Brief after a failing test run
 
@@ -150,11 +166,12 @@ Each item SHALL be versioned so a consumer can ask for only what changed since a
 ### Requirement: Safe prompt delivery
 
 The system SHALL deliver a prompt to a session only when:
+
 - the session is waiting for a normal prompt;
 - the user has no unsent text in that pane;
 - the user has not typed in that pane in the last few seconds.
-The delivered text SHALL be pasted as a single block and submitted once.
-The system SHALL report delivery as confirmed only after Claude Code acknowledges receipt of the prompt.
+  The delivered text SHALL be pasted as a single block and submitted once.
+  The system SHALL report delivery as confirmed only after Claude Code acknowledges receipt of the prompt.
 
 #### Scenario: Session is busy
 

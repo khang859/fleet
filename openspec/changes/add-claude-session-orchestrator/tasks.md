@@ -9,18 +9,18 @@
 
 ## 2. Phase 1 - session registry (PR 2, may split)
 
-- [ ] 2.1 Add `shared/claude-sessions.ts` (session, phase, waitingKind, event, change types) and alias the `CopilotSession*` types to them; verify with `npm run typecheck`
-- [ ] 2.2 Add `PaneID`, `TranscriptPath`, `ConfigDir`, `Source` and `Protocol` to the Go hook state; verify with Go tests and `npm run build:hook` for darwin and linux
-- [ ] 2.3 Inject `FLEET_PANE_ID` in `PtyManager.create`; verify with a pty-manager test and the env-sync tests
-- [ ] 2.4 Create `claude-sessions/hook-events.ts` (zod parsing of v1 and v2 payloads) and `phase.ts` (a pure reducer covering subagent stop, question, permissions, epoch on a new session id); verify with table-driven tests
-- [ ] 2.5 Create `registry.ts` (list, get, getByPane, events after seq with a 200-entry ring, subscribe, noteInput, pruneDead, dispose clearing timers); verify with unit tests using an injected clock
-- [ ] 2.6 Create `pane-resolver.ts` (env pane id validated by `ptyManager.has`, then the `ps` walk fallback, hits-only cache, lazy workspace lookup with retry); verify with unit tests
-- [ ] 2.7 Move the socket server to `claude-sessions/hook-server.ts` with a permission broker; move the hook installer; add `ensureHooks` for the default and workspace config folders; verify existing tests pass from the new locations
-- [ ] 2.8 Add the `claudeSessions.trackSessions` setting (default on) with removal on turn-off, and ungate `FolderHooks` from darwin; verify with a settings test and by toggling it in the running app
-- [ ] 2.9 Add the `index.ts` composition root and wire it in `main/index.ts` on all non-win32 platforms; shrink `copilot/` to the mascot, consuming the registry; move `pane-activity` to an always-on bridge; verify copilot tests pass
-- [ ] 2.10 Add the ESLint `no-restricted-imports` boundary for `src/main/claude-sessions/**`; verify `npm run lint` fails on a deliberate bad import, then remove it
-- [ ] 2.11 Verify against the installed Claude Code: `transcript_path` is present in hook stdin, `/clear` emits `SessionStart` with a new id, and the shape of `toolUseResult`; record the findings in `docs/learnings/`
-- [ ] 2.12 E2E on Linux with copilot disabled: `npm run drive -- up`, run `claude` in a pane with `term-send`, and confirm through `eval` that the registry lists it with the right pane and that the pane activity badge follows its phase
+- [x] 2.1 Add `shared/claude-sessions.ts` (session, phase, waitingKind, event, change types) and alias the `CopilotSession*` types to them; verify with `npm run typecheck`
+- [x] 2.2 Add `PaneID`, `TranscriptPath`, `ConfigDir`, `Source` and `Protocol` to the Go hook state; verify with Go tests and `npm run build:hook` for darwin and linux
+- [x] 2.3 Inject `FLEET_PANE_ID` in `PtyManager.create`; verify with a pty-manager test and the env-sync tests
+- [x] 2.4 Create `claude-sessions/hook-events.ts` (zod parsing of v1 and v2 payloads) and `phase.ts` (a pure reducer covering subagent stop, question, permissions, epoch on a new session id); verify with table-driven tests
+- [x] 2.5 Create `registry.ts` (list, get, getByPane, events after seq with a 200-entry ring, subscribe, noteInput, pruneDead, dispose clearing timers); verify with unit tests using an injected clock
+- [x] 2.6 Create `pane-resolver.ts` (env pane id validated by `ptyManager.has`, then the `ps` walk fallback, hits-only cache, lazy workspace lookup with retry); verify with unit tests
+- [x] 2.7 Move the socket server to `claude-sessions/hook-server.ts` with a permission broker; move the hook installer; add `ensureHooks` for the default and workspace config folders; verify existing tests pass from the new locations
+- [x] 2.8 Add the `claudeSessions.trackSessions` setting (default on) with removal on turn-off, and ungate `FolderHooks` from darwin; verify with a settings test and by toggling it in the running app
+- [x] 2.9 Add the `index.ts` composition root and wire it in `main/index.ts` on all non-win32 platforms; shrink `copilot/` to the mascot, consuming the registry; move `pane-activity` to an always-on bridge; verify copilot tests pass
+- [x] 2.10 Add the ESLint `no-restricted-imports` boundary for `src/main/claude-sessions/**`; verify `npm run lint` fails on a deliberate bad import, then remove it
+- [x] 2.11 Verify against the installed Claude Code: `transcript_path` is present in hook stdin, `/clear` emits `SessionStart` with a new id, and the shape of `toolUseResult`; record the findings in `docs/learnings/`
+- [x] 2.12 E2E on Linux with copilot disabled: `npm run drive -- up`, run `claude` in a pane with `term-send`, and confirm through `eval` that the registry lists it with the right pane and that the pane activity badge follows its phase
 
 ## 3. Phase 2 - status view (PR 3)
 
@@ -36,6 +36,7 @@
 
 - [ ] 4.1 Add `claude-sessions/transcript.ts` (normalizer and `TranscriptTail` with a turn index and tool byte ranges) and rebuild `conversation-reader` on it; verify its existing tests pass unchanged plus golden JSONL fixtures
 - [ ] 4.2 Add `brief.ts` (goal, todos from TodoWrite and TaskCreate/TaskUpdate, plan, files, commands and failures, last assistant text, pending question, usage, per-item rev, delta, render with a cap); verify that incremental and one-pass builds render the same output on the fixtures
+- [ ] 4.2a Settle a permission answered "No" or cancelled in the terminal from the transcript: a rejected tool result (`toolUseResult: "User rejected tool use"`) or `[Request interrupted by user for tool use]` after a pending permission clears it and leaves the session waiting for a prompt; verify with a fixture test and in the Phase 3 E2E by denying a permission in a real pane
 - [ ] 4.3 Add `shared/fleet-tools.ts` (schemas, specs, read and act name lists, capability types); add the read names to `SUBAGENT_TOOL_NAMES`; verify `agent-tools.test.ts` asserts that no act tool is in the subagent list
 - [ ] 4.4 Add the orchestrator flag on the Agent pane leaf and on `AgentSendRequest`, a composer toggle, a palette command, a header badge, and the system prompt block; verify tools are only advertised with the flag set, with a `toolSpecsFor` test
 - [ ] 4.5 Add `agent/fleet/host.ts`, `capability.ts`, and the cursor part of `ledger-store.ts`; wire `ctx.fleet` in `agent-service` (full for orchestrator turns, read-only pick for its subagents, null otherwise); verify with capability tests

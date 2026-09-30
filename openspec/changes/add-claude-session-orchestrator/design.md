@@ -48,8 +48,9 @@ The current state that shapes this design:
 ### D1. New `src/main/claude-sessions/` core module; copilot becomes a consumer
 
 The module contains:
+
 - `hook-events` (zod-parsed wire format);
-- `hook-server` (the renamed socket server, plus the permission broker);
+- `hook-server` (the renamed socket server, plus the permission broker, which holds a permission hook open only while a consumer that can answer it, such as the copilot window, is registered; otherwise the hook is released at once and Claude Code prompts in the terminal);
 - `phase` (a pure reducer from event to phase);
 - `registry`;
 - `pane-resolver`;
@@ -64,11 +65,12 @@ The module contains:
 - `index` (the composition root).
 
 An ESLint `no-restricted-imports` override stops this module from importing `copilot`, `agent`, `sessions`, `electron` or `main/index`.
+`ipc-handlers` therefore takes an injected registrar with `ipcMain`'s `handle` signature instead of importing Electron.
 Pricing and git are injected.
 
 `CopilotSession` types in `shared/types.ts` become aliases of the new types, so the mascot renderer is untouched.
 
-*Alternative considered:* split `copilot/index.ts` into a core half and an overlay half and extend `CopilotSessionStore`.
+_Alternative considered:_ split `copilot/index.ts` into a core half and an overlay half and extend `CopilotSessionStore`.
 That is a smaller diff.
 It would keep a core service inside a module named after a macOS mascot, behind a gate that tracking no longer has, and it would postpone the same move.
 
@@ -83,14 +85,24 @@ Only hits are cached.
 The hook also forwards `transcript_path` from Claude Code's hook stdin, plus `config_dir` and a protocol version.
 This fixes the `CLAUDE_CONFIG_DIR` bug and the lossy cwd-to-folder encoding.
 
+The pid the hook reports must be Claude's, because the liveness check ends sessions whose pid is gone.
+Claude Code runs hooks through `sh -c`, and dash (the `/bin/sh` of Debian and Ubuntu) forks rather than execs, so the hook's parent is a shell that exits with it.
+The hook steps past a parent that is a shell.
+This was found in the Phase 1 E2E, where every Linux session ended about 10 seconds after it started.
+
 ### D3. Phase model
 
 Phases are `starting | processing | waitingForInput | waitingForApproval | compacting | ended`.
 `waitingForInput` also carries `waitingKind: prompt | question`.
 
 The rules for the awkward cases:
+
 - `SubagentStop` becomes a new status that the reducer ignores for phase.
 - A new `session_id` on a known pane (from `/clear`) ends the old session and bumps the pane's epoch.
+  Only when it comes from the same Claude process (same pid, or `SessionStart` with source `clear` or `resume`), or the old session's process is gone.
+  A different live process, such as `claude -p` run by a tool in that pane, is tracked alongside without taking the pane, and the pane badge keeps following the pane's own session.
+  This was found in review of Phase 1: the first rule alone ended the interactive session for good.
+- A tool that finishes while another waits for approval does not leave `waitingForApproval`.
 - `starting` covers a spawned pane that has not sent `SessionStart` yet.
 
 The reducer is pure and table-tested.
@@ -99,6 +111,7 @@ The reducer is pure and table-tested.
 
 The user chose on-by-default, with a `claudeSessions.trackSessions` setting to turn it off.
 To make that safe, the installer:
+
 - aborts on an unparseable or non-object `settings.json`, leaves it untouched, and shows the error in the UI;
 - writes `settings.json.fleet-bak` before changing anything;
 - writes to a temp file and renames it into place;
@@ -112,6 +125,7 @@ That also refreshes the binary after an upgrade.
 
 `input.sendPrompt(sessionId, text, origin)` is the single path for both the copilot chat send (`origin: user`) and `fleet_send` (`origin: orchestrator`).
 It writes nothing unless all of these hold:
+
 - the phase is `waitingForInput` with kind `prompt`;
 - the pane's draft is clean;
 - there has been no user keystroke for 3 s;
@@ -126,13 +140,14 @@ The send is confirmed only by a `UserPromptSubmit` for that session within 5 s; 
 The registry also records the origin and a hash of the text.
 That is how turn reads tell real Orchestrator prompts from a user typing the prefix.
 
-*Alternative considered:* the current `write(text + '\r')`.
+_Alternative considered:_ the current `write(text + '\r')`.
 It submits half-typed drafts, can split multi-line text, and lands in whatever dialog is open.
 
 ### D6. Orchestrator mode is a per-pane flag
 
 The flag lives on the Agent pane leaf and is sent on each `AgentSendRequest` as `orchestrator: true`.
 Fleet tools are defined in `shared/fleet-tools.ts`:
+
 - `FLEET_READ_TOOL_NAMES` (`sessions`, `read`, `diff`) join `SUBAGENT_TOOL_NAMES`;
 - `FLEET_ACT_TOOL_NAMES` (`send`, `spawn`, `wait`, `permission`) join `AGENT_TOOL_NAMES` only.
 
@@ -142,7 +157,7 @@ Keeping them out of other turns saves about 2-3k tokens per round there, and kee
 The Agent side reaches the registry only through a `FleetHost` facade in `agent/fleet/`.
 `AgentToolContext.fleet` holds either the full capability or a read-only pick, and is `null` otherwise.
 
-*Alternative considered:* offering the tools in every Agent pane.
+_Alternative considered:_ offering the tools in every Agent pane.
 Rejected: it pays the token cost on every round, and wakeups need a designated pane anyway.
 
 ### D7. Context economy
@@ -165,7 +180,7 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
   - The cwd comes only from the registry.
   - `path` goes through `resolveInsideCwd(path, session.cwd)`, which reuses the credential checks.
   - The `file` view reuses `runRead` with `cwd` swapped.
-  - *Alternative considered:* widening the Agent sandbox to live session folders.
+  - _Alternative considered:_ widening the Agent sandbox to live session folders.
     Rejected: it breaks the "a tool touches only its pane cwd" invariant for every file tool.
 - **`fleet-analyst`** is a bundled subagent definition with the read tools only.
   It is advertised only on orchestrator turns.
@@ -174,7 +189,7 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
   - `fleet_send` and `fleet_spawn` require `why` and `expect` arguments, and the entry is written automatically.
   - `withFleetLedger` splices open entries and the live session one-liners into each round.
     It sits next to `withRunningSubagents`, after the cache breakpoint.
-  - *Alternative considered:* the Agent session log.
+  - _Alternative considered:_ the Agent session log.
     Rejected: compaction folds it, and it is renderer-owned.
 
 ### D8. `fleet_spawn` through an env var and a renderer RPC
@@ -188,13 +203,14 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
 The prompt never enters the layout, so restoring a layout cannot re-run it, and it needs no shell quoting.
 Spawn is refused on Windows and WSL profiles.
 
-*Alternative considered:* shell-quoting the prompt into `cmd`.
+_Alternative considered:_ shell-quoting the prompt into `cmd`.
 It is fragile across shells, and the prompt would be persisted with the layout.
 
 ### D9. Gate extension
 
 `PermissionGate.checkFleet(req)` follows `checkMcp`.
 For each action it checks, in order:
+
 - **`send` and `spawn`:**
   1. the per-turn refusal memory;
   2. full access, which allows the action;
@@ -216,6 +232,7 @@ Spawn offers only "once".
 
 The renderer store `agent-fleet.ts` mirrors `agent-schedule.ts`.
 It reacts to attention transitions arriving on `CLAUDE_SESSIONS_CHANGED`, and it:
+
 - debounces for 2 s;
 - holds the digest while the pane is busy;
 - pulls the digest from main with `AGENT_FLEET_PULL_DIGEST`;
@@ -229,7 +246,7 @@ It advances the cursors, and withholds the digest at the chain limit (6).
 
 A token bucket limits sends and spawns to 20 per 10 minutes per thread.
 
-*Alternative considered:* reusing the `scheduled` role.
+_Alternative considered:_ reusing the `scheduled` role.
 Rejected: a distinct `fleet` role is clearer in the transcript and in compaction.
 The cost is six touch points and no downgrade compatibility for session files.
 
@@ -240,6 +257,9 @@ The cost is six touch points and no downgrade compatibility for session files.
 - **Hook contract drift.** `transcript_path`, `/clear` semantics and the `toolUseResult` shape could change between Claude Code versions.
   → Verify each against the installed Claude Code during Phase 1.
   → Fall back to the config-dir path, degrade the brief to the registry-only view, and keep a golden fixture per observed shape.
+- **A permission denied in the terminal sends no hook event.** Checked on Claude Code 2.1.285: after "No" or Esc there is no `Stop`, `PostToolUse` or `Notification`, even after minutes, so the session stays `waitingForApproval` until the next prompt.
+  → Phase 3 settles it from the transcript, which records the rejection (task 4.2a).
+  → Until then the error is on the safe side: `fleet_send` refuses a session that looks like it waits for approval.
 - **Bracketed paste in the Claude Code TUI.** Paste handling may vary by version.
   → Verify manually before Phase 4 ships.
   → The acknowledgement timeout keeps the tool honest.
