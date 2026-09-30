@@ -6,6 +6,7 @@ import type {
   CopilotPosition,
   CopilotChatMessage
 } from '../shared/types';
+import type { HookFolderStatus } from '../shared/claude-sessions';
 
 // Typed wrapper for ipcRenderer.invoke to avoid unsafe-return at every IPC call site.
 // The cast is safe: callers declare the return type, and main process implements it.
@@ -58,8 +59,8 @@ const copilotApi = {
   uninstallHooksFrom: async (configDir: string): Promise<boolean> =>
     typedInvoke<boolean>(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS_FROM, configDir),
 
-  hookStatusFor: async (configDir: string): Promise<boolean> =>
-    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
+  hookStatusFor: async (configDir: string): Promise<HookFolderStatus> =>
+    typedInvoke<HookFolderStatus>(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
 
   onActiveWorkspace: (
     cb: (payload: { workspaceId: string; workspaceName: string }) => void

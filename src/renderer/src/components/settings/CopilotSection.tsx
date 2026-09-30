@@ -28,6 +28,7 @@ const HOOK_SUMMARY: Record<string, string> = {
   checking: 'Checking…',
   installed: 'Hooks installed',
   missing: 'Hooks not installed',
+  unreadable: 'Settings unreadable',
   error: 'Status unknown'
 };
 
@@ -180,6 +181,16 @@ export function CopilotSection({ onNavigate }: SettingsSectionProps): React.JSX.
           Copilot receives updates through Fleet hooks in each workspace&apos;s Claude config
           folder.
         </p>
+        {!settings.claudeSessions.trackSessions && (
+          <div className="rounded bg-amber-900/30 border border-amber-700/50 px-2 py-1.5 mb-2">
+            <span className="text-xs text-amber-400 block font-medium">
+              Session tracking is off
+            </span>
+            <span className="text-xs text-amber-400/70 block">
+              Copilot shows nothing until you turn on Track Claude Code sessions in Workspaces.
+            </span>
+          </div>
+        )}
         {!claudeDetected && (
           <div className="rounded bg-amber-900/30 border border-amber-700/50 px-2 py-1.5 mb-2">
             <span className="text-xs text-amber-400 block font-medium">Claude Code not found</span>

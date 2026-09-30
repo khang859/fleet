@@ -1,23 +1,26 @@
 import { useEffect } from 'react';
 import { useHookStatusStore } from '../../store/hook-status-store';
+import { useSettingsStore } from '../../store/settings-store';
 import type { HookState } from '../../store/hook-status-store';
 
-/** Fleet hooks exist only where the Copilot service does. */
-export const HOOKS_SUPPORTED = window.fleet.platform === 'darwin';
+/** Fleet hooks talk over a unix socket, which Fleet does not open on Windows. */
+export const HOOKS_SUPPORTED = window.fleet.platform !== 'win32';
 
 const STATE_LABEL: Record<HookState, string> = {
   checking: 'Checking…',
   installed: 'Hooks installed',
   missing: 'Hooks not installed',
+  unreadable: 'Settings file could not be read',
   error: 'Could not check this folder'
 };
 
-// Amber for both "we do not know" states. Red is reserved for something being
-// wrong, and missing hooks are optional Copilot setup, not a broken workspace.
+// Amber for the states that need a look. Red is reserved for something being
+// wrong, and missing hooks only mean Fleet cannot see sessions from this folder.
 const STATE_DOT: Record<HookState, string> = {
   checking: 'bg-fleet-text-subtle',
   installed: 'bg-green-500',
   missing: 'bg-fleet-text-subtle',
+  unreadable: 'bg-amber-500',
   error: 'bg-amber-500'
 };
 
@@ -33,11 +36,10 @@ const STATE_DOT: Record<HookState, string> = {
  * than one name is what turns an install into an action the user is told
  * affects several workspaces before they take it.
  *
- * Renders nothing where Copilot does not run. `initCopilot` returns before
- * registering the hook IPC handlers off macOS, so every check there rejects -
- * which would fill the Workspaces page with failed checks and buttons that
- * cannot work. Choosing a config folder stays available on every platform;
- * only the Copilot-specific setup disappears.
+ * Renders nothing on Windows, where session tracking does not run and the hook
+ * IPC handlers are never registered, so every check would reject and fill the
+ * Workspaces page with failed checks and buttons that cannot work. Choosing a
+ * config folder stays available on every platform.
  */
 export function FolderHooks({
   folder,
@@ -47,6 +49,7 @@ export function FolderHooks({
   sharedWith?: string[];
 }): React.JSX.Element | null {
   const entry = useHookStatusStore((s) => s.byFolder[folder]);
+  const tracking = useSettingsStore((s) => s.settings?.claudeSessions.trackSessions ?? true);
   const check = useHookStatusStore((s) => s.check);
   const install = useHookStatusStore((s) => s.install);
   const remove = useHookStatusStore((s) => s.remove);
@@ -60,8 +63,9 @@ export function FolderHooks({
   const busy = entry?.busy ?? false;
   const installed = state === 'installed';
   // Nothing to install *to* until a check has come back, and offering "Remove"
-  // for a folder we could not read would be a guess.
-  const actionable = state === 'installed' || state === 'missing';
+  // for a folder we could not read would be a guess. With tracking off nothing
+  // listens to the hooks, so only removing leftovers makes sense.
+  const actionable = installed || (state === 'missing' && tracking);
 
   // After the hooks above, not before: the early return has to come last so the
   // hook order stays the same on every render.
@@ -71,7 +75,9 @@ export function FolderHooks({
     <div>
       <label className="text-xs text-fleet-text-muted block mb-1">Fleet hooks</label>
       <p className="text-xs text-fleet-text-subtle mb-1.5">
-        Fleet hooks let Copilot receive session status and permission requests from this folder.
+        {tracking
+          ? 'Fleet hooks tell Fleet what Claude Code sessions using this folder are doing. Fleet installs them while session tracking is on.'
+          : 'Session tracking is off, so Fleet hooks are not used.'}
       </p>
       <div className="flex items-center gap-2 flex-wrap">
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATE_DOT[state]}`} />
@@ -83,7 +89,7 @@ export function FolderHooks({
         >
           {busy ? 'Working…' : installed ? 'Remove Fleet hooks' : 'Install Fleet hooks'}
         </button>
-        {state === 'error' && (
+        {(state === 'error' || state === 'unreadable') && (
           <button
             onClick={() => check(folder)}
             className="px-2 py-0.5 text-xs text-fleet-text-secondary underline underline-offset-2 hover:text-fleet-text transition"
@@ -92,6 +98,9 @@ export function FolderHooks({
           </button>
         )}
       </div>
+      {state === 'unreadable' && entry?.detail && (
+        <p className="text-xs text-amber-500/70 mt-1 wrap-anywhere">{entry.detail}</p>
+      )}
       <p className="text-xs text-fleet-text-subtle mt-1 break-all">{folder}</p>
       {sharedWith.length > 1 && (
         <p className="text-xs text-amber-500/70 mt-1">

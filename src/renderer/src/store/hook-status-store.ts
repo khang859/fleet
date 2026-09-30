@@ -5,17 +5,20 @@ import { createLogger } from '../logger';
 const log = createLogger('store:hook-status');
 
 /**
- * Four states, not two.
+ * Five states, not two.
  *
  * A check that is still in flight, and a check that failed, are both "we do not
  * know" - and showing either as "Not installed" invites the user to install
  * hooks that may already be there, or to believe a folder is unconfigured when
- * really the filesystem answer never arrived.
+ * really the filesystem answer never arrived. `unreadable` is a folder whose
+ * `settings.json` Fleet will not touch until the user fixes it.
  */
-export type HookState = 'checking' | 'installed' | 'missing' | 'error';
+export type HookState = 'checking' | 'installed' | 'missing' | 'unreadable' | 'error';
 
 type HookEntry = {
   state: HookState;
+  /** Why the folder is unreadable, as the settings parser said it. */
+  detail?: string;
   /** Bumped per request so a slow answer for an older check is dropped. */
   seq: number;
   /** True while an install or remove is running, so the action cannot double-fire. */
@@ -45,10 +48,10 @@ type HookStatusState = {
  */
 export const useHookStatusStore = create<HookStatusState>((set, get) => {
   /** Write a result only if it still answers the newest request for that folder. */
-  const settle = (folder: string, seq: number, state: HookState): void => {
+  const settle = (folder: string, seq: number, state: HookState, detail?: string): void => {
     const entry = get().byFolder[folder];
     if (entry?.seq !== seq) return;
-    set((s) => ({ byFolder: { ...s.byFolder, [folder]: { ...entry, state } } }));
+    set((s) => ({ byFolder: { ...s.byFolder, [folder]: { ...entry, state, detail } } }));
   };
 
   const setBusy = (folder: string, busy: boolean): void => {
@@ -57,6 +60,7 @@ export const useHookStatusStore = create<HookStatusState>((set, get) => {
         ...s.byFolder,
         [folder]: {
           state: s.byFolder[folder]?.state ?? 'checking',
+          detail: s.byFolder[folder]?.detail,
           seq: s.byFolder[folder]?.seq ?? 0,
           busy
         }
@@ -74,7 +78,13 @@ export const useHookStatusStore = create<HookStatusState>((set, get) => {
       }
     }));
     window.fleet.copilot.hookStatusFor(folder).then(
-      (installed) => settle(folder, seq, installed ? 'installed' : 'missing'),
+      (status) =>
+        settle(
+          folder,
+          seq,
+          status.state,
+          status.state === 'unreadable' ? status.detail : undefined
+        ),
       (err: unknown) => {
         log.error('hook status check failed', { folder, error: String(err) });
         settle(folder, seq, 'error');
