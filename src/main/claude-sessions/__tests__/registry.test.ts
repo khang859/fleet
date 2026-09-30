@@ -222,6 +222,40 @@ describe('ClaudeSessionRegistry', () => {
         phaseSince: 1_010
       });
     });
+
+    it('settles a phase the transcript showed, without a hook event', () => {
+      registry.ingest(
+        ev({
+          event: 'PermissionRequest',
+          status: 'waiting_for_approval',
+          tool: 'Bash',
+          toolUseId: 'tu-1'
+        }),
+        pane
+      );
+      changes.length = 0;
+      clock.advance(10);
+      registry.settle('s1', 'turnStopped');
+      expect(registry.get('s1')).toMatchObject({
+        phase: 'waitingForInput',
+        waitingKind: 'prompt',
+        pendingPermissions: [],
+        phaseSince: 1_010
+      });
+      expect(changes).toEqual([expect.objectContaining({ sessionId: 's1', event: null })]);
+      // Nothing to settle: no change is announced.
+      registry.settle('s1', 'turnStopped');
+      expect(changes).toHaveLength(1);
+      registry.settle('s1', 'turnStarted');
+      expect(registry.get('s1')?.phase).toBe('processing');
+    });
+
+    it('does not settle an ended session', () => {
+      registry.ingest(ev(), pane);
+      registry.releasePane('pane-1');
+      registry.settle('s1', 'turnStopped');
+      expect(registry.get('s1')?.phase).toBe('ended');
+    });
   });
 
   describe('epochs', () => {

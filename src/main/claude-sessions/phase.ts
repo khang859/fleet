@@ -164,3 +164,31 @@ export function nextPaneEpoch(
   if (current.sessionId === sessionId) return { ...current, replaces: null };
   return { sessionId, epoch: current.epoch + 1, replaces: current.sessionId };
 }
+
+/**
+ * What the transcript shows about a turn that hooks do not report.
+ *
+ * - `turnStopped`: the user cancelled with Esc or answered a permission "No"
+ *   in the terminal. Claude Code sends no hook event for either, and waits for
+ *   a prompt.
+ * - `turnStarted`: a prompt queued while a turn ran was taken off the queue
+ *   and started. Its `UserPromptSubmit` fired when it was queued, before the
+ *   earlier turn's `Stop`.
+ */
+export type TranscriptSignal = 'turnStopped' | 'turnStarted';
+
+/** Apply a transcript signal to a session's phase. Pure: `state` is not modified. */
+export function settlePhase(state: PhaseState, signal: TranscriptSignal): PhaseState {
+  if (signal === 'turnStopped') {
+    const cancellable =
+      state.phase === 'processing' ||
+      state.phase === 'waitingForApproval' ||
+      (state.phase === 'waitingForInput' && state.waitingKind === 'question');
+    if (!cancellable) return state;
+    return { phase: 'waitingForInput', waitingKind: 'prompt', pendingPermissions: [] };
+  }
+  if (state.phase === 'waitingForInput' && state.waitingKind === 'prompt') {
+    return { ...state, phase: 'processing', waitingKind: null };
+  }
+  return state;
+}
