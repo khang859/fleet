@@ -3,7 +3,7 @@
 - [x] 1.1 Add `ajv`, `@codemirror/lint` and `@codemirror/autocomplete` at their latest versions and verify `npm run typecheck` still passes.
 - [x] 1.2 Add `scripts/fetch-claude-settings-schema.ts` that downloads `https://www.schemastore.org/claude-code-settings.json` to `resources/claude-code-settings.schema.json`; verify by running `npx tsx scripts/fetch-claude-settings-schema.ts` and confirming the written file parses and has 140+ top-level `properties`.
 - [x] 1.3 Commit the fetched schema and confirm it is present in a packaged build.
-The schema is imported as a module rather than read from disk at runtime, so the bundler inlines it and no `extraResources` entry is needed; verify with `npm run build` that the built renderer chunk contains a schema key such as `cleanupPeriodDays`.
+      The schema is imported as a module rather than read from disk at runtime, so the bundler inlines it and no `extraResources` entry is needed; verify with `npm run build` that the built renderer chunk contains a schema key such as `cleanupPeriodDays`.
 
 ## 2. Shared scope and path model
 
@@ -67,8 +67,8 @@ The schema is imported as a module rather than read from disk at runtime, so the
 
 - [x] 10.1 Run `npm run lint`, `npm run typecheck` and `npx vitest run` and confirm all pass with no new warnings.
 - [ ] 10.2 Run `ripwire . --quality-delta` and confirm it exits zero.
-Not satisfied as written.
-The run reports no finding introduced by this change, but it exits 2 on a pre-existing floor: 10 gating findings that were already worse before this work, the first being dead code `joinPath` at `src/renderer/src/lib/shell-utils.ts:24` (was=0 now=0).
-Fixing pre-existing dead code is out of this change's scope.
+      Not satisfied as written.
+      The run reports no finding introduced by this change, but it exits 2 on a pre-existing floor: 10 gating findings that were already worse before this work, the first being dead code `joinPath` at `src/renderer/src/lib/shell-utils.ts:24` (was=0 now=0).
+      Fixing pre-existing dead code is out of this change's scope.
 - [x] 10.3 End-to-end pass with `npm run dev` plus `npm run drive`: for each of the three scopes, screenshot the Form view, the Raw view and a save; confirm alignment, spacing and empty states match the rest of Settings, and fix any visual defect found.
 - [x] 10.4 Add a learnings note under `docs/learnings/` for anything that went wrong during implementation.
