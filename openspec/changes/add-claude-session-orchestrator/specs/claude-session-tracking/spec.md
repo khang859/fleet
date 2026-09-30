@@ -175,7 +175,7 @@ The system SHALL deliver a prompt to a session only when:
 - the session is waiting for a normal prompt;
 - the user has no unsent text in that pane;
 - the user has not typed in that pane in the last few seconds.
-  The delivered text SHALL be pasted as a single block and submitted once.
+  The delivered text SHALL arrive as one prompt, recorded as the text that was sent, and be submitted once.
   The system SHALL report delivery as confirmed only after Claude Code acknowledges receipt of the prompt.
 
 #### Scenario: Session is busy
@@ -192,6 +192,11 @@ The system SHALL deliver a prompt to a session only when:
 
 - **WHEN** a prompt containing line breaks is delivered
 - **THEN** Claude Code receives it as one prompt, not several
+
+#### Scenario: Long prompt
+
+- **WHEN** a prompt longer than Claude Code's paste threshold is delivered
+- **THEN** Claude Code records it as the text that was sent, not as pasted content
 
 #### Scenario: No acknowledgement
 

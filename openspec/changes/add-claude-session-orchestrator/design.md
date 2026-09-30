@@ -135,7 +135,10 @@ Draft tracking works on renderer-originated PTY writes in main.
 Printable input marks the draft dirty.
 Enter, Ctrl-C, Ctrl-U or a `UserPromptSubmit` hook event marks it clean.
 
-The text is sent as a bracketed paste (`ESC[200~ … ESC[201~`), followed by `\r` about 50 ms later.
+The text is typed, not pasted: control characters other than LF are dropped, a tab becomes four spaces, and it is written in 128-character chunks 25 ms apart, followed by `\r` about 50 ms later.
+Checked on Claude Code 2.1.285 (task 5.1): a bracketed paste of more than one line, or one read of more than about 800 characters, is recorded as `<pasted_content>`, and the model refuses to follow pasted instructions.
+Typed, LF inserts a line break and the transcript records exactly what was written.
+A prompt ending in `\` is refused, since `\` then Enter is a line break.
 The send is confirmed only by a `UserPromptSubmit` for that session within 5 s; otherwise it is reported as "not confirmed".
 The registry also records the origin and a hash of the text.
 That is how turn reads tell real Orchestrator prompts from a user typing the prefix.
@@ -143,6 +146,8 @@ The hash is of exactly the delivered text, `[orchestrator]` prefix included and 
 
 _Alternative considered:_ the current `write(text + '\r')`.
 It submits half-typed drafts, can split multi-line text, and lands in whatever dialog is open.
+_Alternative considered:_ a bracketed paste, the first design.
+Claude Code wraps it as pasted content, which its model treats as untrusted and does not act on.
 
 ### D6. Orchestrator mode is a per-pane flag
 
@@ -283,9 +288,10 @@ The cost is six touch points and no downgrade compatibility for session files.
   A background task finishing queues a turn the same way.
   Counting prompts against stops cannot fix it: an Esc interrupt sends no `Stop`, and the count would leave the session stuck as working.
   → Phase 3 settles it from the transcript, which records `queue-operation` lines with `operation: "enqueue"` and `"dequeue"`: a dequeue after the last `Stop` means a turn is running (task 4.2b).
-- **Bracketed paste in the Claude Code TUI.** Paste handling may vary by version.
-  → Verify manually before Phase 4 ships.
-  → The acknowledgement timeout keeps the tool honest.
+- **Paste detection in the Claude Code TUI.** Typed input that arrives in one read above about 800 characters is taken as a paste, and the threshold may change between versions.
+  A main process stalled long enough for several chunks to pile up in the PTY could also trip it.
+  → Chunks are a sixth of the observed threshold.
+  → The acknowledgement timeout keeps the tool honest, and a wrapped prompt reads back as "typed by the user", since its recorded text does not match the noted hash.
 - **Default hook install edits a user's Claude config.** It already runs on macOS today.
   → Backup, atomic write, abort on parse failure, and a setting to turn it off.
 - **Migration blast radius.** Moving files touches copilot, sessions and the mascot renderer.
