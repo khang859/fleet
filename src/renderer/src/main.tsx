@@ -12,6 +12,7 @@ import { useAgentSkillsStore } from './store/agent-skills-store';
 import { useAgentMemoryStore } from './store/agent-memory-store';
 import { useNotificationStore } from './store/notification-store';
 import { useClaudeConfigStore } from './store/claude-config-store';
+import { useClaudeSessionsStore } from './store/claude-sessions-store';
 import { useUpdateStore } from './store/update-store';
 import { terminalRegistryForDev } from './hooks/use-terminal';
 import { createCommandRegistry } from './lib/commands';
@@ -95,7 +96,8 @@ if (import.meta.env.DEV) {
       agentMemory: useAgentMemoryStore,
       notification: useNotificationStore,
       update: useUpdateStore,
-      claudeConfig: useClaudeConfigStore
+      claudeConfig: useClaudeConfigStore,
+      claudeSessions: useClaudeSessionsStore
     },
     terminals: terminalRegistryForDev,
     // A function, not a list: commands read the stores when they run.
