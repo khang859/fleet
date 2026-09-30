@@ -276,7 +276,7 @@ export function splitForCompaction(
 
 /** Whether this message is something a turn was an answer to. */
 function opensATurn(message: AgentMessage): boolean {
-  return message.role === 'user' || message.role === 'scheduled';
+  return message.role === 'user' || message.role === 'scheduled' || message.role === 'fleet';
 }
 
 /** Whether compacting this transcript would actually remove anything. */

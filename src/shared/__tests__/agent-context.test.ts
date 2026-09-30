@@ -448,6 +448,19 @@ describe('splitForCompaction', () => {
     expect([...older, ...recent]).toEqual(messages);
   });
 
+  it('lets a fleet digest open the kept tail, as the turn it started', () => {
+    const messages = [
+      ...conversation(2),
+      msg('fleet', 'abcdef12 finished its turn.'),
+      msg('assistant', 'read it'),
+      msg('assistant', 'and answered')
+    ];
+    const { older, recent } = splitForCompaction(messages, 2);
+
+    expect(recent[0].role).toBe('fleet');
+    expect([...older, ...recent]).toEqual(messages);
+  });
+
   it('loses nothing: the two halves always rebuild the transcript', () => {
     for (const turns of [1, 2, 3, 4, 8]) {
       const messages = conversation(turns);

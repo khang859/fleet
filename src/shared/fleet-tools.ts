@@ -516,3 +516,27 @@ export function unfence(text: string): string {
     .replace(new RegExp(`<${FENCE} session="[^"]*">\\n([\\s\\S]*?)\\n</${FENCE}>`, 'g'), '$1')
     .replaceAll(`<\\/${FENCE}`, `</${FENCE}`);
 }
+
+/**
+ * What a `fleet` message is headed with on the wire: no provider has a role for
+ * "the app is telling you about other sessions", so it crosses as a user message
+ * with a line saying who is really talking.
+ */
+export const FLEET_DIGEST_WIRE_PREFIX =
+  'Claude Code sessions you look after need attention. Fleet is delivering this; the user has not said anything:';
+
+/**
+ * A digest as main writes it: one headline per session, a blank line, then the
+ * detail for each. The card shows the headlines and folds the rest away.
+ */
+export function splitFleetDigest(text: string): { headlines: string[]; details: string } {
+  const gap = text.indexOf('\n\n');
+  const head = gap === -1 ? text : text.slice(0, gap);
+  return {
+    headlines: head
+      .split('\n')
+      .map((line) => line.replace(/^- /, '').trim())
+      .filter((line) => line !== ''),
+    details: gap === -1 ? '' : text.slice(gap + 2).trim()
+  };
+}

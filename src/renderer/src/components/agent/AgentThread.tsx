@@ -43,6 +43,7 @@ import { AgentPermissionRow } from './AgentPermissionRow';
 import { AgentServerToolRow, AgentSources } from './AgentServerToolRow';
 import { AgentTaskCard } from './AgentTaskCard';
 import { AgentScheduleFire } from './AgentScheduleFire';
+import { AgentFleetDigest } from './AgentFleetDigest';
 import { AgentTaskPermissions } from './AgentTaskPermissions';
 import { pendingTaskAsks, type PendingTaskAsk } from './task-permissions';
 import type { RunningSubagent } from './subagent-view';
@@ -827,6 +828,7 @@ const Message = memo(function Message({
   // conversation, and drawn as either one it would read as somebody having said
   // something nobody said.
   if (message.role === 'scheduled') return <AgentScheduleFire text={messageText(message)} />;
+  if (message.role === 'fleet') return <AgentFleetDigest text={messageText(message)} />;
   if (message.role === 'user') {
     const text = messageText(message);
     return (

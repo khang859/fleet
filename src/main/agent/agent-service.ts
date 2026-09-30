@@ -103,6 +103,7 @@ import { createFleetCapability, type FleetDeps } from './fleet/capability';
 import { renderLedgerBlock } from './fleet/ledger';
 import {
   FLEET_ANALYST,
+  FLEET_DIGEST_WIRE_PREFIX,
   fleetToolNames,
   isFleetTool,
   usesFleetTools,
@@ -768,6 +769,9 @@ async function toWireMessages(
   if (message.role === 'scheduled') {
     return [{ role: 'user', content: `${SCHEDULE_WIRE_PREFIX}\n\n${messageText(message)}` }];
   }
+  if (message.role === 'fleet') {
+    return [{ role: 'user', content: `${FLEET_DIGEST_WIRE_PREFIX}\n\n${messageText(message)}` }];
+  }
   if (message.role === 'user') {
     return [await toUserMessage(messageText(message), messageAttachments(message), ctx)];
   }
@@ -920,6 +924,10 @@ export async function toWireHistory(
  * says nothing new - the last one they sent or scheduled. Raw rather than
  * expanded: `/pr-review <url>` says what was asked in a line, where the prompt
  * behind it says how to do it in a page.
+ *
+ * Never a `fleet` digest: that is text the watched sessions wrote, and auto
+ * mode weighing a command against it would let a session ask for its own
+ * approval.
  */
 export function latestRequest(req: AgentSendRequest): string | null {
   if (req.text.trim() !== '') return req.text;
