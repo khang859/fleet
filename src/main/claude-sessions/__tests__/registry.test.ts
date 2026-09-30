@@ -384,6 +384,25 @@ describe('ClaudeSessionRegistry', () => {
     ]);
     expect(JSON.stringify(registry.inputsFor('s1'))).not.toContain('run the tests');
   });
+
+  it('hands a prompt noted for a pane to the session that first reports from it', () => {
+    registry.notePaneInput('pane-1', 'orchestrator', '[orchestrator] write the parser');
+    registry.notePaneInput('pane-2', 'orchestrator', '[orchestrator] elsewhere');
+    registry.ingest(ev({ event: 'SessionStart', status: 'waiting_for_input' }), pane);
+    expect(registry.inputsFor('s1')).toEqual([
+      { origin: 'orchestrator', hash: hashPrompt('[orchestrator] write the parser'), at: 1_000 }
+    ]);
+    // Handed over once: a later session in the same pane starts with none.
+    registry.ingest(
+      ev({ sessionId: 's2', event: 'SessionStart', status: 'waiting_for_input' }),
+      pane
+    );
+    expect(registry.inputsFor('s2')).toEqual([]);
+    // A pane that closes before its session reports takes its notes with it.
+    registry.releasePane('pane-2');
+    registry.ingest(ev({ sessionId: 's3' }), { ...pane, paneId: 'pane-2' });
+    expect(registry.inputsFor('s3')).toEqual([]);
+  });
 });
 
 describe('ClaudeSessionRegistry ingest result', () => {

@@ -86,26 +86,15 @@ export type NewLedgerEntry = Pick<
   started: boolean;
 };
 
-/** How long a spawned tab has to report its session before its entry counts as ended. */
-const SPAWN_GRACE_MS = 120_000;
-
-/**
- * Bring an open entry up to date with its session as it is now, or with
- * `undefined` when no running session matches it. True when the entry changed.
- *
- * Worked out from the session's state, not from the events that led to it, so
- * the same rule serves a live change and a conversation opened after a
- * restart: a session that started on the prompt and has waited for a prompt
- * since after it was sent has answered it.
- */
 function settleEntry(
   entry: FleetLedgerEntry,
   session: ClaudeSession | undefined,
-  now: number
+  now: number,
+  startingPanes: ReadonlySet<string> = new Set()
 ): boolean {
   if (session === undefined) {
-    // A spawned tab that has not reported its session yet is still on its way.
-    if (entry.sessionId === null && now - entry.at < SPAWN_GRACE_MS) return false;
+    // A spawned tab whose session has not reported yet is still on its way.
+    if (entry.sessionId === null && startingPanes.has(entry.paneId)) return false;
     return end(entry, now);
   }
   let changed = false;
@@ -214,13 +203,21 @@ export class FleetLedgerStore {
     }
   }
 
-  /** Bring a conversation's open entries up to date with the running sessions. */
-  reconcile(threadId: string, sessions: readonly ClaudeSession[], now = Date.now()): void {
+  /**
+   * Bring a conversation's open entries up to date with the running sessions,
+   * and the spawned panes whose session has not reported yet.
+   */
+  reconcile(
+    threadId: string,
+    sessions: readonly ClaudeSession[],
+    startingPanes: ReadonlySet<string>,
+    now = Date.now()
+  ): void {
     const file = this.load(threadId);
     let changed = false;
     for (const entry of file.entries) {
       if (entry.state !== 'open') continue;
-      if (settleEntry(entry, sessionFor(entry, sessions), now)) changed = true;
+      if (settleEntry(entry, sessionFor(entry, sessions), now, startingPanes)) changed = true;
     }
     if (changed) this.save(threadId, file);
   }

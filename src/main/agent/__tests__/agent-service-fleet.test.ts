@@ -18,7 +18,8 @@ import { resolveTarget as route, type ResolvedTarget } from '../model-routing';
 import type { FleetHost } from '../fleet/host';
 import type { FleetActDeps } from '../fleet/capability';
 import { FleetLedgerStore } from '../fleet/ledger-store';
-import { SendLimiter } from '../fleet/send';
+import { ActLimiter } from '../fleet/limiter';
+import { FleetSpawns } from '../fleet/spawns';
 
 vi.mock('../../logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })
@@ -62,6 +63,7 @@ const DEFINITIONS = [
 const HOST: FleetHost = {
   tracking: () => ({ status: { state: 'running' }, installProblems: [] }),
   sessions: () => [],
+  starting: () => [],
   transcript: async () => Promise.resolve(null),
   inputsFor: () => [],
   git: async () => Promise.reject(new Error('unused')),
@@ -335,13 +337,22 @@ describe('orchestrator mode', () => {
     expect(JSON.stringify(round.messages)).not.toContain('Your fleet ledger');
   });
 
-  it('offers fleet_send once it is wired up, and never to a subagent', async () => {
+  it('offers fleet_send and fleet_spawn once wired up, and never to a subagent', async () => {
     const act: FleetActDeps = {
       prompter: {
         refusal: () => null,
         send: async () => Promise.resolve({ ok: false, reason: 'unused' })
       },
-      limiter: new SendLimiter()
+      limiter: new ActLimiter(),
+      spawns: new FleetSpawns(),
+      platform: 'linux',
+      openTab: async () => Promise.resolve('unused'),
+      worktrees: {
+        create: async () => Promise.reject(new Error('unused')),
+        remove: async () => Promise.resolve()
+      },
+      notePaneInput: () => {},
+      newPaneId: () => 'unused'
     };
     const [round] = await turn({
       orchestrator: true,
@@ -349,9 +360,11 @@ describe('orchestrator mode', () => {
       calls: [[call('task', { agent: 'fleet-analyst', prompt: 'read abcdef12' })]]
     });
     expect(names(round)).toContain('fleet_send');
+    expect(names(round)).toContain('fleet_spawn');
     expect(system(round)).toContain('`fleet_send` types a prompt into a session');
     await vi.waitFor(() => expect(runs).toHaveLength(1));
     expect(runs[0].fleet?.send).toBeNull();
     expect(runs[0].tools).not.toContain('fleet_send');
+    expect(runs[0].fleet?.spawn).toBeNull();
   });
 });

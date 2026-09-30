@@ -94,6 +94,8 @@ type Entry = {
 export class ClaudeSessionRegistry {
   private readonly entries = new Map<string, Entry>();
   private readonly paneEpochs = new Map<string, PaneEpoch>();
+  /** Inputs noted for a pane before its session reported, handed to the session when it does. */
+  private readonly paneInputs = new Map<string, NotedInput[]>();
   private readonly listeners = new Set<(change: ClaudeSessionChange) => void>();
   private readonly clock: Clock;
   private readonly isAlive: (pid: number) => boolean;
@@ -185,7 +187,7 @@ export class ClaudeSessionRegistry {
           createdAt: now
         },
         events: [],
-        inputs: [],
+        inputs: this.takePaneInputs(placement.paneId),
         toolUseIds: new Map(),
         removal: null
       };
@@ -291,6 +293,23 @@ export class ClaudeSessionRegistry {
     if (entry.inputs.length > NOTED_INPUT_LIMIT) entry.inputs.shift();
   }
 
+  /**
+   * Note a prompt Fleet gave a pane whose session has not started yet - the
+   * one a spawned session starts with - for the session that first reports
+   * from that pane.
+   */
+  notePaneInput(paneId: string, origin: ClaudeInputOrigin, text: string): void {
+    const pending = this.paneInputs.get(paneId) ?? [];
+    pending.push({ origin, hash: hashPrompt(text), at: this.clock.now() });
+    this.paneInputs.set(paneId, pending.slice(-NOTED_INPUT_LIMIT));
+  }
+
+  private takePaneInputs(paneId: string): NotedInput[] {
+    const pending = this.paneInputs.get(paneId) ?? [];
+    this.paneInputs.delete(paneId);
+    return pending;
+  }
+
   /** Prompts Fleet typed into a session, oldest first. */
   inputsFor(sessionId: string): NotedInput[] {
     return [...(this.entries.get(sessionId)?.inputs ?? [])];
@@ -311,6 +330,7 @@ export class ClaudeSessionRegistry {
       if (entry.session.paneId === paneId) this.end(entry.session.sessionId, 'pane closed');
     }
     this.paneEpochs.delete(paneId);
+    this.paneInputs.delete(paneId);
   }
 
   /** Forget every session, telling subscribers each one left. */

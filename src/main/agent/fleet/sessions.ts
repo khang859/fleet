@@ -1,7 +1,7 @@
 import type { ClaudeTrackingStatus } from '../../../shared/claude-sessions';
 import { fence, type FleetToolOutput } from '../../../shared/fleet-tools';
 import { oneLine } from '../../claude-sessions/brief';
-import { describePhase, needsUser } from './format';
+import { describePhase, describeStarting, needsUser } from './format';
 import type { FleetHost, FleetSession } from './host';
 
 /** Why the list may be empty, for a model that cannot see the settings. */
@@ -35,7 +35,8 @@ async function line(host: FleetHost, s: FleetSession, now: number): Promise<stri
 /** `fleet_sessions`: every tracked session, one entry each. */
 export async function listSessions(host: FleetHost): Promise<FleetToolOutput> {
   const sessions = host.sessions();
-  if (sessions.length === 0) {
+  const starting = host.starting();
+  if (sessions.length === 0 && starting.length === 0) {
     const { status, installProblems } = host.tracking();
     const problems = installProblems.map(
       (p) => `Fleet could not install its hooks in ${p.configDir}: ${p.detail}`
@@ -50,8 +51,12 @@ export async function listSessions(host: FleetHost): Promise<FleetToolOutput> {
     };
   }
   const now = host.now();
-  const lines = await Promise.all(sessions.map(async (s) => line(host, s, now)));
-  const count = `${sessions.length} session${sessions.length === 1 ? '' : 's'}`;
+  const lines = [
+    ...(await Promise.all(sessions.map(async (s) => line(host, s, now)))),
+    ...starting.map((s) => `- ${s.ref} · ${s.label} · ${describeStarting(s, now)}`)
+  ];
+  const total = sessions.length + starting.length;
+  const count = `${total} session${total === 1 ? '' : 's'}`;
   return {
     text: `${count}. Pass a ref to the other fleet tools.\n${fence('all', lines.join('\n'))}`,
     summary: count

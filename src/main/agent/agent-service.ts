@@ -1172,12 +1172,12 @@ export class AgentService {
     const fleetDeps = this.deps.fleet ?? null;
     const fleet =
       req.orchestrator === true && fleetDeps !== null
-        ? createFleetCapability(fleetDeps, req.threadId, 'orchestrator')
+        ? createFleetCapability(fleetDeps, req.threadId, 'orchestrator', req.cwd)
         : null;
     const childFleet =
       fleet === null || fleetDeps === null
         ? null
-        : createFleetCapability(fleetDeps, req.threadId, 'subagent');
+        : createFleetCapability(fleetDeps, req.threadId, 'subagent', req.cwd);
     const subagents = (await this.deps.subagents.list(req.cwd)).filter(
       (s) => fleet !== null || !usesFleetTools(s.tools)
     );

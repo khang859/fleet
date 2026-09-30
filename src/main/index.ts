@@ -44,7 +44,9 @@ import { IPC_CHANNELS, IS_FLEET_DEV, SOCKET_PATH } from '../shared/constants';
 import { deriveDebugPort, sessionFilePath, type DriveSession } from '../shared/drive-session';
 import { SocketSupervisor } from './socket-supervisor';
 import { QuitGuard } from './quit-guard';
+import { randomUUID } from 'node:crypto';
 import { QuitDecideSchema, type QuitWorkItem } from '../shared/quit-confirm';
+import { FleetOpenTabReply } from '../shared/fleet-tools';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile, installOpencodePlugin } from './install-fleet-cli';
 import { AnnotateService } from './annotate-service';
@@ -89,7 +91,9 @@ import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
 import { createFleetHost } from './agent/fleet/host';
 import { FleetLedgerStore } from './agent/fleet/ledger-store';
-import { SendLimiter } from './agent/fleet/send';
+import { ActLimiter } from './agent/fleet/limiter';
+import { RendererRpc } from './agent/fleet/renderer-rpc';
+import { FleetSpawns } from './agent/fleet/spawns';
 import { createGitRunner } from './claude-sessions/git-probe';
 import { completeOnce } from './agent/completions';
 import { AgentModelCatalog } from './agent/models-catalog';
@@ -172,6 +176,16 @@ let quitConfirmed = false;
 let quitRequested = false;
 
 const quitGuard = new QuitGuard(() => mainWindow);
+
+// `fleet_spawn`'s way to a new tab: the renderer opens it, and the pane's PTY
+// picks its prompt up from `fleetSpawns` when it is created.
+const fleetSpawns = new FleetSpawns();
+const fleetTabs = new RendererRpc(() => mainWindow);
+const worktreeService = new WorktreeService();
+ipcMain.on(IPC_CHANNELS.AGENT_FLEET_OPEN_TAB_DONE, (_event, payload: unknown) => {
+  const parsed = FleetOpenTabReply.safeParse(payload);
+  if (parsed.success) fleetTabs.settle(parsed.data);
+});
 
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
@@ -799,7 +813,7 @@ void app.whenReady().then(async () => {
     gitService,
     () => mainWindow,
     activityTracker,
-    new WorktreeService(),
+    worktreeService,
     annotationStore,
     annotateService,
     shellProfileRegistry,
@@ -808,7 +822,8 @@ void app.whenReady().then(async () => {
     envSyncSecrets,
     ptyOscBridge,
     teleprompter,
-    claudeSessions
+    claudeSessions,
+    fleetSpawns
   );
 
   // Clean up old annotations based on retention settings
@@ -882,6 +897,7 @@ void app.whenReady().then(async () => {
     activityTracker.untrackPane(event.paneId);
     updateChrome();
     claudeSessions?.onPaneClosed(event.paneId);
+    fleetSpawns.settle(event.paneId);
   });
 
   // Forward CWD changes to renderer and keep ptyManager in sync
@@ -1529,8 +1545,12 @@ void app.whenReady().then(async () => {
   void agentEndpoints.reload();
   const agentModels = new AgentCatalogComposer(agentCatalog, agentEndpoints);
   const fleetLedger = new FleetLedgerStore();
-  // Settle ledger entries as their sessions answer or go away.
-  claudeSessions.registry.subscribe((change) => fleetLedger.observe(change));
+  // Settle ledger entries as their sessions answer or go away, and stop
+  // reporting a spawned pane as starting once its session speaks for itself.
+  claudeSessions.registry.subscribe((change) => {
+    fleetLedger.observe(change);
+    if (change.session) fleetSpawns.settle(change.session.paneId);
+  });
   // Read through lazily: the session service is created with the window, and
   // may not exist yet - or at all, while tracking is unsupported.
   const fleetHost = createFleetHost({
@@ -1544,6 +1564,7 @@ void app.whenReady().then(async () => {
       transcript: async (sessionId) => claudeSessions?.transcript(sessionId) ?? null,
       inputsFor: (sessionId) => claudeSessions?.inputsFor(sessionId) ?? []
     },
+    starting: () => fleetSpawns.starting(),
     placeOf: (paneId) => layoutStore.placeOf(paneId),
     git: createGitRunner()
   });
@@ -1569,7 +1590,17 @@ void app.whenReady().then(async () => {
               reason: 'Session tracking is not running.'
             }
         },
-        limiter: new SendLimiter()
+        limiter: new ActLimiter(),
+        spawns: fleetSpawns,
+        platform: process.platform,
+        openTab: async (req) => fleetTabs.openTab(req),
+        worktrees: {
+          create: async (repoPath, branch) => worktreeService.create(repoPath, undefined, branch),
+          remove: async (path) => worktreeService.remove(path)
+        },
+        notePaneInput: (paneId, text) =>
+          claudeSessions?.registry.notePaneInput(paneId, 'orchestrator', text),
+        newPaneId: () => randomUUID()
       }
     },
     imageCapabilities: (modelId) => agentCatalog.cachedImageModel(modelId),

@@ -118,6 +118,24 @@ export type FleetSpawnArgs = z.infer<typeof FleetSpawnArgs>;
 export type FleetWaitArgs = z.infer<typeof FleetWaitArgs>;
 export type FleetPermissionArgs = z.infer<typeof FleetPermissionArgs>;
 
+/**
+ * A tab `fleet_spawn` asks the renderer to open, without focusing it. The pane
+ * id is main's, so the PTY the tab creates can be matched to the spawn; the
+ * prompt is not here, so it never reaches the layout.
+ */
+export type FleetOpenTabRequest = {
+  requestId: string;
+  paneId: string;
+  cwd: string;
+  label: string;
+  /** Set when the session runs in a worktree Fleet made for it. */
+  worktree: { path: string; branch: string } | null;
+};
+
+/** The renderer's answer: `error` is null once the tab is in the layout. */
+export const FleetOpenTabReply = z.object({ requestId: z.string(), error: z.string().nullable() });
+export type FleetOpenTabReply = z.infer<typeof FleetOpenTabReply>;
+
 /** What a fleet tool hands back: the text for the model, and the row in the transcript. */
 export type FleetToolOutput = { text: string; summary: string };
 
@@ -434,6 +452,12 @@ export function renderFleetInstructions(options: {
             ? [
                 '',
                 '`fleet_send` types a prompt into a session that is waiting for one, marked `[orchestrator]` so the user can tell it from their own. The user approves each one unless they have said to allow that session. Send what the user asked for or plainly wants done, not work of your own devising, and never keep prompting a session in a loop. Each send goes in your fleet ledger, shown to you every round until the session answers it.'
+              ]
+            : []),
+          ...(options.tools.includes('fleet_spawn')
+            ? [
+                '',
+                "`fleet_spawn` starts a new Claude Code session in its own tab with a prompt, in a new git worktree if you ask, after the user approves it. The tab opens behind whatever the user is doing. A new session can sit at Claude Code's folder trust dialog, shown as starting, until the user answers it; never try to answer it yourself."
               ]
             : []),
           ...(options.analyst === true

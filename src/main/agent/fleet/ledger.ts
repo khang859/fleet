@@ -1,6 +1,6 @@
 import { fence } from '../../../shared/fleet-tools';
 import { oneLine } from '../../claude-sessions/brief';
-import { describePhase, formatAge, needsUser } from './format';
+import { describePhase, describeStarting, formatAge, needsUser } from './format';
 import type { FleetHost } from './host';
 import type { FleetLedgerEntry, FleetLedgerStore } from './ledger-store';
 
@@ -41,14 +41,15 @@ export function renderLedgerBlock(
 ): string | null {
   const now = host.now();
   const sessions = host.sessions();
-  ledger.reconcile(threadId, sessions, now);
+  const starting = host.starting();
+  ledger.reconcile(threadId, sessions, new Set(starting.map((s) => s.paneId)), now);
   const entries = ledger.entries(threadId);
   const open = entries.filter((e) => e.state === 'open');
   const settled = entries
     .filter((e) => e.state !== 'open')
     .sort((a, b) => (b.settledAt ?? 0) - (a.settledAt ?? 0))
     .slice(0, RECENT_SETTLED);
-  if (sessions.length === 0 && entries.length === 0) return null;
+  if (sessions.length === 0 && starting.length === 0 && entries.length === 0) return null;
 
   const parts: string[] = ['Your fleet ledger, kept by Fleet so it survives compaction.'];
   if (open.length > 0) {
@@ -59,12 +60,16 @@ export function renderLedgerBlock(
   if (settled.length > 0) {
     parts.push('', 'Recently settled:', ...settled.map((e) => entryLine(e, now)));
   }
-  if (sessions.length > 0) {
-    const shown = sessions.slice(0, MAX_SESSION_LINES).map((s) => {
-      const flag = needsUser(s) ? ' · NEEDS THE USER' : '';
-      return `- ${s.ref} · ${s.label} · ${describePhase(s, now)}${flag}`;
-    });
-    const more = sessions.length - shown.length;
+  if (sessions.length + starting.length > 0) {
+    const lines = [
+      ...sessions.map((s) => {
+        const flag = needsUser(s) ? ' · NEEDS THE USER' : '';
+        return `- ${s.ref} · ${s.label} · ${describePhase(s, now)}${flag}`;
+      }),
+      ...starting.map((s) => `- ${s.ref} · ${s.label} · ${describeStarting(s, now)}`)
+    ];
+    const shown = lines.slice(0, MAX_SESSION_LINES);
+    const more = lines.length - shown.length;
     if (more > 0) shown.push(`- and ${more} more; fleet_sessions lists them all`);
     // Labels are the user's tab names, and a tab can be named anything.
     parts.push('', 'Sessions now:', fence('all', shown.join('\n')));

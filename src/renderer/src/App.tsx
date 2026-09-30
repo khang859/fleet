@@ -67,6 +67,7 @@ import { QuitConfirmDialog } from './components/QuitConfirmDialog';
 import { UpdatePill } from './components/UpdatePill';
 import { WhatsNewDialog } from './components/WhatsNewDialog';
 import { useUpdateNudge } from './hooks/use-update-nudge';
+import { useFleetSpawnTabs } from './hooks/use-fleet-spawn-tabs';
 import { useUpdateStore } from './store/update-store';
 import { getAccentCssVars, getGlassCssVars } from './lib/theme';
 import { BackgroundLayer } from './components/BackgroundLayer';
@@ -550,6 +551,7 @@ export function App(): React.JSX.Element {
 
   // Auto-updater: keeps the update store fed and fires the arrival toast.
   useUpdateNudge();
+  useFleetSpawnTabs();
 
   // Restore last active workspace on startup (or default), create a fresh tab if empty
   useEffect(() => {

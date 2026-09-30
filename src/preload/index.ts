@@ -135,6 +135,7 @@ import type {
 } from '../shared/agent-session';
 import type { AgentGitHead, AgentGitHeadEvent } from '../shared/agent-git';
 import type { AgentScheduleChanged, AgentScheduleRecord } from '../shared/agent-schedule';
+import type { FleetOpenTabReply, FleetOpenTabRequest } from '../shared/fleet-tools';
 import type { AgentBackgroundChanged, AgentBackgroundJob } from '../shared/agent-tools';
 // Aliased so the generic MCP names read as the Agent pane's at every use site.
 import type {
@@ -908,6 +909,17 @@ const fleetApi = {
      * `cancel` names no session, unlike the model's own `schedule_cancel`: this
      * is the stop button on a row the user is looking at.
      */
+    /**
+     * `fleet_spawn` asking for a tab. Answered with `openTabDone` once the tab
+     * is in the layout, or with why it could not be opened.
+     */
+    fleet: {
+      onOpenTab: (cb: (req: FleetOpenTabRequest) => void): Unsubscribe =>
+        onChannel(IPC_CHANNELS.AGENT_FLEET_OPEN_TAB, cb),
+      openTabDone: (reply: FleetOpenTabReply): void =>
+        ipcRenderer.send(IPC_CHANNELS.AGENT_FLEET_OPEN_TAB_DONE, reply)
+    },
+
     schedule: {
       list: async (sessionId: string): Promise<AgentScheduleRecord[]> =>
         typedInvoke<AgentScheduleRecord[]>(IPC_CHANNELS.AGENT_SCHEDULE_LIST, sessionId),

@@ -7,10 +7,7 @@ import {
 import { cleanPrompt, promptProblem, type SendResult } from '../../claude-sessions/input';
 import { resolveSession, type FleetHost } from './host';
 import type { FleetLedgerStore } from './ledger-store';
-
-/** Prompts one orchestrator conversation may send in `SEND_WINDOW_MS`. */
-export const SEND_LIMIT = 20;
-export const SEND_WINDOW_MS = 10 * 60_000;
+import type { ActLimiter } from './limiter';
 
 /** The way into a session's prompt box: `ClaudeSessionsService`, or a test's stand-in. */
 export type FleetPrompter = {
@@ -18,33 +15,11 @@ export type FleetPrompter = {
   send(sessionId: string, text: string): Promise<SendResult>;
 };
 
-/**
- * How many prompts each orchestrator conversation has sent lately.
- *
- * Kept outside the turn so a conversation cannot reset it by ending one: a
- * loop that prompts a session, reads the answer and prompts it again is the
- * failure this is for, and it runs across turns as easily as within one.
- */
-export class SendLimiter {
-  private readonly sent = new Map<string, number[]>();
-
-  /** When the next send is allowed, or `null` if it is allowed now. */
-  blockedUntil(threadId: string, now: number): number | null {
-    const recent = (this.sent.get(threadId) ?? []).filter((at) => now - at < SEND_WINDOW_MS);
-    this.sent.set(threadId, recent);
-    return recent.length < SEND_LIMIT ? null : recent[0] + SEND_WINDOW_MS;
-  }
-
-  note(threadId: string, now: number): void {
-    this.sent.set(threadId, [...(this.sent.get(threadId) ?? []), now]);
-  }
-}
-
 export type FleetSendDeps = {
   host: FleetHost;
   ledger: FleetLedgerStore;
   prompter: FleetPrompter;
-  limiter: SendLimiter;
+  limiter: ActLimiter;
 };
 
 /**
@@ -66,13 +41,8 @@ export async function sendToSession(
   const text = cleanPrompt(`${ORCHESTRATOR_PREFIX} ${args.prompt}`);
   const before = deps.prompter.refusal(session.sessionId) ?? promptProblem(text);
   if (before !== null) throw new Error(before);
-  const until = deps.limiter.blockedUntil(threadId, deps.host.now());
-  if (until !== null) {
-    const minutes = Math.ceil((until - deps.host.now()) / 60_000);
-    throw new Error(
-      `Not sent: this conversation has sent ${SEND_LIMIT} prompts in the last ${SEND_WINDOW_MS / 60_000} minutes. Wait about ${minutes} minute${minutes === 1 ? '' : 's'}, or ask the user.`
-    );
-  }
+  const limited = deps.limiter.refusal(threadId, deps.host.now());
+  if (limited !== null) throw new Error(limited);
 
   const allowed = await approve({
     action: 'send',

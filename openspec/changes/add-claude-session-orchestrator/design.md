@@ -131,7 +131,7 @@ It writes nothing unless all of these hold:
 - there has been no user keystroke for 3 s;
 - no other prompt is being typed into that session.
 
-`fleet_send` adds a rate limit on top: 20 prompts per 10 minutes per orchestrator conversation, kept across turns so ending a turn does not reset it.
+`fleet_send` adds a rate limit on top: 20 sends and spawns together per 10 minutes per orchestrator conversation, kept across turns so ending a turn does not reset it.
 It is not in `sendPrompt`, because a person sending from the copilot chat is not what it guards against.
 `fleet_send` runs the checks above before the approval card is shown, so the user is never asked about a prompt that could not go in, and `sendPrompt` runs them again as it types, since the user may have started typing while the card was up.
 
@@ -218,7 +218,8 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
   - An entry is answered once its session has started on the prompt and has waited for a prompt since the entry was written; a question dialog is still the same turn.
     It ends when its session goes away or is cleared (a new epoch) first.
     The rule reads the session's state, not the events that led to it, so the same check settles entries live from registry changes and, for a conversation not loaded at the time, when its next round is built.
-  - A spawn's entry has no session until the new tab reports one; it is matched by pane, and ends if nothing reports within two minutes.
+  - A spawn's entry has no session until the new tab reports one; it is matched by pane, and stays open while the pane is starting.
+    It ends if the pane closes, or after a restart, before a session reports.
   - _Alternative considered:_ the Agent session log.
     Rejected: compaction folds it, and it is renderer-owned.
 
@@ -231,7 +232,14 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
 5. `PTY_CREATE` takes the pending spawn and overrides `cmd` and env.
 
 The prompt never enters the layout, so restoring a layout cannot re-run it, and it needs no shell quoting.
-Spawn is refused on Windows and WSL profiles.
+Spawn is refused on Windows, which is also the only platform with WSL profiles.
+
+Everything that can refuse the spawn (platform, folder, repository, prompt, rate limit) is checked before the user is asked, and nothing is created until they say yes: the worktree, the pane id and the tab all come after.
+A worktree starts the session at the same place within the new checkout as the folder asked for, on a named branch if one was given.
+If the tab cannot be opened, the worktree is removed again.
+
+Claude Code runs no hooks until its folder trust dialog is answered, so a spawned session held there would be invisible to the registry.
+`FleetSpawns` keeps each spawned pane until a session reports from it or the pane closes, and `fleet_sessions` and the ledger show it as starting, with a note that the trust dialog is the user's to answer.
 
 _Alternative considered:_ shell-quoting the prompt into `cmd`.
 It is fragile across shells, and the prompt would be persisted with the layout.

@@ -7,7 +7,8 @@ import type { FleetAsk } from '../../../../shared/fleet-tools';
 import { PromptInput } from '../../../claude-sessions/input';
 import type { FleetHost, FleetSession } from '../host';
 import { FleetLedgerStore } from '../ledger-store';
-import { SEND_LIMIT, SEND_WINDOW_MS, SendLimiter, sendToSession } from '../send';
+import { ACT_LIMIT, ACT_WINDOW_MS, ActLimiter } from '../limiter';
+import { sendToSession } from '../send';
 
 vi.mock('../../../logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })
@@ -55,11 +56,12 @@ describe('fleet_send', () => {
   let listeners: Set<(change: ClaudeSessionChange) => void>;
   let input: PromptInput;
   let ledger: FleetLedgerStore;
-  let limiter: SendLimiter;
+  let limiter: ActLimiter;
 
   const host = (): FleetHost => ({
     tracking: () => ({ status: { state: 'running' }, installProblems: [] }),
     sessions: () => [current],
+    starting: () => [],
     transcript: async () => Promise.resolve(null),
     inputsFor: () => [],
     git: async () => Promise.reject(new Error('unused')),
@@ -97,7 +99,7 @@ describe('fleet_send', () => {
     answer = true;
     listeners = new Set();
     ledger = new FleetLedgerStore(dir);
-    limiter = new SendLimiter();
+    limiter = new ActLimiter();
     input = new PromptInput({
       session: (id) => (id === current.sessionId ? current : undefined),
       noteInput: (_id, origin, text) => noted.push(`${origin}: ${text}`),
@@ -208,22 +210,25 @@ describe('fleet_send', () => {
     expect(ledger.entries(THREAD)).toEqual([]);
   });
 
-  it(`refuses the ${SEND_LIMIT + 1}th prompt in ${SEND_WINDOW_MS / 60_000} minutes without asking`, async () => {
-    for (let i = 0; i < SEND_LIMIT; i++) {
+  it(`refuses the ${ACT_LIMIT + 1}th prompt in ${ACT_WINDOW_MS / 60_000} minutes without asking`, async () => {
+    for (let i = 0; i < ACT_LIMIT; i++) {
       await send();
       now += 1_000;
     }
     asks = [];
-    await expect(send()).rejects.toThrow(`sent ${SEND_LIMIT} prompts in the last 10 minutes`);
+    await expect(send()).rejects.toThrow(
+      `made ${ACT_LIMIT} sends and spawns in the last 10 minutes`
+    );
     expect(asks).toEqual([]);
-    now = 1_000_000 + SEND_WINDOW_MS;
+    now = 1_000_000 + ACT_WINDOW_MS;
     await expect(send()).resolves.toMatchObject({ summary: 'sent to abcdef12' });
   });
 
   it('keeps the limit per conversation', () => {
-    const limits = new SendLimiter();
-    for (let i = 0; i < SEND_LIMIT; i++) limits.note('a', i);
-    expect(limits.blockedUntil('a', SEND_LIMIT)).toBe(SEND_WINDOW_MS);
-    expect(limits.blockedUntil('b', SEND_LIMIT)).toBeNull();
+    const limits = new ActLimiter();
+    for (let i = 0; i < ACT_LIMIT; i++) limits.note('a', i);
+    expect(limits.refusal('a', ACT_LIMIT)).toContain('in about 10 minutes');
+    expect(limits.refusal('a', ACT_WINDOW_MS)).toBeNull();
+    expect(limits.refusal('b', ACT_LIMIT)).toBeNull();
   });
 });

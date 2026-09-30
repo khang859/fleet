@@ -3,11 +3,12 @@ import { diffSession } from './diff';
 import type { FleetHost } from './host';
 import type { FleetLedgerStore } from './ledger-store';
 import { readSession, type FleetCursors } from './read';
-import { sendToSession, type FleetPrompter, type SendLimiter } from './send';
+import { sendToSession, type FleetSendDeps } from './send';
 import { listSessions } from './sessions';
+import { spawnSession, type FleetSpawnDeps } from './spawn';
 
 /** What the act tools need beyond reading: `null` where they are not wired up. */
-export type FleetActDeps = { prompter: FleetPrompter; limiter: SendLimiter };
+export type FleetActDeps = Omit<FleetSendDeps & FleetSpawnDeps, 'host' | 'ledger'>;
 
 export type FleetDeps = { host: FleetHost; ledger: FleetLedgerStore; act: FleetActDeps | null };
 
@@ -24,7 +25,9 @@ export type FleetDeps = { host: FleetHost; ledger: FleetLedgerStore; act: FleetA
 export function createFleetCapability(
   deps: FleetDeps,
   threadId: string,
-  reader: 'orchestrator' | 'subagent'
+  reader: 'orchestrator' | 'subagent',
+  /** The pane's folder: where `fleet_spawn` starts a session unless told otherwise. */
+  cwd: string
 ): AgentFleetCapability {
   const cursors: FleetCursors = {
     get: (ref) => deps.ledger.cursor(threadId, ref),
@@ -42,7 +45,11 @@ export function createFleetCapability(
         ? null
         : async (args, _signal, approve) =>
             sendToSession({ ...deps, ...act }, threadId, args, approve),
-    spawn: null,
+    spawn:
+      act === null
+        ? null
+        : async (args, _signal, approve) =>
+            spawnSession({ ...deps, ...act }, threadId, cwd, args, approve),
     wait: null,
     permission: null
   };

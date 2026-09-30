@@ -165,9 +165,11 @@ export class WorktreeService {
     return join(getHomeDir(), '.fleet', 'worktrees', repoName);
   }
 
+  /** `branch` names the new branch; without it, a free `<repo>-<adjective>-<noun>` is picked. */
   async create(
     repoPath: string,
-    ctx?: PathContext
+    ctx?: PathContext,
+    branch?: string
   ): Promise<{ worktreePath: string; branchName: string }> {
     const repoName = getRepoName(repoPath);
     const base = await this.worktreeBase(ctx, repoName);
@@ -188,19 +190,28 @@ export class WorktreeService {
     log.info('existing branches', { branches: [...existingBranches] });
 
     let branchName: string;
-    let attempts = 0;
-    do {
-      branchName = `${repoName}-${generateWorktreeName()}`;
-      attempts++;
-    } while (
-      (existingWorktreeNames.has(branchName) || existingBranches.has(branchName)) &&
-      attempts < 100
-    );
+    if (branch !== undefined) {
+      if (existingWorktreeNames.has(branch) || existingBranches.has(branch)) {
+        throw new Error(`A branch named ${branch} already exists.`);
+      }
+      // Throws on a name git would not take as a branch.
+      await this.git(ctx, repoPath, ['check-ref-format', '--branch', branch]);
+      branchName = branch;
+    } else {
+      let attempts = 0;
+      do {
+        branchName = `${repoName}-${generateWorktreeName()}`;
+        attempts++;
+      } while (
+        (existingWorktreeNames.has(branchName) || existingBranches.has(branchName)) &&
+        attempts < 100
+      );
+    }
 
+    // One folder per worktree, even for a branch name with slashes in it.
+    const folder = branchName.replaceAll('/', '-');
     // posix join for WSL so the path git sees inside the distro stays posix.
-    const worktreePath = isWslContext(ctx)
-      ? posixPath.join(base, branchName)
-      : join(base, branchName);
+    const worktreePath = isWslContext(ctx) ? posixPath.join(base, folder) : join(base, folder);
     log.info('creating worktree', { repoPath, worktreePath, branchName });
 
     await this.git(ctx, repoPath, ['worktree', 'add', worktreePath, '-b', branchName]);

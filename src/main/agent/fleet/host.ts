@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import type {
   ClaudeHookInstallProblem,
   ClaudeSessionView,
@@ -28,9 +29,13 @@ export type FleetSession = ClaudeSessionView & {
   label: string;
 };
 
+/** A pane `fleet_spawn` opened whose Claude Code session has not reported yet. */
+export type FleetStarting = { ref: string; paneId: string; label: string; cwd: string; at: number };
+
 export type FleetHost = {
   tracking(): { status: ClaudeTrackingStatus; installProblems: ClaudeHookInstallProblem[] };
   sessions(): FleetSession[];
+  starting(): FleetStarting[];
   transcript(sessionId: string): Promise<SessionTranscript | null>;
   inputsFor(sessionId: string): NotedInput[];
   git: GitRunner;
@@ -76,6 +81,7 @@ export type FleetHostSource = {
 
 export function createFleetHost(deps: {
   sessions: FleetHostSource;
+  starting: () => ReadonlyArray<{ paneId: string; cwd: string; at: number }>;
   placeOf: (paneId: string) => PanePlace | null;
   git: GitRunner;
   now?: () => number;
@@ -90,6 +96,14 @@ export function createFleetHost(deps: {
         ...s,
         ref: sessionRef(s.paneId),
         label: paneLabel(deps.placeOf(s.paneId), s.projectName)
+      })),
+    starting: () =>
+      deps.starting().map((s) => ({
+        ref: sessionRef(s.paneId),
+        paneId: s.paneId,
+        label: paneLabel(deps.placeOf(s.paneId), basename(s.cwd)),
+        cwd: s.cwd,
+        at: s.at
       })),
     transcript: async (sessionId) => deps.sessions.transcript(sessionId),
     inputsFor: (sessionId) => deps.sessions.inputsFor(sessionId),

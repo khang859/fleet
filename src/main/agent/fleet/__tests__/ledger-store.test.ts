@@ -174,10 +174,11 @@ describe('FleetLedgerStore entries', () => {
     expect(store.entries(THREAD)[0].state).toBe('open');
   });
 
-  it('adopts the session a spawned tab reports, and ends it only after a grace period', () => {
+  it('adopts the session a spawned tab reports, and ends one whose pane is gone before it did', () => {
     const store = new FleetLedgerStore(dir);
     store.addEntry(THREAD, send({ action: 'spawn', sessionId: null, epoch: null, started: false }));
-    store.reconcile(THREAD, [], AT + 60_000);
+    // Held at the trust dialog for as long as the user leaves it there.
+    store.reconcile(THREAD, [], new Set(['pane-1-aaaa']), AT + 3_600_000);
     expect(store.entries(THREAD)[0]).toMatchObject({ state: 'open', sessionId: null });
     store.observe(
       change(
@@ -193,8 +194,8 @@ describe('FleetLedgerStore entries', () => {
       THREAD,
       send({ action: 'spawn', sessionId: null, epoch: null, started: false, paneId: 'p3' })
     );
-    store.reconcile(THREAD, [], AT + 120_000);
-    expect(store.entries(THREAD)[1].state).toBe('ended');
+    store.reconcile(THREAD, [], new Set(), AT + 5);
+    expect(store.entries(THREAD)[1]).toMatchObject({ state: 'ended', settledAt: AT + 5 });
   });
 
   it('settles a conversation that was not loaded when its session answered', () => {
@@ -202,7 +203,7 @@ describe('FleetLedgerStore entries', () => {
     // After a restart: nothing loaded, so the change is seen by no entry.
     const store = new FleetLedgerStore(dir);
     store.observe(change(claude({ phaseSince: AT + 40 })));
-    store.reconcile(THREAD, [claude({ phaseSince: AT + 40 })], AT + 50);
+    store.reconcile(THREAD, [claude({ phaseSince: AT + 40 })], new Set(), AT + 50);
     expect(store.entries(THREAD)[0].state).toBe('answered');
   });
 

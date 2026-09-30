@@ -54,6 +54,7 @@ describe('fleet_diff', () => {
     const host: FleetHost = {
       tracking: () => ({ status: { state: 'running' }, installProblems: [] }),
       sessions: () => [session],
+      starting: () => [],
       transcript: async () => Promise.resolve(null),
       inputsFor: () => [],
       git: createGitRunner(),
@@ -62,7 +63,8 @@ describe('fleet_diff', () => {
     fleet = createFleetCapability(
       { host, ledger: new FleetLedgerStore(root), act: null },
       THREAD,
-      'orchestrator'
+      'orchestrator',
+      '/work'
     );
   });
 

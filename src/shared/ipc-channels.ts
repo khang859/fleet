@@ -376,6 +376,11 @@ export const IPC_CHANNELS = {
   AGENT_SCHEDULE_CANCEL: 'agent:schedule-cancel',
   AGENT_SCHEDULE_PULL_DUE: 'agent:schedule-pull-due',
   AGENT_SCHEDULE_CHANGED: 'agent:schedule-changed',
+  // `fleet_spawn` asks the renderer to open a tab for a new Claude Code
+  // session, and waits for DONE: main owns the pane id and the prompt, the
+  // renderer owns the layout the tab goes into.
+  AGENT_FLEET_OPEN_TAB: 'agent:fleet-open-tab',
+  AGENT_FLEET_OPEN_TAB_DONE: 'agent:fleet-open-tab-done',
   // Background commands a conversation has running. CHANGED pushes one
   // conversation's whole list whenever a command starts, ends or prints a new
   // last line; LIST is what a pane that has just opened a session asks. STOP is

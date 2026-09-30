@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FleetHost, FleetSession } from '../host';
+import type { FleetHost, FleetSession, FleetStarting } from '../host';
+import { listSessions } from '../sessions';
 import { renderLedgerBlock } from '../ledger';
 import { FleetLedgerStore } from '../ledger-store';
 
@@ -40,9 +41,11 @@ describe('renderLedgerBlock', () => {
   let dir: string;
   let sessions: FleetSession[];
   let ledger: FleetLedgerStore;
+  let starting: FleetStarting[];
   const host = (): FleetHost => ({
     tracking: () => ({ status: { state: 'running' }, installProblems: [] }),
     sessions: () => sessions,
+    starting: () => starting,
     transcript: async () => Promise.resolve(null),
     inputsFor: () => [],
     git: async () => Promise.reject(new Error('unused')),
@@ -52,6 +55,7 @@ describe('renderLedgerBlock', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'fleet-ledger-block-'));
     sessions = [session()];
+    starting = [];
     ledger = new FleetLedgerStore(dir);
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -127,5 +131,37 @@ describe('renderLedgerBlock', () => {
     const block = renderLedgerBlock(host(), ledger, THREAD) ?? '';
     expect(block).toContain('- and 5 more; fleet_sessions lists them all');
     expect(block).not.toContain('- p20 ·');
+  });
+
+  it('keeps a spawn open while its pane is at the trust dialog, and says so', async () => {
+    sessions = [];
+    starting = [
+      {
+        ref: 'feed0001',
+        paneId: 'feed0001-pane',
+        label: 'fleet › wt',
+        cwd: '/wt',
+        at: NOW - 600_000
+      }
+    ];
+    ledger.addEntry(THREAD, {
+      action: 'spawn',
+      ref: 'feed0001',
+      paneId: 'feed0001-pane',
+      sessionId: null,
+      epoch: null,
+      prompt: '[orchestrator] Write it',
+      why: 'w',
+      expect: 'e',
+      at: NOW - 600_000,
+      started: false
+    });
+    const block = renderLedgerBlock(host(), ledger, THREAD) ?? '';
+    expect(block).toContain('Waiting on:\n- #1 started feed0001 10m ago');
+    expect(block).toContain('- feed0001 · fleet › wt · starting for 10m; if this lasts');
+    expect((await listSessions(host())).text).toContain('folder trust dialog');
+
+    starting = [];
+    expect(renderLedgerBlock(host(), ledger, THREAD)).toContain('ended before answering');
   });
 });
