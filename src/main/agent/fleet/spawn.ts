@@ -1,4 +1,4 @@
-import { statSync } from 'node:fs';
+import { realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join, relative } from 'node:path';
 import {
@@ -34,18 +34,40 @@ export type FleetSpawnDeps = {
   newPaneId: () => string;
 };
 
-/** The folder asked for, as an absolute path to a directory that exists. */
+/**
+ * The folder asked for, as an absolute path to a directory that exists, with
+ * links resolved: git reports the repository's real path, and the place within
+ * a new worktree is found relative to it.
+ */
 function checkedFolder(cwd: string): string {
   const expanded =
     cwd === '~' ? homedir() : cwd.startsWith('~/') ? join(homedir(), cwd.slice(2)) : cwd;
   if (!isAbsolute(expanded))
     throw new Error(`Not started: give cwd as an absolute path, not "${cwd}".`);
   try {
-    if (statSync(expanded).isDirectory()) return expanded;
+    if (statSync(expanded).isDirectory()) return realpathSync(expanded);
   } catch {
     // Reported below, the same as a file.
   }
   throw new Error(`Not started: ${expanded} is not a folder.`);
+}
+
+/** Refuses a branch the worktree could not be made on, so the user is not asked for nothing. */
+async function checkNewBranch(deps: FleetSpawnDeps, repo: string, branch: string): Promise<void> {
+  try {
+    await deps.host.git(repo, ['check-ref-format', '--branch', branch]);
+  } catch {
+    throw new Error(`Not started: "${branch}" is not a name git takes for a branch.`);
+  }
+  const listed = await deps.host.git(repo, [
+    'branch',
+    '--list',
+    '--format=%(refname:short)',
+    branch
+  ]);
+  if (listed.stdout.trim() !== '') {
+    throw new Error(`Not started: a branch named ${branch} already exists; pick another name.`);
+  }
 }
 
 /**
@@ -80,6 +102,7 @@ export async function spawnSession(
         `Not started: ${cwd} is not in a git repository, so it cannot have a worktree.`
       );
     }
+    if (args.branch !== undefined) await checkNewBranch(deps, repo, args.branch);
   }
   const text = cleanPrompt(`${ORCHESTRATOR_PREFIX} ${args.prompt}`);
   const problem = promptProblem(text);

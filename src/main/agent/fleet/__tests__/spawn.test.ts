@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -175,6 +175,35 @@ describe('fleet_spawn', () => {
     await expect(spawn(args({ worktree: true }))).rejects.toThrow('not in a git repository');
     await expect(spawn(args({ prompt: 'end with \\' }))).rejects.toThrow('Not started');
     expect(asks).toEqual([]);
+  });
+
+  it('refuses a branch the worktree could not be made on, before asking', async () => {
+    execFileSync('git', ['-C', repo, 'commit', '-q', '--allow-empty', '-m', 'init'], {
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 't',
+        GIT_AUTHOR_EMAIL: 't@t',
+        GIT_COMMITTER_NAME: 't',
+        GIT_COMMITTER_EMAIL: 't@t'
+      }
+    });
+    execFileSync('git', ['-C', repo, 'branch', 'test/parser']);
+    await expect(spawn(args({ worktree: true, branch: 'test/parser' }), repo)).rejects.toThrow(
+      'a branch named test/parser already exists'
+    );
+    await expect(spawn(args({ worktree: true, branch: 'bad..name' }), repo)).rejects.toThrow(
+      'is not a name git takes'
+    );
+    expect(asks).toEqual([]);
+    await spawn(args({ worktree: true, branch: 'test/other' }), repo);
+    expect(made).toEqual([{ repo, branch: 'test/other' }]);
+  });
+
+  it('starts in the same place within a worktree when cwd goes through a link', async () => {
+    const link = join(root, 'link');
+    symlinkSync(repo, link);
+    await spawn(args({ worktree: true }), join(link, 'src'));
+    expect(tabs[0].cwd).toBe(join(root, 'wt', 'src'));
   });
 
   it('undoes the worktree and the pending prompt when the tab does not open', async () => {
