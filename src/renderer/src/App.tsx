@@ -41,6 +41,8 @@ import { useShellProfilesStore } from './store/shell-profiles-store';
 import { isWslContext } from '../../shared/shell-profiles';
 import { useHomesStore } from './store/homes-store';
 import { injectLiveCwd } from './lib/workspace-utils';
+import { focusPane } from './lib/focus-pane';
+import { switchToWorkspace } from './lib/switch-workspace';
 import { ShortcutsHint } from './components/ShortcutsHint';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
@@ -364,17 +366,7 @@ export function App(): React.JSX.Element {
   // Listen for focus-pane from main process (copilot "Go to Terminal", OS notifications)
   useEffect(() => {
     return window.fleet.notifications.onFocusPane(({ paneId }) => {
-      const state = useWorkspaceStore.getState();
-      // Find which tab contains this pane
-      const tab = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
-      if (tab) {
-        useWorkspaceStore.setState({ activeTabId: tab.id, activePaneId: paneId });
-        // Being on the right tab is not being in front of the thing that asked:
-        // a terminal still has to take the cursor, and an agent pane parked on
-        // its Settings view would show a settings screen to someone who came
-        // here to answer a question.
-        document.dispatchEvent(new CustomEvent('fleet:refocus-pane', { detail: { paneId } }));
-      }
+      void focusPane(paneId);
     });
   }, []);
 
@@ -688,32 +680,7 @@ export function App(): React.JSX.Element {
 
   const handleMiniWsSwitch = useCallback(async (wsId: string) => {
     setMiniWsOpen(false);
-    const state = useWorkspaceStore.getState();
-    await window.fleet.layout.save({
-      workspace: {
-        ...state.workspace,
-        activeTabId: state.activeTabId ?? undefined,
-        activePaneId: state.activePaneId ?? undefined,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot)
-        }))
-      }
-    });
-    const freshState = useWorkspaceStore.getState();
-    const inMemory = freshState.backgroundWorkspaces.get(wsId);
-    if (inMemory) {
-      freshState.switchWorkspace(inMemory);
-    } else {
-      const loaded = await window.fleet.layout.load(wsId);
-      if (loaded) useWorkspaceStore.getState().switchWorkspace(loaded);
-    }
-    setTimeout(() => {
-      const s = useWorkspaceStore.getState();
-      if (s.workspace.tabs.length === 0) {
-        s.addTab(undefined, window.fleet.homeDir);
-      }
-    }, 0);
+    await switchToWorkspace(wsId);
   }, []);
 
   // Prevent stray file drops from navigating the renderer to a file:// URL.
