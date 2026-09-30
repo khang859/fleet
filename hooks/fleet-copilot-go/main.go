@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -17,6 +18,9 @@ import (
 
 const (
 	timeoutSeconds = 300
+	// protocolVersion tells Fleet which fields this binary sends. Version 2 adds
+	// pane_id, transcript_path, config_dir and source.
+	protocolVersion = 2
 )
 
 var socketPath = func() string {
@@ -43,6 +47,8 @@ type HookInput struct {
 	ToolUseID        string                 `json:"tool_use_id,omitempty"`
 	NotificationType string                 `json:"notification_type,omitempty"`
 	Message          string                 `json:"message,omitempty"`
+	TranscriptPath   string                 `json:"transcript_path,omitempty"`
+	Source           string                 `json:"source,omitempty"`
 }
 
 type State struct {
@@ -57,6 +63,11 @@ type State struct {
 	ToolUseID        string                 `json:"tool_use_id,omitempty"`
 	NotificationType string                 `json:"notification_type,omitempty"`
 	Message          string                 `json:"message,omitempty"`
+	PaneID           string                 `json:"pane_id,omitempty"`
+	TranscriptPath   string                 `json:"transcript_path,omitempty"`
+	ConfigDir        string                 `json:"config_dir,omitempty"`
+	Source           string                 `json:"source,omitempty"`
+	Protocol         int                    `json:"protocol"`
 }
 
 type PermissionDecision struct {
@@ -99,23 +110,54 @@ func emitSessionStartContext(w io.Writer) {
 	fmt.Fprintln(w, string(data))
 }
 
-func getTTY() *string {
+// psField reads one `ps -o <field>=` column for a process, or "" when ps fails.
+func psField(pid int, field string) string {
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", field+"=").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func psComm(pid int) string { return psField(pid, "comm") }
+
+func psParent(pid int) int {
+	ppid, err := strconv.Atoi(psField(pid, "ppid"))
+	if err != nil {
+		return 0
+	}
+	return ppid
+}
+
+// Shells Claude Code may run a hook command through.
+var hookShells = map[string]bool{"sh": true, "dash": true, "bash": true, "zsh": true}
+
+// claudePID finds the Claude process that ran this hook. Claude Code runs hook
+// commands through `sh -c`: bash execs a lone command in place, but dash (the
+// /bin/sh of Debian and Ubuntu) forks, which leaves the short-lived shell as
+// the parent. Fleet checks this pid for liveness, so it must be Claude's.
+func claudePID(ppid int, commOf func(int) string, parentOf func(int) int) int {
+	if !hookShells[filepath.Base(commOf(ppid))] {
+		return ppid
+	}
+	if parent := parentOf(ppid); parent > 1 {
+		return parent
+	}
+	return ppid
+}
+
+func getTTY(pid int) *string {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
-	ppid := os.Getppid()
-	cmd := exec.Command("ps", "-p", fmt.Sprintf("%d", ppid), "-o", "tty=")
-	out, err := cmd.Output()
-	if err == nil {
-		tty := strings.TrimSpace(string(out))
-		if tty != "" && tty != "??" && tty != "-" {
-			if !strings.HasPrefix(tty, "/dev/") {
-				tty = "/dev/" + tty
-			}
-			return &tty
-		}
+	tty := psField(pid, "tty")
+	if tty == "" || tty == "??" || tty == "-" {
+		return nil
 	}
-	return nil
+	if !strings.HasPrefix(tty, "/dev/") {
+		tty = "/dev/" + tty
+	}
+	return &tty
 }
 
 func sendEvent(state *State, waitForResponse bool) *SocketResponse {
@@ -163,7 +205,7 @@ func sendEvent(state *State, waitForResponse bool) *SocketResponse {
 // input". Notification is refined by type in main.
 func statusFor(event string) string {
 	switch event {
-	case "UserPromptSubmit", "PostToolUse":
+	case "UserPromptSubmit", "PostToolUse", "PostToolUseFailure":
 		return "processing"
 	case "PreToolUse":
 		return "running_tool"
@@ -184,6 +226,25 @@ func statusFor(event string) string {
 	}
 }
 
+// newState builds the event Fleet receives. The pane id comes from the
+// environment Fleet gave the pane's shell, so Fleet can place the session
+// without walking the process tree; the config dir lets Fleet find the
+// transcript when Claude runs with CLAUDE_CONFIG_DIR.
+func newState(input *HookInput, tty *string, pid int, getenv func(string) string) *State {
+	return &State{
+		SessionID:      input.SessionID,
+		CWD:            input.CWD,
+		Event:          input.HookEventName,
+		PID:            pid,
+		TTY:            tty,
+		PaneID:         getenv("FLEET_PANE_ID"),
+		TranscriptPath: input.TranscriptPath,
+		ConfigDir:      getenv("CLAUDE_CONFIG_DIR"),
+		Source:         input.Source,
+		Protocol:       protocolVersion,
+	}
+}
+
 func main() {
 	// Ignore SIGINT so the hook binary survives Ctrl+C interrupts.
 	// When the user presses Ctrl+C, SIGINT propagates to the entire
@@ -200,19 +261,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	tty := getTTY()
-	state := &State{
-		SessionID: input.SessionID,
-		CWD:       input.CWD,
-		Event:     input.HookEventName,
-		PID:       os.Getppid(),
-		TTY:       tty,
+	pid := os.Getppid()
+	if runtime.GOOS != "windows" {
+		pid = claudePID(pid, psComm, psParent)
 	}
+	state := newState(&input, getTTY(pid), pid, os.Getenv)
 
 	state.Status = statusFor(input.HookEventName)
 
 	switch input.HookEventName {
-	case "PreToolUse", "PostToolUse":
+	case "PreToolUse", "PostToolUse", "PostToolUseFailure":
 		state.Tool = input.ToolName
 		state.ToolInput = input.ToolInput
 		state.ToolUseID = input.ToolUseID

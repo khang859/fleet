@@ -132,7 +132,13 @@ export class PtyManager {
       profileId: opts.profile?.id,
       pathPrefix: process.env.PATH?.substring(0, 80)
     });
-    const finalEnv = { ...(opts.env ?? process.env), FLEET_SESSION: '1' };
+    // FLEET_PANE_ID lets the Claude Code hook name its pane directly, so Fleet
+    // never has to walk the process tree to find where a session runs.
+    const finalEnv = {
+      ...(opts.env ?? process.env),
+      FLEET_SESSION: '1',
+      FLEET_PANE_ID: opts.paneId
+    };
     const proc = pty.spawn(shell, args, {
       name: 'xterm-256color',
       cols: opts.cols ?? 80,
