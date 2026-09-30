@@ -264,15 +264,16 @@ export function TabItem({
           ) : (
             // One line, not two. The name is what the row is scanned for; the
             // branch, freshness or path is context, so it trails the name as a
-            // muted chip and gives up its width first. A sidebar holding a
-            // dozen sessions is the normal case, and at two lines each that
-            // list stopped fitting on screen long before it stopped being
-            // useful.
+            // muted chip and gives up its width first: the name does not shrink
+            // and is cut only past the whole row, since shrinking both let a
+            // long path squeeze a short name to "m…". A sidebar holding a dozen
+            // sessions is the normal case, and at two lines each that list
+            // stopped fitting on screen long before it stopped being useful.
             <div
               className="flex-1 min-w-0 flex items-baseline gap-1.5"
               onDoubleClick={handleDoubleClick}
             >
-              <span className="truncate text-sm leading-tight">
+              <span className="max-w-full shrink-0 truncate text-sm leading-tight">
                 {labelIsCustom ? label : cwdBasename(cwd, pathContext ?? 'posix')}
               </span>
               {isRemote && (
