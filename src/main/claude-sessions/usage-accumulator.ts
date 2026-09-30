@@ -1,3 +1,4 @@
+import { createReadStream } from 'fs';
 import { z } from 'zod';
 import type { ClaudeUsageInput } from '../../shared/claude-pricing';
 import type { ClaudeUsage } from '../../shared/sessions';
@@ -194,4 +195,19 @@ export function aggregateClaudeUsage(content: string): ClaudeAggregate {
   acc.addText(content);
   acc.flush();
   return acc.result();
+}
+
+/**
+ * Feed a whole file to the accumulator a bounded chunk at a time. A subagent
+ * transcript can run to hundreds of megabytes, far too much to hold as one
+ * string, and only its usage lines matter.
+ */
+export async function addTranscriptFile(acc: UsageAccumulator, path: string): Promise<void> {
+  // With an encoding set, the stream yields strings, keeping split characters whole.
+  const stream: AsyncIterable<string> = createReadStream(path, {
+    encoding: 'utf8',
+    highWaterMark: 4 * 1024 * 1024
+  });
+  for await (const chunk of stream) acc.addText(chunk, path);
+  acc.flush(path);
 }

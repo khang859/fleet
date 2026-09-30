@@ -5,7 +5,7 @@ import { basename, join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { parseClaudeTranscript } from '../copilot/conversation-reader';
 import { cwdToProjectDir, listSubagentTranscripts } from '../claude-sessions/transcript-path';
-import { UsageAccumulator } from '../claude-sessions/usage-accumulator';
+import { UsageAccumulator, addTranscriptFile } from '../claude-sessions/usage-accumulator';
 import type { CopilotChatMessage } from '../../shared/types';
 import type {
   SessionSummary,
@@ -19,14 +19,23 @@ import { getPriceTable } from './pricing-source';
 const cwdLineSchema = z.object({ cwd: z.string() }).passthrough();
 
 /**
- * Build the Claude-only cost/metadata fields for a SessionSummary, from the
- * main transcript and its subagents' transcripts.
+ * Cost and usage fields from a transcript's text plus its subagents' files.
+ * The subagents are streamed one at a time: together they can be far larger
+ * than the transcript itself.
  */
-function claudeCostFields(content: string, subagents: readonly string[]): Partial<SessionSummary> {
+async function claudeCostFields(
+  content: string,
+  transcriptPath: string
+): Promise<Partial<SessionSummary>> {
   const acc = new UsageAccumulator();
-  for (const text of [content, ...subagents]) {
-    acc.addText(text);
-    acc.flush();
+  acc.addText(content);
+  acc.flush();
+  for (const path of await listSubagentTranscripts(transcriptPath)) {
+    try {
+      await addTranscriptFile(acc, path);
+    } catch {
+      // unreadable subagent transcript; count what the others hold
+    }
   }
   const agg = acc.result();
   if (!agg.hasUsage) return {};
@@ -64,12 +73,12 @@ export function cwdFromTranscript(content: string): string {
 }
 
 /** Build a session summary from raw transcript content, or null if it isn't a real session. */
-function buildClaudeSummary(
+async function buildClaudeSummary(
   id: string,
   content: string,
   mtimeMs: number,
-  subagents: readonly string[] = []
-): SessionSummary | null {
+  transcriptPath: string
+): Promise<SessionSummary | null> {
   const cwd = cwdFromTranscript(content);
   if (!cwd) return null;
   const messages = parseClaudeTranscript(content);
@@ -83,14 +92,8 @@ function buildClaudeSummary(
     updatedAt: mtimeMs,
     messageCount: messages.length,
     preview: preview.slice(0, 140),
-    ...claudeCostFields(content, subagents)
+    ...(await claudeCostFields(content, transcriptPath))
   };
-}
-
-/** The text of each of a session's subagent transcripts, skipping any that cannot be read. */
-async function readSubagentTranscripts(transcriptPath: string): Promise<string[]> {
-  const paths = await listSubagentTranscripts(transcriptPath);
-  return Promise.all(paths.map(async (path) => readFile(path, 'utf8').catch(() => '')));
 }
 
 type CachedSummary = { mtimeMs: number; size: number; summary: SessionSummary | null };
@@ -141,8 +144,7 @@ export async function listClaudeSessions(): Promise<SessionSummary[]> {
         // the "not a session" verdict) so unchanged files never get re-read.
         const id = basename(file, '.jsonl');
         const content = await readFile(full, 'utf8');
-        const subagents = await readSubagentTranscripts(full);
-        const summary = buildClaudeSummary(id, content, st.mtimeMs, subagents);
+        const summary = await buildClaudeSummary(id, content, st.mtimeMs, full);
         summaryCache.set(full, { mtimeMs: st.mtimeMs, size: st.size, summary });
         if (summary) out.push(summary);
       } catch {
@@ -178,7 +180,6 @@ export async function readClaudeSession(
   const messages = parseClaudeTranscript(content);
   if (messages.length === 0) return null;
   const preview = claudePreview(messages);
-  const subagents = await readSubagentTranscripts(full);
   return {
     summary: {
       id,
@@ -188,7 +189,7 @@ export async function readClaudeSession(
       updatedAt,
       messageCount: messages.length,
       preview: preview.slice(0, 140),
-      ...claudeCostFields(content, subagents)
+      ...(await claudeCostFields(content, full))
     },
     messages: claudeMessagesToTranscriptMessages(messages)
   };

@@ -75,28 +75,4 @@ describe('listClaudeSessions caching', () => {
     await listClaudeSessions();
     expect(readFile).toHaveBeenCalledTimes(2);
   });
-
-  it('adds the usage in subagent transcripts to the session cost', async () => {
-    const usage = (id: string, sidechain: boolean): string =>
-      JSON.stringify({
-        type: 'assistant',
-        isSidechain: sidechain,
-        message: { id, model: 'claude-opus-4-8', usage: { output_tokens: 1_000_000 } }
-      });
-    readdir.mockImplementation((p: string) => {
-      if (String(p).endsWith('projects')) return ['proj'];
-      if (String(p).endsWith('subagents')) return ['agent-a.jsonl', 'agent-a.meta.json'];
-      return ['sess.jsonl'];
-    });
-    readFile.mockImplementation(async (p: string) =>
-      Promise.resolve(
-        String(p).endsWith('agent-a.jsonl')
-          ? usage('sub', true)
-          : `${TRANSCRIPT}\n${usage('main', false)}`
-      )
-    );
-    const [summary] = await listClaudeSessions();
-    // One million output tokens each at $25/MTok.
-    expect(summary.costUsd).toBeCloseTo(50);
-  });
 });

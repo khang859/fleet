@@ -28,8 +28,21 @@ The outliers were sessions that ran subagents: since at least 2.1.285, subagent 
 Adding those files brought the worst case from 0.31 to 0.73.
 The rest of the gap is spend the transcripts do not record, which is why the UI calls it an estimate.
 
+## Reading subagent transcripts whole ran the main process out of memory
+
+The first version of the subagent fix read every subagent transcript of a session into memory with `readFile` before parsing.
+On this machine one session had 481 MB of subagent transcripts.
+The dev app's main process then died with `OOM error in V8: ... JavaScript heap out of memory` about 15 seconds after launch, while the Sessions tool listed sessions at startup.
+Several listings can overlap (the renderer asks, and the projects-folder watcher asks again), and each held its own copies.
+Measured with three concurrent `listClaudeSessions()` calls against the real `~/.claude/projects`: 1.1 GB peak heap on `main`, 6.2 GB with the whole-file read.
+
+The fix streams each subagent file through the accumulator a 4 MB chunk at a time, one file after another (`addTranscriptFile` in `usage-accumulator.ts`), since only the usage lines matter.
+The same measurement then peaked at 1.0 GB.
+
 ## Takeaways
 
 - Before trusting a derived number, compare it with the source's own figure when one exists.
 - A price table needs updating with each model launch; an unpriced model shows as a placeholder, never as zero.
 - A session's transcript is no longer one file; check the folder beside it.
+- Size a file read by the largest real file, not a typical one: transcripts grow to hundreds of megabytes.
+  Stream anything that is only scanned.

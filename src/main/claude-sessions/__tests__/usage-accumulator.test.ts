@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { aggregateClaudeUsage, UsageAccumulator } from '../usage-accumulator';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { addTranscriptFile, aggregateClaudeUsage, UsageAccumulator } from '../usage-accumulator';
 
 function assistantLine(opts: {
   id: string;
@@ -187,5 +190,44 @@ describe('UsageAccumulator', () => {
     acc.addLine(assistantLine({ id: 'b', model: 'claude-opus-4-8', usage: { output_tokens: 1 } }));
     expect(before.total.output).toBe(1);
     expect(before.perModel.get('claude-opus-4-8')?.output).toBe(1);
+  });
+});
+
+describe('addTranscriptFile', () => {
+  let dir: string | undefined;
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  it('matches reading the file whole when it spans several chunks', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'fleet-usage-'));
+    const path = join(dir, 'agent-a.jsonl');
+    // Over 4 MB of multi-byte padding, so reads split lines and characters.
+    const lines = Array.from({ length: 300 }, (_, i) =>
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: `2026-05-01T10:${String(i % 60).padStart(2, '0')}:00Z`,
+        message: {
+          id: `msg_${i}`,
+          model: i % 2 ? 'claude-opus-4-8' : 'claude-sonnet-4-6',
+          content: [{ type: 'text', text: 'é🙂'.repeat(5000 + i) }],
+          usage: { input_tokens: i, output_tokens: 2 * i, cache_read_input_tokens: 3 }
+        }
+      })
+    );
+    const content = lines.join('\n');
+    expect(Buffer.byteLength(content)).toBeGreaterThan(8 * 1024 * 1024);
+    writeFileSync(path, content);
+
+    const acc = new UsageAccumulator();
+    await addTranscriptFile(acc, path);
+    expect(acc.result()).toEqual(aggregateClaudeUsage(content));
+  });
+
+  it('rejects for a file it cannot open', async () => {
+    await expect(
+      addTranscriptFile(new UsageAccumulator(), join(tmpdir(), 'fleet-no-such-file.jsonl'))
+    ).rejects.toThrow();
   });
 });
