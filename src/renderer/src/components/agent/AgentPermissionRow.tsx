@@ -127,7 +127,7 @@ export function AgentPermissionRow({
                 {ask.fleet.action === 'send' ? 'Prompt ' : 'New Claude Code session in '}
                 <span className="font-mono text-fleet-text">{ask.fleet.target}</span>
               </span>
-              <span className="block break-words">{ask.fleet.prompt}</span>
+              <span className="block break-normal wrap-break-word">{ask.fleet.prompt}</span>
             </>
           ) : ask.mcp === null ? (
             ask.command
