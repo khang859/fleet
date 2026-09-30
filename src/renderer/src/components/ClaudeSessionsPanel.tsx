@@ -17,22 +17,27 @@ import { focusPane } from '../lib/focus-pane';
 import type { ClaudeSessionView, ClaudeSessionsSnapshot } from '../../../shared/claude-sessions';
 import type { Workspace } from '../../../shared/types';
 
-/** Where a pane sits, for naming its row. */
-type PanePlace = { label: string; workspaceLabel: string | null };
+/**
+ * Where a pane sits, for naming its row. `pane` names the pane within a split
+ * tab, and is null when the tab has only the one pane.
+ */
+type PanePlace = { tab: string; pane: string | null; workspaceLabel: string | null };
 
 function placesOf(current: Workspace, background: Map<string, Workspace>): Map<string, PanePlace> {
   const places = new Map<string, PanePlace>();
   const add = (ws: Workspace, workspaceLabel: string | null): void => {
     for (const tab of ws.tabs) {
       const leafs = collectPaneLeafs(tab.splitRoot);
-      for (const leaf of leafs) {
-        // A split tab holds several sessions; a pane the user named tells them apart.
-        const paneName = leafs.length > 1 && leaf.labelIsCustom ? leaf.label : undefined;
+      leafs.forEach((leaf, i) => {
+        // A split tab can hold several sessions: tell them apart by the name the
+        // user gave the pane, or else by its position in the tab.
+        const paneName = leaf.labelIsCustom && leaf.label ? leaf.label : `pane ${i + 1}`;
         places.set(leaf.id, {
-          label: paneName ? `${tab.label} › ${paneName}` : tab.label,
+          tab: tab.label,
+          pane: leafs.length > 1 ? paneName : null,
           workspaceLabel
         });
-      }
+      });
     }
   };
   add(current, null);
@@ -59,11 +64,9 @@ const DOT: Record<SessionUrgency, string> = {
   idle: 'border-[1.5px] border-fleet-text-subtle bg-transparent'
 };
 
+/** One short word, so it never crowds out the row's label; the tooltip has more. */
 function statusText(session: ClaudeSessionView, urgency: SessionUrgency): string {
-  if (session.phase === 'waitingForApproval') {
-    const tool = session.pendingPermissions[0]?.tool.toolName;
-    return tool ? `approve ${tool}` : 'approve';
-  }
+  if (session.phase === 'waitingForApproval') return 'approve';
   if (urgency === 'needsYou') return 'question';
   if (session.phase === 'compacting') return 'compacting';
   if (urgency === 'working') return 'working';
@@ -90,17 +93,20 @@ function SessionRow({
   now: number;
 }): React.JSX.Element {
   const urgency = sessionUrgency(session);
-  const label = place?.label ?? session.projectName;
+  const tabLabel = place?.tab ?? session.projectName;
+  const paneLabel = place?.pane ?? null;
+  const label = paneLabel ? `${tabLabel} › ${paneLabel}` : tabLabel;
   const cost = session.usage.costUsd;
   const context = contextPercent(session);
   const branch = session.git?.branch;
   const needsYou = urgency === 'needsYou';
+  const tool = session.pendingPermissions[0]?.tool.toolName;
 
   return (
     <button
       type="button"
       onClick={() => void focusPane(session.paneId)}
-      title={`${label}\n${session.cwd}`}
+      title={[label, tool && `Wants to use ${tool}`, session.cwd].filter(Boolean).join('\n')}
       className={`w-full text-left flex flex-col gap-0.5 rounded-md px-2.5 py-1 border-l-2 transition-colors ${
         needsYou
           ? 'border-l-amber-400 bg-amber-400/10 hover:bg-amber-400/15'
@@ -114,10 +120,12 @@ function SessionRow({
           className={`inline-block h-2 w-2 shrink-0 self-center rounded-full ${DOT[urgency]}`}
           aria-hidden
         />
+        {/* The tab name gives way first: the pane name is what tells a split tab's rows apart. */}
         <span
-          className={`truncate text-sm leading-tight ${isActive || needsYou ? 'text-fleet-text' : 'text-fleet-text-secondary'}`}
+          className={`flex min-w-0 text-sm leading-tight ${isActive || needsYou ? 'text-fleet-text' : 'text-fleet-text-secondary'}`}
         >
-          {label}
+          <span className="truncate">{tabLabel}</span>
+          {paneLabel && <span className="shrink-0 whitespace-pre"> › {paneLabel}</span>}
         </span>
         <span className={`ml-auto shrink-0 text-[11px] leading-tight ${STATUS_CLASS[urgency]}`}>
           {statusText(session, urgency)}
@@ -154,10 +162,14 @@ function SessionRow({
   );
 }
 
-/** Why the section cannot list sessions, and what fixes it; null when it can. */
+/**
+ * Why the section cannot list sessions, and what fixes it; null when it can.
+ * The sidebar is narrow: `detail` is shown clamped, and `tooltip` only on
+ * hover, since the setting that `fix` opens explains the problem in full.
+ */
 function problemOf(
   snapshot: ClaudeSessionsSnapshot
-): { text: string; detail?: string; fix?: string } | null {
+): { text: string; detail?: string; tooltip?: string; fix?: string } | null {
   const { status, installProblems } = snapshot;
   if (status.state === 'off') {
     return { text: 'Session tracking is off.', fix: 'Turn on' };
@@ -172,12 +184,22 @@ function problemOf(
     const [first] = installProblems;
     const more = installProblems.length > 1 ? ` and ${installProblems.length - 1} more` : '';
     return {
-      text: `Fleet could not add its hooks to ${first.configDir}${more}.`,
-      detail: first.detail,
+      text: `Fleet could not add its hooks to ${folderName(first.configDir)}${more}.`,
+      tooltip: first.detail,
       fix: 'Hook settings'
     };
   }
   return null;
+}
+
+/** The last part of a folder path, which is what tells config folders apart. */
+function folderName(path: string): string {
+  return (
+    path
+      .replace(/[\\/]+$/, '')
+      .split(/[\\/]/)
+      .pop() || path
+  );
 }
 
 /**
@@ -225,7 +247,7 @@ export function ClaudeSessionsPanel(): React.JSX.Element | null {
       </SectionHeader>
       {!collapsed && problem && (
         <div className="px-2.5 py-1 text-[11px] leading-snug text-fleet-text-muted">
-          <p>
+          <p title={problem.tooltip}>
             {problem.text}
             {problem.fix && (
               <>
@@ -241,7 +263,12 @@ export function ClaudeSessionsPanel(): React.JSX.Element | null {
             )}
           </p>
           {problem.detail && (
-            <p className="mt-0.5 wrap-anywhere text-fleet-text-subtle">{problem.detail}</p>
+            <p
+              className="mt-0.5 line-clamp-3 wrap-anywhere text-fleet-text-subtle"
+              title={problem.detail}
+            >
+              {problem.detail}
+            </p>
           )}
         </div>
       )}
