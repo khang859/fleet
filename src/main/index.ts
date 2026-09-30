@@ -1438,6 +1438,10 @@ void app.whenReady().then(async () => {
       classifyWithDecision
     })
   });
+  // "Always for this session" lasts as long as the session does.
+  claudeSessions.registry.subscribe(({ sessionId, session }) => {
+    if (session === null || session.phase === 'ended') agentGate.dropFleetGrants(sessionId);
+  });
   // MCP servers for the Agent pane, with their own config and secret store.
   const agentMcpSecrets = new AgentMcpSecrets();
   // The authorization endpoint comes from the server's own metadata, so it is

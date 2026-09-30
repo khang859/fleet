@@ -1386,6 +1386,20 @@ export type AgentPermissionAsk = {
     /** The arguments as the model wrote them: JSON, and possibly malformed. */
     args: string;
   } | null;
+  /**
+   * Set when the Orchestrator asks to type into one of the user's Claude Code
+   * sessions (`send`) or to start one (`spawn`). The card shows where it goes
+   * and the prompt in full, since the prompt is what is being agreed to.
+   * `rule` is then the grant "always for this session" would add, and is null
+   * for a spawn, which is only ever allowed once.
+   */
+  fleet: {
+    action: 'send' | 'spawn';
+    /** The session's ref and name, or the folder a spawn opens in. */
+    target: string;
+    /** The prompt as it will be typed. */
+    prompt: string;
+  } | null;
 };
 
 /** `once` runs it, `always` runs it and remembers the rule, `no` refuses. */

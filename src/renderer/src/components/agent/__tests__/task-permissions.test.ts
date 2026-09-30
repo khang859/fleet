@@ -37,7 +37,8 @@ const ask = (command: string): AgentPermissionAsk => ({
   command,
   reason: null,
   rule: command,
-  mcp: null
+  mcp: null,
+  fleet: null
 });
 
 describe('pendingTaskAsks', () => {

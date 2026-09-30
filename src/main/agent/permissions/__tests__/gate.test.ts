@@ -658,3 +658,101 @@ describe('PermissionGate, in full access', () => {
     expect(asks).toEqual([]);
   });
 });
+
+/** The Orchestrator asking to type into a session, with what the card draws. */
+const fleetRequest = (
+  overrides: Partial<Parameters<PermissionGate['checkFleet']>[0]> = {}
+): Parameters<PermissionGate['checkFleet']>[0] => ({
+  streamId: 'stream-1',
+  callId: 'call-1',
+  signal: new AbortController().signal,
+  action: 'send',
+  sessionId: 'sess-1',
+  target: 'abcdef12 · work › claude',
+  prompt: '[orchestrator] Run the tests',
+  ...overrides
+});
+
+describe('PermissionGate, on the Orchestrator’s sends and spawns', () => {
+  it('asks with the target and the whole prompt, offering always for this session', async () => {
+    const g = gate();
+    const verdict = g.checkFleet(fleetRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+
+    expect(asks[0].fleet).toEqual({
+      action: 'send',
+      target: 'abcdef12 · work › claude',
+      prompt: '[orchestrator] Run the tests'
+    });
+    expect(asks[0].mcp).toBeNull();
+    expect(asks[0].rule).toBe('send:sess-1');
+
+    g.decide(asks[0].requestId, 'once');
+    await expect(verdict).resolves.toBe('run');
+  });
+
+  it('keeps "always" in memory for that session only, never as a saved rule', async () => {
+    const g = gate();
+    const first = g.checkFleet(fleetRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'always');
+    await first;
+    expect(persisted).toEqual([]);
+    expect(persistedMcp).toEqual([]);
+
+    await expect(g.checkFleet(fleetRequest({ prompt: 'Now the linter' }))).resolves.toBe('run');
+    expect(asks).toHaveLength(1);
+
+    // Another session is asked about as before.
+    void g.checkFleet(fleetRequest({ sessionId: 'sess-2' }));
+    await vi.waitFor(() => expect(asks).toHaveLength(2));
+  });
+
+  it('drops the grant when the session ends', async () => {
+    const g = gate();
+    const first = g.checkFleet(fleetRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'always');
+    await first;
+
+    g.dropFleetGrants('sess-1');
+    void g.checkFleet(fleetRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(2));
+  });
+
+  it('does not ask again about a send refused this turn', async () => {
+    const g = gate();
+    const first = g.checkFleet(fleetRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    g.decide(asks[0].requestId, 'no');
+    await expect(first).resolves.toBe('refuse');
+
+    await expect(g.checkFleet(fleetRequest())).resolves.toBe('refuse');
+    expect(asks).toHaveLength(1);
+
+    // A different prompt is a different send, and the next turn starts fresh.
+    void g.checkFleet(fleetRequest({ prompt: 'Something else' }));
+    await vi.waitFor(() => expect(asks).toHaveLength(2));
+    g.endTurn('stream-1');
+    void g.checkFleet(fleetRequest());
+    await vi.waitFor(() => expect(asks).toHaveLength(3));
+  });
+
+  it('asks about a spawn every time, with nothing to remember', async () => {
+    const g = gate();
+    const verdict = g.checkFleet(
+      fleetRequest({ action: 'spawn', sessionId: null, target: '~/work/app (new worktree)' })
+    );
+    await vi.waitFor(() => expect(asks).toHaveLength(1));
+    expect(asks[0].rule).toBeNull();
+    expect(asks[0].fleet?.action).toBe('spawn');
+    g.decide(asks[0].requestId, 'always');
+    await expect(verdict).resolves.toBe('run');
+    expect(persisted).toEqual([]);
+  });
+
+  it('runs without asking under full access', async () => {
+    await expect(fullAccessGate().checkFleet(fleetRequest())).resolves.toBe('run');
+    expect(asks).toEqual([]);
+  });
+});

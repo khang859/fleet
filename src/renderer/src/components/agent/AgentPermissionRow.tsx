@@ -1,9 +1,25 @@
-import { CircleQuestionMark, Plug } from 'lucide-react';
+import { CircleQuestionMark, Plug, SquareTerminal } from 'lucide-react';
 import type { AgentPermissionAsk, AgentPermissionOutcome } from '../../../../shared/agent-types';
 
 /** What the announcement says the agent is asking to run. */
 function spoken(ask: AgentPermissionAsk): string {
+  if (ask.fleet !== null) {
+    return ask.fleet.action === 'send'
+      ? `send a prompt to the Claude Code session ${ask.fleet.target}`
+      : `start a Claude Code session in ${ask.fleet.target}`;
+  }
   return ask.mcp === null ? ask.command : `${ask.mcp.tool} on the ${ask.mcp.server} server`;
+}
+
+/** The three answers' words: a fleet ask sends or starts rather than runs. */
+function answers(ask: AgentPermissionAsk): { once: string; always: string; no: string } {
+  if (ask.fleet?.action === 'send') {
+    return { once: 'Send once', always: 'Always for this session', no: "Don't send" };
+  }
+  if (ask.fleet?.action === 'spawn') {
+    return { once: 'Start it', always: '', no: "Don't start" };
+  }
+  return { once: 'Run once', always: 'Always allow', no: "Don't run" };
 }
 
 /**
@@ -62,6 +78,7 @@ export function AgentPermissionRow({
    */
   onDecide: (outcome: AgentPermissionOutcome, requestId: string) => void;
 }): React.JSX.Element {
+  const words = answers(ask);
   return (
     <div
       role="group"
@@ -72,12 +89,18 @@ export function AgentPermissionRow({
           is a turn that looks hung. Said once, politely, in full: the command
           on its own is not a question. */}
       <p role="status" className="sr-only">
-        {`${by === null ? 'The agent' : `The ${by} subagent`} is asking to run ${spoken(ask)}.${
+        {`${by === null ? 'The agent' : `The ${by} subagent`} is asking to ${ask.fleet === null ? 'run ' : ''}${spoken(ask)}.${
           ask.reason === null ? '' : ` ${ask.reason}`
         }`}
       </p>
       <div className="flex items-start gap-1.5">
-        {ask.mcp === null ? (
+        {ask.fleet !== null ? (
+          <SquareTerminal
+            size={13}
+            aria-hidden="true"
+            className="mt-px shrink-0 text-amber-700 dark:text-amber-400/90"
+          />
+        ) : ask.mcp === null ? (
           <CircleQuestionMark
             size={13}
             aria-hidden="true"
@@ -96,7 +119,17 @@ export function AgentPermissionRow({
           <span className="shrink-0 text-[11px] leading-relaxed text-fleet-text-muted">{by}</span>
         )}
         <span className="max-h-32 overflow-y-auto font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-fleet-text">
-          {ask.mcp === null ? (
+          {ask.fleet !== null ? (
+            <>
+              {/* Where it goes, then the prompt exactly as it will be typed:
+                  the prompt is the thing being agreed to. */}
+              <span className="block font-sans text-fleet-text-subtle">
+                {ask.fleet.action === 'send' ? 'Prompt ' : 'New Claude Code session in '}
+                <span className="font-mono text-fleet-text">{ask.fleet.target}</span>
+              </span>
+              <span className="block break-words">{ask.fleet.prompt}</span>
+            </>
+          ) : ask.mcp === null ? (
             ask.command
           ) : (
             <>
@@ -122,7 +155,7 @@ export function AgentPermissionRow({
           // makes it a ring rather than a slightly larger button.
           className="flex items-center gap-1.5 rounded-md fleet-accent-bg px-2.5 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90 focus-ring-offset"
         >
-          Run once
+          {words.once}
           {/* The key that does this without reaching for the mouse. On the
               button rather than in a legend of its own, because the only place
               a shortcut is worth reading is next to what it does - and this is
@@ -136,22 +169,26 @@ export function AgentPermissionRow({
             type="button"
             onClick={() => onDecide('always', ask.requestId)}
             title={
-              ask.mcp === null
-                ? `Always allow ${ask.rule}`
-                : `Always allow every tool on the ${ask.mcp.server} server`
+              ask.fleet !== null
+                ? `Let the agent send prompts to ${ask.fleet.target} without asking, until that session ends`
+                : ask.mcp === null
+                  ? `Always allow ${ask.rule}`
+                  : `Always allow every tool on the ${ask.mcp.server} server`
             }
             className="flex min-w-0 max-w-full items-baseline gap-1 rounded-md bg-fleet-surface-3 px-2.5 py-1 text-[11px] font-medium text-fleet-text transition-colors hover:bg-fleet-surface-2 focus-ring"
           >
             {/* The command above is never shortened; the rule is derived text,
                 and a rule long enough to break the row out of the card is one
                 the button cannot usefully spell out anyway. */}
-            <span className="shrink-0">Always allow</span>
+            <span className="shrink-0">{words.always}</span>
             {/* A server's rule is a wire-name glob, which is Fleet's plumbing.
                 What the user agreed to is the server, so that is what the
-                button says. */}
-            <span className={ask.mcp === null ? 'truncate font-mono' : 'truncate'}>
-              {ask.mcp === null ? ask.rule : `${ask.mcp.server} tools`}
-            </span>
+                button says. A fleet grant is named by the button alone. */}
+            {ask.fleet === null && (
+              <span className={ask.mcp === null ? 'truncate font-mono' : 'truncate'}>
+                {ask.mcp === null ? ask.rule : `${ask.mcp.server} tools`}
+              </span>
+            )}
           </button>
         )}
         <button
@@ -159,7 +196,7 @@ export function AgentPermissionRow({
           onClick={() => onDecide('no', ask.requestId)}
           className="rounded-md px-2.5 py-1 text-[11px] font-medium text-fleet-text-subtle transition-colors hover:text-fleet-text focus-ring"
         >
-          Don&apos;t run
+          {words.no}
         </button>
       </div>
     </div>
