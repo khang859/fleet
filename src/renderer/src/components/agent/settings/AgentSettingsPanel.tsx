@@ -48,6 +48,7 @@ import { CompactionField } from './CompactionField';
 import { MaxToolRoundsField } from './MaxToolRoundsField';
 import { ClassifierNoteField } from './ClassifierNoteField';
 import { ModelSelect } from './ModelSelect';
+import { Toggle } from './Toggle';
 import { selectCls } from './controls';
 import { LocalEndpointsSection } from './endpoints/LocalEndpointsSection';
 import { McpSection } from './mcp/McpSection';
@@ -357,6 +358,19 @@ export function AgentSettingsPanel({ cwd }: { cwd: string }): React.JSX.Element 
               void updateSettings({ ai: { agent: { classifierNote } } })
             }
           />
+          <Field
+            label="Orchestrator answers permissions"
+            description="Lets an orchestrator pane allow or deny a Claude Code session's permission requests. Your deny rules still hold, commands that always ask still come to you, and you approve each answer unless you chose full access. Claude Code's own deny list applies before Fleet sees a request."
+            htmlFor="agent-orchestrator-permissions"
+          >
+            <Toggle
+              id="agent-orchestrator-permissions"
+              checked={agent.orchestrator.answerPermissions}
+              onChange={(answerPermissions) =>
+                void updateSettings({ ai: { agent: { orchestrator: { answerPermissions } } } })
+              }
+            />
+          </Field>
         </FieldGroup>
 
         <McpSection />

@@ -435,7 +435,20 @@ export type AgentSettings = {
    * a completion's parameters.
    */
   voice: AgentVoiceSettings;
+  /** What an orchestrator pane may do beyond reading, prompting and starting sessions. */
+  orchestrator: AgentOrchestratorConfig;
 };
+
+export type AgentOrchestratorConfig = {
+  /**
+   * Whether the Orchestrator may allow or deny a Claude Code session's pending
+   * permission request. Off unless the user turns it on: it hands a model a
+   * say over what runs in sessions the user started.
+   */
+  answerPermissions: boolean;
+};
+
+export const DEFAULT_AGENT_ORCHESTRATOR: AgentOrchestratorConfig = { answerPermissions: false };
 
 export const EMPTY_AGENT_MODEL_CONFIG: AgentModelConfig = {
   model: null,
@@ -479,7 +492,8 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   classifierNote: null,
   titleModel: null,
   mcpServers: {},
-  voice: { ...DEFAULT_AGENT_VOICE_SETTINGS }
+  voice: { ...DEFAULT_AGENT_VOICE_SETTINGS },
+  orchestrator: { ...DEFAULT_AGENT_ORCHESTRATOR }
 };
 
 /** Capability-namespaced AI settings. Future: image, video slot in here additively. */
@@ -1394,17 +1408,20 @@ export type AgentPermissionAsk = {
   } | null;
   /**
    * Set when the Orchestrator asks to type into one of the user's Claude Code
-   * sessions (`send`) or to start one (`spawn`). The card shows where it goes
-   * and the prompt in full, since the prompt is what is being agreed to.
-   * `rule` is then the grant "always for this session" would add, and is null
-   * for a spawn, which is only ever allowed once.
+   * sessions (`send`), to start one (`spawn`), or to answer a session's
+   * permission request (`permission`). The card shows where it goes and the
+   * prompt or request in full, since that is what is being agreed to. `rule`
+   * is then the grant "always for this session" would add, and is null for a
+   * spawn or a permission, which are only ever allowed once.
    */
   fleet: {
-    action: 'send' | 'spawn';
+    action: 'send' | 'spawn' | 'permission';
     /** The session's ref and name, or the folder a spawn opens in. */
     target: string;
-    /** The prompt as it will be typed. */
+    /** The prompt as it will be typed, or the request as the session made it. */
     prompt: string;
+    /** For a permission, how the Orchestrator would answer it; `null` otherwise. */
+    decision: 'allow' | 'deny' | null;
   } | null;
 };
 
