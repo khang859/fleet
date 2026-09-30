@@ -233,9 +233,17 @@ export class ClaudeSessionsService {
     const answerer = (): boolean => canAnswer();
     this.answerers.add(answerer);
     return () => {
-      if (!this.answerers.delete(answerer)) return;
-      if (this.answerers.size === 0) void this.broker.dispose();
+      if (this.answerers.delete(answerer)) this.releaseUnanswerable();
     };
+  }
+
+  /**
+   * Release every held hook if no answerer can answer any more. Call it when
+   * what an answerer's `canAnswer` reads changes, since a held hook is not
+   * asked again.
+   */
+  releaseUnanswerable(): void {
+    if (![...this.answerers].some((canAnswer) => canAnswer())) void this.broker.dispose();
   }
 
   /** A live session's transcript, read up to now, with its brief. */

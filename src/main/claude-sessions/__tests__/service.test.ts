@@ -210,6 +210,31 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     expect(service.broker.has('tu-1')).toBe(false);
   });
 
+  it('lets go of held requests when the answerers left cannot answer', async () => {
+    await service.start();
+    let can = true;
+    service.addPermissionAnswerer(() => can);
+    const copilot = service.addPermissionAnswerer();
+    const reply = send(socketPath, permission('tu-1'));
+    await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(true));
+
+    service.releaseUnanswerable();
+    expect(service.broker.has('tu-1')).toBe(true);
+    can = false;
+    service.releaseUnanswerable();
+    expect(service.broker.has('tu-1')).toBe(true);
+    copilot();
+    expect(await reply).toBe('');
+    expect(service.broker.has('tu-1')).toBe(false);
+
+    can = true;
+    const second = send(socketPath, permission('tu-2'));
+    await vi.waitFor(() => expect(service.broker.has('tu-2')).toBe(true));
+    can = false;
+    service.releaseUnanswerable();
+    expect(await second).toBe('');
+  });
+
   it('answers nothing for a question dialog, which the hook does not wait on', async () => {
     await service.start();
     await send(

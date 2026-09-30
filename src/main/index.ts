@@ -1646,6 +1646,7 @@ void app.whenReady().then(async () => {
         } else {
           fleetAttention.forget(threadId);
           orchestrating.delete(threadId);
+          claudeSessions?.releaseUnanswerable();
         }
       }
     },
