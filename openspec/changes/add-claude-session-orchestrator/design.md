@@ -177,6 +177,8 @@ Rejected: it pays the token cost on every round, and wakeups need a designated p
   - Subagent capabilities never advance it.
   - Output is fenced as untrusted session data.
 - **`fleet_diff`.** It runs git with a fixed argv, no shell, `--no-ext-diff`, `GIT_OPTIONAL_LOCKS=0`, a timeout and an output cap.
+  - The runner, shared with the sidebar's git probe, turns off the programs a repository's config can make reading run: `core.fsmonitor`, `log.showSignature`, and every configured filter driver (blanked through `GIT_CONFIG_KEY_n` pairs, since `-c` splits at the first `=`).
+    `status` and `diff` also get `--ignore-submodules=all`, because a submodule's own config names its own filters.
   - The cwd comes only from the registry.
   - `path` goes through `resolveInsideCwd(path, session.cwd)`, which reuses the credential checks.
   - The `file` view reuses `runRead` with `cwd` swapped.
