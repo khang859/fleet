@@ -17,6 +17,11 @@ import type {
   AgentTurnUsage
 } from '../../../shared/agent-types';
 import { sanitizeReport } from '../../../shared/subagent-report';
+import {
+  isFleetTool,
+  usesFleetTools,
+  type AgentFleetCapability
+} from '../../../shared/fleet-tools';
 import type { AgentSessionReplay } from '../../../shared/agent-session';
 import { AgentSessionStore } from '../session-store';
 import { killThreadBackgroundCommands } from '../tools/background';
@@ -40,6 +45,12 @@ export type TaskRun = {
   model: string;
   cwd: string;
   signal: AbortSignal;
+  /**
+   * The fleet tools' read-only pick when an orchestrator turn dispatched it,
+   * else `null`. Never the whole capability: a subagent may read sessions but
+   * never act on them, and its reads never move the parent's cursors.
+   */
+  fleet: AgentFleetCapability | null;
   /**
    * One completed round of the child's own conversation, on its way to the
    * child's log. Main keeps this rather than a pane, because a subagent is the
@@ -208,7 +219,14 @@ export class SubagentManager {
     threadId: string;
     callId: string;
     cwd: string;
+    fleet: AgentFleetCapability | null;
   }): Promise<AgentTaskInfo> {
+    // The spec offers no fleet tool outside orchestrator mode, so naming one
+    // here is a guess at a tool this conversation does not have.
+    const fleetTool = req.fleet === null ? req.tools?.find(isFleetTool) : undefined;
+    if (fleetTool !== undefined) {
+      throw new Error(`${fleetTool} works only in an Agent pane in orchestrator mode.`);
+    }
     // Counted and claimed without an await in between. Reading the folder of
     // definitions is real disk work, and two panes dispatching at the same
     // moment would both wake from it having seen the same count and both take
@@ -243,7 +261,12 @@ export class SubagentManager {
       controller
     });
 
-    const definition = (await this.list(req.cwd)).find((d) => d.name === req.agent) ?? null;
+    // One that needs the fleet tools exists only where they do, as the turn's
+    // own list of subagents says.
+    const definition =
+      (await this.list(req.cwd)).find(
+        (d) => d.name === req.agent && (req.fleet !== null || !usesFleetTools(d.tools))
+      ) ?? null;
     if (definition === null) {
       // Nothing started, so the slot goes straight back - held only for as long
       // as it took to find out this was not a subagent at all.
@@ -263,10 +286,15 @@ export class SubagentManager {
       taskId,
       definition,
       prompt: req.prompt,
-      tools: resolveTaskTools(definition.tools, req.tools),
+      // A definition with no list of its own takes every subagent tool, and
+      // outside orchestrator mode that must not include the fleet ones.
+      tools: resolveTaskTools(definition.tools, req.tools).filter(
+        (name) => req.fleet !== null || !isFleetTool(name)
+      ),
       model: resolveTaskModel(definition.model, req.parentModel),
       cwd: req.cwd,
       signal: controller.signal,
+      fleet: req.fleet,
       onMessage: (message) => this.sessions.append(taskId, req.cwd, { t: 'message', message })
     });
 

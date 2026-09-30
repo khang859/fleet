@@ -66,7 +66,8 @@ const NOTED_INPUT_LIMIT = 50;
 const IN_PLACE_SOURCES = new Set(['clear', 'resume']);
 
 export function hashPrompt(text: string): string {
-  return createHash('sha256').update(text).digest('hex');
+  // Trimmed, so the text as sent and as the transcript records it agree.
+  return createHash('sha256').update(text.trim()).digest('hex');
 }
 
 function projectNameFromCwd(cwd: string): string {

@@ -124,6 +124,11 @@ export type PaneLeaf = {
    * finds its own conversation again after a restart.
    */
   agentSessionId?: string;
+  /**
+   * Whether an `agent` pane is in orchestrator mode, which gives its turns the
+   * fleet tools. Persisted with the layout, so the mode survives a restart.
+   */
+  agentOrchestrator?: boolean;
   isDirty?: boolean;
   serializedContent?: string;
   /** One-shot startup command for this pane (e.g. resuming a session). Runs on first PTY create. */

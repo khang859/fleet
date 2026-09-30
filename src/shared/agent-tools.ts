@@ -6,6 +6,12 @@ import {
   type AgentScheduleRecord
 } from './agent-schedule';
 import type { McpToolOutput } from './agent-mcp';
+import {
+  FLEET_ACT_TOOL_NAMES,
+  FLEET_READ_TOOL_NAMES,
+  fleetToolSpecs,
+  type AgentFleetCapability
+} from './fleet-tools';
 import { estimateTokens } from './agent-context';
 import type { SubagentDefinition } from './agent-subagents';
 import { SKILL_DESCRIPTION_MAX, SKILL_NAME_MAX, type SkillDefinition } from './agent-skills';
@@ -83,7 +89,10 @@ export const SUBAGENT_TOOL_NAMES = [
   'skill',
   'memory',
   'todo_add',
-  'todo_update'
+  'todo_update',
+  // Only look, so a subagent may have them - it is how `fleet-analyst` reads a
+  // session in depth without spending the Orchestrator's context on it.
+  ...FLEET_READ_TOOL_NAMES
 ] as const;
 export type SubagentToolName = (typeof SUBAGENT_TOOL_NAMES)[number];
 
@@ -116,7 +125,9 @@ export const AGENT_TOOL_NAMES = [
   'task',
   'schedule_create',
   'schedule_list',
-  'schedule_cancel'
+  'schedule_cancel',
+  // Each reaches into another terminal, which is never a subagent's to do.
+  ...FLEET_ACT_TOOL_NAMES
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
@@ -1121,8 +1132,16 @@ export const AGENT_TOOL_SPECS: AgentToolSpec[] = [
  * `null` when there are none, so a folder with no definitions is never offered a
  * tool whose every call would come back an apology - the same rule `image`
  * follows when there is no model behind it.
+ *
+ * `tools` is what a child dispatched this turn would actually be given. Naming
+ * more - the image tool a child never gets, web reading the user turned off,
+ * the fleet tools outside orchestrator mode - tells the model about tools that
+ * are being kept from it, and it goes looking for a way round.
  */
-export function buildTaskSpec(definitions: SubagentDefinition[]): AgentToolSpec | null {
+export function buildTaskSpec(
+  definitions: SubagentDefinition[],
+  tools: readonly SubagentToolName[]
+): AgentToolSpec | null {
   if (definitions.length === 0) return null;
   const roster = definitions.map((d) => `- \`${d.name}\`: ${d.description}`).join('\n');
   return {
@@ -1169,7 +1188,7 @@ export function buildTaskSpec(definitions: SubagentDefinition[]): AgentToolSpec 
           },
           tools: {
             type: 'array',
-            items: { type: 'string', enum: [...SUBAGENT_TOOL_NAMES] },
+            items: { type: 'string', enum: [...tools] },
             description:
               'The tools it may use. Omit to take the subagent’s own default, which is usually right. Narrow it when the job genuinely only needs reading.'
           }
@@ -1278,6 +1297,8 @@ export function toolSpecsFor(options: {
   task?: AgentToolSpec | null;
   skill?: AgentToolSpec | null;
   memory?: AgentToolSpec | null;
+  /** `null` ⇒ the pane is not in orchestrator mode, and no fleet tool is offered. */
+  fleet?: AgentFleetCapability | null;
   only?: readonly AgentToolName[];
 }): ToolSpec[] {
   const allowed = (name: AgentToolName): boolean =>
@@ -1295,12 +1316,14 @@ export function toolSpecsFor(options: {
   // context for deciding which procedure applies rather than the other way
   // round, and the order they appear in is the order they are read in.
   const memory = allowed('memory') ? (options.memory ?? null) : null;
+  const fleet = fleetToolSpecs(options.fleet ?? null).filter((spec) => allowed(spec.function.name));
   return [
     ...own,
     ...(image === null ? [] : [image]),
     ...(memory === null ? [] : [memory]),
     ...(skill === null ? [] : [skill]),
     ...(task === null ? [] : [task]),
+    ...fleet,
     ...(options.mcp ?? [])
   ];
 }
@@ -1570,6 +1593,12 @@ export type AgentToolContext = {
    * it reports, and a fire aimed at it would have nowhere to land.
    */
   schedule: AgentScheduleCapability | null;
+  /**
+   * The fleet tools' way to the Claude Code sessions, or `null` outside an
+   * orchestrator turn. A subagent of one gets a read-only pick: see
+   * `AgentFleetCapability`.
+   */
+  fleet: AgentFleetCapability | null;
 };
 
 /**

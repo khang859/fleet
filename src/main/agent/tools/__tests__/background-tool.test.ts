@@ -48,6 +48,7 @@ const ctx = (threadId = 'thread-1'): AgentToolContext => ({
   findSkill: null,
   findMemory: null,
   schedule: null,
+  fleet: null,
   todos: { list: () => [], save: () => {} }
 });
 

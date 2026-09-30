@@ -318,6 +318,12 @@ export type RenderOptions = {
   since?: number;
   /** The most characters to return. */
   cap?: number;
+  /**
+   * Who wrote a prompt, for a reader that can tell. The Orchestrator's reads
+   * pass it, so a prompt the user typed with the `[orchestrator]` prefix is
+   * not taken for one the Orchestrator sent.
+   */
+  promptBy?: (text: string) => string;
 };
 
 export const BRIEF_CAP = 3_500;
@@ -332,7 +338,7 @@ function clip(text: string, max: number): string {
 // eslint-disable-next-line no-control-regex -- terminal colour codes are what it removes
 const ANSI = /\u001b\[[0-9;?]*[A-Za-z]/g;
 
-function oneLine(text: string, max: number): string {
+export function oneLine(text: string, max: number): string {
   return clip(text.replace(ANSI, '').replace(/\s+/g, ' '), max);
 }
 
@@ -345,7 +351,7 @@ function tag(text: string, name: string): string | null {
  * A prompt as the user would recognise it: a slash command as they typed it,
  * a finished background task by its summary.
  */
-function promptText(text: string): string {
+export function promptText(text: string): string {
   const command = tag(text, 'command-name');
   if (command) return `${command} ${tag(text, 'command-args') ?? ''}`.trim();
   if (text.startsWith('<task-notification>')) {
@@ -390,8 +396,14 @@ const TODO_MARK: Record<TodoStatus, string> = {
   completed: '[x]'
 };
 
-function sections(s: SessionBriefState, since: number, cwd: string | undefined): Section[] {
+function sections(
+  s: SessionBriefState,
+  since: number,
+  cwd: string | undefined,
+  promptBy: RenderOptions['promptBy']
+): Section[] {
   const fresh = (rev: number): boolean => rev > since;
+  const by = (text: string): string => (promptBy === undefined ? '' : ` (${promptBy(text)})`);
   const out: Section[] = [];
   if (s.question && fresh(s.question.rev)) {
     out.push({
@@ -403,10 +415,10 @@ function sections(s: SessionBriefState, since: number, cwd: string | undefined):
     });
   }
   if (s.goal && fresh(s.goal.rev))
-    out.push({ title: 'Goal', lines: [oneLine(promptText(s.goal.value), 400)] });
+    out.push({ title: `Goal${by(s.goal.value)}`, lines: [oneLine(promptText(s.goal.value), 400)] });
   if (s.prompt && fresh(s.prompt.rev) && s.prompt.value !== s.goal?.value) {
     out.push({
-      title: `Latest prompt (turn ${s.turns})`,
+      title: `Latest prompt (turn ${s.turns})${by(s.prompt.value)}`,
       lines: [oneLine(promptText(s.prompt.value), 400)]
     });
   }
@@ -470,7 +482,7 @@ export function renderBrief(
   const since = opts.since ?? 0;
   const cap = opts.cap ?? BRIEF_CAP;
   const head = [statusLine(status), `turns: ${state.turns} · rev ${state.rev}`];
-  const body = sections(state, since, status.cwd);
+  const body = sections(state, since, status.cwd, opts.promptBy);
   if (body.length === 0) {
     head.push(since > 0 ? 'Nothing changed since the last read.' : 'Nothing has happened yet.');
     return head.join('\n');

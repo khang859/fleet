@@ -17,7 +17,7 @@ import { HookServer, PermissionBroker } from './hook-server';
 import { registerClaudeSessionsIpc, type IpcRegistrar } from './ipc-handlers';
 import { PaneActivityBridge, type SetHookState } from './pane-activity-bridge';
 import { PaneResolver, type PaneHost, type WorkspaceLookup } from './pane-resolver';
-import { ClaudeSessionRegistry } from './registry';
+import { ClaudeSessionRegistry, type NotedInput } from './registry';
 import { SessionTranscripts, type SessionTranscript } from './session-transcripts';
 import { SessionUsageTracker } from './session-usage';
 import { transcriptPathFor } from './transcript-path';
@@ -197,6 +197,11 @@ export class ClaudeSessionsService {
   /** A live session's transcript, read up to now, with its brief. */
   async transcript(sessionId: string): Promise<SessionTranscript | null> {
     return this.transcripts.read(sessionId);
+  }
+
+  /** Prompts typed into a session through Fleet, newest last, with who typed them. */
+  inputsFor(sessionId: string): NotedInput[] {
+    return this.registry.inputsFor(sessionId);
   }
 
   respondToPermission(toolUseId: string, decision: 'allow' | 'deny', reason?: string): boolean {

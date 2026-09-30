@@ -10,6 +10,12 @@ import {
   type AgentToolName,
   type AgentToolSpec
 } from '../agent-tools';
+import {
+  FLEET_ACT_TOOL_NAMES,
+  FLEET_READ_TOOL_NAMES,
+  FLEET_TOOL_SPECS,
+  type AgentFleetCapability
+} from '../fleet-tools';
 
 /**
  * Which tools exist, and who is offered them.
@@ -39,6 +45,23 @@ describe('the tool lists', () => {
     for (const name of SUBAGENT_TOOL_NAMES) expect(pane).toContain(name);
     expect(pane).toContain('memory_write');
     expect(pane).toContain('skill_write');
+  });
+
+  // A subagent may read sessions for the Orchestrator, and never act on one.
+  it('gives a subagent the fleet read tools and no fleet act tool', () => {
+    const subagent: readonly string[] = SUBAGENT_TOOL_NAMES;
+    const pane: readonly string[] = AGENT_TOOL_NAMES;
+    for (const name of FLEET_READ_TOOL_NAMES) expect(subagent).toContain(name);
+    for (const name of FLEET_ACT_TOOL_NAMES) {
+      expect(subagent).not.toContain(name);
+      expect(pane).toContain(name);
+    }
+  });
+
+  it('describes every fleet tool the pane may call', () => {
+    expect(FLEET_TOOL_SPECS.map((s) => s.function.name).sort()).toEqual(
+      [...FLEET_READ_TOOL_NAMES, ...FLEET_ACT_TOOL_NAMES].sort()
+    );
   });
 
   // Both are always advertised: `memory_write` because the first note has to be
@@ -89,6 +112,47 @@ describe('buildImageSpec', () => {
 });
 
 describe('toolSpecsFor', () => {
+  const run = async (): Promise<{ text: string; summary: string }> =>
+    Promise.resolve({ text: '', summary: '' });
+  /** The Phase 3 capability: reads only. */
+  const readOnly: AgentFleetCapability = {
+    sessions: run,
+    read: run,
+    diff: run,
+    send: null,
+    spawn: null,
+    wait: null,
+    permission: null
+  };
+  const fleetNames = (specs: Array<{ function: { name: string } }>): string[] =>
+    specs.map((s) => s.function.name).filter((n) => n.startsWith('fleet_'));
+
+  it('offers no fleet tool outside orchestrator mode', () => {
+    expect(fleetNames(toolSpecsFor({ image: null, webFetch: false }))).toEqual([]);
+    expect(fleetNames(toolSpecsFor({ image: null, webFetch: false, fleet: null }))).toEqual([]);
+  });
+
+  it('offers only the fleet tools with something behind them', () => {
+    expect(fleetNames(toolSpecsFor({ image: null, webFetch: false, fleet: readOnly }))).toEqual([
+      ...FLEET_READ_TOOL_NAMES
+    ]);
+    const withSend = { ...readOnly, send: run };
+    expect(fleetNames(toolSpecsFor({ image: null, webFetch: false, fleet: withSend }))).toEqual([
+      ...FLEET_READ_TOOL_NAMES,
+      'fleet_send'
+    ]);
+  });
+
+  it('narrows the fleet tools with the rest for a subagent', () => {
+    const offered = toolSpecsFor({
+      image: null,
+      webFetch: false,
+      fleet: readOnly,
+      only: ['read', 'fleet_read']
+    }).map((s) => s.function.name);
+    expect(offered).toEqual(['read', 'fleet_read']);
+  });
+
   it('advertises the image tool only when a model was built for it', () => {
     const withImage = toolSpecsFor({
       image: buildImageSpec(null),

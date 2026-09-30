@@ -66,6 +66,7 @@ const ctx = (threadId = 'thread-1', signal = new AbortController().signal): Agen
   findSkill: null,
   findMemory: null,
   schedule: null,
+  fleet: null,
   // The todo tools have their own file too, and nothing here calls them.
   todos: { list: () => [], save: () => {} }
 });
@@ -375,6 +376,36 @@ describe('the call itself', () => {
 
   it('names the argument that was wrong', async () => {
     await expect(runAgentTool('read', '{}', ctx())).rejects.toThrow(/path/);
+  });
+
+  it('refuses a fleet tool outside orchestrator mode, before reading its arguments', async () => {
+    await expect(runAgentTool('fleet_sessions', '{}', ctx())).rejects.toThrow(
+      /fleet_sessions works only in an Agent pane in orchestrator mode/
+    );
+    await expect(runAgentTool('fleet_read', '{}', ctx())).rejects.toThrow(/orchestrator mode/);
+  });
+
+  it('refuses a fleet tool this conversation was not given', async () => {
+    const reply = async (): Promise<{ text: string; summary: string }> =>
+      Promise.resolve({ text: 'sessions', summary: '0 sessions' });
+    const fleet = {
+      sessions: reply,
+      read: reply,
+      diff: reply,
+      send: null,
+      spawn: null,
+      wait: null,
+      permission: null
+    };
+    const call = { ...ctx(), fleet };
+    await expect(
+      runAgentTool(
+        'fleet_send',
+        JSON.stringify({ session: 'a', prompt: 'b', why: 'c', expect: 'd' }),
+        call
+      )
+    ).rejects.toThrow(/fleet_send is not available in this conversation/);
+    expect((await runAgentTool('fleet_sessions', '{}', call)).text).toBe('sessions');
   });
 });
 

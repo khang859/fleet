@@ -48,6 +48,7 @@ import { registerAgentGalleryIpc } from './gallery-ipc';
 import { registerAgentSkillsIpc } from './skills/skills-ipc';
 import type { SubagentManager } from './subagents/manager';
 import type { ScheduleStore } from './schedule-store';
+import type { FleetLedgerStore } from './fleet/ledger-store';
 import type { AgentScheduleRecord } from '../../shared/agent-schedule';
 import type { OpenRouterSecrets } from '../openrouter-secrets';
 import type { ResolvedTarget } from './model-routing';
@@ -77,6 +78,8 @@ export function registerAgentIpc(deps: {
   subagents: SubagentManager;
   /** The reminders every conversation has set, and the due ones waiting to be collected. */
   schedules: ScheduleStore;
+  /** What orchestrator conversations remember about the sessions they read. */
+  fleetLedger: FleetLedgerStore;
   getSettings: () => AgentSettings;
   /** Only the OpenRouter-only endpoints still ask: transcription, images. */
   getApiKey: () => string | null;
@@ -175,6 +178,7 @@ export function registerAgentIpc(deps: {
   // message nobody wrote.
   ipcMain.handle(IPC_CHANNELS.AGENT_SESSION_DELETE, (_e, sessionId: string): boolean => {
     deps.schedules.cancelAllFor(sessionId);
+    deps.fleetLedger.delete(sessionId);
     return deps.sessions.delete(sessionId);
   });
 

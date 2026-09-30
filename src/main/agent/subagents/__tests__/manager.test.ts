@@ -55,7 +55,8 @@ const dispatch = async (
     parentModel: 'a/model',
     threadId,
     callId: 'call-1',
-    cwd: '/repo'
+    cwd: '/repo',
+    fleet: null
   });
 
 describe('SubagentManager.runningFor', () => {
@@ -176,7 +177,8 @@ describe('SubagentManager.dispatch, at the parallel cap', () => {
         parentModel: 'a/model',
         threadId: 'thread-1',
         callId: 'call-1',
-        cwd: '/repo'
+        cwd: '/repo',
+        fleet: null
       })
     ).rejects.not.toBeInstanceOf(SubagentCapReached);
   });

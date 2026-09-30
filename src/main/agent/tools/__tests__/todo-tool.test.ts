@@ -25,6 +25,7 @@ const ctx = (): AgentToolContext => ({
   findSkill: null,
   findMemory: null,
   schedule: null,
+  fleet: null,
   todos: {
     list: () => items,
     save: (next) => {

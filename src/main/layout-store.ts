@@ -1,5 +1,5 @@
 import Store from 'electron-store';
-import type { Workspace, PaneNode } from '../shared/types';
+import type { Workspace, PaneNode, PaneLeaf } from '../shared/types';
 import { createLogger } from './logger';
 
 const log = createLogger('layout:persistence');
@@ -12,6 +12,15 @@ function containsPane(node: PaneNode, paneId: string): boolean {
   if (node.type === 'leaf') return node.id === paneId;
   return containsPane(node.children[0], paneId) || containsPane(node.children[1], paneId);
 }
+
+function leavesOf(node: PaneNode): PaneLeaf[] {
+  return node.type === 'leaf'
+    ? [node]
+    : [...leavesOf(node.children[0]), ...leavesOf(node.children[1])];
+}
+
+/** Where a pane sits in the saved layout, for naming it. `pane` is null in a tab with one pane. */
+export type PanePlace = { workspaceName: string; tab: string; pane: string | null };
 
 /**
  * Strip one-shot startup commands (e.g. session-resume `cmd`) from pane leaves before
@@ -78,6 +87,25 @@ export class LayoutStore {
         if (containsPane(tab.splitRoot, paneId)) {
           return { workspaceId: ws.id, workspaceName: ws.label };
         }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Where a pane sits, named as the sessions panel names it: by the tab, and
+   * within a split tab by the name the user gave the pane or its position.
+   */
+  placeOf(paneId: string): PanePlace | null {
+    const workspaces = this.store.get('workspaces', {});
+    for (const ws of Object.values(workspaces)) {
+      for (const tab of ws.tabs) {
+        const leaves = leavesOf(tab.splitRoot);
+        const i = leaves.findIndex((leaf) => leaf.id === paneId);
+        if (i === -1) continue;
+        const leaf = leaves[i];
+        const name = leaf.labelIsCustom && leaf.label ? leaf.label : `pane ${i + 1}`;
+        return { workspaceName: ws.label, tab: tab.label, pane: leaves.length > 1 ? name : null };
       }
     }
     return null;
