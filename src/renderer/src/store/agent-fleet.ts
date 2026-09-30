@@ -163,9 +163,15 @@ export function initAgentFleet(): () => void {
     const threads = useAgentStore.getState().threads;
     const workspace = useWorkspaceStore.getState();
     const next = new Set<string>();
+    const reopened: string[] = [];
     for (const [paneId, thread] of Object.entries(threads)) {
       const on = isOrchestratorPane(workspace, paneId);
-      if (on && thread?.sessionId != null) next.add(thread.sessionId);
+      if (on && thread?.sessionId != null) {
+        next.add(thread.sessionId);
+        // A digest held while the pane showed another conversation.
+        if (!modes.has(thread.sessionId) && undelivered.has(thread.sessionId))
+          reopened.push(paneId);
+      }
       if (!on) setPaused(paneId, false);
     }
     for (const sessionId of next) {
@@ -175,6 +181,7 @@ export function initAgentFleet(): () => void {
       if (!next.has(sessionId)) window.fleet.agent.fleet.setMode(sessionId, false);
     }
     modes = next;
+    for (const paneId of reopened) checkFleet(paneId);
   };
   syncModes();
   // The agent store changes on every streamed token, so only a change to which

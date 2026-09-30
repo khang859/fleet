@@ -23,7 +23,7 @@ vi.mock('../workspace-store', async () => {
   return {
     isOrchestratorPane: (_state: unknown, paneId: string) => orchestrators.has(paneId),
     registerPaneDisposer: () => {},
-    useWorkspaceStore: create(() => ({ version: 0 }))
+    useWorkspaceStore: create(() => ({ version: 0, setAgentSession: () => {} }))
   };
 });
 
@@ -263,6 +263,24 @@ describe('wakeups', () => {
     expect(lastSend().text).toBe('something else first');
 
     endTurn();
+    await tick();
+    expect(lastSend().history.at(-1)).toMatchObject({
+      role: 'fleet',
+      parts: [{ type: 'text', text: '- abcdef12 ended.' }]
+    });
+  });
+
+  it('keeps a digest for the conversation it was taken for, and delivers it when it is back', async () => {
+    let answer: (pull: FleetDigestPull) => void = () => {};
+    pullDigest.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    setSessions(finished());
+    await tick(2_000);
+    agentStore.useAgentStore.getState().startNewSession(PANE, CWD);
+    answer({ text: '- abcdef12 ended.', paused: false });
+    await tick();
+    expect(send).not.toHaveBeenCalled();
+
+    await agentStore.useAgentStore.getState().resumeSession(PANE, CWD, SESSION);
     await tick();
     expect(lastSend().history.at(-1)).toMatchObject({
       role: 'fleet',
