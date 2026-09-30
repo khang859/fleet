@@ -123,6 +123,23 @@ export type FleetToolOutput = { text: string; summary: string };
 
 type Run<A> = (args: A, signal: AbortSignal) => Promise<FleetToolOutput>;
 
+/** What the user is asked to approve before a prompt is typed or a session started. */
+export type FleetAsk = {
+  action: 'send' | 'spawn';
+  /** The session a send goes to; `null` for a spawn. */
+  sessionId: string | null;
+  /** Where it goes, as the card names it: a ref and its tab, or a folder. */
+  target: string;
+  /** The prompt exactly as it will be typed. */
+  prompt: string;
+};
+
+/** Ask the user, or their standing answer, whether a fleet action may go ahead. */
+export type FleetApprover = (ask: FleetAsk) => Promise<boolean>;
+
+/** An act tool: like a read, and it may have to ask first. */
+type Act<A> = (args: A, signal: AbortSignal, approve: FleetApprover) => Promise<FleetToolOutput>;
+
 /**
  * What the fleet tools are given.
  *
@@ -139,8 +156,8 @@ export type AgentFleetCapability = {
   sessions: Run<FleetSessionsArgs>;
   read: Run<FleetReadArgs>;
   diff: Run<FleetDiffArgs>;
-  send: Run<FleetSendArgs> | null;
-  spawn: Run<FleetSpawnArgs> | null;
+  send: Act<FleetSendArgs> | null;
+  spawn: Act<FleetSpawnArgs> | null;
   wait: Run<FleetWaitArgs> | null;
   permission: Run<FleetPermissionArgs> | null;
 };
@@ -413,6 +430,12 @@ export function renderFleetInstructions(options: {
           '`fleet_sessions` lists them. Read one with `fleet_read`: start from its `brief`, go to `turns` for what happened in order, and to `tool` only for one result you need in full. Reads default to what changed since you last looked, so read again rather than keeping what you saw in mind.',
           '',
           '`fleet_diff` shows what a session changed, through git in its own folder. Your other file tools stay inside this pane folder.',
+          ...(options.tools.includes('fleet_send')
+            ? [
+                '',
+                '`fleet_send` types a prompt into a session that is waiting for one, marked `[orchestrator]` so the user can tell it from their own. The user approves each one unless they have said to allow that session. Send what the user asked for or plainly wants done, not work of your own devising, and never keep prompting a session in a loop. Each send goes in your fleet ledger, shown to you every round until the session answers it.'
+              ]
+            : []),
           ...(options.analyst === true
             ? [
                 '',

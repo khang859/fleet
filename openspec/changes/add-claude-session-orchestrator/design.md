@@ -129,7 +129,11 @@ It writes nothing unless all of these hold:
 - the phase is `waitingForInput` with kind `prompt`;
 - the pane's draft is clean;
 - there has been no user keystroke for 3 s;
-- the rate limit passes.
+- no other prompt is being typed into that session.
+
+`fleet_send` adds a rate limit on top: 20 prompts per 10 minutes per orchestrator conversation, kept across turns so ending a turn does not reset it.
+It is not in `sendPrompt`, because a person sending from the copilot chat is not what it guards against.
+`fleet_send` runs the checks above before the approval card is shown, so the user is never asked about a prompt that could not go in, and `sendPrompt` runs them again as it types, since the user may have started typing while the card was up.
 
 Draft tracking works on renderer-originated PTY writes in main.
 Printable input marks the draft dirty.

@@ -149,11 +149,11 @@ export async function runAgentTool(
     }
     case 'fleet_send': {
       const run = fleetMember(ctx, name, 'send');
-      return run(checked(FleetSendArgs, args, name), ctx.signal);
+      return run(checked(FleetSendArgs, args, name), ctx.signal, ctx.approveFleet);
     }
     case 'fleet_spawn': {
       const run = fleetMember(ctx, name, 'spawn');
-      return run(checked(FleetSpawnArgs, args, name), ctx.signal);
+      return run(checked(FleetSpawnArgs, args, name), ctx.signal, ctx.approveFleet);
     }
     case 'fleet_wait': {
       const run = fleetMember(ctx, name, 'wait');

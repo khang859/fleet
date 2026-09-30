@@ -10,7 +10,8 @@ import {
   FLEET_ACT_TOOL_NAMES,
   FLEET_READ_TOOL_NAMES,
   fleetToolSpecs,
-  type AgentFleetCapability
+  type AgentFleetCapability,
+  type FleetApprover
 } from './fleet-tools';
 import { estimateTokens } from './agent-context';
 import type { SubagentDefinition } from './agent-subagents';
@@ -1480,6 +1481,12 @@ export type AgentToolContext = {
    * a "don't run" is to hand the same line to the user's own terminal.
    */
   wasRefused: (command: string) => boolean;
+  /**
+   * Ask before a fleet tool types into a Claude Code session or starts one.
+   * Built per call for the reason `approve` is: the card lands on the call it
+   * is about. Always false where there are no fleet tools.
+   */
+  approveFleet: FleetApprover;
   /**
    * Make a picture, or `null` when no image model is configured.
    *

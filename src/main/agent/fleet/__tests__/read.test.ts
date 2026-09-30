@@ -107,7 +107,7 @@ describe('fleet reads', () => {
   });
 
   const orchestrator = () =>
-    createFleetCapability({ host: host(), ledger }, THREAD, 'orchestrator');
+    createFleetCapability({ host: host(), ledger, act: null }, THREAD, 'orchestrator');
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'fleet-read-'));
@@ -143,7 +143,7 @@ describe('fleet reads', () => {
       tracking: () => ({ status: { state: 'off' }, installProblems: [] })
     };
     const out = await createFleetCapability(
-      { host: empty, ledger },
+      { host: empty, ledger, act: null },
       THREAD,
       'orchestrator'
     ).sessions({}, signal);
@@ -309,7 +309,7 @@ describe('fleet reads', () => {
     const before = ledger.cursor(THREAD, 'abcdef12');
 
     appendFileSync(path, prompt('u2', 'Next step') + reply('a2', 'Next step done.'));
-    const analyst = createFleetCapability({ host: host(), ledger }, THREAD, 'subagent');
+    const analyst = createFleetCapability({ host: host(), ledger, act: null }, THREAD, 'subagent');
     expect(analyst.send).toBeNull();
     const read = await analyst.read({ session: 'abcdef12', level: 'turns' }, signal);
     expect(read.text).toContain('Next step done.');

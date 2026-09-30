@@ -60,7 +60,7 @@ describe('fleet_diff', () => {
       now: () => Date.now()
     };
     fleet = createFleetCapability(
-      { host, ledger: new FleetLedgerStore(root) },
+      { host, ledger: new FleetLedgerStore(root), act: null },
       THREAD,
       'orchestrator'
     );

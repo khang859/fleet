@@ -40,6 +40,7 @@ const ctx = (threadId = 'thread-1'): AgentToolContext => ({
   handOff: () => {},
   approve: async () => Promise.resolve(approved),
   wasRefused: () => false,
+  approveFleet: async () => Promise.resolve(false),
   generateImage: null,
   fetchUrl: null,
   mcp: null,

@@ -215,6 +215,11 @@ export class ClaudeSessionsService {
     return this.input.send(sessionId, text, origin);
   }
 
+  /** Why `sendPrompt` would refuse this session right now, or `null`. */
+  sendRefusal(sessionId: string): string | null {
+    return this.input.refusal(sessionId);
+  }
+
   /**
    * Declare that a consumer can answer permission requests, until the returned
    * function is called. With none, permission hooks are released at once so

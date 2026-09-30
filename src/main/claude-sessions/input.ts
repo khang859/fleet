@@ -97,6 +97,15 @@ export function cleanPrompt(text: string): string {
   );
 }
 
+/** Why a cleaned prompt cannot be typed as it is, or `null`. */
+export function promptProblem(clean: string): string | null {
+  if (clean === '') return 'Not sent: the prompt is empty.';
+  if (clean.endsWith('\\')) {
+    return 'Not sent: a prompt cannot end with "\\", which Claude Code reads as a line break.';
+  }
+  return null;
+}
+
 function busyReason(session: ClaudeSession): string | null {
   switch (session.phase) {
     case 'waitingForInput':
@@ -160,34 +169,11 @@ export class PromptInput {
    * prompt carries its prefix already.
    */
   async send(sessionId: string, text: string, origin: ClaudeInputOrigin): Promise<SendResult> {
+    const clean = cleanPrompt(text);
+    const reason = this.refusal(sessionId) ?? promptProblem(clean);
+    if (reason !== null) return { ok: false, reason };
     const session = this.deps.session(sessionId);
     if (!session) return { ok: false, reason: 'That session is not running in a Fleet pane.' };
-    const busy = busyReason(session);
-    if (busy) return { ok: false, reason: `Not sent: ${busy}.` };
-
-    const draft = this.draft(session.paneId);
-    if (draft.dirty) {
-      return {
-        ok: false,
-        reason: 'Not sent: the user has typed text in that pane and not sent it yet.'
-      };
-    }
-    const since = this.now() - draft.keyAt;
-    if (since < QUIET_MS) {
-      return { ok: false, reason: 'Not sent: the user is typing in that pane.' };
-    }
-    if (this.sending.has(sessionId)) {
-      return { ok: false, reason: 'Not sent: another prompt is being typed into that session.' };
-    }
-
-    const clean = cleanPrompt(text);
-    if (clean === '') return { ok: false, reason: 'Not sent: the prompt is empty.' };
-    if (clean.endsWith('\\')) {
-      return {
-        ok: false,
-        reason: 'Not sent: a prompt cannot end with "\\", which Claude Code reads as a line break.'
-      };
-    }
 
     this.sending.add(sessionId);
     const ack = this.watchAck(sessionId);
@@ -201,6 +187,25 @@ export class PromptInput {
       ack.stop();
       this.sending.delete(sessionId);
     }
+  }
+
+  /**
+   * Why a prompt could not be typed into the session right now, or `null` when
+   * it could. What `send` checks first, for a caller that has to ask the user
+   * before sending and should not ask about a prompt that could not go in.
+   */
+  refusal(sessionId: string): string | null {
+    const session = this.deps.session(sessionId);
+    if (!session) return 'That session is not running in a Fleet pane.';
+    const busy = busyReason(session);
+    if (busy) return `Not sent: ${busy}.`;
+    const draft = this.draft(session.paneId);
+    if (draft.dirty) return 'Not sent: the user has typed text in that pane and not sent it yet.';
+    if (this.now() - draft.keyAt < QUIET_MS) return 'Not sent: the user is typing in that pane.';
+    if (this.sending.has(sessionId)) {
+      return 'Not sent: another prompt is being typed into that session.';
+    }
+    return null;
   }
 
   private async type(paneId: string, text: string): Promise<void> {

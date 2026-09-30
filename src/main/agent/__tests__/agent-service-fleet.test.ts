@@ -16,7 +16,9 @@ import { SubagentManager, type TaskRun } from '../subagents/manager';
 import type { StreamOutcome, StreamRequest, WireToolCall } from '../completions';
 import { resolveTarget as route, type ResolvedTarget } from '../model-routing';
 import type { FleetHost } from '../fleet/host';
+import type { FleetActDeps } from '../fleet/capability';
 import { FleetLedgerStore } from '../fleet/ledger-store';
+import { SendLimiter } from '../fleet/send';
 
 vi.mock('../../logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })
@@ -97,6 +99,7 @@ describe('orchestrator mode', () => {
     calls?: WireToolCall[][];
     history?: AgentSendRequest['history'];
     ledger?: FleetLedgerStore;
+    act?: FleetActDeps;
   }): Promise<StreamRequest[]> {
     const rounds: StreamRequest[] = [];
     const request: AgentSendRequest = {
@@ -133,7 +136,11 @@ describe('orchestrator mode', () => {
         fleet:
           options.wired === false
             ? null
-            : { host: HOST, ledger: options.ledger ?? new FleetLedgerStore(dir) },
+            : {
+                host: HOST,
+                ledger: options.ledger ?? new FleetLedgerStore(dir),
+                act: options.act ?? null
+              },
         getApiKey: () => 'sk-or-test',
         resolveTarget: RESOLVE_TARGET,
         emit,
@@ -326,5 +333,25 @@ describe('orchestrator mode', () => {
   it('sends no ledger to a regular pane', async () => {
     const [round] = await turn({ orchestrator: false });
     expect(JSON.stringify(round.messages)).not.toContain('Your fleet ledger');
+  });
+
+  it('offers fleet_send once it is wired up, and never to a subagent', async () => {
+    const act: FleetActDeps = {
+      prompter: {
+        refusal: () => null,
+        send: async () => Promise.resolve({ ok: false, reason: 'unused' })
+      },
+      limiter: new SendLimiter()
+    };
+    const [round] = await turn({
+      orchestrator: true,
+      act,
+      calls: [[call('task', { agent: 'fleet-analyst', prompt: 'read abcdef12' })]]
+    });
+    expect(names(round)).toContain('fleet_send');
+    expect(system(round)).toContain('`fleet_send` types a prompt into a session');
+    await vi.waitFor(() => expect(runs).toHaveLength(1));
+    expect(runs[0].fleet?.send).toBeNull();
+    expect(runs[0].tools).not.toContain('fleet_send');
   });
 });

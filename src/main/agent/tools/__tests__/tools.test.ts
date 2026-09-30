@@ -56,6 +56,7 @@ const ctx = (threadId = 'thread-1', signal = new AbortController().signal): Agen
   handOff: (command) => handedOff.push(command),
   approve: async () => Promise.resolve(true),
   wasRefused: (command) => refused.includes(command),
+  approveFleet: async () => Promise.resolve(false),
   // No image model, which is the default and what every test here runs under.
   // The image tool has its own file.
   generateImage: null,

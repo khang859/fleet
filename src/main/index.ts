@@ -89,6 +89,7 @@ import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
 import { createFleetHost } from './agent/fleet/host';
 import { FleetLedgerStore } from './agent/fleet/ledger-store';
+import { SendLimiter } from './agent/fleet/send';
 import { createGitRunner } from './claude-sessions/git-probe';
 import { completeOnce } from './agent/completions';
 import { AgentModelCatalog } from './agent/models-catalog';
@@ -1554,7 +1555,23 @@ void app.whenReady().then(async () => {
     mcp: agentMcp,
     subagents: agentSubagents,
     schedules: agentSchedules,
-    fleet: { host: fleetHost, ledger: fleetLedger },
+    fleet: {
+      host: fleetHost,
+      ledger: fleetLedger,
+      act: {
+        // Read through lazily, for the reason the host is.
+        prompter: {
+          refusal: (sessionId) =>
+            claudeSessions?.sendRefusal(sessionId) ?? 'Session tracking is not running.',
+          send: async (sessionId, text) =>
+            claudeSessions?.sendPrompt(sessionId, text, 'orchestrator') ?? {
+              ok: false,
+              reason: 'Session tracking is not running.'
+            }
+        },
+        limiter: new SendLimiter()
+      }
+    },
     imageCapabilities: (modelId) => agentCatalog.cachedImageModel(modelId),
     emit: agentEmit
   });

@@ -1557,6 +1557,13 @@ export class AgentService {
               onUsage: (usage) => account.side(usage)
             })) === 'run',
           wasRefused: (command) => this.deps.gate.wasRefused(streamId, command),
+          approveFleet: async (ask) =>
+            (await this.deps.gate.checkFleet({
+              ...ask,
+              streamId,
+              callId: call.id,
+              signal: ctx.signal
+            })) === 'run',
           // Built per call rather than per turn, because a partial render has
           // to land on the row that asked for it, and only here is that known.
           generateImage: this.imageGenerator(ctx, streamId, call.id),

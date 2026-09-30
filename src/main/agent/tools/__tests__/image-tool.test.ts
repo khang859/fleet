@@ -45,6 +45,7 @@ const ctx = (generateImage: AgentToolContext['generateImage']): AgentToolContext
   handOff: () => {},
   approve: async () => Promise.resolve(true),
   wasRefused: () => false,
+  approveFleet: async () => Promise.resolve(false),
   generateImage,
   fetchUrl: null,
   mcp: null,
