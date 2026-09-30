@@ -1,15 +1,20 @@
 import { describe, it, expect, vi } from 'vitest';
-import { CopilotPaneActivity, phaseToActivityState } from '../pane-activity';
-import type { CopilotSession, CopilotSessionPhase } from '../../../shared/types';
+import { PaneActivityBridge, phaseToActivityState } from '../pane-activity-bridge';
+import type { ClaudeSession, ClaudeSessionPhase } from '../../../shared/claude-sessions';
 
-function session(overrides: Partial<CopilotSession> = {}): CopilotSession {
+function session(overrides: Partial<ClaudeSession> = {}): ClaudeSession {
   return {
     sessionId: 'session-1',
+    paneId: 'pane-1',
+    epoch: 1,
     cwd: '/repo',
     projectName: 'repo',
     phase: 'processing',
     waitingKind: null,
+    phaseSince: 0,
     pid: 4242,
+    transcriptPath: null,
+    configDir: null,
     pendingPermissions: [],
     lastActivity: 0,
     createdAt: 0,
@@ -17,124 +22,76 @@ function session(overrides: Partial<CopilotSession> = {}): CopilotSession {
   };
 }
 
+const change = (s: ClaudeSession | null, sessionId = s?.sessionId ?? 'session-1') => ({
+  sessionId,
+  session: s,
+  event: null
+});
+
 describe('phaseToActivityState', () => {
-  const cases: Array<[CopilotSessionPhase, string | null]> = [
+  it.each<[ClaudeSessionPhase, string | null]>([
     ['processing', 'working'],
     ['compacting', 'working'],
     ['waitingForApproval', 'needs_me'],
     ['waitingForInput', 'needs_me'],
-    ['idle', 'idle'],
+    ['starting', 'idle'],
     ['ended', null]
-  ];
-
-  for (const [phase, expected] of cases) {
-    it(`maps ${phase} to ${expected}`, () => {
-      expect(phaseToActivityState(phase)).toBe(expected);
-    });
-  }
+  ])('maps %s to %s', (phase, expected) => {
+    expect(phaseToActivityState(phase)).toBe(expected);
+  });
 });
 
-describe('CopilotPaneActivity', () => {
-  function setup(findPane: (pid: number) => string | null = () => 'pane-1') {
+describe('PaneActivityBridge', () => {
+  function setup() {
     const setHookState = vi.fn();
-    const findPaneForPid = vi.fn(findPane);
-    const isAlive = vi.fn<(pid: number) => boolean>().mockReturnValue(true);
-    return {
-      setHookState,
-      findPaneForPid,
-      isAlive,
-      bridge: new CopilotPaneActivity(setHookState, findPaneForPid, isAlive)
-    };
+    return { setHookState, bridge: new PaneActivityBridge(setHookState) };
   }
 
   it('pushes the session phase onto its pane', () => {
     const { bridge, setHookState } = setup();
-
-    bridge.sync([session({ phase: 'waitingForApproval' })]);
-
+    bridge.apply(change(session({ phase: 'waitingForApproval' })));
     expect(setHookState).toHaveBeenCalledWith('pane-1', 'needs_me', 4242);
   });
 
-  it('releases a pane whose agent process is gone instead of re-asserting it', () => {
-    // A Claude quit with `/exit` leaves no SessionEnd, so the store keeps the
-    // session. Any later hook event from another agent runs sync over the whole
-    // list, and without a liveness check the dead state would take the pane again.
-    const { bridge, setHookState, isAlive } = setup();
-    bridge.sync([session({ phase: 'waitingForApproval' })]);
-    setHookState.mockClear();
-
-    isAlive.mockReturnValue(false);
-    bridge.sync([session({ phase: 'waitingForApproval' })]);
-
-    expect(setHookState).toHaveBeenCalledWith('pane-1', null, 4242);
-    expect(setHookState).not.toHaveBeenCalledWith('pane-1', 'needs_me', 4242);
-  });
-
-  it('releases the pane when the session goes away', () => {
+  it('releases the pane when the session ends or leaves', () => {
     const { bridge, setHookState } = setup();
-    bridge.sync([session()]);
+    bridge.apply(change(session()));
+    bridge.apply(change(session({ phase: 'ended' })));
+    expect(setHookState).toHaveBeenLastCalledWith('pane-1', null);
+
+    setHookState.mockClear();
+    bridge.apply(change(null));
+    expect(setHookState).not.toHaveBeenCalled();
+  });
+
+  it('keeps the pane for the session that replaced the one that ended', () => {
+    const { bridge, setHookState } = setup();
+    bridge.apply(change(session({ sessionId: 'old' })));
+    bridge.apply(change(session({ sessionId: 'new', phase: 'waitingForInput' })));
     setHookState.mockClear();
 
-    bridge.sync([]);
+    bridge.apply(change(session({ sessionId: 'old', phase: 'ended' })));
 
+    expect(setHookState).not.toHaveBeenCalled();
+  });
+
+  it('follows a session that moved to another pane', () => {
+    const { bridge, setHookState } = setup();
+    bridge.apply(change(session()));
+    bridge.apply(change(session({ paneId: 'pane-2' })));
     expect(setHookState).toHaveBeenCalledWith('pane-1', null);
-  });
-
-  it('resolves a pane once however many hook events arrive', () => {
-    const { bridge, findPaneForPid } = setup();
-
-    bridge.sync([session({ phase: 'processing' })]);
-    bridge.sync([session({ phase: 'waitingForApproval' })]);
-    bridge.sync([session({ phase: 'idle' })]);
-
-    expect(findPaneForPid).toHaveBeenCalledTimes(1);
-  });
-
-  it('caches a miss so a session outside Fleet stops costing a process walk', () => {
-    const { bridge, findPaneForPid, setHookState } = setup(() => null);
-
-    bridge.sync([session()]);
-    bridge.sync([session()]);
-
-    expect(findPaneForPid).toHaveBeenCalledTimes(1);
-    expect(setHookState).not.toHaveBeenCalled();
-  });
-
-  it('retries a session that has no PID yet', () => {
-    const { bridge, findPaneForPid, setHookState } = setup();
-
-    bridge.sync([session({ pid: undefined })]);
-    expect(findPaneForPid).not.toHaveBeenCalled();
-    expect(setHookState).not.toHaveBeenCalled();
-
-    bridge.sync([session({ pid: 4242 })]);
-    expect(setHookState).toHaveBeenCalledWith('pane-1', 'working', 4242);
-  });
-
-  it('keeps sessions on separate panes apart', () => {
-    const { setHookState } = setup();
-    const bridge = new CopilotPaneActivity(
-      setHookState,
-      (pid) => (pid === 1 ? 'pane-1' : 'pane-2'),
-      () => true
-    );
-
-    bridge.sync([
-      session({ sessionId: 'a', pid: 1, phase: 'processing' }),
-      session({ sessionId: 'b', pid: 2, phase: 'waitingForApproval' })
-    ]);
-
-    expect(setHookState).toHaveBeenCalledWith('pane-1', 'working', 1);
-    expect(setHookState).toHaveBeenCalledWith('pane-2', 'needs_me', 2);
+    expect(setHookState).toHaveBeenLastCalledWith('pane-2', 'working', 4242);
   });
 
   it('releases every pane on clear', () => {
     const { bridge, setHookState } = setup();
-    bridge.sync([session()]);
+    bridge.apply(change(session()));
+    bridge.apply(change(session({ sessionId: 'b', paneId: 'pane-2' })));
     setHookState.mockClear();
-
     bridge.clear();
-
-    expect(setHookState).toHaveBeenCalledWith('pane-1', null);
+    expect(setHookState.mock.calls).toEqual([
+      ['pane-1', null],
+      ['pane-2', null]
+    ]);
   });
 });

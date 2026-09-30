@@ -2,14 +2,13 @@ import { ipcMain, type BrowserWindow } from 'electron';
 import { execSync } from 'child_process';
 import { IPC_CHANNELS } from '../../shared/constants';
 import { createLogger } from '../logger';
-import type { CopilotSessionStore } from './session-store';
-import type { CopilotSocketServer } from './socket-server';
 import type { CopilotWindow } from './copilot-window';
 import type { SettingsStore } from '../settings-store';
-import type { LayoutStore } from '../layout-store';
 import type { ConversationReader } from './conversation-reader';
 import type { PtyManager } from '../pty-manager';
-import * as hookInstaller from './hook-installer';
+import type { ClaudeSessionsService } from '../claude-sessions';
+import * as hookInstaller from '../claude-sessions/hook-installer';
+import { transcriptPathFor } from '../claude-sessions/transcript-path';
 
 const log = createLogger('copilot:ipc');
 
@@ -22,67 +21,26 @@ function isClaudeInstalled(): boolean {
   }
 }
 
-/**
- * Find the Fleet pane whose shell is the parent of the given PID.
- * Returns the paneId or null if no match found.
- */
-export function findPaneForPid(ptyManager: PtyManager, pid: number): string | null {
-  const paneIds = ptyManager.paneIds();
-  const ptyPids = paneIds.map((id) => ({ paneId: id, pid: ptyManager.getPid(id) }));
-  log.debug('findPaneForPid', { claudePid: pid, ptyPids });
-
-  try {
-    // Walk up the process tree to find which PTY shell is an ancestor
-    let currentPid = pid;
-    for (let depth = 0; depth < 5; depth++) {
-      const ppid = parseInt(
-        execSync(`ps -o ppid= -p ${currentPid}`, { timeout: 2000 }).toString().trim(),
-        10
-      );
-      log.debug('ppid lookup', { currentPid, ppid, depth });
-      if (isNaN(ppid) || ppid <= 1) break;
-
-      for (const paneId of paneIds) {
-        if (ptyManager.getPid(paneId) === ppid) {
-          log.debug('found matching pane', { paneId, ppid, depth });
-          return paneId;
-        }
-      }
-      currentPid = ppid;
-    }
-  } catch (err) {
-    log.error('findPaneForPid failed', { error: String(err) });
-  }
-  return null;
-}
-
 export function registerCopilotIpcHandlers(
-  sessionStore: CopilotSessionStore,
-  socketServer: CopilotSocketServer,
+  claudeSessions: ClaudeSessionsService,
   copilotWindow: CopilotWindow,
   settingsStore: SettingsStore,
   conversationReader: ConversationReader,
   ptyManager: PtyManager,
-  layoutStore: LayoutStore,
   getMainWindow: () => BrowserWindow | null,
   onSettingsChanged?: () => Promise<void>
 ): void {
-  // Wire up workspace resolution: PID → paneId → workspaceId
-  socketServer.setWorkspaceResolver((pid: number) => {
-    const paneId = findPaneForPid(ptyManager, pid);
-    if (!paneId) return null;
-    return layoutStore.findWorkspaceForPane(paneId);
-  });
+  const registry = claudeSessions.registry;
 
   ipcMain.handle(IPC_CHANNELS.COPILOT_SESSIONS, () => {
-    return sessionStore.getSessions();
+    return registry.list();
   });
 
   ipcMain.handle(
     IPC_CHANNELS.COPILOT_RESPOND_PERMISSION,
     (_event, args: { toolUseId: string; decision: 'allow' | 'deny'; reason?: string }) => {
       log.info('permission response', { toolUseId: args.toolUseId, decision: args.decision });
-      return socketServer.respondToPermission(args.toolUseId, args.decision, args.reason);
+      return claudeSessions.respondToPermission(args.toolUseId, args.decision, args.reason);
     }
   );
 
@@ -118,22 +76,6 @@ export function registerCopilotIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.COPILOT_HOOK_STATUS, () => {
     const settings = settingsStore.get();
     const configDir = settings.copilot.claudeConfigDir || undefined;
-    return hookInstaller.isInstalled(configDir);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.COPILOT_INSTALL_HOOKS_TO, (_event, configDir: string) => {
-    log.debug('ipc:copilot:install-hooks-to', { configDir });
-    hookInstaller.install(configDir);
-    return true;
-  });
-
-  ipcMain.handle(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS_FROM, (_event, configDir: string) => {
-    log.debug('ipc:copilot:uninstall-hooks-from', { configDir });
-    hookInstaller.uninstall(configDir);
-    return true;
-  });
-
-  ipcMain.handle(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, (_event, configDir: string) => {
     return hookInstaller.isInstalled(configDir);
   });
 
@@ -180,8 +122,17 @@ export function registerCopilotIpcHandlers(
   ipcMain.handle(
     IPC_CHANNELS.COPILOT_CHAT_HISTORY,
     (_event, args: { sessionId: string; cwd: string }) => {
-      const messages = conversationReader.getMessages(args.sessionId, args.cwd);
-      conversationReader.watch(args.sessionId, args.cwd);
+      const session = registry.get(args.sessionId);
+      const filePath = transcriptPathFor(
+        session ?? {
+          sessionId: args.sessionId,
+          cwd: args.cwd,
+          transcriptPath: null,
+          configDir: null
+        }
+      );
+      const messages = conversationReader.getMessages(args.sessionId, filePath);
+      conversationReader.watch(args.sessionId, filePath);
       return messages;
     }
   );
@@ -189,47 +140,33 @@ export function registerCopilotIpcHandlers(
   ipcMain.handle(
     IPC_CHANNELS.COPILOT_SEND_MESSAGE,
     (_event, args: { sessionId: string; message: string }) => {
-      const session = sessionStore.getSession(args.sessionId);
-      if (!session?.pid) {
-        log.warn('no PID for session, cannot send message', { sessionId: args.sessionId });
-        return false;
-      }
-      const paneId = findPaneForPid(ptyManager, session.pid);
-      if (!paneId) {
-        log.warn('no Fleet pane found for session PID', {
-          sessionId: args.sessionId,
-          pid: session.pid
-        });
+      const session = registry.get(args.sessionId);
+      if (!session || session.phase === 'ended') {
+        log.warn('no live session, cannot send message', { sessionId: args.sessionId });
         return false;
       }
       // Send text then carriage return (Enter), matching what terminal emulators send
-      ptyManager.write(paneId, args.message + '\r');
+      ptyManager.write(session.paneId, args.message + '\r');
       log.info('message sent via PTY master', {
         sessionId: args.sessionId,
-        paneId,
-        pid: session.pid
+        paneId: session.paneId
       });
       return true;
     }
   );
 
   ipcMain.handle(IPC_CHANNELS.COPILOT_FOCUS_TERMINAL, (_event, args: { sessionId: string }) => {
-    const session = sessionStore.getSession(args.sessionId);
-    if (!session?.pid) {
-      log.warn('no PID for session, cannot focus terminal', { sessionId: args.sessionId });
-      return false;
-    }
-    const paneId = findPaneForPid(ptyManager, session.pid);
-    if (!paneId) {
-      log.warn('no Fleet pane found for session', { sessionId: args.sessionId, pid: session.pid });
+    const session = registry.get(args.sessionId);
+    if (!session) {
+      log.warn('unknown session, cannot focus terminal', { sessionId: args.sessionId });
       return false;
     }
     const win = getMainWindow();
     if (win) {
       win.show();
       win.focus();
-      win.webContents.send('fleet:focus-pane', { paneId });
-      log.info('focused terminal pane', { sessionId: args.sessionId, paneId });
+      win.webContents.send('fleet:focus-pane', { paneId: session.paneId });
+      log.info('focused terminal pane', { sessionId: args.sessionId, paneId: session.paneId });
     }
     copilotWindow.setExpanded(false);
     return true;

@@ -134,6 +134,17 @@ describe('SettingsStore settings merge', () => {
     expect(store.get().teleprompter.fontSize).toBe(28);
   });
 
+  it('tracks Claude sessions by default, including for a file saved before the setting', () => {
+    store.set({ annotate: { retentionDays: 5 } });
+    expect(store.get().claudeSessions.trackSessions).toBe(true);
+  });
+
+  it('keeps session tracking off once the user turns it off', () => {
+    store.set({ claudeSessions: { trackSessions: false } });
+    store.set({ copilot: { enabled: true } });
+    expect(store.get().claudeSessions.trackSessions).toBe(false);
+  });
+
   it('keeps the other teleprompter hotkeys when one is changed', () => {
     store.set({ teleprompter: { hotkeys: { next: 'Control+Alt+N' } } });
     store.set({ teleprompter: { fontSize: 40 } });

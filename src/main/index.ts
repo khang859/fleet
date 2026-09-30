@@ -65,7 +65,8 @@ import type {
   UpdateStatus
 } from '../shared/types';
 import { createLogger } from './logger';
-import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
+import { initCopilot, stopCopilot } from './copilot/index';
+import { ClaudeSessionsService } from './claude-sessions';
 import { createTeleprompter } from './teleprompter/index';
 import type { TeleprompterService } from './teleprompter/service';
 import { restoreDockIcon } from './dock-icon';
@@ -143,6 +144,7 @@ let agentMcp: AgentMcpManager | undefined;
 let agentSubagents: SubagentManager | null = null;
 let agentScheduleTimer: ScheduleTimer | null = null;
 let teleprompter: TeleprompterService | null = null;
+let claudeSessions: ClaudeSessionsService | null = null;
 /** The periodic update check, cleared on the way out with the other timers. */
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -758,6 +760,19 @@ void app.whenReady().then(async () => {
 
   teleprompter = createTeleprompter(settingsStore);
 
+  // Tracks every Claude Code session in a Fleet pane, on macOS and Linux,
+  // whether or not the copilot overlay is on.
+  claudeSessions = new ClaudeSessionsService({
+    platform: process.platform,
+    homeDir: homedir(),
+    getSettings: () => settingsStore.get(),
+    panes: ptyManager,
+    workspaceOf: (paneId) => layoutStore.findWorkspaceForPane(paneId),
+    setHookState: (paneId, state, pid) => activityTracker.setHookState(paneId, state, pid),
+    ipc: ipcMain
+  });
+  void claudeSessions.start();
+
   registerIpcHandlers(
     ptyManager,
     layoutStore,
@@ -777,7 +792,8 @@ void app.whenReady().then(async () => {
     envSyncManager,
     envSyncSecrets,
     ptyOscBridge,
-    teleprompter
+    teleprompter,
+    claudeSessions
   );
 
   // Clean up old annotations based on retention settings
@@ -805,7 +821,7 @@ void app.whenReady().then(async () => {
   });
 
   // Start copilot (macOS only, gated internally)
-  await initCopilot(settingsStore, ptyManager, layoutStore, () => mainWindow, activityTracker);
+  await initCopilot(settingsStore, claudeSessions, ptyManager, () => mainWindow);
 
   // Must happen AFTER copilot init because the copilot window's
   // setVisibleOnAllWorkspaces triggers an Electron bug (electron/electron#26350)
@@ -850,8 +866,7 @@ void app.whenReady().then(async () => {
     cwdPoller.stopPolling(event.paneId);
     activityTracker.untrackPane(event.paneId);
     updateChrome();
-    // Give child processes time to die after PTY shell is killed, then prune
-    setTimeout(() => pruneDeadCopilotSessions(), 500);
+    claudeSessions?.onPaneClosed(event.paneId);
   });
 
   // Forward CWD changes to renderer and keep ptyManager in sync
@@ -1637,6 +1652,7 @@ void app.whenReady().then(async () => {
 
 function shutdownAll(): void {
   void stopCopilot();
+  void claudeSessions?.stop();
   teleprompter?.destroy();
   ptyManager.killAll();
   cwdPoller.stopAll();

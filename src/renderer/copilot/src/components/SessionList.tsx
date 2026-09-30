@@ -17,7 +17,7 @@ function sessionStatus(session: CopilotSession): BadgeStatus {
     case 'compacting':
       return 'running';
     case 'waitingForInput':
-    case 'idle':
+    case 'starting':
       return 'idle';
     case 'waitingForApproval':
       return 'permission';

@@ -174,6 +174,7 @@ import { grepFiles } from './file-grep';
 import { searchRecentImages } from './recent-images';
 import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor';
 import { onCopilotSettingsChanged } from './copilot/index';
+import type { ClaudeSessionsService } from './claude-sessions';
 import type { EnvSyncManager } from './env-sync/env-sync-manager';
 import type { EnvSyncSecrets } from './env-sync/env-sync-secrets';
 import { readConfig, writeConfig, findNearestConfig } from './env-sync/env-sync-config';
@@ -223,7 +224,8 @@ export function registerIpcHandlers(
   envSyncManager: EnvSyncManager,
   envSyncSecrets: EnvSyncSecrets,
   ptyOscBridge: PtyOscBridge,
-  teleprompter: TeleprompterService
+  teleprompter: TeleprompterService,
+  claudeSessions: ClaudeSessionsService
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -441,6 +443,10 @@ export function registerIpcHandlers(
     if (settings.copilot) {
       await onCopilotSettingsChanged();
     }
+    // Tracking toggled, or a config folder added that needs Fleet's hooks.
+    if (settings.claudeSessions || settings.copilot) {
+      await claudeSessions.onSettingsChanged();
+    }
     if (settings.teleprompter) {
       teleprompter.onSettingsChanged();
     }
@@ -463,7 +469,10 @@ export function registerIpcHandlers(
         cleared: !req.claudeConfigDir,
         changed
       });
-      if (changed) await onCopilotSettingsChanged();
+      if (changed) {
+        await onCopilotSettingsChanged();
+        await claudeSessions.onSettingsChanged();
+      }
       return { changed };
     }
   );

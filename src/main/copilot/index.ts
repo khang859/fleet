@@ -1,37 +1,37 @@
 import { createLogger } from '../logger';
-import { CopilotSessionStore } from './session-store';
-import { CopilotSocketServer } from './socket-server';
 import { CopilotWindow } from './copilot-window';
 import { ConversationReader } from './conversation-reader';
-import { registerCopilotIpcHandlers, findPaneForPid } from './ipc-handlers';
-import { CopilotPaneActivity } from './pane-activity';
-import * as hookInstaller from './hook-installer';
+import { registerCopilotIpcHandlers } from './ipc-handlers';
 import type { SettingsStore } from '../settings-store';
 import type { BrowserWindow } from 'electron';
 import type { PtyManager } from '../pty-manager';
-import type { LayoutStore } from '../layout-store';
-import type { ActivityTracker } from '../activity-tracker';
+import type { ClaudeSessionsService } from '../claude-sessions';
 import { IPC_CHANNELS } from '../../shared/constants';
 
 const log = createLogger('copilot');
 
 type CopilotServiceState = 'idle' | 'starting' | 'running' | 'stopping';
 
-let sessionStore: CopilotSessionStore | null = null;
-let socketServer: CopilotSocketServer | null = null;
+let claudeSessions: ClaudeSessionsService | null = null;
 let copilotWindow: CopilotWindow | null = null;
 let conversationReader: ConversationReader | null = null;
-let paneActivity: CopilotPaneActivity | null = null;
+let unsubscribe: (() => void) | null = null;
+/** Withdraws the copilot as an answerer of permission requests. */
+let stopAnswering: (() => void) | null = null;
 let serviceState: CopilotServiceState = 'idle';
 let cachedSettingsStore: SettingsStore | null = null;
 /** Queued toggle to run after current transition completes */
 let pendingToggle: boolean | null = null;
+
+/**
+ * The copilot mascot: a macOS overlay showing the sessions the Claude session
+ * registry tracks. Tracking itself runs without it, on every platform.
+ */
 export async function initCopilot(
   settingsStore: SettingsStore,
+  sessions: ClaudeSessionsService,
   ptyManager: PtyManager,
-  layoutStore: LayoutStore,
-  getMainWindow: () => BrowserWindow | null,
-  activityTracker: ActivityTracker
+  getMainWindow: () => BrowserWindow | null
 ): Promise<void> {
   log.info('initCopilot called', { platform: process.platform });
 
@@ -41,22 +41,15 @@ export async function initCopilot(
   }
 
   cachedSettingsStore = settingsStore;
-  sessionStore = new CopilotSessionStore();
-  socketServer = new CopilotSocketServer(sessionStore);
+  claudeSessions = sessions;
   copilotWindow = new CopilotWindow();
   conversationReader = new ConversationReader();
-  paneActivity = new CopilotPaneActivity(
-    (paneId, state, pid) => activityTracker.setHookState(paneId, state, pid),
-    (pid) => findPaneForPid(ptyManager, pid)
-  );
   registerCopilotIpcHandlers(
-    sessionStore,
-    socketServer,
+    sessions,
     copilotWindow,
     settingsStore,
     conversationReader,
     ptyManager,
-    layoutStore,
     getMainWindow,
     onCopilotSettingsChanged
   );
@@ -110,12 +103,8 @@ async function drainPendingToggle(): Promise<void> {
 }
 
 async function startCopilotServices(): Promise<void> {
-  if (!sessionStore || !socketServer || !copilotWindow) {
-    log.error('startCopilotServices: missing dependencies', {
-      hasSessionStore: !!sessionStore,
-      hasSocketServer: !!socketServer,
-      hasCopilotWindow: !!copilotWindow
-    });
+  if (!claudeSessions || !copilotWindow) {
+    log.error('startCopilotServices: missing dependencies');
     return;
   }
 
@@ -126,22 +115,13 @@ async function startCopilotServices(): Promise<void> {
     copilotWindow?.send(IPC_CHANNELS.COPILOT_CHAT_UPDATED, { sessionId, messages });
   });
 
-  sessionStore.setOnChange(() => {
-    if (!sessionStore || !copilotWindow) {
-      return;
-    }
-
-    const sessions = sessionStore.getSessions();
-    copilotWindow.send(IPC_CHANNELS.COPILOT_SESSIONS, sessions);
-
-    // The hooks know what each agent is really doing; hand that to the main
-    // window's pane badges, which otherwise guess from terminal output.
-    paneActivity?.sync(sessions);
+  const registry = claudeSessions.registry;
+  unsubscribe = registry.subscribe(() => {
+    const sessions = registry.list();
+    copilotWindow?.send(IPC_CHANNELS.COPILOT_SESSIONS, sessions);
 
     if (conversationReader) {
-      const activeSessions = sessionStore.getSessions();
-      const activeIds = new Set(activeSessions.map((s) => s.sessionId));
-
+      const activeIds = new Set(sessions.map((s) => s.sessionId));
       for (const watchedId of conversationReader.getWatchedSessionIds()) {
         if (activeIds.has(watchedId)) {
           conversationReader.refresh(watchedId);
@@ -152,45 +132,19 @@ async function startCopilotServices(): Promise<void> {
     }
   });
 
-  // Hook installation failure should not prevent copilot from starting —
-  // the socket server and window are still useful for manual hook install later
-  if (!hookInstaller.isInstalled()) {
-    try {
-      log.info('installing hooks');
-      hookInstaller.install();
-    } catch (err) {
-      log.error('failed to install hooks', { error: String(err) });
-    }
-  } else {
-    try {
-      hookInstaller.syncScript();
-    } catch (err) {
-      log.error('failed to sync hook script', { error: String(err) });
-    }
-  }
-
-  try {
-    log.info('starting socket server');
-    await socketServer.start();
-  } catch (err) {
-    log.error('failed to start socket server', { error: String(err) });
-    serviceState = 'idle';
-    await drainPendingToggle();
-    return;
-  }
-
   try {
     log.info('creating copilot window');
     copilotWindow.create();
   } catch (err) {
     log.error('failed to create copilot window', { error: String(err) });
-    // Socket is running but window failed — stop socket too
-    await socketServer.stop();
+    unsubscribe();
+    unsubscribe = null;
     serviceState = 'idle';
     await drainPendingToggle();
     return;
   }
 
+  stopAnswering = claudeSessions.addPermissionAnswerer();
   serviceState = 'running';
   log.info('copilot started successfully');
   await drainPendingToggle();
@@ -200,13 +154,10 @@ async function stopCopilotServices(): Promise<void> {
   serviceState = 'stopping';
   log.info('stopping copilot services');
 
-  if (socketServer) {
-    try {
-      await socketServer.stop();
-    } catch (err) {
-      log.error('error stopping socket server', { error: String(err) });
-    }
-  }
+  unsubscribe?.();
+  unsubscribe = null;
+  stopAnswering?.();
+  stopAnswering = null;
   if (copilotWindow) {
     try {
       copilotWindow.destroy();
@@ -221,10 +172,6 @@ async function stopCopilotServices(): Promise<void> {
       log.error('error disposing conversation reader', { error: String(err) });
     }
   }
-  if (sessionStore) {
-    sessionStore.clear();
-  }
-  paneActivity?.clear();
 
   serviceState = 'idle';
   log.info('copilot services stopped');
@@ -233,9 +180,4 @@ async function stopCopilotServices(): Promise<void> {
 
 export async function stopCopilot(): Promise<void> {
   await stopCopilotServices();
-}
-
-/** Remove copilot sessions whose PID is no longer alive. */
-export function pruneDeadCopilotSessions(): void {
-  sessionStore?.pruneDeadSessions();
 }

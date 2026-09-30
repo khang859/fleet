@@ -5,6 +5,13 @@ import type { UserGroupColor } from './group-colors';
 import type { AiSettings } from './agent-types';
 import type { RemoteHost } from './remote-ssh-types';
 import type { TeleprompterSettings } from './teleprompter';
+import type {
+  ClaudePendingPermission,
+  ClaudeSession,
+  ClaudeSessionPhase,
+  ClaudeToolInfo,
+  ClaudeWaitingKind
+} from './claude-sessions';
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends Array<infer U>
@@ -285,6 +292,13 @@ export type FleetSettings = {
     socketPath: string;
   };
   copilot: CopilotSettings;
+  claudeSessions: {
+    /**
+     * Track the Claude Code sessions running in Fleet panes. On by default; turning
+     * it off removes Fleet's hook entries from every Claude config folder Fleet uses.
+     */
+    trackSessions: boolean;
+  };
   annotate: {
     retentionDays: number;
   };
@@ -318,49 +332,12 @@ export type AnnotationMeta = {
 
 // ── Copilot (Claude Code Session Monitor) ──────────────────────────────────
 
-export type CopilotSessionPhase =
-  | 'idle'
-  | 'processing'
-  | 'waitingForInput'
-  | 'waitingForApproval'
-  | 'compacting'
-  | 'ended';
-
-export type CopilotToolInfo = {
-  toolName: string;
-  toolInput: Record<string, unknown>;
-  toolUseId?: string;
-};
-
-export type CopilotPendingPermission = {
-  sessionId: string;
-  toolUseId: string;
-  tool: CopilotToolInfo;
-  receivedAt: number;
-};
-
-/**
- * What a session in `waitingForInput` is waiting for: its normal prompt, or an
- * answer to an AskUserQuestion dialog. Typing free text into the dialog would
- * answer it with garbage, so anything that sends input must check this.
- */
-export type CopilotWaitingKind = 'prompt' | 'question';
-
-export type CopilotSession = {
-  sessionId: string;
-  cwd: string;
-  projectName: string;
-  phase: CopilotSessionPhase;
-  /** Set only while `phase` is `waitingForInput`. */
-  waitingKind: CopilotWaitingKind | null;
-  pid?: number;
-  tty?: string;
-  workspaceId?: string;
-  workspaceName?: string;
-  pendingPermissions: CopilotPendingPermission[];
-  lastActivity: number;
-  createdAt: number;
-};
+// The session record is owned by `claude-sessions`; the copilot names alias it.
+export type CopilotSessionPhase = ClaudeSessionPhase;
+export type CopilotToolInfo = ClaudeToolInfo;
+export type CopilotPendingPermission = ClaudePendingPermission;
+export type CopilotWaitingKind = ClaudeWaitingKind;
+export type CopilotSession = ClaudeSession;
 
 export type CopilotWorkspaceOverride = {
   claudeConfigDir?: string;

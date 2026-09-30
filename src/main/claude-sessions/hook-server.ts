@@ -1,94 +1,48 @@
 import { createServer, type Server, type Socket } from 'net';
 import { unlinkSync, existsSync, chmodSync } from 'fs';
 import { createLogger } from '../logger';
-import { isRecord } from '../../shared/is-record';
 import { COPILOT_SOCKET_PATH } from '../../shared/constants';
-import type { CopilotSessionStore, HookEvent } from './session-store';
+import { parseHookEvent, type HookEvent } from './hook-events';
 
-const log = createLogger('copilot:socket');
+const log = createLogger('claude-sessions:hook-server');
 
-type PendingSocket = {
-  sessionId: string;
-  toolUseId: string;
-  socket: Socket;
-};
+/**
+ * Handles one hook event. Returns true when it kept the connection to answer
+ * later (a permission request); otherwise the server closes it.
+ */
+export type HookEventHandler = (event: HookEvent, client: Socket) => boolean;
 
-function parseHookEvent(buffer: string): HookEvent | null {
-  let data: unknown;
-  try {
-    data = JSON.parse(buffer);
-  } catch {
-    return null;
-  }
-  if (!isRecord(data)) return null;
-  const { session_id, cwd, event, status } = data;
-  if (
-    typeof session_id !== 'string' ||
-    typeof cwd !== 'string' ||
-    typeof event !== 'string' ||
-    typeof status !== 'string'
-  ) {
-    return null;
-  }
-  const parsed: HookEvent = {
-    session_id,
-    cwd,
-    event,
-    status
-  };
-  const optional = data as Partial<HookEvent>;
-  if (typeof optional.pid === 'number') parsed.pid = optional.pid;
-  if (typeof optional.tty === 'string') parsed.tty = optional.tty;
-  if (typeof optional.tool === 'string') parsed.tool = optional.tool;
-  if (isRecord(optional.tool_input)) parsed.tool_input = optional.tool_input;
-  if (typeof optional.tool_use_id === 'string') parsed.tool_use_id = optional.tool_use_id;
-  if (typeof optional.notification_type === 'string')
-    parsed.notification_type = optional.notification_type;
-  if (typeof optional.message === 'string') parsed.message = optional.message;
-  return parsed;
-}
+/** How long the Go hook waits for a permission answer, plus a little slack. */
+const PERMISSION_HOLD_MS = 310_000;
 
-export class CopilotSocketServer {
+/**
+ * The unix socket the Go hook binary writes to. Each connection carries one
+ * JSON event; the hook half-closes its side, and for a permission request it
+ * waits for the answer on the same connection.
+ */
+export class HookServer {
   private server: Server | null = null;
-  private pendingSockets = new Map<string, PendingSocket>();
-  private sessionStore: CopilotSessionStore;
-  private resolveWorkspace:
-    | ((pid: number) => { workspaceId: string; workspaceName: string } | null)
-    | null = null;
 
   constructor(
-    sessionStore: CopilotSessionStore,
+    private readonly onEvent: HookEventHandler,
     private readonly socketPath: string = COPILOT_SOCKET_PATH
-  ) {
-    this.sessionStore = sessionStore;
-  }
-
-  setWorkspaceResolver(
-    resolver: (pid: number) => { workspaceId: string; workspaceName: string } | null
-  ): void {
-    this.resolveWorkspace = resolver;
-  }
+  ) {}
 
   async start(): Promise<void> {
-    if (existsSync(this.socketPath)) {
-      try {
-        unlinkSync(this.socketPath);
-      } catch {
-        log.warn('failed to remove stale socket', { path: this.socketPath });
-      }
-    }
+    this.removeSocketFile();
 
     return new Promise((resolve, reject) => {
-      this.server = createServer({ allowHalfOpen: true }, (client) =>
+      const server = createServer({ allowHalfOpen: true }, (client) =>
         this.handleConnection(client)
       );
+      this.server = server;
 
-      this.server.on('error', (err) => {
-        log.error('socket server error', { error: String(err) });
+      server.on('error', (err) => {
+        log.error('hook server error', { error: String(err) });
         reject(err);
       });
 
-      this.server.listen(this.socketPath, () => {
+      server.listen(this.socketPath, () => {
         try {
           // Owner only: whoever can connect can forge session events and answer
           // permission requests, and every hook runs as this same user.
@@ -96,89 +50,38 @@ export class CopilotSocketServer {
         } catch {
           log.warn('failed to chmod socket');
         }
-        log.info('socket server listening', { path: this.socketPath });
+        log.info('hook server listening', { path: this.socketPath });
         resolve();
       });
     });
   }
 
   async stop(): Promise<void> {
-    // Send graceful end to pending sockets before destroying
-    for (const [, pending] of this.pendingSockets) {
-      try {
-        pending.socket.end();
-      } catch {
-        // socket may already be closed
-      }
-    }
-    // Give clients 500ms to receive the FIN, then force-destroy
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    for (const [, pending] of this.pendingSockets) {
-      try {
-        pending.socket.destroy();
-      } catch {
-        // ignore
-      }
-    }
-    this.pendingSockets.clear();
-
     const server = this.server;
     if (!server) return;
+    this.server = null;
 
     const STOP_TIMEOUT_MS = 5000;
     await Promise.race([
-      new Promise<void>((resolve) => {
-        server.close(() => {
-          this.cleanupSocket();
-          log.info('socket server stopped');
-          resolve();
-        });
-      }),
-      new Promise<void>((resolve) => {
+      new Promise<void>((resolve) => server.close(() => resolve())),
+      new Promise<void>((resolve) =>
         setTimeout(() => {
-          log.warn('socket server stop timed out, forcing cleanup');
-          this.cleanupSocket();
+          log.warn('hook server stop timed out, forcing cleanup');
           resolve();
-        }, STOP_TIMEOUT_MS);
-      })
+        }, STOP_TIMEOUT_MS).unref()
+      )
     ]);
-    this.server = null;
+    this.removeSocketFile();
+    log.info('hook server stopped');
   }
 
-  private cleanupSocket(): void {
-    if (existsSync(this.socketPath)) {
-      try {
-        unlinkSync(this.socketPath);
-      } catch {
-        // ignore
-      }
-    }
-  }
-
-  respondToPermission(toolUseId: string, decision: 'allow' | 'deny', reason?: string): boolean {
-    const pending = this.pendingSockets.get(toolUseId);
-    if (!pending) {
-      log.warn('no pending socket for toolUseId', { toolUseId });
-      return false;
-    }
-
-    const response = JSON.stringify({ decision, reason: reason ?? '' });
-    let success = true;
+  private removeSocketFile(): void {
+    if (!existsSync(this.socketPath)) return;
     try {
-      pending.socket.write(response);
-      pending.socket.end();
-    } catch (err) {
-      log.error('failed to write permission response', { toolUseId, error: String(err) });
-      success = false;
-    } finally {
-      this.pendingSockets.delete(toolUseId);
-      this.sessionStore.removePermission(pending.sessionId, toolUseId);
+      unlinkSync(this.socketPath);
+    } catch {
+      log.warn('failed to remove socket file', { path: this.socketPath });
     }
-
-    if (success) {
-      log.info('permission responded', { toolUseId, decision });
-    }
-    return success;
   }
 
   private handleConnection(client: Socket): void {
@@ -189,76 +92,121 @@ export class CopilotSocketServer {
     });
 
     client.on('end', () => {
-      if (!buffer.trim()) return;
-
-      let event: HookEvent;
-      try {
-        const parsed = parseHookEvent(buffer);
-        if (!parsed) {
-          log.warn('invalid hook event', { data: buffer.substring(0, 200) });
-          return;
-        }
-        event = parsed;
-      } catch {
-        log.warn('invalid JSON from hook', { data: buffer.substring(0, 200) });
+      if (!buffer.trim()) {
+        client.end();
         return;
       }
-
+      const event = parseHookEvent(buffer);
+      if (!event) {
+        log.warn('invalid hook event', { data: buffer.substring(0, 200) });
+        client.end();
+        return;
+      }
       log.debug('hook event received', {
-        sessionId: event.session_id,
+        sessionId: event.sessionId,
         event: event.event,
         status: event.status
       });
 
-      const workspaceInfo =
-        event.pid && this.resolveWorkspace ? this.resolveWorkspace(event.pid) : null;
-      this.sessionStore.processHookEvent(event, workspaceInfo ?? undefined);
-
-      if (event.status === 'waiting_for_approval' && event.tool !== 'AskUserQuestion') {
-        const session = this.sessionStore.getSession(event.session_id);
-        const lastPermission = session?.pendingPermissions.at(-1);
-        if (lastPermission) {
-          this.pendingSockets.set(lastPermission.toolUseId, {
-            sessionId: event.session_id,
-            toolUseId: lastPermission.toolUseId,
-            socket: client
-          });
-          // The Go hook binary waits up to 300s for a response.
-          // With allowHalfOpen, the 'close' event may never fire when
-          // the binary exits. Set a timeout to force-destroy the socket
-          // so the 'close' handler can clean up stale permissions.
-          client.setTimeout(310_000);
-          log.debug('holding socket for permission', {
-            toolUseId: lastPermission.toolUseId
-          });
-          return;
-        }
+      let held = false;
+      try {
+        held = this.onEvent(event, client);
+      } catch (err) {
+        log.error('hook event handler failed', { error: String(err) });
       }
-    });
-
-    client.on('close', () => {
-      // When the hook process exits (e.g. user approved permission in terminal,
-      // or hook timed out), clean up any pending permission tied to this socket.
-      for (const [id, pending] of this.pendingSockets) {
-        if (pending.socket === client) {
-          log.info('socket closed, clearing stale permission', {
-            toolUseId: id,
-            sessionId: pending.sessionId
-          });
-          this.pendingSockets.delete(id);
-          this.sessionStore.removePermission(pending.sessionId, id);
-          break;
-        }
-      }
-    });
-
-    client.on('timeout', () => {
-      log.info('permission socket timed out, destroying');
-      client.destroy();
+      // A connection nobody will answer is closed at once, so a hook waiting
+      // for a permission answer falls back to Claude's own prompt.
+      if (!held) client.end();
     });
 
     client.on('error', (err) => {
       log.debug('client socket error', { error: String(err) });
     });
+  }
+}
+
+type HeldPermission = { sessionId: string; socket: Socket };
+
+/**
+ * Keeps the connections of hook processes waiting on a permission answer, and
+ * delivers the answer when one comes.
+ *
+ * `onReleased` fires once per held request that goes away: answered here, or
+ * dropped because the hook exited (the user answered in the terminal, or the
+ * hook timed out).
+ */
+export class PermissionBroker {
+  private readonly held = new Map<string, HeldPermission>();
+
+  constructor(
+    private readonly onReleased: (sessionId: string, toolUseId: string) => void,
+    private readonly holdMs: number = PERMISSION_HOLD_MS
+  ) {}
+
+  hold(sessionId: string, toolUseId: string, socket: Socket): void {
+    this.held.set(toolUseId, { sessionId, socket });
+    // The hook has already half-closed its side, so its exit is not seen until
+    // something is written. The timeout destroys the socket so 'close' fires.
+    socket.setTimeout(this.holdMs);
+    socket.on('timeout', () => socket.destroy());
+    socket.on('close', () => {
+      const current = this.held.get(toolUseId);
+      if (current?.socket !== socket) return;
+      log.info('permission hook went away', { toolUseId, sessionId });
+      this.release(toolUseId);
+    });
+    log.debug('holding permission', { toolUseId });
+  }
+
+  has(toolUseId: string): boolean {
+    return this.held.has(toolUseId);
+  }
+
+  respond(toolUseId: string, decision: 'allow' | 'deny', reason?: string): boolean {
+    const pending = this.held.get(toolUseId);
+    if (!pending) {
+      log.warn('no held permission', { toolUseId });
+      return false;
+    }
+    let delivered = true;
+    try {
+      pending.socket.end(JSON.stringify({ decision, reason: reason ?? '' }));
+    } catch (err) {
+      log.error('failed to write permission answer', { toolUseId, error: String(err) });
+      delivered = false;
+    }
+    this.release(toolUseId);
+    if (delivered) log.info('permission answered', { toolUseId, decision });
+    return delivered;
+  }
+
+  /**
+   * Drop held requests the session no longer lists, without reporting them:
+   * the event stream already said they are settled (the tool ran, or the turn
+   * ended), typically because the user answered in the terminal.
+   */
+  retainOnly(sessionId: string, toolUseIds: ReadonlySet<string>): void {
+    for (const [toolUseId, pending] of this.held) {
+      if (pending.sessionId !== sessionId || toolUseIds.has(toolUseId)) continue;
+      this.held.delete(toolUseId);
+      pending.socket.destroy();
+    }
+  }
+
+  /** Close every held connection, giving the hooks a moment to read the end. */
+  async dispose(): Promise<void> {
+    const sockets = [...this.held.values()].map((h) => h.socket);
+    this.held.clear();
+    for (const socket of sockets) socket.end();
+    if (sockets.length === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    for (const socket of sockets) socket.destroy();
+  }
+
+  private release(toolUseId: string): void {
+    const pending = this.held.get(toolUseId);
+    if (!pending) return;
+    this.held.delete(toolUseId);
+    this.onReleased(pending.sessionId, toolUseId);
   }
 }

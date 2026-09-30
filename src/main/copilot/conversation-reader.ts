@@ -1,6 +1,4 @@
 import { existsSync, statSync, watch, openSync, readSync, closeSync, type FSWatcher } from 'fs';
-import { homedir } from 'os';
-import { join } from 'path';
 import { createLogger } from '../logger';
 import { isRecord } from '../../shared/is-record';
 import type { CopilotChatMessage, CopilotMessageBlock } from '../../shared/types';
@@ -13,15 +11,6 @@ type SessionParseState = {
   messages: CopilotChatMessage[];
   seenToolIds: Set<string>;
 };
-
-export function cwdToProjectDir(cwd: string): string {
-  return cwd.replace(/[/.]/g, '-');
-}
-
-function sessionFilePath(sessionId: string, cwd: string): string {
-  const projectDir = cwdToProjectDir(cwd);
-  return join(homedir(), '.claude', 'projects', projectDir, `${sessionId}.jsonl`);
-}
 
 function formatToolInputPreview(toolName: string, input: Record<string, unknown>): string {
   switch (toolName) {
@@ -284,8 +273,8 @@ export class ConversationReader {
     this.onChange = cb;
   }
 
-  getMessages(sessionId: string, cwd: string): CopilotChatMessage[] {
-    const filePath = sessionFilePath(sessionId, cwd);
+  /** `filePath` is the session's transcript, from `transcriptPathFor`. */
+  getMessages(sessionId: string, filePath: string): CopilotChatMessage[] {
     if (!existsSync(filePath)) return [];
 
     let state = this.states.get(sessionId);
@@ -298,10 +287,9 @@ export class ConversationReader {
     return state.messages;
   }
 
-  watch(sessionId: string, cwd: string): void {
+  watch(sessionId: string, filePath: string): void {
     if (this.watchers.has(sessionId)) return;
 
-    const filePath = sessionFilePath(sessionId, cwd);
     if (!existsSync(filePath)) return;
 
     const watcher = watch(filePath, { persistent: false }, (eventType) => {

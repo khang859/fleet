@@ -13,8 +13,9 @@ import { homedir } from 'os';
 import { createLogger } from '../logger';
 import { isRecord } from '../../shared/is-record';
 import { isFleetHookCommand, quoteHookCommand } from '../../shared/claude-hooks';
+import type { HookFolderStatus } from '../../shared/claude-sessions';
 
-const log = createLogger('copilot:hooks');
+const log = createLogger('claude-sessions:hooks');
 
 const DEFAULT_CLAUDE_DIR = join(homedir(), '.claude');
 
@@ -157,6 +158,8 @@ function buildHookEntries(command: string): Record<string, HookEntry[]> {
     UserPromptSubmit: [simpleHook()],
     PreToolUse: [matcherHook('*')],
     PostToolUse: [matcherHook('*')],
+    // A tool that failed sends this instead of PostToolUse.
+    PostToolUseFailure: [matcherHook('*')],
     PermissionRequest: [matcherHook('*', 86400)],
     Notification: [matcherHook('*')],
     Stop: [simpleHook()],
@@ -190,30 +193,30 @@ function removeLegacyScript(hooksDir: string): void {
   }
 }
 
-export function syncScript(configDir?: string): void {
-  const { hooksDir, hookDest } = resolvePaths(configDir);
-
-  if (!existsSync(hooksDir)) mkdirSync(hooksDir, { recursive: true });
-
-  const source = getHookBinarySourcePath();
-  if (!existsSync(source)) {
-    log.warn('hook binary source not found, skipping sync', { source });
-    return;
-  }
-
+/**
+ * Put the hook binary in place, only when its contents changed.
+ *
+ * The new copy lands beside the target and is renamed over it: copying onto
+ * the file directly fails with ETXTBSY on Linux while any hook is running it,
+ * and a rename leaves a running hook on the old inode.
+ */
+function syncBinary(source: string, dest: string): void {
+  const next = readFileSync(source);
+  if (existsSync(dest) && readFileSync(dest).equals(next)) return;
+  const tmp = `${dest}.fleet-tmp-${process.pid}`;
   try {
-    if (existsSync(hookDest)) {
-      const srcContent = readFileSync(source);
-      const destContent = readFileSync(hookDest);
-      if (srcContent.equals(destContent)) return;
-    }
-
-    copyFileSync(source, hookDest);
-    chmodSync(hookDest, 0o755);
-    log.info('hook binary synced', { dest: hookDest });
+    writeFileSync(tmp, next, { mode: 0o755 });
+    chmodSync(tmp, 0o755);
+    renameSync(tmp, dest);
   } catch (err) {
-    log.error('failed to sync hook binary', { error: String(err) });
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* best-effort temp cleanup */
+    }
+    throw err;
   }
+  log.info('hook binary installed', { dest });
 }
 
 export function isInstalled(configDir?: string): boolean {
@@ -229,6 +232,34 @@ export function isInstalled(configDir?: string): boolean {
   }
 }
 
+export function hookStatus(configDir?: string): HookFolderStatus {
+  const { settingsPath } = resolvePaths(configDir);
+  try {
+    readSettings(settingsPath);
+  } catch (err) {
+    return { state: 'unreadable', detail: err instanceof Error ? err.message : String(err) };
+  }
+  return { state: isInstalled(configDir) ? 'installed' : 'missing' };
+}
+
+/**
+ * Install or refresh Fleet's hooks in every given folder. One folder failing
+ * does not stop the others; failures are logged and returned by folder.
+ */
+export function ensureHooks(configDirs: readonly string[]): Map<string, Error> {
+  const failures = new Map<string, Error>();
+  for (const dir of new Set(configDirs)) {
+    try {
+      install(dir);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      log.error('could not install hooks', { configDir: dir, error: error.message });
+      failures.set(dir, error);
+    }
+  }
+  return failures;
+}
+
 /**
  * Install Fleet's hook binary and entries into a Claude config folder.
  *
@@ -239,7 +270,6 @@ export function isInstalled(configDir?: string): boolean {
  * leaves exactly the current set.
  */
 export function install(configDir?: string): void {
-  log.info('installing hooks');
   const { hooksDir, settingsPath, hookDest } = resolvePaths(configDir);
 
   const settings = readSettings(settingsPath);
@@ -253,11 +283,9 @@ export function install(configDir?: string): void {
   if (!existsSync(hooksDir)) mkdirSync(hooksDir, { recursive: true });
   removeLegacyScript(hooksDir);
   try {
-    copyFileSync(source, hookDest);
-    chmodSync(hookDest, 0o755);
-    log.info('hook binary installed', { dest: hookDest });
+    syncBinary(source, hookDest);
   } catch (err) {
-    log.error('failed to copy/chmod hook binary', { error: String(err) });
+    log.error('failed to install hook binary', { error: String(err) });
     throw new Error(`Failed to install hook binary: ${String(err)}`);
   }
 
@@ -279,9 +307,28 @@ export function install(configDir?: string): void {
   }
 }
 
+/**
+ * Remove Fleet's hook entries and binary from a Claude config folder.
+ *
+ * The entries go first, and the binary only once nothing points at it: a
+ * settings file left naming a deleted binary makes Claude Code report a hook
+ * error on every event. Throws, leaving both in place, when the settings
+ * cannot be read or written.
+ */
 export function uninstall(configDir?: string): void {
   log.info('uninstalling hooks');
   const { hooksDir, settingsPath, hookDest } = resolvePaths(configDir);
+
+  const settings = readSettings(settingsPath);
+  if (isRecord(settings.hooks)) {
+    const hooks = withoutFleetHooks(settings.hooks);
+    const next: ClaudeSettings = { ...settings, hooks };
+    if (Object.keys(hooks).length === 0) delete next.hooks;
+    if (JSON.stringify(next) !== JSON.stringify(settings)) {
+      writeSettings(settingsPath, next);
+      log.info('settings.json cleaned');
+    }
+  }
 
   if (existsSync(hookDest)) {
     try {
@@ -291,19 +338,4 @@ export function uninstall(configDir?: string): void {
     }
   }
   removeLegacyScript(hooksDir);
-
-  if (!existsSync(settingsPath)) return;
-
-  try {
-    const settings = readSettings(settingsPath);
-    if (!isRecord(settings.hooks)) return;
-    const hooks = withoutFleetHooks(settings.hooks);
-    const next: ClaudeSettings = { ...settings, hooks };
-    if (Object.keys(hooks).length === 0) delete next.hooks;
-    if (JSON.stringify(next) === JSON.stringify(settings)) return;
-    writeSettings(settingsPath, next);
-    log.info('settings.json cleaned');
-  } catch (err) {
-    log.warn('failed to clean settings.json', { error: String(err) });
-  }
 }
