@@ -51,7 +51,9 @@ export function sessionRef(paneId: string): string {
 
 export function paneLabel(place: PanePlace | null, projectName: string): string {
   if (place === null) return projectName;
-  const where = place.pane === null ? place.tab : `${place.tab} › ${place.pane}`;
+  // Unless the user named the tab, name it after the folder Claude runs in.
+  const tab = place.tab ?? projectName;
+  const where = place.pane === null ? tab : `${tab} › ${place.pane}`;
   return `${place.workspaceName} › ${where}`;
 }
 

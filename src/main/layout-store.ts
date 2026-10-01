@@ -19,8 +19,12 @@ function leavesOf(node: PaneNode): PaneLeaf[] {
     : [...leavesOf(node.children[0]), ...leavesOf(node.children[1])];
 }
 
-/** Where a pane sits in the saved layout, for naming it. `pane` is null in a tab with one pane. */
-export type PanePlace = { workspaceName: string; tab: string; pane: string | null };
+/**
+ * Where a pane sits in the saved layout, for naming it. `tab` is null when the
+ * user never named the tab: its stored label is the folder it opened in, which
+ * goes stale once the shell moves. `pane` is null in a tab with one pane.
+ */
+export type PanePlace = { workspaceName: string; tab: string | null; pane: string | null };
 
 /**
  * Strip one-shot startup commands (e.g. session-resume `cmd`) from pane leaves before
@@ -105,7 +109,11 @@ export class LayoutStore {
         if (i === -1) continue;
         const leaf = leaves[i];
         const name = leaf.labelIsCustom && leaf.label ? leaf.label : `pane ${i + 1}`;
-        return { workspaceName: ws.label, tab: tab.label, pane: leaves.length > 1 ? name : null };
+        return {
+          workspaceName: ws.label,
+          tab: tab.labelIsCustom ? tab.label : null,
+          pane: leaves.length > 1 ? name : null
+        };
       }
     }
     return null;
