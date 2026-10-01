@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.129.1
+
+- **Claude Code rows in the sidebar are named after the folder Claude runs in.**
+  A tab opened in your home folder no longer leaves its sessions named after the home folder, here or in the Orchestrator's session labels.
+  A tab you renamed keeps your name (#640).
+- **Tabs and pane headers follow the shell's folder while a command is still running.**
+  After `cd project && claude` the tab used to keep its old name until the command ended (#640).
+
 ## v2.129.0
 
 - **Fleet now tracks Claude Code sessions.**
