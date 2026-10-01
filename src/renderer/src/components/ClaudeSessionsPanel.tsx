@@ -21,10 +21,12 @@ import type { ClaudeSessionView, ClaudeSessionsSnapshot } from '../../../shared/
 import type { Workspace } from '../../../shared/types';
 
 /**
- * Where a pane sits, for naming its row. `pane` names the pane within a split
- * tab, and is null when the tab has only the one pane.
+ * Where a pane sits, for naming its row. `tab` is the name the user gave the
+ * tab, and null when they gave none: its stored label is the folder it opened
+ * in, which goes stale once the shell moves. `pane` names the pane within a
+ * split tab, and is null when the tab has only the one pane.
  */
-type PanePlace = { tab: string; pane: string | null; workspaceLabel: string | null };
+type PanePlace = { tab: string | null; pane: string | null; workspaceLabel: string | null };
 
 function placesOf(current: Workspace, background: Map<string, Workspace>): Map<string, PanePlace> {
   const places = new Map<string, PanePlace>();
@@ -36,7 +38,7 @@ function placesOf(current: Workspace, background: Map<string, Workspace>): Map<s
         // user gave the pane, or else by its position in the tab.
         const paneName = leaf.labelIsCustom && leaf.label ? leaf.label : `pane ${i + 1}`;
         places.set(leaf.id, {
-          tab: tab.label,
+          tab: tab.labelIsCustom ? tab.label : null,
           pane: leafs.length > 1 ? paneName : null,
           workspaceLabel
         });
@@ -96,6 +98,7 @@ function SessionRow({
   now: number;
 }): React.JSX.Element {
   const urgency = sessionUrgency(session);
+  // Unless the user named the tab, name the row after the folder Claude runs in.
   const tabLabel = place?.tab ?? session.projectName;
   const paneLabel = place?.pane ?? null;
   const label = paneLabel ? `${tabLabel} › ${paneLabel}` : tabLabel;

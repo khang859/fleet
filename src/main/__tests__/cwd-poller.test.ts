@@ -5,13 +5,16 @@ vi.mock('pid-cwd', () => ({
 }));
 
 vi.mock('fs/promises', () => ({
-  readlink: vi.fn().mockResolvedValue('/tmp/test-cwd')
+  readlink: vi.fn().mockResolvedValue('/tmp/test-cwd'),
+  // No symlinks unless a test says so.
+  realpath: vi.fn().mockImplementation(async (path: string) => Promise.resolve(path))
 }));
 
 import { CwdPoller } from '../cwd-poller';
 import { EventBus } from '../event-bus';
 import type { PtyManager } from '../pty-manager';
 import pidCwd from 'pid-cwd';
+import { realpath } from 'fs/promises';
 
 function makeMockPtyManager(cwd = '/old-cwd'): PtyManager {
   return {
@@ -65,6 +68,52 @@ describe('CwdPoller', () => {
     await vi.advanceTimersByTimeAsync(5001);
 
     expect(changes).toContain('/tmp/test-cwd');
+  });
+
+  it('keeps polling for the life of the pane, so a move with no prompt is seen', async () => {
+    const ptyManager = makeMockPtyManager('/tmp/test-cwd');
+    poller = new CwdPoller(eventBus, ptyManager);
+
+    const changes: string[] = [];
+    eventBus.on('cwd-changed', (e) => changes.push(e.cwd));
+
+    poller.startPolling('pane-1', 999);
+    await vi.advanceTimersByTimeAsync(5001);
+    expect(changes).toHaveLength(0);
+
+    // The shell reported a folder at its prompt, then `cd project && claude` moved it.
+    (ptyManager.getCwd as ReturnType<typeof vi.fn>).mockReturnValue('/home/u');
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(changes).toEqual(['/tmp/test-cwd']);
+  });
+
+  it('does not replace a symlinked folder the shell reported with its resolved path', async () => {
+    const ptyManager = makeMockPtyManager('/link/test-cwd');
+    vi.mocked(realpath).mockResolvedValueOnce('/tmp/test-cwd');
+    poller = new CwdPoller(eventBus, ptyManager);
+
+    const changes: string[] = [];
+    eventBus.on('cwd-changed', (e) => changes.push(e.cwd));
+
+    poller.startPolling('pane-1', 999);
+    await vi.advanceTimersByTimeAsync(5001);
+
+    expect(changes).toHaveLength(0);
+  });
+
+  it('emits when the known folder no longer exists', async () => {
+    const ptyManager = makeMockPtyManager('/gone');
+    vi.mocked(realpath).mockRejectedValueOnce(new Error('ENOENT'));
+    poller = new CwdPoller(eventBus, ptyManager);
+
+    const changes: string[] = [];
+    eventBus.on('cwd-changed', (e) => changes.push(e.cwd));
+
+    poller.startPolling('pane-1', 999);
+    await vi.advanceTimersByTimeAsync(5001);
+
+    expect(changes).toEqual(['/tmp/test-cwd']);
   });
 
   it('resolveNow returns the live cwd and emits cwd-changed when it differs', async () => {
