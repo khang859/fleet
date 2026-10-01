@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.129.0
+
+- **Fleet now tracks Claude Code sessions.**
+  Sessions running in Fleet panes show in the sidebar with their state, and a long list folds down to the ones that need you (#633, #634, #639).
+- **The Orchestrator can work with your Claude Code sessions.**
+  It can read them, send to them, start new ones, wait for them and answer a session's permission request (#635, #636, #637).
+- **A floating teleprompter overlay for speaker notes** while you present (#631).
+- **The copilot hook pipeline is more robust** ahead of the session orchestrator (#632).
+
 ## v2.128.1
 
 - **The advisor's consultations now show up in the Agent pane.**
