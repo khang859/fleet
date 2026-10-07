@@ -84,6 +84,12 @@ describe('hook state across the registry, the bridge and the tracker', () => {
     });
     expect(tracker.getState('pane-1')).toBe('working');
     registry.ingest(hook({ event: 'Stop', status: 'waiting_for_input' }), { paneId: 'pane-1' });
+    expect(tracker.getState('pane-1')).toBe('idle');
+    expect(tracker.getCounts().needsMe).toBe(0);
+  });
+
+  it('asks for the user when the agent shows a question dialog', () => {
+    registry.ingest(hook({ tool: 'AskUserQuestion' }), { paneId: 'pane-1' });
     expect(tracker.getState('pane-1')).toBe('needs_me');
   });
 });

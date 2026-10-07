@@ -1,5 +1,5 @@
 import type { ActivityState } from '../../shared/types';
-import type { ClaudeSessionChange, ClaudeSessionPhase } from '../../shared/claude-sessions';
+import type { ClaudeSession, ClaudeSessionChange } from '../../shared/claude-sessions';
 
 /** Sets the hook-derived state for a pane, or clears it when given null. */
 export type SetHookState = (paneId: string, state: ActivityState | null, pid?: number) => void;
@@ -8,15 +8,22 @@ export type SetHookState = (paneId: string, state: ActivityState | null, pid?: n
  * Translate what the agent says about itself into the vocabulary the pane
  * badges speak. `ended` maps to null: the session is over, so the pane goes
  * back to the heuristics rather than freezing on a stale hook state.
+ *
+ * Only a session blocked on the user - a permission answer or a question
+ * dialog - is `needs_me`. A finished turn sitting at its prompt is at rest,
+ * not asking: lighting every idle Claude pane amber made the signal mean nothing.
  */
-export function phaseToActivityState(phase: ClaudeSessionPhase): ActivityState | null {
-  switch (phase) {
+export function phaseToActivityState(
+  session: Pick<ClaudeSession, 'phase' | 'waitingKind'>
+): ActivityState | null {
+  switch (session.phase) {
     case 'processing':
     case 'compacting':
       return 'working';
     case 'waitingForApproval':
-    case 'waitingForInput':
       return 'needs_me';
+    case 'waitingForInput':
+      return session.waitingKind === 'question' ? 'needs_me' : 'idle';
     case 'starting':
       return 'idle';
     case 'ended':
@@ -46,7 +53,7 @@ export class PaneActivityBridge {
 
     this.paneBySession.set(sessionId, session.paneId);
     if (previous && previous !== session.paneId) this.releaseIfUnclaimed(previous);
-    this.setHookState(session.paneId, phaseToActivityState(session.phase), session.pid);
+    this.setHookState(session.paneId, phaseToActivityState(session), session.pid);
   }
 
   /** Release every pane. Used when tracking stops. */

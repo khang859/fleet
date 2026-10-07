@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { PaneActivityBridge, phaseToActivityState } from '../pane-activity-bridge';
-import type { ClaudeSession, ClaudeSessionPhase } from '../../../shared/claude-sessions';
+import type {
+  ClaudeSession,
+  ClaudeSessionPhase,
+  ClaudeWaitingKind
+} from '../../../shared/claude-sessions';
 
 function session(overrides: Partial<ClaudeSession> = {}): ClaudeSession {
   return {
@@ -29,15 +33,16 @@ const change = (s: ClaudeSession | null, sessionId = s?.sessionId ?? 'session-1'
 });
 
 describe('phaseToActivityState', () => {
-  it.each<[ClaudeSessionPhase, string | null]>([
-    ['processing', 'working'],
-    ['compacting', 'working'],
-    ['waitingForApproval', 'needs_me'],
-    ['waitingForInput', 'needs_me'],
-    ['starting', 'idle'],
-    ['ended', null]
-  ])('maps %s to %s', (phase, expected) => {
-    expect(phaseToActivityState(phase)).toBe(expected);
+  it.each<[ClaudeSessionPhase, ClaudeWaitingKind | null, string | null]>([
+    ['processing', null, 'working'],
+    ['compacting', null, 'working'],
+    ['waitingForApproval', null, 'needs_me'],
+    ['waitingForInput', 'question', 'needs_me'],
+    ['waitingForInput', 'prompt', 'idle'],
+    ['starting', null, 'idle'],
+    ['ended', null, null]
+  ])('maps %s (%s) to %s', (phase, waitingKind, expected) => {
+    expect(phaseToActivityState(session({ phase, waitingKind }))).toBe(expected);
   });
 });
 
