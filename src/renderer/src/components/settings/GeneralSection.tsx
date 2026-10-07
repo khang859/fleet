@@ -248,6 +248,28 @@ export function GeneralSection(): React.JSX.Element {
           className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-24 border border-fleet-border-strong focus-ring"
         />
       </SettingRow>
+      <SettingRow
+        label="Hold Backspace"
+        align="start"
+        below={
+          <p className="text-xs text-fleet-text-subtle">
+            After a second of holding Backspace, delete a word at a time in Claude Code and the
+            Agent pane.
+          </p>
+        }
+      >
+        <label className="flex items-center gap-2 py-1 text-sm text-fleet-text">
+          <input
+            type="checkbox"
+            checked={settings.general.holdBackspaceDeletesWords}
+            onChange={(e) => {
+              void updateSettings({ general: { holdBackspaceDeletesWords: e.target.checked } });
+            }}
+            className="fleet-accent-input"
+          />
+          Delete whole words
+        </label>
+      </SettingRow>
       <SettingRow label="App Theme">
         <select
           value={normalizeAppTheme(settings.general.theme)}

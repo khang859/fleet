@@ -285,6 +285,11 @@ export type FleetSettings = {
     terminalTheme: TerminalThemeId;
     accentColor: AccentColorId;
     terminalBackground: TerminalBackground;
+    /**
+     * Once Backspace has been held for a second, each repeat deletes a word
+     * instead of a character - in Claude Code panes and the Agent composer.
+     */
+    holdBackspaceDeletesWords: boolean;
   };
   notifications: {
     taskComplete: { badge: boolean; sound: boolean; os: boolean };

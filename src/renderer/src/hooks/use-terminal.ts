@@ -25,6 +25,13 @@ import { useWorkspaceStore, getPaneContextById } from '../store/workspace-store'
 import { useCwdStore } from '../store/cwd-store';
 import { useHomesStore } from '../store/homes-store';
 import { useRemoteStore } from '../store/remote-store';
+import { sessionUrgency, useClaudeSessionsStore } from '../store/claude-sessions-store';
+import { useSettingsStore } from '../store/settings-store';
+import {
+  DELETE_WORD_BACKWARD,
+  createBackspaceHold,
+  isLinuxCtrlBackspace
+} from '../lib/backspace-hold';
 
 export type UseTerminalOptions = {
   paneId: string;
@@ -325,21 +332,6 @@ function createTerminal(
   term.open(container);
   log.debug('xterm mounted', { paneId: options.paneId });
 
-  // Let the app-level Cmd/Ctrl+K command-palette shortcut win even when a
-  // terminal is focused. Returning false tells xterm to ignore the key (and
-  // crucially NOT send it to the PTY - Ctrl+K is readline kill-line on
-  // Linux/Windows). The window keydown listener then opens the palette.
-  term.attachCustomKeyEventHandler((event) => {
-    if (
-      event.type === 'keydown' &&
-      (event.metaKey || event.ctrlKey) &&
-      event.key.toLowerCase() === 'k'
-    ) {
-      return false;
-    }
-    return true;
-  });
-
   // Restore serialized content after open (before canvas addon — content is buffer-level)
   if (options.serializedContent) {
     term.write(options.serializedContent);
@@ -482,13 +474,53 @@ function createTerminal(
     window.fleet.pty.input({ paneId: options.paneId, data });
   });
 
-  // Shift+Enter → Meta+Enter (\x1b\r). Terminals can't natively distinguish
-  // Shift+Enter from Enter (both are \r), but TUIs like Claude Code treat
-  // Meta+Enter as "insert newline" vs. plain \r as "submit". Mirror the
-  // behavior users get from Opt+Enter on macOS.
+  // Whether the pane is running a Claude Code session that is at its prompt.
+  // Read live, since Claude starts and exits inside a pane at any time. Not
+  // while a permission or question dialog is up: there the ESC that starts a
+  // word delete could be read as dismissing it.
+  const claudeAtPrompt = (): boolean =>
+    useClaudeSessionsStore
+      .getState()
+      .snapshot?.sessions.some(
+        (s) =>
+          s.paneId === options.paneId && s.phase !== 'ended' && sessionUrgency(s) !== 'needsYou'
+      ) ?? false;
+  const heldForWords = createBackspaceHold();
+
+  // xterm keeps a single custom key handler - attaching a second replaces the
+  // first - so every key Fleet intercepts is decided here.
   term.attachCustomKeyEventHandler((event) => {
+    // Fed every event, keyups included, so it can tell where a hold ends.
+    const heldLong = heldForWords(event);
+
     if (event.type !== 'keydown') return true;
 
+    // Let the app-level Cmd/Ctrl+K command-palette shortcut win even when a
+    // terminal is focused. Returning false tells xterm to ignore the key (and
+    // crucially NOT send it to the PTY - Ctrl+K is readline kill-line on
+    // Linux/Windows). The window keydown listener then opens the palette.
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      return false;
+    }
+
+    // A long-held Backspace, and Ctrl+Backspace on Linux, delete a word in
+    // Claude Code. Other programs keep xterm's bytes: ESC DEL is not a word
+    // delete in vim or nano.
+    const holdEnabled =
+      useSettingsStore.getState().settings?.general.holdBackspaceDeletesWords ?? true;
+    if (
+      ((heldLong && holdEnabled) || isLinuxCtrlBackspace(event, window.fleet.platform)) &&
+      claudeAtPrompt()
+    ) {
+      window.fleet.pty.input({ paneId: options.paneId, data: DELETE_WORD_BACKWARD });
+      event.preventDefault();
+      return false;
+    }
+
+    // Shift+Enter → Meta+Enter (\x1b\r). Terminals can't natively distinguish
+    // Shift+Enter from Enter (both are \r), but TUIs like Claude Code treat
+    // Meta+Enter as "insert newline" vs. plain \r as "submit". Mirror the
+    // behavior users get from Opt+Enter on macOS.
     if (
       event.key === 'Enter' &&
       event.shiftKey &&

@@ -39,7 +39,8 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     theme: DEFAULT_APP_THEME,
     terminalTheme: DEFAULT_TERMINAL_THEME_ID,
     accentColor: DEFAULT_ACCENT_COLOR_ID,
-    terminalBackground: DEFAULT_TERMINAL_BACKGROUND
+    terminalBackground: DEFAULT_TERMINAL_BACKGROUND,
+    holdBackspaceDeletesWords: true
   },
   notifications: {
     taskComplete: { badge: true, sound: false, os: false },

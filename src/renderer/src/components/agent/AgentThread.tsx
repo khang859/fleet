@@ -65,6 +65,7 @@ import { useGitHead } from './use-git-head';
 import { usePromptHistory } from './use-prompt-history';
 import type { HistoryDirection } from '../../../../shared/agent-history';
 import { atFirstRow, atLastRow } from '../../lib/caret-row';
+import { createBackspaceHold } from '../../lib/backspace-hold';
 import { EMPTY_SESSION_SPEND, hasSpend } from '../../../../shared/agent-spend';
 import {
   agentSlashCommand,
@@ -1106,6 +1107,8 @@ function Composer({
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const history = usePromptHistory(cwd);
+  const holdWords = useSettingsStore((s) => s.settings?.general.holdBackspaceDeletesWords ?? true);
+  const heldForWords = useRef(createBackspaceHold());
 
   /*
    * A chip in the empty state asking for its words. Scoped by pane id, because
@@ -1645,6 +1648,20 @@ function Composer({
               void attachFiles(files);
             }}
             onKeyDown={(e) => {
+              // A long-held Backspace deletes a word per repeat. The browser's
+              // own word step, so the stops are the ones Option/Ctrl+Backspace
+              // makes on this platform; and through `execCommand`, so Cmd+Z
+              // brings the words back and onChange sees the new text.
+              if (
+                heldForWords.current(e.nativeEvent) &&
+                holdWords &&
+                e.currentTarget.selectionStart === e.currentTarget.selectionEnd
+              ) {
+                e.preventDefault();
+                document.getSelection()?.modify('extend', 'backward', 'word');
+                document.execCommand('delete');
+                return;
+              }
               if (mentionMenu.keyDown(e) || commandMenu.keyDown(e)) return;
               // Bare arrows only. Cmd and Alt make these jump to the ends of the
               // text, and Shift makes them select - all three are the caret's,
