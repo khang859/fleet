@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.130.0
+
+- **Hold Backspace to delete whole words.**
+  After a second of holding Backspace in a Claude Code pane or the Agent pane, each repeat deletes a word instead of a character.
+  Turn it off in Settings > General > Hold Backspace (#642).
+- **Ctrl+Backspace deletes a word in Claude Code panes on Linux** (#642).
+- **Ctrl+K opens the command palette from a focused terminal on Linux and Windows** instead of deleting the rest of the line (#642).
+- **A Claude Code pane rings amber only when it is blocked on you.**
+  A session that has finished its turn now shows as idle instead of needing you, so the tab badge, dock count and "jump to needy agent" stop firing constantly (#641).
+
 ## v2.129.1
 
 - **Claude Code rows in the sidebar are named after the folder Claude runs in.**
