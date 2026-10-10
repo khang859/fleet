@@ -469,6 +469,12 @@ describe('actionForDetectedPath', () => {
     expect(actionForDetectedPath(detected({ isDirectory: true }))).toEqual({ kind: 'reveal' });
   });
 
+  it('opens a video or sound file, which has a player of its own', () => {
+    expect(actionForDetectedPath(detected({ resolvedPath: '/tmp/demo.mp4' }))).toEqual({
+      kind: 'open'
+    });
+  });
+
   it('reveals a file Fleet refuses to preview', () => {
     expect(actionForDetectedPath(detected({ resolvedPath: '/tmp/build.zip' }))).toEqual({
       kind: 'reveal'

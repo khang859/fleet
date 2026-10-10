@@ -1,5 +1,6 @@
 import type { Tab } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
+import { isOpenablePaneType } from '../../../shared/file-open';
 
 /**
  * A file tab opened from a terminal session hangs off that session in the
@@ -16,9 +17,7 @@ export function isSessionTab(tab: Tab): boolean {
 
 /** The tab kinds that open a file and can therefore nest under a session. */
 export function isFileTab(tab: Tab): boolean {
-  return (
-    tab.type === 'file' || tab.type === 'image' || tab.type === 'markdown' || tab.type === 'pdf'
-  );
+  return isOpenablePaneType(tab.type);
 }
 
 /**

@@ -2,6 +2,7 @@ import { Suspense, lazy, memo, useCallback, useMemo, useRef } from 'react';
 import type { PaneNode, PaneLeaf, TerminalBackground, FileOpenTarget } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
+import type { OpenablePaneType } from '../../../shared/file-open';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
 import { TerminalPane } from './TerminalPane';
@@ -23,6 +24,9 @@ const ImageViewerPane = lazy(async () => ({
 }));
 const PdfViewerPane = lazy(async () => ({
   default: (await import('./PdfViewerPane')).PdfViewerPane
+}));
+const MediaViewerPane = lazy(async () => ({
+  default: (await import('./MediaViewerPane')).MediaViewerPane
 }));
 const FileEditorPane = lazy(async () => ({
   default: (await import('./FileEditorPane')).FileEditorPane
@@ -231,8 +235,6 @@ function PaneFrame({
   );
 }
 
-type ViewerPaneType = 'file' | 'markdown' | 'image' | 'pdf';
-
 /**
  * What a leaf gets when Fleet has nothing to render it with: a pane type from
  * an older build, or an SSH browser that lost its host. Deliberately inert -
@@ -260,7 +262,7 @@ function ViewerPane({
   remote,
   openTarget
 }: {
-  paneType: ViewerPaneType;
+  paneType: OpenablePaneType;
   paneId: string;
   filePath: string;
   pathContext?: PathContext;
@@ -268,12 +270,14 @@ function ViewerPane({
   openTarget?: FileOpenTarget;
 }): React.JSX.Element {
   switch (paneType) {
-    // The image and PDF viewers are read-only - they render straight from the
+    // The image, PDF and media viewers are read-only - they render straight from the
     // cache copy and only need `remote` to name the file the user asked for.
     case 'image':
       return <ImageViewerPane filePath={filePath} pathContext={pathContext} remote={remote} />;
     case 'pdf':
       return <PdfViewerPane filePath={filePath} pathContext={pathContext} remote={remote} />;
+    case 'media':
+      return <MediaViewerPane filePath={filePath} pathContext={pathContext} remote={remote} />;
     case 'markdown':
       return (
         <MarkdownPane
@@ -477,7 +481,8 @@ function PaneGridImpl({
             case 'file':
             case 'markdown':
             case 'image':
-            case 'pdf': {
+            case 'pdf':
+            case 'media': {
               const viewerType = node.paneType;
               const remote =
                 node.remoteHost && node.remotePath

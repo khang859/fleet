@@ -140,27 +140,39 @@ export function pathForPaneContext(p: string, ctx: PathContext): string {
 }
 
 /**
- * Canonical builder for the `fleet-image://` / `fleet-pdf://` schemes. Puts the
- * absolute path in the URL **path** position with an empty authority and
+ * Canonical builder for the `fleet-image://` / `fleet-pdf://` / `fleet-media://`
+ * schemes. Puts the absolute path in the URL **path** position after `origin` -
+ * an empty authority for images and PDFs, {@link FLEET_MEDIA_ORIGIN} for media - with
  * per-segment percent-encoding, so it round-trips drive paths, UNC paths and
  * POSIX paths (incl. spaces, Unicode, `#`, `?`) without `new URL` mangling.
  *   'C:\\a b.png'                    → 'fleet-image:///C%3A/a%20b.png'
  *   '\\\\wsl.localhost\\U\\a.png'    → 'fleet-image:////wsl.localhost/U/a.png'
  *   '/home/k/a.png'                  → 'fleet-image:///home/k/a.png'
  */
-function buildFleetUrl(scheme: string, absPath: string): string {
+function buildFleetUrl(origin: string, absPath: string): string {
   let s = absPath.replace(/\\/g, '/');
   if (!s.startsWith('/')) s = '/' + s;
   const encoded = s.split('/').map(encodeURIComponent).join('/');
-  return `${scheme}://${encoded}`;
+  return `${origin}${encoded}`;
 }
 
 export function toFleetImageUrl(absPath: string): string {
-  return buildFleetUrl('fleet-image', absPath);
+  return buildFleetUrl('fleet-image://', absPath);
 }
 
 export function toFleetPdfUrl(absPath: string): string {
-  return buildFleetUrl('fleet-pdf', absPath);
+  return buildFleetUrl('fleet-pdf://', absPath);
+}
+
+/**
+ * `fleet-media://` is a standard scheme - a `<video>` will not load from any
+ * other kind - and a standard URL needs a host, so the path sits behind a fixed
+ * one instead of an empty authority.
+ */
+export const FLEET_MEDIA_ORIGIN = 'fleet-media://local';
+
+export function toFleetMediaUrl(absPath: string): string {
+  return buildFleetUrl(FLEET_MEDIA_ORIGIN, absPath);
 }
 
 /**

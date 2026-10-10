@@ -10,7 +10,7 @@ import type {
 import type { UserGroupColor } from '../../../shared/group-colors';
 import type { ToolType, ToolVisibility } from '../../../shared/tools';
 import { DEFAULT_TOOL_VISIBILITY } from '../../../shared/tools';
-import { getPaneTypeForFilePath } from '../../../shared/file-open';
+import { getPaneTypeForFilePath, type OpenablePaneType } from '../../../shared/file-open';
 import { useCwdStore } from './cwd-store';
 import { useSettingsStore } from './settings-store';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
@@ -288,7 +288,7 @@ type WorkspaceStore = {
   // File/image pane helpers
   openFile: (filePath: string, pathContext?: PathContext, target?: FileOpenTarget) => string;
   openFileInTab: (
-    files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf'; label: string }>
+    files: Array<{ path: string; paneType: OpenablePaneType; label: string }>
   ) => void;
   addRecentFile: (filePath: string) => void;
 
@@ -1777,14 +1777,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           label: file.label,
           labelIsCustom: true,
           cwd: '/',
-          type:
-            file.paneType === 'image'
-              ? 'image'
-              : file.paneType === 'markdown'
-                ? 'markdown'
-                : file.paneType === 'pdf'
-                  ? 'pdf'
-                  : 'file',
+          type: file.paneType,
           splitRoot: leaf,
           ...(parentTabId ? { parentTabId } : {})
         };

@@ -284,17 +284,19 @@ export const Fleet: Plugin = async () => {
       // --- Open & Annotate ---
 
       fleet_open: tool({
-        description: "Open files in Fleet tabs. Supports code files, images (png, jpg, gif, webp, svg, bmp, ico), markdown, and PDFs. Each file opens in the appropriate viewer.",
+        description: "Open files in Fleet tabs. Supports code files, images (png, jpg, gif, webp, svg, bmp, ico), markdown, PDFs, videos (mp4, mov, m4v, webm, mkv), and audio (mp3, m4a, aac, wav, flac, ogg). Each file opens in the appropriate viewer.",
         args: {
           paths: z.array(z.string()).describe("One or more file paths to open"),
         },
         execute: async (args) => {
           const files = args.paths.map((p) => {
             const ext = p.toLowerCase().split(".").pop() ?? ""
+            // Keep in sync with src/shared/file-open.ts, which this plugin cannot import.
             let paneType = "file"
             if (new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"]).has(ext)) paneType = "image"
             else if (ext === "md" || ext === "markdown") paneType = "markdown"
             else if (ext === "pdf") paneType = "pdf"
+            else if (new Set(["mp4", "m4v", "mov", "webm", "mkv", "mp3", "m4a", "aac", "wav", "flac", "ogg"]).has(ext)) paneType = "media"
             return { path: p, paneType, label: p.split("/").pop() ?? p }
           })
           return sendAndFormat("file.open", { files })

@@ -7,6 +7,7 @@ import './pdf-text-layer.css';
 import { toFleetPdfUrl } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
+import { formatSize, getBasename } from '../lib/file-display';
 import { createCancellation } from '../lib/cancellation';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -23,16 +24,6 @@ const STANDARD_FONT_DATA_URL = new URL(
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
-
-function getBasename(filePath: string): string {
-  return filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 type PdfViewerPaneProps = {
   filePath: string;

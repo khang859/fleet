@@ -1,5 +1,6 @@
 import type { Workspace, NotificationEvent, ActivityState } from './types';
 import type { ShellProfile, WslDistroState, PathContext } from './shell-profiles';
+import type { OpenablePaneType } from './file-open';
 
 export type PtyCreateRequest = {
   paneId: string;
@@ -148,7 +149,7 @@ export type GitRepoRootPayload = {
 };
 
 export type FileOpenInTabPayload = {
-  files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf'; label: string }>;
+  files: Array<{ path: string; paneType: OpenablePaneType; label: string }>;
 };
 
 export type SystemDepResult = {
