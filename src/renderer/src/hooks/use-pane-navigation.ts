@@ -45,8 +45,8 @@ function sidebarRowIds(): Array<string | null> {
 
 /**
  * Which way a bare Up/Down walks the sidebar, or null for any other key. Only
- * an image tab acts on it: an image has no caret or scroll position for the
- * arrows to move, where a terminal or an editor needs them for itself.
+ * an image or media tab acts on it: neither has a caret or scroll position for
+ * the arrows to move, where a terminal or an editor needs them for itself.
  */
 function sidebarArrowStep(e: KeyboardEvent): 1 | -1 | null {
   if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return null;
@@ -72,8 +72,8 @@ export function usePaneNavigation(): void {
         state;
 
       const sidebarStep = sidebarArrowStep(e);
-      const onImageTab = workspace.tabs.find((t) => t.id === activeTabId)?.type === 'image';
-      if (sidebarStep && activeTabId && onImageTab) {
+      const tabType = workspace.tabs.find((t) => t.id === activeTabId)?.type;
+      if (sidebarStep && activeTabId && (tabType === 'image' || tabType === 'media')) {
         e.preventDefault();
         const next = neighbourTabId(sidebarRowIds(), activeTabId, sidebarStep);
         if (next) setActiveTab(next);

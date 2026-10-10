@@ -13,6 +13,7 @@ import {
   pathForPaneContext,
   toFleetImageUrl,
   toFleetPdfUrl,
+  toFleetMediaUrl,
   expandHome,
   resolveAgainstCwd
 } from '../path-platform';
@@ -266,6 +267,14 @@ describe('toFleetImageUrl / toFleetPdfUrl', () => {
   });
   it('uses the fleet-pdf scheme for pdfs', () => {
     expect(toFleetPdfUrl('C:\\docs\\a.pdf')).toBe('fleet-pdf:///C%3A/docs/a.pdf');
+  });
+  it('puts a media path behind the fixed fleet-media host', () => {
+    expect(toFleetMediaUrl('/home/khang/my clip #1.mp4')).toBe(
+      'fleet-media://local/home/khang/my%20clip%20%231.mp4'
+    );
+    expect(toFleetMediaUrl('\\\\wsl.localhost\\U\\a.mp4')).toBe(
+      'fleet-media://local//wsl.localhost/U/a.mp4'
+    );
   });
 });
 

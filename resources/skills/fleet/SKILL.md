@@ -9,7 +9,7 @@ You are running inside **Fleet**, a terminal multiplexer desktop app. You can co
 
 ## fleet open
 
-Open files or images in Fleet tabs.
+Open files, images, videos or audio in Fleet tabs.
 
 ```bash
 fleet open <path> [path2 ...]
@@ -17,6 +17,7 @@ fleet open <path> [path2 ...]
 
 - Supports relative and absolute paths
 - Images (png, jpg, jpeg, gif, webp, svg, bmp, ico) open in an image viewer tab
+- Videos (mp4, mov, m4v, webm, mkv) and audio (mp3, m4a, aac, wav, flac, ogg) open in a player tab
 - Code/text files open in a code viewer tab
 - Directories are not supported — use file paths
 
@@ -26,6 +27,7 @@ fleet open <path> [path2 ...]
 fleet open src/main.ts
 fleet open screenshot.png diagram.svg
 fleet open ./README.md ../other-repo/notes.txt
+fleet open demo.mp4
 ```
 
 ## fleet annotate

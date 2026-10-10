@@ -3,16 +3,7 @@ import { flushSync } from 'react-dom';
 import { toFleetImageUrl } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
-
-function getBasename(filePath: string): string {
-  return filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+import { formatSize, getBasename } from '../lib/file-display';
 
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 10;

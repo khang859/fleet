@@ -27,6 +27,7 @@ import {
   getPaneContextById
 } from './store/workspace-store';
 import { isScratchTab } from './lib/scratch';
+import { isFileTab } from './lib/tab-nesting';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useDeferredTabMount } from './hooks/use-deferred-tab-mount';
 import { useNotifications } from './hooks/use-notifications';
@@ -173,8 +174,7 @@ function MiniTabButton({
   const tint = isActive ? 'text-fleet-text' : 'text-fleet-text-subtle';
   // Same icon vocabulary the expanded sidebar uses, so a tab keeps its glyph
   // when the sidebar collapses.
-  const isFile =
-    tab.type === 'file' || tab.type === 'image' || tab.type === 'markdown' || tab.type === 'pdf';
+  const isFile = isFileTab(tab);
 
   let icon: React.ReactNode;
   if (isScratchTab(tab)) {

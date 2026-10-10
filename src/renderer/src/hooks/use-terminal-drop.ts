@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { quotePathForShell } from '../lib/shell-utils';
+import { getBasename } from '../lib/file-display';
 import { remoteChildPath } from '../lib/remote-names';
 import { getPaneContextById } from '../store/workspace-store';
 import { useRemoteStore } from '../store/remote-store';
@@ -31,10 +32,6 @@ async function formatDroppedPaths(winPaths: string[], ctx: PathContext): Promise
     winPaths.map(async (winPath) => quotePathForShell(await pathForContext(winPath, ctx), ctx))
   );
   return quoted.join(' ') + ' ';
-}
-
-function basename(filePath: string): string {
-  return filePath.split(/[\\/]/).pop() || filePath;
 }
 
 /**
@@ -69,7 +66,7 @@ async function dropOntoRemote(paneId: string, winPaths: string[]): Promise<void>
   const store = useRemoteSshStore.getState();
 
   for (const localPath of winPaths) {
-    const remotePath = remoteChildPath(cwd, basename(localPath));
+    const remotePath = remoteChildPath(cwd, getBasename(localPath));
     const ok = await store.startTransfer('upload', { paneId, host, localPath, remotePath });
     if (!ok) return;
     window.fleet.pty.input({

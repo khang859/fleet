@@ -1,4 +1,14 @@
-import { FileCode2, FileImage, FileJson, FileText, File, type LucideIcon } from 'lucide-react';
+import {
+  FileCode2,
+  FileImage,
+  FileJson,
+  FileText,
+  FileAudio,
+  FileVideo,
+  File,
+  type LucideIcon
+} from 'lucide-react';
+import { isAudioFilePath, MEDIA_MIME_TYPES } from '../../../shared/file-open';
 
 const ICON_MAP: Record<string, LucideIcon> = {
   // Code
@@ -52,6 +62,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
 export function getFileIcon(filename: string, size = 13): React.ReactNode {
   const dot = filename.lastIndexOf('.');
   const ext = dot >= 0 ? filename.slice(dot).toLowerCase() : '';
-  const Icon = ICON_MAP[ext] ?? File;
+  const mediaIcon = isAudioFilePath(filename) ? FileAudio : FileVideo;
+  const Icon = ICON_MAP[ext] ?? (ext in MEDIA_MIME_TYPES ? mediaIcon : File);
   return <Icon size={size} />;
 }

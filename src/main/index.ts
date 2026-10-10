@@ -22,6 +22,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { join, dirname, resolve } from 'path';
 import { homedir } from 'os';
 import { PtyManager } from './pty-manager';
+import { serveMedia } from './media-protocol';
 import { LayoutStore } from './layout-store';
 import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
@@ -57,7 +58,7 @@ import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
 import { WslService } from './wsl-service';
 import { parseFleetUrl } from './protocol-paths';
-import { toWslUncPath, isUncPath } from '../shared/path-platform';
+import { toWslUncPath, isUncPath, FLEET_MEDIA_ORIGIN } from '../shared/path-platform';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
 import type { HostContextPayload } from '../shared/ipc-api';
 import type {
@@ -578,13 +579,17 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'fleet-image', privileges: { supportFetchAPI: true, stream: true } },
   { scheme: 'fleet-pdf', privileges: { supportFetchAPI: true, stream: true } },
   {
+    scheme: 'fleet-media',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+  },
+  {
     scheme: 'fleet-asset',
     privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
   }
 ]);
 
 void app.whenReady().then(async () => {
-  // Resolve a fleet-image/fleet-pdf request URL to a filesystem-accessible
+  // Resolve a fleet-image/fleet-pdf/fleet-media request URL to a filesystem-accessible
   // absolute path. The renderer's canonical builder puts the path in the URL path
   // position (empty authority); legacy call sites still emit backslash shapes that
   // make `new URL` throw, so parseFleetUrl parses by hand. A bare POSIX path is a
@@ -654,6 +659,19 @@ void app.whenReady().then(async () => {
       }
     }
     return net.fetch(pathToFileURL(filePath).toString());
+  });
+
+  // Serve local video and audio in byte ranges, which is what lets a player seek.
+  protocol.handle('fleet-media', async (request) => {
+    if (!request.url.startsWith(`${FLEET_MEDIA_ORIGIN}/`)) {
+      return new Response('Bad Request', { status: 400 });
+    }
+    const resolved = await resolveFleetPath(
+      `fleet-media://${request.url.slice(FLEET_MEDIA_ORIGIN.length)}`,
+      'fleet-media'
+    );
+    if (!resolved) return new Response('Bad Request', { status: 400 });
+    return serveMedia(resolve(resolved), request.headers.get('range'));
   });
 
   // Serve static assets from resources/ directory (mascot sprites, etc.)

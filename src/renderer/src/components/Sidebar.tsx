@@ -47,7 +47,7 @@ import {
 } from './sidebar-constants';
 import { ColorPalettePicker } from './ColorPalettePicker';
 import { COLOR_MAP } from './sidebar-constants';
-import { buildTabNesting } from '../lib/tab-nesting';
+import { buildTabNesting, isFileTab } from '../lib/tab-nesting';
 import { EnvSyncBadge } from './env-sync/EnvSyncBadge';
 import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 import { SessionsTabCard } from './sessions/SessionsTabCard';
@@ -1283,11 +1283,7 @@ export function Sidebar({
 
               const indentLevel = nestedIndent ?? (tab.groupId ? 1 : 0);
               const paneIds = collectPaneIds(tab.splitRoot);
-              const isFile =
-                tab.type === 'file' ||
-                tab.type === 'image' ||
-                tab.type === 'markdown' ||
-                tab.type === 'pdf';
+              const isFile = isFileTab(tab);
               const idx = realIndex(tab.id);
 
               let displayCwd: string;

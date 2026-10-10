@@ -11,6 +11,7 @@ import type { TelescopeMode, TelescopeItem } from './types';
 import { ShikiPreview } from './ShikiPreview';
 import { Overlay } from '../Overlay';
 import { tooltipAnim } from '../../lib/motion';
+import { getPaneTypeForFilePath } from '../../../../shared/file-open';
 
 const IMAGE_EXTENSIONS = new Set([
   'png',
@@ -196,6 +197,15 @@ export function TelescopeModal({
             }
           })
           .finally(() => setPreviewLoading(false));
+        return;
+      }
+
+      // The text read below loads the whole file, which a video is too big for
+      // and a sound file means nothing in.
+      if (filePath !== null && getPaneTypeForFilePath(filePath) === 'media') {
+        setPreviewImage(null);
+        setPreviewFilePath(null);
+        setPreviewContent('No preview for video and audio files');
         return;
       }
 

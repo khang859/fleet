@@ -3,7 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, statSync } from 'node:fs';
-import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
+import {
+  getPaneTypeForFilePath,
+  isBinaryBlockedFilePath,
+  type OpenablePaneType
+} from '../shared/file-open';
 import { isRecord } from '../shared/is-record';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -296,7 +300,7 @@ Manage files from the terminal.
 
 | Command | Intent |
 |---------|--------|
-| open | Open files or images in Fleet tabs. |
+| open | Open files, images, videos or audio in Fleet tabs. |
 | annotate | Visually annotate web page elements for AI agents. |
 
 ## Examples
@@ -310,12 +314,13 @@ Run \`fleet <command> --help\` for detailed help.`;
 const HELP_GROUPS: Record<string, string> = {
   open: `# fleet open
 
-Open files or images in Fleet tabs.
+Open files, images, videos or audio in Fleet tabs.
 
 ## When to use
 
-Use \`fleet open\` when you want to display a file or image in the Fleet app UI.
-Supports code files, common image formats (png, jpg, gif, webp, svg), and PDFs.
+Use \`fleet open\` when you want to show a file, image, video or audio file in the Fleet app UI.
+Supports code files, common image formats (png, jpg, gif, webp, svg), PDFs,
+videos (mp4, mov, m4v, webm, mkv), and audio (mp3, m4a, aac, wav, flac, ogg).
 
 ## Usage
 
@@ -324,7 +329,8 @@ Supports code files, common image formats (png, jpg, gif, webp, svg), and PDFs.
 ## Arguments
 
   <path>    One or more file paths to open. Supports relative and absolute paths.
-            Images open in image viewer tabs; PDFs in a PDF viewer; other files in code tabs.
+            Images open in image viewer tabs; PDFs in a PDF viewer; video and
+            audio in a player; other files in code tabs.
 
 ## Examples
 
@@ -333,6 +339,7 @@ fleet open src/main.ts
 fleet open screenshot.png diagram.svg
 fleet open ./README.md ../other-repo/notes.txt
 fleet open report.pdf
+fleet open demo.mp4
 \`\`\``,
 
   annotate: `# fleet annotate
@@ -405,7 +412,7 @@ export async function runCLI(
     }
 
     const errors: string[] = [];
-    const files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf' }> = [];
+    const files: Array<{ path: string; paneType: OpenablePaneType }> = [];
 
     for (const p of paths) {
       const resolved = resolve(p);

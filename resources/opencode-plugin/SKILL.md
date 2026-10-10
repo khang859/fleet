@@ -25,7 +25,7 @@ You have access to Fleet tools for controlling the Fleet desktop app. These tool
 
 | Tool | Purpose |
 |------|---------|
-| `fleet_open` | Open files in Fleet tabs (code, images, markdown, PDF). |
+| `fleet_open` | Open files in Fleet tabs (code, images, markdown, PDF, video, audio). |
 | `fleet_annotate` | Visually annotate a web page. Results saved to a JSON file. |
 
 ## Prerequisites

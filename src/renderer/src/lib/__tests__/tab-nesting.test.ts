@@ -3,6 +3,7 @@ import type { Tab } from '../../../../shared/types';
 import {
   buildTabNesting,
   insertNestedTab,
+  isFileTab,
   nestedBlockLength,
   nestInsertIndex,
   resolveFileParentId
@@ -32,6 +33,20 @@ function fileTab(id: string, filePath: string, parentTabId?: string): Tab {
 }
 
 const cwdOf = (tab: Tab): string => tab.cwd;
+
+describe('isFileTab', () => {
+  it('covers every viewer a file can open in', () => {
+    for (const type of ['file', 'image', 'markdown', 'pdf', 'media'] as const) {
+      expect(isFileTab({ ...fileTab('f', '/a/x'), type })).toBe(true);
+    }
+  });
+
+  it('leaves out sessions and tool tabs', () => {
+    expect(isFileTab(session('s', '/a'))).toBe(false);
+    expect(isFileTab(session('s', '/a', { type: 'terminal' }))).toBe(false);
+    expect(isFileTab(session('s', '/a', { type: 'agent' }))).toBe(false);
+  });
+});
 
 describe('resolveFileParentId', () => {
   it('picks the session the user was looking at', () => {

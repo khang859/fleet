@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { AnnotateService } from './annotate-service';
 import { CodedError } from './errors';
+import { isOpenablePaneType } from '../shared/file-open';
 
 type Request = {
   id?: string;
@@ -183,14 +184,7 @@ export class SocketServer extends EventEmitter {
         const payload = {
           files: files.map((f) => {
             const filePath = typeof f.path === 'string' ? f.path : '';
-            const paneType: 'file' | 'image' | 'markdown' | 'pdf' =
-              f.paneType === 'image'
-                ? 'image'
-                : f.paneType === 'markdown'
-                  ? 'markdown'
-                  : f.paneType === 'pdf'
-                    ? 'pdf'
-                    : 'file';
+            const paneType = isOpenablePaneType(f.paneType) ? f.paneType : 'file';
             return {
               path: filePath,
               paneType,

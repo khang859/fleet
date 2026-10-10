@@ -1,4 +1,5 @@
 import type { PathContext } from './shell-profiles';
+import type { OpenablePaneType } from './file-open';
 import type { AccentColorId, AppThemeSelection, TerminalThemeId } from './theme-presets';
 import type { ToolVisibility } from './tools';
 import type { UserGroupColor } from './group-colors';
@@ -47,12 +48,9 @@ export type Tab = {
   cwd: string;
   type?:
     | 'terminal'
-    | 'file'
-    | 'image'
+    | OpenablePaneType
     | 'settings'
     | 'annotate'
-    | 'markdown'
-    | 'pdf'
     | 'sessions'
     | 'agent'
     | 'ssh-browser';
@@ -101,7 +99,7 @@ export type PaneLeaf = {
   ptyPid?: number;
   shell?: string;
   cwd: string;
-  paneType?: 'terminal' | 'file' | 'image' | 'markdown' | 'pdf' | 'agent' | 'ssh-browser';
+  paneType?: 'terminal' | OpenablePaneType | 'agent' | 'ssh-browser';
   filePath?: string;
   /**
    * Where to put the cursor when a `file` pane opens. Set when the path that

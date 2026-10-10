@@ -121,7 +121,7 @@ Worktree tabs are automatically grouped by parent repository in the sidebar, and
 Open files in a built-in editor with syntax highlighting (JavaScript, TypeScript, HTML, CSS, JSON, Markdown, Python, Go, Rust, Java, PHP, Vue, SQL, YAML, and more).
 It is CodeMirror-powered with undo/redo, line numbers, and auto-save.
 Editor chrome and the markdown preview sidebar show the full file path so same-named files stay distinguishable.
-Images open in an inline viewer and PDFs open in a PDF viewer.
+Images open in an inline viewer, PDFs open in a PDF viewer, and video (mp4, mov, m4v, webm, mkv) and audio (mp3, m4a, aac, wav, flac, ogg) files open in a player.
 
 ### Markdown Preview
 
@@ -179,7 +179,7 @@ Access your clipboard history with `Cmd+Shift+H` and paste previous entries into
 Fleet installs a `fleet` command to `~/.fleet/bin`:
 
 ```bash
-fleet open src/main.ts   # open files, images, markdown, or PDFs in Fleet tabs
+fleet open src/main.ts   # open files, images, markdown, PDFs, video, or audio in Fleet tabs
 fleet annotate           # annotate a web page for an AI agent
 ```
 
