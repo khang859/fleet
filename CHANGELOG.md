@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.131.0
+
+- **Fleet opens video and audio files.**
+  Video (`.mp4`, `.mov`, `.m4v`, `.webm`, `.mkv`) and audio (`.mp3`, `.m4a`, `.aac`, `.wav`, `.flac`, `.ogg`) files open in a player tab, the same way images and PDFs do.
+  Space plays and pauses, Left and Right seek 5 seconds, M mutes, and playback pauses when you switch tabs (#644).
+- **Up and Down walk the sidebar from an image or media tab**, in the order the sidebar draws the tabs (#643, #644).
+- **Switching between image tabs no longer flashes a tiny mirrored image** for one frame (#643).
+- **The image zoom keys act only on the image on screen**, not on every open image (#643).
+- **Image and PDF tabs show the file name for a Windows path** instead of the full path (#644).
+
 ## v2.130.0
 
 - **Hold Backspace to delete whole words.**
