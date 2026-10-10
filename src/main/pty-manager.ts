@@ -9,6 +9,22 @@ import type { EnvSource, ShellEnvSnapshot } from '../shared/shell-env-types';
 
 const log = createLogger('pty');
 
+/**
+ * A GUI launch (Finder, Dock) hands Fleet no locale, and a pane's shell is not
+ * a login shell, so nothing sets one later. zsh then measures a multi-byte
+ * prompt glyph such as `➜` as several columns and redraws the line in the wrong
+ * place: `cd` + Tab shows `cdcd`. Give such a pane a UTF-8 locale, as
+ * Terminal.app and iTerm2 do.
+ */
+export function withUtf8Locale(
+  env: Record<string, string | undefined>,
+  platform: NodeJS.Platform = process.platform
+): Record<string, string | undefined> {
+  if (platform === 'win32' || env.LANG || env.LC_ALL || env.LC_CTYPE) return env;
+  // en_US.UTF-8 ships with every macOS; C.UTF-8 is the one glibc always has.
+  return { ...env, LANG: platform === 'darwin' ? 'en_US.UTF-8' : 'C.UTF-8' };
+}
+
 export type PtyCreateOptions = {
   paneId: string;
   cwd: string;
@@ -135,7 +151,7 @@ export class PtyManager {
     // FLEET_PANE_ID lets the Claude Code hook name its pane directly, so Fleet
     // never has to walk the process tree to find where a session runs.
     const finalEnv = {
-      ...(opts.env ?? process.env),
+      ...withUtf8Locale(opts.env ?? process.env),
       FLEET_SESSION: '1',
       FLEET_PANE_ID: opts.paneId
     };

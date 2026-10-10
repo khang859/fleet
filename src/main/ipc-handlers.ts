@@ -4,6 +4,7 @@ import type { TerminalMenuAction } from '../shared/ipc-api';
 import { safeOpenExternal } from './safe-external';
 import { collectDiagnosticsInfo, readRedactedLogTail, openLogsFolder } from './diagnostics';
 import { createLogger, logger } from './logger';
+import { enrichProcessEnv } from './shell-env';
 
 const log = createLogger('ipc');
 import { readFile, writeFile, stat, readdir, mkdir } from 'fs/promises';
@@ -245,6 +246,11 @@ export function registerIpcHandlers(
       cwd: req.cwd,
       shellProfileId: req.shellProfileId
     });
+
+    // A pane restored at launch is created before the login shell environment
+    // has been merged into process.env. Wait for it, or the pane inherits
+    // launchd's bare environment (no LANG, minimal PATH).
+    await enrichProcessEnv();
 
     // Resolve Claude config: workspace override → global → default
     const settings = settingsStore.get();

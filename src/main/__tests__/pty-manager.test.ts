@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { PtyManager } from '../pty-manager';
+import { PtyManager, withUtf8Locale } from '../pty-manager';
 import { wslExePath } from '../wsl-service';
 
 // Mock logger to avoid Winston timers interfering with vi.useFakeTimers()
@@ -51,6 +51,18 @@ describe('PtyManager', () => {
     expect(options?.env).toMatchObject({ FLEET_SESSION: '1', FLEET_PANE_ID: 'pane-9' });
     const snapshot = manager.getEnvSnapshot('pane-9');
     expect(snapshot?.vars.find((v) => v.key === 'FLEET_PANE_ID')?.source).toBe('fleet-builtin');
+  });
+
+  it('gives a pane a UTF-8 locale when the app was launched without one', () => {
+    expect(withUtf8Locale({ PATH: '/bin' }, 'darwin').LANG).toBe('en_US.UTF-8');
+    expect(withUtf8Locale({ LANG: '' }, 'linux').LANG).toBe('C.UTF-8');
+  });
+
+  it('keeps a locale the user already has', () => {
+    expect(withUtf8Locale({ LANG: 'vi_VN.UTF-8' }, 'darwin').LANG).toBe('vi_VN.UTF-8');
+    expect(withUtf8Locale({ LC_ALL: 'C' }, 'darwin').LANG).toBeUndefined();
+    expect(withUtf8Locale({ LC_CTYPE: 'UTF-8' }, 'darwin').LANG).toBeUndefined();
+    expect(withUtf8Locale({}, 'win32').LANG).toBeUndefined();
   });
 
   it('kills a PTY and removes it from the map', () => {
