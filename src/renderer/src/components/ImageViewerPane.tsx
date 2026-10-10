@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { toFleetImageUrl } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
@@ -80,11 +81,15 @@ export function ImageViewerPane({
   }, [filePath, pathContext]);
 
   // Calculate fit zoom (scale to fill pane without cropping)
-  const getFitZoom = useCallback((): number => {
+  const getFitZoom = useCallback((): number | null => {
     const container = containerRef.current;
     const img = imgRef.current;
     if (!container || !img?.naturalWidth || !img.naturalHeight) return 1;
     const { width: cw, height: ch } = container.getBoundingClientRect();
+    // A background tab is `display: none`, so the pane measures 0x0. There is
+    // nothing to fit to, and the padding below would turn that into a negative
+    // scale - a mirrored thumbnail for one frame when the tab comes back.
+    if (cw === 0 || ch === 0) return null;
     const availW = cw - 16;
     const availH = ch - 16;
     return Math.min(availW / img.naturalWidth, availH / img.naturalHeight);
@@ -92,6 +97,7 @@ export function ImageViewerPane({
 
   const applyFit = useCallback(() => {
     const fz = getFitZoom();
+    if (fz === null) return;
     setZoom(fz);
     setOffset({ x: 0, y: 0 });
     setIsFit(true);
@@ -170,7 +176,9 @@ export function ImageViewerPane({
     const container = containerRef.current;
     if (!container) return;
     const observer = new ResizeObserver(() => {
-      if (isFitRef.current) applyFit();
+      // Observers run between layout and paint. Committing here, rather than in
+      // a later task, keeps the old zoom from being painted at the new size.
+      if (isFitRef.current) flushSync(applyFit);
     });
     observer.observe(container);
     return () => observer.disconnect();
@@ -180,6 +188,8 @@ export function ImageViewerPane({
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // Every open image stays mounted; only the one on screen takes the keys.
+      if (!containerRef.current?.offsetParent) return;
       if (e.key === '0') applyFit();
       else if (e.key === '+' || e.key === '=') adjustZoom(ZOOM_STEP);
       else if (e.key === '-') adjustZoom(-ZOOM_STEP);
