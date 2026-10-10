@@ -18,6 +18,44 @@ export function getNormalTabs<T extends { type?: string; cwd: string }>(tabs: T[
   );
 }
 
+/**
+ * The id one row above or below `tabId` in `rowIds`, or undefined at either end
+ * of the list - the arrows stop there rather than wrap.
+ */
+export function neighbourTabId(
+  rowIds: Array<string | null>,
+  tabId: string,
+  step: 1 | -1
+): string | undefined {
+  const index = rowIds.indexOf(tabId);
+  if (index === -1) return undefined;
+  return rowIds[index + step] ?? undefined;
+}
+
+/**
+ * Tab ids in the order the sidebar drew them. Read off the rendered rows,
+ * because only the sidebar knows that order - groups, nested files and
+ * collapsed sections all move a tab away from its place in `workspace.tabs`.
+ */
+function sidebarRowIds(): Array<string | null> {
+  return Array.from(document.querySelectorAll('[data-tab-id]'), (el) =>
+    el.getAttribute('data-tab-id')
+  );
+}
+
+/**
+ * Which way a bare Up/Down walks the sidebar, or null for any other key. Only
+ * an image tab acts on it: an image has no caret or scroll position for the
+ * arrows to move, where a terminal or an editor needs them for itself.
+ */
+function sidebarArrowStep(e: KeyboardEvent): 1 | -1 | null {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return null;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return null;
+  if (e.key === 'ArrowDown') return 1;
+  if (e.key === 'ArrowUp') return -1;
+  return null;
+}
+
 export function usePaneNavigation(): void {
   /*
    * Read on demand, never subscribe. This hook runs inside `App`, so a bare
@@ -32,6 +70,15 @@ export function usePaneNavigation(): void {
       const state = useWorkspaceStore.getState();
       const { workspace, activeTabId, activePaneId, addTab, closePane, splitPane, setActiveTab } =
         state;
+
+      const sidebarStep = sidebarArrowStep(e);
+      const onImageTab = workspace.tabs.find((t) => t.id === activeTabId)?.type === 'image';
+      if (sidebarStep && activeTabId && onImageTab) {
+        e.preventDefault();
+        const next = neighbourTabId(sidebarRowIds(), activeTabId, sidebarStep);
+        if (next) setActiveTab(next);
+        return;
+      }
 
       // Shift+F2 to rename active pane
       if (matchesShortcut(e, sc('rename-pane'))) {
