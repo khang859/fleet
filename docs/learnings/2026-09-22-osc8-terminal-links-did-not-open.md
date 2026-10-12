@@ -16,7 +16,9 @@ The main window's `setWindowOpenHandler` gets `about:blank`, `safeOpenExternal` 
 ## Fix
 
 `createTerminal` in `src/renderer/src/hooks/use-terminal.ts` now passes `linkHandler: { activate }` to the `Terminal`.
-It shares one handler with `WebLinksAddon`: Cmd+click (Ctrl+click off macOS) calls `window.fleet.shell.openExternal`, a plain click is ignored.
+It shares one handler with the URL link provider: Cmd+click (Ctrl+click off macOS) calls `window.fleet.shell.openExternal`.
+A plain click is ignored unless Settings > General > Link Click is on.
+`WebLinksAddon` was the URL provider at the time and has since been replaced, see `2026-10-12-terminal-url-links.md`.
 
 ## Takeaway
 

@@ -1,63 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import type { IBufferCell, IBufferLine } from '@xterm/xterm';
-import { stitchWrappedLine, mapOffsetToCell, type BufferReader } from '../terminal-buffer-text';
-
-/**
- * A buffer built from strings, one per row, a leading `|` marking a row as a
- * continuation of the one above - not `~`, which begins a real path. Cells are one character wide unless the string carries a
- * full-width character, which is modelled the way xterm does it: the glyph in
- * the first cell, a zero-width cell after it.
- */
-function buffer(rows: string[]): BufferReader {
-  const parsed = rows.map((row) => ({
-    wrapped: row.startsWith('|'),
-    text: row.startsWith('|') ? row.slice(1) : row
-  }));
-
-  function cells(text: string): string[] {
-    const out: string[] = [];
-    for (const ch of text) {
-      out.push(ch);
-      // Anything above the BMP-ish CJK start is treated as double width here,
-      // which is all these tests need from wcwidth.
-      if (ch.codePointAt(0)! >= 0x1100) out.push('');
-    }
-    return out;
-  }
-
-  function line(index: number): IBufferLine | undefined {
-    const row = parsed.at(index);
-    if (!row) return undefined;
-    const rowCells = cells(row.text);
-    return {
-      isWrapped: row.wrapped,
-      length: rowCells.length,
-      translateToString: (trimRight?: boolean) =>
-        trimRight === true ? row.text.replace(/\s+$/, '') : row.text,
-      getCell: (x: number, cell?: IBufferCell) => {
-        const chars = rowCells.at(x);
-        if (chars === undefined) return undefined;
-        const target = cell as unknown as { _chars: string };
-        target._chars = chars;
-        return cell;
-      }
-    } as unknown as IBufferLine;
-  }
-
-  return {
-    getLine: line,
-    getNullCell: () => {
-      const cell = {
-        _chars: '',
-        getChars: () => cell._chars,
-        // Zero-width marks the trailing half of a full-width glyph; everything
-        // else is one cell wide, matching `cells` above.
-        getWidth: () => (cell._chars === '' ? 0 : cell._chars.codePointAt(0)! >= 0x1100 ? 2 : 1)
-      };
-      return cell as unknown as IBufferCell;
-    }
-  };
-}
+import {
+  stitchWrappedLine,
+  mapOffsetToCell,
+  readLogicalLine,
+  mapLogicalOffsetToCell,
+  type BufferReader
+} from '../terminal-buffer-text';
+import { buffer } from './fake-buffer';
 
 describe('stitchWrappedLine', () => {
   it('returns a single unwrapped row as-is', () => {
@@ -166,5 +115,97 @@ describe('mapOffsetToCell', () => {
       expect(seen.has(key)).toBe(false);
       seen.add(key);
     }
+  });
+});
+
+/** Rows of a pane `cols` wide: each is padded out, as a real buffer row is. */
+function pane(cols: number, rows: string[]): ReturnType<typeof buffer> {
+  return buffer(
+    rows.map((row) => (row.startsWith('|') ? '|' + row.slice(1).padEnd(cols) : row.padEnd(cols)))
+  );
+}
+
+describe('readLogicalLine', () => {
+  it('returns a lone row as-is', () => {
+    const b = pane(20, ['hello world']);
+    expect(readLogicalLine(b, 0)?.text).toBe('hello world');
+  });
+
+  it('returns null for a row that does not exist', () => {
+    expect(readLogicalLine(pane(10, ['a']), 3)).toBeNull();
+  });
+
+  it('joins soft-wrapped rows from any of them', () => {
+    const b = pane(10, ['see abcdef', '|ghijklmnop', '|qrs tail']);
+    for (const row of [0, 1, 2]) {
+      expect(readLogicalLine(b, row)?.text).toBe('see abcdefghijklmnopqrs tail');
+    }
+  });
+
+  it('joins a hard-wrapped row that ran to the edge, dropping the indent', () => {
+    const b = pane(10, ['go abcdefg', '  hijklmno', '  pq', 'next']);
+    for (const row of [0, 1, 2]) {
+      expect(readLogicalLine(b, row)?.text).toBe('go abcdefghijklmnopq');
+    }
+    expect(readLogicalLine(b, 3)?.text).toBe('next');
+  });
+
+  it('joins rows a TUI padded out with real spaces', () => {
+    const b = pane(10, ['go abcdefg', '  hijklmn', '  op']);
+    // xterm trims only cells that were never written, so painted padding stays.
+    const painted: BufferReader = {
+      ...b,
+      getLine: (i) => {
+        const line = b.getLine(i);
+        return line && { ...line, translateToString: () => line.translateToString(false) };
+      }
+    };
+    expect(readLogicalLine(painted, 1)?.text).toBe('go abcdefghijklmnop');
+  });
+
+  it('allows a row to stop a couple of cells short of the edge when the next is indented', () => {
+    const b = pane(10, ['abcdefgh', '  ijk']);
+    expect(readLogicalLine(b, 0)?.text).toBe('abcdefghijk');
+  });
+
+  it('needs a full row to join a next row that is not indented', () => {
+    expect(readLogicalLine(pane(10, ['abcdefghi', 'jkl']), 0)?.text).toBe('abcdefghi');
+    expect(readLogicalLine(pane(10, ['abcdefghij', 'klm']), 0)?.text).toBe('abcdefghijklm');
+  });
+
+  it('does not join a row that stopped well short of the edge', () => {
+    const b = pane(10, ['abcdefg', 'hij']);
+    expect(readLogicalLine(b, 0)?.text).toBe('abcdefg');
+    expect(readLogicalLine(b, 1)?.text).toBe('hij');
+  });
+
+  it('does not join across a blank row', () => {
+    const b = pane(10, ['abcdefghij', '', 'klm']);
+    expect(readLogicalLine(b, 0)?.text).toBe('abcdefghij');
+  });
+
+  it('stops one row past whitespace in each direction', () => {
+    const b = pane(10, ['aaaaaaaaaa', 'bbbb ccccc', 'dddddddddd', 'eeee fffff', 'gggggggggg']);
+    expect(readLogicalLine(b, 2)?.text).toBe('bbbb cccccddddddddddeeee fffff');
+  });
+
+  it('reads a token longer than the stitch cap', () => {
+    const rows = Array.from({ length: 60 }, () => 'x'.repeat(100));
+    expect(readLogicalLine(pane(100, rows), 0)?.text).toHaveLength(6000);
+  });
+});
+
+describe('mapLogicalOffsetToCell', () => {
+  it('skips the indentation of a hard-wrapped row', () => {
+    const b = pane(10, ['go abcdefg', '  hijklmno', '  pq']);
+    const logical = readLogicalLine(b, 0)!;
+    expect(mapLogicalOffsetToCell(b, logical, 3)).toEqual({ x: 3, y: 0 });
+    expect(mapLogicalOffsetToCell(b, logical, 10)).toEqual({ x: 2, y: 1 });
+    expect(mapLogicalOffsetToCell(b, logical, 19)).toEqual({ x: 3, y: 2 });
+  });
+
+  it('returns null past the end of the text', () => {
+    const b = pane(10, ['abc']);
+    expect(mapLogicalOffsetToCell(b, readLogicalLine(b, 0)!, 3)).toBeNull();
   });
 });

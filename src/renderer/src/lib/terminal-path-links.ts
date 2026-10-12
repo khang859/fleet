@@ -244,8 +244,9 @@ export class PathLinkProvider implements ILinkProvider {
         range,
         text: candidate.text,
         decorations: { pointerCursor: true, underline: true },
-        // Gated the way the URL links already are, so a plain click still
-        // places the cursor and drags still select.
+        // Always behind the modifier, even when the user lets a plain click
+        // open URLs: paths are all over agent output, and a click meant to
+        // focus the pane would keep opening files.
         activate: (event) => {
           if (!event.metaKey && !event.ctrlKey) return;
           this.deps.onActivate(detected);

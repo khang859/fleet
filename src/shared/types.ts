@@ -288,6 +288,11 @@ export type FleetSettings = {
      * instead of a character - in Claude Code panes and the Agent composer.
      */
     holdBackspaceDeletesWords: boolean;
+    /**
+     * A plain left click opens a URL in a terminal pane. Off, it takes
+     * Cmd/Ctrl+click. File paths take Cmd/Ctrl+click either way.
+     */
+    clickOpensLinks: boolean;
   };
   notifications: {
     taskComplete: { badge: boolean; sound: boolean; os: boolean };

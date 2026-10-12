@@ -55,6 +55,13 @@ describe('SettingsStore settings merge', () => {
     expect(s.general.accentColor).toBe('blue');
   });
 
+  it('leaves plain-click link opening off until asked, and keeps it across other writes', () => {
+    expect(store.get().general.clickOpensLinks).toBe(false);
+    store.set({ general: { clickOpensLinks: true } });
+    store.set({ general: { fontSize: 16 } });
+    expect(store.get().general.clickOpensLinks).toBe(true);
+  });
+
   it('merges partial general changes without stale full-object overwrites', () => {
     store.set({ general: { terminalTheme: 'dracula', accentColor: 'teal' } });
     store.set({ general: { fontSize: 16 } });

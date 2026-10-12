@@ -270,6 +270,28 @@ export function GeneralSection(): React.JSX.Element {
           Delete whole words
         </label>
       </SettingRow>
+      <SettingRow
+        label="Link Click"
+        align="start"
+        below={
+          <p className="text-xs text-fleet-text-subtle">
+            Open a URL in a terminal with a plain click. Cmd/Ctrl+click always opens it, and file
+            paths always need Cmd/Ctrl+click.
+          </p>
+        }
+      >
+        <label className="flex items-center gap-2 py-1 text-sm text-fleet-text">
+          <input
+            type="checkbox"
+            checked={settings.general.clickOpensLinks}
+            onChange={(e) => {
+              void updateSettings({ general: { clickOpensLinks: e.target.checked } });
+            }}
+            className="fleet-accent-input"
+          />
+          Open links without a modifier
+        </label>
+      </SettingRow>
       <SettingRow label="App Theme">
         <select
           value={normalizeAppTheme(settings.general.theme)}

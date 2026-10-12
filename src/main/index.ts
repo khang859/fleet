@@ -9,10 +9,9 @@ import {
   powerMonitor,
   protocol,
   session as electronSession,
-  shell,
   systemPreferences
 } from 'electron';
-import { safeOpenExternal, isSafeExternalUrl } from './safe-external';
+import { safeOpenExternal, isSafeExternalUrl, openExternal } from './safe-external';
 import { shouldCheck, UPDATE_CHECK_INTERVAL_MS } from './update-scheduler';
 import { nextStaged } from './update-staging';
 import { loadReleaseHistory } from './release-notes-history';
@@ -1485,7 +1484,7 @@ void app.whenReady().then(async () => {
   // waiting on a browser that never appeared.
   const openMcpSignIn = async (url: string): Promise<void> => {
     if (!isSafeExternalUrl(url)) throw new Error('That sign-in page is not a web address.');
-    await shell.openExternal(url);
+    await openExternal(url);
   };
   agentMcp = new AgentMcpManager({
     getConfig: () => settingsStore.get().ai.agent.mcpServers,

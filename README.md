@@ -132,6 +132,8 @@ Rendering is the same whether you open a file from the sidebar, `Cmd+O`, or `fle
 ### Clickable Terminal Output
 
 `Cmd+click` file paths, `ls` output, URLs, and OSC 8 hyperlinks in any terminal to open them.
+URLs are found whole even when a program wrapped them across several rows itself, as Claude Code does, and the punctuation after one is left out.
+Settings > General > Link Click makes a plain click open URLs too.
 
 ### Telescope Finder
 

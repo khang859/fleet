@@ -8,7 +8,6 @@ const log = createLogger('terminal:lifecycle');
 import { SearchAddon } from '@xterm/addon-search';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
-import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
@@ -21,6 +20,11 @@ import {
   type DetectedPath,
   type DirListing
 } from '../lib/terminal-path-links';
+import {
+  clickOpensUrl,
+  createUrlLinkProvider,
+  type UrlLinkEvents
+} from '../lib/terminal-url-links';
 import { useWorkspaceStore, getPaneContextById } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
 import { useHomesStore } from '../store/homes-store';
@@ -258,15 +262,29 @@ function createTerminal(
   resizeObserver: ResizeObserver;
   cleanupResizeTimer: () => void;
   cursorSuppressor: { dispose(): void };
-  pathLinks: { dispose(): void };
+  linkProviders: { dispose(): void };
 } {
   log.debug('createTerminal', { paneId: options.paneId, cwd: options.cwd });
 
-  // Cmd+click (macOS) or Ctrl+click (Windows/Linux) opens a URL in the default
-  // browser; a plain click is ignored so text selection still works normally.
-  const openLinkOnModClick = (event: MouseEvent, uri: string): void => {
-    if (event.metaKey || event.ctrlKey) {
-      void window.fleet.shell.openExternal(uri);
+  // Whether a plain click opens URLs. Read at click time, so toggling the
+  // setting takes effect in panes that are already open.
+  const plainClickOpens = (): boolean =>
+    useSettingsStore.getState().settings?.general.clickOpensLinks ?? false;
+
+  // One set of handlers for URLs found in the text and for OSC 8 hyperlinks.
+  // xterm has no way to ask what link sits under the pointer, so hovering is
+  // tracked here for the mousedown listener below.
+  let urlHovered = false;
+  const urlLinks: UrlLinkEvents = {
+    activate: (event, uri) => {
+      const pane = { plainClickOpens: plainClickOpens(), hasSelection: term.hasSelection() };
+      if (clickOpensUrl(event, pane)) void window.fleet.shell.openExternal(uri);
+    },
+    hover: () => {
+      urlHovered = true;
+    },
+    leave: () => {
+      urlHovered = false;
     }
   };
 
@@ -285,7 +303,7 @@ function createTerminal(
     // OSC 8 hyperlinks (Claude Code, gh, ls --hyperlink). xterm's default
     // handler confirms and then `window.open()`s about:blank, which the main
     // window's open handler refuses, so the link would never open.
-    linkHandler: { activate: openLinkOnModClick }
+    linkHandler: urlLinks
   });
 
   const fitAddon = new FitAddon();
@@ -299,12 +317,11 @@ function createTerminal(
   term.loadAddon(unicodeAddon);
   term.unicode.activeVersion = '11';
 
-  const webLinksAddon = new WebLinksAddon(openLinkOnModClick, {
-    urlRegex: /https?:\/\/[^\s"'<>()[\]{}]+/i
-  });
-  term.loadAddon(webLinksAddon);
+  const urlLinkRegistration = term.registerLinkProvider(
+    createUrlLinkProvider(() => term.buffer.active, urlLinks)
+  );
 
-  // Same gesture for file paths that agents and build tools print. Whether a
+  // Cmd/Ctrl+click for file paths that agents and build tools print. Whether a
   // candidate is real is settled by a `stat`, so only paths that exist are
   // underlined; everything the provider needs about the pane is read live,
   // because the cwd changes with every `cd` and an ssh session can start at any
@@ -322,8 +339,9 @@ function createTerminal(
     onActivate: openDetectedPath
   });
   const pathLinkRegistration = term.registerLinkProvider(pathLinkProvider);
-  const pathLinks = {
+  const linkProviders = {
     dispose: () => {
+      urlLinkRegistration.dispose();
       pathLinkRegistration.dispose();
       pathLinkProvider.dispose();
     }
@@ -331,6 +349,25 @@ function createTerminal(
 
   term.open(container);
   log.debug('xterm mounted', { paneId: options.paneId });
+
+  // A program that tracks the mouse is sent every click, and one that opens
+  // URLs itself - Claude Code in fullscreen mode - would open this one a second
+  // time. A click Fleet is about to act on is kept from it. xterm reports the
+  // press from the terminal's root element and resolves links on the screen
+  // element inside it, so stopping the event here ends the first and leaves the
+  // second alone; the release is only reported for a press that was.
+  term.element?.querySelector('.xterm-screen')?.addEventListener('mousedown', (event) => {
+    if (!(event instanceof MouseEvent) || event.button !== 0) return;
+    if (!urlHovered || term.modes.mouseTrackingMode === 'none') return;
+    const pane = { plainClickOpens: plainClickOpens(), hasSelection: false };
+    if (!clickOpensUrl(event, pane)) return;
+    event.stopPropagation();
+    event.preventDefault();
+    // The handler being skipped is also what drops a stale selection and takes
+    // focus, so both are done here.
+    term.clearSelection();
+    term.focus();
+  });
 
   // Restore serialized content after open (before canvas addon — content is buffer-level)
   if (options.serializedContent) {
@@ -899,7 +936,7 @@ function createTerminal(
     resizeObserver,
     cleanupResizeTimer,
     cursorSuppressor,
-    pathLinks
+    linkProviders
   };
 }
 
@@ -948,7 +985,7 @@ export function useTerminal(
       resizeObserver,
       cleanupResizeTimer,
       cursorSuppressor,
-      pathLinks
+      linkProviders
     } = createTerminal(container, optionsRef.current);
 
     termRef.current = term;
@@ -968,7 +1005,7 @@ export function useTerminal(
       terminalRegistry.delete(paneId);
       cleanupResizeTimer();
       cursorSuppressor.dispose();
-      pathLinks.dispose();
+      linkProviders.dispose();
       ipcCleanup();
       scrollCleanup();
       resizeObserver.disconnect();

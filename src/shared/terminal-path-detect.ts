@@ -75,7 +75,7 @@ const CLOSERS = new Set([
   '.'
 ]);
 
-/** `scheme://` - left to the web-links addon, which already owns real URLs. */
+/** `scheme://` - left to the URL link provider, which already owns real URLs. */
 const URL_SCHEME_RE = /^[A-Za-z][A-Za-z\d+.-]*:\/\//;
 
 /**
