@@ -158,7 +158,7 @@ import type { CwdPoller } from './cwd-poller';
 import type { ActivityTracker } from './activity-tracker';
 import { toError } from './errors';
 import { scanImageFolder } from './slideshow-scanner';
-import { adoptBackgroundImage, pruneBackgroundStore } from './background-store';
+import { adoptBackground, pruneBackgroundStore } from './background-store';
 import type { GitService } from './git-service';
 import type { WorktreeService } from './worktree-service';
 import type { AnnotationStore } from './annotation-store';
@@ -812,19 +812,19 @@ export function registerIpcHandlers(
     }
   );
 
-  // List image files in a folder for the terminal background slideshow
+  // List the images and videos in a folder for the terminal background slideshow
   ipcMain.handle(
     IPC_CHANNELS.FILE_SCAN_IMAGE_FOLDER,
     async (_event, { folderPath }: { folderPath: string }): Promise<string[]> =>
       scanImageFolder(folderPath)
   );
 
-  // Copy an image into ~/.fleet/backgrounds so a wallpaper outlives whatever
-  // made the picture - an agent's images go when its conversation does.
+  // Copy an image or a video into ~/.fleet/backgrounds so a wallpaper outlives
+  // whatever made it - an agent's images go when its conversation does.
   ipcMain.handle(
     IPC_CHANNELS.BACKGROUND_ADOPT,
-    (_event, { sourcePath }: { sourcePath: string }): BackgroundAdoptResponse =>
-      adoptBackgroundImage(sourcePath)
+    async (_event, { sourcePath }: { sourcePath: string }): Promise<BackgroundAdoptResponse> =>
+      adoptBackground(sourcePath)
   );
 
   // Check which entries in a directory are gitignored (returns ignored names)

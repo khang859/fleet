@@ -53,13 +53,13 @@ export function contrastRatio(a: string, b: string): number {
 }
 
 /**
- * Heuristic legibility hint for an IMAGE background behind terminal text.
+ * Heuristic legibility hint for an image or video background behind terminal text.
  *
- * Returns a short user-facing message when the image is likely to hurt readability,
+ * Returns a short user-facing message when the background is likely to hurt readability,
  * or null when it's fine.
  *
  * Logic:
- * - Warn when opacity > 0.5 AND blur < 4 (unknown image pixels increasingly replace
+ * - Warn when opacity > 0.5 AND blur < 4 (unknown background pixels increasingly replace
  *   the safe theme bg, worst-case contrast can collapse toward ~1).
  * - Use a stronger message when opacity > 0.75.
  * - If the theme's own base contrast < 4.5, mention it.
@@ -77,12 +77,13 @@ export function backgroundLegibilityHint(opts: {
 
   if (opacity > 0.75 && blur < 4) {
     const msg =
-      'High image opacity may make terminal text hard to read — lower opacity or add blur.';
+      'High background opacity may make terminal text hard to read - lower opacity or add blur.';
     return lowThemeContrast ? `${msg} ${lowThemeMsg}` : msg;
   }
 
   if (opacity > 0.5 && blur < 4) {
-    const msg = 'Image opacity is moderate — consider lowering it or adding blur for readability.';
+    const msg =
+      'Background opacity is moderate - consider lowering it or adding blur for readability.';
     return lowThemeContrast ? `${msg} ${lowThemeMsg}` : msg;
   }
 

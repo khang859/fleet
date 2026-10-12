@@ -1,35 +1,11 @@
-import type { CSSProperties } from 'react';
+import { useEffect, useReducer, type CSSProperties } from 'react';
 import type { TerminalBackground } from '../../../shared/types';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
-import { toFleetImageUrl } from '../../../shared/path-platform';
+import { backgroundMediaKind } from '../../../shared/background-media';
 import { resolveBackgroundSrc } from '../lib/pane-background';
-
-const FIT_STYLES: Record<TerminalBackground['fit'], { size: string; repeat: string }> = {
-  cover: { size: 'cover', repeat: 'no-repeat' },
-  contain: { size: 'contain', repeat: 'no-repeat' },
-  center: { size: 'auto', repeat: 'no-repeat' },
-  tile: { size: 'auto', repeat: 'repeat' }
-};
-
-// Feather the pane edges to transparent so an image smaller than the pane blends
-// into the terminal background instead of ending at a hard border. `fadeX` fades
-// the left/right edges, `fadeY` the top/bottom (each a fraction of the pane). When
-// both are active the gradients are intersected so the corners fade too.
-function edgeFadeStyle(fadeX: number, fadeY: number): CSSProperties {
-  if (!fadeX && !fadeY) return {};
-  const ramp = (dir: string, fade: number): string => {
-    const start = `${(fade * 100).toFixed(1)}%`;
-    const end = `${(100 - fade * 100).toFixed(1)}%`;
-    return `linear-gradient(to ${dir}, transparent, #000 ${start}, #000 ${end}, transparent)`;
-  };
-  const layers: string[] = [];
-  if (fadeX) layers.push(ramp('right', fadeX));
-  if (fadeY) layers.push(ramp('bottom', fadeY));
-  return {
-    maskImage: layers.join(', '),
-    ...(layers.length > 1 ? { maskComposite: 'intersect' } : {})
-  };
-}
+import { backgroundLayerStyle } from '../lib/background-style';
+import { EMPTY_BACKGROUND_STACK, backgroundStackReducer } from '../lib/background-stack';
+import { BackgroundVideo } from './BackgroundVideo';
 
 const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -37,70 +13,87 @@ type BackgroundLayerProps = {
   background: TerminalBackground;
   /** Shared slideshow frame from the global useSlideshow clock in App. */
   frame?: SlideshowFrame;
+  /** A background could not be played, so whatever chose it should choose again. */
+  onUnplayable?: (path: string) => void;
 };
 
 /**
- * The image layer(s) behind a terminal pane. Static mode renders one layer;
- * during a slideshow transition the outgoing image fades out under the
- * incoming one. CSS animations (not transitions) are used because keyed
- * remounts restart them reliably from the first keyframe — a `transition`
- * would not animate on the element's mount frame.
+ * The image or video layer(s) behind the window. Static mode renders one layer;
+ * during a slideshow transition the outgoing background fades out under the
+ * incoming one - see `background-stack` for when. CSS animations (not
+ * transitions) are used because they start reliably from the first keyframe
+ * the moment they are applied - a `transition` would not animate on the
+ * element's mount frame.
+ *
+ * Layers are keyed by what they show, so the one fading out is the same element
+ * that was showing: a video carries on from the frame it was on instead of
+ * starting over as it leaves.
  */
 export function BackgroundLayer({
   background,
-  frame
+  frame,
+  onUnplayable
 }: BackgroundLayerProps): React.JSX.Element | null {
-  const slideshowOn = background.slideshow.enabled;
-  const currentSrc = resolveBackgroundSrc(background, frame);
-  if (!currentSrc) return null;
+  const src = resolveBackgroundSrc(background, frame);
+  const fadeMs =
+    background.slideshow.enabled && !reducedMotionQuery.matches
+      ? background.slideshow.transitionMs
+      : 0;
+  const fade = fadeMs > 0;
 
-  const fadeMs = reducedMotionQuery.matches ? 0 : background.slideshow.transitionMs;
-  const previousSrc =
-    slideshowOn && fadeMs > 0 && frame?.previousPath !== currentSrc
-      ? (frame?.previousPath ?? null)
-      : null;
+  const [stack, dispatch] = useReducer(backgroundStackReducer, EMPTY_BACKGROUND_STACK);
+  useEffect(() => {
+    const ready = src !== null && backgroundMediaKind(src) !== 'video';
+    dispatch({ type: 'show', src, ready, fade });
+    // `fade` is read when the background changes, not watched: moving the
+    // transition slider is not a new background.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
 
-  const layerStyle = (src: string): CSSProperties => ({
-    // Over-extend when blurred so the blur's soft edge doesn't reveal the pane border.
-    inset: background.blur > 0 ? -background.blur * 2 : 0,
-    // toFleetImageUrl percent-encodes so paths with spaces/special chars survive the CSS url() parser.
-    backgroundImage: `url("${toFleetImageUrl(src)}")`,
-    backgroundSize: FIT_STYLES[background.fit].size,
-    backgroundRepeat: FIT_STYLES[background.fit].repeat,
-    backgroundPosition: 'center',
-    filter: background.blur > 0 ? `blur(${background.blur}px)` : undefined,
-    ...edgeFadeStyle(background.edgeFadeX, background.edgeFadeY)
+  const { top, under } = stack;
+  if (!top) return null;
+
+  const crossing = top.ready && under !== null;
+  const fading = (name: string): CSSProperties => ({
+    ['--fleet-bg-opacity' as string]: background.opacity,
+    animation: `${name} ${fadeMs}ms ease-in-out both`
   });
 
-  return (
-    <>
-      {previousSrc && (
-        <div
-          key={`out-${previousSrc}`}
-          aria-hidden
-          className="absolute z-0 pointer-events-none"
-          style={{
-            ...layerStyle(previousSrc),
-            ['--fleet-bg-opacity' as string]: background.opacity,
-            animation: `fleet-bg-fade-out ${fadeMs}ms ease-in-out both`
+  const layer = (layerSrc: string, style: CSSProperties, isTop: boolean): React.JSX.Element => (
+    <div
+      key={layerSrc}
+      aria-hidden
+      className="absolute z-0 pointer-events-none"
+      style={{ ...backgroundLayerStyle(background, layerSrc), ...style }}
+      onAnimationEnd={isTop ? () => dispatch({ type: 'settled', src: layerSrc }) : undefined}
+    >
+      {backgroundMediaKind(layerSrc) === 'video' && (
+        <BackgroundVideo
+          path={layerSrc}
+          fit={background.fit}
+          onReady={() => dispatch({ type: 'ready', src: layerSrc, fade })}
+          onError={() => {
+            dispatch({ type: 'failed', src: layerSrc });
+            onUnplayable?.(layerSrc);
           }}
         />
       )}
-      <div
-        key={`in-${currentSrc}`}
-        aria-hidden
-        className="absolute z-0 pointer-events-none"
-        style={{
-          ...layerStyle(currentSrc),
-          opacity: background.opacity,
-          ...(previousSrc
-            ? {
-                ['--fleet-bg-opacity' as string]: background.opacity,
-                animation: `fleet-bg-fade-in ${fadeMs}ms ease-in-out both`
-              }
-            : {})
-        }}
-      />
+    </div>
+  );
+
+  return (
+    <>
+      {under !== null &&
+        layer(
+          under,
+          crossing ? fading('fleet-bg-fade-out') : { opacity: background.opacity },
+          false
+        )}
+      {layer(
+        top.src,
+        crossing ? fading('fleet-bg-fade-in') : { opacity: top.ready ? background.opacity : 0 },
+        true
+      )}
     </>
   );
 }

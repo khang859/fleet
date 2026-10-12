@@ -2,8 +2,8 @@ import type { TerminalBackground } from '../../../shared/types';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
 
 /**
- * The image a pane's background layer is showing right now: the slideshow's
- * current frame once the clock has advanced, else the static image.
+ * The image or video the background layer is showing right now: the
+ * slideshow's current frame once the clock has advanced, else the static one.
  *
  * `BackgroundLayer` paints whatever this returns, and the panes that have to
  * react to a picture being there - xterm going transparent, the agent pane's

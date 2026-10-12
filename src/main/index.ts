@@ -665,8 +665,11 @@ void app.whenReady().then(async () => {
     if (!request.url.startsWith(`${FLEET_MEDIA_ORIGIN}/`)) {
       return new Response('Bad Request', { status: 400 });
     }
+    // A fragment (`#t=0.1`) is the player's business, not part of which file is
+    // asked for. A `#` in a file name arrives encoded, so this one is never that.
+    const [url] = request.url.split('#', 1);
     const resolved = await resolveFleetPath(
-      `fleet-media://${request.url.slice(FLEET_MEDIA_ORIGIN.length)}`,
+      `fleet-media://${url.slice(FLEET_MEDIA_ORIGIN.length)}`,
       'fleet-media'
     );
     if (!resolved) return new Response('Bad Request', { status: 400 });
@@ -724,7 +727,7 @@ void app.whenReady().then(async () => {
   // settings would be undone by its next save. After the first launch this
   // reads no files at all - every path is already inside the store.
   const savedBackground = settingsStore.get().general.terminalBackground;
-  const backfilled = backfillBackgroundStore(savedBackground);
+  const backfilled = await backfillBackgroundStore(savedBackground);
   if (backfilled) settingsStore.set({ general: { terminalBackground: backfilled } });
   pruneBackgroundStore(backfilled ?? savedBackground);
 

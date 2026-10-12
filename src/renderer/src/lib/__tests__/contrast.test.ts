@@ -89,20 +89,20 @@ describe('backgroundLegibilityHint', () => {
   it('returns a message at opacity 0.8 / blur 0 (strong warning)', () => {
     const result = backgroundLegibilityHint({ opacity: 0.8, blur: 0, ...goodTheme });
     expect(result).not.toBeNull();
-    expect(result).toContain('High image opacity');
+    expect(result).toContain('High background opacity');
   });
 
   it('returns a milder message in the 0.5–0.75 opacity band (blur 0)', () => {
     const result = backgroundLegibilityHint({ opacity: 0.6, blur: 0, ...goodTheme });
     expect(result).not.toBeNull();
-    expect(result).not.toContain('High image opacity');
+    expect(result).not.toContain('High background opacity');
     expect(result).toContain('moderate');
   });
 
   it('includes low-contrast theme warning in strong message', () => {
     const result = backgroundLegibilityHint({ opacity: 0.8, blur: 0, ...badTheme });
     expect(result).not.toBeNull();
-    expect(result).toContain('High image opacity');
+    expect(result).toContain('High background opacity');
     expect(result).toContain('low text contrast');
   });
 

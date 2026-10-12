@@ -1,6 +1,76 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TerminalBackgroundSlideshow } from '../../../../shared/types';
-import { toFleetImageUrl } from '../../../../shared/path-platform';
+import { toFleetImageUrl, toFleetMediaUrl } from '../../../../shared/path-platform';
+import { backgroundMediaKind } from '../../../../shared/background-media';
+import { releaseVideo } from '../../lib/background-video';
+
+/**
+ * A video in the grid, shown as a still: only its metadata is fetched, and the
+ * time fragment makes Chromium paint that frame rather than leave the tile
+ * empty until something plays.
+ *
+ * It holds a player only while the tile is on screen. Chromium allows a page a
+ * limited number of them, and a long list would otherwise take them all - the
+ * one the window's own background needs included.
+ */
+function VideoThumb(props: { path: string; title?: string }): React.JSX.Element {
+  const { path, title } = props;
+  const boxRef = useRef<HTMLSpanElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [onScreen, setOnScreen] = useState(false);
+
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const observer = new IntersectionObserver(([entry]) => setOnScreen(entry.isIntersecting));
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!onScreen || !video) return;
+    video.src = `${toFleetMediaUrl(path)}#t=0.1`;
+    return () => releaseVideo(video);
+  }, [onScreen, path]);
+
+  return (
+    <span ref={boxRef} className="block w-full h-full" title={title}>
+      {onScreen && (
+        <video
+          ref={videoRef}
+          muted
+          preload="metadata"
+          tabIndex={-1}
+          aria-hidden
+          className="w-full h-full object-cover pointer-events-none"
+        />
+      )}
+      <span
+        aria-hidden
+        className="absolute bottom-0.5 right-0.5 bg-black/60 text-white rounded px-1 text-[9px] leading-[14px] pointer-events-none"
+      >
+        ▶
+      </span>
+    </span>
+  );
+}
+
+/** One file in the grid. The corner mark is what tells a video from a picture. */
+function MediaThumb(props: { path: string; title?: string }): React.JSX.Element {
+  const { path, title } = props;
+  if (backgroundMediaKind(path) === 'video') return <VideoThumb path={path} title={title} />;
+  return (
+    <img
+      src={toFleetImageUrl(path)}
+      className="w-full h-full object-cover pointer-events-none"
+      loading="lazy"
+      draggable={false}
+      alt=""
+      title={title}
+    />
+  );
+}
 
 export function BackgroundThumbnails(props: {
   slideshow: TerminalBackgroundSlideshow;
@@ -39,7 +109,7 @@ export function BackgroundThumbnails(props: {
     }
 
     if (folderImages.length === 0) {
-      return <p className="text-fleet-text-subtle text-xs">No images found in folder.</p>;
+      return <p className="text-fleet-text-subtle text-xs">No images or videos found in folder.</p>;
     }
 
     return <ThumbnailGrid paths={folderImages} maxVisible={maxVisible} />;
@@ -113,13 +183,7 @@ function EditableFileGrid(props: {
                 : 'border-fleet-border-strong'
             } ${isDragging ? 'opacity-40' : ''}`}
           >
-            <img
-              src={encodeURI(`fleet-image://${path}`)}
-              className="w-full h-full object-cover pointer-events-none"
-              loading="lazy"
-              draggable={false}
-              alt=""
-            />
+            <MediaThumb path={path} />
             <button
               type="button"
               onClick={() => onRemoveFile(path)}
@@ -179,14 +243,7 @@ function ThumbnailGrid(props: {
             key={path}
             className="relative aspect-[16/10] rounded overflow-hidden border border-fleet-border-strong"
           >
-            <img
-              src={toFleetImageUrl(path)}
-              className="w-full h-full object-cover"
-              loading="lazy"
-              draggable={false}
-              alt=""
-              title={filename}
-            />
+            <MediaThumb path={path} title={filename} />
             {onRemoveFile && (
               <button
                 type="button"

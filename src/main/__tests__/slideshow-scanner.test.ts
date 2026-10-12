@@ -31,6 +31,15 @@ describe('scanImageFolder', () => {
     expect(result).toEqual([join(dir, 'pic.PNG')]);
   });
 
+  it('lists videos alongside the images', async () => {
+    await writeFile(join(dir, 'b.mp4'), '');
+    await writeFile(join(dir, 'a.png'), '');
+    await writeFile(join(dir, 'c.MOV'), '');
+    await writeFile(join(dir, 'd.mkv'), '');
+    const result = await scanImageFolder(dir);
+    expect(result).toEqual([join(dir, 'a.png'), join(dir, 'b.mp4'), join(dir, 'c.MOV')]);
+  });
+
   it('returns [] for a missing folder', async () => {
     expect(await scanImageFolder(join(dir, 'does-not-exist'))).toEqual([]);
   });

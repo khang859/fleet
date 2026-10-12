@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, readdir, rm, writeFile } from 'fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, utimes, writeFile } from 'fs/promises';
+import { createHash } from 'crypto';
 import { tmpdir } from 'os';
 import { basename, join } from 'path';
 import {
-  adoptBackgroundImage,
+  adoptBackground,
   backfillBackgroundStore,
   pruneBackgroundStore
 } from '../background-store';
@@ -14,11 +15,14 @@ function background(patch: Partial<TerminalBackground>): TerminalBackground {
   return { ...DEFAULT_TERMINAL_BACKGROUND, ...patch };
 }
 
+/** A sweep run long enough after the copies were made that none is still fresh. */
+const LATER = Date.now() + 60 * 60 * 1000;
+
 function slideshowOf(filePaths: string[]): Pick<TerminalBackground, 'slideshow'> {
   return { slideshow: { ...DEFAULT_TERMINAL_BACKGROUND.slideshow, filePaths } };
 }
 
-describe('adoptBackgroundImage', () => {
+describe('adoptBackground', () => {
   let dir: string;
   let dest: string;
 
@@ -35,7 +39,7 @@ describe('adoptBackgroundImage', () => {
     const source = join(dir, 'a.png');
     await writeFile(source, 'pretend png');
 
-    const result = adoptBackgroundImage(source, dest);
+    const result = await adoptBackground(source, dest);
 
     expect(result.success).toBe(true);
     expect(await readdir(dest)).toHaveLength(1);
@@ -45,8 +49,8 @@ describe('adoptBackgroundImage', () => {
     const source = join(dir, 'a.png');
     await writeFile(source, 'identical bytes');
 
-    const one = adoptBackgroundImage(source, dest);
-    const two = adoptBackgroundImage(source, dest);
+    const one = await adoptBackground(source, dest);
+    const two = await adoptBackground(source, dest);
 
     expect(one).toEqual(two);
     expect(await readdir(dest)).toHaveLength(1);
@@ -56,7 +60,7 @@ describe('adoptBackgroundImage', () => {
     const source = join(dir, 'Sunset Over Bay.JPG');
     await writeFile(source, 'bytes');
 
-    const result = adoptBackgroundImage(source, dest);
+    const result = await adoptBackground(source, dest);
 
     expect(result.success && basename(result.path)).toMatch(/^Sunset-Over-Bay-[0-9a-f]{32}\.jpg$/);
   });
@@ -65,7 +69,7 @@ describe('adoptBackgroundImage', () => {
     const source = join(dir, '...png');
     await writeFile(source, 'bytes');
 
-    const result = adoptBackgroundImage(source, dest);
+    const result = await adoptBackground(source, dest);
 
     expect(result.success && basename(result.path)).toMatch(/^[0-9a-f]{32}\.png$/);
   });
@@ -76,8 +80,8 @@ describe('adoptBackgroundImage', () => {
     await writeFile(a, 'one');
     await writeFile(b, 'two');
 
-    adoptBackgroundImage(a, dest);
-    adoptBackgroundImage(b, dest);
+    await adoptBackground(a, dest);
+    await adoptBackground(b, dest);
 
     expect(await readdir(dest)).toHaveLength(2);
   });
@@ -86,7 +90,7 @@ describe('adoptBackgroundImage', () => {
     const source = join(dir, 'a.WEBP');
     await writeFile(source, 'bytes');
 
-    const result = adoptBackgroundImage(source, dest);
+    const result = await adoptBackground(source, dest);
 
     expect(result.success && result.path.endsWith('.webp')).toBe(true);
   });
@@ -95,7 +99,7 @@ describe('adoptBackgroundImage', () => {
     const source = join(dir, 'a.svg');
     await writeFile(source, '<svg/>');
 
-    expect(adoptBackgroundImage(source, dest)).toEqual({
+    expect(await adoptBackground(source, dest)).toEqual({
       success: false,
       error: '.svg cannot be used as a background'
     });
@@ -105,11 +109,63 @@ describe('adoptBackgroundImage', () => {
     const source = join(dir, 'notes.txt');
     await writeFile(source, 'hello');
 
-    expect(adoptBackgroundImage(source, dest).success).toBe(false);
+    expect((await adoptBackground(source, dest)).success).toBe(false);
   });
 
-  it('fails rather than throws when the picture is already gone', () => {
-    const result = adoptBackgroundImage(join(dir, 'missing.png'), dest);
+  it('takes a video the same way it takes a picture', async () => {
+    const source = join(dir, 'Rain Loop.MP4');
+    await writeFile(source, 'pretend mp4');
+
+    const result = await adoptBackground(source, dest);
+
+    expect(result.success && basename(result.path)).toMatch(/^Rain-Loop-[0-9a-f]{32}\.mp4$/);
+  });
+
+  it('stores exactly the bytes it was given, named by their digest', async () => {
+    // Several stream chunks long, so a copy that dropped or reordered one shows.
+    const bytes = Buffer.alloc(300_000, 'fleet');
+    const source = join(dir, 'big.webm');
+    await writeFile(source, bytes);
+
+    const result = await adoptBackground(source, dest);
+    if (!result.success) throw new Error(result.error);
+
+    expect((await readFile(result.path)).equals(bytes)).toBe(true);
+    const digest = createHash('sha256').update(bytes).digest('hex').slice(0, 32);
+    expect(basename(result.path)).toBe(`big-${digest}.webm`);
+  });
+
+  it('leaves nothing half-written behind', async () => {
+    const source = join(dir, 'a.mp4');
+    await writeFile(source, 'bytes');
+
+    await adoptBackground(source, dest);
+    await adoptBackground(source, dest);
+
+    expect((await readdir(dest)).filter((name) => name.endsWith('.partial'))).toEqual([]);
+  });
+
+  it('stores one copy when the same file is adopted twice at once', async () => {
+    const source = join(dir, 'a.mp4');
+    await writeFile(source, 'bytes');
+
+    const [one, two] = await Promise.all([
+      adoptBackground(source, dest),
+      adoptBackground(source, dest)
+    ]);
+
+    expect(one).toEqual(two);
+    expect(await readdir(dest)).toHaveLength(1);
+  });
+
+  it('creates no folder for a picture that is already gone', async () => {
+    await adoptBackground(join(dir, 'missing.mp4'), dest);
+
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  it('fails rather than throws when the picture is already gone', async () => {
+    const result = await adoptBackground(join(dir, 'missing.png'), dest);
 
     expect(result.success).toBe(false);
   });
@@ -132,7 +188,7 @@ describe('pruneBackgroundStore', () => {
   async function adopted(name: string, bytes: string): Promise<string> {
     const source = join(dir, name);
     await writeFile(source, bytes);
-    const result = adoptBackgroundImage(source, dest);
+    const result = await adoptBackground(source, dest);
     if (!result.success) throw new Error(result.error);
     return result.path;
   }
@@ -141,7 +197,7 @@ describe('pruneBackgroundStore', () => {
     const kept = await adopted('kept.png', 'one');
     await adopted('dropped.png', 'two');
 
-    pruneBackgroundStore(background({ imagePath: kept }), dest);
+    pruneBackgroundStore(background({ imagePath: kept }), dest, LATER);
 
     expect(await readdir(dest)).toEqual([basename(kept)]);
   });
@@ -151,7 +207,7 @@ describe('pruneBackgroundStore', () => {
     const b = await adopted('b.png', 'two');
     await adopted('c.png', 'three');
 
-    pruneBackgroundStore(background(slideshowOf([a, b])), dest);
+    pruneBackgroundStore(background(slideshowOf([a, b])), dest, LATER);
 
     expect((await readdir(dest)).sort()).toEqual([basename(a), basename(b)].sort());
   });
@@ -167,7 +223,7 @@ describe('pruneBackgroundStore', () => {
       }
     });
 
-    pruneBackgroundStore(folder, dest);
+    pruneBackgroundStore(folder, dest, LATER);
 
     expect(await readdir(dest)).toEqual([basename(listed)]);
   });
@@ -175,7 +231,7 @@ describe('pruneBackgroundStore', () => {
   it('keeps the picture stashed behind the None mode', async () => {
     const stashed = await adopted('stashed.png', 'one');
 
-    pruneBackgroundStore(background({ imagePath: null, stashedImagePath: stashed }), dest);
+    pruneBackgroundStore(background({ imagePath: null, stashedImagePath: stashed }), dest, LATER);
 
     expect(await readdir(dest)).toEqual([basename(stashed)]);
   });
@@ -184,7 +240,7 @@ describe('pruneBackgroundStore', () => {
     await adopted('a.png', 'one');
     await adopted('b.png', 'two');
 
-    pruneBackgroundStore(DEFAULT_TERMINAL_BACKGROUND, dest);
+    pruneBackgroundStore(DEFAULT_TERMINAL_BACKGROUND, dest, LATER);
 
     expect(await readdir(dest)).toEqual([]);
   });
@@ -193,9 +249,39 @@ describe('pruneBackgroundStore', () => {
     const outside = join(dir, 'mine.png');
     await writeFile(outside, 'bytes');
 
-    pruneBackgroundStore(DEFAULT_TERMINAL_BACKGROUND, dest);
+    pruneBackgroundStore(DEFAULT_TERMINAL_BACKGROUND, dest, LATER);
 
     expect(await readdir(dir)).toContain('mine.png');
+  });
+
+  it('leaves a copy alone while it is too new for its setting to have been saved', async () => {
+    await adopted('just-picked.mp4', 'one');
+
+    pruneBackgroundStore(DEFAULT_TERMINAL_BACKGROUND, dest);
+
+    expect(await readdir(dest)).toHaveLength(1);
+  });
+
+  it('leaves a copy that is still being written alone, and collects an abandoned one', async () => {
+    await mkdir(dest, { recursive: true });
+    await writeFile(join(dest, 'in-flight.partial'), 'half a video');
+
+    pruneBackgroundStore(DEFAULT_TERMINAL_BACKGROUND, dest);
+    expect(await readdir(dest)).toEqual(['in-flight.partial']);
+
+    pruneBackgroundStore(DEFAULT_TERMINAL_BACKGROUND, dest, LATER);
+    expect(await readdir(dest)).toEqual([]);
+  });
+
+  it('gives an old copy that was just picked again the same grace as a new one', async () => {
+    const path = await adopted('again.png', 'one');
+    const longAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await utimes(path, longAgo, longAgo);
+
+    await adopted('again.png', 'one');
+    pruneBackgroundStore(DEFAULT_TERMINAL_BACKGROUND, dest);
+
+    expect(await readdir(dest)).toEqual([basename(path)]);
   });
 
   it('does nothing at all before anything has been adopted', () => {
@@ -220,7 +306,7 @@ describe('backfillBackgroundStore', () => {
     const outside = join(dir, 'mine.png');
     await writeFile(outside, 'bytes');
 
-    const next = backfillBackgroundStore(background({ imagePath: outside }), dest);
+    const next = await backfillBackgroundStore(background({ imagePath: outside }), dest);
 
     expect(next?.imagePath).toBe(join(dest, (await readdir(dest))[0]));
   });
@@ -233,7 +319,7 @@ describe('backfillBackgroundStore', () => {
     await writeFile(two, '2');
     await writeFile(stash, '3');
 
-    const next = backfillBackgroundStore(
+    const next = await backfillBackgroundStore(
       background({ stashedImagePath: stash, ...slideshowOf([one, two]) }),
       dest
     );
@@ -246,23 +332,23 @@ describe('backfillBackgroundStore', () => {
   it('says nothing changed once every path is already a copy', async () => {
     const outside = join(dir, 'mine.png');
     await writeFile(outside, 'bytes');
-    const once = backfillBackgroundStore(background({ imagePath: outside }), dest);
+    const once = await backfillBackgroundStore(background({ imagePath: outside }), dest);
 
     expect(once).not.toBeNull();
-    expect(backfillBackgroundStore(once as TerminalBackground, dest)).toBeNull();
+    expect(await backfillBackgroundStore(once as TerminalBackground, dest)).toBeNull();
   });
 
-  it('leaves a path whose picture is already gone exactly as it was', () => {
+  it('leaves a path whose picture is already gone exactly as it was', async () => {
     const missing = join(dir, 'gone.png');
 
-    expect(backfillBackgroundStore(background({ imagePath: missing }), dest)).toBeNull();
+    expect(await backfillBackgroundStore(background({ imagePath: missing }), dest)).toBeNull();
   });
 
   it('collapses a list that named the same picture twice', async () => {
     const one = join(dir, 'one.png');
     await writeFile(one, 'bytes');
 
-    const next = backfillBackgroundStore(background(slideshowOf([one, one])), dest);
+    const next = await backfillBackgroundStore(background(slideshowOf([one, one])), dest);
 
     expect(next?.slideshow.filePaths).toHaveLength(1);
   });

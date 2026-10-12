@@ -1,65 +1,38 @@
-import type { CSSProperties } from 'react';
 import type { TerminalBackground } from '../../../../shared/types';
-import { toFleetImageUrl } from '../../../../shared/path-platform';
+import { backgroundMediaKind } from '../../../../shared/background-media';
+import { backgroundLayerStyle } from '../../lib/background-style';
 import { paneGround, paneBackdrop } from '../../lib/theme';
-
-const FIT_STYLES: Record<TerminalBackground['fit'], { size: string; repeat: string }> = {
-  cover: { size: 'cover', repeat: 'no-repeat' },
-  contain: { size: 'contain', repeat: 'no-repeat' },
-  center: { size: 'auto', repeat: 'no-repeat' },
-  tile: { size: 'auto', repeat: 'repeat' }
-};
-
-function edgeFadeStyle(fadeX: number, fadeY: number): CSSProperties {
-  if (!fadeX && !fadeY) return {};
-  const ramp = (dir: string, fade: number): string => {
-    const start = `${(fade * 100).toFixed(1)}%`;
-    const end = `${(100 - fade * 100).toFixed(1)}%`;
-    return `linear-gradient(to ${dir}, transparent, #000 ${start}, #000 ${end}, transparent)`;
-  };
-  const layers: string[] = [];
-  if (fadeX) layers.push(ramp('right', fadeX));
-  if (fadeY) layers.push(ramp('bottom', fadeY));
-  return {
-    maskImage: layers.join(', '),
-    ...(layers.length > 1 ? { maskComposite: 'intersect' } : {})
-  };
-}
+import { BackgroundVideo } from '../BackgroundVideo';
 
 export function BackgroundPreview(props: {
   background: TerminalBackground;
-  previewImagePath: string | null;
+  previewPath: string | null;
   themeBackground: string;
   themeForeground: string;
 }): React.JSX.Element {
-  const { background, previewImagePath, themeBackground, themeForeground } = props;
-
-  const imageLayerStyle: CSSProperties | null = previewImagePath
-    ? {
-        inset: background.blur > 0 ? -background.blur * 2 : 0,
-        backgroundImage: `url("${toFleetImageUrl(previewImagePath)}")`,
-        backgroundSize: FIT_STYLES[background.fit].size,
-        backgroundRepeat: FIT_STYLES[background.fit].repeat,
-        backgroundPosition: 'center',
-        filter: background.blur > 0 ? `blur(${background.blur}px)` : undefined,
-        opacity: background.opacity,
-        ...edgeFadeStyle(background.edgeFadeX, background.edgeFadeY)
-      }
-    : null;
+  const { background, previewPath, themeBackground, themeForeground } = props;
 
   return (
-    // Layered exactly as the window is: app canvas, the image dimmed onto it,
+    // Layered exactly as the window is: app canvas, the background dimmed onto it,
     // the pane's ground over that, text on top.
     <div
       className="h-28 w-full rounded-md overflow-hidden border border-fleet-border-strong relative"
       style={{ backgroundColor: 'var(--fleet-bg)' }}
     >
-      {imageLayerStyle && (
+      {previewPath && (
         <div
           aria-hidden
           className="absolute pointer-events-none"
-          style={{ ...imageLayerStyle, zIndex: 0 }}
-        />
+          style={{
+            ...backgroundLayerStyle(background, previewPath),
+            opacity: background.opacity,
+            zIndex: 0
+          }}
+        >
+          {backgroundMediaKind(previewPath) === 'video' && (
+            <BackgroundVideo path={previewPath} fit={background.fit} />
+          )}
+        </div>
       )}
       {/* The pane's own ground, between the picture and the text, exactly as it
           sits in a real pane. Without it the tint and frost sliders would move
@@ -68,9 +41,9 @@ export function BackgroundPreview(props: {
         aria-hidden
         className="absolute inset-0 pointer-events-none"
         style={{
-          backgroundColor: paneGround(themeBackground, !!imageLayerStyle, background.paneTint),
+          backgroundColor: paneGround(themeBackground, !!previewPath, background.paneTint),
           backdropFilter: paneBackdrop(
-            !!imageLayerStyle,
+            !!previewPath,
             background.paneFrost,
             background.paneSaturation
           ),

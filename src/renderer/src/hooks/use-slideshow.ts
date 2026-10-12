@@ -1,21 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TerminalBackground } from '../../../shared/types';
+import { backgroundMediaKind } from '../../../shared/background-media';
 import { toFleetImageUrl } from '../../../shared/path-platform';
 import { buildQueue } from '../lib/slideshow-order';
 
 export type SlideshowFrame = {
-  /** Image currently shown (fading in while previousPath is set). */
+  /** The image or video the show is on. */
   currentPath: string | null;
-  /** Image fading out beneath the current one; cleared when the fade ends. */
-  previousPath: string | null;
 };
 
-const IDLE_FRAME: SlideshowFrame = { currentPath: null, previousPath: null };
+const IDLE_FRAME: SlideshowFrame = { currentPath: null };
 
 // Decode through Chromium's image cache so the crossfade never reveals a
 // half-loaded image. Resolves on error too — a missing file just renders
-// as an empty layer and the show moves on.
+// as an empty layer and the show moves on. A video cannot be warmed this way:
+// the layer that plays it holds the crossfade until it has a frame instead.
 async function preloadImage(path: string): Promise<void> {
+  if (backgroundMediaKind(path) === 'video') return;
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => resolve();
@@ -27,17 +28,22 @@ async function preloadImage(path: string): Promise<void> {
 /**
  * Single global slideshow clock for the terminal background. Called once in
  * App; every pane consumes the returned frame so all panes transition in sync.
+ *
+ * `skip` is for whoever draws the frame to say it could not: the show leaves
+ * that file out from then on, and moves off it at once if it is the one up.
  */
-export function useSlideshow(bg: TerminalBackground | undefined): SlideshowFrame {
+export function useSlideshow(bg: TerminalBackground | undefined): {
+  frame: SlideshowFrame;
+  skip: (path: string) => void;
+} {
   const [frame, setFrame] = useState<SlideshowFrame>(IDLE_FRAME);
 
   const queueRef = useRef<string[]>([]);
   const lastShownRef = useRef<string | null>(null);
-  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Read at fade time via a ref so moving the transition slider doesn't
-  // restart the interval (and postpone the next image).
-  const transitionMsRef = useRef(1000);
-  transitionMsRef.current = bg?.slideshow.transitionMs ?? 1000;
+  // Files that would not play. Forgotten whenever the show is set up again, so
+  // one that has been replaced or restored gets another go.
+  const unplayableRef = useRef(new Set<string>());
+  const advanceRef = useRef<(() => void) | null>(null);
 
   const slideshow = bg?.slideshow;
   const enabled = slideshow?.enabled ?? false;
@@ -56,6 +62,8 @@ export function useSlideshow(bg: TerminalBackground | undefined): SlideshowFrame
     }
 
     const run = { cancelled: false, advancing: false };
+    const unplayable = new Set<string>();
+    unplayableRef.current = unplayable;
     const filePaths = filePathsKey ? filePathsKey.split('\n') : [];
 
     // Re-resolves the source list on every advance so files added to or
@@ -73,9 +81,10 @@ export function useSlideshow(bg: TerminalBackground | undefined): SlideshowFrame
     };
 
     const advanceInner = async (initial: boolean): Promise<void> => {
-      const paths =
+      const listed =
         source === 'folder' ? await window.fleet.file.scanImageFolder(folderPath) : filePaths;
       if (run.cancelled) return;
+      const paths = listed.filter((p) => !unplayable.has(p));
       if (paths.length === 0) {
         queueRef.current = [];
         setFrame(IDLE_FRAME);
@@ -85,7 +94,7 @@ export function useSlideshow(bg: TerminalBackground | undefined): SlideshowFrame
       // on screen rather than jumping, as long as it still exists in the list.
       const lastShown = lastShownRef.current;
       if (initial && lastShown && paths.includes(lastShown)) {
-        setFrame({ currentPath: lastShown, previousPath: null });
+        setFrame({ currentPath: lastShown });
         return;
       }
       queueRef.current = queueRef.current.filter((p) => paths.includes(p));
@@ -99,24 +108,23 @@ export function useSlideshow(bg: TerminalBackground | undefined): SlideshowFrame
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (run.cancelled) return;
       lastShownRef.current = next;
-      setFrame((prev) => ({
-        currentPath: next,
-        previousPath: initial ? null : prev.currentPath
-      }));
-      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
-      fadeTimerRef.current = setTimeout(() => {
-        setFrame((prev) => ({ ...prev, previousPath: null }));
-      }, transitionMsRef.current + 80);
+      setFrame({ currentPath: next });
     };
 
     void advance(true);
+    advanceRef.current = () => void advance(false);
     const interval = setInterval(() => void advance(false), intervalSeconds * 1000);
     return () => {
       run.cancelled = true;
+      advanceRef.current = null;
       clearInterval(interval);
-      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     };
   }, [enabled, source, folderPath, filePathsKey, intervalSeconds, shuffle]);
 
-  return frame;
+  const skip = useCallback((path: string): void => {
+    unplayableRef.current.add(path);
+    if (path === lastShownRef.current) advanceRef.current?.();
+  }, []);
+
+  return { frame, skip };
 }

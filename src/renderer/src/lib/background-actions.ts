@@ -3,8 +3,11 @@ import type {
   TerminalBackground,
   TerminalBackgroundSlideshow
 } from '../../../shared/types';
+import { backgroundMediaKind } from '../../../shared/background-media';
 import { useSettingsStore } from '../store/settings-store';
 import { useToastStore } from '../store/toast-store';
+import { canPlayVideo } from './background-video';
+import { getBasename } from './file-display';
 
 /**
  * Turning a picture into the window's background, from wherever it is shown.
@@ -68,12 +71,27 @@ export function nextSlideshowFiles(
  * is theirs to move or delete tomorrow - so the copy is what makes a background
  * a background rather than a path that works until somebody tidies up.
  *
- * Returns only the pictures that landed. One complaint covers the whole batch:
+ * A video is played before it is copied. Whether one can be shown at all
+ * depends on the codec inside it and on this machine, and a background that
+ * cannot play is a blank window - so it is turned away here, with the reason,
+ * rather than stored and left for the user to puzzle over.
+ *
+ * Returns only the files that landed. One complaint covers the whole batch:
  * picking a folder's worth of files with a stray `.svg` in it should say so
  * once, not once per file.
  */
-export async function adoptImages(paths: string[]): Promise<string[]> {
-  const results = await Promise.all(paths.map(async (path) => window.fleet.background.adopt(path)));
+export async function adoptBackgrounds(paths: string[]): Promise<string[]> {
+  const results = await Promise.all(
+    paths.map(async (path) => {
+      if (backgroundMediaKind(path) === 'video' && !(await canPlayVideo(path))) {
+        return {
+          success: false as const,
+          error: `${getBasename(path)} cannot be played here - try an H.264 mp4 or a webm`
+        };
+      }
+      return window.fleet.background.adopt(path);
+    })
+  );
 
   const adopted: string[] = [];
   let firstError: string | null = null;
@@ -86,7 +104,7 @@ export async function adoptImages(paths: string[]): Promise<string[]> {
 }
 
 async function adopt(path: string): Promise<string | null> {
-  return (await adoptImages([path]))[0] ?? null;
+  return (await adoptBackgrounds([path]))[0] ?? null;
 }
 
 /** Read the background as it is right now, not as it was when a component rendered. */
@@ -147,5 +165,5 @@ async function addToSlideshowNow(path: string): Promise<void> {
     general: { terminalBackground: { slideshow: { ...next, enabled: true } } }
   });
 
-  useToastStore.getState().show(`Added to slideshow (${next.filePaths.length} images)`);
+  useToastStore.getState().show(`Added to slideshow (${next.filePaths.length} items)`);
 }

@@ -781,7 +781,9 @@ export function App(): React.JSX.Element {
 
   // One global slideshow clock so every pane (including hidden background
   // workspaces) shows the same image and crossfades in sync.
-  const slideshowFrame = useSlideshow(settings?.general.terminalBackground);
+  const { frame: slideshowFrame, skip: skipSlide } = useSlideshow(
+    settings?.general.terminalBackground
+  );
 
   // The background image is one canvas behind the whole window rather than a
   // copy inside every pane: `background-position: center` resolves against the
@@ -802,7 +804,11 @@ export function App(): React.JSX.Element {
   return (
     <div className="relative flex flex-col h-screen w-screen bg-fleet-bg text-fleet-text overflow-hidden">
       {terminalBackground && (
-        <BackgroundLayer background={terminalBackground} frame={slideshowFrame} />
+        <BackgroundLayer
+          background={terminalBackground}
+          frame={slideshowFrame}
+          onUnplayable={skipSlide}
+        />
       )}
       {/* Top bar — drag region for window movement, houses OS window controls */}
       {/* Transparent rather than a solid band: on a canvas the strip the window

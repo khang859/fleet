@@ -332,7 +332,7 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.TELEPROMPTER_SET_SOURCE, source)
   },
   background: {
-    /** Copy an image somewhere a wallpaper can safely point at, and say where. */
+    /** Copy an image or video somewhere a wallpaper can safely point at, and say where. */
     adopt: async (sourcePath: string): Promise<BackgroundAdoptResponse> =>
       typedInvoke(IPC_CHANNELS.BACKGROUND_ADOPT, { sourcePath })
   },

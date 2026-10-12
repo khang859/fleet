@@ -182,20 +182,21 @@ export type TerminalBackgroundSlideshow = {
   /** Which source list is active. Both folderPath and filePaths are kept so
    * switching kinds doesn't discard the other's value. */
   source: SlideshowSourceKind;
-  /** Folder scanned (non-recursively) for image files. */
+  /** Folder scanned (non-recursively) for image and video files. */
   folderPath: string;
-  /** Explicit list of image file paths. */
+  /** Explicit list of image and video file paths. */
   filePaths: string[];
-  /** Seconds each image is shown before advancing. */
+  /** Seconds each one is shown before advancing. A video loops until then. */
   intervalSeconds: number;
-  /** Random order (no repeats until all images shown) vs filename order. */
+  /** Random order (no repeats until all have been shown) vs filename order. */
   shuffle: boolean;
   /** Crossfade duration in milliseconds. */
   transitionMs: number;
 };
 
 export type TerminalBackground = {
-  /** Absolute path to the image on disk, served via the fleet-image:// protocol. */
+  /** Absolute path to the image or video on disk - see `backgroundMediaKind`
+   * for which. The name is from when a background could only be an image. */
   imagePath: string | null;
   /**
    * The image mode was showing before the user switched to None, so switching
@@ -207,16 +208,17 @@ export type TerminalBackground = {
    * back a background that no longer exists.
    */
   stashedImagePath: string | null;
-  /** Image visibility, 0–1. Lower values let the solid theme color show through (dimming). */
+  /** Background visibility, 0–1. Lower values let the solid theme color show through (dimming). */
   opacity: number;
   /** Gaussian blur radius in pixels. */
   blur: number;
   /** Left & right edge feather, 0–0.5 as a fraction of the pane width. Fades the
-   * side edges to transparent so a too-narrow image blends into the background. */
+   * side edges to transparent so a too-narrow background blends into the background. */
   edgeFadeX: number;
   /** Top & bottom edge feather, 0–0.5 as a fraction of the pane height. Fades the
-   * top/bottom edges to transparent so a too-short image blends into the background. */
+   * top/bottom edges to transparent so a too-short background blends into the background. */
   edgeFadeY: number;
+  /** Nothing tiles a video, so one set to `tile` fills the window as `cover`. */
   fit: TerminalBackgroundFit;
   slideshow: TerminalBackgroundSlideshow;
   /** How much of its own theme colour a terminal or agent pane keeps once it is

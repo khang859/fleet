@@ -6,17 +6,14 @@ import { SliderInput, NumberStepper, SegmentedControl } from './background-contr
 import { BackgroundThumbnails } from './BackgroundThumbnails';
 import { BackgroundPreview } from './BackgroundPreview';
 import { backgroundLegibilityHint } from '../../lib/contrast';
-import { adoptImages, nextSlideshowFiles } from '../../lib/background-actions';
+import { adoptBackgrounds, nextSlideshowFiles } from '../../lib/background-actions';
 import { TERMINAL_THEMES } from '../../../../shared/theme-presets';
+import { BACKGROUND_DIALOG_FILTERS } from '../../../../shared/background-media';
 import {
   DEFAULT_TERMINAL_BACKGROUND,
   type TerminalBackground,
   type TerminalBackgroundSlideshow
 } from '../../../../shared/types';
-
-const IMAGE_FILTERS = [
-  { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }
-];
 
 const BUTTON_CLASS =
   'bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong hover:border-fleet-text-subtle transition active:scale-[0.97]';
@@ -148,13 +145,16 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
     setLocalPaneSaturation(d.paneSaturation);
   };
 
-  const pickBackgroundImage = async (): Promise<void> => {
-    const paths = await window.fleet.file.openDialog({ multi: false, filters: IMAGE_FILTERS });
+  const pickBackground = async (): Promise<void> => {
+    const paths = await window.fleet.file.openDialog({
+      multi: false,
+      filters: BACKGROUND_DIALOG_FILTERS
+    });
     if (!paths[0]) return;
     // Point the setting at Fleet's own copy, never at the file the user
     // browsed to - that one is theirs to move or delete, and the background
     // has to survive them doing it.
-    const [adopted] = await adoptImages([paths[0]]);
+    const [adopted] = await adoptBackgrounds([paths[0]]);
     if (adopted) saveBackground({ imagePath: adopted });
   };
 
@@ -164,9 +164,12 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
   };
 
   const addSlideshowFiles = async (): Promise<void> => {
-    const paths = await window.fleet.file.openDialog({ multi: true, filters: IMAGE_FILTERS });
+    const paths = await window.fleet.file.openDialog({
+      multi: true,
+      filters: BACKGROUND_DIALOG_FILTERS
+    });
     if (paths.length === 0) return;
-    const adopted = await adoptImages(paths);
+    const adopted = await adoptBackgrounds(paths);
     if (adopted.length === 0) return;
     // Read after the adopt, not before: the settings the list is rebuilt from
     // have to be the ones current once every await has settled.
@@ -204,10 +207,10 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
   const themeBackground = theme.xterm.background ?? theme.background;
   const themeForeground = theme.xterm.foreground ?? '#e4e4e4';
 
-  // First image actually shown — drives the live preview. Folder slideshows are
+  // First image or video actually shown - drives the live preview. Folder slideshows are
   // scanned lazily inside BackgroundThumbnails, so the preview falls back to the
   // solid theme color until/unless a concrete path is known.
-  const previewImagePath =
+  const previewPath =
     mode === 'image'
       ? bg.imagePath
       : mode === 'slideshow' && ss.source === 'files'
@@ -216,7 +219,7 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
 
   const appearanceVisible = mode === 'slideshow' || (mode === 'image' && !!bg.imagePath);
 
-  // Hide interval/transition when the slideshow resolves to a single image —
+  // Hide interval/transition when the slideshow resolves to a single file -
   // there is nothing to advance. (Folder counts are unknown here, so only the
   // explicit file-list case is suppressed.)
   const timingVisible = ss.source !== 'files' || ss.filePaths.length > 1;
@@ -246,7 +249,7 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
           onChange={changeMode}
           options={[
             { value: 'none', label: 'None' },
-            { value: 'image', label: 'Image' },
+            { value: 'image', label: 'Image / Video' },
             { value: 'slideshow', label: 'Slideshow' }
           ]}
         />
@@ -256,7 +259,7 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
         <>
           <BackgroundPreview
             background={bg}
-            previewImagePath={previewImagePath}
+            previewPath={previewPath}
             themeBackground={themeBackground}
             themeForeground={themeForeground}
           />
@@ -270,7 +273,7 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
       )}
 
       {mode === 'image' && (
-        <SettingRow label="Image">
+        <SettingRow label="File">
           <div className="flex items-center gap-2">
             {bg.imagePath && (
               <span
@@ -280,11 +283,7 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
                 {bg.imagePath.split('/').pop()}
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => void pickBackgroundImage()}
-              className={BUTTON_CLASS}
-            >
+            <button type="button" onClick={() => void pickBackground()} className={BUTTON_CLASS}>
               {bg.imagePath ? 'Change…' : 'Browse…'}
             </button>
           </div>
@@ -306,7 +305,7 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
             />
           </SettingRow>
           {ss.source === 'folder' ? (
-            <SettingRow label="Image Folder">
+            <SettingRow label="Folder">
               <div className="flex items-center gap-2">
                 {ss.folderPath && (
                   <span
@@ -326,7 +325,7 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
               </div>
             </SettingRow>
           ) : (
-            <SettingRow label="Images">
+            <SettingRow label="Files">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-fleet-text-subtle">
                   {ss.filePaths.length} file{ss.filePaths.length === 1 ? '' : 's'}
