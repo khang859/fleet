@@ -1,11 +1,13 @@
 // src/main/sessions/claude-source.ts
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import { z } from 'zod';
-import { parseClaudeTranscript } from '../copilot/conversation-reader';
-import { cwdToProjectDir, listSubagentTranscripts } from '../claude-sessions/transcript-path';
-import { UsageAccumulator, addTranscriptFile } from '../claude-sessions/usage-accumulator';
+import { ChatMessageFold, MessageTail } from '../copilot/conversation-reader';
+import { normalizeLine } from '../claude-sessions/transcript';
+import { cwdToProjectDir } from '../claude-sessions/transcript-path';
+import { SessionTail } from '../claude-sessions/session-tail';
+import { UsageAccumulator } from '../claude-sessions/usage-accumulator';
 import type { CopilotChatMessage } from '../../shared/types';
 import type {
   SessionSummary,
@@ -14,103 +16,174 @@ import type {
   TranscriptMessage
 } from '../../shared/sessions';
 import { estimateSessionCostUsd } from '../../shared/claude-pricing';
+import { serialQueue } from '../../shared/serial-queue';
 import { getPriceTable } from './pricing-source';
 
 const cwdLineSchema = z.object({ cwd: z.string() }).passthrough();
-
-/**
- * Cost and usage fields from a transcript's text plus its subagents' files.
- * The subagents are streamed one at a time: together they can be far larger
- * than the transcript itself.
- */
-async function claudeCostFields(
-  content: string,
-  transcriptPath: string
-): Promise<Partial<SessionSummary>> {
-  const acc = new UsageAccumulator();
-  acc.addText(content);
-  acc.flush();
-  for (const path of await listSubagentTranscripts(transcriptPath)) {
-    try {
-      await addTranscriptFile(acc, path);
-    } catch {
-      // unreadable subagent transcript; count what the others hold
-    }
-  }
-  const agg = acc.result();
-  if (!agg.hasUsage) return {};
-  return {
-    claudeUsage: agg.total,
-    models: agg.models,
-    gitBranch: agg.gitBranch,
-    startedAt: agg.startedAt,
-    endedAt: agg.endedAt,
-    costUsd: estimateSessionCostUsd(agg.perModel, getPriceTable())
-  };
-}
 
 export function claudeProjectsDir(): string {
   return join(homedir(), '.claude', 'projects');
 }
 
+/** The cwd a transcript line records, or '' when it has none. */
+function lineCwd(line: string): string {
+  if (!line.includes('"cwd"')) return '';
+  try {
+    const parsed = cwdLineSchema.safeParse(JSON.parse(line));
+    return parsed.success ? parsed.data.cwd : '';
+  } catch {
+    return ''; // malformed line
+  }
+}
+
+type FileState = { mtimeMs: number; size: number };
+
 /**
- * Read the cwd recorded in a transcript. Recent Claude Code versions prepend
- * metadata lines (`last-prompt`, `mode`, `file-history-snapshot`) that carry no
- * cwd, so scan for the first line that actually has a top-level cwd rather than
- * assuming it's on line 1.
+ * A transcript's summary, kept current by reading only the lines its files
+ * gained. It holds running totals, never the messages, so it stays small
+ * however long the session runs.
+ *
+ * The sessions watcher fires on every transcript append. Re-reading a whole
+ * transcript and its subagents' transcripts (hundreds of MB for a long
+ * session) on each one held the main thread for hundreds of milliseconds per
+ * refresh, and kept it busy for as long as an agent ran (#648).
  */
-export function cwdFromTranscript(content: string): string {
-  for (const line of content.split('\n')) {
-    if (!line.includes('"cwd"')) continue;
-    try {
-      const parsed = cwdLineSchema.safeParse(JSON.parse(line));
-      if (parsed.success && parsed.data.cwd) return parsed.data.cwd;
-    } catch {
-      // skip malformed line
+class SummaryTail {
+  private readonly tail: SessionTail;
+  private acc = new UsageAccumulator();
+  private fold = new ChatMessageFold();
+  private messageCount = 0;
+  /** The first user text since the chat began or was last cleared. */
+  private firstUserText: string | null = null;
+  /** The first cwd the transcript records; a `/clear` does not change it. */
+  cwd = '';
+  /** The file as it was when last read; -1 before the first read. */
+  readAt: FileState = { mtimeMs: -1, size: -1 };
+
+  constructor(path: string) {
+    this.tail = new SessionTail(path);
+  }
+
+  /** Read what the files gained since `st` was last read. */
+  async update(st: FileState): Promise<void> {
+    await this.tail.read(
+      (line, fromSubagent) => {
+        this.acc.addLine(line);
+        if (!fromSubagent) this.addTranscriptLine(line);
+      },
+      () => this.reset()
+    );
+    // Set only once the read is through, so a failed one is tried again.
+    this.readAt = { mtimeMs: st.mtimeMs, size: st.size };
+  }
+
+  /** The summary, or null while the transcript holds no message. */
+  summary(id: string, cwd: string): SessionSummary | null {
+    if (this.messageCount === 0) return null;
+    const preview = this.firstUserText ?? '';
+    return {
+      id,
+      title: preview || '(untitled)',
+      project: basename(cwd),
+      cwd,
+      updatedAt: this.readAt.mtimeMs,
+      messageCount: this.messageCount,
+      preview: preview.slice(0, 140),
+      ...this.costFields()
+    };
+  }
+
+  private addTranscriptLine(line: string): void {
+    if (!this.cwd) this.cwd = lineCwd(line);
+    const msg = this.fold.add(normalizeLine(line));
+    if (msg === 'clear') {
+      this.messageCount = 0;
+      this.firstUserText = null;
+    } else if (msg) {
+      this.messageCount++;
+      this.firstUserText ??= userText(msg);
     }
   }
-  return '';
+
+  /** A file was replaced by a shorter one: count the session again from the start. */
+  private reset(): void {
+    this.acc = new UsageAccumulator();
+    this.fold = new ChatMessageFold();
+    this.messageCount = 0;
+    this.firstUserText = null;
+    this.cwd = '';
+  }
+
+  /** Cost and usage from the transcript and its subagents' transcripts. */
+  private costFields(): Partial<SessionSummary> {
+    const agg = this.acc.result();
+    if (!agg.hasUsage) return {};
+    return {
+      claudeUsage: agg.total,
+      models: agg.models,
+      gitBranch: agg.gitBranch,
+      startedAt: agg.startedAt,
+      endedAt: agg.endedAt,
+      costUsd: estimateSessionCostUsd(agg.perModel, getPriceTable())
+    };
+  }
 }
 
-/** Build a session summary from raw transcript content, or null if it isn't a real session. */
-async function buildClaudeSummary(
-  id: string,
-  content: string,
-  mtimeMs: number,
-  transcriptPath: string
-): Promise<SessionSummary | null> {
-  const cwd = cwdFromTranscript(content);
-  if (!cwd) return null;
-  const messages = parseClaudeTranscript(content);
-  if (messages.length === 0) return null;
-  const preview = claudePreview(messages);
-  return {
-    id,
-    title: preview || '(untitled)',
-    project: basename(cwd),
-    cwd,
-    updatedAt: mtimeMs,
-    messageCount: messages.length,
-    preview: preview.slice(0, 140),
-    ...(await claudeCostFields(content, transcriptPath))
-  };
-}
+/** One per transcript path, so a refresh only reads the files that grew. */
+const summaryTails = new Map<string, SummaryTail>();
 
-type CachedSummary = { mtimeMs: number; size: number; summary: SessionSummary | null };
+/** The transcript open in the Sessions tab, so a refresh of it reads only what it gained. */
+let openTranscript: { path: string; tail: MessageTail } | null = null;
 
-// Cache the parsed summary per transcript path keyed by (mtime, size). The sessions
-// watcher fires on every transcript append, so a single active agent would otherwise
-// force a full re-read + double-parse of the entire ~/.claude/projects corpus
-// (hundreds of MB) every refresh. With this cache, an unchanged file costs one stat();
-// only files that actually grew are re-read and re-parsed.
-const summaryCache = new Map<string, CachedSummary>();
+/**
+ * Listing and reading share the tails above, and a tail must not be read by
+ * two callers at once, so they take turns.
+ */
+const inTurn = serialQueue();
 
-/** Test-only: reset the module-level summary cache. */
+/** Test-only: forget every transcript read so far. */
 export function __clearClaudeSummaryCache(): void {
-  summaryCache.clear();
+  summaryTails.clear();
+  openTranscript = null;
+}
+
+/** The summary tail for a transcript, brought up to date with the file. */
+async function summaryTailAt(path: string, st: FileState): Promise<SummaryTail> {
+  let tail = summaryTails.get(path);
+  if (tail?.readAt.mtimeMs === st.mtimeMs && tail.readAt.size === st.size) return tail;
+  if (!tail) {
+    tail = new SummaryTail(path);
+    summaryTails.set(path, tail);
+  }
+  await tail.update(st);
+  return tail;
 }
 
 export async function listClaudeSessions(): Promise<SessionSummary[]> {
+  return inTurn(async () => {
+    const paths = await transcriptPaths();
+    const out: SessionSummary[] = [];
+    for (const path of paths) {
+      try {
+        const tail = await summaryTailAt(path, await stat(path));
+        // A transcript with no cwd is not a real session.
+        const summary = tail.cwd ? tail.summary(basename(path, '.jsonl'), tail.cwd) : null;
+        if (summary) out.push(summary);
+      } catch {
+        // skip malformed/unreadable file
+      }
+    }
+    // Drop the tails of transcripts that no longer exist.
+    const seen = new Set(paths);
+    for (const key of summaryTails.keys()) {
+      if (!seen.has(key)) summaryTails.delete(key);
+    }
+    return out;
+  });
+}
+
+/** Every transcript in every project dir. */
+async function transcriptPaths(): Promise<string[]> {
   const root = claudeProjectsDir();
   let projectDirs: string[];
   try {
@@ -118,45 +191,17 @@ export async function listClaudeSessions(): Promise<SessionSummary[]> {
   } catch {
     return [];
   }
-  const out: SessionSummary[] = [];
-  const seen = new Set<string>();
+  const paths: string[] = [];
   for (const projectDir of projectDirs) {
     const dirPath = join(root, projectDir);
-    let files: string[];
     try {
-      files = (await readdir(dirPath)).filter((f) => f.endsWith('.jsonl'));
+      for (const f of await readdir(dirPath))
+        if (f.endsWith('.jsonl')) paths.push(join(dirPath, f));
     } catch {
-      continue;
-    }
-    for (const file of files) {
-      try {
-        const full = join(dirPath, file);
-        seen.add(full);
-        const st = await stat(full);
-        const cached = summaryCache.get(full);
-        if (cached !== undefined) {
-          if (cached.mtimeMs === st.mtimeMs && cached.size === st.size) {
-            if (cached.summary) out.push(cached.summary);
-            continue;
-          }
-        }
-        // New or changed file: read and parse once, then memoize the result (including
-        // the "not a session" verdict) so unchanged files never get re-read.
-        const id = basename(file, '.jsonl');
-        const content = await readFile(full, 'utf8');
-        const summary = await buildClaudeSummary(id, content, st.mtimeMs, full);
-        summaryCache.set(full, { mtimeMs: st.mtimeMs, size: st.size, summary });
-        if (summary) out.push(summary);
-      } catch {
-        // skip malformed/unreadable file
-      }
+      // not a dir, or unreadable
     }
   }
-  // Drop cache entries for transcripts that no longer exist.
-  for (const key of summaryCache.keys()) {
-    if (!seen.has(key)) summaryCache.delete(key);
-  }
-  return out;
+  return paths;
 }
 
 export async function readClaudeSession(
@@ -168,31 +213,25 @@ export async function readClaudeSession(
   // Guard against path traversal via a crafted id or cwd: the resolved path must
   // stay inside the claude projects directory.
   if (!resolve(full).startsWith(resolve(dir) + sep)) return null;
-  let content: string;
-  let updatedAt = 0;
-  try {
-    const [raw, st] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
-    content = raw;
-    updatedAt = st.mtimeMs;
-  } catch {
-    return null; // file missing or unreadable
-  }
-  const messages = parseClaudeTranscript(content);
-  if (messages.length === 0) return null;
-  const preview = claudePreview(messages);
-  return {
-    summary: {
-      id,
-      title: preview || '(untitled)',
-      project: basename(cwd),
-      cwd,
-      updatedAt,
-      messageCount: messages.length,
-      preview: preview.slice(0, 140),
-      ...(await claudeCostFields(content, full))
-    },
-    messages: claudeMessagesToTranscriptMessages(messages)
-  };
+  return inTurn(async () => {
+    let st: FileState;
+    try {
+      st = await stat(full);
+    } catch {
+      return null; // file missing or unreadable
+    }
+    const messages = await openMessages(full);
+    const summary = (await summaryTailAt(full, st)).summary(id, cwd);
+    if (messages.length === 0 || !summary) return null;
+    return { summary, messages: claudeMessagesToTranscriptMessages(messages) };
+  });
+}
+
+/** The messages of the open transcript, reading only what it gained since it was last opened. */
+async function openMessages(path: string): Promise<CopilotChatMessage[]> {
+  if (openTranscript?.path !== path) openTranscript = { path, tail: new MessageTail() };
+  await openTranscript.tail.read(path);
+  return openTranscript.tail.messages;
 }
 
 export function claudeMessagesToTranscriptMessages(
@@ -212,12 +251,9 @@ export function claudeMessagesToTranscriptMessages(
   });
 }
 
-export function claudePreview(messages: CopilotChatMessage[]): string {
-  for (const m of messages) {
-    if (m.role === 'user') {
-      const block = m.blocks.find((b) => b.type === 'text');
-      if (block?.type === 'text') return block.text.trim();
-    }
-  }
-  return '';
+/** A user message's first text, trimmed, or null for any other message. */
+function userText(m: CopilotChatMessage): string | null {
+  if (m.role !== 'user') return null;
+  const block = m.blocks.find((b) => b.type === 'text');
+  return block?.type === 'text' ? block.text.trim() : null;
 }

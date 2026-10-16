@@ -34,7 +34,7 @@ beforeEach(() => {
     message: { role: 'user', content: 'hello there' }
   });
   writeFileSync(join(project, 'sess.jsonl'), `${user}\n${usageLine('main', false)}\n`);
-  writeFileSync(join(project, 'sess', 'subagents', 'agent-a.jsonl'), usageLine('sub', true));
+  writeFileSync(join(project, 'sess', 'subagents', 'agent-a.jsonl'), `${usageLine('sub', true)}\n`);
   // Claude Code keeps a metadata file beside each subagent transcript.
   writeFileSync(join(project, 'sess', 'subagents', 'agent-a.meta.json'), '{}');
 });

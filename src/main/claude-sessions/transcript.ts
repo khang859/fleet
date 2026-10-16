@@ -1,6 +1,7 @@
 import { closeSync, openSync, readSync, statSync } from 'fs';
 import { open, type FileHandle } from 'fs/promises';
 import { isRecord } from '../../shared/is-record';
+import { READ_CHUNK_BYTES, readGrowth } from './read-growth';
 
 /**
  * Reading Claude Code transcripts (`<session>.jsonl`): one JSON object per
@@ -373,7 +374,6 @@ export type TranscriptTailOptions = {
   turnLimit?: number;
 };
 
-const READ_CHUNK_BYTES = 4 * 1024 * 1024;
 const DEFAULT_TOOL_LIMIT = 5_000;
 const DEFAULT_TURN_LIMIT = 5_000;
 const PREVIEW_CHARS = 200;
@@ -432,29 +432,14 @@ export class TranscriptTail {
 
   /** Read whatever the file gained since the last read. */
   async read(path: string): Promise<void> {
-    let handle: FileHandle;
-    try {
-      handle = await open(path, 'r');
-    } catch {
-      return; // not written yet
-    }
-    try {
-      const { size } = await handle.stat();
-      if (size < this.offset) this.restart();
-      const buffer = Buffer.alloc(Math.min(READ_CHUNK_BYTES, Math.max(0, size - this.offset)));
-      while (this.offset < size) {
-        const { bytesRead } = await handle.read(
-          buffer,
-          0,
-          Math.min(buffer.length, size - this.offset),
-          this.offset
-        );
-        if (bytesRead === 0) break;
-        this.feed(buffer.subarray(0, bytesRead));
-      }
-    } finally {
-      await handle.close();
-    }
+    await readGrowth(
+      path,
+      (size) => {
+        if (size < this.offset) this.restart();
+        return this.offset;
+      },
+      (bytes) => this.feed(bytes)
+    );
   }
 
   /** `read` for callers that cannot wait, such as a file watcher that answers at once. */

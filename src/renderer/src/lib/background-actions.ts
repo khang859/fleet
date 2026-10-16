@@ -4,6 +4,7 @@ import type {
   TerminalBackgroundSlideshow
 } from '../../../shared/types';
 import { backgroundMediaKind } from '../../../shared/background-media';
+import { serialQueue } from '../../../shared/serial-queue';
 import { useSettingsStore } from '../store/settings-store';
 import { useToastStore } from '../store/toast-store';
 import { canPlayVideo } from './background-video';
@@ -123,7 +124,7 @@ export async function setAsBackground(path: string): Promise<void> {
 }
 
 /**
- * The tail of the queue every slideshow change waits behind.
+ * The queue every slideshow change waits in.
  *
  * Adding a picture is a read-modify-write across two round trips - adopt the
  * file, then read the list, then write it back - and the settings store
@@ -133,17 +134,11 @@ export async function setAsBackground(path: string): Promise<void> {
  * That is not a rare interleaving here: it is what adding two images from one
  * transcript looks like, now that it takes a click rather than a file dialog.
  */
-let slideshowQueue: Promise<void> = Promise.resolve();
+const slideshowQueue = serialQueue();
 
 /** Add this picture to the background slideshow, turning it on if it was off. */
 export async function addToSlideshow(path: string): Promise<void> {
-  // Both statements run before this function first suspends, so two clicks in
-  // the same tick still queue in the order they arrived.
-  const task = slideshowQueue.then(async () => addToSlideshowNow(path));
-  // The queue tracks a settled promise, so one failed add cannot wedge every
-  // add after it - the caller still sees the rejection through `task`.
-  slideshowQueue = task.catch(() => undefined);
-  return task;
+  return slideshowQueue(async () => addToSlideshowNow(path));
 }
 
 async function addToSlideshowNow(path: string): Promise<void> {

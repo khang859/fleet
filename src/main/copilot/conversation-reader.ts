@@ -12,9 +12,7 @@ const log = createLogger('copilot:conversation-reader');
 
 type SessionParseState = {
   filePath: string;
-  tail: TranscriptTail;
-  messages: CopilotChatMessage[];
-  seenToolIds: Set<string>;
+  tail: MessageTail;
 };
 
 /**
@@ -71,19 +69,32 @@ function messageFromLine(
   };
 }
 
-/** Apply one line's events to an accumulating message list: `/clear` empties it. */
+/**
+ * Turns transcript lines into chat messages one line at a time, carrying the
+ * tool calls already shown so a repeated one is dropped.
+ */
+export class ChatMessageFold {
+  private readonly seenToolIds = new Set<string>();
+
+  /** The line's message, `'clear'` when `/clear` empties the chat, or null when it shows nothing. */
+  add(events: TranscriptEvent[]): CopilotChatMessage | 'clear' | null {
+    if (events.some((e) => e.kind === 'clear')) {
+      this.seenToolIds.clear();
+      return 'clear';
+    }
+    return messageFromLine(events, this.seenToolIds);
+  }
+}
+
+/** Fold one line into an accumulating message list: `/clear` empties it. */
 function applyLine(
   events: TranscriptEvent[],
   messages: CopilotChatMessage[],
-  seenToolIds: Set<string>
+  fold: ChatMessageFold
 ): void {
-  if (events.some((e) => e.kind === 'clear')) {
-    messages.length = 0;
-    seenToolIds.clear();
-    return;
-  }
-  const msg = messageFromLine(events, seenToolIds);
-  if (msg) messages.push(msg);
+  const msg = fold.add(events);
+  if (msg === 'clear') messages.length = 0;
+  else if (msg) messages.push(msg);
 }
 
 /**
@@ -94,11 +105,40 @@ function applyLine(
  */
 export function parseClaudeTranscript(content: string): CopilotChatMessage[] {
   const messages: CopilotChatMessage[] = [];
-  const seenToolIds = new Set<string>();
+  const fold = new ChatMessageFold();
   for (const line of content.split('\n')) {
-    applyLine(normalizeLine(line), messages, seenToolIds);
+    applyLine(normalizeLine(line), messages, fold);
   }
   return messages;
+}
+
+/**
+ * A transcript's chat messages, followed as the file grows: each read takes
+ * only the lines added since the last one.
+ */
+export class MessageTail {
+  private list: CopilotChatMessage[] = [];
+  private fold = new ChatMessageFold();
+  private readonly tail = new TranscriptTail({
+    onLine: (line) => applyLine(line.events, this.list, this.fold),
+    // The file was replaced by a shorter one: its messages start over.
+    onReset: () => {
+      this.list = [];
+      this.fold = new ChatMessageFold();
+    }
+  });
+
+  get messages(): CopilotChatMessage[] {
+    return this.list;
+  }
+
+  async read(path: string): Promise<void> {
+    await this.tail.read(path);
+  }
+
+  readSync(path: string): void {
+    this.tail.readSync(path);
+  }
 }
 
 export class ConversationReader {
@@ -121,7 +161,7 @@ export class ConversationReader {
     }
 
     this.parseNewLines(state);
-    return state.messages;
+    return state.tail.messages;
   }
 
   watch(sessionId: string, filePath: string): void {
@@ -133,14 +173,14 @@ export class ConversationReader {
       log.debug('fs.watch fired', { sessionId, eventType });
       const state = this.states.get(sessionId);
       if (!state) return;
-      const prevCount = state.messages.length;
+      const prevCount = state.tail.messages.length;
       this.parseNewLines(state);
-      if (state.messages.length !== prevCount) {
+      if (state.tail.messages.length !== prevCount) {
         log.debug('new messages detected via watcher', {
           sessionId,
-          count: state.messages.length - prevCount
+          count: state.tail.messages.length - prevCount
         });
-        this.onChange?.(sessionId, state.messages);
+        this.onChange?.(sessionId, state.tail.messages);
       }
     });
 
@@ -161,14 +201,14 @@ export class ConversationReader {
   refresh(sessionId: string): void {
     const state = this.states.get(sessionId);
     if (!state) return;
-    const prevCount = state.messages.length;
+    const prevCount = state.tail.messages.length;
     this.parseNewLines(state);
-    if (state.messages.length !== prevCount) {
+    if (state.tail.messages.length !== prevCount) {
       log.debug('new messages detected via refresh', {
         sessionId,
-        count: state.messages.length - prevCount
+        count: state.tail.messages.length - prevCount
       });
-      this.onChange?.(sessionId, state.messages);
+      this.onChange?.(sessionId, state.tail.messages);
     }
   }
 
@@ -185,22 +225,7 @@ export class ConversationReader {
   }
 
   private newState(filePath: string): SessionParseState {
-    const messages: CopilotChatMessage[] = [];
-    const seenToolIds = new Set<string>();
-    const state: SessionParseState = {
-      filePath,
-      messages,
-      seenToolIds,
-      tail: new TranscriptTail({
-        onLine: (line) => applyLine(line.events, state.messages, state.seenToolIds),
-        // The file was replaced by a shorter one: its messages start over.
-        onReset: () => {
-          state.messages = [];
-          state.seenToolIds = new Set();
-        }
-      })
-    };
-    return state;
+    return { filePath, tail: new MessageTail() };
   }
 
   private parseNewLines(state: SessionParseState): void {

@@ -1,16 +1,13 @@
-import { open, type FileHandle } from 'fs/promises';
-import { StringDecoder } from 'string_decoder';
 import { estimateSessionCostUsd, type PriceTable } from '../../shared/claude-pricing';
 import type { ClaudeSessionUsage } from '../../shared/claude-sessions';
 import { createLogger } from '../logger';
-import { listSubagentTranscripts } from './transcript-path';
+import { SessionTail } from './session-tail';
 import { UsageAccumulator } from './usage-accumulator';
 
 const log = createLogger('claude-sessions:usage');
 
 /** How often a busy session's transcript is re-read at most. */
 export const USAGE_THROTTLE_MS = 2_000;
-const READ_CHUNK_BYTES = 4 * 1024 * 1024;
 
 /** The context window every current model starts with. */
 const STANDARD_CONTEXT = 200_000;
@@ -32,12 +29,10 @@ export function contextLimitFor(tokens: number, seenLong: boolean): number {
   return seenLong || tokens > STANDARD_CONTEXT ? LONG_CONTEXT : STANDARD_CONTEXT;
 }
 
-type Source = { offset: number; decoder: StringDecoder };
-
 type Tracked = {
   transcriptPath: string;
   acc: UsageAccumulator;
-  sources: Map<string, Source>;
+  tail: SessionTail;
   seenLong: boolean;
   usage: ClaudeSessionUsage;
   lastRun: number;
@@ -85,7 +80,7 @@ export class SessionUsageTracker {
       t = {
         transcriptPath,
         acc: new UsageAccumulator(),
-        sources: new Map(),
+        tail: new SessionTail(transcriptPath),
         seenLong: false,
         usage: UNKNOWN_USAGE,
         lastRun: 0,
@@ -157,49 +152,11 @@ export class SessionUsageTracker {
   }
 
   private async read(t: Tracked): Promise<void> {
-    const paths = [t.transcriptPath, ...(await listSubagentTranscripts(t.transcriptPath))];
-    for (const path of paths) {
-      const rewritten = await this.readNew(t, path);
-      if (rewritten) {
-        // A file got shorter, so it was replaced: start the totals over.
-        t.acc = new UsageAccumulator();
-        t.sources.clear();
-        await this.read(t);
-        return;
-      }
-    }
-  }
-
-  /** Feed a file's new bytes to the accumulator. True when the file shrank. */
-  private async readNew(t: Tracked, path: string): Promise<boolean> {
-    let handle: FileHandle;
-    try {
-      handle = await open(path, 'r');
-    } catch {
-      return false; // not written yet
-    }
-    try {
-      const { size } = await handle.stat();
-      const source = t.sources.get(path) ?? { offset: 0, decoder: new StringDecoder('utf8') };
-      t.sources.set(path, source);
-      if (size < source.offset) return true;
-      const buffer = Buffer.alloc(Math.min(READ_CHUNK_BYTES, size - source.offset));
-      while (source.offset < size) {
-        const { bytesRead } = await handle.read(
-          buffer,
-          0,
-          Math.min(buffer.length, size - source.offset),
-          source.offset
-        );
-        if (bytesRead === 0) break;
-        source.offset += bytesRead;
-        // The decoder holds back a character split across two reads.
-        t.acc.addText(source.decoder.write(buffer.subarray(0, bytesRead)), path);
-      }
-      return false;
-    } finally {
-      await handle.close();
-    }
+    await t.tail.read(
+      (line) => t.acc.addLine(line),
+      // A file got shorter, so it was replaced: start the totals over.
+      () => (t.acc = new UsageAccumulator())
+    );
   }
 
   private usageOf(t: Tracked): ClaudeSessionUsage {

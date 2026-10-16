@@ -28,9 +28,10 @@ export const useSessionsStore = create<SessionsStoreState>((set, get) => ({
   load: async () => {
     const sessions = await window.fleet.sessions.list();
     set({ sessions, isLoaded: true });
-    // If a session is open and still present, refresh its transcript.
+    // If the open session changed since it was read, refresh its transcript.
     const sel = get().selected;
-    if (sel && sessions.some((s) => s.id === sel.id)) {
+    const listed = sel && sessions.find((s) => s.id === sel.id);
+    if (sel && listed && listed.updatedAt !== get().transcript?.summary.updatedAt) {
       try {
         const transcript = await window.fleet.sessions.read(sel);
         const cur = get().selected;
