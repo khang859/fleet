@@ -33,6 +33,7 @@ import { CrewStore } from './crew-store';
 import { ResourceStore } from './resource-store';
 import { ResultStore } from './result-store';
 import { PlanStore } from './plan-store';
+import { ProjectRegistry } from './project-registry';
 import { SettingChangeStore } from './setting-change-store';
 
 type JobRow = {
@@ -293,6 +294,7 @@ export class AgencyStore {
   readonly resources: ResourceStore;
   readonly results: ResultStore;
   readonly settings: SettingChangeStore;
+  readonly projects: ProjectRegistry;
 
   constructor(db: Database.Database | string, opts: { now?: () => number } = {}) {
     this.db = typeof db === 'string' ? openAgencyDb(db) : db;
@@ -302,6 +304,7 @@ export class AgencyStore {
     this.resources = new ResourceStore(this.db, this.now);
     this.results = new ResultStore(this.db, this.now);
     this.settings = new SettingChangeStore(this.db, this.now);
+    this.projects = new ProjectRegistry(this.db, this.now);
   }
 
   /**
@@ -1290,7 +1293,10 @@ export class AgencyStore {
     return this.onboarding(repo.repoId);
   }
 
-  /** Every repository with an Admiral opened before or a setup saved, by name. */
+  /**
+   * Every project with an Admiral opened before or a setup saved, by name. A
+   * repository that is now a member of a workspace project is that project.
+   */
   listProjects(): AgencyProjectSummary[] {
     const running = RUNNING_JOB_STATES.map(() => '?').join(', ');
     return this.db
@@ -1310,6 +1316,9 @@ export class AgencyStore {
            (SELECT COUNT(*) FROM jobs j WHERE j.repo_id = r.repo_id AND j.state IN (${running})) AS running_jobs,
            (SELECT COUNT(*) FROM questions q WHERE q.repo_id = r.repo_id AND q.status = 'open') AS open_questions
          FROM repos r LEFT JOIN onboarding o ON o.repo_id = r.repo_id
+         WHERE NOT EXISTS (
+           SELECT 1 FROM project_members m WHERE m.repo_id = r.repo_id AND m.project_id != r.repo_id
+         )
          ORDER BY r.name COLLATE NOCASE, r.root`
       )
       .all(...RUNNING_JOB_STATES)

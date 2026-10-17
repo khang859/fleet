@@ -290,6 +290,9 @@ const MIGRATIONS: readonly string[] = [
     text TEXT NOT NULL,
     written_at INTEGER NOT NULL
   );
+  `,
+  `
+  ALTER TABLE projects ADD COLUMN left_out_json TEXT NOT NULL DEFAULT '[]';
   `
 ];
 

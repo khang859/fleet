@@ -9,9 +9,22 @@ import { useAdmiralOnboardingStore } from '../../store/admiral-onboarding-store'
 import { collectPaneLeafs, findAdmiralPane, useWorkspaceStore } from '../../store/workspace-store';
 import { CloneDialog } from './CloneDialog';
 import { OnboardingButton, SectionLabel, textInputCls } from './onboarding-ui';
-import { folderBadges, homePath, type FolderBadge } from './onboarding-view';
+import {
+  folderBadges,
+  folderProject,
+  homePath,
+  keptMembers,
+  memberStatus,
+  type FolderBadge
+} from './onboarding-view';
 
 type RepoFolder = Extract<ProjectFolder, { kind: 'repo' }>;
+type WorkspaceFolder = Extract<ProjectFolder, { kind: 'workspace' }>;
+/** A row that can be picked: a repository or a workspace. */
+type PickFolder = RepoFolder | WorkspaceFolder;
+
+const pickable = (f: ProjectFolder): f is PickFolder => f.kind !== 'not-a-repo';
+const projectOf = (f: PickFolder): AgencyRepoRef => (f.kind === 'repo' ? f.repo : f.project);
 
 const BADGE_TONE: Record<FolderBadge['tone'], string> = {
   green: 'bg-green-500/10 text-green-600 dark:text-green-400',
@@ -30,7 +43,34 @@ function basename(path: string): string {
   return path.split('/').filter(Boolean).pop() ?? path;
 }
 
-/** One folder in the picker: a repository to pick, or a folder that cannot be one. */
+function Badge({ badge }: { badge: FolderBadge }): React.JSX.Element {
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap ${BADGE_TONE[badge.tone]}`}
+    >
+      {badge.label}
+    </span>
+  );
+}
+
+/** `3 submodules` or `2 repositories`: a workspace's members, the umbrella not counted. */
+function workspaceSize(folder: WorkspaceFolder): string {
+  const n = folder.members.filter((m) => !m.umbrella).length;
+  if (folder.projectKind === 'submodules') return `${n} ${n === 1 ? 'submodule' : 'submodules'}`;
+  return `${n} ${n === 1 ? 'repository' : 'repositories'}`;
+}
+
+function rowMeta(folder: ProjectFolder, home: string): string[] {
+  const path = homePath(folder.path, home);
+  if (folder.kind === 'repo') {
+    return [path, folder.branch, folder.remote ?? 'no remote'].filter(
+      (p): p is string => p !== null
+    );
+  }
+  return [path];
+}
+
+/** One folder in the picker: a repository or workspace to pick, or a folder that cannot be one. */
 export function ProjectRow({
   folder,
   selected,
@@ -44,13 +84,9 @@ export function ProjectRow({
   home: string;
   onSelect: () => void;
 }): React.JSX.Element {
-  const repo = folder.kind === 'repo' ? folder : null;
-  const name = repo?.repo.name ?? basename(folder.path);
-  const meta = repo
-    ? [homePath(folder.path, home), repo.branch, repo.remote ?? 'no remote'].filter(
-        (p): p is string => p !== null
-      )
-    : [homePath(folder.path, home)];
+  const repo = folderProject(folder);
+  const name = repo?.name ?? basename(folder.path);
+  const meta = rowMeta(folder, home);
   return (
     <button
       type="button"
@@ -84,18 +120,46 @@ export function ProjectRow({
         <span className="shrink-0 text-[11px] text-fleet-text-subtle">Not a git repository</span>
       ) : (
         <span className="flex shrink-0 flex-wrap justify-end gap-1">
+          {folder.kind === 'workspace' && (
+            <Badge badge={{ label: workspaceSize(folder), tone: 'plain' }} />
+          )}
           {folderBadges(folder, admiralOpen).map((b) => (
-            <span
-              key={b.label}
-              className={`rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap ${BADGE_TONE[b.tone]}`}
-            >
-              {b.label}
-            </span>
+            <Badge key={b.label} badge={b} />
           ))}
         </span>
       )}
     </button>
   );
+}
+
+/**
+ * Members the client left out, by workspace, until the project is chosen.
+ * A workspace not touched yet starts from what was left out before.
+ */
+function useLeftOut(): {
+  left: (f: WorkspaceFolder) => string[];
+  toggle: (f: WorkspaceFolder, name: string) => void;
+} {
+  const [leftOut, setLeftOut] = useState<Record<string, string[]>>({});
+  const left = (f: WorkspaceFolder): string[] =>
+    leftOut[f.path] ?? f.members.filter((m) => m.leftOut).map((m) => m.name);
+  const toggle = (f: WorkspaceFolder, name: string): void => {
+    const now = left(f);
+    setLeftOut({
+      ...leftOut,
+      [f.path]: now.includes(name) ? now.filter((n) => n !== name) : [...now, name]
+    });
+  };
+  return { left, toggle };
+}
+
+/** The project to open: a workspace is saved as one first, so its members find its Admiral. */
+async function chosenProject(
+  folder: PickFolder,
+  left: (f: WorkspaceFolder) => string[]
+): Promise<AgencyRepoRef> {
+  if (folder.kind === 'repo') return folder.repo;
+  return window.fleet.agency.projects.chooseWorkspace({ path: folder.path, leftOut: left(folder) });
 }
 
 /** Every folder the open and saved workspaces work in, on this machine. */
@@ -116,10 +180,11 @@ function workspaceFolders(saved: Workspace[]): string[] {
 type Lists = { workspaces: ProjectFolder[]; recent: ProjectFolder[] };
 
 /**
- * Which project the Admiral should run: the repositories in Fleet's
- * workspaces and recent folders, any other folder, or a fresh clone. A
- * project is one git repository; a folder that is not one is shown but
- * cannot be picked.
+ * Which project the Admiral should run: the repositories and workspaces in
+ * Fleet's workspaces and recent folders, any other folder, or a fresh clone.
+ * A project is one git repository, or a workspace of them whose members the
+ * client can leave out; a folder that is neither is shown but cannot be
+ * picked.
  */
 export function ProjectPicker({
   paneId,
@@ -143,6 +208,7 @@ export function ProjectPicker({
   const [error, setError] = useState<string | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { left, toggle: toggleMember } = useLeftOut();
 
   const load = useCallback(async (): Promise<void> => {
     const saved = await window.fleet.layout
@@ -153,14 +219,12 @@ export function ProjectPicker({
       window.fleet.agency.projects.probeFolders([current.root, ...workspaceFolders(saved)]),
       window.fleet.agency.projects.probeFolders([...extra, ...recentFolders])
     ]);
-    const inWorkspaces = new Set(
-      workspaces.flatMap((f) => (f.kind === 'repo' ? [f.repo.repoId] : []))
-    );
+    const inWorkspaces = new Set(workspaces.flatMap((f) => folderProject(f)?.repoId ?? []));
     setLists({
       // A workspace folder that is not a repository is not worth a row: it is
       // a terminal somewhere, not a project someone meant.
-      workspaces: workspaces.filter((f) => f.kind === 'repo'),
-      recent: recent.filter((f) => f.kind === 'not-a-repo' || !inWorkspaces.has(f.repo.repoId))
+      workspaces: workspaces.filter(pickable),
+      recent: recent.filter((f) => !pickable(f) || !inWorkspaces.has(projectOf(f).repoId))
     });
   }, [current.root, extra, recentFolders]);
 
@@ -174,29 +238,29 @@ export function ProjectPicker({
   }, [load]);
 
   const all = useMemo(() => (lists ? [...lists.workspaces, ...lists.recent] : []), [lists]);
-  const repos = all.filter((f): f is RepoFolder => f.kind === 'repo');
+  const repos = all.filter(pickable);
   const selected =
     repos.find((f) => f.path === selectedPath) ??
-    repos.find((f) => f.repo.repoId === current.repoId) ??
+    repos.find((f) => projectOf(f).repoId === current.repoId) ??
     repos.at(0) ??
     null;
 
   // Joined into a string so the picker redraws when an Admiral opens or closes, not on every store write.
   const openIds = useWorkspaceStore((s) =>
     repos
-      .filter((f) => findAdmiralPane(s, f.repo.repoId) !== null)
-      .map((f) => f.repo.repoId)
+      .map((f) => projectOf(f).repoId)
+      .filter((id) => findAdmiralPane(s, id) !== null)
       .join(',')
   );
-  const admiralOpen = (f: ProjectFolder): boolean =>
-    f.kind === 'repo' &&
-    f.repo.repoId !== current.repoId &&
-    openIds.split(',').includes(f.repo.repoId);
+  const admiralOpen = (f: ProjectFolder): boolean => {
+    const id = folderProject(f)?.repoId;
+    return id !== undefined && id !== current.repoId && openIds.split(',').includes(id);
+  };
 
   const matches = (f: ProjectFolder): boolean => {
     const q = query.trim().toLowerCase();
     if (q === '') return true;
-    const name = f.kind === 'repo' ? f.repo.name : basename(f.path);
+    const name = folderProject(f)?.name ?? basename(f.path);
     return name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q);
   };
 
@@ -206,7 +270,7 @@ export function ProjectPicker({
     const folder = (await window.fleet.agency.projects.probeFolders([path])).at(0);
     if (folder === undefined || folder.kind === 'not-a-repo') {
       setError(
-        `${basename(path)} is not a git repository. An Admiral runs one repository: pick a folder inside one, or clone one from GitHub.`
+        `${basename(path)} is not a git repository and holds none. An Admiral runs one repository or a folder of them: pick one, or clone one from GitHub.`
       );
       return;
     }
@@ -218,13 +282,15 @@ export function ProjectPicker({
 
   const go = async (): Promise<void> => {
     if (selected === null || busy) return;
-    if (selected.repo.repoId === current.repoId) {
-      setPicking(paneId, false);
-      return;
-    }
     setBusy(true);
+    setError(null);
     try {
-      const outcome = await openAdmiral(selected.repo.root);
+      const project = await chosenProject(selected, left);
+      if (project.repoId === current.repoId) {
+        setPicking(paneId, false);
+        return;
+      }
+      const outcome = await openAdmiral(project.root);
       if (outcome === 'refused') return;
       setPicking(paneId, false);
       // An Admiral opened only to reach this picker, for a repository that was
@@ -233,6 +299,8 @@ export function ProjectPicker({
       if (onboarding?.setupDoneAt === null && (currentSnapshot?.jobs.length ?? 0) === 0) {
         useWorkspaceStore.getState().closePane(paneId);
       }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -253,8 +321,8 @@ export function ProjectPicker({
                 Which project should the Admiral run?
               </h2>
               <p className="text-[13px] leading-relaxed text-fleet-text-muted">
-                A project is one git repository. Each project gets its own Admiral, its own jobs and
-                its own settings.
+                A project is one git repository, or a workspace of them. Each project gets its own
+                Admiral, its own jobs and its own settings.
               </p>
             </div>
             {canClose && (
@@ -333,14 +401,17 @@ export function ProjectPicker({
         >
           {selected === null ? (
             <p className="text-xs text-fleet-text-muted">
-              Pick a repository to see what happens next.
+              Pick a project to see what happens next.
             </p>
           ) : (
             <SelectedProject
               folder={selected}
-              isCurrent={selected.repo.repoId === current.repoId}
+              isCurrent={projectOf(selected).repoId === current.repoId}
               admiralOpen={admiralOpen(selected)}
               busy={busy}
+              left={left}
+              onToggleMember={toggleMember}
+              home={home}
               onGo={() => void go()}
             />
           )}
@@ -367,7 +438,7 @@ function FolderSection({
   label: string;
   folders: ProjectFolder[];
   empty: string;
-  selected: RepoFolder | null;
+  selected: PickFolder | null;
   admiralOpen: (f: ProjectFolder) => boolean;
   home: string;
   onSelect: (path: string) => void;
@@ -394,14 +465,19 @@ function FolderSection({
 }
 
 const NEXT_STEPS = [
-  'The Admiral reads the repository to learn how it builds and tests. It only reads. Nothing runs and nothing changes.',
+  'The Admiral reads the project to learn how it builds and tests. It only reads. Nothing runs and nothing changes.',
   'You check what it found and fix anything it got wrong.',
   'It asks you a few questions about how you like to work.',
   'Then you give it a first brief.'
 ];
 
-function selectedNote(folder: RepoFolder): string {
+function selectedNote(folder: PickFolder): string {
   if (folder.setupDone) return 'Set up already. Its Admiral knows how it builds and tests.';
+  if (folder.kind === 'workspace') {
+    return folder.projectKind === 'submodules'
+      ? 'An umbrella repository and its submodules. A job can change several members and delivers one PR for each.'
+      : 'A folder of git repositories. A job can change several of them and delivers one PR for each.';
+  }
   if (folder.teamFiles) {
     return 'A teammate shared Admiral files in .fleet/. Setup shows them, and you pick what to import.';
   }
@@ -411,20 +487,82 @@ function selectedNote(folder: RepoFolder): string {
   return `One git repository on ${folder.remote}. Each job delivers one PR.`;
 }
 
+/** A workspace's members, each with a box to leave it out; the umbrella always stays. */
+export function MemberList({
+  folder,
+  leftOut,
+  home,
+  onToggle
+}: {
+  folder: WorkspaceFolder;
+  leftOut: string[];
+  home: string;
+  onToggle: (name: string) => void;
+}): React.JSX.Element {
+  const kept = keptMembers(folder, leftOut).length;
+  return (
+    <div className="flex flex-col gap-2">
+      <SectionLabel note={`${kept} of ${folder.members.length} in the project`}>
+        MEMBERS
+      </SectionLabel>
+      <ul className="flex flex-col gap-1">
+        {folder.members.map((m) => {
+          const status = memberStatus(m);
+          const meta = [
+            m.path === '.' ? homePath(folder.path, home) : m.path,
+            m.branch,
+            m.repo === null ? null : (m.remote ?? 'no remote')
+          ].filter((p): p is string => p !== null);
+          return (
+            <li key={m.name}>
+              <label className="flex cursor-pointer items-center gap-2.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-fleet-surface-2 has-[:disabled]:cursor-default has-[:disabled]:hover:bg-transparent">
+                <input
+                  type="checkbox"
+                  checked={!leftOut.includes(m.name)}
+                  disabled={m.umbrella}
+                  onChange={() => onToggle(m.name)}
+                  aria-label={`Keep ${m.name} in the project`}
+                  className="size-3.5 shrink-0 accent-blue-500"
+                />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-[13px] text-fleet-text">
+                    {m.name}
+                    {m.umbrella && <span className="text-fleet-text-subtle"> · umbrella</span>}
+                  </span>
+                  <span className="truncate font-mono text-[11px] text-fleet-text-subtle">
+                    {meta.join(' · ')}
+                  </span>
+                </span>
+                {status !== null && <Badge badge={status} />}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function SelectedProject({
   folder,
   isCurrent,
   admiralOpen,
   busy,
+  left,
+  onToggleMember,
+  home,
   onGo
 }: {
-  folder: RepoFolder;
+  folder: PickFolder;
   isCurrent: boolean;
   admiralOpen: boolean;
   busy: boolean;
+  left: (f: WorkspaceFolder) => string[];
+  onToggleMember: (f: WorkspaceFolder, name: string) => void;
+  home: string;
   onGo: () => void;
 }): React.JSX.Element {
-  const name = folder.repo.name;
+  const name = projectOf(folder).name;
   const action = folder.setupDone
     ? admiralOpen
       ? `Go to ${name}`
@@ -439,6 +577,14 @@ function SelectedProject({
         <span className="truncate text-[15px] font-semibold text-fleet-text">{name}</span>
         <p className="text-xs leading-relaxed text-fleet-text-muted">{selectedNote(folder)}</p>
       </div>
+      {folder.kind === 'workspace' && (
+        <MemberList
+          folder={folder}
+          leftOut={left(folder)}
+          home={home}
+          onToggle={(name) => onToggleMember(folder, name)}
+        />
+      )}
       {!folder.setupDone && (
         <>
           <div className="flex flex-col gap-2.5">

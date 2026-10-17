@@ -6,6 +6,7 @@ import type {
   AdmiralClaimResult,
   AgencyPreflight,
   AgencyQuestion,
+  AgencyRepoRef,
   AgencySnapshot,
   RepoResolution,
   WakeupPull,
@@ -82,6 +83,11 @@ const PlanActionArgs = z.discriminatedUnion('action', [
 ]);
 
 const Paths = z.array(z.string().min(1)).max(200);
+const ChooseWorkspaceArgs = z.object({
+  path: z.string().min(1),
+  leftOut: z.array(z.string().min(1).max(400)).max(50)
+});
+const CheckOutMemberArgs = z.object({ repo: RepoRef, path: z.string().min(1).max(400) });
 const SaveSetupArgs = z.object({
   repo: RepoRef,
   setup: ProjectSetupSchema,
@@ -259,6 +265,16 @@ function registerProjectsIpc(service: AgencyService): void {
     IPC_CHANNELS.AGENCY_PROBE_FOLDERS,
     async (_e, paths: unknown): Promise<ProjectFolder[]> =>
       projects.probeFolders(Paths.parse(paths))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CHOOSE_WORKSPACE,
+    async (_e, args: unknown): Promise<AgencyRepoRef> =>
+      projects.chooseWorkspace(ChooseWorkspaceArgs.parse(args))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CHECK_OUT_MEMBER,
+    async (_e, args: unknown): Promise<void> =>
+      projects.checkOutMember(CheckOutMemberArgs.parse(args))
   );
   ipcMain.handle(IPC_CHANNELS.AGENCY_LIST_PROJECTS, (): AgencyProjectSummary[] =>
     projects.listProjects()

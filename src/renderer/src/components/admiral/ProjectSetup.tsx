@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import type {
+  MemberScan,
   ProjectMemberSetup,
   ProjectSetup as Setup,
   RepoFile,
@@ -22,7 +23,8 @@ import {
   SectionLabel,
   textInputCls
 } from './onboarding-ui';
-import { NOTE_DOT, repoNotes } from './onboarding-view';
+import { MissingCard } from './MissingCard';
+import { memberOrder, NOTE_DOT, repoNotes } from './onboarding-view';
 
 /**
  * Setup, step 2: what a read-only scan of the repository found, for the
@@ -31,34 +33,14 @@ import { NOTE_DOT, repoNotes } from './onboarding-view';
  * team" is the one action that writes into the repository, uncommitted.
  */
 export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Element {
-  const [scan, setScan] = useState<SetupScan | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [setup, setSetup] = useState<Setup | null>(null);
-  const [imports, setImports] = useState<ReadonlySet<string>>(new Set());
+  const edited = useRef(false);
+  const { scan, setup, setSetup, imports, setImports, error, setError, reread } = useSetupScan(
+    repo,
+    edited
+  );
   const [busy, setBusy] = useState<'save' | 'share' | null>(null);
   const [shared, setShared] = useState<string[] | null>(null);
-  const edited = useRef(false);
-
-  // Keyed on the repository's fields, not the object: a redraw of the workspace
-  // hands over an equal copy, and a fresh scan would throw away the client's edits.
-  const { repoId, root, name } = repo;
-  const marks = useAdmiralMarks(repoId);
-  const rescan = useAdmiralSetupChanges(repoId, edited);
-  useEffect(() => {
-    let live = true;
-    window.fleet.agency.projects
-      .scan({ repoId, root, name })
-      .then((found) => {
-        if (!live) return;
-        setScan(found);
-        setSetup(found.setup);
-        setImports(new Set(found.setup.imports.map((i) => i.path)));
-      })
-      .catch((err: unknown) => live && setError(String(err)));
-    return () => {
-      live = false;
-    };
-  }, [repoId, root, name, rescan]);
+  const marks = useAdmiralMarks(repo.repoId);
 
   if (error !== null) {
     return (
@@ -79,11 +61,14 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
     );
   }
 
-  const member = setup.members[0];
-  const setMember = (patch: Partial<ProjectMemberSetup>): void => {
+  const setMember = (index: number, patch: Partial<ProjectMemberSetup>): void => {
     edited.current = true;
-    setSetup({ ...setup, members: [{ ...member, ...patch }, ...setup.members.slice(1)] });
+    setSetup({
+      ...setup,
+      members: setup.members.map((m, i) => (i === index ? { ...m, ...patch } : m))
+    });
   };
+  const workspace = scan.kind !== 'repo';
 
   const toggleImport = (file: RepoFile): void => {
     edited.current = true;
@@ -92,8 +77,9 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
     else next.add(file.path);
     setImports(next);
     // The team's setup file is not copied: importing it means taking its findings.
+    // Only for the members this project has: a teammate's may hold others.
     if (file.kind === 'setup' && next.has(file.path) && scan.teamSetup !== null) {
-      setSetup({ ...scan.teamSetup, name: setup.name });
+      setSetup(withMembersFrom(setup, scan.teamSetup));
     }
   };
 
@@ -112,12 +98,18 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[960px] flex-col gap-4 px-5 py-5">
-          <AdmiralSays>
-            I read <span className="font-semibold">{repo.name}</span> at {scan.readFrom}. Nothing
-            ran and nothing changed. Check what I found and fix anything I got wrong. It is all
-            saved in Fleet, so no commit is needed.
-          </AdmiralSays>
-          <RepoCard scan={scan} member={member} marks={marks} onChange={setMember} />
+          <ScanIntro repo={repo} scan={scan} setup={setup} onCheckedOut={reread} />
+          {setup.members.map((member, i) => (
+            <RepoCard
+              key={member.name}
+              scan={scan}
+              member={member}
+              read={scan.members.find((m) => m.name === member.name) ?? scan.members[i]}
+              title={workspace ? member.name : null}
+              marks={marks}
+              onChange={(patch) => setMember(i, patch)}
+            />
+          ))}
           {scan.repoFiles.length > 0 && (
             <FoundCard files={scan.repoFiles} imports={imports} onToggle={toggleImport} />
           )}
@@ -152,6 +144,116 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
       </footer>
     </div>
   );
+}
+
+/**
+ * `base` with each member `from` also has, at the same path, taken from
+ * `from`: a teammate's shared setup, or the client's edits kept over a re-read.
+ */
+function withMembersFrom(base: Setup, from: Setup): Setup {
+  return {
+    ...base,
+    members: base.members.map(
+      (m) => from.members.find((f) => f.name === m.name && f.path === m.path) ?? m
+    )
+  };
+}
+
+/**
+ * The scan behind the setup screen, read again when the Admiral changes the
+ * saved setup or a member is checked out. A re-read keeps what the client
+ * edited.
+ */
+type SetupScanState = {
+  scan: SetupScan | null;
+  setup: Setup | null;
+  setSetup: (setup: Setup) => void;
+  imports: ReadonlySet<string>;
+  setImports: (imports: ReadonlySet<string>) => void;
+  error: string | null;
+  setError: (error: string | null) => void;
+  reread: () => void;
+};
+
+function useSetupScan(repo: AgencyRepoRef, edited: React.RefObject<boolean>): SetupScanState {
+  const [scan, setScan] = useState<SetupScan | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [setup, setSetup] = useState<Setup | null>(null);
+  const [imports, setImports] = useState<ReadonlySet<string>>(new Set());
+  const [rereads, setRereads] = useState(0);
+  // Keyed on the repository's fields, not the object: a redraw of the workspace
+  // hands over an equal copy, and a fresh scan would throw away the client's edits.
+  const { repoId, root, name } = repo;
+  const admiralChanges = useAdmiralSetupChanges(repoId, edited);
+  useEffect(() => {
+    let live = true;
+    window.fleet.agency.projects
+      .scan({ repoId, root, name })
+      .then((found) => {
+        if (!live) return;
+        setScan(found);
+        if (edited.current) {
+          setSetup((prev) => (prev === null ? found.setup : withMembersFrom(found.setup, prev)));
+          return;
+        }
+        setSetup(found.setup);
+        setImports(new Set(found.setup.imports.map((i) => i.path)));
+      })
+      .catch((err: unknown) => live && setError(String(err)));
+    return () => {
+      live = false;
+    };
+  }, [repoId, root, name, edited, admiralChanges, rereads]);
+  const reread = (): void => setRereads((n) => n + 1);
+  return { scan, setup, setSetup, imports, setImports, error, setError, reread };
+}
+
+/** What the Admiral says it read, what it could not, and the member order. */
+function ScanIntro({
+  repo,
+  scan,
+  setup,
+  onCheckedOut
+}: {
+  repo: AgencyRepoRef;
+  scan: SetupScan;
+  setup: Setup;
+  onCheckedOut: () => void;
+}): React.JSX.Element {
+  const workspace = scan.kind !== 'repo';
+  return (
+    <>
+      <AdmiralSays>
+        I read <span className="font-semibold">{repo.name}</span>
+        {workspace
+          ? `, ${membersRead(setup.members.length)} at their default branches`
+          : ` at ${scan.members[0].readFrom}`}
+        . Nothing ran and nothing changed. Check what I found and fix anything I got wrong. It is
+        all saved in Fleet, so no commit is needed.
+      </AdmiralSays>
+      {scan.missing.length > 0 && (
+        <MissingCard repo={repo} scan={scan} onCheckedOut={onCheckedOut} />
+      )}
+      {workspace && setup.members.length > 1 && (
+        <OnboardingCard>
+          <SectionLabel note="dependencies first">MEMBER ORDER</SectionLabel>
+          <p className="mt-2 font-mono text-xs text-fleet-text">{memberOrder(setup)}</p>
+          <p className="mt-1 text-xs text-fleet-text-muted">
+            Crew set up members and merge their PRs in this order
+            {scan.kind === 'submodules'
+              ? ', and the umbrella moves to the merged commits last.'
+              : '.'}
+          </p>
+        </OnboardingCard>
+      )}
+    </>
+  );
+}
+
+/** `its one member`, `both members` or `all 4 members`. */
+function membersRead(n: number): string {
+  if (n === 1) return 'its one member';
+  return n === 2 ? 'both members' : `all ${n} members`;
 }
 
 /**
@@ -208,14 +310,59 @@ const parseList = (text: string): string[] =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+/** `read from main`, with the member's path first in a workspace. */
+function cardNote(member: ProjectMemberSetup, read: MemberScan, inWorkspace: boolean): string {
+  const from = `read from ${read.readFrom}`;
+  return inWorkspace && member.path !== '.' ? `${member.path} · ${from}` : from;
+}
+
+/** A setup card's heading: REPO, or the member's name and path, with Edit. */
+function RepoCardHeader({
+  member,
+  read,
+  title,
+  editing,
+  onEdit
+}: {
+  member: ProjectMemberSetup;
+  read: MemberScan;
+  title: string | null;
+  editing: boolean;
+  onEdit: () => void;
+}): React.JSX.Element {
+  const action = editing ? 'Done' : 'Edit';
+  return (
+    <div className="flex items-center gap-2">
+      <div className="min-w-0 flex-1">
+        <SectionLabel note={cardNote(member, read, title !== null)}>
+          {title?.toUpperCase() ?? 'REPO'}
+        </SectionLabel>
+      </div>
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label={title === null ? undefined : `${action} ${title}`}
+        className="text-xs text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
+      >
+        {action}
+      </button>
+    </div>
+  );
+}
+
 function RepoCard({
   scan,
   member,
+  read,
+  title,
   marks,
   onChange
 }: {
   scan: SetupScan;
   member: ProjectMemberSetup;
+  read: MemberScan;
+  /** The member's name, in a workspace; a one-repository project's card says REPO. */
+  title: string | null;
   marks: AdmiralSettingMark[];
   onChange: (patch: Partial<ProjectMemberSetup>) => void;
 }): React.JSX.Element {
@@ -231,18 +378,13 @@ function RepoCard({
   const stack = [...member.stack, member.packageManager].filter(Boolean).join(' · ');
   return (
     <OnboardingCard>
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <SectionLabel note={`read from ${scan.readFrom}`}>REPO</SectionLabel>
-        </div>
-        <button
-          type="button"
-          onClick={() => setEditing(!editing)}
-          className="text-xs text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
-        >
-          {editing ? 'Done' : 'Edit'}
-        </button>
-      </div>
+      <RepoCardHeader
+        member={member}
+        read={read}
+        title={title}
+        editing={editing}
+        onEdit={() => setEditing(!editing)}
+      />
       <dl className="mt-3 grid grid-cols-[minmax(96px,max-content)_1fr] gap-x-4 text-xs">
         <Row label="Stack" note={changed('stack', 'packageManager')}>
           {editing ? (
@@ -354,7 +496,7 @@ function RepoCard({
         </Row>
       </dl>
       <ul className="mt-3 flex flex-col gap-1.5 text-xs text-fleet-text-secondary">
-        {repoNotes(scan, member).map((n) => (
+        {repoNotes(scan, member, read).map((n) => (
           <li key={n.text} className="flex items-start gap-2">
             <span className={`mt-[5px] size-1.5 shrink-0 rounded-full ${NOTE_DOT[n.tone]}`} />
             <span>{n.text}</span>

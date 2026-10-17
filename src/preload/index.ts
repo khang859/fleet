@@ -1178,6 +1178,12 @@ const fleetApi = {
       /** What the picker shows for each folder: a repository and its state, or not one. */
       probeFolders: async (paths: string[]): Promise<ProjectFolder[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_PROBE_FOLDERS, paths),
+      /** Make a workspace a project, less the members left out. Resolves with the project. */
+      chooseWorkspace: async (input: { path: string; leftOut: string[] }): Promise<AgencyRepoRef> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CHOOSE_WORKSPACE, input),
+      /** Check out a submodule setup found missing. */
+      checkOutMember: async (input: { repo: AgencyRepoRef; path: string }): Promise<void> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CHECK_OUT_MEMBER, input),
       list: async (): Promise<AgencyProjectSummary[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_LIST_PROJECTS),
       /** Setup's read-only scan, or the setup saved before. */

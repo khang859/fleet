@@ -20,7 +20,8 @@ export type RepoResolution =
       /** The main checkout's working tree, even when resolved from a worktree. */
       root: string;
       name: string;
-      gitCommonDir: string;
+      /** Null for a project that is a folder of repositories, which has no git directory of its own. */
+      gitCommonDir: string | null;
       /** The superproject's working tree when this repository is a submodule. */
       superprojectRoot: string | null;
       /** The superproject's own `repoId`, so its Admiral can be found from a submodule. */

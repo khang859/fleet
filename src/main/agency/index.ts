@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { realpath } from 'node:fs/promises';
 import {
   DEFAULT_AGENCY_SETTINGS,
   TERMINAL_JOB_STATES,
@@ -41,6 +42,7 @@ import { readOnlyGit } from './projects/repo-reader';
 import { gatherPlanFacts } from './plans/plan-facts';
 import { ProjectsService } from './projects';
 import { resolveRepoIdentity, type GitRun, type RepoIdentityOptions } from './repo-identity';
+import type { RegisteredProject } from './store/project-registry';
 import { AgencySettingsService, type AgencySettingsAccess } from './settings';
 import { agencyDbPath } from './store/agency-db';
 import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
@@ -87,6 +89,22 @@ function memorySettings(): AgencySettingsAccess {
  * the operations the renderer reaches through IPC. Every write that changes
  * what an Admiral pane shows raises a change event for its repository.
  */
+const realpathOrNull = async (path: string): Promise<string | null> =>
+  realpath(path).catch(() => null);
+
+/** A workspace project as a folder inside it resolves: the umbrella's git directory, or none for a folder. */
+function projectResolution(project: RegisteredProject): RepoResolution {
+  return {
+    ok: true,
+    repoId: project.id,
+    root: project.root,
+    name: project.name,
+    gitCommonDir: project.members.find((m) => m.path === '.')?.gitCommonDir ?? null,
+    superprojectRoot: null,
+    superprojectRepoId: null
+  };
+}
+
 export class AgencyService {
   readonly store: AgencyStore;
   readonly registry = new AdmiralRegistry();
@@ -108,6 +126,7 @@ export class AgencyService {
       store: this.store,
       clientFiles: this.clientFiles,
       resolve: async (path) => this.resolveRepo(path),
+      identify: async (path) => this.identify(path),
       emit: deps.emit,
       gh: deps.gh,
       home: deps.agencyHome
@@ -163,11 +182,34 @@ export class AgencyService {
     if (released > 0) log.info('released wakeup claims left from the last run', { released });
   }
 
-  async resolveRepo(
+  /** The git repository a folder is in, whether or not it belongs to a workspace project. */
+  async identify(
     cwd: string,
     opts: Omit<RepoIdentityOptions, 'git' | 'realpath'> = {}
   ): Promise<RepoResolution> {
     return resolveRepoIdentity(cwd, { ...opts, ...this.deps.repoIdentity });
+  }
+
+  /**
+   * The project a folder belongs to: its repository, or the workspace project
+   * that repository is a member of, so a member checkout or any worktree of it
+   * finds the project's Admiral. A folder project's own folder, which is no
+   * repository, resolves to that project too.
+   */
+  async resolveRepo(
+    cwd: string,
+    opts: Omit<RepoIdentityOptions, 'git' | 'realpath'> = {}
+  ): Promise<RepoResolution> {
+    const res = await this.identify(cwd, opts);
+    const registry = this.store.projects;
+    if (res.ok) {
+      const project = registry.ofRepo(res.repoId);
+      return project === null || project.id === res.repoId ? res : projectResolution(project);
+    }
+    if (res.reason !== 'not-a-repo') return res;
+    const real = await (this.deps.repoIdentity?.realpath ?? realpathOrNull)(cwd);
+    const project = real === null ? null : registry.holdingFolder(real);
+    return project === null ? res : projectResolution(project);
   }
 
   claim(input: { repoId: string; paneId: string }, owner: number): AdmiralClaimResult {

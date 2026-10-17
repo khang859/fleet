@@ -451,6 +451,8 @@ export const IPC_CHANNELS = {
   AGENCY_FIRST_RUN_DONE: 'agency:first-run-done',
   AGENCY_FINISH_FIRST_RUN: 'agency:finish-first-run',
   AGENCY_PROBE_FOLDERS: 'agency:probe-folders',
+  AGENCY_CHOOSE_WORKSPACE: 'agency:choose-workspace',
+  AGENCY_CHECK_OUT_MEMBER: 'agency:check-out-member',
   AGENCY_LIST_PROJECTS: 'agency:list-projects',
   AGENCY_SCAN_PROJECT: 'agency:scan-project',
   AGENCY_SAVE_SETUP: 'agency:save-setup',

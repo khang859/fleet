@@ -6,14 +6,44 @@ import type { AgencyRepoRef } from './agency';
  * offers, what setup found in a repository, the setup Fleet saves for it, and
  * the brief ideas the empty lobby offers.
  *
- * Phase 1 projects are one repository each. The saved setup already keeps a
- * list of members, so a workspace of many repositories is more entries in the
- * same file rather than a new format.
+ * A project is one repository, or a workspace of member repositories: an
+ * umbrella repository and its submodules, or a plain folder whose direct
+ * child folders are repositories. The saved setup keeps one entry per member
+ * in member order, so both are the same file.
  */
+
+/** `repo` is one repository; `submodules` an umbrella and its submodules; `folder` a folder of repositories. */
+export type ProjectKind = 'repo' | 'submodules' | 'folder';
+
+/** One member of a workspace project, as the picker and setup find it. */
+export type WorkspaceMember = {
+  name: string;
+  /** Relative to the project root; `.` for the umbrella. */
+  path: string;
+  /** Null for a submodule that is not checked out yet. */
+  repo: AgencyRepoRef | null;
+  branch: string | null;
+  /** `github.com/owner/name` style, or null when the member has no remote. */
+  remote: string | null;
+  umbrella: boolean;
+  /** The client left it out of the project in the picker. */
+  leftOut: boolean;
+};
 
 /** A folder the project picker offers, after main has looked at it. */
 export type ProjectFolder =
   | { path: string; kind: 'not-a-repo' }
+  | {
+      path: string;
+      kind: 'workspace';
+      /** The project: the umbrella repository, or the folder itself. */
+      project: AgencyRepoRef;
+      projectKind: Exclude<ProjectKind, 'repo'>;
+      /** In member order: dependencies first, the umbrella last. */
+      members: WorkspaceMember[];
+      teamFiles: boolean;
+      setupDone: boolean;
+    }
   | {
       path: string;
       kind: 'repo';
@@ -84,7 +114,7 @@ export type ProjectImport = z.infer<typeof ProjectImportSchema>;
 /** The setup Fleet keeps for a project in `fleet.agency.toml`. */
 export const ProjectSetupSchema = z.object({
   version: z.literal(1),
-  kind: z.literal('repo'),
+  kind: z.enum(['repo', 'submodules', 'folder']),
   name: z.string().min(1).max(200),
   members: z.array(ProjectMemberSetupSchema).min(1).max(50),
   imports: z.array(ProjectImportSchema).max(200)
@@ -105,19 +135,31 @@ export type SaveSetupRequest = {
   imports: string[];
 };
 
-/** What a read-only setup scan of a repository hands the setup screen. */
-export type SetupScan = {
-  repo: AgencyRepoRef;
-  /** The findings, already in the shape they are saved in. */
-  setup: ProjectSetup;
-  /** True when `setup` is the one saved earlier rather than fresh findings. */
-  saved: boolean;
-  repoFiles: RepoFile[];
-  /** A setup a teammate shared in `.fleet/fleet.agency.toml`, if it parses. */
-  teamSetup: ProjectSetup | null;
+/** What setup read in one member, beside the findings saved in its setup entry. */
+export type MemberScan = {
+  name: string;
+  path: string;
   /** What was read: a branch name, or `working tree` for a repository with no commits. */
   readFrom: string;
   requiredChecksFrom: RequiredChecksSource;
+};
+
+/** What a read-only setup scan of a project hands the setup screen. */
+export type SetupScan = {
+  repo: AgencyRepoRef;
+  kind: ProjectKind;
+  /** The findings, already in the shape they are saved in, members in member order. */
+  setup: ProjectSetup;
+  /** True when `setup` is the one saved earlier rather than fresh findings. */
+  saved: boolean;
+  /** One per member in `setup`, in the same order. */
+  members: MemberScan[];
+  /** Submodules listed in `.gitmodules` that are not checked out, so setup could not read them. */
+  missing: Array<{ name: string; path: string }>;
+  /** Crew and setup files in every member, by path from the project root. */
+  repoFiles: RepoFile[];
+  /** A setup a teammate shared in `.fleet/fleet.agency.toml`, if it parses. */
+  teamSetup: ProjectSetup | null;
   ghSignedIn: boolean;
 };
 

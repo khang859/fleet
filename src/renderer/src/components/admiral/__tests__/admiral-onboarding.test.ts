@@ -2,12 +2,26 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { AgencyPreflight } from '../../../../../shared/agency';
-import type { BriefIdeas, ProjectFolder } from '../../../../../shared/agency-projects';
+import type {
+  BriefIdeas,
+  ProjectFolder,
+  ProjectMemberSetup,
+  SetupScan,
+  WorkspaceMember
+} from '../../../../../shared/agency-projects';
 import { admiralStage } from '../admiral-stage';
 import { FirstRunView, type FirstRunViewProps } from '../FirstRunView';
 import { BriefIdeasList } from '../EmptyBrief';
-import { cloneSlug, folderBadges, pickBlocker, projectStatus } from '../onboarding-view';
-import { ProjectRow } from '../ProjectPicker';
+import {
+  cloneSlug,
+  folderBadges,
+  memberOrder,
+  pickBlocker,
+  projectStatus,
+  repoNotes
+} from '../onboarding-view';
+import { MemberList, ProjectRow } from '../ProjectPicker';
+import { MissingCard } from '../MissingCard';
 import { ClientFilePreview } from '../StarterQuestions';
 
 /** The Admiral's onboarding: which screen shows, first run's gate, and the picker's rows. */
@@ -170,6 +184,125 @@ describe('project picker rows', () => {
       'Admiral open',
       'Set up'
     ]);
+  });
+});
+
+const member = (name: string): WorkspaceMember => ({
+  name,
+  path: `libs/${name}`,
+  repo: {
+    repoId: `${name}0000000000000`.slice(0, 16),
+    root: `/home/k/dev/shop/libs/${name}`,
+    name
+  },
+  branch: 'main',
+  remote: `github.com/acme/${name}`,
+  umbrella: false,
+  leftOut: false
+});
+
+const WORKSPACE: Extract<ProjectFolder, { kind: 'workspace' }> = {
+  path: '/home/k/dev/shop',
+  kind: 'workspace',
+  project: { repoId: 'aaaaaaaaaaaaaaaa', root: '/home/k/dev/shop', name: 'shop' },
+  projectKind: 'submodules',
+  members: [
+    member('core'),
+    { ...member('api'), repo: null, branch: null, remote: null },
+    { ...member('web'), leftOut: true },
+    { ...member('shop'), path: '.', umbrella: true }
+  ],
+  teamFiles: false,
+  setupDone: false
+};
+
+describe('workspace projects in the picker', () => {
+  it('shows a workspace as one row with its member count', () => {
+    const html = row(WORKSPACE);
+    expect(html).toContain('>shop<');
+    expect(html).toContain('>~/dev/shop<');
+    expect(html).toContain('>3 submodules<');
+    expect(html).toContain('Needs setup');
+    expect(html).not.toMatch(/<button[^>]* disabled=""/);
+  });
+
+  it('lists members with a box each, the umbrella always kept and a missing one marked', () => {
+    const html = renderToStaticMarkup(
+      createElement(MemberList, {
+        folder: WORKSPACE,
+        leftOut: ['web'],
+        home: '/home/k',
+        onToggle: noop
+      })
+    );
+    expect(html).toContain('3 of 4 in the project');
+    const box = (name: string): string =>
+      new RegExp(`<input[^>]*Keep ${name} in the project[^>]*>`).exec(html)?.[0] ?? '';
+    expect(box('web')).not.toContain('checked');
+    expect(box('core')).toContain('checked=""');
+    expect(box('shop')).toContain('checked=""');
+    expect(box('shop')).toContain('disabled=""');
+    expect(html).toContain('Missing');
+    expect(html).toContain('~/dev/shop · main');
+    expect(html).toContain('libs/core · main · github.com/acme/core');
+  });
+
+  it('says a workspace has local branches only when no member has a remote', () => {
+    const local = { ...WORKSPACE, members: WORKSPACE.members.map((m) => ({ ...m, remote: null })) };
+    expect(folderBadges(local, false).map((b) => b.label)).toEqual(['Local branches only']);
+  });
+});
+
+describe('workspace setup', () => {
+  const setupMember = (name: string, path: string): ProjectMemberSetup => ({
+    name,
+    path,
+    remote: null,
+    defaultBranch: 'main',
+    stack: [],
+    packageManager: null,
+    setupCommand: '',
+    setupTimeoutSec: 600,
+    checkCommands: [],
+    checks: [],
+    requiredChecks: [],
+    reviewBots: []
+  });
+  const members = [setupMember('core', 'libs/core'), setupMember('shop', '.')];
+  const scan: SetupScan = {
+    repo: WORKSPACE.project,
+    kind: 'submodules',
+    setup: { version: 1, kind: 'submodules', name: 'shop', members, imports: [] },
+    saved: false,
+    members: members.map((m) => ({
+      name: m.name,
+      path: m.path,
+      readFrom: 'main',
+      requiredChecksFrom: 'no-github' as const
+    })),
+    missing: [{ name: 'api', path: 'libs/api' }],
+    repoFiles: [],
+    teamSetup: { version: 1, kind: 'submodules', name: 'shop', members, imports: [] },
+    ghSignedIn: false
+  };
+
+  it('names the member order, dependencies first', () => {
+    expect(memberOrder(scan.setup)).toBe('core → shop');
+  });
+
+  it('says a teammate shared a setup once, on the umbrella', () => {
+    const shared = (i: number): boolean =>
+      repoNotes(scan, members[i], scan.members[i]).some((n) => n.text.includes('teammate'));
+    expect([shared(0), shared(1)]).toEqual([false, true]);
+  });
+
+  it('offers to check out a submodule setup could not read', () => {
+    const html = renderToStaticMarkup(
+      createElement(MissingCard, { repo: WORKSPACE.project, scan, onCheckedOut: noop })
+    );
+    expect(html).toContain('NOT CHECKED OUT');
+    expect(html).toContain('libs/api');
+    expect(html).toContain('>Check out<');
   });
 });
 

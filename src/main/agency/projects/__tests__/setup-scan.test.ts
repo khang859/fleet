@@ -5,7 +5,7 @@ import type { AgencyChanged, AgencyRepoRef } from '../../../../shared/agency';
 import { AgencyService } from '../../index';
 import type { GitRun } from '../../repo-identity';
 import { readOnlyGit } from '../repo-reader';
-import { scanProject } from '../setup-findings';
+import { repoTarget, scanProject } from '../setup-findings';
 import { fakeGh, git, initRepo, tempDir, writeFiles } from './git-fixture';
 
 /**
@@ -147,7 +147,7 @@ async function resolved(): Promise<AgencyRepoRef> {
 
 describe('setup scan', () => {
   it('finds the stack, pnpm, its checks, the CI jobs, the required checks and the remote', async () => {
-    const scan = await scanProject({ ...repo, repoId: 'x' }, { gh: signedInGh });
+    const scan = await scanProject(repoTarget({ ...repo, repoId: 'x' }), { gh: signedInGh });
     const member = scan.setup.members[0];
     expect(member).toMatchObject({
       name: 'shop',
@@ -162,9 +162,9 @@ describe('setup scan', () => {
       checks: ['Unit tests', 'lint', 'matrix'],
       requiredChecks: ['Unit tests', 'lint']
     });
-    expect(scan.requiredChecksFrom).toBe('branch-protection');
+    expect(scan.members[0].requiredChecksFrom).toBe('branch-protection');
     expect(scan.ghSignedIn).toBe(true);
-    expect(scan.readFrom).toBe('main');
+    expect(scan.members[0].readFrom).toBe('main');
     expect(scan.repoFiles.map((f) => [f.path, f.kind, f.disposition])).toEqual([
       ['.claude/agents/reviewer.md', 'agent', 'importable'],
       ['.claude/skills/sweep', 'skill', 'in-place'],
@@ -176,14 +176,14 @@ describe('setup scan', () => {
 
   it('says why there are no required checks when the GitHub CLI is signed out', async () => {
     const signedOut = fakeGh(() => ({ code: 1, stdout: '' }));
-    const scan = await scanProject({ ...repo, repoId: 'x' }, { gh: signedOut });
+    const scan = await scanProject(repoTarget({ ...repo, repoId: 'x' }), { gh: signedOut });
     expect(scan.setup.members[0].requiredChecks).toEqual([]);
-    expect(scan.requiredChecksFrom).toBe('gh-signed-out');
+    expect(scan.members[0].requiredChecksFrom).toBe('gh-signed-out');
   });
 
   it('reads the default branch, not uncommitted edits in the checkout', async () => {
     writeFiles(root, { 'package.json': JSON.stringify({ name: 'shop' }) });
-    const scan = await scanProject({ ...repo, repoId: 'x' }, {});
+    const scan = await scanProject(repoTarget({ ...repo, repoId: 'x' }), {});
     expect(scan.setup.members[0].packageManager).toBe('pnpm');
   });
 
@@ -191,7 +191,7 @@ describe('setup scan', () => {
     const before = trace();
     const ref = await resolved();
     const scan = await service.projects.scan(ref);
-    await scanProject(ref, { git: recordingGit, gh: signedInGh });
+    await scanProject(repoTarget(ref), { git: recordingGit, gh: signedInGh });
 
     expect(scan.saved).toBe(false);
     expect(trace()).toEqual(before);
