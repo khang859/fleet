@@ -4,17 +4,23 @@ import type { AgentToolCall } from '../../../../shared/agent-tools';
 import type { AgentMessage } from '../../../../shared/agent-types';
 import { messageText } from '../../../../shared/agent-types';
 import { unfence } from '../../../../shared/fleet-tools';
-import { findQuestion, useAgencyStore } from '../../store/agency-store';
+import {
+  findPlanVersion,
+  findQuestion,
+  useAgencyStore,
+  useJobDetail
+} from '../../store/agency-store';
 import { openSettings } from '../../store/settings-nav-store';
 import { AgentToolRow } from '../agent/AgentToolRow';
 import { useAdmiralThread } from './admiral-context';
+import { PlanCard } from './PlanCard';
 import { QuestionCard } from './QuestionCard';
-import { askedQuestionId } from './job-view';
+import { askedQuestionId, proposedPlanId } from './job-view';
 
 /**
  * The lines an Admiral transcript has that an Agent one does not: what woke
- * the Admiral, a job opened from the lobby, and a question card where the
- * Admiral asked one.
+ * the Admiral, a job opened from the lobby, and a question or plan card where
+ * the Admiral put one up.
  */
 
 /**
@@ -99,6 +105,24 @@ export function AskClientRow({ call }: { call: AgentToolCall }): React.JSX.Eleme
         }
         onOpenSettings={() => openSettings('agencyAdmiral')}
       />
+    </div>
+  );
+}
+
+/**
+ * A `job_plan` call, drawn as the plan card it put up, so the client can
+ * decide right there. A version that is no longer waiting folds to one line.
+ * Falls back to the plain row while the call runs or when it was refused.
+ */
+export function JobPlanRow({ call }: { call: AgentToolCall }): React.JSX.Element {
+  const admiral = useAdmiralThread();
+  useJobDetail(admiral?.jobId ?? null);
+  const id = proposedPlanId(call);
+  const found = useAgencyStore((s) => (id === null ? null : findPlanVersion(s.details, id)));
+  if (found === null || call.error !== null) return <AgentToolRow call={call} />;
+  return (
+    <div className="w-full max-w-xl">
+      <PlanCard version={found.version} detail={found.detail} />
     </div>
   );
 }

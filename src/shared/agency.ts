@@ -82,6 +82,8 @@ export type AgencyJob = {
   /** The closed job this one follows up on. */
   linkedJobId: number | null;
   holds: JobHoldKind[];
+  /** A plan version waiting on the client, or null when none is. */
+  pendingPlan: { id: number; version: number } | null;
   /** The agent session the job's conversation is written to. */
   sessionId: string;
   /** Whether the lobby messages that led to this job were carried into it. */

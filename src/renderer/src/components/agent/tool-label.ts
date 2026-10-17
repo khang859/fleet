@@ -39,7 +39,10 @@ const LabelArgs = z.object({
   view: z.string().optional(),
   decision: z.string().optional(),
   question: z.string().optional(),
-  title: z.string().optional()
+  title: z.string().optional(),
+  summary: z.string().optional(),
+  step: z.string().optional(),
+  status: z.string().optional()
 });
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
@@ -163,6 +166,10 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       return { verb: 'Open job', target: args.title ?? '' };
     case 'job_list':
       return { verb: 'List jobs', target: '' };
+    case 'job_plan':
+      return { verb: 'Propose plan', target: args.summary ?? '' };
+    case 'job_update':
+      return { verb: args.status === undefined ? 'Note' : 'Update', target: args.step ?? '' };
     default:
       return mcpLabel(call.name) ?? { verb: call.name, target: '' };
   }

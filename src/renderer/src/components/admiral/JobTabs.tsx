@@ -1,7 +1,7 @@
 import { Plus } from 'lucide-react';
 import type { AgencySnapshot } from '../../../../shared/agency';
 import { jobDisplayId } from '../../../../shared/agency';
-import { openQuestions } from '../../store/agency-store';
+import { waitingCount } from '../../store/agency-store';
 import { jobStatus, TONE_DOT } from './job-view';
 
 /**
@@ -24,7 +24,7 @@ export function JobTabs({
   onSelect: (jobId: number | null) => void;
 }): React.JSX.Element {
   const jobs = snapshot?.jobs ?? [];
-  const lobbyAsking = openQuestions(snapshot, null).length > 0;
+  const lobbyAsking = waitingCount(snapshot, null) > 0;
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
@@ -39,7 +39,7 @@ export function JobTabs({
           {jobs.map((job) => {
             const selected = job.id === activeJobId;
             const status = jobStatus(job, {
-              asking: openQuestions(snapshot, job.id).length > 0,
+              asking: waitingCount(snapshot, job.id) > 0,
               working: working.has(job.id)
             });
             const dot = status.tone === 'amber' || status.tone === 'green';

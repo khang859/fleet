@@ -16,6 +16,7 @@ import {
 } from '../../shared/agency';
 import { createLogger } from '../logger';
 import { AdmiralRegistry } from './admiral-registry';
+import { JobsService, NO_CREW, type CrewControl } from './jobs';
 import { runPreflight, type Probe } from './preflight';
 import type { GhRun } from './projects/gh';
 import { ProjectsService } from './projects';
@@ -38,6 +39,8 @@ export type AgencyServiceDeps = {
   /** Seams for onboarding: the GitHub CLI and the per-project folder. */
   gh?: GhRun;
   agencyHome?: string;
+  /** How crew panes are stopped; nothing is ever hired until the crew phase. */
+  crew?: CrewControl;
 };
 
 /**
@@ -49,6 +52,7 @@ export class AgencyService {
   readonly store: AgencyStore;
   readonly registry = new AdmiralRegistry();
   readonly projects: ProjectsService;
+  readonly jobs: JobsService;
 
   constructor(private readonly deps: AgencyServiceDeps) {
     this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
@@ -58,6 +62,11 @@ export class AgencyService {
       emit: deps.emit,
       gh: deps.gh,
       home: deps.agencyHome
+    });
+    this.jobs = new JobsService({
+      store: this.store,
+      crew: deps.crew ?? NO_CREW,
+      changed: (touched) => this.changed(touched)
     });
     // No turn from before this start is still running, so every claim made
     // then is stale, and its wakeups are due again.
@@ -101,6 +110,7 @@ export class AgencyService {
   answer(req: AgencyAnswerRequest): AgencyQuestion | null {
     const outcome = this.store.answerQuestion(req);
     if (!outcome) return null;
+    if (outcome.question.jobId !== null) this.jobs.refreshClientHold(outcome.question.jobId);
     this.changed([{ repoId: outcome.question.repoId, jobId: outcome.question.jobId }]);
     return outcome.question;
   }
@@ -169,12 +179,21 @@ export class AgencyService {
     return { repoId: repo.repoId, jobId: job.id };
   }
 
-  /** Put a question to the client in `scope`'s name. */
+  /**
+   * Put a question to the client in `scope`'s name. A question about a step
+   * must name one in the job's plan, and is tied to that plan version, so a
+   * change that drops the step withdraws it.
+   */
   ask(
     scope: AdmiralThreadScope,
-    input: Omit<AskQuestionInput, 'repoId' | 'jobId' | 'kind'>
+    input: Omit<AskQuestionInput, 'repoId' | 'jobId' | 'kind' | 'planVersion'>
   ): AgencyQuestion {
-    const question = this.store.askQuestion({ ...input, ...scope });
+    const step = input.step ?? null;
+    const plan =
+      scope.jobId === null ? { planVersion: null } : this.jobs.questionPlan(scope.jobId, step);
+    if (plan.error !== undefined) throw new Error(plan.error);
+    const question = this.store.askQuestion({ ...input, ...scope, planVersion: plan.planVersion });
+    if (scope.jobId !== null) this.jobs.refreshClientHold(scope.jobId);
     this.changed([scope]);
     return question;
   }

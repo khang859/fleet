@@ -6,7 +6,7 @@ import { useSettingsStore } from '../../store/settings-store';
 import { openSettings } from '../../store/settings-nav-store';
 import { useAgentStore } from '../../store/agent-store';
 import { useAdmiralOnboardingStore } from '../../store/admiral-onboarding-store';
-import { openQuestions, useAgencyStore } from '../../store/agency-store';
+import { useAgencyStore, useJobDetail, waitingCount } from '../../store/agency-store';
 import { attachAdmiral, useAdmiralRuntimeStore } from '../../store/admiral-runtime';
 import { admiralKey } from '../../store/admiral-thread';
 import { useWorkspaceStore } from '../../store/workspace-store';
@@ -242,7 +242,8 @@ function AdmiralWorkspace({
     if (wide) setSheetOpen(false);
   }, [wide]);
   // What the sheet would show if opened: other jobs' questions are on their tabs' dots.
-  const waiting = openQuestions(snapshot, jobId).length;
+  const waiting = waitingCount(snapshot, jobId);
+  const detail = useJobDetail(jobId);
 
   const selectJob = (id: number | null): void => {
     useWorkspaceStore.getState().setAdmiralActiveJob(paneId, id);
@@ -250,9 +251,10 @@ function AdmiralWorkspace({
   const context = useMemo<AdmiralThreadContextValue>(
     () => ({
       repoId: repo.repoId,
+      jobId,
       onOpenJob: (id) => useWorkspaceStore.getState().setAdmiralActiveJob(paneId, id)
     }),
-    [repo.repoId, paneId]
+    [repo.repoId, jobId, paneId]
   );
   const answer = async (question: AgencyQuestion, req: QuestionAnswer): Promise<boolean> =>
     (await useAgencyStore.getState().answer({ id: question.id, ...req })) !== null;
@@ -261,6 +263,7 @@ function AdmiralWorkspace({
     <JobSheet
       snapshot={snapshot}
       jobId={jobId}
+      detail={detail}
       working={jobId !== null && working.has(jobId)}
       defaultBudgetUsd={defaultBudgetUsd}
       onAnswer={answer}

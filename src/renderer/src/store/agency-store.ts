@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { create } from 'zustand';
 import {
   RUNNING_JOB_STATES,
@@ -6,6 +7,12 @@ import {
   type AgencyQuestion,
   type AgencySnapshot
 } from '../../../shared/agency';
+import type {
+  AgencyJobDetail,
+  AgencyPlanVersion,
+  PlanAction,
+  PlanActionResult
+} from '../../../shared/agency-jobs';
 import { createLogger } from '../logger';
 
 const log = createLogger('store:agency');
@@ -21,6 +28,14 @@ const log = createLogger('store:agency');
  */
 type AgencyStoreState = {
   snapshots: Partial<Record<string, AgencySnapshot>>;
+  /** Plan versions, steps and record of the jobs a pane has shown, by job id. */
+  details: Partial<Record<number, AgencyJobDetail>>;
+  /** Read one job's detail again. */
+  loadDetail: (jobId: number) => Promise<AgencyJobDetail | null>;
+  /** Read again the details already held for these jobs; others load when shown. */
+  reloadDetails: (jobIds: Array<number | null>) => void;
+  /** The client's approve, edit or reject on a plan card. */
+  decidePlan: (jobId: number, action: PlanAction) => Promise<PlanActionResult>;
   /** Read a repository's state again. Resolves with what was stored, or null when the read failed. */
   refresh: (repoId: string) => Promise<AgencySnapshot | null>;
   /** Answer a question with an option, a free answer, or both. Null when it could not take it. */
@@ -34,9 +49,41 @@ type AgencyStoreState = {
  * already been stored is about an older state and is dropped.
  */
 const reads = new Map<string, number>();
+/** The same, per job detail. */
+const detailReads = new Map<number, number>();
 
 export const useAgencyStore = create<AgencyStoreState>((set, get) => ({
   snapshots: {},
+  details: {},
+
+  loadDetail: async (jobId) => {
+    const ticket = (detailReads.get(jobId) ?? 0) + 1;
+    detailReads.set(jobId, ticket);
+    let detail: AgencyJobDetail | null;
+    try {
+      detail = await window.fleet.agency.jobDetail(jobId);
+    } catch (err) {
+      log.warn('job detail failed', { jobId, error: String(err) });
+      return null;
+    }
+    if (detailReads.get(jobId) !== ticket) return get().details[jobId] ?? null;
+    set((s) => ({ details: { ...s.details, [jobId]: detail ?? undefined } }));
+    return detail;
+  },
+
+  reloadDetails: (jobIds) => {
+    for (const jobId of jobIds) {
+      if (jobId !== null && get().details[jobId] !== undefined) void get().loadDetail(jobId);
+    }
+  },
+
+  decidePlan: async (jobId, action) => {
+    const result = await window.fleet.agency.planAction(action);
+    // The change event refreshes the snapshot; a refused action changed nothing
+    // there, but the card may be showing a version main has moved past.
+    void get().loadDetail(jobId);
+    return result;
+  },
 
   refresh: async (repoId) => {
     const ticket = (reads.get(repoId) ?? 0) + 1;
@@ -80,6 +127,30 @@ export function openQuestions(
   );
 }
 
+/**
+ * How many things wait on the client: open questions and plan versions to
+ * decide, in the repository or one job (null: the lobby, which has no plans).
+ */
+export function waitingCount(snapshot: AgencySnapshot | undefined, jobId?: number | null): number {
+  if (snapshot === undefined) return 0;
+  const plans = snapshot.jobs.filter(
+    (j) => j.pendingPlan !== null && (jobId === undefined || j.id === jobId)
+  ).length;
+  return openQuestions(snapshot, jobId).length + plans;
+}
+
+/** The plan versions a job's sheet shows: the one waiting on the client and the one it runs. */
+export function planVersions(detail: AgencyJobDetail | undefined): {
+  pending: AgencyPlanVersion | null;
+  approved: AgencyPlanVersion | null;
+} {
+  const versions = detail?.versions ?? [];
+  return {
+    pending: versions.find((v) => v.status === 'proposed') ?? null,
+    approved: versions.find((v) => v.status === 'approved') ?? null
+  };
+}
+
 /** Jobs that closing the pane or quitting would leave running unattended. */
 export function runningJobs(snapshot: AgencySnapshot | undefined): AgencyJob[] {
   return snapshot === undefined ? [] : snapshot.jobs.filter((j) => isRunningJob(j));
@@ -98,4 +169,29 @@ export function findQuestion(
 
 export function findJob(snapshot: AgencySnapshot | undefined, id: number): AgencyJob | null {
   return snapshot?.jobs.find((j) => j.id === id) ?? null;
+}
+
+/**
+ * A job's detail, loaded the first time a view asks for it and kept fresh by
+ * the change events after that. Undefined until it arrives.
+ */
+export function useJobDetail(jobId: number | null): AgencyJobDetail | undefined {
+  const detail = useAgencyStore((s) => (jobId === null ? undefined : s.details[jobId]));
+  const missing = jobId !== null && detail === undefined;
+  useEffect(() => {
+    if (missing) void useAgencyStore.getState().loadDetail(jobId);
+  }, [missing, jobId]);
+  return detail;
+}
+
+/** The job whose plan versions hold `versionId`, among the details held. */
+export function findPlanVersion(
+  details: Partial<Record<number, AgencyJobDetail>>,
+  versionId: number
+): { detail: AgencyJobDetail; version: AgencyPlanVersion } | null {
+  for (const detail of Object.values(details)) {
+    const version = detail?.versions.find((v) => v.id === versionId);
+    if (detail !== undefined && version !== undefined) return { detail, version };
+  }
+  return null;
 }

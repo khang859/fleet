@@ -47,6 +47,7 @@ function sheet(
     createElement(JobSheet, {
       snapshot,
       jobId,
+      detail: undefined,
       working,
       defaultBudgetUsd: 10,
       onAnswer: async () => Promise.resolve(true),

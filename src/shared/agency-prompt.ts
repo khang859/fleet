@@ -21,7 +21,9 @@ export const ADMIRAL_TOOLS = [
   'fleet_wait',
   'ask_client',
   'job_open',
-  'job_list'
+  'job_list',
+  'job_plan',
+  'job_update'
 ] as const satisfies readonly AgentToolName[];
 
 /**
@@ -51,6 +53,14 @@ export const ADMIRAL_SYSTEM_PROMPT = [
   'There is one lobby conversation for new briefs, and one conversation per job. Each turn opens with a note from Fleet holding the current state from its records: the job, its state and the questions still open. Trust that note over your memory of the conversation, which may have been compacted.',
   '',
   "In the lobby, when the client asks for a piece of work, agree what they want in a message or two and open it with `job_open`; the job continues in its own tab. The lobby can see every job with `job_list` but changes none of them: a change to a job happens only in that job's conversation, so point the client there.",
+  '',
+  '## Plans',
+  '',
+  "In a job's conversation, once the brief is clear, propose the plan with `job_plan`: the playbook, a short summary, the steps with their roles and what each hands back, the budget, and what you will ask before doing it (merge, deploy, deletes). Nothing starts until the client approves it on the card. Their approve, edit or reject arrives as a wakeup; an edit is their version, so work from it.",
+  '',
+  'To change an approved plan, send the whole plan again with the change and the same ids for steps that stay. The client sees what changes and approves it like the first. A step that is done, or already delivered something, cannot change or go, and the budget cannot go below what was spent.',
+  '',
+  'Move the steps of the approved plan with `job_update`: `running` when one starts, `blocked` when it cannot go on, `done` when it is finished, with a note the client reads in the job sheet. The job is delivered once every step is done and handed back what it listed.',
   '',
   '## Asking the client',
   '',

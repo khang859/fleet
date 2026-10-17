@@ -19,7 +19,7 @@ import {
   useAgentStore,
   type PaneThread
 } from './agent-store';
-import { findJob, openQuestions, useAgencyStore } from './agency-store';
+import { findJob, openQuestions, useAgencyStore, waitingCount } from './agency-store';
 import { useSettingsStore } from './settings-store';
 import { collectPaneLeafs, isAdmiralLeaf, useWorkspaceStore } from './workspace-store';
 import { createLogger } from '../logger';
@@ -72,8 +72,8 @@ const timers = new Map<string, { at: number; timer: ReturnType<typeof setTimeout
 const pendingHandoffs = new Map<string, Map<number, boolean>>();
 /** Jobs with a handoff under way. */
 const handingOff = new Set<number>();
-/** The open questions each pane last reported, so a new one is announced while others wait. */
-const announced = new Map<string, Set<number>>();
+/** What waited on the client at each pane's last report, so a new question or plan is announced while others wait. */
+const announced = new Map<string, Set<string>>();
 
 function setStatus(paneId: string, status: AdmiralPaneStatus | null): void {
   useAdmiralRuntimeStore.setState((s) => {
@@ -187,6 +187,7 @@ async function onChanged(change: AgencyChanged): Promise<void> {
   if (panes.length === 0) return;
   const snapshot = await useAgencyStore.getState().refresh(change.repoId);
   if (snapshot === null) return;
+  useAgencyStore.getState().reloadDetails(change.jobIds);
   for (const pane of panes) {
     if (attached.get(pane.paneId) !== pane) continue;
     await openThreads(pane.paneId, snapshot);
@@ -428,8 +429,7 @@ export function rollUpState(paneId: string): ActivityState {
   const snapshot = useAgencyStore.getState().snapshots[pane.repo.repoId];
   const keys = keysOf(paneId);
   const asking =
-    openQuestions(snapshot).length > 0 ||
-    keys.some((key) => thread(key)?.pendingPermission != null);
+    waitingCount(snapshot) > 0 || keys.some((key) => thread(key)?.pendingPermission != null);
   if (asking) return 'needs_me';
   return keys.some((key) => thread(key)?.streamId != null) ? 'working' : 'idle';
 }
@@ -437,14 +437,22 @@ export function rollUpState(paneId: string): ActivityState {
 function rollUp(paneId: string): void {
   const pane = attached.get(paneId);
   if (pane === undefined) return;
-  const open = new Set(
-    openQuestions(useAgencyStore.getState().snapshots[pane.repo.repoId]).map((q) => q.id)
-  );
+  const open = waitingKeys(useAgencyStore.getState().snapshots[pane.repo.repoId]);
   const before = announced.get(paneId);
   announced.set(paneId, open);
   // The first roll-up after attaching announces nothing new: those were asked before.
   const fresh = before !== undefined && [...open].some((id) => !before.has(id));
   publishActivity(paneId, rollUpState(paneId), pane.repo.name, fresh);
+}
+
+/** What waits on the client, by a key that is new for each new question or plan version. */
+function waitingKeys(snapshot: AgencySnapshot | undefined): Set<string> {
+  return new Set([
+    ...openQuestions(snapshot).map((q) => `q${q.id}`),
+    ...(snapshot?.jobs ?? []).flatMap((j) =>
+      j.pendingPlan === null ? [] : [`plan${j.pendingPlan.id}`]
+    )
+  ]);
 }
 
 /** The Admiral leaves in every open workspace, with their repositories. */

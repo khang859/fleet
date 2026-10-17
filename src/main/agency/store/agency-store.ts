@@ -27,6 +27,8 @@ import { CHAIN_LIMIT, chainExhausted } from '../jobs/chain';
 import { reduceJob, type CloseTarget, type JobEvent, type Transition } from '../jobs/job-machine';
 import { renderWakeupText, type WakeupItem } from '../wakeup-text';
 import { openAgencyDb } from './agency-db';
+import { CrewStore } from './crew-store';
+import { PlanStore } from './plan-store';
 
 type JobRow = {
   id: number;
@@ -120,7 +122,8 @@ export type AnswerOutcome = {
 export type EnqueueWakeupInput = {
   repoId: string;
   jobId: number | null;
-  kind: 'answer' | 'event';
+  /** `client_action` is the client deciding on a card (a plan, a setting): their words, unfenced. */
+  kind: 'answer' | 'event' | 'client_action';
   questionId?: number | null;
   payload?: Record<string, unknown>;
   /** Higher runs first. Permission requests outrank everything else. */
@@ -155,6 +158,7 @@ const QUESTION_STATUSES: readonly AgencyQuestionStatus[] = [
 const OptionsJson = z.array(z.object({ label: z.string(), detail: z.string().optional() }));
 const EventPayload = z.object({ line: z.string(), body: z.string().nullable().optional() });
 const AnswerPayload = z.object({ withdrew: z.array(z.number()) });
+const ClientPayload = z.object({ line: z.string(), note: z.string().nullable().optional() });
 
 const HOLD_KINDS: readonly JobHoldKind[] = ['model', 'chain_limit', 'budget', 'client'];
 const CLOSE_TARGETS: readonly CloseTarget[] = ['closed', 'cancelled', 'failed'];
@@ -170,7 +174,11 @@ function questionStatus(raw: string): AgencyQuestionStatus {
   return QUESTION_STATUSES.find((s) => s === raw) ?? 'withdrawn';
 }
 
-function toJob(row: JobRow, holds: JobHoldKind[]): AgencyJob {
+function toJob(
+  row: JobRow,
+  holds: JobHoldKind[],
+  pendingPlan: AgencyJob['pendingPlan']
+): AgencyJob {
   return {
     id: row.id,
     repoId: row.repo_id,
@@ -182,6 +190,7 @@ function toJob(row: JobRow, holds: JobHoldKind[]): AgencyJob {
     chainCount: row.chain_count,
     linkedJobId: row.linked_job_id,
     holds,
+    pendingPlan,
     sessionId: row.session_id,
     handoffDone: row.handoff_done === 1,
     budgetUsd: row.budget_usd,
@@ -254,10 +263,22 @@ function distinctTouched(rows: AgencyTouched[]): AgencyTouched[] {
 export class AgencyStore {
   private readonly db: Database.Database;
   private readonly now: () => number;
+  readonly plans: PlanStore;
+  readonly crew: CrewStore;
 
   constructor(db: Database.Database | string, opts: { now?: () => number } = {}) {
     this.db = typeof db === 'string' ? openAgencyDb(db) : db;
     this.now = opts.now ?? Date.now;
+    this.plans = new PlanStore(this.db, this.now);
+    this.crew = new CrewStore(this.db, this.now);
+  }
+
+  /**
+   * Run `fn` in one transaction. Nested calls become savepoints, so a job
+   * service can span the plan, crew and job tables and still commit once.
+   */
+  tx<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
   }
 
   close(): void {
@@ -365,7 +386,19 @@ export class AgencyStore {
   }
 
   private toJob(row: JobRow): AgencyJob {
-    return toJob(row, this.holds(row.id));
+    const pending = this.plans.pending(row.id);
+    return toJob(
+      row,
+      this.holds(row.id),
+      pending ? { id: pending.id, version: pending.version } : null
+    );
+  }
+
+  /** Put an approved plan version in force, with the budget it set. */
+  setApprovedVersion(jobId: number, version: number, budgetUsd: number): void {
+    this.db
+      .prepare('UPDATE jobs SET approved_version = ?, budget_usd = ?, updated_at = ? WHERE id = ?')
+      .run(version, budgetUsd, this.now(), jobId);
   }
 
   /** A repository's jobs, oldest first; closed, cancelled and failed ones only when asked. */
@@ -445,6 +478,7 @@ export class AgencyStore {
         .prepare('UPDATE wakeups SET done_at = ? WHERE job_id = ? AND done_at IS NULL')
         .run(this.now(), id);
       this.db.prepare('DELETE FROM job_holds WHERE job_id = ?').run(id);
+      this.plans.replacePending(id);
       return { ...result, job: this.getJob(id) };
     })();
   }
@@ -930,6 +964,10 @@ export class AgencyStore {
       if (!question) return [];
       const withdrew = parseJsonAs(AnswerPayload, row.payload_json)?.withdrew ?? [];
       return [{ kind: 'answer', question, withdrew }];
+    }
+    if (row.kind === 'client_action') {
+      const action = parseJsonAs(ClientPayload, row.payload_json);
+      return action ? [{ kind: 'client', line: action.line, note: action.note ?? null }] : [];
     }
     const event = parseJsonAs(EventPayload, row.payload_json);
     return event ? [{ kind: 'event', line: event.line, body: event.body ?? null }] : [];

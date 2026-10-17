@@ -6,9 +6,10 @@ import {
   type AdmiralThreadScope,
   type AgencyQuestion
 } from '../../../shared/agency';
+import type { AgencyJob } from '../../../shared/agency';
 import type { AgencyStore } from '../store/agency-store';
 
-type SnapshotReader = Pick<AgencyStore, 'repo' | 'getJob' | 'listJobs' | 'listQuestions'>;
+type SnapshotReader = Pick<AgencyStore, 'repo' | 'getJob' | 'listJobs' | 'listQuestions' | 'plans'>;
 
 /**
  * A question as the Admiral needs it to avoid asking it again: every option,
@@ -32,6 +33,43 @@ function describeHeld(q: AgencyQuestion): string {
       ? ''
       : `Shows if ${questionDisplayId(dep.question)} is answered with option ${dep.option + 1}:\n`;
   return `${after}${fence(id, `${id}: ${q.question}`)}`;
+}
+
+/**
+ * The job's plan as Fleet holds it: the approved version with each step's
+ * status, the version waiting on the client, the budget and what holds the
+ * job. Step titles are the Admiral's own words, so they go in a fence.
+ */
+function planLines(store: SnapshotReader, job: AgencyJob): string[] {
+  const approved = store.plans.approved(job.id);
+  const pending = store.plans.pending(job.id);
+  const lines: string[] = [];
+  if (approved === null) {
+    lines.push('No plan is approved yet; nothing may start. Propose one with job_plan.');
+  } else {
+    const steps = store.plans.steps(job.id);
+    const spent = store.plans.spendUsd(job.id);
+    lines.push(
+      `Approved plan v${approved.version} (${approved.plan.playbook}), budget $${approved.plan.budget.usd}, spent $${spent.toFixed(2)}. Steps:`,
+      fence(
+        `plan v${approved.version}`,
+        approved.plan.steps
+          .map((step) => {
+            const status = steps.find((s) => s.id === step.id)?.status ?? 'pending';
+            const after = step.after.length === 0 ? '' : `, after ${step.after.join(', ')}`;
+            return `- ${step.id} (${step.role}${after}): ${status}. ${step.title}`;
+          })
+          .join('\n')
+      )
+    );
+  }
+  if (pending !== null) {
+    lines.push(
+      `Plan v${pending.version} is waiting on the client; do not propose it again. A new job_plan replaces it.`
+    );
+  }
+  if (job.holds.length > 0) lines.push(`On hold: ${job.holds.join(', ')}.`);
+  return lines;
 }
 
 function questionLines(store: SnapshotReader, scope: AdmiralThreadScope): string[] {
@@ -103,6 +141,7 @@ function recordsNote(store: SnapshotReader, scope: AdmiralThreadScope): string {
   return [
     `Fleet's records for this conversation: ${id} in ${repo}, state ${job.state}.`,
     fence(id, `Title: ${job.title}\nBrief: ${job.brief}`),
+    ...planLines(store, job),
     ...questionLines(store, scope)
   ].join('\n');
 }

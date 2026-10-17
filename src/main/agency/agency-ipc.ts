@@ -17,6 +17,8 @@ import {
   type RuleCandidates,
   type SetupScan
 } from '../../shared/agency-projects';
+import type { AgencyJobDetail, PlanActionResult } from '../../shared/agency-jobs';
+import { PlanSchema } from '../../shared/agency-plan';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type { AgencyService } from './index';
 
@@ -54,6 +56,21 @@ const AnswerArgs = z
 const PullArgs = z.object({ repoId: RepoId, jobId: JobId.nullable() });
 const ReleaseArgs = z.object({ ids: Ids, error: z.string().max(4_000) });
 const HandoffArgs = z.object({ jobId: JobId, lobbyMessageId: z.string().min(1) });
+const StepKey = z.string().max(80);
+const PlanActionArgs = z.discriminatedUnion('action', [
+  z.object({
+    planVersionId: JobId,
+    action: z.literal('approve'),
+    baseChoice: z.record(StepKey, z.enum(['default', 'head'])).optional(),
+    swaps: z.record(StepKey, z.enum(['continue', 'restart'])).optional()
+  }),
+  z.object({
+    planVersionId: JobId,
+    action: z.literal('reject'),
+    note: z.string().trim().min(1).max(4_000)
+  }),
+  z.object({ planVersionId: JobId, action: z.literal('edit'), plan: PlanSchema })
+]);
 
 const Paths = z.array(z.string().min(1)).max(200);
 const SaveSetupArgs = z.object({
@@ -134,6 +151,16 @@ export function registerAgencyIpc(service: AgencyService): void {
   ipcMain.handle(IPC_CHANNELS.AGENCY_CLIENT_ACTIVITY, (_e, jobId: unknown) => {
     service.clientActivity(JobId.parse(jobId));
   });
+
+  ipcMain.handle(IPC_CHANNELS.AGENCY_JOB_DETAIL, (_e, jobId: unknown): AgencyJobDetail | null =>
+    service.jobs.detail(JobId.parse(jobId))
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_PLAN_ACTION,
+    async (_e, action: unknown): Promise<PlanActionResult> =>
+      service.jobs.decide(PlanActionArgs.parse(action))
+  );
 
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_PREFLIGHT,

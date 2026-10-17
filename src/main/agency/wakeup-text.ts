@@ -15,10 +15,12 @@ export type WakeupItem =
       /** Questions the answer withdrew because they depended on another option. */
       withdrew: number[];
     }
-  | { kind: 'event'; line: string; body: string | null };
+  | { kind: 'event'; line: string; body: string | null }
+  /** The client decided on a card. What they wrote is theirs, so it is not fenced. */
+  | { kind: 'client'; line: string; note: string | null };
 
 function eventLine(item: WakeupItem): string {
-  if (item.kind === 'event') return item.line;
+  if (item.kind === 'event' || item.kind === 'client') return item.line;
   const id = questionDisplayId(item.question.id);
   return item.question.late ? `Client answered ${id} (late)` : `Client answered ${id}`;
 }
@@ -62,6 +64,9 @@ function answerBody(item: Extract<WakeupItem, { kind: 'answer' }>): string {
 
 function itemBody(item: WakeupItem): string | null {
   if (item.kind === 'answer') return answerBody(item);
+  if (item.kind === 'client') {
+    return item.note === null || item.note === '' ? null : `The client wrote: ${item.note}`;
+  }
   return item.body === null || item.body === '' ? null : fence('event', item.body);
 }
 

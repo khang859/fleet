@@ -185,6 +185,7 @@ import type {
   SaveSetupRequest,
   SetupScan
 } from '../shared/agency-projects';
+import type { AgencyJobDetail, PlanAction, PlanActionResult } from '../shared/agency-jobs';
 import type {
   Learning,
   CreateLearningInput,
@@ -1128,6 +1129,12 @@ const fleetApi = {
     /** The client wrote to a job's Admiral, which restarts its automatic-turn count. */
     clientActivity: async (jobId: number): Promise<void> =>
       typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_ACTIVITY, jobId),
+    /** A job's plan versions, steps and record, for its sheet and plan cards. */
+    jobDetail: async (jobId: number): Promise<AgencyJobDetail | null> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_JOB_DETAIL, jobId),
+    /** The client's approve, edit or reject on a plan card. */
+    planAction: async (action: PlanAction): Promise<PlanActionResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_PLAN_ACTION, action),
     preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
     /** Onboarding: first run, the picker, setup, the client file and brief ideas. */
     projects: {

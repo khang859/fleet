@@ -38,6 +38,7 @@ export function agencyJob(over: Partial<AgencyJob> = {}): AgencyJob {
     chainCount: 0,
     linkedJobId: null,
     holds: [],
+    pendingPlan: null,
     sessionId: 'job-session',
     handoffDone: true,
     budgetUsd: 10,
