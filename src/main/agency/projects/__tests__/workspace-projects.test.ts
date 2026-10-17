@@ -5,15 +5,12 @@ import type { AgencyRepoRef } from '../../../../shared/agency';
 import type { ProjectFolder, ProjectSetup } from '../../../../shared/agency-projects';
 import { AgencyService } from '../../index';
 import { detectWorkspace, parseGitmodules } from '../workspace-detect';
-import { fakeGh, git, initRepo, tempDir } from './git-fixture';
+import { fakeGh, git, initRepo, shopUmbrella, tempDir, workFolder } from './git-fixture';
 
 /**
  * Workspace projects on real repositories: an umbrella with three submodules
  * whose packages depend on each other, and a plain folder of two repositories.
  */
-
-const pkg = (name: string, deps: string[] = []): string =>
-  JSON.stringify({ name, dependencies: Object.fromEntries(deps.map((d) => [d, '*'])) });
 
 let home: { dir: string; cleanup: () => void };
 let service: AgencyService;
@@ -33,35 +30,6 @@ afterEach(() => {
   service.close();
   home.cleanup();
 });
-
-/**
- * `shop` with `web`, `api` and `core` in `.gitmodules` in that order, where
- * web needs api and core, and api needs core.
- */
-function umbrella(): string {
-  const src = join(home.dir, 'src');
-  const repos = {
-    web: pkg('@shop/web', ['@shop/api', '@shop/core']),
-    api: pkg('@shop/api', ['@shop/core']),
-    core: pkg('@shop/core')
-  };
-  const root = initRepo(join(home.dir, 'shop'), { 'README.md': '# Shop\n' });
-  for (const [name, text] of Object.entries(repos)) {
-    initRepo(join(src, name), { 'package.json': text, 'CLAUDE.md': `# ${name}\n` });
-    git(
-      root,
-      '-c',
-      'protocol.file.allow=always',
-      'submodule',
-      'add',
-      '-q',
-      join(src, name),
-      `libs/${name}`
-    );
-  }
-  git(root, 'commit', '-q', '-m', 'members');
-  return root;
-}
 
 async function project(path: string): Promise<AgencyRepoRef> {
   const res = await service.resolveRepo(path);
@@ -92,7 +60,7 @@ describe('parseGitmodules', () => {
 
 describe('an umbrella with three submodules', () => {
   it('lists the members dependencies first and the umbrella last', async () => {
-    const root = umbrella();
+    const root = shopUmbrella(home.dir);
     const ws = await detectWorkspace(root, { identify: async (p) => service.identify(p) });
     expect(ws?.kind).toBe('submodules');
     expect(ws?.members.map((m) => [m.name, m.path, m.umbrella, m.repo !== null])).toEqual([
@@ -104,7 +72,7 @@ describe('an umbrella with three submodules', () => {
   });
 
   it('shows in the picker as a workspace, and from a member once chosen', async () => {
-    const root = umbrella();
+    const root = shopUmbrella(home.dir);
     const api = join(root, 'libs', 'api');
     const first = await service.projects.probeFolders([api, root]);
     // Not chosen yet: a submodule picked by itself is a repository of its own.
@@ -127,7 +95,7 @@ describe('an umbrella with three submodules', () => {
   });
 
   it('makes each member find the project once chosen, without the members left out', async () => {
-    const root = umbrella();
+    const root = shopUmbrella(home.dir);
     const api = join(root, 'libs', 'api');
     expect((await project(api)).root).toBe(api);
 
@@ -154,7 +122,7 @@ describe('an umbrella with three submodules', () => {
   });
 
   it('refuses to leave out the umbrella, an unknown member, or every member', async () => {
-    const root = umbrella();
+    const root = shopUmbrella(home.dir);
     const choose = async (leftOut: string[]): Promise<AgencyRepoRef> =>
       service.projects.chooseWorkspace({ path: root, leftOut });
     await expect(choose(['shop'])).rejects.toThrow('umbrella');
@@ -163,7 +131,7 @@ describe('an umbrella with three submodules', () => {
   });
 
   it('lists a submodule that is not checked out as missing, and checks it out', async () => {
-    const root = umbrella();
+    const root = shopUmbrella(home.dir);
     git(root, 'submodule', 'deinit', '-q', '-f', 'libs/core');
     expect(readdirSync(join(root, 'libs', 'core'))).toEqual([]);
     const ref = await service.projects.chooseWorkspace({ path: root, leftOut: [] });
@@ -182,7 +150,7 @@ describe('an umbrella with three submodules', () => {
   });
 
   it('saves the members with their setup, and refuses one that is not a member', async () => {
-    const root = umbrella();
+    const root = shopUmbrella(home.dir);
     const ref = await service.projects.chooseWorkspace({ path: root, leftOut: [] });
     const scan = await service.projects.scan(ref);
     const setup: ProjectSetup = {
@@ -208,9 +176,7 @@ describe('an umbrella with three submodules', () => {
 
 describe('a folder of two repositories', () => {
   function folder(): string {
-    const root = join(home.dir, 'work');
-    initRepo(join(root, 'app'), { 'package.json': pkg('app', ['lib']) });
-    initRepo(join(root, 'lib'), { 'package.json': pkg('lib') });
+    const root = workFolder(home.dir);
     initRepo(join(root, '.hidden'), { 'x.md': 'x' });
     mkdirSync(join(root, 'notes'));
     return root;

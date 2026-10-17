@@ -43,10 +43,13 @@ function crewWorktree(): ResourceRecord {
   return {
     id: 1,
     jobId: 1,
+    workspaceId: null,
     kind: 'member_worktree',
     member: 'app',
     path,
     branch: BRANCH,
+    baseSha: null,
+    mode: 'writable',
     label: 'builder-1 worktree',
     status: 'live',
     detail: '',

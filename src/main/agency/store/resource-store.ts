@@ -1,13 +1,21 @@
 import type Database from 'better-sqlite3';
 import type { AgencyLeftover, ResourceKind, ResourceStatus } from '../../../shared/agency-jobs';
 
+/** `read`: a checkout a step only reads, on no branch, never pushed. */
+export type ResourceMode = 'writable' | 'read';
+
 export type ResourceRecord = {
   id: number;
   jobId: number;
+  /** The job workspace it belongs to, for a worktree or folder of one. */
+  workspaceId: number | null;
   kind: ResourceKind;
   member: string | null;
   path: string | null;
   branch: string | null;
+  /** The commit a worktree was made at. */
+  baseSha: string | null;
+  mode: ResourceMode;
   label: string;
   status: ResourceStatus;
   detail: string;
@@ -17,10 +25,13 @@ export type ResourceRecord = {
 type ResourceRow = {
   id: number;
   job_id: number;
+  workspace_id: number | null;
   kind: ResourceKind;
   member: string | null;
   path: string | null;
   branch: string | null;
+  base_sha: string | null;
+  mode: ResourceMode;
   label: string;
   status: ResourceStatus;
   detail: string;
@@ -31,10 +42,13 @@ function toResource(row: ResourceRow): ResourceRecord {
   return {
     id: row.id,
     jobId: row.job_id,
+    workspaceId: row.workspace_id,
     kind: row.kind,
     member: row.member,
     path: row.path,
     branch: row.branch,
+    baseSha: row.base_sha,
+    mode: row.mode,
     label: row.label,
     status: row.status,
     detail: row.detail,
@@ -57,26 +71,32 @@ export class ResourceStore {
     jobId: number;
     kind: ResourceKind;
     label: string;
+    workspaceId?: number | null;
     member?: string | null;
     path?: string | null;
     branch?: string | null;
+    baseSha?: string | null;
+    mode?: ResourceMode;
     status?: 'planned' | 'live' | 'failed';
     detail?: string;
   }): ResourceRecord {
     const at = this.now();
     const { lastInsertRowid } = this.db
       .prepare(
-        `INSERT INTO job_resources (job_id, kind, member, path, branch, label, mode, status, detail,
-           created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'writable', ?, ?, ?, ?)`
+        `INSERT INTO job_resources (job_id, workspace_id, kind, member, path, branch, base_sha, label,
+           mode, status, detail, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         input.jobId,
+        input.workspaceId ?? null,
         input.kind,
         input.member ?? null,
         input.path ?? null,
         input.branch ?? null,
+        input.baseSha ?? null,
         input.label,
+        input.mode ?? 'writable',
         input.status ?? 'planned',
         input.detail ?? '',
         at,
@@ -102,6 +122,13 @@ export class ResourceStore {
       .map(toResource);
   }
 
+  /** The thing a planned resource names was made. */
+  made(id: number): void {
+    this.db
+      .prepare(`UPDATE job_resources SET status = 'live', updated_at = ? WHERE id = ?`)
+      .run(this.now(), id);
+  }
+
   /** A cleanup attempt's outcome. A failure counts toward the automatic-retry cap. */
   settle(id: number, status: 'cleaned' | 'kept' | 'failed' | 'dismissed', detail = ''): void {
     this.db
@@ -122,6 +149,36 @@ export class ResourceStore {
       >(`SELECT * FROM job_resources WHERE status = 'failed' AND attempts < ? ORDER BY id`)
       .all(maxAttempts)
       .map(toResource);
+  }
+
+  /** A job workspace's resources, oldest first. */
+  ofWorkspace(workspaceId: number): ResourceRecord[] {
+    return this.db
+      .prepare<
+        [number],
+        ResourceRow
+      >('SELECT * FROM job_resources WHERE workspace_id = ? ORDER BY id')
+      .all(workspaceId)
+      .map(toResource);
+  }
+
+  /**
+   * Add a step's job workspace. `attempt` is the step's branch number, so the
+   * same step's second workspace has a new folder and a new branch.
+   */
+  addWorkspace(input: {
+    jobId: number;
+    stepId: string;
+    attempt: number;
+    root: string;
+    branch: string;
+  }): number {
+    const { lastInsertRowid } = this.db
+      .prepare(
+        'INSERT INTO job_workspaces (job_id, step_id, attempt, root, branch) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(input.jobId, input.stepId, input.attempt, input.root, input.branch);
+    return Number(lastInsertRowid);
   }
 
   /** The folder a crew member works in, by its workspace id. */

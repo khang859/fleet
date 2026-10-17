@@ -11,6 +11,7 @@ const plan = (steps: PlanInput['steps']): ReturnType<typeof PlanSchema.parse> =>
 
 const member = (patch: Partial<MemberFacts> = {}): MemberFacts => ({
   name: 'fleet',
+  atRoot: false,
   githubSlug: 'acme/fleet',
   dirty: 0,
   hasAdmiralBranch: false,
@@ -98,6 +99,18 @@ describe('checkPlan', () => {
       'j4 is also working on 1 path this plan touches. Ask the client: queue this job behind, or run both?'
     );
     expect(checks.overlap).toHaveLength(1);
+  });
+
+  it('pins the umbrella, which every job workspace is made from, though no step names it', () => {
+    const f = facts({
+      members: [
+        member({ name: 'api' }),
+        member({ name: 'web' }),
+        member({ name: 'shop', atRoot: true })
+      ]
+    });
+    const p = plan([{ id: 'b', role: 'builder', title: 'Build', changes: ['api'] }]);
+    expect(checkPlan(p, f).bases.map((b) => b.member)).toEqual(['api', 'shop']);
   });
 
   it('carries the bases an earlier approval pinned', () => {

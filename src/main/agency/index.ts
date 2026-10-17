@@ -39,6 +39,8 @@ import { nativeGh, type GhRun } from './projects/gh';
 import { agencyHome } from './projects/paths';
 import { ResultsService } from './results';
 import { readOnlyGit } from './projects/repo-reader';
+import { projectMembers } from './projects/workspace-projects';
+import { JobWorkspaces } from './workspaces/job-workspace';
 import { gatherPlanFacts } from './plans/plan-facts';
 import { ProjectsService } from './projects';
 import { resolveRepoIdentity, type GitRun, type RepoIdentityOptions } from './repo-identity';
@@ -114,6 +116,7 @@ export class AgencyService {
   readonly results: ResultsService;
   readonly clientFiles: ClientFiles;
   readonly settings: AgencySettingsService;
+  readonly workspaces: JobWorkspaces;
 
   constructor(private readonly deps: AgencyServiceDeps) {
     this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
@@ -140,7 +143,7 @@ export class AgencyService {
         const repo = this.store.repo(job.repoId);
         if (!repo) throw new Error(`The project of ${jobDisplayId(job.id)} is not known.`);
         return gatherPlanFacts(
-          { repo, plan, others, pinned },
+          { members: projectMembers(this.store.projects, repo).members, plan, others, pinned },
           { git: deps.git ?? readOnlyGit, gh: deps.gh ?? nativeGh }
         );
       }
@@ -158,6 +161,10 @@ export class AgencyService {
       agency: deps.agencySettings ?? memorySettings(),
       home: () => deps.agencyHome ?? agencyHome(),
       changed: (repoId, jobId) => deps.emit({ repoId, jobIds: [jobId], settings: true })
+    });
+    this.workspaces = new JobWorkspaces({
+      store: this.store,
+      home: () => deps.agencyHome ?? agencyHome()
     });
     const crew = deps.crew ?? NO_CREW;
     this.cleanup = new CleanupRunner({

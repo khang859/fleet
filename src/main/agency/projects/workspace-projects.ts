@@ -1,6 +1,7 @@
+import { join } from 'node:path';
 import type { AgencyRepoRef } from '../../../shared/agency';
-import type { ProjectSetup } from '../../../shared/agency-projects';
-import type { RegisteredProject } from '../store/project-registry';
+import type { ProjectKind, ProjectSetup } from '../../../shared/agency-projects';
+import type { ProjectRegistry, RegisteredProject } from '../store/project-registry';
 import type { ScanTarget } from './setup-findings';
 import type { DetectedWorkspace } from './workspace-detect';
 
@@ -74,5 +75,30 @@ export function workspaceTarget(
       m.repo === null ? [] : [{ name: m.name, path: m.path, root: m.repo.root }]
     ),
     missing: kept.filter((m) => m.repo === null).map((m) => ({ name: m.name, path: m.path }))
+  };
+}
+
+/** A member as jobs use it: its name, its path in the project, and its main checkout. */
+export type ProjectMember = { name: string; path: string; root: string };
+
+/**
+ * A project's members in member order, each with the folder of its main
+ * checkout. A one-repository project is its one member at `.`.
+ */
+export function projectMembers(
+  registry: ProjectRegistry,
+  repo: AgencyRepoRef
+): { kind: ProjectKind; members: ProjectMember[] } {
+  const project = registry.byId(repo.repoId);
+  if (project === null) {
+    return { kind: 'repo', members: [{ name: repo.name, path: '.', root: repo.root }] };
+  }
+  return {
+    kind: project.kind,
+    members: project.members.map((m) => ({
+      name: m.name,
+      path: m.path,
+      root: join(project.root, m.path)
+    }))
   };
 }

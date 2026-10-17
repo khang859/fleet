@@ -57,3 +57,44 @@ export function initRepo(
 export function fakeGh(answer: (args: string[]) => { code: number; stdout: string } | null): GhRun {
   return async (args) => Promise.resolve(answer(args));
 }
+
+const pkg = (name: string, deps: string[] = []): string =>
+  JSON.stringify({ name, dependencies: Object.fromEntries(deps.map((d) => [d, '*'])) });
+
+/**
+ * `shop` in `home`, an umbrella with `web`, `api` and `core` in `.gitmodules`
+ * in that order, at `libs/<name>`, where web needs api and core, and api
+ * needs core. Returns the umbrella's root.
+ */
+export function shopUmbrella(home: string): string {
+  const src = join(home, 'src');
+  const repos = {
+    web: pkg('@shop/web', ['@shop/api', '@shop/core']),
+    api: pkg('@shop/api', ['@shop/core']),
+    core: pkg('@shop/core')
+  };
+  const root = initRepo(join(home, 'shop'), { 'README.md': '# Shop\n' });
+  for (const [name, text] of Object.entries(repos)) {
+    initRepo(join(src, name), { 'package.json': text, 'CLAUDE.md': `# ${name}\n` });
+    git(
+      root,
+      '-c',
+      'protocol.file.allow=always',
+      'submodule',
+      'add',
+      '-q',
+      join(src, name),
+      `libs/${name}`
+    );
+  }
+  git(root, 'commit', '-q', '-m', 'members');
+  return root;
+}
+
+/** `work` in `home`, a plain folder of the repositories `app` and `lib`, where app needs lib. */
+export function workFolder(home: string): string {
+  const root = join(home, 'work');
+  initRepo(join(root, 'app'), { 'package.json': pkg('app', ['lib']) });
+  initRepo(join(root, 'lib'), { 'package.json': pkg('lib') });
+  return root;
+}

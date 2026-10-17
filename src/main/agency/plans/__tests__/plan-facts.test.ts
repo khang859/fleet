@@ -19,6 +19,12 @@ const ENV = {
   GIT_COMMITTER_EMAIL: 'test@example.com'
 };
 
+const APP = (): { name: string; path: string; root: string } => ({
+  name: 'app',
+  path: '.',
+  root: repo
+});
+
 const git = (cwd: string, ...args: string[]): string =>
   execFileSync('git', args, { cwd, env: ENV, encoding: 'utf8' }).trim();
 
@@ -43,8 +49,9 @@ describe('memberFacts', () => {
   it('reads a clean checkout with no remote', async () => {
     const tip = commit('a.txt');
 
-    expect(await memberFacts('app', repo, readOnlyGit)).toEqual({
+    expect(await memberFacts(APP(), readOnlyGit)).toEqual({
       name: 'app',
+      atRoot: true,
       githubSlug: null,
       dirty: 0,
       hasAdmiralBranch: false,
@@ -61,7 +68,7 @@ describe('memberFacts', () => {
     writeFileSync(join(repo, 'new.txt'), 'new');
     git(repo, 'branch', 'admiral');
 
-    const facts = await memberFacts('app', repo, readOnlyGit);
+    const facts = await memberFacts(APP(), readOnlyGit);
 
     expect(facts.dirty).toBe(2);
     expect(facts.hasAdmiralBranch).toBe(true);
@@ -77,7 +84,7 @@ describe('memberFacts', () => {
     git(repo, 'checkout', '-q', '-b', 'feat/x');
     const head = commit('c.txt');
 
-    const facts = await memberFacts('app', repo, readOnlyGit);
+    const facts = await memberFacts(APP(), readOnlyGit);
 
     expect(facts).toMatchObject({
       githubSlug: 'acme/app',
@@ -92,7 +99,7 @@ describe('memberFacts', () => {
     const tip = commit('a.txt');
     git(repo, 'checkout', '-q', '--detach');
 
-    expect(await memberFacts('app', repo, readOnlyGit)).toMatchObject({
+    expect(await memberFacts(APP(), readOnlyGit)).toMatchObject({
       headBranch: null,
       headSha: tip
     });

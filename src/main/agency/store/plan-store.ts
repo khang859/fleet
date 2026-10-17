@@ -320,6 +320,21 @@ export class PlanStore {
     return row ? toStep(row) : null;
   }
 
+  /**
+   * The step's next branch number, counted up for good: a job never uses the
+   * same crew branch name twice.
+   */
+  nextBranchSeq(jobId: number, stepId: string): number {
+    const row = this.db
+      .prepare<[number, number, string], { branch_seq: number }>(
+        `UPDATE job_steps SET branch_seq = branch_seq + 1, updated_at = ?
+         WHERE job_id = ? AND step_id = ? RETURNING branch_seq`
+      )
+      .get(this.now(), jobId, stepId);
+    if (!row) throw new Error(`${stepId} is not a step of j${jobId}.`);
+    return row.branch_seq;
+  }
+
   /** Add a step, or bring a removed one back, at `position`. */
   putStep(input: {
     jobId: number;

@@ -11,6 +11,11 @@ import type { Plan, PlanStep } from '../../../shared/agency-plan';
 /** What Fleet read about one member repository just before the check. */
 export type MemberFacts = {
   name: string;
+  /**
+   * The project root: the umbrella, or the one repository. Every job
+   * workspace is made from it, so its base is pinned whatever the steps name.
+   */
+  atRoot: boolean;
   /** `owner/name` of its GitHub remote, or null when it has none. */
   githubSlug: string | null;
   /** Uncommitted and untracked paths in its main checkout. */
@@ -130,7 +135,7 @@ function overlapIssue(overlap: PlanOverlap[]): PlanIssue[] {
 export function checkPlan(plan: Plan, facts: PlanFacts): PlanChecks {
   const names = new Set(facts.members.map((m) => m.name));
   const used = new Set(plan.steps.flatMap((s) => [...changedMembers(s, [...names]), ...s.reads]));
-  const members = facts.members.filter((m) => used.has(m.name));
+  const members = facts.members.filter((m) => m.atRoot || used.has(m.name));
   return {
     issues: [
       ...outsideProject(plan, names),

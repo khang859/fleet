@@ -242,17 +242,18 @@ export class WorktreeService {
    * Remove a worktree the safe way, for agency cleanup: never forced, so git
    * refuses one with changes or untracked files, and its branch only when
    * another branch or a remote holds every commit on it. Throws when git
-   * refuses, leaving the worktree as it was.
+   * refuses, leaving the worktree as it was. Git runs in the repository's
+   * git folder, not its parent: a submodule's is `.git/modules/<name>` of the
+   * umbrella, whose parent is no checkout.
    */
   async removeClean(worktreePath: string, branch: string | null): Promise<void> {
-    const gitCommonDir = (
+    const mainRepoPath = (
       await this.git(undefined, worktreePath, [
         'rev-parse',
         '--path-format=absolute',
         '--git-common-dir'
       ])
     ).trim();
-    const mainRepoPath = join(gitCommonDir, '..');
     await this.git(undefined, mainRepoPath, ['worktree', 'remove', worktreePath]);
     if (branch !== null) {
       const unsafe = (
