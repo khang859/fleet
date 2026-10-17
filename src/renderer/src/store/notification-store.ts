@@ -138,13 +138,17 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
 
   getTabActivity: (paneIds) => {
     const { activities } = get();
-    // Return the most recent activity across all panes in the tab
+    // The most recent activity across the tab's panes - except that a pane
+    // waiting on the user outranks the rest. A shell split beside an agent
+    // that is asking would otherwise hide the question behind its prompt.
     let latest: ActivityRecord | undefined;
     for (const paneId of paneIds) {
       const record = activities.get(paneId);
-      if (record && (!latest || record.timestamp > latest.timestamp)) {
-        latest = record;
-      }
+      if (!record) continue;
+      const asking = record.state === 'needs_me';
+      const latestAsking = latest?.state === 'needs_me';
+      if (!latest || (asking && !latestAsking)) latest = record;
+      else if (asking === latestAsking && record.timestamp > latest.timestamp) latest = record;
     }
     return latest;
   }

@@ -27,7 +27,7 @@ type TabItemProps = {
   drivingPaneId?: string;
   isActive: boolean;
   badge: NotificationLevel | null;
-  /** Tab-wide activity (the most recent across every pane in the tab, via `getTabActivity`) - drives both the status glyph and the freshness subtitle, so they always agree. Undefined for non-terminal tabs (file/image/pdf), which fall back to `badge`. */
+  /** Tab-wide activity (the most recent across every pane in the tab, a pane waiting on the user first, via `getTabActivity`) - drives both the status glyph and the freshness subtitle, so they always agree. Undefined for non-terminal tabs (file/image/pdf), which fall back to `badge`. */
   activity?: { state: ActivityState; lastOutputAt: number };
   icon?: React.ReactNode;
   onClick: () => void;
