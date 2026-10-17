@@ -173,6 +173,21 @@ export const jobDisplayId = (n: number): string => `j${n}`;
 /** How a question id is shown: `q7`. */
 export const questionDisplayId = (n: number): string => `q${n}`;
 
+/**
+ * A question's options as numbered lines, for the model: `1. label - detail`,
+ * with the recommended one marked by `pickNote`.
+ */
+export function optionLines(
+  q: Pick<AgencyQuestion, 'options' | 'recommended'>,
+  pickNote: string
+): string[] {
+  return q.options.map((o, i) => {
+    const detail = o.detail ? ` - ${o.detail}` : '';
+    const pick = q.recommended === i ? ` (${pickNote})` : '';
+    return `${i + 1}. ${o.label}${detail}${pick}`;
+  });
+}
+
 export type AgencySettings = {
   /** Everything Admiral is off until this is on. */
   enabled: boolean;

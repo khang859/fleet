@@ -729,13 +729,8 @@ export class AgencyStore {
    */
   pullWakeups(input: { repoId: string; jobId: number | null }): WakeupPull {
     return this.db.transaction(() => {
+      this.releaseStaleClaims(WAKEUP_STALE_CLAIM_MS, input);
       const now = this.now();
-      this.db
-        .prepare(
-          `UPDATE wakeups SET claimed_at = NULL
-           WHERE repo_id = ? AND job_id IS ? AND done_at IS NULL AND claimed_at < ?`
-        )
-        .run(input.repoId, input.jobId, now - WAKEUP_STALE_CLAIM_MS);
       const rows = this.db
         .prepare<[string, number | null, number], WakeupRow>(
           `SELECT id, repo_id, job_id, kind, question_id, payload_json, attempts FROM wakeups
@@ -884,16 +879,35 @@ export class AgencyStore {
       .run(repoId);
   }
 
-  /**
-   * Release claims older than `maxAgeMs`. At startup this runs with 0: no turn
-   * from before the restart is still running, so every claim is stale.
-   */
-  releaseStaleClaims(maxAgeMs: number = WAKEUP_STALE_CLAIM_MS): number {
+  /** Put a repository's claimed, unfinished wakeups back in the queue, as they were. */
+  unclaimWakeups(repoId: string): number {
     return this.db
       .prepare(
-        'UPDATE wakeups SET claimed_at = NULL WHERE done_at IS NULL AND claimed_at IS NOT NULL AND claimed_at <= ?'
+        'UPDATE wakeups SET claimed_at = NULL WHERE repo_id = ? AND done_at IS NULL AND claimed_at IS NOT NULL'
       )
-      .run(this.now() - maxAgeMs).changes;
+      .run(repoId).changes;
+  }
+
+  /**
+   * Release claims older than `maxAgeMs`, for one job (null: the lobby) or for
+   * every repository. At startup this runs with 0: no turn from before the
+   * restart is still running, so every claim is stale.
+   */
+  releaseStaleClaims(
+    maxAgeMs: number = WAKEUP_STALE_CLAIM_MS,
+    scope?: { repoId: string; jobId: number | null }
+  ): number {
+    const cutoff = this.now() - maxAgeMs;
+    const stale = 'done_at IS NULL AND claimed_at IS NOT NULL AND claimed_at <= ?';
+    if (scope === undefined) {
+      return this.db.prepare(`UPDATE wakeups SET claimed_at = NULL WHERE ${stale}`).run(cutoff)
+        .changes;
+    }
+    return this.db
+      .prepare(
+        `UPDATE wakeups SET claimed_at = NULL WHERE repo_id = ? AND job_id IS ? AND ${stale}`
+      )
+      .run(scope.repoId, scope.jobId, cutoff).changes;
   }
 
   // ── Snapshot ─────────────────────────────────────────────────────────────

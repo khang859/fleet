@@ -46,7 +46,7 @@ import { SocketSupervisor } from './socket-supervisor';
 import { QuitGuard } from './quit-guard';
 import { randomUUID } from 'node:crypto';
 import { QuitDecideSchema, type QuitWorkItem } from '../shared/quit-confirm';
-import { jobDisplayId } from '../shared/agency';
+import { mainWorkItems } from './quit-work';
 import { FleetOpenTabReply } from '../shared/fleet-tools';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile, installOpencodePlugin } from './install-fleet-cli';
@@ -335,32 +335,11 @@ function hasRunningWork(endsProcess: boolean): boolean {
  */
 function mainOwnedWork(endsProcess: boolean): QuitWorkItem[] {
   if (!endsProcess) return [];
-
-  const items: QuitWorkItem[] = [];
-  for (const job of listRunningBackgroundCommands()) {
-    items.push({ kind: 'background', id: job.id, label: job.command });
-  }
-  for (const live of agentSubagents?.describeLive() ?? []) {
-    items.push({
-      kind: 'subagent',
-      id: live.taskId,
-      label: `${live.agent}: ${truncateForList(live.prompt)}`
-    });
-  }
-  // A quit interrupts every running job; the Admiral resumes them next start.
-  for (const job of agencyService?.listRunning() ?? []) {
-    items.push({
-      kind: 'job',
-      id: String(job.id),
-      label: `${jobDisplayId(job.id)} ${truncateForList(job.title)}`
-    });
-  }
-  return items;
-}
-
-function truncateForList(text: string): string {
-  const flat = text.replace(/\s+/g, ' ').trim();
-  return flat.length > 80 ? `${flat.slice(0, 79)}\u2026` : flat;
+  return mainWorkItems({
+    background: listRunningBackgroundCommands(),
+    subagents: agentSubagents?.describeLive() ?? [],
+    jobs: agencyService?.listRunning() ?? []
+  });
 }
 
 /**

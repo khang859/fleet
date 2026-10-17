@@ -1,5 +1,7 @@
+import { fence } from '../../../shared/fleet-tools';
 import {
   jobDisplayId,
+  optionLines,
   questionDisplayId,
   type AdmiralThreadScope,
   type AgencyQuestion
@@ -8,26 +10,28 @@ import type { AgencyStore } from '../store/agency-store';
 
 type SnapshotReader = Pick<AgencyStore, 'repo' | 'getJob' | 'listJobs' | 'listQuestions'>;
 
-/** A question as the Admiral needs it to avoid asking it again: every option, and its pick. */
-function describeQuestion(q: AgencyQuestion): string[] {
-  const lines = [
-    `- ${questionDisplayId(q.id)}${q.step === null ? '' : ` (step ${q.step})`}: ${q.question}`
-  ];
-  q.options.forEach((option, i) => {
-    const detail = option.detail === undefined ? '' : ` - ${option.detail}`;
-    const pick = q.recommended === i ? ' (your recommendation)' : '';
-    lines.push(`  ${i + 1}. ${option.label}${detail}${pick}`);
-  });
-  return lines;
+/**
+ * A question as the Admiral needs it to avoid asking it again: every option,
+ * and its pick. The wording is the Admiral's own, so it is quoted in a fence:
+ * Fleet vouches for the id and the status, not for what the text says.
+ */
+function describeQuestion(q: AgencyQuestion): string {
+  const id = questionDisplayId(q.id);
+  const step = q.step === null ? '' : ` (step ${q.step})`;
+  return fence(
+    id,
+    [`${id}${step}: ${q.question}`, ...optionLines(q, 'your recommendation')].join('\n')
+  );
 }
 
 function describeHeld(q: AgencyQuestion): string {
+  const id = questionDisplayId(q.id);
   const dep = q.dependsOn;
   const after =
     dep === null
       ? ''
-      : ` (shows if ${questionDisplayId(dep.question)} is answered with option ${dep.option + 1})`;
-  return `- ${questionDisplayId(q.id)}: ${q.question}${after}`;
+      : `Shows if ${questionDisplayId(dep.question)} is answered with option ${dep.option + 1}:\n`;
+  return `${after}${fence(id, `${id}: ${q.question}`)}`;
 }
 
 function questionLines(store: SnapshotReader, scope: AdmiralThreadScope): string[] {
@@ -38,7 +42,7 @@ function questionLines(store: SnapshotReader, scope: AdmiralThreadScope): string
       ? ['No questions are waiting on the client.']
       : [
           'Questions waiting on the client (do not ask these again):',
-          ...open.flatMap(describeQuestion)
+          ...open.map(describeQuestion)
         ]),
     ...(held.length === 0
       ? []
@@ -83,17 +87,22 @@ function recordsNote(store: SnapshotReader, scope: AdmiralThreadScope): string {
             'Open jobs (each is changed only in its own conversation):',
             ...jobs.map((job) => {
               const asks = waiting.filter((q) => q.jobId === job.id).length;
-              return `- ${jobDisplayId(job.id)} "${job.title}": ${job.state}, ${asks} question${asks === 1 ? '' : 's'} waiting`;
-            })
+              return `- ${jobDisplayId(job.id)}: ${job.state}, ${asks} question${asks === 1 ? '' : 's'} waiting`;
+            }),
+            fence(
+              'job titles',
+              jobs.map((job) => `${jobDisplayId(job.id)}: ${job.title}`).join('\n')
+            )
           ]),
       ...questionLines(store, scope)
     ].join('\n');
   }
   const job = store.getJob(scope.jobId);
   if (job === null) return `Fleet has no record of ${jobDisplayId(scope.jobId)}.`;
+  const id = jobDisplayId(job.id);
   return [
-    `Fleet's records for this conversation: ${jobDisplayId(job.id)} "${job.title}" in ${repo}, state ${job.state}.`,
-    `Brief: ${job.brief}`,
+    `Fleet's records for this conversation: ${id} in ${repo}, state ${job.state}.`,
+    fence(id, `Title: ${job.title}\nBrief: ${job.brief}`),
     ...questionLines(store, scope)
   ].join('\n');
 }

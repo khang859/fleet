@@ -1107,6 +1107,9 @@ function Notice({ children }: { children: React.ReactNode }): React.JSX.Element 
   );
 }
 
+/** What each pane's composer held when it last unmounted, by pane id. */
+const drafts = new Map<string, string>();
+
 function Composer({
   paneId,
   disabled,
@@ -1158,7 +1161,12 @@ function Composer({
   onStop: () => void;
   onClear: () => void;
 }): React.JSX.Element {
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => drafts.get(paneId) ?? '');
+  // Kept past an unmount: an Admiral remounts its composer on every job tab switch.
+  useEffect(() => {
+    if (text === '') drafts.delete(paneId);
+    else drafts.set(paneId, text);
+  }, [paneId, text]);
   const [refused, setRefused] = useState(false);
   /** Whether an Escape is loaded, waiting on the second one that stops the turn. */
   const [armed, setArmed] = useState(false);

@@ -124,7 +124,7 @@ describe('JobSheet', () => {
     const html = sheet(snap(), null);
     expect(html).toContain('width:380px');
     expect(html).toContain('THE JOB');
-    expect(html).toContain('Your job sheet shows up here once you send a brief.');
+    expect(html).toContain('Your job sheet shows up here once I open a job.');
     expect(html).toContain('HOW A JOB GOES');
     expect(html).toContain('Default budget');
     expect(html).toContain('$10');

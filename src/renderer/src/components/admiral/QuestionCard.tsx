@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowUp, CircleAlert } from 'lucide-react';
 import type { AgencyQuestion } from '../../../../shared/agency';
 import { questionDisplayId } from '../../../../shared/agency';
+import { AgentMarkdown } from '../agent/AgentMarkdown';
 
 /** What answering a card sends: an option, words, or both. */
 export type QuestionAnswer = { option?: number; text?: string };
@@ -59,9 +60,12 @@ export function QuestionCard({
         </span>
       </div>
       {question.context !== '' && (
-        <p className="text-xs leading-relaxed whitespace-pre-wrap text-fleet-text-muted">
+        <AgentMarkdown
+          streaming={false}
+          className="text-xs leading-relaxed text-fleet-text-muted [&_code]:text-[11px]"
+        >
           {question.context}
-        </p>
+        </AgentMarkdown>
       )}
       {settled ? (
         <Settled question={question} />
@@ -202,9 +206,12 @@ function ModelUnreachableCard({
         {question.question}
       </div>
       {question.context !== '' && (
-        <p className="text-xs leading-relaxed break-words text-fleet-text-muted">
+        <AgentMarkdown
+          streaming={false}
+          className="text-xs leading-relaxed text-fleet-text-muted [&_code]:text-[11px]"
+        >
           {question.context}
-        </p>
+        </AgentMarkdown>
       )}
       {open ? (
         <div className="flex flex-wrap gap-1.5 pt-0.5">

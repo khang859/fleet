@@ -189,7 +189,9 @@ export function StarterQuestions({
     <div className="flex min-h-0 min-w-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{questions}</div>
-        <div className="shrink-0 px-5 pb-5">{footer}</div>
+        <footer className="shrink-0 border-t border-fleet-border bg-fleet-bg px-5 py-3">
+          {footer}
+        </footer>
       </div>
       <aside className="w-[380px] shrink-0 overflow-y-auto border-l border-fleet-border bg-fleet-surface px-5 py-5">
         {clientFile}
@@ -400,7 +402,7 @@ export function ClientFilePreview({
                   <>
                     - {entry.text}{' '}
                     <span className="text-fleet-text-subtle">
-                      (from {entry.source}, {entry.date})
+                      (from {entry.source}, <span className="whitespace-nowrap">{entry.date})</span>
                     </span>
                   </>
                 )}
@@ -413,7 +415,10 @@ export function ClientFilePreview({
         {path !== null && (
           <>
             {' '}
-            Saved at <span className="break-all">{homePath(path, window.fleet.homeDir)}</span>.
+            Saved at
+            <span className="block font-mono break-all">
+              {homePath(path, window.fleet.homeDir)}
+            </span>
           </>
         )}
       </p>

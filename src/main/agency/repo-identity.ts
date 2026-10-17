@@ -1,12 +1,10 @@
-import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { realpath, stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import type { RepoResolution } from '../../shared/agency';
 import { isWslContext, type PathContext } from '../../shared/shell-profiles';
 import { execInContext } from '../run-in-context';
-
-const GIT_TIMEOUT_MS = 10_000;
+import { gitExec, GIT_TIMEOUT_MS } from './exec';
 
 /** Runs `git <args>` in `cwd`; resolves with the trimmed stdout, or null on any failure. */
 export type GitRun = (args: string[], cwd: string) => Promise<string | null>;
@@ -24,12 +22,7 @@ export type RepoIdentityOptions = {
   realpath?: RealPath;
 };
 
-const nativeGit: GitRun = async (args, cwd) =>
-  new Promise((done) => {
-    execFile('git', args, { cwd, timeout: GIT_TIMEOUT_MS }, (err, stdout) => {
-      done(err ? null : stdout.trim());
-    });
-  });
+const nativeGit: GitRun = async (args, cwd) => (await gitExec(args, cwd))?.trim() ?? null;
 
 const nativeRealpath: RealPath = async (path) => {
   try {

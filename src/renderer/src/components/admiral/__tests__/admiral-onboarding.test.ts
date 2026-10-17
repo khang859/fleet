@@ -220,6 +220,7 @@ describe('the rest of onboarding', () => {
       })
     );
     expect(html).toContain('- Use pnpm.');
-    expect(html).toContain('(from CLAUDE.md, 2026-10-17)');
+    // The date is kept on one line in its own span, so compare the text.
+    expect(html.replace(/<[^>]+>/g, '')).toContain('(from CLAUDE.md, 2026-10-17)');
   });
 });

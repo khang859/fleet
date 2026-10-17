@@ -143,13 +143,19 @@ export function reportActivity(paneId: string, state: ActivityState): void {
 
 /**
  * Put a pane's state in the activity map and tell main, unless it is already
- * what the map says. The Admiral runtime publishes its panes' roll-up here.
+ * what the map says or `renotify` asks for it again. The Admiral runtime
+ * publishes its panes' roll-up here.
  */
-export function publishActivity(paneId: string, state: ActivityState, label?: string): void {
+export function publishActivity(
+  paneId: string,
+  state: ActivityState,
+  label?: string,
+  renotify = false
+): void {
   const now = Date.now();
   const store = useNotificationStore.getState();
   const previous = store.getActivity(paneId)?.state;
-  if (previous === state) return;
+  if (previous === state && !renotify) return;
 
   store.setActivity({ paneId, state, lastOutputAt: now, timestamp: now });
   // And again to main, which draws the dock badge and the window title and
@@ -159,7 +165,7 @@ export function publishActivity(paneId: string, state: ActivityState, label?: st
   // The folder rides along because a desktop notification has no sidebar to
   // point at: "an agent needs your permission" is the one fact the user with
   // four panes running already has.
-  window.fleet.activity.report({ paneId, state, label });
+  window.fleet.activity.report({ paneId, state, label, renotify: renotify || undefined });
 }
 
 /** Whether anything in this pane - its turn, or a subagent - is asking. */

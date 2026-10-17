@@ -1,5 +1,4 @@
-import { execFile } from 'node:child_process';
-import { enrichProcessEnv } from '../../shell-env';
+import { runCapture, type Captured } from '../exec';
 
 const GH_TIMEOUT_MS = 15_000;
 
@@ -8,33 +7,14 @@ const GH_TIMEOUT_MS = 15_000;
  * when gh cannot start (not installed). gh reads the repository's remote from
  * `.git/config` and never runs code from the repository.
  */
-export type GhRun = (
-  args: string[],
-  cwd: string
-) => Promise<{ code: number; stdout: string } | null>;
+export type GhRun = (args: string[], cwd: string) => Promise<Captured>;
 
-export const nativeGh: GhRun = async (args, cwd) => {
-  // The login-shell PATH, so a Homebrew gh is found as a terminal would find it.
-  await enrichProcessEnv();
-  return new Promise((done) => {
-    execFile(
-      'gh',
-      args,
-      {
-        cwd,
-        timeout: GH_TIMEOUT_MS,
-        env: { ...process.env, GH_PROMPT_DISABLED: '1', NO_COLOR: '1' }
-      },
-      (err, stdout) => {
-        if (err && typeof err.code !== 'number') {
-          done(null);
-          return;
-        }
-        done({ code: err ? Number(err.code) : 0, stdout: stdout.trim() });
-      }
-    );
+export const nativeGh: GhRun = async (args, cwd) =>
+  runCapture('gh', args, {
+    cwd,
+    timeoutMs: GH_TIMEOUT_MS,
+    env: { GH_PROMPT_DISABLED: '1', NO_COLOR: '1' }
   });
-};
 
 /** Whether gh is installed and signed in. Asks `gh auth status` for its exit code only. */
 export async function ghState(
@@ -47,7 +27,7 @@ export async function ghState(
 }
 
 /** Parse gh's `--json` output, or null when it is not the JSON asked for. */
-export function ghJson(out: { code: number; stdout: string } | null): unknown {
+export function ghJson(out: Captured): unknown {
   if (out?.code !== 0) return null;
   try {
     return JSON.parse(out.stdout) as unknown;

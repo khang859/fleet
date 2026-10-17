@@ -1,11 +1,7 @@
-import { execFile } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
+import { gitExec } from '../exec';
 import type { GitRun } from '../repo-identity';
-
-const GIT_TIMEOUT_MS = 15_000;
-/** `ls-tree` of a large monorepo runs to megabytes. */
-const GIT_MAX_BUFFER = 64 * 1024 * 1024;
 
 /**
  * Git for reading only. `core.fsmonitor` is off because a repository's own
@@ -13,16 +9,7 @@ const GIT_MAX_BUFFER = 64 * 1024 * 1024;
  * commands setup runs need the index, but this keeps it that way.
  */
 export const readOnlyGit: GitRun = async (args, cwd) =>
-  new Promise((done) => {
-    execFile(
-      'git',
-      ['-c', 'core.fsmonitor=false', ...args],
-      { cwd, timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER },
-      (err, stdout) => {
-        done(err ? null : stdout.trim());
-      }
-    );
-  });
+  (await gitExec(['-c', 'core.fsmonitor=false', ...args], cwd))?.trim() ?? null;
 
 /**
  * A file's content at a commit, byte for byte. Not through `GitRun`, which
@@ -30,16 +17,7 @@ export const readOnlyGit: GitRun = async (args, cwd) =>
  * its hash must be the hash of what the repository holds.
  */
 async function readBlob(root: string, ref: string, path: string): Promise<string | null> {
-  return new Promise((done) => {
-    execFile(
-      'git',
-      ['-c', 'core.fsmonitor=false', 'cat-file', 'blob', `${ref}:${path}`],
-      { cwd: root, timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER },
-      (err, stdout) => {
-        done(err ? null : stdout);
-      }
-    );
-  });
+  return gitExec(['-c', 'core.fsmonitor=false', 'cat-file', 'blob', `${ref}:${path}`], root);
 }
 
 /** Files of a repository at one commit, read without checking anything out. */

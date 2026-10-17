@@ -27,8 +27,6 @@ type AgencyStoreState = {
   answer: (req: AgencyAnswerRequest) => Promise<AgencyQuestion | null>;
   /** Cancel a repository's running jobs. Resolves with the cancelled ids. */
   cancelJobs: (repoId: string) => Promise<number[]>;
-  /** Clear the model backoff so the waiting wakeups are tried again now. */
-  retryNow: (repoId: string) => Promise<void>;
 };
 
 /**
@@ -65,11 +63,6 @@ export const useAgencyStore = create<AgencyStoreState>((set, get) => ({
     const ids = await window.fleet.agency.cancelJobs(repoId);
     void get().refresh(repoId);
     return ids;
-  },
-
-  retryNow: async (repoId) => {
-    await window.fleet.agency.retryNow(repoId);
-    void get().refresh(repoId);
   }
 }));
 

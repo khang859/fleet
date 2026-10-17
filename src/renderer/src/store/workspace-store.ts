@@ -626,6 +626,24 @@ function findLeafAnywhere(
   return null;
 }
 
+/**
+ * An agent tab whose last agent or Admiral pane closed is a terminal tab
+ * again, named after its folder - not left calling a shell "Admiral".
+ */
+function withoutAgent(tab: Tab): Tab {
+  if (tab.type !== 'agent') return tab;
+  const leaves = collectPaneLeafs(tab.splitRoot);
+  if (leaves.some((l) => l.paneType === 'agent' || isAdmiralLeaf(l))) return tab;
+  const cwd = leaves[0]?.cwd ?? tab.cwd;
+  return {
+    ...tab,
+    type: 'terminal',
+    cwd,
+    label: cwdBasename(cwd, tab.pathContext ?? 'posix'),
+    labelIsCustom: false
+  };
+}
+
 /** Whether a leaf is an Admiral pane. */
 export function isAdmiralLeaf(leaf: Pick<PaneLeaf, 'paneType'>): boolean {
   return leaf.paneType === 'admiral';
@@ -1347,7 +1365,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         .map((tab) => {
           const newRoot = removePaneFromTree(tab.splitRoot, paneId);
           if (!newRoot) return null;
-          return { ...tab, splitRoot: newRoot };
+          return newRoot === tab.splitRoot ? tab : withoutAgent({ ...tab, splitRoot: newRoot });
         })
         .filter((t): t is Tab => t !== null);
 

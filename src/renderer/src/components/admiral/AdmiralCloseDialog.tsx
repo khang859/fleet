@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Compass } from 'lucide-react';
+import { AdmiralGlyph } from './AdmiralGlyph';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { finishAdmiralClose } from './admiral-close';
 import { Overlay } from '../Overlay';
@@ -41,7 +41,7 @@ export function AdmiralCloseDialog(): React.JSX.Element {
         className="w-[420px] rounded-lg border border-fleet-border-strong bg-fleet-surface-2 p-4 shadow-xl"
       >
         <div className="flex items-start gap-2.5">
-          <Compass size={16} className="mt-0.5 shrink-0 text-blue-500 dark:text-blue-400" />
+          <AdmiralGlyph size={16} className="mt-0.5 shrink-0" />
           <div className="min-w-0">
             <h3 id="admiral-close-title" className="text-sm font-semibold text-fleet-text">
               Close the Admiral for {shown.current?.repoName}?

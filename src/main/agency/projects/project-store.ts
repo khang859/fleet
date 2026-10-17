@@ -1,6 +1,5 @@
-import { cp, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { lstat, rm } from 'node:fs/promises';
+import { basename, join, relative, sep } from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import type { AgencyRepoRef } from '../../../shared/agency';
 import {
@@ -129,6 +128,12 @@ export async function saveSetup(
   home: string = agencyHome()
 ): Promise<{ path: string; setup: ProjectSetup }> {
   const dir = projectDir(input.repo.repoId, home);
+  // A file imported before and unchecked now goes, so nothing reads or shares it.
+  const keep = new Set(input.imported.map((f) => importDestination(f.path)));
+  for (const old of (await loadSetup(input.repo.repoId, home))?.imports ?? []) {
+    const dest = importDestination(old.path);
+    if (dest !== null && !keep.has(dest)) await rm(join(dir, dest), { force: true });
+  }
   for (const file of input.imported) {
     const dest = importDestination(file.path);
     if (dest !== null) await writeAtomic(join(dir, dest), file.content);
@@ -143,23 +148,48 @@ export async function saveSetup(
 }
 
 /**
- * "Share with team": copy the saved setup and its crew files into `.fleet/`
- * in the main checkout. Nothing is staged or committed; the client decides
- * whether the team gets it.
+ * "Share with team": copy the saved setup and the files it imported into
+ * `.fleet/` in the main checkout. Nothing is staged or committed; the client
+ * decides whether the team gets it.
+ *
+ * Only what the setup lists goes, and never through a symlink: the repository
+ * is not ours, and a `.fleet/crew` link it tracks would carry the write
+ * anywhere on disk.
  */
 export async function shareWithTeam(
   repo: AgencyRepoRef,
   home: string = agencyHome()
 ): Promise<string[]> {
   const dir = projectDir(repo.repoId, home);
-  const target = join(repo.root, '.fleet');
+  const setup = await readTextOrNull(join(dir, SETUP_FILE));
+  if (setup === null) throw new Error('Save the setup before sharing it');
+  const files = [SETUP_FILE];
+  for (const file of parseSetupToml(setup)?.imports ?? []) {
+    const dest = importDestination(file.path);
+    if (dest !== null) files.push(dest);
+  }
   const written: string[] = [];
-  await mkdir(target, { recursive: true });
-  await cp(join(dir, SETUP_FILE), join(target, SETUP_FILE));
-  written.push(`.fleet/${SETUP_FILE}`);
-  if (existsSync(join(dir, 'crew'))) {
-    await cp(join(dir, 'crew'), join(target, 'crew'), { recursive: true });
-    written.push('.fleet/crew/');
+  for (const rel of files) {
+    const text = rel === SETUP_FILE ? setup : await readTextOrNull(join(dir, rel));
+    if (text === null) continue;
+    const target = join(repo.root, '.fleet', rel);
+    await refuseLinks(repo.root, target);
+    await writeAtomic(target, text);
+    written.push(`.fleet/${rel.split(sep).join('/')}`);
   }
   return written;
+}
+
+/** Throw if any part of `target` below `root` is a symlink. A part not there yet is fine. */
+async function refuseLinks(root: string, target: string): Promise<void> {
+  const parts = relative(root, target).split(sep);
+  let at = root;
+  for (const part of parts) {
+    at = join(at, part);
+    const stat = await lstat(at).catch(() => null);
+    if (stat === null) return;
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Not sharing through ${relative(root, at)}: it is a symlink`);
+    }
+  }
 }

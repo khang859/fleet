@@ -54,6 +54,7 @@ beforeEach(() => {
   for (const fn of Object.values(agency)) fn.mockClear();
   agency.resolveRepo.mockImplementation(async () => Promise.resolve(inRepo()));
   agency.claimAdmiral.mockImplementation(async () => Promise.resolve({ ok: true as const }));
+  agency.ensureLobby.mockImplementation(async () => Promise.resolve('lobby-1'));
   (window.fleet as { agency: unknown }).agency = agency;
   (window.fleet as { settings: unknown }).settings = {
     set: async () => Promise.resolve(undefined)
@@ -154,6 +155,14 @@ describe('openAdmiral', () => {
     await expect(openAdmiral('/dev/fleet')).resolves.toBe('refused');
     expect(toasts).toEqual(['The Admiral for fleet is open in another window']);
     expect(useWorkspaceStore.getState().workspace.tabs).toHaveLength(1);
+  });
+
+  it('gives the claim back when the pane cannot be opened', async () => {
+    agency.ensureLobby.mockImplementation(async () => Promise.reject(new Error('disk full')));
+    await expect(openAdmiral('/dev/fleet')).rejects.toThrow('disk full');
+    const [claim] = agency.claimAdmiral.mock.calls[0] as unknown as [{ paneId: string }];
+    const paneId = claim.paneId;
+    expect(agency.releaseAdmiral).toHaveBeenCalledWith(paneId);
   });
 
   it('does nothing but point at Settings while Admiral is turned off', async () => {

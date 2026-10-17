@@ -76,12 +76,18 @@ export class AgencyService {
     return this.registry.claim(input, owner);
   }
 
+  /**
+   * A pane gave up its repository. The wakeups it had pulled and not finished
+   * go back to the queue now, without counting as a failure: only that pane
+   * could have claimed them, and it will never ack them.
+   */
   release(paneId: string): void {
-    this.registry.release(paneId);
+    for (const repoId of this.registry.release(paneId)) this.store.unclaimWakeups(repoId);
   }
 
+  /** A window reloaded or closed: the same, for every repository it held. */
   releaseOwner(owner: number): void {
-    this.registry.releaseOwner(owner);
+    for (const repoId of this.registry.releaseOwner(owner)) this.store.unclaimWakeups(repoId);
   }
 
   ensureLobby(repo: AgencyRepoRef): string {
@@ -112,11 +118,6 @@ export class AgencyService {
     if (gaveUp) log.warn('Admiral turn keeps failing; told the client', { error: input.error });
     this.changed(touched);
     return { nextDueAt, gaveUp };
-  }
-
-  retryNow(repoId: string): void {
-    this.store.retryNow(repoId);
-    this.changed([{ repoId, jobId: null }]);
   }
 
   cancelJobs(repoId: string): number[] {

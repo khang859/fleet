@@ -28,22 +28,23 @@ export class AdmiralRegistry {
     return { ok: true };
   }
 
-  release(paneId: string): void {
-    this.drop((claim) => claim.paneId === paneId);
+  /** Give up the pane's claim. Returns the repositories it held. */
+  release(paneId: string): string[] {
+    return this.drop((claim) => claim.paneId === paneId);
   }
 
-  /** Give up every claim a window made, when it reloads or goes away. */
-  releaseOwner(owner: number): void {
-    this.drop((claim) => claim.owner === owner);
+  /** Give up every claim a window made, when it reloads or goes away. Returns the repositories. */
+  releaseOwner(owner: number): string[] {
+    return this.drop((claim) => claim.owner === owner);
   }
 
-  ownerOf(repoId: string): string | null {
-    return this.byRepo.get(repoId)?.paneId ?? null;
-  }
-
-  private drop(match: (claim: Claim) => boolean): void {
+  private drop(match: (claim: Claim) => boolean): string[] {
+    const dropped: string[] = [];
     for (const [repoId, claim] of this.byRepo) {
-      if (match(claim)) this.byRepo.delete(repoId);
+      if (!match(claim)) continue;
+      this.byRepo.delete(repoId);
+      dropped.push(repoId);
     }
+    return dropped;
   }
 }

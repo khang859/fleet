@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ProjectSetup } from '../../../../shared/agency-projects';
 import { setupFilePath } from '../paths';
@@ -142,7 +142,7 @@ describe('shareWithTeam', () => {
 
     const written = await shareWithTeam(repo, home);
 
-    expect(written).toEqual(['.fleet/fleet.agency.toml', '.fleet/crew/']);
+    expect(written).toEqual(['.fleet/fleet.agency.toml', '.fleet/crew/roles/qa.md']);
     expect(parseSetupToml(readFileSync(join(root, '.fleet/fleet.agency.toml'), 'utf8'))).toEqual({
       ...SETUP,
       imports: [{ path: '.fleet/crew/roles/qa.md', kind: 'role', sha256: 'a'.repeat(64) }]
@@ -151,5 +151,30 @@ describe('shareWithTeam', () => {
     expect(git(root, 'rev-parse', 'HEAD')).toBe(head);
     expect(git(root, 'diff', '--cached', '--name-only')).toBe('');
     expect(git(root, 'status', '--porcelain')).toBe('?? .fleet/');
+  });
+
+  it('leaves out a file the client unchecked since it was imported', async () => {
+    const root = initRepo(join(tmp.dir, 'shop'), { 'README.md': 'shop\n' });
+    const repo = { repoId: '0123456789abcdef', root, name: 'shop' };
+    const qa = { path: '.fleet/crew/roles/qa.md', kind: 'role' as const, sha256: 'a'.repeat(64) };
+    await saveSetup({ repo, setup: SETUP, imported: [{ ...qa, content: '# QA\n' }] }, home);
+    await saveSetup({ repo, setup: SETUP, imported: [] }, home);
+
+    expect(await shareWithTeam(repo, home)).toEqual(['.fleet/fleet.agency.toml']);
+    expect(existsSync(join(root, '.fleet/crew/roles/qa.md'))).toBe(false);
+  });
+
+  it('refuses to write through a symlink the repository holds', async () => {
+    const root = initRepo(join(tmp.dir, 'shop'), { 'README.md': 'shop\n' });
+    const outside = join(tmp.dir, 'outside');
+    mkdirSync(outside);
+    mkdirSync(join(root, '.fleet'));
+    symlinkSync(outside, join(root, '.fleet', 'crew'));
+    const repo = { repoId: '0123456789abcdef', root, name: 'shop' };
+    const qa = { path: '.fleet/crew/roles/qa.md', kind: 'role' as const, sha256: 'a'.repeat(64) };
+    await saveSetup({ repo, setup: SETUP, imported: [{ ...qa, content: '# QA\n' }] }, home);
+
+    await expect(shareWithTeam(repo, home)).rejects.toThrow(/symlink/);
+    expect(readdirSync(outside)).toEqual([]);
   });
 });

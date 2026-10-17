@@ -1013,7 +1013,10 @@ export type AgentMessage = {
 };
 
 export type AgentMessageMeta =
-  | { kind: 'event' }
+  | {
+      kind: 'event';
+      /** The wakeups it carried, so a retry does not say them again. */ wakeups?: number[];
+    }
   | { kind: 'job-link'; jobId: number }
   | { kind: 'queued' };
 

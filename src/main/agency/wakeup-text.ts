@@ -1,5 +1,5 @@
 import { fence } from '../../shared/fleet-tools';
-import { questionDisplayId, type AgencyQuestion } from '../../shared/agency';
+import { optionLines, questionDisplayId, type AgencyQuestion } from '../../shared/agency';
 
 /**
  * What woke the Admiral, one entry per claimed wakeup.
@@ -16,14 +16,6 @@ export type WakeupItem =
       withdrew: number[];
     }
   | { kind: 'event'; line: string; body: string | null };
-
-function optionLines(q: AgencyQuestion): string[] {
-  return q.options.map((o, i) => {
-    const pick = q.recommended === i ? ' (your pick)' : '';
-    const detail = o.detail ? ` - ${o.detail}` : '';
-    return `${i + 1}. ${o.label}${detail}${pick}`;
-  });
-}
 
 function eventLine(item: WakeupItem): string {
   if (item.kind === 'event') return item.line;
@@ -42,7 +34,7 @@ function answerBody(item: Extract<WakeupItem, { kind: 'answer' }>): string {
   const id = questionDisplayId(q.id);
   const quoted = [`${id}: ${q.question}`];
   if (q.context !== '') quoted.push(`Context: ${q.context}`);
-  quoted.push(...optionLines(q));
+  quoted.push(...optionLines(q, 'your pick'));
 
   const lines = [fence(id, quoted.join('\n'))];
   const option = q.answerOption === null ? undefined : q.options[q.answerOption];

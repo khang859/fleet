@@ -1,29 +1,14 @@
-import { execFile } from 'node:child_process';
 import type { AgencyPreflight } from '../../shared/agency';
-import { enrichProcessEnv } from '../shell-env';
+import { runCapture, type Captured } from './exec';
+import { ghState } from './projects/gh';
 
 const PROBE_TIMEOUT_MS = 10_000;
 
 /** Runs a command; resolves with its exit code and stdout, or null when it cannot start. */
-export type Probe = (
-  cmd: string,
-  args: string[]
-) => Promise<{ code: number; stdout: string } | null>;
+export type Probe = (cmd: string, args: string[]) => Promise<Captured>;
 
-const nativeProbe: Probe = async (cmd, args) => {
-  // The user's login-shell PATH, so a Homebrew or npm-global install is found
-  // the way a terminal pane would find it.
-  await enrichProcessEnv();
-  return new Promise((done) => {
-    execFile(cmd, args, { timeout: PROBE_TIMEOUT_MS, env: process.env }, (err, stdout) => {
-      if (err && typeof err.code !== 'number') {
-        done(null);
-        return;
-      }
-      done({ code: err ? Number(err.code) : 0, stdout: stdout.trim() });
-    });
-  });
-};
+const nativeProbe: Probe = async (cmd, args) =>
+  runCapture(cmd, args, { timeoutMs: PROBE_TIMEOUT_MS });
 
 /** The first thing that looks like a version number in a `--version` line. */
 function versionOf(stdout: string): string | null {
@@ -56,11 +41,11 @@ export async function runPreflight(deps: {
     tool(probe, 'eva'),
     tool(probe, 'gh')
   ]);
-  const auth = gh.found ? await probe('gh', ['auth', 'status']) : null;
+  const auth = gh.found ? await ghState(async (args) => probe('gh', args), '') : null;
   return {
     modelKey: deps.hasModelKey(),
     claude,
     eva,
-    gh: { found: gh.found, signedIn: auth?.code === 0 }
+    gh: { found: gh.found, signedIn: auth === 'ok' }
   };
 }

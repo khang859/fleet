@@ -171,11 +171,14 @@ describe('admiralSnapshotNote', () => {
 
     const note = admiralSnapshotNote(service.store, scope);
 
-    expect(note).toContain(`j${job.id} "Fix the login bug" in fleet, state briefing.`);
-    expect(note).toContain('Brief: Fix the login bug, please');
-    expect(note).toContain('Keep the old endpoint?');
-    expect(note).toContain('  1. Yes (your recommendation)');
-    expect(note).toContain('  2. No - leave it as it is');
+    expect(note).toContain(`j${job.id} in fleet, state briefing.`);
+    // What the Admiral wrote is quoted, not stated by Fleet.
+    expect(note).toContain(
+      `<session-data session="j${job.id}">\nTitle: Fix the login bug\nBrief: Fix the login bug, please`
+    );
+    expect(note).toMatch(/<session-data session="q\d+">\nq\d+: Keep the old endpoint\?\n/);
+    expect(note).toContain('1. Yes (your recommendation)');
+    expect(note).toContain('2. No - leave it as it is');
   });
 
   it('gives the lobby the open jobs', () => {
@@ -184,7 +187,8 @@ describe('admiralSnapshotNote', () => {
     const note = admiralSnapshotNote(service.store, lobby);
 
     expect(note).toContain('the lobby of fleet');
-    expect(note).toContain(`- j${job.id} "Fix the login bug": briefing, 0 questions waiting`);
+    expect(note).toContain(`- j${job.id}: briefing, 0 questions waiting`);
+    expect(note).toContain(`<session-data session="job titles">\nj${job.id}: Fix the login bug\n`);
     expect(note).toContain('No questions are waiting on the client.');
   });
 });

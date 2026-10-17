@@ -86,7 +86,6 @@ const agency = {
   markHandoff: vi.fn(),
   answerQuestion: vi.fn(),
   cancelJobs: vi.fn(),
-  retryNow: vi.fn(),
   onChanged: listen('agency:changed')
 };
 
@@ -358,6 +357,23 @@ describe('pulling wakeups', () => {
     expect(agency.pullWakeups).toHaveBeenCalledWith({ repoId: REPO.repoId, jobId: 2 });
   });
 
+  it('retries a failed batch without saying its event again', async () => {
+    agency.pullWakeups.mockImplementation(async ({ jobId }) =>
+      Promise.resolve(jobId === 2 ? { ids: [5], text: 'Crew finished', nextDueAt: null } : NOTHING)
+    );
+    agency.releaseWakeups.mockResolvedValue({ nextDueAt: null, gaveUp: false });
+    changed({ jobIds: [2] });
+    await tick();
+    endTurn(keyOf(2), 'model unreachable');
+    await tick();
+    changed({ jobIds: [2] });
+    await tick();
+
+    const events = thread(keyOf(2)).messages.filter((m) => m.meta?.kind === 'event');
+    expect(events).toHaveLength(1);
+    expect(thread(keyOf(2)).streamId).not.toBeNull();
+  });
+
   it('never delivers one job’s wakeups into another job’s conversation', async () => {
     agency.pullWakeups.mockImplementation(async ({ jobId }) =>
       Promise.resolve(jobId === 1 ? { ids: [1], text: 'For job one', nextDueAt: null } : NOTHING)
@@ -427,6 +443,20 @@ describe('handing a job the lobby talk', () => {
     expect(activeJob).toHaveBeenCalledWith(PANE, 3);
   });
 
+  it('gives every job one turn opened the same lobby talk', async () => {
+    stop();
+    runtime.detachAdmiral(PANE);
+    agentStore.useAgentStore.setState({ threads: {} });
+    snap = { ...snap, jobs: [job(3, { handoffDone: false }), job(5, { handoffDone: false })] };
+    stop = runtime.initAdmiralRuntime();
+    await tick();
+    await tick();
+
+    expect(thread(keyOf(3)).messages.map((m) => m.id)).toEqual(['u1', 'a1']);
+    expect(thread(keyOf(5)).messages.map((m) => m.id)).toEqual(['u1', 'a1']);
+    expect(thread(LOBBY_KEY).messages.filter((m) => m.meta?.kind === 'job-link')).toHaveLength(2);
+  });
+
   it('waits for the lobby turn that opened the job to finish', async () => {
     snap = { ...snap, jobs: [job(3), job(4, { handoffDone: false })] };
     agentStore.useAgentStore.getState().send(LOBBY_KEY, REPO.root, 'and a second one');
@@ -468,6 +498,28 @@ describe('what the pane reports', () => {
     endTurn(keyOf(2));
     await tick();
     expect(lastState()).toBe('idle');
+  });
+
+  it('announces a second question while the first still waits', async () => {
+    snap = { ...snap, questions: [question(1, 1)] };
+    changed({ jobIds: [1] });
+    await tick();
+    const mine = (): Array<{ state: string; renotify?: boolean }> =>
+      report.mock.calls.filter((c) => c[0].paneId === PANE).map((c) => c[0]);
+    expect(mine().at(-1)).toMatchObject({ state: 'needs_me' });
+    const before = mine().length;
+
+    snap = { ...snap, questions: [question(1, 1), question(2, 1)] };
+    changed({ jobIds: [1] });
+    await tick();
+    expect(mine()).toHaveLength(before + 1);
+    expect(mine().at(-1)).toMatchObject({ state: 'needs_me', renotify: true });
+
+    // An answer that leaves one open is no news.
+    snap = { ...snap, questions: [question(2, 1)] };
+    changed({ jobIds: [1] });
+    await tick();
+    expect(mine()).toHaveLength(before + 1);
   });
 });
 

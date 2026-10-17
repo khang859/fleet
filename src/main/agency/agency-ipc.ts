@@ -123,10 +123,6 @@ export function registerAgencyIpc(service: AgencyService): void {
     (_e, args: unknown): WakeupRelease => service.releaseWakeups(ReleaseArgs.parse(args))
   );
 
-  ipcMain.handle(IPC_CHANNELS.AGENCY_RETRY_NOW, (_e, repoId: unknown) => {
-    service.retryNow(RepoId.parse(repoId));
-  });
-
   ipcMain.handle(IPC_CHANNELS.AGENCY_CANCEL_JOBS, (_e, repoId: unknown): number[] =>
     service.cancelJobs(RepoId.parse(repoId))
   );

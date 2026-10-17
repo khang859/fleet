@@ -3,7 +3,8 @@ import { mergeClientFile } from '../../../shared/agency-client-file';
 import { localDateStamp } from '../../../shared/local-date';
 import type { ClientLineInput, RuleCandidates } from '../../../shared/agency-projects';
 import type { GitRun } from '../repo-identity';
-import { readTextOrNull, writeAtomic } from './files';
+import { writeAtomic } from '../../fs-atomic';
+import { readTextOrNull } from './files';
 import { agencyHome, clientFilePath } from './paths';
 import { openRepoReader, readOnlyGit, repoFacts } from './repo-reader';
 

@@ -326,7 +326,7 @@ describe('Admiral turn', () => {
     expect(system(rounds[0])).toContain('never type into a crew pane');
     for (const round of rounds) {
       const note = text(round.messages[round.messages.length - 1]);
-      expect(note).toContain(`j${job.id} "Dark mode"`);
+      expect(note).toContain(`Title: Dark mode`);
       expect(note).toContain('Follow the OS setting?');
       expect(note).toContain('1. Yes (your recommendation)');
     }

@@ -1120,8 +1120,6 @@ const fleetApi = {
     /** Hand claimed wakeups back after a failed turn, to retry after a backoff. */
     releaseWakeups: async (args: { ids: number[]; error: string }): Promise<WakeupRelease> =>
       typedInvoke(IPC_CHANNELS.AGENCY_RELEASE_WAKEUPS, args),
-    retryNow: async (repoId: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_RETRY_NOW, repoId),
     /** Cancel the repository's running jobs. Resolves with the cancelled ids. */
     cancelJobs: async (repoId: string): Promise<number[]> =>
       typedInvoke(IPC_CHANNELS.AGENCY_CANCEL_JOBS, repoId),

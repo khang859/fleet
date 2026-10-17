@@ -542,7 +542,8 @@ const FENCE = 'session-data';
  * and carry on as though it were Fleet speaking.
  */
 export function fence(ref: string, body: string): string {
-  const safe = body.replaceAll(`</${FENCE}`, `<\\/${FENCE}`);
+  // Any letter case: a model reads `</SESSION-DATA>` as the same tag.
+  const safe = body.replace(new RegExp(`</(${FENCE})`, 'gi'), '<\\/$1');
   return `<${FENCE} session="${ref}">\n${safe}\n</${FENCE}>`;
 }
 
@@ -553,7 +554,7 @@ export function fence(ref: string, body: string): string {
 export function unfence(text: string): string {
   return text
     .replace(new RegExp(`<${FENCE} session="[^"]*">\\n([\\s\\S]*?)\\n</${FENCE}>`, 'g'), '$1')
-    .replaceAll(`<\\/${FENCE}`, `</${FENCE}`);
+    .replace(new RegExp(`<\\\\/(${FENCE})`, 'gi'), '</$1');
 }
 
 /**

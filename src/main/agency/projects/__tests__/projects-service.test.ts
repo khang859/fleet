@@ -83,7 +83,7 @@ describe('ProjectsService', () => {
       setup,
       imports: ['.fleet/crew/roles/qa.md']
     });
-    expect(written).toEqual(['.fleet/fleet.agency.toml', '.fleet/crew/']);
+    expect(written).toEqual(['.fleet/fleet.agency.toml', '.fleet/crew/roles/qa.md']);
     expect(git(root, 'diff', '--cached', '--name-only')).toBe('');
     expect(git(root, 'status', '--porcelain')).toBe('?? .fleet/fleet.agency.toml');
     expect(service.store.onboarding(repo.repoId).setupDoneAt).toBeNull();

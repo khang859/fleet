@@ -72,6 +72,8 @@ const timers = new Map<string, { at: number; timer: ReturnType<typeof setTimeout
 const pendingHandoffs = new Map<string, Map<number, boolean>>();
 /** Jobs with a handoff under way. */
 const handingOff = new Set<number>();
+/** The open questions each pane last reported, so a new one is announced while others wait. */
+const announced = new Map<string, Set<number>>();
 
 function setStatus(paneId: string, status: AdmiralPaneStatus | null): void {
   useAdmiralRuntimeStore.setState((s) => {
@@ -145,12 +147,13 @@ export async function attachAdmiral(paneId: string, repo: AgencyRepoRef): Promis
 /**
  * Stop looking after a pane: it closed, or the agency was turned off. Its
  * transcripts are the agent store's to drop; its claim is the layout's to give
- * up. Wakeups it had pulled and not delivered go back to main on the next
- * start, when a stale claim is released.
+ * up. Wakeups it had pulled and not delivered go back to the queue when that
+ * claim is released, or when the window reloads.
  */
 export function detachAdmiral(paneId: string): void {
   attaching.delete(paneId);
   attached.delete(paneId);
+  announced.delete(paneId);
   pendingHandoffs.delete(paneId);
   for (const key of [...held.keys(), ...timers.keys(), ...pulling]) {
     if (parseAdmiralKey(key)?.paneId !== paneId) continue;
@@ -248,11 +251,16 @@ function deliver(key: string, ids: number[], text: string): void {
     });
     return;
   }
+  // A retry after a failed turn: the transcript already says these.
+  const said = new Set(
+    current.messages.flatMap((m) => (m.meta?.kind === 'event' ? (m.meta.wakeups ?? []) : []))
+  );
   const event: AgentMessage = {
     ...textMessage(crypto.randomUUID(), 'fleet', text),
-    meta: { kind: 'event' }
+    meta: { kind: 'event', wakeups: ids }
   };
-  const streamId = startUnpromptedTurn(key, current, [event]);
+  const opening = ids.every((id) => said.has(id)) ? [] : [event];
+  const streamId = startUnpromptedTurn(key, current, opening);
   if (streamId === null) {
     held.set(key, { ids, text });
     return;
@@ -318,7 +326,10 @@ function runPendingHandoffs(paneId: string): void {
   const pending = pendingHandoffs.get(paneId);
   if (lobby === undefined || pending === undefined || !canDeliverTo(lobby)) return;
   pendingHandoffs.delete(paneId);
-  for (const [jobId, show] of pending) void handoff(paneId, jobId, show);
+  // One at a time: each job carries the lobby talk since the link the one before it left.
+  void (async () => {
+    for (const [jobId, show] of pending) await handoff(paneId, jobId, show);
+  })();
 }
 
 /**
@@ -364,9 +375,13 @@ export async function handoff(paneId: string, jobId: number, show: boolean): Pro
  * conversation, and write it to the job's log.
  */
 function seed(jobKey: string, target: PaneThread, lobby: PaneThread): void {
-  const lastLink = lobby.messages.findLastIndex((m) => m.meta?.kind === 'job-link');
+  const isLink = (m: AgentMessage): boolean => m.meta?.kind === 'job-link';
+  // Links at the very end are from jobs the same turn opened: they share its talk.
+  let end = lobby.messages.length;
+  while (end > 0 && isLink(lobby.messages[end - 1])) end--;
+  const lastLink = lobby.messages.slice(0, end).findLastIndex(isLink);
   const carried = lobby.messages
-    .slice(lastLink + 1)
+    .slice(lastLink + 1, end)
     .filter((m) => m.meta?.kind !== 'queued' && m.id !== lobby.streamId);
   if (carried.length === 0) return;
   useAgentStore.setState((s) => {
@@ -422,7 +437,14 @@ export function rollUpState(paneId: string): ActivityState {
 function rollUp(paneId: string): void {
   const pane = attached.get(paneId);
   if (pane === undefined) return;
-  publishActivity(paneId, rollUpState(paneId), pane.repo.name);
+  const open = new Set(
+    openQuestions(useAgencyStore.getState().snapshots[pane.repo.repoId]).map((q) => q.id)
+  );
+  const before = announced.get(paneId);
+  announced.set(paneId, open);
+  // The first roll-up after attaching announces nothing new: those were asked before.
+  const fresh = before !== undefined && [...open].some((id) => !before.has(id));
+  publishActivity(paneId, rollUpState(paneId), pane.repo.name, fresh);
 }
 
 /** The Admiral leaves in every open workspace, with their repositories. */
@@ -464,7 +486,10 @@ export function initAdmiralRuntime(): () => void {
     if (next === signature) return;
     signature = next;
     for (const paneId of new Set([...attached.keys(), ...attaching.keys()])) {
-      if (!leaves.has(paneId)) detachAdmiral(paneId);
+      if (leaves.has(paneId)) continue;
+      detachAdmiral(paneId);
+      // Turned off rather than closed: nothing else gives the claim and its wakeups back.
+      void window.fleet.agency.releaseAdmiral(paneId);
     }
     for (const [paneId, repo] of leaves) void attachAdmiral(paneId, repo);
   };

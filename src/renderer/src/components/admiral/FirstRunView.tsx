@@ -1,8 +1,13 @@
 import { useState } from 'react';
-import { Check, Compass, Loader2 } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
+import { AdmiralGlyph } from './AdmiralGlyph';
 import type { AgencyPreflight } from '../../../../shared/agency';
 import { OnboardingButton, OnboardingCard, textInputCls, type CardTone } from './onboarding-ui';
 import { pickBlocker, type FirstRunModel } from './onboarding-view';
+
+/** A small text button in the Admiral's blue. */
+const LINK_BUTTON =
+  'text-xs text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300';
 
 const INSTALL = {
   claude: 'https://docs.anthropic.com/en/docs/claude-code/setup',
@@ -32,7 +37,7 @@ export function FirstRunView(props: FirstRunViewProps): React.JSX.Element {
       <div className="mx-auto flex w-full max-w-[600px] flex-col gap-5 px-5 py-10">
         <div className="flex flex-col items-center gap-3 text-center">
           <span className="flex size-14 items-center justify-center rounded-full border border-fleet-border bg-fleet-surface">
-            <Compass size={24} className="text-blue-500 dark:text-blue-400" />
+            <AdmiralGlyph size={24} />
           </span>
           <h2 className="text-xl font-semibold text-fleet-text">Meet your Admiral</h2>
           <p className="max-w-[500px] text-[13px] leading-relaxed text-fleet-text-muted">
@@ -135,11 +140,7 @@ function ModelStep({
             )}
             <span>·</span>
             <span>{model.kind === 'openrouter' ? 'key in Keychain' : 'on this Mac'}</span>
-            <button
-              type="button"
-              onClick={onChangeModel}
-              className="ml-auto text-xs text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
-            >
+            <button type="button" onClick={onChangeModel} className={`ml-auto ${LINK_BUTTON}`}>
               Change
             </button>
           </div>
@@ -261,7 +262,7 @@ function InstallLink({ url }: { url: string }): React.JSX.Element {
     <button
       type="button"
       onClick={() => void window.fleet.shell.openExternal(url)}
-      className="shrink-0 text-xs text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
+      className={`shrink-0 ${LINK_BUTTON}`}
     >
       How to install
     </button>

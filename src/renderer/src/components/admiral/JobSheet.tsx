@@ -53,7 +53,7 @@ export function JobSheet({
         ) : (
           <p className="text-[13px] text-fleet-text-muted">
             {firstRun
-              ? 'Your job sheet shows up here once you send a brief.'
+              ? 'Your job sheet shows up here once I open a job.'
               : 'Pick a job above to see its sheet, or brief a new one here.'}
           </p>
         )}

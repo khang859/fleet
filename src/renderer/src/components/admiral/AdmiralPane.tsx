@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Compass, PanelRight, X } from 'lucide-react';
+import { PanelRight, X } from 'lucide-react';
+import { AdmiralGlyph } from './AdmiralGlyph';
 import type { AgencyQuestion, AgencyRepoRef } from '../../../../shared/agency';
 import { useSettingsStore } from '../../store/settings-store';
 import { openSettings } from '../../store/settings-nav-store';
@@ -57,10 +58,10 @@ export function AdmiralPane({
 
   if (!enabled) {
     return (
-      <Notice repo={repo}>
-        <p className="max-w-sm text-sm text-fleet-text-muted">
-          Admiral is turned off. Turn it on in Settings to brief work here.
-        </p>
+      <Notice
+        repo={repo}
+        message="Admiral is turned off. Turn it on in Settings to brief work here."
+      >
         <NoticeButton onClick={() => openSettings('agencyAdmiral')}>
           Open Admiral settings
         </NoticeButton>
@@ -68,28 +69,18 @@ export function AdmiralPane({
     );
   }
   if (!repo) {
-    return (
-      <Notice repo={repo}>
-        <p className="max-w-sm text-sm text-fleet-text-muted">An Admiral needs a git repository.</p>
-      </Notice>
-    );
+    return <Notice repo={repo} message="An Admiral needs a git repository." />;
   }
   if (status?.kind === 'refused') {
     return (
-      <Notice repo={repo}>
-        <p className="max-w-sm text-sm text-fleet-text-muted">
-          The Admiral for {repo.name} is open in another pane.
-        </p>
+      <Notice repo={repo} message={`The Admiral for ${repo.name} is open in another pane.`}>
         <NoticeButton onClick={() => void focusPane(status.ownerPaneId)}>Show it</NoticeButton>
       </Notice>
     );
   }
   if (status?.kind === 'failed') {
     return (
-      <Notice repo={repo}>
-        <p className="max-w-sm text-sm text-fleet-text-muted">
-          The Admiral could not start: {status.message}
-        </p>
+      <Notice repo={repo} message={`The Admiral could not start: ${status.message}`}>
         <NoticeButton onClick={() => void attachAdmiral(paneId, repo)}>Try again</NoticeButton>
       </Notice>
     );
@@ -191,7 +182,7 @@ function AdmiralOnboarding({
 function AdmiralHeader({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <header className="flex h-10 shrink-0 items-center gap-2 border-b border-fleet-border bg-fleet-surface px-3">
-      <Compass size={15} className="shrink-0 text-blue-500 dark:text-blue-400" />
+      <AdmiralGlyph size={15} className="shrink-0" />
       <span className="shrink-0 text-[13px] font-semibold text-fleet-text">Admiral</span>
       {children}
     </header>
@@ -367,15 +358,17 @@ function AdmiralWorkspace({
 /** The pane when there is nothing to run: off, no repository, or owned elsewhere. */
 function Notice({
   repo,
+  message,
   children
 }: {
   repo: AgencyRepoRef | undefined;
-  children: React.ReactNode;
+  message: string;
+  children?: React.ReactNode;
 }): React.JSX.Element {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-fleet-bg px-6 text-center">
       <div className="flex items-center gap-2 text-fleet-text">
-        <Compass size={18} className="text-blue-500 dark:text-blue-400" />
+        <AdmiralGlyph size={18} />
         <span className="text-sm font-semibold">Admiral</span>
         {repo && (
           <span className="rounded bg-fleet-surface-2 px-1.5 py-px font-mono text-[11px] text-fleet-text-muted">
@@ -383,6 +376,7 @@ function Notice({
           </span>
         )}
       </div>
+      <p className="max-w-sm text-sm text-fleet-text-muted">{message}</p>
       {children}
     </div>
   );

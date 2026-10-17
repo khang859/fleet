@@ -297,6 +297,17 @@ describe('switchWorkspace', () => {
       const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === id);
       expect(tab && collectPaneIds(tab.splitRoot)).toEqual([paneId]);
     });
+
+    it('becomes a terminal tab named after its folder when the conversation closes', () => {
+      const { id, paneId } = openScratch();
+      const terminalId = useWorkspaceStore.getState().terminalBeside(paneId);
+      expect(terminalId).not.toBeNull();
+      useWorkspaceStore.getState().closePane(paneId);
+      const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === id);
+      expect(tab?.type).toBe('terminal');
+      expect(tab?.labelIsCustom).toBe(false);
+      expect(tab && collectPaneIds(tab.splitRoot)).toEqual([terminalId]);
+    });
   });
 
   it('strips a disabled tool tab and recreates it when re-enabled', () => {

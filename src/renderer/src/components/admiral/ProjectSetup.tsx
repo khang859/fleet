@@ -122,7 +122,7 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
         <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-end gap-2 px-5 py-3">
           <p className="mr-auto min-w-0 text-[11px] text-fleet-text-subtle">
             {shared !== null
-              ? `Copied to ${shared.join(' and ')}. Nothing is committed.`
+              ? `Copied ${shared.length === 1 ? 'the setup' : `${shared.length} files`} to .fleet/. Nothing is committed.`
               : scan.saved
                 ? 'Showing the setup you saved before.'
                 : 'Saved in Fleet, not in the repository.'}

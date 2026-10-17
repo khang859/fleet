@@ -1,4 +1,4 @@
-import { Compass } from 'lucide-react';
+import { AdmiralGlyph } from './AdmiralGlyph';
 
 /** The pieces the Admiral's onboarding screens share: buttons, cards, labels. */
 
@@ -91,7 +91,7 @@ export function AdmiralSays({ children }: { children: React.ReactNode }): React.
   return (
     <div className="flex items-start gap-2.5">
       <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-fleet-border bg-fleet-surface">
-        <Compass size={13} className="text-blue-500 dark:text-blue-400" />
+        <AdmiralGlyph size={13} />
       </span>
       <p className="pt-0.5 text-[13px] leading-relaxed text-fleet-text">{children}</p>
     </div>

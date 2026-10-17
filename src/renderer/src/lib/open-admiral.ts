@@ -57,8 +57,14 @@ export async function openAdmiral(
   }
 
   const ref = { repoId: repo.repoId, root: repo.root, name: repo.name };
-  const lobbySessionId = await window.fleet.agency.ensureLobby(ref);
-  useWorkspaceStore.getState().openAdmiralPane(ref, { paneId, lobbySessionId });
+  try {
+    const lobbySessionId = await window.fleet.agency.ensureLobby(ref);
+    useWorkspaceStore.getState().openAdmiralPane(ref, { paneId, lobbySessionId });
+  } catch (err) {
+    // No pane holds the claim, so nothing else would ever give it up.
+    await window.fleet.agency.releaseAdmiral(paneId);
+    throw err;
+  }
   return 'opened';
 }
 
