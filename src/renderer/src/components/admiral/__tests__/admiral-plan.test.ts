@@ -77,6 +77,7 @@ function detail(versions: AgencyPlanVersion[], steps: AgencyStep[] = []): Agency
     steps,
     events: [],
     log: [],
+    results: [],
     spendUsd: 2.5
   };
 }

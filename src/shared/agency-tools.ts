@@ -1,18 +1,18 @@
 import { z } from 'zod';
 import type { AgentToolSpec } from './agent-tools';
-import { DELIVERABLE_KINDS, PLAN_MAX_STEPS, PlanSchema } from './agency-plan';
+import { DELIVERABLE_KINDS, PLAN_MAX_STEPS, PlanSchema, type DeliverableKind } from './agency-plan';
 import { offeredToolSpecs } from './capability-tools';
 
 /**
  * The tools only an Admiral turn has: putting a question to the client,
  * opening a job from the lobby, listing the repository's jobs, and in a job's
- * own thread proposing its plan and moving its steps.
+ * own thread proposing its plan, moving its steps and handing back results.
  *
  * Like the fleet tools they sit behind a nullable capability (`ctx.agency`),
  * so a turn that is not an Admiral's has nothing behind them, and a member is
  * null where the tool does not apply: `job_open` exists only in the lobby,
  * because a change to a job happens only in that job's conversation, and
- * `job_plan` and `job_update` exist only in a job's thread.
+ * `job_plan`, `job_update` and `job_deliver` exist only in a job's thread.
  *
  * None of them waits on the client. `ask_client` and `job_plan` return the
  * moment the card is up, and the answer comes back later as a wakeup, so the
@@ -24,7 +24,8 @@ export const AGENCY_TOOL_NAMES = [
   'job_open',
   'job_list',
   'job_plan',
-  'job_update'
+  'job_update',
+  'job_deliver'
 ] as const;
 export type AgencyToolName = (typeof AGENCY_TOOL_NAMES)[number];
 
@@ -42,6 +43,26 @@ export const JOB_TITLE_MAX_CHARS = 80;
 export const JOB_BRIEF_MAX_CHARS = 4_000;
 /** Longest progress note on a step. */
 export const STEP_NOTE_MAX_CHARS = 2_000;
+/** Longest result title, which heads its card. */
+export const RESULT_TITLE_MAX_CHARS = 120;
+/** Longest copy draft a result carries. */
+export const RESULT_COPY_MAX_CHARS = 20_000;
+/** Most files one result hands back. */
+export const RESULT_MAX_FILES = 20;
+
+/** What each deliverable kind is handed back as. */
+export const RESULT_INPUT: Record<DeliverableKind, 'url' | 'paths' | 'text' | 'branch'> = {
+  pr: 'url',
+  branch: 'branch',
+  doc: 'paths',
+  image: 'paths',
+  copy: 'text',
+  preview: 'url',
+  review: 'paths',
+  report: 'paths',
+  file: 'paths',
+  link: 'url'
+};
 
 const option = z.object({
   label: z.string().trim().min(1).max(ASK_OPTION_LABEL_MAX_CHARS),
@@ -83,11 +104,44 @@ export const JobUpdateArgs = z
     message: 'give a status, a note, or both'
   });
 
+export const JobDeliverArgs = z
+  .object({
+    step: z.string().trim().min(1).max(40),
+    kind: z.enum(DELIVERABLE_KINDS),
+    label: z.string().trim().min(1).max(80).optional(),
+    title: z.string().trim().min(1).max(RESULT_TITLE_MAX_CHARS).optional(),
+    url: z
+      .url({ protocol: /^https?$/ })
+      .max(2_000)
+      .optional(),
+    paths: z.array(z.string().trim().min(1).max(1_000)).min(1).max(RESULT_MAX_FILES).optional(),
+    text: z.string().trim().min(1).max(RESULT_COPY_MAX_CHARS).optional(),
+    branch: z
+      .string()
+      .trim()
+      .regex(/^(?!-)[\w./-]{1,200}$/)
+      .optional()
+  })
+  .superRefine((a, ctx) => {
+    const input = RESULT_INPUT[a.kind];
+    if (a[input] === undefined) {
+      ctx.addIssue({ code: 'custom', path: [input], message: `a ${a.kind} result needs ${input}` });
+    }
+    if (a.title === undefined && a.kind !== 'pr' && a.kind !== 'branch') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['title'],
+        message: `a ${a.kind} result needs a title`
+      });
+    }
+  });
+
 export type AskClientArgs = z.infer<typeof AskClientArgs>;
 export type JobOpenArgs = z.infer<typeof JobOpenArgs>;
 export type JobListArgs = z.infer<typeof JobListArgs>;
 export type JobPlanArgs = z.output<typeof JobPlanArgs>;
 export type JobUpdateArgs = z.infer<typeof JobUpdateArgs>;
+export type JobDeliverArgs = z.infer<typeof JobDeliverArgs>;
 
 /** What an agency tool hands back: the text for the model, and the row in the transcript. */
 export type AgencyToolOutput = { text: string; summary: string };
@@ -109,6 +163,8 @@ export type AgentAgencyCapability = {
   jobPlan: Run<JobPlanArgs> | null;
   /** Null in the lobby. */
   jobUpdate: Run<JobUpdateArgs> | null;
+  /** Null in the lobby. */
+  jobDeliver: Run<JobDeliverArgs> | null;
 };
 
 /** The capability member behind each tool. */
@@ -117,7 +173,8 @@ export const AGENCY_TOOL_MEMBER = {
   job_open: 'jobOpen',
   job_list: 'jobList',
   job_plan: 'jobPlan',
-  job_update: 'jobUpdate'
+  job_update: 'jobUpdate',
+  job_deliver: 'jobDeliver'
 } as const satisfies Record<AgencyToolName, keyof AgentAgencyCapability>;
 
 const ASK_DESCRIPTION = [
@@ -147,6 +204,12 @@ const UPDATE_DESCRIPTION = [
   'Move a step of the approved plan, or add a progress note to it, or both.',
   '`running` starts a step whose `after` steps are done; `blocked` says it cannot go on; `done` finishes it, withdraws its open questions, and delivers the job once every step is done and handed back what it listed.',
   'A note is one or two sentences the client sees in the job sheet.'
+].join('\n\n');
+
+const DELIVER_DESCRIPTION = [
+  'Hand back a result of a plan step, as a card for the client: what a crew member made, or what you made yourself.',
+  'Give the kind and, for a deliverable the step lists, its label. `pr` takes the PR `url` and reads the rest from GitHub; `branch` takes a local `branch`; `preview` and `link` take a `url`; `copy` takes the `text`; `doc`, `image`, `review`, `report` and `file` take absolute `paths` inside the project or the job folder, which Fleet copies, so they outlive the worktree.',
+  'A result the step did not list is fine: it shows as an extra. The job is delivered once every step is done and handed back everything it lists.'
 ].join('\n\n');
 
 const stringList = (description: string): Record<string, unknown> => ({
@@ -317,6 +380,43 @@ export const AGENCY_TOOL_SPECS: AgentToolSpec[] = [
           note: { type: 'string', maxLength: STEP_NOTE_MAX_CHARS }
         },
         required: ['step'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'job_deliver',
+      description: DELIVER_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          step: { type: 'string', description: 'The step id the result belongs to.' },
+          kind: { type: 'string', enum: [...DELIVERABLE_KINDS] },
+          label: {
+            type: 'string',
+            description: "The step's deliverable label it answers, like Demo video."
+          },
+          title: {
+            type: 'string',
+            maxLength: RESULT_TITLE_MAX_CHARS,
+            description: 'What the result is, in a few words. Not needed for pr or branch.'
+          },
+          url: { type: 'string', description: 'For pr, preview and link.' },
+          paths: {
+            ...stringList('For doc, image, review, report and file: absolute file paths.'),
+            minItems: 1,
+            maxItems: RESULT_MAX_FILES
+          },
+          text: {
+            type: 'string',
+            maxLength: RESULT_COPY_MAX_CHARS,
+            description: 'For copy: the text itself.'
+          },
+          branch: { type: 'string', description: 'For branch: the local branch name.' }
+        },
+        required: ['step', 'kind'],
         additionalProperties: false
       }
     }

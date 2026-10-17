@@ -60,6 +60,11 @@ export function proposedPlanId(call: Pick<AgentToolCall, 'summary'>): number | n
   return tokenId(/\bplan#(\d+)\b/, call.summary);
 }
 
+/** The result a `job_deliver` call put up, read off its row. */
+export function deliveredResultId(call: Pick<AgentToolCall, 'summary'>): number | null {
+  return tokenId(/\bresult#(\d+)\b/, call.summary);
+}
+
 /** The number an id token in a tool row carries, like q7 or plan#12. */
 function tokenId(token: RegExp, text: string | null | undefined): number | null {
   const match = token.exec(text ?? '');

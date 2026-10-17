@@ -25,6 +25,7 @@ export type AdmiralDeps = {
     | 'store'
     | 'clientFileForNote'
     | 'jobs'
+    | 'results'
   >;
   settings: () => AgencySettings;
 };

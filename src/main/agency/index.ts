@@ -29,6 +29,8 @@ import { JobsService, NO_CREW, type CrewControl } from './jobs';
 import { reconcileAtStartup } from './jobs/reconcile';
 import { runPreflight, type Probe } from './preflight';
 import { nativeGh, type GhRun } from './projects/gh';
+import { agencyHome } from './projects/paths';
+import { ResultsService } from './results';
 import { readOnlyGit } from './projects/repo-reader';
 import { gatherPlanFacts } from './plans/plan-facts';
 import { ProjectsService } from './projects';
@@ -76,6 +78,7 @@ export class AgencyService {
   readonly projects: ProjectsService;
   readonly jobs: JobsService;
   readonly cleanup: CleanupRunner;
+  readonly results: ResultsService;
 
   constructor(private readonly deps: AgencyServiceDeps) {
     this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
@@ -100,6 +103,14 @@ export class AgencyService {
         );
       }
     });
+    this.results = new ResultsService({
+      store: this.store,
+      gh: deps.gh ?? nativeGh,
+      git: deps.git ?? readOnlyGit,
+      home: () => deps.agencyHome ?? agencyHome(),
+      changed: (touched) => this.changed(touched),
+      afterResult: (jobId) => this.jobs.afterStepChange(jobId)
+    });
     const crew = deps.crew ?? NO_CREW;
     this.cleanup = new CleanupRunner({
       store: this.store,
@@ -114,6 +125,7 @@ export class AgencyService {
       },
       changed: (touched) => this.changed(touched),
       crewFreed: () => this.jobs.admitQueued(),
+      closeNotes: async (jobId) => this.results.closeNotes(jobId),
       isOnline: deps.isOnline ?? (() => true)
     });
     // No turn from before this start is still running, so every claim made

@@ -30,6 +30,8 @@ export type CleanupDeps = {
   changed: (touched: AgencyTouched[]) => void;
   /** Crew places freed up, so a queued step may start. */
   crewFreed: () => void;
+  /** Lines the close summary adds about what the job delivered, like a PR closed unmerged. */
+  closeNotes?: (jobId: number) => Promise<string[]>;
   isOnline: () => boolean;
 };
 
@@ -95,11 +97,12 @@ export class CleanupRunner {
       .sort((a, b) => CLEANUP_ORDER.indexOf(a.kind) - CLEANUP_ORDER.indexOf(b.kind));
     for (const resource of todo) await this.clean(resource);
     this.deps.crewFreed();
+    const notes = (await this.deps.closeNotes?.(jobId).catch(() => [])) ?? [];
     store.tx(() => {
       store.plans.log({
         jobId,
         kind: 'close_summary',
-        text: closeSummary(store.resources.forJob(jobId))
+        text: [closeSummary(store.resources.forJob(jobId)), ...notes].join(' ')
       });
       store.finishClose(jobId, 'cleanup done');
     });

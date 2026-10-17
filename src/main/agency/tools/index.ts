@@ -2,6 +2,7 @@ import type { AdmiralThreadScope, AgencySettings } from '../../../shared/agency'
 import type { AgentAgencyCapability } from '../../../shared/agency-tools';
 import type { AgencyService } from '../index';
 import { askClient } from './ask-client';
+import { jobDeliver } from './job-deliver';
 import { jobList } from './job-list';
 import { jobOpen } from './job-open';
 import { jobPlan } from './job-plan';
@@ -12,7 +13,7 @@ import { jobUpdate } from './job-update';
  * a model writes can name another repository or job: the scope is closed over.
  */
 export function createAgencyCapability(
-  agency: Pick<AgencyService, 'ask' | 'openJob' | 'snapshot' | 'jobs'>,
+  agency: Pick<AgencyService, 'ask' | 'openJob' | 'snapshot' | 'jobs' | 'results'>,
   scope: AdmiralThreadScope,
   settings: () => AgencySettings
 ): AgentAgencyCapability {
@@ -30,6 +31,7 @@ export function createAgencyCapability(
     jobPlan:
       jobId === null ? null : async (args) => jobPlan(agency.jobs, { ...scope, jobId }, args),
     jobUpdate:
-      jobId === null ? null : async (args) => Promise.resolve(jobUpdate(agency.jobs, jobId, args))
+      jobId === null ? null : async (args) => Promise.resolve(jobUpdate(agency.jobs, jobId, args)),
+    jobDeliver: jobId === null ? null : async (args) => jobDeliver(agency.results, jobId, args)
   };
 }

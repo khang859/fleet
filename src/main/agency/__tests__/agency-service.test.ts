@@ -50,7 +50,7 @@ describe('AgencyService', () => {
     expect(service.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids).toEqual(claimed);
   });
 
-  it('raises one change event per repository for the jobs a write touched', () => {
+  it('raises one change event per repository for the jobs a write touched', async () => {
     const job = service.store.openJob({
       repoId: REPO.repoId,
       title: 't',
@@ -68,6 +68,7 @@ describe('AgencyService', () => {
     expect(service.answer({ id: q.id, option: 0 })?.status).toBe('answered');
     expect(service.answer({ id: q.id, option: 0 })).toBeNull();
     expect(service.cancelJobs(REPO.repoId)).toEqual([job.id]);
+    await service.cleanup.start(job.id);
     expect(service.markHandoff({ jobId: job.id, lobbyMessageId: 'm' })).toBe(true);
     expect(service.markHandoff({ jobId: 999, lobbyMessageId: 'm' })).toBe(false);
     // Answer, cancel, the cleanup that ends the job, and the handoff.

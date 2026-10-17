@@ -617,6 +617,7 @@ export class JobsService {
       steps: this.store.plans.steps(jobId),
       events: this.store.jobEvents(jobId),
       log: this.store.plans.logTail(jobId),
+      results: this.store.results.forJob(jobId),
       spendUsd: this.store.plans.spendUsd(jobId)
     };
   }

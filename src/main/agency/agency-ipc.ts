@@ -1,4 +1,4 @@
-import { ipcMain, type WebContents } from 'electron';
+import { ipcMain, shell, type WebContents } from 'electron';
 import { z } from 'zod';
 import type {
   AdmiralClaimResult,
@@ -58,6 +58,7 @@ const ReleaseArgs = z.object({ ids: Ids, error: z.string().max(4_000) });
 const HandoffArgs = z.object({ jobId: JobId, lobbyMessageId: z.string().min(1) });
 const JobControlArgs = z.object({ jobId: JobId, action: z.enum(['cancel', 'accept']) });
 const LeftoverArgs = z.object({ resourceId: JobId, action: z.enum(['retry', 'dismiss']) });
+const ResultOpenArgs = z.object({ resultId: JobId, file: z.number().int().min(0).max(100) });
 const StepKey = z.string().max(80);
 const PlanActionArgs = z.discriminatedUnion('action', [
   z.object({
@@ -173,6 +174,17 @@ export function registerAgencyIpc(service: AgencyService): void {
     IPC_CHANNELS.AGENCY_LEFTOVER,
     async (_e, action: unknown): Promise<void> => service.leftover(LeftoverArgs.parse(action))
   );
+
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_RESULTS_REFRESH,
+    async (_e, jobId: unknown): Promise<void> => service.results.refreshPrs(JobId.parse(jobId))
+  );
+
+  // Opens only a copy in the job's results folder, never a path the renderer names.
+  ipcMain.handle(IPC_CHANNELS.AGENCY_RESULT_OPEN, async (_e, open: unknown): Promise<string> => {
+    const path = service.results.filePath(ResultOpenArgs.parse(open));
+    return path === null ? 'That file is not a delivered result.' : shell.openPath(path);
+  });
 
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_PREFLIGHT,

@@ -1,7 +1,7 @@
 import type { AgencyJob, AgencyJobEvent } from './agency';
 
 export type { AgencyLeftover, ResourceKind } from './agency';
-import type { Plan, PlanDiffEntry, PlanInput } from './agency-plan';
+import type { DeliverableKind, Plan, PlanDiffEntry, PlanInput } from './agency-plan';
 
 /**
  * What one job holds beyond its row: its plan versions, its steps and its
@@ -130,6 +130,58 @@ export type AgencyJobLogEntry = {
   text: string;
 };
 
+/** A file a result handed back, as copied into the job's results folder. */
+export type ResultFile = { name: string; path: string; type: string; size: number };
+
+/** A pull request as GitHub last reported it. */
+export type PrState = {
+  number: number;
+  url: string;
+  title: string;
+  branch: string;
+  base: string;
+  headSha: string;
+  state: 'open' | 'merged' | 'closed';
+  draft: boolean;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  checks: { passed: number; failed: number; pending: number };
+};
+
+/** What a result holds, by the way its kind is shown. */
+export type ResultBody =
+  | { kind: 'pr'; pr: PrState }
+  | { kind: 'branch'; branch: string; sha: string }
+  | { kind: 'copy'; text: string }
+  | { kind: 'preview' | 'link'; url: string }
+  | { kind: FileResultKind; files: ResultFile[] };
+
+/** The deliverable kinds whose results are files. */
+export const FILE_RESULT_KINDS = ['doc', 'image', 'review', 'report', 'file'] as const;
+export type FileResultKind = (typeof FILE_RESULT_KINDS)[number];
+
+export function isFileResultKind(kind: string): kind is FileResultKind {
+  return FILE_RESULT_KINDS.some((k) => k === kind);
+}
+
+/** Something a step handed back, shown as a result card. */
+export type AgencyResult = {
+  id: number;
+  jobId: number;
+  stepId: string;
+  kind: DeliverableKind;
+  label: string;
+  /** False for a result the step did not list: an extra. */
+  listed: boolean;
+  title: string;
+  /** For a PR, as last refreshed: the head and diff stat may differ from delivery. */
+  body: ResultBody;
+  /** A PR whose head moved since it was delivered. */
+  changedAfterDelivery: boolean;
+  deliveredAt: number;
+};
+
 export type AgencyJobDetail = {
   job: AgencyJob;
   /** Every version, oldest first. */
@@ -138,8 +190,13 @@ export type AgencyJobDetail = {
   steps: AgencyStep[];
   events: AgencyJobEvent[];
   log: AgencyJobLogEntry[];
+  /** Oldest first. */
+  results: AgencyResult[];
   spendUsd: number;
 };
+
+/** The client opens a delivered file with the app their system picks for it. */
+export type ResultOpen = { resultId: number; file: number };
 
 export type ResourceStatus = 'planned' | 'live' | 'cleaned' | 'kept' | 'failed' | 'dismissed';
 

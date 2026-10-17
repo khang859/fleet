@@ -29,6 +29,7 @@ import { renderWakeupText, type WakeupItem } from '../wakeup-text';
 import { openAgencyDb } from './agency-db';
 import { CrewStore } from './crew-store';
 import { ResourceStore } from './resource-store';
+import { ResultStore } from './result-store';
 import { PlanStore } from './plan-store';
 
 type JobRow = {
@@ -267,6 +268,7 @@ export class AgencyStore {
   readonly plans: PlanStore;
   readonly crew: CrewStore;
   readonly resources: ResourceStore;
+  readonly results: ResultStore;
 
   constructor(db: Database.Database | string, opts: { now?: () => number } = {}) {
     this.db = typeof db === 'string' ? openAgencyDb(db) : db;
@@ -274,6 +276,7 @@ export class AgencyStore {
     this.plans = new PlanStore(this.db, this.now);
     this.crew = new CrewStore(this.db, this.now);
     this.resources = new ResourceStore(this.db, this.now);
+    this.results = new ResultStore(this.db, this.now);
   }
 
   /**

@@ -1,0 +1,25 @@
+{
+  "additions": 15523,
+  "baseRefName": "main",
+  "changedFiles": 168,
+  "deletions": 331,
+  "headRefName": "feat/admiral-pane",
+  "headRefOid": "a4f519b64476c230daad6df9b777b6c04bb08a06",
+  "isDraft": false,
+  "number": 654,
+  "state": "MERGED",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-17T18:49:00Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/khang859/fleet/actions/runs/39059558735/job/117474534720",
+      "name": "ci",
+      "startedAt": "2026-10-17T18:46:20Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "title": "feat(agency): Admiral pane - Phase 1",
+  "url": "https://github.com/khang859/fleet/pull/654"
+}

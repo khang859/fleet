@@ -42,7 +42,9 @@ const LabelArgs = z.object({
   title: z.string().optional(),
   summary: z.string().optional(),
   step: z.string().optional(),
-  status: z.string().optional()
+  status: z.string().optional(),
+  kind: z.string().optional(),
+  branch: z.string().optional()
 });
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
@@ -170,6 +172,8 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       return { verb: 'Propose plan', target: args.summary ?? '' };
     case 'job_update':
       return { verb: args.status === undefined ? 'Note' : 'Update', target: args.step ?? '' };
+    case 'job_deliver':
+      return { verb: 'Deliver', target: args.title ?? args.url ?? args.branch ?? args.kind ?? '' };
     default:
       return mcpLabel(call.name) ?? { verb: call.name, target: '' };
   }

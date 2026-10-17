@@ -190,6 +190,7 @@ import type {
   JobControl,
   JobControlResult,
   LeftoverAction,
+  ResultOpen,
   PlanAction,
   PlanActionResult
 } from '../shared/agency-jobs';
@@ -1148,6 +1149,12 @@ const fleetApi = {
     /** Retry or dismiss something a job's cleanup left behind. */
     leftover: async (action: LeftoverAction): Promise<void> =>
       typedInvoke(IPC_CHANNELS.AGENCY_LEFTOVER, action),
+    /** Ask GitHub again about a job's PR results not asked in the last minute. */
+    refreshResults: async (jobId: number): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_RESULTS_REFRESH, jobId),
+    /** Open a delivered file with the system's app for it; resolves with an error, or ''. */
+    openResult: async (open: ResultOpen): Promise<string> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_RESULT_OPEN, open),
     preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
     /** Onboarding: first run, the picker, setup, the client file and brief ideas. */
     projects: {

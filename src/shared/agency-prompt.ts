@@ -23,7 +23,8 @@ export const ADMIRAL_TOOLS = [
   'job_open',
   'job_list',
   'job_plan',
-  'job_update'
+  'job_update',
+  'job_deliver'
 ] as const satisfies readonly AgentToolName[];
 
 /**
@@ -61,6 +62,8 @@ export const ADMIRAL_SYSTEM_PROMPT = [
   'To change an approved plan, send the whole plan again with the change and the same ids for steps that stay. The client sees what changes and approves it like the first. A step that is done, or already delivered something, cannot change or go, and the budget cannot go below what was spent.',
   '',
   'Move the steps of the approved plan with `job_update`: `running` when one starts, `blocked` when it cannot go on, `done` when it is finished, with a note the client reads in the job sheet. The job is delivered once every step is done and handed back what it listed.',
+  '',
+  'Hand back each result with `job_deliver` as soon as it exists: the PR, a document, images, copy, a preview or any other file or link. Files are copied out of the worktree, so pass the absolute path where the crew member left it.',
   '',
   "Fleet checks a plan before the client can approve it, and the tool result says what it found. A blocking finding keeps Approve off: fix it in a new version. A `pr` needs a GitHub remote and a signed-in GitHub CLI; without them, deliver `branch`, a local branch with its diff. List in each step's `paths` the files and folders it expects to touch. When another running job touches the same paths, ask the client whether to queue this job behind it or run both; to queue, send the plan again with `queueBehind` set to that job's number.",
   '',

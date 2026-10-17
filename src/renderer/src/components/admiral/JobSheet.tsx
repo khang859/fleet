@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../shared/agency';
 import { jobDisplayId } from '../../../../shared/agency';
 import type {
@@ -9,6 +10,7 @@ import type {
 import { openQuestions, planVersions } from '../../store/agency-store';
 import { CancelJob, DeliveredCard, LeftoverList } from './JobClose';
 import { PlanCard } from './PlanCard';
+import { ResultCard } from './ResultCard';
 import { QuestionCard, type QuestionAnswer } from './QuestionCard';
 import { formatUsd, jobStatus, runtimeName, TONE_DOT } from './job-view';
 
@@ -85,6 +87,8 @@ export function JobSheet({
 
       {job !== null && <PlanSection detail={detail} />}
 
+      <ResultsSection detail={detail} />
+
       {job !== null && approved !== null && detail !== undefined && (
         <SpendSection spendUsd={detail.spendUsd} budgetUsd={approved.plan.budget.usd} />
       )}
@@ -120,6 +124,30 @@ function waitingOnClient(
   const delivered = job?.state === 'delivered' ? job : null;
   const count = waiting.length + [pending, delivered].filter((x) => x !== null).length;
   return { pending, waiting, delivered, count };
+}
+
+/**
+ * What the job's steps handed back, newest first. Showing it asks GitHub
+ * again about its PRs, so a card says when one changed after delivery.
+ */
+function ResultsSection({
+  detail
+}: {
+  detail: AgencyJobDetail | undefined;
+}): React.JSX.Element | null {
+  const jobId = detail?.job.id ?? null;
+  const prs = detail?.results.filter((r) => r.kind === 'pr').length ?? 0;
+  useEffect(() => {
+    if (jobId !== null && prs > 0) void window.fleet.agency.refreshResults(jobId);
+  }, [jobId, prs]);
+  if (detail === undefined || detail.results.length === 0) return null;
+  return (
+    <Section label={`RESULTS · ${detail.results.length}`}>
+      {[...detail.results].reverse().map((result) => (
+        <ResultCard key={result.id} result={result} />
+      ))}
+    </Section>
+  );
 }
 
 /** What closed jobs' cleanup left in the repository, shown in every view of it. */

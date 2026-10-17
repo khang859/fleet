@@ -203,14 +203,18 @@ export function useJobDetail(jobId: number | null): AgencyJobDetail | undefined 
   return detail;
 }
 
-/** The job whose plan versions hold `versionId`, among the details held. */
-export function findPlanVersion(
+/**
+ * The job detail, among those held, whose `items` hold one with `id`. Returns
+ * the stored detail itself, so a store selector built on it stays stable.
+ */
+export function detailHolding<T extends { id: number }>(
   details: Partial<Record<number, AgencyJobDetail>>,
-  versionId: number
-): { detail: AgencyJobDetail; version: AgencyPlanVersion } | null {
-  for (const detail of Object.values(details)) {
-    const version = detail?.versions.find((v) => v.id === versionId);
-    if (detail !== undefined && version !== undefined) return { detail, version };
-  }
-  return null;
+  items: (detail: AgencyJobDetail) => T[],
+  id: number
+): AgencyJobDetail | null {
+  return (
+    Object.values(details).find(
+      (detail) => detail !== undefined && items(detail).some((item) => item.id === id)
+    ) ?? null
+  );
 }

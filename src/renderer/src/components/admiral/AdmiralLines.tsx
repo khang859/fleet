@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { ArrowRight, BellRing, Briefcase } from 'lucide-react';
+import type { AgencyJobDetail } from '../../../../shared/agency-jobs';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 import type { AgentMessage } from '../../../../shared/agent-types';
 import { messageText } from '../../../../shared/agent-types';
 import { unfence } from '../../../../shared/fleet-tools';
 import {
-  findPlanVersion,
+  detailHolding,
   findQuestion,
   useAgencyStore,
   useJobDetail
@@ -15,12 +16,13 @@ import { AgentToolRow } from '../agent/AgentToolRow';
 import { useAdmiralThread } from './admiral-context';
 import { PlanCard } from './PlanCard';
 import { QuestionCard } from './QuestionCard';
-import { askedQuestionId, proposedPlanId } from './job-view';
+import { ResultCard } from './ResultCard';
+import { askedQuestionId, deliveredResultId, proposedPlanId } from './job-view';
 
 /**
  * The lines an Admiral transcript has that an Agent one does not: what woke
  * the Admiral, a job opened from the lobby, and a question or plan card where
- * the Admiral put one up.
+ * the Admiral put one up, and a result card where a step handed one back.
  */
 
 /**
@@ -110,19 +112,58 @@ export function AskClientRow({ call }: { call: AgentToolCall }): React.JSX.Eleme
 }
 
 /**
- * A `job_plan` call, drawn as the plan card it put up, so the client can
- * decide right there. A version that is no longer waiting folds to one line.
- * Falls back to the plain row while the call runs or when it was refused.
+ * A tool row drawn as the card it put up, from the job detail that holds it.
+ * Falls back to the plain row while the call runs, when it was refused, or
+ * when no detail held has the card.
  */
-export function JobPlanRow({ call }: { call: AgentToolCall }): React.JSX.Element {
+function DetailCardRow<T extends { id: number }>({
+  call,
+  id,
+  items,
+  className,
+  card
+}: {
+  call: AgentToolCall;
+  id: number | null;
+  items: (detail: AgencyJobDetail) => T[];
+  className: string;
+  card: (item: T, detail: AgencyJobDetail) => React.ReactNode;
+}): React.JSX.Element {
   const admiral = useAdmiralThread();
   useJobDetail(admiral?.jobId ?? null);
-  const id = proposedPlanId(call);
-  const found = useAgencyStore((s) => (id === null ? null : findPlanVersion(s.details, id)));
-  if (found === null || call.error !== null) return <AgentToolRow call={call} />;
+  const detail = useAgencyStore((s) => (id === null ? null : detailHolding(s.details, items, id)));
+  const item = detail === null ? undefined : items(detail).find((x) => x.id === id);
+  if (detail === null || item === undefined || call.error !== null) {
+    return <AgentToolRow call={call} />;
+  }
+  return <div className={`w-full ${className}`}>{card(item, detail)}</div>;
+}
+
+/**
+ * A `job_plan` call, drawn as the plan card it put up, so the client can
+ * decide right there. A version that is no longer waiting folds to one line.
+ */
+export function JobPlanRow({ call }: { call: AgentToolCall }): React.JSX.Element {
   return (
-    <div className="w-full max-w-xl">
-      <PlanCard version={found.version} detail={found.detail} />
-    </div>
+    <DetailCardRow
+      call={call}
+      id={proposedPlanId(call)}
+      items={(detail) => detail.versions}
+      className="max-w-xl"
+      card={(version, detail) => <PlanCard version={version} detail={detail} />}
+    />
+  );
+}
+
+/** A `job_deliver` call, drawn as the result card it put up. */
+export function JobDeliverRow({ call }: { call: AgentToolCall }): React.JSX.Element {
+  return (
+    <DetailCardRow
+      call={call}
+      id={deliveredResultId(call)}
+      items={(detail) => detail.results}
+      className="max-w-md"
+      card={(result) => <ResultCard result={result} />}
+    />
   );
 }
