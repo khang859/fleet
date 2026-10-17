@@ -131,6 +131,10 @@ export function registerAgencyIpc(service: AgencyService): void {
     service.markHandoff(HandoffArgs.parse(args))
   );
 
+  ipcMain.handle(IPC_CHANNELS.AGENCY_CLIENT_ACTIVITY, (_e, jobId: unknown) => {
+    service.clientActivity(JobId.parse(jobId));
+  });
+
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_PREFLIGHT,
     async (): Promise<AgencyPreflight> => service.preflight()

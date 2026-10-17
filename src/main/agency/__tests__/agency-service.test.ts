@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { AgencyChanged } from '../../../shared/agency';
 import { AgencyService } from '../index';
 import { AgencyStore } from '../store/agency-store';
-import { REPO, YES_NO } from './fixture';
+import { REPO, YES_NO, moveJob } from './fixture';
 
 let dir: string;
 let dbPath: string;
@@ -57,7 +57,7 @@ describe('AgencyService', () => {
       brief: 'b',
       sessionId: 's-1'
     });
-    service.store.setJobState(job.id, 'running', 'go');
+    moveJob(service.store, job.id, 'running');
     const q = service.store.askQuestion({
       repoId: REPO.repoId,
       jobId: job.id,

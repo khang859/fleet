@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
+  AGENCY_QUESTION_KINDS,
   RUNNING_JOB_STATES,
   TERMINAL_JOB_STATES,
   questionDisplayId,
@@ -15,12 +16,15 @@ import {
   type AgencyQuestionStatus,
   type AgencyRepoRef,
   type AgencySnapshot,
+  type JobHoldKind,
   type JobState,
   type WakeupPull
 } from '../../../shared/agency';
 import type { AgencyProjectSummary } from '../../../shared/agency-projects';
 import { parseJsonAs } from '../../../shared/parse-json';
 import { WAKEUP_GIVE_UP_ATTEMPTS, WAKEUP_STALE_CLAIM_MS, wakeupBackoffMs } from '../backoff';
+import { CHAIN_LIMIT, chainExhausted } from '../jobs/chain';
+import { reduceJob, type CloseTarget, type JobEvent, type Transition } from '../jobs/job-machine';
 import { renderWakeupText, type WakeupItem } from '../wakeup-text';
 import { openAgencyDb } from './agency-db';
 
@@ -35,6 +39,10 @@ type JobRow = {
   budget_usd: number | null;
   created_at: number;
   updated_at: number;
+  approved_version: number | null;
+  close_target: string | null;
+  chain_count: number;
+  linked_job_id: number | null;
 };
 
 type QuestionRow = {
@@ -148,8 +156,8 @@ const OptionsJson = z.array(z.object({ label: z.string(), detail: z.string().opt
 const EventPayload = z.object({ line: z.string(), body: z.string().nullable().optional() });
 const AnswerPayload = z.object({ withdrew: z.array(z.number()) });
 
-/** The reason a model-error notice puts a job on hold, so a recovery can find it. */
-const MODEL_UNREACHABLE_REASON = 'model unreachable';
+const HOLD_KINDS: readonly JobHoldKind[] = ['model', 'chain_limit', 'budget', 'client'];
+const CLOSE_TARGETS: readonly CloseTarget[] = ['closed', 'cancelled', 'failed'];
 
 /** How many answered or withdrawn questions a snapshot carries besides the open ones. */
 const SNAPSHOT_RECENT_QUESTIONS = 100;
@@ -162,13 +170,18 @@ function questionStatus(raw: string): AgencyQuestionStatus {
   return QUESTION_STATUSES.find((s) => s === raw) ?? 'withdrawn';
 }
 
-function toJob(row: JobRow): AgencyJob {
+function toJob(row: JobRow, holds: JobHoldKind[]): AgencyJob {
   return {
     id: row.id,
     repoId: row.repo_id,
     title: row.title,
     brief: row.brief,
     state: jobState(row.state),
+    approvedVersion: row.approved_version,
+    closeTarget: CLOSE_TARGETS.find((t) => t === row.close_target) ?? null,
+    chainCount: row.chain_count,
+    linkedJobId: row.linked_job_id,
+    holds,
     sessionId: row.session_id,
     handoffDone: row.handoff_done === 1,
     budgetUsd: row.budget_usd,
@@ -184,7 +197,7 @@ function toQuestion(row: QuestionRow): AgencyQuestion {
     jobId: row.job_id,
     planVersion: row.plan_version,
     step: row.step,
-    kind: row.kind === 'model_unreachable' ? 'model_unreachable' : 'ask',
+    kind: AGENCY_QUESTION_KINDS.find((k) => k === row.kind) ?? 'ask',
     question: row.question,
     context: row.context,
     options: parseJsonAs(OptionsJson, row.options_json) ?? [],
@@ -348,7 +361,11 @@ export class AgencyStore {
 
   getJob(id: number): AgencyJob | null {
     const row = this.db.prepare<[number], JobRow>('SELECT * FROM jobs WHERE id = ?').get(id);
-    return row ? toJob(row) : null;
+    return row ? this.toJob(row) : null;
+  }
+
+  private toJob(row: JobRow): AgencyJob {
+    return toJob(row, this.holds(row.id));
   }
 
   /** A repository's jobs, oldest first; closed, cancelled and failed ones only when asked. */
@@ -363,7 +380,7 @@ export class AgencyStore {
             JobRow
           >(`SELECT * FROM jobs WHERE repo_id = ? AND state NOT IN (${marks(TERMINAL_JOB_STATES.length)}) ORDER BY id`)
           .all(repoId, ...TERMINAL_JOB_STATES);
-    return rows.map(toJob);
+    return rows.map((row) => this.toJob(row));
   }
 
   /** Jobs in every repository with work under way, for the quit guard. */
@@ -373,20 +390,177 @@ export class AgencyStore {
         `SELECT * FROM jobs WHERE state IN (${marks(RUNNING_JOB_STATES.length)}) ORDER BY id`
       )
       .all(...RUNNING_JOB_STATES)
-      .map(toJob);
+      .map((row) => this.toJob(row));
   }
 
-  /** Move a job to `to`, writing when and why. Null when there is no such job. */
-  setJobState(id: number, to: JobState, reason: string): AgencyJob | null {
-    return this.db.transaction(() => {
+  /**
+   * Run `event` through the job state machine and write the move with when
+   * and why. A refused event writes nothing; a move to the same state writes
+   * no event row. A job that starts running while something holds it goes
+   * straight on to `waiting`.
+   */
+  applyJobEvent(
+    id: number,
+    event: JobEvent,
+    reason: string
+  ): { job: AgencyJob | null; transition: Transition } {
+    return this.db.transaction((): { job: AgencyJob | null; transition: Transition } => {
       const job = this.getJob(id);
-      if (!job) return null;
-      if (job.state === to) return job;
+      if (!job) return { job: null, transition: { ok: false, refused: `there is no job ${id}` } };
+      const transition = reduceJob(job.state, event);
+      if (!transition.ok || !transition.changed) return { job, transition };
       const at = this.now();
-      this.db.prepare('UPDATE jobs SET state = ?, updated_at = ? WHERE id = ?').run(to, at, id);
-      this.recordJobEvent(id, job.state, to, reason, at);
-      return this.getJob(id);
+      this.db
+        .prepare(
+          'UPDATE jobs SET state = ?, updated_at = ?, close_target = COALESCE(?, close_target) WHERE id = ?'
+        )
+        .run(transition.to, at, transition.closeTarget ?? null, id);
+      this.recordJobEvent(id, job.state, transition.to, reason, at);
+      if (transition.to === 'running') this.syncWaiting(id);
+      return { job: this.getJob(id), transition };
     })();
+  }
+
+  /**
+   * Start closing a job: move it to `closing` (remembering how it ends),
+   * withdraw its open questions, drop its pending wakeups and holds. Cleanup
+   * then runs, and `finishClose` ends the job. A second close joins the
+   * first, keeping the end the first one asked for.
+   */
+  beginClose(
+    id: number,
+    event: Extract<JobEvent, { type: 'cancel' | 'accepted' | 'fail' }>,
+    reason: string
+  ): { job: AgencyJob | null; transition: Transition } {
+    return this.db.transaction(() => {
+      const result = this.applyJobEvent(id, event, reason);
+      if (!result.transition.ok || !result.transition.changed) return result;
+      this.db
+        .prepare(
+          `UPDATE questions SET status = 'withdrawn', withdrawn_reason = ?
+           WHERE job_id = ? AND status IN ('open', 'hidden')`
+        )
+        .run('the job is closing', id);
+      this.db
+        .prepare('UPDATE wakeups SET done_at = ? WHERE job_id = ? AND done_at IS NULL')
+        .run(this.now(), id);
+      this.db.prepare('DELETE FROM job_holds WHERE job_id = ?').run(id);
+      return { ...result, job: this.getJob(id) };
+    })();
+  }
+
+  /** End a closing job the way its close asked for, once cleanup is done. */
+  finishClose(id: number, reason: string): AgencyJob | null {
+    const job = this.getJob(id);
+    if (job?.state !== 'closing') return job;
+    return this.applyJobEvent(
+      id,
+      { type: 'cleanup_done', target: job.closeTarget ?? 'cancelled' },
+      reason
+    ).job;
+  }
+
+  // ── Holds ────────────────────────────────────────────────────────────────
+
+  holds(jobId: number): JobHoldKind[] {
+    const kinds = new Set(
+      this.db
+        .prepare<[number], { kind: string }>('SELECT kind FROM job_holds WHERE job_id = ?')
+        .all(jobId)
+        .map((row) => row.kind)
+    );
+    return HOLD_KINDS.filter((k) => kinds.has(k));
+  }
+
+  /** Hold a job, so a running one waits until every hold is released. */
+  addHold(jobId: number, kind: JobHoldKind, detail = ''): void {
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO job_holds (job_id, kind, since, detail) VALUES (?, ?, ?, ?)
+           ON CONFLICT(job_id, kind) DO UPDATE SET detail = excluded.detail`
+        )
+        .run(jobId, kind, this.now(), detail);
+      this.syncWaiting(jobId);
+    })();
+  }
+
+  releaseHold(jobId: number, kind: JobHoldKind): void {
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM job_holds WHERE job_id = ? AND kind = ?').run(jobId, kind);
+      this.syncWaiting(jobId);
+    })();
+  }
+
+  /**
+   * Make the job's state agree with its holds: a held running job waits, and
+   * a waiting job with nothing left holding it runs. Other states keep their
+   * state; the hold stays recorded and applies once the job runs.
+   */
+  private syncWaiting(jobId: number): void {
+    const job = this.getJob(jobId);
+    if (!job) return;
+    if (job.state === 'running' && job.holds.length > 0) {
+      this.applyJobEvent(jobId, { type: 'blocked' }, `waiting on ${job.holds.join(', ')}`);
+    } else if (job.state === 'waiting' && job.holds.length === 0) {
+      this.applyJobEvent(jobId, { type: 'unblocked' }, 'nothing holds it any more');
+    }
+  }
+
+  // ── Automatic turns ──────────────────────────────────────────────────────
+
+  /**
+   * The client did something for this job (sent a message, answered, decided
+   * a plan) or a step finished: start counting automatic turns from zero, and
+   * take down a "continue?" card that is up.
+   */
+  resetChain(jobId: number): void {
+    this.db.transaction(() => {
+      this.db.prepare('UPDATE jobs SET chain_count = 0 WHERE id = ?').run(jobId);
+      for (const q of this.listOpenFleetCards(jobId, 'continue')) {
+        this.withdrawCascade(q.id, 'the client went on');
+      }
+      this.releaseHold(jobId, 'chain_limit');
+    })();
+  }
+
+  /**
+   * Count one automatic turn for a job with an approved plan. At the limit the
+   * turn does not run: the job waits behind a "continue?" card instead.
+   * Returns whether the turn may run.
+   */
+  private countAutomaticTurn(job: AgencyJob): boolean {
+    if (job.approvedVersion === null) return true;
+    if (!chainExhausted(job.chainCount)) {
+      this.db.prepare('UPDATE jobs SET chain_count = chain_count + 1 WHERE id = ?').run(job.id);
+      return true;
+    }
+    if (this.listOpenFleetCards(job.id, 'continue').length === 0) {
+      this.askQuestion({
+        repoId: job.repoId,
+        jobId: job.id,
+        kind: 'continue',
+        question: `The Admiral took ${CHAIN_LIMIT} turns in a row on its own`,
+        context: 'The job waits so it does not run away. Continue to let it go on.',
+        options: [
+          { label: 'Continue', detail: `${CHAIN_LIMIT} more turns` },
+          { label: 'Not now', detail: 'the job waits; send a message to go on' }
+        ],
+        recommended: 0
+      });
+    }
+    this.addHold(job.id, 'chain_limit');
+    return false;
+  }
+
+  private listOpenFleetCards(jobId: number, kind: AgencyQuestionKind): AgencyQuestion[] {
+    return this.db
+      .prepare<
+        [number, string],
+        QuestionRow
+      >(`SELECT * FROM questions WHERE job_id = ? AND kind = ? AND status = 'open' ORDER BY id`)
+      .all(jobId, kind)
+      .map(toQuestion);
   }
 
   jobEvents(jobId: number): AgencyJobEvent[] {
@@ -405,29 +579,16 @@ export class AgencyStore {
   }
 
   /**
-   * Cancel a repository's running jobs, as closing its Admiral with "Cancel
-   * jobs" asks. Their open questions are withdrawn and their pending wakeups
-   * dropped, since nobody will act on either. Returns the cancelled job ids.
+   * Start cancelling a repository's running jobs, as closing its Admiral with
+   * "Cancel jobs" asks. Returns the ids of the jobs now closing.
    */
   cancelJobs(repoId: string, reason = 'cancelled by the client'): number[] {
-    return this.db.transaction(() => {
-      const ids = this.listJobs(repoId)
+    return this.db.transaction(() =>
+      this.listJobs(repoId)
         .filter((job) => RUNNING_JOB_STATES.includes(job.state))
-        .map((job) => job.id);
-      for (const id of ids) {
-        this.setJobState(id, 'cancelled', reason);
-        this.db
-          .prepare(
-            `UPDATE questions SET status = 'withdrawn', withdrawn_reason = ?
-             WHERE job_id = ? AND status IN ('open', 'hidden')`
-          )
-          .run('the job was cancelled', id);
-        this.db
-          .prepare('UPDATE wakeups SET done_at = ? WHERE job_id = ? AND done_at IS NULL')
-          .run(this.now(), id);
-      }
-      return ids;
-    })();
+        .filter((job) => this.beginClose(job.id, { type: 'cancel' }, reason).transition.ok)
+        .map((job) => job.id)
+    )();
   }
 
   /**
@@ -604,11 +765,12 @@ export class AgencyStore {
           q.id
         );
 
-      if (q.kind === 'model_unreachable') {
-        if (option === 0) this.retryNow(q.repoId);
+      if (q.kind !== 'ask') {
+        this.answerFleetCard(q, option);
         const answered = this.getQuestion(q.id);
         return answered ? { question: answered, revealed: [], withdrew: [] } : null;
       }
+      if (q.jobId !== null) this.resetChain(q.jobId);
 
       const { revealed, withdrew } = late
         ? { revealed: [], withdrew: [] }
@@ -623,6 +785,12 @@ export class AgencyStore {
       const answered = this.getQuestion(q.id);
       return answered ? { question: answered, revealed, withdrew } : null;
     })();
+  }
+
+  /** Act on the client's pick on one of Fleet's own cards. */
+  private answerFleetCard(q: AgencyQuestion, option: number | null): void {
+    if (q.kind === 'model_unreachable' && option === 0) this.retryNow(q.repoId);
+    if (q.kind === 'continue' && option === 0 && q.jobId !== null) this.resetChain(q.jobId);
   }
 
   /** Reveal the hidden questions waiting on `option`, and withdraw the rest. */
@@ -738,6 +906,11 @@ export class AgencyStore {
            ORDER BY priority DESC, id`
         )
         .all(input.repoId, input.jobId, now);
+      const job = input.jobId === null ? null : this.getJob(input.jobId);
+      if (job?.holds.includes('chain_limit')) return { ids: [], text: null, nextDueAt: null };
+      if (job && rows.length > 0 && !this.countAutomaticTurn(job)) {
+        return { ids: [], text: null, nextDueAt: null };
+      }
       if (rows.length > 0) {
         this.db
           .prepare(`UPDATE wakeups SET claimed_at = ? WHERE id IN (${marks(rows.length)})`)
@@ -849,12 +1022,7 @@ export class AgencyStore {
       options: [{ label: 'Retry' }, { label: 'Open Settings' }],
       recommended: 0
     });
-    if (jobId !== null) {
-      const job = this.getJob(jobId);
-      if (job && !TERMINAL_JOB_STATES.includes(job.state) && job.state !== 'waiting') {
-        this.setJobState(jobId, 'waiting', MODEL_UNREACHABLE_REASON);
-      }
-    }
+    if (jobId !== null) this.addHold(jobId, 'model', error);
   }
 
   /** Undo `raiseModelError` once a turn for the job went through. */
@@ -862,12 +1030,7 @@ export class AgencyStore {
     for (const q of this.listQuestions(repoId, { jobId, statuses: ['open'] })) {
       if (q.kind === 'model_unreachable') this.withdrawCascade(q.id, 'the model answered again');
     }
-    if (jobId === null) return;
-    const job = this.getJob(jobId);
-    const last = this.jobEvents(jobId).at(-1);
-    if (job?.state === 'waiting' && last?.reason === MODEL_UNREACHABLE_REASON && last.from) {
-      this.setJobState(jobId, last.from, 'the model answered again');
-    }
+    if (jobId !== null) this.releaseHold(jobId, 'model');
   }
 
   /** Make a repository's queued wakeups due now, as the notice card's Retry asks. */

@@ -1,6 +1,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { JobState } from '../../../shared/agency';
+import type { JobEvent } from '../jobs/job-machine';
 import { AgencyStore } from '../store/agency-store';
 
 export const REPO = { repoId: '0123456789abcdef', root: '/dev/fleet', name: 'fleet' };
@@ -41,3 +43,31 @@ export function openJob(
 }
 
 export const YES_NO = [{ label: 'Yes' }, { label: 'No', detail: 'leave it as it is' }];
+
+/** The events that walk a fresh `briefing` job to each state. */
+const PATH_TO: Record<JobState, JobEvent[]> = {
+  briefing: [],
+  planned: [{ type: 'plan_proposed' }],
+  running: [{ type: 'plan_proposed' }, { type: 'plan_approved' }],
+  waiting: [{ type: 'plan_proposed' }, { type: 'plan_approved' }, { type: 'blocked' }],
+  delivered: [{ type: 'plan_proposed' }, { type: 'plan_approved' }, { type: 'delivered' }],
+  interrupted: [{ type: 'plan_proposed' }, { type: 'plan_approved' }, { type: 'interrupt' }],
+  closing: [{ type: 'cancel' }],
+  cancelled: [{ type: 'cancel' }, { type: 'cleanup_done', target: 'cancelled' }],
+  failed: [{ type: 'fail' }, { type: 'cleanup_done', target: 'failed' }],
+  closed: [
+    { type: 'plan_proposed' },
+    { type: 'plan_approved' },
+    { type: 'delivered' },
+    { type: 'accepted' },
+    { type: 'cleanup_done', target: 'closed' }
+  ]
+};
+
+/** Move a fresh job to `state` through allowed events, for tests that need it there. */
+export function moveJob(store: AgencyStore, jobId: number, state: JobState): void {
+  for (const event of PATH_TO[state]) {
+    const { transition } = store.applyJobEvent(jobId, event, 'test');
+    if (!transition.ok) throw new Error(transition.refused);
+  }
+}

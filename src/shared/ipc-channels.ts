@@ -439,6 +439,7 @@ export const IPC_CHANNELS = {
   AGENCY_RELEASE_WAKEUPS: 'agency:release-wakeups',
   AGENCY_CANCEL_JOBS: 'agency:cancel-jobs',
   AGENCY_MARK_HANDOFF: 'agency:mark-handoff',
+  AGENCY_CLIENT_ACTIVITY: 'agency:client-activity',
   AGENCY_PREFLIGHT: 'agency:preflight',
   // Onboarding: first run, the project picker, setup, the client file, ideas.
   AGENCY_FIRST_RUN_DONE: 'agency:first-run-done',

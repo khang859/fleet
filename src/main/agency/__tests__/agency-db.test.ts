@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { AGENCY_SCHEMA_VERSION, migrateAgencyDb, openAgencyDb } from '../store/agency-db';
 
 const dirs: string[] = [];
@@ -32,29 +32,67 @@ describe('agency.db', () => {
     expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
     expect(tables(db)).toEqual([
       'agency_meta',
+      'crew_members',
       'job_events',
+      'job_holds',
+      'job_log',
+      'job_resources',
+      'job_steps',
+      'job_workspaces',
       'jobs',
       'lobbies',
       'onboarding',
+      'plan_versions',
+      'project_members',
+      'projects',
       'questions',
       'repos',
+      'results',
+      'settings_history',
+      'settings_proposals',
+      'spend_samples',
       'wakeups'
     ]);
     db.close();
   });
 
-  it('brings a v1 database to v2 without touching its rows', () => {
+  it('brings a v1 database to the current schema without touching its rows', () => {
     const path = tempPath();
-    const v1 = openAgencyDb(path);
-    v1.exec('DROP TABLE agency_meta; DROP TABLE onboarding;');
-    v1.pragma('user_version = 1');
+    mkdirSync(dirname(path), { recursive: true });
+    const v1 = new Database(path);
+    migrateAgencyDb(v1, 1);
     v1.prepare("INSERT INTO repos VALUES ('r', '/r', 'r', 1)").run();
     v1.close();
 
     const db = openAgencyDb(path);
-    expect(db.pragma('user_version', { simple: true })).toBe(2);
+    expect(db.pragma('user_version', { simple: true })).toBe(AGENCY_SCHEMA_VERSION);
     expect(tables(db)).toContain('onboarding');
     expect(db.prepare('SELECT COUNT(*) AS n FROM repos').get()).toEqual({ n: 1 });
+    db.close();
+  });
+
+  it('gives v2 jobs and questions the v3 columns with their defaults', () => {
+    const path = tempPath();
+    mkdirSync(dirname(path), { recursive: true });
+    const v2 = new Database(path);
+    migrateAgencyDb(v2, 2);
+    v2.prepare(
+      `INSERT INTO jobs (repo_id, title, brief, state, session_id, created_at, updated_at)
+       VALUES ('r', 't', 'b', 'running', 's', 1, 1)`
+    ).run();
+    v2.prepare(
+      `INSERT INTO questions (repo_id, kind, question, options_json, status, created_at)
+       VALUES ('r', 'ask', 'Q?', '[]', 'open', 1)`
+    ).run();
+    v2.close();
+
+    const db = openAgencyDb(path);
+    expect(
+      db
+        .prepare('SELECT approved_version, close_target, chain_count, linked_job_id FROM jobs')
+        .get()
+    ).toEqual({ approved_version: null, close_target: null, chain_count: 0, linked_job_id: null });
+    expect(db.prepare('SELECT payload_json FROM questions').get()).toEqual({ payload_json: '{}' });
     db.close();
   });
 

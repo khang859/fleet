@@ -60,12 +60,28 @@ export const RUNNING_JOB_STATES: readonly JobState[] = [
 /** States a job does not leave. A snapshot leaves them out of the job tabs. */
 export const TERMINAL_JOB_STATES: readonly JobState[] = ['closed', 'cancelled', 'failed'];
 
+/**
+ * What keeps a running job `waiting`: the model cannot be reached, it took
+ * too many automatic turns in a row, it hit its budget, or every remaining
+ * step waits on the client. The job runs again once every hold is gone.
+ */
+export type JobHoldKind = 'model' | 'chain_limit' | 'budget' | 'client';
+
 export type AgencyJob = {
   id: number;
   repoId: string;
   title: string;
   brief: string;
   state: JobState;
+  /** The plan version in force, or null before the first approval. */
+  approvedVersion: number | null;
+  /** How a `closing` job ends once cleanup is done. */
+  closeTarget: 'closed' | 'cancelled' | 'failed' | null;
+  /** Automatic Admiral turns in a row since the last client action or finished step. */
+  chainCount: number;
+  /** The closed job this one follows up on. */
+  linkedJobId: number | null;
+  holds: JobHoldKind[];
   /** The agent session the job's conversation is written to. */
   sessionId: string;
   /** Whether the lobby messages that led to this job were carried into it. */
@@ -85,7 +101,20 @@ export type AgencyJobEvent = {
 
 export type AgencyQuestionOption = { label: string; detail?: string };
 
-export type AgencyQuestionKind = 'ask' | 'model_unreachable';
+/**
+ * `ask` is the Admiral's own question. The rest are Fleet's cards, answered
+ * the same way: `model_unreachable` (Retry or Settings), `continue` (go on
+ * after the automatic-turn limit) and `resume` (Resume or Cancel after a
+ * restart).
+ */
+export type AgencyQuestionKind = 'ask' | 'model_unreachable' | 'continue' | 'resume';
+
+export const AGENCY_QUESTION_KINDS: readonly AgencyQuestionKind[] = [
+  'ask',
+  'model_unreachable',
+  'continue',
+  'resume'
+];
 
 /**
  * `hidden` is a question that depends on another one's answer and is not

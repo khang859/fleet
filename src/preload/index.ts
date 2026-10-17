@@ -1125,6 +1125,9 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.AGENCY_CANCEL_JOBS, repoId),
     markHandoff: async (args: { jobId: number; lobbyMessageId: string }): Promise<boolean> =>
       typedInvoke(IPC_CHANNELS.AGENCY_MARK_HANDOFF, args),
+    /** The client wrote to a job's Admiral, which restarts its automatic-turn count. */
+    clientActivity: async (jobId: number): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_ACTIVITY, jobId),
     preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
     /** Onboarding: first run, the picker, setup, the client file and brief ideas. */
     projects: {

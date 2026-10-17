@@ -122,8 +122,19 @@ export class AgencyService {
 
   cancelJobs(repoId: string): number[] {
     const ids = this.store.cancelJobs(repoId);
+    // Nothing a job owns needs undoing yet: no crew or worktree exists before
+    // crew can be hired, so the close ends at once.
+    for (const id of ids) this.store.finishClose(id, 'nothing to clean up');
     if (ids.length > 0) this.changed(ids.map((jobId) => ({ repoId, jobId })));
     return ids;
+  }
+
+  /** The client wrote to a job's Admiral: its automatic-turn count starts again. */
+  clientActivity(jobId: number): void {
+    const job = this.store.getJob(jobId);
+    if (!job) return;
+    this.store.resetChain(jobId);
+    this.changed([{ repoId: job.repoId, jobId }]);
   }
 
   markHandoff(input: { jobId: number; lobbyMessageId: string }): boolean {

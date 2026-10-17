@@ -86,6 +86,7 @@ const agency = {
   markHandoff: vi.fn(),
   answerQuestion: vi.fn(),
   cancelJobs: vi.fn(),
+  clientActivity: vi.fn(),
   onChanged: listen('agency:changed')
 };
 
@@ -163,6 +164,7 @@ beforeEach(async () => {
   agency.ackWakeups.mockResolvedValue(undefined);
   agency.releaseWakeups.mockResolvedValue({ nextDueAt: null, gaveUp: false });
   agency.markHandoff.mockResolvedValue(true);
+  agency.clientActivity.mockResolvedValue(undefined);
   queue.mockResolvedValue(true);
 
   Object.assign(window.fleet, {

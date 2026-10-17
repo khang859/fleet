@@ -475,7 +475,14 @@ export function initAdmiralRuntime(): () => void {
         : { repoId: pane.repo.repoId, jobId: scope.jobId };
     },
     rollUp,
-    turnEnded
+    turnEnded,
+    clientWrote: (key) => {
+      const jobId = parseAdmiralKey(key)?.jobId ?? null;
+      if (jobId === null) return;
+      window.fleet.agency.clientActivity(jobId).catch((err: unknown) => {
+        log.warn('client activity failed', { key, error: String(err) });
+      });
+    }
   });
 
   let signature = '';
