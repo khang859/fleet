@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { ArrowUp, CircleAlert } from 'lucide-react';
 import type { AgencyQuestion } from '../../../../shared/agency';
 import { questionDisplayId } from '../../../../shared/agency';
+import { openClientFileSettings } from '../../store/settings-nav-store';
 import { AgentMarkdown } from '../agent/AgentMarkdown';
+import { ProposalLines } from './ClientFileViews';
 
 /** What answering a card sends: an option, words, or both. */
 export type QuestionAnswer = { option?: number; text?: string };
@@ -17,18 +19,24 @@ export type QuestionAnswer = { option?: number; text?: string };
  * answered - the Admiral is told it came late - and one that is settled says
  * how. The model-unreachable card is the one that is not the Admiral's: it is
  * Fleet saying the model cannot be reached, and its buttons retry or go to
- * Settings.
+ * Settings. A client file card shows the lines it would change; while the
+ * file has a change from outside Fleet, it cannot be approved until the
+ * client keeps or reviews that change.
  */
 export function QuestionCard({
   question,
   onAnswer,
-  onOpenSettings
+  onOpenSettings,
+  clientFileChanged = false
 }: {
   question: AgencyQuestion;
   /** Resolves false when main would not take the answer. */
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
   onOpenSettings: () => void;
+  /** The project's client file has a change from outside Fleet the client has not kept. */
+  clientFileChanged?: boolean;
 }): React.JSX.Element | null {
+  const outsideChange = question.proposal !== null && clientFileChanged;
   if (question.status === 'hidden') return null;
   if (question.kind === 'model_unreachable') {
     return (
@@ -67,6 +75,7 @@ export function QuestionCard({
           {question.context}
         </AgentMarkdown>
       )}
+      {question.proposal !== null && <ProposalLines proposal={question.proposal} />}
       {settled ? (
         <Settled question={question} />
       ) : (
@@ -77,22 +86,47 @@ export function QuestionCard({
               still answer, and the Admiral will know it came late.
             </p>
           )}
-          <Options question={question} onAnswer={onAnswer} quiet={withdrawn} />
+          {outsideChange && <OutsideChange repoId={question.repoId} />}
+          <Options
+            question={question}
+            onAnswer={onAnswer}
+            quiet={withdrawn}
+            blockFirst={outsideChange}
+          />
         </>
       )}
     </section>
   );
 }
 
+function OutsideChange({ repoId }: { repoId: string }): React.JSX.Element {
+  return (
+    <p className="text-xs text-amber-700 dark:text-amber-400/90">
+      The client file changed outside Fleet.{' '}
+      <button
+        type="button"
+        onClick={() => openClientFileSettings(repoId)}
+        className="underline underline-offset-2 hover:text-fleet-text focus-ring"
+      >
+        Review it
+      </button>{' '}
+      before you approve this.
+    </p>
+  );
+}
+
 function Options({
   question,
   onAnswer,
-  quiet
+  quiet,
+  blockFirst = false
 }: {
   question: AgencyQuestion;
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
   /** A withdrawn question: still answerable, without the Admiral's pick lit up. */
   quiet: boolean;
+  /** The first option cannot be picked right now. */
+  blockFirst?: boolean;
 }): React.JSX.Element {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -118,7 +152,7 @@ function Options({
             <button
               key={i}
               type="button"
-              disabled={busy}
+              disabled={busy || (blockFirst && i === 0)}
               title={option.detail}
               onClick={() => void answer({ option: i })}
               className={`h-7 max-w-full truncate rounded-md border px-2.5 text-xs transition-colors focus-ring disabled:opacity-50 ${

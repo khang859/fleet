@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  TERMINAL_JOB_STATES,
   jobDisplayId,
   type AdmiralClaimResult,
   type AdmiralThreadScope,
@@ -10,10 +11,12 @@ import {
   type AgencyQuestion,
   type AgencyRepoRef,
   type AgencySnapshot,
+  type ClientFileProposal,
   type RepoResolution,
   type WakeupPull,
   type WakeupRelease
 } from '../../shared/agency';
+import { clientEntries, sameText } from '../../shared/agency-client-file';
 import { createLogger } from '../logger';
 import type {
   JobControl,
@@ -26,8 +29,10 @@ import { AdmiralRegistry } from './admiral-registry';
 import { defaultCleaners, type WorktreeRemover } from './cleanup/cleaners';
 import { CleanupRunner, type ResourceCleaner } from './cleanup/cleanup-runner';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
+import { exportJob } from './jobs/job-export';
 import { reconcileAtStartup } from './jobs/reconcile';
 import { runPreflight, type Probe } from './preflight';
+import { ClientFiles, type ClientFileNote } from './projects/client-file';
 import { nativeGh, type GhRun } from './projects/gh';
 import { agencyHome } from './projects/paths';
 import { ResultsService } from './results';
@@ -79,11 +84,18 @@ export class AgencyService {
   readonly jobs: JobsService;
   readonly cleanup: CleanupRunner;
   readonly results: ResultsService;
+  readonly clientFiles: ClientFiles;
 
   constructor(private readonly deps: AgencyServiceDeps) {
     this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
+    this.clientFiles = new ClientFiles({
+      store: this.store,
+      home: () => deps.agencyHome ?? agencyHome(),
+      now: () => new Date(deps.now?.() ?? Date.now())
+    });
     this.projects = new ProjectsService({
       store: this.store,
+      clientFiles: this.clientFiles,
       resolve: async (path) => this.resolveRepo(path),
       emit: deps.emit,
       gh: deps.gh,
@@ -164,10 +176,14 @@ export class AgencyService {
   }
 
   snapshot(repoId: string): AgencySnapshot {
-    return this.store.snapshot(repoId);
+    return {
+      ...this.store.snapshot(repoId),
+      clientFileChanged: this.clientFiles.changedOutside(repoId)
+    };
   }
 
   answer(req: AgencyAnswerRequest): AgencyQuestion | null {
+    if (!this.approveClientFile(req)) return null;
     const outcome = this.store.answerQuestion(req);
     if (!outcome) return null;
     const { kind, jobId } = outcome.question;
@@ -178,6 +194,99 @@ export class AgencyService {
     if (outcome.question.jobId !== null) this.jobs.refreshClientHold(outcome.question.jobId);
     this.changed([{ repoId: outcome.question.repoId, jobId: outcome.question.jobId }]);
     return outcome.question;
+  }
+
+  /**
+   * Approving a `client_file` card writes its lines first, so they are on disk
+   * before the wakeup that reports them runs. Refused while the file has a
+   * change from outside Fleet the client has not kept: approving would keep
+   * it without the client seeing it.
+   */
+  private approveClientFile(req: AgencyAnswerRequest): boolean {
+    const q = this.store.getQuestion(req.id);
+    if (q?.kind !== 'client_file' || q.status !== 'open' || req.option !== 0) return true;
+    if (q.proposal === null || this.clientFiles.changedOutside(q.repoId)) return false;
+    this.clientFiles.apply(q.repoId, {
+      name: this.store.repo(q.repoId)?.name ?? q.repoId,
+      source: q.jobId === null ? 'the lobby' : `job ${jobDisplayId(q.jobId)}`,
+      proposal: q.proposal
+    });
+    return true;
+  }
+
+  /**
+   * Put a client file change up as a card in `scope`'s name. Each line it
+   * replaces or removes has to be in the file now, so the card shows what
+   * really goes.
+   */
+  proposeClientFile(
+    scope: AdmiralThreadScope,
+    input: { reason: string; proposal: ClientFileProposal }
+  ): { ok: true; question: AgencyQuestion } | { ok: false; reason: string } {
+    if (this.clientFiles.changedOutside(scope.repoId)) {
+      return {
+        ok: false,
+        reason:
+          'the client file changed outside Fleet. Ask the client to look at it in Settings > Agency > Admiral first.'
+      };
+    }
+    const entries = clientEntries(this.clientFiles.read(scope.repoId));
+    const named = [
+      ...input.proposal.add.flatMap((a) => (a.replaces === null ? [] : [a.replaces])),
+      ...input.proposal.remove
+    ];
+    const missing = named.find((line) => !entries.some((e) => sameText(e, line)));
+    if (missing !== undefined) {
+      return {
+        ok: false,
+        reason: `"${missing}" is not a line in the client file. Give the line word for word, as your note shows it, without its "(from ...)" tag.`
+      };
+    }
+    const onlyAdds = named.length === 0;
+    const question = this.store.askQuestion({
+      ...scope,
+      kind: 'client_file',
+      question: onlyAdds ? 'Remember this for future jobs?' : 'Change the client file?',
+      context: input.reason,
+      options: [{ label: onlyAdds ? 'Remember it' : 'Change it' }, { label: 'Not now' }],
+      recommended: 0,
+      proposal: input.proposal
+    });
+    if (scope.jobId !== null) this.jobs.refreshClientHold(scope.jobId);
+    this.changed([scope]);
+    return { ok: true, question };
+  }
+
+  /** The client saved the client file in Settings: hand edits win. */
+  writeClientFile(input: { repoId: string; text: string }): void {
+    this.clientFiles.write(input.repoId, input.text);
+    this.changed([{ repoId: input.repoId, jobId: null }]);
+  }
+
+  /**
+   * A job that ended, as Markdown with a file name to save it under. Null for
+   * a job still open: its record is not done yet.
+   */
+  exportJob(jobId: number): { name: string; text: string } | null {
+    const detail = this.jobs.detail(jobId);
+    if (detail === null || !TERMINAL_JOB_STATES.includes(detail.job.state)) return null;
+    const { job } = detail;
+    const text = exportJob({
+      project: this.store.repo(job.repoId)?.name ?? job.repoId,
+      detail,
+      questions: this.store.listQuestions(job.repoId, { jobId })
+    });
+    const slug = job.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    return { name: `${jobDisplayId(jobId)}-${slug || 'job'}.md`, text };
+  }
+
+  /** The client keeps a change made outside Fleet as it is. */
+  keepClientFile(repoId: string): void {
+    this.clientFiles.keep(repoId);
+    this.changed([{ repoId, jobId: null }]);
   }
 
   pullWakeups(input: { repoId: string; jobId: number | null }): WakeupPull {
@@ -334,8 +443,8 @@ export class AgencyService {
   }
 
   /** The project's client file for an Admiral turn's note, or null when there is none. */
-  clientFileForNote(repoId: string): string | null {
-    return this.projects.clientFileForNote(repoId);
+  clientFileForNote(repoId: string): ClientFileNote | null {
+    return this.clientFiles.forNote(repoId);
   }
 
   /** Whether an agent session is an Admiral lobby's or job's, for its session header. */

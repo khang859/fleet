@@ -64,6 +64,8 @@ const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
   nextRetryAt: null,
   onboarding: { setupDoneAt: 1, starterDoneAt: 1 },
   leftovers: [],
+  clientFileChanged: false,
+  pastJobs: [],
   ...over
 });
 

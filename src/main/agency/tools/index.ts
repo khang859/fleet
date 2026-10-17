@@ -2,6 +2,7 @@ import type { AdmiralThreadScope, AgencySettings } from '../../../shared/agency'
 import type { AgentAgencyCapability } from '../../../shared/agency-tools';
 import type { AgencyService } from '../index';
 import { askClient } from './ask-client';
+import { clientFilePropose } from './client-file-propose';
 import { jobDeliver } from './job-deliver';
 import { jobList } from './job-list';
 import { jobOpen } from './job-open';
@@ -13,7 +14,10 @@ import { jobUpdate } from './job-update';
  * a model writes can name another repository or job: the scope is closed over.
  */
 export function createAgencyCapability(
-  agency: Pick<AgencyService, 'ask' | 'openJob' | 'snapshot' | 'jobs' | 'results'>,
+  agency: Pick<
+    AgencyService,
+    'ask' | 'openJob' | 'snapshot' | 'jobs' | 'results' | 'proposeClientFile'
+  >,
   scope: AdmiralThreadScope,
   settings: () => AgencySettings
 ): AgentAgencyCapability {
@@ -32,6 +36,7 @@ export function createAgencyCapability(
       jobId === null ? null : async (args) => jobPlan(agency.jobs, { ...scope, jobId }, args),
     jobUpdate:
       jobId === null ? null : async (args) => Promise.resolve(jobUpdate(agency.jobs, jobId, args)),
-    jobDeliver: jobId === null ? null : async (args) => jobDeliver(agency.results, jobId, args)
+    jobDeliver: jobId === null ? null : async (args) => jobDeliver(agency.results, jobId, args),
+    clientFilePropose: async (args) => Promise.resolve(clientFilePropose(agency, scope, args))
   };
 }

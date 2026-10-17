@@ -1,4 +1,6 @@
-import { ipcMain, shell, type WebContents } from 'electron';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { BrowserWindow, app, dialog, ipcMain, shell, type WebContents } from 'electron';
 import { z } from 'zod';
 import type {
   AdmiralClaimResult,
@@ -12,6 +14,7 @@ import type {
 import {
   ProjectSetupSchema,
   type AgencyProjectSummary,
+  type ClientFileView,
   type BriefIdeas,
   type ProjectFolder,
   type RuleCandidates,
@@ -58,6 +61,8 @@ const ReleaseArgs = z.object({ ids: Ids, error: z.string().max(4_000) });
 const HandoffArgs = z.object({ jobId: JobId, lobbyMessageId: z.string().min(1) });
 const JobControlArgs = z.object({ jobId: JobId, action: z.enum(['cancel', 'accept']) });
 const LeftoverArgs = z.object({ resourceId: JobId, action: z.enum(['retry', 'dismiss']) });
+/** A client file is a page or two of Markdown; anything far past that is not one. */
+const ClientFileWriteArgs = z.object({ repoId: RepoId, text: z.string().max(200_000) });
 const ResultOpenArgs = z.object({ resultId: JobId, file: z.number().int().min(0).max(100) });
 const StepKey = z.string().max(80);
 const PlanActionArgs = z.discriminatedUnion('action', [
@@ -186,6 +191,30 @@ export function registerAgencyIpc(service: AgencyService): void {
     return path === null ? 'That file is not a delivered result.' : shell.openPath(path);
   });
 
+  ipcMain.handle(IPC_CHANNELS.AGENCY_CLIENT_FILE_WRITE, (_e, args: unknown): void => {
+    service.writeClientFile(ClientFileWriteArgs.parse(args));
+  });
+  ipcMain.handle(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, (_e, repoId: unknown): void => {
+    service.keepClientFile(RepoId.parse(repoId));
+  });
+
+  // Resolves with the saved path, or null when the job cannot be exported or the client cancelled.
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_JOB_EXPORT,
+    async (event, jobId: unknown): Promise<string | null> => {
+      const out = service.exportJob(JobId.parse(jobId));
+      if (out === null) return null;
+      const defaultPath = join(app.getPath('downloads'), out.name);
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const picked = await (win === null
+        ? dialog.showSaveDialog({ defaultPath })
+        : dialog.showSaveDialog(win, { defaultPath }));
+      if (picked.canceled || picked.filePath === '') return null;
+      await writeFile(picked.filePath, out.text, 'utf8');
+      return picked.filePath;
+    }
+  );
+
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_PREFLIGHT,
     async (): Promise<AgencyPreflight> => service.preflight()
@@ -223,8 +252,7 @@ function registerProjectsIpc(service: AgencyService): void {
   );
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_CLIENT_FILE,
-    async (_e, repoId: unknown): Promise<{ path: string; text: string | null }> =>
-      projects.clientFile(RepoId.parse(repoId))
+    (_e, repoId: unknown): ClientFileView => projects.clientFile(RepoId.parse(repoId))
   );
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_RULE_CANDIDATES,

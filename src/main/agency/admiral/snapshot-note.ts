@@ -8,7 +8,9 @@ import {
 } from '../../../shared/agency';
 import type { AgencyJob } from '../../../shared/agency';
 import type { PlanBases } from '../../../shared/agency-jobs';
+import { CLIENT_FILE_CLEANUP_CHARS, type ClientFileNote } from '../projects/client-file';
 import type { AgencyStore } from '../store/agency-store';
+import { proposalLines } from '../wakeup-text';
 
 type SnapshotReader = Pick<AgencyStore, 'repo' | 'getJob' | 'listJobs' | 'listQuestions' | 'plans'>;
 
@@ -29,7 +31,11 @@ function describeQuestion(q: AgencyQuestion): string {
   const step = q.step === null ? '' : ` (step ${q.step})`;
   return fence(
     id,
-    [`${id}${step}: ${q.question}`, ...optionLines(q, 'your recommendation')].join('\n')
+    [
+      `${id}${step}: ${q.question}`,
+      ...(q.proposal === null ? [] : proposalLines(q.proposal)),
+      ...optionLines(q, 'your recommendation')
+    ].join('\n')
   );
 }
 
@@ -108,16 +114,36 @@ function questionLines(store: SnapshotReader, scope: AdmiralThreadScope): string
 export function admiralSnapshotNote(
   store: SnapshotReader,
   scope: AdmiralThreadScope,
-  clientFile: string | null = null
+  clientFile: ClientFileNote | null = null
 ): string {
   const records = recordsNote(store, scope);
   if (clientFile === null) return records;
-  return [
-    records,
-    '',
-    "The client file: the client's standing preferences for this project, written by their own answers and picks. Follow it, and do not ask what it already settles.",
-    clientFile
-  ].join('\n');
+  return [records, '', ...clientFileLines(store, scope.repoId, clientFile)].join('\n');
+}
+
+function clientFileLines(
+  store: SnapshotReader,
+  repoId: string,
+  clientFile: ClientFileNote
+): string[] {
+  const lines = [
+    "The client file: the client's standing preferences for this project, written by their own answers and picks. Follow it, and do not ask what it already settles."
+  ];
+  if (clientFile.changedOutside) {
+    lines.push(
+      'It changed outside Fleet, and the client has not looked at the change yet. Until they keep it in Settings > Agency > Admiral, this is the version Fleet last wrote, and it takes no proposals.'
+    );
+  }
+  if (clientFile.text !== '') lines.push(clientFile.text);
+  const proposing = store
+    .listQuestions(repoId, { statuses: ['open'] })
+    .some((q) => q.kind === 'client_file');
+  if (clientFile.oversize && !clientFile.changedOutside && !proposing) {
+    lines.push(
+      `The client file is over its ${CLIENT_FILE_CLEANUP_CHARS}-character limit. Propose a cleanup with client_file_propose: merge repeats and remove lines that no longer apply.`
+    );
+  }
+  return lines;
 }
 
 function recordsNote(store: SnapshotReader, scope: AdmiralThreadScope): string {

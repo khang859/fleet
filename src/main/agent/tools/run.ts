@@ -44,6 +44,8 @@ import { fleetMember } from './fleet';
 import { agencyMember } from './agency';
 import {
   AskClientArgs,
+  ClientFileProposeArgs,
+  JobDeliverArgs,
   JobListArgs,
   JobOpenArgs,
   JobPlanArgs,
@@ -181,6 +183,14 @@ export async function runAgentTool(
       return agencyMember(ctx, name, 'jobPlan')(checked(JobPlanArgs, args, name));
     case 'job_update':
       return agencyMember(ctx, name, 'jobUpdate')(checked(JobUpdateArgs, args, name));
+    case 'job_deliver':
+      return agencyMember(ctx, name, 'jobDeliver')(checked(JobDeliverArgs, args, name));
+    case 'client_file_propose':
+      return agencyMember(
+        ctx,
+        name,
+        'clientFilePropose'
+      )(checked(ClientFileProposeArgs, args, name));
     default:
       throw new Error(`There is no tool called ${name}`);
   }

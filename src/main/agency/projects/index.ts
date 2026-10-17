@@ -3,6 +3,7 @@ import { STARTER_SOURCE } from '../../../shared/agency-client-file';
 import type {
   AgencyProjectSummary,
   BriefIdeas,
+  ClientFileView,
   ClientLineInput,
   ProjectFolder,
   RepoFile,
@@ -13,16 +14,17 @@ import type {
 import type { GitRun } from '../repo-identity';
 import type { AgencyStore } from '../store/agency-store';
 import { briefIdeas } from './brief-ideas';
-import { clientFileForNote, readClientFile, ruleCandidates, writeClientLines } from './client-file';
+import { ruleCandidates, type ClientFiles } from './client-file';
 import { probeFolders } from './folders';
 import { nativeGh, type GhRun } from './gh';
-import { agencyHome, clientFilePath } from './paths';
+import { agencyHome } from './paths';
 import { loadSetup, saveSetup, shareWithTeam, type ImportedFile } from './project-store';
 import { readOnlyGit } from './repo-reader';
 import { readRepoFile, scanProject } from './setup-findings';
 
 export type ProjectsDeps = {
   store: AgencyStore;
+  clientFiles: ClientFiles;
   resolve: (path: string) => Promise<RepoResolution>;
   emit: (change: AgencyChanged) => void;
   gh?: GhRun;
@@ -125,16 +127,13 @@ export class ProjectsService {
     return shareWithTeam(await this.verified(input.repo), this.home);
   }
 
-  async clientFile(repoId: string): Promise<{ path: string; text: string | null }> {
+  clientFile(repoId: string): ClientFileView {
+    const { clientFiles } = this.deps;
     return {
-      path: clientFilePath(repoId, this.home),
-      text: await readClientFile(repoId, this.home)
+      path: clientFiles.path(repoId),
+      text: clientFiles.read(repoId) || null,
+      changedOutside: clientFiles.changedOutside(repoId)
     };
-  }
-
-  /** The client file as a turn's note shows it, or null when there is none. */
-  clientFileForNote(repoId: string): string | null {
-    return clientFileForNote(repoId, this.home);
   }
 
   async ruleCandidates(repo: AgencyRepoRef): Promise<RuleCandidates[]> {
@@ -147,10 +146,11 @@ export class ProjectsService {
    */
   async finishStarter(input: { repo: AgencyRepoRef; lines: ClientLineInput[] }): Promise<string> {
     const repo = await this.verified(input.repo);
-    const text = await writeClientLines(
-      { repoId: repo.repoId, name: repo.name, replaceSource: STARTER_SOURCE, lines: input.lines },
-      { home: this.home }
-    );
+    const text = this.deps.clientFiles.merge(repo.repoId, {
+      name: repo.name,
+      replaceSource: STARTER_SOURCE,
+      lines: input.lines
+    });
     this.markDone(repo, 'starter');
     return text;
   }

@@ -4,9 +4,9 @@ import { jobDisplayId } from '../../../../shared/agency';
 import { useAgencyStore } from '../../store/agency-store';
 import { useRefusable, type RefusableAction } from './use-refusable';
 
-const PRIMARY =
+export const PRIMARY =
   'h-7 rounded-md border border-blue-400/60 bg-fleet-surface-2 px-2.5 text-xs font-medium text-fleet-text transition-colors hover:bg-fleet-surface-3 focus-ring disabled:opacity-50';
-const SECONDARY =
+export const SECONDARY =
   'h-7 rounded-md border border-fleet-border-strong px-2.5 text-xs text-fleet-text-secondary transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text focus-ring disabled:opacity-50';
 
 /** Closing a job from the sheet: busy while main works, and why it refused. */

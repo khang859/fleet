@@ -957,7 +957,9 @@ const Message = memo(function Message({
           return <AgentPermissionRow key={i} ask={ask} onDecide={onDecide} />;
         }
         // The Admiral's questions and plans are decided where they went up, as their cards.
-        if (part.call.name === 'ask_client') return <AskClientRow key={i} call={part.call} />;
+        if (part.call.name === 'ask_client' || part.call.name === 'client_file_propose') {
+          return <AskClientRow key={i} call={part.call} />;
+        }
         if (part.call.name === 'job_plan') return <JobPlanRow key={i} call={part.call} />;
         if (part.call.name === 'job_deliver') return <JobDeliverRow key={i} call={part.call} />;
         // A subagent is a conversation rather than a call, and gets a card.

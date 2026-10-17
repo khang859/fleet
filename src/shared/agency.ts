@@ -109,14 +109,32 @@ export type AgencyQuestionOption = { label: string; detail?: string };
  * after the automatic-turn limit) and `resume` (Resume or Cancel after a
  * restart).
  */
-export type AgencyQuestionKind = 'ask' | 'model_unreachable' | 'continue' | 'resume';
+export type AgencyQuestionKind =
+  | 'ask'
+  | 'client_file'
+  | 'model_unreachable'
+  | 'continue'
+  | 'resume';
 
 export const AGENCY_QUESTION_KINDS: readonly AgencyQuestionKind[] = [
   'ask',
+  'client_file',
   'model_unreachable',
   'continue',
   'resume'
 ];
+
+/** The kinds the Admiral puts up itself, whose answers wake it; the rest are Fleet's own cards. */
+export const ADMIRAL_QUESTION_KINDS: readonly AgencyQuestionKind[] = ['ask', 'client_file'];
+
+/**
+ * A line the Admiral wants in the client file. `replaces` is an existing line
+ * it contradicts: the card shows both, and the old one goes only on approval.
+ */
+export type ClientFileAddition = { text: string; replaces: string | null };
+
+/** What a `client_file` card asks to change in the client file. */
+export type ClientFileProposal = { add: ClientFileAddition[]; remove: string[] };
 
 /**
  * `hidden` is a question that depends on another one's answer and is not
@@ -141,6 +159,8 @@ export type AgencyQuestion = {
   status: AgencyQuestionStatus;
   answerOption: number | null;
   answerText: string | null;
+  /** What a `client_file` card would change; null for every other kind. */
+  proposal: ClientFileProposal | null;
   /** Answered after it was withdrawn: kept, and the Admiral is told it came late. */
   late: boolean;
   withdrawnReason: string | null;
@@ -188,6 +208,10 @@ export type AgencySnapshot = {
   onboarding: AgencyOnboarding;
   /** What closed jobs' cleanup kept or could not undo, until cleaned or dismissed. */
   leftovers: AgencyLeftover[];
+  /** The client file changed outside Fleet since Fleet last wrote it, and the client has not kept it yet. */
+  clientFileChanged: boolean;
+  /** The last closed, cancelled or failed jobs, newest first, for export. */
+  pastJobs: AgencyJob[];
 };
 
 /** When a repository's setup and starter questions were finished; null while they are not. */

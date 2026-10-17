@@ -179,6 +179,7 @@ import type {
 import type {
   AgencyProjectSummary,
   BriefIdeas,
+  ClientFileView,
   ClientLineInput,
   ProjectFolder,
   RuleCandidates,
@@ -1155,6 +1156,9 @@ const fleetApi = {
     /** Open a delivered file with the system's app for it; resolves with an error, or ''. */
     openResult: async (open: ResultOpen): Promise<string> =>
       typedInvoke(IPC_CHANNELS.AGENCY_RESULT_OPEN, open),
+    /** Save an ended job's record as Markdown; resolves with the path, or null. */
+    exportJob: async (jobId: number): Promise<string | null> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_JOB_EXPORT, jobId),
     preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
     /** Onboarding: first run, the picker, setup, the client file and brief ideas. */
     projects: {
@@ -1174,8 +1178,14 @@ const fleetApi = {
       /** Save, then copy into the repository's `.fleet/`. Resolves with what was written. */
       shareSetup: async (input: SaveSetupRequest): Promise<string[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_SHARE_SETUP, input),
-      clientFile: async (repoId: string): Promise<{ path: string; text: string | null }> =>
+      clientFile: async (repoId: string): Promise<ClientFileView> =>
         typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE, repoId),
+      /** Save the whole client file from Settings: the client's edits win. */
+      writeClientFile: async (input: { repoId: string; text: string }): Promise<void> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_WRITE, input),
+      /** Keep a change made to the client file outside Fleet. */
+      keepClientFile: async (repoId: string): Promise<void> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, repoId),
       ruleCandidates: async (repo: AgencyRepoRef): Promise<RuleCandidates[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_RULE_CANDIDATES, repo),
       /** Write the starter answers and picked rules, and mark the starter questions done. */

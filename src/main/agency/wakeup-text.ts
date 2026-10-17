@@ -1,5 +1,10 @@
 import { fence } from '../../shared/fleet-tools';
-import { optionLines, questionDisplayId, type AgencyQuestion } from '../../shared/agency';
+import {
+  optionLines,
+  questionDisplayId,
+  type AgencyQuestion,
+  type ClientFileProposal
+} from '../../shared/agency';
 
 /**
  * What woke the Admiral, one entry per claimed wakeup.
@@ -36,18 +41,10 @@ function answerBody(item: Extract<WakeupItem, { kind: 'answer' }>): string {
   const id = questionDisplayId(q.id);
   const quoted = [`${id}: ${q.question}`];
   if (q.context !== '') quoted.push(`Context: ${q.context}`);
+  if (q.proposal !== null) quoted.push(...proposalLines(q.proposal));
   quoted.push(...optionLines(q, 'your pick'));
 
-  const lines = [fence(id, quoted.join('\n'))];
-  const option = q.answerOption === null ? undefined : q.options[q.answerOption];
-  if (option && q.answerOption !== null) {
-    lines.push(`The client's answer to ${id}: ${q.answerOption + 1}. ${option.label}`);
-  }
-  if (q.answerText !== null && q.answerText !== '') {
-    lines.push(
-      option ? `The client added: ${q.answerText}` : `The client's answer to ${id}: ${q.answerText}`
-    );
-  }
+  const lines = [fence(id, quoted.join('\n')), ...clientAnswerLines(q)];
   if (q.late) {
     const why = q.withdrawnReason ? ` (${q.withdrawnReason})` : '';
     lines.push(
@@ -60,6 +57,39 @@ function answerBody(item: Extract<WakeupItem, { kind: 'answer' }>): string {
     );
   }
   return lines.join('\n');
+}
+
+/** What the client picked and wrote, and what Fleet did about it. */
+function clientAnswerLines(q: AgencyQuestion): string[] {
+  const id = questionDisplayId(q.id);
+  const lines: string[] = [];
+  const option = q.answerOption === null ? undefined : q.options[q.answerOption];
+  if (option && q.answerOption !== null) {
+    lines.push(`The client's answer to ${id}: ${q.answerOption + 1}. ${option.label}`);
+  }
+  if (q.answerText !== null && q.answerText !== '') {
+    lines.push(
+      option ? `The client added: ${q.answerText}` : `The client's answer to ${id}: ${q.answerText}`
+    );
+  }
+  if (q.proposal !== null) {
+    lines.push(
+      q.answerOption === 0
+        ? 'Fleet wrote it to the client file; it is in your note from now on.'
+        : 'Nothing was written to the client file.'
+    );
+  }
+  return lines;
+}
+
+/** A client file proposal as lines, for the model. */
+export function proposalLines(proposal: ClientFileProposal): string[] {
+  return [
+    ...proposal.add.map((a) =>
+      a.replaces === null ? `Add: ${a.text}` : `Replace: ${a.replaces} -> ${a.text}`
+    ),
+    ...proposal.remove.map((r) => `Remove: ${r}`)
+  ];
 }
 
 function itemBody(item: WakeupItem): string | null {

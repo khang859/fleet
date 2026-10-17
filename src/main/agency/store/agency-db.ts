@@ -24,6 +24,10 @@ export function agencyDbPath(): string {
  * results, spend samples, the resources cleanup has to undo (recorded before
  * they are made), holds that keep a running job waiting, settings history and
  * proposals, and workspace projects with their member repositories.
+ *
+ * Version 4 adds what a `client_file` card proposes (`questions.data_json`),
+ * and each client file as Fleet last wrote it, so a change made outside Fleet
+ * shows.
  */
 const MIGRATIONS: readonly string[] = [
   `
@@ -278,6 +282,14 @@ const MIGRATIONS: readonly string[] = [
     PRIMARY KEY (project_id, name)
   );
   CREATE UNIQUE INDEX project_members_repo ON project_members(repo_id);
+  `,
+  `
+  ALTER TABLE questions ADD COLUMN data_json TEXT NOT NULL DEFAULT '{}';
+  CREATE TABLE client_files (
+    repo_id TEXT PRIMARY KEY,
+    text TEXT NOT NULL,
+    written_at INTEGER NOT NULL
+  );
   `
 ];
 

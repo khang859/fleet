@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
+  ADMIRAL_QUESTION_KINDS,
   AGENCY_QUESTION_KINDS,
   RUNNING_JOB_STATES,
   TERMINAL_JOB_STATES,
@@ -16,6 +17,7 @@ import {
   type AgencyQuestionStatus,
   type AgencyRepoRef,
   type AgencySnapshot,
+  type ClientFileProposal,
   type JobHoldKind,
   type JobState,
   type WakeupPull
@@ -69,6 +71,7 @@ type QuestionRow = {
   created_at: number;
   answered_at: number | null;
   withdrawn_reason: string | null;
+  data_json: string;
 };
 
 type WakeupRow = {
@@ -111,6 +114,8 @@ export type AskQuestionInput = {
   planVersion?: number | null;
   step?: string | null;
   kind?: AgencyQuestionKind;
+  /** What a `client_file` card proposes. */
+  proposal?: ClientFileProposal;
 };
 
 export type AnswerOutcome = {
@@ -161,12 +166,23 @@ const OptionsJson = z.array(z.object({ label: z.string(), detail: z.string().opt
 const EventPayload = z.object({ line: z.string(), body: z.string().nullable().optional() });
 const AnswerPayload = z.object({ withdrew: z.array(z.number()) });
 const ClientPayload = z.object({ line: z.string(), note: z.string().nullable().optional() });
+const QuestionData = z.object({
+  proposal: z
+    .object({
+      add: z.array(z.object({ text: z.string(), replaces: z.string().nullable() })),
+      remove: z.array(z.string())
+    })
+    .optional()
+});
 
 const HOLD_KINDS: readonly JobHoldKind[] = ['model', 'chain_limit', 'budget', 'client'];
 const CLOSE_TARGETS: readonly CloseTarget[] = ['closed', 'cancelled', 'failed'];
 
 /** How many answered or withdrawn questions a snapshot carries besides the open ones. */
 const SNAPSHOT_RECENT_QUESTIONS = 100;
+
+/** How many ended jobs a snapshot lists for export. */
+const SNAPSHOT_PAST_JOBS = 10;
 
 function jobState(raw: string): JobState {
   return JOB_STATES.find((s) => s === raw) ?? 'failed';
@@ -220,6 +236,10 @@ function toQuestion(row: QuestionRow): AgencyQuestion {
     status: questionStatus(row.status),
     answerOption: row.answer_option,
     answerText: row.answer_text,
+    proposal:
+      row.kind === 'client_file'
+        ? (parseJsonAs(QuestionData, row.data_json)?.proposal ?? null)
+        : null,
     late: row.late === 1,
     withdrawnReason: row.withdrawn_reason,
     createdAt: row.created_at,
@@ -705,8 +725,9 @@ export class AgencyStore {
       const { lastInsertRowid } = this.db
         .prepare(
           `INSERT INTO questions (repo_id, job_id, plan_version, step, kind, question, context,
-             options_json, recommended, dep_question, dep_option, status, withdrawn_reason, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             options_json, recommended, dep_question, dep_option, status, withdrawn_reason, created_at,
+             data_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           input.repoId,
@@ -722,7 +743,8 @@ export class AgencyStore {
           dep?.option ?? null,
           status,
           withdrawnReason,
-          this.now()
+          this.now(),
+          JSON.stringify(input.proposal === undefined ? {} : { proposal: input.proposal })
         );
       const question = this.getQuestion(Number(lastInsertRowid));
       if (!question) throw new Error('question vanished on insert');
@@ -810,7 +832,7 @@ export class AgencyStore {
           q.id
         );
 
-      if (q.kind !== 'ask') {
+      if (!ADMIRAL_QUESTION_KINDS.includes(q.kind)) {
         this.answerFleetCard(q, option);
         const answered = this.getQuestion(q.id);
         return answered ? { question: answered, revealed: [], withdrew: [] } : null;
@@ -1150,7 +1172,7 @@ export class AgencyStore {
    * questions and the most recently settled ones (so a card in the transcript
    * can show how it was answered), and when the next retry is due.
    */
-  snapshot(repoId: string): AgencySnapshot {
+  snapshot(repoId: string): Omit<AgencySnapshot, 'clientFileChanged'> {
     const open = this.listQuestions(repoId, { statuses: ['open'] });
     const recent = this.db
       .prepare<[string, number], QuestionRow>(
@@ -1172,8 +1194,39 @@ export class AgencyStore {
       questions: [...open, ...recent].sort((a, b) => a.id - b.id),
       nextRetryAt: retry?.due ?? null,
       onboarding: this.onboarding(repoId),
-      leftovers: this.resources.leftovers(repoId)
+      leftovers: this.resources.leftovers(repoId),
+      pastJobs: this.pastJobs(repoId)
     };
+  }
+
+  /** The repository's last few jobs that ended, newest first. */
+  private pastJobs(repoId: string): AgencyJob[] {
+    return this.db
+      .prepare<unknown[], JobRow>(
+        `SELECT * FROM jobs WHERE repo_id = ? AND state IN (${marks(TERMINAL_JOB_STATES.length)})
+         ORDER BY updated_at DESC, id DESC LIMIT ?`
+      )
+      .all(repoId, ...TERMINAL_JOB_STATES, SNAPSHOT_PAST_JOBS)
+      .map((row) => this.toJob(row));
+  }
+
+  /** The client file as Fleet last wrote it, or null when Fleet never has. */
+  clientFileMark(repoId: string): string | null {
+    return (
+      this.db
+        .prepare<[string], { text: string }>('SELECT text FROM client_files WHERE repo_id = ?')
+        .get(repoId)?.text ?? null
+    );
+  }
+
+  /** Note what Fleet just wrote to the client file, or what the client kept. */
+  markClientFile(repoId: string, text: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO client_files (repo_id, text, written_at) VALUES (?, ?, ?)
+         ON CONFLICT(repo_id) DO UPDATE SET text = excluded.text, written_at = excluded.written_at`
+      )
+      .run(repoId, text, this.now());
   }
 
   /** Whether the client has been through the first-run checks once. */

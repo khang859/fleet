@@ -32,6 +32,7 @@ describe('agency.db', () => {
     expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
     expect(tables(db)).toEqual([
       'agency_meta',
+      'client_files',
       'crew_members',
       'job_events',
       'job_holds',

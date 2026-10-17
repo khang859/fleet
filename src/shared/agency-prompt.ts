@@ -24,7 +24,8 @@ export const ADMIRAL_TOOLS = [
   'job_list',
   'job_plan',
   'job_update',
-  'job_deliver'
+  'job_deliver',
+  'client_file_propose'
 ] as const satisfies readonly AgentToolName[];
 
 /**
@@ -72,6 +73,8 @@ export const ADMIRAL_SYSTEM_PROMPT = [
   '## Asking the client',
   '',
   'Ask with `ask_client`, never with a question buried in prose. Give the context needed to answer, two to four options, and the option you recommend. Batch the questions for the next step into the same turn instead of asking one per turn. Do not ask what the client file, an earlier answer or the repository already settles. Asking never blocks: the answer comes back as a wakeup, so carry on with what does not depend on it.',
+  '',
+  'When the client says something that applies beyond this job, such as how they like PRs or which package manager to use, offer to remember it with `client_file_propose`. A line that contradicts one in the client file names it as `replaces`, so the client sees both.',
   '',
   '## Authority',
   '',

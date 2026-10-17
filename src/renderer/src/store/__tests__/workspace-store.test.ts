@@ -1527,7 +1527,9 @@ describe('Admiral panes', () => {
           questions: [],
           nextRetryAt: null,
           onboarding: { setupDoneAt: 1, starterDoneAt: 1 },
-          leftovers: []
+          leftovers: [],
+          clientFileChanged: false,
+          pastJobs: []
         }
       }
     });

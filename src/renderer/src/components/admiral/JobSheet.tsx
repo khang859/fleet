@@ -8,7 +8,9 @@ import type {
   StepStatus
 } from '../../../../shared/agency-jobs';
 import { openQuestions, planVersions } from '../../store/agency-store';
+import { ClientFileNotice } from './ClientFileViews';
 import { CancelJob, DeliveredCard, LeftoverList } from './JobClose';
+import { PastJobList } from './PastJobs';
 import { PlanCard } from './PlanCard';
 import { ResultCard } from './ResultCard';
 import { QuestionCard, type QuestionAnswer } from './QuestionCard';
@@ -73,6 +75,8 @@ export function JobSheet({
         )}
       </Section>
 
+      {snapshot?.clientFileChanged === true && <ClientFileNotice repoId={snapshot.repoId} />}
+
       {(count > 0 || job !== null) && (
         <WaitingSection
           count={count}
@@ -80,6 +84,7 @@ export function JobSheet({
           pending={pending}
           detail={detail}
           questions={waiting}
+          clientFileChanged={snapshot?.clientFileChanged === true}
           onAnswer={onAnswer}
           onOpenSettings={onOpenSettings}
         />
@@ -96,6 +101,12 @@ export function JobSheet({
       {firstRun && <HowAJobGoes />}
 
       <LeftoversSection snapshot={snapshot} />
+
+      {jobId === null && snapshot !== undefined && snapshot.pastJobs.length > 0 && (
+        <Section label="PAST JOBS">
+          <PastJobList jobs={snapshot.pastJobs} />
+        </Section>
+      )}
 
       <div className="flex-1" />
       <SettingsBox
@@ -171,6 +182,7 @@ function WaitingSection({
   pending,
   detail,
   questions,
+  clientFileChanged,
   onAnswer,
   onOpenSettings
 }: {
@@ -180,6 +192,7 @@ function WaitingSection({
   pending: AgencyPlanVersion | null;
   detail: AgencyJobDetail | undefined;
   questions: AgencyQuestion[];
+  clientFileChanged: boolean;
   onAnswer: (question: AgencyQuestion, answer: QuestionAnswer) => Promise<boolean>;
   onOpenSettings: () => void;
 }): React.JSX.Element {
@@ -199,6 +212,7 @@ function WaitingSection({
           question={q}
           onAnswer={async (answer) => onAnswer(q, answer)}
           onOpenSettings={onOpenSettings}
+          clientFileChanged={clientFileChanged}
         />
       ))}
     </Section>

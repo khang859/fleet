@@ -130,6 +130,14 @@ export type AgencyProjectSummary = {
   openQuestions: number;
 };
 
+/** A client file as the editor and the starter preview read it. */
+export type ClientFileView = {
+  path: string;
+  text: string | null;
+  /** Changed outside Fleet since Fleet last wrote it, and not kept yet. */
+  changedOutside: boolean;
+};
+
 /** A line the client file can take, with where it came from. */
 export type ClientLineInput = { text: string; source: string };
 

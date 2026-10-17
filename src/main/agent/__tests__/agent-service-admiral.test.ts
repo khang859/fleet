@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
@@ -228,6 +228,7 @@ describe('Admiral turn', () => {
       'fleet_read',
       'fleet_diff',
       'fleet_wait',
+      'client_file_propose',
       'ask_client',
       'job_open',
       'job_list'
@@ -404,10 +405,8 @@ describe('Admiral turn', () => {
   });
 
   it('starts every round from the client file, so a job knows how the client works', async () => {
-    const clients = join(dir, 'agency-home', 'clients');
-    mkdirSync(clients, { recursive: true });
-    writeFileSync(
-      join(clients, `${REPO.repoId}.md`),
+    agency.clientFiles.write(
+      REPO.repoId,
       '# repo\n- Open PRs as drafts. (from starter questions, 2026-10-17)\n'
     );
 

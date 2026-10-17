@@ -4,6 +4,7 @@ import { useSettingsStore } from '../../store/settings-store';
 import { useAgentStore } from '../../store/agent-store';
 import { ModelSelect } from '../agent/settings/ModelSelect';
 import { BoundedNumber } from '../agent/settings/controls';
+import { ClientFileEditor } from './ClientFileEditor';
 import { SettingRow } from './SettingRow';
 
 /** A dollar amount, stored when editing ends. See `BoundedNumber`. */
@@ -25,7 +26,7 @@ function DollarField(props: {
 
 /**
  * Settings › Agency › Admiral: whether Admiral is on at all, the model it runs
- * on, and what its jobs may spend.
+ * on, what its jobs may spend, and each project's client file.
  */
 export function AgencyAdmiralSection(): React.JSX.Element | null {
   const settings = useSettingsStore((s) => s.settings);
@@ -121,6 +122,8 @@ export function AgencyAdmiralSection(): React.JSX.Element | null {
             All jobs together in a calendar month. At the cap no new work starts.
           </p>
         </div>
+
+        <ClientFileEditor />
       </div>
     </div>
   );

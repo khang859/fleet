@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { mergeClientFile, STARTER_SOURCE } from '../../../../shared/agency-client-file';
 import type { ClientLineInput } from '../../../../shared/agency-projects';
 import { RECOMMENDED_STARTER, starterLines } from '../../../../shared/agency-starter';
-import { clientFileForNote, extractRules, ruleCandidates, writeClientLines } from '../client-file';
+import { ClientFiles, extractRules, ruleCandidates } from '../client-file';
 import { clientFilePath } from '../paths';
 import { initRepo, tempDir, writeFiles } from './git-fixture';
 
@@ -16,23 +16,34 @@ const OCT_20 = new Date(2026, 9, 20, 12);
 
 let tmp: { dir: string; cleanup: () => void };
 let home: string;
+let marks: Map<string, string>;
+let clock: Date;
+let files: ClientFiles;
 
 beforeEach(() => {
   tmp = tempDir('fleet-client-file-');
   home = join(tmp.dir, 'agency-home');
+  marks = new Map();
+  clock = OCT_17;
+  files = new ClientFiles({
+    store: {
+      clientFileMark: (repoId) => marks.get(repoId) ?? null,
+      markClientFile: (repoId, text) => void marks.set(repoId, text)
+    },
+    home: () => home,
+    now: () => clock
+  });
 });
 afterEach(() => tmp.cleanup());
 
-const write = async (
-  lines: ClientLineInput[],
-  now: Date,
-  replaceSource?: string
-): Promise<string> =>
-  writeClientLines({ repoId: REPO_ID, name: 'shop', replaceSource, lines }, { home, now });
+const write = (lines: ClientLineInput[], now: Date, replaceSource?: string): string => {
+  clock = now;
+  return files.merge(REPO_ID, { name: 'shop', replaceSource, lines });
+};
 
-describe('writeClientLines', () => {
-  it('writes each line with where it came from and when', async () => {
-    const text = await write(
+describe('ClientFiles.merge', () => {
+  it('writes each line with where it came from and when', () => {
+    const text = write(
       starterLines(RECOMMENDED_STARTER).map((t) => ({ text: t, source: STARTER_SOURCE })),
       OCT_17
     );
@@ -49,9 +60,9 @@ describe('writeClientLines', () => {
     expect(readFileSync(clientFilePath(REPO_ID, home), 'utf8')).toBe(text);
   });
 
-  it('skips a line the file already says, whoever said it first', async () => {
-    await write([{ text: 'Use pnpm, never npm.', source: 'CLAUDE.md' }], OCT_17);
-    const text = await write(
+  it('skips a line the file already says, whoever said it first', () => {
+    write([{ text: 'Use pnpm, never npm.', source: 'CLAUDE.md' }], OCT_17);
+    const text = write(
       [
         { text: 'use pnpm,  never npm', source: 'AGENTS.md' },
         { text: 'Run the API tests before a PR.', source: 'CLAUDE.md' }
@@ -64,12 +75,12 @@ describe('writeClientLines', () => {
     ]);
   });
 
-  it('replaces the last starter answers, and keeps lines the client typed', async () => {
-    await write([{ text: 'Open PRs as drafts.', source: STARTER_SOURCE }], OCT_17);
+  it('replaces the last starter answers, and keeps lines the client typed', () => {
+    write([{ text: 'Open PRs as drafts.', source: STARTER_SOURCE }], OCT_17);
     const typed = `${readFileSync(clientFilePath(REPO_ID, home), 'utf8')}- Never touch the billing code.\n`;
     writeFiles(home, { [`clients/${REPO_ID}.md`]: typed });
 
-    const text = await write(
+    const text = write(
       [{ text: 'Open PRs ready for review.', source: STARTER_SOURCE }],
       OCT_20,
       STARTER_SOURCE
@@ -84,14 +95,17 @@ describe('writeClientLines', () => {
     );
   });
 
-  it('is what the Admiral reads at the start of a round, cut short past its limit', async () => {
-    expect(clientFileForNote(REPO_ID, home)).toBeNull();
-    await write([{ text: 'Open PRs as drafts.', source: STARTER_SOURCE }], OCT_17);
-    expect(clientFileForNote(REPO_ID, home)).toBe(
-      '# shop\n- Open PRs as drafts. (from starter questions, 2026-10-17)'
-    );
-    writeFiles(home, { [`clients/${REPO_ID}.md`]: 'x'.repeat(9_000) });
-    expect(clientFileForNote(REPO_ID, home)?.endsWith('[cut off]')).toBe(true);
+  it('is what the Admiral reads at the start of a round, cut short past its limit', () => {
+    expect(files.forNote(REPO_ID)).toBeNull();
+    write([{ text: 'Open PRs as drafts.', source: STARTER_SOURCE }], OCT_17);
+    expect(files.forNote(REPO_ID)).toEqual({
+      text: '# shop\n- Open PRs as drafts. (from starter questions, 2026-10-17)',
+      changedOutside: false,
+      oversize: false
+    });
+    files.write(REPO_ID, 'x'.repeat(9_000));
+    expect(files.forNote(REPO_ID)).toMatchObject({ changedOutside: false, oversize: true });
+    expect(files.forNote(REPO_ID)?.text.endsWith('[cut off]')).toBe(true);
   });
 
   it('keeps a merged line to one line', () => {
@@ -101,6 +115,78 @@ describe('writeClientLines', () => {
       '2026-10-17'
     );
     expect(text).toBe('# shop\n- a b c (from s, 2026-10-17)\n');
+  });
+});
+
+describe('ClientFiles proposals and outside changes', () => {
+  const START = [
+    { text: 'Open PRs ready for review.', source: STARTER_SOURCE },
+    { text: 'Use npm.', source: 'CLAUDE.md' },
+    { text: 'Notify me for everything.', source: STARTER_SOURCE }
+  ];
+
+  it('swaps a contradicted line in place, removes and adds, each tagged with its job', () => {
+    write(START, OCT_17);
+    clock = OCT_20;
+    const text = files.apply(REPO_ID, {
+      name: 'shop',
+      source: 'job j3',
+      proposal: {
+        add: [
+          { text: 'Open PRs as drafts.', replaces: 'open prs ready for review' },
+          { text: 'Use pnpm, never npm.', replaces: null }
+        ],
+        remove: ['Notify me for everything.']
+      }
+    });
+    expect(text).toBe(
+      [
+        '# shop',
+        '- Open PRs as drafts. (from job j3, 2026-10-20)',
+        '- Use npm. (from CLAUDE.md, 2026-10-17)',
+        '- Use pnpm, never npm. (from job j3, 2026-10-20)',
+        ''
+      ].join('\n')
+    );
+    expect(files.changedOutside(REPO_ID)).toBe(false);
+  });
+
+  it('adds a line whose old line the client already edited away', () => {
+    write(START.slice(0, 1), OCT_17);
+    const text = files.apply(REPO_ID, {
+      name: 'shop',
+      source: 'the lobby',
+      proposal: { add: [{ text: 'Open PRs as drafts.', replaces: 'Gone line.' }], remove: [] }
+    });
+    expect(text.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(2);
+  });
+
+  it("shows a change made outside Fleet, and keeps Fleet's version in the note until kept", () => {
+    write(START.slice(0, 1), OCT_17);
+    const fleets = files.read(REPO_ID).trim();
+    writeFiles(home, { [`clients/${REPO_ID}.md`]: `${fleets}\n- Spend whatever you like.\n` });
+
+    expect(files.changedOutside(REPO_ID)).toBe(true);
+    expect(files.forNote(REPO_ID)).toEqual({ text: fleets, changedOutside: true, oversize: false });
+
+    files.keep(REPO_ID);
+    expect(files.changedOutside(REPO_ID)).toBe(false);
+    expect(files.forNote(REPO_ID)?.text).toContain('Spend whatever you like.');
+  });
+
+  it('counts a file Fleet never wrote, or one deleted, as changed outside', () => {
+    writeFiles(home, { [`clients/${REPO_ID}.md`]: '# shop\n- Typed in vim.\n' });
+    expect(files.forNote(REPO_ID)).toEqual({ text: '', changedOutside: true, oversize: false });
+    files.keep(REPO_ID);
+    rmSync(files.path(REPO_ID));
+    expect(files.changedOutside(REPO_ID)).toBe(true);
+  });
+
+  it('takes a hand edit saved in Settings as it is', () => {
+    write(START, OCT_17);
+    files.write(REPO_ID, '# shop\n- Only my own words.\n');
+    expect(files.changedOutside(REPO_ID)).toBe(false);
+    expect(files.forNote(REPO_ID)?.text).toBe('# shop\n- Only my own words.');
   });
 });
 

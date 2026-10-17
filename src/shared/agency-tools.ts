@@ -13,6 +13,7 @@ import { offeredToolSpecs } from './capability-tools';
  * null where the tool does not apply: `job_open` exists only in the lobby,
  * because a change to a job happens only in that job's conversation, and
  * `job_plan`, `job_update` and `job_deliver` exist only in a job's thread.
+ * `client_file_propose` works in both: a standing preference can come up anywhere.
  *
  * None of them waits on the client. `ask_client` and `job_plan` return the
  * moment the card is up, and the answer comes back later as a wakeup, so the
@@ -25,7 +26,8 @@ export const AGENCY_TOOL_NAMES = [
   'job_list',
   'job_plan',
   'job_update',
-  'job_deliver'
+  'job_deliver',
+  'client_file_propose'
 ] as const;
 export type AgencyToolName = (typeof AGENCY_TOOL_NAMES)[number];
 
@@ -49,6 +51,14 @@ export const RESULT_TITLE_MAX_CHARS = 120;
 export const RESULT_COPY_MAX_CHARS = 20_000;
 /** Most files one result hands back. */
 export const RESULT_MAX_FILES = 20;
+
+/** Longest client file line, which is one sentence or two. */
+export const CLIENT_LINE_MAX_CHARS = 300;
+/** Longest reason a client file card gives. */
+export const CLIENT_REASON_MAX_CHARS = 500;
+/** Most lines one client file card adds; a cleanup may remove more. */
+export const CLIENT_PROPOSAL_MAX_ADD = 20;
+export const CLIENT_PROPOSAL_MAX_REMOVE = 60;
 
 /** What each deliverable kind is handed back as. */
 export const RESULT_INPUT: Record<DeliverableKind, 'url' | 'paths' | 'text' | 'branch'> = {
@@ -136,12 +146,28 @@ export const JobDeliverArgs = z
     }
   });
 
+const clientLine = z.string().trim().min(1).max(CLIENT_LINE_MAX_CHARS);
+
+export const ClientFileProposeArgs = z
+  .object({
+    reason: z.string().trim().min(1).max(CLIENT_REASON_MAX_CHARS),
+    add: z
+      .array(z.object({ text: clientLine, replaces: clientLine.optional() }))
+      .max(CLIENT_PROPOSAL_MAX_ADD)
+      .optional(),
+    remove: z.array(clientLine).max(CLIENT_PROPOSAL_MAX_REMOVE).optional()
+  })
+  .refine((a) => (a.add?.length ?? 0) + (a.remove?.length ?? 0) > 0, {
+    message: 'propose at least one line to add or remove'
+  });
+
 export type AskClientArgs = z.infer<typeof AskClientArgs>;
 export type JobOpenArgs = z.infer<typeof JobOpenArgs>;
 export type JobListArgs = z.infer<typeof JobListArgs>;
 export type JobPlanArgs = z.output<typeof JobPlanArgs>;
 export type JobUpdateArgs = z.infer<typeof JobUpdateArgs>;
 export type JobDeliverArgs = z.infer<typeof JobDeliverArgs>;
+export type ClientFileProposeArgs = z.infer<typeof ClientFileProposeArgs>;
 
 /** What an agency tool hands back: the text for the model, and the row in the transcript. */
 export type AgencyToolOutput = { text: string; summary: string };
@@ -165,6 +191,7 @@ export type AgentAgencyCapability = {
   jobUpdate: Run<JobUpdateArgs> | null;
   /** Null in the lobby. */
   jobDeliver: Run<JobDeliverArgs> | null;
+  clientFilePropose: Run<ClientFileProposeArgs>;
 };
 
 /** The capability member behind each tool. */
@@ -174,7 +201,8 @@ export const AGENCY_TOOL_MEMBER = {
   job_list: 'jobList',
   job_plan: 'jobPlan',
   job_update: 'jobUpdate',
-  job_deliver: 'jobDeliver'
+  job_deliver: 'jobDeliver',
+  client_file_propose: 'clientFilePropose'
 } as const satisfies Record<AgencyToolName, keyof AgentAgencyCapability>;
 
 const ASK_DESCRIPTION = [
@@ -210,6 +238,13 @@ const DELIVER_DESCRIPTION = [
   'Hand back a result of a plan step, as a card for the client: what a crew member made, or what you made yourself.',
   'Give the kind and, for a deliverable the step lists, its label. `pr` takes the PR `url` and reads the rest from GitHub; `branch` takes a local `branch`; `preview` and `link` take a `url`; `copy` takes the `text`; `doc`, `image`, `review`, `report` and `file` take absolute `paths` inside the project or the job folder, which Fleet copies, so they outlive the worktree.',
   'A result the step did not list is fine: it shows as an extra. The job is delivered once every step is done and handed back everything it lists.'
+].join('\n\n');
+
+const CLIENT_FILE_DESCRIPTION = [
+  "Propose a change to the client file, the client's standing preferences for this project, as a card the client approves or turns down.",
+  'Propose a line when the client says something that applies beyond this job, like "always open PRs as drafts". Write each line as one short rule in their terms. Nothing is written until they approve.',
+  'When a new line contradicts one already in the file, give that line as `replaces`, word for word: the card shows both, and the old one goes only on approval. `remove` takes lines word for word too.',
+  'When Fleet says the file is over its size limit, propose a cleanup: merge repeats and drop lines that no longer apply, with `remove` and `add`.'
 ].join('\n\n');
 
 const stringList = (description: string): Record<string, unknown> => ({
@@ -268,6 +303,46 @@ const optionSchema = {
 };
 
 export const AGENCY_TOOL_SPECS: AgentToolSpec[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'client_file_propose',
+      description: CLIENT_FILE_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          reason: {
+            type: 'string',
+            maxLength: CLIENT_REASON_MAX_CHARS,
+            description: 'Why, in a sentence the client reads on the card.'
+          },
+          add: {
+            type: 'array',
+            maxItems: CLIENT_PROPOSAL_MAX_ADD,
+            items: {
+              type: 'object',
+              properties: {
+                text: { type: 'string', maxLength: CLIENT_LINE_MAX_CHARS },
+                replaces: {
+                  type: 'string',
+                  maxLength: CLIENT_LINE_MAX_CHARS,
+                  description: 'The existing line this one contradicts, word for word.'
+                }
+              },
+              required: ['text'],
+              additionalProperties: false
+            }
+          },
+          remove: {
+            ...stringList('Existing lines to take out, word for word.'),
+            maxItems: CLIENT_PROPOSAL_MAX_REMOVE
+          }
+        },
+        required: ['reason'],
+        additionalProperties: false
+      }
+    }
+  },
   {
     type: 'function',
     function: {

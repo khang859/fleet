@@ -18,6 +18,7 @@ export function agencyQuestion(over: Partial<AgencyQuestion> = {}): AgencyQuesti
     status: 'open',
     answerOption: null,
     answerText: null,
+    proposal: null,
     late: false,
     withdrawnReason: null,
     createdAt: 1,
