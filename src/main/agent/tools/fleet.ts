@@ -1,5 +1,6 @@
 import type { AgentToolContext } from '../../../shared/agent-tools';
 import type { AgentFleetCapability } from '../../../shared/fleet-tools';
+import { capabilityMember } from './member';
 
 /**
  * The capability member behind a fleet tool, or a sentence saying why there is
@@ -12,19 +13,15 @@ export function fleetMember<K extends keyof AgentFleetCapability>(
   name: string,
   key: K
 ): NonNullable<AgentFleetCapability[K]> {
-  if (ctx.fleet === null) {
-    throw new Error(
-      `${name} works only in an Agent pane in orchestrator mode. Ask the user to turn it on if you need it.`
-    );
-  }
-  const run = ctx.fleet[key];
-  // An orchestrator turn has every act tool but this one only when the user
-  // turned it on, which is the thing to say.
-  if (run === null && key === 'permission' && ctx.fleet.send !== null) {
-    throw new Error(
-      `${name} is off: answering a session's permission requests is a setting the user turns on (Agent settings, Permissions). Until then the user answers them in the session's terminal.`
-    );
-  }
-  if (run === null) throw new Error(`${name} is not available in this conversation.`);
-  return run as NonNullable<AgentFleetCapability[K]>;
+  return capabilityMember(
+    ctx.fleet,
+    key,
+    `${name} works only in an Agent pane in orchestrator mode. Ask the user to turn it on if you need it.`,
+    // An orchestrator turn has every act tool but this one only when the user
+    // turned it on, which is the thing to say.
+    (fleet) =>
+      key === 'permission' && fleet.send !== null
+        ? `${name} is off: answering a session's permission requests is a setting the user turns on (Agent settings, Permissions). Until then the user answers them in the session's terminal.`
+        : `${name} is not available in this conversation.`
+  );
 }

@@ -212,6 +212,10 @@ export const IPC_CHANNELS = {
   // transcript is renderer-side, so the request carries the whole history.
   AGENT_SEND: 'agent:send',
   AGENT_CANCEL: 'agent:cancel',
+  // A client message for a running Admiral turn, taken in at its next round.
+  // QUEUED_TAKEN names the queued messages the turn has just taken in.
+  AGENT_QUEUE: 'agent:queue',
+  AGENT_STREAM_QUEUED_TAKEN: 'agent:stream-queued-taken',
   // Fold older messages into one summary. Shares CANCEL and the error channel,
   // and reports only the finished summary - nothing is streamed to the pane.
   AGENT_COMPACT: 'agent:compact',

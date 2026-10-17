@@ -274,6 +274,29 @@ export class AgencyStore {
     })();
   }
 
+  /** A repository `ensureLobby` has recorded, or null for one it never saw. */
+  repo(repoId: string): AgencyRepoRef | null {
+    const row = this.db
+      .prepare<
+        [string],
+        { repo_id: string; root: string; name: string }
+      >('SELECT repo_id, root, name FROM repos WHERE repo_id = ?')
+      .get(repoId);
+    return row ? { repoId: row.repo_id, root: row.root, name: row.name } : null;
+  }
+
+  /** Whether an agent session is an Admiral lobby's or a job's. */
+  isAdmiralSession(sessionId: string): boolean {
+    return (
+      this.db
+        .prepare<[string, string], { found: number }>(
+          `SELECT 1 AS found FROM lobbies WHERE session_id = ?
+           UNION ALL SELECT 1 FROM jobs WHERE session_id = ? LIMIT 1`
+        )
+        .get(sessionId, sessionId) !== undefined
+    );
+  }
+
   lobbySessionId(repoId: string): string | null {
     return this.lobby(repoId)?.session_id ?? null;
   }

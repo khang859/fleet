@@ -1,22 +1,25 @@
-import type {
-  AdmiralClaimResult,
-  AgencyAnswerRequest,
-  AgencyChanged,
-  AgencyJob,
-  AgencyPreflight,
-  AgencyQuestion,
-  AgencyRepoRef,
-  AgencySnapshot,
-  RepoResolution,
-  WakeupPull,
-  WakeupRelease
+import { randomUUID } from 'node:crypto';
+import {
+  jobDisplayId,
+  type AdmiralClaimResult,
+  type AdmiralThreadScope,
+  type AgencyAnswerRequest,
+  type AgencyChanged,
+  type AgencyJob,
+  type AgencyPreflight,
+  type AgencyQuestion,
+  type AgencyRepoRef,
+  type AgencySnapshot,
+  type RepoResolution,
+  type WakeupPull,
+  type WakeupRelease
 } from '../../shared/agency';
 import { createLogger } from '../logger';
 import { AdmiralRegistry } from './admiral-registry';
 import { runPreflight, type Probe } from './preflight';
 import { resolveRepoIdentity, type RepoIdentityOptions } from './repo-identity';
 import { agencyDbPath } from './store/agency-db';
-import { AgencyStore, type AgencyTouched } from './store/agency-store';
+import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
 
 const log = createLogger('agency');
 
@@ -113,6 +116,71 @@ export class AgencyService {
     const job = this.store.markHandoff(input);
     if (job) this.changed([{ repoId: job.repoId, jobId: job.id }]);
     return job !== null;
+  }
+
+  /**
+   * The conversation an Admiral turn says it is, checked against the records:
+   * the repository is known, the job is that repository's, and the turn's
+   * thread is that job's (or the lobby's) own session. A turn that fails this
+   * does not run, so no tool can write in another job's name.
+   */
+  threadScope(input: AdmiralThreadScope & { threadId: string }): AdmiralThreadScope {
+    const repo = this.store.repo(input.repoId);
+    if (repo === null) {
+      throw new Error(
+        'Fleet has no record of the repository this Admiral is for. Close the pane and open the Admiral again.'
+      );
+    }
+    if (input.jobId === null) {
+      if (this.store.lobbySessionId(repo.repoId) !== input.threadId) {
+        throw new Error(`This conversation is not the lobby of ${repo.name}.`);
+      }
+      return { repoId: repo.repoId, jobId: null };
+    }
+    const id = jobDisplayId(input.jobId);
+    const job = this.store.getJob(input.jobId);
+    if (job?.repoId !== repo.repoId) throw new Error(`${id} is not a job in ${repo.name}.`);
+    if (job.sessionId !== input.threadId) throw new Error(`This conversation is not ${id}'s.`);
+    return { repoId: repo.repoId, jobId: job.id };
+  }
+
+  /** Put a question to the client in `scope`'s name. */
+  ask(
+    scope: AdmiralThreadScope,
+    input: Omit<AskQuestionInput, 'repoId' | 'jobId' | 'kind'>
+  ): AgencyQuestion {
+    const question = this.store.askQuestion({ ...input, ...scope });
+    this.changed([scope]);
+    return question;
+  }
+
+  /**
+   * Open a job from a repository's lobby, with a session of its own. The
+   * change names it as opened, which is what starts the renderer's handoff.
+   */
+  openJob(input: {
+    repoId: string;
+    title: string;
+    brief: string;
+    budgetUsd: number | null;
+  }): AgencyJob {
+    const job = this.store.openJob({ ...input, sessionId: randomUUID() });
+    this.deps.emit({ repoId: job.repoId, jobIds: [job.id], openedJobId: job.id });
+    return job;
+  }
+
+  /**
+   * The panes of a job's crew, which are all its fleet read tools may see.
+   * Empty for every thread until crew can be hired; that phase takes the
+   * thread's scope here and answers from the job's hires.
+   */
+  crewPanes(): ReadonlySet<string> {
+    return new Set();
+  }
+
+  /** Whether an agent session is an Admiral lobby's or job's, for its session header. */
+  isAdmiralSession(sessionId: string): boolean {
+    return this.store.isAdmiralSession(sessionId);
   }
 
   /** Jobs with work under way in any repository, for the quit guard. */

@@ -41,6 +41,8 @@ import { writeSkillBody } from '../skills/write';
 import { runWebFetch } from './web-fetch';
 import { runWrite } from './write';
 import { fleetMember } from './fleet';
+import { agencyMember } from './agency';
+import { AskClientArgs, JobListArgs, JobOpenArgs } from '../../../shared/agency-tools';
 import {
   FleetDiffArgs,
   FleetPermissionArgs,
@@ -163,6 +165,12 @@ export async function runAgentTool(
       const run = fleetMember(ctx, name, 'permission');
       return run(checked(FleetPermissionArgs, args, name), ctx.signal, ctx.approveFleet);
     }
+    case 'ask_client':
+      return agencyMember(ctx, name, 'askClient')(checked(AskClientArgs, args, name));
+    case 'job_open':
+      return agencyMember(ctx, name, 'jobOpen')(checked(JobOpenArgs, args, name));
+    case 'job_list':
+      return agencyMember(ctx, name, 'jobList')(checked(JobListArgs, args, name));
     default:
       throw new Error(`There is no tool called ${name}`);
   }

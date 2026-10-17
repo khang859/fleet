@@ -44,7 +44,8 @@ function context(dispatch: AgentToolContext['dispatchTask']): AgentToolContext {
     findSkill: null,
     findMemory: null,
     schedule: null,
-    fleet: null
+    fleet: null,
+    agency: null
   };
 }
 

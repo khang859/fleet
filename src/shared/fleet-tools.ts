@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AgentToolSpec } from './agent-tools';
+import { offeredToolSpecs } from './capability-tools';
 
 /**
  * The tools an orchestrator pane uses to look after the Claude Code sessions
@@ -435,11 +436,7 @@ export const FLEET_TOOL_SPECS: AgentToolSpec[] = [
  * only those with something behind them.
  */
 export function fleetToolSpecs(fleet: AgentFleetCapability | null): AgentToolSpec[] {
-  if (fleet === null) return [];
-  return FLEET_TOOL_SPECS.filter((spec) => {
-    const name = spec.function.name;
-    return isFleetTool(name) && fleet[FLEET_TOOL_MEMBER[name]] !== null;
-  });
+  return offeredToolSpecs(fleet, FLEET_TOOL_SPECS, FLEET_TOOL_MEMBER);
 }
 
 /** Whether a subagent's tool list needs the fleet tools, so is only offered where they are. */

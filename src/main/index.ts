@@ -1599,6 +1599,19 @@ void app.whenReady().then(async () => {
   claudeSessions.addPermissionAnswerer(
     () => settingsStore.get().ai.agent.orchestrator.answerPermissions && orchestrating.size > 0
   );
+  // The Admiral agency's durable state. Opened whether or not the user has
+  // turned Admiral on: jobs outlive the setting, and the quit guard asks.
+  agencyService = createAgencyService({
+    emit: (change) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.AGENCY_CHANGED, change);
+      }
+    },
+    hasModelKey: () =>
+      openRouterSecrets.hasKey() || settingsStore.get().ai.agent.localEndpoints.length > 0
+  });
+  // Before the Agent service, which runs Admiral turns against it.
+  const agency = agencyService;
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
@@ -1633,6 +1646,7 @@ void app.whenReady().then(async () => {
         }
       }
     },
+    admiral: { agency, settings: () => settingsStore.get().agency },
     imageCapabilities: (modelId) => agentCatalog.cachedImageModel(modelId),
     emit: agentEmit
   });
@@ -1679,20 +1693,10 @@ void app.whenReady().then(async () => {
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
     resolveTarget,
-    secrets: openRouterSecrets
+    secrets: openRouterSecrets,
+    sessionScope: (sessionId) => (agency.isAdmiralSession(sessionId) ? 'admiral' : null)
   });
 
-  // The Admiral agency's durable state. Opened whether or not the user has
-  // turned Admiral on: jobs outlive the setting, and the quit guard asks.
-  agencyService = createAgencyService({
-    emit: (change) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.AGENCY_CHANGED, change);
-      }
-    },
-    hasModelKey: () =>
-      openRouterSecrets.hasKey() || settingsStore.get().ai.agent.localEndpoints.length > 0
-  });
   registerAgencyIpc(agencyService);
 
   // Cheap AI one-line pane summaries for the agent overview, throttled per pane

@@ -99,6 +99,8 @@ import type {
   AgentMentionMatch,
   AgentPermissionAsk,
   AgentPermissionDecision,
+  AgentQueueRequest,
+  AgentQueuedTaken,
   AgentSendRequest,
   AgentStreamDelta,
   AgentStreamDone,
@@ -678,6 +680,15 @@ const fleetApi = {
     send: (req: AgentSendRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_SEND, req),
     compact: (req: AgentCompactRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_COMPACT, req),
     cancel: (streamId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_CANCEL, streamId),
+    /**
+     * Hand a client message to a running Admiral turn. False when that turn
+     * can no longer take it in: send it as a turn of its own once it is done.
+     */
+    queue: async (req: AgentQueueRequest): Promise<boolean> =>
+      typedInvoke<boolean>(IPC_CHANNELS.AGENT_QUEUE, req),
+    /** Queued messages a running Admiral turn has just taken in. */
+    onQueuedTaken: (cb: (p: AgentQueuedTaken) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_STREAM_QUEUED_TAKEN, cb),
     onStreamChunk: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_STREAM_CHUNK, cb),
     onStreamReasoning: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>

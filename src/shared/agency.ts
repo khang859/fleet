@@ -26,6 +26,9 @@ export type RepoResolution =
     }
   | { ok: false; reason: 'not-a-repo' | 'remote' };
 
+/** Which Admiral conversation a turn is: a repository's lobby (`jobId` null) or one job. */
+export type AdmiralThreadScope = { repoId: string; jobId: number | null };
+
 /** The part of a resolution an Admiral pane keeps on its leaf. */
 export type AgencyRepoRef = { repoId: string; root: string; name: string };
 
