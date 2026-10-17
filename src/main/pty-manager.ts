@@ -87,6 +87,9 @@ const BUFFER_OVERFLOW_BYTES = 256 * 1024;
 const RESUME_WITHOUT_DRAIN_MS = 250;
 
 export class PtyManager {
+  /** @param appVersion Fleet's version, given to programs as TERM_PROGRAM_VERSION. */
+  constructor(private readonly appVersion: string) {}
+
   private ptys = new Map<string, PtyEntry>();
   /** PTYs that must not be killed by the renderer-driven GC. */
   private protectedPtys = new Set<string>();
@@ -150,10 +153,16 @@ export class PtyManager {
     });
     // FLEET_PANE_ID lets the Claude Code hook name its pane directly, so Fleet
     // never has to walk the process tree to find where a session runs.
+    // COLORTERM and TERM_PROGRAM describe this terminal, so they replace any
+    // value inherited from the terminal Fleet was launched from: xterm.js draws
+    // 24-bit color, and image tools pick a protocol by terminal name.
     const finalEnv = {
       ...withUtf8Locale(opts.env ?? process.env),
       FLEET_SESSION: '1',
-      FLEET_PANE_ID: opts.paneId
+      FLEET_PANE_ID: opts.paneId,
+      COLORTERM: 'truecolor',
+      TERM_PROGRAM: 'Fleet',
+      TERM_PROGRAM_VERSION: this.appVersion
     };
     const proc = pty.spawn(shell, args, {
       name: 'xterm-256color',

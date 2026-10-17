@@ -191,7 +191,7 @@ ipcMain.on(IPC_CHANNELS.AGENT_FLEET_OPEN_TAB_DONE, (_event, payload: unknown) =>
   if (parsed.success) fleetTabs.settle(parsed.data);
 });
 
-const ptyManager = new PtyManager();
+const ptyManager = new PtyManager(app.getVersion());
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
 const settingsStore = new SettingsStore();
