@@ -212,6 +212,10 @@ export const IPC_CHANNELS = {
   // transcript is renderer-side, so the request carries the whole history.
   AGENT_SEND: 'agent:send',
   AGENT_CANCEL: 'agent:cancel',
+  // A client message for a running Admiral turn, taken in at its next round.
+  // QUEUED_TAKEN names the queued messages the turn has just taken in.
+  AGENT_QUEUE: 'agent:queue',
+  AGENT_STREAM_QUEUED_TAKEN: 'agent:stream-queued-taken',
   // Fold older messages into one summary. Shares CANCEL and the error channel,
   // and reports only the finished summary - nothing is streamed to the pane.
   AGENT_COMPACT: 'agent:compact',
@@ -421,5 +425,33 @@ export const IPC_CHANNELS = {
   REMOTE_SSH_RC_INSTALL: 'remote-ssh:rc-install',
   // Renderer-bound: the working directory of the shell on the far side of an ssh
   // pane. Separate from PTY_CWD, which is the local pane's own directory.
-  REMOTE_CWD: 'remote:cwd'
+  REMOTE_CWD: 'remote:cwd',
+  // The Admiral agency: repository identity, the one-per-repo claim, and the
+  // durable jobs, questions and wakeups in agency.db.
+  AGENCY_RESOLVE_REPO: 'agency:resolve-repo',
+  AGENCY_CLAIM: 'agency:claim',
+  AGENCY_RELEASE: 'agency:release',
+  AGENCY_ENSURE_LOBBY: 'agency:ensure-lobby',
+  AGENCY_SNAPSHOT: 'agency:snapshot',
+  AGENCY_ANSWER: 'agency:answer',
+  AGENCY_PULL_WAKEUPS: 'agency:pull-wakeups',
+  AGENCY_ACK_WAKEUPS: 'agency:ack-wakeups',
+  AGENCY_RELEASE_WAKEUPS: 'agency:release-wakeups',
+  AGENCY_CANCEL_JOBS: 'agency:cancel-jobs',
+  AGENCY_MARK_HANDOFF: 'agency:mark-handoff',
+  AGENCY_PREFLIGHT: 'agency:preflight',
+  // Onboarding: first run, the project picker, setup, the client file, ideas.
+  AGENCY_FIRST_RUN_DONE: 'agency:first-run-done',
+  AGENCY_FINISH_FIRST_RUN: 'agency:finish-first-run',
+  AGENCY_PROBE_FOLDERS: 'agency:probe-folders',
+  AGENCY_LIST_PROJECTS: 'agency:list-projects',
+  AGENCY_SCAN_PROJECT: 'agency:scan-project',
+  AGENCY_SAVE_SETUP: 'agency:save-setup',
+  AGENCY_SHARE_SETUP: 'agency:share-setup',
+  AGENCY_CLIENT_FILE: 'agency:client-file',
+  AGENCY_RULE_CANDIDATES: 'agency:rule-candidates',
+  AGENCY_FINISH_STARTER: 'agency:finish-starter',
+  AGENCY_BRIEF_IDEAS: 'agency:brief-ideas',
+  // Renderer-bound: agency state for a repository changed.
+  AGENCY_CHANGED: 'agency:changed'
 } as const;

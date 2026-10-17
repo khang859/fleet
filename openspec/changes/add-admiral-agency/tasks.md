@@ -1,28 +1,28 @@
 ## 1. Phase 1 - Admiral pane and agent mode (PR 1)
 
-- [ ] 1.1 Check whether panes in background tabs stay mounted while another tab is shown, with `npm run drive -- up` and an Agent pane in a background tab; write the result in `docs/learnings/`, and add a hidden mount for Admiral panes if they unmount
-- [ ] 1.2 Add `'admiral'` to `PaneLeaf.paneType` and an `admiralRepo` field in `shared/types.ts`; verify with `npm run typecheck` and a layout-store round-trip test
-- [ ] 1.3 Add the `agency.enabled` setting (default off) and the "Agency" group in `SettingsNav.tsx` with an `agencyAdmiral` section for model, default budget and monthly cap; verify with a settings test and a screenshot of the nav
-- [ ] 1.4 Add the "Open Admiral" command and new-pane menu item that resolves the repo root, refuses a non-repo folder, and focuses an existing Admiral for the same repo; verify with renderer store tests and `npm run drive -- cmd`
-- [ ] 1.5 Add `mode: 'chat' | 'orchestrator' | 'admiral'` to the agent send request, mapped from the saved `agentOrchestrator` flag; verify existing orchestrator tests pass unchanged
-- [ ] 1.6 Add the Admiral system prompt and an allow-listed tool set (`read`, `glob`, `grep`, `web_fetch`, fleet read tools, agency tools); verify with a test that an Admiral turn is offered no edit, write, bash or background tool
-- [ ] 1.7 Build `components/admiral/AdmiralPane.tsx` in `ToolPaneFrame` with the chat on the left, the 380px job sheet on the right, job tabs in the header, and a sheet toggle when narrow; verify with screenshots at wide and narrow widths against canvas boards 3.1 and 3.2
-- [ ] 1.8 Add `ask_client` and the question card (context, two to four options, recommended pick, free answer), delivered back as a wakeup without blocking; verify with a tool test and by answering a card in the running app
-- [ ] 1.9 Add the needs-you tab badge and the notification for new questions while the pane is not focused; verify with a store test and a screenshot of the badge
+- [x] 1.1 Check whether panes in background tabs stay mounted while another tab is shown, with `npm run drive -- up` and an Agent pane in a background tab; write the result in `docs/learnings/`, and add a hidden mount for Admiral panes if they unmount
+- [x] 1.2 Add `'admiral'` to `PaneLeaf.paneType` and an `admiralRepo` field in `shared/types.ts`; verify with `npm run typecheck` and a layout-store round-trip test
+- [x] 1.3 Add the `agency.enabled` setting (default off) and the "Agency" group in `SettingsNav.tsx` with an `agencyAdmiral` section for model, default budget and monthly cap; verify with a settings test and a screenshot of the nav
+- [x] 1.4 Add the "Open Admiral" command and new-pane menu item that resolves the repo root, refuses a non-repo folder, and focuses an existing Admiral for the same repo; verify with renderer store tests and `npm run drive -- cmd`
+- [x] 1.5 Add `mode: 'chat' | 'orchestrator' | 'admiral'` to the agent send request, mapped from the saved `agentOrchestrator` flag; verify existing orchestrator tests pass unchanged
+- [x] 1.6 Add the Admiral system prompt and an allow-listed tool set (`read`, `glob`, `grep`, `web_fetch`, fleet read tools, agency tools); verify with a test that an Admiral turn is offered no edit, write, bash or background tool
+- [x] 1.7 Build `components/admiral/AdmiralPane.tsx` as a pane leaf in `PaneFrame` with the chat on the left, the 380px job sheet on the right, job tabs in the header, and a sheet toggle when narrow; verify with screenshots at wide and narrow widths against canvas boards 3.1 and 3.2
+- [x] 1.8 Add `ask_client` and the question card (context, two to four options, recommended pick, free answer), delivered back as a wakeup without blocking; verify with a tool test and by answering a card in the running app
+- [x] 1.9 Add the needs-you tab badge and the notification for new questions while the pane is not focused; verify with a store test and a screenshot of the badge
 
-- [ ] 1.10 Store one agent session per job plus a lobby session on the leaf, keyed by job id; verify with a store test that a job A wakeup never lands in job B
-- [ ] 1.11 Resolve repo identity from the realpath of `git rev-parse --git-common-dir` in main, map it to a project member, refuse remote folders, and focus the owning Admiral from a worktree, a submodule or a job workspace; verify with tests using a linked worktree and a submodule
-- [ ] 1.12 Keep jobs when the pane is deleted, ask keep-or-cancel when closing a pane with running jobs, and list running jobs in the quit guard; verify with quit-guard and store tests
-- [ ] 1.13 Add question lifecycle: tie questions to plan version and step, withdraw them, mark late answers, and support `dependsOn`; verify with tool tests
-- [ ] 1.14 Fence crew transcripts, tool results, fetched pages and repo files as untrusted in the Admiral prompt, and refuse any Admiral path that types into a crew pane; verify with a test that injected text cannot change the plan or settings
-- [ ] 1.15 Keep wakeups queued and retry with backoff on Admiral model errors, then show the "cannot reach its model" card; verify with a test using a failing model client
+- [x] 1.10 Store one agent session per job plus a lobby session on the leaf, keyed by job id; verify with a store test that a job A wakeup never lands in job B
+- [x] 1.11 Resolve repo identity from the realpath of `git rev-parse --git-common-dir` in main, map it to a project member, refuse remote folders, and focus the owning Admiral from a worktree, a submodule or a job workspace; verify with tests using a linked worktree and a submodule
+- [x] 1.12 Keep jobs when the pane is deleted, ask keep-or-cancel when closing a pane with running jobs, and list running jobs in the quit guard; verify with quit-guard and store tests
+- [x] 1.13 Add question lifecycle: tie questions to plan version and step, withdraw them, mark late answers, and support `dependsOn`; verify with tool tests
+- [x] 1.14 Fence crew transcripts, tool results, fetched pages and repo files as untrusted in the Admiral prompt, and refuse any Admiral path that types into a crew pane; verify with a test that injected text cannot change the plan or settings
+- [x] 1.15 Keep wakeups queued and retry with backoff on Admiral model errors, then show the "cannot reach its model" card; verify with a test using a failing model client
 
-- [ ] 1.16 Build the first-run screen with the Admiral model, crew runtime, and git and GitHub CLI sign-in checks, and disable project picking until a model key is saved; verify with a component test and a screenshot against canvas board 4.1
-- [ ] 1.17 Build the project picker from workspaces, recent folders, "Open folder" and "Clone from GitHub", with git repos only and per-repo status; verify with tests using a non-repo folder and a repo with no remote, and a screenshot against board 4.2
-- [ ] 1.18 Add project setup as a read-only Admiral run that returns findings (stack, package manager, worktree setup, checks, required checks, remote), with edit, Import/Ignore for repo `.fleet/` files, saving to `~/.fleet/agency/projects/<project-id>/` and "Share with team" export; verify with a test that setup creates no pane, worktree or branch, and a screenshot against board 4.3
-- [ ] 1.19 Add the starter questions that write sourced lines to the client file, import rules from `CLAUDE.md` and `AGENTS.md`, and offer the "Open Claude Code here" trust step; verify with a client file test and a screenshot against board 4.4
-- [ ] 1.20 Add the header project switcher and the empty first-brief state with brief ideas from issues, CI and the changelog; verify with a store test that switching focuses an existing tab, and a screenshot against board 4.5
-- [ ] 1.21 Add the Admiral chat queue: queued client messages saved at once and added at the next round of a running turn, client messages before wakeups, one turn for the wakeups due for one job with an event line, wakeups kept while the pane is closed, and the lobby-to-job handoff with a link line; verify with store and service tests and with fleet-drive
+- [x] 1.16 Build the first-run screen with the Admiral model, crew runtime, and git and GitHub CLI sign-in checks, and disable project picking until a model key is saved; verify with a component test and a screenshot against canvas board 4.1
+- [x] 1.17 Build the project picker from workspaces, recent folders, "Open folder" and "Clone from GitHub", with git repos only and per-repo status; verify with tests using a non-repo folder and a repo with no remote, and a screenshot against board 4.2
+- [x] 1.18 Add project setup as a read-only Admiral run that returns findings (stack, package manager, worktree setup, checks, required checks, remote), with edit, Import/Ignore for repo `.fleet/` files, saving to `~/.fleet/agency/projects/<project-id>/` and "Share with team" export; verify with a test that setup creates no pane, worktree or branch, and a screenshot against board 4.3
+- [x] 1.19 Add the starter questions that write sourced lines to the client file, import rules from `CLAUDE.md` and `AGENTS.md`, and offer the "Open Claude Code here" trust step; verify with a client file test and a screenshot against board 4.4
+- [x] 1.20 Add the header project switcher and the empty first-brief state with brief ideas from issues, CI and the changelog; verify with a store test that switching focuses an existing tab, and a screenshot against board 4.5
+- [x] 1.21 Add the Admiral chat queue: queued client messages saved at once and added at the next round of a running turn, client messages before wakeups, one turn for the wakeups due for one job with an event line, wakeups kept while the pane is closed, and the lobby-to-job handoff with a link line; verify with store and service tests and with fleet-drive
 
 ## 2. Phase 2 - jobs, plans and results (PR 2)
 

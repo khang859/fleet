@@ -13,6 +13,7 @@ import {
   type AgentFleetCapability,
   type FleetApprover
 } from './fleet-tools';
+import { AGENCY_TOOL_NAMES, agencyToolSpecs, type AgentAgencyCapability } from './agency-tools';
 import { estimateTokens } from './agent-context';
 import type { SubagentDefinition } from './agent-subagents';
 import { SKILL_DESCRIPTION_MAX, SKILL_NAME_MAX, type SkillDefinition } from './agent-skills';
@@ -128,7 +129,9 @@ export const AGENT_TOOL_NAMES = [
   'schedule_list',
   'schedule_cancel',
   // Each reaches into another terminal, which is never a subagent's to do.
-  ...FLEET_ACT_TOOL_NAMES
+  ...FLEET_ACT_TOOL_NAMES,
+  // An Admiral's alone: they write to the agency's records in the client's name.
+  ...AGENCY_TOOL_NAMES
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
 
@@ -1300,6 +1303,8 @@ export function toolSpecsFor(options: {
   memory?: AgentToolSpec | null;
   /** `null` ⇒ the pane is not in orchestrator mode, and no fleet tool is offered. */
   fleet?: AgentFleetCapability | null;
+  /** `null` ⇒ not an Admiral turn, and no agency tool is offered. */
+  agency?: AgentAgencyCapability | null;
   only?: readonly AgentToolName[];
 }): ToolSpec[] {
   const allowed = (name: AgentToolName): boolean =>
@@ -1318,6 +1323,9 @@ export function toolSpecsFor(options: {
   // round, and the order they appear in is the order they are read in.
   const memory = allowed('memory') ? (options.memory ?? null) : null;
   const fleet = fleetToolSpecs(options.fleet ?? null).filter((spec) => allowed(spec.function.name));
+  const agency = agencyToolSpecs(options.agency ?? null).filter((spec) =>
+    allowed(spec.function.name)
+  );
   return [
     ...own,
     ...(image === null ? [] : [image]),
@@ -1325,6 +1333,7 @@ export function toolSpecsFor(options: {
     ...(skill === null ? [] : [skill]),
     ...(task === null ? [] : [task]),
     ...fleet,
+    ...agency,
     ...(options.mcp ?? [])
   ];
 }
@@ -1606,6 +1615,11 @@ export type AgentToolContext = {
    * `AgentFleetCapability`.
    */
   fleet: AgentFleetCapability | null;
+  /**
+   * The agency tools' way to the job records, scoped to one Admiral thread, or
+   * `null` for every turn that is not an Admiral's.
+   */
+  agency: AgentAgencyCapability | null;
 };
 
 /**

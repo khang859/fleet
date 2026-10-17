@@ -1,6 +1,8 @@
 import { ALL_SHORTCUTS, formatShortcut, type ShortcutDef } from './shortcuts';
 import { collectPaneLeafs, useWorkspaceStore } from '../store/workspace-store';
 import { useToastStore } from '../store/toast-store';
+import { useSettingsStore } from '../store/settings-store';
+import { openAdmiralHere } from './open-admiral';
 import type { RemoteHost } from '../../../shared/remote-ssh-types';
 import type { TeleprompterCommand, TeleprompterSourceRequest } from '../../../shared/teleprompter';
 
@@ -95,8 +97,14 @@ export function createRemoteHostCommands(hosts: RemoteHost[]): Command[] {
   }));
 }
 
-export function createCommandRegistry(): Command[] {
-  return [
+/**
+ * Every static command. Admiral's command is only listed while Admiral is
+ * turned on in Settings > Agency.
+ */
+export function createCommandRegistry({
+  agencyEnabled = useSettingsStore.getState().settings?.agency.enabled === true
+}: { agencyEnabled?: boolean } = {}): Command[] {
+  const commands: Command[] = [
     {
       id: 'new-tab',
       label: 'New Tab',
@@ -283,6 +291,13 @@ export function createCommandRegistry(): Command[] {
       execute: () => useWorkspaceStore.getState().openScratch()
     },
     {
+      id: 'open-admiral',
+      label: 'Open Admiral',
+      category: 'Agent',
+      keywords: ['admiral', 'agency', 'job', 'brief', 'crew', 'repository'],
+      execute: () => void openAdmiralHere()
+    },
+    {
       id: 'open-sessions',
       label: 'Open Sessions',
       category: 'Tabs',
@@ -331,6 +346,7 @@ export function createCommandRegistry(): Command[] {
       execute: () => void runTeleprompter({ type: 'resetTimer' })
     }
   ];
+  return agencyEnabled ? commands : commands.filter((c) => c.id !== 'open-admiral');
 }
 
 export function fuzzyMatch(query: string, label: string): boolean {

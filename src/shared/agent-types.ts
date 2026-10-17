@@ -45,6 +45,7 @@ import {
 } from './agent-fusion';
 import type { McpServersConfig } from './agent-mcp';
 import type { LocalEndpointConfig } from './agent-endpoints';
+import type { AdmiralThreadScope } from './agency';
 
 /**
  * Settings for the native Agent panes. One configuration, shared by every agent
@@ -1002,7 +1003,22 @@ export type AgentMessage = {
    * two are merged rather than one standing in for the other.
    */
   citations: Citation[];
+  /**
+   * What an Admiral thread marks a message as, beyond its role. Absent on every
+   * other message. `event` is the line a wakeup turn opens with, `job-link` the
+   * lobby's line pointing at a job it opened, and `queued` a client message sent
+   * while a turn ran that the turn has not taken in yet.
+   */
+  meta?: AgentMessageMeta;
 };
+
+export type AgentMessageMeta =
+  | {
+      kind: 'event';
+      /** The wakeups it carried, so a retry does not say them again. */ wakeups?: number[];
+    }
+  | { kind: 'job-link'; jobId: number }
+  | { kind: 'queued' };
 
 /** A message that is only words: what the user typed, or a summary. */
 export function textMessage(id: string, role: AgentMessage['role'], text: string): AgentMessage {
@@ -1230,7 +1246,43 @@ export type AgentSendRequest = {
    * flag and main keeps nothing between turns.
    */
   orchestrator?: boolean;
+  /**
+   * Which engine mode this turn runs in. Absent on requests from before it
+   * existed, which is what `orchestrator` is still read for: see
+   * `agentTurnMode`.
+   */
+  mode?: AgentTurnMode;
+  /**
+   * The repository and job (null: the lobby) an Admiral turn belongs to.
+   * Required when `mode` is `admiral`; main checks the job is that
+   * repository's and that `threadId` is its session before the turn runs.
+   */
+  admiral?: AdmiralThreadScope;
 };
+
+/**
+ * A client message for an Admiral turn that is still running, taken in at its
+ * next round. Answered `false` when no Admiral turn is running on that stream,
+ * so the pane sends it as a turn of its own instead.
+ */
+export type AgentQueueRequest = { streamId: string; message: AgentMessage };
+
+/** Queued messages a running Admiral turn has just taken in, in order. */
+export type AgentQueuedTaken = { streamId: string; messageIds: string[] };
+
+/**
+ * What a turn is: a plain chat, an orchestrator with the fleet tools, or an
+ * Admiral with its own prompt and tool set.
+ */
+export type AgentTurnMode = 'chat' | 'orchestrator' | 'admiral';
+
+/**
+ * The mode a request runs in. `mode` wins when it is there; a request that
+ * predates it says orchestrator or not with the boolean.
+ */
+export function agentTurnMode(req: Pick<AgentSendRequest, 'mode' | 'orchestrator'>): AgentTurnMode {
+  return req.mode ?? (req.orchestrator === true ? 'orchestrator' : 'chat');
+}
 
 /**
  * Something on its way to becoming an attachment.
@@ -1275,6 +1327,8 @@ export type AgentCompactRequest = {
   cwd: string;
   /** The older messages being replaced. The tail kept verbatim stays in the pane. */
   messages: AgentMessage[];
+  /** `admiral` folds an Admiral thread on the Admiral's own model. */
+  mode?: AgentTurnMode;
 };
 
 export type AgentCompactDone = {

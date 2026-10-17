@@ -39,7 +39,7 @@ export type ActivityReportDeps = {
  * Enter would clear nothing.
  */
 export function routeActivityReport(
-  report: { paneId: string; state: ActivityState | 'gone'; label?: string },
+  report: { paneId: string; state: ActivityState | 'gone'; label?: string; renotify?: boolean },
   deps: ActivityReportDeps
 ): void {
   const { paneId, state, label } = report;
@@ -56,8 +56,9 @@ export function routeActivityReport(
   }
 
   // A question that is still waiting is not a new question: only a change is
-  // worth a sound, which is the same rule main's own tracker follows.
-  if (!deps.reported.set(paneId, state, label)) return;
+  // worth a sound, which is the same rule main's own tracker follows. A pane
+  // that holds several questions says when one of them is new.
+  if (!deps.reported.set(paneId, state, label) && report.renotify !== true) return;
   deps.updateChrome();
   const level = levelForReported(state);
   if (level !== null) deps.raiseAlerts(paneId, level);

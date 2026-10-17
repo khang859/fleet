@@ -58,6 +58,7 @@ const ctx = (definition: SkillDefinition | null): AgentToolContext => ({
   findMemory: null,
   schedule: null,
   fleet: null,
+  agency: null,
   todos: { list: () => [], save: () => {} }
 });
 

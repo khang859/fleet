@@ -219,6 +219,7 @@ beforeEach(async () => {
       onToolStart: listen(IPC_CHANNELS.AGENT_TOOL_START),
       onToolEnd: listen(IPC_CHANNELS.AGENT_TOOL_END),
       onImagePartial: listen(IPC_CHANNELS.AGENT_IMAGE_PARTIAL),
+      onQueuedTaken: listen(IPC_CHANNELS.AGENT_STREAM_QUEUED_TAKEN),
       onHandOff: listen(IPC_CHANNELS.AGENT_HAND_OFF),
       onPermissionAsk: listen(IPC_CHANNELS.AGENT_PERMISSION_ASK),
       onTaskStart: listen(IPC_CHANNELS.AGENT_TASK_START),
@@ -850,7 +851,8 @@ describe('session log', () => {
       firstUserText: '',
       skipped: 0,
       todos: [],
-      spend: { ...EMPTY_SESSION_SPEND }
+      spend: { ...EMPTY_SESSION_SPEND },
+      scope: null
     };
 
     await open();
@@ -1745,7 +1747,8 @@ describe('switching sessions', () => {
       firstUserText: '',
       skipped: 0,
       todos: [],
-      spend: { ...EMPTY_SESSION_SPEND }
+      spend: { ...EMPTY_SESSION_SPEND },
+      scope: null
     };
 
     await agentStore.useAgentStore.getState().resumeSession(PANE, '/repo', OTHER);
@@ -1781,7 +1784,8 @@ describe('switching sessions', () => {
       firstUserText: '',
       skipped: 0,
       todos: [],
-      spend: { ...EMPTY_SESSION_SPEND }
+      spend: { ...EMPTY_SESSION_SPEND },
+      scope: null
     };
 
     const first = agentStore.useAgentStore.getState().resumeSession(PANE, '/repo', OTHER);
@@ -1861,7 +1865,8 @@ describe('naming a session', () => {
       firstUserText: '',
       skipped: 0,
       todos: [],
-      spend: { ...EMPTY_SESSION_SPEND }
+      spend: { ...EMPTY_SESSION_SPEND },
+      scope: null
     };
     await open();
     turn('carry on');

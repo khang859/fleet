@@ -362,6 +362,58 @@ describe('replaySession', () => {
     expect(replay.skipped).toBe(0);
   });
 
+  it('round-trips the Admiral meta on a message', () => {
+    const wakeup = { ...msg('w', 'fleet', 'q3 was answered'), meta: { kind: 'event' as const } };
+    const link = {
+      ...msg('l', 'assistant', 'Opened j2'),
+      meta: { kind: 'job-link' as const, jobId: 2 }
+    };
+    const replay = replaySession(
+      log(HEADER, { t: 'message', message: wakeup }, { t: 'message', message: link })
+    );
+
+    expect(replay.messages).toEqual([wakeup, link]);
+    expect(replay.skipped).toBe(0);
+  });
+
+  it('takes the queued mark off a message once the turn took it in', () => {
+    const queued = {
+      ...msg('q', 'user', 'also check the docs'),
+      meta: { kind: 'queued' as const }
+    };
+    const replay = replaySession(
+      log(HEADER, { t: 'message', message: queued }, { t: 'unqueue', id: 'q' })
+    );
+
+    expect(replay.messages).toEqual([msg('q', 'user', 'also check the docs')]);
+  });
+
+  // The turn took the message in after the part of its reply written so far,
+  // and that part is written to the log just before the unqueue.
+  it('moves a message taken in by a turn to where the turn was', () => {
+    const queued = { ...msg('q', 'user', 'use pnpm'), meta: { kind: 'queued' as const } };
+    const replay = replaySession(
+      log(
+        HEADER,
+        { t: 'message', message: msg('u', 'user', 'add a test') },
+        { t: 'message', message: queued },
+        { t: 'message', message: msg('a1', 'assistant', 'reading the config') },
+        { t: 'unqueue', id: 'q' },
+        { t: 'message', message: msg('a2', 'assistant', 'using pnpm') }
+      )
+    );
+
+    expect(replay.messages.map((m) => m.id)).toEqual(['u', 'a1', 'q', 'a2']);
+    expect(replay.messages[2].meta).toBeUndefined();
+  });
+
+  it('reads the scope of an Admiral session from its header', () => {
+    const admiral = sessionHeader('s-2', '/repo', '2026-08-05T10:00:00.000Z', 'admiral');
+
+    expect(replaySession(log(admiral)).scope).toBe('admiral');
+    expect(replaySession(log(HEADER)).scope).toBeNull();
+  });
+
   it('stamps the current version in the header', () => {
     expect(HEADER).toMatchObject({ t: 'session', version: SESSION_LOG_VERSION, cwd: '/repo' });
   });

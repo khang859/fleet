@@ -49,6 +49,33 @@ describe('LayoutStore', () => {
     expect(store.load('ws-1')).toEqual(workspace);
   });
 
+  it('round-trips an Admiral tab with its repository and thread sessions', () => {
+    const workspace = {
+      id: 'ws-1',
+      label: 'Test',
+      tabs: [
+        {
+          id: 'tab-1',
+          label: 'Admiral · fleet',
+          labelIsCustom: true,
+          cwd: '/src/fleet',
+          type: 'agent' as const,
+          splitRoot: {
+            type: 'leaf' as const,
+            id: 'pane-1',
+            cwd: '/src/fleet',
+            paneType: 'admiral' as const,
+            admiralRepo: { repoId: '0123456789abcdef', root: '/src/fleet', name: 'fleet' },
+            admiralSessions: { lobby: 'lobby-session', jobs: { '3': 'job-3-session' } },
+            admiralActiveJob: 3
+          }
+        }
+      ]
+    };
+    store.save(workspace);
+    expect(JSON.parse(JSON.stringify(store.load('ws-1')))).toEqual(workspace);
+  });
+
   it('lists all saved workspaces', () => {
     store.save({ id: 'ws-1', label: 'A', tabs: [] });
     store.save({ id: 'ws-2', label: 'B', tabs: [] });

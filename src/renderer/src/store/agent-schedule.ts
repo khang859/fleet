@@ -2,8 +2,14 @@ import type { AgentMessage } from '../../../shared/agent-types';
 import { textMessage } from '../../../shared/agent-types';
 import type { AgentScheduleChanged, AgentScheduleRecord } from '../../../shared/agent-schedule';
 import { renderScheduleFire } from '../../../shared/agent-schedule';
-import { panesOn, record, reportActivity, useAgentStore, type PaneThread } from './agent-store';
-import { isOrchestratorPane, useWorkspaceStore } from './workspace-store';
+import {
+  panesOn,
+  record,
+  reportActivity,
+  turnFlags,
+  useAgentStore,
+  type PaneThread
+} from './agent-store';
 import { createLogger } from '../logger';
 
 const log = createLogger('store:agent-schedule');
@@ -195,20 +201,22 @@ function deliver(paneId: string, sessionId: string, records: AgentScheduleRecord
 }
 
 /**
- * Start a turn nobody typed: from schedule fires, or from a fleet digest.
+ * Start a turn nobody typed: from schedule fires, from a fleet digest, from an
+ * Admiral's wakeups, or to send what the client queued during the last turn.
  *
  * The opening messages are written down like any other, because a turn the
  * user did not ask for is exactly the kind they will want to find in the
- * transcript tomorrow. The caller has checked `canDeliverTo`.
+ * transcript tomorrow. The caller has checked `canDeliverTo`. Resolves the
+ * turn's stream id, or null when the thread has no session to run it in.
  */
 export function startUnpromptedTurn(
   paneId: string,
   thread: PaneThread,
   opening: AgentMessage[],
   scheduleChainDepth?: number
-): void {
+): string | null {
   const sessionId = thread.sessionId;
-  if (sessionId === null) return;
+  if (sessionId === null) return null;
   const streamId = crypto.randomUUID();
   const assistant: AgentMessage = {
     id: streamId,
@@ -247,6 +255,7 @@ export function startUnpromptedTurn(
     attachments: [],
     todos: thread.todos,
     ...(scheduleChainDepth === undefined ? {} : { scheduleChainDepth }),
-    orchestrator: isOrchestratorPane(useWorkspaceStore.getState(), paneId)
+    ...turnFlags(paneId)
   });
+  return streamId;
 }

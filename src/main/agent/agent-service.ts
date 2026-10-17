@@ -12,18 +12,22 @@ import type {
   AgentMessage,
   AgentModelConfig,
   AgentPart,
+  AgentQueueRequest,
+  AgentQueuedTaken,
   AgentSendRequest,
   AgentSettings,
   AgentStreamDelta,
   AgentStreamDone,
   AgentStreamError,
   AgentStreamStep,
+  AgentTurnMode,
   AgentTurnUsage,
   AgentUsage
 } from '../../shared/agent-types';
 import {
   EMPTY_AGENT_USAGE,
   MAX_TOOL_ROUNDS_CEILING,
+  agentTurnMode,
   buildSystemPrompt,
   fleetNote,
   messageAttachments,
@@ -100,10 +104,16 @@ import { streamResponse } from './responses';
 import { isFusionTurn } from './commands/expand';
 import { runAgentTool } from './tools/run';
 import { createFleetCapability, type FleetDeps } from './fleet/capability';
+import { AgentInbox } from './inbox';
+import { admiralModel, planAdmiralTurn, type AdmiralDeps } from '../agency/admiral/turn-plan';
+import { ADMIRAL_WAKEUP_WIRE_PREFIX } from '../../shared/agency-prompt';
+import type { AgentAgencyCapability } from '../../shared/agency-tools';
+import { jobDisplayId } from '../../shared/agency';
 import { renderLedgerBlock } from './fleet/ledger';
 import {
   FLEET_ANALYST,
   FLEET_DIGEST_WIRE_PREFIX,
+  fence,
   fleetToolNames,
   isFleetTool,
   usesFleetTools,
@@ -157,6 +167,8 @@ type Deps = {
   schedules: ScheduleStore;
   /** The Claude Code sessions, for an orchestrator pane's fleet tools; `null` when not wired up. */
   fleet?: FleetDeps | null;
+  /** The agency, for Admiral turns; `null` when not wired up, which refuses them. */
+  admiral?: AdmiralDeps | null;
   /** Injectable for tests; defaults to the real OpenRouter call. */
   stream?: typeof streamCompletion;
   /** Swapped in tests. The Responses transport, used only when tools defer. */
@@ -288,6 +300,27 @@ type RoundsRequest = {
    * arrive somewhere with no pane to put them.
    */
   quiet: boolean;
+  /**
+   * What only an Admiral turn has; absent for every other run. Its presence
+   * also fences every tool result on the wire, because an Admiral takes
+   * instructions only from the client.
+   */
+  admiral?: AdmiralRun;
+};
+
+/** The parts of a run that only an Admiral turn has. */
+type AdmiralRun = {
+  /**
+   * The only tool names the run may execute, whatever the model asks for, so a
+   * tool it was never meant to have cannot run on a model's say-so.
+   */
+  allowedTools: ReadonlySet<string>;
+  /** Messages the client sends while the run is going, taken in each round. */
+  inbox: AgentInbox;
+  /** The agency tools of the Admiral's thread. */
+  agency: AgentAgencyCapability;
+  /** Fleet's records of the conversation, as a note each round. */
+  note: () => string | null;
 };
 
 /** Ceiling for a summary: enough room for the specifics, not for a retelling. */
@@ -390,7 +423,16 @@ function mcpCaller(
 }
 
 /** What building the wire needs to know beyond the messages themselves. */
-type WireContext = { cwd: string; threadId: string };
+type WireContext = { cwd: string; threadId: string; fenceResults?: boolean };
+
+/**
+ * A tool result as the model reads it. In an Admiral turn it is fenced as
+ * data: a file or a page that says "ignore your instructions" is something
+ * the file said, and the fence is what lets the model tell the two apart.
+ */
+function wireResult(name: string, content: string, fenced: boolean): string {
+  return fenced ? fence(name, content) : content;
+}
 
 /**
  * One round of a run, as the pane would have drawn it.
@@ -496,11 +538,11 @@ export function turnServerTools(
 export function withTodoReminder(
   messages: AgentWireMessage[],
   items: AgentTodoItem[],
-  streak: number
+  streak: number,
+  /** Whether the run has the task-list tools; without them there is nothing to nudge. */
+  offered = true
 ): AgentWireMessage[] {
-  const block = renderTodoBlock(items, streak);
-  if (block === null) return messages;
-  return [...messages, { role: 'user', content: fleetNote(block) }];
+  return withRoundNote(messages, offered ? () => renderTodoBlock(items, streak) : null);
 }
 
 /**
@@ -548,10 +590,10 @@ export function withScheduleReminder(
   messages: AgentWireMessage[],
   schedule: AgentScheduleCapability | null
 ): AgentWireMessage[] {
-  if (schedule === null) return messages;
-  const block = renderScheduleBlock(schedule.list(), new Date());
-  if (block === null) return messages;
-  return [...messages, { role: 'user', content: fleetNote(block) }];
+  return withRoundNote(
+    messages,
+    schedule === null ? null : () => renderScheduleBlock(schedule.list(), new Date())
+  );
 }
 
 /**
@@ -567,7 +609,19 @@ export function withFleetLedger(
   messages: AgentWireMessage[],
   ledger: (() => string | null) | null
 ): AgentWireMessage[] {
-  const block = ledger?.() ?? null;
+  return withRoundNote(messages, ledger);
+}
+
+/**
+ * The messages for one round, with a note read fresh for it: the orchestrator's
+ * ledger, or an Admiral's snapshot of its job. Spliced onto a copy, like every
+ * other round note.
+ */
+export function withRoundNote(
+  messages: AgentWireMessage[],
+  note: (() => string | null) | null
+): AgentWireMessage[] {
+  const block = note?.() ?? null;
   if (block === null) return messages;
   return [...messages, { role: 'user', content: fleetNote(block) }];
 }
@@ -758,20 +812,8 @@ async function toWireMessages(
   message: AgentMessage,
   ctx: WireContext
 ): Promise<AgentWireMessage[]> {
-  if (message.role === 'summary') {
-    return [{ role: 'user', content: `${SUMMARY_WIRE_PREFIX}\n\n${messageText(message)}` }];
-  }
-  // Same treatment and for the same reason: no provider has a role for "the
-  // app woke this conversation up", so it crosses as a user message with a line
-  // in front of it saying who is really talking. Without this branch it falls
-  // through to the assistant path below and the model is handed its own note as
-  // something it said.
-  if (message.role === 'scheduled') {
-    return [{ role: 'user', content: `${SCHEDULE_WIRE_PREFIX}\n\n${messageText(message)}` }];
-  }
-  if (message.role === 'fleet') {
-    return [{ role: 'user', content: `${FLEET_DIGEST_WIRE_PREFIX}\n\n${messageText(message)}` }];
-  }
+  const labelled = labelledWire(message);
+  if (labelled !== null) return [labelled];
   if (message.role === 'user') {
     return [await toUserMessage(messageText(message), messageAttachments(message), ctx)];
   }
@@ -823,7 +865,11 @@ async function toWireMessages(
       wire.push({
         role: 'tool',
         tool_call_id: call.id,
-        content: call.result ?? call.error ?? 'This call did not finish.'
+        content: wireResult(
+          call.name,
+          call.result ?? call.error ?? 'This call did not finish.',
+          ctx.fenceResults === true
+        )
       });
       images.push(...(await toolImageMessages(call, ctx.cwd)));
     }
@@ -866,6 +912,68 @@ async function toWireMessages(
   return wire.length > 0 ? wire : [{ role: 'assistant', content: '' }];
 }
 
+/** Whether a run's tool list has this tool. */
+function offers(tools: ToolSpec[], name: string): boolean {
+  return tools.some((spec) => spec.function.name === name);
+}
+
+/**
+ * After a round that called nothing, either keep the turn going or close the
+ * inbox. The client wrote while the round was being answered: the answer joins
+ * the wire and their message is the next thing the model reads, so the turn
+ * goes on (`true`). Otherwise the inbox closes, and anything later is a turn of
+ * its own. An empty answer stays off the wire, since some providers refuse an
+ * empty assistant message.
+ */
+function keepGoingForQueued(
+  inbox: AgentInbox,
+  messages: AgentWireMessage[],
+  answer: string
+): boolean {
+  if (!inbox.pending()) {
+    inbox.close();
+    return false;
+  }
+  if (answer !== '') messages.push({ role: 'assistant', content: answer });
+  return true;
+}
+
+/**
+ * A message neither the user nor the model said, as the labelled user message
+ * it crosses as; `null` for everything else.
+ */
+function labelledWire(message: AgentMessage): AgentWireMessage | null {
+  // An Admiral lobby's marker for a job it opened: the job goes on elsewhere.
+  if (message.meta?.kind === 'job-link') {
+    return {
+      role: 'user',
+      content: fleetNote(
+        `${jobDisplayId(message.meta.jobId)} was opened from this conversation and continues in its own tab.`
+      )
+    };
+  }
+  switch (message.role) {
+    case 'summary':
+      return { role: 'user', content: `${SUMMARY_WIRE_PREFIX}\n\n${messageText(message)}` };
+    // Same treatment and for the same reason: no provider has a role for "the
+    // app woke this conversation up", so it crosses as a user message with a
+    // line in front of it saying who is really talking. Without this branch it
+    // falls through to the assistant path and the model is handed its own note
+    // as something it said.
+    case 'scheduled':
+      return { role: 'user', content: `${SCHEDULE_WIRE_PREFIX}\n\n${messageText(message)}` };
+    case 'fleet': {
+      // An Admiral wakeup is Fleet speaking about the job, not about sessions.
+      const prefix =
+        message.meta?.kind === 'event' ? ADMIRAL_WAKEUP_WIRE_PREFIX : FLEET_DIGEST_WIRE_PREFIX;
+      return { role: 'user', content: `${prefix}\n\n${messageText(message)}` };
+    }
+    case 'user':
+    case 'assistant':
+      return null;
+  }
+}
+
 /**
  * The picture a call is handing back, on a message of its own.
  *
@@ -900,7 +1008,11 @@ export async function toWireHistory(
   systemPrompt: string,
   timeFragment: string | null = null
 ): Promise<AgentWireMessage[]> {
-  const ctx: WireContext = { cwd: req.cwd, threadId: req.threadId };
+  const ctx: WireContext = {
+    cwd: req.cwd,
+    threadId: req.threadId,
+    fenceResults: agentTurnMode(req) === 'admiral'
+  };
   const history = await Promise.all(
     withClearedResults(req.history).map(async (m) => toWireMessages(m, ctx))
   );
@@ -1038,23 +1150,60 @@ class TurnAccount {
 
 export class AgentService {
   private readonly inflight = new Map<string, AbortController>();
+  /** The inbox of each running Admiral turn, by stream. */
+  private readonly inboxes = new Map<string, AgentInbox>();
 
   constructor(private readonly deps: Deps) {}
 
   /** Starts a turn and returns immediately; the reply arrives as stream events. */
   send(req: AgentSendRequest): void {
+    const mode = agentTurnMode(req);
     // The user wrote, so an orchestrator conversation's run of turns Fleet
     // started on its own is over. A turn with nothing typed is a digest, a
     // schedule or a subagent report, none of which is the user.
-    if (req.orchestrator === true && (req.text.trim() !== '' || req.attachments.length > 0)) {
+    if (mode === 'orchestrator' && (req.text.trim() !== '' || req.attachments.length > 0)) {
       this.deps.fleet?.ledger.resetChain(req.threadId);
     }
-    void this.run(req.streamId, async (ctx, account) => this.turn(req, ctx, account));
+    if (mode === 'admiral') {
+      // Open before the turn starts, so a message sent a moment after it is
+      // taken in rather than refused.
+      const inbox = new AgentInbox();
+      this.inboxes.set(req.streamId, inbox);
+      void this.run(req.streamId, this.modelFor(mode), async (ctx, account) =>
+        this.admiralTurn(req, ctx, account, inbox)
+      ).finally(() => {
+        inbox.close();
+        this.inboxes.delete(req.streamId);
+      });
+      return;
+    }
+    void this.run(req.streamId, this.modelFor(mode), async (ctx, account) =>
+      this.turn(req, ctx, account)
+    );
+  }
+
+  /**
+   * Hand a client message to a running Admiral turn, for its next round. False
+   * when no Admiral turn on that stream can still take it in, so the pane sends
+   * it as a turn of its own once this one is done.
+   */
+  queue(req: AgentQueueRequest): boolean {
+    return this.inboxes.get(req.streamId)?.put(req.message) ?? false;
   }
 
   /** Starts a compaction; the summary arrives as a single done event. */
   compact(req: AgentCompactRequest): void {
-    void this.run(req.streamId, async (ctx, account) => this.summarize(req, ctx, account));
+    void this.run(req.streamId, this.modelFor(req.mode ?? 'chat'), async (ctx, account) =>
+      this.summarize(req, ctx, account)
+    );
+  }
+
+  /** The model a mode runs on: the Admiral's own, or the Agent's coding model. */
+  private modelFor(mode: AgentTurnMode): (settings: AgentSettings) => string | null {
+    return (settings) =>
+      mode === 'admiral'
+        ? admiralModel(this.deps.admiral ?? null, settings.coding.model)
+        : settings.coding.model;
   }
 
   cancel(streamId: string): void {
@@ -1099,6 +1248,7 @@ export class AgentService {
    */
   private async run(
     streamId: string,
+    model: (settings: AgentSettings) => string | null,
     work: (ctx: CallContext, account: TurnAccount) => Promise<void>
   ): Promise<void> {
     const controller = new AbortController();
@@ -1110,7 +1260,7 @@ export class AgentService {
       // once: whether a model is chosen, and whether there is anywhere to send
       // it. A cloud model with no key and a local model whose server has been
       // deleted fail here, each with its own sentence.
-      const resolved = this.deps.resolveTarget(settings.coding.model);
+      const resolved = this.deps.resolveTarget(model(settings));
       if (!resolved.ok) throw new Error(resolved.message);
 
       await work(
@@ -1185,7 +1335,7 @@ export class AgentService {
     // - is offered nowhere else, since it could do nothing there.
     const fleetDeps = this.deps.fleet ?? null;
     const fleet =
-      req.orchestrator === true && fleetDeps !== null
+      agentTurnMode(req) === 'orchestrator' && fleetDeps !== null
         ? createFleetCapability(
             fleetDeps,
             req.threadId,
@@ -1378,18 +1528,85 @@ export class AgentService {
       account
     );
 
+    this.emitDone(
+      req.streamId,
+      account,
+      instructions === null
+        ? null
+        : { filename: instructions.filename, tokens: instructions.tokens }
+    );
+  }
+
+  private emitDone(
+    streamId: string,
+    account: TurnAccount,
+    projectInstructions: AgentStreamDone['projectInstructions']
+  ): void {
     this.deps.emit(IPC_CHANNELS.AGENT_STREAM_DONE, {
-      streamId: req.streamId,
+      streamId,
       usage: account.report(),
       // What the project's own file cost this turn, so the meter can say so.
       // It rides here rather than on a channel of its own because the pane
       // already learns that a turn finished, and a second way of learning the
       // same thing is a second way for the two to disagree.
-      projectInstructions:
-        instructions === null
-          ? null
-          : { filename: instructions.filename, tokens: instructions.tokens }
+      projectInstructions
     } satisfies AgentStreamDone);
+  }
+
+  /**
+   * One Admiral turn: the round loop with the Admiral's prompt, its allow-listed
+   * tools, its job's snapshot each round, fenced results, and the client's
+   * mid-turn messages taken in as they come. See `planAdmiralTurn`.
+   */
+  private async admiralTurn(
+    req: AgentSendRequest,
+    ctx: CallContext,
+    account: TurnAccount,
+    inbox: AgentInbox
+  ): Promise<void> {
+    const plan = await planAdmiralTurn({
+      req,
+      admiral: this.deps.admiral ?? null,
+      fleet: this.deps.fleet ?? null,
+      model: ctx.model,
+      webFetch: ctx.settings.webFetch.enabled,
+      promptCwd: promptCwd(req.cwd)
+    });
+    const messages = await toWireHistory(req, plan.systemPrompt, wireTime(plan.timeZone));
+    await this.runRounds(
+      {
+        streamId: req.streamId,
+        threadId: req.threadId,
+        cwd: req.cwd,
+        messages,
+        request: latestRequest(req),
+        tools: plan.tools,
+        deferredTools: [],
+        serverTools: [],
+        serverToolStops: null,
+        mcp: null,
+        todos: [],
+        resumed: false,
+        dispatchTask: () => null,
+        findSubagent: null,
+        findSkill: null,
+        findMemory: null,
+        schedule: null,
+        fleet: plan.fleet,
+        fleetLedger: null,
+        onRound: null,
+        quiet: false,
+        admiral: {
+          allowedTools: plan.allowedTools,
+          inbox,
+          agency: plan.agency,
+          note: plan.note
+        }
+      },
+      ctx,
+      account
+    );
+    this.emitDone(req.streamId, account, plan.instructions);
   }
 
   /**
@@ -1423,8 +1640,11 @@ export class AgentService {
     // something to get out of step.
     const todos = { items: run.todos, streak: 0 };
     const rounds = maxToolRounds(ctx.settings);
+    // A run without the task-list tools is not nudged to start a list.
+    const offersTodos = offers(tools, 'todo_add');
 
     for (let attempt = 0; attempt < rounds; attempt++) {
+      await this.takeQueued(run, messages);
       round.content = '';
       const conversation = withClearedWireResults(messages);
 
@@ -1445,13 +1665,17 @@ export class AgentService {
         messages: withTodoReminder(
           withScheduleReminder(
             withFleetLedger(
-              this.withRunningSubagents(withResumeNote(conversation, run.resumed), run.threadId),
+              withRoundNote(
+                this.withRunningSubagents(withResumeNote(conversation, run.resumed), run.threadId),
+                run.admiral?.note ?? null
+              ),
               run.fleetLedger
             ),
             run.schedule
           ),
           todos.items,
-          todos.streak
+          todos.streak,
+          offersTodos
         ),
         // Everything after the conversation is this round's alone, so the
         // cache marker must not land on it. See `withCacheBreakpoints`.
@@ -1482,35 +1706,15 @@ export class AgentService {
       });
       account.served(outcome);
 
-      // Told about before the round is judged finished or not, because it is
-      // true either way: OpenRouter ran these whichever way the model then went.
-      // A search that led to a final answer would otherwise never be shown.
-      //
-      // Sources are checked as well as records because a provider that searches
-      // natively reports one and not the other: annotations on the reply, no
-      // record. Keying the event on records alone loses those sources entirely,
-      // and the answer is left citing pages the reader cannot open.
-      //
-      // The raw round is checked too, and for the same kind of reason: a
-      // Responses round with neither records nor sources still has to reach the
-      // pane, because the pane is where the transcript lives and the transcript
-      // is what the next user turn is answered from.
+      this.announceServerTools(run, outcome);
       const outputItems = outcome.outputItems ?? [];
-      if (
-        (outcome.serverToolCalls.length > 0 ||
-          outcome.citations.length > 0 ||
-          outputItems.length > 0) &&
-        !run.quiet
-      ) {
-        emit(IPC_CHANNELS.AGENT_SERVER_TOOL, {
-          streamId,
-          calls: outcome.serverToolCalls,
-          citations: outcome.citations,
-          outputItems
-        } satisfies AgentServerToolEvent);
-      }
 
       if (outcome.toolCalls.length === 0) {
+        if (
+          run.admiral !== undefined &&
+          keepGoingForQueued(run.admiral.inbox, messages, round.content)
+        )
+          continue;
         run.onRound?.(
           roundMessage(round.content, [], outcome.serverToolCalls, outcome.citations, outputItems)
         );
@@ -1552,60 +1756,12 @@ export class AgentService {
         // a pane that thinks it is still busy refuses to clear or switch
         // session for as long as it is open.
         if (ctx.signal.aborted) throw new Error('cancelled');
-        const done = await this.runTool(streamId, call, {
-          cwd: run.cwd,
-          threadId: run.threadId,
-          signal: ctx.signal,
-          // Which pane to open the terminal beside is a question only the
-          // renderer can answer, so the turn is what goes over the wire.
-          handOff: (command) =>
-            emit(IPC_CHANNELS.AGENT_HAND_OFF, { streamId, command } satisfies AgentHandOff),
-          // The row is already on screen by the time this is asked, so the
-          // question lands on the call it is about.
-          approve: async (command) =>
-            (await this.deps.gate.check({
-              streamId,
-              callId: call.id,
-              command,
-              cwd: run.cwd,
-              request: run.request,
-              signal: ctx.signal,
-              // Auto mode answers some of these with a model, and a model that
-              // was asked was billed. It lands in the turn that caused it
-              // rather than anywhere of its own: from the user's side one
-              // command ran, and what it took to decide that is part of it.
-              onUsage: (usage) => account.side(usage)
-            })) === 'run',
-          wasRefused: (command) => this.deps.gate.wasRefused(streamId, command),
-          approveFleet: async (ask) =>
-            (await this.deps.gate.checkFleet({
-              ...ask,
-              streamId,
-              callId: call.id,
-              signal: ctx.signal
-            })) === 'run',
-          // Built per call rather than per turn, because a partial render has
-          // to land on the row that asked for it, and only here is that known.
-          generateImage: this.imageGenerator(ctx, streamId, call.id),
-          fetchUrl: this.urlFetcher(ctx),
-          todos: {
-            list: () => todos.items,
-            save: (items) => {
-              todos.items = items;
-            }
-          },
-          mcp: mcpCaller(run.mcp, this.deps.gate, {
-            streamId,
-            callId: call.id,
-            signal: ctx.signal
-          }),
-          dispatchTask: run.dispatchTask(call.id),
-          findSubagent: run.findSubagent,
-          findSkill: run.findSkill,
-          findMemory: run.findMemory,
-          schedule: run.schedule,
-          fleet: run.fleet
-        });
+        const done = await this.runTool(
+          streamId,
+          call,
+          run.admiral?.allowedTools ?? null,
+          this.toolContext(run, ctx, account, call.id, todos)
+        );
         drawn.push(done.call);
         // A tool that spent money is part of what the turn cost, and `image` is
         // the one that can: it buys a picture from a second endpoint that
@@ -1614,7 +1770,11 @@ export class AgentService {
         messages.push({
           role: 'tool',
           tool_call_id: call.id,
-          content: done.call.result ?? `Error: ${done.call.error ?? 'the tool failed'}`
+          content: wireResult(
+            call.function.name,
+            done.call.result ?? `Error: ${done.call.error ?? 'the tool failed'}`,
+            run.admiral !== undefined
+          )
         });
         // The same injection the replayed history gets, and it has to be here
         // too: this loop builds the wire for the rest of *this* turn, so
@@ -1635,6 +1795,126 @@ export class AgentService {
     throw new Error(
       `Stopped after ${rounds} rounds of tool calls without an answer. Ask again, more narrowly.`
     );
+  }
+
+  /**
+   * Show the pane what the provider ran on its own side this round.
+   *
+   * Told about before the round is judged finished or not, because it is
+   * true either way: OpenRouter ran these whichever way the model then went.
+   * A search that led to a final answer would otherwise never be shown.
+   *
+   * Sources are checked as well as records because a provider that searches
+   * natively reports one and not the other: annotations on the reply, no
+   * record. Keying the event on records alone loses those sources entirely,
+   * and the answer is left citing pages the reader cannot open.
+   *
+   * The raw round is checked too, and for the same kind of reason: a
+   * Responses round with neither records nor sources still has to reach the
+   * pane, because the pane is where the transcript lives and the transcript
+   * is what the next user turn is answered from.
+   */
+  private announceServerTools(run: RoundsRequest, outcome: StreamOutcome): void {
+    const outputItems = outcome.outputItems ?? [];
+    if (run.quiet) return;
+    if (
+      outcome.serverToolCalls.length === 0 &&
+      outcome.citations.length === 0 &&
+      outputItems.length === 0
+    )
+      return;
+    this.deps.emit(IPC_CHANNELS.AGENT_SERVER_TOOL, {
+      streamId: run.streamId,
+      calls: outcome.serverToolCalls,
+      citations: outcome.citations,
+      outputItems
+    } satisfies AgentServerToolEvent);
+  }
+
+  /**
+   * What the tools of one call are handed. Built per call rather than per run,
+   * because a partial render or a permission card has to land on the row that
+   * asked for it, and only here is that row known.
+   */
+  private toolContext(
+    run: RoundsRequest,
+    ctx: CallContext,
+    account: TurnAccount,
+    callId: string,
+    todos: { items: AgentTodoItem[] }
+  ): AgentToolContext {
+    const { streamId } = run;
+    const emit = this.deps.emit;
+    return {
+      cwd: run.cwd,
+      threadId: run.threadId,
+      signal: ctx.signal,
+      // Which pane to open the terminal beside is a question only the
+      // renderer can answer, so the turn is what goes over the wire.
+      handOff: (command) =>
+        emit(IPC_CHANNELS.AGENT_HAND_OFF, { streamId, command } satisfies AgentHandOff),
+      // The row is already on screen by the time this is asked, so the
+      // question lands on the call it is about.
+      approve: async (command) =>
+        (await this.deps.gate.check({
+          streamId,
+          callId,
+          command,
+          cwd: run.cwd,
+          request: run.request,
+          signal: ctx.signal,
+          // Auto mode answers some of these with a model, and a model that
+          // was asked was billed. It lands in the turn that caused it
+          // rather than anywhere of its own: from the user's side one
+          // command ran, and what it took to decide that is part of it.
+          onUsage: (usage) => account.side(usage)
+        })) === 'run',
+      wasRefused: (command) => this.deps.gate.wasRefused(streamId, command),
+      approveFleet: async (ask) =>
+        (await this.deps.gate.checkFleet({
+          ...ask,
+          streamId,
+          callId,
+          signal: ctx.signal
+        })) === 'run',
+      generateImage: this.imageGenerator(ctx, streamId, callId),
+      fetchUrl: this.urlFetcher(ctx),
+      todos: {
+        list: () => todos.items,
+        save: (items) => {
+          todos.items = items;
+        }
+      },
+      mcp: mcpCaller(run.mcp, this.deps.gate, {
+        streamId,
+        callId,
+        signal: ctx.signal
+      }),
+      dispatchTask: run.dispatchTask(callId),
+      findSubagent: run.findSubagent,
+      findSkill: run.findSkill,
+      findMemory: run.findMemory,
+      schedule: run.schedule,
+      fleet: run.fleet,
+      agency: run.admiral?.agency ?? null
+    };
+  }
+
+  /**
+   * Take in what the client sent since the last round, as user messages, and
+   * tell the pane which of its queued messages are now part of the turn.
+   */
+  private async takeQueued(run: RoundsRequest, messages: AgentWireMessage[]): Promise<void> {
+    const taken = run.admiral?.inbox.take() ?? [];
+    if (taken.length === 0) return;
+    const ctx: WireContext = { cwd: run.cwd, threadId: run.threadId };
+    for (const message of taken) {
+      messages.push(await toUserMessage(messageText(message), messageAttachments(message), ctx));
+    }
+    this.deps.emit(IPC_CHANNELS.AGENT_STREAM_QUEUED_TAKEN, {
+      streamId: run.streamId,
+      messageIds: taken.map((m) => m.id)
+    } satisfies AgentQueuedTaken);
   }
 
   /**
@@ -1950,6 +2230,7 @@ export class AgentService {
   private async runTool(
     streamId: string,
     call: { id: string; function: { name: string; arguments: string } },
+    allowed: ReadonlySet<string> | null,
     tools: AgentToolContext
   ): Promise<{ call: AgentToolCall; costUsd: number | null }> {
     const started: AgentToolCall = {
@@ -1976,6 +2257,13 @@ export class AgentService {
       // through `reasoning_details` and never reach this loop at all - this is
       // the guard for the day a beta API changes its mind, and it says what
       // happened rather than letting the dispatcher report an unknown tool.
+      // Checked before anything is dispatched: a run held to an allow list runs
+      // nothing outside it, offered or not.
+      if (allowed !== null && !allowed.has(call.function.name)) {
+        throw new Error(
+          `${call.function.name} is not one of your tools in this conversation. Use only the tools you were given.`
+        );
+      }
       if (isServerToolName(call.function.name)) {
         throw new Error(
           `${call.function.name} runs on OpenRouter, not here. Its result was already returned to you.`

@@ -46,6 +46,7 @@ import { SocketSupervisor } from './socket-supervisor';
 import { QuitGuard } from './quit-guard';
 import { randomUUID } from 'node:crypto';
 import { QuitDecideSchema, type QuitWorkItem } from '../shared/quit-confirm';
+import { mainWorkItems } from './quit-work';
 import { FleetOpenTabReply } from '../shared/fleet-tools';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile, installOpencodePlugin } from './install-fleet-cli';
@@ -89,6 +90,8 @@ import {
 import { runBackfill } from './learnings/backfill';
 import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
+import { createAgencyService, type AgencyService } from './agency';
+import { registerAgencyIpc } from './agency/agency-ipc';
 import { createFleetHost } from './agent/fleet/host';
 import { FleetLedgerStore } from './agent/fleet/ledger-store';
 import { ActLimiter } from './agent/fleet/limiter';
@@ -152,6 +155,7 @@ let learningsStore: LearningsStore | undefined;
 let learningsEmbedder: WorkerEmbedder | undefined;
 let learningsMcp: LearningsMcpServer | undefined;
 let agentService: AgentService | null = null;
+let agencyService: AgencyService | null = null;
 let agentMcp: AgentMcpManager | undefined;
 let agentSubagents: SubagentManager | null = null;
 let agentScheduleTimer: ScheduleTimer | null = null;
@@ -315,6 +319,7 @@ function hasRunningWork(endsProcess: boolean): boolean {
   if (!endsProcess) return false;
   if ((agentSubagents?.liveIds().length ?? 0) > 0) return true;
   if (listRunningBackgroundCommands().length > 0) return true;
+  if ((agencyService?.listRunning().length ?? 0) > 0) return true;
   return false;
 }
 
@@ -330,24 +335,11 @@ function hasRunningWork(endsProcess: boolean): boolean {
  */
 function mainOwnedWork(endsProcess: boolean): QuitWorkItem[] {
   if (!endsProcess) return [];
-
-  const items: QuitWorkItem[] = [];
-  for (const job of listRunningBackgroundCommands()) {
-    items.push({ kind: 'background', id: job.id, label: job.command });
-  }
-  for (const live of agentSubagents?.describeLive() ?? []) {
-    items.push({
-      kind: 'subagent',
-      id: live.taskId,
-      label: `${live.agent}: ${truncateForList(live.prompt)}`
-    });
-  }
-  return items;
-}
-
-function truncateForList(text: string): string {
-  const flat = text.replace(/\s+/g, ' ').trim();
-  return flat.length > 80 ? `${flat.slice(0, 79)}\u2026` : flat;
+  return mainWorkItems({
+    background: listRunningBackgroundCommands(),
+    subagents: agentSubagents?.describeLive() ?? [],
+    jobs: agencyService?.listRunning() ?? []
+  });
 }
 
 /**
@@ -1596,6 +1588,18 @@ void app.whenReady().then(async () => {
   claudeSessions.addPermissionAnswerer(
     () => settingsStore.get().ai.agent.orchestrator.answerPermissions && orchestrating.size > 0
   );
+  // The Admiral agency's durable state. Opened whether or not the user has
+  // turned Admiral on: jobs outlive the setting, and the quit guard asks.
+  agencyService = createAgencyService({
+    emit: (change) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.AGENCY_CHANGED, change);
+      }
+    },
+    hasModelKey: () => openRouterSecrets.hasKey() || localEndpoints().some((e) => e.enabled)
+  });
+  // Before the Agent service, which runs Admiral turns against it.
+  const agency = agencyService;
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
@@ -1630,6 +1634,7 @@ void app.whenReady().then(async () => {
         }
       }
     },
+    admiral: { agency, settings: () => settingsStore.get().agency },
     imageCapabilities: (modelId) => agentCatalog.cachedImageModel(modelId),
     emit: agentEmit
   });
@@ -1676,8 +1681,11 @@ void app.whenReady().then(async () => {
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
     resolveTarget,
-    secrets: openRouterSecrets
+    secrets: openRouterSecrets,
+    sessionScope: (sessionId) => (agency.isAdmiralSession(sessionId) ? 'admiral' : null)
   });
+
+  registerAgencyIpc(agencyService);
 
   // Cheap AI one-line pane summaries for the agent overview, throttled per pane
   // so the overview polling on an interval doesn't re-call the model every tick.
@@ -1817,6 +1825,7 @@ function shutdownAll(): void {
   void learningsMcp?.stop();
   void learningsEmbedder?.close();
   learningsStore?.close();
+  agencyService?.close();
 }
 
 app.on('window-all-closed', () => {

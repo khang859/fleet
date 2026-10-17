@@ -258,6 +258,16 @@ describe('AgentSessionStore.list', () => {
     expect(store.list('/other').map((s) => s.id)).toEqual([S2]);
   });
 
+  // An Admiral thread is the agency's, shown in its own pane, and resuming it
+  // as a plain Agent conversation would run it without its scope.
+  it('leaves out Admiral sessions', () => {
+    store.append(S1, '/repo', { t: 'message', message: msg('a', 'plain') });
+    store.append(S2, '/repo', { t: 'message', message: msg('b', 'lobby') }, 'admiral');
+    store.append(S2, '/repo', { t: 'message', message: msg('c', 'still the lobby') });
+
+    expect(store.list('/repo').map((s) => s.id)).toEqual([S1]);
+  });
+
   it('puts the most recently used session first', () => {
     store.append(OLD, '/repo', { t: 'message', message: msg('a', 'first') });
     store.append(NEW, '/repo', { t: 'message', message: msg('b', 'second') });

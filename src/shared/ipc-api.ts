@@ -97,6 +97,8 @@ export type ActivityReportPayload = {
   state: ActivityState | 'gone';
   /** What to call this pane in a desktop notification, where it has no glyph. */
   label?: string;
+  /** Say it again though the state has not changed: a new question while one waits. */
+  renotify?: boolean;
 };
 
 export type PaneFocusedPayload = {

@@ -24,13 +24,17 @@ export type FleetDeps = { host: FleetHost; ledger: FleetLedgerStore; act: FleetA
  * members are null, and reads see the conversation's cursors without moving
  * them, so a deep read done on its behalf hides nothing from its own next read.
  *
+ * `reader: 'admiral'` reads and waits with cursors of its own, and never types
+ * into a pane: send, spawn and permission are null. Its deps come narrowed to
+ * its crew, see `scopeFleetToCrew`.
+ *
  * An act member is null for a subagent, where the act tools are not wired up,
  * and `permission` is null too while the user has not turned it on.
  */
 export function createFleetCapability(
   deps: FleetDeps,
   threadId: string,
-  reader: 'orchestrator' | 'subagent',
+  reader: 'orchestrator' | 'subagent' | 'admiral',
   /** The pane's folder: where `fleet_spawn` starts a session unless told otherwise. */
   cwd: string,
   /** The user's setting, read for this turn: without it `fleet_permission` is not offered. */
@@ -39,10 +43,11 @@ export function createFleetCapability(
   const cursors: FleetCursors = {
     get: (ref) => deps.ledger.cursor(threadId, ref),
     set: (ref, cursor) => {
-      if (reader === 'orchestrator') deps.ledger.setCursor(threadId, ref, cursor);
+      if (reader !== 'subagent') deps.ledger.setCursor(threadId, ref, cursor);
     }
   };
   const act = reader === 'orchestrator' ? deps.act : null;
+  const waits = reader === 'subagent' ? null : deps.act;
   return {
     sessions: async () => listSessions(deps.host),
     read: async (args) => readSession(deps.host, cursors, args),
@@ -58,12 +63,12 @@ export function createFleetCapability(
         : async (args, _signal, approve) =>
             spawnSession({ ...deps, ...act }, threadId, cwd, args, approve),
     wait:
-      act === null
+      waits === null
         ? null
         : async (args, signal) =>
             waitForSessions(
               {
-                ...act,
+                ...waits,
                 host: deps.host,
                 // Read like `fleet_read` would, so the cursor moves past what the wait reports.
                 brief: async (ref) =>

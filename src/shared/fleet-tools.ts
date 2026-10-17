@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AgentToolSpec } from './agent-tools';
+import { offeredToolSpecs } from './capability-tools';
 
 /**
  * The tools an orchestrator pane uses to look after the Claude Code sessions
@@ -435,11 +436,7 @@ export const FLEET_TOOL_SPECS: AgentToolSpec[] = [
  * only those with something behind them.
  */
 export function fleetToolSpecs(fleet: AgentFleetCapability | null): AgentToolSpec[] {
-  if (fleet === null) return [];
-  return FLEET_TOOL_SPECS.filter((spec) => {
-    const name = spec.function.name;
-    return isFleetTool(name) && fleet[FLEET_TOOL_MEMBER[name]] !== null;
-  });
+  return offeredToolSpecs(fleet, FLEET_TOOL_SPECS, FLEET_TOOL_MEMBER);
 }
 
 /** Whether a subagent's tool list needs the fleet tools, so is only offered where they are. */
@@ -545,7 +542,8 @@ const FENCE = 'session-data';
  * and carry on as though it were Fleet speaking.
  */
 export function fence(ref: string, body: string): string {
-  const safe = body.replaceAll(`</${FENCE}`, `<\\/${FENCE}`);
+  // Any letter case: a model reads `</SESSION-DATA>` as the same tag.
+  const safe = body.replace(new RegExp(`</(${FENCE})`, 'gi'), '<\\/$1');
   return `<${FENCE} session="${ref}">\n${safe}\n</${FENCE}>`;
 }
 
@@ -556,7 +554,7 @@ export function fence(ref: string, body: string): string {
 export function unfence(text: string): string {
   return text
     .replace(new RegExp(`<${FENCE} session="[^"]*">\\n([\\s\\S]*?)\\n</${FENCE}>`, 'g'), '$1')
-    .replaceAll(`<\\/${FENCE}`, `</${FENCE}`);
+    .replace(new RegExp(`<\\\\/(${FENCE})`, 'gi'), '</$1');
 }
 
 /**

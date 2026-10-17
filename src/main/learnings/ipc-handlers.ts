@@ -4,6 +4,7 @@ import { writeFileSync, rmSync, statSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { createLogger } from '../logger';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
+import { localDateStamp } from '../../shared/local-date';
 import { z } from 'zod';
 import {
   learningToMarkdown,
@@ -55,13 +56,6 @@ function handle<Args extends unknown[], R>(
       throw new Error('The learnings operation failed. See the app logs for details.');
     }
   });
-}
-
-/** `YYYY-MM-DD` in local time, for default export filenames. */
-function dateStamp(ms: number): string {
-  const d = new Date(ms);
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 // IPC args come from the renderer and are untrusted: a malformed payload must
@@ -211,7 +205,7 @@ export function registerLearningsIpcHandlers(
     if (!win) return;
     // Include a short id so two learnings with the same title on the same day get
     // distinct default filenames instead of silently overwriting each other.
-    const defaultPath = `${dateStamp(learning.createdAt)}-${slugifyTitle(learning.title)}-${learning.id.slice(0, 6)}.md`;
+    const defaultPath = `${localDateStamp(new Date(learning.createdAt))}-${slugifyTitle(learning.title)}-${learning.id.slice(0, 6)}.md`;
     // showOverwriteConfirmation is implicit on macOS/Windows but must be requested
     // explicitly on Linux/GTK, else an existing file (e.g. ~/.bashrc) is clobbered
     // silently.

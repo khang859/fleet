@@ -105,6 +105,18 @@ describe('toolLabel', () => {
     );
   });
 
+  it('says what an Admiral asked and which job it opened', () => {
+    expect(toolLabel(call('ask_client', '{"question":"Keep the Sort A-Z button?"}'))).toEqual({
+      verb: 'Ask you',
+      target: 'Keep the Sort A-Z button?'
+    });
+    expect(toolLabel(call('job_open', '{"title":"Workspace reorder","brief":"x"}'))).toEqual({
+      verb: 'Open job',
+      target: 'Workspace reorder'
+    });
+    expect(toolLabel(call('job_list', '{}'))).toEqual({ verb: 'List jobs', target: '' });
+  });
+
   it('falls back to the tool name for anything it does not know', () => {
     expect(toolLabel(call('wobble', '{"path":"a.ts"}'))).toEqual({ verb: 'wobble', target: '' });
   });

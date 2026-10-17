@@ -99,6 +99,8 @@ import type {
   AgentMentionMatch,
   AgentPermissionAsk,
   AgentPermissionDecision,
+  AgentQueueRequest,
+  AgentQueuedTaken,
   AgentSendRequest,
   AgentStreamDelta,
   AgentStreamDone,
@@ -162,6 +164,27 @@ import type {
 import type { ShellEnvSnapshot } from '../shared/shell-env-types';
 import type { QuitConfirmAsk } from '../shared/quit-confirm';
 import type { SessionSummary, SessionTranscript } from '../shared/sessions';
+import type {
+  AdmiralClaimResult,
+  AgencyAnswerRequest,
+  AgencyChanged,
+  AgencyPreflight,
+  AgencyQuestion,
+  AgencyRepoRef,
+  AgencySnapshot,
+  RepoResolution,
+  WakeupPull,
+  WakeupRelease
+} from '../shared/agency';
+import type {
+  AgencyProjectSummary,
+  BriefIdeas,
+  ClientLineInput,
+  ProjectFolder,
+  RuleCandidates,
+  SaveSetupRequest,
+  SetupScan
+} from '../shared/agency-projects';
 import type {
   Learning,
   CreateLearningInput,
@@ -666,6 +689,15 @@ const fleetApi = {
     send: (req: AgentSendRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_SEND, req),
     compact: (req: AgentCompactRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_COMPACT, req),
     cancel: (streamId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_CANCEL, streamId),
+    /**
+     * Hand a client message to a running Admiral turn. False when that turn
+     * can no longer take it in: send it as a turn of its own once it is done.
+     */
+    queue: async (req: AgentQueueRequest): Promise<boolean> =>
+      typedInvoke<boolean>(IPC_CHANNELS.AGENT_QUEUE, req),
+    /** Queued messages a running Admiral turn has just taken in. */
+    onQueuedTaken: (cb: (p: AgentQueuedTaken) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENT_STREAM_QUEUED_TAKEN, cb),
     onStreamChunk: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_STREAM_CHUNK, cb),
     onStreamReasoning: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>
@@ -1057,6 +1089,75 @@ const fleetApi = {
       typedInvoke<number>(IPC_CHANNELS.LEARNINGS_MODEL_CACHE_SIZE),
     clearModelCache: async (): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.LEARNINGS_CLEAR_MODEL_CACHE)
+  },
+  agency: {
+    /**
+     * The repository a folder belongs to, by its git common dir. `remote` says
+     * the folder is on another machine (an SSH pane), which is refused.
+     */
+    resolveRepo: async (
+      cwd: string,
+      opts?: { remote?: boolean; pathContext?: PathContext }
+    ): Promise<RepoResolution> => typedInvoke(IPC_CHANNELS.AGENCY_RESOLVE_REPO, cwd, opts),
+    /** Make a pane its repository's one Admiral, or learn which pane already is. */
+    claimAdmiral: async (args: { repoId: string; paneId: string }): Promise<AdmiralClaimResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_CLAIM, args),
+    releaseAdmiral: async (paneId: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_RELEASE, paneId),
+    /** The repository's lobby session id, minted the first time. */
+    ensureLobby: async (repo: AgencyRepoRef): Promise<string> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_ENSURE_LOBBY, repo),
+    snapshot: async (repoId: string): Promise<AgencySnapshot> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_SNAPSHOT, repoId),
+    /** Null when the question cannot take this answer (hidden, already answered, bad option). */
+    answerQuestion: async (req: AgencyAnswerRequest): Promise<AgencyQuestion | null> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_ANSWER, req),
+    /** Claim every wakeup due for one job (null: the lobby) as the text of one turn. */
+    pullWakeups: async (args: { repoId: string; jobId: number | null }): Promise<WakeupPull> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_PULL_WAKEUPS, args),
+    ackWakeups: async (ids: number[]): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_ACK_WAKEUPS, ids),
+    /** Hand claimed wakeups back after a failed turn, to retry after a backoff. */
+    releaseWakeups: async (args: { ids: number[]; error: string }): Promise<WakeupRelease> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_RELEASE_WAKEUPS, args),
+    /** Cancel the repository's running jobs. Resolves with the cancelled ids. */
+    cancelJobs: async (repoId: string): Promise<number[]> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_CANCEL_JOBS, repoId),
+    markHandoff: async (args: { jobId: number; lobbyMessageId: string }): Promise<boolean> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_MARK_HANDOFF, args),
+    preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
+    /** Onboarding: first run, the picker, setup, the client file and brief ideas. */
+    projects: {
+      firstRunDone: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.AGENCY_FIRST_RUN_DONE),
+      finishFirstRun: async (): Promise<void> => typedInvoke(IPC_CHANNELS.AGENCY_FINISH_FIRST_RUN),
+      /** What the picker shows for each folder: a repository and its state, or not one. */
+      probeFolders: async (paths: string[]): Promise<ProjectFolder[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_PROBE_FOLDERS, paths),
+      list: async (): Promise<AgencyProjectSummary[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_LIST_PROJECTS),
+      /** Setup's read-only scan, or the setup saved before. */
+      scan: async (repo: AgencyRepoRef): Promise<SetupScan> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SCAN_PROJECT, repo),
+      /** Save the setup; `finish` also marks it done. Resolves with the file's path. */
+      saveSetup: async (input: SaveSetupRequest & { finish: boolean }): Promise<string> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SAVE_SETUP, input),
+      /** Save, then copy into the repository's `.fleet/`. Resolves with what was written. */
+      shareSetup: async (input: SaveSetupRequest): Promise<string[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SHARE_SETUP, input),
+      clientFile: async (repoId: string): Promise<{ path: string; text: string | null }> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE, repoId),
+      ruleCandidates: async (repo: AgencyRepoRef): Promise<RuleCandidates[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_RULE_CANDIDATES, repo),
+      /** Write the starter answers and picked rules, and mark the starter questions done. */
+      finishStarter: async (input: {
+        repo: AgencyRepoRef;
+        lines: ClientLineInput[];
+      }): Promise<string> => typedInvoke(IPC_CHANNELS.AGENCY_FINISH_STARTER, input),
+      briefIdeas: async (repo: AgencyRepoRef): Promise<BriefIdeas> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_BRIEF_IDEAS, repo)
+    },
+    onChanged: (callback: (change: AgencyChanged) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENCY_CHANGED, callback)
   }
 };
 

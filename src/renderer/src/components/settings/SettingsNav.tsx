@@ -11,6 +11,7 @@ export type SettingsSection =
   | 'envSync'
   | 'remoteHosts'
   | 'learnings'
+  | 'agencyAdmiral'
   | 'diagnostics';
 
 type NavGroup = {
@@ -39,6 +40,10 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'teleprompter', label: 'Teleprompter' },
       { id: 'envSync', label: 'Env Sync' }
     ]
+  },
+  {
+    heading: 'Agency',
+    items: [{ id: 'agencyAdmiral', label: 'Admiral' }]
   },
   {
     heading: 'Advanced',

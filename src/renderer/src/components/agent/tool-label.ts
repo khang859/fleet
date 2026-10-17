@@ -37,7 +37,9 @@ const LabelArgs = z.object({
   sessions: z.array(z.string()).optional(),
   level: z.string().optional(),
   view: z.string().optional(),
-  decision: z.string().optional()
+  decision: z.string().optional(),
+  question: z.string().optional(),
+  title: z.string().optional()
 });
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
@@ -155,6 +157,12 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
         verb: args.decision === 'deny' ? 'Deny' : 'Allow',
         target: args.session ?? ''
       };
+    case 'ask_client':
+      return { verb: 'Ask you', target: args.question ?? '' };
+    case 'job_open':
+      return { verb: 'Open job', target: args.title ?? '' };
+    case 'job_list':
+      return { verb: 'List jobs', target: '' };
     default:
       return mcpLabel(call.name) ?? { verb: call.name, target: '' };
   }
