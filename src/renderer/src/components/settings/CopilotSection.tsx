@@ -7,23 +7,6 @@ import { resolveClaudeConfig } from '../../../../shared/claude-config';
 import { SettingRow } from './SettingRow';
 import type { SettingsSectionProps } from './SettingsTab';
 
-const SYSTEM_SOUNDS = [
-  'Pop',
-  'Ping',
-  'Tink',
-  'Glass',
-  'Blow',
-  'Bottle',
-  'Frog',
-  'Funk',
-  'Hero',
-  'Morse',
-  'Purr',
-  'Sosumi',
-  'Submarine',
-  'Basso'
-];
-
 const HOOK_SUMMARY: Record<string, string> = {
   checking: 'Checking…',
   installed: 'Hooks installed',
@@ -134,27 +117,6 @@ export function CopilotSection({ onNavigate }: SettingsSectionProps): React.JSX.
         <p className="text-xs text-fleet-text-subtle mt-1">
           Show the Copilot overlay window on macOS. Copilot watches your active agent sessions and
           surfaces status, permissions, and quick actions in a floating panel.
-        </p>
-      </div>
-
-      {/* Notification sound */}
-      <div>
-        <SettingRow label="Notification sound">
-          <select
-            value={copilot.notificationSound}
-            onChange={(e) => updateCopilot({ notificationSound: e.target.value })}
-            className="bg-fleet-surface-2 text-sm text-fleet-text rounded px-2 py-1 border border-fleet-border-strong"
-          >
-            <option value="">None</option>
-            {SYSTEM_SOUNDS.map((sound) => (
-              <option key={sound} value={sound}>
-                {sound}
-              </option>
-            ))}
-          </select>
-        </SettingRow>
-        <p className="text-xs text-fleet-text-subtle mt-1">
-          Sound played when an agent needs attention.
         </p>
       </div>
 

@@ -1,7 +1,7 @@
-import type { ClaudeTrackingStatus } from '../../../shared/claude-sessions';
+import { needsUser, type ClaudeTrackingStatus } from '../../../shared/claude-sessions';
 import { fence, type FleetToolOutput } from '../../../shared/fleet-tools';
 import { oneLine } from '../../claude-sessions/brief';
-import { describePhase, describeStarting, needsUser } from './format';
+import { describePhase, describeStarting } from './format';
 import type { FleetHost, FleetSession } from './host';
 
 /** Why the list may be empty, for a model that cannot see the settings. */

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, statSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'fs';
 import { connect, type Socket } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { HookServer, PermissionBroker } from '../hook-server';
+import { HookServer, PermissionBroker, PERMISSION_HOLD_MS } from '../hook-server';
 
 const { warn } = vi.hoisted(() => ({ warn: vi.fn() }));
 vi.mock('../../logger', () => ({
@@ -107,6 +107,16 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     await vi.waitFor(() => expect(released).toEqual([['s1', 'tu-1']]));
     await expect(reply).resolves.toBe('');
     expect(broker.respond('tu-1', 'allow')).toBe(false);
+  });
+
+  it('lets go of a held permission before the Go hook stops waiting for it', () => {
+    const goSource = readFileSync(
+      join(__dirname, '../../../../hooks/fleet-copilot-go/main.go'),
+      'utf8'
+    );
+    const hookWaitSeconds = Number(/timeoutSeconds\s*=\s*(\d+)/.exec(goSource)?.[1]);
+    expect(hookWaitSeconds).toBeGreaterThan(0);
+    expect(PERMISSION_HOLD_MS).toBeLessThan(hookWaitSeconds * 1000);
   });
 
   it('drops a held permission the session no longer lists, without reporting it', async () => {

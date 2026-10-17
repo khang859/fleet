@@ -12,8 +12,14 @@ const log = createLogger('claude-sessions:hook-server');
  */
 export type HookEventHandler = (event: HookEvent, client: Socket) => boolean;
 
-/** How long the Go hook waits for a permission answer, plus a little slack. */
-const PERMISSION_HOLD_MS = 310_000;
+/**
+ * How long a permission request is held. Shorter than the Go hook's own wait
+ * (`timeoutSeconds` in hooks/fleet-copilot-go/main.go): once the hook gives up,
+ * its exit is not seen, so an answer sent after it would be reported as
+ * delivered while Claude Code still shows its prompt. Letting go first clears
+ * the request in Fleet and hands it to that prompt.
+ */
+export const PERMISSION_HOLD_MS = 295_000;
 
 /**
  * The unix socket the Go hook binary writes to. Each connection carries one

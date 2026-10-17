@@ -17,6 +17,9 @@ import (
 )
 
 const (
+	// timeoutSeconds is how long a permission request waits for Fleet. Fleet
+	// lets go a little sooner (PERMISSION_HOLD_MS in hook-server.ts); a test
+	// there reads this value to keep the two in order.
 	timeoutSeconds = 300
 	// protocolVersion tells Fleet which fields this binary sends. Version 2 adds
 	// pane_id, transcript_path, config_dir and source.

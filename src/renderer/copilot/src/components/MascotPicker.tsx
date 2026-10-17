@@ -7,12 +7,11 @@ import { ChevronLeft } from 'lucide-react';
 import { MASCOT_REGISTRY, DEFAULT_ANIMATIONS } from '../../../../shared/mascots';
 import { getSpriteSheet } from '../assets/sprite-loader';
 import type { SpriteAnimations } from '../../../../shared/types';
+import type { SpriteState } from '../lib/sessions';
 
-type PreviewState = 'idle' | 'processing' | 'permission' | 'complete';
+const PREVIEW_STATES: SpriteState[] = ['idle', 'processing', 'permission', 'complete'];
 
-const PREVIEW_STATES: PreviewState[] = ['idle', 'processing', 'permission', 'complete'];
-
-function useAnimatedFrame(animations: SpriteAnimations, state: PreviewState): number {
+function useAnimatedFrame(animations: SpriteAnimations, state: SpriteState): number {
   const frameRef = useRef(0);
   const [frameIndex, setFrameIndex] = useState(0);
 
@@ -32,7 +31,7 @@ function useAnimatedFrame(animations: SpriteAnimations, state: PreviewState): nu
 }
 
 function AnimationPreview({ mascotId }: { mascotId: string }): React.JSX.Element {
-  const [previewState, setPreviewState] = useState<PreviewState>('idle');
+  const [previewState, setPreviewState] = useState<SpriteState>('idle');
   const mascot = MASCOT_REGISTRY.find((m) => m.id === mascotId);
   const animations = mascot?.animations ?? DEFAULT_ANIMATIONS;
   const totalFrames = Math.max(...Object.values(animations).flatMap((a) => a.frames)) + 1;

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createLogger } from '../copilot-logger';
 import type { CopilotSession, CopilotSettings, CopilotChatMessage } from '../../../../shared/types';
 import type { CopilotApi } from '../../../../preload/copilot';
+import { firstOpenPermission, sortSessions, turnFinished } from '../lib/sessions';
 
 const log = createLogger('store');
 
@@ -12,6 +13,13 @@ declare global {
 }
 
 type CopilotView = 'sessions' | 'detail' | 'mascots';
+
+/** An answer on its way, or one Fleet could not deliver because nothing holds the request. */
+export type PermissionStatus = 'sending' | 'failed';
+
+/** How long the mascot plays its "turn done" frames. */
+const CELEBRATE_MS = 2500;
+let celebrateTimer = 0;
 
 type CopilotStoreState = {
   expanded: boolean;
@@ -29,6 +37,11 @@ type CopilotStoreState = {
   chatMessages: CopilotChatMessage[];
   chatLoading: boolean;
 
+  /** True for a moment after a session finishes its turn. */
+  celebrating: boolean;
+  /** Keyed by tool use id; a request with no entry has not been answered here. */
+  permissionStatus: Record<string, PermissionStatus | undefined>;
+
   setExpanded: (expanded: boolean) => void;
   toggleExpanded: () => void;
   setView: (view: CopilotView) => void;
@@ -39,6 +52,8 @@ type CopilotStoreState = {
   setActiveWorkspace: (workspaceId: string, workspaceName: string) => void;
   setShowAllWorkspaces: (show: boolean) => Promise<void>;
   filteredSessions: () => CopilotSession[];
+  /** The request the Y and N keys answer: the first one on screen. */
+  topPermissionId: () => string | null;
   loadSettings: () => Promise<void>;
   updateSettings: (partial: Partial<CopilotSettings>) => Promise<void>;
   respondPermission: (
@@ -71,6 +86,9 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   chatMessages: [],
   chatLoading: false,
 
+  celebrating: false,
+  permissionStatus: {},
+
   setExpanded: (expanded) => {
     log.info('setExpanded (from main)', { expanded });
     set({ expanded, view: expanded ? get().view : 'sessions' });
@@ -90,7 +108,18 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
 
   backToList: () => set({ view: 'sessions', selectedSessionId: null, chatMessages: [] }),
 
-  setSessions: (sessions) => set({ sessions }),
+  setSessions: (sessions) => {
+    const { sessions: previous, permissionStatus } = get();
+    // A request that is no longer pending has been settled, so its status is done with.
+    const pending = new Set(sessions.flatMap((s) => s.pendingPermissions.map((p) => p.toolUseId)));
+    const kept = Object.entries(permissionStatus).filter(([id]) => pending.has(id));
+    set({ sessions, permissionStatus: Object.fromEntries(kept) });
+    if (turnFinished(previous, sessions)) {
+      window.clearTimeout(celebrateTimer);
+      set({ celebrating: true });
+      celebrateTimer = window.setTimeout(() => set({ celebrating: false }), CELEBRATE_MS);
+    }
+  },
 
   setActiveWorkspace: (workspaceId, workspaceName) => {
     set({ activeWorkspaceId: workspaceId, activeWorkspaceName: workspaceName });
@@ -105,6 +134,17 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
     const { sessions, showAllWorkspaces, activeWorkspaceId } = get();
     if (showAllWorkspaces) return sessions;
     return sessions.filter((s) => !s.workspaceId || s.workspaceId === activeWorkspaceId);
+  },
+
+  topPermissionId: () => {
+    const { view, selectedSessionId, sessions, permissionStatus } = get();
+    const candidates =
+      view === 'detail'
+        ? sessions.filter((s) => s.sessionId === selectedSessionId)
+        : view === 'sessions'
+          ? [...get().filteredSessions()].sort(sortSessions)
+          : [];
+    return firstOpenPermission(candidates, permissionStatus);
   },
 
   loadSettings: async () => {
@@ -134,8 +174,17 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   },
 
   respondPermission: async (toolUseId, decision, reason) => {
+    // A second answer to the same request would only race the first.
+    if (get().permissionStatus[toolUseId]) return;
     log.info('respondPermission', { toolUseId, decision });
-    await window.copilot.respondPermission(toolUseId, decision, reason);
+    const setStatus = (status: PermissionStatus): void =>
+      set((s) => ({ permissionStatus: { ...s.permissionStatus, [toolUseId]: status } }));
+    setStatus('sending');
+    const delivered = await window.copilot
+      .respondPermission(toolUseId, decision, reason)
+      .catch(() => false);
+    // Delivered stays 'sending' until the session update removes the request.
+    if (!delivered) setStatus('failed');
   },
 
   checkHookStatus: async () => {

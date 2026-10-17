@@ -85,5 +85,18 @@ describe('formatPermissionSummary', () => {
     const result = formatPermissionSummary(tool('Bash', {}));
     expect(result.label).toBe('Bash');
     expect(result.detail).toBe('Bash');
+    expect(result.matched).toBe(false);
+  });
+
+  it('marks a known tool as matched and keeps its description', () => {
+    const result = formatPermissionSummary(
+      tool('Bash', { command: 'touch a.txt', description: 'Create a.txt' })
+    );
+    expect(result.matched).toBe(true);
+    expect(result.description).toBe('Create a.txt');
+  });
+
+  it('has no description when the tool gives none', () => {
+    expect(formatPermissionSummary(tool('Read', { file_path: 'a.ts' })).description).toBeNull();
   });
 });

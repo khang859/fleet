@@ -361,7 +361,6 @@ export type CopilotWorkspaceOverride = {
 export type CopilotSettings = {
   enabled: boolean;
   spriteSheet: string;
-  notificationSound: string;
   autoStart: boolean;
   claudeConfigDir: string;
   /** Keyed by workspace id: only workspaces with an override appear, so a lookup can miss. */
