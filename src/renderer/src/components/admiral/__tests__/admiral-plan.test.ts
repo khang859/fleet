@@ -231,7 +231,8 @@ describe('the sheet', () => {
     onboarding: { setupDoneAt: 1, starterDoneAt: 1 },
     leftovers: [],
     clientFileChanged: false,
-    pastJobs: []
+    pastJobs: [],
+    settingsCards: []
   });
   const sheet = (snapshot: AgencySnapshot, d: AgencyJobDetail): string =>
     renderToStaticMarkup(

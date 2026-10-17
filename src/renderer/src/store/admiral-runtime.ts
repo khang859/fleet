@@ -99,6 +99,41 @@ function attachedFor(repoId: string): Attached[] {
   return [...attached.values()].filter((a) => a.repo.repoId === repoId);
 }
 
+/** Requests asked from Settings, waiting for their repository's lobby to be on screen. */
+const asks = new Map<string, string[]>();
+
+/**
+ * Send the client's words to a repository's lobby: now, if its Admiral pane is
+ * ready and past setup, or as soon as it is. Settings opens the pane first and
+ * calls this, so the request is the first thing the Admiral reads there. One
+ * asked from project setup waits for setup and the starter questions, so the
+ * answer never lands in a lobby the client cannot see yet.
+ */
+export function askAdmiral(repoId: string, text: string): void {
+  asks.set(repoId, [...(asks.get(repoId) ?? []), text]);
+  deliverAsks(repoId);
+}
+
+/** Drop requests for a repository whose Admiral would not open. */
+export function dropAsks(repoId: string): void {
+  asks.delete(repoId);
+}
+
+function deliverAsks(repoId: string): void {
+  const texts = asks.get(repoId);
+  const pane = [...attached.values()].find((p) => p.repo.repoId === repoId);
+  const onboarding = useAgencyStore.getState().snapshots[repoId]?.onboarding;
+  const lobbyShown = onboarding?.setupDoneAt != null && onboarding.starterDoneAt != null;
+  if (texts === undefined || pane === undefined || attaching.has(pane.paneId) || !lobbyShown) {
+    return;
+  }
+  asks.delete(repoId);
+  useWorkspaceStore.getState().setAdmiralActiveJob(pane.paneId, null);
+  for (const text of texts) {
+    useAgentStore.getState().send(admiralKey(pane.paneId, null), pane.repo.root, text);
+  }
+}
+
 /**
  * Attach an Admiral pane: claim its repository, read the agency state, and
  * open its lobby and every open job's conversation. Safe to call again for a
@@ -128,6 +163,7 @@ export async function attachAdmiral(paneId: string, repo: AgencyRepoRef): Promis
     if (!current()) return;
     attaching.delete(paneId);
     setStatus(paneId, { kind: 'ready', lobbySessionId });
+    deliverAsks(repo.repoId);
 
     // A handoff the app quit in the middle of.
     for (const job of snapshot.jobs) {
@@ -183,6 +219,8 @@ async function openThreads(paneId: string, snapshot: AgencySnapshot): Promise<vo
 
 /** Main changed something about a repository. */
 async function onChanged(change: AgencyChanged): Promise<void> {
+  // The Admiral or a card wrote a setting in main; Settings must not save over it.
+  if (change.settings === true) void useSettingsStore.getState().loadSettings();
   const panes = attachedFor(change.repoId);
   if (panes.length === 0) return;
   const snapshot = await useAgencyStore.getState().refresh(change.repoId);
@@ -469,6 +507,20 @@ function admiralLeaves(): Map<string, AgencyRepoRef> {
   return leaves;
 }
 
+function snapshotsChanged(
+  next: Partial<Record<string, AgencySnapshot>>,
+  prev: Partial<Record<string, AgencySnapshot>>
+): void {
+  // A question asked or answered changes the badge without any turn moving.
+  for (const pane of attached.values()) {
+    if (next[pane.repo.repoId] !== prev[pane.repo.repoId]) rollUp(pane.paneId);
+  }
+  // Setup or the starter questions just finished: hand over what was asked meanwhile.
+  for (const repoId of asks.keys()) {
+    if (next[repoId] !== prev[repoId]) deliverAsks(repoId);
+  }
+}
+
 /**
  * Start looking after every Admiral pane, and keep doing so as panes open and
  * close and the agency is turned on and off. Returns the stop function.
@@ -512,12 +564,8 @@ export function initAdmiralRuntime(): () => void {
   const offWorkspace = useWorkspaceStore.subscribe(sync);
   const offSettings = useSettingsStore.subscribe(sync);
 
-  // A question asked or answered changes the badge without any turn moving.
   const offAgency = useAgencyStore.subscribe((s, prev) => {
-    if (s.snapshots === prev.snapshots) return;
-    for (const pane of attached.values()) {
-      if (s.snapshots[pane.repo.repoId] !== prev.snapshots[pane.repo.repoId]) rollUp(pane.paneId);
-    }
+    if (s.snapshots !== prev.snapshots) snapshotsChanged(s.snapshots, prev.snapshots);
   });
 
   const offChanged = window.fleet.agency.onChanged((change) => {

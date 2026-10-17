@@ -228,6 +228,8 @@ describe('Admiral turn', () => {
       'fleet_read',
       'fleet_diff',
       'fleet_wait',
+      'settings_read',
+      'settings_change',
       'client_file_propose',
       'ask_client',
       'job_open',
@@ -238,7 +240,7 @@ describe('Admiral turn', () => {
     );
   });
 
-  it('never offers a tool that edits, runs commands, types into a pane or changes settings', async () => {
+  it('never offers a tool that edits, runs commands or types into a pane', async () => {
     const { rounds } = await turn();
 
     for (const forbidden of [
@@ -261,7 +263,11 @@ describe('Admiral turn', () => {
     ]) {
       expect(names(rounds[0])).not.toContain(forbidden);
     }
-    expect(names(rounds[0]).some((n) => n.includes('setting'))).toBe(false);
+    // Its only settings tools are its own, where the key decides what needs the client.
+    expect(names(rounds[0]).filter((n) => n.includes('setting'))).toEqual([
+      'settings_read',
+      'settings_change'
+    ]);
     expect(names(rounds[0]).some((n) => n.startsWith('mcp'))).toBe(false);
   });
 

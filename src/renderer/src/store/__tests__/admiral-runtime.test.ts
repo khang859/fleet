@@ -158,7 +158,8 @@ beforeEach(async () => {
     onboarding: { setupDoneAt: 1, starterDoneAt: 1 },
     leftovers: [],
     clientFileChanged: false,
-    pastJobs: []
+    pastJobs: [],
+    settingsCards: []
   };
   agency.claimAdmiral.mockResolvedValue({ ok: true });
   agency.ensureLobby.mockResolvedValue(LOBBY);
@@ -562,5 +563,50 @@ describe('a message sent while the Admiral works', () => {
         .slice(-2)
     ).toEqual(['message', 'unqueue']);
     expect(appended().at(-1)?.event).toEqual({ t: 'unqueue', id: queuedId });
+  });
+});
+
+describe('a request asked from Settings', () => {
+  const lastLobbyText = (): unknown =>
+    thread(LOBBY_KEY).messages.findLast((m) => m.role === 'user')?.parts[0];
+  const setOnboarding = async (starterDoneAt: number | null): Promise<void> => {
+    const { useAgencyStore } = await import('../agency-store');
+    useAgencyStore.setState((s) => ({
+      snapshots: {
+        ...s.snapshots,
+        [REPO.repoId]: { ...snap, onboarding: { setupDoneAt: 1, starterDoneAt } }
+      }
+    }));
+  };
+
+  it('goes to the lobby at once when the pane is ready, and shows the lobby', () => {
+    runtime.askAdmiral(REPO.repoId, 'From Settings: make jobs cheaper');
+    expect(activeJob).toHaveBeenCalledWith(PANE, null);
+    expect(lastLobbyText()).toEqual({ type: 'text', text: 'From Settings: make jobs cheaper' });
+    expect(sends()).toHaveLength(1);
+  });
+
+  it('waits for the pane to attach', async () => {
+    runtime.detachAdmiral(PANE);
+    runtime.askAdmiral(REPO.repoId, 'make jobs cheaper');
+    expect(sends()).toHaveLength(0);
+    await runtime.attachAdmiral(PANE, REPO);
+    expect(lastLobbyText()).toEqual({ type: 'text', text: 'make jobs cheaper' });
+  });
+
+  it('waits for setup and the starter questions, so the answer lands in a lobby on screen', async () => {
+    await setOnboarding(null);
+    runtime.askAdmiral(REPO.repoId, 'why is this not a check?');
+    expect(sends()).toHaveLength(0);
+    await setOnboarding(2);
+    expect(lastLobbyText()).toEqual({ type: 'text', text: 'why is this not a check?' });
+  });
+
+  it('is forgotten when the Admiral would not open', async () => {
+    runtime.detachAdmiral(PANE);
+    runtime.askAdmiral(REPO.repoId, 'make jobs cheaper');
+    runtime.dropAsks(REPO.repoId);
+    await runtime.attachAdmiral(PANE, REPO);
+    expect(sends()).toHaveLength(0);
   });
 });

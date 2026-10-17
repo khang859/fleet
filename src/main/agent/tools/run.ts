@@ -45,6 +45,8 @@ import { agencyMember } from './agency';
 import {
   AskClientArgs,
   ClientFileProposeArgs,
+  SettingsChangeArgs,
+  SettingsReadArgs,
   JobDeliverArgs,
   JobListArgs,
   JobOpenArgs,
@@ -191,6 +193,10 @@ export async function runAgentTool(
         name,
         'clientFilePropose'
       )(checked(ClientFileProposeArgs, args, name));
+    case 'settings_read':
+      return agencyMember(ctx, name, 'settingsRead')(checked(SettingsReadArgs, args, name));
+    case 'settings_change':
+      return agencyMember(ctx, name, 'settingsChange')(checked(SettingsChangeArgs, args, name));
     default:
       throw new Error(`There is no tool called ${name}`);
   }

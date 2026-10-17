@@ -1,0 +1,304 @@
+import type { AdmiralThreadScope, AgencySettings } from '../../../shared/agency';
+import type { ProjectSetup } from '../../../shared/agency-projects';
+import { jsonEqual } from '../../../shared/json-equal';
+import {
+  AGENCY_SETTING_KEYS,
+  MEMBER_SETTING_FIELDS,
+  memberSettingKey,
+  parseSettingValue,
+  settingKind,
+  settingLabel,
+  settingTarget,
+  settingValueText,
+  settingsCardDisplayId,
+  type AdmiralSettingMark,
+  type AgencySettingKey,
+  type SettingTarget,
+  type SettingValue,
+  type SettingsCard,
+  type SettingsUndoOutcome
+} from '../../../shared/agency-settings';
+import { loadSetup, updateSetup } from '../projects/project-store';
+import type { AgencyStore } from '../store/agency-store';
+import type { SettingWrite } from '../store/setting-change-store';
+
+/** Where the agency settings live: Fleet's settings file, in the app. */
+export type AgencySettingsAccess = {
+  get: () => AgencySettings;
+  set: (next: AgencySettings) => void;
+};
+
+export type SettingsServiceDeps = {
+  store: AgencyStore;
+  agency: AgencySettingsAccess;
+  home: () => string;
+  /** A setting or a card changed for a repository's lobby or job. */
+  changed: (repoId: string, jobId: number | null) => void;
+};
+
+export type SettingsChangeRequest = {
+  changes: Array<{ key: string; value: unknown }>;
+  reason: string;
+};
+
+export type SettingsChangeOutcome =
+  | { ok: false; reason: string }
+  | { ok: true; card: SettingsCard | null; unchanged: string[] };
+
+function readAgency(settings: AgencySettings, key: AgencySettingKey): SettingValue {
+  switch (key) {
+    case 'agency.enabled':
+      return settings.enabled;
+    case 'agency.admiral.model':
+      return settings.admiral.model;
+    case 'agency.admiral.defaultBudgetUsd':
+      return settings.admiral.defaultBudgetUsd;
+    case 'agency.admiral.monthlyCapUsd':
+      return settings.admiral.monthlyCapUsd;
+  }
+}
+
+/** `value` has passed the key's schema, so the type checks only narrow it. */
+function writeAgency(
+  settings: AgencySettings,
+  key: AgencySettingKey,
+  value: SettingValue
+): AgencySettings {
+  const { admiral } = settings;
+  switch (key) {
+    case 'agency.enabled':
+      return { ...settings, enabled: value === true };
+    case 'agency.admiral.model':
+      return { ...settings, admiral: { ...admiral, model: String(value ?? '') } };
+    case 'agency.admiral.defaultBudgetUsd':
+      return typeof value === 'number'
+        ? { ...settings, admiral: { ...admiral, defaultBudgetUsd: value } }
+        : settings;
+    case 'agency.admiral.monthlyCapUsd':
+      return typeof value === 'number'
+        ? { ...settings, admiral: { ...admiral, monthlyCapUsd: value } }
+        : settings;
+  }
+}
+
+/**
+ * The Admiral's settings tools and the client's answers to them. Whether a
+ * change applies at once or waits on a card is the key's rule, never the
+ * Admiral's say (`shared/agency-settings.ts`). Agency settings live in Fleet's
+ * settings file; a member's live in the project's saved setup.
+ */
+export class AgencySettingsService {
+  constructor(private readonly deps: SettingsServiceDeps) {}
+
+  /** Every setting the Admiral can change, with its current value. */
+  async values(repoId: string): Promise<Array<{ key: string; value: SettingValue }>> {
+    const agency = this.deps.agency.get();
+    const setup = await loadSetup(repoId, this.deps.home());
+    return [
+      ...AGENCY_SETTING_KEYS.map((key) => ({ key, value: readAgency(agency, key) })),
+      ...(setup?.members ?? []).flatMap((m) =>
+        MEMBER_SETTING_FIELDS.map((field) => ({
+          key: memberSettingKey(m.name, field),
+          value: m[field]
+        }))
+      )
+    ];
+  }
+
+  /**
+   * Check every change, write the ones that give no more money or reach, and
+   * put the rest on a card. One bad key refuses the whole call, so the
+   * Admiral never leaves half of what it meant applied.
+   */
+  async change(
+    scope: AdmiralThreadScope,
+    req: SettingsChangeRequest
+  ): Promise<SettingsChangeOutcome> {
+    const checked = await this.check(scope.repoId, req);
+    if (!checked.ok) return checked;
+    const unchanged = checked.writes.filter((w) => jsonEqual(w.before, w.after));
+    const changed = checked.writes.filter((w) => !jsonEqual(w.before, w.after));
+    if (changed.length === 0) {
+      return { ok: true, card: null, unchanged: unchanged.map((w) => w.key) };
+    }
+    const changes = changed.map((w) => ({
+      ...w,
+      status:
+        settingKind(w.key, w.before, w.after) === 'apply'
+          ? ('applied' as const)
+          : ('pending' as const)
+    }));
+    await this.write(
+      scope.repoId,
+      changes.filter((c) => c.status === 'applied')
+    );
+    const id = this.deps.store.settings.addCard({
+      repoId: scope.repoId,
+      jobId: scope.jobId,
+      reason: req.reason,
+      changes
+    });
+    this.deps.changed(scope.repoId, scope.jobId);
+    return {
+      ok: true,
+      card: this.deps.store.settings.card(id),
+      unchanged: unchanged.map((w) => w.key)
+    };
+  }
+
+  /** The client approved or refused one pending change on a card. */
+  async decide(changeId: number, approved: boolean): Promise<boolean> {
+    const { store } = this.deps;
+    const change = store.settings.change(changeId);
+    if (change?.status !== 'pending') return false;
+    let write: SettingWrite | null = null;
+    if (approved) {
+      const before = await this.current(change.repoId, change.key);
+      if (before === undefined) return false;
+      write = { key: change.key, before, after: change.after };
+      await this.write(change.repoId, [write]);
+    }
+    store.settings.decide(changeId, { approved, write });
+    const card = settingsCardDisplayId(change.cardId);
+    store.enqueueWakeup({
+      repoId: change.repoId,
+      jobId: change.jobId,
+      kind: 'client_action',
+      payload: {
+        line: `Client ${approved ? 'approved' : 'refused'} ${change.label} on ${card}`,
+        note: approved ? `${change.label} is now ${settingValueText(change.after)}.` : null
+      }
+    });
+    this.deps.changed(change.repoId, change.jobId);
+    return true;
+  }
+
+  /**
+   * Put a written change back. Refused when the value moved on since, so an
+   * Undo never throws away an edit made after the change.
+   */
+  async undo(changeId: number): Promise<SettingsUndoOutcome> {
+    const { store } = this.deps;
+    const change = store.settings.change(changeId);
+    if (change === null || (change.status !== 'applied' && change.status !== 'approved')) {
+      return { ok: false, reason: 'That change is not in place.' };
+    }
+    const now = await this.current(change.repoId, change.key);
+    if (now === undefined || !jsonEqual(now, change.after)) {
+      return { ok: false, reason: `${change.label} changed again since. Change it here instead.` };
+    }
+    const write = { key: change.key, before: change.after, after: change.before };
+    await this.write(change.repoId, [write]);
+    store.settings.undo(changeId, write);
+    store.enqueueWakeup({
+      repoId: change.repoId,
+      jobId: change.jobId,
+      kind: 'client_action',
+      payload: {
+        line: `Client undid a settings change`,
+        note: `${change.label} is back to ${settingValueText(change.before)}.`
+      }
+    });
+    this.deps.changed(change.repoId, change.jobId);
+    return { ok: true };
+  }
+
+  /**
+   * The settings the Admiral changed last and that still hold its value, for
+   * "Changed by the Admiral" with Undo. A value the client edited since, in
+   * Settings or by hand, is theirs again and has no mark.
+   */
+  async marks(repoId: string | null): Promise<AdmiralSettingMark[]> {
+    const values =
+      repoId === null
+        ? AGENCY_SETTING_KEYS.map((key) => ({
+            key,
+            value: readAgency(this.deps.agency.get(), key)
+          }))
+        : await this.values(repoId);
+    return values.flatMap(({ key, value }) => {
+      const last = this.deps.store.settings.lastWrite(repoId ?? '', key);
+      if (last?.actor !== 'admiral' || last.changeId === null) return [];
+      if (!jsonEqual(last.after, value)) return [];
+      return [
+        { changeId: last.changeId, key, at: last.at, reason: last.reason, before: last.before }
+      ];
+    });
+  }
+
+  private async check(
+    repoId: string,
+    req: SettingsChangeRequest
+  ): Promise<{ ok: true; writes: SettingWrite[] } | { ok: false; reason: string }> {
+    const keys = req.changes.map((c) => c.key);
+    const twice = keys.find((k, i) => keys.indexOf(k) !== i);
+    if (twice !== undefined) return { ok: false, reason: `${twice} is in the call twice.` };
+    const writes: SettingWrite[] = [];
+    for (const c of req.changes) {
+      const parsed = parseSettingValue(c.key, c.value);
+      if (!parsed.ok)
+        return { ok: false, reason: `${parsed.reason}. Call settings_read for the keys.` };
+      const before = await this.current(repoId, c.key);
+      if (before === undefined) return { ok: false, reason: await this.missing(repoId, c.key) };
+      if (settingKind(c.key, before, parsed.value) === 'client-only') {
+        return {
+          ok: false,
+          reason: `${settingLabel(c.key)} is the client's own setting. Tell them to change it in Settings > Agency > Admiral; nothing was changed.`
+        };
+      }
+      writes.push({ key: c.key, before, after: parsed.value });
+    }
+    return { ok: true, writes };
+  }
+
+  /** Why a member key has no value: no saved setup, or no member by that name. */
+  private async missing(repoId: string, key: string): Promise<string> {
+    const setup = await loadSetup(repoId, this.deps.home());
+    if (setup === null) return 'The project has no saved setup yet, so it has no member settings.';
+    const names = setup.members.map((m) => m.name).join(', ');
+    return `${key} names no member of the project. Its members: ${names}.`;
+  }
+
+  /** A key's value now; undefined when it names a member the project does not have. */
+  private async current(repoId: string, key: string): Promise<SettingValue | undefined> {
+    const target = settingTarget(key);
+    if (target === null) return undefined;
+    if (target.scope === 'agency') return readAgency(this.deps.agency.get(), target.key);
+    const setup = await loadSetup(repoId, this.deps.home());
+    const member = setup?.members.find((m) => m.name === target.member);
+    return member === undefined ? undefined : member[target.field];
+  }
+
+  /** Write changes: the agency ones to Fleet's settings, a member's to the project setup. */
+  private async write(repoId: string, writes: SettingWrite[]): Promise<void> {
+    const targets = writes.map((w) => ({ w, target: settingTarget(w.key) }));
+    const agency = targets.flatMap(({ w, target }) =>
+      target?.scope === 'agency' ? [{ key: target.key, value: w.after }] : []
+    );
+    if (agency.length > 0) {
+      this.deps.agency.set(
+        agency.reduce((s, { key, value }) => writeAgency(s, key, value), this.deps.agency.get())
+      );
+    }
+    const members = targets.flatMap(({ w, target }) =>
+      target?.scope === 'member' ? [{ w, target }] : []
+    );
+    if (members.length > 0) {
+      await updateSetup(repoId, (setup) => withMembers(setup, members), this.deps.home());
+    }
+  }
+}
+
+function withMembers(
+  setup: ProjectSetup,
+  writes: Array<{ w: SettingWrite; target: Extract<SettingTarget, { scope: 'member' }> }>
+): ProjectSetup {
+  return {
+    ...setup,
+    members: setup.members.map((m) =>
+      writes
+        .filter(({ target }) => target.member === m.name)
+        .reduce((acc, { w, target }) => ({ ...acc, [target.field]: w.after }), m)
+    )
+  };
+}

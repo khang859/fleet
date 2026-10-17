@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../shared/agency';
+import type { SettingsCard } from '../../../../shared/agency-settings';
 import { jobDisplayId } from '../../../../shared/agency';
 import type {
   AgencyJobDetail,
@@ -13,6 +14,7 @@ import { CancelJob, DeliveredCard, LeftoverList } from './JobClose';
 import { PastJobList } from './PastJobs';
 import { PlanCard } from './PlanCard';
 import { ResultCard } from './ResultCard';
+import { SettingsCardView } from './SettingsCard';
 import { QuestionCard, type QuestionAnswer } from './QuestionCard';
 import { formatUsd, jobStatus, runtimeName, TONE_DOT } from './job-view';
 
@@ -52,7 +54,7 @@ export function JobSheet({
 }): React.JSX.Element {
   const job = jobId === null ? null : (snapshot?.jobs.find((j) => j.id === jobId) ?? null);
   const { approved } = planVersions(detail);
-  const { pending, waiting, delivered, count } = waitingOnClient(snapshot, job, detail);
+  const { pending, waiting, settings, delivered, count } = waitingOnClient(snapshot, job, detail);
   const firstRun = jobId === null && (snapshot?.jobs.length ?? 0) === 0;
 
   return (
@@ -84,6 +86,7 @@ export function JobSheet({
           pending={pending}
           detail={detail}
           questions={waiting}
+          settings={settings}
           clientFileChanged={snapshot?.clientFileChanged === true}
           onAnswer={onAnswer}
           onOpenSettings={onOpenSettings}
@@ -127,14 +130,19 @@ function waitingOnClient(
 ): {
   pending: AgencyPlanVersion | null;
   waiting: AgencyQuestion[];
+  settings: SettingsCard[];
   delivered: AgencyJob | null;
   count: number;
 } {
   const { pending } = planVersions(detail);
   const waiting = openQuestions(snapshot, job?.id ?? null);
+  const settings = (snapshot?.settingsCards ?? []).filter(
+    (c) => c.jobId === (job?.id ?? null) && c.changes.some((x) => x.status === 'pending')
+  );
   const delivered = job?.state === 'delivered' ? job : null;
-  const count = waiting.length + [pending, delivered].filter((x) => x !== null).length;
-  return { pending, waiting, delivered, count };
+  const count =
+    waiting.length + settings.length + [pending, delivered].filter((x) => x !== null).length;
+  return { pending, waiting, settings, delivered, count };
 }
 
 /**
@@ -175,13 +183,14 @@ function LeftoversSection({
   );
 }
 
-/** Open questions and a plan version waiting on the client, as cards. */
+/** Open questions, settings changes and a plan version waiting on the client, as cards. */
 function WaitingSection({
   count,
   delivered,
   pending,
   detail,
   questions,
+  settings,
   clientFileChanged,
   onAnswer,
   onOpenSettings
@@ -192,6 +201,7 @@ function WaitingSection({
   pending: AgencyPlanVersion | null;
   detail: AgencyJobDetail | undefined;
   questions: AgencyQuestion[];
+  settings: SettingsCard[];
   clientFileChanged: boolean;
   onAnswer: (question: AgencyQuestion, answer: QuestionAnswer) => Promise<boolean>;
   onOpenSettings: () => void;
@@ -214,6 +224,9 @@ function WaitingSection({
           onOpenSettings={onOpenSettings}
           clientFileChanged={clientFileChanged}
         />
+      ))}
+      {settings.map((card) => (
+        <SettingsCardView key={`s${card.id}`} card={card} />
       ))}
     </Section>
   );

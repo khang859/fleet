@@ -119,6 +119,22 @@ export function importDestination(path: string): string | null {
   return null;
 }
 
+/**
+ * Rewrite a saved setup with `update`, keeping its imports. Null when the
+ * project has no saved setup to change.
+ */
+export async function updateSetup(
+  repoId: string,
+  update: (setup: ProjectSetup) => ProjectSetup,
+  home: string = agencyHome()
+): Promise<ProjectSetup | null> {
+  const saved = await loadSetup(repoId, home);
+  if (saved === null) return null;
+  const next = ProjectSetupSchema.parse(update(saved));
+  await writeAtomic(setupFilePath(repoId, home), setupToToml(next));
+  return next;
+}
+
 /** A repository file the client chose to import, with the content setup read. */
 export type ImportedFile = ProjectImport & { content: string };
 

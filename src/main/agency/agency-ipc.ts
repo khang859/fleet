@@ -22,6 +22,7 @@ import {
 } from '../../shared/agency-projects';
 import type { AgencyJobDetail, JobControlResult, PlanActionResult } from '../../shared/agency-jobs';
 import { PlanSchema } from '../../shared/agency-plan';
+import type { AdmiralSettingMark, SettingsUndoOutcome } from '../../shared/agency-settings';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type { AgencyService } from './index';
 
@@ -221,6 +222,30 @@ export function registerAgencyIpc(service: AgencyService): void {
   );
 
   registerProjectsIpc(service);
+  registerSettingsIpc(service);
+}
+
+const SettingsDecideArgs = z.object({ changeId: JobId, approved: z.boolean() });
+
+/** The client's side of the Admiral's settings cards, and "Changed by the Admiral" in Settings. */
+function registerSettingsIpc(service: AgencyService): void {
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_SETTINGS_DECIDE,
+    async (_e, args: unknown): Promise<boolean> => {
+      const { changeId, approved } = SettingsDecideArgs.parse(args);
+      return service.settings.decide(changeId, approved);
+    }
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_SETTINGS_UNDO,
+    async (_e, changeId: unknown): Promise<SettingsUndoOutcome> =>
+      service.settings.undo(JobId.parse(changeId))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_SETTINGS_MARKS,
+    async (_e, repoId: unknown): Promise<AdmiralSettingMark[]> =>
+      service.settings.marks(RepoId.nullable().parse(repoId))
+  );
 }
 
 /** Onboarding: first run, the project picker, setup, the client file and brief ideas. */

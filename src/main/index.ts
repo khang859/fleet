@@ -1598,7 +1598,11 @@ void app.whenReady().then(async () => {
     },
     hasModelKey: () => openRouterSecrets.hasKey() || localEndpoints().some((e) => e.enabled),
     worktrees: worktreeService,
-    isOnline: () => net.isOnline()
+    isOnline: () => net.isOnline(),
+    agencySettings: {
+      get: () => settingsStore.get().agency,
+      set: (agency) => settingsStore.set({ agency })
+    }
   });
   // Before the Agent service, which runs Admiral turns against it.
   const agency = agencyService;

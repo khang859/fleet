@@ -195,6 +195,7 @@ import type {
   PlanAction,
   PlanActionResult
 } from '../shared/agency-jobs';
+import type { AdmiralSettingMark, SettingsUndoOutcome } from '../shared/agency-settings';
 import type {
   Learning,
   CreateLearningInput,
@@ -1160,6 +1161,16 @@ const fleetApi = {
     exportJob: async (jobId: number): Promise<string | null> =>
       typedInvoke(IPC_CHANNELS.AGENCY_JOB_EXPORT, jobId),
     preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
+    /** The Admiral's settings cards: approve or refuse a change, undo one, and what it changed last. */
+    settings: {
+      decide: async (input: { changeId: number; approved: boolean }): Promise<boolean> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SETTINGS_DECIDE, input),
+      undo: async (changeId: number): Promise<SettingsUndoOutcome> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SETTINGS_UNDO, changeId),
+      /** Agency settings when `repoId` is null, else the project's too. */
+      marks: async (repoId: string | null): Promise<AdmiralSettingMark[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SETTINGS_MARKS, repoId)
+    },
     /** Onboarding: first run, the picker, setup, the client file and brief ideas. */
     projects: {
       firstRunDone: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.AGENCY_FIRST_RUN_DONE),

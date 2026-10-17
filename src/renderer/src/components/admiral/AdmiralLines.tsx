@@ -17,7 +17,8 @@ import { useAdmiralThread } from './admiral-context';
 import { PlanCard } from './PlanCard';
 import { QuestionCard } from './QuestionCard';
 import { ResultCard } from './ResultCard';
-import { askedQuestionId, deliveredResultId, proposedPlanId } from './job-view';
+import { SettingsCardView } from './SettingsCard';
+import { askedQuestionId, deliveredResultId, proposedPlanId, settingsCardId } from './job-view';
 
 /**
  * The lines an Admiral transcript has that an Agent one does not: what woke
@@ -111,6 +112,27 @@ export function AskClientRow({ call }: { call: AgentToolCall }): React.JSX.Eleme
         onOpenSettings={() => openSettings('agencyAdmiral')}
         clientFileChanged={clientFileChanged}
       />
+    </div>
+  );
+}
+
+/**
+ * A `settings_change` call, drawn as the card it put up, so a change can be
+ * approved or undone right there. Falls back to the plain row while the call
+ * runs, when nothing changed, or when the card has aged out of the snapshot.
+ */
+export function SettingsChangeRow({ call }: { call: AgentToolCall }): React.JSX.Element {
+  const admiral = useAdmiralThread();
+  const id = settingsCardId(call);
+  const card = useAgencyStore((s) =>
+    admiral === null || id === null
+      ? null
+      : (s.snapshots[admiral.repoId]?.settingsCards.find((c) => c.id === id) ?? null)
+  );
+  if (card === null || call.error !== null) return <AgentToolRow call={call} />;
+  return (
+    <div className="w-full max-w-md">
+      <SettingsCardView card={card} />
     </div>
   );
 }

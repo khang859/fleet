@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import type {
@@ -7,6 +7,14 @@ import type {
   RepoFile,
   SetupScan
 } from '../../../../shared/agency-projects';
+import {
+  memberSettingKey,
+  type AdmiralSettingMark,
+  type MemberSettingField
+} from '../../../../shared/agency-settings';
+import { useAdmiralMarks } from '../../hooks/use-admiral-marks';
+import { AdmiralChangeNote } from '../settings/AdmiralChangeNote';
+import { AskAdmiralForm } from '../settings/AskAdmiral';
 import {
   AdmiralSays,
   OnboardingButton,
@@ -29,10 +37,13 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
   const [imports, setImports] = useState<ReadonlySet<string>>(new Set());
   const [busy, setBusy] = useState<'save' | 'share' | null>(null);
   const [shared, setShared] = useState<string[] | null>(null);
+  const edited = useRef(false);
 
   // Keyed on the repository's fields, not the object: a redraw of the workspace
   // hands over an equal copy, and a fresh scan would throw away the client's edits.
   const { repoId, root, name } = repo;
+  const marks = useAdmiralMarks(repoId);
+  const rescan = useAdmiralSetupChanges(repoId, edited);
   useEffect(() => {
     let live = true;
     window.fleet.agency.projects
@@ -47,7 +58,7 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
     return () => {
       live = false;
     };
-  }, [repoId, root, name]);
+  }, [repoId, root, name, rescan]);
 
   if (error !== null) {
     return (
@@ -69,10 +80,13 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
   }
 
   const member = setup.members[0];
-  const setMember = (patch: Partial<ProjectMemberSetup>): void =>
+  const setMember = (patch: Partial<ProjectMemberSetup>): void => {
+    edited.current = true;
     setSetup({ ...setup, members: [{ ...member, ...patch }, ...setup.members.slice(1)] });
+  };
 
   const toggleImport = (file: RepoFile): void => {
+    edited.current = true;
     const next = new Set(imports);
     if (next.has(file.path)) next.delete(file.path);
     else next.add(file.path);
@@ -103,7 +117,7 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
             ran and nothing changed. Check what I found and fix anything I got wrong. It is all
             saved in Fleet, so no commit is needed.
           </AdmiralSays>
-          <RepoCard scan={scan} member={member} onChange={setMember} />
+          <RepoCard scan={scan} member={member} marks={marks} onChange={setMember} />
           {scan.repoFiles.length > 0 && (
             <FoundCard files={scan.repoFiles} imports={imports} onToggle={toggleImport} />
           )}
@@ -116,6 +130,7 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
               I ask you first: merge, production deploy, deletes, and anything outside the plan.
             </p>
           </OnboardingCard>
+          <AskCard repo={repo} />
         </div>
       </div>
       <footer className="shrink-0 border-t border-fleet-border bg-fleet-bg">
@@ -139,6 +154,45 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
   );
 }
 
+/**
+ * Counts the Admiral's changes to the repository's saved setup, so the scan
+ * runs again and shows them - unless the client is mid-edit, whose edits win.
+ */
+function useAdmiralSetupChanges(repoId: string, edited: React.RefObject<boolean>): number {
+  const [changes, setChanges] = useState(0);
+  useEffect(
+    () =>
+      window.fleet.agency.onChanged((change) => {
+        if (change.settings === true && change.repoId === repoId && !edited.current) {
+          setChanges((n) => n + 1);
+        }
+      }),
+    [repoId, edited]
+  );
+  return changes;
+}
+
+/** "Ask the Admiral" in setup: the lobby is not on screen yet, so the answer waits there. */
+function AskCard({ repo }: { repo: AgencyRepoRef }): React.JSX.Element {
+  const [asked, setAsked] = useState(false);
+  return (
+    <OnboardingCard>
+      <SectionLabel>ASK THE ADMIRAL</SectionLabel>
+      <p className="mt-2 mb-2.5 text-xs text-fleet-text-secondary">
+        {asked
+          ? 'Asked. I answer in the lobby when setup is done.'
+          : 'Not sure about something here? Ask, and I answer in the lobby when setup is done.'}
+      </p>
+      <AskAdmiralForm
+        page="Project setup"
+        projects={[repo]}
+        placeholder="For example: which checks should crew run?"
+        onSent={() => setAsked(true)}
+      />
+    </OnboardingCard>
+  );
+}
+
 function Centered({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-6 text-center">
@@ -157,13 +211,23 @@ const parseList = (text: string): string[] =>
 function RepoCard({
   scan,
   member,
+  marks,
   onChange
 }: {
   scan: SetupScan;
   member: ProjectMemberSetup;
+  marks: AdmiralSettingMark[];
   onChange: (patch: Partial<ProjectMemberSetup>) => void;
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false);
+  const changed = (...fields: MemberSettingField[]): React.ReactNode =>
+    fields.map((field) => (
+      <AdmiralChangeNote
+        key={field}
+        marks={marks}
+        settingKey={memberSettingKey(member.name, field)}
+      />
+    ));
   const stack = [...member.stack, member.packageManager].filter(Boolean).join(' · ');
   return (
     <OnboardingCard>
@@ -180,7 +244,7 @@ function RepoCard({
         </button>
       </div>
       <dl className="mt-3 grid grid-cols-[minmax(96px,max-content)_1fr] gap-x-4 text-xs">
-        <Row label="Stack">
+        <Row label="Stack" note={changed('stack', 'packageManager')}>
           {editing ? (
             <ListInput
               label="Stack"
@@ -191,7 +255,7 @@ function RepoCard({
             stack || <None>not recognized</None>
           )}
         </Row>
-        <Row label="New worktree">
+        <Row label="New worktree" note={changed('setupCommand', 'setupTimeoutSec')}>
           {editing ? (
             <div className="flex flex-wrap items-center gap-2">
               <input
@@ -230,7 +294,7 @@ function RepoCard({
             </span>
           )}
         </Row>
-        <Row label="Crew checks">
+        <Row label="Crew checks" note={changed('checkCommands')}>
           {editing ? (
             <ListInput
               label="Crew checks"
@@ -241,7 +305,7 @@ function RepoCard({
             <Mono items={member.checkCommands} empty="none found" />
           )}
         </Row>
-        <Row label="CI checks">
+        <Row label="CI checks" note={changed('checks')}>
           {editing ? (
             <ListInput
               label="CI checks"
@@ -252,7 +316,7 @@ function RepoCard({
             <Mono items={member.checks} empty="no workflows found" />
           )}
         </Row>
-        <Row label="Must pass">
+        <Row label="Must pass" note={changed('requiredChecks')}>
           {editing ? (
             <ListInput
               label="Must pass"
@@ -263,7 +327,7 @@ function RepoCard({
             <Mono items={member.requiredChecks} empty="none required" />
           )}
         </Row>
-        <Row label="Review bot">
+        <Row label="Review bot" note={changed('reviewBots')}>
           {editing ? (
             <ListInput
               label="Review bots"
@@ -274,7 +338,7 @@ function RepoCard({
             <Mono items={member.reviewBots} empty="none" />
           )}
         </Row>
-        <Row label="Default branch" last>
+        <Row label="Default branch" last note={changed('defaultBranch')}>
           {editing ? (
             <input
               aria-label="Default branch"
@@ -304,17 +368,23 @@ function RepoCard({
 function Row({
   label,
   last = false,
+  note,
   children
 }: {
   label: string;
   last?: boolean;
+  /** "Changed by the Admiral" under the value, when it was. */
+  note?: React.ReactNode;
   children: React.ReactNode;
 }): React.JSX.Element {
   const line = last ? '' : 'border-b border-fleet-border';
   return (
     <>
       <dt className={`flex items-center py-2 text-fleet-text-muted ${line}`}>{label}</dt>
-      <dd className={`min-w-0 py-2 break-words text-fleet-text ${line}`}>{children}</dd>
+      <dd className={`min-w-0 py-2 break-words text-fleet-text ${line}`}>
+        {children}
+        {note}
+      </dd>
     </>
   );
 }

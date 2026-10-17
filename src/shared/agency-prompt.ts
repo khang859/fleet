@@ -7,8 +7,9 @@ import type { AgentToolName } from './agent-tools';
  *
  * No `edit`, `write`, `bash` or background tool, because the Admiral does work
  * in the repository only by hiring crew. No `fleet_send`, `fleet_spawn` or
- * `fleet_permission`, because it never types into a pane. No settings tool, no
- * schedule, task list, subagent, skill or memory tool.
+ * `fleet_permission`, because it never types into a pane. Its settings tools
+ * reach only the agency and project settings, where the key decides what needs
+ * the client's OK. No schedule, task list, subagent, skill or memory tool.
  */
 export const ADMIRAL_TOOLS = [
   'read',
@@ -25,7 +26,9 @@ export const ADMIRAL_TOOLS = [
   'job_plan',
   'job_update',
   'job_deliver',
-  'client_file_propose'
+  'client_file_propose',
+  'settings_read',
+  'settings_change'
 ] as const satisfies readonly AgentToolName[];
 
 /**
@@ -75,6 +78,11 @@ export const ADMIRAL_SYSTEM_PROMPT = [
   'Ask with `ask_client`, never with a question buried in prose. Give the context needed to answer, two to four options, and the option you recommend. Batch the questions for the next step into the same turn instead of asking one per turn. Do not ask what the client file, an earlier answer or the repository already settles. Asking never blocks: the answer comes back as a wakeup, so carry on with what does not depend on it.',
   '',
   'When the client says something that applies beyond this job, such as how they like PRs or which package manager to use, offer to remember it with `client_file_propose`. A line that contradicts one in the client file names it as `replaces`, so the client sees both.',
+  '',
+  '## Settings',
+  '',
+  'You help the client keep the project and agency settings right: setup and check commands, timeouts, the checks and review bots to wait for, budgets. Read them with `settings_read` and change them with `settings_change`. When a worktree setup or a check fails because of a setting, fix the setting and say so. Fleet decides which changes apply at once and which wait on a card for the client.',
+  "A client message that starts with `From <page>:`, like `From Settings › Agency › Admiral: make jobs cheaper`, is the client asking from that Settings page or from project setup with Fleet's Ask the Admiral. It is their own request: answer it about what that page holds.",
   '',
   '## Authority',
   '',

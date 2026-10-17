@@ -8,6 +8,7 @@ import { jobList } from './job-list';
 import { jobOpen } from './job-open';
 import { jobPlan } from './job-plan';
 import { jobUpdate } from './job-update';
+import { settingsChange, settingsRead } from './settings';
 
 /**
  * The agency tools of one Admiral thread, bound to its checked scope. Nothing
@@ -16,7 +17,7 @@ import { jobUpdate } from './job-update';
 export function createAgencyCapability(
   agency: Pick<
     AgencyService,
-    'ask' | 'openJob' | 'snapshot' | 'jobs' | 'results' | 'proposeClientFile'
+    'ask' | 'openJob' | 'snapshot' | 'jobs' | 'results' | 'proposeClientFile' | 'settings'
   >,
   scope: AdmiralThreadScope,
   settings: () => AgencySettings
@@ -37,6 +38,8 @@ export function createAgencyCapability(
     jobUpdate:
       jobId === null ? null : async (args) => Promise.resolve(jobUpdate(agency.jobs, jobId, args)),
     jobDeliver: jobId === null ? null : async (args) => jobDeliver(agency.results, jobId, args),
-    clientFilePropose: async (args) => Promise.resolve(clientFilePropose(agency, scope, args))
+    clientFilePropose: async (args) => Promise.resolve(clientFilePropose(agency, scope, args)),
+    settingsRead: async () => settingsRead(agency.settings, scope),
+    settingsChange: async (args) => settingsChange(agency.settings, scope, args)
   };
 }

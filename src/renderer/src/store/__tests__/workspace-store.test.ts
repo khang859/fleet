@@ -1529,7 +1529,8 @@ describe('Admiral panes', () => {
           onboarding: { setupDoneAt: 1, starterDoneAt: 1 },
           leftovers: [],
           clientFileChanged: false,
-          pastJobs: []
+          pastJobs: [],
+          settingsCards: []
         }
       }
     });

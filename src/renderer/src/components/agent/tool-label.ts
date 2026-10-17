@@ -177,6 +177,10 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       return { verb: 'Deliver', target: args.title ?? args.url ?? args.branch ?? args.kind ?? '' };
     case 'client_file_propose':
       return { verb: 'Remember', target: args.reason ?? '' };
+    case 'settings_read':
+      return { verb: 'Read settings', target: '' };
+    case 'settings_change':
+      return { verb: 'Change settings', target: args.reason ?? '' };
     default:
       return mcpLabel(call.name) ?? { verb: call.name, target: '' };
   }

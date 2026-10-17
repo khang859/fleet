@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  DEFAULT_AGENCY_SETTINGS,
   TERMINAL_JOB_STATES,
   jobDisplayId,
   type AdmiralClaimResult,
@@ -40,6 +41,7 @@ import { readOnlyGit } from './projects/repo-reader';
 import { gatherPlanFacts } from './plans/plan-facts';
 import { ProjectsService } from './projects';
 import { resolveRepoIdentity, type GitRun, type RepoIdentityOptions } from './repo-identity';
+import { AgencySettingsService, type AgencySettingsAccess } from './settings';
 import { agencyDbPath } from './store/agency-db';
 import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
 
@@ -70,7 +72,15 @@ export type AgencyServiceDeps = {
   isOnline?: () => boolean;
   /** Seams for cleanup tests: how a kind of resource is undone. */
   cleaners?: Partial<Record<ResourceKind, ResourceCleaner>>;
+  /** Fleet's agency settings, which the Admiral's settings tools change; in memory unless set. */
+  agencySettings?: AgencySettingsAccess;
 };
+
+/** Agency settings kept in memory, for a service with no settings file behind it. */
+function memorySettings(): AgencySettingsAccess {
+  let settings = DEFAULT_AGENCY_SETTINGS;
+  return { get: () => settings, set: (next) => void (settings = next) };
+}
 
 /**
  * The agency's main-process side: the store, the one-per-repo registry, and
@@ -85,6 +95,7 @@ export class AgencyService {
   readonly cleanup: CleanupRunner;
   readonly results: ResultsService;
   readonly clientFiles: ClientFiles;
+  readonly settings: AgencySettingsService;
 
   constructor(private readonly deps: AgencyServiceDeps) {
     this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
@@ -122,6 +133,12 @@ export class AgencyService {
       home: () => deps.agencyHome ?? agencyHome(),
       changed: (touched) => this.changed(touched),
       afterResult: (jobId) => this.jobs.afterStepChange(jobId)
+    });
+    this.settings = new AgencySettingsService({
+      store: this.store,
+      agency: deps.agencySettings ?? memorySettings(),
+      home: () => deps.agencyHome ?? agencyHome(),
+      changed: (repoId, jobId) => deps.emit({ repoId, jobIds: [jobId], settings: true })
     });
     const crew = deps.crew ?? NO_CREW;
     this.cleanup = new CleanupRunner({

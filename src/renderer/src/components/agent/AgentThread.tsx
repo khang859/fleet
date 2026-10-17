@@ -90,6 +90,7 @@ import {
   AdmiralEventLine,
   AskClientRow,
   JobDeliverRow,
+  SettingsChangeRow,
   JobLinkLine,
   JobPlanRow
 } from '../admiral/AdmiralLines';
@@ -962,6 +963,9 @@ const Message = memo(function Message({
         }
         if (part.call.name === 'job_plan') return <JobPlanRow key={i} call={part.call} />;
         if (part.call.name === 'job_deliver') return <JobDeliverRow key={i} call={part.call} />;
+        if (part.call.name === 'settings_change') {
+          return <SettingsChangeRow key={i} call={part.call} />;
+        }
         // A subagent is a conversation rather than a call, and gets a card.
         if (part.call.name === 'task' && part.call.task !== null) {
           return (

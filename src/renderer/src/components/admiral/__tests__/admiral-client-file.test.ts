@@ -47,6 +47,7 @@ const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
   leftovers: [],
   clientFileChanged: false,
   pastJobs: [],
+  settingsCards: [],
   ...over
 });
 

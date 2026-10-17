@@ -1,3 +1,5 @@
+import type { SettingsCard } from './agency-settings';
+
 /**
  * The Admiral agency, as every process sees it: the repository an Admiral is
  * bound to, the jobs it runs there, the questions it puts to the client, and
@@ -212,6 +214,8 @@ export type AgencySnapshot = {
   clientFileChanged: boolean;
   /** The last closed, cancelled or failed jobs, newest first, for export. */
   pastJobs: AgencyJob[];
+  /** The newest settings cards the Admiral put up, oldest first. */
+  settingsCards: SettingsCard[];
 };
 
 /** When a repository's setup and starter questions were finished; null while they are not. */
@@ -232,6 +236,8 @@ export type AgencyChanged = {
   jobIds: Array<number | null>;
   /** Set when a job was just opened from the lobby, for the handoff. */
   openedJobId?: number;
+  /** Set when a setting was written, so Settings reads it again. */
+  settings?: true;
 };
 
 export type AdmiralClaimResult = { ok: true } | { ok: false; ownerPaneId: string };

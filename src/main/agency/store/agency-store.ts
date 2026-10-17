@@ -33,6 +33,7 @@ import { CrewStore } from './crew-store';
 import { ResourceStore } from './resource-store';
 import { ResultStore } from './result-store';
 import { PlanStore } from './plan-store';
+import { SettingChangeStore } from './setting-change-store';
 
 type JobRow = {
   id: number;
@@ -183,6 +184,8 @@ const SNAPSHOT_RECENT_QUESTIONS = 100;
 
 /** How many ended jobs a snapshot lists for export. */
 const SNAPSHOT_PAST_JOBS = 10;
+/** Settings cards a snapshot carries, so a chat row can draw the card it put up. */
+const SNAPSHOT_SETTINGS_CARDS = 30;
 
 function jobState(raw: string): JobState {
   return JOB_STATES.find((s) => s === raw) ?? 'failed';
@@ -289,6 +292,7 @@ export class AgencyStore {
   readonly crew: CrewStore;
   readonly resources: ResourceStore;
   readonly results: ResultStore;
+  readonly settings: SettingChangeStore;
 
   constructor(db: Database.Database | string, opts: { now?: () => number } = {}) {
     this.db = typeof db === 'string' ? openAgencyDb(db) : db;
@@ -297,6 +301,7 @@ export class AgencyStore {
     this.crew = new CrewStore(this.db, this.now);
     this.resources = new ResourceStore(this.db, this.now);
     this.results = new ResultStore(this.db, this.now);
+    this.settings = new SettingChangeStore(this.db, this.now);
   }
 
   /**
@@ -1195,7 +1200,8 @@ export class AgencyStore {
       nextRetryAt: retry?.due ?? null,
       onboarding: this.onboarding(repoId),
       leftovers: this.resources.leftovers(repoId),
-      pastJobs: this.pastJobs(repoId)
+      pastJobs: this.pastJobs(repoId),
+      settingsCards: this.settings.cards(repoId, SNAPSHOT_SETTINGS_CARDS)
     };
   }
 

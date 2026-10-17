@@ -23,7 +23,9 @@ const ARGS: Record<AgencyToolName, object> = {
   },
   job_update: { step: 'builder-1', status: 'running' },
   job_deliver: { step: 'builder-1', kind: 'pr', url: 'https://github.com/a/b/pull/1' },
-  client_file_propose: { reason: 'r', add: [{ text: 'Use pnpm.' }] }
+  client_file_propose: { reason: 'r', add: [{ text: 'Use pnpm.' }] },
+  settings_read: {},
+  settings_change: { changes: [{ key: 'agency.admiral.monthlyCapUsd', value: 50 }], reason: 'r' }
 };
 
 describe('agency tool dispatch', () => {
