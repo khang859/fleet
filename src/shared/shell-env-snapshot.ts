@@ -2,11 +2,17 @@ import type { EnvSource, ShellEnvSnapshot, ShellEnvVar } from './shell-env-types
 
 /**
  * Build an immutable spawn-time env snapshot from the resolved env map plus a
- * per-key source map. Any key not in `sources` is `login-shell`; `FLEET_SESSION`
- * and `FLEET_PANE_ID` are always `fleet-builtin` (Fleet adds them unconditionally
- * at spawn).
+ * per-key source map. Any key not in `sources` is `login-shell`; the keys in
+ * `FLEET_BUILTIN_KEYS` are always `fleet-builtin` (Fleet sets them
+ * unconditionally at spawn).
  */
-const FLEET_BUILTIN_KEYS = new Set(['FLEET_SESSION', 'FLEET_PANE_ID']);
+const FLEET_BUILTIN_KEYS = new Set([
+  'FLEET_SESSION',
+  'FLEET_PANE_ID',
+  'COLORTERM',
+  'TERM_PROGRAM',
+  'TERM_PROGRAM_VERSION'
+]);
 
 export function buildEnvSnapshot(params: {
   finalEnv: Record<string, string | undefined>;

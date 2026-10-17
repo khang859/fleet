@@ -31,7 +31,7 @@ describe('PtyManager — extended', () => {
 
   beforeEach(() => {
     mockInstances.length = 0;
-    manager = new PtyManager();
+    manager = new PtyManager('0.0.0-test');
   });
 
   it('forwards write() to the underlying PTY process', () => {

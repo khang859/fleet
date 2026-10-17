@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 
 import { FitAddon } from '@xterm/addon-fit';
+import { ImageAddon } from '@xterm/addon-image';
 import { createLogger } from '../logger';
 
 const log = createLogger('terminal:lifecycle');
@@ -66,6 +67,10 @@ export type UseTerminalOptions = {
 // output and write it to xterm at most this often instead of on every ~16ms PTY
 // flush. Cuts xterm parse+render work for terminals nobody is looking at.
 const HIDDEN_FLUSH_INTERVAL_MS = 250;
+
+// Memory one pane may spend on inline images. Past it, the oldest images drop
+// out and leave a placeholder.
+const IMAGE_STORAGE_LIMIT_MB = 32;
 
 // Track which panes already have PTYs created (survives StrictMode remounts)
 const createdPtys = new Set<string>();
@@ -310,11 +315,15 @@ function createTerminal(
   const searchAddon = new SearchAddon();
   const serializeAddon = new SerializeAddon();
   const unicodeAddon = new Unicode11Addon();
+  // Sixel and iTerm2 inline images. The program sizes each image; the store is
+  // capped per pane so many open panes cannot hold gigabytes of old images.
+  const imageAddon = new ImageAddon({ storageLimit: IMAGE_STORAGE_LIMIT_MB });
 
   term.loadAddon(fitAddon);
   term.loadAddon(searchAddon);
   term.loadAddon(serializeAddon);
   term.loadAddon(unicodeAddon);
+  term.loadAddon(imageAddon);
   term.unicode.activeVersion = '11';
 
   const urlLinkRegistration = term.registerLinkProvider(

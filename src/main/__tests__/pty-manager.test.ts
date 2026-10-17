@@ -30,7 +30,7 @@ describe('PtyManager', () => {
   let manager: PtyManager;
 
   beforeEach(() => {
-    manager = new PtyManager();
+    manager = new PtyManager('0.0.0-test');
   });
 
   it('creates a PTY and stores it by paneId', () => {
@@ -51,6 +51,24 @@ describe('PtyManager', () => {
     expect(options?.env).toMatchObject({ FLEET_SESSION: '1', FLEET_PANE_ID: 'pane-9' });
     const snapshot = manager.getEnvSnapshot('pane-9');
     expect(snapshot?.vars.find((v) => v.key === 'FLEET_PANE_ID')?.source).toBe('fleet-builtin');
+  });
+
+  it('names the terminal as Fleet with truecolor, over values inherited from another terminal', () => {
+    const fleet = new PtyManager('2.133.1');
+    fleet.create({
+      paneId: 'pane-10',
+      cwd: '/tmp',
+      shell: '/bin/zsh',
+      env: { PATH: '/bin', TERM_PROGRAM: 'iTerm.app', TERM_PROGRAM_VERSION: '3.5', COLORTERM: '' }
+    });
+    const options = vi.mocked(ptyModule.spawn).mock.calls.at(-1)?.[2];
+    expect(options?.env).toMatchObject({
+      COLORTERM: 'truecolor',
+      TERM_PROGRAM: 'Fleet',
+      TERM_PROGRAM_VERSION: '2.133.1'
+    });
+    const snapshot = fleet.getEnvSnapshot('pane-10');
+    expect(snapshot?.vars.find((v) => v.key === 'TERM_PROGRAM')?.source).toBe('fleet-builtin');
   });
 
   it('gives a pane a UTF-8 locale when the app was launched without one', () => {
@@ -93,7 +111,7 @@ describe('PtyManager batching and cleanup', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    manager = new PtyManager();
+    manager = new PtyManager('0.0.0-test');
   });
 
   afterEach(() => {
@@ -310,7 +328,7 @@ describe('PtyManager profile-aware spawn', () => {
   });
 
   it('spawns wsl.exe with [-d <distro> ~] when given a WSL profile', () => {
-    const manager = new PtyManager();
+    const manager = new PtyManager('0.0.0-test');
     manager.create({
       paneId: 'pane-wsl',
       cwd: 'C:\\Users\\khang\\dev',
@@ -333,7 +351,7 @@ describe('PtyManager profile-aware spawn', () => {
   });
 
   it('spawns profile.command with profile.args for system profiles', () => {
-    const manager = new PtyManager();
+    const manager = new PtyManager('0.0.0-test');
     manager.create({
       paneId: 'pane-pwsh',
       cwd: 'C:\\Users\\khang',
@@ -354,7 +372,7 @@ describe('PtyManager profile-aware spawn', () => {
   });
 
   it('falls back to opts.shell when no profile is provided (legacy path)', () => {
-    const manager = new PtyManager();
+    const manager = new PtyManager('0.0.0-test');
     manager.create({
       paneId: 'pane-legacy',
       cwd: '/tmp',
@@ -368,7 +386,7 @@ describe('PtyManager profile-aware spawn', () => {
   });
 
   it('combines profile.args with cmd when both are present', () => {
-    const manager = new PtyManager();
+    const manager = new PtyManager('0.0.0-test');
     manager.create({
       paneId: 'pane-cmd',
       cwd: '/tmp',
