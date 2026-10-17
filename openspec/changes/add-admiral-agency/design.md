@@ -48,7 +48,7 @@ The current state that shapes this design:
 
 ### 1. Admiral is an Agent engine mode with its own pane
 
-The `admiral` pane is a new React component in `components/admiral/`, inside `ToolPaneFrame`, that drives a normal agent session.
+The `admiral` pane is a new React component in `components/admiral/`, rendered as a pane leaf inside `PaneFrame` like the Agent pane, that drives a normal agent session.
 The leaf keeps `admiralRepo` and a map from job id to agent session id, plus one lobby session for new briefs.
 One agent session per job keeps wakeups and compaction from mixing jobs.
 Jobs belong to the repo in `agency.db`, not to the pane: deleting the pane does not delete jobs.
