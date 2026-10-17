@@ -1,8 +1,9 @@
 import { jobDisplayId } from '../../../shared/agency';
-import type { AgencyResult } from '../../../shared/agency-jobs';
+import type { AgencyResult, PrState } from '../../../shared/agency-jobs';
 import { waitingFor } from '../../../shared/pr-review';
 import { ghJson, type GhRun } from '../projects/gh';
 import { repoFacts } from '../projects/repo-reader';
+import { memberOf } from '../projects/workspace-projects';
 import type { GitRun } from '../repo-identity';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import type { MergeRunRecord } from '../store/result-store';
@@ -91,9 +92,9 @@ export class MergeQueue {
   /** The client asked to merge the job's PRs. */
   async start(jobId: number): Promise<{ ok: true } | { ok: false; reason: string }> {
     const { store } = this.deps;
-    const job = store.getJob(jobId);
-    const repo = job ? store.repo(job.repoId) : null;
-    if (!job || repo === null) return { ok: false, reason: `${jobDisplayId(jobId)} is not known.` };
+    const found = store.jobRepo(jobId);
+    if (found === null) return { ok: false, reason: `${jobDisplayId(jobId)} is not known.` };
+    const { job, repo } = found;
     if (job.state !== 'delivered') {
       return {
         ok: false,
@@ -141,18 +142,18 @@ export class MergeQueue {
 
   private async pass(jobId: number): Promise<void> {
     const { store } = this.deps;
-    const job = store.getJob(jobId);
-    const repo = job ? store.repo(job.repoId) : null;
-    if (repo === null) return;
+    const repo = store.jobRepo(jobId)?.repo;
+    if (repo === undefined) return;
     const members = await this.deps.results.githubMembers(repo);
     for (;;) {
       const run = store.merges.run(jobId);
-      if (run?.status !== 'running') return;
+      if (run?.status !== 'running' || !this.stillDelivered(jobId)) return;
       const next = store.merges.queue(jobId).find((q) => q.status !== 'merged');
       const result = next === undefined ? null : store.results.get(next.id);
       if (result === null) {
-        if (await this.bumpIfDue(jobId, members)) continue;
-        this.finish(jobId, 'done', 'Every PR merged.');
+        const bump = await this.bumpIfDue(jobId, members);
+        if (bump === 'added') continue;
+        if (bump === 'none') this.finish(jobId, 'done', 'Every PR merged.');
         return;
       }
       if (!(await this.turn(repo.repoId, result, members, run))) return;
@@ -170,7 +171,7 @@ export class MergeQueue {
     const { jobId } = result;
     if (result.body.kind !== 'pr') return false;
     const url = result.body.pr.url;
-    const member = members.find((m) => m.name === result.member) ?? members[0];
+    const member = memberOf(members, result.member);
     const cwd = member.root;
     const read = await readMergeView(gh, cwd, url);
     if (read === null) {
@@ -202,15 +203,18 @@ export class MergeQueue {
           return false;
         }
         // Nothing GitHub can run again: the checks it has are the ones there are.
-        return this.merge(jobId, result.id, url, cwd);
+        return this.merge(jobId, result, cwd);
       case 'merge':
-        return this.merge(jobId, result.id, url, cwd);
+        return this.merge(jobId, result, cwd);
     }
   }
 
-  private async merge(jobId: number, resultId: number, url: string, cwd: string): Promise<boolean> {
+  private async merge(jobId: number, result: AgencyResult, cwd: string): Promise<boolean> {
     const { store, gh } = this.deps;
-    const number = prAddress(url)?.number;
+    if (result.body.kind !== 'pr') return false;
+    const { url, number } = result.body.pr;
+    const resultId = result.id;
+    if (!this.stillDelivered(jobId)) return false;
     const out = await gh(['pr', 'merge', url, '--squash'], cwd);
     if (out?.code !== 0) {
       this.finish(jobId, 'failed', `GitHub would not merge PR #${number}.`, resultId);
@@ -255,29 +259,32 @@ export class MergeQueue {
 
   /**
    * Once every member PR merged, an umbrella project gets its pointer bump
-   * PR, which goes last in the run. True when it was added.
+   * PR, which goes last in the run. A bump that cannot open stops the run.
    */
-  private async bumpIfDue(jobId: number, members: GithubMember[]): Promise<boolean> {
+  private async bumpIfDue(
+    jobId: number,
+    members: GithubMember[]
+  ): Promise<'added' | 'none' | 'failed'> {
     const { store } = this.deps;
     const job = store.getJob(jobId);
     const project = job ? store.projects.byId(job.repoId) : null;
     const umbrella = members.find((m) => m.path === '.');
-    if (project?.kind !== 'submodules' || umbrella === undefined) return false;
+    if (project?.kind !== 'submodules' || umbrella === undefined) return 'none';
     const queued = store.merges.queue(jobId).map((q) => store.results.get(q.id));
     const branch = bumpBranch(jobId);
-    if (queued.some((r) => r?.body.kind === 'pr' && r.body.pr.branch === branch)) return false;
+    if (queued.some((r) => r?.body.kind === 'pr' && r.body.pr.branch === branch)) return 'none';
     const moved = queued.flatMap((r) => {
       const m = members.find((x) => x.name === r?.member && x.path !== '.');
       return m && r?.merge?.sha ? [{ name: m.name, path: m.path, sha: r.merge.sha }] : [];
     });
-    if (moved.length === 0) return false;
+    if (moved.length === 0) return 'none';
     try {
       await this.openBump(jobId, umbrella, moved);
-      return true;
+      return 'added';
     } catch (err) {
       const why = err instanceof Error ? err.message : String(err);
       this.finish(jobId, 'failed', `Could not open the umbrella bump PR. ${why}`);
-      return false;
+      return 'failed';
     }
   }
 
@@ -309,11 +316,7 @@ export class MergeQueue {
     await this.deps.results.linkPrs(jobId);
   }
 
-  private addBump(
-    jobId: number,
-    umbrella: string,
-    pr: NonNullable<Awaited<ReturnType<typeof readPr>>>
-  ): void {
+  private addBump(jobId: number, umbrella: string, pr: PrState): void {
     const { store } = this.deps;
     const approved = store.plans.approved(jobId);
     store.tx(() => {
@@ -331,6 +334,38 @@ export class MergeQueue {
       store.plans.log({ jobId, kind: 'result', stepId: 'bump', text: `${r.label}: ${r.title}` });
     });
     this.touch(jobId);
+  }
+
+  /** True while the job's merge is under way. */
+  merging(jobId: number): boolean {
+    return this.deps.store.merges.run(jobId)?.status === 'running';
+  }
+
+  /**
+   * The job closed or went back to work: its merge ends where it is, and
+   * nothing more merges. The client merges again once it delivers again.
+   */
+  stop(jobId: number, note: string): void {
+    const { store } = this.deps;
+    if (!this.merging(jobId)) return;
+    store.tx(() => {
+      store.merges.finish(jobId, 'failed', note);
+      store.plans.log({ jobId, kind: 'merge', text: note });
+    });
+    this.touch(jobId);
+  }
+
+  /** Whether the job still waits on its merge; a job that left delivered stops it. */
+  private stillDelivered(jobId: number): boolean {
+    const state = this.deps.store.getJob(jobId)?.state;
+    if (state === 'delivered') return true;
+    this.stop(
+      jobId,
+      state === 'running' || state === 'waiting'
+        ? 'The job went back to work before the merge finished.'
+        : 'The job closed before the merge finished.'
+    );
+    return false;
   }
 
   /** The run ends; the Admiral hears how, and the client sees it on the sheet. */

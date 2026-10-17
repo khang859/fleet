@@ -67,8 +67,10 @@ function countChecks(checks: Array<z.infer<typeof Check>>): PrState['checks'] {
 /** gh's answer as the card's PR, or null when it is not one. */
 export function parsePr(json: unknown): PrState | null {
   const parsed = PrView.safeParse(json);
-  if (!parsed.success) return null;
-  const pr = parsed.data;
+  return parsed.success ? toPrState(parsed.data) : null;
+}
+
+function toPrState(pr: z.infer<typeof PrView>): PrState {
   return {
     number: pr.number,
     url: pr.url,
@@ -112,9 +114,9 @@ const MergeView = PrView.extend({
 });
 
 export function parseMergeView(json: unknown): PrMergeView | null {
-  const pr = parsePr(json);
   const parsed = MergeView.safeParse(json);
-  if (pr === null || !parsed.success) return null;
+  if (!parsed.success) return null;
+  const pr = toPrState(parsed.data);
   const times = (parsed.data.statusCheckRollup ?? []).map(
     (c) => Date.parse(c.completedAt ?? c.startedAt ?? '') || 0
   );

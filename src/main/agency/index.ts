@@ -52,6 +52,8 @@ import { AgencySettingsService, type AgencySettingsAccess } from './settings';
 import { agencyDbPath } from './store/agency-db';
 import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
 
+const MERGE_CLOSED = 'The job closed before the merge finished.';
+
 const log = createLogger('agency');
 
 export type AgencyServiceDeps = {
@@ -403,6 +405,7 @@ export class AgencyService {
   /** Cancel the repository's running jobs, as closing its Admiral with "Cancel jobs" asks. */
   cancelJobs(repoId: string): number[] {
     const ids = this.store.cancelJobs(repoId);
+    for (const id of ids) this.merges.stop(id, MERGE_CLOSED);
     this.closing(ids);
     if (ids.length > 0) this.changed(ids.map((jobId) => ({ repoId, jobId })));
     return ids;
@@ -410,6 +413,12 @@ export class AgencyService {
 
   /** The client cancels a job, or accepts what it delivered: it closes and cleans up. */
   closeJob(control: JobControl): JobControlResult {
+    if (control.action === 'accept' && this.merges.merging(control.jobId)) {
+      return {
+        ok: false,
+        reason: `${jobDisplayId(control.jobId)} is merging. Accept once the merge is done, or cancel the job.`
+      };
+    }
     const event =
       control.action === 'accept' ? { type: 'accepted' as const } : { type: 'cancel' as const };
     const reason =
@@ -420,6 +429,7 @@ export class AgencyService {
         ok: false,
         reason: `${jobDisplayId(control.jobId)} cannot close: ${transition.refused}.`
       };
+    this.merges.stop(control.jobId, MERGE_CLOSED);
     this.closing([control.jobId]);
     if (job) this.changed([{ repoId: job.repoId, jobId: job.id }]);
     return { ok: true };

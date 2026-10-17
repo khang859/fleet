@@ -81,6 +81,11 @@ export function workspaceTarget(
 /** A member as jobs use it: its name, its path in the project, and its main checkout. */
 export type ProjectMember = { name: string; path: string; root: string };
 
+/** The member a result or step names; the first member when it names none, as in a one-repository project. */
+export function memberOf<M extends ProjectMember>(members: M[], name: string | null): M {
+  return members.find((m) => m.name === name) ?? members[0];
+}
+
 /**
  * A project's members in member order, each with the folder of its main
  * checkout. A one-repository project is its one member at `.`.

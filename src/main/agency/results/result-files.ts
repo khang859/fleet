@@ -3,6 +3,7 @@ import { copyFile, lstat, mkdir, mkdtemp, realpath } from 'node:fs/promises';
 import { basename, extname, isAbsolute, join, sep } from 'node:path';
 import type { ResultFile } from '../../../shared/agency-jobs';
 import { MEDIA_MIME_TYPES } from '../../../shared/file-open';
+import { jobDir } from '../projects/paths';
 
 /** The largest file a result may hand back. */
 export const RESULT_FILE_MAX_BYTES = 200 * 1024 * 1024;
@@ -33,7 +34,7 @@ const ENV_FILE = /^\.env(\..+)?$/i;
 
 /** The folder a job's delivered files are copied into, outside every worktree. */
 export function resultsDir(home: string, jobId: number): string {
-  return join(home, 'jobs', String(jobId), 'results');
+  return join(jobDir(home, jobId), 'results');
 }
 
 /** Why a path may not be handed back, or null when it may. */

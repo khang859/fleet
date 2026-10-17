@@ -54,7 +54,13 @@ type FakePr = {
 };
 
 /** GitHub as the test sets it: PRs by address, and every call made to it. */
-const github = { prs: new Map<string, FakePr>(), calls: [] as string[][], created: '' };
+const github = {
+  prs: new Map<string, FakePr>(),
+  calls: [] as string[][],
+  created: '',
+  /** `gh pr create` fails, as when GitHub is down. */
+  refuseCreate: false
+};
 
 /** A PR whose checks passed before the run began, as the recorded PR's did. */
 function openPr(
@@ -120,7 +126,9 @@ function answer(args: string[], cwd: string): { code: number; stdout: string } {
   if (cmd === 'auth') return ok();
   if (cmd === 'api') return reviewAnswer(args);
   if (cmd === 'run') return runAnswer(args);
-  if (cmd === 'pr' && sub === 'create') return ok(createBump(args, cwd));
+  if (cmd === 'pr' && sub === 'create') {
+    return github.refuseCreate ? NOT_FOUND : ok(createBump(args, cwd));
+  }
   return cmd === 'pr' ? prAnswer(args) : NOT_FOUND;
 }
 
@@ -249,7 +257,7 @@ describe('merging a job PR by PR', () => {
   beforeEach(async () => {
     home = tempDir('fleet-merge-');
     clock.now = Date.parse('2026-10-17T19:00:00Z');
-    Object.assign(github, { prs: new Map(), calls: [], created: '' });
+    Object.assign(github, { prs: new Map(), calls: [], created: '', refuseCreate: false });
     service = new AgencyService({
       dbPath: join(home.dir, 'agency.db'),
       emit: () => {},
@@ -365,6 +373,58 @@ describe('merging a job PR by PR', () => {
     expect(pr(core).state).toBe('MERGED');
     expect(gitlink('libs/core')).toBe(mergeShaOf(core));
     expect(detail(jobId).merge).toEqual({ status: 'done', note: 'Every PR merged.' });
+  });
+
+  it('stops when the umbrella bump cannot open, and opens it when the client merges again', async () => {
+    const core = openPr('shop/core', 11);
+    const { jobId, tools } = await approvedJob();
+    await deliverPr(tools, core);
+    finishStep(jobId);
+
+    github.refuseCreate = true;
+    await service.mergePrs(jobId);
+    await service.merges.advance(jobId);
+    expect(pr(core).state).toBe('MERGED');
+    expect(detail(jobId).merge).toEqual({
+      status: 'failed',
+      note: 'Could not open the umbrella bump PR. GitHub would not open the PR.'
+    });
+    const told = service.store.pullWakeups({ repoId: ref.repoId, jobId }).text;
+    expect(told).toContain('The merge stopped');
+    expect(told).not.toContain('The merge finished');
+
+    github.refuseCreate = false;
+    expect(await service.mergePrs(jobId)).toEqual({ ok: true });
+    await service.merges.advance(jobId);
+    expect(pr('https://github.com/shop/shop/pull/3').state).toBe('MERGED');
+    expect(gitlink('libs/core')).toBe(mergeShaOf(core));
+    expect(detail(jobId).merge).toEqual({ status: 'done', note: 'Every PR merged.' });
+  });
+
+  it('ends the merge when the job is cancelled, and merges nothing after', async () => {
+    const core = openPr('shop/core', 11, [{ conclusion: null, completedAt: null }]);
+    const { jobId, tools } = await approvedJob();
+    await deliverPr(tools, core);
+    finishStep(jobId);
+    await service.mergePrs(jobId);
+    await service.merges.advance(jobId);
+    expect(detail(jobId).merge?.status).toBe('running');
+
+    expect(service.closeJob({ jobId, action: 'accept' })).toEqual({
+      ok: false,
+      reason: 'j1 is merging. Accept once the merge is done, or cancel the job.'
+    });
+    expect(service.closeJob({ jobId, action: 'cancel' })).toEqual({ ok: true });
+    await service.cleanup.start(jobId);
+    expect(detail(jobId).merge).toEqual({
+      status: 'failed',
+      note: 'The job closed before the merge finished.'
+    });
+
+    pr(core).checks = [passed(iso(clock.now))];
+    await service.merges.advanceAll();
+    expect(pr(core).state).toBe('OPEN');
+    expect(github.calls.some((c) => c[1] === 'merge')).toBe(false);
   });
 
   it('waits for the review bot setup lists, and tells the Admiral about its comments', async () => {

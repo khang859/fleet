@@ -45,7 +45,7 @@ function mergeWait(prs: PrState[]): string | null {
 }
 
 const mergeLabel = (prs: number, again: boolean): string =>
-  `${again ? 'Merge again' : 'Merge'}${prs === 1 ? '' : ` ${prs} PRs`}`;
+  `${again ? 'Merge again' : 'Merge'}${prs > 1 ? ` ${prs} PRs` : ''}`;
 
 /** Where the merge stands, and why it stopped. */
 function MergeNote({ merge }: { merge: AgencyJobDetail['merge'] }): React.JSX.Element | null {
@@ -82,7 +82,9 @@ export function DeliveredCard({
   const open = openPrs(detail);
   const prs = open.length;
   const running = merge?.status === 'running';
-  const canMerge = prs > 0 && !running;
+  const failed = merge?.status === 'failed';
+  // A stop after the last PR merged, as a failed umbrella bump, still needs Merge again.
+  const canMerge = (prs > 0 || failed) && !running;
   const wait = canMerge ? mergeWait(open) : null;
   return (
     <section
@@ -107,7 +109,7 @@ export function DeliveredCard({
             onClick={() => void merging.run(undefined)}
             className={PRIMARY}
           >
-            {mergeLabel(prs, merge?.status === 'failed')}
+            {mergeLabel(prs, failed)}
           </button>
         )}
         <button

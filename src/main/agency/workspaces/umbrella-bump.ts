@@ -4,6 +4,7 @@ import { jobDisplayId } from '../../../shared/agency';
 import { gitExec } from '../exec';
 import type { AgencyStore } from '../store/agency-store';
 import type { GitWrite } from './job-workspace';
+import { jobDir } from '../projects/paths';
 
 /** A changed submodule and the commit its PR merged as. */
 export type BumpedMember = { name: string; path: string; sha: string };
@@ -31,7 +32,7 @@ export async function pushUmbrellaBump(
 ): Promise<{ path: string; branch: string }> {
   const git = deps.git ?? gitExec;
   const branch = bumpBranch(input.jobId);
-  const path = join(deps.home(), 'jobs', String(input.jobId), 'ws', 'bump');
+  const path = join(jobDir(deps.home(), input.jobId), 'ws', 'bump');
   const run = async (args: string[], cwd: string, what: string): Promise<void> => {
     if ((await git(args, cwd)) === null) throw new Error(`Could not ${what}.`);
   };

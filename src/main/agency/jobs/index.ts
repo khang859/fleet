@@ -5,6 +5,7 @@ import {
   type JobState
 } from '../../../shared/agency';
 import {
+  ACCEPTS_RESULTS,
   DEFAULT_CREW_LIMIT,
   NO_PLAN_CHECKS,
   type AgencyJobDetail,
@@ -453,7 +454,7 @@ export class JobsService {
         ? this.startVerdict(job, plan, update.step)
         : null;
     if (start?.ok === false && start.queue !== true) return { ok: false, text: start.reason };
-    if (update.status !== undefined && !['running', 'waiting', 'delivered'].includes(job.state)) {
+    if (update.status !== undefined && !ACCEPTS_RESULTS.includes(job.state)) {
       return { ok: false, text: `${jobDisplayId(job.id)} is ${job.state}; its steps do not move.` };
     }
     const queued = start?.ok === false ? start.reason : null;

@@ -346,6 +346,13 @@ export class AgencyStore {
     })();
   }
 
+  /** A job and the repository it is in, or null when either is not known. */
+  jobRepo(jobId: number): { job: AgencyJob; repo: AgencyRepoRef } | null {
+    const job = this.getJob(jobId);
+    const repo = job === null ? null : this.repo(job.repoId);
+    return job === null || repo === null ? null : { job, repo };
+  }
+
   /** A repository `ensureLobby` has recorded, or null for one it never saw. */
   repo(repoId: string): AgencyRepoRef | null {
     const row = this.db

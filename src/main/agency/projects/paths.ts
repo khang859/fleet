@@ -10,6 +10,11 @@ export function agencyHome(): string {
   return process.env.FLEET_AGENCY_HOME ?? join(homedir(), '.fleet', 'agency');
 }
 
+/** A job's folder: its delivered files and its workspaces, outside every checkout. */
+export function jobDir(home: string, jobId: number): string {
+  return join(home, 'jobs', String(jobId));
+}
+
 /**
  * A project's folder. It mirrors a repository's `.fleet/` layout, so "Share
  * with team" is a copy into the main checkout and an import is a copy back.

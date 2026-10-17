@@ -10,6 +10,7 @@ import { changedMembers } from '../plans/plan-checks';
 import { projectMembers, type ProjectMember } from '../projects/workspace-projects';
 import type { AgencyStore } from '../store/agency-store';
 import type { ResourceMode } from '../store/resource-store';
+import { jobDir } from '../projects/paths';
 
 /** One thing a job workspace is made of, in the order it is made. */
 export type WorkspacePart = {
@@ -109,17 +110,16 @@ export class JobWorkspaces {
   /** A new job workspace for a step of the job's approved plan, at its pinned bases. */
   async make(jobId: number, stepId: string): Promise<JobWorkspace> {
     const { store } = this.deps;
-    const job = store.getJob(jobId);
-    const repo = job === null ? null : store.repo(job.repoId);
+    const repo = store.jobRepo(jobId)?.repo;
     const approved = store.plans.approved(jobId);
     const step = approved?.plan.steps.find((s) => s.id === stepId);
-    if (repo === null || approved?.bases == null || step === undefined) {
+    if (repo === undefined || approved?.bases == null || step === undefined) {
       throw new Error(`${stepId} is not a step of an approved plan of ${jobDisplayId(jobId)}.`);
     }
     const { kind, members } = projectMembers(store.projects, repo);
     const n = store.plans.nextBranchSeq(jobId, stepId);
     const branch = crewBranch(jobId, stepId, n);
-    const root = join(this.deps.home(), 'jobs', String(jobId), 'ws', `${stepId}-${n}`);
+    const root = join(jobDir(this.deps.home(), jobId), 'ws', `${stepId}-${n}`);
     const parts = workspaceLayout({ kind, members, step, bases: approved.bases, root, branch });
     await this.checkFree(root, parts);
     const { id, rows } = store.tx(() => {

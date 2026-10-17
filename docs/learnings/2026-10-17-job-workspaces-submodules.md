@@ -43,3 +43,22 @@ A migration that adds a table must add it to that list too.
 
 A fake `gh` in a test must read `--json` fields at the same index the code sends them.
 `gh pr view <url> --json body` has `body` at index 4, not 3; reading the wrong index made the fake answer the wrong shape and the link test fail for a test bug, not a product bug.
+
+A merge run that a background tick moves on must check the job's state on every pass.
+The first version never did, so a cancelled job's PR merged once its checks passed, and a merge cannot be undone.
+`MergeQueue.stillDelivered` now ends the run when the job left `delivered`, and `closeJob` and `cancelJobs` end it at once.
+Accept is refused in the main process while a merge runs, not only by a disabled button.
+
+A helper that records a failure must not return the same value as "nothing to do".
+`bumpIfDue` returned `false` both for "no bump needed" and for "the bump failed", so `pass` wrote "Every PR merged." over the failure.
+It now returns `'added' | 'none' | 'failed'`.
+The client also needs a way back: with every PR merged, the sheet still shows Merge again after a failed run.
+
+A test that cancels a job must `await service.cleanup.start(jobId)` before `service.close()`.
+Otherwise the cleanup runner writes to a closed database and vitest reports an unhandled error, while every test still passes.
+
+## Review bots and PR readiness (2.25)
+
+Setup finds review bots from the last 20 merged PRs with one GraphQL read: authors with `__typename: Bot`, saved as `login[bot]`.
+GraphQL gives a bot's login without `[bot]`, and REST gives it with; compare by a key that drops the suffix and the case.
+A bot "reviewed" only when its review is of the head commit (`review.commit.oid === headRefOid`); a review of an older commit still waits.

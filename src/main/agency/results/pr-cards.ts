@@ -1,9 +1,9 @@
-import type { AgencyResult, PrState } from '../../../shared/agency-jobs';
+import { ACCEPTS_RESULTS, type AgencyResult, type PrState } from '../../../shared/agency-jobs';
 import type { PrReview } from '../../../shared/pr-review';
 import { joinOnce } from '../join-once';
 import type { GhRun } from '../projects/gh';
 import { loadSetup } from '../projects/project-store';
-import { projectMembers, type ProjectMember } from '../projects/workspace-projects';
+import { memberOf, projectMembers, type ProjectMember } from '../projects/workspace-projects';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import { readPr } from './gh-pr';
 import { prReview, readPrReview, reviewEvents } from './pr-reviews';
@@ -14,8 +14,6 @@ export const PR_REFRESH_MAX_AGE_MS = 60_000;
 
 /** How often open PRs of jobs under way are asked about, for checks, bot reviews and comments. */
 export const PR_WATCH_MS = 120_000;
-
-const UNDER_WAY = ['running', 'waiting', 'delivered'];
 
 export type PrCardsDeps = {
   store: AgencyStore;
@@ -53,15 +51,15 @@ export class PrCards {
 
   private async refresh(jobId: number, maxAgeMs: number, openOnly: boolean): Promise<void> {
     const { store } = this.deps;
-    const job = store.getJob(jobId);
-    const repo = job ? store.repo(job.repoId) : null;
-    if (!job || repo === null) return;
+    const found = store.jobRepo(jobId);
+    if (found === null) return;
+    const { job, repo } = found;
     const { members } = projectMembers(store.projects, repo);
     let changed = false;
     for (const id of store.results.stalePrs(jobId, maxAgeMs, openOnly)) {
       const result = store.results.get(id);
       if (result?.body.kind !== 'pr') continue;
-      const member = members.find((m) => m.name === result.member) ?? members[0];
+      const member = memberOf(members, result.member);
       const pr = await readPr(this.deps.gh, member.root, result.body.pr.url);
       if (pr === null) continue;
       const seen = await this.withReview(repo.repoId, member, pr, result.body.pr.review);
@@ -80,7 +78,7 @@ export class PrCards {
   }
 
   async watchAll(maxAgeMs = PR_WATCH_MS / 2): Promise<void> {
-    for (const jobId of this.deps.store.results.jobsWithOpenPrs(UNDER_WAY)) {
+    for (const jobId of this.deps.store.results.jobsWithOpenPrs(ACCEPTS_RESULTS)) {
       await this.refreshPrs(jobId, maxAgeMs, true);
     }
   }

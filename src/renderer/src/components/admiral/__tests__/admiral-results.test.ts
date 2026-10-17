@@ -183,7 +183,7 @@ describe('ResultCard', () => {
 });
 
 describe('DeliveredCard', () => {
-  const delivered = (pr: PrState): string => {
+  const delivered = (pr: PrState, merge: AgencyJobDetail['merge'] = null): string => {
     const job = agencyJob({ id: 3, state: 'delivered' });
     const detail: AgencyJobDetail = {
       job,
@@ -193,7 +193,7 @@ describe('DeliveredCard', () => {
       log: [],
       results: [result({ kind: 'pr', pr })],
       spendUsd: 0,
-      merge: null
+      merge
     };
     return renderToStaticMarkup(createElement(DeliveredCard, { job, detail }));
   };
@@ -208,6 +208,14 @@ describe('DeliveredCard', () => {
     const out = delivered({ ...PR, review: { ...REVIEW, checks: [], bots: [] } });
     expect(out).toMatch(/<button type="button" class="[^"]*">Merge<\/button>/);
     expect(out).not.toContain('Merge waits');
+  });
+
+  it('offers Merge again after a stop with every PR merged, as when the umbrella bump failed', () => {
+    const note = 'Could not open the umbrella bump PR. GitHub would not open the PR.';
+    const out = delivered({ ...PR, state: 'merged' }, { status: 'failed', note });
+    expect(out).toContain(note);
+    expect(out).toMatch(/<button type="button" class="[^"]*">Merge again<\/button>/);
+    expect(delivered({ ...PR, state: 'merged' })).not.toContain('>Merge');
   });
 });
 

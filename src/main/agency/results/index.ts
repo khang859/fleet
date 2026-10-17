@@ -1,7 +1,8 @@
-import { join, sep } from 'node:path';
+import { sep } from 'node:path';
 import { z } from 'zod';
 import { jobDisplayId } from '../../../shared/agency';
 import {
+  ACCEPTS_RESULTS,
   isFileResultKind,
   type AgencyResult,
   type ResultBody,
@@ -18,14 +19,13 @@ import { ghJson, type GhRun } from '../projects/gh';
 import type { GitRun } from '../repo-identity';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import { repoFacts } from '../projects/repo-reader';
-import { projectMembers, type ProjectMember } from '../projects/workspace-projects';
+import { memberOf, projectMembers, type ProjectMember } from '../projects/workspace-projects';
 import { githubRepo, prAddress, readPr } from './gh-pr';
 import { jobLinksSection, withJobLinks, type JobPrLink } from './pr-links';
 import type { PrCards } from './pr-cards';
 import { deliveryNote } from './pr-reviews';
 import { copyResultFiles, resultsDir } from './result-files';
-
-const UNDER_WAY = ['running', 'waiting', 'delivered'];
+import { jobDir } from '../projects/paths';
 
 export type ResultsDeps = {
   store: AgencyStore;
@@ -51,8 +51,8 @@ export type GithubMember = ProjectMember & { github: string | null };
 
 /**
  * What steps hand back: `job_deliver` records a result card, copying files
- * out of the worktree first, and PR cards are refreshed from GitHub when
- * shown and when the job closes.
+ * out of the worktree first, and `linkPrs` writes the "Part of job" list
+ * into each of the job's PRs.
  */
 export class ResultsService {
   constructor(private readonly deps: ResultsDeps) {}
@@ -64,7 +64,7 @@ export class ResultsService {
     if (!job || approved === null) {
       return { ok: false, text: 'There is no approved plan yet; propose one with job_plan.' };
     }
-    if (!UNDER_WAY.includes(job.state)) {
+    if (!ACCEPTS_RESULTS.includes(job.state)) {
       return { ok: false, text: `${jobDisplayId(jobId)} is ${job.state}; it takes no results.` };
     }
     const step = approved.plan.steps.find((s) => s.id === args.step);
@@ -142,9 +142,8 @@ export class ResultsService {
    * Returns how many PRs the list names.
    */
   async linkPrs(jobId: number): Promise<number> {
-    const job = this.deps.store.getJob(jobId);
-    const repo = job ? this.deps.store.repo(job.repoId) : null;
-    if (repo === null) return 0;
+    const repo = this.deps.store.jobRepo(jobId)?.repo;
+    if (repo === undefined) return 0;
     const members = await this.githubMembers(repo);
     const prs = this.prsInOrder(jobId, members).flatMap((r) =>
       r.body.kind === 'pr' ? [{ result: r, pr: r.body.pr }] : []
@@ -158,7 +157,7 @@ export class ResultsService {
     }));
     for (const { result, pr } of prs) {
       if (pr.state !== 'open') continue;
-      const cwd = members.find((m) => m.name === result.member)?.root ?? repo.root;
+      const cwd = memberOf(members, result.member).root;
       const read = PrBodyView.safeParse(
         ghJson(await this.deps.gh(['pr', 'view', pr.url, '--json', 'body'], cwd))
       );
@@ -182,25 +181,27 @@ export class ResultsService {
     const { root } = repo;
     const { kind, url, paths, text, branch } = args;
     const title = args.title ?? '';
-    const member = null;
     if (kind === 'pr' && url !== undefined) return this.buildPr(repo, url);
-    if (kind === 'branch' && branch !== undefined)
+    if (kind === 'branch' && branch !== undefined) {
       return this.buildBranch(repo, branch, args.member);
+    }
     if (kind === 'copy' && text !== undefined) {
-      return { ok: true, title, member, body: { kind, text } };
+      return { ok: true, title, member: null, body: { kind, text } };
     }
     if ((kind === 'preview' || kind === 'link') && url !== undefined) {
-      return { ok: true, title, member, body: { kind, url } };
+      return { ok: true, title, member: null, body: { kind, url } };
     }
     if (isFileResultKind(kind) && paths !== undefined) {
       const home = this.deps.home();
       const copied = await copyResultFiles(
         paths,
-        [root, join(home, 'jobs', String(jobId))],
+        [root, jobDir(home, jobId)],
         resultsDir(home, jobId),
         args.step
       );
-      return copied.ok ? { ok: true, title, member, body: { kind, files: copied.files } } : copied;
+      return copied.ok
+        ? { ok: true, title, member: null, body: { kind, files: copied.files } }
+        : copied;
     }
     return { ok: false, reason: `a ${kind} result needs ${RESULT_INPUT[kind]}` };
   }

@@ -174,6 +174,7 @@ describe('cancel and accept', () => {
     service.closeJob({ jobId: first.job.id, action: 'cancel' });
 
     expect(service.store.plans.step(second.job.id, 'builder-1')?.status).toBe('pending');
+    await service.cleanup.start(first.job.id);
   });
 });
 

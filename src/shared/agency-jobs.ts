@@ -1,8 +1,11 @@
-import type { AgencyJob, AgencyJobEvent } from './agency';
+import type { AgencyJob, AgencyJobEvent, JobState } from './agency';
 
 export type { AgencyLeftover, ResourceKind } from './agency';
 import type { DeliverableKind, Plan, PlanDiffEntry, PlanInput } from './agency-plan';
 import type { PrReview } from './pr-review';
+
+/** The states a job takes results and step updates in: crew are at work, or it delivered. */
+export const ACCEPTS_RESULTS: readonly JobState[] = ['running', 'waiting', 'delivered'];
 
 /**
  * What one job holds beyond its row: its plan versions, its steps and its
