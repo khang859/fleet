@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.134.0
+
+- **Inline images in the terminal.**
+  Tools like `imgcat`, `img2sixel`, `chafa` and `ratatui-image` now draw real images in a pane, with the Sixel and iTerm2 image protocols.
+  Each pane keeps up to 32 MB of images (#652).
+- **Fleet now tells programs which terminal they run in.**
+  Every shell gets `COLORTERM=truecolor`, `TERM_PROGRAM=Fleet` and `TERM_PROGRAM_VERSION`, in place of values from the terminal that launched Fleet (#652).
+- **Clearer copilot permission requests.**
+  A request now shows the tool name, a description and the command or path, in place of raw tool input.
+  Press **Y** to allow or **N** to deny the first open request.
+  If Fleet can no longer answer a request, it says so and links to the terminal (#651).
+- **A late permission answer is no longer lost.**
+  Fleet now lets go of a request just before Claude Code falls back to its own prompt, so an answer is never reported as delivered when it was not (#651).
+- **The copilot session list updates live**, with a go-to-terminal button per session, a live wait time, a count badge on the mascot and a short animation when a turn is done (#651).
+- **The copilot "Notification sound" setting is removed.**
+  The app-wide permission alerts already give a badge, sound and system notification (#651).
+
 ## v2.133.1
 
 - **Typing no longer lags while Claude Code sessions run.**
