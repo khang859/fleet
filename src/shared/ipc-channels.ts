@@ -441,6 +441,18 @@ export const IPC_CHANNELS = {
   AGENCY_CANCEL_JOBS: 'agency:cancel-jobs',
   AGENCY_MARK_HANDOFF: 'agency:mark-handoff',
   AGENCY_PREFLIGHT: 'agency:preflight',
+  // Onboarding: first run, the project picker, setup, the client file, ideas.
+  AGENCY_FIRST_RUN_DONE: 'agency:first-run-done',
+  AGENCY_FINISH_FIRST_RUN: 'agency:finish-first-run',
+  AGENCY_PROBE_FOLDERS: 'agency:probe-folders',
+  AGENCY_LIST_PROJECTS: 'agency:list-projects',
+  AGENCY_SCAN_PROJECT: 'agency:scan-project',
+  AGENCY_SAVE_SETUP: 'agency:save-setup',
+  AGENCY_SHARE_SETUP: 'agency:share-setup',
+  AGENCY_CLIENT_FILE: 'agency:client-file',
+  AGENCY_RULE_CANDIDATES: 'agency:rule-candidates',
+  AGENCY_FINISH_STARTER: 'agency:finish-starter',
+  AGENCY_BRIEF_IDEAS: 'agency:brief-ideas',
   // Renderer-bound: agency state for a repository changed.
   AGENCY_CHANGED: 'agency:changed'
 } as const;

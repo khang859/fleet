@@ -1517,7 +1517,8 @@ describe('Admiral panes', () => {
             }
           ],
           questions: [],
-          nextRetryAt: null
+          nextRetryAt: null,
+          onboarding: { setupDoneAt: 1, starterDoneAt: 1 }
         }
       }
     });

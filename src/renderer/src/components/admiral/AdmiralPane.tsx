@@ -4,6 +4,7 @@ import type { AgencyQuestion, AgencyRepoRef } from '../../../../shared/agency';
 import { useSettingsStore } from '../../store/settings-store';
 import { openSettings } from '../../store/settings-nav-store';
 import { useAgentStore } from '../../store/agent-store';
+import { useAdmiralOnboardingStore } from '../../store/admiral-onboarding-store';
 import { openQuestions, useAgencyStore } from '../../store/agency-store';
 import { attachAdmiral, useAdmiralRuntimeStore } from '../../store/admiral-runtime';
 import { admiralKey } from '../../store/admiral-thread';
@@ -12,13 +13,22 @@ import { useElementWidth } from '../../hooks/use-element-width';
 import { focusPane } from '../../lib/focus-pane';
 import { AgentThread } from '../agent/AgentThread';
 import { AdmiralThreadContext, type AdmiralThreadContextValue } from './admiral-context';
+import { admiralStage, STAGE_LABEL, type AdmiralStage } from './admiral-stage';
+import { AdmiralFirstRun } from './AdmiralFirstRun';
 import { EmptyBrief, EmptyJob } from './EmptyBrief';
 import { JOB_SHEET_WIDTH_PX, JobSheet } from './JobSheet';
 import { JobTabs } from './JobTabs';
+import { ProjectPicker } from './ProjectPicker';
+import { ProjectSetup } from './ProjectSetup';
+import { ProjectSwitcher } from './ProjectSwitcher';
+import { StarterQuestions } from './StarterQuestions';
 import type { QuestionAnswer } from './QuestionCard';
 
 /** The narrowest the conversation gets beside the sheet before the sheet folds away. */
 const MIN_CHAT_WIDTH_PX = 400;
+
+/** The width from which an onboarding screen puts its side panel beside the main column. */
+const ONBOARDING_SIDE_BY_SIDE_PX = 760;
 
 /** Stable empties: an Admiral has no subagents, schedules or background commands of its own. */
 const NONE: never[] = [];
@@ -85,7 +95,7 @@ export function AdmiralPane({
     );
   }
   return (
-    <AdmiralWorkspace
+    <AdmiralStages
       paneId={paneId}
       repo={repo}
       activeJob={activeJob ?? null}
@@ -94,6 +104,112 @@ export function AdmiralPane({
   );
 }
 
+/**
+ * Onboarding before the lobby: the first run, the project picker, setup and
+ * the starter questions, each until it is done. See `admiralStage`.
+ */
+function AdmiralStages({
+  paneId,
+  repo,
+  activeJob,
+  ready
+}: {
+  paneId: string;
+  repo: AgencyRepoRef;
+  activeJob: number | null;
+  ready: boolean;
+}): React.JSX.Element {
+  const onboarding = useAgencyStore((s) => s.snapshots[repo.repoId]?.onboarding);
+  const loadModels = useAgentStore((s) => s.loadModels);
+  const loadKey = useAgentStore((s) => s.loadKey);
+  const keyPresent = useAgentStore((s) => s.keyPresent);
+  const localModels = useSettingsStore(
+    (s) => s.settings?.ai.agent.localEndpoints.some((e) => e.enabled) ?? false
+  );
+  const firstRunDone = useAdmiralOnboardingStore((s) => s.firstRunDone);
+  const picking = useAdmiralOnboardingStore((s) => s.picking[paneId] === true);
+  const [keyChecked, setKeyChecked] = useState(false);
+
+  // The catalog carries the context limits the pane compacts by; the key is
+  // what decides whether there is a model to talk to at all.
+  useEffect(() => {
+    void loadModels();
+    void loadKey().finally(() => setKeyChecked(true));
+    void useAdmiralOnboardingStore.getState().loadFirstRun();
+  }, [loadModels, loadKey]);
+
+  const stage = admiralStage({
+    keyChecked,
+    hasModel: keyPresent || localModels,
+    firstRunDone,
+    picking,
+    onboarding
+  });
+  if (stage === 'ready') {
+    return <AdmiralWorkspace paneId={paneId} repo={repo} activeJob={activeJob} ready={ready} />;
+  }
+  return <AdmiralOnboarding paneId={paneId} repo={repo} stage={stage} />;
+}
+
+function AdmiralOnboarding({
+  paneId,
+  repo,
+  stage
+}: {
+  paneId: string;
+  repo: AgencyRepoRef;
+  stage: Exclude<AdmiralStage, 'ready'>;
+}): React.JSX.Element {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const width = useElementWidth(frameRef);
+  const wide = width === null || width >= ONBOARDING_SIDE_BY_SIDE_PX;
+  const pickProject = (): void => {
+    const store = useAdmiralOnboardingStore.getState();
+    void store.finishFirstRun().then(() => store.setPicking(paneId, true));
+  };
+  const body: Record<Exclude<AdmiralStage, 'ready'>, React.ReactNode> = {
+    loading: null,
+    'first-run': <AdmiralFirstRun onPick={pickProject} />,
+    picker: <ProjectPicker paneId={paneId} current={repo} wide={wide} />,
+    setup: <ProjectSetup repo={repo} />,
+    starter: <StarterQuestions repo={repo} wide={wide} />
+  };
+
+  return (
+    <div ref={frameRef} className="relative flex h-full w-full flex-col bg-fleet-bg">
+      <AdmiralHeader>
+        {(stage === 'setup' || stage === 'starter') && <RepoChip repo={repo} />}
+        {stage !== 'loading' && (
+          <span className="truncate text-xs text-fleet-text-muted">{STAGE_LABEL[stage]}</span>
+        )}
+      </AdmiralHeader>
+      <div className="flex min-h-0 min-w-0 flex-1">{body[stage]}</div>
+    </div>
+  );
+}
+
+function AdmiralHeader({ children }: { children: React.ReactNode }): React.JSX.Element {
+  return (
+    <header className="flex h-10 shrink-0 items-center gap-2 border-b border-fleet-border bg-fleet-surface px-3">
+      <Compass size={15} className="shrink-0 text-blue-500 dark:text-blue-400" />
+      <span className="shrink-0 text-[13px] font-semibold text-fleet-text">Admiral</span>
+      {children}
+    </header>
+  );
+}
+
+function RepoChip({ repo }: { repo: AgencyRepoRef }): React.JSX.Element {
+  return (
+    <span
+      title={repo.root}
+      className="max-w-[160px] shrink-0 truncate rounded bg-fleet-surface-2 px-1.5 py-px font-mono text-[11px] text-fleet-text-muted"
+    >
+      {repo.name}
+    </span>
+  );
+}
+
+/** The lobby and its jobs, once onboarding is done. */
 function AdmiralWorkspace({
   paneId,
   repo,
@@ -106,23 +222,9 @@ function AdmiralWorkspace({
   ready: boolean;
 }): React.JSX.Element {
   const snapshot = useAgencyStore((s) => s.snapshots[repo.repoId]);
-  const loadModels = useAgentStore((s) => s.loadModels);
-  const loadKey = useAgentStore((s) => s.loadKey);
-  const keyPresent = useAgentStore((s) => s.keyPresent);
-  const localModels = useSettingsStore(
-    (s) => (s.settings?.ai.agent.localEndpoints.length ?? 0) > 0
-  );
   const defaultBudgetUsd = useSettingsStore(
     (s) => s.settings?.agency.admiral.defaultBudgetUsd ?? 10
   );
-  const [keyChecked, setKeyChecked] = useState(false);
-
-  // The catalog carries the context limits the pane compacts by; the key is
-  // what decides whether there is a model to talk to at all.
-  useEffect(() => {
-    void loadModels();
-    void loadKey().finally(() => setKeyChecked(true));
-  }, [loadModels, loadKey]);
 
   // A job that has closed since the leaf last showed it falls back to the lobby.
   const jobs = snapshot?.jobs;
@@ -164,7 +266,6 @@ function AdmiralWorkspace({
   const answer = async (question: AgencyQuestion, req: QuestionAnswer): Promise<boolean> =>
     (await useAgencyStore.getState().answer({ id: question.id, ...req })) !== null;
 
-  const hasModel = keyPresent || localModels;
   const sheet = (className: string): React.JSX.Element => (
     <JobSheet
       snapshot={snapshot}
@@ -179,15 +280,8 @@ function AdmiralWorkspace({
 
   return (
     <div ref={frameRef} className="relative flex h-full w-full flex-col bg-fleet-bg">
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-fleet-border bg-fleet-surface px-3">
-        <Compass size={15} className="shrink-0 text-blue-500 dark:text-blue-400" />
-        <span className="shrink-0 text-[13px] font-semibold text-fleet-text">Admiral</span>
-        <span
-          title={repo.root}
-          className="max-w-[160px] shrink-0 truncate rounded bg-fleet-surface-2 px-1.5 py-px font-mono text-[11px] text-fleet-text-muted"
-        >
-          {repo.name}
-        </span>
+      <AdmiralHeader>
+        <ProjectSwitcher paneId={paneId} repo={repo} />
         <div className="mx-1 h-4 w-px shrink-0 bg-fleet-border" />
         <JobTabs snapshot={snapshot} activeJobId={jobId} working={working} onSelect={selectJob} />
         {!wide && (
@@ -211,20 +305,24 @@ function AdmiralWorkspace({
             )}
           </button>
         )}
-      </header>
+      </AdmiralHeader>
 
       <div className="relative flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1">
-          {!ready ? null : keyChecked && !hasModel ? (
-            <NoModelKey />
-          ) : (
+          {ready && (
             <AdmiralThreadContext.Provider value={context}>
               <AgentThread
                 key={key}
                 paneId={key}
                 cwd={repo.root}
                 variant="admiral"
-                empty={job === null ? <EmptyBrief /> : <EmptyJob title={job.title} />}
+                empty={
+                  job === null ? (
+                    <EmptyBrief paneId={paneId} repo={repo} />
+                  ) : (
+                    <EmptyJob title={job.title} />
+                  )
+                }
                 placeholder={job === null ? 'Brief the Admiral…' : 'Message the Admiral…'}
                 todosInPanel={false}
                 running={NONE}
@@ -262,22 +360,6 @@ function AdmiralWorkspace({
           </>
         )}
       </div>
-    </div>
-  );
-}
-
-/** No OpenRouter key and no local model: the Admiral has nothing to think with. */
-function NoModelKey(): React.JSX.Element {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-      <p className="text-sm font-medium text-fleet-text">The Admiral needs a model</p>
-      <p className="max-w-sm text-[13px] text-fleet-text-muted">
-        It runs on the OpenRouter key or local model set up in an Agent pane&apos;s Settings tab.
-        Add one there, then pick the Admiral&apos;s model in Settings.
-      </p>
-      <NoticeButton onClick={() => openSettings('agencyAdmiral')}>
-        Open Admiral settings
-      </NoticeButton>
     </div>
   );
 }

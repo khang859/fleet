@@ -52,9 +52,25 @@ function questionLines(store: SnapshotReader, scope: AdmiralThreadScope): string
  * lands mid-turn is in the next one, and compaction cannot lose it.
  *
  * A job thread gets its job and that job's questions; the lobby gets the open
- * jobs and its own questions.
+ * jobs and its own questions. Both get the client file, so a job starts from
+ * how the client likes to work.
  */
-export function admiralSnapshotNote(store: SnapshotReader, scope: AdmiralThreadScope): string {
+export function admiralSnapshotNote(
+  store: SnapshotReader,
+  scope: AdmiralThreadScope,
+  clientFile: string | null = null
+): string {
+  const records = recordsNote(store, scope);
+  if (clientFile === null) return records;
+  return [
+    records,
+    '',
+    "The client file: the client's standing preferences for this project, written by their own answers and picks. Follow it, and do not ask what it already settles.",
+    clientFile
+  ].join('\n');
+}
+
+function recordsNote(store: SnapshotReader, scope: AdmiralThreadScope): string {
   const repo = store.repo(scope.repoId)?.name ?? scope.repoId;
   if (scope.jobId === null) {
     const jobs = store.listJobs(scope.repoId);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
@@ -110,7 +110,8 @@ beforeEach(() => {
   agency = new AgencyService({
     dbPath: join(dir, 'agency.db'),
     emit: () => {},
-    hasModelKey: () => true
+    hasModelKey: () => true,
+    agencyHome: join(dir, 'agency-home')
   });
   lobbyId = agency.ensureLobby(REPO);
   agencySettings = {
@@ -400,6 +401,20 @@ describe('Admiral turn', () => {
     const [job] = agency.store.listJobs(REPO.repoId);
     expect(job.title).toBe('Dark mode');
     expect(toolResult(rounds[1], 'call-job_open')).toContain(`Opened j${job.id}`);
+  });
+
+  it('starts every round from the client file, so a job knows how the client works', async () => {
+    const clients = join(dir, 'agency-home', 'clients');
+    mkdirSync(clients, { recursive: true });
+    writeFileSync(
+      join(clients, `${REPO.repoId}.md`),
+      '# repo\n- Open PRs as drafts. (from starter questions, 2026-10-17)\n'
+    );
+
+    const { rounds } = await turn();
+
+    const note = rounds[0].messages.map(text).find((t) => t.includes('The client file'));
+    expect(note).toContain('- Open PRs as drafts. (from starter questions, 2026-10-17)');
   });
 
   it('refuses a turn whose thread is not the scope it claims', async () => {

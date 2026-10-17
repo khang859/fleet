@@ -17,7 +17,7 @@ import { admiralSnapshotNote } from './snapshot-note';
 export type AdmiralDeps = {
   agency: Pick<
     AgencyService,
-    'threadScope' | 'ask' | 'openJob' | 'snapshot' | 'crewPanes' | 'store'
+    'threadScope' | 'ask' | 'openJob' | 'snapshot' | 'crewPanes' | 'store' | 'clientFileForNote'
   >;
   settings: () => AgencySettings;
 };
@@ -108,7 +108,12 @@ export async function planAdmiralTurn(input: {
     allowedTools: new Set<string>(ADMIRAL_TOOLS),
     agency,
     fleet,
-    note: () => admiralSnapshotNote(admiral.agency.store, scope),
+    note: () =>
+      admiralSnapshotNote(
+        admiral.agency.store,
+        scope,
+        admiral.agency.clientFileForNote(scope.repoId)
+      ),
     instructions:
       instructions === null
         ? null

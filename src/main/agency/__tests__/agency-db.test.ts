@@ -26,11 +26,35 @@ function tables(db: Database.Database): string[] {
 }
 
 describe('agency.db', () => {
-  it('creates the folder and the v1 schema on first open, in WAL mode', () => {
+  it('creates the folder and the current schema on first open, in WAL mode', () => {
     const db = openAgencyDb(tempPath());
     expect(db.pragma('user_version', { simple: true })).toBe(AGENCY_SCHEMA_VERSION);
     expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
-    expect(tables(db)).toEqual(['job_events', 'jobs', 'lobbies', 'questions', 'repos', 'wakeups']);
+    expect(tables(db)).toEqual([
+      'agency_meta',
+      'job_events',
+      'jobs',
+      'lobbies',
+      'onboarding',
+      'questions',
+      'repos',
+      'wakeups'
+    ]);
+    db.close();
+  });
+
+  it('brings a v1 database to v2 without touching its rows', () => {
+    const path = tempPath();
+    const v1 = openAgencyDb(path);
+    v1.exec('DROP TABLE agency_meta; DROP TABLE onboarding;');
+    v1.pragma('user_version = 1');
+    v1.prepare("INSERT INTO repos VALUES ('r', '/r', 'r', 1)").run();
+    v1.close();
+
+    const db = openAgencyDb(path);
+    expect(db.pragma('user_version', { simple: true })).toBe(2);
+    expect(tables(db)).toContain('onboarding');
+    expect(db.prepare('SELECT COUNT(*) AS n FROM repos').get()).toEqual({ n: 1 });
     db.close();
   });
 

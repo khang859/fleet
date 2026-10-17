@@ -135,3 +135,53 @@ describe('snapshot', () => {
     expect(snap.nextRetryAt).toBeNull();
   });
 });
+
+describe('onboarding', () => {
+  it('remembers first run once, across restarts of the store', () => {
+    expect(store.firstRunDone()).toBe(false);
+    store.finishFirstRun();
+    store.finishFirstRun();
+    expect(store.firstRunDone()).toBe(true);
+  });
+
+  it('marks setup and the starter questions done per repository', () => {
+    expect(store.onboarding(REPO.repoId)).toEqual({ setupDoneAt: null, starterDoneAt: null });
+    clock.now = 2_000_000;
+    store.markOnboarded(REPO, 'setup');
+    clock.now = 3_000_000;
+    expect(store.markOnboarded(REPO, 'starter')).toEqual({
+      setupDoneAt: 2_000_000,
+      starterDoneAt: 3_000_000
+    });
+    expect(store.snapshot(REPO.repoId).onboarding).toEqual({
+      setupDoneAt: 2_000_000,
+      starterDoneAt: 3_000_000
+    });
+    expect(store.onboarding(OTHER_REPO.repoId)).toEqual({ setupDoneAt: null, starterDoneAt: null });
+  });
+
+  it('lists every project with an Admiral or a setup, with what is running and waiting', () => {
+    store.ensureLobby(OTHER_REPO);
+    store.markOnboarded(REPO, 'setup');
+    const running = openJob(store);
+    openJob(store);
+    store.setJobState(running.id, 'running', 'go');
+    store.askQuestion({
+      repoId: REPO.repoId,
+      jobId: running.id,
+      question: 'Which?',
+      options: YES_NO
+    });
+
+    expect(store.listProjects()).toEqual([
+      {
+        repo: REPO,
+        setupDoneAt: clock.now,
+        starterDoneAt: null,
+        runningJobs: 1,
+        openQuestions: 1
+      },
+      { repo: OTHER_REPO, setupDoneAt: null, starterDoneAt: null, runningJobs: 0, openQuestions: 0 }
+    ]);
+  });
+});

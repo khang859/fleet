@@ -1617,8 +1617,7 @@ void app.whenReady().then(async () => {
         mainWindow.webContents.send(IPC_CHANNELS.AGENCY_CHANGED, change);
       }
     },
-    hasModelKey: () =>
-      openRouterSecrets.hasKey() || settingsStore.get().ai.agent.localEndpoints.length > 0
+    hasModelKey: () => openRouterSecrets.hasKey() || localEndpoints().some((e) => e.enabled)
   });
   // Before the Agent service, which runs Admiral turns against it.
   const agency = agencyService;

@@ -16,8 +16,10 @@ export function agencyDbPath(): string {
  * The schema, one entry per version. Never edit a shipped entry: a database
  * already at that version would never see the change. Add the next one.
  *
- * A lobby wakeup or question has `job_id` NULL. Phase 2 adds plan, step, crew,
- * result, spend and permission tables as version 2.
+ * A lobby wakeup or question has `job_id` NULL. Version 2 adds onboarding
+ * progress: whether the first-run checks were finished (`agency_meta`) and,
+ * per repository, when setup and the starter questions were done. Phase 2
+ * adds plan, step, crew, result, spend and permission tables after it.
  */
 const MIGRATIONS: readonly string[] = [
   `
@@ -89,6 +91,17 @@ const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX wakeups_due ON wakeups(repo_id, job_id, done_at);
   CREATE INDEX questions_open ON questions(repo_id, status);
+  `,
+  `
+  CREATE TABLE agency_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  CREATE TABLE onboarding (
+    repo_id TEXT PRIMARY KEY,
+    setup_done_at INTEGER,
+    starter_done_at INTEGER
+  );
   `
 ];
 

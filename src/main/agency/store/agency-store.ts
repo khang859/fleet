@@ -8,6 +8,7 @@ import {
   type AgencyAnswerRequest,
   type AgencyJob,
   type AgencyJobEvent,
+  type AgencyOnboarding,
   type AgencyQuestion,
   type AgencyQuestionKind,
   type AgencyQuestionOption,
@@ -17,6 +18,7 @@ import {
   type JobState,
   type WakeupPull
 } from '../../../shared/agency';
+import type { AgencyProjectSummary } from '../../../shared/agency-projects';
 import { parseJsonAs } from '../../../shared/parse-json';
 import { WAKEUP_GIVE_UP_ATTEMPTS, WAKEUP_STALE_CLAIM_MS, wakeupBackoffMs } from '../backoff';
 import { renderWakeupText, type WakeupItem } from '../wakeup-text';
@@ -921,7 +923,95 @@ export class AgencyStore {
       lobbySessionId: this.lobbySessionId(repoId) ?? '',
       jobs: this.listJobs(repoId),
       questions: [...open, ...recent].sort((a, b) => a.id - b.id),
-      nextRetryAt: retry?.due ?? null
+      nextRetryAt: retry?.due ?? null,
+      onboarding: this.onboarding(repoId)
     };
+  }
+
+  /** Whether the client has been through the first-run checks once. */
+  firstRunDone(): boolean {
+    return (
+      this.db
+        .prepare<
+          [],
+          { value: string }
+        >("SELECT value FROM agency_meta WHERE key = 'first_run_done_at'")
+        .get() !== undefined
+    );
+  }
+
+  finishFirstRun(): void {
+    this.db
+      .prepare(
+        `INSERT INTO agency_meta (key, value) VALUES ('first_run_done_at', ?)
+         ON CONFLICT(key) DO NOTHING`
+      )
+      .run(String(this.now()));
+  }
+
+  onboarding(repoId: string): AgencyOnboarding {
+    const row = this.db
+      .prepare<
+        [string],
+        { setup_done_at: number | null; starter_done_at: number | null }
+      >('SELECT setup_done_at, starter_done_at FROM onboarding WHERE repo_id = ?')
+      .get(repoId);
+    return { setupDoneAt: row?.setup_done_at ?? null, starterDoneAt: row?.starter_done_at ?? null };
+  }
+
+  /**
+   * Note that a repository finished a step of onboarding. Setup can be saved
+   * before an Admiral ever opened on the repository, so it is recorded here.
+   */
+  markOnboarded(repo: AgencyRepoRef, step: 'setup' | 'starter'): AgencyOnboarding {
+    const column = step === 'setup' ? 'setup_done_at' : 'starter_done_at';
+    const now = this.now();
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO repos (repo_id, root, name, created_at) VALUES (?, ?, ?, ?)
+           ON CONFLICT(repo_id) DO UPDATE SET root = excluded.root, name = excluded.name`
+        )
+        .run(repo.repoId, repo.root, repo.name, now);
+      this.db
+        .prepare(
+          `INSERT INTO onboarding (repo_id, ${column}) VALUES (?, ?)
+           ON CONFLICT(repo_id) DO UPDATE SET ${column} = excluded.${column}`
+        )
+        .run(repo.repoId, now);
+    })();
+    return this.onboarding(repo.repoId);
+  }
+
+  /** Every repository with an Admiral opened before or a setup saved, by name. */
+  listProjects(): AgencyProjectSummary[] {
+    const running = RUNNING_JOB_STATES.map(() => '?').join(', ');
+    return this.db
+      .prepare<
+        JobState[],
+        {
+          repo_id: string;
+          root: string;
+          name: string;
+          setup_done_at: number | null;
+          starter_done_at: number | null;
+          running_jobs: number;
+          open_questions: number;
+        }
+      >(
+        `SELECT r.repo_id, r.root, r.name, o.setup_done_at, o.starter_done_at,
+           (SELECT COUNT(*) FROM jobs j WHERE j.repo_id = r.repo_id AND j.state IN (${running})) AS running_jobs,
+           (SELECT COUNT(*) FROM questions q WHERE q.repo_id = r.repo_id AND q.status = 'open') AS open_questions
+         FROM repos r LEFT JOIN onboarding o ON o.repo_id = r.repo_id
+         ORDER BY r.name COLLATE NOCASE, r.root`
+      )
+      .all(...RUNNING_JOB_STATES)
+      .map((row) => ({
+        repo: { repoId: row.repo_id, root: row.root, name: row.name },
+        setupDoneAt: row.setup_done_at,
+        starterDoneAt: row.starter_done_at,
+        runningJobs: row.running_jobs,
+        openQuestions: row.open_questions
+      }));
   }
 }

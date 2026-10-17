@@ -17,6 +17,8 @@ import {
 import { createLogger } from '../logger';
 import { AdmiralRegistry } from './admiral-registry';
 import { runPreflight, type Probe } from './preflight';
+import type { GhRun } from './projects/gh';
+import { ProjectsService } from './projects';
 import { resolveRepoIdentity, type RepoIdentityOptions } from './repo-identity';
 import { agencyDbPath } from './store/agency-db';
 import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
@@ -33,6 +35,9 @@ export type AgencyServiceDeps = {
   now?: () => number;
   probe?: Probe;
   repoIdentity?: Pick<RepoIdentityOptions, 'git' | 'realpath'>;
+  /** Seams for onboarding: the GitHub CLI and the per-project folder. */
+  gh?: GhRun;
+  agencyHome?: string;
 };
 
 /**
@@ -43,9 +48,17 @@ export type AgencyServiceDeps = {
 export class AgencyService {
   readonly store: AgencyStore;
   readonly registry = new AdmiralRegistry();
+  readonly projects: ProjectsService;
 
   constructor(private readonly deps: AgencyServiceDeps) {
     this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
+    this.projects = new ProjectsService({
+      store: this.store,
+      resolve: async (path) => this.resolveRepo(path),
+      emit: deps.emit,
+      gh: deps.gh,
+      home: deps.agencyHome
+    });
     // No turn from before this start is still running, so every claim made
     // then is stale, and its wakeups are due again.
     const released = this.store.releaseStaleClaims(0);
@@ -176,6 +189,11 @@ export class AgencyService {
    */
   crewPanes(): ReadonlySet<string> {
     return new Set();
+  }
+
+  /** The project's client file for an Admiral turn's note, or null when there is none. */
+  clientFileForNote(repoId: string): string | null {
+    return this.projects.clientFileForNote(repoId);
   }
 
   /** Whether an agent session is an Admiral lobby's or job's, for its session header. */

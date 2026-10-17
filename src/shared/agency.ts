@@ -127,7 +127,12 @@ export type AgencySnapshot = {
   questions: AgencyQuestion[];
   /** When the next model retry is due, or null when none is waiting. */
   nextRetryAt: number | null;
+  /** How far the repository got through onboarding. */
+  onboarding: AgencyOnboarding;
 };
+
+/** When a repository's setup and starter questions were finished; null while they are not. */
+export type AgencyOnboarding = { setupDoneAt: number | null; starterDoneAt: number | null };
 
 /**
  * What one pull hands back: the wakeups it claimed, as one text for one turn,

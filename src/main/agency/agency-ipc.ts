@@ -9,6 +9,14 @@ import type {
   WakeupPull,
   WakeupRelease
 } from '../../shared/agency';
+import {
+  ProjectSetupSchema,
+  type AgencyProjectSummary,
+  type BriefIdeas,
+  type ProjectFolder,
+  type RuleCandidates,
+  type SetupScan
+} from '../../shared/agency-projects';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type { AgencyService } from './index';
 
@@ -46,6 +54,20 @@ const AnswerArgs = z
 const PullArgs = z.object({ repoId: RepoId, jobId: JobId.nullable() });
 const ReleaseArgs = z.object({ ids: Ids, error: z.string().max(4_000) });
 const HandoffArgs = z.object({ jobId: JobId, lobbyMessageId: z.string().min(1) });
+
+const Paths = z.array(z.string().min(1)).max(200);
+const SaveSetupArgs = z.object({
+  repo: RepoRef,
+  setup: ProjectSetupSchema,
+  imports: z.array(z.string().min(1)).max(200)
+});
+const SaveSetupFinishArgs = SaveSetupArgs.extend({ finish: z.boolean() });
+const FinishStarterArgs = z.object({
+  repo: RepoRef,
+  lines: z
+    .array(z.object({ text: z.string().min(1).max(1_000), source: z.string().min(1).max(200) }))
+    .max(200)
+});
 
 /** Windows already watched, so a second claim from one does not stack listeners. */
 const watched = new WeakSet<WebContents>();
@@ -116,5 +138,55 @@ export function registerAgencyIpc(service: AgencyService): void {
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_PREFLIGHT,
     async (): Promise<AgencyPreflight> => service.preflight()
+  );
+
+  registerProjectsIpc(service);
+}
+
+/** Onboarding: first run, the project picker, setup, the client file and brief ideas. */
+function registerProjectsIpc(service: AgencyService): void {
+  const projects = service.projects;
+  ipcMain.handle(IPC_CHANNELS.AGENCY_FIRST_RUN_DONE, (): boolean => projects.firstRunDone());
+  ipcMain.handle(IPC_CHANNELS.AGENCY_FINISH_FIRST_RUN, () => {
+    projects.finishFirstRun();
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_PROBE_FOLDERS,
+    async (_e, paths: unknown): Promise<ProjectFolder[]> =>
+      projects.probeFolders(Paths.parse(paths))
+  );
+  ipcMain.handle(IPC_CHANNELS.AGENCY_LIST_PROJECTS, (): AgencyProjectSummary[] =>
+    projects.listProjects()
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_SCAN_PROJECT,
+    async (_e, repo: unknown): Promise<SetupScan> => projects.scan(RepoRef.parse(repo))
+  );
+  ipcMain.handle(IPC_CHANNELS.AGENCY_SAVE_SETUP, async (_e, args: unknown): Promise<string> => {
+    const { finish, ...input } = SaveSetupFinishArgs.parse(args);
+    return projects.saveSetup(input, { finish });
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_SHARE_SETUP,
+    async (_e, args: unknown): Promise<string[]> => projects.share(SaveSetupArgs.parse(args))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CLIENT_FILE,
+    async (_e, repoId: unknown): Promise<{ path: string; text: string | null }> =>
+      projects.clientFile(RepoId.parse(repoId))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_RULE_CANDIDATES,
+    async (_e, repo: unknown): Promise<RuleCandidates[]> =>
+      projects.ruleCandidates(RepoRef.parse(repo))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_FINISH_STARTER,
+    async (_e, args: unknown): Promise<string> =>
+      projects.finishStarter(FinishStarterArgs.parse(args))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_BRIEF_IDEAS,
+    async (_e, repo: unknown): Promise<BriefIdeas> => projects.briefIdeas(RepoRef.parse(repo))
   );
 }

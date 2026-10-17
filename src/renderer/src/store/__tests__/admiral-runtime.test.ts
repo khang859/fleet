@@ -154,7 +154,8 @@ beforeEach(async () => {
     lobbySessionId: LOBBY,
     jobs: [job(1), job(2)],
     questions: [],
-    nextRetryAt: null
+    nextRetryAt: null,
+    onboarding: { setupDoneAt: 1, starterDoneAt: 1 }
   };
   agency.claimAdmiral.mockResolvedValue({ ok: true });
   agency.ensureLobby.mockResolvedValue(LOBBY);

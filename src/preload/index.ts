@@ -177,6 +177,15 @@ import type {
   WakeupRelease
 } from '../shared/agency';
 import type {
+  AgencyProjectSummary,
+  BriefIdeas,
+  ClientLineInput,
+  ProjectFolder,
+  RuleCandidates,
+  SaveSetupRequest,
+  SetupScan
+} from '../shared/agency-projects';
+import type {
   Learning,
   CreateLearningInput,
   UpdateLearningInput,
@@ -1119,6 +1128,36 @@ const fleetApi = {
     markHandoff: async (args: { jobId: number; lobbyMessageId: string }): Promise<boolean> =>
       typedInvoke(IPC_CHANNELS.AGENCY_MARK_HANDOFF, args),
     preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
+    /** Onboarding: first run, the picker, setup, the client file and brief ideas. */
+    projects: {
+      firstRunDone: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.AGENCY_FIRST_RUN_DONE),
+      finishFirstRun: async (): Promise<void> => typedInvoke(IPC_CHANNELS.AGENCY_FINISH_FIRST_RUN),
+      /** What the picker shows for each folder: a repository and its state, or not one. */
+      probeFolders: async (paths: string[]): Promise<ProjectFolder[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_PROBE_FOLDERS, paths),
+      list: async (): Promise<AgencyProjectSummary[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_LIST_PROJECTS),
+      /** Setup's read-only scan, or the setup saved before. */
+      scan: async (repo: AgencyRepoRef): Promise<SetupScan> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SCAN_PROJECT, repo),
+      /** Save the setup; `finish` also marks it done. Resolves with the file's path. */
+      saveSetup: async (input: SaveSetupRequest & { finish: boolean }): Promise<string> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SAVE_SETUP, input),
+      /** Save, then copy into the repository's `.fleet/`. Resolves with what was written. */
+      shareSetup: async (input: SaveSetupRequest): Promise<string[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SHARE_SETUP, input),
+      clientFile: async (repoId: string): Promise<{ path: string; text: string | null }> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE, repoId),
+      ruleCandidates: async (repo: AgencyRepoRef): Promise<RuleCandidates[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_RULE_CANDIDATES, repo),
+      /** Write the starter answers and picked rules, and mark the starter questions done. */
+      finishStarter: async (input: {
+        repo: AgencyRepoRef;
+        lines: ClientLineInput[];
+      }): Promise<string> => typedInvoke(IPC_CHANNELS.AGENCY_FINISH_STARTER, input),
+      briefIdeas: async (repo: AgencyRepoRef): Promise<BriefIdeas> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_BRIEF_IDEAS, repo)
+    },
     onChanged: (callback: (change: AgencyChanged) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENCY_CHANGED, callback)
   }
