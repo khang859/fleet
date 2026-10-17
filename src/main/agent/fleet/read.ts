@@ -6,6 +6,7 @@ import {
   type FleetReadArgs,
   type FleetToolOutput
 } from '../../../shared/fleet-tools';
+import { needsUser } from '../../../shared/claude-sessions';
 import { oneLine, promptText, renderBrief, type BriefStatus } from '../../claude-sessions/brief';
 import { hashPrompt, type NotedInput } from '../../claude-sessions/registry';
 import type { SessionTranscript } from '../../claude-sessions/session-transcripts';
@@ -88,11 +89,10 @@ const CLEARED =
 function lastFinishedTurn(session: FleetSession, turns: readonly TurnEntry[]): number {
   const latest = turns.at(-1)?.n ?? 0;
   const busy =
+    needsUser(session) ||
     session.phase === 'processing' ||
     session.phase === 'compacting' ||
-    session.phase === 'starting' ||
-    session.phase === 'waitingForApproval' ||
-    (session.phase === 'waitingForInput' && session.waitingKind === 'question');
+    session.phase === 'starting';
   return busy ? Math.max(0, latest - 1) : latest;
 }
 

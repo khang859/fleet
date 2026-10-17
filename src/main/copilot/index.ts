@@ -11,6 +11,8 @@ const log = createLogger('copilot');
 
 type CopilotServiceState = 'idle' | 'starting' | 'running' | 'stopping';
 
+const SESSION_PUSH_MS = 50;
+
 let claudeSessions: ClaudeSessionsService | null = null;
 let copilotWindow: CopilotWindow | null = null;
 let conversationReader: ConversationReader | null = null;
@@ -113,21 +115,17 @@ async function startCopilotServices(): Promise<void> {
   });
 
   const registry = claudeSessions.registry;
-  unsubscribe = registry.subscribe(() => {
-    const sessions = registry.list();
-    copilotWindow?.send(IPC_CHANNELS.COPILOT_SESSIONS, sessions);
-
-    if (conversationReader) {
-      const activeIds = new Set(sessions.map((s) => s.sessionId));
-      for (const watchedId of conversationReader.getWatchedSessionIds()) {
-        if (activeIds.has(watchedId)) {
-          conversationReader.refresh(watchedId);
-        } else {
-          conversationReader.unwatch(watchedId);
-        }
-      }
-    }
+  const stopSessionPush = subscribeSessionPush(registry);
+  const stopFollowing = registry.subscribe(({ sessionId, session }) => {
+    // Only the session that changed can have new chat; the rest were read already.
+    if (!conversationReader?.getWatchedSessionIds().includes(sessionId)) return;
+    if (session) conversationReader.refresh(sessionId);
+    else conversationReader.unwatch(sessionId);
   });
+  unsubscribe = () => {
+    stopSessionPush();
+    stopFollowing();
+  };
 
   try {
     log.info('creating copilot window');
@@ -145,6 +143,26 @@ async function startCopilotServices(): Promise<void> {
   serviceState = 'running';
   log.info('copilot started successfully');
   await drainPendingToggle();
+}
+
+/**
+ * Push the session list to the overlay, at most once per `SESSION_PUSH_MS`.
+ * A tool call alone is several hook events, and each would otherwise send
+ * every session across the bridge.
+ */
+function subscribeSessionPush(registry: ClaudeSessionsService['registry']): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const stop = registry.subscribe(() => {
+    timer ??= setTimeout(() => {
+      timer = null;
+      copilotWindow?.send(IPC_CHANNELS.COPILOT_SESSIONS, registry.list());
+    }, SESSION_PUSH_MS);
+  });
+  return () => {
+    stop();
+    if (timer) clearTimeout(timer);
+    timer = null;
+  };
 }
 
 async function stopCopilotServices(): Promise<void> {

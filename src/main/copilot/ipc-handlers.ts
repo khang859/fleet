@@ -1,5 +1,6 @@
 import { ipcMain, type BrowserWindow } from 'electron';
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { IPC_CHANNELS } from '../../shared/constants';
 import { createLogger } from '../logger';
 import type { CopilotWindow } from './copilot-window';
@@ -10,10 +11,12 @@ import * as hookInstaller from '../claude-sessions/hook-installer';
 import { transcriptPathFor } from '../claude-sessions/transcript-path';
 
 const log = createLogger('copilot:ipc');
+const execFileAsync = promisify(execFile);
 
-function isClaudeInstalled(): boolean {
+/** Asynchronous, so a slow `claude` start does not freeze the main process. */
+async function isClaudeInstalled(): Promise<boolean> {
   try {
-    execSync('claude --version', { timeout: 3000, stdio: 'ignore' });
+    await execFileAsync('claude', ['--version'], { timeout: 3000 });
     return true;
   } catch {
     return false;
@@ -77,12 +80,12 @@ export function registerCopilotIpcHandlers(
     return hookInstaller.isInstalled(configDir);
   });
 
-  ipcMain.handle(IPC_CHANNELS.COPILOT_SERVICE_STATUS, () => {
+  ipcMain.handle(IPC_CHANNELS.COPILOT_SERVICE_STATUS, async () => {
     const settings = settingsStore.get();
     const configDir = settings.copilot.claudeConfigDir || undefined;
     return {
       hookInstalled: hookInstaller.isInstalled(configDir),
-      claudeDetected: isClaudeInstalled()
+      claudeDetected: await isClaudeInstalled()
     };
   });
 

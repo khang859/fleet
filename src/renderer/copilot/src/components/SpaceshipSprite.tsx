@@ -4,6 +4,8 @@ import { useCopilotStore } from '../store/copilot-store';
 import { getSpriteSheet } from '../assets/sprite-loader';
 import { MASCOT_REGISTRY, DEFAULT_ANIMATIONS } from '../../../../shared/mascots';
 import type { SpriteAnimations } from '../../../../shared/types';
+import { spriteStateFor, type SpriteState } from '../lib/sessions';
+import { needsUser } from '../../../../shared/claude-sessions';
 
 const SPRITE_SIZE = 128;
 const HEADER_SPRITE_SIZE = 96;
@@ -15,16 +17,41 @@ type SpaceshipSpriteProps = {
   onToggle?: () => void;
 };
 
-type SpriteState = 'idle' | 'processing' | 'permission' | 'complete';
-
 function useSpriteState(): SpriteState {
   const sessions = useCopilotStore((s) => s.sessions);
-  if (sessions.length === 0) return 'idle';
-  const hasPermission = sessions.some((s) => s.pendingPermissions.length > 0);
-  if (hasPermission) return 'permission';
-  const hasProcessing = sessions.some((s) => s.phase === 'processing' || s.phase === 'compacting');
-  if (hasProcessing) return 'processing';
-  return 'idle';
+  const celebrating = useCopilotStore((s) => s.celebrating);
+  return spriteStateFor(sessions, celebrating);
+}
+
+/** How the mascot names itself to screen readers: who needs you, and what a press does. */
+function mascotLabel(waitingCount: number, mode: 'floating' | 'header'): string {
+  const who =
+    waitingCount === 0
+      ? ''
+      : `, ${waitingCount} ${waitingCount === 1 ? 'session needs' : 'sessions need'} you`;
+  return `Fleet Copilot${who}. ${mode === 'floating' ? 'Open' : 'Close'} panel`;
+}
+
+/** Lets a key press on a role="button" element act like a click, as a real button does. */
+function pressOnEnterOrSpace(press: () => void): (e: React.KeyboardEvent) => void {
+  return (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    press();
+  };
+}
+
+/** The amber count of sessions that need the user, on the floating mascot. */
+function WaitingBadge({ count }: { count: number }): React.JSX.Element | null {
+  if (count === 0) return null;
+  return (
+    <span
+      aria-hidden
+      className="absolute top-2 right-2 min-w-5 h-5 px-1 rounded-full bg-amber-500 text-neutral-950 text-[11px] font-bold leading-5 text-center shadow-md ring-2 ring-neutral-950/70"
+    >
+      {count}
+    </span>
+  );
 }
 
 function useSpriteAnimation(state: SpriteState, animations: SpriteAnimations): number {
@@ -58,6 +85,7 @@ export function SpaceshipSprite({
   onToggle
 }: SpaceshipSpriteProps): React.JSX.Element {
   const spriteState = useSpriteState();
+  const waitingCount = useCopilotStore((s) => s.sessions.filter(needsUser).length);
   const toggleExpanded = useCopilotStore((s) => s.toggleExpanded);
   const settings = useCopilotStore((s) => s.settings);
   const mascotId = settings?.spriteSheet ?? 'officer';
@@ -139,9 +167,13 @@ export function SpaceshipSprite({
 
   return (
     <div
-      className={`cursor-pointer select-none ${animationClass} ${teleportClass}`}
+      role="button"
+      tabIndex={0}
+      aria-label={mascotLabel(waitingCount, mode)}
+      className={`relative cursor-pointer select-none outline-none ${animationClass} ${teleportClass}`}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
+      onKeyDown={pressOnEnterOrSpace(handleClick)}
       style={{
         width: size,
         height: size,
@@ -151,6 +183,8 @@ export function SpaceshipSprite({
         backgroundRepeat: 'no-repeat',
         imageRendering: 'pixelated'
       }}
-    />
+    >
+      {mode === 'floating' && <WaitingBadge count={waitingCount} />}
+    </div>
   );
 }

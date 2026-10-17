@@ -11,6 +11,46 @@ type TeleportPhase = 'idle' | 'flash-out' | 'flash-in';
 
 const TELEPORT_FLASH_MS = 200;
 
+function isTextField(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
+/**
+ * A Y or N press outside a text field, as the answer it gives. A held key's
+ * repeats are ignored, so they cannot answer the request that moves up next.
+ */
+function permissionKey(e: KeyboardEvent): 'allow' | 'deny' | null {
+  if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || isTextField(e.target)) return null;
+  const key = e.key.toLowerCase();
+  return key === 'y' ? 'allow' : key === 'n' ? 'deny' : null;
+}
+
+/** While the panel is open, Escape closes it and Y / N answer the first request on screen. */
+function usePanelKeys(open: boolean, close: () => void): void {
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        close();
+        return;
+      }
+      const decision = permissionKey(e);
+      if (!decision) return;
+      const { topPermissionId, respondPermission } = useCopilotStore.getState();
+      const toolUseId = topPermissionId();
+      if (!toolUseId) return;
+      e.preventDefault();
+      void respondPermission(toolUseId, decision);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, close]);
+}
+
 export function App(): React.JSX.Element {
   const view = useCopilotStore((s) => s.view);
   const setSessions = useCopilotStore((s) => s.setSessions);
@@ -95,16 +135,7 @@ export function App(): React.JSX.Element {
     };
   }, [setSessions, loadSettings, setExpanded]);
 
-  // Escape key to close
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && showPane) {
-        animateTransition(false);
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [showPane, animateTransition]);
+  usePanelKeys(showPane, handleClose);
 
   // Subscribe to real-time chat updates
   useEffect(() => {

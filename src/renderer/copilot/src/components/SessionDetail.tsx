@@ -4,16 +4,17 @@ import { ChatMessageItem } from './ChatMessage';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
-import { Card, CardContent } from './ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { Badge } from './ui/badge';
 import { ChevronLeft, ArrowUp } from 'lucide-react';
+import { PermissionRequest } from './PermissionRequest';
+import { GoToTerminalButton } from './GoToTerminalButton';
+import { sessionStatus, statusLabel } from '../lib/sessions';
 
 export function SessionDetail(): React.JSX.Element | null {
   const selectedSessionId = useCopilotStore((s) => s.selectedSessionId);
   const sessions = useCopilotStore((s) => s.sessions);
   const backToList = useCopilotStore((s) => s.backToList);
-  const respondPermission = useCopilotStore((s) => s.respondPermission);
   const chatMessages = useCopilotStore((s) => s.chatMessages);
   const chatLoading = useCopilotStore((s) => s.chatLoading);
   const loadChatHistory = useCopilotStore((s) => s.loadChatHistory);
@@ -21,6 +22,8 @@ export function SessionDetail(): React.JSX.Element | null {
 
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Follow new messages only while the end is in view, so reading back is not interrupted.
+  const atBottomRef = useRef(true);
 
   const session = sessions.find((s) => s.sessionId === selectedSessionId);
   // Depend on the identity fields, not the object: `sessions` is rebuilt on every store
@@ -35,7 +38,18 @@ export function SessionDetail(): React.JSX.Element | null {
   }, [sessionId, sessionCwd, loadChatHistory]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const end = messagesEndRef.current;
+    if (!end) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      atBottomRef.current = entry.isIntersecting;
+    });
+    observer.observe(end);
+    return () => observer.disconnect();
+  }, [sessionId]);
+
+  useEffect(() => {
+    // Instant, not smooth: a smooth scroll still in flight reads as "scrolled up" to the observer.
+    if (atBottomRef.current) messagesEndRef.current?.scrollIntoView({ block: 'end' });
   }, [chatMessages.length]);
 
   const handleSend = async (): Promise<void> => {
@@ -72,14 +86,8 @@ export function SessionDetail(): React.JSX.Element | null {
 
   // A question dialog is answered from its options in the chat, never with free text.
   const canSendMessage = session.phase === 'waitingForInput' && session.waitingKind !== 'question';
-  const status =
-    session.pendingPermissions.length > 0
-      ? ('permission' as const)
-      : session.phase === 'processing' || session.phase === 'compacting'
-        ? ('running' as const)
-        : session.phase === 'ended'
-          ? ('complete' as const)
-          : ('idle' as const);
+  const status = sessionStatus(session);
+  const label = statusLabel(session);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -89,7 +97,7 @@ export function SessionDetail(): React.JSX.Element | null {
           <Button variant="ghost" size="sm" onClick={backToList}>
             <ChevronLeft size={14} />
           </Button>
-          <Badge status={status} />
+          <Badge status={status} aria-label={label} />
           <div className="min-w-0 flex-1">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -103,46 +111,23 @@ export function SessionDetail(): React.JSX.Element | null {
               {session.workspaceName ?? 'Unknown'}
             </span>
           </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-xs text-neutral-500 ml-auto shrink-0">{session.phase}</span>
-            </TooltipTrigger>
-            <TooltipContent>Current phase: {session.phase}</TooltipContent>
-          </Tooltip>
+          <span className="text-xs text-neutral-500 ml-auto shrink-0">{label}</span>
+          <GoToTerminalButton sessionId={session.sessionId} />
         </div>
 
         {/* Pending permissions */}
         {session.pendingPermissions.length > 0 && (
           <div className="px-3 py-2 border-b border-neutral-800">
-            <div className="text-xs font-medium text-amber-400 mb-1">Pending Permissions</div>
-            {session.pendingPermissions.map((perm) => (
-              <Card key={perm.toolUseId} className="mb-2 border-amber-500/20">
-                <CardContent>
-                  <div className="text-sm text-neutral-200 font-medium">{perm.tool.toolName}</div>
-                  {Object.keys(perm.tool.toolInput).length > 0 && (
-                    <pre className="mt-1 text-xs text-neutral-400 overflow-x-auto max-h-24 overflow-y-auto">
-                      {JSON.stringify(perm.tool.toolInput, null, 2)}
-                    </pre>
-                  )}
-                  <div className="flex gap-1 mt-2">
-                    <Button
-                      variant="success"
-                      size="sm"
-                      onClick={() => void respondPermission(perm.toolUseId, 'allow')}
-                    >
-                      Allow
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => void respondPermission(perm.toolUseId, 'deny')}
-                    >
-                      Deny
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            <div className="text-xs font-medium text-amber-400 mb-1.5">Needs permission</div>
+            <div className="flex flex-col gap-3">
+              {session.pendingPermissions.map((perm) => (
+                <PermissionRequest
+                  key={perm.toolUseId}
+                  sessionId={session.sessionId}
+                  permission={perm}
+                />
+              ))}
+            </div>
           </div>
         )}
 
@@ -175,7 +160,7 @@ export function SessionDetail(): React.JSX.Element | null {
                 canSendMessage
                   ? 'Message Claude...'
                   : session.tty
-                    ? `Claude is ${session.phase}...`
+                    ? `${label} - you can send a message when Claude is ready`
                     : 'No TTY — cannot send messages'
               }
             />

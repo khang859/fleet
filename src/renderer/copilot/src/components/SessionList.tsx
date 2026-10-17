@@ -1,79 +1,29 @@
 import type React from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useCopilotStore } from '../store/copilot-store';
-import type { CopilotSession } from '../../../../shared/types';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { PawPrint } from 'lucide-react';
-import { formatPermissionSummary } from '../lib/format-permission';
-
-type BadgeStatus = 'idle' | 'running' | 'permission' | 'error' | 'complete';
-
-function sessionStatus(session: CopilotSession): BadgeStatus {
-  if (session.pendingPermissions.length > 0) return 'permission';
-  switch (session.phase) {
-    case 'processing':
-    case 'compacting':
-      return 'running';
-    case 'waitingForInput':
-    case 'starting':
-      return 'idle';
-    case 'waitingForApproval':
-      return 'permission';
-    case 'ended':
-      return 'complete';
-    default:
-      return 'idle';
-  }
-}
-
-function statusLabel(status: BadgeStatus): string {
-  switch (status) {
-    case 'running':
-      return 'Processing';
-    case 'permission':
-      return 'Waiting for permission';
-    case 'error':
-      return 'Error';
-    case 'complete':
-      return 'Completed';
-    case 'idle':
-    default:
-      return 'Idle';
-  }
-}
-
-function elapsed(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m`;
-}
-
-function sortSessions(a: CopilotSession, b: CopilotSession): number {
-  const priority = (s: CopilotSession): number => {
-    if (s.pendingPermissions.length > 0) return 0;
-    if (s.phase === 'processing' || s.phase === 'compacting') return 1;
-    if (s.phase === 'waitingForInput') return 2;
-    return 3;
-  };
-  return priority(a) - priority(b);
-}
+import { PermissionRequest } from './PermissionRequest';
+import { GoToTerminalButton } from './GoToTerminalButton';
+import { sessionStatus, sortSessions, statusLabel } from '../lib/sessions';
+import { formatAge } from '../../../../shared/claude-sessions';
+import { useNow } from '../lib/use-now';
 
 export function SessionList(): React.JSX.Element {
-  const filteredSessions = useCopilotStore((s) => s.filteredSessions);
+  // Select the list itself, not the `filteredSessions` function: the function never
+  // changes, so selecting it alone left an open list blind to new sessions and requests.
+  const sessions = useCopilotStore(useShallow((s) => s.filteredSessions()));
   const showAllWorkspaces = useCopilotStore((s) => s.showAllWorkspaces);
   const setShowAllWorkspaces = useCopilotStore((s) => s.setShowAllWorkspaces);
   const selectSession = useCopilotStore((s) => s.selectSession);
-  const respondPermission = useCopilotStore((s) => s.respondPermission);
   const setView = useCopilotStore((s) => s.setView);
   const hookInstalled = useCopilotStore((s) => s.hookInstalled);
   const claudeDetected = useCopilotStore((s) => s.claudeDetected);
+  const now = useNow(1000);
 
-  const sessions = filteredSessions();
   const sorted = [...sessions].sort(sortSessions);
 
   return (
@@ -85,6 +35,7 @@ export function SessionList(): React.JSX.Element {
           <div className="flex items-center gap-1">
             <div className="flex items-center bg-neutral-800 rounded text-xs">
               <button
+                aria-pressed={!showAllWorkspaces}
                 onClick={() => void setShowAllWorkspaces(false)}
                 className={`px-2 py-0.5 rounded transition-colors ${
                   !showAllWorkspaces
@@ -95,6 +46,7 @@ export function SessionList(): React.JSX.Element {
                 Active
               </button>
               <button
+                aria-pressed={showAllWorkspaces}
                 onClick={() => void setShowAllWorkspaces(true)}
                 className={`px-2 py-0.5 rounded transition-colors ${
                   showAllWorkspaces
@@ -107,7 +59,12 @@ export function SessionList(): React.JSX.Element {
             </div>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => setView('mascots')}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Mascots"
+                  onClick={() => setView('mascots')}
+                >
                   <PawPrint size={14} />
                 </Button>
               </TooltipTrigger>
@@ -144,6 +101,8 @@ export function SessionList(): React.JSX.Element {
           ) : (
             sorted.map((session) => {
               const status = sessionStatus(session);
+              const label = statusLabel(session);
+              const waited = formatAge(now - session.phaseSince);
               return (
                 <div
                   key={session.sessionId}
@@ -153,6 +112,8 @@ export function SessionList(): React.JSX.Element {
                   style={{ minHeight: 44 }}
                   onClick={() => selectSession(session.sessionId)}
                   onKeyDown={(e) => {
+                    // Keys on the buttons inside the row are theirs, and must still reach the panel's Y / N / Escape.
+                    if (e.target !== e.currentTarget) return;
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       selectSession(session.sessionId);
@@ -166,7 +127,7 @@ export function SessionList(): React.JSX.Element {
                         <TooltipTrigger asChild>
                           <Badge status={status} />
                         </TooltipTrigger>
-                        <TooltipContent>{statusLabel(status)}</TooltipContent>
+                        <TooltipContent>{label}</TooltipContent>
                       </Tooltip>
 
                       {/* Project name with truncation + tooltip (Baymard) */}
@@ -184,41 +145,22 @@ export function SessionList(): React.JSX.Element {
                         </span>
                       </div>
                     </div>
-                    <span className="text-xs text-neutral-500 ml-2 shrink-0">
-                      {elapsed(session.createdAt)}
-                    </span>
-                  </div>
-
-                  {/* Inline permission actions */}
-                  {session.pendingPermissions.map((perm) => (
-                    <div
-                      key={perm.toolUseId}
-                      className="flex items-center gap-1 pb-2"
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={(e) => e.stopPropagation()}
-                    >
+                    <div className="flex items-center gap-1 ml-2 shrink-0">
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="text-xs text-amber-400 truncate flex-1">
-                            {formatPermissionSummary(perm.tool).label}
-                          </span>
+                          <span className="text-xs text-neutral-500 tabular-nums">{waited}</span>
                         </TooltipTrigger>
-                        <TooltipContent>{formatPermissionSummary(perm.tool).detail}</TooltipContent>
+                        <TooltipContent>
+                          {label} for {waited}
+                        </TooltipContent>
                       </Tooltip>
-                      <Button
-                        variant="success"
-                        size="sm"
-                        onClick={() => void respondPermission(perm.toolUseId, 'allow')}
-                      >
-                        Allow
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => void respondPermission(perm.toolUseId, 'deny')}
-                      >
-                        Deny
-                      </Button>
+                      <GoToTerminalButton sessionId={session.sessionId} />
+                    </div>
+                  </div>
+
+                  {session.pendingPermissions.map((perm) => (
+                    <div key={perm.toolUseId} className="pb-2">
+                      <PermissionRequest sessionId={session.sessionId} permission={perm} compact />
                     </div>
                   ))}
                 </div>

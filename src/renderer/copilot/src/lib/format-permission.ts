@@ -1,6 +1,13 @@
 import type { CopilotToolInfo } from '../../../../shared/types';
 
-type PermissionSummary = { label: string; detail: string };
+type PermissionSummary = {
+  label: string;
+  detail: string;
+  /** False when the tool is not one we know how to summarize; `detail` is then its name. */
+  matched: boolean;
+  /** The tool's own one-line explanation, when it gives one (Bash does). */
+  description: string | null;
+};
 
 const MAX_DETAIL_LENGTH = 60;
 
@@ -32,9 +39,12 @@ function truncate(value: string, max: number): string {
 export function formatPermissionSummary(tool: CopilotToolInfo): PermissionSummary {
   const nameLower = tool.toolName.toLowerCase();
   const mapping = TOOL_MAPPINGS.find((m) => m.names.includes(nameLower));
+  const description =
+    typeof tool.toolInput.description === 'string' ? tool.toolInput.description : null;
+  const unmatched = { label: tool.toolName, detail: tool.toolName, matched: false, description };
 
   if (!mapping) {
-    return { label: tool.toolName, detail: tool.toolName };
+    return unmatched;
   }
 
   const rawValue = mapping.fields
@@ -42,12 +52,12 @@ export function formatPermissionSummary(tool: CopilotToolInfo): PermissionSummar
     .find((v): v is string => typeof v === 'string');
 
   if (!rawValue) {
-    return { label: tool.toolName, detail: tool.toolName };
+    return unmatched;
   }
 
   const prefix = mapping.prefix;
   const maxValueLength = MAX_DETAIL_LENGTH - prefix.length - 2; // 2 for ": "
   const label = `${prefix}: ${truncate(rawValue, maxValueLength)}`;
 
-  return { label, detail: rawValue };
+  return { label, detail: rawValue, matched: true, description };
 }

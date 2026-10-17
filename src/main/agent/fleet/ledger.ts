@@ -1,6 +1,7 @@
 import { fence } from '../../../shared/fleet-tools';
 import { oneLine } from '../../claude-sessions/brief';
-import { describePhase, describeStarting, formatAge, needsUser } from './format';
+import { describePhase, describeStarting } from './format';
+import { formatAge, needsUser } from '../../../shared/claude-sessions';
 import type { FleetHost } from './host';
 import type { FleetLedgerEntry, FleetLedgerStore } from './ledger-store';
 
