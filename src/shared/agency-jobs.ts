@@ -17,7 +17,8 @@ export type PlanVersionStatus = 'proposed' | 'approved' | 'rejected' | 'replaced
 
 /**
  * One thing the pre-approval check found. `block` keeps Approve disabled.
- * `fix: 'use-branch'` means the card can offer local branches in place of PRs.
+ * `fix: 'use-branch'` means the card can offer local branches in place of PRs;
+ * `fix: 'trust-claude'` that it can open Claude Code in `path` to trust it.
  */
 export type PlanIssue = {
   code: string;
@@ -25,7 +26,8 @@ export type PlanIssue = {
   text: string;
   step?: string;
   member?: string;
-  fix?: 'use-branch';
+  fix?: 'use-branch' | 'trust-claude';
+  path?: string;
 };
 
 /** A path this plan's `step` and a step of another running job both expect to touch. */

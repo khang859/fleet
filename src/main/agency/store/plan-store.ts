@@ -96,7 +96,8 @@ const IssueSchema = z.object({
   text: z.string(),
   step: z.string().optional(),
   member: z.string().optional(),
-  fix: z.literal('use-branch').optional()
+  fix: z.enum(['use-branch', 'trust-claude']).optional(),
+  path: z.string().optional()
 });
 const PinSchema = z.object({ sha: z.string(), from: z.enum(['default', 'head']) });
 const ChecksSchema = z.object({

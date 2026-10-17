@@ -10,6 +10,7 @@ import type {
 import { diffLine, withLocalBranches, type PlanInput } from '../../../../shared/agency-plan';
 import { jobDisplayId } from '../../../../shared/agency';
 import { useAgencyStore } from '../../store/agency-store';
+import { useWorkspaceStore } from '../../store/workspace-store';
 import { OnboardingButton } from './onboarding-ui';
 import { PillRadio } from '../ui/pill-radio';
 import { PlanEditor } from './PlanEditor';
@@ -239,6 +240,7 @@ function Cautions({
   onUseBranch: () => void;
 }): React.JSX.Element {
   const { plan, checks } = version;
+  const trust = checks.issues.find((i) => i.fix === 'trust-claude')?.path;
   return (
     <Block>
       {plan.asksFirst.length > 0 && (
@@ -275,6 +277,15 @@ function Cautions({
       {checks.issues.some((i) => i.fix === 'use-branch') && (
         <OnboardingButton kind="ghost" className="w-fit" onClick={onUseBranch}>
           Deliver local branches instead
+        </OnboardingButton>
+      )}
+      {trust !== undefined && (
+        <OnboardingButton
+          kind="ghost"
+          className="w-fit"
+          onClick={() => useWorkspaceStore.getState().openResumeTab(trust, 'claude', 'Claude Code')}
+        >
+          Open Claude Code there
         </OnboardingButton>
       )}
     </Block>

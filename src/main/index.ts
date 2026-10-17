@@ -92,6 +92,8 @@ import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
 import { createAgencyService, type AgencyService } from './agency';
 import { registerAgencyIpc } from './agency/agency-ipc';
+import { checkRuntime, paneRuntimeDeps } from './agency/crew/availability';
+import { resolveClaudeConfig } from '../shared/claude-config';
 import { createFleetHost } from './agent/fleet/host';
 import { FleetLedgerStore } from './agent/fleet/ledger-store';
 import { ActLimiter } from './agent/fleet/limiter';
@@ -1606,6 +1608,12 @@ void app.whenReady().then(async () => {
         : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources', 'crew'),
       user: join(homedir(), '.fleet', 'crew')
     },
+    // Crew panes get Fleet's default Claude config folder, as a workspace without its own.
+    checkRuntime: async (runtime, cwd) => {
+      const { claudeConfigDir } = settingsStore.get().copilot;
+      const dir = resolveClaudeConfig({ defaultDir: claudeConfigDir, homeDir: homedir() }).path;
+      return checkRuntime(runtime, cwd, paneRuntimeDeps(dir));
+    },
     agencySettings: {
       get: () => settingsStore.get().agency,
       set: (agency) => settingsStore.set({ agency })
@@ -1613,6 +1621,10 @@ void app.whenReady().then(async () => {
   });
   // Before the Agent service, which runs Admiral turns against it.
   const agency = agencyService;
+  // A session reports only once Claude Code's folder trust prompt is answered.
+  claudeSessions.registry.subscribe(({ session }) => {
+    if (session) agency.noteClaudeSession(session.cwd);
+  });
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),

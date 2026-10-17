@@ -199,6 +199,7 @@ func TestStatusMapping(t *testing.T) {
 		{"PermissionRequest", "waiting_for_approval"},
 		{"Notification", "notification"},
 		{"Stop", "waiting_for_input"},
+		{"StopFailure", "api_error"},
 		// A subagent finishing must not read as the parent turn ending.
 		{"SubagentStop", "subagent_stop"},
 		{"SessionStart", "waiting_for_input"},
@@ -270,11 +271,25 @@ func TestNewState_ForwardsPaneTranscriptAndConfigDir(t *testing.T) {
 	}
 }
 
+func TestNewState_ForwardsStopFailureError(t *testing.T) {
+	var input HookInput
+	payload := `{"session_id":"s1","hook_event_name":"StopFailure","cwd":"/repo",` +
+		`"error":"rate_limit","error_details":"429 Too Many Requests",` +
+		`"last_assistant_message":"API Error: Rate limit reached"}`
+	if err := json.Unmarshal([]byte(payload), &input); err != nil {
+		t.Fatal(err)
+	}
+	state := newState(&input, nil, 1, func(string) string { return "" })
+	if state.Error != "rate_limit" || state.ErrorDetails != "429 Too Many Requests" {
+		t.Errorf("error = %q, details = %q", state.Error, state.ErrorDetails)
+	}
+}
+
 func TestNewState_OmitsUnsetFields(t *testing.T) {
 	input := HookInput{SessionID: "s1", HookEventName: "Stop", CWD: "/repo"}
 	state := newState(&input, nil, 1, func(string) string { return "" })
 	data, _ := json.Marshal(state)
-	for _, key := range []string{"pane_id", "transcript_path", "config_dir", "source"} {
+	for _, key := range []string{"pane_id", "transcript_path", "config_dir", "source", "error", "error_details"} {
 		if strings.Contains(string(data), `"`+key+`"`) {
 			t.Errorf("%s should be omitted when empty: %s", key, data)
 		}

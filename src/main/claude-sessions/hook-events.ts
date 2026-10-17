@@ -32,6 +32,8 @@ const WireHookEvent = z.object({
   transcript_path: lenient(nonEmpty),
   config_dir: lenient(nonEmpty),
   source: lenient(nonEmpty),
+  error: lenient(nonEmpty),
+  error_details: lenient(z.string()),
   protocol: lenient(z.number().int().positive())
 });
 
@@ -56,6 +58,9 @@ export type HookEvent = {
   configDir?: string;
   /** `SessionStart` only: `startup`, `resume`, `clear` or `compact`. */
   source?: string;
+  /** `StopFailure` only: the API error type, such as `rate_limit`, and its details. */
+  error?: string;
+  errorDetails?: string;
   /** 1 for binaries that predate the field. */
   protocol: number;
 };
@@ -87,6 +92,8 @@ export function parseHookEvent(text: string): HookEvent | null {
     transcriptPath: w.transcript_path,
     configDir: w.config_dir,
     source: w.source,
+    error: w.error,
+    errorDetails: w.error_details,
     protocol: w.protocol ?? 1
   };
 }

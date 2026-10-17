@@ -1,14 +1,31 @@
 import type { PlanBases } from '../../../shared/agency-jobs';
 import { githubSlug } from '../../../shared/agency-projects';
+import type { CrewRuntime, RuntimeCheck } from '../../../shared/agency-crew';
 import type { Plan } from '../../../shared/agency-plan';
 import { ghState, type GhRun } from '../projects/gh';
 import type { ProjectMember } from '../projects/workspace-projects';
 import { repoFacts } from '../projects/repo-reader';
 import type { GitRun } from '../repo-identity';
 import { planOverlap, type OtherJobPaths } from './overlap';
-import type { MemberFacts, PlanFacts } from './plan-checks';
+import { stepRuntime, type CrewFacts, type MemberFacts, type PlanFacts } from './plan-checks';
 
 export type PlanFactsDeps = { git: GitRun; gh: GhRun };
+
+/** The crew as the check reads it: roles, how to check a runtime, and Claude Code's folder trust. */
+export type CrewInput = Omit<CrewFacts, 'runtimes'> & {
+  check: (runtime: CrewRuntime) => Promise<RuntimeCheck>;
+};
+
+/** Checks only the runtimes the plan's steps run on. */
+async function crewFacts(plan: Plan, crew: CrewInput): Promise<CrewFacts> {
+  const used = new Set(plan.steps.flatMap((s) => stepRuntime(s, crew.roles) ?? []));
+  const checks = await Promise.all([...used].map(async (r) => crew.check(r)));
+  return {
+    roles: crew.roles,
+    runtimes: Object.fromEntries(checks.map((c) => [c.runtime, c])),
+    claudeTrust: crew.claudeTrust
+  };
+}
 
 async function sha(git: GitRun, root: string, ref: string): Promise<string | null> {
   const out = await git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], root);
@@ -64,7 +81,7 @@ export async function gatherPlanFacts(
     plan: Plan;
     others: OtherJobPaths[];
     pinned: PlanBases | null;
-    roles: ReadonlySet<string> | null;
+    crew: CrewInput | null;
   },
   deps: PlanFactsDeps
 ): Promise<PlanFacts> {
@@ -79,6 +96,6 @@ export async function gatherPlanFacts(
       input.others
     ),
     pinned: input.pinned,
-    roles: input.roles
+    crew: input.crew && (await crewFacts(input.plan, input.crew))
   };
 }

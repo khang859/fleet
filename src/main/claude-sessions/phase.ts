@@ -44,7 +44,9 @@ function statusToPhase(event: string, status: string): ClaudeSessionPhase | null
     case 'processing':
     case 'running_tool':
       return 'processing';
+    // `api_error`: the turn ended on an API error, and the prompt is back with it on screen.
     case 'waiting_for_input':
+    case 'api_error':
       return 'waitingForInput';
     case 'waiting_for_approval':
       return 'waitingForApproval';
@@ -78,7 +80,13 @@ function waitingKindFor(
 export const TOOL_FINISHED = new Set(['PostToolUse', 'PostToolUseFailure']);
 
 /** Events after which no tool can still be waiting on a permission answer. */
-export const TURN_BOUNDARIES = new Set(['UserPromptSubmit', 'Stop', 'SessionStart', 'SessionEnd']);
+export const TURN_BOUNDARIES = new Set([
+  'UserPromptSubmit',
+  'Stop',
+  'StopFailure',
+  'SessionStart',
+  'SessionEnd'
+]);
 
 /** Apply one hook event to a session's phase. Pure: `state` is not modified. */
 export function reducePhase(state: PhaseState, input: PhaseInput): PhaseState {

@@ -11,7 +11,7 @@ const nativeProbe: Probe = async (cmd, args) =>
   runCapture(cmd, args, { timeoutMs: PROBE_TIMEOUT_MS });
 
 /** The first thing that looks like a version number in a `--version` line. */
-function versionOf(stdout: string): string | null {
+export function versionOf(stdout: string): string | null {
   return /\d+\.\d+(?:\.\d+)?/.exec(stdout)?.[0] ?? null;
 }
 

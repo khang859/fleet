@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { CrewRuntime, RuntimeCheck } from '../../../shared/agency-crew';
 import type { PlanInput } from '../../../shared/agency-plan';
 import { AgencyService } from '../index';
 import { BASE_SHA, factsGit, fakeGh, REPO, type GitFacts } from './fixture';
@@ -23,6 +24,7 @@ function start(
     gh?: 'ok' | 'signed-out';
     crewLimit?: number;
     crew?: boolean;
+    runtime?: (runtime: CrewRuntime) => RuntimeCheck;
   } = {}
 ): void {
   dir = mkdtempSync(join(tmpdir(), 'fleet-agency-checks-'));
@@ -34,7 +36,8 @@ function start(
     gh: fakeGh(opts.gh),
     crewLimit: opts.crewLimit === undefined ? undefined : () => opts.crewLimit!,
     agencyHome: join(dir, 'home'),
-    crewDirs: opts.crew ? { bundled: SHIPPED_CREW, user: null } : undefined
+    crewDirs: opts.crew ? { bundled: SHIPPED_CREW, user: null } : undefined,
+    checkRuntime: opts.runtime && (async (runtime) => Promise.resolve(opts.runtime!(runtime)))
   });
   service.ensureLobby(REPO);
 }
@@ -279,6 +282,39 @@ describe('crew roles', () => {
       "wizard-1 uses the role wizard, which is not one of this project's crew roles."
     );
     expect((await service.jobs.decide({ planVersionId: id, action: 'approve' })).ok).toBe(false);
+  });
+
+  it('keeps Approve off while the runtime a step runs on cannot be used', async () => {
+    start({
+      crew: true,
+      runtime: (runtime) => ({
+        runtime,
+        path: '/usr/local/bin/claude',
+        version: '2.0.1',
+        problems: ['Claude Code 2.0.1 is older than 2.1.78, the oldest crew run on.'],
+        warnings: []
+      })
+    });
+    const { tools } = openJob();
+    const { id, text } = await proposeOut(tools);
+    expect(text).toContain(
+      'builder-1 runs on Claude Code. Claude Code 2.0.1 is older than 2.1.78, the oldest crew run on.'
+    );
+    expect((await service.jobs.decide({ planVersionId: id, action: 'approve' })).ok).toBe(false);
+  });
+
+  it('asks for the trust step until a Claude Code session reports from the repository', async () => {
+    start({ crew: true });
+    const { tools } = openJob();
+    const first = await proposeOut(tools);
+    expect(service.store.plans.version(first.id)?.checks.issues).toContainEqual(
+      expect.objectContaining({ code: 'claude-trust', fix: 'trust-claude', path: REPO.root })
+    );
+
+    service.noteClaudeSession(join(REPO.root, 'src'));
+    const next = await proposeOut(tools);
+    const codes = service.store.plans.version(next.id)?.checks.issues.map((i) => i.code);
+    expect(codes).not.toContain('claude-trust');
   });
 
   it('keeps the approved roles, so a role edit after approval does not reach the job', async () => {

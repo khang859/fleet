@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
+import { sep } from 'node:path';
 import { z } from 'zod';
 import {
   ADMIRAL_QUESTION_KINDS,
@@ -1266,6 +1267,32 @@ export class AgencyStore {
          ON CONFLICT(key) DO NOTHING`
       )
       .run(String(this.now()));
+  }
+
+  /**
+   * Whether a Claude Code session has reported from `folder` or a folder in
+   * it, so the trust prompt that covers it was answered.
+   */
+  claudeTrusted(folder: string): boolean {
+    const inside = `${folder}${sep}`;
+    return (
+      this.db
+        .prepare<
+          [string, string, string],
+          { folder: string }
+        >('SELECT folder FROM claude_trust WHERE folder = ? OR substr(folder, 1, length(?)) = ? LIMIT 1')
+        .get(folder, inside, inside) !== undefined
+    );
+  }
+
+  /** A Claude Code session reported from `folder`. */
+  noteClaudeFolder(folder: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO claude_trust (folder, seen_at) VALUES (?, ?)
+         ON CONFLICT(folder) DO NOTHING`
+      )
+      .run(folder, this.now());
   }
 
   onboarding(repoId: string): AgencyOnboarding {

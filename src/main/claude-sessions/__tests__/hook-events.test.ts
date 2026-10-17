@@ -50,6 +50,20 @@ describe('parseHookEvent', () => {
     });
   });
 
+  it('reads the API error of a StopFailure', () => {
+    const event = parseHookEvent(
+      JSON.stringify({
+        ...v1,
+        event: 'StopFailure',
+        status: 'api_error',
+        error: 'rate_limit',
+        error_details: '429 Too Many Requests',
+        protocol: 2
+      })
+    );
+    expect(event).toMatchObject({ error: 'rate_limit', errorDetails: '429 Too Many Requests' });
+  });
+
   it('drops an optional field of the wrong type instead of the event', () => {
     const event = parseHookEvent(JSON.stringify({ ...v1, pid: 'x', tool_input: [1], pane_id: '' }));
     expect(event).toMatchObject({

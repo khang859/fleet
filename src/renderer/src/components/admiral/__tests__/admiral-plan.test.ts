@@ -155,6 +155,28 @@ describe('PlanCard', () => {
     expect(html).toContain('Deliver local branches instead');
   });
 
+  it('offers the Claude Code trust step without holding Approve', () => {
+    const html = card(
+      version({
+        checks: {
+          issues: [
+            {
+              code: 'claude-trust',
+              severity: 'warn',
+              text: 'Claude Code has not run in /dev/fleet yet.',
+              fix: 'trust-claude',
+              path: '/dev/fleet'
+            }
+          ],
+          overlap: [],
+          bases: []
+        }
+      })
+    );
+    expect(html).toContain('Open Claude Code there');
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>Approve plan<\/button>/);
+  });
+
   it('offers where the work starts when the default tip and HEAD differ', () => {
     const base = {
       member: 'fleet',

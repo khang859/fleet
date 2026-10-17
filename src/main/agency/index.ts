@@ -31,7 +31,7 @@ import { WorktreeService } from '../worktree-service';
 import { AdmiralRegistry } from './admiral-registry';
 import { defaultCleaners, type WorktreeRemover } from './cleanup/cleaners';
 import { CleanupRunner, type ResourceCleaner } from './cleanup/cleanup-runner';
-import type { CrewCatalog } from '../../shared/agency-crew';
+import type { CrewCatalog, CrewRuntime, RuntimeCheck } from '../../shared/agency-crew';
 import type { Plan } from '../../shared/agency-plan';
 import {
   crewSnapshot,
@@ -52,7 +52,7 @@ import { PrCards } from './results/pr-cards';
 import { ResultsService } from './results';
 import { readOnlyGit } from './projects/repo-reader';
 import { projectMembers } from './projects/workspace-projects';
-import { JobWorkspaces, type GitWrite } from './workspaces/job-workspace';
+import { claudeTrustFolder, JobWorkspaces, type GitWrite } from './workspaces/job-workspace';
 import { pushUmbrellaBump } from './workspaces/umbrella-bump';
 import { MergeQueue } from './results/merge-queue';
 import type { OtherJobPaths } from './plans/overlap';
@@ -64,6 +64,8 @@ import type { RegisteredProject } from './store/project-registry';
 import { AgencySettingsService, type AgencySettingsAccess } from './settings';
 import { agencyDbPath } from './store/agency-db';
 import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
+
+const PASSING_RUNTIME = { path: null, version: null, problems: [], warnings: [] };
 
 const MERGE_CLOSED = 'The job closed before the merge finished.';
 
@@ -91,6 +93,8 @@ export type AgencyServiceDeps = {
    * Unset (tests of other parts), plans name any role and approval keeps no crew.
    */
   crewDirs?: CrewDirs;
+  /** Whether crew can run on a runtime in a folder. Unset, every runtime passes. */
+  checkRuntime?: (runtime: CrewRuntime, cwd: string) => Promise<RuntimeCheck>;
   /** Crew members that may work at once; 4 unless set. */
   crewLimit?: () => number;
   /** Git that writes: worktrees, the umbrella bump. Defaults to git on the PATH. */
@@ -144,6 +148,8 @@ export class AgencyService {
   readonly settings: AgencySettingsService;
   readonly workspaces: JobWorkspaces;
   readonly merges: MergeQueue;
+  /** Folders already written to the trust table this run. */
+  private readonly claudeFolders = new Set<string>();
 
   constructor(private readonly deps: AgencyServiceDeps) {
     this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
@@ -571,14 +577,31 @@ export class AgencyService {
     const repo = this.store.repo(job.repoId);
     if (!repo) throw new Error(`The project of ${jobDisplayId(job.id)} is not known.`);
     const crew = this.deps.crewDirs ? await this.crewCatalog(job.repoId) : null;
+    const { kind, members } = projectMembers(this.store.projects, repo);
+    const trust = claudeTrustFolder(kind, repo.root, this.deps.agencyHome ?? agencyHome());
+    const check = this.deps.checkRuntime;
     return gatherPlanFacts(
       {
         ...input,
-        members: projectMembers(this.store.projects, repo).members,
-        roles: crew && new Set(crew.roles.map((r) => r.name))
+        members,
+        crew: crew && {
+          roles: new Map(crew.roles.map((r) => [r.name, r.runtime])),
+          check: async (runtime) => check?.(runtime, repo.root) ?? { ...PASSING_RUNTIME, runtime },
+          claudeTrust: { folder: trust, trusted: this.store.claudeTrusted(trust) }
+        }
       },
       { git: this.deps.git ?? readOnlyGit, gh: this.deps.gh ?? nativeGh }
     );
+  }
+
+  /**
+   * A Claude Code session reported from `cwd`. It only does once its folder
+   * trust prompt is answered, so the plan card stops asking for that folder.
+   */
+  noteClaudeSession(cwd: string): void {
+    if (this.claudeFolders.has(cwd)) return;
+    this.claudeFolders.add(cwd);
+    this.store.noteClaudeFolder(cwd);
   }
 
   /** The roles and playbooks a project's jobs can use, read fresh from their files. */

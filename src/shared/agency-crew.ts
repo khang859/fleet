@@ -184,3 +184,26 @@ export const CrewSnapshotSchema = z.object({
   playbook: PlaybookRecord.nullable()
 });
 export type CrewSnapshot = z.output<typeof CrewSnapshotSchema>;
+
+/**
+ * The oldest versions crew can run on: every flag and settings key Fleet
+ * passes is there from these on. See docs/learnings/claude-code-crew-flags.md.
+ */
+export const RUNTIME_MIN_VERSION: Record<CrewRuntime, string> = {
+  claude: '2.1.78',
+  eva: '0.3.0'
+};
+
+export const RUNTIME_LABEL: Record<CrewRuntime, string> = { claude: 'Claude Code', eva: 'eva' };
+
+/**
+ * Whether crew can run on a runtime, as a pane in the project would start it.
+ * `problems` keep Approve off for a plan that needs it; `warnings` do not.
+ */
+export type RuntimeCheck = {
+  runtime: CrewRuntime;
+  path: string | null;
+  version: string | null;
+  problems: string[];
+  warnings: string[];
+};

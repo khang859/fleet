@@ -6,6 +6,7 @@ import type {
   PlanIssue,
   PlanOverlap
 } from '../../../shared/agency-jobs';
+import { RUNTIME_LABEL, type CrewRuntime, type RuntimeCheck } from '../../../shared/agency-crew';
 import type { Plan, PlanStep } from '../../../shared/agency-plan';
 
 /** What Fleet read about one member repository just before the check. */
@@ -34,9 +35,30 @@ export type PlanFacts = {
   overlap: PlanOverlap[];
   /** Bases an earlier approval pinned; a change keeps them. */
   pinned: PlanBases | null;
-  /** The roles the project's crew has, or null when the crew is not known. */
-  roles: ReadonlySet<string> | null;
+  /** The project's crew, or null when it is not known. */
+  crew: CrewFacts | null;
 };
+
+export type CrewFacts = {
+  /** Each crew role's runtime, by role name. */
+  roles: ReadonlyMap<string, CrewRuntime>;
+  /** What the check found for each runtime a step runs on. */
+  runtimes: Partial<Record<CrewRuntime, RuntimeCheck>>;
+  /**
+   * The folder whose Claude Code folder trust covers the crew's working
+   * folders, and whether a Claude Code session has reported from it, which
+   * it only does once the trust prompt is accepted.
+   */
+  claudeTrust: { folder: string; trusted: boolean };
+};
+
+/** What a step runs on: its own runtime, else its role's; null for a role that is not there. */
+export function stepRuntime(
+  step: PlanStep,
+  roles: ReadonlyMap<string, CrewRuntime>
+): CrewRuntime | null {
+  return step.runtime ?? roles.get(step.role) ?? null;
+}
 
 /** The members a step changes: those it names, or every member when it names none. */
 export function changedMembers(step: PlanStep, members: readonly string[]): string[] {
@@ -97,8 +119,7 @@ function prUnavailable(plan: Plan, facts: PlanFacts): PlanIssue[] {
 }
 
 /** A step whose role is not one of the project's crew roles. */
-function unknownRoles(plan: Plan, roles: ReadonlySet<string> | null): PlanIssue[] {
-  if (roles === null) return [];
+function unknownRoles(plan: Plan, roles: ReadonlyMap<string, CrewRuntime>): PlanIssue[] {
   return plan.steps
     .filter((step) => !roles.has(step.role))
     .map(
@@ -109,6 +130,48 @@ function unknownRoles(plan: Plan, roles: ReadonlySet<string> | null): PlanIssue[
         step: step.id
       })
     );
+}
+
+/** Steps on a runtime crew cannot use, one issue per runtime. */
+function runtimeIssues(plan: Plan, crew: CrewFacts): PlanIssue[] {
+  return Object.values(crew.runtimes).flatMap((check): PlanIssue[] => {
+    if (check.problems.length === 0) return [];
+    const steps = plan.steps.filter((s) => stepRuntime(s, crew.roles) === check.runtime);
+    return [
+      {
+        code: 'runtime-unavailable',
+        severity: 'block',
+        text: `${steps.map((s) => s.id).join(', ')} ${steps.length === 1 ? 'runs' : 'run'} on ${RUNTIME_LABEL[check.runtime]}. ${check.problems.join(' ')}`
+      }
+    ];
+  });
+}
+
+/**
+ * Claude Code asks once per folder whether to trust it, and no hook runs
+ * until someone answers, so a crew member would wait at that prompt unseen.
+ */
+function trustIssue(plan: Plan, crew: CrewFacts): PlanIssue[] {
+  const { folder, trusted } = crew.claudeTrust;
+  if (trusted || !plan.steps.some((s) => stepRuntime(s, crew.roles) === 'claude')) return [];
+  return [
+    {
+      code: 'claude-trust',
+      severity: 'warn',
+      text: `Claude Code has not run in ${folder} yet. Open it there once and trust the folder, or each Claude crew member waits for you at that prompt.`,
+      fix: 'trust-claude',
+      path: folder
+    }
+  ];
+}
+
+function crewIssues(plan: Plan, crew: CrewFacts | null): PlanIssue[] {
+  if (crew === null) return [];
+  return [
+    ...unknownRoles(plan, crew.roles),
+    ...runtimeIssues(plan, crew),
+    ...trustIssue(plan, crew)
+  ];
 }
 
 function memberIssues(member: MemberFacts): PlanIssue[] {
@@ -156,7 +219,7 @@ export function checkPlan(plan: Plan, facts: PlanFacts): PlanChecks {
   return {
     issues: [
       ...outsideProject(plan, names),
-      ...unknownRoles(plan, facts.roles),
+      ...crewIssues(plan, facts.crew),
       ...members.flatMap(memberIssues),
       ...prUnavailable(plan, facts),
       ...overlapIssue(facts.overlap)

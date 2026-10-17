@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { MemberBase } from '../../../../shared/agency-jobs';
 import { PlanSchema, withLocalBranches, type PlanInput } from '../../../../shared/agency-plan';
-import { checkPlan, pinBases, type MemberFacts, type PlanFacts } from '../plan-checks';
+import type { CrewRuntime, RuntimeCheck } from '../../../../shared/agency-crew';
+import {
+  checkPlan,
+  pinBases,
+  type CrewFacts,
+  type MemberFacts,
+  type PlanFacts
+} from '../plan-checks';
 
 const HEAD = 'b'.repeat(40);
 const TIP = 'a'.repeat(40);
@@ -27,7 +34,22 @@ const facts = (patch: Partial<PlanFacts> = {}): PlanFacts => ({
   members: [member()],
   overlap: [],
   pinned: null,
-  roles: null,
+  crew: null,
+  ...patch
+});
+
+const runtime = (r: CrewRuntime, problems: string[] = []): RuntimeCheck => ({
+  runtime: r,
+  path: `/usr/local/bin/${r}`,
+  version: '9.9.9',
+  problems,
+  warnings: []
+});
+
+const crew = (patch: Partial<CrewFacts> = {}): CrewFacts => ({
+  roles: new Map([['builder', 'claude']]),
+  runtimes: { claude: runtime('claude') },
+  claudeTrust: { folder: '/repo', trusted: true },
   ...patch
 });
 
@@ -84,11 +106,54 @@ describe('checkPlan', () => {
   });
 
   it('blocks a step whose role the crew does not have, once the crew is known', () => {
-    expect(codes(PR, facts({ roles: new Set(['reviewer']) }))).toEqual(['unknown-role']);
-    expect(checkPlan(PR, facts({ roles: new Set(['reviewer']) })).issues[0]?.text).toBe(
+    const reviewerOnly = facts({
+      crew: crew({ roles: new Map([['reviewer', 'claude']]), runtimes: {} })
+    });
+    expect(codes(PR, reviewerOnly)).toEqual(['unknown-role']);
+    expect(checkPlan(PR, reviewerOnly).issues[0]?.text).toBe(
       "builder-1 uses the role builder, which is not one of this project's crew roles."
     );
-    expect(codes(PR, facts({ roles: new Set(['builder']) }))).toEqual([]);
+    expect(codes(PR, facts({ crew: crew() }))).toEqual([]);
+  });
+
+  it('blocks steps on a runtime crew cannot use, naming each step once', () => {
+    const two = plan([
+      { id: 'build', role: 'builder', title: 'Build' },
+      { id: 'review', role: 'builder', title: 'Review', runtime: 'eva' }
+    ]);
+    const checks = checkPlan(
+      two,
+      facts({
+        crew: crew({
+          runtimes: {
+            claude: runtime('claude'),
+            eva: runtime('eva', ['eva is not installed, or not on the PATH a terminal pane gets.'])
+          }
+        })
+      })
+    );
+    expect(checks.issues).toEqual([
+      {
+        code: 'runtime-unavailable',
+        severity: 'block',
+        text: 'review runs on eva. eva is not installed, or not on the PATH a terminal pane gets.'
+      }
+    ]);
+  });
+
+  it('offers the trust step until Claude Code has run in the folder, for Claude steps only', () => {
+    const untrusted = crew({ claudeTrust: { folder: '/repo', trusted: false } });
+    expect(checkPlan(PR, facts({ crew: untrusted })).issues).toEqual([
+      {
+        code: 'claude-trust',
+        severity: 'warn',
+        text: 'Claude Code has not run in /repo yet. Open it there once and trust the folder, or each Claude crew member waits for you at that prompt.',
+        fix: 'trust-claude',
+        path: '/repo'
+      }
+    ]);
+    const onEva = crew({ ...untrusted, roles: new Map([['builder', 'eva']]), runtimes: {} });
+    expect(codes(PR, facts({ crew: onEva }))).toEqual([]);
   });
 
   it('warns about a dirty main checkout and about overlap with another job', () => {

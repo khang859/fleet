@@ -52,6 +52,8 @@ type HookInput struct {
 	Message          string                 `json:"message,omitempty"`
 	TranscriptPath   string                 `json:"transcript_path,omitempty"`
 	Source           string                 `json:"source,omitempty"`
+	Error            string                 `json:"error,omitempty"`
+	ErrorDetails     string                 `json:"error_details,omitempty"`
 }
 
 type State struct {
@@ -70,6 +72,8 @@ type State struct {
 	TranscriptPath   string                 `json:"transcript_path,omitempty"`
 	ConfigDir        string                 `json:"config_dir,omitempty"`
 	Source           string                 `json:"source,omitempty"`
+	Error            string                 `json:"error,omitempty"`
+	ErrorDetails     string                 `json:"error_details,omitempty"`
 	Protocol         int                    `json:"protocol"`
 }
 
@@ -205,7 +209,9 @@ func sendEvent(state *State, waitForResponse bool) *SocketResponse {
 //
 // SubagentStop has its own status: a subagent finishing says nothing about
 // whether the parent turn is done, so Fleet must not read it as "waiting for
-// input". Notification is refined by type in main.
+// input". Notification is refined by type in main. StopFailure ends the turn
+// like Stop, but on an API error such as a rate limit, which Fleet must tell
+// apart from a turn that finished.
 func statusFor(event string) string {
 	switch event {
 	case "UserPromptSubmit", "PostToolUse", "PostToolUseFailure":
@@ -218,6 +224,8 @@ func statusFor(event string) string {
 		return "notification"
 	case "Stop", "SessionStart":
 		return "waiting_for_input"
+	case "StopFailure":
+		return "api_error"
 	case "SubagentStop":
 		return "subagent_stop"
 	case "SessionEnd":
@@ -244,6 +252,8 @@ func newState(input *HookInput, tty *string, pid int, getenv func(string) string
 		TranscriptPath: input.TranscriptPath,
 		ConfigDir:      getenv("CLAUDE_CONFIG_DIR"),
 		Source:         input.Source,
+		Error:          input.Error,
+		ErrorDetails:   input.ErrorDetails,
 		Protocol:       protocolVersion,
 	}
 }

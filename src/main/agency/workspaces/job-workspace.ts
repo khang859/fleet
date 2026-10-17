@@ -35,6 +35,16 @@ export const crewBranch = (jobId: number, stepId: string, n: number): string =>
   `admiral/${jobDisplayId(jobId)}/${stepId}-${n}`;
 
 /**
+ * The folder whose Claude Code trust covers a project's crew folders. Claude
+ * Code keys the trust of a worktree on its main checkout, so a repository or
+ * an umbrella is trusted at its root. A folder project's job workspaces are
+ * plain folders in the jobs folder, which trusting the jobs folder covers.
+ */
+export function claudeTrustFolder(kind: ProjectKind, root: string, home: string): string {
+  return kind === 'folder' ? join(home, 'jobs') : root;
+}
+
+/**
  * What a step's job workspace holds, laid out like the project so relative
  * paths work. A one-repository project is one worktree. A submodules project
  * is a worktree of the umbrella with a worktree of each member the step needs

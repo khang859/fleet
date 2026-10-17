@@ -37,6 +37,7 @@ describe('reducePhase', () => {
     ['PreToolUse', 'running_tool', 'processing', null],
     ['PostToolUse', 'processing', 'processing', null],
     ['Stop', 'waiting_for_input', 'waitingForInput', 'prompt'],
+    ['StopFailure', 'api_error', 'waitingForInput', 'prompt'],
     ['SessionStart', 'waiting_for_input', 'waitingForInput', 'prompt'],
     ['Notification', 'waiting_for_input', 'waitingForInput', 'prompt'],
     ['PreCompact', 'compacting', 'compacting', null],
