@@ -1,0 +1,183 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../../shared/agency';
+import { agencyJob, agencyQuestion } from '../../../../../shared/__tests__/agency-fixtures';
+import { QuestionCard } from '../QuestionCard';
+import { JobSheet } from '../JobSheet';
+import { askedQuestionId, jobStatus } from '../job-view';
+
+/** The question card and the job sheet, in each state the client can find them in. */
+
+function question(over: Partial<AgencyQuestion> = {}): AgencyQuestion {
+  return agencyQuestion({
+    question: 'Which database?',
+    context: 'Both are already in the lockfile.',
+    options: [{ label: 'SQLite', detail: 'one file' }, { label: 'Postgres' }],
+    ...over
+  });
+}
+
+function job(over: Partial<AgencyJob> = {}): AgencyJob {
+  return agencyJob({
+    id: 2,
+    title: 'Fix the tab drag',
+    brief: 'Dragging a tab onto itself loses it.',
+    state: 'briefing',
+    budgetUsd: 25,
+    ...over
+  });
+}
+
+const card = (q: AgencyQuestion): string =>
+  renderToStaticMarkup(
+    createElement(QuestionCard, {
+      question: q,
+      onAnswer: async () => Promise.resolve(true),
+      onOpenSettings: () => {}
+    })
+  );
+
+function sheet(
+  snapshot: AgencySnapshot | undefined,
+  jobId: number | null,
+  working = false
+): string {
+  return renderToStaticMarkup(
+    createElement(JobSheet, {
+      snapshot,
+      jobId,
+      working,
+      defaultBudgetUsd: 10,
+      onAnswer: async () => Promise.resolve(true),
+      onOpenSettings: () => {}
+    })
+  );
+}
+
+const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
+  repoId: 'repo-1',
+  lobbySessionId: 'lobby',
+  jobs: [],
+  questions: [],
+  nextRetryAt: null,
+  ...over
+});
+
+describe('QuestionCard', () => {
+  it('puts an open question up with the Admiral’s pick marked and room for own words', () => {
+    const html = card(question());
+    expect(html).toContain('Which database?');
+    expect(html).toContain('q4');
+    expect(html).toContain('Both are already in the lockfile.');
+    expect(html).toContain('SQLite · My pick');
+    expect(html).toContain('title="one file"');
+    expect(html).toContain('>Postgres<');
+    expect(html).toContain('Or answer in your own words');
+    expect(html).toContain('border-amber-400/35');
+  });
+
+  it('says how a settled question was answered, and when it came late', () => {
+    const html = card(
+      question({ status: 'answered', answerOption: 1, answerText: 'with pgvector', answeredAt: 2 })
+    );
+    expect(html).toContain('Postgres - with pgvector');
+    expect(html).not.toContain('Or answer in your own words');
+    expect(html).not.toContain('after it was withdrawn');
+
+    const late = card(question({ status: 'answered', answerOption: 0, late: true, answeredAt: 2 }));
+    expect(late).toContain('after it was withdrawn, so the Admiral was told it came late');
+  });
+
+  it('keeps a withdrawn question answerable, without the pick lit up', () => {
+    const html = card(question({ status: 'withdrawn', withdrawnReason: 'the crew found out' }));
+    expect(html).toContain('Withdrawn: the crew found out. You can still answer');
+    expect(html).not.toContain('My pick');
+    expect(html).toContain('Or answer in your own words');
+  });
+
+  it('draws nothing for a hidden question', () => {
+    expect(card(question({ status: 'hidden' }))).toBe('');
+  });
+
+  it('offers Retry and Settings when the model cannot be reached', () => {
+    const q = question({
+      kind: 'model_unreachable',
+      question: 'The Admiral cannot reach its model',
+      context: '401 from OpenRouter',
+      options: [{ label: 'Retry' }]
+    });
+    const html = card(q);
+    expect(html).toContain('>Retry<');
+    expect(html).toContain('>Open Settings<');
+    expect(html).not.toContain('My pick');
+    expect(card({ ...q, status: 'withdrawn' })).toContain('The model answered again.');
+    expect(card({ ...q, status: 'answered', answerOption: 0, answeredAt: 2 })).toContain(
+      'Retried.'
+    );
+  });
+});
+
+describe('JobSheet', () => {
+  it('explains how a job goes before the first brief', () => {
+    const html = sheet(snap(), null);
+    expect(html).toContain('width:380px');
+    expect(html).toContain('THE JOB');
+    expect(html).toContain('Your job sheet shows up here once you send a brief.');
+    expect(html).toContain('HOW A JOB GOES');
+    expect(html).toContain('Default budget');
+    expect(html).toContain('$10');
+    expect(html).not.toContain('>WAITING ON YOU');
+  });
+
+  it('shows the job on screen with only its own questions', () => {
+    const html = sheet(
+      snap({
+        jobs: [job()],
+        questions: [question({ jobId: 2 }), question({ id: 5, jobId: 3, question: 'Elsewhere?' })]
+      }),
+      2
+    );
+    expect(html).toContain('Fix the tab drag');
+    expect(html).toContain('j2');
+    expect(html).toContain('Dragging a tab onto itself loses it.');
+    expect(html).toContain('Waiting on you');
+    expect(html).toContain('WAITING ON YOU · 1');
+    expect(html).toContain('Which database?');
+    expect(html).not.toContain('Elsewhere?');
+    expect(html).toContain('PLAN');
+    expect(html).toContain('>Budget<');
+    expect(html).toContain('$25');
+    expect(html).not.toContain('HOW A JOB GOES');
+  });
+
+  it('says nothing needs the client when a job has no open question', () => {
+    const html = sheet(snap({ jobs: [job()] }), 2, true);
+    expect(html).toContain('Nothing needs you right now.');
+    expect(html).toContain('Working');
+  });
+
+  it('points at the tabs from a lobby that already has jobs', () => {
+    expect(sheet(snap({ jobs: [job()] }), null)).toContain('Pick a job above');
+  });
+});
+
+describe('job view helpers', () => {
+  it('puts a question to the client ahead of everything else', () => {
+    expect(jobStatus({ state: 'running' }, { asking: true, working: true })).toEqual({
+      label: 'Waiting on you',
+      tone: 'amber'
+    });
+    expect(jobStatus({ state: 'planned' }, { asking: false, working: true }).label).toBe('Working');
+    expect(jobStatus({ state: 'planned' }, { asking: false, working: false })).toEqual({
+      label: 'Plan ready',
+      tone: 'blue'
+    });
+  });
+
+  it('reads the question id an ask_client call put up', () => {
+    expect(askedQuestionId({ summary: 'asked q12', result: null })).toBe(12);
+    expect(askedQuestionId({ summary: null, result: 'q3 is up for the client.' })).toBe(3);
+    expect(askedQuestionId({ summary: null, result: 'refused' })).toBeNull();
+  });
+});

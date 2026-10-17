@@ -28,6 +28,7 @@ import type { FleetOpenTabRequest } from '../../../shared/fleet-tools';
 import type { RemoteHost } from '../../../shared/remote-ssh-types';
 import type { AgencyRepoRef } from '../../../shared/agency';
 import { useShellProfilesStore } from './shell-profiles-store';
+import { runningJobs, useAgencyStore } from './agency-store';
 import { scratchDir, isScratchDir } from '../lib/scratch';
 
 const logTabs = createLogger('sidebar:tabs');
@@ -216,7 +217,15 @@ type WorkspaceStore = {
    */
   openTerminalTab: (req: Omit<FleetOpenTabRequest, 'requestId'>) => void;
   duplicateTab: (tabId: string) => string | null;
-  closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
+  /**
+   * Close a tab. One holding an Admiral with jobs still running asks first,
+   * through `admiralCloseConfirm`, unless `admiralConfirmed` says it was asked.
+   */
+  closeTab: (
+    tabId: string,
+    serializedPanes?: Map<string, string>,
+    opts?: { admiralConfirmed?: boolean }
+  ) => void;
   undoCloseTab: () => void;
   renameTab: (tabId: string, label: string) => void;
   resetTabLabel: (tabId: string, liveCwd?: string) => void;
@@ -227,6 +236,9 @@ type WorkspaceStore = {
   collapsedGroups: Set<string>;
   worktreeCloseConfirm: { tabId: string; label: string } | null;
   setWorktreeCloseConfirm: (confirm: { tabId: string; label: string } | null) => void;
+  /** An Admiral about to close with jobs still running, waiting on the client's choice. */
+  admiralCloseConfirm: AdmiralCloseConfirm | null;
+  setAdmiralCloseConfirm: (confirm: AdmiralCloseConfirm | null) => void;
   createWorktreeGroup: (
     tabId: string,
     worktreePath: string,
@@ -250,7 +262,8 @@ type WorkspaceStore = {
 
   // Pane actions
   splitPane: (paneId: string, direction: 'horizontal' | 'vertical') => string;
-  closePane: (paneId: string) => void;
+  /** Close a pane. An Admiral with jobs still running asks first, as `closeTab` does. */
+  closePane: (paneId: string, opts?: { admiralConfirmed?: boolean }) => void;
   setActivePane: (paneId: string) => void;
   resizeSplit: (splitNodePath: number[], ratio: number) => void;
   renamePane: (paneId: string, label: string) => void;
@@ -633,6 +646,51 @@ export function findAdmiralPane(state: OpenWorkspaces, repoId: string): string |
   );
 }
 
+/** An Admiral about to close with jobs still running, and the close it is holding up. */
+export type AdmiralCloseConfirm = {
+  repoId: string;
+  repoName: string;
+  /** How many of the repository's jobs are still running. */
+  running: number;
+  close:
+    | { kind: 'tab'; tabId: string; serializedPanes?: Map<string, string> }
+    | { kind: 'pane'; paneId: string };
+};
+
+/**
+ * The question to ask before closing a subtree that holds an Admiral whose
+ * jobs are still running, or null when there is nothing to ask. Running jobs
+ * are read off the agency mirror, which an attached Admiral keeps current.
+ */
+function admiralCloseCheck(
+  node: PaneNode,
+  close: AdmiralCloseConfirm['close']
+): AdmiralCloseConfirm | null {
+  for (const leaf of collectPaneLeafs(node)) {
+    const repo = leaf.admiralRepo;
+    if (!isAdmiralLeaf(leaf) || repo === undefined) continue;
+    const running = runningJobs(useAgencyStore.getState().snapshots[repo.repoId]).length;
+    if (running > 0) return { repoId: repo.repoId, repoName: repo.name, running, close };
+  }
+  return null;
+}
+
+/**
+ * A closed subtree without the Admiral panes whose repository has another
+ * Admiral open now, or null when nothing would be left of it.
+ */
+function withoutReplacedAdmirals(node: PaneNode, state: OpenWorkspaces): PaneNode | null {
+  let root: PaneNode | null = node;
+  for (const leaf of collectPaneLeafs(node)) {
+    const repoId = leaf.admiralRepo?.repoId;
+    if (!isAdmiralLeaf(leaf) || repoId === undefined) continue;
+    const live = findAdmiralPane(state, repoId);
+    if (live === null || live === leaf.id || root === null) continue;
+    root = removePaneFromTree(root, leaf.id);
+  }
+  return root;
+}
+
 /**
  * Give up the one-per-repo claim of every Admiral pane in a closing subtree.
  * The jobs stay in main; only the pane is going.
@@ -692,6 +750,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   worktreeCloseConfirm: null,
   setWorktreeCloseConfirm: (confirm) => {
     set({ worktreeCloseConfirm: confirm });
+  },
+  admiralCloseConfirm: null,
+  setAdmiralCloseConfirm: (confirm) => {
+    set({ admiralCloseConfirm: confirm });
   },
 
   addTab: (label, cwd) => {
@@ -788,13 +850,24 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     return get().addTab(undefined, cwd);
   },
 
-  closeTab: (tabId, serializedPanes) => {
+  closeTab: (tabId, serializedPanes, opts) => {
     logTabs.debug('closeTab', { tabId });
     // Check pinned tools before disposing any pane resources.
     const closing = get().workspace.tabs.find((t) => t.id === tabId);
     if (closing && isPinnedTab(closing)) {
       logTabs.debug('closeTab refused: pinned tab', { tabId });
       return;
+    }
+    if (closing && opts?.admiralConfirmed !== true) {
+      const confirm = admiralCloseCheck(closing.splitRoot, {
+        kind: 'tab',
+        tabId,
+        serializedPanes
+      });
+      if (confirm !== null) {
+        set({ admiralCloseConfirm: confirm });
+        return;
+      }
     }
     // Cancel any in-flight Agent turns for panes in this tab and drop their state.
     if (closing) {
@@ -833,7 +906,23 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     logTabs.debug('undoCloseTab');
     set((state) => {
       if (!state.lastClosedTab) return state;
-      const { tab, index } = state.lastClosedTab;
+      const { index } = state.lastClosedTab;
+      // An Admiral opened for the same repository since this one closed keeps
+      // its place: bringing this one back too would make two for one repo.
+      const splitRoot = withoutReplacedAdmirals(state.lastClosedTab.tab.splitRoot, state);
+      if (splitRoot === null) {
+        const repoId = collectPaneLeafs(state.lastClosedTab.tab.splitRoot).find(isAdmiralLeaf)
+          ?.admiralRepo?.repoId;
+        const live = repoId === undefined ? null : findAdmiralPane(state, repoId);
+        const owner = state.workspace.tabs.find(
+          (t) => live !== null && collectPaneIds(t.splitRoot).includes(live)
+        );
+        return {
+          lastClosedTab: null,
+          ...(owner ? { activeTabId: owner.id, activePaneId: live } : {})
+        };
+      }
+      const tab = { ...state.lastClosedTab.tab, splitRoot };
       const tabs = [...state.workspace.tabs];
       tabs.splice(Math.min(index, tabs.length), 0, tab);
       return {
@@ -1223,13 +1312,21 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     return newLeaf.id;
   },
 
-  closePane: (paneId) => {
+  closePane: (paneId, opts) => {
     logLayout.debug('closePane', { paneId });
     // Check pinned tools before disposing any pane resources.
     const owner = get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
     if (owner && isToolPane(owner, paneId)) {
       logLayout.debug('closePane refused: pinned tool pane', { paneId, tabId: owner.id });
       return;
+    }
+    const leaf = owner ? findLeaf(owner.splitRoot, paneId) : null;
+    if (leaf && opts?.admiralConfirmed !== true) {
+      const confirm = admiralCloseCheck(leaf, { kind: 'pane', paneId });
+      if (confirm !== null) {
+        set({ admiralCloseConfirm: confirm });
+        return;
+      }
     }
 
     // Cancel any in-flight Agent turn for this pane and drop its state: a turn

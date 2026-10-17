@@ -388,6 +388,25 @@ describe('replaySession', () => {
     expect(replay.messages).toEqual([msg('q', 'user', 'also check the docs')]);
   });
 
+  // The turn took the message in after the part of its reply written so far,
+  // and that part is written to the log just before the unqueue.
+  it('moves a message taken in by a turn to where the turn was', () => {
+    const queued = { ...msg('q', 'user', 'use pnpm'), meta: { kind: 'queued' as const } };
+    const replay = replaySession(
+      log(
+        HEADER,
+        { t: 'message', message: msg('u', 'user', 'add a test') },
+        { t: 'message', message: queued },
+        { t: 'message', message: msg('a1', 'assistant', 'reading the config') },
+        { t: 'unqueue', id: 'q' },
+        { t: 'message', message: msg('a2', 'assistant', 'using pnpm') }
+      )
+    );
+
+    expect(replay.messages.map((m) => m.id)).toEqual(['u', 'a1', 'q', 'a2']);
+    expect(replay.messages[2].meta).toBeUndefined();
+  });
+
   it('reads the scope of an Admiral session from its header', () => {
     const admiral = sessionHeader('s-2', '/repo', '2026-08-05T10:00:00.000Z', 'admiral');
 

@@ -47,6 +47,7 @@ import { injectLiveCwd } from './lib/workspace-utils';
 import { focusPane } from './lib/focus-pane';
 import { initClaudeSessionsListener } from './store/claude-sessions-store';
 import { initAgentFleet } from './store/agent-fleet';
+import { initAdmiralRuntime } from './store/admiral-runtime';
 import { switchToWorkspace } from './lib/switch-workspace';
 import { ShortcutsHint } from './components/ShortcutsHint';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
@@ -68,6 +69,7 @@ import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
 import { RemoteRcPromptManager } from './components/ssh/RemoteRcPromptManager';
 import { QuitConfirmDialog } from './components/QuitConfirmDialog';
+import { AdmiralCloseDialog } from './components/admiral/AdmiralCloseDialog';
 import { UpdatePill } from './components/UpdatePill';
 import { WhatsNewDialog } from './components/WhatsNewDialog';
 import { useUpdateNudge } from './hooks/use-update-nudge';
@@ -378,6 +380,11 @@ export function App(): React.JSX.Element {
   // Wake orchestrator panes when the sessions they look after need them
   useEffect(() => {
     return initAgentFleet();
+  }, []);
+
+  // Look after every Admiral pane: its claim, its conversations, its wakeups
+  useEffect(() => {
+    return initAdmiralRuntime();
   }, []);
 
   // Listen for focus-pane from main process (copilot "Go to Terminal", OS notifications)
@@ -1201,6 +1208,7 @@ export function App(): React.JSX.Element {
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />
       <RemoteRcPromptManager />
       <QuitConfirmDialog />
+      <AdmiralCloseDialog />
       <WhatsNewDialog />
       <ToastContainer />
     </div>

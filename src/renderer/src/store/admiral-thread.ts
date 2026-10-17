@@ -1,4 +1,5 @@
 import type { AgentTurnMode } from '../../../shared/agent-types';
+import type { FleetSettings } from '../../../shared/types';
 
 /**
  * Agent-store thread keys for an Admiral pane's conversations.
@@ -47,4 +48,14 @@ export function ownerPane(key: string): string {
 export function turnModeFor(key: string, orchestrator: boolean): AgentTurnMode {
   if (isAdmiralKey(key)) return 'admiral';
   return orchestrator ? 'orchestrator' : 'chat';
+}
+
+/**
+ * The model a thread's turns run on. An Admiral runs on its own model when one
+ * is set and on the Agent's coding model otherwise; everything else on the
+ * coding model. Empty when none is chosen.
+ */
+export function threadModelId(key: string, settings: Pick<FleetSettings, 'agency' | 'ai'>): string {
+  const coding = settings.ai.agent.coding.model ?? '';
+  return isAdmiralKey(key) ? settings.agency.admiral.model || coding : coding;
 }

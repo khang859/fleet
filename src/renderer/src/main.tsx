@@ -14,6 +14,8 @@ import { useNotificationStore } from './store/notification-store';
 import { useClaudeConfigStore } from './store/claude-config-store';
 import { useClaudeSessionsStore } from './store/claude-sessions-store';
 import { useUpdateStore } from './store/update-store';
+import { useAgencyStore } from './store/agency-store';
+import { useAdmiralRuntimeStore } from './store/admiral-runtime';
 import { terminalRegistryForDev } from './hooks/use-terminal';
 import { createCommandRegistry } from './lib/commands';
 import './index.css';
@@ -97,7 +99,9 @@ if (import.meta.env.DEV) {
       notification: useNotificationStore,
       update: useUpdateStore,
       claudeConfig: useClaudeConfigStore,
-      claudeSessions: useClaudeSessionsStore
+      claudeSessions: useClaudeSessionsStore,
+      agency: useAgencyStore,
+      admiralRuntime: useAdmiralRuntimeStore
     },
     terminals: terminalRegistryForDev,
     // A function, not a list: commands read the stores when they run.

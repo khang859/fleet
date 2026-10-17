@@ -470,7 +470,13 @@ function PaneGridImpl({
                 />
               );
             case 'admiral':
-              return frame(<AdmiralPane paneId={leaf.id} repo={node.admiralRepo} />);
+              return frame(
+                <AdmiralPane
+                  paneId={leaf.id}
+                  repo={node.admiralRepo}
+                  activeJob={node.admiralActiveJob}
+                />
+              );
             case 'ssh-browser':
               return frame(
                 node.remoteHost ? (

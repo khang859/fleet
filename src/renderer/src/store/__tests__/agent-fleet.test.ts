@@ -136,6 +136,7 @@ beforeEach(async () => {
       onToolStart: listen(IPC_CHANNELS.AGENT_TOOL_START),
       onToolEnd: listen(IPC_CHANNELS.AGENT_TOOL_END),
       onImagePartial: listen(IPC_CHANNELS.AGENT_IMAGE_PARTIAL),
+      onQueuedTaken: listen(IPC_CHANNELS.AGENT_STREAM_QUEUED_TAKEN),
       onHandOff: listen(IPC_CHANNELS.AGENT_HAND_OFF),
       onPermissionAsk: listen(IPC_CHANNELS.AGENT_PERMISSION_ASK),
       onTaskStart: listen(IPC_CHANNELS.AGENT_TASK_START),

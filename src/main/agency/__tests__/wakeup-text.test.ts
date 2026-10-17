@@ -1,30 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { AgencyQuestion } from '../../../shared/agency';
+import { agencyQuestion } from '../../../shared/__tests__/agency-fixtures';
 import { renderWakeupText } from '../wakeup-text';
 import { WAKEUP_BACKOFF_MS, wakeupBackoffMs } from '../backoff';
 
 function question(extra: Partial<AgencyQuestion> = {}): AgencyQuestion {
-  return {
-    id: 4,
-    repoId: '0123456789abcdef',
+  return agencyQuestion({
     jobId: 2,
-    planVersion: null,
-    step: null,
-    kind: 'ask',
     question: 'Use the new API?',
-    context: '',
     options: [{ label: 'Yes' }, { label: 'No', detail: 'keep the old one' }],
-    recommended: 0,
-    dependsOn: null,
     status: 'answered',
     answerOption: 1,
-    answerText: null,
-    late: false,
-    withdrawnReason: null,
-    createdAt: 1,
     answeredAt: 2,
     ...extra
-  };
+  });
 }
 
 describe('renderWakeupText', () => {

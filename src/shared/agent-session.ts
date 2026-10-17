@@ -487,8 +487,15 @@ function apply(replay: AgentSessionReplay, event: AgentSessionEvent): void {
       return;
     }
     case 'unqueue': {
-      const message = replay.messages.findLast((m) => m.id === event.id);
-      if (message?.meta?.kind === 'queued') delete message.meta;
+      // Taken in where the turn was when it read the message, which is the
+      // end of the log so far: the reply it interrupted is written just before.
+      const at = replay.messages.findLastIndex((m) => m.id === event.id);
+      if (at === -1) return;
+      const message = replay.messages[at];
+      if (message.meta?.kind !== 'queued') return;
+      delete message.meta;
+      replay.messages.splice(at, 1);
+      replay.messages.push(message);
       return;
     }
   }

@@ -4,11 +4,12 @@ import { z } from 'zod';
  * What kind of work a row in the quit warning describes.
  *
  * `pane` rows are built by the renderer, which owns the tab/split tree and so
- * is the only side that can name a pane. The other two are main's alone: a
+ * is the only side that can name a pane. The rest are main's alone: a
  * subagent and a background command have no pane of their own to be listed
- * under, and would otherwise be destroyed without ever being mentioned.
+ * under, and would otherwise be destroyed without ever being mentioned; an
+ * Admiral job runs whether or not its pane is open, and a quit interrupts it.
  */
-export type QuitWorkKind = 'pane' | 'subagent' | 'background';
+export type QuitWorkKind = 'pane' | 'subagent' | 'background' | 'job';
 
 export type QuitWorkItem = {
   kind: QuitWorkKind;

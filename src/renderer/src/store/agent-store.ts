@@ -39,7 +39,13 @@ import {
   withClearedResults
 } from '../../../shared/agent-context';
 import type { AgentScheduleRecord } from '../../../shared/agent-schedule';
-import { canDeliverTo, checkSchedules, loadSchedules, onScheduleChanged } from './agent-schedule';
+import {
+  canDeliverTo,
+  checkSchedules,
+  loadSchedules,
+  onScheduleChanged,
+  startUnpromptedTurn
+} from './agent-schedule';
 import { checkFleet, clearFleetPaused } from './agent-fleet';
 import {
   loadBackground,
@@ -49,7 +55,8 @@ import {
 import { useSettingsStore } from './settings-store';
 import { useNotificationStore } from './notification-store';
 import { isOrchestratorPane, registerPaneDisposer, useWorkspaceStore } from './workspace-store';
-import { turnModeFor } from './admiral-thread';
+import { isAdmiralKey, ownerPane, threadModelId, turnModeFor } from './admiral-thread';
+import type { AdmiralThreadScope } from '../../../shared/agency';
 import { toolLabel } from '../components/agent/tool-label';
 import type { AgentPhase, AgentStep } from '../components/agent/activity';
 import { draftInto } from '../hooks/use-terminal';
@@ -59,12 +66,49 @@ import type { ActivityState } from '../../../shared/types';
 const log = createLogger('store:agent');
 
 /**
- * The mode flags a turn's request carries. Both, because `orchestrator` is
- * what main read before `mode` existed and what saved layouts still say.
+ * What an Admiral thread needs from the Admiral runtime, which owns everything
+ * about a thread that is not its transcript: which repository and job it is,
+ * what the pane as a whole is doing, and what happens when one of its turns
+ * ends (wakeups acknowledged or handed back, queued messages sent on).
+ *
+ * Registered rather than imported, because the runtime reads the workspace and
+ * the agency store, and this store is loaded by tests that mock neither. With
+ * nothing registered an Admiral key behaves like any other thread.
  */
-function turnFlags(key: string): Pick<AgentSendRequest, 'mode' | 'orchestrator'> {
+export type AdmiralThreadHooks = {
+  /** The repository and job a thread key belongs to, or null when its pane is not attached. */
+  scope: (key: string) => AdmiralThreadScope | null;
+  /** Work out and report what the Admiral pane `paneId` is doing as a whole. */
+  rollUp: (paneId: string) => void;
+  /** A turn on an Admiral thread ended, however it ended. */
+  turnEnded: (key: string, streamId: string, error: string | null) => void;
+};
+
+let admiralHooks: AdmiralThreadHooks | null = null;
+
+export function registerAdmiralHooks(hooks: AdmiralThreadHooks): () => void {
+  admiralHooks = hooks;
+  return () => {
+    if (admiralHooks === hooks) admiralHooks = null;
+  };
+}
+
+/**
+ * The mode flags a turn's request carries. Both, because `orchestrator` is
+ * what main read before `mode` existed and what saved layouts still say. An
+ * Admiral turn also says which repository and job it is, which main checks
+ * against its records before the turn runs.
+ *
+ * Exported for `agent-schedule`, whose unprompted turns carry the same flags.
+ */
+export function turnFlags(
+  key: string
+): Pick<AgentSendRequest, 'mode' | 'orchestrator' | 'admiral'> {
   const orchestrator = isOrchestratorPane(useWorkspaceStore.getState(), key);
-  return { orchestrator, mode: turnModeFor(key, orchestrator) };
+  const mode = turnModeFor(key, orchestrator);
+  if (mode !== 'admiral') return { orchestrator, mode };
+  const admiral = admiralHooks?.scope(key) ?? null;
+  return { orchestrator: false, mode, ...(admiral === null ? {} : { admiral }) };
 }
 
 /**
@@ -81,6 +125,12 @@ function turnFlags(key: string): Pick<AgentSendRequest, 'mode' | 'orchestrator'>
  * nobody is watching a pane that started working on its own.
  */
 export function reportActivity(paneId: string, state: ActivityState): void {
+  // An Admiral pane has many threads and one tab, so what it reports is worked
+  // out across all of them - and across its questions, which are in no thread.
+  if (isAdmiralKey(paneId)) {
+    admiralHooks?.rollUp(ownerPane(paneId));
+    return;
+  }
   // A subagent stopped on a command still needs the user, whatever else in the
   // pane has since finished. Subagents run alongside each other and alongside
   // the turn, so the thing that ends is routinely not the thing that is
@@ -88,7 +138,14 @@ export function reportActivity(paneId: string, state: ActivityState): void {
   // another that is stopped on a question, and the only sign left that anything
   // needs answering would be a card somewhere up the transcript.
   if (state !== 'needs_me' && waitingOnUser(paneId)) return;
+  publishActivity(paneId, state, folderName(paneId));
+}
 
+/**
+ * Put a pane's state in the activity map and tell main, unless it is already
+ * what the map says. The Admiral runtime publishes its panes' roll-up here.
+ */
+export function publishActivity(paneId: string, state: ActivityState, label?: string): void {
   const now = Date.now();
   const store = useNotificationStore.getState();
   const previous = store.getActivity(paneId)?.state;
@@ -102,7 +159,7 @@ export function reportActivity(paneId: string, state: ActivityState): void {
   // The folder rides along because a desktop notification has no sidebar to
   // point at: "an agent needs your permission" is the one fact the user with
   // four panes running already has.
-  window.fleet.activity.report({ paneId, state, label: folderName(paneId) });
+  window.fleet.activity.report({ paneId, state, label });
 }
 
 /** Whether anything in this pane - its turn, or a subagent - is asking. */
@@ -451,9 +508,18 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
   },
 
   send: (paneId, cwd, text, attachments = []) => {
-    const thread = get().threads[paneId] ?? EMPTY_THREAD;
+    const current = get().threads[paneId] ?? EMPTY_THREAD;
     // A turn sent before the history arrives would be answered without it.
-    if (thread.streamId !== null || thread.loading) return;
+    if (current.loading) return;
+    if (current.streamId !== null) {
+      // The client can always talk to the Admiral. What they say while it works
+      // waits on the turn, which takes it in at its next round.
+      if (isAdmiralKey(paneId)) queueMessage(paneId, current, text, attachments);
+      return;
+    }
+    // Anything still marked queued was left by a turn that never took it in -
+    // the window closed under it - and goes out ahead of this message.
+    const thread = settleQueued(current);
 
     // A list with nothing open on it belongs to the job that just finished, and
     // the message being sent now is the next one. Carrying it forward would
@@ -591,7 +657,13 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     });
     log.debug('compact', { paneId, older: older.length, keep: recent.length });
     reportActivity(paneId, 'working');
-    window.fleet.agent.compact({ streamId, cwd: thread.cwd, messages: older });
+    window.fleet.agent.compact({
+      streamId,
+      cwd: thread.cwd,
+      messages: older,
+      // Folded on the model the conversation runs on.
+      ...(isAdmiralKey(paneId) ? { mode: 'admiral' as const } : {})
+    });
   },
 
   cancel: (paneId) => {
@@ -643,11 +715,18 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     // emitted by the PTY paths, and this pane never had one - so a record left
     // behind here is a dock badge that outlives the pane it counted.
     window.fleet.activity.report({ paneId, state: 'gone' });
+    // An Admiral pane's conversations are keyed under it, one per job, and go
+    // with it. Their turns are stopped like the pane's own would be.
+    const owned = Object.keys(get().threads).filter(
+      (key) => key !== paneId && isAdmiralKey(key) && ownerPane(key) === paneId
+    );
+    for (const key of owned) get().cancel(key);
 
     set((s) => {
-      if (!s.threads[paneId]) return { threads: s.threads };
+      const gone = [paneId, ...owned].filter((key) => s.threads[key] !== undefined);
+      if (gone.length === 0) return { threads: s.threads };
       const next = { ...s.threads };
-      delete next[paneId];
+      for (const key of gone) delete next[key];
       return { threads: next };
     });
   },
@@ -1350,8 +1429,14 @@ function endTurn(
   // the loop this feature has to not have.
   if (error === null && !wasCompacting) {
     autoCompact(paneId);
-    nameSession(thread);
+    // An Admiral's conversations are named by their job, and never listed.
+    if (!isAdmiralKey(paneId)) nameSession(thread);
   }
+
+  // An Admiral thread's runtime settles the turn's wakeups and sends on what
+  // the client said while it ran - before the schedule and digest checks,
+  // which an Admiral thread never has.
+  if (isAdmiralKey(paneId)) admiralHooks?.turnEnded(paneId, streamId, error);
 
   // However it ended, and last: a fire that came due mid-turn has been waiting
   // for the pane to be free, and this is the moment it is. After the compaction
@@ -1590,10 +1675,12 @@ function addSpend(sessionId: string, usage: AgentTurnUsage): void {
 function autoCompact(paneId: string): void {
   const state = useAgentStore.getState();
   const thread = state.threads[paneId];
-  const agent = useSettingsStore.getState().settings?.ai.agent;
-  if (!thread || !agent) return;
+  const settings = useSettingsStore.getState().settings;
+  const agent = settings?.ai.agent;
+  if (!thread || !settings || !agent) return;
 
-  const model = state.catalog?.models.find((m) => m.id === agent.coding.model);
+  const modelId = threadModelId(paneId, settings);
+  const model = state.catalog?.models.find((m) => m.id === modelId);
   const limit = model?.contextLimit ?? null;
   if (!shouldCompact(thread.contextTokens ?? 0, limit, agent.compactThreshold)) return;
   if (!canCompact(thread.messages)) return;
@@ -1610,7 +1697,11 @@ function applySummary(streamId: string, summary: string, usage: AgentTurnUsage |
   if (!found || !pending) return;
 
   const message = textMessage(crypto.randomUUID(), 'summary', summary);
-  const messages = [message, ...pending.keep];
+  // Messages the client queued while the summary was being written were not
+  // part of what was folded, and still wait to be sent.
+  const kept = new Set(pending.keep.map((m) => m.id));
+  const queued = found.thread.messages.filter((m) => isQueued(m) && !kept.has(m.id));
+  const messages = [message, ...pending.keep, ...queued];
   const contextTokens = estimateTranscriptTokens(messages);
   // Nobody asked for this call, which is the reason to count it rather than a
   // reason not to: unprompted spending is the kind a person most wants to find
@@ -1646,8 +1737,126 @@ function applySummary(streamId: string, summary: string, usage: AgentTurnUsage |
 
   // A compaction ends here rather than in `endTurn`, so a fire that arrived
   // while it was running would otherwise wait for something else to happen.
+  if (isAdmiralKey(found.paneId)) admiralHooks?.turnEnded(found.paneId, streamId, null);
   checkSchedules(found.paneId);
   checkFleet(found.paneId);
+}
+
+/** A client message an Admiral turn has not taken in yet. */
+function isQueued(message: AgentMessage): boolean {
+  return message.meta?.kind === 'queued';
+}
+
+function unqueued(message: AgentMessage): AgentMessage {
+  const copy = { ...message };
+  delete copy.meta;
+  return copy;
+}
+
+/** The empty reply a turn writes into, with the turn's own id so its events find it. */
+function emptyReply(streamId: string): AgentMessage {
+  return {
+    id: streamId,
+    role: 'assistant',
+    parts: [],
+    reasoning: '',
+    reasoningMs: null,
+    citations: []
+  };
+}
+
+/**
+ * A client message for an Admiral turn that is running: on screen and in the
+ * log at once, marked queued, and handed to the turn, which takes it in at its
+ * next round. If the turn cannot take it - it was a compaction, or it is on its
+ * way out - it stays queued and goes out as the next turn when this one ends.
+ */
+function queueMessage(
+  key: string,
+  thread: PaneThread,
+  text: string,
+  attachments: AgentAttachment[]
+): void {
+  const message: AgentMessage = {
+    ...userMessageWithAttachments(crypto.randomUUID(), text, attachments),
+    meta: { kind: 'queued' }
+  };
+  useAgentStore.setState((s) => {
+    const current = s.threads[key] ?? thread;
+    return {
+      threads: { ...s.threads, [key]: { ...current, messages: [...current.messages, message] } }
+    };
+  });
+  record(thread, { t: 'message', message });
+  const streamId = thread.streamId;
+  if (streamId === null || thread.pendingCompact !== null) return;
+  window.fleet.agent.queue({ streamId, message }).catch((err: unknown) => {
+    log.warn('queue failed', { key, error: String(err) });
+  });
+}
+
+/**
+ * A running turn took queued messages in. They move to where the turn is now:
+ * what it has written so far is closed off as a message of its own, the
+ * client's messages follow it, and the turn carries on in a fresh reply. That
+ * is the order the model saw them in, and the order the log replays them in -
+ * the closed part is written first, and `unqueue` moves each message to the end.
+ */
+function takeQueued(streamId: string, messageIds: string[]): void {
+  const found = threadOf(streamId);
+  if (found === null) return;
+  const { paneId, thread } = found;
+  const ids = new Set(messageIds);
+  const taken = thread.messages.filter((m) => ids.has(m.id) && isQueued(m)).map(unqueued);
+  if (taken.length === 0) return;
+
+  const reply = thread.messages.find((m) => m.id === streamId);
+  const said = reply !== undefined && (reply.parts.length > 0 || reply.reasoning !== '');
+  const closed = said ? { ...reply, id: crypto.randomUUID() } : null;
+  const rest = thread.messages.filter((m) => m.id !== streamId && !ids.has(m.id));
+  const messages = [
+    ...rest.filter((m) => !isQueued(m)),
+    ...(closed === null ? [] : [closed]),
+    ...taken,
+    emptyReply(streamId),
+    ...rest.filter(isQueued)
+  ];
+  useAgentStore.setState((s) => ({
+    threads: { ...s.threads, [paneId]: { ...thread, messages } }
+  }));
+  if (closed !== null) record(thread, { t: 'message', message: closed });
+  for (const message of taken) record(thread, { t: 'unqueue', id: message.id });
+}
+
+/**
+ * The thread with every message still marked queued moved to its end and
+ * unmarked, as a turn about to start will send them. Written to the log too.
+ */
+function settleQueued(thread: PaneThread): PaneThread {
+  const queued = thread.messages.filter(isQueued);
+  if (queued.length === 0) return thread;
+  for (const message of queued) record(thread, { t: 'unqueue', id: message.id });
+  return {
+    ...thread,
+    messages: [...thread.messages.filter((m) => !isQueued(m)), ...queued.map(unqueued)]
+  };
+}
+
+/**
+ * Send what the client queued during a turn that has now ended without taking
+ * it in, as a turn of its own. False when there was nothing to send or the
+ * thread is not free.
+ *
+ * For the Admiral runtime, which runs it when a turn ends and before any
+ * wakeup: the client always goes first.
+ */
+export function flushQueued(key: string): boolean {
+  const thread = useAgentStore.getState().threads[key];
+  if (thread === undefined || !canDeliverTo(thread) || !thread.messages.some(isQueued)) {
+    return false;
+  }
+  startUnpromptedTurn(key, settleQueued(thread), []);
+  return true;
 }
 
 // Installed once: there is a single main→renderer channel per event, and every
@@ -1699,6 +1908,7 @@ window.fleet.agent.onToolEnd(({ streamId, call }) => {
 window.fleet.agent.onImagePartial(({ streamId, callId, image }) =>
   recordImagePartial(streamId, callId, image)
 );
+window.fleet.agent.onQueuedTaken(({ streamId, messageIds }) => takeQueued(streamId, messageIds));
 window.fleet.agent.onCompactDone(({ streamId, summary, usage }) =>
   applySummary(streamId, summary, usage)
 );

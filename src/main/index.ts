@@ -46,6 +46,7 @@ import { SocketSupervisor } from './socket-supervisor';
 import { QuitGuard } from './quit-guard';
 import { randomUUID } from 'node:crypto';
 import { QuitDecideSchema, type QuitWorkItem } from '../shared/quit-confirm';
+import { jobDisplayId } from '../shared/agency';
 import { FleetOpenTabReply } from '../shared/fleet-tools';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile, installOpencodePlugin } from './install-fleet-cli';
@@ -318,6 +319,7 @@ function hasRunningWork(endsProcess: boolean): boolean {
   if (!endsProcess) return false;
   if ((agentSubagents?.liveIds().length ?? 0) > 0) return true;
   if (listRunningBackgroundCommands().length > 0) return true;
+  if ((agencyService?.listRunning().length ?? 0) > 0) return true;
   return false;
 }
 
@@ -343,6 +345,14 @@ function mainOwnedWork(endsProcess: boolean): QuitWorkItem[] {
       kind: 'subagent',
       id: live.taskId,
       label: `${live.agent}: ${truncateForList(live.prompt)}`
+    });
+  }
+  // A quit interrupts every running job; the Admiral resumes them next start.
+  for (const job of agencyService?.listRunning() ?? []) {
+    items.push({
+      kind: 'job',
+      id: String(job.id),
+      label: `${jobDisplayId(job.id)} ${truncateForList(job.title)}`
     });
   }
   return items;
