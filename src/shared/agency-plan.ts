@@ -97,6 +97,19 @@ export type PlanStep = z.output<typeof PlanStepSchema>;
 export type Plan = z.output<typeof PlanSchema>;
 export type PlanInput = z.input<typeof PlanSchema>;
 
+/** The plan with every `pr` deliverable turned into a local branch, for the card's fix. */
+export function withLocalBranches(plan: Plan): Plan {
+  return {
+    ...plan,
+    steps: plan.steps.map((step) => ({
+      ...step,
+      deliverables: step.deliverables.map((d) =>
+        d.kind === 'pr' ? { kind: 'branch', label: 'Local branch' } : d
+      )
+    }))
+  };
+}
+
 /**
  * What is wrong with a plan's step graph, one sentence each: duplicate ids,
  * `after` naming a step that is not there, and cycles. Empty when it is fine.

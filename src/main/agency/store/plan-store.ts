@@ -91,18 +91,29 @@ const IssueSchema = z.object({
   severity: z.enum(['warn', 'block']),
   text: z.string(),
   step: z.string().optional(),
-  member: z.string().optional()
+  member: z.string().optional(),
+  fix: z.literal('use-branch').optional()
 });
+const PinSchema = z.object({ sha: z.string(), from: z.enum(['default', 'head']) });
 const ChecksSchema = z.object({
   issues: z.array(IssueSchema),
   overlap: z.array(
     z.object({ jobId: z.number(), member: z.string(), path: z.string(), step: z.string() })
-  )
+  ),
+  bases: z
+    .array(
+      z.object({
+        member: z.string(),
+        defaultBranch: z.string().nullable(),
+        defaultSha: z.string().nullable(),
+        headBranch: z.string().nullable(),
+        headSha: z.string().nullable(),
+        pinned: PinSchema.nullable()
+      })
+    )
+    .default([])
 });
-const BasesSchema = z.record(
-  z.string(),
-  z.object({ sha: z.string(), from: z.enum(['default', 'head']) })
-);
+const BasesSchema = z.record(z.string(), PinSchema);
 const EffectsSchema = z.object({
   stopCrewIds: z.array(z.number()),
   withdrawnQuestionIds: z.array(z.number()),
@@ -326,6 +337,16 @@ export class PlanStore {
            removed_in = NULL, updated_at = excluded.updated_at`
       )
       .run(input.jobId, input.stepId, input.role, input.position, input.version, this.now());
+  }
+
+  /** Steps waiting for a place to start, across every job, longest waiting first. */
+  queuedSteps(): Array<{ jobId: number; stepId: string }> {
+    return this.db
+      .prepare<[], { job_id: number; step_id: string }>(
+        `SELECT job_id, step_id FROM job_steps WHERE status = 'queued' ORDER BY updated_at, job_id`
+      )
+      .all()
+      .map((r) => ({ jobId: r.job_id, stepId: r.step_id }));
   }
 
   setStepStatus(jobId: number, stepId: string, status: StepStatus, version?: number): void {

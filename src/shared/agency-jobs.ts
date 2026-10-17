@@ -9,24 +9,46 @@ import type { Plan, PlanDiffEntry, PlanInput } from './agency-plan';
 
 export type PlanVersionStatus = 'proposed' | 'approved' | 'rejected' | 'replaced' | 'superseded';
 
-/** One thing the pre-approval check found. `block` keeps Approve disabled. */
+/**
+ * One thing the pre-approval check found. `block` keeps Approve disabled.
+ * `fix: 'use-branch'` means the card can offer local branches in place of PRs.
+ */
 export type PlanIssue = {
   code: string;
   severity: 'warn' | 'block';
   text: string;
   step?: string;
   member?: string;
+  fix?: 'use-branch';
 };
 
-/** Paths this plan and another running job's both expect to touch. */
+/** A path this plan's `step` and a step of another running job both expect to touch. */
 export type PlanOverlap = { jobId: number; member: string; path: string; step: string };
+
+/**
+ * Where a member's work can start, for the card's base choice: its default
+ * branch tip or its current HEAD. `pinned` is set once an earlier approval
+ * pinned it, and a later change keeps it.
+ */
+export type MemberBase = {
+  member: string;
+  defaultBranch: string | null;
+  defaultSha: string | null;
+  headBranch: string | null;
+  headSha: string | null;
+  pinned: { sha: string; from: 'default' | 'head' } | null;
+};
 
 export type PlanChecks = {
   issues: PlanIssue[];
   overlap: PlanOverlap[];
+  bases: MemberBase[];
 };
 
-export const NO_PLAN_CHECKS: PlanChecks = { issues: [], overlap: [] };
+export const NO_PLAN_CHECKS: PlanChecks = { issues: [], overlap: [], bases: [] };
+
+/** Crew members that may work at once, in one job and across every job. */
+export const DEFAULT_CREW_LIMIT = 4;
 
 /** A crew member a plan change stops, by its step. */
 export type StoppedCrew = { crewId: number; stepId: string; label: string };

@@ -165,11 +165,16 @@ export class WorktreeService {
     return join(getHomeDir(), '.fleet', 'worktrees', repoName);
   }
 
-  /** `branch` names the new branch; without it, a free `<repo>-<adjective>-<noun>` is picked. */
+  /**
+   * `branch` names the new branch; without it, a free `<repo>-<adjective>-<noun>`
+   * is picked. `startPoint` is the commit it starts from, so worktrees made
+   * apart start alike; without it, the main checkout's HEAD.
+   */
   async create(
     repoPath: string,
     ctx?: PathContext,
-    branch?: string
+    branch?: string,
+    startPoint?: string
   ): Promise<{ worktreePath: string; branchName: string }> {
     const repoName = getRepoName(repoPath);
     const base = await this.worktreeBase(ctx, repoName);
@@ -214,9 +219,23 @@ export class WorktreeService {
     const worktreePath = isWslContext(ctx) ? posixPath.join(base, folder) : join(base, folder);
     log.info('creating worktree', { repoPath, worktreePath, branchName });
 
-    await this.git(ctx, repoPath, ['worktree', 'add', worktreePath, '-b', branchName]);
+    const start = startPoint === undefined ? [] : [await this.commitOf(ctx, repoPath, startPoint)];
+    await this.git(ctx, repoPath, ['worktree', 'add', worktreePath, '-b', branchName, ...start]);
 
     return { worktreePath, branchName };
+  }
+
+  /** The sha a ref names. Throws on one that is not a commit, before anything is made. */
+  private async commitOf(
+    ctx: PathContext | undefined,
+    repoPath: string,
+    ref: string
+  ): Promise<string> {
+    const sha = (
+      await this.git(ctx, repoPath, ['rev-parse', '--verify', `${ref}^{commit}`])
+    ).trim();
+    if (sha === '') throw new Error(`${ref} is not a commit in ${getRepoName(repoPath)}.`);
+    return sha;
   }
 
   async remove(worktreePath: string, ctx?: PathContext): Promise<void> {

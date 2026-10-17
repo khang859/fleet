@@ -3,14 +3,14 @@ import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_AGENCY_SETTINGS, type AgencyJob } from '../../../shared/agency';
-import type { AgentAgencyCapability } from '../../../shared/agency-tools';
+import { DEFAULT_AGENCY_SETTINGS } from '../../../shared/agency';
 import { PlanSchema, type PlanInput } from '../../../shared/agency-plan';
 import { AgencyService } from '../index';
 import { createAgencyCapability } from '../tools';
 import { admiralSnapshotNote } from '../admiral/snapshot-note';
 import { canStartStep } from '../jobs/start-gate';
-import { REPO, YES_NO } from './fixture';
+import { factsGit, fakeGh, REPO, YES_NO } from './fixture';
+import { planHelpers } from './plan-helpers';
 
 let dir: string;
 let dbPath: string;
@@ -30,6 +30,8 @@ beforeEach(() => {
     dbPath,
     emit: () => undefined,
     hasModelKey: () => true,
+    git: factsGit(),
+    gh: fakeGh(),
     crew: {
       stop: async (paneId) => {
         stopped.push(paneId);
@@ -58,33 +60,7 @@ const PLAN: PlanInput = {
 const plan = (patch: Partial<PlanInput> = {}): ReturnType<typeof PlanSchema.parse> =>
   PlanSchema.parse({ ...PLAN, ...patch });
 
-function openJob(): { job: AgencyJob; tools: AgentAgencyCapability } {
-  const job = service.openJob({
-    repoId: REPO.repoId,
-    title: 'Dark mode',
-    brief: 'Add dark mode, please',
-    budgetUsd: null
-  });
-  return {
-    job,
-    tools: createAgencyCapability(service, { repoId: REPO.repoId, jobId: job.id }, settings)
-  };
-}
-
-/** Propose `p` with the tool and return the version id its row points at. */
-async function propose(tools: AgentAgencyCapability, p = plan()): Promise<number> {
-  const out = await tools.jobPlan!(p);
-  const id = /plan#(\d+)/.exec(out.summary)?.[1];
-  if (id === undefined) throw new Error(out.text);
-  return Number(id);
-}
-
-async function approve(tools: AgentAgencyCapability, p = plan()): Promise<number> {
-  const id = await propose(tools, p);
-  const result = await service.jobs.decide({ planVersionId: id, action: 'approve' });
-  if (!result.ok) throw new Error(result.reason);
-  return id;
-}
+const { openJob, propose, approve } = planHelpers(() => service, PLAN);
 
 const state = (jobId: number): string | undefined => service.store.getJob(jobId)?.state;
 const steps = (jobId: number): Record<string, string> =>
@@ -413,7 +389,9 @@ describe('the snapshot note', () => {
 
     const note = admiralSnapshotNote(service.store, { repoId: REPO.repoId, jobId: job.id });
 
-    expect(note).toContain('Approved plan v1 (feature), budget $10, spent $0.00.');
+    expect(note).toContain(
+      'Approved plan v1 (feature), budget $10, spent $0.00, starting from fleet at aaaaaaaaaaaa (default branch tip). Steps:'
+    );
     expect(note).toContain('- builder-1 (builder): running. Build the toggle');
     expect(note).toContain('- reviewer (reviewer, after builder-1): pending.');
     expect(note).toContain('Plan v2 is waiting on the client');

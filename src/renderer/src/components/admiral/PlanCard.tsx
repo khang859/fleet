@@ -3,11 +3,13 @@ import { Check, CircleAlert, Lock } from 'lucide-react';
 import type {
   AgencyJobDetail,
   AgencyPlanVersion,
+  MemberBase,
   PlanAction,
   PlanActionResult,
   SwapChoice
 } from '../../../../shared/agency-jobs';
-import { diffLine, type PlanInput } from '../../../../shared/agency-plan';
+import { diffLine, withLocalBranches, type PlanInput } from '../../../../shared/agency-plan';
+import { jobDisplayId } from '../../../../shared/agency';
 import { useAgencyStore } from '../../store/agency-store';
 import { OnboardingButton } from './onboarding-ui';
 import { PillRadio } from '../ui/pill-radio';
@@ -64,6 +66,8 @@ function OpenPlan({
 }): React.JSX.Element {
   const { plan, checks } = version;
   const [swaps, setSwaps] = useState<Record<string, SwapChoice>>({});
+  const [bases, setBases] = useState<Record<string, BaseChoice>>({});
+  const decision = useDecision(detail.job.id);
   return (
     <section
       aria-label={`Plan v${version.version}`}
@@ -78,8 +82,36 @@ function OpenPlan({
         />
       )}
       {plan.steps.some((s) => s.deliverables.length > 0) && <YouGet version={version} />}
-      {(plan.asksFirst.length > 0 || checks.issues.length > 0) && <Cautions version={version} />}
-      <DecisionBar version={version} jobId={detail.job.id} swaps={swaps} onEdit={onEdit} />
+      <StartsFrom
+        bases={checks.bases}
+        choice={bases}
+        onChoose={(member, choice) => setBases({ ...bases, [member]: choice })}
+      />
+      {(plan.asksFirst.length > 0 || checks.issues.length > 0) && (
+        <Cautions
+          version={version}
+          onUseBranch={() =>
+            void decision.decide({
+              planVersionId: version.id,
+              action: 'edit',
+              plan: withLocalBranches(plan)
+            })
+          }
+        />
+      )}
+      <DecisionBar
+        version={version}
+        decision={decision}
+        onApprove={() =>
+          void decision.decide({
+            planVersionId: version.id,
+            action: 'approve',
+            swaps,
+            baseChoice: bases
+          })
+        }
+        onEdit={onEdit}
+      />
     </section>
   );
 }
@@ -199,7 +231,13 @@ function YouGet({ version }: { version: AgencyPlanVersion }): React.JSX.Element 
 }
 
 /** What the Admiral asks before doing, and what the pre-approval check found. */
-function Cautions({ version }: { version: AgencyPlanVersion }): React.JSX.Element {
+function Cautions({
+  version,
+  onUseBranch
+}: {
+  version: AgencyPlanVersion;
+  onUseBranch: () => void;
+}): React.JSX.Element {
   const { plan, checks } = version;
   return (
     <Block>
@@ -221,29 +259,38 @@ function Cautions({ version }: { version: AgencyPlanVersion }): React.JSX.Elemen
           {issue.text}
         </p>
       ))}
+      {checks.overlap.length > 0 && (
+        <ul aria-label="Paths another job touches" className="flex flex-col gap-0.5 pl-[18px]">
+          {checks.overlap.map((o) => (
+            <li
+              key={`${o.jobId}-${o.member}-${o.path}-${o.step}`}
+              className="truncate font-mono text-[11px] text-fleet-text-muted"
+            >
+              {jobDisplayId(o.jobId)} · {o.member}/{o.path}
+              <span className="font-sans text-fleet-text-subtle"> · {o.step}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {checks.issues.some((i) => i.fix === 'use-branch') && (
+        <OnboardingButton kind="ghost" className="w-fit" onClick={onUseBranch}>
+          Deliver local branches instead
+        </OnboardingButton>
+      )}
     </Block>
   );
 }
 
-/** The budget line and Approve, Change something and Reject, with a note for a reject. */
-function DecisionBar({
-  version,
-  jobId,
-  swaps,
-  onEdit
-}: {
-  version: AgencyPlanVersion;
-  jobId: number;
-  swaps: Record<string, SwapChoice>;
-  onEdit: () => void;
-}): React.JSX.Element {
-  const { plan } = version;
-  const [rejecting, setRejecting] = useState(false);
-  const [note, setNote] = useState('');
+type Decision = {
+  busy: boolean;
+  refused: string | null;
+  decide: (action: PlanAction) => Promise<void>;
+};
+
+/** Send one decision at a time on a card, and keep main's reason when it refuses. */
+function useDecision(jobId: number): Decision {
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
-  const blocked = version.checks.issues.some((i) => i.severity === 'block');
-
   const decide = async (action: PlanAction): Promise<void> => {
     if (busy) return;
     setBusy(true);
@@ -255,6 +302,98 @@ function DecisionBar({
     setBusy(false);
     if (!result.ok) setRefused(result.reason);
   };
+  return { busy, refused, decide };
+}
+
+type BaseChoice = 'default' | 'head';
+
+const shortSha = (sha: string | null): string => sha?.slice(0, 7) ?? 'no commit';
+
+/**
+ * Where each member's work starts, pinned at approval: its default branch
+ * tip, or its current HEAD when the client picks it. A member an earlier
+ * approval pinned keeps its pin.
+ */
+function StartsFrom({
+  bases,
+  choice,
+  onChoose
+}: {
+  bases: MemberBase[];
+  choice: Record<string, BaseChoice>;
+  onChoose: (member: string, choice: BaseChoice) => void;
+}): React.JSX.Element | null {
+  // A plan change keeps the commits the first approval pinned.
+  if (bases.every((b) => b.pinned !== null)) return null;
+  return (
+    <Block>
+      <Label>STARTS FROM</Label>
+      {bases.map((base) => (
+        <div key={base.member} className="flex flex-wrap items-center gap-2 text-xs">
+          {bases.length > 1 && <span className="text-fleet-text-secondary">{base.member}</span>}
+          <BaseValue base={base} value={choice[base.member] ?? 'default'} onChoose={onChoose} />
+        </div>
+      ))}
+    </Block>
+  );
+}
+
+function BaseValue({
+  base,
+  value,
+  onChoose
+}: {
+  base: MemberBase;
+  value: BaseChoice;
+  onChoose: (member: string, choice: BaseChoice) => void;
+}): React.JSX.Element {
+  if (base.pinned !== null) {
+    return (
+      <span className="font-mono text-fleet-text-muted">
+        {shortSha(base.pinned.sha)}
+        <span className="font-sans text-fleet-text-subtle"> · pinned by the approved plan</span>
+      </span>
+    );
+  }
+  const tip = `${base.defaultBranch ?? 'default'} ${shortSha(base.defaultSha)}`;
+  if (base.defaultSha === null || base.headSha === null || base.defaultSha === base.headSha) {
+    return (
+      <span className="font-mono text-fleet-text-muted">
+        {base.defaultSha === null ? `HEAD ${shortSha(base.headSha)}` : tip}
+      </span>
+    );
+  }
+  return (
+    <PillRadio
+      label={`Where ${base.member} starts`}
+      value={value}
+      options={[
+        { value: 'default', label: tip },
+        { value: 'head', label: `${base.headBranch ?? 'HEAD'} ${shortSha(base.headSha)}` }
+      ]}
+      onChange={(next) => onChoose(base.member, next)}
+      className="bg-fleet-bg font-mono"
+    />
+  );
+}
+
+/** The budget line and Approve, Change something and Reject, with a note for a reject. */
+function DecisionBar({
+  version,
+  decision,
+  onApprove,
+  onEdit
+}: {
+  version: AgencyPlanVersion;
+  decision: Decision;
+  onApprove: () => void;
+  onEdit: () => void;
+}): React.JSX.Element {
+  const { plan } = version;
+  const { busy, refused, decide } = decision;
+  const [rejecting, setRejecting] = useState(false);
+  const [note, setNote] = useState('');
+  const blocked = version.checks.issues.some((i) => i.severity === 'block');
 
   return (
     <div className="flex flex-col gap-2 px-3.5 py-3">
@@ -300,11 +439,7 @@ function DecisionBar({
           <OnboardingButton disabled={busy} onClick={onEdit}>
             Change something
           </OnboardingButton>
-          <OnboardingButton
-            kind="primary"
-            disabled={busy || blocked}
-            onClick={() => void decide({ planVersionId: version.id, action: 'approve', swaps })}
-          >
+          <OnboardingButton kind="primary" disabled={busy || blocked} onClick={onApprove}>
             {version.kind === 'change' ? 'Approve change' : 'Approve plan'}
           </OnboardingButton>
         </div>
@@ -316,6 +451,12 @@ function DecisionBar({
       )}
     </div>
   );
+}
+
+/** Where a one-repository job starts, for its approved line. */
+function baseNote(version: AgencyPlanVersion): string {
+  const pins = Object.values(version.bases ?? {});
+  return pins.length === 1 ? ` · from ${shortSha(pins[0].sha)}` : '';
 }
 
 /** A version that is no longer waiting: what became of it, in one line. */
@@ -332,7 +473,7 @@ function SettledPlan({
     switch (version.status) {
       case 'approved':
         return {
-          text: `${name} approved · ${version.plan.steps.length} steps, $${formatUsd(version.plan.budget.usd)}`,
+          text: `${name} approved · ${version.plan.steps.length} steps, $${formatUsd(version.plan.budget.usd)}${baseNote(version)}`,
           icon: <Check size={12} className="shrink-0 text-green-500" />
         };
       case 'superseded':

@@ -43,7 +43,7 @@ function version(over: Partial<AgencyPlanVersion> = {}): AgencyPlanVersion {
     author: 'admiral',
     parentVersion: null,
     plan: PLAN,
-    checks: { issues: [], overlap: [] },
+    checks: { issues: [], overlap: [], bases: [] },
     bases: null,
     decisionNote: null,
     proposedAt: 1,
@@ -135,13 +135,72 @@ describe('PlanCard', () => {
     const html = card(
       version({
         checks: {
-          issues: [{ code: 'no-remote', severity: 'block', text: 'There is no GitHub remote.' }],
-          overlap: []
+          issues: [
+            {
+              code: 'pr-unavailable',
+              severity: 'block',
+              text: 'builder-1 delivers a PR, but fleet has no GitHub remote.',
+              fix: 'use-branch'
+            }
+          ],
+          overlap: [],
+          bases: []
         }
       })
     );
-    expect(html).toContain('There is no GitHub remote.');
+    expect(html).toContain('fleet has no GitHub remote.');
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Approve plan<\/button>/);
+    expect(html).toContain('Deliver local branches instead');
+  });
+
+  it('offers where the work starts when the default tip and HEAD differ', () => {
+    const base = {
+      member: 'fleet',
+      defaultBranch: 'main',
+      defaultSha: 'a1b2c3d4e5'.padEnd(40, '0'),
+      headBranch: 'feat/x',
+      headSha: 'f6e5d4c3b2'.padEnd(40, '0'),
+      pinned: null
+    };
+    const html = card(version({ checks: { issues: [], overlap: [], bases: [base] } }));
+    expect(html).toContain('STARTS FROM');
+    expect(html).toContain('aria-label="Where fleet starts"');
+    expect(html).toContain('main a1b2c3d');
+    expect(html).toContain('feat/x f6e5d4c');
+
+    const same = card(
+      version({
+        checks: { issues: [], overlap: [], bases: [{ ...base, headSha: base.defaultSha }] }
+      })
+    );
+    expect(same).toContain('main a1b2c3d');
+    expect(same).not.toContain('role="radiogroup"');
+
+    const pinned = card(
+      version({
+        checks: {
+          issues: [],
+          overlap: [],
+          bases: [{ ...base, pinned: { sha: base.headSha, from: 'head' } }]
+        }
+      })
+    );
+    expect(pinned).not.toContain('STARTS FROM');
+  });
+
+  it('lists the paths another running job touches', () => {
+    const html = card(
+      version({
+        checks: {
+          issues: [{ code: 'overlap', severity: 'warn', text: 'j3 is also working on 1 path.' }],
+          overlap: [{ jobId: 3, member: 'fleet', path: 'src/Sidebar.tsx', step: 'builder-1' }],
+          bases: []
+        }
+      })
+    );
+    expect(html).toContain('j3 is also working on 1 path.');
+    expect(html).toContain('j3 · fleet/src/Sidebar.tsx');
+    expect(html).not.toContain('Deliver local branches instead');
   });
 
   it('folds a version that is no longer waiting to one line', () => {
@@ -150,8 +209,11 @@ describe('PlanCard', () => {
     expect(card(replaced, detail([replaced, newer]))).toContain('Plan v1 was replaced by v2');
     const rejected = version({ status: 'rejected', decisionNote: 'Too big' });
     expect(card(rejected)).toContain('You rejected Plan v1: Too big');
-    const approved = version({ status: 'approved' });
-    expect(card(approved)).toContain('Plan v1 approved · 2 steps, $10');
+    const approved = version({
+      status: 'approved',
+      bases: { fleet: { sha: 'a1b2c3d4e5'.padEnd(40, '0'), from: 'default' } }
+    });
+    expect(card(approved)).toContain('Plan v1 approved · 2 steps, $10 · from a1b2c3d');
     expect(card(approved)).not.toContain('Approve plan');
   });
 });

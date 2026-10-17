@@ -18,9 +18,11 @@ import { createLogger } from '../logger';
 import { AdmiralRegistry } from './admiral-registry';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
 import { runPreflight, type Probe } from './preflight';
-import type { GhRun } from './projects/gh';
+import { nativeGh, type GhRun } from './projects/gh';
+import { readOnlyGit } from './projects/repo-reader';
+import { gatherPlanFacts } from './plans/plan-facts';
 import { ProjectsService } from './projects';
-import { resolveRepoIdentity, type RepoIdentityOptions } from './repo-identity';
+import { resolveRepoIdentity, type GitRun, type RepoIdentityOptions } from './repo-identity';
 import { agencyDbPath } from './store/agency-db';
 import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
 
@@ -41,6 +43,10 @@ export type AgencyServiceDeps = {
   agencyHome?: string;
   /** How crew panes are stopped; nothing is ever hired until the crew phase. */
   crew?: CrewControl;
+  /** Read-only git for the pre-approval check. */
+  git?: GitRun;
+  /** Crew members that may work at once; 4 unless set. */
+  crewLimit?: () => number;
 };
 
 /**
@@ -66,7 +72,16 @@ export class AgencyService {
     this.jobs = new JobsService({
       store: this.store,
       crew: deps.crew ?? NO_CREW,
-      changed: (touched) => this.changed(touched)
+      changed: (touched) => this.changed(touched),
+      crewLimit: deps.crewLimit,
+      planFacts: async ({ job, plan, others, pinned }) => {
+        const repo = this.store.repo(job.repoId);
+        if (!repo) throw new Error(`The project of ${jobDisplayId(job.id)} is not known.`);
+        return gatherPlanFacts(
+          { repo, plan, others, pinned },
+          { git: deps.git ?? readOnlyGit, gh: deps.gh ?? nativeGh }
+        );
+      }
     });
     // No turn from before this start is still running, so every claim made
     // then is stale, and its wakeups are due again.

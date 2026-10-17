@@ -7,9 +7,17 @@ import {
   type AgencyQuestion
 } from '../../../shared/agency';
 import type { AgencyJob } from '../../../shared/agency';
+import type { PlanBases } from '../../../shared/agency-jobs';
 import type { AgencyStore } from '../store/agency-store';
 
 type SnapshotReader = Pick<AgencyStore, 'repo' | 'getJob' | 'listJobs' | 'listQuestions' | 'plans'>;
+
+/** The commits a job's work starts from, as the approval pinned them. */
+function baseText(bases: PlanBases | null): string {
+  const pins = Object.entries(bases ?? {});
+  if (pins.length === 0) return '';
+  return `, starting from ${pins.map(([member, pin]) => `${member} at ${pin.sha.slice(0, 12)} (${pin.from === 'head' ? 'its HEAD' : 'default branch tip'})`).join(', ')}`;
+}
 
 /**
  * A question as the Admiral needs it to avoid asking it again: every option,
@@ -50,7 +58,7 @@ function planLines(store: SnapshotReader, job: AgencyJob): string[] {
     const steps = store.plans.steps(job.id);
     const spent = store.plans.spendUsd(job.id);
     lines.push(
-      `Approved plan v${approved.version} (${approved.plan.playbook}), budget $${approved.plan.budget.usd}, spent $${spent.toFixed(2)}. Steps:`,
+      `Approved plan v${approved.version} (${approved.plan.playbook}), budget $${approved.plan.budget.usd}, spent $${spent.toFixed(2)}${baseText(approved.bases)}. Steps:`,
       fence(
         `plan v${approved.version}`,
         approved.plan.steps

@@ -1,10 +1,18 @@
-import { jobDisplayId, type AgencyJob } from '../../../shared/agency';
 import {
+  jobDisplayId,
+  RUNNING_JOB_STATES,
+  type AgencyJob,
+  type JobState
+} from '../../../shared/agency';
+import {
+  DEFAULT_CREW_LIMIT,
   NO_PLAN_CHECKS,
   type AgencyJobDetail,
   type AgencyPlanVersion,
+  type AgencyStep,
   type PlanAction,
   type PlanActionResult,
+  type PlanBases,
   type PlanChecks,
   type PlanEffects,
   type StepStatus
@@ -18,12 +26,17 @@ import {
   planEffects,
   stepsToRemove
 } from '../plans/plan-rules';
+import { checkPlan, pinBases, type PlanFacts } from '../plans/plan-checks';
+import type { OtherJobPaths } from '../plans/overlap';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import type { PlanVersionRecord } from '../store/plan-store';
 import { acceptsPlans } from './job-machine';
-import { canStartStep } from './start-gate';
+import { canStartStep, type StartVerdict } from './start-gate';
 
 const log = createLogger('agency:jobs');
+
+/** A job another one queues behind holds it until it delivers or ends. */
+const UNDER_WAY: readonly JobState[] = ['planned', 'running', 'waiting', 'interrupted'];
 
 /**
  * How Fleet stops a crew member's pane. The crew phase wires the real panes;
@@ -50,8 +63,19 @@ export type JobsServiceDeps = {
   crew: CrewControl;
   /** Raise a change event for what a write touched. */
   changed: (touched: AgencyTouched[]) => void;
-  /** The pre-approval check of a plan for a job; nothing to report by default. */
-  checkPlan?: (job: AgencyJob, plan: Plan) => Promise<PlanChecks>;
+  /**
+   * What the pre-approval check reads about the job's project, given the
+   * paths other running jobs touch and the bases already pinned. Without it
+   * (tests of other parts) a plan has nothing to report and no bases.
+   */
+  planFacts?: (input: {
+    job: AgencyJob;
+    plan: Plan;
+    others: OtherJobPaths[];
+    pinned: PlanBases | null;
+  }) => Promise<PlanFacts>;
+  /** Crew members that may work at once, per job and across every job. */
+  crewLimit?: () => number;
 };
 
 /**
@@ -80,7 +104,7 @@ export class JobsService {
     if (!job) return { ok: false, error: `There is no job ${jobDisplayId(jobId)}.` };
     const refused = this.refusePlan(job, plan);
     if (refused !== null) return { ok: false, error: refused };
-    const checks = (await this.deps.checkPlan?.(job, plan)) ?? NO_PLAN_CHECKS;
+    const checks = await this.check(job, plan);
 
     const version = this.store.tx(() => {
       const approved = this.store.plans.approved(jobId);
@@ -103,6 +127,39 @@ export class JobsService {
     });
     this.deps.changed([{ repoId: job.repoId, jobId }]);
     return { ok: true, version };
+  }
+
+  /** Run the pre-approval check against the project as it is now. */
+  private async check(job: AgencyJob, plan: Plan): Promise<PlanChecks> {
+    if (!this.deps.planFacts) return NO_PLAN_CHECKS;
+    const facts = await this.deps.planFacts({
+      job,
+      plan,
+      others: this.otherJobPaths(job),
+      pinned: this.store.plans.approved(job.id)?.bases ?? null
+    });
+    return checkPlan(plan, facts);
+  }
+
+  /** The paths each live step of the project's other running jobs expects to touch. */
+  private otherJobPaths(job: AgencyJob): OtherJobPaths[] {
+    return this.store
+      .listJobs(job.repoId)
+      .filter((j) => j.id !== job.id && RUNNING_JOB_STATES.includes(j.state))
+      .flatMap((other) => {
+        const plan = this.store.plans.approved(other.id)?.plan;
+        if (!plan) return [];
+        const live = new Set(
+          this.store.plans
+            .steps(other.id)
+            .filter((s) => s.status !== 'done' && s.status !== 'removed')
+            .map((s) => s.id)
+        );
+        const steps = plan.steps
+          .filter((s) => live.has(s.id) && s.paths.length > 0)
+          .map((s) => ({ step: s.id, paths: s.paths }));
+        return steps.length === 0 ? [] : [{ jobId: other.id, steps }];
+      });
   }
 
   /** The plan the job runs now, or null before one is approved. */
@@ -144,7 +201,7 @@ export class JobsService {
     }
     switch (action.action) {
       case 'approve':
-        return this.approve(job, version, action.swaps ?? {});
+        return this.approve(job, version, action.baseChoice ?? {}, action.swaps ?? {});
       case 'reject':
         return this.reject(job, version, action.note);
       case 'edit': {
@@ -170,14 +227,15 @@ export class JobsService {
     }
   }
 
-  private approve(
+  private async approve(
     job: AgencyJob,
     version: PlanVersionRecord,
+    baseChoice: Record<string, 'default' | 'head'>,
     swapChoice: Record<string, 'continue' | 'restart'>
-  ): PlanActionResult {
-    // A step may have finished since the card went up.
-    const refused = this.refusePlan(job, version.plan);
-    if (refused !== null) return { ok: false, reason: refused };
+  ): Promise<PlanActionResult> {
+    const gate = await this.approvable(job, version, baseChoice);
+    if (!gate.ok) return gate;
+    const { checks, bases } = gate;
 
     const effects = this.store.tx(() => {
       const approved = this.store.plans.approved(job.id);
@@ -188,6 +246,7 @@ export class JobsService {
       );
       this.store.plans.supersede(job.id);
       this.store.plans.decide(version.id, 'approved');
+      if (checks.bases.length > 0) this.store.plans.setBases(version.id, bases);
       this.store.setApprovedVersion(job.id, version.version, version.plan.budget.usd);
       version.plan.steps.forEach((step, position) => {
         this.store.plans.putStep({
@@ -240,6 +299,36 @@ export class JobsService {
     return { ok: true, version: version.version };
   }
 
+  /**
+   * Checks a plan again just before approval, since a step may have finished,
+   * gh signed out or a branch appeared since the card went up, and pins the
+   * commits its crew start from.
+   */
+  private async approvable(
+    job: AgencyJob,
+    version: PlanVersionRecord,
+    baseChoice: Record<string, 'default' | 'head'>
+  ): Promise<{ ok: false; reason: string } | { ok: true; checks: PlanChecks; bases: PlanBases }> {
+    const refused = this.refusePlan(job, version.plan);
+    if (refused !== null) return { ok: false, reason: refused };
+    const checks = await this.check(job, version.plan);
+    this.store.plans.setChecks(version.id, checks);
+    const blocked = checks.issues.filter((i) => i.severity === 'block');
+    if (blocked.length > 0) {
+      this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
+      return { ok: false, reason: blocked.map((i) => i.text).join(' ') };
+    }
+    const pin = pinBases(checks.bases, baseChoice);
+    if (!pin.ok) return { ok: false, reason: pin.reason };
+    // Another click may have decided it, or a newer version replaced it, while the check ran.
+    const verdict = canDecide(
+      this.store.plans.version(version.id),
+      this.store.plans.newest(job.id)
+    );
+    if (!verdict.ok) return verdict;
+    return { ok: true, checks, bases: pin.bases };
+  }
+
   private reject(job: AgencyJob, version: PlanVersionRecord, note: string): PlanActionResult {
     this.store.tx(() => {
       this.store.plans.decide(version.id, 'rejected', note);
@@ -279,6 +368,7 @@ export class JobsService {
         log.warn('could not stop a crew member', { id, error: String(err) });
       }
     }
+    this.admitQueued();
   }
 
   private effectsOf(job: AgencyJob, next: Plan, approved: Plan | null): PlanEffects {
@@ -312,38 +402,113 @@ export class JobsService {
       this.store.applyJobEvent(jobId, { type: 'follow_up' }, `follow-up on ${update.step}`);
     }
     const current = this.store.getJob(jobId) ?? job;
-    if (update.status === 'running' && step.status !== 'running') {
-      const verdict = canStartStep({
-        job: current,
-        plan: approved.plan,
-        steps: this.store.plans.steps(jobId),
-        stepId: update.step
-      });
-      if (!verdict.ok) return { ok: false, text: verdict.reason };
-    }
-    if (
-      update.status !== undefined &&
-      !['running', 'waiting', 'delivered'].includes(current.state)
-    ) {
+    const target = this.targetStatus(current, approved.plan, step, update);
+    if (!target.ok) return target;
+
+    this.writeStepUpdate(current, update, target.status);
+    if (target.queued !== null) {
       return {
-        ok: false,
-        text: `${jobDisplayId(jobId)} is ${current.state}; its steps do not move.`
+        ok: true,
+        text: `Step ${update.step} is queued: ${target.queued} A wakeup tells you when it can start.`
       };
     }
-
-    this.store.tx(() => {
-      if (update.status !== undefined) this.moveStep(job, update.step, update.status);
-      if (update.note !== undefined) {
-        this.store.plans.setStepNote(jobId, update.step, update.note);
-        this.store.plans.log({ jobId, kind: 'note', stepId: update.step, text: update.note });
-      }
-    });
-    this.refreshClientHold(jobId);
-    this.afterStepChange(jobId);
-    this.deps.changed([{ repoId: job.repoId, jobId }]);
     const state = this.store.getJob(jobId)?.state ?? current.state;
     const moved = update.status === undefined ? 'noted' : `is ${update.status}`;
     return { ok: true, text: `Step ${update.step} ${moved}. ${jobDisplayId(jobId)} is ${state}.` };
+  }
+
+  /**
+   * The status an update moves a step to: what the Admiral asked, or
+   * `queued` when starting it now would go over the crew limit or ahead of
+   * the job it queues behind. Refused when it may not start at all, or the
+   * job's steps do not move in its state.
+   */
+  private targetStatus(
+    job: AgencyJob,
+    plan: Plan,
+    step: AgencyStep,
+    update: StepUpdate
+  ):
+    | { ok: false; text: string }
+    | { ok: true; status: StepStatus | undefined; queued: string | null } {
+    const start =
+      update.status === 'running' && step.status !== 'running'
+        ? this.startVerdict(job, plan, update.step)
+        : null;
+    if (start?.ok === false && start.queue !== true) return { ok: false, text: start.reason };
+    if (update.status !== undefined && !['running', 'waiting', 'delivered'].includes(job.state)) {
+      return { ok: false, text: `${jobDisplayId(job.id)} is ${job.state}; its steps do not move.` };
+    }
+    const queued = start?.ok === false ? start.reason : null;
+    return { ok: true, status: queued === null ? update.status : 'queued', queued };
+  }
+
+  private writeStepUpdate(
+    job: AgencyJob,
+    update: StepUpdate,
+    status: StepStatus | undefined
+  ): void {
+    this.store.tx(() => {
+      if (status !== undefined) this.moveStep(job, update.step, status);
+      if (update.note !== undefined) {
+        this.store.plans.setStepNote(job.id, update.step, update.note);
+        this.store.plans.log({
+          jobId: job.id,
+          kind: 'note',
+          stepId: update.step,
+          text: update.note
+        });
+      }
+    });
+    this.refreshClientHold(job.id);
+    this.afterStepChange(job.id);
+    this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
+    if (status === 'done') this.admitQueued();
+  }
+
+  /** Whether a step may start now, with the crew limit and the job it queues behind. */
+  private startVerdict(job: AgencyJob, plan: Plan, stepId: string, admitted = 0): StartVerdict {
+    const behind = plan.queueBehind === null ? null : this.store.getJob(plan.queueBehind);
+    return canStartStep({
+      job,
+      plan,
+      steps: this.store.plans.steps(job.id),
+      stepId,
+      queuedBehind: behind && UNDER_WAY.includes(behind.state) ? behind.id : null,
+      live: {
+        job: this.store.crew.live(job.id).length + admitted,
+        all: this.store.crew.live().length + admitted,
+        limit: this.deps.crewLimit?.() ?? DEFAULT_CREW_LIMIT
+      }
+    });
+  }
+
+  /**
+   * Let queued steps go as places free up, longest waiting first: each one
+   * goes back to not started, and its job's Admiral gets a wakeup to start
+   * it. Run when a step finishes, a job delivers or ends, or crew stop.
+   */
+  admitQueued(): void {
+    const touched: AgencyTouched[] = [];
+    let admitted = 0;
+    for (const { jobId, stepId } of this.store.plans.queuedSteps()) {
+      const job = this.store.getJob(jobId);
+      const plan = this.store.plans.approved(jobId)?.plan;
+      if (!job || !plan || !this.startVerdict(job, plan, stepId, admitted).ok) continue;
+      admitted += 1;
+      this.store.tx(() => {
+        this.store.plans.setStepStatus(jobId, stepId, 'pending');
+        this.store.plans.log({ jobId, kind: 'step', stepId, text: `Step ${stepId} may start` });
+        this.store.enqueueWakeup({
+          repoId: job.repoId,
+          jobId,
+          kind: 'event',
+          payload: { line: `Step ${stepId} can start now`, body: null }
+        });
+      });
+      touched.push({ repoId: job.repoId, jobId });
+    }
+    if (touched.length > 0) this.deps.changed(touched);
   }
 
   private moveStep(job: AgencyJob, stepId: string, status: StepStatus): void {

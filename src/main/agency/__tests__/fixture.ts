@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { JobState } from '../../../shared/agency';
 import type { JobEvent } from '../jobs/job-machine';
+import type { GhRun } from '../projects/gh';
+import type { GitRun } from '../repo-identity';
 import { AgencyStore } from '../store/agency-store';
 
 export const REPO = { repoId: '0123456789abcdef', root: '/dev/fleet', name: 'fleet' };
@@ -28,6 +30,54 @@ export function storeFixture(): {
       rmSync(dir, { recursive: true, force: true });
     }
   };
+}
+
+export const BASE_SHA = 'a'.repeat(40);
+
+/** What the pre-approval check asks git, by a short name. */
+export type GitFacts = {
+  originHead: string | null;
+  remote: string | null;
+  status: string;
+  headBranch: string | null;
+  admiralBranch: boolean;
+  sha: (ref: string) => string | null;
+};
+
+/**
+ * Read-only git for the plan check, answering as a clean checkout of `main`
+ * with a GitHub remote, every ref at `BASE_SHA`, unless `facts` says else.
+ */
+export function factsGit(facts: Partial<GitFacts> = {}): GitRun {
+  const f: GitFacts = {
+    originHead: 'origin/main',
+    remote: 'git@github.com:acme/fleet.git',
+    status: '',
+    headBranch: 'main',
+    admiralBranch: false,
+    sha: () => BASE_SHA,
+    ...facts
+  };
+  const answer = (args: string[]): string | null => {
+    const cmd = args.join(' ');
+    if (cmd.includes('refs/remotes/origin/HEAD')) return f.originHead;
+    if (cmd.startsWith('remote get-url')) return f.remote;
+    if (cmd.startsWith('remote')) return f.remote === null ? '' : 'origin';
+    if (cmd.includes('status --porcelain')) return f.status;
+    if (cmd === 'symbolic-ref --quiet --short HEAD') return f.headBranch;
+    if (cmd.includes('refs/heads/admiral')) return f.admiralBranch ? '' : null;
+    if (args[0] === 'rev-parse') return f.sha(args.at(-1)?.replace('^{commit}', '') ?? '');
+    return null;
+  };
+  return async (args) => Promise.resolve(answer(args));
+}
+
+/** `gh auth status` as signed in, signed out, or not installed. */
+export function fakeGh(state: 'ok' | 'signed-out' | 'not-installed' = 'ok'): GhRun {
+  return async () =>
+    Promise.resolve(
+      state === 'not-installed' ? null : { code: state === 'ok' ? 0 : 1, stdout: '' }
+    );
 }
 
 let sessions = 0;
