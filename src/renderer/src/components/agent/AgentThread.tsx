@@ -86,7 +86,14 @@ import { downscaleImage } from '../../lib/downscale-image';
 import { canRelocate, useAgentStore } from '../../store/agent-store';
 import { useSettingsStore } from '../../store/settings-store';
 import { threadModelId } from '../../store/admiral-thread';
-import { AdmiralEventLine, AskClientRow, JobLinkLine } from '../admiral/AdmiralLines';
+import {
+  AdmiralEventLine,
+  AskClientRow,
+  JobDeliverRow,
+  SettingsChangeRow,
+  JobLinkLine,
+  JobPlanRow
+} from '../admiral/AdmiralLines';
 import { useElementWidth } from '../../hooks/use-element-width';
 
 /**
@@ -950,8 +957,15 @@ const Message = memo(function Message({
         if (ask?.callId === part.call.id) {
           return <AgentPermissionRow key={i} ask={ask} onDecide={onDecide} />;
         }
-        // The Admiral's question is answered where it was asked, as its card.
-        if (part.call.name === 'ask_client') return <AskClientRow key={i} call={part.call} />;
+        // The Admiral's questions and plans are decided where they went up, as their cards.
+        if (part.call.name === 'ask_client' || part.call.name === 'client_file_propose') {
+          return <AskClientRow key={i} call={part.call} />;
+        }
+        if (part.call.name === 'job_plan') return <JobPlanRow key={i} call={part.call} />;
+        if (part.call.name === 'job_deliver') return <JobDeliverRow key={i} call={part.call} />;
+        if (part.call.name === 'settings_change') {
+          return <SettingsChangeRow key={i} call={part.call} />;
+        }
         // A subagent is a conversation rather than a call, and gets a card.
         if (part.call.name === 'task' && part.call.task !== null) {
           return (

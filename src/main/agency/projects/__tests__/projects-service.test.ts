@@ -103,6 +103,6 @@ describe('ProjectsService', () => {
     );
     expect(service.store.onboarding(repo.repoId).starterDoneAt).not.toBeNull();
     expect(emitted).toEqual([{ repoId: repo.repoId, jobIds: [] }]);
-    expect(service.clientFileForNote(repo.repoId)).toBe(text.trim());
+    expect(service.clientFileForNote(repo.repoId)?.text).toBe(text.trim());
   });
 });

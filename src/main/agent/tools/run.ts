@@ -42,7 +42,17 @@ import { runWebFetch } from './web-fetch';
 import { runWrite } from './write';
 import { fleetMember } from './fleet';
 import { agencyMember } from './agency';
-import { AskClientArgs, JobListArgs, JobOpenArgs } from '../../../shared/agency-tools';
+import {
+  AskClientArgs,
+  ClientFileProposeArgs,
+  SettingsChangeArgs,
+  SettingsReadArgs,
+  JobDeliverArgs,
+  JobListArgs,
+  JobOpenArgs,
+  JobPlanArgs,
+  JobUpdateArgs
+} from '../../../shared/agency-tools';
 import {
   FleetDiffArgs,
   FleetPermissionArgs,
@@ -171,6 +181,22 @@ export async function runAgentTool(
       return agencyMember(ctx, name, 'jobOpen')(checked(JobOpenArgs, args, name));
     case 'job_list':
       return agencyMember(ctx, name, 'jobList')(checked(JobListArgs, args, name));
+    case 'job_plan':
+      return agencyMember(ctx, name, 'jobPlan')(checked(JobPlanArgs, args, name));
+    case 'job_update':
+      return agencyMember(ctx, name, 'jobUpdate')(checked(JobUpdateArgs, args, name));
+    case 'job_deliver':
+      return agencyMember(ctx, name, 'jobDeliver')(checked(JobDeliverArgs, args, name));
+    case 'client_file_propose':
+      return agencyMember(
+        ctx,
+        name,
+        'clientFilePropose'
+      )(checked(ClientFileProposeArgs, args, name));
+    case 'settings_read':
+      return agencyMember(ctx, name, 'settingsRead')(checked(SettingsReadArgs, args, name));
+    case 'settings_change':
+      return agencyMember(ctx, name, 'settingsChange')(checked(SettingsChangeArgs, args, name));
     default:
       throw new Error(`There is no tool called ${name}`);
   }

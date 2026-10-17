@@ -26,36 +26,46 @@
 
 ## 2. Phase 2 - jobs, plans and results (PR 2)
 
-- [ ] 2.1 Add `src/main/agency/store/agency-db.ts` (`~/.fleet/agency.db`, WAL, `user_version` migrations) with tables for jobs, plan versions, steps, crew, questions, results, spend and permission answers; verify with migration and CRUD tests in a temp folder
-- [ ] 2.2 Add the job state machine (briefing, planned, running, waiting, delivered, closed, cancelled, failed) as a pure reducer that writes each change with time and reason; verify with table-driven tests
-- [ ] 2.3 Add `job_plan` with the plan card (playbook, steps, roles, budget, and per-step deliverables the Admiral picks as `{kind, label}`, with file and link result cards for anything else) and Approve, Edit and Reject; verify that nothing starts before approval with a tool test, and screenshot against canvas board 3.3
-- [ ] 2.4 Add plan change requests: a step not in the approved plan creates a new plan version that needs approval; verify with a tool test
-- [ ] 2.5 Add `job_deliver` and result cards for pr, doc, image, copy and preview, opening files in Fleet panes; verify with renderer tests and a screenshot of each kind
-- [ ] 2.6 Add `job_update` and the PLAN and THE JOB sheet sections bound to the store; verify with a renderer test and in the running app
-- [ ] 2.7 Add the client file at `~/.fleet/agency/clients/<repo-hash>.md`, read at job start, with `client_file_propose` and an editor in Settings › Agency › Admiral; verify with a test that an answered preference is not asked again
-- [ ] 2.8 Add job export to Markdown with env file values left out; verify with a snapshot test
-- [ ] 2.9 Add cancel and close with the cleanup runner (stop crew panes, remove worktrees with no unmerged commits, report leftovers with Retry); verify with tests using fake worktrees and a failing cleanup step
+- [x] 2.1 Add `src/main/agency/store/agency-db.ts` (`~/.fleet/agency.db`, WAL, `user_version` migrations) with tables for jobs, plan versions, steps, crew, questions, results, spend and permission answers; verify with migration and CRUD tests in a temp folder
+- [x] 2.2 Add the job state machine (briefing, planned, running, waiting, delivered, closed, cancelled, failed) as a pure reducer that writes each change with time and reason; verify with table-driven tests
+- [x] 2.3 Add `job_plan` with the plan card (playbook, steps, roles, budget, and per-step deliverables the Admiral picks as `{kind, label}`, with file and link result cards for anything else) and Approve, Edit and Reject; verify that nothing starts before approval with a tool test, and screenshot against canvas board 3.3
+- [x] 2.4 Add plan change requests: a step not in the approved plan creates a new plan version that needs approval; verify with a tool test
+- [x] 2.5 Add `job_deliver` and result cards for pr, doc, image, copy and preview, opening files in Fleet panes; verify with renderer tests and a screenshot of each kind
+- [x] 2.6 Add `job_update` and the PLAN and THE JOB sheet sections bound to the store; verify with a renderer test and in the running app
+- [x] 2.7 Add the client file at `~/.fleet/agency/clients/<repo-hash>.md`, read at job start, with `client_file_propose` and an editor in Settings › Agency › Admiral; verify with a test that an answered preference is not asked again
+- [x] 2.8 Add job export to Markdown with env file values left out; verify with a snapshot test
+- [x] 2.9 Add cancel and close with the cleanup runner (stop crew panes, remove worktrees with no unmerged commits, report leftovers with Retry); verify with tests using fake worktrees and a failing cleanup step
 
-- [ ] 2.10 Make `job_plan` return at once with a plan version id, deliver client actions as wakeups, and make only the newest version approvable; verify with tool tests
-- [ ] 2.11 Add the full state machine with `closing` and `interrupted` and the transition table from design 14; verify with table-driven tests of every allowed and refused move
-- [ ] 2.12 Pin a base commit at approval, warn on a dirty main checkout, and add a start point to `worktree-service.ts`; verify with tests that two hires apart start from the same commit
-- [ ] 2.13 Check deliverables before approval and offer a local branch deliverable when a repo has no GitHub remote or `gh` is not signed in; verify with a test
-- [ ] 2.14 Add plan change effects (stop removed steps) and show them on the change card with the diff from the approved version, withdrawn questions, delivered results and spend so far; add Swap on crew cards with "Continue its work" (same workspace, handoff brief) and "Start over" (new branch), stop-before-start, `replaces` on the crew record, and refuse a budget below spend; verify with tool tests for swap-continue, swap-restart, an Admiral-proposed swap on `limited`, and a role edit that does not reach a running job
-- [ ] 2.15 Count automatic Admiral turns per job, reset on client actions and finished steps, and show the continue card at 20; verify with limiter tests
-- [ ] 2.16 Add the startup reconcile: mark lost steps `interrupted`, digest to the Admiral, and show Resume or Cancel; verify with a test that seeds a running job and no panes
-- [ ] 2.17 Show path overlap with other running jobs on the plan card and ask queue or parallel; add the concurrent crew limit (default 4) with a queue; verify with tests
-- [ ] 2.18 Make cleanup one idempotent runner with a Leftovers list, join on double close, resume at startup, retry when online, and keep worktrees with uncommitted, untracked or unmerged work; verify with tests
-- [ ] 2.19 Copy delivered files into `~/.fleet/agency/jobs/<id>/results/` in `job_deliver`; verify with a test that close never loses a delivered file
-- [ ] 2.20 Add client file entry dates and sources, contradiction handling, the outside-change warning and the size-cap cleanup proposal; verify with tests
-- [ ] 2.21 Refresh PR result cards on show and at close and mark changes after delivery; verify with a test against recorded GitHub responses
+- [x] 2.10 Make `job_plan` return at once with a plan version id, deliver client actions as wakeups, and make only the newest version approvable; verify with tool tests
+- [x] 2.11 Add the full state machine with `closing` and `interrupted` and the transition table from design 14; verify with table-driven tests of every allowed and refused move
+- [x] 2.12 Pin a base commit at approval, warn on a dirty main checkout, and add a start point to `worktree-service.ts`; verify with tests that two hires apart start from the same commit
+- [x] 2.13 Check deliverables before approval and offer a local branch deliverable when a repo has no GitHub remote or `gh` is not signed in; verify with a test
+- [x] 2.14 Add plan change effects (stop removed steps) and show them on the change card with the diff from the approved version, withdrawn questions, delivered results and spend so far, keep `replaces` on the crew record, and refuse a budget below spend; verify with tool tests (Swap on crew cards moved to 3.26, since crew cards come with crew hire)
+- [x] 2.15 Count automatic Admiral turns per job, reset on client actions and finished steps, and show the continue card at 20; verify with limiter tests
+- [x] 2.16 Add the startup reconcile: mark lost steps `interrupted`, digest to the Admiral, and show Resume or Cancel; verify with a test that seeds a running job and no panes
+- [x] 2.17 Show path overlap with other running jobs on the plan card and ask queue or parallel; add the concurrent crew limit (default 4) with a queue; verify with tests
+- [x] 2.18 Make cleanup one idempotent runner with a Leftovers list, join on double close, resume at startup, retry when online, and keep worktrees with uncommitted, untracked or unmerged work; verify with tests
+- [x] 2.19 Copy delivered files into `~/.fleet/agency/jobs/<id>/results/` in `job_deliver`; verify with a test that close never loses a delivered file
+- [x] 2.20 Add client file entry dates and sources, contradiction handling, the outside-change warning and the size-cap cleanup proposal; verify with tests
+- [x] 2.21 Refresh PR result cards on show and at close and mark changes after delivery; verify with a test against recorded GitHub responses
 
-- [ ] 2.22 Add workspace projects: `projects` and `project_members` tables, detection from `.gitmodules` or a folder of repos in the picker with members that can be left out, missing submodule checkout, and per-member setup findings with member order; verify with tests on a fixture umbrella with three submodules and a fixture folder of two repos
-- [ ] 2.23 Add job workspaces across members: per-member base commits, one branch name in every changed member, umbrella worktree with member worktrees in the submodule paths, read-only members never pushed, and per-member cleanup; verify with tests that a step changing two of three members gets the right checkouts and branches
-- [ ] 2.24 Deliver one linked PR per changed member, merge one at a time in member order after checks on the updated base, and open the umbrella pointer bump PR last; verify with a test against recorded GitHub responses
-- [ ] 2.25 Find required checks and review bots at setup, wait for both before a PR is ready, send bot comments to the fix step, and show open comments on the result card; verify with tests against recorded GitHub responses
-- [ ] 2.26 End to end: in a fixture workspace modeled on `Fola-Fi/fola-journey` (umbrella, three submodules, SSH submodule URLs, fixed Postgres port), brief a change across two members, approve, and see linked PRs and the bump PR; verify with `npm run drive` steps and screenshots
-- [ ] 2.27 Add `settings_read` and `settings_change` over a zod schema of every setting key, with kinds `apply`, `approve` and `client-only` chosen by key and direction, change cards with Undo, settings change cards with per-change Approve, `settings_history`, and "Changed by the Admiral" with Undo in Settings; verify with tool tests that a widening change never applies without a card and that an injected request only opens a card
-- [ ] 2.28 Add "Ask the Admiral" to each Settings › Agency page and to project setup, opening the project's Admiral with the page and request; verify with `npm run drive` steps and screenshots
+- [x] 2.22 Add workspace projects: `projects` and `project_members` tables, detection from `.gitmodules` or a folder of repos in the picker with members that can be left out, missing submodule checkout, and per-member setup findings with member order; verify with tests on a fixture umbrella with three submodules and a fixture folder of two repos
+- [x] 2.23 Add job workspaces across members: per-member base commits, one branch name in every changed member, umbrella worktree with member worktrees in the submodule paths, read-only members never pushed, and per-member cleanup; verify with tests that a step changing two of three members gets the right checkouts and branches
+- [x] 2.24 Deliver one linked PR per changed member, merge one at a time in member order after checks on the updated base, and open the umbrella pointer bump PR last; verify with a test against recorded GitHub responses
+- [x] 2.25 Find required checks and review bots at setup, wait for both before a PR is ready, send bot comments to the fix step, and show open comments on the result card; verify with tests against recorded GitHub responses
+- [x] 2.27 Add `settings_read` and `settings_change` over a zod schema of every setting key, with kinds `apply`, `approve` and `client-only` chosen by key and direction, change cards with Undo, settings change cards with per-change Approve, `settings_history`, and "Changed by the Admiral" with Undo in Settings; verify with tool tests that a widening change never applies without a card and that an injected request only opens a card
+- [x] 2.28 Add "Ask the Admiral" to each Settings › Agency page and to project setup, opening the project's Admiral with the page and request; verify with `npm run drive` steps and screenshots
+
+Phase 2 notes:
+
+- 2.23: the job workspace builder is done and tested; crew hire in Phase 3 (3.6, 3.15) is what calls it.
+- 2.24: member PRs merge with squash in member order; a PR whose checks ran before the last merge gets one rerun, and the umbrella bump PR merges last.
+- 2.24: a merge run ends when its job leaves `delivered`, and Accept is refused while a merge runs.
+- 2.25: there is no separate fix step kind; new bot comments go to the Admiral, fenced, naming the step that delivered the PR, and Phase 3 crew briefs carry them.
+- 2.25: a required check not started 15 minutes after the newest commit is an Admiral event that leads to `ask_client`.
+- 2.25: open comments are unresolved threads a bot started, outdated ones included; they show on the card and do not block the merge.
+- 2.25: Merge is off while any open PR waits on a required check or a review bot.
+- The end-to-end run in a fixture workspace (was 2.26) moved to 3.27, since it needs crew hire to open the PRs.
 
 ## 3. Phase 3 - crew roles, playbooks and runtimes (PR 3)
 
@@ -69,6 +79,8 @@
 - [ ] 3.8 Let the Admiral propose a new role in a plan and save it in the project's crew folder only on approval; verify with a tool test
 - [ ] 3.9 Add Settings › Agency › Crew (role and playbook lists, source, errors, open file) matching canvas boards 3.4 and 3.4b, with the role editor: runtime cards with status, a runtime switch that resets the model, Save and Discard, the Model list per runtime (Claude Code names, eva server models with tool calls, missing-model state); verify with a screenshot and a round trip to the role file
 - [ ] 3.25 Add the Runtimes tab to Settings › Agency › Crew matching canvas board 3.8: for Claude Code and eva the path, version, checks, models with roles, default model, crew at once and the Test button; the Claude Code login state without reading it; eva's model server without its key; verify with a test that no credential reaches the renderer, and with a screenshot
+- [ ] 3.26 Add Swap on crew cards with "Continue its work" (same workspace, handoff brief) and "Start over" (new branch), stop-before-start, and an Admiral-proposed swap on `limited`; verify with tool tests for swap-continue, swap-restart, the proposed swap, and a role edit that does not reach a running job
+- [ ] 3.27 End to end (was 2.26): in a fixture workspace modeled on `Fola-Fi/fola-journey` (umbrella, three submodules, SSH submodule URLs, fixed Postgres port), brief a change across two members, approve, and see linked PRs and the bump PR; verify with `npm run drive` steps and screenshots
 - [ ] 3.10 End to end: brief a small bug fix in a test repo, approve the plan, and see a Claude Code Builder start in a TUI pane, get its brief typed in, and a Reviewer follow; verify with `npm run drive` steps and screenshots
 
 - [ ] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`

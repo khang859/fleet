@@ -1,3 +1,5 @@
+import type { SettingsCard } from './agency-settings';
+
 /**
  * The Admiral agency, as every process sees it: the repository an Admiral is
  * bound to, the jobs it runs there, the questions it puts to the client, and
@@ -18,7 +20,8 @@ export type RepoResolution =
       /** The main checkout's working tree, even when resolved from a worktree. */
       root: string;
       name: string;
-      gitCommonDir: string;
+      /** Null for a project that is a folder of repositories, which has no git directory of its own. */
+      gitCommonDir: string | null;
       /** The superproject's working tree when this repository is a submodule. */
       superprojectRoot: string | null;
       /** The superproject's own `repoId`, so its Admiral can be found from a submodule. */
@@ -60,12 +63,30 @@ export const RUNNING_JOB_STATES: readonly JobState[] = [
 /** States a job does not leave. A snapshot leaves them out of the job tabs. */
 export const TERMINAL_JOB_STATES: readonly JobState[] = ['closed', 'cancelled', 'failed'];
 
+/**
+ * What keeps a running job `waiting`: the model cannot be reached, it took
+ * too many automatic turns in a row, it hit its budget, or every remaining
+ * step waits on the client. The job runs again once every hold is gone.
+ */
+export type JobHoldKind = 'model' | 'chain_limit' | 'budget' | 'client';
+
 export type AgencyJob = {
   id: number;
   repoId: string;
   title: string;
   brief: string;
   state: JobState;
+  /** The plan version in force, or null before the first approval. */
+  approvedVersion: number | null;
+  /** How a `closing` job ends once cleanup is done. */
+  closeTarget: 'closed' | 'cancelled' | 'failed' | null;
+  /** Automatic Admiral turns in a row since the last client action or finished step. */
+  chainCount: number;
+  /** The closed job this one follows up on. */
+  linkedJobId: number | null;
+  holds: JobHoldKind[];
+  /** A plan version waiting on the client, or null when none is. */
+  pendingPlan: { id: number; version: number } | null;
   /** The agent session the job's conversation is written to. */
   sessionId: string;
   /** Whether the lobby messages that led to this job were carried into it. */
@@ -85,7 +106,38 @@ export type AgencyJobEvent = {
 
 export type AgencyQuestionOption = { label: string; detail?: string };
 
-export type AgencyQuestionKind = 'ask' | 'model_unreachable';
+/**
+ * `ask` is the Admiral's own question. The rest are Fleet's cards, answered
+ * the same way: `model_unreachable` (Retry or Settings), `continue` (go on
+ * after the automatic-turn limit) and `resume` (Resume or Cancel after a
+ * restart).
+ */
+export type AgencyQuestionKind =
+  | 'ask'
+  | 'client_file'
+  | 'model_unreachable'
+  | 'continue'
+  | 'resume';
+
+export const AGENCY_QUESTION_KINDS: readonly AgencyQuestionKind[] = [
+  'ask',
+  'client_file',
+  'model_unreachable',
+  'continue',
+  'resume'
+];
+
+/** The kinds the Admiral puts up itself, whose answers wake it; the rest are Fleet's own cards. */
+export const ADMIRAL_QUESTION_KINDS: readonly AgencyQuestionKind[] = ['ask', 'client_file'];
+
+/**
+ * A line the Admiral wants in the client file. `replaces` is an existing line
+ * it contradicts: the card shows both, and the old one goes only on approval.
+ */
+export type ClientFileAddition = { text: string; replaces: string | null };
+
+/** What a `client_file` card asks to change in the client file. */
+export type ClientFileProposal = { add: ClientFileAddition[]; remove: string[] };
 
 /**
  * `hidden` is a question that depends on another one's answer and is not
@@ -110,11 +162,39 @@ export type AgencyQuestion = {
   status: AgencyQuestionStatus;
   answerOption: number | null;
   answerText: string | null;
+  /** What a `client_file` card would change; null for every other kind. */
+  proposal: ClientFileProposal | null;
   /** Answered after it was withdrawn: kept, and the Admiral is told it came late. */
   late: boolean;
   withdrawnReason: string | null;
   createdAt: number;
   answeredAt: number | null;
+};
+
+/**
+ * Something a job made that cleanup has to undo. Recorded before it is made,
+ * so a crash in between still leaves a row to clean.
+ */
+export type ResourceKind =
+  | 'crew_pane'
+  | 'compose_project'
+  | 'member_worktree'
+  | 'umbrella_worktree'
+  | 'workspace_dir';
+
+/**
+ * What cleanup left behind: kept on purpose, since there is work in it, or
+ * not undone, since a step failed. It stays listed until it is cleaned or the
+ * client dismisses it.
+ */
+export type AgencyLeftover = {
+  id: number;
+  jobId: number;
+  kind: ResourceKind;
+  label: string;
+  path: string | null;
+  status: 'kept' | 'failed';
+  detail: string;
 };
 
 export type AgencySnapshot = {
@@ -129,6 +209,14 @@ export type AgencySnapshot = {
   nextRetryAt: number | null;
   /** How far the repository got through onboarding. */
   onboarding: AgencyOnboarding;
+  /** What closed jobs' cleanup kept or could not undo, until cleaned or dismissed. */
+  leftovers: AgencyLeftover[];
+  /** The client file changed outside Fleet since Fleet last wrote it, and the client has not kept it yet. */
+  clientFileChanged: boolean;
+  /** The last closed, cancelled or failed jobs, newest first, for export. */
+  pastJobs: AgencyJob[];
+  /** The newest settings cards the Admiral put up, oldest first. */
+  settingsCards: SettingsCard[];
 };
 
 /** When a repository's setup and starter questions were finished; null while they are not. */
@@ -149,6 +237,8 @@ export type AgencyChanged = {
   jobIds: Array<number | null>;
   /** Set when a job was just opened from the lobby, for the handoff. */
   openedJobId?: number;
+  /** Set when a setting was written, so Settings reads it again. */
+  settings?: true;
 };
 
 export type AdmiralClaimResult = { ok: true } | { ok: false; ownerPaneId: string };

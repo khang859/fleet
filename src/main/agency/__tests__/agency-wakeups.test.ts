@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { WAKEUP_GIVE_UP_ATTEMPTS, WAKEUP_STALE_CLAIM_MS } from '../backoff';
 import type { AgencyStore } from '../store/agency-store';
 import { AgencyStore as Store } from '../store/agency-store';
-import { OTHER_REPO, REPO, YES_NO, openJob, storeFixture } from './fixture';
+import { OTHER_REPO, REPO, YES_NO, moveJob, openJob, storeFixture } from './fixture';
 
 let store: AgencyStore;
 let clock: { now: number };
@@ -111,7 +111,7 @@ describe('failed turns', () => {
 
   it('tells the client once it gives up, holds the job, and recovers when a turn goes through', () => {
     const job = openJob(store);
-    store.setJobState(job.id, 'running', 'go');
+    moveJob(store, job.id, 'running');
     const id = event(job.id, 'crew done');
 
     let gaveUp = false;
@@ -130,7 +130,7 @@ describe('failed turns', () => {
         .filter((q) => q.kind === 'model_unreachable');
     expect(notices()).toHaveLength(1);
     expect(notices()[0]?.context).toContain('HTTP 503');
-    expect(store.getJob(job.id)?.state).toBe('waiting');
+    expect(store.getJob(job.id)).toMatchObject({ state: 'waiting', holds: ['model'] });
     expect(store.snapshot(REPO.repoId).nextRetryAt).toBe(clock.now + 120_000);
 
     // Still failing: still one card.
@@ -143,7 +143,7 @@ describe('failed turns', () => {
     pull(job.id);
     store.ackWakeups([id]);
     expect(notices()).toHaveLength(0);
-    expect(store.getJob(job.id)?.state).toBe('running');
+    expect(store.getJob(job.id)).toMatchObject({ state: 'running', holds: [] });
   });
 
   it("makes the queue due now on the card's Retry, without waking the Admiral itself", () => {

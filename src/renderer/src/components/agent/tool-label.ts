@@ -39,7 +39,13 @@ const LabelArgs = z.object({
   view: z.string().optional(),
   decision: z.string().optional(),
   question: z.string().optional(),
-  title: z.string().optional()
+  title: z.string().optional(),
+  summary: z.string().optional(),
+  step: z.string().optional(),
+  status: z.string().optional(),
+  kind: z.string().optional(),
+  branch: z.string().optional(),
+  reason: z.string().optional()
 });
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
@@ -163,6 +169,18 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       return { verb: 'Open job', target: args.title ?? '' };
     case 'job_list':
       return { verb: 'List jobs', target: '' };
+    case 'job_plan':
+      return { verb: 'Propose plan', target: args.summary ?? '' };
+    case 'job_update':
+      return { verb: args.status === undefined ? 'Note' : 'Update', target: args.step ?? '' };
+    case 'job_deliver':
+      return { verb: 'Deliver', target: args.title ?? args.url ?? args.branch ?? args.kind ?? '' };
+    case 'client_file_propose':
+      return { verb: 'Remember', target: args.reason ?? '' };
+    case 'settings_read':
+      return { verb: 'Read settings', target: '' };
+    case 'settings_change':
+      return { verb: 'Change settings', target: args.reason ?? '' };
     default:
       return mcpLabel(call.name) ?? { verb: call.name, target: '' };
   }

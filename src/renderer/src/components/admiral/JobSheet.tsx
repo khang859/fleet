@@ -1,8 +1,22 @@
+import { useEffect } from 'react';
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../shared/agency';
+import type { SettingsCard } from '../../../../shared/agency-settings';
 import { jobDisplayId } from '../../../../shared/agency';
-import { openQuestions } from '../../store/agency-store';
+import type {
+  AgencyJobDetail,
+  AgencyPlanVersion,
+  AgencyStep,
+  StepStatus
+} from '../../../../shared/agency-jobs';
+import { openQuestions, planVersions } from '../../store/agency-store';
+import { ClientFileNotice } from './ClientFileViews';
+import { CancelJob, DeliveredCard, LeftoverList } from './JobClose';
+import { PastJobList } from './PastJobs';
+import { PlanCard } from './PlanCard';
+import { ResultCard } from './ResultCard';
+import { SettingsCardView } from './SettingsCard';
 import { QuestionCard, type QuestionAnswer } from './QuestionCard';
-import { jobStatus, TONE_DOT } from './job-view';
+import { formatUsd, jobStatus, runtimeName, TONE_DOT } from './job-view';
 
 /** How wide the sheet is beside the conversation. */
 export const JOB_SHEET_WIDTH_PX = 380;
@@ -12,13 +26,14 @@ export const JOB_SHEET_WIDTH_PX = 380;
  * on the client, and the settings it runs on.
  *
  * In the lobby, before any job exists, it explains how a job goes instead -
- * the one moment the client has nothing else to read there. The plan, the
- * crew and the spend come with the phases that produce them; until then the
- * sheet says where the plan will appear rather than drawing empty tables.
+ * the one moment the client has nothing else to read there. A plan version
+ * waiting on the client is a card under WAITING ON YOU, the same card as in
+ * the conversation; the plan the job runs is the PLAN section, step by step.
  */
 export function JobSheet({
   snapshot,
   jobId,
+  detail,
   working,
   defaultBudgetUsd,
   onAnswer,
@@ -28,6 +43,8 @@ export function JobSheet({
   snapshot: AgencySnapshot | undefined;
   /** The job on screen, or null for the lobby. */
   jobId: number | null;
+  /** That job's plan versions and steps, once loaded. */
+  detail: AgencyJobDetail | undefined;
   /** Whether a turn is running on the job on screen. */
   working: boolean;
   defaultBudgetUsd: number;
@@ -36,7 +53,8 @@ export function JobSheet({
   className?: string;
 }): React.JSX.Element {
   const job = jobId === null ? null : (snapshot?.jobs.find((j) => j.id === jobId) ?? null);
-  const waiting = openQuestions(snapshot, jobId);
+  const { approved } = planVersions(detail);
+  const { pending, waiting, settings, delivered, count } = waitingOnClient(snapshot, job, detail);
   const firstRun = jobId === null && (snapshot?.jobs.length ?? 0) === 0;
 
   return (
@@ -49,7 +67,7 @@ export function JobSheet({
     >
       <Section label="THE JOB" gap="gap-1">
         {job !== null ? (
-          <JobHeading job={job} asking={waiting.length > 0} working={working} />
+          <JobHeading job={job} detail={detail} asking={count > 0} working={working} />
         ) : (
           <p className="text-[13px] text-fleet-text-muted">
             {firstRun
@@ -59,36 +77,39 @@ export function JobSheet({
         )}
       </Section>
 
-      {(waiting.length > 0 || job !== null) && (
-        <Section
-          label={waiting.length > 0 ? `WAITING ON YOU · ${waiting.length}` : 'WAITING ON YOU'}
-          tone={waiting.length > 0 ? 'amber' : 'muted'}
-        >
-          {waiting.length === 0 ? (
-            <p className="text-[13px] text-fleet-text-muted">Nothing needs you right now.</p>
-          ) : (
-            waiting.map((q) => (
-              <QuestionCard
-                key={q.id}
-                question={q}
-                onAnswer={async (answer) => onAnswer(q, answer)}
-                onOpenSettings={onOpenSettings}
-              />
-            ))
-          )}
-        </Section>
+      {snapshot?.clientFileChanged === true && <ClientFileNotice repoId={snapshot.repoId} />}
+
+      {(count > 0 || job !== null) && (
+        <WaitingSection
+          count={count}
+          delivered={delivered}
+          pending={pending}
+          detail={detail}
+          questions={waiting}
+          settings={settings}
+          clientFileChanged={snapshot?.clientFileChanged === true}
+          onAnswer={onAnswer}
+          onOpenSettings={onOpenSettings}
+        />
       )}
 
-      {job !== null && (
-        <Section label="PLAN" gap="gap-1">
-          <p className="text-[13px] text-fleet-text-muted">
-            The plan shows up here once the Admiral writes one: the crew, what you get back, and a
-            budget. Nothing starts until you approve it.
-          </p>
-        </Section>
+      {job !== null && <PlanSection detail={detail} />}
+
+      <ResultsSection detail={detail} />
+
+      {job !== null && approved !== null && detail !== undefined && (
+        <SpendSection spendUsd={detail.spendUsd} budgetUsd={approved.plan.budget.usd} />
       )}
 
       {firstRun && <HowAJobGoes />}
+
+      <LeftoversSection snapshot={snapshot} />
+
+      {jobId === null && snapshot !== undefined && snapshot.pastJobs.length > 0 && (
+        <Section label="PAST JOBS">
+          <PastJobList jobs={snapshot.pastJobs} />
+        </Section>
+      )}
 
       <div className="flex-1" />
       <SettingsBox
@@ -96,7 +117,158 @@ export function JobSheet({
         budgetUsd={job?.budgetUsd ?? defaultBudgetUsd}
         onOpenSettings={onOpenSettings}
       />
+      {job !== null && <CancelJob key={job.id} job={job} />}
     </aside>
+  );
+}
+
+/** Everything on the job on screen that waits on the client, and how many. */
+function waitingOnClient(
+  snapshot: AgencySnapshot | undefined,
+  job: AgencyJob | null,
+  detail: AgencyJobDetail | undefined
+): {
+  pending: AgencyPlanVersion | null;
+  waiting: AgencyQuestion[];
+  settings: SettingsCard[];
+  delivered: AgencyJob | null;
+  count: number;
+} {
+  const { pending } = planVersions(detail);
+  const waiting = openQuestions(snapshot, job?.id ?? null);
+  const settings = (snapshot?.settingsCards ?? []).filter(
+    (c) => c.jobId === (job?.id ?? null) && c.changes.some((x) => x.status === 'pending')
+  );
+  const delivered = job?.state === 'delivered' ? job : null;
+  const count =
+    waiting.length + settings.length + [pending, delivered].filter((x) => x !== null).length;
+  return { pending, waiting, settings, delivered, count };
+}
+
+/**
+ * What the job's steps handed back, newest first. Showing it asks GitHub
+ * again about its PRs, so a card says when one changed after delivery.
+ */
+function ResultsSection({
+  detail
+}: {
+  detail: AgencyJobDetail | undefined;
+}): React.JSX.Element | null {
+  const jobId = detail?.job.id ?? null;
+  const prs = detail?.results.filter((r) => r.kind === 'pr').length ?? 0;
+  useEffect(() => {
+    if (jobId !== null && prs > 0) void window.fleet.agency.refreshResults(jobId);
+  }, [jobId, prs]);
+  if (detail === undefined || detail.results.length === 0) return null;
+  return (
+    <Section label={`RESULTS · ${detail.results.length}`}>
+      {[...detail.results].reverse().map((result) => (
+        <ResultCard key={result.id} result={result} />
+      ))}
+    </Section>
+  );
+}
+
+/** What closed jobs' cleanup left in the repository, shown in every view of it. */
+function LeftoversSection({
+  snapshot
+}: {
+  snapshot: AgencySnapshot | undefined;
+}): React.JSX.Element | null {
+  if (snapshot === undefined || snapshot.leftovers.length === 0) return null;
+  return (
+    <Section label={`LEFTOVERS · ${snapshot.leftovers.length}`}>
+      <LeftoverList repoId={snapshot.repoId} leftovers={snapshot.leftovers} />
+    </Section>
+  );
+}
+
+/** Open questions, settings changes and a plan version waiting on the client, as cards. */
+function WaitingSection({
+  count,
+  delivered,
+  pending,
+  detail,
+  questions,
+  settings,
+  clientFileChanged,
+  onAnswer,
+  onOpenSettings
+}: {
+  count: number;
+  /** The job on screen, when it waits on the client to accept it. */
+  delivered: AgencyJob | null;
+  pending: AgencyPlanVersion | null;
+  detail: AgencyJobDetail | undefined;
+  questions: AgencyQuestion[];
+  settings: SettingsCard[];
+  clientFileChanged: boolean;
+  onAnswer: (question: AgencyQuestion, answer: QuestionAnswer) => Promise<boolean>;
+  onOpenSettings: () => void;
+}): React.JSX.Element {
+  return (
+    <Section
+      label={count > 0 ? `WAITING ON YOU · ${count}` : 'WAITING ON YOU'}
+      tone={count > 0 ? 'amber' : 'muted'}
+    >
+      {count === 0 && (
+        <p className="text-[13px] text-fleet-text-muted">Nothing needs you right now.</p>
+      )}
+      {delivered !== null && <DeliveredCard job={delivered} detail={detail} />}
+      {pending !== null && detail !== undefined && <PlanCard version={pending} detail={detail} />}
+      {questions.map((q) => (
+        <QuestionCard
+          key={q.id}
+          question={q}
+          onAnswer={async (answer) => onAnswer(q, answer)}
+          onOpenSettings={onOpenSettings}
+          clientFileChanged={clientFileChanged}
+        />
+      ))}
+      {settings.map((card) => (
+        <SettingsCardView key={`s${card.id}`} card={card} />
+      ))}
+    </Section>
+  );
+}
+
+function PlanSection({ detail }: { detail: AgencyJobDetail | undefined }): React.JSX.Element {
+  const { pending, approved } = planVersions(detail);
+  return (
+    <Section
+      label="PLAN"
+      gap="gap-1"
+      aside={approved === null ? undefined : `v${approved.version} approved`}
+    >
+      {approved === null || detail === undefined ? (
+        <p className="text-[13px] text-fleet-text-muted">
+          {pending === null
+            ? 'The plan shows up here once the Admiral writes one: the crew, what you get back, and a budget. Nothing starts until you approve it.'
+            : 'Nothing starts until you approve the plan above.'}
+        </p>
+      ) : (
+        <PlanSteps detail={detail} />
+      )}
+    </Section>
+  );
+}
+
+function SpendSection({
+  spendUsd,
+  budgetUsd
+}: {
+  spendUsd: number;
+  budgetUsd: number;
+}): React.JSX.Element {
+  return (
+    <Section label="SPEND" aside={`$${formatUsd(spendUsd)} of $${formatUsd(budgetUsd)}`}>
+      <div className="h-1.5 overflow-hidden rounded-full bg-fleet-surface-2">
+        <div
+          className="h-full bg-blue-400"
+          style={{ width: `${Math.min(100, (spendUsd / budgetUsd) * 100)}%` }}
+        />
+      </div>
+    </Section>
   );
 }
 
@@ -104,37 +276,118 @@ function Section({
   label,
   tone = 'muted',
   gap = 'gap-2',
+  aside,
   children
 }: {
   label: string;
   tone?: 'muted' | 'amber';
   gap?: string;
+  /** A short fact on the right of the heading. */
+  aside?: string;
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
     <section className={`flex flex-col ${gap}`}>
-      <h3
-        className={`text-[11px] font-semibold tracking-[0.04em] ${
-          tone === 'amber' ? 'text-amber-700 dark:text-amber-400' : 'text-fleet-text-muted'
-        }`}
-      >
-        {label}
-      </h3>
+      <div className="flex items-baseline gap-2">
+        <h3
+          className={`flex-1 text-[11px] font-semibold tracking-[0.04em] ${
+            tone === 'amber' ? 'text-amber-700 dark:text-amber-400' : 'text-fleet-text-muted'
+          }`}
+        >
+          {label}
+        </h3>
+        {aside !== undefined && (
+          <span className="font-mono text-[11px] text-fleet-text-muted">{aside}</span>
+        )}
+      </div>
       {children}
     </section>
   );
 }
 
+const STEP_TONE: Record<StepStatus, string> = {
+  pending: 'text-fleet-text-subtle',
+  queued: 'text-fleet-text-muted',
+  running: 'text-green-600 dark:text-green-400',
+  blocked: 'text-amber-700 dark:text-amber-400',
+  interrupted: 'text-amber-700 dark:text-amber-400',
+  done: 'text-fleet-text-muted',
+  removed: 'text-fleet-text-subtle'
+};
+
+const STEP_LABEL: Record<StepStatus, string> = {
+  pending: 'not started',
+  queued: 'queued',
+  running: 'running',
+  blocked: 'blocked',
+  interrupted: 'interrupted',
+  done: 'done',
+  removed: 'removed'
+};
+
+/** The approved plan's steps in order, each with its status and last note. */
+function PlanSteps({ detail }: { detail: AgencyJobDetail }): React.JSX.Element {
+  const approved = planVersions(detail).approved;
+  const byId = new Map(approved?.plan.steps.map((s) => [s.id, s]));
+  return (
+    <ol className="flex flex-col">
+      {detail.steps.map((step: AgencyStep, i) => {
+        const planned = byId.get(step.id);
+        const removed = step.status === 'removed';
+        return (
+          <li
+            key={step.id}
+            className="flex flex-col gap-0.5 border-b border-fleet-border/60 py-1.5 last:border-b-0"
+          >
+            <div className="flex items-baseline gap-2 text-xs">
+              <span className="w-3 shrink-0 text-right text-fleet-text-subtle">
+                {removed ? '' : i + 1}
+              </span>
+              <span
+                className={`min-w-0 flex-1 truncate ${removed ? 'text-fleet-text-subtle line-through' : 'text-fleet-text'}`}
+                title={planned?.title}
+              >
+                {planned?.title ?? step.id}
+                <span className="text-fleet-text-subtle">
+                  {' '}
+                  · {step.role}
+                  {planned?.runtime !== undefined && ` · ${runtimeName(planned.runtime)}`}
+                </span>
+              </span>
+              <span className={`shrink-0 text-[11px] ${STEP_TONE[step.status]}`}>
+                {STEP_LABEL[step.status]}
+              </span>
+            </div>
+            {step.note !== '' && !removed && (
+              <p className="line-clamp-2 pl-5 text-[11px] text-fleet-text-muted" title={step.note}>
+                {step.note}
+              </p>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function JobHeading({
   job,
+  detail,
   asking,
   working
 }: {
   job: AgencyJob;
+  detail: AgencyJobDetail | undefined;
   asking: boolean;
   working: boolean;
 }): React.JSX.Element {
   const status = jobStatus(job, { asking, working });
+  const live = (detail?.steps ?? []).filter((s) => s.status !== 'removed');
+  const done = live.filter((s) => s.status === 'done').length;
+  const progress =
+    job.approvedVersion === null || live.length === 0
+      ? ''
+      : ` · ${done} of ${live.length} steps done`;
   return (
     <>
       <div className="flex items-baseline gap-2">
@@ -148,6 +401,7 @@ function JobHeading({
       <div className="flex items-center gap-1.5 text-xs text-fleet-text-muted">
         <span className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[status.tone]}`} />
         {status.label}
+        {progress}
       </div>
       {job.brief !== '' && (
         <p
@@ -216,8 +470,4 @@ function SettingsBox({
       </button>
     </div>
   );
-}
-
-function formatUsd(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }

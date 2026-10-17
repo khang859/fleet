@@ -10,6 +10,8 @@ import { createContext, useContext } from 'react';
  */
 export type AdmiralThreadContextValue = {
   repoId: string;
+  /** The job whose conversation this is, or null for the lobby. */
+  jobId: number | null;
   onOpenJob: (jobId: number) => void;
 };
 

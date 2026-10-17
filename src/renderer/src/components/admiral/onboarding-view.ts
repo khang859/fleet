@@ -1,10 +1,14 @@
-import type { AgencyPreflight } from '../../../../shared/agency';
+import type { AgencyPreflight, AgencyRepoRef } from '../../../../shared/agency';
 import {
   githubSlug,
   type AgencyProjectSummary,
+  type MemberScan,
   type ProjectFolder,
   type ProjectMemberSetup,
-  type SetupScan
+  type ProjectSetup,
+  type RequiredChecksSource,
+  type SetupScan,
+  type WorkspaceMember
 } from '../../../../shared/agency-projects';
 import { displayPath } from '../../../../shared/path-platform';
 import { relativeTime } from '../agent/settings/format';
@@ -44,16 +48,47 @@ export function pickBlocker(
 
 export type FolderBadge = { label: string; tone: 'green' | 'amber' | 'blue' | 'plain' };
 
-/** The status a picker row leads with: set up, team files waiting, no remote, or not set up. */
+/** The project a picker row picks: the repository, or the workspace's own. */
+export function folderProject(folder: ProjectFolder): AgencyRepoRef | null {
+  if (folder.kind === 'repo') return folder.repo;
+  return folder.kind === 'workspace' ? folder.project : null;
+}
+
+/** The members a workspace keeps, as the picker shows them, umbrella included. */
+export function keptMembers(
+  folder: Extract<ProjectFolder, { kind: 'workspace' }>,
+  leftOut: readonly string[]
+): WorkspaceMember[] {
+  return folder.members.filter((m) => !leftOut.includes(m.name));
+}
+
+/**
+ * The status a picker row leads with: set up, team files waiting, no remote,
+ * or not set up. A workspace has no remote when none of its members has one.
+ */
 export function folderBadges(folder: ProjectFolder, admiralOpen: boolean): FolderBadge[] {
   if (folder.kind === 'not-a-repo') return [];
+  const remote =
+    folder.kind === 'repo' ? folder.remote : (folder.members.find((m) => m.remote)?.remote ?? null);
   const badges: FolderBadge[] = [];
   if (admiralOpen) badges.push({ label: 'Admiral open', tone: 'blue' });
   if (folder.setupDone) badges.push({ label: 'Set up', tone: 'green' });
   else if (folder.teamFiles) badges.push({ label: 'Has team files to import', tone: 'amber' });
-  else if (folder.remote === null) badges.push({ label: 'Local branches only', tone: 'plain' });
+  else if (remote === null) badges.push({ label: 'Local branches only', tone: 'plain' });
   else badges.push({ label: 'Needs setup', tone: 'plain' });
   return badges;
+}
+
+/** What a workspace member's row says about it, right of its name. */
+export function memberStatus(m: WorkspaceMember): FolderBadge | null {
+  if (m.repo === null) return { label: 'Missing', tone: 'amber' };
+  if (m.remote === null) return { label: 'Local branches only', tone: 'plain' };
+  return null;
+}
+
+/** `core → api → web → shop`: the order member PRs merge in. */
+export function memberOrder(setup: ProjectSetup): string {
+  return setup.members.map((m) => m.name).join(' → ');
 }
 
 export const NOTE_DOT = {
@@ -64,8 +99,16 @@ export const NOTE_DOT = {
 
 type RepoNote = { tone: keyof typeof NOTE_DOT; text: string };
 
-/** What the scan could and could not tell, in a sentence each. */
-export function repoNotes(scan: SetupScan, member: ProjectMemberSetup): RepoNote[] {
+/**
+ * What the scan could and could not tell about one member, in a sentence
+ * each. The teammate's shared setup is said once, on the project's own
+ * repository: the umbrella, or the only one.
+ */
+export function repoNotes(
+  scan: SetupScan,
+  member: ProjectMemberSetup,
+  read: MemberScan
+): RepoNote[] {
   const notes: RepoNote[] = [];
   const slug = githubSlug(member.remote);
   const branch = member.defaultBranch ?? 'the default branch';
@@ -84,7 +127,7 @@ export function repoNotes(scan: SetupScan, member: ProjectMemberSetup): RepoNote
       text: `On GitHub as ${slug}, but the GitHub CLI is not signed in, so crew cannot open PRs.`
     });
   }
-  const required: Record<SetupScan['requiredChecksFrom'], RepoNote> = {
+  const required: Record<RequiredChecksSource, RepoNote> = {
     'branch-protection': { tone: 'green', text: `Must pass comes from the rules on ${branch}.` },
     'none-found': {
       tone: 'plain',
@@ -96,8 +139,8 @@ export function repoNotes(scan: SetupScan, member: ProjectMemberSetup): RepoNote
     },
     'no-github': { tone: 'plain', text: 'Not on GitHub, so there are no required checks to read.' }
   };
-  notes.push(required[scan.requiredChecksFrom]);
-  if (scan.teamSetup !== null) {
+  notes.push(required[read.requiredChecksFrom]);
+  if (scan.teamSetup !== null && member.path === '.') {
     notes.push({
       tone: 'amber',
       text: 'A teammate shared a setup in .fleet/. Import it below to use it.'

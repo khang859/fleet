@@ -13,6 +13,7 @@ import { useAgencyStore } from '../agency-store';
 import { finishAdmiralClose } from '../../components/admiral/admiral-close';
 import { scratchDir, isScratchTab } from '../../lib/scratch';
 import type { Workspace } from '../../../../shared/types';
+import { agencyJob } from '../../../../shared/__tests__/agency-fixtures';
 
 const ANNOTATE_TAB_A = {
   id: 'tab-ann-a',
@@ -1514,22 +1515,22 @@ describe('Admiral panes', () => {
           repoId: REPO.repoId,
           lobbySessionId: 'lobby-1',
           jobs: [
-            {
+            agencyJob({
               id: 7,
               repoId: REPO.repoId,
               title: 'Fix the drag',
-              brief: '',
               state: running ? 'running' : 'closed',
               sessionId: 'job-7',
-              handoffDone: true,
-              budgetUsd: null,
-              createdAt: 1,
-              updatedAt: 1
-            }
+              budgetUsd: null
+            })
           ],
           questions: [],
           nextRetryAt: null,
-          onboarding: { setupDoneAt: 1, starterDoneAt: 1 }
+          onboarding: { setupDoneAt: 1, starterDoneAt: 1 },
+          leftovers: [],
+          clientFileChanged: false,
+          pastJobs: [],
+          settingsCards: []
         }
       }
     });

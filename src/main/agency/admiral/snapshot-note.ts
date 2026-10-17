@@ -6,9 +6,20 @@ import {
   type AdmiralThreadScope,
   type AgencyQuestion
 } from '../../../shared/agency';
+import type { AgencyJob } from '../../../shared/agency';
+import type { PlanBases } from '../../../shared/agency-jobs';
+import { CLIENT_FILE_CLEANUP_CHARS, type ClientFileNote } from '../projects/client-file';
 import type { AgencyStore } from '../store/agency-store';
+import { proposalLines } from '../wakeup-text';
 
-type SnapshotReader = Pick<AgencyStore, 'repo' | 'getJob' | 'listJobs' | 'listQuestions'>;
+type SnapshotReader = Pick<AgencyStore, 'repo' | 'getJob' | 'listJobs' | 'listQuestions' | 'plans'>;
+
+/** The commits a job's work starts from, as the approval pinned them. */
+function baseText(bases: PlanBases | null): string {
+  const pins = Object.entries(bases ?? {});
+  if (pins.length === 0) return '';
+  return `, starting from ${pins.map(([member, pin]) => `${member} at ${pin.sha.slice(0, 12)} (${pin.from === 'head' ? 'its HEAD' : 'default branch tip'})`).join(', ')}`;
+}
 
 /**
  * A question as the Admiral needs it to avoid asking it again: every option,
@@ -20,7 +31,11 @@ function describeQuestion(q: AgencyQuestion): string {
   const step = q.step === null ? '' : ` (step ${q.step})`;
   return fence(
     id,
-    [`${id}${step}: ${q.question}`, ...optionLines(q, 'your recommendation')].join('\n')
+    [
+      `${id}${step}: ${q.question}`,
+      ...(q.proposal === null ? [] : proposalLines(q.proposal)),
+      ...optionLines(q, 'your recommendation')
+    ].join('\n')
   );
 }
 
@@ -32,6 +47,43 @@ function describeHeld(q: AgencyQuestion): string {
       ? ''
       : `Shows if ${questionDisplayId(dep.question)} is answered with option ${dep.option + 1}:\n`;
   return `${after}${fence(id, `${id}: ${q.question}`)}`;
+}
+
+/**
+ * The job's plan as Fleet holds it: the approved version with each step's
+ * status, the version waiting on the client, the budget and what holds the
+ * job. Step titles are the Admiral's own words, so they go in a fence.
+ */
+function planLines(store: SnapshotReader, job: AgencyJob): string[] {
+  const approved = store.plans.approved(job.id);
+  const pending = store.plans.pending(job.id);
+  const lines: string[] = [];
+  if (approved === null) {
+    lines.push('No plan is approved yet; nothing may start. Propose one with job_plan.');
+  } else {
+    const steps = store.plans.steps(job.id);
+    const spent = store.plans.spendUsd(job.id);
+    lines.push(
+      `Approved plan v${approved.version} (${approved.plan.playbook}), budget $${approved.plan.budget.usd}, spent $${spent.toFixed(2)}${baseText(approved.bases)}. Steps:`,
+      fence(
+        `plan v${approved.version}`,
+        approved.plan.steps
+          .map((step) => {
+            const status = steps.find((s) => s.id === step.id)?.status ?? 'pending';
+            const after = step.after.length === 0 ? '' : `, after ${step.after.join(', ')}`;
+            return `- ${step.id} (${step.role}${after}): ${status}. ${step.title}`;
+          })
+          .join('\n')
+      )
+    );
+  }
+  if (pending !== null) {
+    lines.push(
+      `Plan v${pending.version} is waiting on the client; do not propose it again. A new job_plan replaces it.`
+    );
+  }
+  if (job.holds.length > 0) lines.push(`On hold: ${job.holds.join(', ')}.`);
+  return lines;
 }
 
 function questionLines(store: SnapshotReader, scope: AdmiralThreadScope): string[] {
@@ -62,16 +114,36 @@ function questionLines(store: SnapshotReader, scope: AdmiralThreadScope): string
 export function admiralSnapshotNote(
   store: SnapshotReader,
   scope: AdmiralThreadScope,
-  clientFile: string | null = null
+  clientFile: ClientFileNote | null = null
 ): string {
   const records = recordsNote(store, scope);
   if (clientFile === null) return records;
-  return [
-    records,
-    '',
-    "The client file: the client's standing preferences for this project, written by their own answers and picks. Follow it, and do not ask what it already settles.",
-    clientFile
-  ].join('\n');
+  return [records, '', ...clientFileLines(store, scope.repoId, clientFile)].join('\n');
+}
+
+function clientFileLines(
+  store: SnapshotReader,
+  repoId: string,
+  clientFile: ClientFileNote
+): string[] {
+  const lines = [
+    "The client file: the client's standing preferences for this project, written by their own answers and picks. Follow it, and do not ask what it already settles."
+  ];
+  if (clientFile.changedOutside) {
+    lines.push(
+      'It changed outside Fleet, and the client has not looked at the change yet. Until they keep it in Settings > Agency > Admiral, this is the version Fleet last wrote, and it takes no proposals.'
+    );
+  }
+  if (clientFile.text !== '') lines.push(clientFile.text);
+  const proposing = store
+    .listQuestions(repoId, { statuses: ['open'] })
+    .some((q) => q.kind === 'client_file');
+  if (clientFile.oversize && !clientFile.changedOutside && !proposing) {
+    lines.push(
+      `The client file is over its ${CLIENT_FILE_CLEANUP_CHARS}-character limit. Propose a cleanup with client_file_propose: merge repeats and remove lines that no longer apply.`
+    );
+  }
+  return lines;
 }
 
 function recordsNote(store: SnapshotReader, scope: AdmiralThreadScope): string {
@@ -103,6 +175,7 @@ function recordsNote(store: SnapshotReader, scope: AdmiralThreadScope): string {
   return [
     `Fleet's records for this conversation: ${id} in ${repo}, state ${job.state}.`,
     fence(id, `Title: ${job.title}\nBrief: ${job.brief}`),
+    ...planLines(store, job),
     ...questionLines(store, scope)
   ].join('\n');
 }

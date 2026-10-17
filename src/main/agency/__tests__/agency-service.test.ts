@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { AgencyChanged } from '../../../shared/agency';
 import { AgencyService } from '../index';
 import { AgencyStore } from '../store/agency-store';
-import { REPO, YES_NO } from './fixture';
+import { REPO, YES_NO, moveJob } from './fixture';
 
 let dir: string;
 let dbPath: string;
@@ -50,14 +50,14 @@ describe('AgencyService', () => {
     expect(service.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids).toEqual(claimed);
   });
 
-  it('raises one change event per repository for the jobs a write touched', () => {
+  it('raises one change event per repository for the jobs a write touched', async () => {
     const job = service.store.openJob({
       repoId: REPO.repoId,
       title: 't',
       brief: 'b',
       sessionId: 's-1'
     });
-    service.store.setJobState(job.id, 'running', 'go');
+    moveJob(service.store, job.id, 'running');
     const q = service.store.askQuestion({
       repoId: REPO.repoId,
       jobId: job.id,
@@ -68,9 +68,12 @@ describe('AgencyService', () => {
     expect(service.answer({ id: q.id, option: 0 })?.status).toBe('answered');
     expect(service.answer({ id: q.id, option: 0 })).toBeNull();
     expect(service.cancelJobs(REPO.repoId)).toEqual([job.id]);
+    await service.cleanup.start(job.id);
     expect(service.markHandoff({ jobId: job.id, lobbyMessageId: 'm' })).toBe(true);
     expect(service.markHandoff({ jobId: 999, lobbyMessageId: 'm' })).toBe(false);
+    // Answer, cancel, the cleanup that ends the job, and the handoff.
     expect(emitted).toEqual([
+      { repoId: REPO.repoId, jobIds: [job.id] },
       { repoId: REPO.repoId, jobIds: [job.id] },
       { repoId: REPO.repoId, jobIds: [job.id] },
       { repoId: REPO.repoId, jobIds: [job.id] }

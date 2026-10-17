@@ -5,6 +5,8 @@ import { z } from 'zod';
 import type { AgencyRepoRef } from '../../../shared/agency';
 import {
   githubSlug,
+  type MemberScan,
+  type ProjectKind,
   type ProjectMemberSetup,
   type ProjectSetup,
   type RepoFile,
@@ -257,6 +259,64 @@ async function requiredChecks(
   return [...found];
 }
 
+const ReviewAuthors = z.object({
+  data: z.object({
+    repository: z.object({
+      pullRequests: z.object({
+        nodes: z.array(
+          z.object({
+            reviews: z.object({
+              nodes: z.array(
+                z.object({
+                  author: z.object({ __typename: z.string(), login: z.string() }).nullable()
+                })
+              )
+            })
+          })
+        )
+      })
+    })
+  })
+});
+
+const REVIEW_AUTHORS_QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){
+pullRequests(states:MERGED,first:20,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{reviews(first:50){nodes{author{__typename login}}}}}}}`;
+
+/**
+ * The bots that reviewed the last 20 merged PRs, as `login[bot]`, the most
+ * reviews first. A person's review does not count, however often.
+ */
+async function reviewBots(gh: GhRun, root: string, slug: string): Promise<string[]> {
+  const [owner, name] = slug.split('/');
+  const parsed = ReviewAuthors.safeParse(
+    ghJson(
+      await gh(
+        [
+          'api',
+          'graphql',
+          '-f',
+          `owner=${owner}`,
+          '-f',
+          `name=${name}`,
+          '-f',
+          `query=${REVIEW_AUTHORS_QUERY}`
+        ],
+        root
+      )
+    )
+  );
+  if (!parsed.success) return [];
+  const counts = new Map<string, number>();
+  for (const pr of parsed.data.data.repository.pullRequests.nodes) {
+    for (const { author } of pr.reviews.nodes) {
+      if (author?.__typename !== 'Bot') continue;
+      const bot = `${author.login}[bot]`;
+      counts.set(bot, (counts.get(bot) ?? 0) + 1);
+    }
+  }
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([bot]) => bot);
+}
+
 function sha256(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
@@ -304,14 +364,58 @@ async function detectStack(reader: RepoReader): Promise<Stack> {
   return script === undefined ? stack : { ...stack, setupCommand: `./${script}` };
 }
 
-/** Scan a repository for setup. See the module comment for what it may and may not do. */
-export async function scanProject(
-  repo: AgencyRepoRef,
-  deps: ScanDeps = {}
-): Promise<Omit<SetupScan, 'saved'>> {
-  const git = deps.git ?? readOnlyGit;
-  const facts = await repoFacts(repo.root, git);
-  const reader = await openRepoReader(repo.root, facts.defaultBranch, git);
+/** A member to scan: its name, its path from the project root, and its checkout. */
+export type ScanMember = { name: string; path: string; root: string };
+
+/** What setup scans: a project's members in member order, and the submodules it could not read. */
+export type ScanTarget = {
+  repo: AgencyRepoRef;
+  kind: ProjectKind;
+  members: ScanMember[];
+  missing: Array<{ name: string; path: string }>;
+};
+
+/** A one-repository project: the repository is its only member. */
+export function repoTarget(repo: AgencyRepoRef): ScanTarget {
+  return {
+    repo,
+    kind: 'repo',
+    members: [{ name: repo.name || basename(repo.root), path: '.', root: repo.root }],
+    missing: []
+  };
+}
+
+/** A path from the project root, for a path inside a member. */
+export function projectPath(memberPath: string, path: string): string {
+  return memberPath === '.' ? path : `${memberPath}/${path}`;
+}
+
+/** The member a path from the project root is in, and the path inside it: the deepest member that holds it. */
+export function memberOfPath<M extends { path: string }>(
+  members: M[],
+  path: string
+): { member: M; path: string } | null {
+  const holder = members
+    .filter((m) => m.path === '.' || path.startsWith(`${m.path}/`))
+    .sort((a, b) => b.path.length - a.path.length)
+    .at(0);
+  if (holder === undefined) return null;
+  return { member: holder, path: holder.path === '.' ? path : path.slice(holder.path.length + 1) };
+}
+
+type MemberFindings = {
+  member: ProjectMemberSetup;
+  scan: MemberScan;
+  repoFiles: RepoFile[];
+  reader: RepoReader;
+};
+
+async function scanMember(
+  target: ScanMember,
+  deps: { git: GitRun; gh: GhRun | undefined; signedIn: boolean }
+): Promise<MemberFindings> {
+  const facts = await repoFacts(target.root, deps.git);
+  const reader = await openRepoReader(target.root, facts.defaultBranch, deps.git);
   const [stack, checks, files] = await Promise.all([
     detectStack(reader),
     ciChecks(reader),
@@ -319,49 +423,74 @@ export async function scanProject(
   ]);
 
   const slug = githubSlug(facts.remote);
-  const gh = deps.gh;
-  const signedIn = gh !== undefined && (await ghState(gh, repo.root)) === 'ok';
   let required: string[] = [];
+  let bots: string[] = [];
   let requiredChecksFrom: RequiredChecksSource = 'no-github';
   if (slug !== null && facts.defaultBranch !== null) {
-    if (gh === undefined || !signedIn) requiredChecksFrom = 'gh-signed-out';
+    if (deps.gh === undefined || !deps.signedIn) requiredChecksFrom = 'gh-signed-out';
     else {
-      required = await requiredChecks(gh, repo.root, slug, facts.defaultBranch);
+      [required, bots] = await Promise.all([
+        requiredChecks(deps.gh, target.root, slug, facts.defaultBranch),
+        reviewBots(deps.gh, target.root, slug)
+      ]);
       requiredChecksFrom = required.length > 0 ? 'branch-protection' : 'none-found';
     }
   }
 
-  const member: ProjectMemberSetup = {
-    name: repo.name || basename(repo.root),
-    path: '.',
-    remote: facts.remote,
-    defaultBranch: facts.defaultBranch,
-    stack: stack.stack,
-    packageManager: stack.packageManager,
-    setupCommand: stack.setupCommand,
-    setupTimeoutSec: DEFAULT_SETUP_TIMEOUT_SEC,
-    checkCommands: stack.checkCommands,
-    checks,
-    requiredChecks: required,
-    reviewBots: []
+  return {
+    member: {
+      name: target.name,
+      path: target.path,
+      remote: facts.remote,
+      defaultBranch: facts.defaultBranch,
+      stack: stack.stack,
+      packageManager: stack.packageManager,
+      setupCommand: stack.setupCommand,
+      setupTimeoutSec: DEFAULT_SETUP_TIMEOUT_SEC,
+      checkCommands: stack.checkCommands,
+      checks,
+      requiredChecks: required,
+      reviewBots: bots
+    },
+    scan: { name: target.name, path: target.path, readFrom: reader.readFrom, requiredChecksFrom },
+    repoFiles: files.map((f) => ({ ...f, path: projectPath(target.path, f.path) })),
+    reader
   };
+}
+
+/** Scan a project's members for setup. See the module comment for what it may and may not do. */
+export async function scanProject(
+  target: ScanTarget,
+  deps: ScanDeps = {}
+): Promise<Omit<SetupScan, 'saved'>> {
+  const git = deps.git ?? readOnlyGit;
+  const gh = deps.gh;
+  const first = target.members.at(0);
+  const signedIn =
+    gh !== undefined && first !== undefined && (await ghState(gh, first.root)) === 'ok';
+  const found = await Promise.all(
+    target.members.map(async (m) => scanMember(m, { git, gh, signedIn }))
+  );
   const setup: ProjectSetup = {
     version: 1,
-    kind: 'repo',
-    name: member.name,
-    members: [member],
+    kind: target.kind,
+    name: target.repo.name,
+    members: found.map((f) => f.member),
     imports: []
   };
-  const teamText = files.some((f) => f.kind === 'setup')
-    ? await reader.read('.fleet/fleet.agency.toml')
+  // A teammate's setup lives in the project root's repository: the umbrella, or the one repository.
+  const root = found.find((f) => f.member.path === '.');
+  const teamText = root?.repoFiles.some((f) => f.kind === 'setup')
+    ? await root.reader.read('.fleet/fleet.agency.toml')
     : null;
   return {
-    repo,
+    repo: target.repo,
+    kind: target.kind,
     setup,
-    repoFiles: files,
+    members: found.map((f) => f.scan),
+    missing: target.missing,
+    repoFiles: found.flatMap((f) => f.repoFiles),
     teamSetup: teamText === null ? null : parseSetupToml(teamText),
-    readFrom: reader.readFrom,
-    requiredChecksFrom,
     ghSignedIn: signedIn
   };
 }

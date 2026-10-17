@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { commitNumber, shownNumber } from './bounded-number';
 import { commitLines, shownLines } from './line-list';
+import { PillRadio } from '../../ui/pill-radio';
 
 /**
  * Shared class strings for the native inputs and selects in these panes, so
@@ -128,31 +129,17 @@ export function OptionPills<T extends string>({
         <span className="text-sm text-fleet-text-secondary">{label}</span>
         {hint && <p className="mt-0.5 text-xs text-fleet-text-muted">{hint}</p>}
       </div>
-      <div
-        role="radiogroup"
-        aria-label={label}
-        className="flex shrink-0 items-center gap-0.5 rounded-lg border border-fleet-border bg-fleet-surface p-0.5"
-      >
-        {[null, ...options].map((option) => {
-          const selected = value === option;
-          return (
-            <button
-              key={option ?? 'default'}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => onChange(option)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors focus-ring ${
-                selected
-                  ? 'bg-fleet-surface-3 text-fleet-text'
-                  : 'text-fleet-text-muted hover:text-fleet-text-secondary'
-              }`}
-            >
-              {option ?? 'default'}
-            </button>
-          );
-        })}
-      </div>
+      <PillRadio
+        label={label}
+        value={value}
+        options={[null, ...options].map((option) => ({
+          value: option,
+          label: option ?? 'default'
+        }))}
+        onChange={onChange}
+        size="md"
+        className="bg-fleet-surface capitalize"
+      />
     </div>
   );
 }

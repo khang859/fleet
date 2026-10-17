@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useClaudeConfigStore } from '../../store/claude-config-store';
 import { parseSettings } from '../../lib/claude-json-edit';
-import { summarizeChanges, changedKeys, formatList } from '../../lib/claude-change-summary';
+import { summarizeChanges, changedKeys } from '../../lib/claude-change-summary';
+import { formatList } from '../../../../shared/format-list';
 import type { ClaudeConfigScope, ClaudeFileKind } from '../../../../shared/claude-config';
 import type { ClaudeWriteRefusal } from '../../../../shared/claude-config-types';
 import type { SettingsSectionProps } from './SettingsTab';

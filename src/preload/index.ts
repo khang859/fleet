@@ -179,12 +179,23 @@ import type {
 import type {
   AgencyProjectSummary,
   BriefIdeas,
+  ClientFileView,
   ClientLineInput,
   ProjectFolder,
   RuleCandidates,
   SaveSetupRequest,
   SetupScan
 } from '../shared/agency-projects';
+import type {
+  AgencyJobDetail,
+  JobControl,
+  JobControlResult,
+  LeftoverAction,
+  ResultOpen,
+  PlanAction,
+  PlanActionResult
+} from '../shared/agency-jobs';
+import type { AdmiralSettingMark, SettingsUndoOutcome } from '../shared/agency-settings';
 import type {
   Learning,
   CreateLearningInput,
@@ -1125,7 +1136,44 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.AGENCY_CANCEL_JOBS, repoId),
     markHandoff: async (args: { jobId: number; lobbyMessageId: string }): Promise<boolean> =>
       typedInvoke(IPC_CHANNELS.AGENCY_MARK_HANDOFF, args),
+    /** The client wrote to a job's Admiral, which restarts its automatic-turn count. */
+    clientActivity: async (jobId: number): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_ACTIVITY, jobId),
+    /** A job's plan versions, steps and record, for its sheet and plan cards. */
+    jobDetail: async (jobId: number): Promise<AgencyJobDetail | null> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_JOB_DETAIL, jobId),
+    /** The client's approve, edit or reject on a plan card. */
+    planAction: async (action: PlanAction): Promise<PlanActionResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_PLAN_ACTION, action),
+    /** The client cancels a job, or accepts its results; either way it closes and cleans up. */
+    jobControl: async (control: JobControl): Promise<JobControlResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_JOB_CONTROL, control),
+    /** Merge a delivered job's PRs one at a time in member order, each after its checks. */
+    mergePrs: async (jobId: number): Promise<JobControlResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_MERGE_PRS, jobId),
+    /** Retry or dismiss something a job's cleanup left behind. */
+    leftover: async (action: LeftoverAction): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_LEFTOVER, action),
+    /** Ask GitHub again about a job's PR results not asked in the last minute. */
+    refreshResults: async (jobId: number): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_RESULTS_REFRESH, jobId),
+    /** Open a delivered file with the system's app for it; resolves with an error, or ''. */
+    openResult: async (open: ResultOpen): Promise<string> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_RESULT_OPEN, open),
+    /** Save an ended job's record as Markdown; resolves with the path, or null. */
+    exportJob: async (jobId: number): Promise<string | null> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_JOB_EXPORT, jobId),
     preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
+    /** The Admiral's settings cards: approve or refuse a change, undo one, and what it changed last. */
+    settings: {
+      decide: async (input: { changeId: number; approved: boolean }): Promise<boolean> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SETTINGS_DECIDE, input),
+      undo: async (changeId: number): Promise<SettingsUndoOutcome> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SETTINGS_UNDO, changeId),
+      /** Agency settings when `repoId` is null, else the project's too. */
+      marks: async (repoId: string | null): Promise<AdmiralSettingMark[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_SETTINGS_MARKS, repoId)
+    },
     /** Onboarding: first run, the picker, setup, the client file and brief ideas. */
     projects: {
       firstRunDone: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.AGENCY_FIRST_RUN_DONE),
@@ -1133,6 +1181,12 @@ const fleetApi = {
       /** What the picker shows for each folder: a repository and its state, or not one. */
       probeFolders: async (paths: string[]): Promise<ProjectFolder[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_PROBE_FOLDERS, paths),
+      /** Make a workspace a project, less the members left out. Resolves with the project. */
+      chooseWorkspace: async (input: { path: string; leftOut: string[] }): Promise<AgencyRepoRef> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CHOOSE_WORKSPACE, input),
+      /** Check out a submodule setup found missing. */
+      checkOutMember: async (input: { repo: AgencyRepoRef; path: string }): Promise<void> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CHECK_OUT_MEMBER, input),
       list: async (): Promise<AgencyProjectSummary[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_LIST_PROJECTS),
       /** Setup's read-only scan, or the setup saved before. */
@@ -1144,8 +1198,14 @@ const fleetApi = {
       /** Save, then copy into the repository's `.fleet/`. Resolves with what was written. */
       shareSetup: async (input: SaveSetupRequest): Promise<string[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_SHARE_SETUP, input),
-      clientFile: async (repoId: string): Promise<{ path: string; text: string | null }> =>
+      clientFile: async (repoId: string): Promise<ClientFileView> =>
         typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE, repoId),
+      /** Save the whole client file from Settings: the client's edits win. */
+      writeClientFile: async (input: { repoId: string; text: string }): Promise<void> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_WRITE, input),
+      /** Keep a change made to the client file outside Fleet. */
+      keepClientFile: async (repoId: string): Promise<void> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, repoId),
       ruleCandidates: async (repo: AgencyRepoRef): Promise<RuleCandidates[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_RULE_CANDIDATES, repo),
       /** Write the starter answers and picked rules, and mark the starter questions done. */

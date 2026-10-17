@@ -82,6 +82,8 @@ export type AdmiralThreadHooks = {
   rollUp: (paneId: string) => void;
   /** A turn on an Admiral thread ended, however it ended. */
   turnEnded: (key: string, streamId: string, error: string | null) => void;
+  /** The client wrote on an Admiral thread, now or queued behind a turn. */
+  clientWrote: (key: string) => void;
 };
 
 let admiralHooks: AdmiralThreadHooks | null = null;
@@ -517,6 +519,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     const current = get().threads[paneId] ?? EMPTY_THREAD;
     // A turn sent before the history arrives would be answered without it.
     if (current.loading) return;
+    if (isAdmiralKey(paneId)) admiralHooks?.clientWrote(paneId);
     if (current.streamId !== null) {
       // The client can always talk to the Admiral. What they say while it works
       // waits on the turn, which takes it in at its next round.

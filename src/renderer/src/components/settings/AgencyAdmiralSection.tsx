@@ -4,6 +4,10 @@ import { useSettingsStore } from '../../store/settings-store';
 import { useAgentStore } from '../../store/agent-store';
 import { ModelSelect } from '../agent/settings/ModelSelect';
 import { BoundedNumber } from '../agent/settings/controls';
+import { useAdmiralMarks } from '../../hooks/use-admiral-marks';
+import { AdmiralChangeNote } from './AdmiralChangeNote';
+import { AskAdmiralButton } from './AskAdmiral';
+import { ClientFileEditor } from './ClientFileEditor';
 import { SettingRow } from './SettingRow';
 
 /** A dollar amount, stored when editing ends. See `BoundedNumber`. */
@@ -25,13 +29,14 @@ function DollarField(props: {
 
 /**
  * Settings › Agency › Admiral: whether Admiral is on at all, the model it runs
- * on, and what its jobs may spend.
+ * on, what its jobs may spend, and each project's client file.
  */
 export function AgencyAdmiralSection(): React.JSX.Element | null {
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const catalog = useAgentStore((s) => s.catalog);
   const loadModels = useAgentStore((s) => s.loadModels);
+  const marks = useAdmiralMarks(null);
 
   useEffect(() => {
     void loadModels();
@@ -54,6 +59,11 @@ export function AgencyAdmiralSection(): React.JSX.Element | null {
           An Admiral runs one repository&apos;s work for you: you brief it, it plans the job, hires
           Claude Code crew in their own panes, and brings back the result.
         </p>
+        {agency.enabled && (
+          <div className="mt-3">
+            <AskAdmiralButton page="Settings › Agency › Admiral" />
+          </div>
+        )}
       </div>
 
       <div>
@@ -104,6 +114,7 @@ export function AgencyAdmiralSection(): React.JSX.Element | null {
           <p className="text-xs text-fleet-text-subtle mt-1">
             What a job may spend unless you approve a plan with another budget.
           </p>
+          <AdmiralChangeNote marks={marks} settingKey="agency.admiral.defaultBudgetUsd" />
         </div>
 
         <div>
@@ -120,7 +131,10 @@ export function AgencyAdmiralSection(): React.JSX.Element | null {
           <p className="text-xs text-fleet-text-subtle mt-1">
             All jobs together in a calendar month. At the cap no new work starts.
           </p>
+          <AdmiralChangeNote marks={marks} settingKey="agency.admiral.monthlyCapUsd" />
         </div>
+
+        <ClientFileEditor />
       </div>
     </div>
   );

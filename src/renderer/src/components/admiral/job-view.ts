@@ -52,6 +52,36 @@ export const TONE_DOT: Record<JobTone, string> = {
 
 /** The question id an `ask_client` call put up, read off what it returned. */
 export function askedQuestionId(call: Pick<AgentToolCall, 'result' | 'summary'>): number | null {
-  const match = /\bq(\d+)\b/.exec(call.summary ?? call.result ?? '');
+  return tokenId(/\bq(\d+)\b/, call.summary ?? call.result);
+}
+
+/** The plan version a `job_plan` call put up, read off its row. */
+export function proposedPlanId(call: Pick<AgentToolCall, 'summary'>): number | null {
+  return tokenId(/\bplan#(\d+)\b/, call.summary);
+}
+
+/** The result a `job_deliver` call put up, read off its row. */
+export function deliveredResultId(call: Pick<AgentToolCall, 'summary'>): number | null {
+  return tokenId(/\bresult#(\d+)\b/, call.summary);
+}
+
+/** The settings card a `settings_change` call put up, read off its row. */
+export function settingsCardId(call: Pick<AgentToolCall, 'summary'>): number | null {
+  return tokenId(/\bcard s(\d+)\b/, call.summary);
+}
+
+/** The number an id token in a tool row carries, like q7 or plan#12. */
+function tokenId(token: RegExp, text: string | null | undefined): number | null {
+  const match = token.exec(text ?? '');
   return match ? Number(match[1]) : null;
+}
+
+/** Dollars as the sheet shows them: whole when whole, else to the cent. */
+export function formatUsd(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+/** A crew runtime by the name the client knows it. */
+export function runtimeName(runtime: 'claude' | 'eva'): string {
+  return runtime === 'claude' ? 'Claude Code' : 'eva';
 }

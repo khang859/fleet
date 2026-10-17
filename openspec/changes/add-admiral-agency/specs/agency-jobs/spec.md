@@ -8,7 +8,7 @@ Defines the life of an agency job, from the client's brief through an approved p
 
 A job SHALL move through these states: `briefing`, `planned`, `running`, `waiting`, `delivered`, `closing`, `closed`.
 A job SHALL also be able to end as `cancelled` or `failed` through `closing`, and SHALL become `interrupted` when Fleet restarts while it has live steps.
-Only these moves SHALL be allowed: briefing to planned; planned to running (on approval) or back to briefing (on rejection); running to waiting and back; running to delivered; delivered to running (follow-up inside the plan or an approved plan change) or to closing (accepted); any open state to closing (cancel or failure); running to interrupted; interrupted to running (resume) or closing (cancel); closing to closed, cancelled or failed.
+Only these moves SHALL be allowed: briefing to planned; planned to running (on approval) or back to briefing (on rejection); running to waiting and back; running to delivered; delivered to running (follow-up inside the plan or an approved plan change) or to closing (accepted); any open state to closing (cancel or failure); running or waiting to interrupted; interrupted to running (resume) or closing (cancel); closing to closed, cancelled or failed.
 A closed job SHALL be read-only, and a follow-up on it SHALL open a new job linked to it.
 The job sheet SHALL show the current state.
 Every state change SHALL be written to the job record with the time and the reason.

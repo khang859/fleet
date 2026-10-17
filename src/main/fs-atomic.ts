@@ -1,3 +1,4 @@
+import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -16,6 +17,19 @@ export async function writeAtomic(path: string, text: string): Promise<void> {
     await rename(tmp, path);
   } catch (err) {
     await rm(tmp, { force: true });
+    throw err;
+  }
+}
+
+/** `writeAtomic` for a caller that has to know the file is written before it goes on. */
+export function writeAtomicSync(path: string, text: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}-${tmpCounter++}.tmp`;
+  writeFileSync(tmp, text, 'utf8');
+  try {
+    renameSync(tmp, path);
+  } catch (err) {
+    rmSync(tmp, { force: true });
     throw err;
   }
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
@@ -228,6 +228,9 @@ describe('Admiral turn', () => {
       'fleet_read',
       'fleet_diff',
       'fleet_wait',
+      'settings_read',
+      'settings_change',
+      'client_file_propose',
       'ask_client',
       'job_open',
       'job_list'
@@ -237,7 +240,7 @@ describe('Admiral turn', () => {
     );
   });
 
-  it('never offers a tool that edits, runs commands, types into a pane or changes settings', async () => {
+  it('never offers a tool that edits, runs commands or types into a pane', async () => {
     const { rounds } = await turn();
 
     for (const forbidden of [
@@ -260,7 +263,11 @@ describe('Admiral turn', () => {
     ]) {
       expect(names(rounds[0])).not.toContain(forbidden);
     }
-    expect(names(rounds[0]).some((n) => n.includes('setting'))).toBe(false);
+    // Its only settings tools are its own, where the key decides what needs the client.
+    expect(names(rounds[0]).filter((n) => n.includes('setting'))).toEqual([
+      'settings_read',
+      'settings_change'
+    ]);
     expect(names(rounds[0]).some((n) => n.startsWith('mcp'))).toBe(false);
   });
 
@@ -404,10 +411,8 @@ describe('Admiral turn', () => {
   });
 
   it('starts every round from the client file, so a job knows how the client works', async () => {
-    const clients = join(dir, 'agency-home', 'clients');
-    mkdirSync(clients, { recursive: true });
-    writeFileSync(
-      join(clients, `${REPO.repoId}.md`),
+    agency.clientFiles.write(
+      REPO.repoId,
       '# repo\n- Open PRs as drafts. (from starter questions, 2026-10-17)\n'
     );
 

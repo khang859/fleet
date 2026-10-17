@@ -1,6 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { JobState } from '../../../shared/agency';
+import type { JobEvent } from '../jobs/job-machine';
+import type { GhRun } from '../projects/gh';
+import type { GitRun } from '../repo-identity';
 import { AgencyStore } from '../store/agency-store';
 
 export const REPO = { repoId: '0123456789abcdef', root: '/dev/fleet', name: 'fleet' };
@@ -28,6 +32,54 @@ export function storeFixture(): {
   };
 }
 
+export const BASE_SHA = 'a'.repeat(40);
+
+/** What the pre-approval check asks git, by a short name. */
+export type GitFacts = {
+  originHead: string | null;
+  remote: string | null;
+  status: string;
+  headBranch: string | null;
+  admiralBranch: boolean;
+  sha: (ref: string) => string | null;
+};
+
+/**
+ * Read-only git for the plan check, answering as a clean checkout of `main`
+ * with a GitHub remote, every ref at `BASE_SHA`, unless `facts` says else.
+ */
+export function factsGit(facts: Partial<GitFacts> = {}): GitRun {
+  const f: GitFacts = {
+    originHead: 'origin/main',
+    remote: 'git@github.com:acme/fleet.git',
+    status: '',
+    headBranch: 'main',
+    admiralBranch: false,
+    sha: () => BASE_SHA,
+    ...facts
+  };
+  const answer = (args: string[]): string | null => {
+    const cmd = args.join(' ');
+    if (cmd.includes('refs/remotes/origin/HEAD')) return f.originHead;
+    if (cmd.startsWith('remote get-url')) return f.remote;
+    if (cmd.startsWith('remote')) return f.remote === null ? '' : 'origin';
+    if (cmd.includes('status --porcelain')) return f.status;
+    if (cmd === 'symbolic-ref --quiet --short HEAD') return f.headBranch;
+    if (cmd.includes('refs/heads/admiral')) return f.admiralBranch ? '' : null;
+    if (args[0] === 'rev-parse') return f.sha(args.at(-1)?.replace('^{commit}', '') ?? '');
+    return null;
+  };
+  return async (args) => Promise.resolve(answer(args));
+}
+
+/** `gh auth status` as signed in, signed out, or not installed. */
+export function fakeGh(state: 'ok' | 'signed-out' | 'not-installed' = 'ok'): GhRun {
+  return async () =>
+    Promise.resolve(
+      state === 'not-installed' ? null : { code: state === 'ok' ? 0 : 1, stdout: '' }
+    );
+}
+
 let sessions = 0;
 
 /** Open a job with a session id of its own. */
@@ -41,3 +93,31 @@ export function openJob(
 }
 
 export const YES_NO = [{ label: 'Yes' }, { label: 'No', detail: 'leave it as it is' }];
+
+/** The events that walk a fresh `briefing` job to each state. */
+const PATH_TO: Record<JobState, JobEvent[]> = {
+  briefing: [],
+  planned: [{ type: 'plan_proposed' }],
+  running: [{ type: 'plan_proposed' }, { type: 'plan_approved' }],
+  waiting: [{ type: 'plan_proposed' }, { type: 'plan_approved' }, { type: 'blocked' }],
+  delivered: [{ type: 'plan_proposed' }, { type: 'plan_approved' }, { type: 'delivered' }],
+  interrupted: [{ type: 'plan_proposed' }, { type: 'plan_approved' }, { type: 'interrupt' }],
+  closing: [{ type: 'cancel' }],
+  cancelled: [{ type: 'cancel' }, { type: 'cleanup_done', target: 'cancelled' }],
+  failed: [{ type: 'fail' }, { type: 'cleanup_done', target: 'failed' }],
+  closed: [
+    { type: 'plan_proposed' },
+    { type: 'plan_approved' },
+    { type: 'delivered' },
+    { type: 'accepted' },
+    { type: 'cleanup_done', target: 'closed' }
+  ]
+};
+
+/** Move a fresh job to `state` through allowed events, for tests that need it there. */
+export function moveJob(store: AgencyStore, jobId: number, state: JobState): void {
+  for (const event of PATH_TO[state]) {
+    const { transition } = store.applyJobEvent(jobId, event, 'test');
+    if (!transition.ok) throw new Error(transition.refused);
+  }
+}

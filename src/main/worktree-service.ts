@@ -165,11 +165,16 @@ export class WorktreeService {
     return join(getHomeDir(), '.fleet', 'worktrees', repoName);
   }
 
-  /** `branch` names the new branch; without it, a free `<repo>-<adjective>-<noun>` is picked. */
+  /**
+   * `branch` names the new branch; without it, a free `<repo>-<adjective>-<noun>`
+   * is picked. `startPoint` is the commit it starts from, so worktrees made
+   * apart start alike; without it, the main checkout's HEAD.
+   */
   async create(
     repoPath: string,
     ctx?: PathContext,
-    branch?: string
+    branch?: string,
+    startPoint?: string
   ): Promise<{ worktreePath: string; branchName: string }> {
     const repoName = getRepoName(repoPath);
     const base = await this.worktreeBase(ctx, repoName);
@@ -214,9 +219,57 @@ export class WorktreeService {
     const worktreePath = isWslContext(ctx) ? posixPath.join(base, folder) : join(base, folder);
     log.info('creating worktree', { repoPath, worktreePath, branchName });
 
-    await this.git(ctx, repoPath, ['worktree', 'add', worktreePath, '-b', branchName]);
+    const start = startPoint === undefined ? [] : [await this.commitOf(ctx, repoPath, startPoint)];
+    await this.git(ctx, repoPath, ['worktree', 'add', worktreePath, '-b', branchName, ...start]);
 
     return { worktreePath, branchName };
+  }
+
+  /** The sha a ref names. Throws on one that is not a commit, before anything is made. */
+  private async commitOf(
+    ctx: PathContext | undefined,
+    repoPath: string,
+    ref: string
+  ): Promise<string> {
+    const sha = (
+      await this.git(ctx, repoPath, ['rev-parse', '--verify', `${ref}^{commit}`])
+    ).trim();
+    if (sha === '') throw new Error(`${ref} is not a commit in ${getRepoName(repoPath)}.`);
+    return sha;
+  }
+
+  /**
+   * Remove a worktree the safe way, for agency cleanup: never forced, so git
+   * refuses one with changes or untracked files, and its branch only when
+   * another branch or a remote holds every commit on it. Throws when git
+   * refuses, leaving the worktree as it was. Git runs in the repository's
+   * git folder, not its parent: a submodule's is `.git/modules/<name>` of the
+   * umbrella, whose parent is no checkout.
+   */
+  async removeClean(worktreePath: string, branch: string | null): Promise<void> {
+    const mainRepoPath = (
+      await this.git(undefined, worktreePath, [
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-common-dir'
+      ])
+    ).trim();
+    await this.git(undefined, mainRepoPath, ['worktree', 'remove', worktreePath]);
+    if (branch !== null) {
+      const unsafe = (
+        await this.git(undefined, mainRepoPath, [
+          'rev-list',
+          '--count',
+          `refs/heads/${branch}`,
+          '--not',
+          `--exclude=${branch}`,
+          '--branches',
+          '--remotes'
+        ])
+      ).trim();
+      if (unsafe === '0') await this.git(undefined, mainRepoPath, ['branch', '-D', branch]);
+    }
+    await this.git(undefined, mainRepoPath, ['worktree', 'prune']);
   }
 
   async remove(worktreePath: string, ctx?: PathContext): Promise<void> {

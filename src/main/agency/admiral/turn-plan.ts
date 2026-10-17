@@ -17,7 +17,17 @@ import { admiralSnapshotNote } from './snapshot-note';
 export type AdmiralDeps = {
   agency: Pick<
     AgencyService,
-    'threadScope' | 'ask' | 'openJob' | 'snapshot' | 'crewPanes' | 'store' | 'clientFileForNote'
+    | 'threadScope'
+    | 'ask'
+    | 'openJob'
+    | 'snapshot'
+    | 'crewPanes'
+    | 'store'
+    | 'clientFileForNote'
+    | 'jobs'
+    | 'results'
+    | 'proposeClientFile'
+    | 'settings'
   >;
   settings: () => AgencySettings;
 };

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveRepoIdentity } from '../../repo-identity';
+import { AgencyStore } from '../../store/agency-store';
 import { briefIdeas, changelogIdea } from '../brief-ideas';
 import { probeFolders } from '../folders';
 import { readOnlyGit } from '../repo-reader';
@@ -10,10 +11,15 @@ import { fakeGh, initRepo, tempDir } from './git-fixture';
 /** The picker's folder states, and the empty lobby's brief ideas with and without GitHub. */
 
 let tmp: { dir: string; cleanup: () => void };
+let store: AgencyStore;
 beforeEach(() => {
   tmp = tempDir('fleet-folders-');
+  store = new AgencyStore(join(tmp.dir, 'agency.db'));
 });
-afterEach(() => tmp.cleanup());
+afterEach(() => {
+  store.close();
+  tmp.cleanup();
+});
 
 const NOT_SET_UP = { setupDoneAt: null, starterDoneAt: null };
 
@@ -34,9 +40,10 @@ describe('probeFolders', () => {
     const folders = await probeFolders(
       [join(shop, 'src'), shop, notebook, downloads, join(tmp.dir, 'gone')],
       {
-        resolve: async (p) => resolveRepoIdentity(p),
+        identify: async (p) => resolveRepoIdentity(p),
         git: readOnlyGit,
-        onboarding: () => NOT_SET_UP
+        onboarding: () => NOT_SET_UP,
+        registry: store.projects
       }
     );
 

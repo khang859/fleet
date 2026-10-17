@@ -12,6 +12,7 @@ import {
 import { commitNumber, shownNumber } from './bounded-number';
 import { formatTokens } from './format';
 import { Toggle } from './Toggle';
+import { PillRadio } from '../../ui/pill-radio';
 
 const percent = (fraction: number): number => Math.round(fraction * 100);
 
@@ -112,7 +113,12 @@ export function CompactionField({
                   className="w-24 rounded-md border border-fleet-border bg-fleet-glass-surface px-2 py-1 text-right text-sm tabular-nums text-fleet-text focus-ring"
                 />
               )}
-              <UnitPills unit={value.unit} onChange={switchUnit} />
+              <PillRadio
+                label="Threshold unit"
+                value={value.unit}
+                options={UNITS}
+                onChange={switchUnit}
+              />
             </div>
           </div>
 
@@ -143,44 +149,7 @@ export function CompactionField({
   );
 }
 
-const UNITS: Array<{ unit: CompactThreshold['unit']; label: string }> = [
-  { unit: 'fraction', label: '%' },
-  { unit: 'tokens', label: 'tokens' }
+const UNITS: Array<{ value: CompactThreshold['unit']; label: string }> = [
+  { value: 'fraction', label: '%' },
+  { value: 'tokens', label: 'tokens' }
 ];
-
-/** Two ways of saying one threshold. Not `OptionPills`, which carries a third, null option. */
-function UnitPills({
-  unit,
-  onChange
-}: {
-  unit: CompactThreshold['unit'];
-  onChange: (unit: CompactThreshold['unit']) => void;
-}): React.JSX.Element {
-  return (
-    <span
-      role="radiogroup"
-      aria-label="Threshold unit"
-      className="flex shrink-0 items-center gap-0.5 rounded-lg border border-fleet-border bg-fleet-surface p-0.5"
-    >
-      {UNITS.map((option) => {
-        const selected = option.unit === unit;
-        return (
-          <button
-            key={option.unit}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onChange(option.unit)}
-            className={`rounded-md px-2 py-0.5 text-xs font-medium transition-colors focus-ring ${
-              selected
-                ? 'bg-fleet-surface-3 text-fleet-text'
-                : 'text-fleet-text-muted hover:text-fleet-text-secondary'
-            }`}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </span>
-  );
-}

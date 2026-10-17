@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AgencyStore } from '../store/agency-store';
-import { OTHER_REPO, REPO, YES_NO, openJob, storeFixture } from './fixture';
+import { OTHER_REPO, REPO, YES_NO, moveJob, openJob, storeFixture } from './fixture';
 
 let store: AgencyStore;
 let clock: { now: number };
@@ -45,10 +45,20 @@ describe('jobs', () => {
     expect(job).toMatchObject({ state: 'briefing', budgetUsd: 25, handoffDone: false });
 
     clock.now += 10;
-    expect(store.setJobState(job.id, 'running', 'plan approved')?.state).toBe('running');
+    expect(store.applyJobEvent(job.id, { type: 'plan_proposed' }, 'plan v1').job?.state).toBe(
+      'planned'
+    );
+    // Refused moves and moves to the same state write nothing.
+    expect(store.applyJobEvent(job.id, { type: 'delivered' }, 'x').transition).toEqual({
+      ok: false,
+      refused: 'a planned job does not take delivered'
+    });
+    expect(
+      store.applyJobEvent(job.id, { type: 'plan_proposed' }, 'plan v2').transition
+    ).toMatchObject({ ok: true, changed: false });
     expect(store.jobEvents(job.id)).toEqual([
       { jobId: job.id, at: 1_000_000, from: null, to: 'briefing', reason: 'opened' },
-      { jobId: job.id, at: 1_000_010, from: 'briefing', to: 'running', reason: 'plan approved' }
+      { jobId: job.id, at: 1_000_010, from: 'briefing', to: 'planned', reason: 'plan v1' }
     ]);
     expect(store.getJob(job.id)?.updatedAt).toBe(1_000_010);
   });
@@ -57,9 +67,9 @@ describe('jobs', () => {
     const a = openJob(store);
     const b = openJob(store);
     const c = openJob(store, OTHER_REPO.repoId);
-    store.setJobState(a.id, 'running', 'go');
-    store.setJobState(b.id, 'closed', 'done');
-    store.setJobState(c.id, 'waiting', 'question');
+    moveJob(store, a.id, 'running');
+    moveJob(store, b.id, 'closed');
+    moveJob(store, c.id, 'waiting');
 
     expect(store.listJobs(REPO.repoId).map((j) => j.id)).toEqual([a.id]);
     expect(store.listJobs(REPO.repoId, { includeTerminal: true }).map((j) => j.id)).toEqual([
@@ -73,8 +83,8 @@ describe('jobs', () => {
     const running = openJob(store);
     const briefing = openJob(store);
     const done = openJob(store);
-    store.setJobState(running.id, 'running', 'go');
-    store.setJobState(done.id, 'closed', 'done');
+    moveJob(store, running.id, 'running');
+    moveJob(store, done.id, 'closed');
     const q = store.askQuestion({
       repoId: REPO.repoId,
       jobId: running.id,
@@ -89,14 +99,21 @@ describe('jobs', () => {
     });
 
     expect(store.cancelJobs(REPO.repoId)).toEqual([running.id]);
-    expect(store.getJob(running.id)?.state).toBe('cancelled');
+    expect(store.getJob(running.id)).toMatchObject({ state: 'closing', closeTarget: 'cancelled' });
     expect(store.getJob(briefing.id)?.state).toBe('briefing');
     expect(store.getJob(done.id)?.state).toBe('closed');
     expect(store.getQuestion(q.id)).toMatchObject({
       status: 'withdrawn',
-      withdrawnReason: 'the job was cancelled'
+      withdrawnReason: 'the job is closing'
     });
     expect(store.pullWakeups({ repoId: REPO.repoId, jobId: running.id }).ids).toEqual([]);
+
+    // A second close joins the first and keeps its end.
+    expect(store.beginClose(running.id, { type: 'fail' }, 'x').transition).toMatchObject({
+      ok: true,
+      changed: false
+    });
+    expect(store.finishClose(running.id, 'cleanup done')?.state).toBe('cancelled');
   });
 });
 
@@ -165,7 +182,7 @@ describe('onboarding', () => {
     store.markOnboarded(REPO, 'setup');
     const running = openJob(store);
     openJob(store);
-    store.setJobState(running.id, 'running', 'go');
+    moveJob(store, running.id, 'running');
     store.askQuestion({
       repoId: REPO.repoId,
       jobId: running.id,
