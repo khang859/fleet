@@ -6,6 +6,7 @@ import type {
   AgentMessage,
   AgentPermissionAsk,
   AgentPermissionOutcome,
+  AgentSendRequest,
   AgentTaskDone,
   AgentTurnUsage
 } from '../../../shared/agent-types';
@@ -48,6 +49,7 @@ import {
 import { useSettingsStore } from './settings-store';
 import { useNotificationStore } from './notification-store';
 import { isOrchestratorPane, registerPaneDisposer, useWorkspaceStore } from './workspace-store';
+import { turnModeFor } from './admiral-thread';
 import { toolLabel } from '../components/agent/tool-label';
 import type { AgentPhase, AgentStep } from '../components/agent/activity';
 import { draftInto } from '../hooks/use-terminal';
@@ -55,6 +57,15 @@ import { createLogger } from '../logger';
 import type { ActivityState } from '../../../shared/types';
 
 const log = createLogger('store:agent');
+
+/**
+ * The mode flags a turn's request carries. Both, because `orchestrator` is
+ * what main read before `mode` existed and what saved layouts still say.
+ */
+function turnFlags(key: string): Pick<AgentSendRequest, 'mode' | 'orchestrator'> {
+  const orchestrator = isOrchestratorPane(useWorkspaceStore.getState(), key);
+  return { orchestrator, mode: turnModeFor(key, orchestrator) };
+}
 
 /**
  * Tell the rest of the app what this pane is doing.
@@ -506,7 +517,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       text,
       attachments,
       todos,
-      orchestrator: isOrchestratorPane(useWorkspaceStore.getState(), paneId)
+      ...turnFlags(paneId)
     });
   },
 
@@ -551,7 +562,7 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
       // turn is indistinguishable from any other once the transcript is
       // assembled, and the turn that follows it has already been answered.
       resumed: true,
-      orchestrator: isOrchestratorPane(useWorkspaceStore.getState(), paneId)
+      ...turnFlags(paneId)
     });
   },
 

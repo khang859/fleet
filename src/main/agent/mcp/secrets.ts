@@ -1,6 +1,7 @@
 import Store from 'electron-store';
 import { safeStorage } from 'electron';
 import { z } from 'zod';
+import { parseJsonAs } from '../../../shared/parse-json';
 
 /**
  * What the Agent pane's MCP servers need to prove who we are.
@@ -169,7 +170,7 @@ export class AgentMcpSecrets {
     const entry = this.of(server);
     const key = issuer ?? entry.lastIssuer;
     if (key === undefined) return null;
-    return parse(OAuthTokens, this.decrypt(entry.oauthEnc?.[key]));
+    return parseJsonAs(OAuthTokens, this.decrypt(entry.oauthEnc?.[key]));
   }
 
   saveClient(server: string, issuer: string, client: StoredClient): void {
@@ -180,7 +181,7 @@ export class AgentMcpSecrets {
   }
 
   client(server: string, issuer: string): StoredClient | null {
-    return parse(ClientInformation, this.decrypt(this.of(server).clientEnc?.[issuer]));
+    return parseJsonAs(ClientInformation, this.decrypt(this.of(server).clientEnc?.[issuer]));
   }
 
   /** Whether this server has ever finished a sign-in. */
@@ -254,15 +255,5 @@ export class AgentMcpSecrets {
     } catch {
       return null;
     }
-  }
-}
-
-function parse<T>(schema: z.ZodType<T>, json: string | null): T | null {
-  if (json === null) return null;
-  try {
-    const result = schema.safeParse(JSON.parse(json));
-    return result.success ? result.data : null;
-  } catch {
-    return null;
   }
 }

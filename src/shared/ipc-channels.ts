@@ -421,5 +421,22 @@ export const IPC_CHANNELS = {
   REMOTE_SSH_RC_INSTALL: 'remote-ssh:rc-install',
   // Renderer-bound: the working directory of the shell on the far side of an ssh
   // pane. Separate from PTY_CWD, which is the local pane's own directory.
-  REMOTE_CWD: 'remote:cwd'
+  REMOTE_CWD: 'remote:cwd',
+  // The Admiral agency: repository identity, the one-per-repo claim, and the
+  // durable jobs, questions and wakeups in agency.db.
+  AGENCY_RESOLVE_REPO: 'agency:resolve-repo',
+  AGENCY_CLAIM: 'agency:claim',
+  AGENCY_RELEASE: 'agency:release',
+  AGENCY_ENSURE_LOBBY: 'agency:ensure-lobby',
+  AGENCY_SNAPSHOT: 'agency:snapshot',
+  AGENCY_ANSWER: 'agency:answer',
+  AGENCY_PULL_WAKEUPS: 'agency:pull-wakeups',
+  AGENCY_ACK_WAKEUPS: 'agency:ack-wakeups',
+  AGENCY_RELEASE_WAKEUPS: 'agency:release-wakeups',
+  AGENCY_RETRY_NOW: 'agency:retry-now',
+  AGENCY_CANCEL_JOBS: 'agency:cancel-jobs',
+  AGENCY_MARK_HANDOFF: 'agency:mark-handoff',
+  AGENCY_PREFLIGHT: 'agency:preflight',
+  // Renderer-bound: agency state for a repository changed.
+  AGENCY_CHANGED: 'agency:changed'
 } as const;

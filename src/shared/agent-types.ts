@@ -1230,7 +1230,27 @@ export type AgentSendRequest = {
    * flag and main keeps nothing between turns.
    */
   orchestrator?: boolean;
+  /**
+   * Which engine mode this turn runs in. Absent on requests from before it
+   * existed, which is what `orchestrator` is still read for: see
+   * `agentTurnMode`.
+   */
+  mode?: AgentTurnMode;
 };
+
+/**
+ * What a turn is: a plain chat, an orchestrator with the fleet tools, or an
+ * Admiral with its own prompt and tool set.
+ */
+export type AgentTurnMode = 'chat' | 'orchestrator' | 'admiral';
+
+/**
+ * The mode a request runs in. `mode` wins when it is there; a request that
+ * predates it says orchestrator or not with the boolean.
+ */
+export function agentTurnMode(req: Pick<AgentSendRequest, 'mode' | 'orchestrator'>): AgentTurnMode {
+  return req.mode ?? (req.orchestrator === true ? 'orchestrator' : 'chat');
+}
 
 /**
  * Something on its way to becoming an attachment.

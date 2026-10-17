@@ -14,6 +14,7 @@ import { EnvSyncSection } from './EnvSyncSection';
 import { LearningsSection } from './LearningsSection';
 import { RemoteHostsSection } from './RemoteHostsSection';
 import { DiagnosticsSection } from './DiagnosticsSection';
+import { AgencyAdmiralSection } from './AgencyAdmiralSection';
 import { useSettingsNavStore } from '../../store/settings-nav-store';
 
 /**
@@ -41,6 +42,7 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType<SettingsSe
   envSync: EnvSyncSection,
   remoteHosts: RemoteHostsSection,
   learnings: LearningsSection,
+  agencyAdmiral: AgencyAdmiralSection,
   diagnostics: DiagnosticsSection
 };
 

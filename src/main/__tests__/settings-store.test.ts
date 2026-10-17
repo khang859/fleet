@@ -168,6 +168,24 @@ describe('SettingsStore settings merge', () => {
     expect(teleprompter.hotkeys.prev).toBe('Control+Alt+PageUp');
     expect(teleprompter.fontSize).toBe(40);
   });
+
+  it('keeps Admiral off with its default spending limits, including for an older file', () => {
+    store.set({ annotate: { retentionDays: 5 } });
+    expect(store.get().agency).toEqual({
+      enabled: false,
+      admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100 }
+    });
+  });
+
+  it('keeps the other Admiral settings when one is changed', () => {
+    store.set({ agency: { enabled: true } });
+    store.set({ agency: { admiral: { model: 'openrouter:some/model' } } });
+    store.set({ agency: { admiral: { monthlyCapUsd: 250 } } });
+    expect(store.get().agency).toEqual({
+      enabled: true,
+      admiral: { model: 'openrouter:some/model', defaultBudgetUsd: 10, monthlyCapUsd: 250 }
+    });
+  });
 });
 
 /**

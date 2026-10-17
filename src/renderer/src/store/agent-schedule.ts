@@ -4,6 +4,7 @@ import type { AgentScheduleChanged, AgentScheduleRecord } from '../../../shared/
 import { renderScheduleFire } from '../../../shared/agent-schedule';
 import { panesOn, record, reportActivity, useAgentStore, type PaneThread } from './agent-store';
 import { isOrchestratorPane, useWorkspaceStore } from './workspace-store';
+import { turnModeFor } from './admiral-thread';
 import { createLogger } from '../logger';
 
 const log = createLogger('store:agent-schedule');
@@ -235,6 +236,7 @@ export function startUnpromptedTurn(
   reportActivity(paneId, 'working');
   for (const message of opening) record(thread, { t: 'message', message });
 
+  const orchestrator = isOrchestratorPane(useWorkspaceStore.getState(), paneId);
   window.fleet.agent.send({
     streamId,
     threadId: sessionId,
@@ -247,6 +249,7 @@ export function startUnpromptedTurn(
     attachments: [],
     todos: thread.todos,
     ...(scheduleChainDepth === undefined ? {} : { scheduleChainDepth }),
-    orchestrator: isOrchestratorPane(useWorkspaceStore.getState(), paneId)
+    orchestrator,
+    mode: turnModeFor(paneId, orchestrator)
   });
 }

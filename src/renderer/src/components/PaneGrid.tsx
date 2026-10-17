@@ -40,6 +40,9 @@ const SshBrowserPane = lazy(async () => ({
 const AgentPane = lazy(async () => ({
   default: (await import('./agent/AgentPane')).AgentPane
 }));
+const AdmiralPane = lazy(async () => ({
+  default: (await import('./admiral/AdmiralPane')).AdmiralPane
+}));
 
 // Panes sit on the themed pane background, so an empty box is the right
 // placeholder — anything more would flash in and out within a couple of frames.
@@ -466,6 +469,8 @@ function PaneGridImpl({
                   slideshowFrame={slideshowFrame}
                 />
               );
+            case 'admiral':
+              return frame(<AdmiralPane paneId={leaf.id} repo={node.admiralRepo} />);
             case 'ssh-browser':
               return frame(
                 node.remoteHost ? (

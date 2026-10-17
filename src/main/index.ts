@@ -89,6 +89,8 @@ import {
 import { runBackfill } from './learnings/backfill';
 import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
+import { createAgencyService, type AgencyService } from './agency';
+import { registerAgencyIpc } from './agency/agency-ipc';
 import { createFleetHost } from './agent/fleet/host';
 import { FleetLedgerStore } from './agent/fleet/ledger-store';
 import { ActLimiter } from './agent/fleet/limiter';
@@ -152,6 +154,7 @@ let learningsStore: LearningsStore | undefined;
 let learningsEmbedder: WorkerEmbedder | undefined;
 let learningsMcp: LearningsMcpServer | undefined;
 let agentService: AgentService | null = null;
+let agencyService: AgencyService | null = null;
 let agentMcp: AgentMcpManager | undefined;
 let agentSubagents: SubagentManager | null = null;
 let agentScheduleTimer: ScheduleTimer | null = null;
@@ -1679,6 +1682,19 @@ void app.whenReady().then(async () => {
     secrets: openRouterSecrets
   });
 
+  // The Admiral agency's durable state. Opened whether or not the user has
+  // turned Admiral on: jobs outlive the setting, and the quit guard asks.
+  agencyService = createAgencyService({
+    emit: (change) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.AGENCY_CHANGED, change);
+      }
+    },
+    hasModelKey: () =>
+      openRouterSecrets.hasKey() || settingsStore.get().ai.agent.localEndpoints.length > 0
+  });
+  registerAgencyIpc(agencyService);
+
   // Cheap AI one-line pane summaries for the agent overview, throttled per pane
   // so the overview polling on an interval doesn't re-call the model every tick.
   const paneSummaryCache = new Map<string, { summary: string; at: number }>();
@@ -1817,6 +1833,7 @@ function shutdownAll(): void {
   void learningsMcp?.stop();
   void learningsEmbedder?.close();
   learningsStore?.close();
+  agencyService?.close();
 }
 
 app.on('window-all-closed', () => {

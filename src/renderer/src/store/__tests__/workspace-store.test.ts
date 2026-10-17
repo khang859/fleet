@@ -4,7 +4,9 @@ import {
   collectPaneLeafs,
   collectPaneIds,
   agentSessionsInUse,
-  registerPaneDisposer
+  registerPaneDisposer,
+  findAdmiralPane,
+  isAdmiralTab
 } from '../workspace-store';
 import { useCwdStore } from '../cwd-store';
 import { scratchDir, isScratchTab } from '../../lib/scratch';
@@ -1473,5 +1475,94 @@ describe('openTerminalTab', () => {
       .openTerminalTab({ paneId: 'pane-spawned', cwd: '/w', label: 'w', worktree: null });
     expect(useWorkspaceStore.getState().activePaneId).toBe('pane-spawned');
     expect(useWorkspaceStore.getState().workspace.tabs[0]).not.toHaveProperty('worktreePath');
+  });
+});
+
+describe('Admiral panes', () => {
+  const REPO = { repoId: '0123456789abcdef', root: '/dev/fleet', name: 'fleet' };
+  const releaseAdmiral = vi.fn(async () => Promise.resolve());
+
+  beforeEach(() => {
+    releaseAdmiral.mockClear();
+    useWorkspaceStore.setState({ recentFolders: [] });
+    (window.fleet as { agency: unknown }).agency = { releaseAdmiral };
+  });
+
+  const open = (): string =>
+    useWorkspaceStore
+      .getState()
+      .openAdmiralPane(REPO, { paneId: 'pane-admiral', lobbySessionId: 'lobby-1' });
+  const admiralTab = (): Workspace['tabs'][number] | undefined =>
+    useWorkspaceStore.getState().workspace.tabs.find(isAdmiralTab);
+
+  it('opens in an agent tab of its own, focused, on the pane id it was claimed for', () => {
+    expect(open()).toBe('pane-admiral');
+    const state = useWorkspaceStore.getState();
+    const tab = admiralTab();
+    expect(tab).toMatchObject({
+      type: 'agent',
+      label: 'Admiral · fleet',
+      labelIsCustom: true,
+      cwd: '/dev/fleet',
+      splitRoot: {
+        type: 'leaf',
+        id: 'pane-admiral',
+        paneType: 'admiral',
+        admiralRepo: REPO,
+        admiralSessions: { lobby: 'lobby-1', jobs: {} },
+        admiralActiveJob: null
+      }
+    });
+    expect(state.activeTabId).toBe(tab?.id);
+    expect(state.activePaneId).toBe('pane-admiral');
+    expect(state.recentFolders).toEqual(['/dev/fleet']);
+  });
+
+  it('is found by repository in the current workspace and in background ones', () => {
+    open();
+    expect(findAdmiralPane(useWorkspaceStore.getState(), REPO.repoId)).toBe('pane-admiral');
+    expect(findAdmiralPane(useWorkspaceStore.getState(), 'fedcba9876543210')).toBeNull();
+
+    const current = useWorkspaceStore.getState().workspace;
+    useWorkspaceStore.setState({
+      workspace: WS_B,
+      backgroundWorkspaces: new Map([[current.id, current]])
+    });
+    expect(findAdmiralPane(useWorkspaceStore.getState(), REPO.repoId)).toBe('pane-admiral');
+  });
+
+  it('records job sessions and the job on screen, and counts every session as in use', () => {
+    open();
+    const store = useWorkspaceStore.getState();
+    store.setAdmiralJobSession('pane-admiral', 3, 'job-3');
+    store.setAdmiralJobSession('pane-admiral', 4, 'job-4');
+    store.setAdmiralActiveJob('pane-admiral', 4);
+
+    const leaf = collectPaneLeafs(admiralTab()!.splitRoot)[0];
+    expect(leaf.admiralSessions).toEqual({
+      lobby: 'lobby-1',
+      jobs: { '3': 'job-3', '4': 'job-4' }
+    });
+    expect(leaf.admiralActiveJob).toBe(4);
+    expect(agentSessionsInUse()).toEqual(new Set(['lobby-1', 'job-3', 'job-4']));
+  });
+
+  it('never moves to another folder', () => {
+    open();
+    useWorkspaceStore.getState().moveAgentTab('pane-admiral', '/dev/other');
+    expect(admiralTab()?.cwd).toBe('/dev/fleet');
+  });
+
+  it('gives up its claim on the repository when its tab closes', () => {
+    open();
+    useWorkspaceStore.getState().closeTab(admiralTab()!.id);
+    expect(releaseAdmiral).toHaveBeenCalledWith('pane-admiral');
+    expect(admiralTab()).toBeUndefined();
+  });
+
+  it('does not touch claims when an ordinary tab closes', () => {
+    open();
+    useWorkspaceStore.getState().closeTab('tab-a1');
+    expect(releaseAdmiral).not.toHaveBeenCalled();
   });
 });

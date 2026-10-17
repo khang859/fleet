@@ -26,6 +26,7 @@ import { basename as pathBasename } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { FleetOpenTabRequest } from '../../../shared/fleet-tools';
 import type { RemoteHost } from '../../../shared/remote-ssh-types';
+import type { AgencyRepoRef } from '../../../shared/agency';
 import { useShellProfilesStore } from './shell-profiles-store';
 import { scratchDir, isScratchDir } from '../lib/scratch';
 
@@ -269,6 +270,10 @@ type WorkspaceStore = {
   setAgentSession: (paneId: string, sessionId: string, cwd?: string) => void;
   /** Turn orchestrator mode on or off for an agent pane. Persisted with the layout. */
   setAgentOrchestrator: (paneId: string, on: boolean) => void;
+  /** Record the agent session a job's conversation in an Admiral pane is written to. */
+  setAdmiralJobSession: (paneId: string, jobId: number, sessionId: string) => void;
+  /** Show a job's conversation in an Admiral pane, or the lobby for null. */
+  setAdmiralActiveJob: (paneId: string, jobId: number | null) => void;
 
   // Workspace actions
   loadWorkspace: (workspace: Workspace) => void;
@@ -308,6 +313,20 @@ type WorkspaceStore = {
   openAgentPane: (
     folderPath: string,
     worktree?: { path: string; branchName: string; repoPath: string }
+  ) => string;
+
+  /**
+   * Open an Admiral pane for a repository, in a new tab, and return its pane
+   * id. The caller has resolved the repository and claimed it in main; this
+   * only lays the pane out. `paneId` is the id the claim was made for.
+   *
+   * The tab is an `agent` tab, so the sidebar's Agents section, the mini rail
+   * and the badges treat it like any other agent; the leaf says it is an
+   * Admiral.
+   */
+  openAdmiralPane: (
+    repo: AgencyRepoRef,
+    opts: { paneId: string; lobbySessionId: string }
   ) => string;
 
   /**
@@ -574,17 +593,54 @@ export function collectPaneLeafs(node: PaneNode): PaneLeaf[] {
  * Whether an agent pane is in orchestrator mode, wherever it is: a pane in a
  * background workspace can still be mid-turn.
  */
-export function isOrchestratorPane(
-  state: { workspace: Workspace; backgroundWorkspaces: Map<string, Workspace> },
-  paneId: string
-): boolean {
+export function isOrchestratorPane(state: OpenWorkspaces, paneId: string): boolean {
+  return findLeafAnywhere(state, (l) => l.id === paneId)?.agentOrchestrator === true;
+}
+
+type OpenWorkspaces = { workspace: Workspace; backgroundWorkspaces: Map<string, Workspace> };
+
+/** The first leaf matching `match` in the current workspace or a background one. */
+function findLeafAnywhere(
+  state: OpenWorkspaces,
+  match: (leaf: PaneLeaf) => boolean
+): PaneLeaf | null {
   for (const ws of [state.workspace, ...state.backgroundWorkspaces.values()]) {
     for (const tab of ws.tabs) {
-      const leaf = collectPaneLeafs(tab.splitRoot).find((l) => l.id === paneId);
-      if (leaf) return leaf.agentOrchestrator === true;
+      const leaf = collectPaneLeafs(tab.splitRoot).find(match);
+      if (leaf) return leaf;
     }
   }
-  return false;
+  return null;
+}
+
+/** Whether a leaf is an Admiral pane. */
+export function isAdmiralLeaf(leaf: Pick<PaneLeaf, 'paneType'>): boolean {
+  return leaf.paneType === 'admiral';
+}
+
+/** Whether a tab holds an Admiral pane. Its `type` stays `agent`; the leaf tells. */
+export function isAdmiralTab(tab: Pick<Tab, 'splitRoot'>): boolean {
+  return collectPaneLeafs(tab.splitRoot).some(isAdmiralLeaf);
+}
+
+/**
+ * The Admiral pane bound to a repository, in any open workspace, or null.
+ * There is at most one: main refuses a second claim.
+ */
+export function findAdmiralPane(state: OpenWorkspaces, repoId: string): string | null {
+  return (
+    findLeafAnywhere(state, (l) => isAdmiralLeaf(l) && l.admiralRepo?.repoId === repoId)?.id ?? null
+  );
+}
+
+/**
+ * Give up the one-per-repo claim of every Admiral pane in a closing subtree.
+ * The jobs stay in main; only the pane is going.
+ */
+function releaseAdmiralClaims(node: PaneNode): void {
+  for (const leaf of collectPaneLeafs(node)) {
+    if (isAdmiralLeaf(leaf)) void window.fleet.agency.releaseAdmiral(leaf.id);
+  }
 }
 
 /**
@@ -599,6 +655,11 @@ export function agentSessionsInUse(): Set<string> {
   for (const tab of useWorkspaceStore.getState().workspace.tabs) {
     for (const leaf of collectPaneLeafs(tab.splitRoot)) {
       if (leaf.agentSessionId !== undefined) ids.add(leaf.agentSessionId);
+      // An Admiral holds its lobby and one session per job.
+      if (leaf.admiralSessions) {
+        ids.add(leaf.admiralSessions.lobby);
+        for (const id of Object.values(leaf.admiralSessions.jobs)) ids.add(id);
+      }
     }
   }
   return ids;
@@ -740,6 +801,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       for (const pid of collectPaneIds(closing.splitRoot)) {
         disposePaneElsewhere(pid);
       }
+      releaseAdmiralClaims(closing.splitRoot);
     }
     set((state) => {
       const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
@@ -1174,6 +1236,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     // parked on a permission question is waiting on a click from the pane being
     // closed, and nothing else would ever end it.
     disposePaneElsewhere(paneId);
+    const closingLeaf = owner ? findLeaf(owner.splitRoot, paneId) : null;
+    if (closingLeaf) releaseAdmiralClaims(closingLeaf);
     set((state) => {
       // Closing a worktree tab's last pane would otherwise drop the tab silently,
       // skipping the confirmation dialog and the on-disk worktree cleanup. Route it
@@ -1290,6 +1354,44 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           ...tab,
           splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) =>
             leaf.paneType === 'agent' ? { ...leaf, agentOrchestrator: on } : leaf
+          )
+        }))
+      },
+      isDirty: true
+    }));
+  },
+
+  setAdmiralJobSession: (paneId, jobId, sessionId) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) =>
+            isAdmiralLeaf(leaf) && leaf.admiralSessions
+              ? {
+                  ...leaf,
+                  admiralSessions: {
+                    ...leaf.admiralSessions,
+                    jobs: { ...leaf.admiralSessions.jobs, [String(jobId)]: sessionId }
+                  }
+                }
+              : leaf
+          )
+        }))
+      },
+      isDirty: true
+    }));
+  },
+
+  setAdmiralActiveJob: (paneId, jobId) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) =>
+            isAdmiralLeaf(leaf) ? { ...leaf, admiralActiveJob: jobId } : leaf
           )
         }))
       },
@@ -1628,9 +1730,40 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     return leaf.id;
   },
 
+  openAdmiralPane: (repo, { paneId, lobbySessionId }) => {
+    const ctx: PathContext = window.fleet.platform === 'win32' ? 'win32' : 'posix';
+    const leaf: PaneLeaf = {
+      type: 'leaf',
+      id: paneId,
+      cwd: repo.root,
+      paneType: 'admiral',
+      pathContext: ctx,
+      admiralRepo: repo,
+      admiralSessions: { lobby: lobbySessionId, jobs: {} },
+      admiralActiveJob: null
+    };
+    const tab: Tab = {
+      id: generateId(),
+      label: `Admiral · ${repo.name}`,
+      labelIsCustom: true,
+      cwd: repo.root,
+      type: 'agent',
+      splitRoot: leaf
+    };
+    set((s) => ({
+      workspace: { ...s.workspace, tabs: [...s.workspace.tabs, tab] },
+      activeTabId: tab.id,
+      activePaneId: leaf.id,
+      isDirty: true
+    }));
+    get().addRecentFolder(repo.root);
+    return leaf.id;
+  },
+
   moveAgentTab: (paneId, folderPath, worktree) => {
     const tab = get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
-    if (tab?.type !== 'agent') return;
+    // An Admiral is bound to its repository for good; only a plain agent moves.
+    if (tab?.type !== 'agent' || isAdmiralTab(tab)) return;
     const ctx = tab.pathContext ?? (window.fleet.platform === 'win32' ? 'win32' : 'posix');
     const moved: Tab = {
       ...tab,

@@ -1,16 +1,16 @@
 ## 1. Phase 1 - Admiral pane and agent mode (PR 1)
 
-- [ ] 1.1 Check whether panes in background tabs stay mounted while another tab is shown, with `npm run drive -- up` and an Agent pane in a background tab; write the result in `docs/learnings/`, and add a hidden mount for Admiral panes if they unmount
-- [ ] 1.2 Add `'admiral'` to `PaneLeaf.paneType` and an `admiralRepo` field in `shared/types.ts`; verify with `npm run typecheck` and a layout-store round-trip test
-- [ ] 1.3 Add the `agency.enabled` setting (default off) and the "Agency" group in `SettingsNav.tsx` with an `agencyAdmiral` section for model, default budget and monthly cap; verify with a settings test and a screenshot of the nav
-- [ ] 1.4 Add the "Open Admiral" command and new-pane menu item that resolves the repo root, refuses a non-repo folder, and focuses an existing Admiral for the same repo; verify with renderer store tests and `npm run drive -- cmd`
-- [ ] 1.5 Add `mode: 'chat' | 'orchestrator' | 'admiral'` to the agent send request, mapped from the saved `agentOrchestrator` flag; verify existing orchestrator tests pass unchanged
+- [x] 1.1 Check whether panes in background tabs stay mounted while another tab is shown, with `npm run drive -- up` and an Agent pane in a background tab; write the result in `docs/learnings/`, and add a hidden mount for Admiral panes if they unmount
+- [x] 1.2 Add `'admiral'` to `PaneLeaf.paneType` and an `admiralRepo` field in `shared/types.ts`; verify with `npm run typecheck` and a layout-store round-trip test
+- [x] 1.3 Add the `agency.enabled` setting (default off) and the "Agency" group in `SettingsNav.tsx` with an `agencyAdmiral` section for model, default budget and monthly cap; verify with a settings test and a screenshot of the nav
+- [x] 1.4 Add the "Open Admiral" command and new-pane menu item that resolves the repo root, refuses a non-repo folder, and focuses an existing Admiral for the same repo; verify with renderer store tests and `npm run drive -- cmd`
+- [x] 1.5 Add `mode: 'chat' | 'orchestrator' | 'admiral'` to the agent send request, mapped from the saved `agentOrchestrator` flag; verify existing orchestrator tests pass unchanged
 - [ ] 1.6 Add the Admiral system prompt and an allow-listed tool set (`read`, `glob`, `grep`, `web_fetch`, fleet read tools, agency tools); verify with a test that an Admiral turn is offered no edit, write, bash or background tool
-- [ ] 1.7 Build `components/admiral/AdmiralPane.tsx` in `ToolPaneFrame` with the chat on the left, the 380px job sheet on the right, job tabs in the header, and a sheet toggle when narrow; verify with screenshots at wide and narrow widths against canvas boards 3.1 and 3.2
+- [ ] 1.7 Build `components/admiral/AdmiralPane.tsx` as a pane leaf in `PaneFrame` with the chat on the left, the 380px job sheet on the right, job tabs in the header, and a sheet toggle when narrow; verify with screenshots at wide and narrow widths against canvas boards 3.1 and 3.2
 - [ ] 1.8 Add `ask_client` and the question card (context, two to four options, recommended pick, free answer), delivered back as a wakeup without blocking; verify with a tool test and by answering a card in the running app
 - [ ] 1.9 Add the needs-you tab badge and the notification for new questions while the pane is not focused; verify with a store test and a screenshot of the badge
 
-- [ ] 1.10 Store one agent session per job plus a lobby session on the leaf, keyed by job id; verify with a store test that a job A wakeup never lands in job B
+- [x] 1.10 Store one agent session per job plus a lobby session on the leaf, keyed by job id; verify with a store test that a job A wakeup never lands in job B
 - [ ] 1.11 Resolve repo identity from the realpath of `git rev-parse --git-common-dir` in main, map it to a project member, refuse remote folders, and focus the owning Admiral from a worktree, a submodule or a job workspace; verify with tests using a linked worktree and a submodule
 - [ ] 1.12 Keep jobs when the pane is deleted, ask keep-or-cancel when closing a pane with running jobs, and list running jobs in the quit guard; verify with quit-guard and store tests
 - [ ] 1.13 Add question lifecycle: tie questions to plan version and step, withdraw them, mark late answers, and support `dependsOn`; verify with tool tests

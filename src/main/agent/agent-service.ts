@@ -24,6 +24,7 @@ import type {
 import {
   EMPTY_AGENT_USAGE,
   MAX_TOOL_ROUNDS_CEILING,
+  agentTurnMode,
   buildSystemPrompt,
   fleetNote,
   messageAttachments,
@@ -1046,7 +1047,10 @@ export class AgentService {
     // The user wrote, so an orchestrator conversation's run of turns Fleet
     // started on its own is over. A turn with nothing typed is a digest, a
     // schedule or a subagent report, none of which is the user.
-    if (req.orchestrator === true && (req.text.trim() !== '' || req.attachments.length > 0)) {
+    if (
+      agentTurnMode(req) === 'orchestrator' &&
+      (req.text.trim() !== '' || req.attachments.length > 0)
+    ) {
       this.deps.fleet?.ledger.resetChain(req.threadId);
     }
     void this.run(req.streamId, async (ctx, account) => this.turn(req, ctx, account));
@@ -1185,7 +1189,7 @@ export class AgentService {
     // - is offered nowhere else, since it could do nothing there.
     const fleetDeps = this.deps.fleet ?? null;
     const fleet =
-      req.orchestrator === true && fleetDeps !== null
+      agentTurnMode(req) === 'orchestrator' && fleetDeps !== null
         ? createFleetCapability(
             fleetDeps,
             req.threadId,

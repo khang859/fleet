@@ -98,10 +98,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
   const frecencyMap = useCommandFrecencyStore((s) => s.map);
 
   const remoteHosts = useSettingsStore((s) => s.settings?.remoteSsh.hosts);
+  const agencyEnabled = useSettingsStore((s) => s.settings?.agency.enabled === true);
 
   const staticCommands = useMemo(
-    () => [...createCommandRegistry(), ...createRemoteHostCommands(remoteHosts ?? [])],
-    [remoteHosts]
+    () => [
+      ...createCommandRegistry({ agencyEnabled }),
+      ...createRemoteHostCommands(remoteHosts ?? [])
+    ],
+    [remoteHosts, agencyEnabled]
   );
 
   const { needsYou, recent, commands, destinations } = useMemo(() => {

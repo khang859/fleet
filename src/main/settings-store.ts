@@ -239,6 +239,11 @@ export class SettingsStore {
         // authoritative, not something to merge element-wise with defaults.
         hosts: saved.remoteSsh?.hosts ?? DEFAULT_SETTINGS.remoteSsh.hosts,
         rcConsent: readRcConsent(saved.remoteSsh?.rcConsent)
+      },
+      agency: {
+        ...DEFAULT_SETTINGS.agency,
+        ...saved.agency,
+        admiral: { ...DEFAULT_SETTINGS.agency.admiral, ...saved.agency?.admiral }
       }
     };
     return this.cached;
@@ -348,6 +353,11 @@ export class SettingsStore {
         rcConsent: partial.remoteSsh?.rcConsent
           ? readRcConsent(partial.remoteSsh.rcConsent)
           : current.remoteSsh.rcConsent
+      },
+      agency: {
+        ...current.agency,
+        ...(partial.agency ?? {}),
+        admiral: { ...current.agency.admiral, ...(partial.agency?.admiral ?? {}) }
       }
     };
     // Ahead of the write rather than after it: the watcher that would clear

@@ -163,6 +163,18 @@ import type { ShellEnvSnapshot } from '../shared/shell-env-types';
 import type { QuitConfirmAsk } from '../shared/quit-confirm';
 import type { SessionSummary, SessionTranscript } from '../shared/sessions';
 import type {
+  AdmiralClaimResult,
+  AgencyAnswerRequest,
+  AgencyChanged,
+  AgencyPreflight,
+  AgencyQuestion,
+  AgencyRepoRef,
+  AgencySnapshot,
+  RepoResolution,
+  WakeupPull,
+  WakeupRelease
+} from '../shared/agency';
+import type {
   Learning,
   CreateLearningInput,
   UpdateLearningInput,
@@ -1057,6 +1069,47 @@ const fleetApi = {
       typedInvoke<number>(IPC_CHANNELS.LEARNINGS_MODEL_CACHE_SIZE),
     clearModelCache: async (): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.LEARNINGS_CLEAR_MODEL_CACHE)
+  },
+  agency: {
+    /**
+     * The repository a folder belongs to, by its git common dir. `remote` says
+     * the folder is on another machine (an SSH pane), which is refused.
+     */
+    resolveRepo: async (
+      cwd: string,
+      opts?: { remote?: boolean; pathContext?: PathContext }
+    ): Promise<RepoResolution> => typedInvoke(IPC_CHANNELS.AGENCY_RESOLVE_REPO, cwd, opts),
+    /** Make a pane its repository's one Admiral, or learn which pane already is. */
+    claimAdmiral: async (args: { repoId: string; paneId: string }): Promise<AdmiralClaimResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_CLAIM, args),
+    releaseAdmiral: async (paneId: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_RELEASE, paneId),
+    /** The repository's lobby session id, minted the first time. */
+    ensureLobby: async (repo: AgencyRepoRef): Promise<string> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_ENSURE_LOBBY, repo),
+    snapshot: async (repoId: string): Promise<AgencySnapshot> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_SNAPSHOT, repoId),
+    /** Null when the question cannot take this answer (hidden, already answered, bad option). */
+    answerQuestion: async (req: AgencyAnswerRequest): Promise<AgencyQuestion | null> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_ANSWER, req),
+    /** Claim every wakeup due for one job (null: the lobby) as the text of one turn. */
+    pullWakeups: async (args: { repoId: string; jobId: number | null }): Promise<WakeupPull> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_PULL_WAKEUPS, args),
+    ackWakeups: async (ids: number[]): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_ACK_WAKEUPS, ids),
+    /** Hand claimed wakeups back after a failed turn, to retry after a backoff. */
+    releaseWakeups: async (args: { ids: number[]; error: string }): Promise<WakeupRelease> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_RELEASE_WAKEUPS, args),
+    retryNow: async (repoId: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_RETRY_NOW, repoId),
+    /** Cancel the repository's running jobs. Resolves with the cancelled ids. */
+    cancelJobs: async (repoId: string): Promise<number[]> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_CANCEL_JOBS, repoId),
+    markHandoff: async (args: { jobId: number; lobbyMessageId: string }): Promise<boolean> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_MARK_HANDOFF, args),
+    preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
+    onChanged: (callback: (change: AgencyChanged) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.AGENCY_CHANGED, callback)
   }
 };
 

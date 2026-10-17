@@ -8,6 +8,7 @@ import {
   History,
   SlidersHorizontal,
   Bot,
+  Compass,
   Server,
   MessageCirclePlus,
   MessageCircle
@@ -24,7 +25,8 @@ import {
   useWorkspaceStore,
   collectPaneIds,
   collectPaneLeafs,
-  getPaneContextById
+  getPaneContextById,
+  isAdmiralTab
 } from './store/workspace-store';
 import { isScratchTab } from './lib/scratch';
 import { isFileTab } from './lib/tab-nesting';
@@ -179,6 +181,8 @@ function MiniTabButton({
   let icon: React.ReactNode;
   if (isScratchTab(tab)) {
     icon = <MessageCircle size={16} className="text-violet-300" />;
+  } else if (isAdmiralTab(tab)) {
+    icon = <Compass size={16} className={tint} />;
   } else if (tab.type === 'agent') {
     icon = <Bot size={16} className={tint} />;
   } else if (tab.type === 'ssh-browser') {
