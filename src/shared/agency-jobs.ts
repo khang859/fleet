@@ -1,4 +1,6 @@
 import type { AgencyJob, AgencyJobEvent } from './agency';
+
+export type { AgencyLeftover, ResourceKind } from './agency';
 import type { Plan, PlanDiffEntry, PlanInput } from './agency-plan';
 
 /**
@@ -138,6 +140,15 @@ export type AgencyJobDetail = {
   log: AgencyJobLogEntry[];
   spendUsd: number;
 };
+
+export type ResourceStatus = 'planned' | 'live' | 'cleaned' | 'kept' | 'failed' | 'dismissed';
+
+/** The client ends a job: cancel it, or accept what it delivered. */
+export type JobControl = { jobId: number; action: 'cancel' | 'accept' };
+
+export type JobControlResult = { ok: true } | { ok: false; reason: string };
+
+export type LeftoverAction = { resourceId: number; action: 'retry' | 'dismiss' };
 
 export type PlanAction =
   | {

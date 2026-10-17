@@ -28,6 +28,7 @@ import { reduceJob, type CloseTarget, type JobEvent, type Transition } from '../
 import { renderWakeupText, type WakeupItem } from '../wakeup-text';
 import { openAgencyDb } from './agency-db';
 import { CrewStore } from './crew-store';
+import { ResourceStore } from './resource-store';
 import { PlanStore } from './plan-store';
 
 type JobRow = {
@@ -265,12 +266,14 @@ export class AgencyStore {
   private readonly now: () => number;
   readonly plans: PlanStore;
   readonly crew: CrewStore;
+  readonly resources: ResourceStore;
 
   constructor(db: Database.Database | string, opts: { now?: () => number } = {}) {
     this.db = typeof db === 'string' ? openAgencyDb(db) : db;
     this.now = opts.now ?? Date.now;
     this.plans = new PlanStore(this.db, this.now);
     this.crew = new CrewStore(this.db, this.now);
+    this.resources = new ResourceStore(this.db, this.now);
   }
 
   /**
@@ -418,11 +421,16 @@ export class AgencyStore {
 
   /** Jobs in every repository with work under way, for the quit guard. */
   listRunning(): AgencyJob[] {
+    return this.jobsIn(RUNNING_JOB_STATES);
+  }
+
+  /** Jobs in every repository in one of `states`, oldest first. */
+  jobsIn(states: readonly JobState[]): AgencyJob[] {
     return this.db
       .prepare<unknown[], JobRow>(
-        `SELECT * FROM jobs WHERE state IN (${marks(RUNNING_JOB_STATES.length)}) ORDER BY id`
+        `SELECT * FROM jobs WHERE state IN (${marks(states.length)}) ORDER BY id`
       )
-      .all(...RUNNING_JOB_STATES)
+      .all(...states)
       .map((row) => this.toJob(row));
   }
 
@@ -825,6 +833,27 @@ export class AgencyStore {
   private answerFleetCard(q: AgencyQuestion, option: number | null): void {
     if (q.kind === 'model_unreachable' && option === 0) this.retryNow(q.repoId);
     if (q.kind === 'continue' && option === 0 && q.jobId !== null) this.resetChain(q.jobId);
+    if (q.kind === 'resume' && option === 0 && q.jobId !== null) this.resumeJob(q.jobId);
+  }
+
+  /** The client picked Resume after a restart: the job runs again, and the Admiral restarts its steps. */
+  private resumeJob(jobId: number): void {
+    const { job, transition } = this.applyJobEvent(
+      jobId,
+      { type: 'resume' },
+      'the client picked Resume'
+    );
+    if (!job || !transition.ok || !transition.changed) return;
+    this.resetChain(jobId);
+    this.enqueueWakeup({
+      repoId: job.repoId,
+      jobId,
+      kind: 'event',
+      payload: {
+        line: 'The client picked Resume',
+        body: 'Set each interrupted step running again with job_update.'
+      }
+    });
   }
 
   /** Reveal the hidden questions waiting on `option`, and withdraw the rest. */
@@ -1139,7 +1168,8 @@ export class AgencyStore {
       jobs: this.listJobs(repoId),
       questions: [...open, ...recent].sort((a, b) => a.id - b.id),
       nextRetryAt: retry?.due ?? null,
-      onboarding: this.onboarding(repoId)
+      onboarding: this.onboarding(repoId),
+      leftovers: this.resources.leftovers(repoId)
     };
   }
 

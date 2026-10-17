@@ -5,7 +5,6 @@ import type {
   AgencyPlanVersion,
   MemberBase,
   PlanAction,
-  PlanActionResult,
   SwapChoice
 } from '../../../../shared/agency-jobs';
 import { diffLine, withLocalBranches, type PlanInput } from '../../../../shared/agency-plan';
@@ -15,6 +14,7 @@ import { OnboardingButton } from './onboarding-ui';
 import { PillRadio } from '../ui/pill-radio';
 import { PlanEditor } from './PlanEditor';
 import { formatUsd, runtimeName } from './job-view';
+import { useRefusable, type RefusableAction } from './use-refusable';
 
 /**
  * A plan version the Admiral proposed, as the card the client decides on:
@@ -91,7 +91,7 @@ function OpenPlan({
         <Cautions
           version={version}
           onUseBranch={() =>
-            void decision.decide({
+            void decision.run({
               planVersionId: version.id,
               action: 'edit',
               plan: withLocalBranches(plan)
@@ -103,7 +103,7 @@ function OpenPlan({
         version={version}
         decision={decision}
         onApprove={() =>
-          void decision.decide({
+          void decision.run({
             planVersionId: version.id,
             action: 'approve',
             swaps,
@@ -281,28 +281,13 @@ function Cautions({
   );
 }
 
-type Decision = {
-  busy: boolean;
-  refused: string | null;
-  decide: (action: PlanAction) => Promise<void>;
-};
+type Decision = RefusableAction<PlanAction>;
 
 /** Send one decision at a time on a card, and keep main's reason when it refuses. */
 function useDecision(jobId: number): Decision {
-  const [busy, setBusy] = useState(false);
-  const [refused, setRefused] = useState<string | null>(null);
-  const decide = async (action: PlanAction): Promise<void> => {
-    if (busy) return;
-    setBusy(true);
-    setRefused(null);
-    const result = await useAgencyStore
-      .getState()
-      .decidePlan(jobId, action)
-      .catch((err: unknown): PlanActionResult => ({ ok: false, reason: String(err) }));
-    setBusy(false);
-    if (!result.ok) setRefused(result.reason);
-  };
-  return { busy, refused, decide };
+  return useRefusable(async (action: PlanAction) =>
+    useAgencyStore.getState().decidePlan(jobId, action)
+  );
 }
 
 type BaseChoice = 'default' | 'head';
@@ -390,7 +375,7 @@ function DecisionBar({
   onEdit: () => void;
 }): React.JSX.Element {
   const { plan } = version;
-  const { busy, refused, decide } = decision;
+  const { busy, refused, run: decide } = decision;
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState('');
   const blocked = version.checks.issues.some((i) => i.severity === 'block');

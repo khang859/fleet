@@ -227,7 +227,8 @@ describe('the sheet', () => {
     ],
     questions: [],
     nextRetryAt: null,
-    onboarding: { setupDoneAt: 1, starterDoneAt: 1 }
+    onboarding: { setupDoneAt: 1, starterDoneAt: 1 },
+    leftovers: []
   });
   const sheet = (snapshot: AgencySnapshot, d: AgencyJobDetail): string =>
     renderToStaticMarkup(

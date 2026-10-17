@@ -70,7 +70,9 @@ describe('AgencyService', () => {
     expect(service.cancelJobs(REPO.repoId)).toEqual([job.id]);
     expect(service.markHandoff({ jobId: job.id, lobbyMessageId: 'm' })).toBe(true);
     expect(service.markHandoff({ jobId: 999, lobbyMessageId: 'm' })).toBe(false);
+    // Answer, cancel, the cleanup that ends the job, and the handoff.
     expect(emitted).toEqual([
+      { repoId: REPO.repoId, jobIds: [job.id] },
       { repoId: REPO.repoId, jobIds: [job.id] },
       { repoId: REPO.repoId, jobIds: [job.id] },
       { repoId: REPO.repoId, jobIds: [job.id] }

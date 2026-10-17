@@ -63,6 +63,7 @@ const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
   questions: [],
   nextRetryAt: null,
   onboarding: { setupDoneAt: 1, starterDoneAt: 1 },
+  leftovers: [],
   ...over
 });
 
@@ -161,6 +162,50 @@ describe('JobSheet', () => {
 
   it('points at the tabs from a lobby that already has jobs', () => {
     expect(sheet(snap({ jobs: [job()] }), null)).toContain('Pick a job above');
+  });
+
+  it('asks the client to accept a delivered job, and offers Cancel on an open one', () => {
+    const delivered = sheet(snap({ jobs: [job({ state: 'delivered' })] }), 2);
+    expect(delivered).toContain('WAITING ON YOU · 1');
+    expect(delivered).toContain('Everything in the plan is in');
+    expect(delivered).toContain('Accept and close');
+    expect(delivered).toContain('Cancel job');
+
+    const closing = sheet(snap({ jobs: [job({ state: 'closing' })] }), 2);
+    expect(closing).toContain('Closing');
+    expect(closing).not.toContain('Cancel job');
+    expect(sheet(snap(), null)).not.toContain('Cancel job');
+  });
+
+  it('lists what cleanup left behind, with Retry and Dismiss, in any view of the repository', () => {
+    const leftovers = [
+      {
+        id: 7,
+        jobId: 3,
+        kind: 'member_worktree' as const,
+        label: 'Designer worktree',
+        path: '/Users/me/.fleet/worktrees/app/admiral-3-designer-1-1',
+        status: 'kept' as const,
+        detail: '3 untracked files'
+      },
+      {
+        id: 8,
+        jobId: 3,
+        kind: 'crew_pane' as const,
+        label: 'Builder 1 pane',
+        path: 'pane-1',
+        status: 'failed' as const,
+        detail: 'the pane did not stop'
+      }
+    ];
+    const html = sheet(snap({ leftovers }), null);
+    expect(html).toContain('LEFTOVERS · 2');
+    expect(html).toContain('Kept: 3 untracked files');
+    expect(html).toContain('Not cleaned: the pane did not stop');
+    expect(html).toContain('admiral-3-designer-1-1');
+    expect(html).not.toContain('>pane-1<');
+    expect(html.match(/>Retry</g)).toHaveLength(2);
+    expect(html.match(/>Dismiss</g)).toHaveLength(2);
   });
 });
 

@@ -57,6 +57,7 @@ const MOVES: Array<[JobState, JobEventType, JobState]> = [
   ),
   ['closing', 'cleanup_done', 'cancelled'],
   ['running', 'interrupt', 'interrupted'],
+  ['waiting', 'interrupt', 'interrupted'],
   ['interrupted', 'resume', 'running']
 ];
 

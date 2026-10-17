@@ -29,6 +29,7 @@ import {
 import { checkPlan, pinBases, type PlanFacts } from '../plans/plan-checks';
 import type { OtherJobPaths } from '../plans/overlap';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
+import { CREW_ENDED } from '../store/crew-store';
 import type { PlanVersionRecord } from '../store/plan-store';
 import { acceptsPlans } from './job-machine';
 import { canStartStep, type StartVerdict } from './start-gate';
@@ -357,6 +358,21 @@ export class JobsService {
   }
 
   /** Stop crew members by id, then mark them ended. A failure is logged and the rest go on. */
+  /**
+   * At launch: stop the crew an approved plan change stopped, where a quit
+   * came between recording the approval and stopping them.
+   */
+  async replayStops(): Promise<void> {
+    for (const job of this.store.jobsIn(UNDER_WAY)) {
+      const approved = this.store.plans.approved(job.id);
+      if (approved === null) continue;
+      const live = (approved.effects?.stopCrewIds ?? []).filter(
+        (id) => this.store.crew.get(id)?.status !== CREW_ENDED
+      );
+      if (live.length > 0) await this.stopCrew(live, `plan v${approved.version}`);
+    }
+  }
+
   async stopCrew(ids: number[], reason: string): Promise<void> {
     for (const id of ids) {
       const crew = this.store.crew.get(id);

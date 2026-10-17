@@ -185,7 +185,14 @@ import type {
   SaveSetupRequest,
   SetupScan
 } from '../shared/agency-projects';
-import type { AgencyJobDetail, PlanAction, PlanActionResult } from '../shared/agency-jobs';
+import type {
+  AgencyJobDetail,
+  JobControl,
+  JobControlResult,
+  LeftoverAction,
+  PlanAction,
+  PlanActionResult
+} from '../shared/agency-jobs';
 import type {
   Learning,
   CreateLearningInput,
@@ -1135,6 +1142,12 @@ const fleetApi = {
     /** The client's approve, edit or reject on a plan card. */
     planAction: async (action: PlanAction): Promise<PlanActionResult> =>
       typedInvoke(IPC_CHANNELS.AGENCY_PLAN_ACTION, action),
+    /** The client cancels a job, or accepts its results; either way it closes and cleans up. */
+    jobControl: async (control: JobControl): Promise<JobControlResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_JOB_CONTROL, control),
+    /** Retry or dismiss something a job's cleanup left behind. */
+    leftover: async (action: LeftoverAction): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_LEFTOVER, action),
     preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
     /** Onboarding: first run, the picker, setup, the client file and brief ideas. */
     projects: {

@@ -319,7 +319,7 @@ The job state machine has a transition table:
 | delivered | closing | the client accepts |
 | any open state | closing | the client cancels, or the job fails |
 | closing | closed, cancelled or failed | cleanup ends |
-| running | interrupted | Fleet restarts with live steps |
+| running or waiting | interrupted | Fleet restarts with live steps |
 | interrupted | running or closing | the client picks Resume or Cancel |
 
 A closed job is read-only; a follow-up opens a new job linked to it.

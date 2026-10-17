@@ -442,6 +442,8 @@ export const IPC_CHANNELS = {
   AGENCY_CLIENT_ACTIVITY: 'agency:client-activity',
   AGENCY_JOB_DETAIL: 'agency:job-detail',
   AGENCY_PLAN_ACTION: 'agency:plan-action',
+  AGENCY_JOB_CONTROL: 'agency:job-control',
+  AGENCY_LEFTOVER: 'agency:leftover',
   AGENCY_PREFLIGHT: 'agency:preflight',
   // Onboarding: first run, the project picker, setup, the client file, ideas.
   AGENCY_FIRST_RUN_DONE: 'agency:first-run-done',

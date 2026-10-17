@@ -77,6 +77,8 @@ export const JOB_TRANSITIONS: readonly Edge[] = [
   { from: 'closing', event: 'accepted', to: 'closing' },
 
   { from: 'running', event: 'interrupt', to: 'interrupted' },
+  // A waiting job is a running one with a hold, and its crew are lost the same way.
+  { from: 'waiting', event: 'interrupt', to: 'interrupted' },
   { from: 'interrupted', event: 'resume', to: 'running' },
 
   { from: 'closing', event: 'cleanup_done', to: 'closed' }

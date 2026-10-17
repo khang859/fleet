@@ -10,6 +10,9 @@ import {
 import type {
   AgencyJobDetail,
   AgencyPlanVersion,
+  JobControl,
+  JobControlResult,
+  LeftoverAction,
   PlanAction,
   PlanActionResult
 } from '../../../shared/agency-jobs';
@@ -42,6 +45,10 @@ type AgencyStoreState = {
   answer: (req: AgencyAnswerRequest) => Promise<AgencyQuestion | null>;
   /** Cancel a repository's running jobs. Resolves with the cancelled ids. */
   cancelJobs: (repoId: string) => Promise<number[]>;
+  /** Cancel one job, or accept its results. Either way it closes and cleans up. */
+  closeJob: (repoId: string, control: JobControl) => Promise<JobControlResult>;
+  /** Retry or dismiss a leftover of a closed job's cleanup. */
+  leftover: (repoId: string, action: LeftoverAction) => Promise<void>;
 };
 
 /**
@@ -110,6 +117,17 @@ export const useAgencyStore = create<AgencyStoreState>((set, get) => ({
     const ids = await window.fleet.agency.cancelJobs(repoId);
     void get().refresh(repoId);
     return ids;
+  },
+
+  closeJob: async (repoId, control) => {
+    const result = await window.fleet.agency.jobControl(control);
+    void get().refresh(repoId);
+    return result;
+  },
+
+  leftover: async (repoId, action) => {
+    await window.fleet.agency.leftover(action);
+    void get().refresh(repoId);
   }
 }));
 
@@ -128,15 +146,16 @@ export function openQuestions(
 }
 
 /**
- * How many things wait on the client: open questions and plan versions to
- * decide, in the repository or one job (null: the lobby, which has no plans).
+ * How many things wait on the client: open questions, plan versions to
+ * decide and delivered jobs to accept, in the repository or one job (null:
+ * the lobby, which has no plans).
  */
 export function waitingCount(snapshot: AgencySnapshot | undefined, jobId?: number | null): number {
   if (snapshot === undefined) return 0;
-  const plans = snapshot.jobs.filter(
-    (j) => j.pendingPlan !== null && (jobId === undefined || j.id === jobId)
-  ).length;
-  return openQuestions(snapshot, jobId).length + plans;
+  const jobs = snapshot.jobs.filter((j) => jobId === undefined || j.id === jobId);
+  const plans = jobs.filter((j) => j.pendingPlan !== null).length;
+  const delivered = jobs.filter((j) => j.state === 'delivered').length;
+  return openQuestions(snapshot, jobId).length + plans + delivered;
 }
 
 /** The plan versions a job's sheet shows: the one waiting on the client and the one it runs. */

@@ -1596,7 +1596,9 @@ void app.whenReady().then(async () => {
         mainWindow.webContents.send(IPC_CHANNELS.AGENCY_CHANGED, change);
       }
     },
-    hasModelKey: () => openRouterSecrets.hasKey() || localEndpoints().some((e) => e.enabled)
+    hasModelKey: () => openRouterSecrets.hasKey() || localEndpoints().some((e) => e.enabled),
+    worktrees: worktreeService,
+    isOnline: () => net.isOnline()
   });
   // Before the Agent service, which runs Admiral turns against it.
   const agency = agencyService;
@@ -1686,6 +1688,10 @@ void app.whenReady().then(async () => {
   });
 
   registerAgencyIpc(agencyService);
+  // After the IPC is up, so the change events it raises reach a listener.
+  void agency.startup().catch((err: unknown) => {
+    log.error('agency startup failed', { error: String(err) });
+  });
 
   // Cheap AI one-line pane summaries for the agent overview, throttled per pane
   // so the overview polling on an interval doesn't re-call the model every tick.

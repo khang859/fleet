@@ -7,6 +7,7 @@ import type {
   StepStatus
 } from '../../../../shared/agency-jobs';
 import { openQuestions, planVersions } from '../../store/agency-store';
+import { CancelJob, DeliveredCard, LeftoverList } from './JobClose';
 import { PlanCard } from './PlanCard';
 import { QuestionCard, type QuestionAnswer } from './QuestionCard';
 import { formatUsd, jobStatus, runtimeName, TONE_DOT } from './job-view';
@@ -46,9 +47,8 @@ export function JobSheet({
   className?: string;
 }): React.JSX.Element {
   const job = jobId === null ? null : (snapshot?.jobs.find((j) => j.id === jobId) ?? null);
-  const { pending, approved } = planVersions(detail);
-  const waiting = openQuestions(snapshot, jobId);
-  const count = waiting.length + (pending === null ? 0 : 1);
+  const { approved } = planVersions(detail);
+  const { pending, waiting, delivered, count } = waitingOnClient(snapshot, job, detail);
   const firstRun = jobId === null && (snapshot?.jobs.length ?? 0) === 0;
 
   return (
@@ -74,6 +74,7 @@ export function JobSheet({
       {(count > 0 || job !== null) && (
         <WaitingSection
           count={count}
+          delivered={delivered}
           pending={pending}
           detail={detail}
           questions={waiting}
@@ -90,19 +91,55 @@ export function JobSheet({
 
       {firstRun && <HowAJobGoes />}
 
+      <LeftoversSection snapshot={snapshot} />
+
       <div className="flex-1" />
       <SettingsBox
         budgetLabel={job !== null ? 'Budget' : 'Default budget'}
         budgetUsd={job?.budgetUsd ?? defaultBudgetUsd}
         onOpenSettings={onOpenSettings}
       />
+      {job !== null && <CancelJob key={job.id} job={job} />}
     </aside>
+  );
+}
+
+/** Everything on the job on screen that waits on the client, and how many. */
+function waitingOnClient(
+  snapshot: AgencySnapshot | undefined,
+  job: AgencyJob | null,
+  detail: AgencyJobDetail | undefined
+): {
+  pending: AgencyPlanVersion | null;
+  waiting: AgencyQuestion[];
+  delivered: AgencyJob | null;
+  count: number;
+} {
+  const { pending } = planVersions(detail);
+  const waiting = openQuestions(snapshot, job?.id ?? null);
+  const delivered = job?.state === 'delivered' ? job : null;
+  const count = waiting.length + [pending, delivered].filter((x) => x !== null).length;
+  return { pending, waiting, delivered, count };
+}
+
+/** What closed jobs' cleanup left in the repository, shown in every view of it. */
+function LeftoversSection({
+  snapshot
+}: {
+  snapshot: AgencySnapshot | undefined;
+}): React.JSX.Element | null {
+  if (snapshot === undefined || snapshot.leftovers.length === 0) return null;
+  return (
+    <Section label={`LEFTOVERS · ${snapshot.leftovers.length}`}>
+      <LeftoverList repoId={snapshot.repoId} leftovers={snapshot.leftovers} />
+    </Section>
   );
 }
 
 /** Open questions and a plan version waiting on the client, as cards. */
 function WaitingSection({
   count,
+  delivered,
   pending,
   detail,
   questions,
@@ -110,6 +147,8 @@ function WaitingSection({
   onOpenSettings
 }: {
   count: number;
+  /** The job on screen, when it waits on the client to accept it. */
+  delivered: AgencyJob | null;
   pending: AgencyPlanVersion | null;
   detail: AgencyJobDetail | undefined;
   questions: AgencyQuestion[];
@@ -124,6 +163,7 @@ function WaitingSection({
       {count === 0 && (
         <p className="text-[13px] text-fleet-text-muted">Nothing needs you right now.</p>
       )}
+      {delivered !== null && <DeliveredCard job={delivered} />}
       {pending !== null && detail !== undefined && <PlanCard version={pending} detail={detail} />}
       {questions.map((q) => (
         <QuestionCard

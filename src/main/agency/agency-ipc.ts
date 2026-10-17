@@ -17,7 +17,7 @@ import {
   type RuleCandidates,
   type SetupScan
 } from '../../shared/agency-projects';
-import type { AgencyJobDetail, PlanActionResult } from '../../shared/agency-jobs';
+import type { AgencyJobDetail, JobControlResult, PlanActionResult } from '../../shared/agency-jobs';
 import { PlanSchema } from '../../shared/agency-plan';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type { AgencyService } from './index';
@@ -56,6 +56,8 @@ const AnswerArgs = z
 const PullArgs = z.object({ repoId: RepoId, jobId: JobId.nullable() });
 const ReleaseArgs = z.object({ ids: Ids, error: z.string().max(4_000) });
 const HandoffArgs = z.object({ jobId: JobId, lobbyMessageId: z.string().min(1) });
+const JobControlArgs = z.object({ jobId: JobId, action: z.enum(['cancel', 'accept']) });
+const LeftoverArgs = z.object({ resourceId: JobId, action: z.enum(['retry', 'dismiss']) });
 const StepKey = z.string().max(80);
 const PlanActionArgs = z.discriminatedUnion('action', [
   z.object({
@@ -160,6 +162,16 @@ export function registerAgencyIpc(service: AgencyService): void {
     IPC_CHANNELS.AGENCY_PLAN_ACTION,
     async (_e, action: unknown): Promise<PlanActionResult> =>
       service.jobs.decide(PlanActionArgs.parse(action))
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_JOB_CONTROL,
+    (_e, control: unknown): JobControlResult => service.closeJob(JobControlArgs.parse(control))
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_LEFTOVER,
+    async (_e, action: unknown): Promise<void> => service.leftover(LeftoverArgs.parse(action))
   );
 
   ipcMain.handle(

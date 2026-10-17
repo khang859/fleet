@@ -238,6 +238,39 @@ export class WorktreeService {
     return sha;
   }
 
+  /**
+   * Remove a worktree the safe way, for agency cleanup: never forced, so git
+   * refuses one with changes or untracked files, and its branch only when
+   * another branch or a remote holds every commit on it. Throws when git
+   * refuses, leaving the worktree as it was.
+   */
+  async removeClean(worktreePath: string, branch: string | null): Promise<void> {
+    const gitCommonDir = (
+      await this.git(undefined, worktreePath, [
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-common-dir'
+      ])
+    ).trim();
+    const mainRepoPath = join(gitCommonDir, '..');
+    await this.git(undefined, mainRepoPath, ['worktree', 'remove', worktreePath]);
+    if (branch !== null) {
+      const unsafe = (
+        await this.git(undefined, mainRepoPath, [
+          'rev-list',
+          '--count',
+          `refs/heads/${branch}`,
+          '--not',
+          `--exclude=${branch}`,
+          '--branches',
+          '--remotes'
+        ])
+      ).trim();
+      if (unsafe === '0') await this.git(undefined, mainRepoPath, ['branch', '-D', branch]);
+    }
+    await this.git(undefined, mainRepoPath, ['worktree', 'prune']);
+  }
+
   async remove(worktreePath: string, ctx?: PathContext): Promise<void> {
     let mainRepoPath: string;
     let branchName: string;

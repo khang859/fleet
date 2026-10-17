@@ -148,6 +148,32 @@ export type AgencyQuestion = {
   answeredAt: number | null;
 };
 
+/**
+ * Something a job made that cleanup has to undo. Recorded before it is made,
+ * so a crash in between still leaves a row to clean.
+ */
+export type ResourceKind =
+  | 'crew_pane'
+  | 'compose_project'
+  | 'member_worktree'
+  | 'umbrella_worktree'
+  | 'workspace_dir';
+
+/**
+ * What cleanup left behind: kept on purpose, since there is work in it, or
+ * not undone, since a step failed. It stays listed until it is cleaned or the
+ * client dismisses it.
+ */
+export type AgencyLeftover = {
+  id: number;
+  jobId: number;
+  kind: ResourceKind;
+  label: string;
+  path: string | null;
+  status: 'kept' | 'failed';
+  detail: string;
+};
+
 export type AgencySnapshot = {
   repoId: string;
   /** Empty until `ensureLobby` has run for the repository. */
@@ -160,6 +186,8 @@ export type AgencySnapshot = {
   nextRetryAt: number | null;
   /** How far the repository got through onboarding. */
   onboarding: AgencyOnboarding;
+  /** What closed jobs' cleanup kept or could not undo, until cleaned or dismissed. */
+  leftovers: AgencyLeftover[];
 };
 
 /** When a repository's setup and starter questions were finished; null while they are not. */

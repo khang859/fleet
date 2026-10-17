@@ -15,8 +15,18 @@ import {
   type WakeupRelease
 } from '../../shared/agency';
 import { createLogger } from '../logger';
+import type {
+  JobControl,
+  JobControlResult,
+  LeftoverAction,
+  ResourceKind
+} from '../../shared/agency-jobs';
+import { WorktreeService } from '../worktree-service';
 import { AdmiralRegistry } from './admiral-registry';
+import { defaultCleaners, type WorktreeRemover } from './cleanup/cleaners';
+import { CleanupRunner, type ResourceCleaner } from './cleanup/cleanup-runner';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
+import { reconcileAtStartup } from './jobs/reconcile';
 import { runPreflight, type Probe } from './preflight';
 import { nativeGh, type GhRun } from './projects/gh';
 import { readOnlyGit } from './projects/repo-reader';
@@ -47,6 +57,12 @@ export type AgencyServiceDeps = {
   git?: GitRun;
   /** Crew members that may work at once; 4 unless set. */
   crewLimit?: () => number;
+  /** Removes a job's worktrees at close, never forced. */
+  worktrees?: WorktreeRemover;
+  /** Whether Fleet is online, so failed cleanup steps are retried. */
+  isOnline?: () => boolean;
+  /** Seams for cleanup tests: how a kind of resource is undone. */
+  cleaners?: Partial<Record<ResourceKind, ResourceCleaner>>;
 };
 
 /**
@@ -59,6 +75,7 @@ export class AgencyService {
   readonly registry = new AdmiralRegistry();
   readonly projects: ProjectsService;
   readonly jobs: JobsService;
+  readonly cleanup: CleanupRunner;
 
   constructor(private readonly deps: AgencyServiceDeps) {
     this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
@@ -82,6 +99,22 @@ export class AgencyService {
           { git: deps.git ?? readOnlyGit, gh: deps.gh ?? nativeGh }
         );
       }
+    });
+    const crew = deps.crew ?? NO_CREW;
+    this.cleanup = new CleanupRunner({
+      store: this.store,
+      cleaners: {
+        ...defaultCleaners({
+          store: this.store,
+          crew,
+          git: deps.git ?? readOnlyGit,
+          worktrees: deps.worktrees ?? new WorktreeService()
+        }),
+        ...deps.cleaners
+      },
+      changed: (touched) => this.changed(touched),
+      crewFreed: () => this.jobs.admitQueued(),
+      isOnline: deps.isOnline ?? (() => true)
     });
     // No turn from before this start is still running, so every claim made
     // then is stale, and its wakeups are due again.
@@ -125,6 +158,11 @@ export class AgencyService {
   answer(req: AgencyAnswerRequest): AgencyQuestion | null {
     const outcome = this.store.answerQuestion(req);
     if (!outcome) return null;
+    const { kind, jobId } = outcome.question;
+    // Cancel on the Resume card closes the job, which cleanup has to run for.
+    if (kind === 'resume' && req.option === 1 && jobId !== null) {
+      this.closeJob({ jobId, action: 'cancel' });
+    }
     if (outcome.question.jobId !== null) this.jobs.refreshClientHold(outcome.question.jobId);
     this.changed([{ repoId: outcome.question.repoId, jobId: outcome.question.jobId }]);
     return outcome.question;
@@ -145,13 +183,59 @@ export class AgencyService {
     return { nextDueAt, gaveUp };
   }
 
+  /** Cancel the repository's running jobs, as closing its Admiral with "Cancel jobs" asks. */
   cancelJobs(repoId: string): number[] {
     const ids = this.store.cancelJobs(repoId);
-    // Nothing a job owns needs undoing yet: no crew or worktree exists before
-    // crew can be hired, so the close ends at once.
-    for (const id of ids) this.store.finishClose(id, 'nothing to clean up');
+    this.closing(ids);
     if (ids.length > 0) this.changed(ids.map((jobId) => ({ repoId, jobId })));
     return ids;
+  }
+
+  /** The client cancels a job, or accepts what it delivered: it closes and cleans up. */
+  closeJob(control: JobControl): JobControlResult {
+    const event =
+      control.action === 'accept' ? { type: 'accepted' as const } : { type: 'cancel' as const };
+    const reason =
+      control.action === 'accept' ? 'the client accepted the results' : 'cancelled by the client';
+    const { job, transition } = this.store.beginClose(control.jobId, event, reason);
+    if (!transition.ok)
+      return {
+        ok: false,
+        reason: `${jobDisplayId(control.jobId)} cannot close: ${transition.refused}.`
+      };
+    this.closing([control.jobId]);
+    if (job) this.changed([{ repoId: job.repoId, jobId: job.id }]);
+    return { ok: true };
+  }
+
+  /** Retry or dismiss a leftover of a job's cleanup. */
+  async leftover(action: LeftoverAction): Promise<void> {
+    if (action.action === 'dismiss') this.cleanup.dismiss(action.resourceId);
+    else await this.cleanup.retry(action.resourceId);
+  }
+
+  /**
+   * Once at launch, after wiring: finish stops a plan change left half done,
+   * interrupt jobs whose crew the restart took, finish every close a quit cut
+   * short, and start retrying failed cleanup steps.
+   */
+  async startup(): Promise<void> {
+    await this.jobs.replayStops();
+    const touched = await reconcileAtStartup({
+      store: this.store,
+      crew: this.deps.crew ?? NO_CREW,
+      git: this.deps.git ?? readOnlyGit
+    });
+    if (touched.length > 0) this.changed(touched);
+    this.cleanup.startRetrying();
+    await this.cleanup.resumeAll();
+  }
+
+  /** Jobs that just started closing free their place in line, then clean up. */
+  private closing(ids: number[]): void {
+    if (ids.length === 0) return;
+    this.jobs.admitQueued();
+    for (const id of ids) void this.cleanup.start(id);
   }
 
   /** The client wrote to a job's Admiral: its automatic-turn count starts again. */
@@ -257,6 +341,7 @@ export class AgencyService {
   }
 
   close(): void {
+    this.cleanup.stopRetrying();
     this.store.close();
   }
 
