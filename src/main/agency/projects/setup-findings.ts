@@ -259,6 +259,64 @@ async function requiredChecks(
   return [...found];
 }
 
+const ReviewAuthors = z.object({
+  data: z.object({
+    repository: z.object({
+      pullRequests: z.object({
+        nodes: z.array(
+          z.object({
+            reviews: z.object({
+              nodes: z.array(
+                z.object({
+                  author: z.object({ __typename: z.string(), login: z.string() }).nullable()
+                })
+              )
+            })
+          })
+        )
+      })
+    })
+  })
+});
+
+const REVIEW_AUTHORS_QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){
+pullRequests(states:MERGED,first:20,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{reviews(first:50){nodes{author{__typename login}}}}}}}`;
+
+/**
+ * The bots that reviewed the last 20 merged PRs, as `login[bot]`, the most
+ * reviews first. A person's review does not count, however often.
+ */
+async function reviewBots(gh: GhRun, root: string, slug: string): Promise<string[]> {
+  const [owner, name] = slug.split('/');
+  const parsed = ReviewAuthors.safeParse(
+    ghJson(
+      await gh(
+        [
+          'api',
+          'graphql',
+          '-f',
+          `owner=${owner}`,
+          '-f',
+          `name=${name}`,
+          '-f',
+          `query=${REVIEW_AUTHORS_QUERY}`
+        ],
+        root
+      )
+    )
+  );
+  if (!parsed.success) return [];
+  const counts = new Map<string, number>();
+  for (const pr of parsed.data.data.repository.pullRequests.nodes) {
+    for (const { author } of pr.reviews.nodes) {
+      if (author?.__typename !== 'Bot') continue;
+      const bot = `${author.login}[bot]`;
+      counts.set(bot, (counts.get(bot) ?? 0) + 1);
+    }
+  }
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([bot]) => bot);
+}
+
 function sha256(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
@@ -366,11 +424,15 @@ async function scanMember(
 
   const slug = githubSlug(facts.remote);
   let required: string[] = [];
+  let bots: string[] = [];
   let requiredChecksFrom: RequiredChecksSource = 'no-github';
   if (slug !== null && facts.defaultBranch !== null) {
     if (deps.gh === undefined || !deps.signedIn) requiredChecksFrom = 'gh-signed-out';
     else {
-      required = await requiredChecks(deps.gh, target.root, slug, facts.defaultBranch);
+      [required, bots] = await Promise.all([
+        requiredChecks(deps.gh, target.root, slug, facts.defaultBranch),
+        reviewBots(deps.gh, target.root, slug)
+      ]);
       requiredChecksFrom = required.length > 0 ? 'branch-protection' : 'none-found';
     }
   }
@@ -388,7 +450,7 @@ async function scanMember(
       checkCommands: stack.checkCommands,
       checks,
       requiredChecks: required,
-      reviewBots: []
+      reviewBots: bots
     },
     scan: { name: target.name, path: target.path, readFrom: reader.readFrom, requiredChecksFrom },
     repoFiles: files.map((f) => ({ ...f, path: projectPath(target.path, f.path) })),

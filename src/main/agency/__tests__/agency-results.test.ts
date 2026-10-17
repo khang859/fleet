@@ -238,15 +238,15 @@ describe('PR result cards', () => {
     const calls = github.calls;
 
     Object.assign(github, { head: 'b'.repeat(40), additions: 42 });
-    await service.results.refreshPrs(jobId);
+    await service.prs.refreshPrs(jobId);
     const [pr] = service.jobs.detail(jobId)!.results;
     expect(pr.changedAfterDelivery).toBe(true);
     expect(pr.body.kind === 'pr' && pr.body.pr.additions).toBe(42);
 
-    await service.results.refreshPrs(jobId);
+    await service.prs.refreshPrs(jobId);
     expect(github.calls).toBe(calls + 1);
     clock.now += 60_000;
-    await service.results.refreshPrs(jobId);
+    await service.prs.refreshPrs(jobId);
     expect(github.calls).toBe(calls + 2);
   });
 

@@ -2,6 +2,7 @@ import type { AgencyJob, AgencyJobEvent } from './agency';
 
 export type { AgencyLeftover, ResourceKind } from './agency';
 import type { DeliverableKind, Plan, PlanDiffEntry, PlanInput } from './agency-plan';
+import type { PrReview } from './pr-review';
 
 /**
  * What one job holds beyond its row: its plan versions, its steps and its
@@ -147,6 +148,8 @@ export type PrState = {
   deletions: number;
   changedFiles: number;
   checks: { passed: number; failed: number; pending: number };
+  /** What an open PR waits on and its open bot comments; absent until read. */
+  review?: PrReview;
 };
 
 /** What a result holds, by the way its kind is shown. */

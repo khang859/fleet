@@ -1,5 +1,6 @@
 import { jobDisplayId } from '../../../shared/agency';
 import type { AgencyResult } from '../../../shared/agency-jobs';
+import { waitingFor } from '../../../shared/pr-review';
 import { ghJson, type GhRun } from '../projects/gh';
 import { repoFacts } from '../projects/repo-reader';
 import type { GitRun } from '../repo-identity';
@@ -9,6 +10,8 @@ import { joinOnce } from '../join-once';
 import { bumpBranch, type BumpInput } from '../workspaces/umbrella-bump';
 import { prAddress, readMergeView, readPr, type PrMergeView } from './gh-pr';
 import type { GithubMember, ResultsService } from './index';
+import type { PrCards } from './pr-cards';
+import { Ticker } from '../ticker';
 
 /** How often a running merge asks GitHub again while it waits on checks. */
 export const MERGE_TICK_MS = 30_000;
@@ -21,6 +24,7 @@ export type MergeQueueDeps = {
   /** Read-only git, for the umbrella's default branch. */
   git: GitRun;
   results: ResultsService;
+  prs: PrCards;
   /** Commits and pushes the umbrella bump; returns the worktree it is in. */
   bump: (input: BumpInput) => Promise<{ path: string; branch: string }>;
   changed: (touched: AgencyTouched[]) => void;
@@ -38,7 +42,8 @@ export type MergeVerdict =
  * The next PR's turn, from what GitHub says and the run so far. After a merge
  * earlier in the run, a PR merges only on checks that ran since, so each PR
  * is checked against the members merged before it; the first time its checks
- * are older, they are asked to run again.
+ * are older, they are asked to run again. Then it waits for the required
+ * checks and review bots its member's setup lists.
  */
 export function mergeVerdict(view: PrMergeView, run: MergeRunRecord): MergeVerdict {
   const { pr } = view;
@@ -60,6 +65,8 @@ export function mergeVerdict(view: PrMergeView, run: MergeRunRecord): MergeVerdi
       ? { kind: 'rerun', note: `Asked the checks of ${name} to run again on the updated base.` }
       : { kind: 'wait', note: `Waiting for the checks of ${name} to run again.` };
   }
+  const waiting = waitingFor(pr.review);
+  if (waiting !== '') return { kind: 'wait', note: `Waiting for ${waiting} on ${name}.` };
   if (view.mergeState === 'BLOCKED') {
     return {
       kind: 'stop',
@@ -77,7 +84,7 @@ export function mergeVerdict(view: PrMergeView, run: MergeRunRecord): MergeVerdi
  */
 export class MergeQueue {
   private readonly running = new Map<number, Promise<void>>();
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly ticker = new Ticker();
 
   constructor(private readonly deps: MergeQueueDeps) {}
 
@@ -125,13 +132,11 @@ export class MergeQueue {
   }
 
   startTicking(intervalMs = MERGE_TICK_MS): void {
-    this.timer ??= setInterval(() => void this.advanceAll(), intervalMs);
-    this.timer.unref();
+    this.ticker.start(() => void this.advanceAll(), intervalMs);
   }
 
   stopTicking(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    this.ticker.stop();
   }
 
   private async pass(jobId: number): Promise<void> {
@@ -150,28 +155,34 @@ export class MergeQueue {
         this.finish(jobId, 'done', 'Every PR merged.');
         return;
       }
-      if (!(await this.turn(jobId, result, members, run))) return;
+      if (!(await this.turn(repo.repoId, result, members, run))) return;
     }
   }
 
   /** One look at the next PR. True when it merged and the next may go. */
   private async turn(
-    jobId: number,
+    repoId: string,
     result: AgencyResult,
     members: GithubMember[],
     run: MergeRunRecord
   ): Promise<boolean> {
-    const { store, gh } = this.deps;
+    const { store, gh, prs } = this.deps;
+    const { jobId } = result;
     if (result.body.kind !== 'pr') return false;
     const url = result.body.pr.url;
-    const cwd = members.find((m) => m.name === result.member)?.root ?? members[0].root;
-    const view = await readMergeView(gh, cwd, url);
-    if (view === null) {
+    const member = members.find((m) => m.name === result.member) ?? members[0];
+    const cwd = member.root;
+    const read = await readMergeView(gh, cwd, url);
+    if (read === null) {
       store.merges.waiting(jobId, `GitHub could not be asked about PR #${result.body.pr.number}.`);
       this.touch(jobId);
       return false;
     }
-    if (store.results.observe(result.id, view.pr)) this.touch(jobId);
+    const view = {
+      ...read,
+      pr: await prs.withReview(repoId, member, read.pr, result.body.pr.review)
+    };
+    if (prs.record(result.id, view.pr)) this.touch(jobId);
     const verdict = mergeVerdict(view, run);
     switch (verdict.kind) {
       case 'merged':
@@ -206,7 +217,7 @@ export class MergeQueue {
       return false;
     }
     const after = await readMergeView(gh, cwd, url);
-    if (after !== null) store.results.observe(resultId, after.pr);
+    if (after !== null) this.deps.prs.record(resultId, after.pr);
     store.merges.merged(resultId, jobId, after?.mergeSha ?? null);
     store.plans.log({ jobId, kind: 'merge', text: `PR #${number} merged.` });
     this.touch(jobId);

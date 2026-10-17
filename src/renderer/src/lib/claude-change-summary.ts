@@ -44,12 +44,6 @@ function countUnder(before: unknown, after: unknown): number {
   return changed === 0 ? 1 : changed;
 }
 
-/** "A", "A and B", "A, B and C". */
-export function formatList(items: string[]): string {
-  if (items.length <= 1) return items[0] ?? '';
-  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
-}
-
 export function summarizeChanges(savedText: string, text: string): ChangeSummary {
   const before = parseSettings(savedText);
   const after = parseSettings(text);

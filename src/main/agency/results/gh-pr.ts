@@ -51,15 +51,16 @@ const FAILED = new Set([
   'STARTUP_FAILURE'
 ]);
 
-/** How the PR's checks stand: a check with no result yet is pending. */
+/** A check run's conclusion or a commit status's state; no result yet is pending. */
+export function checkOutcome(result: string | null | undefined): keyof PrState['checks'] {
+  if (PASSED.has(result ?? '')) return 'passed';
+  return FAILED.has(result ?? '') ? 'failed' : 'pending';
+}
+
+/** How the PR's checks stand. */
 function countChecks(checks: Array<z.infer<typeof Check>>): PrState['checks'] {
   const counts = { passed: 0, failed: 0, pending: 0 };
-  for (const check of checks) {
-    const result = check.conclusion ?? check.state ?? '';
-    if (PASSED.has(result)) counts.passed += 1;
-    else if (FAILED.has(result)) counts.failed += 1;
-    else counts.pending += 1;
-  }
+  for (const check of checks) counts[checkOutcome(check.conclusion ?? check.state)] += 1;
   return counts;
 }
 

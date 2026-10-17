@@ -21,6 +21,7 @@ import type {
 import type { DeliverableKind } from '../../../../shared/agency-plan';
 import { isBinaryBlockedFilePath } from '../../../../shared/file-open';
 import { toFleetImageUrl } from '../../../../shared/path-platform';
+import { botName, waitingFor, type PrComment, type PrReview } from '../../../../shared/pr-review';
 import { formatSize } from '../../lib/file-display';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { OnboardingButton } from './onboarding-ui';
@@ -184,6 +185,7 @@ function PrBody({
           </span>
         )}
       </p>
+      {pr.state === 'open' && pr.review !== undefined && <ReviewNotes review={pr.review} />}
       {changed && (
         <p className="text-[11px] text-amber-700 dark:text-amber-400/90">Changed after delivery</p>
       )}
@@ -194,6 +196,51 @@ function PrBody({
         <OnboardingButton onClick={() => openLink(pr.url)}>Open PR</OnboardingButton>
       </Actions>
     </>
+  );
+}
+
+/** What an open PR waits on before it is ready, and the bot comments still open on it. */
+function ReviewNotes({ review }: { review: PrReview }): React.JSX.Element {
+  const waiting = waitingFor(review);
+  return (
+    <>
+      {waiting !== '' && (
+        <p className="text-[11px] text-fleet-text-secondary">Waiting for {waiting}</p>
+      )}
+      {review.comments.length > 0 && <OpenComments comments={review.comments} />}
+    </>
+  );
+}
+
+/** Bot comment threads not resolved on GitHub yet, each opening its thread. */
+function OpenComments({ comments }: { comments: PrComment[] }): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400/90">
+        {comments.length} open {comments.length === 1 ? 'comment' : 'comments'}
+      </p>
+      <ul className="flex flex-col gap-1">
+        {comments.map((c) => (
+          <li key={c.id}>
+            <button
+              type="button"
+              onClick={() => openLink(c.url)}
+              className="line-clamp-2 w-full rounded text-left text-[11px] text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring"
+            >
+              <span className="font-medium text-fleet-text-secondary">{botName(c.author)}</span>
+              {c.path !== null && (
+                <span className="font-mono text-fleet-text-subtle">
+                  {' '}
+                  {c.path.split('/').at(-1)}
+                  {c.line === null ? '' : `:${c.line}`}
+                </span>
+              )}{' '}
+              {c.summary}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

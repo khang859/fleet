@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { AgencyJob, AgencyLeftover } from '../../../../shared/agency';
-import type { AgencyJobDetail } from '../../../../shared/agency-jobs';
+import type { AgencyJobDetail, PrState } from '../../../../shared/agency-jobs';
+import { waitingFor } from '../../../../shared/pr-review';
 import { jobDisplayId } from '../../../../shared/agency';
 import { useAgencyStore } from '../../store/agency-store';
 import { useRefusable, type RefusableAction } from './use-refusable';
@@ -26,14 +27,21 @@ function Refused({ reason }: { reason: string | null }): React.JSX.Element | nul
   );
 }
 
-/** The job's PRs still open, one per PR however often it was delivered. */
-function openPrCount(detail: AgencyJobDetail | undefined): number {
-  const urls = new Set(
-    (detail?.results ?? []).flatMap((r) =>
-      r.body.kind === 'pr' && r.body.pr.state === 'open' ? [r.body.pr.url] : []
-    )
-  );
-  return urls.size;
+/** The job's PRs still open, one per PR however often it was delivered: the newest card's. */
+function openPrs(detail: AgencyJobDetail | undefined): PrState[] {
+  const prs = new Map<string, PrState>();
+  for (const r of detail?.results ?? [])
+    if (r.body.kind === 'pr') prs.set(r.body.pr.url, r.body.pr);
+  return [...prs.values()].filter((pr) => pr.state === 'open');
+}
+
+/** Why Merge cannot start yet: the first open PR still waiting on a check or a review bot. */
+function mergeWait(prs: PrState[]): string | null {
+  for (const pr of prs) {
+    const waiting = waitingFor(pr.review);
+    if (waiting !== '') return `Merge waits for ${waiting} on PR #${pr.number}.`;
+  }
+  return null;
 }
 
 const mergeLabel = (prs: number, again: boolean): string =>
@@ -71,9 +79,11 @@ export function DeliveredCard({
   const { busy, refused, run: close } = useClose(job);
   const merging = useRefusable(async () => useAgencyStore.getState().mergePrs(job.repoId, job.id));
   const merge = detail?.merge ?? null;
-  const prs = openPrCount(detail);
+  const open = openPrs(detail);
+  const prs = open.length;
   const running = merge?.status === 'running';
   const canMerge = prs > 0 && !running;
+  const wait = canMerge ? mergeWait(open) : null;
   return (
     <section
       aria-label={`${jobDisplayId(job.id)} is delivered`}
@@ -92,7 +102,8 @@ export function DeliveredCard({
         {canMerge && (
           <button
             type="button"
-            disabled={merging.busy}
+            disabled={merging.busy || wait !== null}
+            title={wait ?? undefined}
             onClick={() => void merging.run(undefined)}
             className={PRIMARY}
           >
@@ -108,6 +119,7 @@ export function DeliveredCard({
           Accept and close
         </button>
       </div>
+      {wait !== null && <p className="text-[11px] text-fleet-text-secondary">{wait}</p>}
       <Refused reason={refused ?? merging.refused} />
     </section>
   );

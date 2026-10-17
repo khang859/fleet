@@ -1,0 +1,93 @@
+{
+ "data": {
+  "repository": {
+   "pullRequest": {
+    "headRefOid": "c10db06df122718c522f17da71a96be2e6595298",
+    "commits": {
+     "nodes": [
+      {
+       "commit": {
+        "committedDate": "2026-10-16T08:32:24Z",
+        "statusCheckRollup": {
+         "contexts": {
+          "nodes": [
+           {
+            "__typename": "StatusContext",
+            "context": "license/cla",
+            "state": "SUCCESS"
+           }
+          ]
+         }
+        }
+       }
+      }
+     ]
+    },
+    "reviews": {
+     "nodes": [
+      {
+       "author": {
+        "__typename": "Bot",
+        "login": "claude"
+       },
+       "commit": {
+        "oid": "c10db06df122718c522f17da71a96be2e6595298"
+       }
+      },
+      {
+       "author": {
+        "__typename": "Bot",
+        "login": "greptile-apps"
+       },
+       "commit": {
+        "oid": "c10db06df122718c522f17da71a96be2e6595298"
+       }
+      }
+     ]
+    },
+    "reviewThreads": {
+     "nodes": [
+      {
+       "isResolved": false,
+       "isOutdated": false,
+       "comments": {
+        "nodes": [
+         {
+          "databaseId": 4292582134,
+          "author": {
+           "__typename": "Bot",
+           "login": "greptile-apps"
+          },
+          "body": "<a href=\"#\"><img alt=\"P1\" src=\"https://greptile-static-assets.s3.amazonaws.com/badges/p1.svg?v=9\" align=\"top\"></a> <a href=\"#\"><img alt=\"security\" src=\"https://greptile-static-assets.s3.amazonaws.com/badges/Security.svg?v=2\" align=\"top\"></a> **Wrong-sized content still gets reused**\n\n`createMediaUploadUrl` checks the blob against the stored declaration, but never compares it with the incoming `contentLength`. On Azure, a project key can declare length 1 with a genuine file's hash, upload one arbitrary byte, and successfully complete. When a colleague uploads the genuine 42-byte file, verification compares 1 with 1 and returns `uploadUrl: null`, linking the wrong content.\n\nCompare the incoming length before reusing the asset. This is a different-length case, not the acknowledged same-length checksum limitation.\n\n**How this was verified:** The lookup uses the supplied hash, the reuse condition checks only status and content type, and verification reads the length from the stored row rather than the incoming request.\n\n<details><summary>Prompt To Fix With AI</summary>\n\n`````markdown\nThis is a comment left during a code review.\nPath: web/src/features/media/server/mediaService.ts\nLine: 90-94\n\nComment:\n**Wrong-sized content still gets reused**\n\n`createMediaUploadUrl` checks the blob against the stored declaration, but never compares it with the incoming `contentLength`. On Azure, a project key can declare length 1 with a genuine file's hash, upload one arbitrary byte, and successfully complete. When a colleague uploads the genuine 42-byte file, verification compares 1 with 1 and returns `uploadUrl: null`, linking the wrong content.\n\nCompare the incoming length before reusing the asset. This is a different-length case, not the acknowledged same-length checksum limitation.\n\n**How this was verified:** The lookup uses the supplied hash, the reuse condition checks only status and content type, and verification reads the length from the stored row rather than the incoming request.\n\n---\n\nFor each issue above, determine whether it is valid and should be fixed. If so, fix it directly.\n`````\n</details>",
+          "path": "web/src/features/media/server/mediaService.ts",
+          "line": 94,
+          "url": "https://github.com/langfuse/langfuse/pull/18923#discussion_r4292582134"
+         }
+        ]
+       }
+      },
+      {
+       "isResolved": false,
+       "isOutdated": false,
+       "comments": {
+        "nodes": [
+         {
+          "databaseId": 4292582144,
+          "author": {
+           "__typename": "Bot",
+           "login": "greptile-apps"
+          },
+          "body": "<a href=\"#\"><img alt=\"P2\" src=\"https://greptile-static-assets.s3.amazonaws.com/badges/p2.svg?v=9\" align=\"top\"></a> **Missing-object test skips real errors**\n\nThe absent-blob test makes `getObjectContentLength` resolve to `undefined`, but the storage implementations throw when an object is missing. This tests a different path and leaves the real storage-error path uncovered. Add a rejected storage call and exercise the public service methods so the test checks how missing objects actually reach callers.\n\n<details><summary>Prompt To Fix With AI</summary>\n\n`````markdown\nThis is a comment left during a code review.\nPath: web/src/__tests__/server/unit/verify-media-upload-completion.servertest.ts\nLine: 58\n\nComment:\n**Missing-object test skips real errors**\n\nThe absent-blob test makes `getObjectContentLength` resolve to `undefined`, but the storage implementations throw when an object is missing. This tests a different path and leaves the real storage-error path uncovered. Add a rejected storage call and exercise the public service methods so the test checks how missing objects actually reach callers.\n\n---\n\nFor each issue above, determine whether it is valid and should be fixed. If so, fix it directly.\n`````\n</details>\n\nNote: If this suggestion doesn't match your team's coding style, reply to this and let me know. I'll remember it for next time!",
+          "path": "web/src/__tests__/server/unit/verify-media-upload-completion.servertest.ts",
+          "line": 58,
+          "url": "https://github.com/langfuse/langfuse/pull/18923#discussion_r4292582144"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}

@@ -1,7 +1,15 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { AgencyResult, PrState, ResultBody } from '../../../../../shared/agency-jobs';
+import type {
+  AgencyJobDetail,
+  AgencyResult,
+  PrState,
+  ResultBody
+} from '../../../../../shared/agency-jobs';
+import type { PrReview } from '../../../../../shared/pr-review';
+import { agencyJob } from '../../../../../shared/__tests__/agency-fixtures';
+import { DeliveredCard } from '../JobClose';
 import { ResultCard } from '../ResultCard';
 import { deliveredResultId } from '../job-view';
 
@@ -20,6 +28,30 @@ const PR: PrState = {
   deletions: 8,
   changedFiles: 6,
   checks: { passed: 3, failed: 1, pending: 1 }
+};
+
+const REVIEW: PrReview = {
+  checks: ['build'],
+  bots: ['greptile-apps[bot]'],
+  stuck: [],
+  comments: [
+    {
+      id: 4292582134,
+      author: 'greptile-apps[bot]',
+      path: 'web/src/features/media/server/mediaService.ts',
+      line: 94,
+      url: 'https://github.com/langfuse/langfuse/pull/18923#discussion_r4292582134',
+      summary: 'Unverified upload marked complete'
+    },
+    {
+      id: 4292582144,
+      author: 'greptile-apps[bot]',
+      path: 'web/src/__tests__/server/unit/verify-media-upload-completion.servertest.ts',
+      line: 58,
+      url: 'https://github.com/langfuse/langfuse/pull/18923#discussion_r4292582144',
+      summary: 'Missing-object test skips real errors'
+    }
+  ]
 };
 
 function result(body: ResultBody, over: Partial<AgencyResult> = {}): AgencyResult {
@@ -71,6 +103,17 @@ describe('ResultCard', () => {
     );
     expect(html(result({ kind: 'pr', pr: { ...PR, draft: true } }))).toContain('Draft');
     expect(html(result({ kind: 'pr', pr: { ...PR, state: 'merged' } }))).toContain('Merged');
+  });
+
+  it('says what an open PR waits on, and lists its open bot comments', () => {
+    const out = html(result({ kind: 'pr', pr: { ...PR, review: REVIEW } }));
+    expect(out).toContain('Waiting for Greptile and the build check');
+    expect(out).toContain('2 open comments');
+    expect(out).toContain('mediaService.ts:94');
+    expect(out).toContain('Missing-object test skips real errors');
+    const merged = html(result({ kind: 'pr', pr: { ...PR, state: 'merged', review: REVIEW } }));
+    expect(merged).not.toContain('Waiting for');
+    expect(merged).not.toContain('open comments');
   });
 
   it('shows images as thumbnails that open in Fleet', () => {
@@ -136,6 +179,35 @@ describe('ResultCard', () => {
     const out = html(result({ kind: 'branch', branch: 'feat/dark', sha: 'c'.repeat(40) }));
     expect(out).toContain('feat/dark');
     expect(out).toContain('ccccccc');
+  });
+});
+
+describe('DeliveredCard', () => {
+  const delivered = (pr: PrState): string => {
+    const job = agencyJob({ id: 3, state: 'delivered' });
+    const detail: AgencyJobDetail = {
+      job,
+      versions: [],
+      steps: [],
+      events: [],
+      log: [],
+      results: [result({ kind: 'pr', pr })],
+      spendUsd: 0,
+      merge: null
+    };
+    return renderToStaticMarkup(createElement(DeliveredCard, { job, detail }));
+  };
+
+  it('keeps Merge off while a PR waits on a review bot or a required check', () => {
+    const out = delivered({ ...PR, review: REVIEW });
+    expect(out).toMatch(/<button[^>]*disabled=""[^>]*>Merge<\/button>/);
+    expect(out).toContain('Merge waits for Greptile and the build check on PR #12.');
+  });
+
+  it('lets the client merge a PR that waits on nothing', () => {
+    const out = delivered({ ...PR, review: { ...REVIEW, checks: [], bots: [] } });
+    expect(out).toMatch(/<button type="button" class="[^"]*">Merge<\/button>/);
+    expect(out).not.toContain('Merge waits');
   });
 });
 

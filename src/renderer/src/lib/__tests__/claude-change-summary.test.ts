@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { summarizeChanges, changedKeys, formatList } from '../claude-change-summary';
+import { summarizeChanges, changedKeys } from '../claude-change-summary';
+import { formatList } from '../../../../shared/format-list';
 
 const json = (value: unknown): string => JSON.stringify(value);
 

@@ -194,7 +194,7 @@ export function registerAgencyIpc(service: AgencyService): void {
 
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_RESULTS_REFRESH,
-    async (_e, jobId: unknown): Promise<void> => service.results.refreshPrs(JobId.parse(jobId))
+    async (_e, jobId: unknown): Promise<void> => service.prs.refreshPrs(JobId.parse(jobId))
   );
 
   // Opens only a copy in the job's results folder, never a path the renderer names.

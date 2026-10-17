@@ -23,7 +23,24 @@ const PrStateSchema = z.object({
   additions: z.number(),
   deletions: z.number(),
   changedFiles: z.number(),
-  checks: z.object({ passed: z.number(), failed: z.number(), pending: z.number() })
+  checks: z.object({ passed: z.number(), failed: z.number(), pending: z.number() }),
+  review: z
+    .object({
+      checks: z.array(z.string()),
+      bots: z.array(z.string()),
+      stuck: z.array(z.string()),
+      comments: z.array(
+        z.object({
+          id: z.number(),
+          author: z.string(),
+          path: z.string().nullable(),
+          line: z.number().nullable(),
+          url: z.string(),
+          summary: z.string()
+        })
+      )
+    })
+    .optional()
 }) satisfies z.ZodType<PrState>;
 
 const ResultBodySchema = z.discriminatedUnion('kind', [
@@ -38,6 +55,9 @@ const ResultBodySchema = z.discriminatedUnion('kind', [
     )
   })
 ]) satisfies z.ZodType<ResultBody>;
+
+/** A PR result's state as last seen: observed, else as delivered. */
+const PR_STATE_SQL = `COALESCE(json_extract(observed_json, '$.state'), json_extract(data_json, '$.pr.state'))`;
 
 /** What a row whose JSON no longer reads shows: its title, with nothing to open. */
 const UNREADABLE: ResultBody = { kind: 'copy', text: 'This result could not be read.' };
@@ -151,16 +171,30 @@ export class ResultStore {
       .map(toResult);
   }
 
-  /** The job's PR results not refreshed within `maxAgeMs`. */
-  stalePrs(jobId: number, maxAgeMs: number): Array<{ id: number; url: string }> {
+  /** The job's PR results not refreshed within `maxAgeMs`; only the open ones with `openOnly`. */
+  stalePrs(jobId: number, maxAgeMs: number, openOnly = false): number[] {
     return this.db
-      .prepare<[number, number], { id: number; ref: string }>(
-        `SELECT id, ref FROM results
+      .prepare<[number, number, number], { id: number }>(
+        `SELECT id FROM results
          WHERE job_id = ? AND kind = 'pr' AND (observed_at IS NULL OR observed_at <= ?)
+           AND (? = 0 OR ${PR_STATE_SQL} = 'open')
          ORDER BY id`
       )
-      .all(jobId, this.now() - maxAgeMs)
-      .map((r) => ({ id: r.id, url: r.ref }));
+      .all(jobId, this.now() - maxAgeMs, openOnly ? 1 : 0)
+      .map((r) => r.id);
+  }
+
+  /** Jobs in `states` with a PR result GitHub last showed open. */
+  jobsWithOpenPrs(states: readonly string[]): number[] {
+    return this.db
+      .prepare<string[], { job_id: number }>(
+        `SELECT DISTINCT r.job_id FROM results r JOIN jobs j ON j.id = r.job_id
+         WHERE r.kind = 'pr' AND ${PR_STATE_SQL} = 'open'
+           AND j.state IN (${states.map(() => '?').join(', ')})
+         ORDER BY r.job_id`
+      )
+      .all(...states)
+      .map((r) => r.job_id);
   }
 
   /** Record what GitHub says about a PR result now. Returns whether anything changed. */

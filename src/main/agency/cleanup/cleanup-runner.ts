@@ -3,6 +3,7 @@ import { createLogger } from '../../logger';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import type { ResourceRecord } from '../store/resource-store';
 import { joinOnce } from '../join-once';
+import { Ticker } from '../ticker';
 
 const log = createLogger('agency-cleanup');
 
@@ -46,7 +47,7 @@ export type CleanupDeps = {
 export class CleanupRunner {
   private readonly running = new Map<number, Promise<void>>();
   private readonly retrying = new Map<number, Promise<void>>();
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly ticker = new Ticker();
 
   constructor(private readonly deps: CleanupDeps) {}
 
@@ -79,13 +80,11 @@ export class CleanupRunner {
 
   /** Retry failed leftovers every minute while Fleet is online. */
   startRetrying(intervalMs = RETRY_INTERVAL_MS): void {
-    this.timer ??= setInterval(() => void this.retryFailedIfOnline(), intervalMs);
-    this.timer.unref();
+    this.ticker.start(() => void this.retryFailedIfOnline(), intervalMs);
   }
 
   stopRetrying(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    this.ticker.stop();
   }
 
   private async run(jobId: number): Promise<void> {

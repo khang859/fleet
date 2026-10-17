@@ -1,0 +1,159 @@
+{
+ "data": {
+  "repository": {
+   "pullRequest": {
+    "headRefOid": "c68e3d28b698983b319512b17a5748cbb5d6bc7e",
+    "commits": {
+     "nodes": [
+      {
+       "commit": {
+        "committedDate": "2026-10-16T15:06:59Z",
+        "statusCheckRollup": {
+         "contexts": {
+          "nodes": [
+           {
+            "__typename": "StatusContext",
+            "context": "license/cla",
+            "state": "SUCCESS"
+           }
+          ]
+         }
+        }
+       }
+      }
+     ]
+    },
+    "reviews": {
+     "nodes": [
+      {
+       "author": {
+        "__typename": "Bot",
+        "login": "claude"
+       },
+       "commit": {
+        "oid": "6ed981e0453c3fabd32afccdbd25addb8fce6785"
+       }
+      },
+      {
+       "author": {
+        "__typename": "Bot",
+        "login": "greptile-apps"
+       },
+       "commit": {
+        "oid": "6ed981e0453c3fabd32afccdbd25addb8fce6785"
+       }
+      },
+      {
+       "author": {
+        "__typename": "Bot",
+        "login": "claude"
+       },
+       "commit": {
+        "oid": "6ed981e0453c3fabd32afccdbd25addb8fce6785"
+       }
+      }
+     ]
+    },
+    "reviewThreads": {
+     "nodes": [
+      {
+       "isResolved": false,
+       "isOutdated": false,
+       "comments": {
+        "nodes": [
+         {
+          "databaseId": 4295378404,
+          "author": {
+           "__typename": "Bot",
+           "login": "greptile-apps"
+          },
+          "body": "<a href=\"#\"><img alt=\"P1\" src=\"https://greptile-static-assets.s3.amazonaws.com/badges/p1.svg?v=9\" align=\"top\"></a> **One bad facet fails others**\n\n`summarizeTopicTraceFacets` parses the entire response before returning. A missing facet or `summary: 42` therefore throws before `generated` is assigned, bypassing the per-facet checks below. The new manual caller marks every pending facet failed, including those with valid output. Validate each facet separately after receiving the response so valid summaries can still be saved.\n\n<details><summary>Prompt To Fix With AI</summary>\n\n`````markdown\nThis is a comment left during a code review.\nPath: worker/src/features/topics/summarizeAssembledTrace.ts\nLine: 256-262\n\nComment:\n**One bad facet fails others**\n\n`summarizeTopicTraceFacets` parses the entire response before returning. A missing facet or `summary: 42` therefore throws before `generated` is assigned, bypassing the per-facet checks below. The new manual caller marks every pending facet failed, including those with valid output. Validate each facet separately after receiving the response so valid summaries can still be saved.\n\n---\n\nFor each issue above, determine whether it is valid and should be fixed. If so, fix it directly.\n`````\n</details>",
+          "path": "worker/src/features/topics/summarizeAssembledTrace.ts",
+          "line": 262,
+          "url": "https://github.com/langfuse/langfuse/pull/18959#discussion_r4295378404"
+         }
+        ]
+       }
+      },
+      {
+       "isResolved": false,
+       "isOutdated": false,
+       "comments": {
+        "nodes": [
+         {
+          "databaseId": 4295378408,
+          "author": {
+           "__typename": "Bot",
+           "login": "greptile-apps"
+          },
+          "body": "<a href=\"#\"><img alt=\"P1\" src=\"https://greptile-static-assets.s3.amazonaws.com/badges/p1.svg?v=9\" align=\"top\"></a> **Accepted summaries become failures**\n\nAfter a partial attempt, facet A can have a staged summary while facet B still needs the source trace. `summarizeTrace` accepts A, but if loading the trace for B fails, it throws away those partial results. This catch marks both facets failed, so A never reaches embedding or assignment. Preserve accepted results and apply the error only to unresolved facets.\n\n<details><summary>Prompt To Fix With AI</summary>\n\n`````markdown\nThis is a comment left during a code review.\nPath: worker/src/features/topics/processTopicsExecution.ts\nLine: 947\n\nComment:\n**Accepted summaries become failures**\n\nAfter a partial attempt, facet A can have a staged summary while facet B still needs the source trace. `summarizeTrace` accepts A, but if loading the trace for B fails, it throws away those partial results. This catch marks both facets failed, so A never reaches embedding or assignment. Preserve accepted results and apply the error only to unresolved facets.\n\n---\n\nFor each issue above, determine whether it is valid and should be fixed. If so, fix it directly.\n`````\n</details>",
+          "path": "worker/src/features/topics/processTopicsExecution.ts",
+          "line": 951,
+          "url": "https://github.com/langfuse/langfuse/pull/18959#discussion_r4295378408"
+         }
+        ]
+       }
+      },
+      {
+       "isResolved": false,
+       "isOutdated": false,
+       "comments": {
+        "nodes": [
+         {
+          "databaseId": 4295431548,
+          "author": {
+           "__typename": "Bot",
+           "login": "claude"
+          },
+          "body": "\ud83d\udd34 Manual runs can now fail completely, and keep failing on resume, when one trace is larger than the summary model's real input limit. With the 10,000-character cap gone, a provider rejection (HTTP 400/413/422, or a 429 for an oversized request) becomes `TopicsProviderUnavailable` and `isExecutionFailure` aborts the run. Trace-batch only fails that one trace. Fix: make provider rejections of a single trace's summary request (reason `invalid_input`, at least) count as a failure for that trace, as trace-batch does, while auth, configuration and outage errors still fail the run. [also at: packages/shared/src/server/topics/trace-input.ts:191 - Manual Topics runs can now fail outright because of one large trace, where the base branch kept going. This happens when the provider rejects the uncapped transcript for that trace.]\n\n<details>\n<summary>Why this was flagged</summary>\n\nTrigger: the project's summary model accepts fewer input tokens than the execution's `maxInputTokens`, or its tokenizer or TPM limit is tighter than the local o200k count. The default is 120,000 for every model (packages/shared/src/topics/index.ts:74). trace-input.ts:191 no longer applies `maxCharacters: 10_000`, so a large trace passes the local check at models.ts:302 and reaches the provider. The provider rejects it. topicProviderError maps 400/413/422 to `TopicsProviderUnavailable(\"invalid_input\")` (provider-error.ts:51-52). summarizeTraceFacets rethrows that error (summarizeAssembledTrace.ts:276-280). At processTopicsExecution.ts:943-945, `isExecutionFailure` sets `aborted = true` and fails the whole execution. Resuming keeps the frozen config and hits the same trace again. On base, a capped transcript of about 3k tokens never reached these limits. traceBatchQueue.ts:162-172 shows trace-batch keeps such failures per trace.\n\n**Verification:** trace-input.ts:191 now calls `assembleTranscript(orderObservations(observations))` with no `maxCharacters: 10_000`. The only local guard is models.ts:302, which counts with o200k_base, not the provider's tokenizer. In processTopicsExecution.ts:941-945, `isExecutionFailure` includes `TopicsProviderUnavailable` (line 85), so the whole execution fails. traceBatchQueue.ts:161-172 returns `{ outcome: \"failed\" }` per trace.\n\n</details>\n\n<!-- bhfn:1:normal -->",
+          "path": "worker/src/features/topics/processTopicsExecution.ts",
+          "line": 950,
+          "url": "https://github.com/langfuse/langfuse/pull/18959#discussion_r4295431548"
+         }
+        ]
+       }
+      },
+      {
+       "isResolved": false,
+       "isOutdated": false,
+       "comments": {
+        "nodes": [
+         {
+          "databaseId": 4295431556,
+          "author": {
+           "__typename": "Bot",
+           "login": "claude"
+          },
+          "body": "\ud83d\udd34 Manual runs can now mark a trace as failed for facets that already had a usable summary, whenever a sibling facet's shared summary call fails. In summarizeTrace, accepted or reused facets are staged first, and then a plain Error from summarizeTraceFacets, such as the input-limit error, escapes. The catch at processTopicsExecution.ts:942-949 then records that error for every facet in `todo`. Fix: when summarizeTraceFacets throws a non-execution error, return the error only for the `pending` facets. Accepted or reused facets keep their staged TopicSummary, so their refs still go to `state.summaries`.\n\n<details>\n<summary>Why this was flagged</summary>\n\nTrigger: \"Reuse existing summaries\" is checked and a trace has a reusable trace-batch summary for facet A. Facet B on the same trace still needs a summary. The new uncapped transcript then exceeds the manual run's `maxInputTokens`, so summarizeTopicTraceFacets (models.ts:302-305) throws a plain Error. The processing loop calls this through summarizeTrace. That function has already called stageSummary for A, then calls summarizeTraceFacets for B and does not catch the throw. isExecutionFailure is false for a plain Error, so the catch sets `outcomes = todo.map(() => error)`. recordTraceFailure then adds A's trace to failedTraceIds and increments A's `counts.failed`, even though A's row was staged. A also gets no ref in `state.summaries`. The same happens to facets already accepted from the `staged` cache on resume. On the base branch each facet had its own try/catch, so A succeeded and only B failed. The pending/remaining split does not help because the error is thrown before per-facet results are assigned.\n\n**Verification:** In models.ts, `summarizeTopicTraceFacets` throws a plain Error when `countedInputTokens > config.maxInputTokens`. `isExecutionFailure` only matches `TopicsProviderUnavailable` or `TopicEmbeddingFailure`, so the plain Error falls through. The processTraces catch then runs `outcomes = todo.map(() => error as Error)`. Before this change, each facet was summarized in its own try/catch.\n\n</details>\n\n<!-- bhfn:1:normal -->",
+          "path": "worker/src/features/topics/processTopicsExecution.ts",
+          "line": 953,
+          "url": "https://github.com/langfuse/langfuse/pull/18959#discussion_r4295431556"
+         }
+        ]
+       }
+      },
+      {
+       "isResolved": false,
+       "isOutdated": false,
+       "comments": {
+        "nodes": [
+         {
+          "databaseId": 4295431559,
+          "author": {
+           "__typename": "Bot",
+           "login": "claude"
+          },
+          "body": "\ud83d\udfe1 (optional) Convention: maintainers get a roughly 150-line summarizeTrace mixing three jobs, against the REVIEW.md rule of one responsibility and abstraction level per function. The function now does the accepted-row lookup, the per-facet reuse query and staging, and the shared call plus result mapping, each as an inline loop. Fix: make summarizeTrace a linear sequence of named helpers, e.g. acceptedSummaries, reuseSummaries and summarizePending, each returning its Map entries rather than writing into a shared results map.\n\n<details>\n<summary>Why this was flagged</summary>\n\nREVIEW.md, under Architecture, says: \"One responsibility and abstraction level per function. The main export reads as a linear sequence of named calls. Extract dense branches, even if that adds lines.\" In processTopicsExecution.ts:106-258, summarizeTrace now holds three dense inline loops. The first checks accepted staged rows. The second is a reuse loop with the inline listTopicSummaries query and filter, the reuseEmbedding computation and a stageSummary call. The third runs summarizeTraceFacets and maps results, with usage hand-off and metrics. All three write into one shared `results` Map. On the base branch the function handled one facet, so this grew with the change. This is a rule violation, not a runtime defect.\n\n\n**Verification:** nit. This is a convention issue under REVIEW.md, and nothing breaks at runtime. In HEAD, summarizeTrace (worker/src/features/topics/processTopicsExecution.ts:106-258, about 150 lines) does three separate jobs as inline loops. Context: the base version (lines 106-236) already mixed the accepted lookup, the reuse query and the summary call in one function.\n\n</details>\n\n<!-- bhfn:1:nit -->",
+          "path": "worker/src/features/topics/processTopicsExecution.ts",
+          "line": 262,
+          "url": "https://github.com/langfuse/langfuse/pull/18959#discussion_r4295431559"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}

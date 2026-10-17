@@ -28,6 +28,11 @@ const VIEW = recorded('pr-654-merge-view.json');
 const [CHECK] = VIEW.statusCheckRollup as Array<Record<string, unknown>>;
 const RUNS = readFileSync(join(__dirname, 'fixtures', 'runs-654.json'), 'utf8');
 const BODY = (recorded('pr-654-body.json') as { body: string }).body;
+/** langfuse/langfuse#18923 as GraphQL has it: Greptile reviewed it and opened two threads. */
+const REVIEW = recorded('langfuse-18923-review.json') as {
+  data: { repository: { pullRequest: { reviewThreads: { nodes: unknown[] } } } };
+};
+const THREADS = REVIEW.data.repository.pullRequest.reviewThreads.nodes;
 
 const clock = { now: Date.parse('2026-10-17T19:00:00Z') };
 const iso = (ms: number): string => new Date(ms).toISOString();
@@ -43,6 +48,9 @@ type FakePr = {
   checks: Check[];
   mergeSha: string | null;
   body: string;
+  /** Whether Greptile reviewed the head commit, and the threads it opened. */
+  botReviewed: boolean;
+  threads: unknown[];
 };
 
 /** GitHub as the test sets it: PRs by address, and every call made to it. */
@@ -64,7 +72,9 @@ function openPr(
     mergeState: 'CLEAN',
     checks,
     mergeSha: null,
-    body: BODY
+    body: BODY,
+    botReviewed: false,
+    threads: []
   });
   return url;
 }
@@ -108,9 +118,50 @@ const gh: GhRun = async (args, cwd) => {
 function answer(args: string[], cwd: string): { code: number; stdout: string } {
   const [cmd, sub] = args;
   if (cmd === 'auth') return ok();
+  if (cmd === 'api') return reviewAnswer(args);
   if (cmd === 'run') return runAnswer(args);
   if (cmd === 'pr' && sub === 'create') return ok(createBump(args, cwd));
   return cmd === 'pr' ? prAnswer(args) : NOT_FOUND;
+}
+
+/** The PR review GraphQL read, in the recorded answer's shape, from the fake PR. */
+function reviewAnswer(args: string[]): { code: number; stdout: string } {
+  const field = (name: string): string | undefined =>
+    args.find((a) => a.startsWith(`${name}=`))?.slice(name.length + 1);
+  const p = github.prs.get(
+    `https://github.com/${field('owner')}/${field('name')}/pull/${field('number')}`
+  );
+  if (p === undefined || !field('query')?.includes('reviewThreads')) return NOT_FOUND;
+  const head = headOf(p.url);
+  const contexts = p.checks.map((c) => ({
+    __typename: 'CheckRun',
+    name: CHECK.name,
+    status: c.conclusion === null ? 'IN_PROGRESS' : 'COMPLETED',
+    conclusion: c.conclusion
+  }));
+  const pullRequest = {
+    headRefOid: head,
+    commits: {
+      nodes: [
+        {
+          commit: {
+            committedDate: iso(clock.now),
+            statusCheckRollup: { contexts: { nodes: contexts } }
+          }
+        }
+      ]
+    },
+    reviews: {
+      nodes: [
+        {
+          author: { __typename: 'Bot', login: 'greptile-apps' },
+          commit: { oid: p.botReviewed ? head : 'an older commit' }
+        }
+      ]
+    },
+    reviewThreads: { nodes: p.threads }
+  };
+  return ok(JSON.stringify({ data: { repository: { pullRequest } } }));
 }
 
 /** `gh run list` finds the recorded run for a known head; `gh run rerun` sets checks running. */
@@ -313,6 +364,55 @@ describe('merging a job PR by PR', () => {
     await service.merges.advance(jobId);
     expect(pr(core).state).toBe('MERGED');
     expect(gitlink('libs/core')).toBe(mergeShaOf(core));
+    expect(detail(jobId).merge).toEqual({ status: 'done', note: 'Every PR merged.' });
+  });
+
+  it('waits for the review bot setup lists, and tells the Admiral about its comments', async () => {
+    const { setup } = await service.projects.scan(ref);
+    const members = setup.members.map((m) =>
+      m.name === 'core' ? { ...m, requiredChecks: ['ci'], reviewBots: ['greptile-apps[bot]'] } : m
+    );
+    await service.projects.saveSetup(
+      { repo: ref, setup: { ...setup, members }, imports: [] },
+      {
+        finish: false
+      }
+    );
+    const core = openPr('shop/core', 11);
+    const { jobId, tools } = await approvedJob();
+
+    expect(await deliverPr(tools, core)).toContain(
+      'PR #11 is not ready yet: it waits for Greptile.'
+    );
+    finishStep(jobId);
+    await service.mergePrs(jobId);
+    await service.merges.advance(jobId);
+    expect(pr(core).state).toBe('OPEN');
+    expect(detail(jobId).merge?.note).toBe('Waiting for Greptile on PR #11.');
+    const review = (): unknown => {
+      const [r] = detail(jobId).results;
+      return r.body.kind === 'pr' ? r.body.pr.review : null;
+    };
+    expect(review()).toMatchObject({ checks: [], bots: ['greptile-apps[bot]'], comments: [] });
+
+    // Greptile reviews the head and opens two threads; the watch sees it.
+    Object.assign(pr(core), { botReviewed: true, threads: THREADS });
+    await service.prs.watchAll(0);
+    expect(review()).toMatchObject({
+      bots: [],
+      comments: [
+        { author: 'greptile-apps[bot]', path: 'web/src/features/media/server/mediaService.ts' },
+        { summary: 'Missing-object test skips real errors' }
+      ]
+    });
+    const told = service.store.pullWakeups({ repoId: ref.repoId, jobId }).text;
+    expect(told).toContain('Greptile left 2 comments on PR #11');
+    expect(told).toContain('PR #11 is ready');
+    await service.prs.watchAll(0);
+    expect(service.store.pullWakeups({ repoId: ref.repoId, jobId }).text).toBeNull();
+
+    await service.merges.advance(jobId);
+    expect(pr(core).state).toBe('MERGED');
     expect(detail(jobId).merge).toEqual({ status: 'done', note: 'Every PR merged.' });
   });
 

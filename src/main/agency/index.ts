@@ -37,6 +37,7 @@ import { runPreflight, type Probe } from './preflight';
 import { ClientFiles, type ClientFileNote } from './projects/client-file';
 import { nativeGh, type GhRun } from './projects/gh';
 import { agencyHome } from './projects/paths';
+import { PrCards } from './results/pr-cards';
 import { ResultsService } from './results';
 import { readOnlyGit } from './projects/repo-reader';
 import { projectMembers } from './projects/workspace-projects';
@@ -118,6 +119,7 @@ export class AgencyService {
   readonly jobs: JobsService;
   readonly cleanup: CleanupRunner;
   readonly results: ResultsService;
+  readonly prs: PrCards;
   readonly clientFiles: ClientFiles;
   readonly settings: AgencySettingsService;
   readonly workspaces: JobWorkspaces;
@@ -153,11 +155,19 @@ export class AgencyService {
         );
       }
     });
+    this.prs = new PrCards({
+      store: this.store,
+      gh: deps.gh ?? nativeGh,
+      home: () => deps.agencyHome ?? agencyHome(),
+      now: () => deps.now?.() ?? Date.now(),
+      changed: (touched) => this.changed(touched)
+    });
     this.results = new ResultsService({
       store: this.store,
       gh: deps.gh ?? nativeGh,
       git: deps.git ?? readOnlyGit,
       home: () => deps.agencyHome ?? agencyHome(),
+      cards: this.prs,
       changed: (touched) => this.changed(touched),
       afterResult: (jobId) => this.jobs.afterStepChange(jobId)
     });
@@ -177,6 +187,7 @@ export class AgencyService {
       gh: deps.gh ?? nativeGh,
       git: deps.git ?? readOnlyGit,
       results: this.results,
+      prs: this.prs,
       bump: async (input) =>
         pushUmbrellaBump(input, {
           store: this.store,
@@ -199,7 +210,7 @@ export class AgencyService {
       },
       changed: (touched) => this.changed(touched),
       crewFreed: () => this.jobs.admitQueued(),
-      closeNotes: async (jobId) => this.results.closeNotes(jobId),
+      closeNotes: async (jobId) => this.prs.closeNotes(jobId),
       isOnline: deps.isOnline ?? (() => true)
     });
     // No turn from before this start is still running, so every claim made
@@ -440,7 +451,8 @@ export class AgencyService {
     if (touched.length > 0) this.changed(touched);
     this.cleanup.startRetrying();
     this.merges.startTicking();
-    await Promise.all([this.cleanup.resumeAll(), this.merges.advanceAll()]);
+    this.prs.startWatching();
+    await Promise.all([this.cleanup.resumeAll(), this.merges.advanceAll(), this.prs.watchAll()]);
   }
 
   /** Jobs that just started closing free their place in line, then clean up. */
@@ -555,6 +567,7 @@ export class AgencyService {
   close(): void {
     this.cleanup.stopRetrying();
     this.merges.stopTicking();
+    this.prs.stopWatching();
     this.store.close();
   }
 

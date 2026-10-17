@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { chmodSync, existsSync, readdirSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgencyChanged, AgencyRepoRef } from '../../../../shared/agency';
 import { AgencyService } from '../../index';
@@ -65,11 +65,20 @@ const recordingGit: GitRun = async (args, cwd) => {
   return readOnlyGit(args, cwd);
 };
 
+/** Who reviewed langfuse/langfuse's last 20 merged PRs, recorded from GitHub's GraphQL API. */
+const REVIEW_AUTHORS = readFileSync(
+  join(__dirname, 'fixtures', 'langfuse-review-authors.json'),
+  'utf8'
+);
+
 const signedInGh = fakeGh((args) => {
   const call = args.join(' ');
   if (call === 'auth status') return { code: 0, stdout: '' };
   if (call.includes('/protection/required_status_checks')) {
     return { code: 0, stdout: JSON.stringify({ contexts: ['Unit tests'] }) };
+  }
+  if (call.startsWith('api graphql') && call.includes('pullRequests(states:MERGED')) {
+    return { code: 0, stdout: REVIEW_AUTHORS };
   }
   if (call.includes('/rules/branches/')) {
     return {
@@ -160,7 +169,9 @@ describe('setup scan', () => {
       checkCommands: ['pnpm run typecheck', 'pnpm run lint', 'pnpm run test'],
       // A job name built from an expression is only known at run time: its id stands in.
       checks: ['Unit tests', 'lint', 'matrix'],
-      requiredChecks: ['Unit tests', 'lint']
+      requiredChecks: ['Unit tests', 'lint'],
+      // Bots only, the most reviews first: people who review as often are not review bots.
+      reviewBots: ['claude[bot]', 'greptile-apps[bot]', 'chatgpt-codex-connector[bot]']
     });
     expect(scan.members[0].requiredChecksFrom).toBe('branch-protection');
     expect(scan.ghSignedIn).toBe(true);
@@ -178,6 +189,7 @@ describe('setup scan', () => {
     const signedOut = fakeGh(() => ({ code: 1, stdout: '' }));
     const scan = await scanProject(repoTarget({ ...repo, repoId: 'x' }), { gh: signedOut });
     expect(scan.setup.members[0].requiredChecks).toEqual([]);
+    expect(scan.setup.members[0].reviewBots).toEqual([]);
     expect(scan.members[0].requiredChecksFrom).toBe('gh-signed-out');
   });
 

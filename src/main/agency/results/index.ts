@@ -21,10 +21,9 @@ import { repoFacts } from '../projects/repo-reader';
 import { projectMembers, type ProjectMember } from '../projects/workspace-projects';
 import { githubRepo, prAddress, readPr } from './gh-pr';
 import { jobLinksSection, withJobLinks, type JobPrLink } from './pr-links';
+import type { PrCards } from './pr-cards';
+import { deliveryNote } from './pr-reviews';
 import { copyResultFiles, resultsDir } from './result-files';
-
-/** A PR card shown again within this long is not asked of GitHub again. */
-export const PR_REFRESH_MAX_AGE_MS = 60_000;
 
 const UNDER_WAY = ['running', 'waiting', 'delivered'];
 
@@ -34,6 +33,8 @@ export type ResultsDeps = {
   git: GitRun;
   /** `~/.fleet/agency`, or the test's folder. */
   home: () => string;
+  /** Reads a PR's review for the card a delivery makes. */
+  cards: PrCards;
   changed: (touched: AgencyTouched[]) => void;
   /** A new result may complete the job: see `JobsService.afterStepChange`. */
   afterResult: (jobId: number) => void;
@@ -99,11 +100,12 @@ export class ResultsService {
     this.deps.afterResult(jobId);
     this.deps.changed([{ repoId: job.repoId, jobId }]);
     const extra = listed === null ? ' The step did not list it, so it shows as an extra.' : '';
+    const review = built.body.kind === 'pr' ? deliveryNote(built.body.pr, step.id) : '';
     const links = linked > 1 ? ` Fleet linked the job's ${linked} PRs to each other.` : '';
     const state = store.getJob(jobId)?.state ?? job.state;
     return {
       ok: true,
-      text: `${resultToken(result.id)} "${result.label}" is up for the client as a card.${extra}${links} ${jobDisplayId(jobId)} is ${state}.`
+      text: `${resultToken(result.id)} "${result.label}" is up for the client as a card.${extra}${links} ${jobDisplayId(jobId)} is ${state}.${review}`
     };
   }
 
@@ -168,29 +170,6 @@ export class ResultsService {
     return prs.length;
   }
 
-  /**
-   * Ask GitHub about the job's PR results not asked within `maxAgeMs`, and
-   * tell the panes when one changed. A failed ask keeps what was known.
-   */
-  async refreshPrs(jobId: number, maxAgeMs = PR_REFRESH_MAX_AGE_MS): Promise<void> {
-    const { store } = this.deps;
-    const job = store.getJob(jobId);
-    const root = job ? store.repo(job.repoId)?.root : undefined;
-    if (!job || root === undefined) return;
-    let changed = false;
-    for (const { id, url } of store.results.stalePrs(jobId, maxAgeMs)) {
-      const pr = await readPr(this.deps.gh, root, url);
-      if (pr !== null && store.results.observe(id, pr)) changed = true;
-    }
-    if (changed) this.deps.changed([{ repoId: job.repoId, jobId }]);
-  }
-
-  /** What the close summary adds about the job's PRs, refreshed first. */
-  async closeNotes(jobId: number): Promise<string[]> {
-    await this.refreshPrs(jobId, 0);
-    return prCloseNotes(this.deps.store.results.forJob(jobId));
-  }
-
   /** A delivered file's copy, for the client to open: only ever a path in the job's results folder. */
   filePath({ resultId, file }: ResultOpen): string | null {
     const result = this.deps.store.results.get(resultId);
@@ -234,8 +213,9 @@ export class ResultsService {
     if (member === undefined) {
       return { ok: false, reason: `${address.repo} is not this project's GitHub repository` };
     }
-    const pr = await readPr(this.deps.gh, member.root, url);
-    if (pr === null) return { ok: false, reason: `gh could not read ${url}` };
+    const read = await readPr(this.deps.gh, member.root, url);
+    if (read === null) return { ok: false, reason: `gh could not read ${url}` };
+    const pr = await this.deps.cards.withReview(repo.repoId, member, read);
     return { ok: true, title: pr.title, member: member.name, body: { kind: 'pr', pr } };
   }
 
@@ -277,14 +257,5 @@ function listedDeliverable(step: PlanStep, args: JobDeliverArgs): Deliverable | 
     step.deliverables.find(
       (d) => d.kind === args.kind && (label === undefined || d.label.toLowerCase() === label)
     ) ?? null
-  );
-}
-
-/** A delivered PR closed without merging is worth a line in the close summary. */
-export function prCloseNotes(results: AgencyResult[]): string[] {
-  return results.flatMap((r) =>
-    r.body.kind === 'pr' && r.body.pr.state === 'closed'
-      ? [`PR #${r.body.pr.number} was closed without merging.`]
-      : []
   );
 }
