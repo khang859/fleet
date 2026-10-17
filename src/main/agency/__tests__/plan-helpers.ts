@@ -1,4 +1,8 @@
-import { DEFAULT_AGENCY_SETTINGS, type AgencyJob } from '../../../shared/agency';
+import {
+  DEFAULT_AGENCY_SETTINGS,
+  type AgencyJob,
+  type AgencyRepoRef
+} from '../../../shared/agency';
 import { PlanSchema, type PlanInput } from '../../../shared/agency-plan';
 import type { AgentAgencyCapability } from '../../../shared/agency-tools';
 import type { AgencyService } from '../index';
@@ -57,4 +61,37 @@ export function planHelpers(service: () => AgencyService, base: PlanInput): Plan
       return id;
     }
   };
+}
+
+/**
+ * A job in `repo` with a one-step plan approved by the client, through the
+ * Admiral's tools, so each member's base is pinned the way a real job's is.
+ */
+export async function approvedJobIn(
+  service: AgencyService,
+  repo: AgencyRepoRef,
+  step: PlanInput['steps'][number]
+): Promise<{ jobId: number; tools: AgentAgencyCapability }> {
+  service.ensureLobby(repo);
+  const job = service.openJob({
+    repoId: repo.repoId,
+    title: 'Job',
+    brief: 'Do it',
+    budgetUsd: null
+  });
+  const tools = createAgencyCapability(service, { repoId: repo.repoId, jobId: job.id }, () => ({
+    ...DEFAULT_AGENCY_SETTINGS,
+    enabled: true
+  }));
+  const plan = PlanSchema.parse({
+    playbook: 'feature',
+    summary: 'Do it.',
+    steps: [step],
+    budget: { usd: 5 }
+  });
+  const out = await tools.jobPlan!(plan);
+  const id = Number(/plan#(\d+)/.exec(out.summary)?.[1]);
+  const decided = await service.jobs.decide({ planVersionId: id, action: 'approve' });
+  if (!decided.ok) throw new Error(`${decided.reason} ${out.text}`);
+  return { jobId: job.id, tools };
 }

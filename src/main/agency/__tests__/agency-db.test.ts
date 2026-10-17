@@ -42,6 +42,7 @@ describe('agency.db', () => {
       'job_workspaces',
       'jobs',
       'lobbies',
+      'merge_runs',
       'onboarding',
       'plan_versions',
       'project_members',

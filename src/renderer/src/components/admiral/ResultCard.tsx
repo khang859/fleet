@@ -12,7 +12,12 @@ import {
   MessageSquareText,
   type LucideIcon
 } from 'lucide-react';
-import type { AgencyResult, PrState, ResultFile } from '../../../../shared/agency-jobs';
+import type {
+  AgencyResult,
+  PrState,
+  ResultFile,
+  ResultMergeStatus
+} from '../../../../shared/agency-jobs';
 import type { DeliverableKind } from '../../../../shared/agency-plan';
 import { isBinaryBlockedFilePath } from '../../../../shared/file-open';
 import { toFleetImageUrl } from '../../../../shared/path-platform';
@@ -67,7 +72,14 @@ function ResultBody({ result }: { result: AgencyResult }): React.JSX.Element {
   const { body } = result;
   switch (body.kind) {
     case 'pr':
-      return <PrBody pr={body.pr} changed={result.changedAfterDelivery} />;
+      return (
+        <PrBody
+          pr={body.pr}
+          changed={result.changedAfterDelivery}
+          member={result.member}
+          merge={result.merge?.status ?? null}
+        />
+      );
     case 'branch':
       return (
         <p className="text-xs text-fleet-text-secondary">
@@ -123,14 +135,32 @@ const PR_STATE: Record<PrState['state'] | 'draft', { label: string; className: s
   closed: { label: 'Closed', className: 'text-red-600 dark:text-red-400' }
 };
 
-function PrBody({ pr, changed }: { pr: PrState; changed: boolean }): React.JSX.Element {
+/** Where an open PR stands in the job's merge; a merged one says so in its state. */
+const MERGE_NOTE: Partial<Record<ResultMergeStatus, { label: string; className: string }>> = {
+  queued: { label: 'Queued to merge', className: 'text-fleet-text-secondary' },
+  failed: { label: 'The merge stopped here', className: 'text-amber-700 dark:text-amber-400/90' }
+};
+
+function PrBody({
+  pr,
+  changed,
+  member,
+  merge
+}: {
+  pr: PrState;
+  changed: boolean;
+  member: string | null;
+  merge: ResultMergeStatus | null;
+}): React.JSX.Element {
   const state = PR_STATE[pr.state === 'open' && pr.draft ? 'draft' : pr.state];
+  const mergeNote = pr.state === 'open' && merge !== null ? MERGE_NOTE[merge] : undefined;
   const { passed, failed, pending } = pr.checks;
   return (
     <>
       <Title>{pr.title}</Title>
       <p className="flex flex-wrap items-baseline gap-x-2 text-[11px] text-fleet-text-muted">
         <span className={`font-medium ${state.className}`}>{state.label}</span>
+        {member !== null && <span className="font-medium text-fleet-text-secondary">{member}</span>}
         <span className="font-mono">#{pr.number}</span>
         <span className="min-w-0 truncate font-mono">
           {pr.branch} → {pr.base}
@@ -156,6 +186,9 @@ function PrBody({ pr, changed }: { pr: PrState; changed: boolean }): React.JSX.E
       </p>
       {changed && (
         <p className="text-[11px] text-amber-700 dark:text-amber-400/90">Changed after delivery</p>
+      )}
+      {mergeNote !== undefined && (
+        <p className={`text-[11px] ${mergeNote.className}`}>{mergeNote.label}</p>
       )}
       <Actions>
         <OnboardingButton onClick={() => openLink(pr.url)}>Open PR</OnboardingButton>

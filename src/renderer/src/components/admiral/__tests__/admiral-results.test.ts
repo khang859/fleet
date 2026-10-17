@@ -34,6 +34,8 @@ function result(body: ResultBody, over: Partial<AgencyResult> = {}): AgencyResul
     body,
     changedAfterDelivery: false,
     deliveredAt: 0,
+    member: null,
+    merge: null,
     ...over
   };
 }

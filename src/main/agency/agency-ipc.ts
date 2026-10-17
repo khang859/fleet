@@ -183,6 +183,11 @@ export function registerAgencyIpc(service: AgencyService): void {
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.AGENCY_MERGE_PRS,
+    async (_e, jobId: unknown): Promise<JobControlResult> => service.mergePrs(JobId.parse(jobId))
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.AGENCY_LEFTOVER,
     async (_e, action: unknown): Promise<void> => service.leftover(LeftoverArgs.parse(action))
   );

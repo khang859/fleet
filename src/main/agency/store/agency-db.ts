@@ -28,6 +28,11 @@ export function agencyDbPath(): string {
  * Version 4 adds what a `client_file` card proposes (`questions.data_json`),
  * and each client file as Fleet last wrote it, so a change made outside Fleet
  * shows.
+ *
+ * Version 5 adds the members the client left out of a workspace project.
+ *
+ * Version 6 adds the merge of a job's PRs: each PR result's place in the
+ * merge order, its merge status and merged commit, and one merge run per job.
  */
 const MIGRATIONS: readonly string[] = [
   `
@@ -293,6 +298,20 @@ const MIGRATIONS: readonly string[] = [
   `,
   `
   ALTER TABLE projects ADD COLUMN left_out_json TEXT NOT NULL DEFAULT '[]';
+  `,
+  `
+  ALTER TABLE results ADD COLUMN merge_position INTEGER;
+  ALTER TABLE results ADD COLUMN merge_status TEXT;
+  ALTER TABLE results ADD COLUMN merge_sha TEXT;
+  CREATE TABLE merge_runs (
+    job_id INTEGER PRIMARY KEY,
+    status TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    since INTEGER,
+    rerun_at INTEGER,
+    started_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
   `
 ];
 

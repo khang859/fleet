@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DEFAULT_AGENCY_SETTINGS, type AgencyRepoRef } from '../../../../shared/agency';
+import type { AgencyRepoRef } from '../../../../shared/agency';
 import { PlanSchema, type PlanInput, type PlanStep } from '../../../../shared/agency-plan';
+import { approvedJobIn } from '../../__tests__/plan-helpers';
 import { AgencyService } from '../../index';
 import {
   fakeGh,
@@ -12,7 +13,6 @@ import {
   tempDir,
   workFolder
 } from '../../projects/__tests__/git-fixture';
-import { createAgencyCapability } from '../../tools';
 import { workspaceLayout, type JobWorkspace } from '../job-workspace';
 
 /**
@@ -49,30 +49,8 @@ const step = (changes: string[], reads: string[] = []): PlanInput['steps'][numbe
   deliverables: ['branch']
 });
 
-/** A job in `repo` with a one-step plan approved by the client. */
 async function approvedJob(repo: AgencyRepoRef, s: PlanInput['steps'][number]): Promise<number> {
-  service.ensureLobby(repo);
-  const job = service.openJob({
-    repoId: repo.repoId,
-    title: 'Job',
-    brief: 'Do it',
-    budgetUsd: null
-  });
-  const tools = createAgencyCapability(service, { repoId: repo.repoId, jobId: job.id }, () => ({
-    ...DEFAULT_AGENCY_SETTINGS,
-    enabled: true
-  }));
-  const plan = PlanSchema.parse({
-    playbook: 'feature',
-    summary: 'Do it.',
-    steps: [s],
-    budget: { usd: 5 }
-  });
-  const out = await tools.jobPlan!(plan);
-  const id = Number(/plan#(\d+)/.exec(out.summary)?.[1]);
-  const result = await service.jobs.decide({ planVersionId: id, action: 'approve' });
-  if (!result.ok) throw new Error(result.reason);
-  return job.id;
+  return (await approvedJobIn(service, repo, s)).jobId;
 }
 
 const head = (dir: string): string => git(dir, 'rev-parse', 'HEAD');

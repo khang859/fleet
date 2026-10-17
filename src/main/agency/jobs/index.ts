@@ -8,6 +8,7 @@ import {
   DEFAULT_CREW_LIMIT,
   NO_PLAN_CHECKS,
   type AgencyJobDetail,
+  type AgencyMergeRun,
   type AgencyPlanVersion,
   type AgencyStep,
   type PlanAction,
@@ -618,10 +619,14 @@ export class JobsService {
       events: this.store.jobEvents(jobId),
       log: this.store.plans.logTail(jobId),
       results: this.store.results.forJob(jobId),
-      spendUsd: this.store.plans.spendUsd(jobId)
+      spendUsd: this.store.plans.spendUsd(jobId),
+      merge: mergeView(this.store.merges.run(jobId))
     };
   }
 }
+
+const mergeView = (run: AgencyMergeRun | null): AgencyMergeRun | null =>
+  run === null ? null : { status: run.status, note: run.note };
 
 function swapNote(swaps: Record<string, 'continue' | 'restart'>): string | null {
   const lines = Object.entries(swaps).map(

@@ -47,6 +47,8 @@ type AgencyStoreState = {
   cancelJobs: (repoId: string) => Promise<number[]>;
   /** Cancel one job, or accept its results. Either way it closes and cleans up. */
   closeJob: (repoId: string, control: JobControl) => Promise<JobControlResult>;
+  /** Merge a delivered job's PRs in member order. */
+  mergePrs: (repoId: string, jobId: number) => Promise<JobControlResult>;
   /** Retry or dismiss a leftover of a closed job's cleanup. */
   leftover: (repoId: string, action: LeftoverAction) => Promise<void>;
 };
@@ -121,6 +123,12 @@ export const useAgencyStore = create<AgencyStoreState>((set, get) => ({
 
   closeJob: async (repoId, control) => {
     const result = await window.fleet.agency.jobControl(control);
+    void get().refresh(repoId);
+    return result;
+  },
+
+  mergePrs: async (repoId, jobId) => {
+    const result = await window.fleet.agency.mergePrs(jobId);
     void get().refresh(repoId);
     return result;
   },

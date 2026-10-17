@@ -27,3 +27,19 @@ Retry the member first, then the umbrella.
 The plan check pinned bases only for members a step names.
 The umbrella is the job workspace root, so it needs a base even when no step names it.
 `MemberFacts.atRoot` marks the member at `.` (the umbrella, or the one repository), and `checkPlan` always pins it.
+
+## Merging member PRs and the umbrella bump (2.24)
+
+Member PRs live in different GitHub repositories, so a merge of one never makes the next one `BEHIND`.
+GitHub's `mergeStateStatus` alone cannot tell that the next PR's checks ran before the merge before it.
+The merge queue keeps `since` (the time of the last merge) and compares it with the oldest check's `completedAt`.
+Older checks are asked to run again once: `gh pr update-branch` when `BEHIND`, else `gh run rerun` for each run of the head commit.
+
+The umbrella bump never checks out a submodule.
+`git update-index --cacheinfo 160000,<sha>,<path>` moves the gitlink, and git does not need the commit to exist locally.
+
+`agency-db.test.ts` lists every table of the current schema.
+A migration that adds a table must add it to that list too.
+
+A fake `gh` in a test must read `--json` fields at the same index the code sends them.
+`gh pr view <url> --json body` has `body` at index 4, not 3; reading the wrong index made the fake answer the wrong shape and the link test fail for a test bug, not a product bug.

@@ -31,7 +31,7 @@ import { renderWakeupText, type WakeupItem } from '../wakeup-text';
 import { openAgencyDb } from './agency-db';
 import { CrewStore } from './crew-store';
 import { ResourceStore } from './resource-store';
-import { ResultStore } from './result-store';
+import { MergeStore, ResultStore } from './result-store';
 import { PlanStore } from './plan-store';
 import { ProjectRegistry } from './project-registry';
 import { SettingChangeStore } from './setting-change-store';
@@ -293,6 +293,7 @@ export class AgencyStore {
   readonly crew: CrewStore;
   readonly resources: ResourceStore;
   readonly results: ResultStore;
+  readonly merges: MergeStore;
   readonly settings: SettingChangeStore;
   readonly projects: ProjectRegistry;
 
@@ -303,6 +304,7 @@ export class AgencyStore {
     this.crew = new CrewStore(this.db, this.now);
     this.resources = new ResourceStore(this.db, this.now);
     this.results = new ResultStore(this.db, this.now);
+    this.merges = new MergeStore(this.db, this.now);
     this.settings = new SettingChangeStore(this.db, this.now);
     this.projects = new ProjectRegistry(this.db, this.now);
   }

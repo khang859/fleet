@@ -78,7 +78,8 @@ function detail(versions: AgencyPlanVersion[], steps: AgencyStep[] = []): Agency
     events: [],
     log: [],
     results: [],
-    spendUsd: 2.5
+    spendUsd: 2.5,
+    merge: null
   };
 }
 

@@ -1148,6 +1148,9 @@ const fleetApi = {
     /** The client cancels a job, or accepts its results; either way it closes and cleans up. */
     jobControl: async (control: JobControl): Promise<JobControlResult> =>
       typedInvoke(IPC_CHANNELS.AGENCY_JOB_CONTROL, control),
+    /** Merge a delivered job's PRs one at a time in member order, each after its checks. */
+    mergePrs: async (jobId: number): Promise<JobControlResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_MERGE_PRS, jobId),
     /** Retry or dismiss something a job's cleanup left behind. */
     leftover: async (action: LeftoverAction): Promise<void> =>
       typedInvoke(IPC_CHANNELS.AGENCY_LEFTOVER, action),

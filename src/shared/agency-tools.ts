@@ -138,7 +138,8 @@ export const JobDeliverArgs = z
       .string()
       .trim()
       .regex(/^(?!-)[\w./-]{1,200}$/)
-      .optional()
+      .optional(),
+    member: z.string().trim().min(1).max(200).optional()
   })
   .superRefine((a, ctx) => {
     const input = RESULT_INPUT[a.kind];
@@ -572,7 +573,12 @@ export const AGENCY_TOOL_SPECS: AgentToolSpec[] = [
             maxLength: RESULT_COPY_MAX_CHARS,
             description: 'For copy: the text itself.'
           },
-          branch: { type: 'string', description: 'For branch: the local branch name.' }
+          branch: { type: 'string', description: 'For branch: the local branch name.' },
+          member: {
+            type: 'string',
+            description:
+              'For branch in a project of several repositories: the member it is in. Fleet looks in every member when not given.'
+          }
         },
         required: ['step', 'kind'],
         additionalProperties: false

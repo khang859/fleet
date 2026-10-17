@@ -443,6 +443,7 @@ export const IPC_CHANNELS = {
   AGENCY_JOB_DETAIL: 'agency:job-detail',
   AGENCY_PLAN_ACTION: 'agency:plan-action',
   AGENCY_JOB_CONTROL: 'agency:job-control',
+  AGENCY_MERGE_PRS: 'agency:merge-prs',
   AGENCY_LEFTOVER: 'agency:leftover',
   AGENCY_RESULTS_REFRESH: 'agency:results-refresh',
   AGENCY_RESULT_OPEN: 'agency:result-open',

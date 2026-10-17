@@ -40,7 +40,9 @@ import { agencyHome } from './projects/paths';
 import { ResultsService } from './results';
 import { readOnlyGit } from './projects/repo-reader';
 import { projectMembers } from './projects/workspace-projects';
-import { JobWorkspaces } from './workspaces/job-workspace';
+import { JobWorkspaces, type GitWrite } from './workspaces/job-workspace';
+import { pushUmbrellaBump } from './workspaces/umbrella-bump';
+import { MergeQueue } from './results/merge-queue';
 import { gatherPlanFacts } from './plans/plan-facts';
 import { ProjectsService } from './projects';
 import { resolveRepoIdentity, type GitRun, type RepoIdentityOptions } from './repo-identity';
@@ -70,6 +72,8 @@ export type AgencyServiceDeps = {
   git?: GitRun;
   /** Crew members that may work at once; 4 unless set. */
   crewLimit?: () => number;
+  /** Git that writes: worktrees, the umbrella bump. Defaults to git on the PATH. */
+  gitWrite?: GitWrite;
   /** Removes a job's worktrees at close, never forced. */
   worktrees?: WorktreeRemover;
   /** Whether Fleet is online, so failed cleanup steps are retried. */
@@ -117,6 +121,7 @@ export class AgencyService {
   readonly clientFiles: ClientFiles;
   readonly settings: AgencySettingsService;
   readonly workspaces: JobWorkspaces;
+  readonly merges: MergeQueue;
 
   constructor(private readonly deps: AgencyServiceDeps) {
     this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
@@ -164,7 +169,21 @@ export class AgencyService {
     });
     this.workspaces = new JobWorkspaces({
       store: this.store,
-      home: () => deps.agencyHome ?? agencyHome()
+      home: () => deps.agencyHome ?? agencyHome(),
+      git: deps.gitWrite
+    });
+    this.merges = new MergeQueue({
+      store: this.store,
+      gh: deps.gh ?? nativeGh,
+      git: deps.git ?? readOnlyGit,
+      results: this.results,
+      bump: async (input) =>
+        pushUmbrellaBump(input, {
+          store: this.store,
+          home: () => deps.agencyHome ?? agencyHome(),
+          git: deps.gitWrite
+        }),
+      changed: (touched) => this.changed(touched)
     });
     const crew = deps.crew ?? NO_CREW;
     this.cleanup = new CleanupRunner({
@@ -395,6 +414,11 @@ export class AgencyService {
     return { ok: true };
   }
 
+  /** The client asks to merge a delivered job's PRs, in member order. */
+  async mergePrs(jobId: number): Promise<JobControlResult> {
+    return this.merges.start(jobId);
+  }
+
   /** Retry or dismiss a leftover of a job's cleanup. */
   async leftover(action: LeftoverAction): Promise<void> {
     if (action.action === 'dismiss') this.cleanup.dismiss(action.resourceId);
@@ -415,7 +439,8 @@ export class AgencyService {
     });
     if (touched.length > 0) this.changed(touched);
     this.cleanup.startRetrying();
-    await this.cleanup.resumeAll();
+    this.merges.startTicking();
+    await Promise.all([this.cleanup.resumeAll(), this.merges.advanceAll()]);
   }
 
   /** Jobs that just started closing free their place in line, then clean up. */
@@ -529,6 +554,7 @@ export class AgencyService {
 
   close(): void {
     this.cleanup.stopRetrying();
+    this.merges.stopTicking();
     this.store.close();
   }
 

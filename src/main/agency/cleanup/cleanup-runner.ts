@@ -2,6 +2,7 @@ import type { ResourceKind } from '../../../shared/agency-jobs';
 import { createLogger } from '../../logger';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import type { ResourceRecord } from '../store/resource-store';
+import { joinOnce } from '../join-once';
 
 const log = createLogger('agency-cleanup');
 
@@ -167,19 +168,6 @@ export class CleanupRunner {
     const job = this.deps.store.getJob(jobId);
     if (job) this.deps.changed([{ repoId: job.repoId, jobId }]);
   }
-}
-
-/** Run `fn` for `key`, or join the run under way for it. */
-async function joinOnce(
-  runs: Map<number, Promise<void>>,
-  key: number,
-  fn: () => Promise<void>
-): Promise<void> {
-  const under = runs.get(key);
-  if (under) return under;
-  const run = fn().finally(() => runs.delete(key));
-  runs.set(key, run);
-  return run;
 }
 
 const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`;

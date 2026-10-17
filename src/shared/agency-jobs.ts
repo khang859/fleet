@@ -180,7 +180,19 @@ export type AgencyResult = {
   /** A PR whose head moved since it was delivered. */
   changedAfterDelivery: boolean;
   deliveredAt: number;
+  /** The project member it came from; null for one with no member, such as a copied text. */
+  member: string | null;
+  /** Where a PR stands in the job's merge, once the client asked for one. */
+  merge: { status: ResultMergeStatus; sha: string | null } | null;
 };
+
+export type ResultMergeStatus = 'queued' | 'merged' | 'failed';
+
+/**
+ * The client's merge of a job's PRs, one at a time in member order. `note`
+ * says what it waits on, or why it stopped.
+ */
+export type AgencyMergeRun = { status: 'running' | 'failed' | 'done'; note: string };
 
 export type AgencyJobDetail = {
   job: AgencyJob;
@@ -193,6 +205,7 @@ export type AgencyJobDetail = {
   /** Oldest first. */
   results: AgencyResult[];
   spendUsd: number;
+  merge: AgencyMergeRun | null;
 };
 
 /** The client opens a delivered file with the app their system picks for it. */

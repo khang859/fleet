@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AgencyJob, AgencyLeftover } from '../../../../shared/agency';
+import type { AgencyJobDetail } from '../../../../shared/agency-jobs';
 import { jobDisplayId } from '../../../../shared/agency';
 import { useAgencyStore } from '../../store/agency-store';
 import { useRefusable, type RefusableAction } from './use-refusable';
@@ -25,9 +26,54 @@ function Refused({ reason }: { reason: string | null }): React.JSX.Element | nul
   );
 }
 
-/** A delivered job waits on the client to accept it, which closes it. */
-export function DeliveredCard({ job }: { job: AgencyJob }): React.JSX.Element {
+/** The job's PRs still open, one per PR however often it was delivered. */
+function openPrCount(detail: AgencyJobDetail | undefined): number {
+  const urls = new Set(
+    (detail?.results ?? []).flatMap((r) =>
+      r.body.kind === 'pr' && r.body.pr.state === 'open' ? [r.body.pr.url] : []
+    )
+  );
+  return urls.size;
+}
+
+const mergeLabel = (prs: number, again: boolean): string =>
+  `${again ? 'Merge again' : 'Merge'}${prs === 1 ? '' : ` ${prs} PRs`}`;
+
+/** Where the merge stands, and why it stopped. */
+function MergeNote({ merge }: { merge: AgencyJobDetail['merge'] }): React.JSX.Element | null {
+  if (merge === null || merge.note === '') return null;
+  return (
+    <p
+      role="status"
+      className={`text-[11px] ${
+        merge.status === 'failed'
+          ? 'text-amber-700 dark:text-amber-400/90'
+          : 'text-fleet-text-secondary'
+      }`}
+    >
+      {merge.status === 'running' ? 'Merging. ' : ''}
+      {merge.note}
+    </p>
+  );
+}
+
+/**
+ * A delivered job waits on the client: merge its PRs, one at a time in member
+ * order, or accept it, which closes it.
+ */
+export function DeliveredCard({
+  job,
+  detail
+}: {
+  job: AgencyJob;
+  detail: AgencyJobDetail | undefined;
+}): React.JSX.Element {
   const { busy, refused, run: close } = useClose(job);
+  const merging = useRefusable(async () => useAgencyStore.getState().mergePrs(job.repoId, job.id));
+  const merge = detail?.merge ?? null;
+  const prs = openPrCount(detail);
+  const running = merge?.status === 'running';
+  const canMerge = prs > 0 && !running;
   return (
     <section
       aria-label={`${jobDisplayId(job.id)} is delivered`}
@@ -35,20 +81,34 @@ export function DeliveredCard({ job }: { job: AgencyJob }): React.JSX.Element {
     >
       <span className="text-[13px] font-medium text-fleet-text">Everything in the plan is in</span>
       <p className="text-xs leading-relaxed text-fleet-text-muted">
+        {prs > 1
+          ? 'Merge runs the PRs one at a time in member order, each after its checks pass. '
+          : ''}
         Accept to close the job. Crew stop, and worktrees with nothing left in them go. Ask the
         Admiral in the chat for anything more.
       </p>
+      <MergeNote merge={merge} />
       <div className="flex flex-wrap gap-1.5 pt-0.5">
+        {canMerge && (
+          <button
+            type="button"
+            disabled={merging.busy}
+            onClick={() => void merging.run(undefined)}
+            className={PRIMARY}
+          >
+            {mergeLabel(prs, merge?.status === 'failed')}
+          </button>
+        )}
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || running}
           onClick={() => void close('accept')}
-          className={PRIMARY}
+          className={canMerge ? SECONDARY : PRIMARY}
         >
           Accept and close
         </button>
       </div>
-      <Refused reason={refused} />
+      <Refused reason={refused ?? merging.refused} />
     </section>
   );
 }

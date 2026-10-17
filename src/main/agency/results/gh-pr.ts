@@ -21,7 +21,9 @@ export const PR_FIELDS = [
 /** A check run reports a conclusion once complete; a commit status reports a state. */
 const Check = z.object({
   conclusion: z.string().nullish(),
-  state: z.string().nullish()
+  state: z.string().nullish(),
+  completedAt: z.string().nullish(),
+  startedAt: z.string().nullish()
 });
 
 const PrView = z.object({
@@ -85,6 +87,50 @@ export function parsePr(json: unknown): PrState | null {
 /** Ask GitHub for a PR by its address. Null when gh fails or the answer does not parse. */
 export async function readPr(gh: GhRun, cwd: string, url: string): Promise<PrState | null> {
   return parsePr(ghJson(await gh(['pr', 'view', url, '--json', PR_FIELDS], cwd)));
+}
+
+/** What the merge queue reads beyond the card. */
+export type PrMergeView = {
+  pr: PrState;
+  /** GitHub's `mergeStateStatus`: `BEHIND` when the base moved on, `DIRTY` on conflicts. */
+  mergeState: string;
+  /** The commit the merge made on the base, once merged. */
+  mergeSha: string | null;
+  /**
+   * When the oldest check ran: a finished check's end, else its start. Null
+   * with no checks. A check not run yet reads as long ago.
+   */
+  checksSince: number | null;
+};
+
+const MERGE_FIELDS = `${PR_FIELDS},mergeStateStatus,mergeCommit`;
+
+const MergeView = PrView.extend({
+  mergeStateStatus: z.string(),
+  mergeCommit: z.object({ oid: z.string() }).nullish()
+});
+
+export function parseMergeView(json: unknown): PrMergeView | null {
+  const pr = parsePr(json);
+  const parsed = MergeView.safeParse(json);
+  if (pr === null || !parsed.success) return null;
+  const times = (parsed.data.statusCheckRollup ?? []).map(
+    (c) => Date.parse(c.completedAt ?? c.startedAt ?? '') || 0
+  );
+  return {
+    pr,
+    mergeState: parsed.data.mergeStateStatus,
+    mergeSha: parsed.data.mergeCommit?.oid ?? null,
+    checksSince: times.length === 0 ? null : Math.min(...times)
+  };
+}
+
+export async function readMergeView(
+  gh: GhRun,
+  cwd: string,
+  url: string
+): Promise<PrMergeView | null> {
+  return parseMergeView(ghJson(await gh(['pr', 'view', url, '--json', MERGE_FIELDS], cwd)));
 }
 
 /** `owner/name` of a GitHub pull request address, and its number. */

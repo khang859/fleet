@@ -214,7 +214,7 @@ function WaitingSection({
       {count === 0 && (
         <p className="text-[13px] text-fleet-text-muted">Nothing needs you right now.</p>
       )}
-      {delivered !== null && <DeliveredCard job={delivered} />}
+      {delivered !== null && <DeliveredCard job={delivered} detail={detail} />}
       {pending !== null && detail !== undefined && <PlanCard version={pending} detail={detail} />}
       {questions.map((q) => (
         <QuestionCard

@@ -1,4 +1,5 @@
 import { join, sep } from 'node:path';
+import { z } from 'zod';
 import { jobDisplayId } from '../../../shared/agency';
 import {
   isFileResultKind,
@@ -12,11 +13,14 @@ import {
   type PlanStep
 } from '../../../shared/agency-plan';
 import { RESULT_INPUT, type JobDeliverArgs } from '../../../shared/agency-tools';
-import type { GhRun } from '../projects/gh';
+import type { AgencyRepoRef } from '../../../shared/agency';
+import { ghJson, type GhRun } from '../projects/gh';
 import type { GitRun } from '../repo-identity';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import { repoFacts } from '../projects/repo-reader';
+import { projectMembers, type ProjectMember } from '../projects/workspace-projects';
 import { githubRepo, prAddress, readPr } from './gh-pr';
+import { jobLinksSection, withJobLinks, type JobPrLink } from './pr-links';
 import { copyResultFiles, resultsDir } from './result-files';
 
 /** A PR card shown again within this long is not asked of GitHub again. */
@@ -35,7 +39,14 @@ export type ResultsDeps = {
   afterResult: (jobId: number) => void;
 };
 
-type Built = { ok: true; body: ResultBody; title: string } | { ok: false; reason: string };
+type Built =
+  | { ok: true; body: ResultBody; title: string; member: string | null }
+  | { ok: false; reason: string };
+
+const PrBodyView = z.object({ body: z.string() });
+
+/** A project member with the `owner/name` of its GitHub remote, or null when it has none. */
+export type GithubMember = ProjectMember & { github: string | null };
 
 /**
  * What steps hand back: `job_deliver` records a result card, copying files
@@ -59,7 +70,9 @@ export class ResultsService {
     if (!step || store.plans.step(jobId, args.step)?.status === 'removed') {
       return { ok: false, text: `Step ${args.step} is not in the approved plan.` };
     }
-    const built = await this.build(job.repoId, jobId, args);
+    const repo = store.repo(job.repoId);
+    if (repo === null) return { ok: false, text: 'Not delivered: the project is not known.' };
+    const built = await this.build(repo, jobId, args);
     if (!built.ok) return { ok: false, text: `Not delivered: ${built.reason}.` };
 
     const listed = listedDeliverable(step, args);
@@ -71,6 +84,7 @@ export class ResultsService {
         label: listed?.label ?? args.label ?? DELIVERABLE_DEFAULT_LABEL[args.kind],
         listed: listed !== null,
         title: built.title,
+        member: built.member,
         body: built.body
       });
       store.plans.log({
@@ -81,14 +95,77 @@ export class ResultsService {
       });
       return r;
     });
+    const linked = built.body.kind === 'pr' ? await this.linkPrs(jobId) : 0;
     this.deps.afterResult(jobId);
     this.deps.changed([{ repoId: job.repoId, jobId }]);
     const extra = listed === null ? ' The step did not list it, so it shows as an extra.' : '';
+    const links = linked > 1 ? ` Fleet linked the job's ${linked} PRs to each other.` : '';
     const state = store.getJob(jobId)?.state ?? job.state;
     return {
       ok: true,
-      text: `${resultToken(result.id)} "${result.label}" is up for the client as a card.${extra} ${jobDisplayId(jobId)} is ${state}.`
+      text: `${resultToken(result.id)} "${result.label}" is up for the client as a card.${extra}${links} ${jobDisplayId(jobId)} is ${state}.`
     };
+  }
+
+  /** The project's members in member order, each with its GitHub repository. */
+  async githubMembers(repo: AgencyRepoRef): Promise<GithubMember[]> {
+    const { members } = projectMembers(this.deps.store.projects, repo);
+    return Promise.all(
+      members.map(async (m) => ({
+        ...m,
+        github: githubRepo((await repoFacts(m.root, this.deps.git)).remote)
+      }))
+    );
+  }
+
+  /**
+   * The job's PR results, newest per PR, in merge order: member order, then
+   * delivery order. A PR whose member is gone sorts last.
+   */
+  prsInOrder(jobId: number, members: readonly ProjectMember[]): AgencyResult[] {
+    const newest = new Map<string, AgencyResult>();
+    for (const r of this.deps.store.results.forJob(jobId)) {
+      if (r.body.kind === 'pr') newest.set(r.body.pr.url, r);
+    }
+    const place = (r: AgencyResult): number => {
+      const i = members.findIndex((m) => m.name === r.member);
+      return i === -1 ? members.length : i;
+    };
+    return [...newest.values()].sort((a, b) => place(a) - place(b) || a.id - b.id);
+  }
+
+  /**
+   * Write the "Part of job" list into each open PR of the job, so each links
+   * the others. Best effort: a PR gh cannot read or edit keeps its body.
+   * Returns how many PRs the list names.
+   */
+  async linkPrs(jobId: number): Promise<number> {
+    const job = this.deps.store.getJob(jobId);
+    const repo = job ? this.deps.store.repo(job.repoId) : null;
+    if (repo === null) return 0;
+    const members = await this.githubMembers(repo);
+    const prs = this.prsInOrder(jobId, members).flatMap((r) =>
+      r.body.kind === 'pr' ? [{ result: r, pr: r.body.pr }] : []
+    );
+    if (prs.length < 2) return prs.length;
+    const links: JobPrLink[] = prs.map(({ result, pr }) => ({
+      member: result.member ?? repo.name,
+      repo: prAddress(pr.url)?.repo ?? '',
+      number: pr.number,
+      url: pr.url
+    }));
+    for (const { result, pr } of prs) {
+      if (pr.state !== 'open') continue;
+      const cwd = members.find((m) => m.name === result.member)?.root ?? repo.root;
+      const read = PrBodyView.safeParse(
+        ghJson(await this.deps.gh(['pr', 'view', pr.url, '--json', 'body'], cwd))
+      );
+      if (!read.success) continue;
+      const { body } = read.data;
+      const next = withJobLinks(body, jobLinksSection(jobId, links, pr.url));
+      if (next !== body) await this.deps.gh(['pr', 'edit', pr.url, '--body', next], cwd);
+    }
+    return prs.length;
   }
 
   /**
@@ -122,16 +199,19 @@ export class ResultsService {
     return path.startsWith(resultsDir(this.deps.home(), result.jobId) + sep) ? path : null;
   }
 
-  private async build(repoId: string, jobId: number, args: JobDeliverArgs): Promise<Built> {
-    const root = this.deps.store.repo(repoId)?.root;
-    if (root === undefined) return { ok: false, reason: 'the project is not known' };
+  private async build(repo: AgencyRepoRef, jobId: number, args: JobDeliverArgs): Promise<Built> {
+    const { root } = repo;
     const { kind, url, paths, text, branch } = args;
     const title = args.title ?? '';
-    if (kind === 'pr' && url !== undefined) return this.buildPr(root, url);
-    if (kind === 'branch' && branch !== undefined) return this.buildBranch(root, branch);
-    if (kind === 'copy' && text !== undefined) return { ok: true, title, body: { kind, text } };
+    const member = null;
+    if (kind === 'pr' && url !== undefined) return this.buildPr(repo, url);
+    if (kind === 'branch' && branch !== undefined)
+      return this.buildBranch(repo, branch, args.member);
+    if (kind === 'copy' && text !== undefined) {
+      return { ok: true, title, member, body: { kind, text } };
+    }
     if ((kind === 'preview' || kind === 'link') && url !== undefined) {
-      return { ok: true, title, body: { kind, url } };
+      return { ok: true, title, member, body: { kind, url } };
     }
     if (isFileResultKind(kind) && paths !== undefined) {
       const home = this.deps.home();
@@ -141,31 +221,44 @@ export class ResultsService {
         resultsDir(home, jobId),
         args.step
       );
-      return copied.ok ? { ok: true, title, body: { kind, files: copied.files } } : copied;
+      return copied.ok ? { ok: true, title, member, body: { kind, files: copied.files } } : copied;
     }
     return { ok: false, reason: `a ${kind} result needs ${RESULT_INPUT[kind]}` };
   }
 
-  /** A PR of one of the project's GitHub remotes, as GitHub has it now. */
-  private async buildPr(root: string, url: string): Promise<Built> {
+  /** A PR of one of the project members' GitHub remotes, as GitHub has it now. */
+  private async buildPr(repo: AgencyRepoRef, url: string): Promise<Built> {
     const address = prAddress(url);
     if (address === null) return { ok: false, reason: `${url} is not a GitHub pull request` };
-    const own = githubRepo((await repoFacts(root, this.deps.git)).remote);
-    if (own !== address.repo) {
+    const member = (await this.githubMembers(repo)).find((m) => m.github === address.repo);
+    if (member === undefined) {
       return { ok: false, reason: `${address.repo} is not this project's GitHub repository` };
     }
-    const pr = await readPr(this.deps.gh, root, url);
+    const pr = await readPr(this.deps.gh, member.root, url);
     if (pr === null) return { ok: false, reason: `gh could not read ${url}` };
-    return { ok: true, title: pr.title, body: { kind: 'pr', pr } };
+    return { ok: true, title: pr.title, member: member.name, body: { kind: 'pr', pr } };
   }
 
-  private async buildBranch(root: string, branch: string): Promise<Built> {
-    const sha = await this.deps.git(
-      ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`],
-      root
-    );
-    if (!sha) return { ok: false, reason: `there is no local branch ${branch}` };
-    return { ok: true, title: branch, body: { kind: 'branch', branch, sha } };
+  /** A local branch in the named member, or in the first member that has it. */
+  private async buildBranch(repo: AgencyRepoRef, branch: string, name?: string): Promise<Built> {
+    const { members } = projectMembers(this.deps.store.projects, repo);
+    const named = members.filter((m) => name === undefined || m.name === name);
+    if (named.length === 0) return { ok: false, reason: `${name} is not a member of ${repo.name}` };
+    for (const m of named) {
+      const sha = await this.deps.git(
+        ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`],
+        m.root
+      );
+      if (sha) {
+        return {
+          ok: true,
+          title: branch,
+          member: m.name,
+          body: { kind: 'branch', branch, sha: sha.trim() }
+        };
+      }
+    }
+    return { ok: false, reason: `there is no local branch ${branch}` };
   }
 }
 

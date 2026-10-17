@@ -2,9 +2,11 @@ import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import {
   FILE_RESULT_KINDS,
+  type AgencyMergeRun,
   type AgencyResult,
   type PrState,
-  type ResultBody
+  type ResultBody,
+  type ResultMergeStatus
 } from '../../../shared/agency-jobs';
 import type { DeliverableKind } from '../../../shared/agency-plan';
 import { parseJsonAs } from '../../../shared/parse-json';
@@ -48,12 +50,25 @@ type ResultRow = {
   label: string;
   listed: number;
   title: string;
+  member: string | null;
   data_json: string;
   head_sha: string | null;
   observed_json: string | null;
   observed_at: number | null;
   delivered_at: number;
+  merge_status: ResultMergeStatus | null;
+  merge_sha: string | null;
 };
+
+type MergeRunRow = {
+  status: AgencyMergeRun['status'];
+  note: string;
+  since: number | null;
+  rerun_at: number | null;
+};
+
+/** A job's merge run as the queue reads it: when the last merge was, and when it asked for checks again. */
+export type MergeRunRecord = AgencyMergeRun & { since: number | null; rerunAt: number | null };
 
 /**
  * A PR shows as GitHub last reported it, so a force-push shows its new diff
@@ -74,7 +89,9 @@ function toResult(row: ResultRow): AgencyResult {
     title: row.title,
     body,
     changedAfterDelivery: observed !== null && observed.headSha !== row.head_sha,
-    deliveredAt: row.delivered_at
+    deliveredAt: row.delivered_at,
+    member: row.member,
+    merge: row.merge_status === null ? null : { status: row.merge_status, sha: row.merge_sha }
   };
 }
 
@@ -92,15 +109,16 @@ export class ResultStore {
     label: string;
     listed: boolean;
     title: string;
+    member: string | null;
     body: ResultBody;
   }): AgencyResult {
     const ref = resultRef(input.body);
     const headSha = input.body.kind === 'pr' ? input.body.pr.headSha : null;
     const { lastInsertRowid } = this.db
       .prepare(
-        `INSERT INTO results (job_id, step_id, plan_version, kind, label, listed, title, ref,
-           data_json, head_sha, delivered_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO results (job_id, step_id, plan_version, kind, label, listed, title, member,
+           ref, data_json, head_sha, delivered_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         input.jobId,
@@ -110,6 +128,7 @@ export class ResultStore {
         input.label,
         input.listed ? 1 : 0,
         input.title,
+        input.member,
         ref,
         JSON.stringify(input.body),
         headSha,
@@ -157,6 +176,114 @@ export class ResultStore {
       .prepare('UPDATE results SET observed_json = ?, observed_at = ? WHERE id = ?')
       .run(json, this.now(), id);
     return before?.observed_json !== json;
+  }
+}
+
+/**
+ * A job's merge: which PR results go in which order, how each stands, and
+ * the run that walks them. The queue reads and moves it; the job sheet shows it.
+ */
+export class MergeStore {
+  constructor(
+    private readonly db: Database.Database,
+    private readonly now: () => number
+  ) {}
+
+  /** Start, or start again, a job's merge with its PR results in `order`. */
+  begin(jobId: number, order: number[]): void {
+    this.db.transaction(() => {
+      const place = this.db.prepare(
+        `UPDATE results SET merge_position = ?,
+           merge_status = CASE WHEN merge_status = 'merged' THEN 'merged' ELSE 'queued' END
+         WHERE id = ? AND job_id = ?`
+      );
+      order.forEach((id, i) => place.run(i, id, jobId));
+      const at = this.now();
+      this.db
+        .prepare(
+          `INSERT INTO merge_runs (job_id, status, note, since, rerun_at, started_at, updated_at)
+           VALUES (?, 'running', '', NULL, NULL, ?, ?)
+           ON CONFLICT(job_id) DO UPDATE SET status = 'running', note = '', rerun_at = NULL,
+             updated_at = excluded.updated_at`
+        )
+        .run(jobId, at, at);
+    })();
+  }
+
+  /** Put a result at the end of a running merge, as the umbrella bump PR goes last. */
+  append(jobId: number, resultId: number): void {
+    this.db
+      .prepare(
+        `UPDATE results SET merge_status = 'queued', merge_position =
+           (SELECT COALESCE(MAX(merge_position), -1) + 1 FROM results WHERE job_id = ?)
+         WHERE id = ?`
+      )
+      .run(jobId, resultId);
+  }
+
+  /** The job's PR results in the merge, in merge order. */
+  queue(jobId: number): Array<{ id: number; status: ResultMergeStatus }> {
+    return this.db
+      .prepare<[number], { id: number; merge_status: ResultMergeStatus }>(
+        `SELECT id, merge_status FROM results
+         WHERE job_id = ? AND merge_status IS NOT NULL ORDER BY merge_position`
+      )
+      .all(jobId)
+      .map((r) => ({ id: r.id, status: r.merge_status }));
+  }
+
+  /** A PR merged: its merged commit, and the time the next PR's checks must be newer than. */
+  merged(resultId: number, jobId: number, sha: string | null): void {
+    this.db.transaction(() => {
+      this.db
+        .prepare(`UPDATE results SET merge_status = 'merged', merge_sha = ? WHERE id = ?`)
+        .run(sha, resultId);
+      this.db
+        .prepare(
+          'UPDATE merge_runs SET since = ?, rerun_at = NULL, updated_at = ? WHERE job_id = ?'
+        )
+        .run(this.now(), this.now(), jobId);
+    })();
+  }
+
+  run(jobId: number): MergeRunRecord | null {
+    const row = this.db
+      .prepare<[number], MergeRunRow>('SELECT * FROM merge_runs WHERE job_id = ?')
+      .get(jobId);
+    return row
+      ? { status: row.status, note: row.note, since: row.since, rerunAt: row.rerun_at }
+      : null;
+  }
+
+  /** Jobs whose merge is under way, for the queue to move on after a restart. */
+  running(): number[] {
+    return this.db
+      .prepare<[], { job_id: number }>(`SELECT job_id FROM merge_runs WHERE status = 'running'`)
+      .all()
+      .map((r) => r.job_id);
+  }
+
+  /** What the run waits on now; `rerun` marks that checks were asked to run again. */
+  waiting(jobId: number, note: string, opts: { rerun?: boolean } = {}): void {
+    this.db
+      .prepare(
+        `UPDATE merge_runs SET note = ?, updated_at = ?,
+           rerun_at = CASE WHEN ? THEN ? ELSE rerun_at END
+         WHERE job_id = ?`
+      )
+      .run(note, this.now(), opts.rerun === true ? 1 : 0, this.now(), jobId);
+  }
+
+  /** The run ends: every PR merged, or one could not be. */
+  finish(jobId: number, status: 'done' | 'failed', note: string, failed?: number): void {
+    this.db.transaction(() => {
+      if (failed !== undefined) {
+        this.db.prepare(`UPDATE results SET merge_status = 'failed' WHERE id = ?`).run(failed);
+      }
+      this.db
+        .prepare('UPDATE merge_runs SET status = ?, note = ?, updated_at = ? WHERE job_id = ?')
+        .run(status, note, this.now(), jobId);
+    })();
   }
 }
 
