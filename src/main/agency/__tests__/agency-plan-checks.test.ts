@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { PlanInput } from '../../../shared/agency-plan';
 import { AgencyService } from '../index';
 import { BASE_SHA, factsGit, fakeGh, REPO, type GitFacts } from './fixture';
@@ -10,12 +12,18 @@ import { planHelpers } from './plan-helpers';
 /** The pre-approval check, the base pin and the crew limit, through the service. */
 
 const HEAD_SHA = 'b'.repeat(40);
+const SHIPPED_CREW = fileURLToPath(new URL('../../../../resources/crew', import.meta.url));
 
 let dir: string;
 let service: AgencyService;
 
 function start(
-  opts: { git?: Partial<GitFacts>; gh?: 'ok' | 'signed-out'; crewLimit?: number } = {}
+  opts: {
+    git?: Partial<GitFacts>;
+    gh?: 'ok' | 'signed-out';
+    crewLimit?: number;
+    crew?: boolean;
+  } = {}
 ): void {
   dir = mkdtempSync(join(tmpdir(), 'fleet-agency-checks-'));
   service = new AgencyService({
@@ -24,7 +32,9 @@ function start(
     hasModelKey: () => true,
     git: factsGit({ sha: (ref) => (ref === 'HEAD' ? HEAD_SHA : BASE_SHA), ...opts.git }),
     gh: fakeGh(opts.gh),
-    crewLimit: opts.crewLimit === undefined ? undefined : () => opts.crewLimit!
+    crewLimit: opts.crewLimit === undefined ? undefined : () => opts.crewLimit!,
+    agencyHome: join(dir, 'home'),
+    crewDirs: opts.crew ? { bundled: SHIPPED_CREW, user: null } : undefined
   });
   service.ensureLobby(REPO);
 }
@@ -252,5 +262,40 @@ describe('crew limit and queue', () => {
 
     expect(service.store.getJob(first.job.id)?.state).toBe('delivered');
     expect(stepStatus(job.id, 'builder-1')).toBe('pending');
+  });
+});
+
+describe('crew roles', () => {
+  const wizard: PlanInput = {
+    ...PLAN,
+    steps: [{ id: 'wizard-1', role: 'wizard', title: 'Cast it' }]
+  };
+
+  it('blocks a step whose role the crew does not have', async () => {
+    start({ crew: true });
+    const { tools } = openJob();
+    const { id, text } = await proposeOut(tools, wizard);
+    expect(text).toContain(
+      "wizard-1 uses the role wizard, which is not one of this project's crew roles."
+    );
+    expect((await service.jobs.decide({ planVersionId: id, action: 'approve' })).ok).toBe(false);
+  });
+
+  it('keeps the approved roles, so a role edit after approval does not reach the job', async () => {
+    start({ crew: true });
+    const { job, tools } = openJob();
+    const id = await approve(tools);
+    const approved = service.store.plans.version(id)?.crew;
+    expect(approved?.roles.map((r) => [r.name, r.source])).toEqual([['builder', 'bundled']]);
+
+    const roles = join(dir, 'home', 'projects', job.repoId, 'crew', 'roles');
+    mkdirSync(roles, { recursive: true });
+    writeFileSync(
+      join(roles, 'builder.md'),
+      '---\nname: builder\ndescription: Ours.\nruntime: eva\n---\nBuild it our way.\n'
+    );
+    expect(service.store.plans.approved(job.id)?.crew).toEqual(approved);
+    const next = (await service.crewCatalog(job.repoId)).roles.find((r) => r.name === 'builder');
+    expect(next).toMatchObject({ runtime: 'eva', source: 'project' });
   });
 });

@@ -27,6 +27,7 @@ const facts = (patch: Partial<PlanFacts> = {}): PlanFacts => ({
   members: [member()],
   overlap: [],
   pinned: null,
+  roles: null,
   ...patch
 });
 
@@ -80,6 +81,14 @@ describe('checkPlan', () => {
     expect(codes(PR, facts({ members: [member({ hasAdmiralBranch: true })] }))).toEqual([
       'admiral-branch-exists'
     ]);
+  });
+
+  it('blocks a step whose role the crew does not have, once the crew is known', () => {
+    expect(codes(PR, facts({ roles: new Set(['reviewer']) }))).toEqual(['unknown-role']);
+    expect(checkPlan(PR, facts({ roles: new Set(['reviewer']) })).issues[0]?.text).toBe(
+      "builder-1 uses the role builder, which is not one of this project's crew roles."
+    );
+    expect(codes(PR, facts({ roles: new Set(['builder']) }))).toEqual([]);
   });
 
   it('warns about a dirty main checkout and about overlap with another job', () => {

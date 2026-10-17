@@ -64,6 +64,7 @@ export async function gatherPlanFacts(
     plan: Plan;
     others: OtherJobPaths[];
     pinned: PlanBases | null;
+    roles: ReadonlySet<string> | null;
   },
   deps: PlanFactsDeps
 ): Promise<PlanFacts> {
@@ -77,6 +78,7 @@ export async function gatherPlanFacts(
       members.map((m) => m.name),
       input.others
     ),
-    pinned: input.pinned
+    pinned: input.pinned,
+    roles: input.roles
   };
 }

@@ -9,6 +9,7 @@ import {
   type PlanVersionStatus,
   type StepStatus
 } from '../../../shared/agency-jobs';
+import { CrewSnapshotSchema, type CrewSnapshot } from '../../../shared/agency-crew';
 import { PlanSchema, type Plan } from '../../../shared/agency-plan';
 import { parseJsonAs } from '../../../shared/parse-json';
 
@@ -23,6 +24,7 @@ type VersionRow = {
   plan_json: string;
   checks_json: string;
   bases_json: string | null;
+  snapshot_json: string;
   effects_json: string | null;
   decision_note: string | null;
   proposed_at: number;
@@ -55,6 +57,8 @@ export type PlanVersionRecord = {
   plan: Plan;
   checks: PlanChecks;
   bases: PlanBases | null;
+  /** The roles and playbook as approved; null before approval or without a crew. */
+  crew: CrewSnapshot | null;
   /** What approving it did, written before the effects ran. */
   effects: AppliedEffects | null;
   decisionNote: string | null;
@@ -142,6 +146,7 @@ function toVersion(row: VersionRow): PlanVersionRecord {
     plan: parseJsonAs(PlanSchema, row.plan_json) ?? EMPTY_PLAN,
     checks: parseJsonAs(ChecksSchema, row.checks_json) ?? NO_PLAN_CHECKS,
     bases: parseJsonAs(BasesSchema, row.bases_json),
+    crew: parseJsonAs(CrewSnapshotSchema, row.snapshot_json),
     effects: parseJsonAs(EffectsSchema, row.effects_json),
     decisionNote: row.decision_note,
     proposedAt: row.proposed_at,
@@ -279,22 +284,31 @@ export class PlanStore {
       .run(jobId);
   }
 
-  setBases(id: number, bases: PlanBases): void {
+  /** Write one JSON column of a plan version. */
+  private setJson(
+    id: number,
+    column: 'bases_json' | 'snapshot_json' | 'checks_json' | 'effects_json',
+    value: unknown
+  ): void {
     this.db
-      .prepare('UPDATE plan_versions SET bases_json = ? WHERE id = ?')
-      .run(JSON.stringify(bases), id);
+      .prepare(`UPDATE plan_versions SET ${column} = ? WHERE id = ?`)
+      .run(JSON.stringify(value), id);
+  }
+
+  setBases(id: number, bases: PlanBases): void {
+    this.setJson(id, 'bases_json', bases);
+  }
+
+  setCrew(id: number, crew: CrewSnapshot): void {
+    this.setJson(id, 'snapshot_json', crew);
   }
 
   setChecks(id: number, checks: PlanChecks): void {
-    this.db
-      .prepare('UPDATE plan_versions SET checks_json = ? WHERE id = ?')
-      .run(JSON.stringify(checks), id);
+    this.setJson(id, 'checks_json', checks);
   }
 
   setEffects(id: number, effects: AppliedEffects): void {
-    this.db
-      .prepare('UPDATE plan_versions SET effects_json = ? WHERE id = ?')
-      .run(JSON.stringify(effects), id);
+    this.setJson(id, 'effects_json', effects);
   }
 
   // ── Steps ────────────────────────────────────────────────────────────────

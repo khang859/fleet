@@ -19,6 +19,7 @@ import {
   type BriefIdeas,
   type ProjectFolder,
   type RuleCandidates,
+  type ImportDiff,
   type SetupScan
 } from '../../shared/agency-projects';
 import type { AgencyJobDetail, JobControlResult, PlanActionResult } from '../../shared/agency-jobs';
@@ -91,7 +92,8 @@ const CheckOutMemberArgs = z.object({ repo: RepoRef, path: z.string().min(1).max
 const SaveSetupArgs = z.object({
   repo: RepoRef,
   setup: ProjectSetupSchema,
-  imports: z.array(z.string().min(1)).max(200)
+  imports: z.array(z.string().min(1)).max(200),
+  updates: z.array(z.string().min(1)).max(200).optional()
 });
 const SaveSetupFinishArgs = SaveSetupArgs.extend({ finish: z.boolean() });
 const FinishStarterArgs = z.object({
@@ -292,6 +294,11 @@ function registerProjectsIpc(service: AgencyService): void {
     const { finish, ...input } = SaveSetupFinishArgs.parse(args);
     return projects.saveSetup(input, { finish });
   });
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_IMPORT_DIFF,
+    async (_e, args: unknown): Promise<ImportDiff> =>
+      projects.importDiff(CheckOutMemberArgs.parse(args))
+  );
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_SHARE_SETUP,
     async (_e, args: unknown): Promise<string[]> => projects.share(SaveSetupArgs.parse(args))

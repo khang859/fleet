@@ -274,6 +274,7 @@ describe('workspace setup', () => {
     kind: 'submodules',
     setup: { version: 1, kind: 'submodules', name: 'shop', members, imports: [] },
     saved: false,
+    newer: [],
     members: members.map((m) => ({
       name: m.name,
       path: m.path,

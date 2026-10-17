@@ -183,6 +183,7 @@ import type {
   ClientLineInput,
   ProjectFolder,
   RuleCandidates,
+  ImportDiff,
   SaveSetupRequest,
   SetupScan
 } from '../shared/agency-projects';
@@ -1198,6 +1199,9 @@ const fleetApi = {
       /** Save, then copy into the repository's `.fleet/`. Resolves with what was written. */
       shareSetup: async (input: SaveSetupRequest): Promise<string[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_SHARE_SETUP, input),
+      /** An imported file's project copy beside the repository's newer version. */
+      importDiff: async (input: { repo: AgencyRepoRef; path: string }): Promise<ImportDiff> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_IMPORT_DIFF, input),
       clientFile: async (repoId: string): Promise<ClientFileView> =>
         typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE, repoId),
       /** Save the whole client file from Settings: the client's edits win. */

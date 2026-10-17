@@ -11,6 +11,7 @@ import { loadProjectInstructions } from '../../agent/project-instructions';
 import type { AgencyService } from '../index';
 import { createAgencyCapability } from '../tools';
 import { scopeFleetToCrew } from './crew-fleet';
+import { crewNote } from './crew-note';
 import { admiralSnapshotNote } from './snapshot-note';
 
 /** What the agent engine needs to run Admiral turns. */
@@ -28,6 +29,7 @@ export type AdmiralDeps = {
     | 'results'
     | 'proposeClientFile'
     | 'settings'
+    | 'crewCatalog'
   >;
   settings: () => AgencySettings;
 };
@@ -90,6 +92,7 @@ export async function planAdmiralTurn(input: {
           req.cwd
         );
   const instructions = await loadProjectInstructions(req.cwd);
+  const crew = crewNote(await admiral.agency.crewCatalog(scope.repoId));
   const env = await readEnvironment(req.cwd, input.model);
   const tools = toolSpecsFor({
     image: null,
@@ -119,11 +122,14 @@ export async function planAdmiralTurn(input: {
     agency,
     fleet,
     note: () =>
-      admiralSnapshotNote(
-        admiral.agency.store,
-        scope,
-        admiral.agency.clientFileForNote(scope.repoId)
-      ),
+      [
+        admiralSnapshotNote(
+          admiral.agency.store,
+          scope,
+          admiral.agency.clientFileForNote(scope.repoId)
+        ),
+        crew
+      ].join('\n\n'),
     instructions:
       instructions === null
         ? null

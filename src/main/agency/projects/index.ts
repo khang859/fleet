@@ -5,8 +5,8 @@ import type {
   BriefIdeas,
   ClientFileView,
   ClientLineInput,
+  ImportDiff,
   ProjectFolder,
-  RepoFile,
   RuleCandidates,
   SaveSetupRequest,
   SetupScan
@@ -18,16 +18,11 @@ import { briefIdeas } from './brief-ideas';
 import { ruleCandidates, type ClientFiles } from './client-file';
 import { probeFolders } from './folders';
 import { nativeGh, type GhRun } from './gh';
+import { importDiff, importedFiles, newerImports } from './imports';
 import { agencyHome } from './paths';
-import { loadSetup, saveSetup, shareWithTeam, type ImportedFile } from './project-store';
+import { loadSetup, saveSetup, shareWithTeam } from './project-store';
 import { readOnlyGit } from './repo-reader';
-import {
-  memberOfPath,
-  readRepoFile,
-  repoTarget,
-  scanProject,
-  type ScanTarget
-} from './setup-findings';
+import { repoTarget, scanProject, type ScanTarget } from './setup-findings';
 import { detectWorkspace, type DetectedWorkspace } from './workspace-detect';
 import { checkedLeftOut, registeredProject, workspaceTarget } from './workspace-projects';
 import { checkOutSubmodule } from '../workspaces/submodules';
@@ -147,30 +142,23 @@ export class ProjectsService {
       scanProject(target, { git: this.git, gh: this.gh }),
       loadSetup(checked.repoId, this.home)
     ]);
-    if (saved === null) return { ...found, saved: false };
+    if (saved === null) return { ...found, saved: false, newer: [] };
     const members = found.setup.members.map(
       (fresh) => saved.members.find((m) => m.name === fresh.name) ?? fresh
     );
-    return { ...found, setup: { ...saved, kind: found.kind, members }, saved: true };
+    return {
+      ...found,
+      setup: { ...saved, kind: found.kind, members },
+      saved: true,
+      newer: newerImports(saved, found.repoFiles)
+    };
   }
 
-  private async importedFiles(target: ScanTarget, paths: string[]): Promise<ImportedFile[]> {
-    const found = await scanProject(target, { git: this.git });
-    const importable = new Map<string, RepoFile>(
-      found.repoFiles.filter((f) => f.disposition === 'importable').map((f) => [f.path, f])
-    );
-    const out: ImportedFile[] = [];
-    for (const path of paths) {
-      const file = importable.get(path);
-      const where = memberOfPath(target.members, path);
-      if (file === undefined || where === null) {
-        throw new Error(`${path} is not a file setup can import.`);
-      }
-      const content = await readRepoFile(where.member.root, where.path, this.git);
-      if (content === null || file.sha256 === null) continue;
-      out.push({ path, kind: file.kind, sha256: file.sha256, content });
-    }
-    return out;
+  /** An imported file's project copy beside the repository's version, for the diff. */
+  async importDiff(input: { repo: AgencyRepoRef; path: string }): Promise<ImportDiff> {
+    const repo = await this.verified(input.repo);
+    const { target } = await this.target(repo);
+    return importDiff(repo, target, input.path, { home: this.home, git: this.git });
   }
 
   /**
@@ -189,7 +177,10 @@ export class ProjectsService {
         throw new Error(`${m.name} is not a member of ${repo.name}.`);
       }
     }
-    const imported = await this.importedFiles(target, input.imports);
+    const imported = await importedFiles(repo.repoId, target, input, {
+      home: this.home,
+      git: this.git
+    });
     const { path } = await saveSetup({ repo, setup: input.setup, imported }, this.home);
     if (workspace !== null) {
       this.deps.store.projects.save(registeredProject(workspace, leftOut, input.setup));

@@ -33,6 +33,8 @@ extraResources:
     to: resources/commands/
   - from: resources/skills/
     to: resources/skills/
+  - from: resources/crew/
+    to: resources/crew/
 asarUnpack:
   - resources/**
   - node_modules/onnxruntime-node/**

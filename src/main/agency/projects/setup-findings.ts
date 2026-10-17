@@ -462,7 +462,7 @@ async function scanMember(
 export async function scanProject(
   target: ScanTarget,
   deps: ScanDeps = {}
-): Promise<Omit<SetupScan, 'saved'>> {
+): Promise<Omit<SetupScan, 'saved' | 'newer'>> {
   const git = deps.git ?? readOnlyGit;
   const gh = deps.gh;
   const first = target.members.at(0);

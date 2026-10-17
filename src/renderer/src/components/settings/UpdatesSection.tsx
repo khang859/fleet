@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { AgentMarkdown } from '../agent/AgentMarkdown';
 import { useUpdateStore } from '../../store/update-store';
+import { toggled } from '../../lib/toggled';
 import type { ReleaseNote } from '../../../../shared/release-notes';
 
 /** A version in the list, and why it is worth pointing at. */
@@ -47,11 +48,7 @@ export function UpdatesSection(): React.JSX.Element {
   }, [updateStatus.state, dismissStatus]);
 
   function toggle(version: string): void {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(version)) next.add(version);
-      return next;
-    });
+    setExpanded((prev) => toggled(prev, version));
   }
 
   // The update you can act on right now, which this build's changelog may know

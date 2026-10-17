@@ -20,6 +20,7 @@ import {
   type StepStatus
 } from '../../../shared/agency-jobs';
 import { PlanSchema, diffPlans, validatePlanGraph, type Plan } from '../../../shared/agency-plan';
+import type { CrewSnapshot } from '../../../shared/agency-crew';
 import { createLogger } from '../../logger';
 import {
   canDecide,
@@ -79,6 +80,11 @@ export type JobsServiceDeps = {
   }) => Promise<PlanFacts>;
   /** Crew members that may work at once, per job and across every job. */
   crewLimit?: () => number;
+  /**
+   * The roles and playbook a plan uses, as their files say now, kept with the
+   * approval so the job runs on them. Without it the approval keeps no crew.
+   */
+  crewSnapshot?: (job: AgencyJob, plan: Plan) => Promise<CrewSnapshot>;
 };
 
 /**
@@ -239,6 +245,10 @@ export class JobsService {
     const gate = await this.approvable(job, version, baseChoice);
     if (!gate.ok) return gate;
     const { checks, bases } = gate;
+    const crew = (await this.deps.crewSnapshot?.(job, version.plan)) ?? null;
+    // A role file can go between the check and here; the job must not start without it.
+    const lost = version.plan.steps.find((s) => crew && !crew.roles.some((r) => r.name === s.role));
+    if (lost) return { ok: false, reason: `The role ${lost.role} is gone. Check the plan again.` };
 
     const effects = this.store.tx(() => {
       const approved = this.store.plans.approved(job.id);
@@ -250,6 +260,7 @@ export class JobsService {
       this.store.plans.supersede(job.id);
       this.store.plans.decide(version.id, 'approved');
       if (checks.bases.length > 0) this.store.plans.setBases(version.id, bases);
+      if (crew !== null) this.store.plans.setCrew(version.id, crew);
       this.store.setApprovedVersion(job.id, version.version, version.plan.budget.usd);
       version.plan.steps.forEach((step, position) => {
         this.store.plans.putStep({

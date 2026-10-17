@@ -458,6 +458,7 @@ export const IPC_CHANNELS = {
   AGENCY_SCAN_PROJECT: 'agency:scan-project',
   AGENCY_SAVE_SETUP: 'agency:save-setup',
   AGENCY_SHARE_SETUP: 'agency:share-setup',
+  AGENCY_IMPORT_DIFF: 'agency:import-diff',
   AGENCY_CLIENT_FILE: 'agency:client-file',
   AGENCY_CLIENT_FILE_WRITE: 'agency:client-file-write',
   AGENCY_CLIENT_FILE_KEEP: 'agency:client-file-keep',

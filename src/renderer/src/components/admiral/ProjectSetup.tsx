@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
+import { diffLines, formatUnified, toHunks } from '../../../../shared/agent-diff';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import type {
   MemberScan,
@@ -14,6 +15,7 @@ import {
   type MemberSettingField
 } from '../../../../shared/agency-settings';
 import { useAdmiralMarks } from '../../hooks/use-admiral-marks';
+import { toggled } from '../../lib/toggled';
 import { AdmiralChangeNote } from '../settings/AdmiralChangeNote';
 import { AskAdmiralForm } from '../settings/AskAdmiral';
 import {
@@ -23,6 +25,7 @@ import {
   SectionLabel,
   textInputCls
 } from './onboarding-ui';
+import { DiffBody } from '../ui/DiffBody';
 import { MissingCard } from './MissingCard';
 import { memberOrder, NOTE_DOT, repoNotes } from './onboarding-view';
 
@@ -40,6 +43,7 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
   );
   const [busy, setBusy] = useState<'save' | 'share' | null>(null);
   const [shared, setShared] = useState<string[] | null>(null);
+  const [updates, setUpdates] = useState<ReadonlySet<string>>(new Set());
   const marks = useAdmiralMarks(repo.repoId);
 
   if (error !== null) {
@@ -72,9 +76,7 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
 
   const toggleImport = (file: RepoFile): void => {
     edited.current = true;
-    const next = new Set(imports);
-    if (next.has(file.path)) next.delete(file.path);
-    else next.add(file.path);
+    const next = toggled(imports, file.path);
     setImports(next);
     // The team's setup file is not copied: importing it means taking its findings.
     // Only for the members this project has: a teammate's may hold others.
@@ -83,7 +85,12 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
     }
   };
 
-  const request = { repo, setup, imports: [...imports] };
+  const request = {
+    repo,
+    setup,
+    imports: [...imports],
+    updates: [...updates].filter((p) => imports.has(p))
+  };
   const run = (kind: 'save' | 'share'): void => {
     setBusy(kind);
     setError(null);
@@ -111,7 +118,15 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
             />
           ))}
           {scan.repoFiles.length > 0 && (
-            <FoundCard files={scan.repoFiles} imports={imports} onToggle={toggleImport} />
+            <FoundCard
+              repo={repo}
+              files={scan.repoFiles}
+              imports={imports}
+              newer={new Set(scan.newer)}
+              updates={updates}
+              onToggle={toggleImport}
+              onUpdate={(path) => setUpdates(toggled(updates, path))}
+            />
           )}
           <OnboardingCard>
             <SectionLabel>PERMISSIONS</SectionLabel>
@@ -577,13 +592,23 @@ const FILE_ROLE: Record<RepoFile['kind'], string> = {
 };
 
 function FoundCard({
+  repo,
   files,
   imports,
-  onToggle
+  newer,
+  updates,
+  onToggle,
+  onUpdate
 }: {
+  repo: AgencyRepoRef;
   files: RepoFile[];
   imports: ReadonlySet<string>;
+  /** Imported files the repository has a different version of. */
+  newer: ReadonlySet<string>;
+  /** Of those, the ones the client takes on save. */
+  updates: ReadonlySet<string>;
   onToggle: (file: RepoFile) => void;
+  onUpdate: (path: string) => void;
 }): React.JSX.Element {
   return (
     <OnboardingCard tone="amber">
@@ -598,29 +623,107 @@ function FoundCard({
             </span>
             <span className="text-xs text-fleet-text-muted">{FILE_ROLE[f.kind]}</span>
             <span className="flex w-[84px] justify-end">
-              {f.disposition === 'importable' ? (
-                imports.has(f.path) ? (
-                  <button
-                    type="button"
-                    onClick={() => onToggle(f)}
-                    aria-pressed
-                    title="Ignore it instead"
-                    className="flex items-center gap-1 rounded-md bg-green-500/10 px-2.5 py-1.5 text-xs text-green-600 transition hover:bg-green-500/15 focus-ring dark:text-green-400"
-                  >
-                    <Check size={12} strokeWidth={3} /> Imported
-                  </button>
-                ) : (
-                  <OnboardingButton onClick={() => onToggle(f)}>Import</OnboardingButton>
-                )
-              ) : (
-                <span className="text-[11px] text-fleet-text-subtle">
-                  {f.disposition === 'in-place' ? 'In place' : 'Not used'}
-                </span>
-              )}
+              <ImportToggle file={f} imported={imports.has(f.path)} onToggle={() => onToggle(f)} />
             </span>
+            {imports.has(f.path) && newer.has(f.path) && (
+              <NewerInRepo
+                repo={repo}
+                path={f.path}
+                updating={updates.has(f.path)}
+                onUpdate={() => onUpdate(f.path)}
+              />
+            )}
           </li>
         ))}
       </ul>
     </OnboardingCard>
+  );
+}
+
+/** Import or ignore a file setup can import; say how crew use one it cannot. */
+function ImportToggle({
+  file,
+  imported,
+  onToggle
+}: {
+  file: RepoFile;
+  imported: boolean;
+  onToggle: () => void;
+}): React.JSX.Element {
+  if (file.disposition !== 'importable') {
+    return (
+      <span className="text-[11px] text-fleet-text-subtle">
+        {file.disposition === 'in-place' ? 'In place' : 'Not used'}
+      </span>
+    );
+  }
+  if (!imported) return <OnboardingButton onClick={onToggle}>Import</OnboardingButton>;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed
+      title="Ignore it instead"
+      className="flex items-center gap-1 rounded-md bg-green-500/10 px-2.5 py-1.5 text-xs text-green-600 transition hover:bg-green-500/15 focus-ring dark:text-green-400"
+    >
+      <Check size={12} strokeWidth={3} /> Imported
+    </button>
+  );
+}
+
+/**
+ * An imported file the repository has a newer version of. Jobs keep using the
+ * project's copy until the client reviews the change and takes it on save.
+ */
+function NewerInRepo({
+  repo,
+  path,
+  updating,
+  onUpdate
+}: {
+  repo: AgencyRepoRef;
+  path: string;
+  updating: boolean;
+  onUpdate: () => void;
+}): React.JSX.Element {
+  const [diff, setDiff] = useState<string[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const review = (): void => {
+    setOpen(!open);
+    if (diff !== null) return;
+    window.fleet.agency.projects
+      .importDiff({ repo, path })
+      .then((d) => setDiff(formatUnified(toHunks(diffLines(d.ours, d.theirs)), 400).split('\n')))
+      .catch((err: unknown) => setError(String(err)));
+  };
+
+  return (
+    <div className="flex w-full flex-col gap-2 pb-1">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="mr-auto text-xs text-amber-600 dark:text-amber-400">
+          {updating
+            ? 'Takes the repo version when you save.'
+            : 'Newer in the repo. Jobs keep your copy until you update.'}
+        </span>
+        <OnboardingButton onClick={review}>{open ? 'Hide changes' : 'Review'}</OnboardingButton>
+        <OnboardingButton kind={updating ? 'primary' : undefined} onClick={onUpdate}>
+          {updating ? 'Keep mine' : 'Update'}
+        </OnboardingButton>
+      </div>
+      {open &&
+        (error !== null ? (
+          <p className="text-xs text-fleet-text-muted">Could not read the change: {error}</p>
+        ) : diff === null ? (
+          <span className="flex items-center gap-2 text-xs text-fleet-text-muted">
+            <Loader2 size={12} className="animate-spin" /> Reading both versions.
+          </span>
+        ) : diff.length === 1 && diff[0] === '' ? (
+          <p className="text-xs text-fleet-text-muted">Only the line endings differ.</p>
+        ) : (
+          <DiffBody lines={diff} />
+        ))}
+    </div>
   );
 }

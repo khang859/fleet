@@ -34,6 +34,8 @@ export type PlanFacts = {
   overlap: PlanOverlap[];
   /** Bases an earlier approval pinned; a change keeps them. */
   pinned: PlanBases | null;
+  /** The roles the project's crew has, or null when the crew is not known. */
+  roles: ReadonlySet<string> | null;
 };
 
 /** The members a step changes: those it names, or every member when it names none. */
@@ -94,6 +96,21 @@ function prUnavailable(plan: Plan, facts: PlanFacts): PlanIssue[] {
   });
 }
 
+/** A step whose role is not one of the project's crew roles. */
+function unknownRoles(plan: Plan, roles: ReadonlySet<string> | null): PlanIssue[] {
+  if (roles === null) return [];
+  return plan.steps
+    .filter((step) => !roles.has(step.role))
+    .map(
+      (step): PlanIssue => ({
+        code: 'unknown-role',
+        severity: 'block',
+        text: `${step.id} uses the role ${step.role}, which is not one of this project's crew roles.`,
+        step: step.id
+      })
+    );
+}
+
 function memberIssues(member: MemberFacts): PlanIssue[] {
   const issues: PlanIssue[] = [];
   if (member.hasAdmiralBranch) {
@@ -139,6 +156,7 @@ export function checkPlan(plan: Plan, facts: PlanFacts): PlanChecks {
   return {
     issues: [
       ...outsideProject(plan, names),
+      ...unknownRoles(plan, facts.roles),
       ...members.flatMap(memberIssues),
       ...prUnavailable(plan, facts),
       ...overlapIssue(facts.overlap)

@@ -56,7 +56,7 @@ export const DeliverableSchema = z
 export const PLAN_MAX_STEPS = 30;
 export const STEP_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
-const Slug = z
+export const StepIdSchema = z
   .string()
   .regex(STEP_ID_PATTERN, 'a step id is lower-case letters, digits and dashes, like builder-1');
 const Member = z.string().trim().min(1).max(200);
@@ -64,13 +64,13 @@ const Names = z.array(Member).max(50);
 
 export const PlanStepSchema = z.object({
   /** Stable across versions: the same id is the same step. */
-  id: Slug,
+  id: StepIdSchema,
   role: z.string().trim().min(1).max(60),
   title: z.string().trim().min(1).max(200),
   runtime: z.enum(['claude', 'eva']).optional(),
   model: z.string().trim().min(1).max(120).optional(),
   /** Steps that must be done before this one starts. */
-  after: z.array(Slug).max(PLAN_MAX_STEPS).default([]),
+  after: z.array(StepIdSchema).max(PLAN_MAX_STEPS).default([]),
   /** Member repositories the step changes, and those it only reads. Empty: every member. */
   changes: Names.default([]),
   reads: Names.default([]),
@@ -110,11 +110,14 @@ export function withLocalBranches(plan: Plan): Plan {
   };
 }
 
+/** A step as the wait graph sees it: a plan's, or a playbook's. */
+export type GraphStep = { id: string; after: string[] };
+
 /**
  * What is wrong with a plan's step graph, one sentence each: duplicate ids,
  * `after` naming a step that is not there, and cycles. Empty when it is fine.
  */
-export function validatePlanGraph(plan: Pick<Plan, 'steps'>): string[] {
+export function validatePlanGraph(plan: { steps: GraphStep[] }): string[] {
   const problems: string[] = [];
   const ids = new Set<string>();
   for (const step of plan.steps) {
@@ -133,7 +136,7 @@ export function validatePlanGraph(plan: Pick<Plan, 'steps'>): string[] {
 }
 
 /** Each loop in the `after` graph, as one sentence. A step waiting on itself is reported apart. */
-function stepLoops(steps: PlanStep[]): string[] {
+function stepLoops(steps: GraphStep[]): string[] {
   const loops: string[] = [];
   const after = new Map(steps.map((s) => [s.id, s.after]));
   const state = new Map<string, 'visiting' | 'done'>();

@@ -1599,6 +1599,13 @@ void app.whenReady().then(async () => {
     hasModelKey: () => openRouterSecrets.hasKey() || localEndpoints().some((e) => e.enabled),
     worktrees: worktreeService,
     isOnline: () => net.isOnline(),
+    // A real folder in packaged builds: readdir cannot walk app.asar.
+    crewDirs: {
+      bundled: app.isPackaged
+        ? join(process.resourcesPath, 'resources', 'crew')
+        : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources', 'crew'),
+      user: join(homedir(), '.fleet', 'crew')
+    },
     agencySettings: {
       get: () => settingsStore.get().agency,
       set: (agency) => settingsStore.set({ agency })

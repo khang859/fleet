@@ -128,12 +128,21 @@ export type RequiredChecksSource =
   | 'gh-signed-out'
   | 'no-github';
 
-/** What the setup screen sends back to save: the setup and the repository files to import, by path. */
+/**
+ * What the setup screen sends back to save: the setup and the repository
+ * files to import, by path. A file imported before keeps the project's copy,
+ * edits and all, unless it is in `updates`: then the repository's newer
+ * version replaces it.
+ */
 export type SaveSetupRequest = {
   repo: AgencyRepoRef;
   setup: ProjectSetup;
   imports: string[];
+  updates?: string[];
 };
+
+/** An imported file beside the repository's newer version, for the setup screen's diff. */
+export type ImportDiff = { path: string; ours: string; theirs: string };
 
 /** What setup read in one member, beside the findings saved in its setup entry. */
 export type MemberScan = {
@@ -160,6 +169,8 @@ export type SetupScan = {
   repoFiles: RepoFile[];
   /** A setup a teammate shared in `.fleet/fleet.agency.toml`, if it parses. */
   teamSetup: ProjectSetup | null;
+  /** Imported files the repository's default branch has a different version of. */
+  newer: string[];
   ghSignedIn: boolean;
 };
 

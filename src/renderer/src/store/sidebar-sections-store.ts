@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { z } from 'zod';
+import { toggled } from '../lib/toggled';
 
 const STORAGE_KEY = 'fleet.sidebar-sections';
 
@@ -50,8 +51,7 @@ type SidebarSectionsStore = {
 export const useSidebarSectionsStore = create<SidebarSectionsStore>((set, get) => ({
   collapsed: load(),
   toggle: (section) => {
-    const next = new Set(get().collapsed);
-    if (!next.delete(section)) next.add(section);
+    const next = toggled(get().collapsed, section);
     persist(next);
     set({ collapsed: next });
   },

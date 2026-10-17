@@ -24,12 +24,23 @@ import type {
   JobControl,
   JobControlResult,
   LeftoverAction,
+  PlanBases,
   ResourceKind
 } from '../../shared/agency-jobs';
 import { WorktreeService } from '../worktree-service';
 import { AdmiralRegistry } from './admiral-registry';
 import { defaultCleaners, type WorktreeRemover } from './cleanup/cleaners';
 import { CleanupRunner, type ResourceCleaner } from './cleanup/cleanup-runner';
+import type { CrewCatalog } from '../../shared/agency-crew';
+import type { Plan } from '../../shared/agency-plan';
+import {
+  crewSnapshot,
+  crewSources,
+  loadCrew,
+  NO_CREW_DIRS,
+  projectCrewDir,
+  type CrewDirs
+} from './crew/catalog';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
 import { exportJob } from './jobs/job-export';
 import { reconcileAtStartup } from './jobs/reconcile';
@@ -44,6 +55,8 @@ import { projectMembers } from './projects/workspace-projects';
 import { JobWorkspaces, type GitWrite } from './workspaces/job-workspace';
 import { pushUmbrellaBump } from './workspaces/umbrella-bump';
 import { MergeQueue } from './results/merge-queue';
+import type { OtherJobPaths } from './plans/overlap';
+import type { PlanFacts } from './plans/plan-checks';
 import { gatherPlanFacts } from './plans/plan-facts';
 import { ProjectsService } from './projects';
 import { resolveRepoIdentity, type GitRun, type RepoIdentityOptions } from './repo-identity';
@@ -73,6 +86,11 @@ export type AgencyServiceDeps = {
   crew?: CrewControl;
   /** Read-only git for the pre-approval check. */
   git?: GitRun;
+  /**
+   * The crew folders outside a project: what Fleet ships and `~/.fleet/crew/`.
+   * Unset (tests of other parts), plans name any role and approval keeps no crew.
+   */
+  crewDirs?: CrewDirs;
   /** Crew members that may work at once; 4 unless set. */
   crewLimit?: () => number;
   /** Git that writes: worktrees, the umbrella bump. Defaults to git on the PATH. */
@@ -148,14 +166,10 @@ export class AgencyService {
       crew: deps.crew ?? NO_CREW,
       changed: (touched) => this.changed(touched),
       crewLimit: deps.crewLimit,
-      planFacts: async ({ job, plan, others, pinned }) => {
-        const repo = this.store.repo(job.repoId);
-        if (!repo) throw new Error(`The project of ${jobDisplayId(job.id)} is not known.`);
-        return gatherPlanFacts(
-          { members: projectMembers(this.store.projects, repo).members, plan, others, pinned },
-          { git: deps.git ?? readOnlyGit, gh: deps.gh ?? nativeGh }
-        );
-      }
+      planFacts: async (input) => this.planFacts(input),
+      crewSnapshot: deps.crewDirs
+        ? async (job, plan) => crewSnapshot(await this.crewCatalog(job.repoId), plan)
+        : undefined
     });
     this.prs = new PrCards({
       store: this.store,
@@ -544,6 +558,33 @@ export class AgencyService {
     const job = this.store.openJob({ ...input, sessionId: randomUUID() });
     this.deps.emit({ repoId: job.repoId, jobIds: [job.id], openedJobId: job.id });
     return job;
+  }
+
+  /** What the pre-approval check reads about a job's project, its crew roles included. */
+  private async planFacts(input: {
+    job: AgencyJob;
+    plan: Plan;
+    others: OtherJobPaths[];
+    pinned: PlanBases | null;
+  }): Promise<PlanFacts> {
+    const { job } = input;
+    const repo = this.store.repo(job.repoId);
+    if (!repo) throw new Error(`The project of ${jobDisplayId(job.id)} is not known.`);
+    const crew = this.deps.crewDirs ? await this.crewCatalog(job.repoId) : null;
+    return gatherPlanFacts(
+      {
+        ...input,
+        members: projectMembers(this.store.projects, repo).members,
+        roles: crew && new Set(crew.roles.map((r) => r.name))
+      },
+      { git: this.deps.git ?? readOnlyGit, gh: this.deps.gh ?? nativeGh }
+    );
+  }
+
+  /** The roles and playbooks a project's jobs can use, read fresh from their files. */
+  async crewCatalog(repoId: string): Promise<CrewCatalog> {
+    const home = this.deps.agencyHome ?? agencyHome();
+    return loadCrew(crewSources(this.deps.crewDirs ?? NO_CREW_DIRS, projectCrewDir(repoId, home)));
   }
 
   /**

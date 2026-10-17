@@ -69,9 +69,9 @@ Phase 2 notes:
 
 ## 3. Phase 3 - crew roles, playbooks and runtimes (PR 3)
 
-- [ ] 3.1 Add zod frontmatter schemas for roles and playbooks in `shared/agency-crew.ts`; verify with schema tests for valid and invalid files
-- [ ] 3.2 Add `src/main/agency/crew/` loaders over `loadDefinitions` for `resources/crew/`, `~/.fleet/crew/` and `~/.fleet/agency/projects/<project-id>/crew/`, with role-name and wait-cycle checks; verify with loader tests for precedence, unknown roles and cycles, and check `resources/crew/` ships in a packaged build per `docs/learnings/2026-06-28-chat-skills-missing-from-packaged-app.md`
-- [ ] 3.3 Write the bundled roles (architect, builder, reviewer, qa, strategist, copywriter, designer, editor) and playbooks (engineering, bug-fix, launch); verify they load with no errors in a test
+- [x] 3.1 Add zod frontmatter schemas for roles and playbooks in `shared/agency-crew.ts`; verify with schema tests for valid and invalid files
+- [x] 3.2 Add `src/main/agency/crew/` loaders over `loadDefinitions` for `resources/crew/`, `~/.fleet/crew/` and `~/.fleet/agency/projects/<project-id>/crew/`, with role-name and wait-cycle checks; verify with loader tests for precedence, unknown roles and cycles, and check `resources/crew/` ships in a packaged build per `docs/learnings/2026-06-28-chat-skills-missing-from-packaged-app.md`
+- [x] 3.3 Write the bundled roles (architect, builder, reviewer, qa, strategist, copywriter, designer, editor) and playbooks (engineering, bug-fix, launch); verify they load with no errors in a test
 - [ ] 3.4 Add the `CrewRuntime` adapter with `claude` and `eva` implementations and an availability check that disables Approve for a missing runtime; verify with unit tests of the built command lines, including that `claude` never gets `-p`, `--print` or `ANTHROPIC_*` env
 - [ ] 3.5 Extend the renderer `openTab` request with "split into job tab" so each job has one unfocused tab of crew panes; verify with a renderer test and a screenshot
 - [ ] 3.6 Add `crew_hire` and `crew_send` over `spawnSession` and `sendToSession`, auto-approved only for steps in the approved plan, with job-scoped chain and rate limits; verify with tool tests for in-plan, out-of-plan and limit cases
@@ -83,10 +83,21 @@ Phase 2 notes:
 - [ ] 3.27 End to end (was 2.26): in a fixture workspace modeled on `Fola-Fi/fola-journey` (umbrella, three submodules, SSH submodule URLs, fixed Postgres port), brief a change across two members, approve, and see linked PRs and the bump PR; verify with `npm run drive` steps and screenshots
 - [ ] 3.10 End to end: brief a small bug fix in a test repo, approve the plan, and see a Claude Code Builder start in a TUI pane, get its brief typed in, and a Reviewer follow; verify with `npm run drive` steps and screenshots
 
+Phase 3 notes (decisions made while building):
+
+- A role is `name`, `description`, `runtime` (`claude` default, or `eva`), optional `model` and `stack`, in a strict frontmatter so a misspelt key is an error. Playbook steps are `id`, `role`, `count`, `after`, `gate: client`, `workspace` (`new`, `{of}`, `{integrate}`) and `scopes`.
+- A playbook is checked at load: its wait graph (with workspace reads), its roles, that a step waits for any step whose output it works in, and that `count` > 1 has one scope per member and a later integrate step. A bad playbook is left out and listed with the file errors.
+- The approval keeps a snapshot of the roles and playbook in `plan_versions.snapshot_json` (the column v3 already had), so no migration was needed. A plan whose step names a role the crew does not have gets an `unknown-role` block.
+- The Admiral gets the crew roles and playbooks in its round note, in a fence, since crew files can come from a teammate's repository.
+- 3.14: an imported file keeps the project copy until the client takes the repository's newer version (`updates`); setup shows "Newer in the repo" with a diff. Setup is onboarding only, so Settings > Agency > Crew (3.9) shows the same row for a project already set up.
+- Crew panes are unfocused splits in one job tab. The job `--settings` file carries the global hook command, including `PermissionRequest` and `StopFailure`; the Admiral answers permission prompts in Phase 5.
+- Limits: nudge 2, stuck after 10 minutes with no hook event, step wall clock 90 minutes, and per-runtime limits (claude 2, eva 4 remote or 1 local) under the job and global limit of 4.
+- The live setup file for 3.16 is the project folder's `fleet.agency.toml`, not the repository's `.fleet/` copy.
+
 - [ ] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`
 - [ ] 3.12 Build the job `--settings` file (AskUserQuestion denied, `disableBypassPermissionsMode`, Fleet hooks with the global command string including `PermissionRequest` and `StopFailure`); verify with snapshot tests
 - [ ] 3.13 Deepen `available()`: the pane's own PATH and shell, `--version` minimums, bypass mode, `disableAllHooks`, hook protocol, vim warning; verify with unit tests
-- [ ] 3.14 Add the project folder `~/.fleet/agency/projects/<project-id>/` (hash of repo identity) with `fleet.agency.toml` and `crew/`; import repo `.fleet/` files from the default branch of the main checkout with a diff, store the imported hash and show "newer version in repo", export with "Share with team" without committing, and snapshot into the approved plan; verify with tests that a crew edit, a fresh clone and a teammate's new commit change nothing until import
+- [x] 3.14 Add the project folder `~/.fleet/agency/projects/<project-id>/` (hash of repo identity) with `fleet.agency.toml` and `crew/`; import repo `.fleet/` files from the default branch of the main checkout with a diff, store the imported hash and show "newer version in repo", export with "Share with team" without committing, and snapshot into the approved plan; verify with tests that a crew edit, a fresh clone and a teammate's new commit change nothing until import
 - [ ] 3.15 Add step workspaces (`new`, `of`, `integrate`), one writer per worktree, scopes for `count` > 1, and merging of `after` branches; verify with tests on a temp repo
 - [ ] 3.16 Name branches `admiral/<job-id>/<step>-<n>`, fail the plan check on a branch named `admiral`, run `.fleet/fleet.agency.toml` setup with a timeout, and run each member's setup and the workspace setup; verify with tests
 - [ ] 3.17 Run crew with `exitOnComplete: true`, and on exit or close mark the step, and wake the Admiral; verify with a pty-manager test that no shell is left
