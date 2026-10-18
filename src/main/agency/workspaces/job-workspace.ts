@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { jobDisplayId, type ResourceKind } from '../../../shared/agency';
 import type { PlanBases } from '../../../shared/agency-jobs';
 import { workspaceSources, type PlanStep } from '../../../shared/agency-plan';
-import type { ProjectKind } from '../../../shared/agency-projects';
+import type { ProjectKind, ProjectSetup } from '../../../shared/agency-projects';
 import { gitExec } from '../exec';
 import { changedMembers } from '../plans/plan-checks';
 import { projectMembers, type ProjectMember } from '../projects/workspace-projects';
@@ -12,6 +12,7 @@ import type { AgencyStore } from '../store/agency-store';
 import type { ResourceMode } from '../store/resource-store';
 import { jobDir } from '../projects/paths';
 import { loadSetup } from '../projects/project-store';
+import { composeProjectName, portEnv, PortBlocks } from './port-blocks';
 import { runSetup, type SetupRun } from './setup-run';
 
 /** One thing a job workspace is made of, in the order it is made. */
@@ -34,10 +35,12 @@ export type JobWorkspace = {
   cwd: string;
   branch: string;
   parts: WorkspacePart[];
+  /** Its port variables, `FLEET_PORTS` and `COMPOSE_PROJECT_NAME`, for its panes. */
+  env: Record<string, string>;
 };
 
-/** The folder a step's crew member works in, and the workspace it belongs to. */
-export type StepFolder = { id: number; root: string; cwd: string };
+/** The folder a step's crew member works in, the workspace it belongs to, and that workspace's env. */
+export type StepFolder = { id: number; root: string; cwd: string; env: Record<string, string> };
 
 /** `git <args>` in `cwd`: stdout, or null when git failed. */
 export type GitWrite = (args: string[], cwd: string) => Promise<string | null>;
@@ -127,6 +130,13 @@ function crewFolder(
   return kind !== 'repo' && members.length === 1 ? (members[0].path ?? root) : root;
 }
 
+/** The port variables of the members a workspace holds, in member order, each once. */
+function workspacePortVars(setup: ProjectSetup | null, parts: WorkspacePart[]): string[] {
+  const held = new Set(parts.map((p) => p.member));
+  const vars = (setup?.members ?? []).filter((m) => held.has(m.name)).flatMap((m) => m.portVars);
+  return [...new Set(vars)];
+}
+
 /**
  * Makes job workspaces under `<agency home>/jobs/<id>/ws/<step>-<n>/`. Each
  * part is recorded before it is made, so a crash or a failed `git worktree
@@ -137,16 +147,20 @@ export class JobWorkspaces {
 
   private readonly runSetup: (run: SetupRun) => Promise<string | null>;
 
+  private readonly ports: PortBlocks;
+
   constructor(
     private readonly deps: {
       store: AgencyStore;
       home: () => string;
       git?: GitWrite;
       runSetup?: (run: SetupRun) => Promise<string | null>;
+      portFree?: (port: number) => Promise<boolean>;
     }
   ) {
     this.git = deps.git ?? gitExec;
     this.runSetup = deps.runSetup ?? runSetup;
+    this.ports = new PortBlocks(() => deps.store.resources.heldPorts(), deps.portFree);
   }
 
   /**
@@ -156,8 +170,8 @@ export class JobWorkspaces {
   async open(jobId: number, stepId: string): Promise<StepFolder> {
     const step = this.deps.store.plans.approved(jobId)?.plan.steps.find((s) => s.id === stepId);
     if (step === undefined || step.workspace === 'new' || !('of' in step.workspace)) {
-      const { id, root, cwd } = await this.make(jobId, stepId);
-      return { id, root, cwd };
+      const { id, root, cwd, env } = await this.make(jobId, stepId);
+      return { id, root, cwd, env };
     }
     const source = step.workspace.of;
     const id = this.stepWorkspace(jobId, source);
@@ -173,7 +187,12 @@ export class JobWorkspaces {
     if (root === null) return null;
     const repo = store.jobRepo(jobId)?.repo;
     const kind = repo === undefined ? 'repo' : projectMembers(store.projects, repo).kind;
-    return { id, root, cwd: crewFolder(kind, root, store.resources.ofWorkspace(id)) };
+    return {
+      id,
+      root,
+      cwd: crewFolder(kind, root, store.resources.ofWorkspace(id)),
+      env: store.resources.workspaceEnv(id)
+    };
   }
 
   /** The workspace a step's last crew member worked in, or null when it had none. */
@@ -197,22 +216,12 @@ export class JobWorkspaces {
     const root = join(jobDir(this.deps.home(), jobId), 'ws', `${stepId}-${n}`);
     const parts = workspaceLayout({ kind, members, step, bases: approved.bases, root, branch });
     await this.checkFree(root, parts);
-    const { id, rows } = store.tx(() => {
-      const id = store.resources.addWorkspace({ jobId, stepId, attempt: n, root, branch });
-      const rows = parts.map((p) =>
-        store.resources.record({
-          jobId,
-          workspaceId: id,
-          kind: p.kind,
-          label: partLabel(p),
-          member: p.member,
-          path: p.path,
-          branch: p.branch,
-          baseSha: p.baseSha,
-          mode: p.mode
-        })
-      );
-      return { id, rows };
+    const setup = await loadSetup(repo.repoId, this.deps.home());
+    const vars = workspacePortVars(setup, parts);
+    const { id, rows, env } = await this.ports.pick(vars, (ports) => {
+      const env = portEnv(ports, vars, composeProjectName(jobId, stepId, n));
+      const ws = { jobId, stepId, attempt: n, root, branch, ports, env };
+      return { env, ...store.tx(() => this.recordParts(ws, parts)) };
     });
     for (const [i, p] of parts.entries()) {
       await this.makePart(p);
@@ -220,8 +229,31 @@ export class JobWorkspaces {
     }
     await this.mergeSources(jobId, step, parts);
     const logs = join(jobDir(this.deps.home(), jobId), 'setup', `${stepId}-${n}`);
-    await this.setUp(repo.repoId, { kind, members, parts, root, logs });
-    return { id, root, cwd: crewFolder(kind, root, parts), branch, parts };
+    await this.setUp(setup, { kind, members, parts, root, logs, env });
+    return { id, root, cwd: crewFolder(kind, root, parts), branch, parts, env };
+  }
+
+  /** The workspace and a row for each part, before any of them is made. */
+  private recordParts(
+    ws: Parameters<AgencyStore['resources']['addWorkspace']>[0],
+    parts: WorkspacePart[]
+  ): { id: number; rows: Array<{ id: number }> } {
+    const { resources } = this.deps.store;
+    const id = resources.addWorkspace(ws);
+    const rows = parts.map((p) =>
+      resources.record({
+        jobId: ws.jobId,
+        workspaceId: id,
+        kind: p.kind,
+        label: partLabel(p),
+        member: p.member,
+        path: p.path,
+        branch: p.branch,
+        baseSha: p.baseSha,
+        mode: p.mode
+      })
+    );
+    return { id, rows };
   }
 
   /**
@@ -269,16 +301,16 @@ export class JobWorkspaces {
    * workspace setup at the root. The first one that fails stops the rest.
    */
   private async setUp(
-    repoId: string,
+    setup: ProjectSetup | null,
     ws: {
       kind: ProjectKind;
       members: ProjectMember[];
       parts: WorkspacePart[];
       root: string;
       logs: string;
+      env: Record<string, string>;
     }
   ): Promise<void> {
-    const setup = await loadSetup(repoId, this.deps.home());
     if (setup === null) return;
     const runs: SetupRun[] = [];
     for (const member of ws.members) {
@@ -290,7 +322,8 @@ export class JobWorkspaces {
         command: saved.setupCommand,
         cwd: part.path,
         timeoutSec: saved.setupTimeoutSec,
-        log: join(ws.logs, `${member.name}.log`)
+        log: join(ws.logs, `${member.name}.log`),
+        env: ws.env
       });
     }
     if (ws.kind !== 'repo' && setup.setupCommand.trim() !== '') {
@@ -299,7 +332,8 @@ export class JobWorkspaces {
         command: setup.setupCommand,
         cwd: ws.root,
         timeoutSec: setup.setupTimeoutSec,
-        log: join(ws.logs, 'workspace.log')
+        log: join(ws.logs, 'workspace.log'),
+        env: ws.env
       });
     }
     for (const run of runs) {

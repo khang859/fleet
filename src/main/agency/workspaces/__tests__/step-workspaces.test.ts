@@ -200,6 +200,46 @@ describe('setup in a new workspace', () => {
   });
 });
 
+describe('ports of a new workspace', () => {
+  it('gives each job its own block, sets the port variables for setup and the crew, and frees the block when the job ends', async () => {
+    const repo = await soloRepo();
+    await saveSetup(repo, (s) => ({
+      ...s,
+      members: s.members.map((m) => ({
+        ...m,
+        portVars: ['API_PORT', 'PORT'],
+        setupCommand: 'echo "$API_PORT $PORT $FLEET_PORTS $COMPOSE_PROJECT_NAME" > ports.txt'
+      }))
+    }));
+    const one = await approvedJobIn(service, repo, step('build'));
+    const two = await approvedJobIn(service, repo, step('build'));
+    const [a, b] = await Promise.all([
+      service.workspaces.open(one.jobId, 'build'),
+      service.workspaces.open(two.jobId, 'build')
+    ]);
+
+    const start = Number(a.env.API_PORT);
+    expect(a.env).toEqual({
+      API_PORT: String(start),
+      PORT: String(start + 1),
+      FLEET_PORTS: `${start}-${start + 19}`,
+      COMPOSE_PROJECT_NAME: 'admiral-j1-build-1'
+    });
+    expect(readFileSync(join(a.root, 'ports.txt'), 'utf8')).toBe(
+      `${start} ${start + 1} ${start}-${start + 19} admiral-j1-build-1\n`
+    );
+    expect(Math.abs(Number(b.env.API_PORT) - start)).toBeGreaterThanOrEqual(20);
+    expect(b.env.COMPOSE_PROJECT_NAME).toBe('admiral-j2-build-1');
+    expect(service.workspaces.folder(one.jobId, a.id)?.env).toEqual(a.env);
+
+    expect(service.closeJob({ jobId: one.jobId, action: 'cancel' })).toEqual({ ok: true });
+    await service.cleanup.start(one.jobId);
+    expect(service.store.resources.heldPorts()).toEqual([
+      { start: Number(b.env.API_PORT), size: 20 }
+    ]);
+  });
+});
+
 describe('runSetup', () => {
   it('stops a command at its timeout, the whole group', async () => {
     const log = join(home.dir, 'slow.log');

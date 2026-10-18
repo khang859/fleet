@@ -152,6 +152,18 @@ describe('stepBrief', () => {
       "Review it.\n\nThis worktree is step api's. Read and run it, but change and commit nothing."
     );
   });
+
+  it('gives the port each server variable is set to, and the block for any other server', () => {
+    const env = {
+      API_PORT: '41000',
+      WEB_PORT: '41001',
+      FLEET_PORTS: '41000-41019',
+      COMPOSE_PROJECT_NAME: 'admiral-j1-web-1'
+    };
+    expect(stepBrief(step(), 'Build it.', env)).toBe(
+      "Build it.\n\nYour env sets the servers' ports: API_PORT=41000, WEB_PORT=41001. Use them, never the defaults: other jobs run servers too. For any other server, pick a free port in 41000-41019 (FLEET_PORTS)."
+    );
+  });
 });
 
 describe('crew_hire', () => {
@@ -164,9 +176,14 @@ describe('crew_hire', () => {
     expect(pane).toMatchObject({
       label: 'builder 1',
       job: { jobId, label: 'j1 Dark mode' },
-      cwd: join(home.dir, 'agency-home', 'jobs', '1', 'ws', 'front-1'),
-      prompt: '[admiral] - Build the toggle.'
+      cwd: join(home.dir, 'agency-home', 'jobs', '1', 'ws', 'front-1')
     });
+    const block = pane.launch.env.FLEET_PORTS;
+    expect(block).toMatch(/^\d+-\d+$/);
+    expect(pane.launch.env.COMPOSE_PROJECT_NAME).toBe('admiral-j1-front-1');
+    expect(pane.prompt).toBe(
+      `[admiral] - Build the toggle.\n\nOther jobs run servers too, so never use a default port. For any other server, pick a free port in ${block} (FLEET_PORTS).`
+    );
     expect(pane.launch.exitOnComplete).toBe(true);
     expect(pane.launch.cmd).toMatch(/^claude --session-id "\$FLEET_CREW_SESSION_ID" /);
     expect(pane.launch.env.FLEET_CREW_ROLE).toContain('You are a Builder.');

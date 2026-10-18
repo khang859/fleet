@@ -69,10 +69,10 @@ export type CrewServiceDeps = {
 
 /**
  * The Admiral's brief, with what the plan says about where the step works:
- * the part of the code it owns, and that a step reading another's worktree
- * changes nothing in it.
+ * the part of the code it owns, that a step reading another's worktree
+ * changes nothing in it, and the ports its workspace's servers use.
  */
-export function stepBrief(step: PlanStep, brief: string): string {
+export function stepBrief(step: PlanStep, brief: string, env: Record<string, string> = {}): string {
   const notes: string[] = [];
   if (step.scope !== undefined) {
     notes.push(
@@ -84,7 +84,24 @@ export function stepBrief(step: PlanStep, brief: string): string {
       `This worktree is step ${step.workspace.of}'s. Read and run it, but change and commit nothing.`
     );
   }
+  const note = portsNote(env);
+  if (note !== null) notes.push(note);
   return [brief, ...notes].join('\n\n');
+}
+
+/** What the brief says about the workspace's ports, or null when it has none. */
+function portsNote(env: Record<string, string>): string | null {
+  const block = env.FLEET_PORTS as string | undefined;
+  if (block === undefined) return null;
+  const set = Object.entries(env)
+    .filter(([name]) => name !== 'FLEET_PORTS' && name !== 'COMPOSE_PROJECT_NAME')
+    .map(([name, port]) => `${name}=${port}`);
+  return [
+    set.length > 0
+      ? `Your env sets the servers' ports: ${set.join(', ')}. Use them, never the defaults: other jobs run servers too.`
+      : 'Other jobs run servers too, so never use a default port.',
+    `For any other server, pick a free port in ${block} (FLEET_PORTS).`
+  ].join(' ');
 }
 
 /** How a crew member's pane went away. */
@@ -185,14 +202,14 @@ export class CrewService {
         runtime,
         model,
         rolePrompt: role.prompt,
-        brief: stepBrief(step, args.brief),
+        brief: stepBrief(step, args.brief, workspace.env),
         sessionId: crew.sessionId ?? '',
         resume: lost !== null,
         dir: join(jobDir(this.deps.home(), job.id), 'crew', `${step.id}-${member}`),
         addDirs: [],
         hooks: panes.hooks()
       });
-      await this.openPane(panes, job, crew, workspace.cwd, launch);
+      await this.openPane(panes, job, crew, workspace, launch);
     } catch (err) {
       this.store.crew.end(crew.id, `did not start: ${String(err)}`);
       throw err;
@@ -238,7 +255,7 @@ export class CrewService {
     panes: CrewPaneHost,
     job: AgencyJob,
     crew: CrewRecord,
-    cwd: string,
+    workspace: StepFolder,
     launch: CrewLaunch
   ): Promise<void> {
     for (const file of launch.files) {
@@ -250,10 +267,10 @@ export class CrewService {
     const at = this.deps.now();
     const error = await panes.open({
       paneId,
-      cwd,
+      cwd: workspace.cwd,
       label: crew.label,
       job: { jobId: job.id, label: `${jobDisplayId(job.id)} ${job.title}` },
-      launch: { cmd: launch.cmd, env: launch.env, exitOnComplete: true },
+      launch: { cmd: launch.cmd, env: { ...workspace.env, ...launch.env }, exitOnComplete: true },
       prompt: launch.prompt,
       at
     });

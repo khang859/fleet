@@ -36,6 +36,9 @@ export function agencyDbPath(): string {
  *
  * Version 7 adds the folders Claude Code has reported from, which it only
  * does once its folder trust prompt is accepted there.
+ *
+ * Version 8 adds each job workspace's block of ports and the env its panes
+ * and setup commands get.
  */
 const MIGRATIONS: readonly string[] = [
   `
@@ -321,6 +324,11 @@ const MIGRATIONS: readonly string[] = [
     folder TEXT PRIMARY KEY,
     seen_at INTEGER NOT NULL
   );
+  `,
+  `
+  ALTER TABLE job_workspaces ADD COLUMN ports_start INTEGER;
+  ALTER TABLE job_workspaces ADD COLUMN ports_size INTEGER;
+  ALTER TABLE job_workspaces ADD COLUMN env_json TEXT NOT NULL DEFAULT '{}';
   `
 ];
 

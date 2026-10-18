@@ -1,5 +1,10 @@
 import type Database from 'better-sqlite3';
+import { z } from 'zod';
+import { TERMINAL_JOB_STATES, type JobState } from '../../../shared/agency';
 import type { AgencyLeftover, ResourceKind, ResourceStatus } from '../../../shared/agency-jobs';
+import type { PortRange } from '../workspaces/port-blocks';
+
+const StringRecord = z.record(z.string(), z.string());
 
 /** `read`: a checkout a step only reads, on no branch, never pushed. */
 export type ResourceMode = 'writable' | 'read';
@@ -172,13 +177,45 @@ export class ResourceStore {
     attempt: number;
     root: string;
     branch: string;
+    ports?: PortRange;
+    env?: Record<string, string>;
   }): number {
     const { lastInsertRowid } = this.db
       .prepare(
-        'INSERT INTO job_workspaces (job_id, step_id, attempt, root, branch) VALUES (?, ?, ?, ?, ?)'
+        `INSERT INTO job_workspaces (job_id, step_id, attempt, root, branch, ports_start, ports_size,
+           env_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(input.jobId, input.stepId, input.attempt, input.root, input.branch);
+      .run(
+        input.jobId,
+        input.stepId,
+        input.attempt,
+        input.root,
+        input.branch,
+        input.ports?.start ?? null,
+        input.ports?.size ?? null,
+        JSON.stringify(input.env ?? {})
+      );
     return Number(lastInsertRowid);
+  }
+
+  /** The env a workspace's panes get: its port variables and Compose project name. */
+  workspaceEnv(workspaceId: number): Record<string, string> {
+    const row = this.db
+      .prepare<[number], { env_json: string }>('SELECT env_json FROM job_workspaces WHERE id = ?')
+      .get(workspaceId);
+    return row === undefined ? {} : StringRecord.parse(JSON.parse(row.env_json));
+  }
+
+  /** The port blocks of workspaces whose job has not ended, so no two jobs share a port. */
+  heldPorts(): PortRange[] {
+    return this.db
+      .prepare<JobState[], PortRange>(
+        `SELECT w.ports_start AS start, w.ports_size AS size FROM job_workspaces w
+         JOIN jobs j ON j.id = w.job_id
+         WHERE w.ports_start IS NOT NULL
+           AND j.state NOT IN (${TERMINAL_JOB_STATES.map(() => '?').join(', ')})`
+      )
+      .all(...TERMINAL_JOB_STATES);
   }
 
   /** The folder a crew member works in, by its workspace id. */
