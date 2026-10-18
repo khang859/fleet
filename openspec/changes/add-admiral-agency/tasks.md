@@ -79,7 +79,7 @@ Phase 2 notes:
 - [x] 3.8 Let the Admiral propose a new role in a plan and save it in the project's crew folder only on approval; verify with a tool test
 - [x] 3.9 Add Settings › Agency › Crew (role and playbook lists, source, errors, open file) matching canvas boards 3.4 and 3.4b, with the role editor: runtime cards with status, a runtime switch that resets the model, Save and Discard, the Model list per runtime (Claude Code names, eva server models with tool calls, missing-model state); verify with a screenshot and a round trip to the role file
 - [x] 3.25 Add the Runtimes tab to Settings › Agency › Crew matching canvas board 3.8: for Claude Code and eva the path, version, checks, models with roles, default model, crew at once and the Test button; the Claude Code login state without reading it; eva's model server without its key; verify with a test that no credential reaches the renderer, and with a screenshot
-- [ ] 3.27 End to end (was 2.26): in a fixture workspace modeled on `Fola-Fi/fola-journey` (umbrella, three submodules, SSH submodule URLs, fixed Postgres port), brief a change across two members, approve, and see linked PRs and the bump PR; verify with `npm run drive` steps and screenshots
+- [x] 3.27 End to end (was 2.26): in a fixture workspace modeled on `Fola-Fi/fola-journey` (umbrella, three submodules, SSH submodule URLs, fixed Postgres port), brief a change across two members, approve, and see linked PRs and the bump PR; verify with `npm run drive` steps and screenshots
 
 Phase 3 notes (decisions made while building):
 
@@ -165,7 +165,11 @@ Phase 3 notes (decisions made while building):
 - 3.27: the builder first asked to run `git submodule update`, which moves the member worktrees off the step branch. The brief now names the members Fleet checked out and their branch, and says not to update them. A second job (j12) ran with no such request. The branch card now shows its member.
 - 3.27: the Admiral sometimes plans one step per member, which is valid. Those steps start in the member folders, which Claude Code may not trust yet, and the plan card warns about that. The Admiral prompt now says one step can change several members.
 - 3.27: "Set up {project} again" in the project menu takes a submodule added after setup. It is refused while a job runs, since that job works in the members it has.
-- 3.27: linked PRs and the umbrella bump PR are not run end to end. They need fixture repositories on GitHub, and this run made none. 2.24 covers them with recorded GitHub responses.
+- 3.27: linked PRs and the umbrella bump PR ran end to end on private fixture repositories on GitHub: an umbrella and three members, with SSH submodule URLs.
+  A brief to add `VERSION` 0.3.0 to `core` and `api` made a two-step plan: one builder opened a draft PR in each member, then a second builder moved both pointers in the umbrella and opened its draft PR.
+  Each PR body has the "Part of Fleet job" block with the merge order core, api, umbrella, and the job sheet showed three PR cards. `web` was not touched.
+- 3.27: setup saved before the umbrella and members had a remote kept `remote: null`, so a later setup showed them as not on GitHub.
+  Scan now always reads the remote from the repository, since the remote is the repository's fact, not the client's choice.
 
 - [x] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`
 - [x] 3.12 Build the job `--settings` file (AskUserQuestion denied, `disableBypassPermissionsMode`, Fleet hooks with the global command string including `PermissionRequest` and `StopFailure`); verify with snapshot tests
