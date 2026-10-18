@@ -169,10 +169,10 @@ describe('SettingsStore settings merge', () => {
     expect(teleprompter.fontSize).toBe(40);
   });
 
-  it('keeps Admiral off with its default spending limits, including for an older file', () => {
+  it('turns Admiral on with its default spending limits, including for an older file', () => {
     store.set({ annotate: { retentionDays: 5 } });
     expect(store.get().agency).toEqual({
-      enabled: false,
+      enabled: true,
       admiral: {
         model: '',
         defaultBudgetUsd: 10,
@@ -191,11 +191,11 @@ describe('SettingsStore settings merge', () => {
   });
 
   it('keeps the other Admiral settings when one is changed', () => {
-    store.set({ agency: { enabled: true } });
+    store.set({ agency: { enabled: false } });
     store.set({ agency: { admiral: { model: 'openrouter:some/model' } } });
     store.set({ agency: { admiral: { monthlyCapUsd: 250 } } });
     expect(store.get().agency).toEqual({
-      enabled: true,
+      enabled: false,
       admiral: {
         model: 'openrouter:some/model',
         defaultBudgetUsd: 10,

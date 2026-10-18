@@ -245,5 +245,9 @@ Phase 3 notes (decisions made while building):
 
 ## 7. Release
 
-- [ ] 7.1 Turn `agency.enabled` on by default and write user docs for the Admiral, project setup, import and "Share with team", including that crew are not sandboxed; verify docs build and the setting default test
-- [ ] 7.2 Run `npm run typecheck`, `npm run lint`, `npm test`, the Go hook tests and `ripwire . --quality-delta` with no new problems
+- [x] 7.1 Turn `agency.enabled` on by default and write user docs for the Admiral, project setup, import and "Share with team", including that crew are not sandboxed; verify docs build and the setting default test
+- [x] 7.2 Run `npm run typecheck`, `npm run lint`, `npm test`, the Go hook tests and `ripwire . --quality-delta` with no new problems
+
+- 7.1: the repository has no docs build. The guide is `docs/admiral.md`, linked from the README, and was checked with prettier. It says up front that crew are not sandboxed.
+- 7.1: the job sheet's settings box no longer says "Crew: Claude Code". It was wrong for eva steps, and PLAN and CREW already show each step's runtime.
+- 7.2: typecheck, lint, 5166 tests and the Go hook tests pass. `ripwire . --quality-delta` flags only short-horizon churn on `DEFAULT_AGENCY_SETTINGS`, which every phase added a setting to.
