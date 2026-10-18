@@ -143,7 +143,8 @@ export class ProjectsService {
 
   /**
    * Setup's findings for a project, member by member. A saved setup wins for
-   * the members it has; a member checked out since gets fresh findings.
+   * the members it has; a member checked out since gets fresh findings. The
+   * remote is the repository's, not the client's, so it is always read fresh.
    */
   async scan(repo: AgencyRepoRef): Promise<SetupScan> {
     const checked = await this.verified(repo);
@@ -153,9 +154,10 @@ export class ProjectsService {
       loadSetup(checked.repoId, this.home)
     ]);
     if (saved === null) return { ...found, saved: false, newer: [] };
-    const members = found.setup.members.map(
-      (fresh) => saved.members.find((m) => m.name === fresh.name) ?? fresh
-    );
+    const members = found.setup.members.map((fresh) => {
+      const own = saved.members.find((m) => m.name === fresh.name);
+      return own === undefined ? fresh : { ...own, remote: fresh.remote };
+    });
     return {
       ...found,
       setup: { ...saved, kind: found.kind, members },

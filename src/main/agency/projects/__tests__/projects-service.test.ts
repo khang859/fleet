@@ -70,6 +70,16 @@ describe('ProjectsService', { timeout: 20_000 }, () => {
     expect(again.setup.name).toBe('Shop');
   });
 
+  it('shows the remote the repository has now, not the one saved with the setup', async () => {
+    const first = await service.projects.scan(repo);
+    expect(first.setup.members[0].remote).toBeNull();
+    await service.projects.saveSetup({ repo, setup: first.setup, imports: [] }, { finish: true });
+    git(root, 'remote', 'add', 'origin', 'git@github.com:acme/shop.git');
+    const again = await service.projects.scan(repo);
+    expect(again.saved).toBe(true);
+    expect(again.setup.members[0].remote).toBe('git@github.com:acme/shop.git');
+  });
+
   it('keeps an imported crew file until the client takes the newer one from the repo', async () => {
     const qa = '.fleet/crew/roles/qa.md';
     const copy = join(home, 'projects', repo.repoId, 'crew', 'roles', 'qa.md');
