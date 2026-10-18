@@ -164,6 +164,23 @@ describe('stepBrief', () => {
     );
   });
 
+  it('names what the step hands back, and where a reader writes its files', () => {
+    const deliverables = [
+      { kind: 'review' as const },
+      { kind: 'branch' as const, label: 'The fix' }
+    ];
+    expect(stepBrief(step({ deliverables }), 'Fix it.')).toBe(
+      'Fix it.\n\nThis step hands back: Review notes (review), The fix (branch). Pass each file to `fleet agency done` with `--deliver <path>`.'
+    );
+    expect(stepBrief(step({ deliverables: ['link'] }), 'Find it.')).toBe(
+      'Find it.\n\nThis step hands back: Link (link).'
+    );
+    const reader = step({ workspace: { of: 'fix' }, deliverables: ['review'] });
+    expect(stepBrief(reader, 'Review it.', { handback: '/jobs/1/handback/web' })).toContain(
+      'This step hands back: Review notes (review). Write each file it hands back in /jobs/1/handback/web. Pass each file to `fleet agency done` with `--deliver <path>`.'
+    );
+  });
+
   it('names the skills the step uses', () => {
     expect(stepBrief(step({ skills: ['journey-qa-sweep'] }), 'Test it.')).toBe(
       'Test it.\n\nUse the skill journey-qa-sweep for this work.'
@@ -202,7 +219,7 @@ describe('crew_hire', () => {
     expect(block).toMatch(/^\d+-\d+$/);
     expect(pane.launch.env.COMPOSE_PROJECT_NAME).toBe('admiral-j1-front-1');
     expect(pane.prompt).toBe(
-      `[admiral] - Build the toggle.\n\nOther jobs run servers too, so never use a default port. For any other server, pick a free port in ${block} (FLEET_PORTS).`
+      `[admiral] - Build the toggle.\n\nThis step hands back: Local branch (branch).\n\nOther jobs run servers too, so never use a default port. For any other server, pick a free port in ${block} (FLEET_PORTS).`
     );
     expect(pane.launch.exitOnComplete).toBe(true);
     expect(pane.launch.cmd).toMatch(/^claude --session-id "\$FLEET_CREW_SESSION_ID" /);
@@ -213,6 +230,29 @@ describe('crew_hire', () => {
       { label: 'builder 1', stepId: 'front', runtime: 'claude', status: 'starting' }
     ]);
     expect(service.store.plans.logTail(jobId).at(-1)?.text).toBe('Hired builder 1 for step front');
+  });
+
+  it("gives a reader of another step's worktree a hand-back folder outside it", async () => {
+    const jobId = await approvedJob([
+      step('fix'),
+      step('review', {
+        role: 'reviewer',
+        after: ['fix'],
+        workspace: { of: 'fix' },
+        deliverables: ['review']
+      })
+    ]);
+    await toolsOf(jobId).crewHire!({ step: 'fix', brief: 'Fix it.' });
+    service.jobs.updateStep(jobId, { step: 'fix', status: 'done' });
+    await toolsOf(jobId).crewHire!({ step: 'review', brief: 'Review it.' });
+
+    const folder = join(home.dir, 'agency-home', 'jobs', '1', 'handback', 'review');
+    const [fix, review] = panes.opened;
+    expect(fix.launch.env.FLEET_CREW_ADD_DIR_0).toBeUndefined();
+    expect(review.launch.env.FLEET_CREW_ADD_DIR_0).toBe(folder);
+    expect(review.launch.cmd).toContain('--add-dir "$FLEET_CREW_ADD_DIR_0"');
+    expect(existsSync(folder)).toBe(true);
+    expect(review.prompt).toContain(`Write each file it hands back in ${folder}.`);
   });
 
   it('is not offered in the lobby', () => {

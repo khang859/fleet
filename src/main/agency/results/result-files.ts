@@ -35,6 +35,14 @@ export function resultsDir(home: string, jobId: number): string {
   return join(jobDir(home, jobId), 'results');
 }
 
+/**
+ * Where a step that reads another's worktree writes the files it hands
+ * back. It is in the job's folder, so `job_deliver` takes paths in it.
+ */
+export function handbackDir(home: string, jobId: number, stepId: string): string {
+  return join(jobDir(home, jobId), 'handback', stepId);
+}
+
 /** Why a path may not be handed back, or null when it may. */
 async function refusal(path: string, roots: string[]): Promise<string | null> {
   if (!isAbsolute(path)) return `${path} is not an absolute path`;

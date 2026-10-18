@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { jobDisplayId, type AgencyJob } from '../../../shared/agency';
+import { isFileResultKind } from '../../../shared/agency-jobs';
 import { CrewReportSchema, type CrewRuntime, type CrewSnapshot } from '../../../shared/agency-crew';
 import type { PlanStep } from '../../../shared/agency-plan';
 import {
@@ -21,6 +22,7 @@ import { cleanPrompt, PROMPT_MISMATCH, promptProblem } from '../../claude-sessio
 import { createLogger } from '../../logger';
 import type { JobsService } from '../jobs';
 import { jobDir } from '../projects/paths';
+import { handbackDir } from '../results/result-files';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import {
   CREW_LIVE,
@@ -92,13 +94,14 @@ export type CrewServiceDeps = {
 /**
  * The Admiral's brief, with what the plan says about the step: the skills
  * it uses, the part of the code it owns, that a step reading another's worktree
- * changes nothing in it, the ports its workspace's servers use, and for a
- * role that runs the stack, to stop it so the next step gets the slot.
+ * changes nothing in it, what it hands back and where its files go, the
+ * ports its workspace's servers use, and for a role that runs the stack, to
+ * stop it so the next step gets the slot.
  */
 export function stepBrief(
   step: PlanStep,
   brief: string,
-  workspace: { env?: Record<string, string>; stack?: boolean } = {}
+  workspace: { env?: Record<string, string>; stack?: boolean; handback?: string } = {}
 ): string {
   const notes: string[] = [];
   if (step.skills.length > 0) {
@@ -117,6 +120,8 @@ export function stepBrief(
       `This worktree is step ${step.workspace.of}'s. Read and run it, but change and commit nothing.`
     );
   }
+  const handsBack = handbackNote(step, workspace.handback);
+  if (handsBack !== null) notes.push(handsBack);
   const note = portsNote(workspace.env ?? {});
   if (note !== null) notes.push(note);
   if (workspace.stack === true) {
@@ -125,6 +130,22 @@ export function stepBrief(
     );
   }
   return [brief, ...notes].join('\n\n');
+}
+
+/**
+ * What the brief says the step hands back, or null when the plan lists
+ * nothing. A step that only reads another's worktree writes its files in
+ * the hand-back folder, since the worktree is not its to change.
+ */
+function handbackNote(step: PlanStep, folder: string | undefined): string | null {
+  if (step.deliverables.length === 0) return null;
+  const listed = step.deliverables.map((d) => `${d.label} (${d.kind})`).join(', ');
+  const lines = [`This step hands back: ${listed}.`];
+  if (step.deliverables.some((d) => isFileResultKind(d.kind))) {
+    if (folder !== undefined) lines.push(`Write each file it hands back in ${folder}.`);
+    lines.push('Pass each file to `fleet agency done` with `--deliver <path>`.');
+  }
+  return lines.join(' ');
 }
 
 /** What the brief says about the workspace's ports, or null when it has none. */
@@ -242,7 +263,12 @@ export class CrewService {
       (runtime === role.runtime ? role.model : undefined) ??
       this.deps.defaultModel?.(runtime);
     const workspace = await this.workspaceFor(job.id, step.id, lost, swap);
-    const brief = stepBrief(step, args.brief, { env: workspace.env, stack: role.stack });
+    const handback = await this.handbackFor(job.id, step);
+    const brief = stepBrief(step, args.brief, {
+      env: workspace.env,
+      stack: role.stack,
+      handback
+    });
     const all = this.store.crew.all(job.id);
     const member = all.filter((c) => c.stepId === step.id).length + 1;
     const crew = this.store.crew.insert({
@@ -270,7 +296,7 @@ export class CrewService {
         sessionId: crew.sessionId ?? '',
         resume: lost !== null,
         dir: join(jobDir(this.deps.home(), job.id), 'crew', `${step.id}-${member}`),
-        addDirs: [],
+        addDirs: handback === undefined ? [] : [handback],
         hooks: panes.hooks()
       });
       await this.openPane(panes, job, crew, workspace, launch);
@@ -294,6 +320,18 @@ export class CrewService {
       ].join(' '),
       summary: `${verb.toLowerCase()} ${crew.label}`
     };
+  }
+
+  /**
+   * The folder a step that reads another's worktree writes the files it
+   * hands back in, made for it; none for any other step.
+   */
+  private async handbackFor(jobId: number, step: PlanStep): Promise<string | undefined> {
+    const reads = step.workspace !== 'new' && 'of' in step.workspace;
+    if (!reads || !step.deliverables.some((d) => isFileResultKind(d.kind))) return undefined;
+    const folder = handbackDir(this.deps.home(), jobId, step.id);
+    await mkdir(folder, { recursive: true });
+    return folder;
   }
 
   /**
