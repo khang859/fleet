@@ -3,6 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir, release } from 'node:os';
 import { LOG_DIR } from './logger';
+import { maskCredentials } from './redactor';
 import type { DiagnosticsInfo } from '../shared/ipc-api';
 
 /** Default amount of log content returned to the renderer for a problem report. */
@@ -33,19 +34,7 @@ export function redact(text: string): string {
   const home = homedir();
   if (home) out = out.split(home).join('~');
 
-  // key/secret/token/password = value  →  key = [REDACTED]
-  out = out.replace(
-    /((?:api[_-]?key|secret|token|password|passphrase|auth(?:orization)?)\s*[:='"]+\s*)\S+/gi,
-    '$1[REDACTED]'
-  );
-  // Bearer tokens
-  out = out.replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]');
-  // Provider key prefixes (sk-..., pk-..., rk-...)
-  out = out.replace(/\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}/g, '$1-[REDACTED]');
-  // AWS access key IDs
-  out = out.replace(/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED_AWS_KEY]');
-
-  return out;
+  return maskCredentials(out);
 }
 
 /**

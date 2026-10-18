@@ -431,6 +431,28 @@ describe('Admiral turn', () => {
     );
   });
 
+  it('marks a line the client chose over a CLAUDE.md rule, and tells the Admiral to pass it on', async () => {
+    agency.clientFiles.write(
+      REPO.repoId,
+      '# repo\n- Skip docs unless asked. (from CLAUDE.md, 2026-10-18)\n'
+    );
+    const id = agency.store.preferences.openConflict({
+      layer: REPO.repoId,
+      text: 'Skip docs unless asked.',
+      ruleSource: 'CLAUDE.md',
+      ruleText: 'Update docs with every change.'
+    });
+    agency.store.preferences.settleConflict(id, 'line');
+
+    const { rounds } = await turn();
+
+    const note = rounds[0].messages.map(text).find((t) => t.includes('This project:'));
+    expect(note).toContain(
+      'P1. Skip docs unless asked. (from CLAUDE.md, 2026-10-18) (overrides CLAUDE.md)'
+    );
+    expect(ADMIRAL_SYSTEM_PROMPT).toContain('say so in the brief of every crew member it concerns');
+  });
+
   it('tells the Admiral what Fleet does on its own under the trust level, and no more', async () => {
     agency.store.preferences.setTrust(REPO.repoId, { level: 'pr', autoStartUsd: 4 });
 

@@ -5,14 +5,18 @@ import {
   clientEntryList,
   normText,
   sourceLabel,
-  type ClientEntry
+  type ClientEntry,
+  type PreferenceConflict
 } from '../../../../shared/agency-client-file';
 import type {
   AgencyProjectSummary,
   ClientFileView,
-  ClientLineChange
+  ClientLineChange,
+  ClientLineResult
 } from '../../../../shared/agency-projects';
+import type { AgencyRepoRef } from '../../../../shared/agency';
 import { useSettingsNavStore } from '../../store/settings-nav-store';
+import { ReadYourWork } from '../admiral/ReadYourWork';
 import { ClientFileEditor } from './ClientFileEditor';
 import { TrustPicker } from './TrustPicker';
 
@@ -20,6 +24,9 @@ const FIELD =
   'min-w-0 rounded border border-fleet-border-strong bg-fleet-surface-3 px-2 py-1 text-sm text-fleet-text';
 const ICON =
   'flex h-7 w-7 shrink-0 items-center justify-center rounded text-fleet-text-subtle transition hover:bg-fleet-surface-3 hover:text-fleet-text focus-ring disabled:pointer-events-none disabled:opacity-40';
+
+const SETTLE =
+  'rounded border border-fleet-border-strong px-2 py-1 text-xs text-fleet-text-secondary transition hover:bg-fleet-surface-3 hover:text-fleet-text active:scale-[0.97] focus-ring disabled:opacity-50';
 
 /** The line being edited, or the new line being typed when `index` is null. */
 export type LineDraft = { index: number | null; text: string };
@@ -59,22 +66,31 @@ export function AdmiralKnows(): React.JSX.Element {
     void load(layer);
   }, [layer, load]);
 
-  const name =
-    layer === YOU_LAYER
-      ? 'You'
-      : (projects?.find((p) => p.repo.repoId === layer)?.repo.name ?? 'Project');
+  const project = projects?.find((p) => p.repo.repoId === layer)?.repo ?? null;
+  const name = layer === YOU_LAYER ? 'You' : (project?.name ?? 'Project');
 
-  const change = async (c: ClientLineChange): Promise<void> => {
+  /** Run one change to the layer, show why it was refused, and read the file again. */
+  const act = async (call: () => Promise<ClientLineResult>): Promise<boolean> => {
     setBusy(true);
     try {
-      const result = await window.fleet.agency.projects.changeClientLine({ layer, change: c });
+      const result = await call();
       setError(result.ok ? null : result.reason);
-      if (result.ok) setDraft(null);
       await load(layer);
+      return result.ok;
     } finally {
       setBusy(false);
     }
   };
+
+  const change = async (c: ClientLineChange): Promise<void> => {
+    if (await act(async () => window.fleet.agency.projects.changeClientLine({ layer, change: c })))
+      setDraft(null);
+  };
+
+  const settle = async (id: number, winner: 'line' | 'rule'): Promise<boolean> =>
+    act(async () =>
+      window.fleet.agency.projects.settleConflict({ repoId: layer, layer, id, winner })
+    );
 
   const entries = clientEntryList(file?.text ?? null);
   const saveDraft = (): void => {
@@ -94,6 +110,10 @@ export function AdmiralKnows(): React.JSX.Element {
       <LayerTabs projects={projects ?? []} layer={layer} onLayer={setLayer} />
 
       {layer !== YOU_LAYER && <TrustPicker repoId={layer} />}
+
+      {project !== null && (
+        <ReadMyWork key={project.repoId} repo={project} onKept={() => void load(layer)} />
+      )}
 
       {file?.changedOutside === true && (
         <OutsideChange
@@ -124,11 +144,13 @@ export function AdmiralKnows(): React.JSX.Element {
           <PreferenceLines
             entries={entries}
             uses={file.uses}
+            conflicts={file.conflicts}
             draft={draft}
             disabled={busy || file.changedOutside}
             onDraft={setDraft}
             onSave={saveDraft}
             onRemove={(index) => void change({ kind: 'remove', index, was: entries[index].text })}
+            onSettle={(id, winner) => void settle(id, winner)}
           />
           {error !== null && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
           <LineActions
@@ -183,6 +205,38 @@ function LineActions(props: {
       >
         Edit as text
       </button>
+    </div>
+  );
+}
+
+/** A project's way into Read your work, and the read itself once opened. */
+function ReadMyWork(props: { repo: AgencyRepoRef; onKept: () => void }): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="flex-1 text-xs text-fleet-text-subtle">
+          The Admiral can learn more from your commits, reviews and past jobs here.
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="shrink-0 rounded bg-fleet-surface-3 px-2 py-1 text-xs text-fleet-text transition active:scale-[0.97] focus-ring"
+        >
+          Read my work
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded border border-fleet-border p-3">
+      <ReadYourWork
+        repo={props.repo}
+        wide={false}
+        doneLabel={{ before: 'Close', after: 'Done' }}
+        onKept={props.onKept}
+        onDone={() => setOpen(false)}
+      />
     </div>
   );
 }
@@ -246,13 +300,18 @@ export function PreferenceLines(props: {
   entries: ClientEntry[];
   /** How many jobs used each line, by its normal form. */
   uses: Record<string, number>;
+  /** The layer's clashes with the project's rule files, open or settled. */
+  conflicts: PreferenceConflict[];
   draft: LineDraft | null;
   disabled: boolean;
   onDraft: (draft: LineDraft | null) => void;
   onSave: () => void;
   onRemove: (index: number) => void;
+  onSettle: (id: number, winner: 'line' | 'rule') => void;
 }): React.JSX.Element {
   const { entries, draft } = props;
+  const conflictOf = (text: string): PreferenceConflict | undefined =>
+    props.conflicts.find((c) => c.normText === normText(text) && c.status !== 'rule');
   if (entries.length === 0 && draft === null) {
     return (
       <p className="rounded border border-dashed border-fleet-border px-3 py-4 text-center text-xs text-fleet-text-subtle">
@@ -262,41 +321,117 @@ export function PreferenceLines(props: {
   }
   return (
     <ul className="divide-y divide-fleet-border rounded border border-fleet-border">
-      {entries.map((entry, index) =>
-        draft?.index === index ? (
-          <DraftRow key={index} {...props} draft={draft} />
-        ) : (
-          <li key={index} className="flex items-center gap-3 py-1.5 pl-3 pr-1.5">
-            <span className="min-w-0 flex-1 text-sm text-fleet-text">{entry.text}</span>
-            <span className="shrink-0 text-xs text-fleet-text-subtle">
-              {sourceLabel(entry.source)}
-            </span>
-            <UseCount n={props.uses[normText(entry.text)] ?? 0} />
-            <span className="flex shrink-0">
-              <button
-                type="button"
-                aria-label={`Edit "${entry.text}"`}
-                disabled={props.disabled || draft !== null}
-                onClick={() => props.onDraft({ index, text: entry.text })}
-                className={ICON}
-              >
-                <Pencil size={13} />
-              </button>
-              <button
-                type="button"
-                aria-label={`Remove "${entry.text}"`}
-                disabled={props.disabled || draft !== null}
-                onClick={() => props.onRemove(index)}
-                className={ICON}
-              >
-                <Trash2 size={13} />
-              </button>
-            </span>
-          </li>
-        )
-      )}
+      {entries.map((entry, index) => {
+        if (draft?.index === index) return <DraftRow key={index} {...props} draft={draft} />;
+        const conflict = conflictOf(entry.text);
+        if (conflict?.status === 'open') {
+          return (
+            <ConflictRow
+              key={index}
+              text={entry.text}
+              conflict={conflict}
+              disabled={props.disabled}
+              onSettle={props.onSettle}
+            />
+          );
+        }
+        return (
+          <LineRow
+            key={index}
+            entry={entry}
+            wonOver={conflict?.ruleSource ?? null}
+            uses={props.uses[normText(entry.text)] ?? 0}
+            locked={props.disabled || draft !== null}
+            onEdit={() => props.onDraft({ index, text: entry.text })}
+            onRemove={() => props.onRemove(index)}
+          />
+        );
+      })}
       {draft?.index === null && <DraftRow {...props} draft={draft} />}
     </ul>
+  );
+}
+
+/** One saved line: its source, how many jobs used it, and buttons to edit or remove it. */
+function LineRow(props: {
+  entry: ClientEntry;
+  /** The rule file this line won over, when it clashed with one. */
+  wonOver: string | null;
+  uses: number;
+  locked: boolean;
+  onEdit: () => void;
+  onRemove: () => void;
+}): React.JSX.Element {
+  const { entry } = props;
+  return (
+    <li className="flex items-center gap-3 py-1.5 pl-3 pr-1.5">
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="text-sm text-fleet-text">{entry.text}</span>
+        {props.wonOver !== null && (
+          <span className="text-xs text-fleet-text-subtle">Wins over {props.wonOver}</span>
+        )}
+      </span>
+      <span className="shrink-0 text-xs text-fleet-text-subtle">{sourceLabel(entry.source)}</span>
+      <UseCount n={props.uses} />
+      <span className="flex shrink-0">
+        <button
+          type="button"
+          aria-label={`Edit "${entry.text}"`}
+          disabled={props.locked}
+          onClick={props.onEdit}
+          className={ICON}
+        >
+          <Pencil size={13} />
+        </button>
+        <button
+          type="button"
+          aria-label={`Remove "${entry.text}"`}
+          disabled={props.locked}
+          onClick={props.onRemove}
+          className={ICON}
+        >
+          <Trash2 size={13} />
+        </button>
+      </span>
+    </li>
+  );
+}
+
+/** A line that clashes with a project rule, until the client picks which one wins. */
+function ConflictRow(props: {
+  text: string;
+  conflict: PreferenceConflict;
+  disabled: boolean;
+  onSettle: (id: number, winner: 'line' | 'rule') => void;
+}): React.JSX.Element {
+  const { conflict } = props;
+  return (
+    <li className="flex flex-wrap items-center gap-3 bg-amber-400/5 py-2 pl-3 pr-1.5">
+      <span className="flex min-w-[220px] flex-1 flex-col gap-0.5">
+        <span className="text-sm text-fleet-text">{props.text}</span>
+        <span className="text-xs text-amber-700 dark:text-amber-400/90">
+          Clashes with {conflict.ruleSource}: &ldquo;{conflict.ruleText}&rdquo; Which one wins?
+        </span>
+      </span>
+      <span className="flex shrink-0 gap-1.5">
+        <button
+          type="button"
+          disabled={props.disabled}
+          onClick={() => props.onSettle(conflict.id, 'line')}
+          className={SETTLE}
+        >
+          Keep this line
+        </button>
+        <button
+          type="button"
+          disabled={props.disabled}
+          onClick={() => props.onSettle(conflict.id, 'rule')}
+          className={SETTLE}
+        >
+          {conflict.ruleSource} wins
+        </button>
+      </span>
+    </li>
   );
 }
 

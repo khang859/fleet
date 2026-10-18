@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   DEFAULT_AGENCY_SETTINGS,
@@ -105,6 +106,7 @@ import { AgencySettingsService, type AgencySettingsAccess } from './settings';
 import { agencyDbPath } from './store/agency-db';
 import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
 import { SpendService } from './spend/spend-service';
+import { Understanding, type AdmiralCompletion } from './understanding';
 import { pctText, usdText } from '../../shared/agency-spend';
 
 const PASSING_RUNTIME = { path: null, version: null, checks: [] };
@@ -173,6 +175,10 @@ export type AgencyServiceDeps = {
   agencySettings?: AgencySettingsAccess;
   /** The permission hooks Fleet holds for crew. Unset, no answer reaches a crew member. */
   permissionHooks?: Pick<PermissionDeps, 'respond' | 'pending'>;
+  /** One call on the Admiral's model, for Read your work. Unset, it cannot read. */
+  admiralCompletion?: AdmiralCompletion;
+  /** The client's home folder, where Read your work reads `~/.claude/CLAUDE.md`. Defaults to the real one. */
+  userHome?: string;
 };
 
 const NO_PERMISSION_HOOKS: Pick<PermissionDeps, 'respond' | 'pending'> = {
@@ -224,6 +230,7 @@ export class AgencyService {
   readonly crew: CrewService;
   readonly permissions: CrewPermissions;
   readonly spend: SpendService;
+  readonly understanding: Understanding;
   /** How crew panes are stopped and found live. */
   private readonly crewControl: CrewControl;
   /** Folders already written to the trust table this run. */
@@ -263,6 +270,19 @@ export class AgencyService {
       working: (sessionId) => inATurn(panes?.session(sessionId)),
       interruptCrew: (jobId, why) => this.crew.interruptJob(jobId, why),
       admitQueued: () => this.jobs.admitQueued()
+    });
+    this.understanding = new Understanding({
+      store: this.store,
+      clientFiles: this.clientFiles,
+      spend: this.spend,
+      git: deps.git ?? readOnlyGit,
+      gh: deps.gh ?? nativeGh,
+      userHome: deps.userHome ?? homedir(),
+      root: async (repo) => this.projects.projectRoot(repo),
+      rules: async (repo) => this.projects.ruleCandidates(repo),
+      redactor: async (repoId) => this.redactor(repoId),
+      complete: deps.admiralCompletion ?? null,
+      emit: (repoId) => deps.emit({ repoId, jobIds: [] })
     });
     this.servers = new ServerWatch({
       store: this.store,

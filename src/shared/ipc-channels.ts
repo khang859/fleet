@@ -480,6 +480,10 @@ export const IPC_CHANNELS = {
   AGENCY_MEET_ANSWER: 'agency:meet-answer',
   AGENCY_MEET_FINISH: 'agency:meet-finish',
   AGENCY_BRIEF_IDEAS: 'agency:brief-ideas',
+  AGENCY_READ_SOURCES: 'agency:read-sources',
+  AGENCY_READ_WORK: 'agency:read-work',
+  AGENCY_READ_KEEP: 'agency:read-keep',
+  AGENCY_CONFLICT_SETTLE: 'agency:conflict-settle',
   // Renderer-bound: agency state for a repository changed.
   AGENCY_CHANGED: 'agency:changed'
 } as const;

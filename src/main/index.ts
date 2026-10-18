@@ -1729,6 +1729,26 @@ void app.whenReady().then(async () => {
       get: () => settingsStore.get().agency,
       set: (agency) => settingsStore.set({ agency })
     },
+    // Read your work: one call on the Admiral's model, the Agent's coding model when it has none.
+    admiralCompletion: async ({ system, user, maxTokens }) => {
+      const settings = settingsStore.get();
+      const resolved = resolveTarget(
+        settings.agency.admiral.model || settings.ai.agent.coding.model
+      );
+      if (!resolved.ok) throw new Error(resolved.message);
+      const out = await completeOnce({
+        target: resolved.target,
+        model: resolved.wireModelId,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        maxTokens,
+        temperature: 0,
+        reasoning: { effort: 'low' }
+      });
+      return { text: out.text, costUsd: out.usage?.costUsd ?? null };
+    },
     permissionHooks: {
       respond: (toolUseId, decision, reason) =>
         claudeSessions?.respondToPermission(toolUseId, decision, reason) ?? false,

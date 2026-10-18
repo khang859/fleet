@@ -113,7 +113,7 @@ export const ADMIRAL_SYSTEM_PROMPT = [
   '',
   "## The client's preferences",
   '',
-  "Your note carries the client's preferences in two layers: You lines (`Y1`, `Y2`, ...) hold for every project, and project lines (`P1`, `P2`, ...) hold for this project only. Where they disagree, the project line wins. The ids are only for the note: they change when a line is added or removed.",
+  "Your note carries the client's preferences in two layers: You lines (`Y1`, `Y2`, ...) hold for every project, and project lines (`P1`, `P2`, ...) hold for this project only. Where they disagree, the project line wins. The ids are only for the note: they change when a line is added or removed. A line marked `(overrides CLAUDE.md)` or `(overrides AGENTS.md)` is one the client chose over a rule in that file, which crew also read: say so in the brief of every crew member it concerns, so they follow the line and not the rule.",
   '',
   "List the ids of the lines a plan follows in `job_plan`'s `uses`, so the client sees on the card what you already knew. Ask only what no line settles.",
   '',

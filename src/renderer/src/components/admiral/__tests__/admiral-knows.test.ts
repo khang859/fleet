@@ -1,7 +1,11 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { normText, type ClientEntry } from '../../../../../shared/agency-client-file';
+import {
+  normText,
+  type ClientEntry,
+  type PreferenceConflict
+} from '../../../../../shared/agency-client-file';
 import type { ProjectTrust } from '../../../../../shared/agency-projects';
 import { PreferenceLines, type LineDraft } from '../../settings/AdmiralKnows';
 import { TrustChoices } from '../../settings/TrustPicker';
@@ -19,17 +23,20 @@ const lines = (
   entries: ClientEntry[],
   draft: LineDraft | null = null,
   disabled = false,
-  uses: Record<string, number> = {}
+  uses: Record<string, number> = {},
+  conflicts: PreferenceConflict[] = []
 ): string =>
   renderToStaticMarkup(
     createElement(PreferenceLines, {
       entries,
       uses,
+      conflicts,
       draft,
       disabled,
       onDraft: () => {},
       onSave: () => {},
-      onRemove: () => {}
+      onRemove: () => {},
+      onSettle: () => {}
     })
   );
 
@@ -84,6 +91,32 @@ describe('use counts', () => {
     expect(html).toMatch(/Never push to main\..*used 6 times/s);
     expect(html).toMatch(/Open PRs as drafts\..*used 1 time</s);
     expect(html.match(/used \d+ time/g)).toHaveLength(2);
+  });
+});
+
+describe('conflicts', () => {
+  const conflict = (status: PreferenceConflict['status']): PreferenceConflict => ({
+    id: 1,
+    layer: 'repo',
+    normText: normText('Open PRs as drafts.'),
+    ruleSource: 'CLAUDE.md',
+    ruleText: 'Open PRs ready for review.',
+    status
+  });
+
+  it('asks which one wins while a line clashes with a rule', () => {
+    const html = lines(ENTRIES, null, false, {}, [conflict('open')]);
+    expect(html).toContain('Clashes with CLAUDE.md: “Open PRs ready for review.” Which one wins?');
+    expect(html).toContain('Keep this line');
+    expect(html).toContain('CLAUDE.md wins');
+    expect(html).not.toContain('aria-label="Remove &quot;Open PRs as drafts.&quot;"');
+  });
+
+  it('says a line that won wins over the rule, with its buttons back', () => {
+    const html = lines(ENTRIES, null, false, {}, [conflict('line')]);
+    expect(html).toMatch(/Open PRs as drafts\..*Wins over CLAUDE\.md/s);
+    expect(html).not.toContain('Which one wins?');
+    expect(html).toContain('aria-label="Remove &quot;Open PRs as drafts.&quot;"');
   });
 });
 

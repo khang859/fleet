@@ -25,6 +25,7 @@ import { STAGE_LABEL } from './admiral-stage';
 import { BudgetPicker } from './BudgetPicker';
 import { MeetEnd } from './MeetEnd';
 import { AdmiralSays, OnboardingButton, SectionLabel } from './onboarding-ui';
+import { ReadYourWork } from './ReadYourWork';
 
 /** What the client said last, as a bubble, and what the Admiral took from it. */
 type LastAnswer = { said: string | null; got: string };
@@ -39,7 +40,8 @@ type Budget = { usd: number | null; weekPct: number | null };
  * Each answer is saved as it is given, so Finish later loses nothing, and the
  * side panel shows the lines as they land. The questions are the ones left
  * when the screen opened; a project's first run ends with the rules and trust
- * steps, and a later run goes straight back to the Bridge.
+ * steps, then offers Read your work, and a later run goes straight back to
+ * the Bridge.
  */
 export function MeetYou({
   paneId,
@@ -53,7 +55,8 @@ export function MeetYou({
   /** Room for the side panel beside the questions rather than under them. */
   wide: boolean;
 }): React.JSX.Element {
-  const firstRun = onboarding.starterDoneAt === null;
+  // Held from the first draw: finishing sets the starter time, and the end steps still show.
+  const [firstRun] = useState(() => onboarding.starterDoneAt === null);
   const [order] = useState<MeetQuestionId[]>(() => onboarding.meetLeft);
   const [step, setStep] = useState(0);
   const [last, setLast] = useState<LastAnswer | null>(null);
@@ -76,21 +79,12 @@ export function MeetYou({
     void loadLayers();
   }, [loadLayers]);
 
-  const finish = useCallback(
-    async (rules: ClientLineInput[]): Promise<void> => {
-      setBusy(true);
-      setError(null);
-      try {
-        await window.fleet.agency.projects.meetFinish({ repo, rules });
-        useAdmiralOnboardingStore.getState().setMeeting(paneId, false);
-      } catch (err) {
-        setError(String(err));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [repo, paneId]
-  );
+  const { reading, leave, finish, finishThenRead } = useMeetFinish({
+    repo,
+    paneId,
+    setBusy,
+    setError
+  });
 
   // A later run has no end steps: its last answer goes straight back to the Bridge.
   const finished = useRef(false);
@@ -133,6 +127,8 @@ export function MeetYou({
     }
   };
 
+  if (reading) return <MeetRead repo={repo} wide={wide} onDone={leave} />;
+
   const question = atEnd ? null : meetQuestion(order[step]);
   const knows = <MeetKnows repo={repo} layers={layers} fresh={fresh} />;
   const main =
@@ -156,7 +152,7 @@ export function MeetYou({
             last={last}
             busy={busy}
             error={error}
-            onFinish={(r) => void finish(r)}
+            onFinish={(r) => void finishThenRead(r)}
           />
           {wide ? null : knows}
         </div>
@@ -178,6 +174,86 @@ export function MeetYou({
             {knows}
           </aside>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Leaving Meet you: Finish later and a later run's end save and go back to
+ * the Bridge; a first run's end saves, then offers Read your work first.
+ */
+function useMeetFinish(deps: {
+  repo: AgencyRepoRef;
+  paneId: string;
+  setBusy: (busy: boolean) => void;
+  setError: (error: string | null) => void;
+}): {
+  reading: boolean;
+  leave: () => void;
+  finish: (rules: ClientLineInput[]) => Promise<void>;
+  finishThenRead: (rules: ClientLineInput[]) => Promise<void>;
+} {
+  const { repo, paneId, setBusy, setError } = deps;
+  const [reading, setReading] = useState(false);
+
+  const leave = useCallback((): void => {
+    useAdmiralOnboardingStore.getState().setMeeting(paneId, false);
+  }, [paneId]);
+
+  /** Save the end of Meet you; true once it is saved. */
+  const save = useCallback(
+    async (rules: ClientLineInput[]): Promise<boolean> => {
+      setBusy(true);
+      setError(null);
+      try {
+        await window.fleet.agency.projects.meetFinish({ repo, rules });
+        return true;
+      } catch (err) {
+        setError(String(err));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [repo, setBusy, setError]
+  );
+
+  const finish = useCallback(
+    async (rules: ClientLineInput[]): Promise<void> => {
+      if (await save(rules)) leave();
+    },
+    [save, leave]
+  );
+
+  const finishThenRead = async (rules: ClientLineInput[]): Promise<void> => {
+    // Saving makes Meet you no longer due; the flag holds the pane here for the read.
+    useAdmiralOnboardingStore.getState().setMeeting(paneId, true);
+    if (await save(rules)) setReading(true);
+    else leave();
+  };
+
+  return { reading, leave, finish, finishThenRead };
+}
+
+/** Read your work, offered once a first run is saved, before the Bridge. */
+function MeetRead(props: {
+  repo: AgencyRepoRef;
+  wide: boolean;
+  onDone: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <MeetHeader repo={props.repo} progress={null} busy={false} onLater={props.onDone} />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-5xl px-5 py-5">
+          <ReadYourWork
+            repo={props.repo}
+            wide={props.wide}
+            doneLabel={{ before: 'Skip', after: 'Done, brief me' }}
+            onDone={props.onDone}
+          />
+        </div>
       </div>
     </div>
   );

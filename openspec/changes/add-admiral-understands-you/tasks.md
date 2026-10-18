@@ -28,12 +28,12 @@
 
 ## 4. Phase 4: Read your work (one PR)
 
-- [ ] 4.1 Write the collectors under `src/main/agency/understanding/` for instruction files (project files and exactly `~/.claude/CLAUDE.md`), commits, review comments, PR descriptions and past jobs, each capped; verify with tests on a git fixture and a fake `gh`, including no `gh` sign-in.
-- [ ] 4.2 Mask the collected text with the `Redactor` and the project's env secrets; verify a test with a planted token and an env value shows neither in the request.
-- [ ] 4.3 Run the extraction as one `completeOnce` call with the fixed prompt and zod-checked JSON, drop lines that match saved ones, record the cost as Admiral spend with no job, and refuse at the monthly cap; verify with a fake completion target for good JSON, bad JSON, and the cap.
-- [ ] 4.4 Build the Read your work view: the source list with ticks and availability, the line that the text goes to the Admiral's model once, proposed lines with evidence, Keep, Not me, Keep all; verify with renderer tests and in the running app.
-- [ ] 4.5 Save kept lines with their read source and open a conflict for a kept line that clashes with a rule; show conflicts on the profile page with Keep this line and the rule wins; verify the rule-wins path removes the line and the line-wins path marks it `(overrides CLAUDE.md)` in the note.
-- [ ] 4.6 Offer Read your work at the end of Meet you and from the profile page; verify both entry points in the running app.
+- [x] 4.1 Write the collectors under `src/main/agency/understanding/` for instruction files (project files and exactly `~/.claude/CLAUDE.md`), commits, review comments, PR descriptions and past jobs, each capped; verify with tests on a git fixture and a fake `gh`, including no `gh` sign-in.
+- [x] 4.2 Mask the collected text with the `Redactor` and the project's env secrets; verify a test with a planted token and an env value shows neither in the request.
+- [x] 4.3 Run the extraction as one `completeOnce` call with the fixed prompt and zod-checked JSON, drop lines that match saved ones, record the cost as Admiral spend with no job, and refuse at the monthly cap; verify with a fake completion target for good JSON, bad JSON, and the cap.
+- [x] 4.4 Build the Read your work view: the source list with ticks and availability, the line that the text goes to the Admiral's model once, proposed lines with evidence, Keep, Not me, Keep all; verify with renderer tests and in the running app.
+- [x] 4.5 Save kept lines with their read source and open a conflict for a kept line that clashes with a rule; show conflicts on the profile page with Keep this line and the rule wins; verify the rule-wins path removes the line and the line-wins path marks it `(overrides CLAUDE.md)` in the note.
+- [x] 4.6 Offer Read your work at the end of Meet you and from the profile page; verify both entry points in the running app.
 
 ## 5. Phase 5: Learn from you (one PR)
 

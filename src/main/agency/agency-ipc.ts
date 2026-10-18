@@ -25,6 +25,16 @@ import {
   type SetupScan,
   TRUST_LEVELS
 } from '../../shared/agency-projects';
+import {
+  READ_EVIDENCE_MAX,
+  READ_LINE_MAX,
+  READ_MAX_LINES,
+  READ_SOURCE_IDS,
+  READ_TAGS,
+  RULE_FILES,
+  type ReadResult,
+  type ReadSource
+} from '../../shared/agency-understanding';
 import { YOU_LAYER } from '../../shared/agency-client-file';
 import { MEET_QUESTION_IDS, MEET_TEXT_MAX } from '../../shared/agency-meet';
 import {
@@ -161,6 +171,35 @@ const MeetFinishArgs = z.object({
   rules: z
     .array(z.object({ text: z.string().min(1).max(1_000), source: z.string().min(1).max(200) }))
     .max(200)
+});
+
+const ReadWorkArgs = z.object({
+  repo: RepoRef,
+  sources: z.array(z.enum(READ_SOURCE_IDS)).max(READ_SOURCE_IDS.length)
+});
+
+const ReadKeepArgs = z.object({
+  repo: RepoRef,
+  lines: z
+    .array(
+      z.object({
+        text: z.string().min(1).max(READ_LINE_MAX),
+        layer: z.enum(['you', 'project']),
+        source: z.enum(READ_TAGS),
+        evidence: z.string().max(READ_EVIDENCE_MAX),
+        clash: z
+          .object({ source: z.enum(RULE_FILES), rule: z.string().min(1).max(1_000) })
+          .nullable()
+      })
+    )
+    .max(READ_MAX_LINES)
+});
+
+const ConflictSettleArgs = z.object({
+  repoId: RepoId,
+  layer: Layer,
+  id: z.number().int().positive(),
+  winner: z.enum(['line', 'rule'])
 });
 
 /** Windows already watched, so a second claim from one does not stack listeners. */
@@ -432,5 +471,26 @@ function registerProjectsIpc(service: AgencyService): void {
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_BRIEF_IDEAS,
     async (_e, repo: unknown): Promise<BriefIdeas> => projects.briefIdeas(RepoRef.parse(repo))
+  );
+  registerUnderstandingIpc(service);
+}
+
+function registerUnderstandingIpc(service: AgencyService): void {
+  const understanding = service.understanding;
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_READ_SOURCES,
+    async (_e, repo: unknown): Promise<ReadSource[]> => understanding.sources(RepoRef.parse(repo))
+  );
+  ipcMain.handle(IPC_CHANNELS.AGENCY_READ_WORK, async (_e, args: unknown): Promise<ReadResult> => {
+    const { repo, sources } = ReadWorkArgs.parse(args);
+    return understanding.read(repo, sources);
+  });
+  ipcMain.handle(IPC_CHANNELS.AGENCY_READ_KEEP, (_e, args: unknown): ClientLineResult => {
+    const { repo, lines } = ReadKeepArgs.parse(args);
+    return understanding.keep(repo, lines);
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CONFLICT_SETTLE,
+    (_e, args: unknown): ClientLineResult => understanding.settle(ConflictSettleArgs.parse(args))
   );
 }
