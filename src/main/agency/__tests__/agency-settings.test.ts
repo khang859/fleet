@@ -37,6 +37,8 @@ const member = (over: Partial<ProjectMemberSetup> = {}): ProjectMemberSetup => (
   checks: ['test'],
   requiredChecks: ['test', 'lint'],
   reviewBots: [],
+  portVars: [],
+  fixedPorts: [],
   ...over
 });
 
@@ -47,7 +49,8 @@ const SETUP: ProjectSetup = {
   members: [member()],
   imports: [],
   setupCommand: '',
-  setupTimeoutSec: 600
+  setupTimeoutSec: 600,
+  stackSlots: null
 };
 
 beforeEach(async () => {

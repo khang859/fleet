@@ -44,7 +44,9 @@ function memberToToml(m: ProjectMemberSetup): TomlMember {
       check_commands: m.checkCommands,
       checks: m.checks,
       required_checks: m.requiredChecks,
-      review_bots: m.reviewBots
+      review_bots: m.reviewBots,
+      port_vars: m.portVars,
+      fixed_ports: m.fixedPorts
     }).filter(([, v]) => v !== null)
   );
 }
@@ -62,7 +64,9 @@ function memberFromToml(t: TomlMember): unknown {
     checkCommands: t.check_commands ?? [],
     checks: t.checks ?? [],
     requiredChecks: t.required_checks ?? [],
-    reviewBots: t.review_bots ?? []
+    reviewBots: t.review_bots ?? [],
+    portVars: t.port_vars ?? [],
+    fixedPorts: t.fixed_ports ?? []
   };
 }
 
@@ -75,6 +79,8 @@ export function setupToToml(setup: ProjectSetup): string {
       name: setup.name,
       setup_command: setup.setupCommand,
       setup_timeout_sec: setup.setupTimeoutSec,
+      // TOML has no null: no stack limit is a key left out.
+      ...(setup.stackSlots === null ? {} : { stack_slots: setup.stackSlots }),
       members: setup.members.map(memberToToml),
       imports: setup.imports.map((i) => ({ path: i.path, kind: i.kind, sha256: i.sha256 }))
     })
@@ -96,6 +102,7 @@ export function parseSetupToml(text: string): ProjectSetup | null {
     name: raw.name,
     setupCommand: raw.setup_command ?? '',
     setupTimeoutSec: raw.setup_timeout_sec ?? 600,
+    stackSlots: raw.stack_slots ?? null,
     members: members.map(memberFromToml),
     imports: Array.isArray(raw.imports) ? raw.imports : []
   });

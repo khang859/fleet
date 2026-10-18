@@ -15,6 +15,7 @@ import {
 } from '../../../shared/agency-projects';
 import type { GitRun } from '../repo-identity';
 import { ghJson, ghState, type GhRun } from './gh';
+import { findPorts } from './port-findings';
 import { parseSetupToml } from './project-store';
 import { openRepoReader, readOnlyGit, repoFacts, type RepoReader } from './repo-reader';
 
@@ -416,10 +417,11 @@ async function scanMember(
 ): Promise<MemberFindings> {
   const facts = await repoFacts(target.root, deps.git);
   const reader = await openRepoReader(target.root, facts.defaultBranch, deps.git);
-  const [stack, checks, files] = await Promise.all([
+  const [stack, checks, files, ports] = await Promise.all([
     detectStack(reader),
     ciChecks(reader),
-    repoFiles(reader)
+    repoFiles(reader),
+    findPorts(reader)
   ]);
 
   const slug = githubSlug(facts.remote);
@@ -450,7 +452,9 @@ async function scanMember(
       checkCommands: stack.checkCommands,
       checks,
       requiredChecks: required,
-      reviewBots: bots
+      reviewBots: bots,
+      portVars: ports.portVars,
+      fixedPorts: ports.fixedPorts
     },
     scan: { name: target.name, path: target.path, readFrom: reader.readFrom, requiredChecksFrom },
     repoFiles: files.map((f) => ({ ...f, path: projectPath(target.path, f.path) })),
@@ -478,7 +482,9 @@ export async function scanProject(
     members: found.map((f) => f.member),
     imports: [],
     setupCommand: '',
-    setupTimeoutSec: DEFAULT_SETUP_TIMEOUT_SEC
+    setupTimeoutSec: DEFAULT_SETUP_TIMEOUT_SEC,
+    // A port no variable moves lets only one stack hold it at a time.
+    stackSlots: found.some((f) => f.member.fixedPorts.length > 0) ? 1 : null
   };
   // A teammate's setup lives in the project root's repository: the umbrella, or the one repository.
   const root = found.find((f) => f.member.path === '.');

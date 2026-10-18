@@ -32,12 +32,15 @@ const SETUP: ProjectSetup = {
       checkCommands: ['pnpm run typecheck', 'pnpm run test'],
       checks: ['Unit tests', 'lint'],
       requiredChecks: ['Unit tests'],
-      reviewBots: []
+      reviewBots: [],
+      portVars: ['PORT', 'API_PORT'],
+      fixedPorts: [{ port: 5432, service: 'db' }]
     }
   ],
   imports: [],
   setupCommand: '',
-  setupTimeoutSec: 600
+  setupTimeoutSec: 600,
+  stackSlots: 1
 };
 
 let tmp: { dir: string; cleanup: () => void };
@@ -60,10 +63,12 @@ describe('setup TOML', () => {
   it('round-trips what TOML cannot say, a value not known, as a key left out', () => {
     const local: ProjectSetup = {
       ...SETUP,
-      members: [{ ...SETUP.members[0], remote: null, defaultBranch: null, packageManager: null }]
+      members: [{ ...SETUP.members[0], remote: null, defaultBranch: null, packageManager: null }],
+      stackSlots: null
     };
     const text = setupToToml(local);
     expect(text).not.toContain('remote');
+    expect(text).not.toContain('stack_slots');
     expect(parseSetupToml(text)).toEqual(local);
   });
 

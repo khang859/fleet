@@ -18,7 +18,10 @@ import {
   memberOrder,
   pickBlocker,
   projectStatus,
-  repoNotes
+  repoNotes,
+  runsServers,
+  serversNote,
+  stackSlotsLabel
 } from '../onboarding-view';
 import { MemberList, ProjectRow } from '../ProjectPicker';
 import { MissingCard } from '../MissingCard';
@@ -266,7 +269,9 @@ describe('workspace setup', () => {
     checkCommands: [],
     checks: [],
     requiredChecks: [],
-    reviewBots: []
+    reviewBots: [],
+    portVars: [],
+    fixedPorts: []
   });
   const members = [setupMember('core', 'libs/core'), setupMember('shop', '.')];
   const scan: SetupScan = {
@@ -279,7 +284,8 @@ describe('workspace setup', () => {
       members,
       imports: [],
       setupCommand: '',
-      setupTimeoutSec: 600
+      setupTimeoutSec: 600,
+      stackSlots: null
     },
     saved: false,
     newer: [],
@@ -298,7 +304,8 @@ describe('workspace setup', () => {
       members,
       imports: [],
       setupCommand: '',
-      setupTimeoutSec: 600
+      setupTimeoutSec: 600,
+      stackSlots: null
     },
     ghSignedIn: false
   };
@@ -320,6 +327,21 @@ describe('workspace setup', () => {
     expect(html).toContain('NOT CHECKED OUT');
     expect(html).toContain('libs/api');
     expect(html).toContain('>Check out<');
+  });
+
+  it('shows the servers card only for a project with ports or a stack limit, and says why', () => {
+    expect(runsServers(scan.setup)).toBe(false);
+    const postgres = { port: 5432, service: 'postgres' };
+    const withPorts = {
+      ...scan.setup,
+      members: [{ ...members[0], portVars: ['API_PORT'], fixedPorts: [postgres] }, members[1]],
+      stackSlots: 1
+    };
+    expect(runsServers(withPorts)).toBe(true);
+    expect(runsServers({ ...scan.setup, stackSlots: 2 })).toBe(true);
+    expect(stackSlotsLabel(1)).toBe('1 · one stack runs at a time');
+    expect(stackSlotsLabel(null)).toBe('No limit');
+    expect(serversNote([postgres])).toContain('postgres on 5432 cannot move');
   });
 });
 

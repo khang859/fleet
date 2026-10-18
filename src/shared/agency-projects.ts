@@ -83,6 +83,13 @@ export type RepoFile = {
 const Text = z.string().max(2_000);
 const List = z.array(z.string().max(400)).max(200);
 
+export const FixedPortSchema = z.object({
+  port: z.number().int().min(1).max(65_535),
+  /** The Compose service that publishes it. */
+  service: z.string().max(200)
+});
+export type FixedPort = z.infer<typeof FixedPortSchema>;
+
 export const ProjectMemberSetupSchema = z.object({
   name: z.string().min(1).max(200),
   /** Relative to the project root; `.` for a one-repository project. */
@@ -100,7 +107,11 @@ export const ProjectMemberSetupSchema = z.object({
   checks: List,
   /** Checks the default branch requires before a merge. */
   requiredChecks: List,
-  reviewBots: List
+  reviewBots: List,
+  /** Port variables Fleet sets to free ports in each job workspace, like `JOURNEY_API_PORT`. */
+  portVars: List.default([]),
+  /** Host ports a file fixes and no port variable moves, like Postgres on 5432. */
+  fixedPorts: z.array(FixedPortSchema).max(50).default([])
 });
 export type ProjectMemberSetup = z.infer<typeof ProjectMemberSetupSchema>;
 
@@ -120,7 +131,9 @@ export const ProjectSetupSchema = z.object({
   imports: z.array(ProjectImportSchema).max(200),
   /** What a new job workspace of several repositories runs at its root, after each member's setup. */
   setupCommand: Text.default(''),
-  setupTimeoutSec: z.number().int().min(10).max(7_200).default(600)
+  setupTimeoutSec: z.number().int().min(10).max(7_200).default(600),
+  /** How many steps that run the stack may run at once; null for no limit. */
+  stackSlots: z.number().int().min(1).max(20).nullable().default(null)
 });
 export type ProjectSetup = z.infer<typeof ProjectSetupSchema>;
 

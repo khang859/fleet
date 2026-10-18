@@ -86,7 +86,8 @@ const MEMBER_SETTINGS = {
   reviewBots: { label: 'review bots', schema: List, ...droppingNeedsOk },
   stack: { label: 'stack', schema: List, ...apply },
   packageManager: { label: 'package manager', schema: z.string().max(80).nullable(), ...apply },
-  defaultBranch: { label: 'default branch', schema: z.string().max(200).nullable(), ...apply }
+  defaultBranch: { label: 'default branch', schema: z.string().max(200).nullable(), ...apply },
+  portVars: { label: 'port variables', schema: List, ...apply }
 } satisfies Partial<Record<keyof ProjectMemberSetup, SettingDef>>;
 
 export type MemberSettingField = keyof typeof MEMBER_SETTINGS;

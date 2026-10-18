@@ -27,7 +27,14 @@ import {
 } from './onboarding-ui';
 import { DiffBody } from '../ui/DiffBody';
 import { MissingCard } from './MissingCard';
-import { memberOrder, NOTE_DOT, repoNotes } from './onboarding-view';
+import {
+  memberOrder,
+  NOTE_DOT,
+  repoNotes,
+  runsServers,
+  serversNote,
+  stackSlotsLabel
+} from './onboarding-view';
 
 /**
  * Setup, step 2: what a read-only scan of the repository found, for the
@@ -117,15 +124,14 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
               onChange={(patch) => setMember(i, patch)}
             />
           ))}
-          {workspace && (
-            <WorkspaceSetupCard
-              setup={setup}
-              onChange={(patch) => {
-                edited.current = true;
-                setSetup({ ...setup, ...patch });
-              }}
-            />
-          )}
+          <ProjectCards
+            setup={setup}
+            workspace={workspace}
+            onChange={(patch) => {
+              edited.current = true;
+              setSetup({ ...setup, ...patch });
+            }}
+          />
           {scan.repoFiles.length > 0 && (
             <FoundCard
               repo={repo}
@@ -477,6 +483,73 @@ function WorkspaceSetupCard({
   );
 }
 
+type ProjectPatch = Partial<Pick<Setup, 'setupCommand' | 'setupTimeoutSec' | 'stackSlots'>>;
+
+/** The cards for the whole project: the workspace setup, and the stack slots when it runs servers. */
+function ProjectCards({
+  setup,
+  workspace,
+  onChange
+}: {
+  setup: Setup;
+  workspace: boolean;
+  onChange: (patch: ProjectPatch) => void;
+}): React.JSX.Element {
+  return (
+    <>
+      {workspace && <WorkspaceSetupCard setup={setup} onChange={onChange} />}
+      {runsServers(setup) && <ServersCard setup={setup} onChange={onChange} />}
+    </>
+  );
+}
+
+const SLOT_CHOICES = [null, 1, 2, 3, 4] as const;
+
+/** How many steps that run the project's servers may run at once. */
+function ServersCard({
+  setup,
+  onChange
+}: {
+  setup: Setup;
+  onChange: (patch: ProjectPatch) => void;
+}): React.JSX.Element {
+  const [editing, setEditing] = useState(false);
+  const fixed = setup.members.flatMap((m) => m.fixedPorts);
+  return (
+    <OnboardingCard>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <SectionLabel note="each job workspace gets its own ports">SERVERS</SectionLabel>
+        </div>
+        <EditButton editing={editing} name="stack slots" onClick={() => setEditing(!editing)} />
+      </div>
+      <dl className="mt-3 grid grid-cols-[minmax(96px,max-content)_1fr] gap-x-4 text-xs">
+        <Row label="Stack slots" last>
+          {editing ? (
+            <select
+              aria-label="Stack slots"
+              value={setup.stackSlots ?? ''}
+              onChange={(e) =>
+                onChange({ stackSlots: e.target.value === '' ? null : Number(e.target.value) })
+              }
+              className={`${textInputCls} w-32`}
+            >
+              {SLOT_CHOICES.map((n) => (
+                <option key={n ?? 'none'} value={n ?? ''}>
+                  {n ?? 'No limit'}
+                </option>
+              ))}
+            </select>
+          ) : (
+            stackSlotsLabel(setup.stackSlots)
+          )}
+        </Row>
+      </dl>
+      <p className="mt-3 text-xs text-fleet-text-secondary">{serversNote(fixed)}</p>
+    </OnboardingCard>
+  );
+}
+
 function RepoCard({
   scan,
   member,
@@ -533,48 +606,51 @@ function RepoCard({
             onChange={onChange}
           />
         </Row>
-        <Row label="Crew checks" note={changed('checkCommands')}>
+        <ListRow
+          label="Crew checks"
+          inputLabel="Crew checks"
+          value={member.checkCommands}
+          empty="none found"
+          editing={editing}
+          note={changed('checkCommands')}
+          onChange={(checkCommands) => onChange({ checkCommands })}
+        />
+        <ListRow
+          label="CI checks"
+          inputLabel="CI checks"
+          value={member.checks}
+          empty="no workflows found"
+          editing={editing}
+          note={changed('checks')}
+          onChange={(checks) => onChange({ checks })}
+        />
+        <ListRow
+          label="Must pass"
+          inputLabel="Must pass"
+          value={member.requiredChecks}
+          empty="none required"
+          editing={editing}
+          note={changed('requiredChecks')}
+          onChange={(requiredChecks) => onChange({ requiredChecks })}
+        />
+        <ListRow
+          label="Review bot"
+          inputLabel="Review bots"
+          value={member.reviewBots}
+          empty="none"
+          editing={editing}
+          note={changed('reviewBots')}
+          onChange={(reviewBots) => onChange({ reviewBots })}
+        />
+        <Row label="Ports" note={changed('portVars')}>
           {editing ? (
             <ListInput
-              label="Crew checks"
-              value={member.checkCommands}
-              onChange={(checkCommands) => onChange({ checkCommands })}
+              label="Port variables"
+              value={member.portVars}
+              onChange={(portVars) => onChange({ portVars })}
             />
           ) : (
-            <Mono items={member.checkCommands} empty="none found" />
-          )}
-        </Row>
-        <Row label="CI checks" note={changed('checks')}>
-          {editing ? (
-            <ListInput
-              label="CI checks"
-              value={member.checks}
-              onChange={(checks) => onChange({ checks })}
-            />
-          ) : (
-            <Mono items={member.checks} empty="no workflows found" />
-          )}
-        </Row>
-        <Row label="Must pass" note={changed('requiredChecks')}>
-          {editing ? (
-            <ListInput
-              label="Must pass"
-              value={member.requiredChecks}
-              onChange={(requiredChecks) => onChange({ requiredChecks })}
-            />
-          ) : (
-            <Mono items={member.requiredChecks} empty="none required" />
-          )}
-        </Row>
-        <Row label="Review bot" note={changed('reviewBots')}>
-          {editing ? (
-            <ListInput
-              label="Review bots"
-              value={member.reviewBots}
-              onChange={(reviewBots) => onChange({ reviewBots })}
-            />
-          ) : (
-            <Mono items={member.reviewBots} empty="none" />
+            <Ports member={member} />
           )}
         </Row>
         <Row label="Default branch" last note={changed('defaultBranch')}>
@@ -604,6 +680,35 @@ function RepoCard({
   );
 }
 
+/** A list setting: a comma-separated input while editing, else the items. */
+function ListRow({
+  label,
+  inputLabel,
+  value,
+  empty,
+  editing,
+  note,
+  onChange
+}: {
+  label: string;
+  inputLabel: string;
+  value: string[];
+  empty: string;
+  editing: boolean;
+  note: React.ReactNode;
+  onChange: (value: string[]) => void;
+}): React.JSX.Element {
+  return (
+    <Row label={label} note={note}>
+      {editing ? (
+        <ListInput label={inputLabel} value={value} onChange={onChange} />
+      ) : (
+        <Mono items={value} empty={empty} />
+      )}
+    </Row>
+  );
+}
+
 function Row({
   label,
   last = false,
@@ -630,6 +735,24 @@ function Row({
 
 function None({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <span className="text-fleet-text-subtle">{children}</span>;
+}
+
+/** A member's port variables, and the host ports its files fix. */
+function Ports({ member }: { member: ProjectMemberSetup }): React.JSX.Element {
+  if (member.portVars.length === 0 && member.fixedPorts.length === 0) {
+    return <None>none found</None>;
+  }
+  return (
+    <span className="font-mono text-fleet-text">
+      {member.portVars.join(' · ')}
+      {member.fixedPorts.map((f, i) => (
+        <span key={f.port} className="font-sans text-fleet-text-secondary">
+          {member.portVars.length > 0 || i > 0 ? ' · ' : ''}
+          {f.service} fixed on <span className="font-mono text-fleet-text">{f.port}</span>
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function Mono({ items, empty }: { items: string[]; empty: string }): React.JSX.Element {
