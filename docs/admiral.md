@@ -51,13 +51,43 @@ Click **Looks right** to save.
 Setup is saved in Fleet, in `~/.fleet/agency/projects/<project-id>/fleet.agency.toml`.
 Nothing is written to the repository, so no commit is needed.
 
-Then a few starter questions set how crew open pull requests, what a job needs before you see it, the default budget, and when you get notices.
-You can also pick rules from `CLAUDE.md` or `AGENTS.md` that the Admiral holds every job to.
-Your answers go into your client file, `~/.fleet/agency/clients/<project-id>.md`.
-The Admiral reads it at the start of every job, and you can edit it in **Settings > Agency > Admiral**.
-
 Last, click **Open Claude Code here** and answer Claude Code's folder trust prompt yourself.
 Fleet never answers that prompt for you.
+
+## Meet you
+
+Before the first job, the Admiral asks how you like the work, one question at a time.
+It asks how to report to you, what crew must never do, how crew open pull requests, what a job needs before you see it, what tests a change comes with, the default budget, and what to do when a job is done.
+Each question has picks, and you can also answer in your own words.
+**What I know about you** shows each answer as a line as you go.
+The last answer sets the project's trust level.
+
+Each answer is saved when you give it.
+Click **Finish later** to stop, and **Answer them** on the Bridge to go on.
+Questions about you are asked once for every project.
+Questions about the project are asked once for each project.
+At the end, you can pick rules from `CLAUDE.md` or `AGENTS.md` that the Admiral holds every job to.
+
+## Read your work
+
+After Meet you, the Admiral offers to read some of your work.
+It learns faster from what you did than from questions.
+Tick what it may read:
+
+- **Instructions**: the project's `CLAUDE.md` and `AGENTS.md`, and your own `~/.claude/CLAUDE.md`.
+- **Commits**: the messages of your own last commits in the project.
+- **Review comments** and **Pull requests**: yours, on the project's GitHub repository. These need the GitHub CLI.
+- **Past jobs**: the plan edits, turn-downs and answers you gave the Admiral in this project.
+
+Fleet reads only what you tick.
+It never reads your Claude login, env files, keys, or code.
+It masks secrets in what it reads, and sends it once to the Admiral's model.
+The read counts against the monthly cap.
+
+The Admiral then shows each line it took, with where it saw it.
+Click **Keep** to save a line, or **Not me** to drop it.
+Nothing is saved that you do not keep.
+To read again later, click **Read my work** in **What the Admiral knows**.
 
 ## Import files from the repository
 
@@ -105,6 +135,54 @@ Work that is not committed or pushed is kept.
 Past jobs can be exported as Markdown with **Export**.
 
 If you type into a crew pane, the crew member is marked **yours** until you click **Hand back**.
+
+A plan card lists the lines it used under **Using what I know about you**.
+The Admiral asks only what those lines do not answer.
+
+## Remember this?
+
+When you edit a plan, turn one down, swap a step, or answer a question, the Admiral can ask to remember it.
+A **Remember this?** card shows the one line it would save.
+
+- **This project** saves the line for this project.
+- **All projects** saves it for every project.
+- **Just this job** saves nothing, and the Admiral does not ask about it again on this project.
+
+To save it in your own words, type them in **Or put it your way:** before you pick.
+If you ignore the card, nothing is saved.
+The Admiral asks once per kind of change, and never asks about what a saved line says already.
+
+## What the Admiral knows
+
+**Settings > Agency > Admiral > What the Admiral knows** shows every line the Admiral reads at the start of a job.
+The **You · every project** tab holds the lines for all projects.
+Each project has a tab of its own.
+Where a project line and a You line disagree, the project line wins.
+
+Each line shows where it came from and how many jobs used it.
+You can edit or remove a line, click **Add a line**, or click **Edit as text** to edit the whole file.
+
+A line can clash with a rule in `CLAUDE.md` or `AGENTS.md`.
+Then the line asks which one wins: **Keep this line**, or the rule file.
+If the rule wins, the line is removed.
+
+If you change a file outside Fleet, the Admiral uses the version Fleet last wrote.
+Click **Keep this version** to use your change.
+
+## Trust levels
+
+Each project tab sets **How much I do on my own**.
+Fleet enforces the level, not the Admiral.
+
+| Level              | What Fleet does                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| **Ask me**         | You approve each plan and result. This is the default.                                      |
+| **Show me the PR** | A first plan up to the dollar limit starts on its own. You merge the pull requests.         |
+| **Ship it**        | Like Show me the PR, and Fleet merges the pull requests when checks pass. It reports after. |
+
+A plan starts on its own only when it is the Admiral's first plan for the job, it stays within the dollar limit and the default Claude share, it adds no new role, and it passes every check.
+A changed plan, or anything bigger, waits for you.
+Under **Ship it**, a job that delivered only pull requests merges them in order and closes.
 
 ## Crew roles and playbooks
 
@@ -191,6 +269,7 @@ Cloud costs, such as Neon, Vercel or AWS, are not counted.
 | What                     | Where                                     |
 | ------------------------ | ----------------------------------------- |
 | Project setup and crew   | `~/.fleet/agency/projects/<project-id>/`  |
+| What it knows about you  | `~/.fleet/agency/you.md`                  |
 | Client file              | `~/.fleet/agency/clients/<project-id>.md` |
 | Your roles and playbooks | `~/.fleet/crew/`                          |
 | Job worktrees            | `~/.fleet/agency/jobs/<job-id>/`          |

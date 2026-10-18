@@ -45,5 +45,5 @@
 
 ## 6. Phase 6: docs and wrap-up (one PR)
 
-- [ ] 6.1 Update `docs/admiral.md` for Meet you, Read your work, Remember this?, What the Admiral knows and trust levels, one sentence per line; verify with prettier on the file.
-- [ ] 6.2 Write a learning in `docs/learnings/` for anything that went wrong during the phases; verify the file exists or note that nothing went wrong.
+- [x] 6.1 Update `docs/admiral.md` for Meet you, Read your work, Remember this?, What the Admiral knows and trust levels, one sentence per line; verify with prettier on the file.
+- [x] 6.2 Write a learning in `docs/learnings/` for anything that went wrong during the phases; verify the file exists or note that nothing went wrong.
