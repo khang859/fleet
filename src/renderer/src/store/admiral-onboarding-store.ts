@@ -27,6 +27,8 @@ type AdmiralOnboardingState = {
   picking: Partial<Record<string, true>>;
   /** Admiral panes showing their project's setup again, after it was done. */
   redoingSetup: Partial<Record<string, true>>;
+  /** Admiral panes showing the Meet you questions left, after Meet you was finished for later. */
+  meeting: Partial<Record<string, true>>;
 
   checkPreflight: () => Promise<void>;
   loadFirstRun: () => Promise<void>;
@@ -36,6 +38,7 @@ type AdmiralOnboardingState = {
   loadIdeas: (repo: AgencyRepoRef) => Promise<void>;
   setPicking: (paneId: string, picking: boolean) => void;
   setRedoingSetup: (paneId: string, redoing: boolean) => void;
+  setMeeting: (paneId: string, meeting: boolean) => void;
 };
 
 export const useAdmiralOnboardingStore = create<AdmiralOnboardingState>((set) => ({
@@ -47,6 +50,7 @@ export const useAdmiralOnboardingStore = create<AdmiralOnboardingState>((set) =>
   ideas: {},
   picking: {},
   redoingSetup: {},
+  meeting: {},
 
   checkPreflight: async () => {
     set({ checking: true });
@@ -88,22 +92,25 @@ export const useAdmiralOnboardingStore = create<AdmiralOnboardingState>((set) =>
     }
   },
 
-  setPicking: (paneId, picking) =>
-    set((s) => {
-      const next = { ...s.picking };
-      if (picking) next[paneId] = true;
-      else delete next[paneId];
-      return { picking: next };
-    }),
+  setPicking: (paneId, picking) => set((s) => ({ picking: flagged(s.picking, paneId, picking) })),
 
   setRedoingSetup: (paneId, redoing) =>
-    set((s) => {
-      const next = { ...s.redoingSetup };
-      if (redoing) next[paneId] = true;
-      else delete next[paneId];
-      return { redoingSetup: next };
-    })
+    set((s) => ({ redoingSetup: flagged(s.redoingSetup, paneId, redoing) })),
+
+  setMeeting: (paneId, meeting) => set((s) => ({ meeting: flagged(s.meeting, paneId, meeting) }))
 }));
+
+/** A per-pane flag map with one pane's flag set or cleared. */
+function flagged(
+  flags: Partial<Record<string, true>>,
+  paneId: string,
+  on: boolean
+): Partial<Record<string, true>> {
+  const next = { ...flags };
+  if (on) next[paneId] = true;
+  else delete next[paneId];
+  return next;
+}
 
 /**
  * The header switcher's move: bring forward the Admiral tab already open for

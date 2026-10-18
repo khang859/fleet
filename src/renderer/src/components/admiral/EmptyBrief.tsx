@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import type { BriefIdea, BriefIdeas } from '../../../../shared/agency-projects';
 import { useAdmiralOnboardingStore } from '../../store/admiral-onboarding-store';
+import { useAgencyStore } from '../../store/agency-store';
 import { admiralKey } from '../../store/admiral-thread';
 import { prefillComposer } from '../agent/composer-events';
 
@@ -19,6 +20,9 @@ export function EmptyBrief({
 }): React.JSX.Element {
   const ideas = useAdmiralOnboardingStore((s) => s.ideas[repo.repoId]);
   const loadIdeas = useAdmiralOnboardingStore((s) => s.loadIdeas);
+  const questionsLeft = useAgencyStore(
+    (s) => s.snapshots[repo.repoId]?.onboarding.meetLeft.length ?? 0
+  );
 
   // Read each time the lobby comes up empty, so the ideas are as fresh as the project.
   const { repoId, root, name } = repo;
@@ -36,6 +40,19 @@ export function EmptyBrief({
             starts until you approve it.
           </p>
         </div>
+        {questionsLeft > 0 && (
+          <p className="text-xs text-fleet-text-muted">
+            I still have {questionsLeft === 1 ? 'one question' : `${questionsLeft} questions`} about
+            how you like to work.{' '}
+            <button
+              type="button"
+              onClick={() => useAdmiralOnboardingStore.getState().setMeeting(paneId, true)}
+              className="text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
+            >
+              Answer {questionsLeft === 1 ? 'it' : 'them'}
+            </button>
+          </p>
+        )}
         <BriefIdeasList
           ideas={ideas}
           onPick={(idea) => prefillComposer(admiralKey(paneId, null), idea.brief)}

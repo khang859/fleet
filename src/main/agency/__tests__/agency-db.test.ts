@@ -44,6 +44,7 @@ describe('agency.db', () => {
       'job_workspaces',
       'jobs',
       'lobbies',
+      'meet_progress',
       'merge_runs',
       'onboarding',
       'permission_requests',
@@ -134,11 +135,11 @@ describe('agency.db', () => {
     db.close();
   });
 
-  it('gives a database from before the preference tables those tables, empty', () => {
+  it('gives a database from before the preference tables those tables and Meet you progress, empty', () => {
     const path = tempPath();
     mkdirSync(dirname(path), { recursive: true });
     const old = new Database(path);
-    migrateAgencyDb(old, AGENCY_SCHEMA_VERSION - 1);
+    migrateAgencyDb(old, AGENCY_SCHEMA_VERSION - 2);
     expect(tables(old)).not.toContain('project_trust');
     old.close();
 
@@ -147,7 +148,8 @@ describe('agency.db', () => {
       'preference_uses',
       'preference_conflicts',
       'declined_topics',
-      'project_trust'
+      'project_trust',
+      'meet_progress'
     ]) {
       expect(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()).toEqual({ n: 0 });
     }

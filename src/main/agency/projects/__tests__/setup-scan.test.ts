@@ -218,7 +218,7 @@ describe('setup scan', () => {
     // No pane: nothing told a window to change, and nothing was saved.
     expect(emitted).toEqual([]);
     expect(existsSync(join(home.dir, 'agency-home'))).toBe(false);
-    expect(service.store.onboarding(ref.repoId)).toEqual({
+    expect(service.store.onboarding(ref.repoId)).toMatchObject({
       setupDoneAt: null,
       starterDoneAt: null
     });

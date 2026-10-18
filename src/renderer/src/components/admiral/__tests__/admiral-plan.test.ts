@@ -311,7 +311,7 @@ describe('the sheet', () => {
     ],
     questions: [],
     nextRetryAt: null,
-    onboarding: { setupDoneAt: 1, starterDoneAt: 1 },
+    onboarding: { setupDoneAt: 1, starterDoneAt: 1, meetDue: false, meetLeft: [] },
     leftovers: [],
     clientFileChanged: false,
     pastJobs: [],

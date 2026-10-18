@@ -66,4 +66,13 @@ describe('PreferenceStore', () => {
     prefs.setTrust('p1', { level: 'ship', autoStartUsd: null });
     expect(prefs.trust('p1')).toEqual({ level: 'ship', autoStartUsd: null });
   });
+  it('keeps Meet you progress per layer, so a later run resumes', () => {
+    expect(prefs.meetSeen('you')).toBeNull();
+    prefs.markMeetSeen('you', []);
+    expect(prefs.meetSeen('you')).toEqual([]);
+    prefs.markMeetSeen('you', ['report']);
+    prefs.markMeetSeen('you', ['report', 'never']);
+    expect(prefs.meetSeen('you')).toEqual(['report', 'never']);
+    expect(prefs.meetSeen('repo-a')).toBeNull();
+  });
 });

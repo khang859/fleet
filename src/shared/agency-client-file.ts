@@ -72,7 +72,7 @@ export function normText(s: string): string {
 }
 
 /** A rule as one line: no line breaks, no leading list marker. */
-function oneLine(text: string): string {
+export function oneLine(text: string): string {
   return text
     .replace(/\s+/g, ' ')
     .replace(/^[-*]\s+/, '')

@@ -475,7 +475,8 @@ export const IPC_CHANNELS = {
   AGENCY_SETTINGS_UNDO: 'agency:settings-undo',
   AGENCY_SETTINGS_MARKS: 'agency:settings-marks',
   AGENCY_RULE_CANDIDATES: 'agency:rule-candidates',
-  AGENCY_FINISH_STARTER: 'agency:finish-starter',
+  AGENCY_MEET_ANSWER: 'agency:meet-answer',
+  AGENCY_MEET_FINISH: 'agency:meet-finish',
   AGENCY_BRIEF_IDEAS: 'agency:brief-ideas',
   // Renderer-bound: agency state for a repository changed.
   AGENCY_CHANGED: 'agency:changed'

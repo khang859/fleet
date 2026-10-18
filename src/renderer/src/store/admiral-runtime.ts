@@ -123,7 +123,8 @@ function deliverAsks(repoId: string): void {
   const texts = asks.get(repoId);
   const pane = [...attached.values()].find((p) => p.repo.repoId === repoId);
   const onboarding = useAgencyStore.getState().snapshots[repoId]?.onboarding;
-  const lobbyShown = onboarding?.setupDoneAt != null && onboarding.starterDoneAt != null;
+  const lobbyShown =
+    onboarding?.setupDoneAt != null && onboarding.starterDoneAt != null && !onboarding.meetDue;
   if (texts === undefined || pane === undefined || attaching.has(pane.paneId) || !lobbyShown) {
     return;
   }

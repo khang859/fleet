@@ -25,17 +25,17 @@ import {
 } from '../onboarding-view';
 import { MemberList, ProjectRow } from '../ProjectPicker';
 import { MissingCard } from '../MissingCard';
-import { ClientFilePreview } from '../StarterQuestions';
 
 /** The Admiral's onboarding: which screen shows, first run's gate, and the picker's rows. */
 
-const done = { setupDoneAt: 1, starterDoneAt: 2 };
+const done = { setupDoneAt: 1, starterDoneAt: 2, meetDue: false, meetLeft: [] };
 const base = {
   keyChecked: true,
   hasModel: true,
   firstRunDone: true,
   picking: false,
   redoingSetup: false,
+  meeting: false,
   onboarding: done
 };
 
@@ -51,16 +51,21 @@ describe('admiralStage', () => {
     expect(admiralStage({ ...base, hasModel: false, picking: true })).toBe('first-run');
   });
 
-  it('then the picker when asked for, then setup, the starter questions and the lobby', () => {
+  it('then the picker when asked for, then setup, Meet you and the lobby', () => {
+    const due = { ...done, meetDue: true };
     expect(admiralStage({ ...base, picking: true })).toBe('picker');
     expect(admiralStage({ ...base, onboarding: undefined })).toBe('loading');
-    expect(admiralStage({ ...base, onboarding: { setupDoneAt: null, starterDoneAt: null } })).toBe(
-      'setup'
-    );
-    expect(admiralStage({ ...base, onboarding: { setupDoneAt: 1, starterDoneAt: null } })).toBe(
-      'starter'
-    );
+    expect(
+      admiralStage({ ...base, onboarding: { ...due, setupDoneAt: null, starterDoneAt: null } })
+    ).toBe('setup');
+    expect(admiralStage({ ...base, onboarding: { ...due, starterDoneAt: null } })).toBe('meet');
+    expect(admiralStage({ ...base, onboarding: due })).toBe('meet');
     expect(admiralStage(base)).toBe('ready');
+  });
+
+  it('shows Meet you again when the client goes back to the questions left', () => {
+    expect(admiralStage({ ...base, meeting: true })).toBe('meet');
+    expect(admiralStage({ ...base, meeting: true, picking: true })).toBe('picker');
   });
 
   it('shows setup again when the client redoes it, but the picker first', () => {
@@ -390,17 +395,5 @@ describe('the rest of onboarding', () => {
       createElement(BriefIdeasList, { ideas: { ideas: [], github: 'ok' }, onPick: noop })
     );
     expect(empty).toContain('Describe the work in your own words.');
-  });
-
-  it('shows each client file line with its source', () => {
-    const html = renderToStaticMarkup(
-      createElement(ClientFilePreview, {
-        text: '# shop\n- Use pnpm. (from CLAUDE.md, 2026-10-17)\n',
-        path: null
-      })
-    );
-    expect(html).toContain('- Use pnpm.');
-    // The date is kept on one line in its own span, so compare the text.
-    expect(html.replace(/<[^>]+>/g, '')).toContain('(from CLAUDE.md, 2026-10-17)');
   });
 });

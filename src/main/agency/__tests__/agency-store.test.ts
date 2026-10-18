@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { MEET_QUESTION_IDS } from '../../../shared/agency-meet';
 import type { AgencyStore } from '../store/agency-store';
 import { OTHER_REPO, REPO, YES_NO, moveJob, openJob, storeFixture } from './fixture';
 
@@ -166,19 +167,26 @@ describe('onboarding', () => {
   });
 
   it('marks setup and the starter questions done per repository', () => {
-    expect(store.onboarding(REPO.repoId)).toEqual({ setupDoneAt: null, starterDoneAt: null });
+    const fresh = {
+      setupDoneAt: null,
+      starterDoneAt: null,
+      meetDue: true,
+      meetLeft: [...MEET_QUESTION_IDS]
+    };
+    expect(store.onboarding(REPO.repoId)).toEqual(fresh);
     clock.now = 2_000_000;
     store.markOnboarded(REPO, 'setup');
     clock.now = 3_000_000;
-    expect(store.markOnboarded(REPO, 'starter')).toEqual({
+    // A project done with the starter questions is asked only the You ones, once.
+    const done = {
       setupDoneAt: 2_000_000,
-      starterDoneAt: 3_000_000
-    });
-    expect(store.snapshot(REPO.repoId).onboarding).toEqual({
-      setupDoneAt: 2_000_000,
-      starterDoneAt: 3_000_000
-    });
-    expect(store.onboarding(OTHER_REPO.repoId)).toEqual({ setupDoneAt: null, starterDoneAt: null });
+      starterDoneAt: 3_000_000,
+      meetDue: true,
+      meetLeft: ['report', 'never']
+    };
+    expect(store.markOnboarded(REPO, 'starter')).toEqual(done);
+    expect(store.snapshot(REPO.repoId).onboarding).toEqual(done);
+    expect(store.onboarding(OTHER_REPO.repoId)).toEqual(fresh);
   });
 
   it('lists every project with an Admiral or a setup, with what is running and waiting', () => {
