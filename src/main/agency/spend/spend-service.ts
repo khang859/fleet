@@ -115,7 +115,7 @@ export class SpendService {
    * (`/clear`), counted from zero.
    */
   private sessionCost(crew: CrewRecord, report: UsageReport): boolean {
-    const { billing, costSeen } = this.store.spend.crewCost(crew.id);
+    const { billing, costSeen } = this.costBefore(crew);
     let paidBy: CrewBilling | null = billing;
     if (report.runtime === 'claude') {
       if (report.rateLimits !== null) paidBy = 'subscription';
@@ -140,6 +140,18 @@ export class SpendService {
       amount: delta
     });
     return true;
+  }
+
+  /**
+   * How the member is billed and the cost it reported last. A member that
+   * resumed a session starts from the one it took over: `--resume` shows the
+   * conversation's cost so far before a reply brings the subscription windows.
+   */
+  private costBefore(crew: CrewRecord): { billing: CrewBilling | null; costSeen: number | null } {
+    const own = this.store.spend.crewCost(crew.id);
+    if (own.billing !== null || own.costSeen !== null || crew.replaces === null) return own;
+    const resumed = this.store.crew.get(crew.replaces);
+    return resumed?.sessionId === crew.sessionId ? this.store.spend.crewCost(resumed.id) : own;
   }
 
   /**

@@ -131,6 +131,27 @@ describe('subscription usage', () => {
     expect(spent(a).weekPct).toBe(0);
   });
 
+  it('counts no dollars for a resumed subscription session restoring its earlier cost', () => {
+    const a = job({ usd: 10, weekPct: 20 });
+    const first = hire(a, 'claude', 's1');
+    spend.usage(statusLine('s1', 10, 10, 1.5));
+    store.crew.end(first.id, 'interrupted');
+    store.crew.insert({
+      jobId: a,
+      stepId: 'build',
+      role: 'builder',
+      runtime: 'claude',
+      label: 'builder s1',
+      sessionId: 's1',
+      status: CREW_LIVE,
+      replaces: first.id
+    });
+    // `--resume` shows the cost so far before a reply brings the windows.
+    spend.usage({ sessionId: 's1', runtime: 'claude', costUsd: 1.5, rateLimits: null });
+    spend.usage(statusLine('s1', 10, 10, 2));
+    expect(spent(a).usd).toBe(0);
+  });
+
   it('never counts a subscription session cost as dollars', () => {
     const a = job({ usd: 10, weekPct: 20 });
     hire(a, 'claude', 's1');
