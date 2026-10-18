@@ -444,7 +444,8 @@ describe('merging a job PR by PR', { timeout: 20_000 }, () => {
       service.store.preferences.setTrust(ref.repoId, { level: 'ship', autoStartUsd: null });
       await deliverPr(tools, core);
       finishStep(jobId);
-      await vi.waitFor(() => expect(detail(jobId).merge?.status).toBe('running'));
+      // The merge's first pass starts with it, so it may be past running by now.
+      await vi.waitFor(() => expect(detail(jobId).merge).not.toBeNull());
       await service.merges.advance(jobId);
       return jobId;
     };
