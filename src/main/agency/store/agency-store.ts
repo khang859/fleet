@@ -682,6 +682,11 @@ export class AgencyStore {
    * `jobId`. Idempotent: the renderer reconciles on attach and may call it for
    * a handoff that already went through.
    */
+  /**
+   * The lobby talk that led to a job is in its conversation now. The first
+   * time, the job's Admiral wakes to plan from it: nothing else would start a
+   * turn there before the client writes.
+   */
   markHandoff(input: { jobId: number; lobbyMessageId: string }): AgencyJob | null {
     return this.db.transaction(() => {
       const job = this.getJob(input.jobId);
@@ -692,6 +697,17 @@ export class AgencyStore {
       this.db
         .prepare('UPDATE lobbies SET last_handoff_message_id = ? WHERE repo_id = ?')
         .run(input.lobbyMessageId, job.repoId);
+      if (!job.handoffDone) {
+        this.enqueueWakeup({
+          repoId: job.repoId,
+          jobId: job.id,
+          kind: 'event',
+          payload: {
+            line: 'Job opened from the lobby',
+            body: 'The talk that led to it is above. Propose the plan with job_plan, or ask the client what is still missing.'
+          }
+        });
+      }
       return this.getJob(job.id);
     })();
   }
