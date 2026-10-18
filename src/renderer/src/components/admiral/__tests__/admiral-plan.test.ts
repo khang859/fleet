@@ -90,7 +90,8 @@ function detail(
     spendUsd: 2.5,
     merge: null,
     crew,
-    servers
+    servers,
+    permissions: []
   };
 }
 
@@ -498,6 +499,10 @@ describe('the sheet', () => {
     expect(
       waitingCount({ ...snap(false), jobs: [agencyJob({ id: 2, crewNeedingYou: 1 })] }, 2)
     ).toBe(1);
+    // A permission card waits on the client too.
+    expect(
+      waitingCount({ ...snap(false), jobs: [agencyJob({ id: 2, permissionsWaiting: [4, 5] })] }, 2)
+    ).toBe(2);
   });
 
   it('has no CREW section before anyone is hired', () => {

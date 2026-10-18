@@ -90,6 +90,7 @@ import {
   AdmiralEventLine,
   AskClientRow,
   JobDeliverRow,
+  PermissionAnswerRow,
   SettingsChangeRow,
   JobLinkLine,
   JobPlanRow
@@ -963,6 +964,9 @@ const Message = memo(function Message({
         }
         if (part.call.name === 'job_plan') return <JobPlanRow key={i} call={part.call} />;
         if (part.call.name === 'job_deliver') return <JobDeliverRow key={i} call={part.call} />;
+        if (part.call.name === 'permission_answer') {
+          return <PermissionAnswerRow key={i} call={part.call} />;
+        }
         if (part.call.name === 'settings_change') {
           return <SettingsChangeRow key={i} call={part.call} />;
         }

@@ -28,6 +28,11 @@ export class AdmiralRegistry {
     return { ok: true };
   }
 
+  /** Whether a pane holds `repoId` now. */
+  claimed(repoId: string): boolean {
+    return this.byRepo.has(repoId);
+  }
+
   /** Give up the pane's claim. Returns the repositories it held. */
   release(paneId: string): string[] {
     return this.drop((claim) => claim.paneId === paneId);

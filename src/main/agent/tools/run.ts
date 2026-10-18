@@ -49,6 +49,7 @@ import {
   CrewInterruptArgs,
   CrewSendArgs,
   CrewStopArgs,
+  PermissionAnswerArgs,
   SettingsChangeArgs,
   SettingsReadArgs,
   JobDeliverArgs,
@@ -199,6 +200,8 @@ export async function runAgentTool(
       return agencyMember(ctx, name, 'crewInterrupt')(checked(CrewInterruptArgs, args, name));
     case 'crew_stop':
       return agencyMember(ctx, name, 'crewStop')(checked(CrewStopArgs, args, name));
+    case 'permission_answer':
+      return agencyMember(ctx, name, 'permissionAnswer')(checked(PermissionAnswerArgs, args, name));
     case 'client_file_propose':
       return agencyMember(
         ctx,

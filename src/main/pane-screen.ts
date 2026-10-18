@@ -24,15 +24,22 @@ export class PaneScreen {
     this.term.resize(cols, rows);
   }
 
-  /** The screen as text once all output so far is parsed, without trailing blank space. */
+  /**
+   * The screen as text once all output so far is parsed, without trailing
+   * blank space. A line the terminal wrapped is joined back to the one before,
+   * so a long value reads whole, as the env redaction needs it.
+   */
   async text(): Promise<string> {
     await new Promise<void>((resolve) => this.term.write('', resolve));
     const buffer = this.term.buffer.active;
-    const lines: string[] = [];
+    let text = '';
     for (let y = 0; y < this.term.rows; y++) {
-      lines.push(buffer.getLine(buffer.baseY + y)?.translateToString(true) ?? '');
+      const line = buffer.getLine(buffer.baseY + y);
+      const wrapsOn = buffer.getLine(buffer.baseY + y + 1)?.isWrapped === true;
+      if (y > 0 && line?.isWrapped !== true) text += '\n';
+      text += line?.translateToString(!wrapsOn) ?? '';
     }
-    return lines.join('\n').trimEnd();
+    return text.trimEnd();
   }
 
   dispose(): void {

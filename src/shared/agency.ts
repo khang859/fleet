@@ -1,5 +1,6 @@
 import type { CrewRuntime } from './agency-crew';
 import type { SettingsCard } from './agency-settings';
+import { PERMISSION_EXPIRY_SEC_DEFAULT } from './agency-permissions';
 
 /**
  * The Admiral agency, as every process sees it: the repository an Admiral is
@@ -90,6 +91,8 @@ export type AgencyJob = {
   pendingPlan: { id: number; version: number } | null;
   /** Crew members waiting on the client in their pane, at a login or trust screen. */
   crewNeedingYou: number;
+  /** Crew permission requests waiting on the client, on a card or in the crew pane, by id. */
+  permissionsWaiting: number[];
   /** The agent session the job's conversation is written to. */
   sessionId: string;
   /** Whether the lobby messages that led to this job were carried into it. */
@@ -295,6 +298,8 @@ export type AgencySettings = {
     monthlyCapUsd: number;
     /** How many times the Admiral may nudge a crew member that ends a turn without reporting. */
     nudgeLimit: number;
+    /** How long a client permission card waits before it is denied, in seconds. */
+    permissionExpirySec: number;
   };
   /** Settings › Agency › Crew › Runtimes, for each runtime. */
   crew: Record<CrewRuntime, CrewRuntimeSettings>;
@@ -309,7 +314,13 @@ export type CrewRuntimeSettings = {
 
 export const DEFAULT_AGENCY_SETTINGS: AgencySettings = {
   enabled: false,
-  admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100, nudgeLimit: 3 },
+  admiral: {
+    model: '',
+    defaultBudgetUsd: 10,
+    monthlyCapUsd: 100,
+    nudgeLimit: 3,
+    permissionExpirySec: PERMISSION_EXPIRY_SEC_DEFAULT
+  },
   crew: {
     claude: { atOnce: null, defaultModel: '' },
     eva: { atOnce: null, defaultModel: '' }

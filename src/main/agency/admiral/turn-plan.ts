@@ -8,9 +8,11 @@ import type { AgentFleetCapability } from '../../../shared/fleet-tools';
 import { readEnvironment } from '../../agent/environment';
 import { createFleetCapability, type FleetDeps } from '../../agent/fleet/capability';
 import { loadProjectInstructions } from '../../agent/project-instructions';
+import type { Redactor } from '../../redactor';
 import type { AgencyService } from '../index';
 import { createAgencyCapability } from '../tools';
 import { scopeFleetToCrew } from './crew-fleet';
+import { redactOutputs } from './redact-capability';
 import { crewNote } from './crew-note';
 import { admiralSnapshotNote } from './snapshot-note';
 
@@ -25,6 +27,7 @@ export type AdmiralDeps = {
     | 'crewPanes'
     | 'crewScreen'
     | 'crew'
+    | 'permissions'
     | 'store'
     | 'clientFileForNote'
     | 'jobs'
@@ -33,6 +36,7 @@ export type AdmiralDeps = {
     | 'settings'
     | 'crewCatalog'
     | 'crewSkills'
+    | 'redactor'
   >;
   settings: () => AgencySettings;
 };
@@ -84,19 +88,27 @@ export async function planAdmiralTurn(input: {
     throw new Error('An Admiral turn has to say which repository and job it is for.');
   }
   const scope = admiral.agency.threadScope({ ...req.admiral, threadId: req.threadId });
-  const agency = createAgencyCapability(admiral.agency, scope, admiral.settings);
+  // What crew wrote reaches the Admiral only through these outputs.
+  const redactor = async (): Promise<Redactor> => admiral.agency.redactor(scope.repoId);
+  const agency = redactOutputs(
+    createAgencyCapability(admiral.agency, scope, admiral.settings),
+    redactor
+  );
   const fleet =
     input.fleet === null
       ? null
-      : createFleetCapability(
-          scopeFleetToCrew(
-            input.fleet,
-            () => admiral.agency.crewPanes(scope.jobId),
-            async (paneId) => admiral.agency.crewScreen(scope.jobId, paneId)
+      : redactOutputs(
+          createFleetCapability(
+            scopeFleetToCrew(
+              input.fleet,
+              () => admiral.agency.crewPanes(scope.jobId),
+              async (paneId) => admiral.agency.crewScreen(scope.jobId, paneId)
+            ),
+            req.threadId,
+            'admiral',
+            req.cwd
           ),
-          req.threadId,
-          'admiral',
-          req.cwd
+          redactor
         );
   const instructions = await loadProjectInstructions(req.cwd);
   const [catalog, skills] = await Promise.all([

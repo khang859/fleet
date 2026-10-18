@@ -4,6 +4,7 @@ export type { AgencyLeftover, ResourceKind } from './agency';
 import type { CrewFlag, CrewRuntime } from './agency-crew';
 import type { DeliverableKind, Plan, PlanDiffEntry, PlanInput } from './agency-plan';
 import type { PrReview } from './pr-review';
+import type { AgencyPermission } from './agency-permissions';
 
 /** The states a job takes results and step updates in: crew are at work, or it delivered. */
 export const ACCEPTS_RESULTS: readonly JobState[] = ['running', 'waiting', 'delivered'];
@@ -267,6 +268,8 @@ export type AgencyJobDetail = {
   crew: AgencyCrewMember[];
   /** Servers listening in the blocks of workspaces with crew at work, by port. */
   servers: AgencyServer[];
+  /** Every permission request the job's crew made, oldest first. */
+  permissions: AgencyPermission[];
 };
 
 /** The client opens a delivered file with the app their system picks for it. */

@@ -908,7 +908,7 @@ export class JobsService {
 
   /**
    * Hold a running job on the client while every step not done waits on one
-   * of their open questions, and let it go once one does not.
+   * of their open questions or permission cards, and let it go once one does not.
    */
   refreshClientHold(jobId: number): void {
     const job = this.store.getJob(jobId);
@@ -916,11 +916,15 @@ export class JobsService {
     const live = this.store.plans
       .steps(jobId)
       .filter((s) => s.status !== 'done' && s.status !== 'removed');
-    const asked = new Set(
-      this.store
+    const asked = new Set([
+      ...this.store
         .listQuestions(job.repoId, { jobId, statuses: ['open'] })
-        .flatMap((q) => (q.step === null ? [] : [q.step]))
-    );
+        .flatMap((q) => (q.step === null ? [] : [q.step])),
+      ...this.store.permissions
+        .open()
+        .filter((p) => p.jobId === jobId && p.state !== 'admiral')
+        .map((p) => p.stepId)
+    ]);
     const waiting = live.length > 0 && live.every((s) => asked.has(s.id));
     if (waiting === job.holds.includes('client')) return;
     if (waiting) this.store.addHold(jobId, 'client');
@@ -976,7 +980,8 @@ export class JobsService {
       spendUsd: this.store.plans.spendUsd(jobId),
       merge: mergeView(this.store.merges.run(jobId)),
       crew: this.store.crew.all(jobId).map(crewView),
-      servers: this.deps.servers?.(jobId) ?? []
+      servers: this.deps.servers?.(jobId) ?? [],
+      permissions: this.store.permissions.forJob(jobId)
     };
   }
 }

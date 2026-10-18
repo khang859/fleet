@@ -46,8 +46,15 @@ const LabelArgs = z.object({
   status: z.string().optional(),
   kind: z.string().optional(),
   branch: z.string().optional(),
-  reason: z.string().optional()
+  reason: z.string().optional(),
+  request: z.string().optional()
 });
+
+const PERMISSION_VERB: Record<string, string> = {
+  allow: 'Allow',
+  deny: 'Deny',
+  ask_client: 'Ask you about'
+};
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
   if (call.error !== null) return 'failed';
@@ -187,6 +194,11 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       return { verb: 'Interrupt', target: args.crew ?? '' };
     case 'crew_stop':
       return { verb: 'Stop', target: args.crew ?? '' };
+    case 'permission_answer':
+      return {
+        verb: PERMISSION_VERB[args.decision ?? ''] ?? 'Answer',
+        target: joinDetail(args.request, args.reason, ': ')
+      };
     case 'client_file_propose':
       return { verb: 'Remember', target: args.reason ?? '' };
     case 'settings_read':

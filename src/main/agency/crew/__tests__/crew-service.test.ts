@@ -12,6 +12,9 @@ import { createAgencyCapability } from '../../tools';
 import { PROMPT_MISMATCH, type SendResult } from '../../../claude-sessions/input';
 import { NEEDS_YOU_MS, STUCK_MS, type CrewSessionState } from '../crew-flags';
 import { stepBrief, type CrewPaneHost, type CrewPaneOpen } from '../crew-service';
+import { ADMIRAL_ANSWER_MS } from '../permissions';
+import { admiralSnapshotNote } from '../../admiral/snapshot-note';
+import type { ClaudePendingPermission, ClaudeSession } from '../../../../shared/claude-sessions';
 
 /**
  * Hiring crew on a real repository, with Fleet's panes faked: what opens,
@@ -77,6 +80,16 @@ function fakePanes(): FakePanes {
   return host;
 }
 
+/** The permission hooks Fleet holds, faked: which are held, and what was answered. */
+type FakeHooks = {
+  held: Map<string, ClaudePendingPermission>;
+  responded: Array<[string, string, string]>;
+};
+
+let hooks: FakeHooks;
+/** The crew session's folder, as the session registry reports it. */
+const CREW_CWD = '/work/front-1';
+
 let ids = 0;
 let clock = 1_000_000;
 
@@ -90,6 +103,17 @@ function start(crewLimit = 4): void {
     crewDirs: { bundled: join(process.cwd(), 'resources', 'crew'), user: null },
     crewPanes: panes,
     agencySettings: crewAtOnce(crewLimit),
+    permissionHooks: {
+      respond: (toolUseId, decision, reason) => {
+        if (!hooks.held.delete(toolUseId)) return false;
+        hooks.responded.push([toolUseId, decision, reason]);
+        return true;
+      },
+      pending: (_sessionId, toolUseId) => {
+        const request = hooks.held.get(toolUseId);
+        return request === undefined ? undefined : { request, cwd: CREW_CWD };
+      }
+    },
     now: () => clock,
     // Pane and session ids, in a known order.
     newCrewId: () => {
@@ -102,6 +126,7 @@ function start(crewLimit = 4): void {
 beforeEach(async () => {
   home = tempDir('fleet-crew-');
   panes = fakePanes();
+  hooks = { held: new Map(), responded: [] };
   ids = 0;
   clock = 1_000_000;
   start();
@@ -1001,5 +1026,237 @@ describe('a swap', () => {
     const role = panes.opened[0].launch.env.FLEET_CREW_ROLE;
     expect(role).toContain('You are the old tester.');
     expect(role).not.toContain('new tester');
+  });
+});
+
+describe('permission requests', () => {
+  async function live(): Promise<{ jobId: number; paneId: string }> {
+    const jobId = await approvedJob();
+    await toolsOf(jobId).crewHire!({ step: 'front', brief: 'x' });
+    const paneId = panes.opened[0].paneId;
+    service.crew.reported(paneId, 'session-a');
+    return { jobId, paneId };
+  }
+
+  /** Fleet holds a request from the crew pane, as the hook server does: a command, or any tool. */
+  function ask(
+    paneId: string,
+    toolUseId: string,
+    command: string | ClaudePendingPermission['tool']
+  ): ClaudePendingPermission {
+    const request: ClaudePendingPermission = {
+      sessionId: 'session-a',
+      toolUseId,
+      tool: typeof command === 'string' ? { toolName: 'Bash', toolInput: { command } } : command,
+      receivedAt: clock
+    };
+    hooks.held.set(toolUseId, request);
+    const session = {
+      sessionId: 'session-a',
+      paneId,
+      cwd: CREW_CWD,
+      pendingPermissions: [request]
+    };
+    service.permissions.held(session as unknown as ClaudeSession, request);
+    return request;
+  }
+
+  const permissionsOf = (jobId: number) => service.jobs.detail(jobId)?.permissions ?? [];
+  const wakeups = (jobId: number): string =>
+    service.store.pullWakeups({ repoId: ref.repoId, jobId }).text ?? '';
+  const claim = (): void => {
+    service.claim({ repoId: ref.repoId, paneId: 'admiral-pane' }, 1);
+  };
+
+  it('holds only a working crew member’s requests', async () => {
+    const { paneId } = await live();
+    expect(service.permissions.canAnswer(paneId)).toBe(true);
+    expect(service.permissions.canAnswer('some-other-pane')).toBe(false);
+  });
+
+  it('wakes the Admiral first, and sends its allow through the hook with the reason logged', async () => {
+    claim();
+    const { jobId, paneId } = await live();
+    wakeups(jobId);
+    ask(paneId, 'tool-1', 'git push origin job/front');
+    expect(wakeups(jobId)).toContain(
+      'Permission request p1: builder 1 asks to use Bash on step front'
+    );
+    expect(admiralSnapshotNote(service.store, { repoId: ref.repoId, jobId })).toContain(
+      'Permission requests waiting on you (answer each with permission_answer first):'
+    );
+
+    const out = await toolsOf(jobId).permissionAnswer!({
+      request: 'p1',
+      decision: 'allow',
+      reason: 'fits step front'
+    });
+    expect(out.summary).toBe('allowed p1 perm#1');
+    expect(hooks.responded).toEqual([['tool-1', 'allow', '']]);
+    expect(permissionsOf(jobId)[0]).toMatchObject({ state: 'allowed', answeredBy: 'admiral' });
+    expect(service.store.plans.logTail(jobId).at(-1)).toMatchObject({
+      kind: 'permission',
+      text: 'Allowed builder 1: git push origin job/front · fits step front'
+    });
+    await expect(
+      toolsOf(jobId).permissionAnswer!({ request: 'p1', decision: 'deny', reason: 'r' })
+    ).rejects.toThrow('p1 was already allowed.');
+  });
+
+  it('denies with a reason the crew member reads', async () => {
+    claim();
+    const { jobId, paneId } = await live();
+    ask(paneId, 'tool-1', 'rm -rf build');
+    await toolsOf(jobId).permissionAnswer!({
+      request: 'p1',
+      decision: 'deny',
+      reason: 'not in the plan'
+    });
+    expect(hooks.responded).toEqual([['tool-1', 'deny', 'Denied by the Admiral: not in the plan']]);
+  });
+
+  it('puts a request on a client card, holds the job, and tells the Admiral the answer', async () => {
+    claim();
+    const { jobId, paneId } = await live();
+    ask(paneId, 'tool-1', './deploy.sh --prod');
+    wakeups(jobId);
+    // With the Admiral, it does not wait on the client.
+    expect(service.store.getJob(jobId)?.permissionsWaiting).toEqual([]);
+    await toolsOf(jobId).permissionAnswer!({
+      request: 'p1',
+      decision: 'ask_client',
+      reason: 'a production deploy is outside the plan',
+      summary: 'deploy to production'
+    });
+    expect(permissionsOf(jobId)[0]).toMatchObject({
+      state: 'client',
+      summary: 'deploy to production',
+      recommend: 'deny',
+      expiresAt: clock + 180_000
+    });
+    expect(service.store.getJob(jobId)?.holds).toContain('client');
+    expect(service.store.getJob(jobId)?.permissionsWaiting).toEqual([1]);
+
+    expect(service.answerPermission({ id: 1, decision: 'deny' })).toEqual({ ok: true });
+    expect(hooks.responded).toEqual([['tool-1', 'deny', 'Denied by the client.']]);
+    expect(permissionsOf(jobId)[0]).toMatchObject({ state: 'denied', answeredBy: 'client' });
+    expect(service.store.getJob(jobId)?.holds).not.toContain('client');
+    expect(service.store.getJob(jobId)?.permissionsWaiting).toEqual([]);
+    expect(wakeups(jobId)).toContain("The client denied p1 (builder 1's Bash)");
+    expect(service.answerPermission({ id: 1, decision: 'allow' })).toMatchObject({ ok: false });
+  });
+
+  it('goes straight to the client while the Admiral is paused, and expires as denied', async () => {
+    const { jobId, paneId } = await live();
+    ask(paneId, 'tool-1', './deploy.sh --prod');
+    expect(permissionsOf(jobId)[0]).toMatchObject({
+      state: 'client',
+      reason: 'The Admiral is paused, so this comes straight to you.'
+    });
+    clock += 180_000;
+    service.permissions.tick();
+    expect(hooks.responded).toEqual([
+      ['tool-1', 'deny', 'Denied: the client did not answer in time.']
+    ]);
+    expect(permissionsOf(jobId)[0]).toMatchObject({ state: 'denied', answeredBy: 'expiry' });
+  });
+
+  it('hands the client what the Admiral has not answered in time, or when its pane closes', async () => {
+    claim();
+    const { jobId, paneId } = await live();
+    ask(paneId, 'tool-1', 'npm publish');
+    clock += ADMIRAL_ANSWER_MS;
+    service.permissions.tick();
+    expect(permissionsOf(jobId)[0].state).toBe('client');
+
+    ask(paneId, 'tool-2', 'npm publish --tag next');
+    service.release('admiral-pane');
+    expect(permissionsOf(jobId)[1]).toMatchObject({
+      state: 'client',
+      reason: 'The Admiral pane closed, so this comes to you.'
+    });
+  });
+
+  it('says to answer in the pane once Fleet stops holding it, and settles when the pane moves on', async () => {
+    const { jobId, paneId } = await live();
+    ask(paneId, 'tool-1', 'git push --force');
+    hooks.held.delete('tool-1');
+    service.permissions.released('tool-1', null);
+    expect(permissionsOf(jobId)[0].state).toBe('in_pane');
+    expect(service.store.getJob(jobId)?.permissionsWaiting).toEqual([1]);
+    expect(service.answerPermission({ id: 1, decision: 'allow' })).toMatchObject({ ok: false });
+
+    service.permissions.sessionEvent(
+      { sessionId: 'session-a', pendingPermissions: [] },
+      { event: 'PostToolUse', toolUseId: 'tool-1' }
+    );
+    expect(permissionsOf(jobId)[0]).toMatchObject({
+      state: 'void',
+      reason: 'Answered in its pane.'
+    });
+  });
+
+  it('shows a file in the worktree from there, and one outside it in full', async () => {
+    const { jobId, paneId } = await live();
+    const write = (file_path: string) => ({ toolName: 'Write', toolInput: { file_path } });
+    ask(paneId, 'tool-1', write(`${CREW_CWD}/e2e/DEPLOY.md`));
+    ask(paneId, 'tool-2', write('/etc/hosts'));
+    ask(paneId, 'tool-3', write(`${CREW_CWD}-old/a.txt`));
+    expect(permissionsOf(jobId).map((p) => p.target)).toEqual(
+      expect.arrayContaining(['e2e/DEPLOY.md', '/etc/hosts', `${CREW_CWD}-old/a.txt`])
+    );
+    expect(service.answerPermission({ id: 1, decision: 'allow' })).toEqual({ ok: true });
+  });
+
+  it('voids a card whose target changed, and never answers it', async () => {
+    const { jobId, paneId } = await live();
+    const request = ask(paneId, 'tool-1', 'ls');
+    hooks.held.set('tool-1', {
+      ...request,
+      tool: { toolName: 'Bash', toolInput: { command: 'rm -rf /' } }
+    });
+    expect(service.answerPermission({ id: 1, decision: 'allow' })).toEqual({
+      ok: false,
+      reason: 'p1 is void: its target changed.'
+    });
+    expect(hooks.responded).toEqual([]);
+    expect(permissionsOf(jobId)[0].state).toBe('void');
+  });
+
+  it('records an answer from elsewhere in Fleet, and drops requests whose member ended', async () => {
+    claim();
+    const { jobId, paneId } = await live();
+    ask(paneId, 'tool-1', 'make');
+    service.permissions.released('tool-1', { decision: 'allow', reason: '' });
+    expect(permissionsOf(jobId)[0]).toMatchObject({ state: 'allowed', answeredBy: 'elsewhere' });
+
+    ask(paneId, 'tool-2', 'make test');
+    service.crew.ended(paneId, { kind: 'closed' });
+    service.permissions.tick();
+    expect(permissionsOf(jobId)[1]).toMatchObject({
+      state: 'void',
+      reason: 'Its crew member ended.'
+    });
+  });
+
+  it('refuses to type into a member that waits on a permission, and is not a takeover', async () => {
+    claim();
+    const { jobId, paneId } = await live();
+    ask(paneId, 'tool-1', 'make');
+    await expect(toolsOf(jobId).crewSend!({ crew: 'builder 1', prompt: 'go' })).rejects.toThrow(
+      'Not sent: builder 1 waits on a permission answer.'
+    );
+    await expect(toolsOf(jobId).crewInterrupt!({ crew: 'builder 1' })).rejects.toThrow(
+      'Not interrupted'
+    );
+    service.crew.flags.userInput(paneId, '1');
+    expect(crewOf(jobId)[0].flag).toBeNull();
+  });
+
+  it('voids every open request at startup, since no hook is held across a restart', async () => {
+    const { jobId, paneId } = await live();
+    ask(paneId, 'tool-1', 'make');
+    await service.startup();
+    expect(permissionsOf(jobId)[0]).toMatchObject({ state: 'void', reason: 'Fleet restarted.' });
   });
 });

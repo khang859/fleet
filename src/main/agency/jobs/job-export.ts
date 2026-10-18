@@ -5,7 +5,8 @@ import {
   type AgencyQuestion
 } from '../../../shared/agency';
 import type { AgencyJobDetail, AgencyPlanVersion, AgencyResult } from '../../../shared/agency-jobs';
-import { redactEnvValues } from '../projects/env-files';
+import { permissionDisplayId, type AgencyPermission } from '../../../shared/agency-permissions';
+import { Redactor } from '../../redactor';
 import { proposalLines } from '../wakeup-text';
 
 /** What a job's export is made from: its detail, its questions, and its project's name. */
@@ -91,6 +92,38 @@ function resultLine(r: AgencyResult): string {
   }
 }
 
+const ANSWERED_BY: Record<NonNullable<AgencyPermission['answeredBy']>, string> = {
+  admiral: 'the Admiral',
+  client: 'the client',
+  expiry: 'the card expiring',
+  elsewhere: 'Fleet outside the job'
+};
+
+/** A permission request, who answered it and why. */
+function permissionSection(p: AgencyPermission): string[] {
+  const how =
+    p.state === 'allowed' || p.state === 'denied'
+      ? `${p.state === 'allowed' ? 'Allowed' : 'Denied'} by ${p.answeredBy === null ? 'Fleet' : ANSWERED_BY[p.answeredBy]}`
+      : p.state === 'void'
+        ? 'Gone without an answer'
+        : `Open (${p.state})`;
+  const at = p.answeredAt === null ? '' : ` ${stamp(p.answeredAt)}`;
+  // Longer than any run of backticks in the target, so the target cannot end it.
+  const fence = '`'.repeat(
+    Math.max(3, ...[...p.target.matchAll(/`+/g)].map((m) => m[0].length + 1))
+  );
+  return [
+    `### ${permissionDisplayId(p.id)}: ${p.crewLabel} asked to use ${p.tool} on ${p.stepId}, ${stamp(p.createdAt)}`,
+    '',
+    fence,
+    p.target,
+    fence,
+    '',
+    `${how}${at}${p.reason === '' ? '.' : `: ${p.reason}`}`,
+    ''
+  ];
+}
+
 /** The job's states and its log, in the order they happened. */
 function recordLines(detail: AgencyJobDetail): string[] {
   const rows = [
@@ -109,11 +142,12 @@ function recordLines(detail: AgencyJobDetail): string[] {
 /**
  * A job's record as Markdown, for the client to keep or share: the brief,
  * every plan version and its decision, the questions and answers, the
- * results, the spend, and every state change and log line. The values of the
+ * permission requests and their answers, the results, the spend, and every
+ * state change and log line. The values of the
  * project's chosen env files are masked wherever they appear.
  */
 export function exportJob(record: JobRecord, secrets: readonly string[] = []): string {
-  const { job, versions, steps, results, spendUsd } = record.detail;
+  const { job, versions, steps, results, spendUsd, permissions } = record.detail;
   const budget = job.budgetUsd === null ? '' : ` of a $${job.budgetUsd} budget`;
   const lines = [
     `# ${jobDisplayId(job.id)}: ${job.title}`,
@@ -143,6 +177,11 @@ export function exportJob(record: JobRecord, secrets: readonly string[] = []): s
     ...(record.questions.length === 0
       ? ['No questions.', '']
       : record.questions.flatMap(questionSection)),
+    '## Permission requests',
+    '',
+    ...(permissions.length === 0
+      ? ['No permission requests.', '']
+      : permissions.flatMap(permissionSection)),
     '## Results',
     '',
     ...(results.length === 0 ? ['No results.'] : results.map(resultLine)),
@@ -152,5 +191,5 @@ export function exportJob(record: JobRecord, secrets: readonly string[] = []): s
     ...recordLines(record.detail),
     ''
   ];
-  return redactEnvValues(lines.join('\n'), secrets);
+  return new Redactor(secrets).redact(lines.join('\n'));
 }

@@ -163,7 +163,7 @@ export function waitingCount(snapshot: AgencySnapshot | undefined, jobId?: numbe
   const jobs = snapshot.jobs.filter((j) => jobId === undefined || j.id === jobId);
   const plans = jobs.filter((j) => j.pendingPlan !== null).length;
   const delivered = jobs.filter((j) => j.state === 'delivered').length;
-  const crew = jobs.reduce((n, j) => n + j.crewNeedingYou, 0);
+  const crew = jobs.reduce((n, j) => n + j.crewNeedingYou + j.permissionsWaiting.length, 0);
   return openQuestions(snapshot, jobId).length + plans + delivered + crew;
 }
 

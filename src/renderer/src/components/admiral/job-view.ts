@@ -92,6 +92,11 @@ export function settingsCardId(call: Pick<AgentToolCall, 'summary'>): number | n
   return tokenId(/\bcard s(\d+)\b/, call.summary);
 }
 
+/** The permission request a `permission_answer` call answered, read off its row. */
+export function answeredPermissionId(call: Pick<AgentToolCall, 'summary'>): number | null {
+  return tokenId(/\bperm#(\d+)\b/, call.summary);
+}
+
 /** The number an id token in a tool row carries, like q7 or plan#12. */
 function tokenId(token: RegExp, text: string | null | undefined): number | null {
   const match = token.exec(text ?? '');

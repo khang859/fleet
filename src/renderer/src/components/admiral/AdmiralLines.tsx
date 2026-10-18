@@ -14,11 +14,13 @@ import {
 import { openSettings } from '../../store/settings-nav-store';
 import { AgentToolRow } from '../agent/AgentToolRow';
 import { useAdmiralThread } from './admiral-context';
+import { PermissionCard, PermissionLine } from './PermissionCard';
 import { PlanCard } from './PlanCard';
 import { QuestionCard } from './QuestionCard';
 import { ResultCard } from './ResultCard';
 import { SettingsCardView } from './SettingsCard';
 import {
+  answeredPermissionId,
   askedQuestionId,
   deliveredResultId,
   jobLink,
@@ -206,6 +208,36 @@ export function JobDeliverRow({ call }: { call: AgentToolCall }): React.JSX.Elem
       items={(detail) => detail.results}
       className="max-w-md"
       card={(result) => <ResultCard result={result} />}
+    />
+  );
+}
+
+/**
+ * A `permission_answer` call: the line saying what the Admiral allowed or
+ * denied, or the card it put to the client, answerable right there.
+ */
+export function PermissionAnswerRow({ call }: { call: AgentToolCall }): React.JSX.Element {
+  const asked = call.summary?.startsWith('asked the client') === true;
+  return (
+    <DetailCardRow
+      call={call}
+      id={answeredPermissionId(call)}
+      items={(detail) => detail.permissions}
+      className={asked ? 'max-w-md' : ''}
+      card={(permission, detail) =>
+        asked ? (
+          <PermissionCard
+            permission={permission}
+            paneId={detail.crew.find((c) => c.id === permission.crewId)?.paneId ?? null}
+          />
+        ) : (
+          <PermissionLine
+            permission={permission}
+            decision={call.summary?.startsWith('allowed') === true ? 'allow' : 'deny'}
+            reason={permission.reason}
+          />
+        )
+      }
     />
   );
 }

@@ -1,6 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import { DEFAULT_AGENCY_SETTINGS, type AgencySettings } from '../../../../shared/agency';
-import { NUDGE_LIMIT_MAX } from '../../../../shared/agency-settings';
+import {
+  NUDGE_LIMIT_MAX,
+  PERMISSION_EXPIRY_MAX_SEC,
+  PERMISSION_EXPIRY_MIN_SEC
+} from '../../../../shared/agency-settings';
 import { useSettingsStore } from '../../store/settings-store';
 import { useAgentStore } from '../../store/agent-store';
 import { ModelSelect } from '../agent/settings/ModelSelect';
@@ -152,6 +156,24 @@ export function AgencyAdmiralSection(): React.JSX.Element | null {
             that, its step is blocked.
           </p>
           <AdmiralChangeNote marks={marks} settingKey="agency.admiral.nudgeLimit" />
+        </div>
+
+        <div>
+          <SettingRow label="Permission card expiry">
+            <BoundedNumber
+              id="agency-permission-expiry"
+              label="Permission card expiry in seconds"
+              value={agency.admiral.permissionExpirySec}
+              min={PERMISSION_EXPIRY_MIN_SEC}
+              max={PERMISSION_EXPIRY_MAX_SEC}
+              fallback={DEFAULT_AGENCY_SETTINGS.admiral.permissionExpirySec}
+              onCommit={(permissionExpirySec) => patchAdmiral({ permissionExpirySec })}
+            />
+          </SettingRow>
+          <p className="text-xs text-fleet-text-subtle mt-1">
+            Seconds you have to answer a crew permission card before it is denied. Past about 5
+            minutes, the crew member stops waiting and asks in its pane.
+          </p>
         </div>
 
         <ClientFileEditor />

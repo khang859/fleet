@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PaneScreen } from '../pane-screen';
+import { Redactor } from '../redactor';
 
 describe('PaneScreen', () => {
   it('reads what a full-screen program shows now, not the output that led to it', async () => {
@@ -18,6 +19,16 @@ describe('PaneScreen', () => {
     screen.resize(20, 3);
     screen.write('\r\nfour');
     expect((await screen.text()).split('\n').at(-1)).toBe('four');
+    screen.dispose();
+  });
+
+  it('reads a value the terminal wrapped, sent in two chunks, as one line', async () => {
+    const screen = new PaneScreen(10, 4);
+    screen.write('$ echo sk_live_');
+    screen.write('abcdef123\r\nok');
+    const text = await screen.text();
+    expect(text).toBe('$ echo sk_live_abcdef123\nok');
+    expect(new Redactor(['sk_live_abcdef123']).redact(text)).toBe('$ echo [redacted:env]\nok');
     screen.dispose();
   });
 });

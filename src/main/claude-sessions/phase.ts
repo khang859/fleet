@@ -20,8 +20,13 @@ export type PhaseInput = {
   toolInput?: Record<string, unknown>;
   toolUseId?: string;
   notificationType?: string;
+  /** The request is held for an answerer that takes it to the user its own way. */
+  delegated?: boolean;
   at: number;
 };
+
+/** A pending permission the user has to answer, in the pane or through Fleet. */
+const asksUser = (p: ClaudePendingPermission): boolean => p.delegated !== true;
 
 export const INITIAL_PHASE: PhaseState = {
   phase: 'starting',
@@ -88,35 +93,38 @@ export const TURN_BOUNDARIES = new Set([
   'SessionEnd'
 ]);
 
+/** The pending permissions with a request added, replacing a repeat of it. */
+function addRequest(
+  pending: ClaudePendingPermission[],
+  input: PhaseInput,
+  toolName: string
+): ClaudePendingPermission[] {
+  const toolUseId = input.toolUseId ?? `unknown-${input.at}`;
+  return [
+    ...pending.filter((p) => p.toolUseId !== toolUseId),
+    {
+      sessionId: input.sessionId,
+      toolUseId,
+      tool: { toolName, toolInput: input.toolInput ?? {}, toolUseId: input.toolUseId },
+      receivedAt: input.at,
+      ...(input.delegated === true && { delegated: true })
+    }
+  ];
+}
+
 /** Apply one hook event to a session's phase. Pure: `state` is not modified. */
 export function reducePhase(state: PhaseState, input: PhaseInput): PhaseState {
   let phase = statusToPhase(input.event, input.status);
-  let asksQuestion = false;
-  let pendingPermissions = state.pendingPermissions;
+  let pendingPermissions = TURN_BOUNDARIES.has(input.event) ? [] : state.pendingPermissions;
+  const asked = input.status === 'waiting_for_approval' ? input.tool : undefined;
+  // A question is answered in the dialog, not approved: it waits for input.
+  const asksQuestion = asked === 'AskUserQuestion';
 
-  if (TURN_BOUNDARIES.has(input.event)) pendingPermissions = [];
-
-  if (input.status === 'waiting_for_approval' && input.tool) {
-    if (input.tool === 'AskUserQuestion') {
-      // A question is answered in the dialog, not approved: it waits for input.
-      phase = 'waitingForInput';
-      asksQuestion = true;
-    } else {
-      const toolUseId = input.toolUseId ?? `unknown-${input.at}`;
-      pendingPermissions = [
-        ...pendingPermissions.filter((p) => p.toolUseId !== toolUseId),
-        {
-          sessionId: input.sessionId,
-          toolUseId,
-          tool: {
-            toolName: input.tool,
-            toolInput: input.toolInput ?? {},
-            toolUseId: input.toolUseId
-          },
-          receivedAt: input.at
-        }
-      ];
-    }
+  if (asksQuestion) phase = 'waitingForInput';
+  else if (asked) {
+    pendingPermissions = addRequest(pendingPermissions, input, asked);
+    // The answerer brings it to the user, so the session is still working.
+    if (input.delegated === true) phase = 'processing';
   }
 
   if (TOOL_FINISHED.has(input.event) && input.toolUseId) {
@@ -125,7 +133,7 @@ export function reducePhase(state: PhaseState, input: PhaseInput): PhaseState {
   }
 
   // Work on a parallel tool does not answer the one blocked on approval.
-  if (phase === 'processing' && pendingPermissions.length > 0) phase = 'waitingForApproval';
+  if (phase === 'processing' && pendingPermissions.some(asksUser)) phase = 'waitingForApproval';
 
   if (!phase) {
     return pendingPermissions === state.pendingPermissions
@@ -148,7 +156,7 @@ export function resolvePermission(state: PhaseState, toolUseId: string): PhaseSt
   const pendingPermissions = state.pendingPermissions.filter((p) => p.toolUseId !== toolUseId);
   if (pendingPermissions.length === state.pendingPermissions.length) return state;
   const phase =
-    pendingPermissions.length === 0 && state.phase === 'waitingForApproval'
+    !pendingPermissions.some(asksUser) && state.phase === 'waitingForApproval'
       ? 'processing'
       : state.phase;
   return { ...state, phase, pendingPermissions };

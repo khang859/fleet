@@ -39,6 +39,11 @@ export type ClaudePendingPermission = {
   toolUseId: string;
   tool: ClaudeToolInfo;
   receivedAt: number;
+  /**
+   * Fleet holds it for an answerer that takes it to the user its own way, as
+   * the agency's Admiral does, so the session does not wait on the user for it.
+   */
+  delegated?: boolean;
 };
 
 /** The program a tracked session runs: Claude Code, or eva crew. */

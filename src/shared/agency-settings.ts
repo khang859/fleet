@@ -75,6 +75,9 @@ const List = z.array(z.string().max(400)).max(200);
 
 /** The most nudges the client can allow an idle crew member. */
 export const NUDGE_LIMIT_MAX = 20;
+/** The shortest and longest a client permission card waits, in seconds. */
+export const PERMISSION_EXPIRY_MIN_SEC = 30;
+export const PERMISSION_EXPIRY_MAX_SEC = 3_600;
 
 /** Agency settings, the same for every project. */
 const AGENCY_SETTINGS = {
@@ -95,6 +98,12 @@ const AGENCY_SETTINGS = {
     label: 'Nudges per idle crew member',
     schema: z.number().int().min(0).max(NUDGE_LIMIT_MAX),
     ...moreNeedsOk
+  },
+  // How long the client has to answer a crew permission card is theirs to set.
+  'agency.admiral.permissionExpirySec': {
+    label: 'Permission card expiry (seconds)',
+    schema: z.number().int().min(PERMISSION_EXPIRY_MIN_SEC).max(PERMISSION_EXPIRY_MAX_SEC),
+    ...clientOnly
   },
   'agency.crew.claude.atOnce': { label: 'Claude crew at once', schema: AtOnce, ...moreNeedsOk },
   'agency.crew.eva.atOnce': { label: 'eva crew at once', schema: AtOnce, ...moreNeedsOk },

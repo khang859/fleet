@@ -39,6 +39,11 @@ export function agencyDbPath(): string {
  *
  * Version 8 adds each job workspace's block of ports and the env its panes
  * and setup commands get.
+ *
+ * Version 9 adds the crew flags: what a member needs beyond its session
+ * phase, since when, and until when.
+ *
+ * Version 10 adds crew permission requests, with who answered each and why.
  */
 const MIGRATIONS: readonly string[] = [
   `
@@ -334,6 +339,29 @@ const MIGRATIONS: readonly string[] = [
   ALTER TABLE crew_members ADD COLUMN flag TEXT;
   ALTER TABLE crew_members ADD COLUMN flag_since INTEGER;
   ALTER TABLE crew_members ADD COLUMN flag_until INTEGER;
+  `,
+  `
+  CREATE TABLE permission_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER NOT NULL,
+    crew_id INTEGER NOT NULL,
+    step_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    tool_use_id TEXT NOT NULL,
+    tool TEXT NOT NULL,
+    target TEXT NOT NULL,
+    state TEXT NOT NULL,
+    answered_by TEXT,
+    reason TEXT NOT NULL DEFAULT '',
+    summary TEXT,
+    recommend TEXT,
+    created_at INTEGER NOT NULL,
+    asked_at INTEGER,
+    expires_at INTEGER,
+    answered_at INTEGER
+  );
+  CREATE INDEX permission_requests_job ON permission_requests(job_id, id);
+  CREATE INDEX permission_requests_state ON permission_requests(state);
   `
 ];
 

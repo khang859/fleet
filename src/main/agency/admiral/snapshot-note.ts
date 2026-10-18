@@ -11,8 +11,12 @@ import type { PlanBases } from '../../../shared/agency-jobs';
 import { CLIENT_FILE_CLEANUP_CHARS, type ClientFileNote } from '../projects/client-file';
 import type { AgencyStore } from '../store/agency-store';
 import { proposalLines } from '../wakeup-text';
+import { permissionDisplayId } from '../../../shared/agency-permissions';
 
-type SnapshotReader = Pick<AgencyStore, 'repo' | 'getJob' | 'listJobs' | 'listQuestions' | 'plans'>;
+type SnapshotReader = Pick<
+  AgencyStore,
+  'repo' | 'getJob' | 'listJobs' | 'listQuestions' | 'plans' | 'permissions'
+>;
 
 /** The commits a job's work starts from, as the approval pinned them. */
 function baseText(bases: PlanBases | null): string {
@@ -84,6 +88,36 @@ function planLines(store: SnapshotReader, job: AgencyJob): string[] {
   }
   if (job.holds.length > 0) lines.push(`On hold: ${job.holds.join(', ')}.`);
   return lines;
+}
+
+/**
+ * The permission requests of a job that wait on the Admiral, and those on the
+ * client's cards. What a request would run comes from its crew member, so it
+ * goes in a fence.
+ */
+function permissionLines(store: SnapshotReader, jobId: number): string[] {
+  const all = store.permissions.forJob(jobId);
+  const mine = all.filter((p) => p.state === 'admiral');
+  const theirs = all.filter((p) => p.state === 'client');
+  return [
+    ...(mine.length === 0
+      ? []
+      : [
+          'Permission requests waiting on you (answer each with permission_answer first):',
+          ...mine.map((p) => {
+            const id = permissionDisplayId(p.id);
+            return fence(
+              id,
+              `${id}: ${p.crewLabel} asks to use ${p.tool} on step ${p.stepId}:\n${p.target}`
+            );
+          })
+        ]),
+    ...(theirs.length === 0
+      ? []
+      : [
+          `Permission requests on the client's cards: ${theirs.map((p) => permissionDisplayId(p.id)).join(', ')}.`
+        ])
+  ];
 }
 
 function questionLines(store: SnapshotReader, scope: AdmiralThreadScope): string[] {
@@ -176,6 +210,7 @@ function recordsNote(store: SnapshotReader, scope: AdmiralThreadScope): string {
     `Fleet's records for this conversation: ${id} in ${repo}, state ${job.state}.`,
     fence(id, `Title: ${job.title}\nBrief: ${job.brief}`),
     ...planLines(store, job),
+    ...permissionLines(store, job.id),
     ...questionLines(store, scope)
   ].join('\n');
 }

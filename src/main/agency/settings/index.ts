@@ -62,6 +62,8 @@ function readAgency(settings: AgencySettings, key: AgencySettingKey): SettingVal
       return settings.admiral.monthlyCapUsd;
     case 'agency.admiral.nudgeLimit':
       return settings.admiral.nudgeLimit;
+    case 'agency.admiral.permissionExpirySec':
+      return settings.admiral.permissionExpirySec;
     case 'agency.crew.claude.atOnce':
       return settings.crew.claude.atOnce;
     case 'agency.crew.eva.atOnce':
@@ -108,6 +110,10 @@ function writeAgency(
     case 'agency.admiral.nudgeLimit':
       return typeof value === 'number'
         ? { ...settings, admiral: { ...admiral, nudgeLimit: value } }
+        : settings;
+    case 'agency.admiral.permissionExpirySec':
+      return typeof value === 'number'
+        ? { ...settings, admiral: { ...admiral, permissionExpirySec: value } }
         : settings;
     case 'agency.crew.claude.atOnce':
     case 'agency.crew.eva.atOnce':

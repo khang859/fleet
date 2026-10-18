@@ -205,6 +205,7 @@ import type {
   PlanActionResult,
   StepSwapRequest
 } from '../shared/agency-jobs';
+import type { PermissionAnswerRequest, PermissionAnswerResult } from '../shared/agency-permissions';
 import type { AdmiralSettingMark, SettingsUndoOutcome } from '../shared/agency-settings';
 import type {
   Learning,
@@ -1161,6 +1162,9 @@ const fleetApi = {
     /** The client cancels a job, or accepts its results; either way it closes and cleans up. */
     jobControl: async (control: JobControl): Promise<JobControlResult> =>
       typedInvoke(IPC_CHANNELS.AGENCY_JOB_CONTROL, control),
+    /** The client allows or denies a crew member's permission request from its card. */
+    answerPermission: async (req: PermissionAnswerRequest): Promise<PermissionAnswerResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_PERMISSION_ANSWER, req),
     /** Merge a delivered job's PRs one at a time in member order, each after its checks. */
     mergePrs: async (jobId: number): Promise<JobControlResult> =>
       typedInvoke(IPC_CHANNELS.AGENCY_MERGE_PRS, jobId),

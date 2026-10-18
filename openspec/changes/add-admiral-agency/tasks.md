@@ -210,12 +210,20 @@ Phase 3 notes (decisions made while building):
 
 ## 5. Phase 5 - permission answers (PR 5)
 
-- [ ] 5.1 Add a `PermissionRequest` hook entry to the crew `--settings` and a Go hook verb that holds the request on the socket for up to 300 seconds; verify with Go tests and a hook-server test
-- [ ] 5.2 Add `permission_answer` (allow, deny or ask the client, with a reason) and the Admiral prompt rules for in-plan, out-of-plan and hard-to-undo requests, and put permission requests ahead of other wakeups; verify with tool tests and prompt tests over recorded requests
-- [ ] 5.3 Add the permission card in WAITING ON YOU, bound to its exact target, expiring as denied, switching to "answer in pane" after the hook hold, and sent straight to the client while the Admiral is paused; block typing into a pane that shows a permission prompt; verify with tests and a screenshot against canvas board 3.2
-- [ ] 5.4 Write every permission answer to `agency.db` with who answered and why, show it as a chat line, and include it in the job export; verify with store tests
-- [ ] 5.5 Add the env value Redactor (ANSI strip, chunk hold-back) over `fleet_read`, transcripts, agency tool output and the logger; verify with tests for a value split across chunks
-- [ ] 5.6 End to end: a Claude Code Builder asks to push its branch and the Admiral allows it, and a QA crew member asks to deploy to production and the client gets a card; verify with `npm run drive` steps and screenshots
+- [x] 5.1 Add a `PermissionRequest` hook entry to the crew `--settings` and a Go hook verb that holds the request on the socket for up to 300 seconds; verify with Go tests and a hook-server test
+- [x] 5.2 Add `permission_answer` (allow, deny or ask the client, with a reason) and the Admiral prompt rules for in-plan, out-of-plan and hard-to-undo requests, and put permission requests ahead of other wakeups; verify with tool tests and prompt tests over recorded requests
+- [x] 5.3 Add the permission card in WAITING ON YOU, bound to its exact target, expiring as denied, switching to "answer in pane" after the hook hold, and sent straight to the client while the Admiral is paused; block typing into a pane that shows a permission prompt; verify with tests and a screenshot against canvas board 3.2
+- [x] 5.4 Write every permission answer to `agency.db` with who answered and why, show it as a chat line, and include it in the job export; verify with store tests
+- [x] 5.5 Add the env value Redactor (ANSI strip, chunk hold-back) over `fleet_read`, transcripts, agency tool output and the logger; verify with tests for a value split across chunks
+- [x] 5.6 End to end: a Claude Code Builder asks to push its branch and the Admiral allows it, and a QA crew member asks to deploy to production and the client gets a card; verify with `npm run drive` steps and screenshots
+
+- 5.1: no new Go verb. The hook already holds `PermissionRequest` on the socket for the copilot, and crew settings already send it. The agency is one more permission answerer, for crew panes only.
+- 5.1: an answerer that `delegates` keeps the crew session `processing`, so the sidebar, the pane ring and OS notices do not say "needs you" while the Admiral answers. The Admiral still sees the request as waiting for approval. See `docs/learnings/delegated-permissions-and-attention.md`.
+- 5.2: a request answered in the pane or by another Fleet answerer is recorded as answered `elsewhere`. A card expires 180 seconds after it is put to the client, and a request the Admiral has not answered in 90 seconds goes to the client.
+- 5.3: once Fleet lets go of the hook, the card says to answer in the pane and Peek opens it. Open requests are voided at startup, since no hook is held across a restart. Cards and requests in the pane count in WAITING ON YOU and light the Admiral pane.
+- 5.3: a file target inside the crew worktree shows as a path from the worktree; one outside it shows in full.
+- 5.5: no stream hold-back was needed: every reader gets whole text (screen reads, transcripts, tool output, log lines), and a value split by a line wrap is joined in `PaneScreen` before masking. Log secrets live in `src/main/redactor.ts`, see `docs/learnings/logger-mock-hides-shared-state.md`.
+- 5.6: end to end in the fleet repo with a scratch `e2e` remote, since a submodule worktree stops at Claude Code's folder trust prompt (`docs/learnings/submodule-worktrees-are-not-trusted.md`). The Admiral allowed in-plan requests and the push to `e2e` (p5). The production deploy went to the client card, expired as denied (p6), and was denied by the client on a second run (p9). A third run checked that the crew row stays `working` while the Admiral holds a request, and that the card lights the Admiral pane (p13).
 
 ## 6. Phase 6 - budgets and spend (PR 6)
 

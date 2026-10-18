@@ -103,7 +103,7 @@ describe('startup reconcile', () => {
     expect(service.store.crew.live(jobId)).toEqual([]);
     const card = service.snapshot(REPO.repoId).questions.find((q) => q.kind === 'resume');
     expect(card?.options.map((o) => o.label)).toEqual(['Resume', 'Cancel']);
-    const wake = service.pullWakeups({ repoId: REPO.repoId, jobId }).text ?? '';
+    const wake = (await service.pullWakeups({ repoId: REPO.repoId, jobId })).text ?? '';
     expect(wake).toContain('Fleet restarted and the crew stopped');
   });
 
@@ -124,13 +124,13 @@ describe('startup reconcile', () => {
     service.close();
     start();
     await service.startup();
-    service.pullWakeups({ repoId: REPO.repoId, jobId });
+    await service.pullWakeups({ repoId: REPO.repoId, jobId });
     const card = service.snapshot(REPO.repoId).questions.find((q) => q.kind === 'resume');
 
     service.answer({ id: card!.id, option: 0 });
 
     expect(service.store.getJob(jobId)?.state).toBe('running');
-    const wake = service.pullWakeups({ repoId: REPO.repoId, jobId }).text ?? '';
+    const wake = (await service.pullWakeups({ repoId: REPO.repoId, jobId })).text ?? '';
     expect(wake).toContain('The client picked Resume');
   });
 

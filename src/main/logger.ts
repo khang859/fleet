@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import winston from 'winston';
+import { logRedactor } from './redactor';
 
 /**
  * Resolve Electron app info at module load time. This must NOT use a static
@@ -110,8 +111,17 @@ try {
   // DailyRotateFile not available — console-only logging
 }
 
+/** Masks env file values (see `maskInLogs`) before every transport's own format runs. */
+const redactFormat = winston.format((info) => {
+  const redactor = logRedactor();
+  if (redactor.empty) return info;
+  for (const key of Object.keys(info)) info[key] = redactor.redactDeep(info[key]);
+  return info;
+});
+
 export const logger = winston.createLogger({
   level,
+  format: redactFormat(),
   transports
 });
 

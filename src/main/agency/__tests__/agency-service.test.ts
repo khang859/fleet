@@ -38,7 +38,7 @@ describe('AgencyService', () => {
       kind: 'event',
       payload: { line: 'x' }
     });
-    const claimed = service.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids;
+    const claimed = service.store.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids;
     service.close();
 
     service = new AgencyService({
@@ -47,7 +47,7 @@ describe('AgencyService', () => {
       hasModelKey: () => true,
       now: () => clock.now
     });
-    expect(service.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids).toEqual(claimed);
+    expect(service.store.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids).toEqual(claimed);
   });
 
   it('raises one change event per repository for the jobs a write touched', async () => {
@@ -104,14 +104,14 @@ describe('AgencyService', () => {
     }
     service.claim({ repoId: REPO.repoId, paneId: 'p1' }, 1);
     service.claim({ repoId: other.repoId, paneId: 'p2' }, 2);
-    const mine = service.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids;
-    expect(service.pullWakeups({ repoId: other.repoId, jobId: null }).ids).toHaveLength(1);
+    const mine = service.store.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids;
+    expect(service.store.pullWakeups({ repoId: other.repoId, jobId: null }).ids).toHaveLength(1);
 
     service.releaseOwner(1);
 
-    expect(service.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids).toEqual(mine);
+    expect(service.store.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids).toEqual(mine);
     // The other window's claim is still its own.
-    expect(service.pullWakeups({ repoId: other.repoId, jobId: null }).ids).toEqual([]);
+    expect(service.store.pullWakeups({ repoId: other.repoId, jobId: null }).ids).toEqual([]);
     expect(service.snapshot(REPO.repoId).questions).toEqual([]);
   });
 
@@ -124,11 +124,11 @@ describe('AgencyService', () => {
       payload: { line: 'x' }
     });
     service.claim({ repoId: REPO.repoId, paneId: 'p1' }, 1);
-    const pulled = service.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids;
+    const pulled = service.store.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids;
 
     service.release('p1');
 
-    expect(service.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids).toEqual(pulled);
+    expect(service.store.pullWakeups({ repoId: REPO.repoId, jobId: null }).ids).toEqual(pulled);
   });
 
   it('stores into the file it was given', () => {

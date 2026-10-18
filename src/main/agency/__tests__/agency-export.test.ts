@@ -115,7 +115,55 @@ describe('job export', () => {
       },
       ['sk_live_123456', '42']
     );
-    expect(text).toContain('Use key [env value] and pin 42.');
+    expect(text).toContain('Use key [redacted:env] and pin 42.');
     expect(text).not.toContain('sk_live_123456');
+  });
+
+  it('writes each permission request with who answered it and why, in a fence its target cannot end', async () => {
+    const jobId = await closedJob();
+    const detail = service.jobs.detail(jobId)!;
+    const base = {
+      jobId,
+      crewId: 1,
+      crewLabel: 'builder 1',
+      stepId: 'builder-1',
+      tool: 'Bash',
+      summary: null,
+      recommend: null,
+      createdAt: clock.now,
+      askedAt: null,
+      expiresAt: null,
+      answeredAt: clock.now
+    };
+    const text = exportJob({
+      project: 'fleet',
+      detail: {
+        ...detail,
+        permissions: [
+          {
+            ...base,
+            id: 1,
+            target: 'git push origin feat/dark',
+            state: 'allowed',
+            answeredBy: 'admiral',
+            reason: 'fits step builder-1'
+          },
+          {
+            ...base,
+            id: 2,
+            target: 'echo ```',
+            state: 'denied',
+            answeredBy: 'expiry',
+            reason: 'The card expired before the client answered.'
+          }
+        ]
+      },
+      questions: []
+    });
+    expect(text).toContain('### p1: builder 1 asked to use Bash on builder-1');
+    expect(text).toContain('Allowed by the Admiral 2026-10-17');
+    expect(text).toContain(': fits step builder-1');
+    expect(text).toContain('````\necho ```\n````');
+    expect(text).toContain('Denied by the card expiring');
   });
 });
