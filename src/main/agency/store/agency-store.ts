@@ -26,6 +26,8 @@ import {
 } from '../../../shared/agency';
 import type { AgencyProjectSummary } from '../../../shared/agency-projects';
 import type { Plan } from '../../../shared/agency-plan';
+import { YOU_LAYER } from '../../../shared/agency-client-file';
+import { meetLeft } from '../../../shared/agency-meet';
 import { parseJsonAs } from '../../../shared/parse-json';
 import { WAKEUP_GIVE_UP_ATTEMPTS, WAKEUP_STALE_CLAIM_MS, wakeupBackoffMs } from '../backoff';
 import { CHAIN_LIMIT, chainExhausted } from '../jobs/chain';
@@ -1430,7 +1432,18 @@ export class AgencyStore {
         { setup_done_at: number | null; starter_done_at: number | null }
       >('SELECT setup_done_at, starter_done_at FROM onboarding WHERE repo_id = ?')
       .get(repoId);
-    return { setupDoneAt: row?.setup_done_at ?? null, starterDoneAt: row?.starter_done_at ?? null };
+    const starterDoneAt = row?.starter_done_at ?? null;
+    const youSeen = this.preferences.meetSeen(YOU_LAYER);
+    return {
+      setupDoneAt: row?.setup_done_at ?? null,
+      starterDoneAt,
+      meetDue: starterDoneAt === null || youSeen === null,
+      meetLeft: meetLeft({
+        youSeen,
+        projectSeen: this.preferences.meetSeen(repoId),
+        starterDone: starterDoneAt !== null
+      })
+    };
   }
 
   /**

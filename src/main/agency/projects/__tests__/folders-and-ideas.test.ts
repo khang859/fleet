@@ -21,7 +21,7 @@ afterEach(() => {
   tmp.cleanup();
 });
 
-const NOT_SET_UP = { setupDoneAt: null, starterDoneAt: null };
+const NOT_SET_UP = { setupDoneAt: null, starterDoneAt: null, meetDue: true, meetLeft: [] };
 
 describe('probeFolders', () => {
   it('tells a repository from a folder that is not one, and a repository with no remote', async () => {

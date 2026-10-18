@@ -4,12 +4,19 @@ import {
   type AgencyRepoRef,
   type RepoResolution
 } from '../../../shared/agency';
-import { STARTER_SOURCE } from '../../../shared/agency-client-file';
+import { YOU_LAYER, YOU_SOURCE } from '../../../shared/agency-client-file';
+import {
+  meetAnswerResult,
+  meetQuestion,
+  type MeetAnswer,
+  type MeetQuestionId
+} from '../../../shared/agency-meet';
 import type {
   AgencyProjectSummary,
   BriefIdeas,
   ClientFileView,
   ClientLineInput,
+  ClientLineResult,
   ImportDiff,
   ProjectFolder,
   RuleCandidates,
@@ -260,18 +267,62 @@ export class ProjectsService {
   }
 
   /**
-   * Write the starter answers and the picked rules to the client file, and
-   * mark the starter questions done. Answers from an earlier run are replaced.
+   * One Meet you answer: its lines go to the question's layer, told by the
+   * client, and the last question's pick sets the project's trust level. The
+   * question counts as gone through, answered or skipped. Refused while the
+   * layer has an outside change the client has not kept.
    */
-  async finishStarter(input: { repo: AgencyRepoRef; lines: ClientLineInput[] }): Promise<string> {
+  async meetAnswer(input: {
+    repo: AgencyRepoRef;
+    id: MeetQuestionId;
+    answer: MeetAnswer;
+  }): Promise<ClientLineResult> {
     const repo = await this.verified(input.repo);
-    const text = this.deps.clientFiles.merge(repo.repoId, {
-      name: repo.name,
-      replaceSource: STARTER_SOURCE,
-      lines: input.lines
-    });
-    this.markDone(repo, 'starter');
-    return text;
+    const { clientFiles, store } = this.deps;
+    const question = meetQuestion(input.id);
+    const layer = question.layer === 'you' ? YOU_LAYER : repo.repoId;
+    const { lines, trust } = meetAnswerResult(question, input.answer);
+    if (lines.length > 0) {
+      if (clientFiles.changedOutside(layer)) {
+        return {
+          ok: false,
+          reason: 'This file changed outside Fleet. Keep or undo that change in Settings first.'
+        };
+      }
+      clientFiles.merge(layer, {
+        name: layer === YOU_LAYER ? 'You' : repo.name,
+        lines: lines.map((text) => ({ text, source: YOU_SOURCE }))
+      });
+    }
+    if (trust !== null)
+      store.preferences.setTrust(repo.repoId, {
+        ...store.preferences.trust(repo.repoId),
+        level: trust
+      });
+    store.preferences.markMeetSeen(layer, [question.id]);
+    this.deps.emit({ repoId: repo.repoId, jobIds: [] });
+    return { ok: true };
+  }
+
+  /**
+   * The end of Meet you, or Finish later: write the rules the client picked
+   * from the instruction files, and mark setup done so the Bridge opens. The
+   * questions not gone through stay to offer from the Bridge.
+   */
+  async meetFinish(input: { repo: AgencyRepoRef; rules: ClientLineInput[] }): Promise<void> {
+    const repo = await this.verified(input.repo);
+    const { clientFiles, store } = this.deps;
+    if (input.rules.length > 0) {
+      clientFiles.merge(repo.repoId, { name: repo.name, lines: input.rules });
+    }
+    store.preferences.markMeetSeen(YOU_LAYER, []);
+    // A project new to Meet you keeps its unasked questions; one that finished the starter questions has none.
+    if (store.onboarding(repo.repoId).starterDoneAt === null) {
+      store.preferences.markMeetSeen(repo.repoId, []);
+      this.markDone(repo, 'starter');
+    } else {
+      this.deps.emit({ repoId: repo.repoId, jobIds: [] });
+    }
   }
 
   /** Record an onboarding step done; the snapshot it changes moves the pane on. */

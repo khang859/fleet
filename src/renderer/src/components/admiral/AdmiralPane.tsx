@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PanelRight, X } from 'lucide-react';
 import { AdmiralGlyph } from './AdmiralGlyph';
-import type { AgencyQuestion, AgencyRepoRef } from '../../../../shared/agency';
+import type { AgencyOnboarding, AgencyQuestion, AgencyRepoRef } from '../../../../shared/agency';
 import { useSettingsStore } from '../../store/settings-store';
 import { openSettings } from '../../store/settings-nav-store';
 import { useAgentStore } from '../../store/agent-store';
@@ -22,7 +22,8 @@ import { JobTabs } from './JobTabs';
 import { ProjectPicker } from './ProjectPicker';
 import { ProjectSetup } from './ProjectSetup';
 import { ProjectSwitcher } from './ProjectSwitcher';
-import { StarterQuestions } from './StarterQuestions';
+import { MeetYou } from './MeetYou';
+import { AdmiralHeader, RepoChip } from './admiral-header';
 import type { QuestionAnswer } from './QuestionCard';
 
 /** The narrowest the conversation gets beside the sheet before the sheet folds away. */
@@ -97,7 +98,7 @@ export function AdmiralPane({
 
 /**
  * Onboarding before the lobby: the first run, the project picker, setup and
- * the starter questions, each until it is done. See `admiralStage`.
+ * Meet you, each until it is done. See `admiralStage`.
  */
 function AdmiralStages({
   paneId,
@@ -120,6 +121,7 @@ function AdmiralStages({
   const firstRunDone = useAdmiralOnboardingStore((s) => s.firstRunDone);
   const picking = useAdmiralOnboardingStore((s) => s.picking[paneId] === true);
   const redoingSetup = useAdmiralOnboardingStore((s) => s.redoingSetup[paneId] === true);
+  const meeting = useAdmiralOnboardingStore((s) => s.meeting[paneId] === true);
   const [keyChecked, setKeyChecked] = useState(false);
 
   // The catalog carries the context limits the pane compacts by; the key is
@@ -136,22 +138,33 @@ function AdmiralStages({
     firstRunDone,
     picking,
     redoingSetup,
+    meeting,
     onboarding
   });
   if (stage === 'ready') {
     return <AdmiralWorkspace paneId={paneId} repo={repo} activeJob={activeJob} ready={ready} />;
   }
-  return <AdmiralOnboarding paneId={paneId} repo={repo} stage={stage} redoing={redoingSetup} />;
+  return (
+    <AdmiralOnboarding
+      paneId={paneId}
+      repo={repo}
+      onboarding={onboarding}
+      stage={stage}
+      redoing={redoingSetup}
+    />
+  );
 }
 
 function AdmiralOnboarding({
   paneId,
   repo,
+  onboarding,
   stage,
   redoing
 }: {
   paneId: string;
   repo: AgencyRepoRef;
+  onboarding: AgencyOnboarding | undefined;
   stage: Exclude<AdmiralStage, 'ready'>;
   /** Setup shows again for a project already set up, and leads back to the lobby. */
   redoing: boolean;
@@ -177,42 +190,26 @@ function AdmiralOnboarding({
         }
       />
     ),
-    starter: <StarterQuestions repo={repo} wide={wide} />
+    meet: onboarding !== undefined && (
+      <MeetYou paneId={paneId} repo={repo} onboarding={onboarding} wide={wide} />
+    )
   };
 
   return (
     <div ref={frameRef} className="relative flex h-full w-full flex-col bg-fleet-bg">
-      <AdmiralHeader>
-        {(stage === 'setup' || stage === 'starter') && <RepoChip repo={repo} />}
-        {stage !== 'loading' && (
-          <span className="truncate text-xs text-fleet-text-muted">
-            {redoing && stage === 'setup' ? 'Project setup' : STAGE_LABEL[stage]}
-          </span>
-        )}
-      </AdmiralHeader>
+      {/* Meet you puts its progress in a header of its own. */}
+      {stage !== 'meet' && (
+        <AdmiralHeader>
+          {stage === 'setup' && <RepoChip repo={repo} />}
+          {stage !== 'loading' && (
+            <span className="truncate text-xs text-fleet-text-muted">
+              {redoing && stage === 'setup' ? 'Project setup' : STAGE_LABEL[stage]}
+            </span>
+          )}
+        </AdmiralHeader>
+      )}
       <div className="flex min-h-0 min-w-0 flex-1">{body[stage]}</div>
     </div>
-  );
-}
-
-function AdmiralHeader({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return (
-    <header className="flex h-10 shrink-0 items-center gap-2 border-b border-fleet-border bg-fleet-surface px-3">
-      <AdmiralGlyph size={15} className="shrink-0" />
-      <span className="shrink-0 text-[13px] font-semibold text-fleet-text">Admiral</span>
-      {children}
-    </header>
-  );
-}
-
-function RepoChip({ repo }: { repo: AgencyRepoRef }): React.JSX.Element {
-  return (
-    <span
-      title={repo.root}
-      className="max-w-[160px] shrink-0 truncate rounded bg-fleet-surface-2 px-1.5 py-px font-mono text-[11px] text-fleet-text-muted"
-    >
-      {repo.name}
-    </span>
   );
 }
 

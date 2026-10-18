@@ -1,6 +1,11 @@
 import type Database from 'better-sqlite3';
+import { z } from 'zod';
 import { normText, type PreferenceConflict } from '../../../shared/agency-client-file';
+import { MEET_QUESTION_IDS, type MeetQuestionId } from '../../../shared/agency-meet';
 import type { ProjectTrust, TrustLevel } from '../../../shared/agency-projects';
+import { parseJsonAs } from '../../../shared/parse-json';
+
+const Seen = z.array(z.enum(MEET_QUESTION_IDS));
 
 type ConflictRow = {
   id: number;
@@ -110,6 +115,29 @@ export class PreferenceStore {
         .prepare('SELECT 1 FROM declined_topics WHERE project_id = ? AND topic = ?')
         .get(projectId, topic) !== undefined
     );
+  }
+
+  /**
+   * The Meet you questions a layer has been through, answered or skipped, or
+   * null when Meet you never ran for it.
+   */
+  meetSeen(layer: string): MeetQuestionId[] | null {
+    const json = this.db
+      .prepare<[string], string>('SELECT seen_json FROM meet_progress WHERE layer = ?')
+      .pluck()
+      .get(layer);
+    return json === undefined ? null : (parseJsonAs(Seen, json) ?? []);
+  }
+
+  /** Note Meet you questions as gone through; with none, only that Meet you ran for the layer. */
+  markMeetSeen(layer: string, ids: MeetQuestionId[]): void {
+    const seen = [...new Set([...(this.meetSeen(layer) ?? []), ...ids])];
+    this.db
+      .prepare(
+        `INSERT INTO meet_progress (layer, seen_json, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(layer) DO UPDATE SET seen_json = excluded.seen_json, updated_at = excluded.updated_at`
+      )
+      .run(layer, JSON.stringify(seen), this.now());
   }
 
   /** The project's trust level: Ask me until the client picks another. */

@@ -24,6 +24,7 @@ import {
   type SetupScan
 } from '../../shared/agency-projects';
 import { YOU_LAYER } from '../../shared/agency-client-file';
+import { MEET_QUESTION_IDS, MEET_TEXT_MAX } from '../../shared/agency-meet';
 import {
   CREW_RUNTIMES,
   RoleSaveSchema,
@@ -130,9 +131,24 @@ const SaveSetupArgs = z.object({
   updates: z.array(z.string().min(1)).max(200).optional()
 });
 const SaveSetupFinishArgs = SaveSetupArgs.extend({ finish: z.boolean() });
-const FinishStarterArgs = z.object({
+const MeetAnswerArgs = z.object({
   repo: RepoRef,
-  lines: z
+  id: z.enum(MEET_QUESTION_IDS),
+  answer: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('picks'), picks: z.array(z.number().int().min(0).max(20)).max(20) }),
+    z.object({ kind: z.literal('text'), text: z.string().min(1).max(MEET_TEXT_MAX) }),
+    z.object({
+      kind: z.literal('budget'),
+      usd: z.number().positive().max(100_000),
+      weekPct: z.number().positive().max(100)
+    }),
+    z.object({ kind: z.literal('skip') })
+  ])
+});
+
+const MeetFinishArgs = z.object({
+  repo: RepoRef,
+  rules: z
     .array(z.object({ text: z.string().min(1).max(1_000), source: z.string().min(1).max(200) }))
     .max(200)
 });
@@ -388,9 +404,13 @@ function registerProjectsIpc(service: AgencyService): void {
       projects.ruleCandidates(RepoRef.parse(repo))
   );
   ipcMain.handle(
-    IPC_CHANNELS.AGENCY_FINISH_STARTER,
-    async (_e, args: unknown): Promise<string> =>
-      projects.finishStarter(FinishStarterArgs.parse(args))
+    IPC_CHANNELS.AGENCY_MEET_ANSWER,
+    async (_e, args: unknown): Promise<ClientLineResult> =>
+      projects.meetAnswer(MeetAnswerArgs.parse(args))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_MEET_FINISH,
+    async (_e, args: unknown): Promise<void> => projects.meetFinish(MeetFinishArgs.parse(args))
   );
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_BRIEF_IDEAS,

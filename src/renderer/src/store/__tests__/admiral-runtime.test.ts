@@ -155,7 +155,7 @@ beforeEach(async () => {
     jobs: [job(1), job(2)],
     questions: [],
     nextRetryAt: null,
-    onboarding: { setupDoneAt: 1, starterDoneAt: 1 },
+    onboarding: { setupDoneAt: 1, starterDoneAt: 1, meetDue: false, meetLeft: [] },
     leftovers: [],
     clientFileChanged: false,
     pastJobs: [],
@@ -574,7 +574,15 @@ describe('a request asked from Settings', () => {
     useAgencyStore.setState((s) => ({
       snapshots: {
         ...s.snapshots,
-        [REPO.repoId]: { ...snap, onboarding: { setupDoneAt: 1, starterDoneAt } }
+        [REPO.repoId]: {
+          ...snap,
+          onboarding: {
+            setupDoneAt: 1,
+            starterDoneAt,
+            meetDue: starterDoneAt === null,
+            meetLeft: []
+          }
+        }
       }
     }));
   };

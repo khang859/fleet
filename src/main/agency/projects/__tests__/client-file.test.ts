@@ -8,7 +8,6 @@ import {
   YOU_LAYER
 } from '../../../../shared/agency-client-file';
 import type { ClientLineInput } from '../../../../shared/agency-projects';
-import { RECOMMENDED_STARTER, starterLines } from '../../../../shared/agency-starter';
 import { ClientFiles, extractRules, ruleCandidates } from '../client-file';
 import { clientFilePath } from '../paths';
 import { initRepo, tempDir, writeFiles } from './git-fixture';
@@ -49,7 +48,12 @@ const write = (lines: ClientLineInput[], now: Date, replaceSource?: string): str
 describe('ClientFiles.merge', () => {
   it('writes each line with where it came from and when', () => {
     const text = write(
-      starterLines(RECOMMENDED_STARTER).map((t) => ({ text: t, source: STARTER_SOURCE })),
+      [
+        'Open PRs as drafts.',
+        'Show me a job only after checks, review and QA pass.',
+        'Default job budget: $10 and 10% of my weekly Claude limit.',
+        'Notify me for questions and results only.'
+      ].map((t) => ({ text: t, source: STARTER_SOURCE })),
       OCT_17
     );
     expect(text).toBe(

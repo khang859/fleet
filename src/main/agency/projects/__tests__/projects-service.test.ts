@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgencyChanged, AgencyRepoRef } from '../../../../shared/agency';
-import { STARTER_SOURCE } from '../../../../shared/agency-client-file';
+import { YOU_LAYER } from '../../../../shared/agency-client-file';
+import type { MeetAnswer, MeetQuestionId } from '../../../../shared/agency-meet';
+import type { ClientLineResult } from '../../../../shared/agency-projects';
 import { AgencyService } from '../../index';
 import { clientFilePath, setupFilePath } from '../paths';
 import { fakeGh, git, initRepo, tempDir, writeFiles } from './git-fixture';
 
-/** Onboarding through the service, as the renderer drives it: scan, save, share, starter. */
+/** Onboarding through the service, as the renderer drives it: scan, save, share, Meet you. */
 
 let tmp: { dir: string; cleanup: () => void };
 let home: string;
@@ -189,22 +191,94 @@ describe('ProjectsService', { timeout: 20_000 }, () => {
     expect(service.store.onboarding(repo.repoId).setupDoneAt).toBeNull();
   });
 
-  it('writes the starter answers to the client file and marks the questions done', async () => {
-    const text = await service.projects.finishStarter({
-      repo,
-      lines: [
-        { text: 'Open PRs as drafts.', source: STARTER_SOURCE },
-        { text: 'Use pnpm.', source: 'CLAUDE.md' }
-      ]
+  it('saves each Meet you answer to its layer, told by the client', async () => {
+    const meet = async (id: MeetQuestionId, answer: MeetAnswer): Promise<ClientLineResult> =>
+      service.projects.meetAnswer({ repo, id, answer });
+    expect(service.store.onboarding(repo.repoId)).toMatchObject({
+      meetDue: true,
+      meetLeft: ['report', 'never', 'prs', 'delivery', 'tests', 'budget', 'checks']
     });
-    expect(readFileSync(clientFilePath(repo.repoId, home), 'utf8')).toBe(text);
-    expect(text).toMatch(
-      /^# shop\n- Open PRs as drafts\. \(from starter questions, \d{4}-\d\d-\d\d\)\n/
+
+    expect(await meet('report', { kind: 'picks', picks: [0] })).toEqual({ ok: true });
+    await meet('never', { kind: 'picks', picks: [0, 3] });
+    await meet('prs', { kind: 'skip' });
+    await meet('tests', { kind: 'text', text: '  e2e tests only\nfor UI changes ' });
+    await meet('budget', { kind: 'budget', usd: 25, weekPct: 5 });
+    await meet('checks', { kind: 'picks', picks: [1] });
+
+    const you = readFileSync(clientFilePath(YOU_LAYER, home), 'utf8');
+    expect(you).toMatch(/^# You\n- Keep updates short: .+ \(from you, \d{4}-\d\d-\d\d\)\n/);
+    expect(you).toContain(
+      '- Never push to the default branch: always a branch and a PR. (from you'
     );
+    expect(you).toContain('- Never force push. (from you');
+    const project = readFileSync(clientFilePath(repo.repoId, home), 'utf8');
+    expect(project).toMatch(/^# shop\n- e2e tests only for UI changes \(from you, [\d-]+\)\n/);
+    expect(project).toContain('- Default job budget: $25 and 5% of my weekly Claude limit.');
+    expect(project).not.toContain('PRs');
+    expect(service.store.preferences.trust(repo.repoId).level).toBe('ship');
+    expect(service.store.onboarding(repo.repoId)).toMatchObject({
+      meetDue: true,
+      meetLeft: ['delivery']
+    });
+    expect(emitted).toHaveLength(6);
+  });
+
+  it('refuses an answer while its layer has an outside change', async () => {
+    await service.projects.meetAnswer({ repo, id: 'prs', answer: { kind: 'picks', picks: [0] } });
+    writeFileSync(clientFilePath(repo.repoId, home), '# shop\n- By hand.\n');
+    const result = await service.projects.meetAnswer({
+      repo,
+      id: 'tests',
+      answer: { kind: 'picks', picks: [0] }
+    });
+    expect(result.ok).toBe(false);
+    expect(readFileSync(clientFilePath(repo.repoId, home), 'utf8')).toBe('# shop\n- By hand.\n');
+    expect(service.store.onboarding(repo.repoId).meetLeft).toContain('tests');
+  });
+
+  it('finishes Meet you with the picked rules, and keeps the rest to offer later', async () => {
+    await service.projects.meetAnswer({ repo, id: 'report', answer: { kind: 'skip' } });
+    await service.projects.meetFinish({
+      repo,
+      rules: [{ text: 'Use pnpm.', source: 'CLAUDE.md' }]
+    });
+
+    expect(readFileSync(clientFilePath(repo.repoId, home), 'utf8')).toMatch(
+      /^# shop\n- Use pnpm\. \(from CLAUDE\.md, \d{4}-\d\d-\d\d\)\n$/
+    );
+    expect(service.store.onboarding(repo.repoId)).toMatchObject({
+      meetDue: false,
+      meetLeft: ['never', 'prs', 'delivery', 'tests', 'budget', 'checks']
+    });
     expect(service.store.onboarding(repo.repoId).starterDoneAt).not.toBeNull();
-    expect(emitted).toEqual([{ repoId: repo.repoId, jobIds: [] }]);
-    expect(service.preferencesForNote(repo.repoId).project?.text).toMatch(
-      /^P1\. Open PRs as drafts\. \(from starter questions, [\d-]+\)\nP2\. Use pnpm\./
-    );
+    expect(service.preferencesForNote(repo.repoId).project?.text).toMatch(/^P1\. Use pnpm\./);
+  });
+
+  it('asks a second project only its own questions', async () => {
+    for (const id of ['report', 'never'] as const) {
+      await service.projects.meetAnswer({ repo, id, answer: { kind: 'picks', picks: [0] } });
+    }
+    await service.projects.meetFinish({ repo, rules: [] });
+    const other = initRepo(join(tmp.dir, 'blog'), { 'README.md': '# Blog\n' });
+    const res = await service.resolveRepo(other);
+    if (!res.ok) throw new Error('not a repo');
+    expect(service.store.onboarding(res.repoId)).toMatchObject({
+      meetDue: true,
+      meetLeft: ['prs', 'delivery', 'tests', 'budget', 'checks']
+    });
+  });
+
+  it('asks a project that finished the starter questions only the You ones, once', async () => {
+    service.store.markOnboarded(repo, 'starter');
+    expect(service.store.onboarding(repo.repoId)).toMatchObject({
+      meetDue: true,
+      meetLeft: ['report', 'never']
+    });
+    await service.projects.meetFinish({ repo, rules: [] });
+    expect(service.store.onboarding(repo.repoId)).toMatchObject({
+      meetDue: false,
+      meetLeft: ['report', 'never']
+    });
   });
 });

@@ -9,11 +9,11 @@
 
 ## 2. Phase 2: Meet you (one PR)
 
-- [ ] 2.1 Write the question bank in `src/shared/agency-meet.ts` (seven questions, layer, picks, recommended pick, the line each pick writes, question 7 setting the trust level); verify with a unit test that every pick maps to a line or a trust level.
-- [ ] 2.2 Keep Meet you progress per layer in the store, treating a project with `starter` done as having answered the project questions; verify with store tests for resume and for an old project.
-- [ ] 2.3 Add the main-process save path: a pick or free text writes one `(from you, date)` line to its layer, question 7 writes `project_trust`; verify with service tests, including free text made one line.
-- [ ] 2.4 Build `MeetYou.tsx` to replace `StarterQuestions.tsx` in the onboarding stages: one question at a time, picks with the recommended one first, free text, Skip, Finish later, progress, and the live What I know about you panel; verify with renderer tests and in the running app, including a second project that only gets the project questions.
-- [ ] 2.5 Keep the instruction-file rules step from the starter flow at the end of Meet you; verify a picked rule lands as `(from CLAUDE.md, date)`.
+- [x] 2.1 Write the question bank in `src/shared/agency-meet.ts` (seven questions, layer, picks, recommended pick, the line each pick writes, question 7 setting the trust level); verify with a unit test that every pick maps to a line or a trust level.
+- [x] 2.2 Keep Meet you progress per layer in the store, treating a project with `starter` done as having answered the project questions; verify with store tests for resume and for an old project.
+- [x] 2.3 Add the main-process save path: a pick or free text writes one `(from you, date)` line to its layer, question 7 writes `project_trust`; verify with service tests, including free text made one line.
+- [x] 2.4 Build `MeetYou.tsx` to replace `StarterQuestions.tsx` in the onboarding stages: one question at a time, picks with the recommended one first, free text, Skip, Finish later, progress, and the live What I know about you panel; verify with renderer tests and in the running app, including a second project that only gets the project questions.
+- [x] 2.5 Keep the instruction-file rules step from the starter flow at the end of Meet you; verify a picked rule lands as `(from CLAUDE.md, date)`.
 
 ## 3. Phase 3: trust levels and preferences used (one PR)
 

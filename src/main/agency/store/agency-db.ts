@@ -437,6 +437,13 @@ const MIGRATIONS: readonly string[] = [
     auto_start_usd REAL,
     updated_at INTEGER NOT NULL
   );
+  `,
+  `
+  CREATE TABLE meet_progress (
+    layer TEXT PRIMARY KEY,
+    seen_json TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
   `
 ];
 

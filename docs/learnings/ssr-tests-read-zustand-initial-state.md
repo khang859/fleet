@@ -28,3 +28,7 @@ The test then passes the detail it wants straight to `JobSheet`.
 Repeated on 2026-10-17 with `JobLinkLine`: the test set the store and the render still saw an empty snapshot.
 The fix was the same: move the decision into a pure helper (`jobLink` in `job-view.ts`) and test that.
 Do not return a new object from a zustand selector to avoid this, since that renders in a loop; select the snapshot and call the helper after.
+
+Repeated on 2026-10-18 with `MeetYou`: it read `onboarding` from the agency store, so every test rendered "Saving…".
+`AdmiralPane` now passes `onboarding` down as a prop.
+Before writing an SSR test for a new component, check which hooks it reads, and lift them to the parent first.

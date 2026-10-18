@@ -197,6 +197,7 @@ import type {
   SaveSetupRequest,
   SetupScan
 } from '../shared/agency-projects';
+import type { MeetAnswer, MeetQuestionId } from '../shared/agency-meet';
 import type {
   AgencyJobDetail,
   JobControl,
@@ -1251,11 +1252,15 @@ const fleetApi = {
         typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, layer),
       ruleCandidates: async (repo: AgencyRepoRef): Promise<RuleCandidates[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_RULE_CANDIDATES, repo),
-      /** Write the starter answers and picked rules, and mark the starter questions done. */
-      finishStarter: async (input: {
+      /** Save one Meet you answer to its layer, or the project's trust level. */
+      meetAnswer: async (input: {
         repo: AgencyRepoRef;
-        lines: ClientLineInput[];
-      }): Promise<string> => typedInvoke(IPC_CHANNELS.AGENCY_FINISH_STARTER, input),
+        id: MeetQuestionId;
+        answer: MeetAnswer;
+      }): Promise<ClientLineResult> => typedInvoke(IPC_CHANNELS.AGENCY_MEET_ANSWER, input),
+      /** End Meet you, or finish later: write the picked rules and open the Bridge. */
+      meetFinish: async (input: { repo: AgencyRepoRef; rules: ClientLineInput[] }): Promise<void> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_MEET_FINISH, input),
       briefIdeas: async (repo: AgencyRepoRef): Promise<BriefIdeas> =>
         typedInvoke(IPC_CHANNELS.AGENCY_BRIEF_IDEAS, repo)
     },

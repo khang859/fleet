@@ -1,5 +1,6 @@
 import type { CrewRuntime } from './agency-crew';
 import type { SettingsCard } from './agency-settings';
+import type { MeetQuestionId } from './agency-meet';
 import { PERMISSION_EXPIRY_SEC_DEFAULT } from './agency-permissions';
 
 /**
@@ -242,7 +243,18 @@ export type AgencySnapshot = {
 };
 
 /** When a repository's setup and starter questions were finished; null while they are not. */
-export type AgencyOnboarding = { setupDoneAt: number | null; starterDoneAt: number | null };
+export type AgencyOnboarding = {
+  setupDoneAt: number | null;
+  /** When the project finished Meet you, or the starter questions before it. */
+  starterDoneAt: number | null;
+  /**
+   * Meet you shows before the Bridge: the project has not finished it, or
+   * Meet you never ran for the You questions.
+   */
+  meetDue: boolean;
+  /** The Meet you questions left for this project, You ones included. */
+  meetLeft: MeetQuestionId[];
+};
 
 /**
  * What one pull hands back: the wakeups it claimed, as one text for one turn,
