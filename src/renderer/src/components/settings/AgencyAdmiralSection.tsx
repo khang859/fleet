@@ -5,11 +5,14 @@ import {
   PERMISSION_EXPIRY_MAX_SEC,
   PERMISSION_EXPIRY_MIN_SEC
 } from '../../../../shared/agency-settings';
+import { clockTime } from '../../../../shared/agency-crew';
+import { nextMonthStart } from '../../../../shared/agency-spend';
 import { useSettingsStore } from '../../store/settings-store';
 import { useAgentStore } from '../../store/agent-store';
 import { ModelSelect } from '../agent/settings/ModelSelect';
 import { BoundedNumber } from '../agent/settings/controls';
 import { useAdmiralMarks } from '../../hooks/use-admiral-marks';
+import { BudgetPicker } from '../admiral/BudgetPicker';
 import { AdmiralChangeNote } from './AdmiralChangeNote';
 import { AskAdmiralButton } from './AskAdmiral';
 import { ClientFileEditor } from './ClientFileEditor';
@@ -31,6 +34,30 @@ function DollarField(props: {
     </div>
   );
 }
+
+/** A percentage of a Claude Code usage window, stored when editing ends. */
+function PercentField({
+  prefix,
+  ...props
+}: {
+  id: string;
+  label: string;
+  prefix: string;
+  value: number;
+  fallback: number;
+  onCommit: (value: number) => void;
+}): React.JSX.Element {
+  return (
+    <label htmlFor={props.id} className="flex items-center gap-1.5">
+      {prefix}
+      <BoundedNumber {...props} min={1} max={100} className="w-16" />%
+    </label>
+  );
+}
+
+/** `Nov 1, 00:00`. */
+const resetText = (at: number): string =>
+  `${new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${clockTime(at)}`;
 
 /**
  * Settings › Agency › Admiral: whether Admiral is on at all, the model it runs
@@ -106,20 +133,36 @@ export function AgencyAdmiralSection(): React.JSX.Element | null {
         </div>
 
         <div>
-          <SettingRow label="Default job budget">
-            <DollarField
-              id="agency-default-budget"
-              label="Default job budget in dollars"
+          <SettingRow label="Default job budget" align="start">
+            <BudgetPicker
+              meter="usd"
               value={agency.admiral.defaultBudgetUsd}
-              max={10_000}
-              fallback={DEFAULT_AGENCY_SETTINGS.admiral.defaultBudgetUsd}
-              onCommit={(defaultBudgetUsd) => patchAdmiral({ defaultBudgetUsd })}
+              monthlyCapUsd={agency.admiral.monthlyCapUsd}
+              label="Default job budget in dollars"
+              onChange={(n) => n !== null && patchAdmiral({ defaultBudgetUsd: n })}
             />
           </SettingRow>
           <p className="text-xs text-fleet-text-subtle mt-1">
-            What a job may spend unless you approve a plan with another budget.
+            Real dollars a job may spend unless you approve a plan with another budget: the
+            Admiral&apos;s model, eva, and Claude Code paid through an API key.
           </p>
           <AdmiralChangeNote marks={marks} settingKey="agency.admiral.defaultBudgetUsd" />
+        </div>
+
+        <div>
+          <SettingRow label="Default Claude share" align="start">
+            <BudgetPicker
+              meter="week_pct"
+              value={agency.admiral.defaultBudgetWeekPct}
+              label="Default share of the weekly Claude limit, in percent"
+              onChange={(n) => n !== null && patchAdmiral({ defaultBudgetWeekPct: n })}
+            />
+          </SettingRow>
+          <p className="text-xs text-fleet-text-subtle mt-1">
+            How much of your weekly Claude Code limit a job&apos;s Claude crew may use. Claude Code
+            reports one share for the whole account, so a job&apos;s share is an estimate.
+          </p>
+          <AdmiralChangeNote marks={marks} settingKey="agency.admiral.defaultBudgetWeekPct" />
         </div>
 
         <div>
@@ -134,9 +177,40 @@ export function AgencyAdmiralSection(): React.JSX.Element | null {
             />
           </SettingRow>
           <p className="text-xs text-fleet-text-subtle mt-1">
-            All jobs together in a calendar month. At the cap no new work starts.
+            All jobs together in a calendar month. At the cap no new work starts. It starts over at
+            00:00 on the 1st, local time (next: {resetText(nextMonthStart(Date.now()))}).
           </p>
           <AdmiralChangeNote marks={marks} settingKey="agency.admiral.monthlyCapUsd" />
+        </div>
+
+        <div>
+          <SettingRow label="Keep in reserve">
+            <div className="flex items-center gap-3 text-sm text-fleet-text-muted">
+              <PercentField
+                id="agency-reserve-5h"
+                label="5-hour window reserve in percent"
+                prefix="5-hour"
+                value={agency.admiral.reserveFiveHourPct}
+                fallback={DEFAULT_AGENCY_SETTINGS.admiral.reserveFiveHourPct}
+                onCommit={(reserveFiveHourPct) => patchAdmiral({ reserveFiveHourPct })}
+              />
+              <PercentField
+                id="agency-reserve-7d"
+                label="Weekly limit reserve in percent"
+                prefix="Week"
+                value={agency.admiral.reserveSevenDayPct}
+                fallback={DEFAULT_AGENCY_SETTINGS.admiral.reserveSevenDayPct}
+                onCommit={(reserveSevenDayPct) => patchAdmiral({ reserveSevenDayPct })}
+              />
+            </div>
+          </SettingRow>
+          <p className="text-xs text-fleet-text-subtle mt-1">
+            No new Claude crew work starts once your Claude Code usage reaches these, so some is
+            left for you. Crew already at work finish their turn. Work starts again when the window
+            resets.
+          </p>
+          <AdmiralChangeNote marks={marks} settingKey="agency.admiral.reserveFiveHourPct" />
+          <AdmiralChangeNote marks={marks} settingKey="agency.admiral.reserveSevenDayPct" />
         </div>
 
         <div>

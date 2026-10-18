@@ -23,7 +23,9 @@ const hire = (patch: Partial<CrewHire> = {}): CrewHire => ({
   resume: false,
   dir: '/fleet/agency/jobs/42/crew/build-2',
   addDirs: [],
+  label: 'builder 2',
   hooks: HOOKS,
+  hookCommand: HOOK_COMMAND,
   ...patch
 });
 
@@ -40,6 +42,7 @@ describe('claude launch', () => {
       FLEET_CREW_SETTINGS: '/fleet/agency/jobs/42/crew/build-2/claude-settings.json',
       FLEET_CREW_ROLE: '- You build what the brief asks.',
       FLEET_CREW_MODEL: 'sonnet',
+      FLEET_CREW_STATUS: 'Fleet crew · j42 · builder 2',
       FLEET_SPAWN_PROMPT: '[admiral] Build the toggle.\nKeep it small.'
     });
     expect(launch.prompt).toBe('[admiral] Build the toggle.\nKeep it small.');
@@ -68,7 +71,16 @@ describe('claude launch', () => {
     expect(files.map((f) => f.path)).toEqual([
       '/fleet/agency/jobs/42/crew/build-2/claude-settings.json'
     ]);
-    expect(JSON.parse(files[0].text)).toEqual(claudeJobSettings(HOOKS));
+    expect(JSON.parse(files[0].text)).toEqual(claudeJobSettings(HOOKS, HOOK_COMMAND));
+  });
+
+  it('gives the member a status line that runs the hook binary, for its spend', () => {
+    const settings = JSON.parse(crewLaunch(hire()).files[0].text) as Record<string, unknown>;
+    expect(settings.statusLine).toEqual({
+      type: 'command',
+      command: `${HOOK_COMMAND} statusline`,
+      padding: 0
+    });
   });
 
   it('goes on with the same conversation after a restart', () => {

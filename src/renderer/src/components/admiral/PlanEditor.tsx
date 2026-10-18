@@ -6,8 +6,9 @@ import type {
   PlanActionResult
 } from '../../../../shared/agency-jobs';
 import type { PlanInput, PlanStep } from '../../../../shared/agency-plan';
+import { useSettingsStore } from '../../store/settings-store';
+import { BudgetPicker } from './BudgetPicker';
 import { OnboardingButton } from './onboarding-ui';
-import { formatUsd } from './job-view';
 
 type Row = { step: PlanStep; removed: boolean; added: boolean; locked: boolean };
 
@@ -30,7 +31,10 @@ export function PlanEditor({
 }): React.JSX.Element {
   const done = new Set(detail.steps.filter((s) => s.status === 'done').map((s) => s.id));
   const [summary, setSummary] = useState(version.plan.summary);
-  const [budget, setBudget] = useState(String(version.plan.budget.usd));
+  // Null while the client's Custom value cannot be used.
+  const [usd, setUsd] = useState<number | null>(version.plan.budget.usd);
+  const [weekPct, setWeekPct] = useState<number | null | undefined>(version.plan.budget.weekPct);
+  const monthlyCapUsd = useSettingsStore((s) => s.settings?.agency.admiral.monthlyCapUsd ?? null);
   const [rows, setRows] = useState<Row[]>(() =>
     version.plan.steps.map((step) => ({
       step,
@@ -42,10 +46,8 @@ export function PlanEditor({
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
 
-  const usd = Number(budget);
-  const budgetOk = Number.isFinite(usd) && usd > 0 && usd >= detail.spendUsd;
   const kept = rows.filter((r) => !r.removed);
-  const valid = budgetOk && summary.trim() !== '' && stepsFilled(kept);
+  const valid = usd !== null && weekPct !== null && summary.trim() !== '' && stepsFilled(kept);
 
   const edit = (i: number, patch: Partial<PlanStep>): void =>
     setRows(rows.map((r, j) => (j === i ? { ...r, step: { ...r.step, ...patch } } : r)));
@@ -66,7 +68,7 @@ export function PlanEditor({
     const plan: PlanInput = {
       ...version.plan,
       summary: summary.trim(),
-      budget: { ...version.plan.budget, usd },
+      budget: { usd, ...(weekPct === undefined ? {} : { weekPct }) },
       // A step that waited on a removed one now starts without it.
       steps: kept.map((r) => ({ ...r.step, after: r.step.after.filter((id) => ids.has(id)) })),
       // A new role goes with the last step that used it.
@@ -131,7 +133,29 @@ export function PlanEditor({
         Add step
       </button>
 
-      <BudgetField value={budget} onChange={setBudget} spendUsd={detail.spendUsd} ok={budgetOk} />
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs text-fleet-text-muted">Budget</span>
+        <BudgetPicker
+          meter="usd"
+          value={version.plan.budget.usd}
+          monthlyCapUsd={monthlyCapUsd}
+          spent={detail.spend.usd}
+          label="Custom budget in dollars"
+          onChange={setUsd}
+        />
+      </div>
+      {version.plan.budget.weekPct !== undefined && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-fleet-text-muted">Share of the weekly Claude limit</span>
+          <BudgetPicker
+            meter="week_pct"
+            value={version.plan.budget.weekPct}
+            spent={detail.spend.weekPct}
+            label="Custom share of the weekly Claude limit, in percent"
+            onChange={setWeekPct}
+          />
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-fleet-text-subtle">{changeLabel(changes)}</span>
@@ -154,36 +178,6 @@ export function PlanEditor({
 
 const changeLabel = (n: number): string =>
   n === 0 ? 'Edit any step, or the budget' : `${n} step change${n === 1 ? '' : 's'}`;
-
-/** The plan's budget in dollars; it cannot go below what the job has spent. */
-function BudgetField({
-  value,
-  onChange,
-  spendUsd,
-  ok
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  spendUsd: number;
-  ok: boolean;
-}): React.JSX.Element {
-  return (
-    <label className="flex items-center gap-2 text-xs">
-      <span className="text-fleet-text-muted">Budget $</span>
-      <input
-        type="number"
-        min={Math.max(spendUsd, 0)}
-        step="1"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-20 rounded border border-fleet-border bg-fleet-bg px-1.5 py-0.5 font-mono text-xs text-fleet-text outline-none focus:border-fleet-border-strong"
-      />
-      <span className={ok ? 'text-fleet-text-subtle' : 'text-amber-700 dark:text-amber-400'}>
-        ${formatUsd(spendUsd)} spent, so it cannot go lower
-      </span>
-    </label>
-  );
-}
 
 /** At least one step is kept, and each kept step has a title and a role. */
 const stepsFilled = (kept: Row[]): boolean =>

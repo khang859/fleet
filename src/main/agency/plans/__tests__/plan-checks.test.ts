@@ -60,6 +60,16 @@ const crew = (patch: Partial<CrewFacts> = {}): CrewFacts => ({
 
 const PR = plan([{ id: 'builder-1', role: 'builder', title: 'Build', deliverables: ['pr'] }]);
 const codes = (p = PR, f = facts()): string[] => checkPlan(p, f).issues.map((i) => i.code);
+/** PR with a turn cap, as an eva step needs. */
+const CAPPED = plan([
+  { id: 'builder-1', role: 'builder', title: 'Build', deliverables: ['pr'], cap: { turns: 20 } }
+]);
+const COST_UNKNOWN = {
+  code: 'cost-unknown',
+  severity: 'accept',
+  text: 'builder-1 runs on eva, which reports a cost only when its model server does, so the budget may not count it. Fleet stops each crew member after 20 turns.',
+  step: 'builder-1'
+};
 
 describe('checkPlan', () => {
   it('finds nothing in a plan the project can meet', () => {
@@ -121,18 +131,35 @@ describe('checkPlan', () => {
           ...patch
         })
       });
-    expect(codes(PR, eva({ evaModels: new Set(['qwen3']) }))).toEqual([]);
-    expect(codes(PR, eva({ evaModels: null }))).toEqual([]);
-    expect(checkPlan(PR, eva({ evaModels: new Set(['llama']) })).issues).toEqual([
+    expect(codes(CAPPED, eva({ evaModels: new Set(['qwen3']) }))).toEqual(['cost-unknown']);
+    expect(codes(CAPPED, eva({ evaModels: null }))).toEqual(['cost-unknown']);
+    expect(checkPlan(CAPPED, eva({ evaModels: new Set(['llama']) })).issues).toEqual([
       {
         code: 'model-missing',
         severity: 'block',
         text: "builder-1 runs on the model qwen3, which eva's model server does not list. Change the step's model, or the builder role's in Settings › Agency › Crew.",
         step: 'builder-1'
+      },
+      COST_UNKNOWN
+    ]);
+    const own = plan([
+      { id: 'builder-1', role: 'builder', title: 'B', model: 'llama', cap: { minutes: 30 } }
+    ]);
+    expect(codes(own, eva({ evaModels: new Set(['llama']) }))).toEqual(['cost-unknown']);
+  });
+
+  it('blocks an eva step with no cap, and asks the client to accept a capped one', () => {
+    const onEva = facts({ crew: crew({ roles: new Map([['builder', 'eva']]), runtimes: {} }) });
+    expect(checkPlan(PR, onEva).issues).toEqual([
+      {
+        code: 'cost-uncapped',
+        severity: 'block',
+        text: 'builder-1 runs on eva, whose cost Fleet cannot always measure, so it needs a cap: the most turns or minutes its crew may work.',
+        step: 'builder-1'
       }
     ]);
-    const own = plan([{ id: 'builder-1', role: 'builder', title: 'B', model: 'llama' }]);
-    expect(codes(own, eva({ evaModels: new Set(['llama']) }))).toEqual([]);
+    expect(checkPlan(CAPPED, onEva).issues).toEqual([COST_UNKNOWN]);
+    expect(codes(CAPPED, facts())).toEqual([]);
   });
 
   it('never checks a Claude step against the eva list', () => {
@@ -156,7 +183,7 @@ describe('checkPlan', () => {
   it('blocks steps on a runtime crew cannot use, naming each step once', () => {
     const two = plan([
       { id: 'build', role: 'builder', title: 'Build' },
-      { id: 'review', role: 'builder', title: 'Review', runtime: 'eva' }
+      { id: 'review', role: 'builder', title: 'Review', runtime: 'eva', cap: { turns: 5 } }
     ]);
     const checks = checkPlan(
       two,
@@ -174,7 +201,8 @@ describe('checkPlan', () => {
         code: 'runtime-unavailable',
         severity: 'block',
         text: 'review runs on eva. eva is not installed, or not on the PATH a terminal pane gets.'
-      }
+      },
+      expect.objectContaining({ code: 'cost-unknown', step: 'review' })
     ]);
   });
 
@@ -190,7 +218,7 @@ describe('checkPlan', () => {
       }
     ]);
     const onEva = crew({ ...untrusted, roles: new Map([['builder', 'eva']]), runtimes: {} });
-    expect(codes(PR, facts({ crew: onEva }))).toEqual([]);
+    expect(codes(CAPPED, facts({ crew: onEva }))).toEqual(['cost-unknown']);
   });
 
   it("asks for a member's own trust when a Claude step works in that member alone", () => {

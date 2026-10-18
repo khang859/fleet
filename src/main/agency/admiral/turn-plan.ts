@@ -37,6 +37,7 @@ export type AdmiralDeps = {
     | 'crewCatalog'
     | 'crewSkills'
     | 'redactor'
+    | 'spend'
   >;
   settings: () => AgencySettings;
 };

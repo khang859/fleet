@@ -67,8 +67,9 @@ export const TERMINAL_JOB_STATES: readonly JobState[] = ['closed', 'cancelled', 
 
 /**
  * What keeps a running job `waiting`: the model cannot be reached, it took
- * too many automatic turns in a row, it hit its budget, or every remaining
- * step waits on the client. The job runs again once every hold is gone.
+ * too many automatic turns in a row, it hit its budget or the monthly cap,
+ * or every remaining step waits on the client. The job runs again once every
+ * hold is gone.
  */
 export type JobHoldKind = 'model' | 'chain_limit' | 'budget' | 'client';
 
@@ -98,6 +99,8 @@ export type AgencyJob = {
   /** Whether the lobby messages that led to this job were carried into it. */
   handoffDone: boolean;
   budgetUsd: number | null;
+  /** The approved plan's share of the weekly Claude limit, in percent. */
+  budgetWeekPct: number | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -116,7 +119,8 @@ export type AgencyQuestionOption = { label: string; detail?: string };
  * `ask` is the Admiral's own question. The rest are Fleet's cards, answered
  * the same way: `model_unreachable` (Retry or Settings), `continue` (go on
  * after the automatic-turn limit), `resume` (Resume or Cancel after a
- * restart) and `rehire` (hire for a step again after its crew member left).
+ * restart), `rehire` (hire for a step again after its crew member left) and
+ * `budget` (raise the budget or the monthly cap, or stop the job).
  */
 export type AgencyQuestionKind =
   | 'ask'
@@ -124,7 +128,8 @@ export type AgencyQuestionKind =
   | 'model_unreachable'
   | 'continue'
   | 'resume'
-  | 'rehire';
+  | 'rehire'
+  | 'budget';
 
 export const AGENCY_QUESTION_KINDS: readonly AgencyQuestionKind[] = [
   'ask',
@@ -132,7 +137,8 @@ export const AGENCY_QUESTION_KINDS: readonly AgencyQuestionKind[] = [
   'model_unreachable',
   'continue',
   'resume',
-  'rehire'
+  'rehire',
+  'budget'
 ];
 
 /** The kinds the Admiral puts up itself, whose answers wake it; the rest are Fleet's own cards. */
@@ -143,6 +149,12 @@ export const ADMIRAL_QUESTION_KINDS: readonly AgencyQuestionKind[] = ['ask', 'cl
  * it contradicts: the card shows both, and the old one goes only on approval.
  */
 export type ClientFileAddition = { text: string; replaces: string | null };
+
+/**
+ * What a `budget` card raises when the client picks Raise: the job's dollar
+ * budget, its share of the weekly Claude limit, or the monthly cap.
+ */
+export type BudgetRaise = { target: 'usd' | 'week_pct' | 'cap'; to: number };
 
 /** What a `client_file` card asks to change in the client file. */
 export type ClientFileProposal = { add: ClientFileAddition[]; remove: string[] };
@@ -172,6 +184,8 @@ export type AgencyQuestion = {
   answerText: string | null;
   /** What a `client_file` card would change; null for every other kind. */
   proposal: ClientFileProposal | null;
+  /** What a `budget` card raises; null for every other kind. */
+  raise: BudgetRaise | null;
   /** Answered after it was withdrawn: kept, and the Admiral is told it came late. */
   late: boolean;
   withdrawnReason: string | null;
@@ -294,8 +308,14 @@ export type AgencySettings = {
     model: string;
     /** What a new job may spend unless its plan says otherwise. */
     defaultBudgetUsd: number;
-    /** What all jobs together may spend in a calendar month. */
+    /** The share of the weekly Claude limit a new job may use unless its plan says otherwise, in percent. */
+    defaultBudgetWeekPct: number;
+    /** What all jobs together may spend in a calendar month, from 00:00 on the 1st in local time. */
     monthlyCapUsd: number;
+    /** No new Claude crew work starts while Claude Code's 5-hour window is at or above this percentage. */
+    reserveFiveHourPct: number;
+    /** No new Claude crew work starts while Claude Code's weekly limit is at or above this percentage. */
+    reserveSevenDayPct: number;
     /** How many times the Admiral may nudge a crew member that ends a turn without reporting. */
     nudgeLimit: number;
     /** How long a client permission card waits before it is denied, in seconds. */
@@ -317,7 +337,10 @@ export const DEFAULT_AGENCY_SETTINGS: AgencySettings = {
   admiral: {
     model: '',
     defaultBudgetUsd: 10,
+    defaultBudgetWeekPct: 10,
     monthlyCapUsd: 100,
+    reserveFiveHourPct: 80,
+    reserveSevenDayPct: 90,
     nudgeLimit: 3,
     permissionExpirySec: PERMISSION_EXPIRY_SEC_DEFAULT
   },

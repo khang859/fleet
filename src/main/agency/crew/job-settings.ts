@@ -12,14 +12,23 @@ import type { HookEntry } from '../../claude-sessions/hook-installer';
  * - The editor is the normal one: text Fleet types into a vim NORMAL-mode
  *   prompt would run as vim commands.
  * - `hooks` are Fleet's entries as the global install writes them.
+ * - The status line runs Fleet's hook binary, given its command: it shows the
+ *   member's name and passes the session's cost and subscription usage to
+ *   Fleet, which no hook event carries.
  */
-export function claudeJobSettings(hooks: Record<string, HookEntry[]>): Record<string, unknown> {
+export function claudeJobSettings(
+  hooks: Record<string, HookEntry[]>,
+  hookCommand?: string
+): Record<string, unknown> {
   return {
     permissions: {
       deny: ['AskUserQuestion'],
       disableBypassPermissionsMode: 'disable'
     },
     editorMode: 'normal',
-    hooks
+    hooks,
+    ...(hookCommand === undefined
+      ? {}
+      : { statusLine: { type: 'command', command: `${hookCommand} statusline`, padding: 0 } })
   };
 }

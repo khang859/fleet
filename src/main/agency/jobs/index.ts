@@ -36,6 +36,7 @@ import {
   type CrewRuntime,
   type CrewSnapshot
 } from '../../../shared/agency-crew';
+import { budgetProblem, NO_JOB_SPEND, type JobSpend } from '../../../shared/agency-spend';
 import { createLogger } from '../../logger';
 import {
   canDecide,
@@ -127,6 +128,14 @@ export type JobsServiceDeps = {
   stack?: Pick<StackSlots, 'gate' | 'runsStack'>;
   /** The servers a job's crew started, for its sheet; none unless set. */
   servers?: (jobId: number) => AgencyServer[];
+  /** What a job spent against its budgets, for its sheet; nothing unless set. */
+  spend?: (job: AgencyJob) => JobSpend;
+  /** Why Claude crew wait for the user's subscription reserve now; none unless set. */
+  claudeReserve?: () => string | null;
+  /** The monthly cap no job budget may pass; none unless set. */
+  monthlyCapUsd?: () => number;
+  /** The share of the weekly Claude limit a plan that names none gets; none unless set. */
+  defaultWeekPct?: () => number;
 };
 
 /**
@@ -153,6 +162,10 @@ export class JobsService {
   ): Promise<ProposeResult> {
     const job = this.store.getJob(jobId);
     if (!job) return { ok: false, error: `There is no job ${jobDisplayId(jobId)}.` };
+    const share = this.deps.defaultWeekPct?.();
+    if (plan.budget.weekPct === undefined && share !== undefined) {
+      plan = { ...plan, budget: { ...plan.budget, weekPct: share } };
+    }
     const refused = this.refusePlan(job, plan);
     if (refused !== null) return { ok: false, error: refused };
     const checks = await this.check(job, plan);
@@ -178,6 +191,44 @@ export class JobsService {
     });
     this.deps.changed([{ repoId: job.repoId, jobId }]);
     return { ok: true, version };
+  }
+
+  /**
+   * The client raised a job's budget on its raise-or-stop card: the approved
+   * plan with the new budget becomes a new approved version, with the same
+   * steps, bases and crew. A change still waiting is replaced, as it was
+   * measured against the old budget. Returns the new version, or null
+   * without an approved plan.
+   */
+  raiseBudget(jobId: number, budget: Plan['budget']): number | null {
+    const job = this.store.getJob(jobId);
+    if (!job) return null;
+    const version = this.store.tx(() => {
+      const approved = this.store.plans.approved(jobId);
+      if (approved === null) return null;
+      this.store.plans.replacePending(jobId);
+      const inserted = this.store.plans.insertVersion({
+        jobId,
+        kind: 'change',
+        author: 'client',
+        parentVersion: approved.version,
+        plan: { ...approved.plan, budget },
+        checks: approved.checks
+      });
+      this.store.plans.supersede(jobId);
+      this.store.plans.decide(inserted.id, 'approved');
+      if (approved.bases !== null) this.store.plans.setBases(inserted.id, approved.bases);
+      if (approved.crew !== null) this.store.plans.setCrew(inserted.id, approved.crew);
+      this.store.setApprovedVersion(jobId, inserted.version, budget);
+      this.store.plans.log({
+        jobId,
+        kind: 'plan',
+        text: `Plan v${inserted.version}: the client raised the budget`
+      });
+      return inserted.version;
+    });
+    this.deps.changed([{ repoId: job.repoId, jobId }]);
+    return version;
   }
 
   /** Run the pre-approval check against the project as it is now. */
@@ -232,8 +283,9 @@ export class JobsService {
         next: plan,
         steps: this.store.plans.steps(job.id),
         delivered: this.store.plans.resultsByStep(job.id),
-        spendUsd: this.store.plans.spendUsd(job.id)
-      })
+        spent: this.store.spend.jobTotals(job.id)
+      }),
+      ...budgetProblems(plan, this.deps.monthlyCapUsd?.() ?? null)
     ];
     return problems.length === 0 ? null : problems.join(' ');
   }
@@ -254,7 +306,7 @@ export class JobsService {
     }
     switch (action.action) {
       case 'approve':
-        return this.approve(job, version, action.baseChoice ?? {}, action.swaps ?? {});
+        return this.approve(job, version, action);
       case 'reject':
         return this.reject(job, version, action.note);
       case 'edit': {
@@ -331,10 +383,10 @@ export class JobsService {
   private async approve(
     job: AgencyJob,
     version: PlanVersionRecord,
-    baseChoice: Record<string, 'default' | 'head'>,
-    swapChoice: Record<string, 'continue' | 'restart'>
+    action: Extract<PlanAction, { action: 'approve' }>
   ): Promise<PlanActionResult> {
-    const gate = await this.approvable(job, version, baseChoice);
+    const swapChoice = action.swaps ?? {};
+    const gate = await this.approvable(job, version, action);
     if (!gate.ok) return gate;
     const { checks, bases } = gate;
     const hired = await this.approvedCrew(job, version.plan);
@@ -352,7 +404,7 @@ export class JobsService {
       this.store.plans.decide(version.id, 'approved');
       if (checks.bases.length > 0) this.store.plans.setBases(version.id, bases);
       if (crew !== null) this.store.plans.setCrew(version.id, crew);
-      this.store.setApprovedVersion(job.id, version.version, version.plan.budget.usd);
+      this.store.setApprovedVersion(job.id, version.version, version.plan.budget);
       version.plan.steps.forEach((step, position) => {
         this.store.plans.putStep({
           jobId: job.id,
@@ -439,7 +491,7 @@ export class JobsService {
   private async approvable(
     job: AgencyJob,
     version: PlanVersionRecord,
-    baseChoice: Record<string, 'default' | 'head'>
+    { baseChoice = {}, acceptCost = false }: Extract<PlanAction, { action: 'approve' }>
   ): Promise<{ ok: false; reason: string } | { ok: true; checks: PlanChecks; bases: PlanBases }> {
     const refused = this.refusePlan(job, version.plan);
     if (refused !== null) return { ok: false, reason: refused };
@@ -449,6 +501,13 @@ export class JobsService {
     if (blocked.length > 0) {
       this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
       return { ok: false, reason: blocked.map((i) => i.text).join(' ') };
+    }
+    if (!acceptCost && checks.issues.some((i) => i.severity === 'accept')) {
+      this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
+      return {
+        ok: false,
+        reason: 'Accept the steps whose cost Fleet cannot measure on the plan card first.'
+      };
     }
     const pin = pinBases(checks.bases, baseChoice);
     if (!pin.ok) return { ok: false, reason: pin.reason };
@@ -526,7 +585,7 @@ export class JobsService {
       liveCrew: this.store.crew.live(job.id),
       questions: this.store.listQuestions(job.repoId, { jobId: job.id }),
       delivered: this.store.plans.resultsByStep(job.id),
-      spendUsd: this.store.plans.spendUsd(job.id)
+      spendUsd: this.store.spend.jobTotals(job.id).usd
     });
   }
 
@@ -845,7 +904,8 @@ export class JobsService {
           (admitted.crew[runtime] ?? 0),
         limit: this.deps.crewLimit?.(runtime) ?? defaultAtOnce(runtime, false)
       },
-      stack: this.deps.stack?.gate(job, stepId, admitted.stack)
+      stack: this.deps.stack?.gate(job, stepId, admitted.stack),
+      reserve: runtime === 'claude' ? (this.deps.claudeReserve?.() ?? null) : null
     });
   }
 
@@ -977,13 +1037,22 @@ export class JobsService {
       events: this.store.jobEvents(jobId),
       log: this.store.plans.logTail(jobId),
       results: this.store.results.forJob(jobId),
-      spendUsd: this.store.plans.spendUsd(jobId),
+      spend: this.deps.spend?.(job) ?? NO_JOB_SPEND,
       merge: mergeView(this.store.merges.run(jobId)),
       crew: this.store.crew.all(jobId).map(crewView),
       servers: this.deps.servers?.(jobId) ?? [],
       permissions: this.store.permissions.forJob(jobId)
     };
   }
+}
+
+/** A plan's budgets as the client could type them: positive, a share at most 100%, dollars within the cap. */
+function budgetProblems(plan: Plan, monthlyCapUsd: number | null): string[] {
+  const { usd, weekPct } = plan.budget;
+  return [
+    budgetProblem(usd, 'usd', monthlyCapUsd),
+    weekPct === undefined ? null : budgetProblem(weekPct, 'week_pct', null)
+  ].filter((p): p is string => p !== null);
 }
 
 const crewView = (c: CrewRecord): AgencyCrewMember => ({

@@ -4,7 +4,7 @@ import { dirname, join, relative } from 'node:path';
 import { jobDisplayId, type AgencyJob } from '../../../shared/agency';
 import { isFileResultKind } from '../../../shared/agency-jobs';
 import { CrewReportSchema, type CrewRuntime, type CrewSnapshot } from '../../../shared/agency-crew';
-import type { PlanStep } from '../../../shared/agency-plan';
+import { capText, type PlanStep, type StepCap } from '../../../shared/agency-plan';
 import {
   CREW_PROMPT_PREFIX,
   type AgencyToolOutput,
@@ -28,18 +28,28 @@ import type { ResourceRecord } from '../store/resource-store';
 import {
   CREW_LIVE,
   CREW_STARTING,
+  crewRuntime,
   LOST_AT_RESTART,
   NOT_STARTED,
   type CrewRecord
 } from '../store/crew-store';
+import type { SpendService } from '../spend/spend-service';
 import type { StackSlots } from '../jobs/stack-slots';
 import type { GitWrite, JobWorkspaces, StepFolder } from '../workspaces/job-workspace';
 import { gitExec } from '../exec';
-import { CrewFlags, type CrewAct, type CrewSessionState } from './crew-flags';
+import { Ticker } from '../ticker';
+import { CREW_TICK_MS, CrewFlags, type CrewAct, type CrewSessionState } from './crew-flags';
 import { handoffNote, pendingSwap, type CrewSwap } from './handoff';
 import { crewLaunch, type CrewLaunch } from './runtimes';
 
 const log = createLogger('agency:crew');
+
+/** Session phases in which a member's turn runs, and spends. */
+const IN_A_TURN: ReadonlySet<string> = new Set(['processing', 'compacting', 'waitingForApproval']);
+
+/** Whether a crew member's session is in a turn. */
+export const inATurn = (session: CrewSessionState | undefined): boolean =>
+  IN_A_TURN.has(session?.phase ?? 'ended');
 
 /** A crew pane to open: unfocused, as a split of its job's one tab. */
 export type CrewPaneOpen = {
@@ -66,6 +76,8 @@ export type CrewPaneHost = {
   prompter: FleetPrompter;
   /** Fleet's hook entries, as its global install writes them. */
   hooks(): Record<string, HookEntry[]>;
+  /** Fleet's hook command, which a Claude Code member's status line runs. */
+  hookCommand(): string;
   /** Fleet's hook command for eva, when the eva a pane in `cwd` runs takes a hooks file. */
   evaHook(cwd: string): Promise<string | undefined>;
   /** What a crew pane shows now, as text, or null when Fleet keeps no copy of it. */
@@ -92,6 +104,8 @@ export type CrewServiceDeps = {
   defaultModel?: (runtime: CrewRuntime) => string | undefined;
   /** Reads a swapped-out member's changes for the handoff; defaults to the `git` on PATH. */
   git?: GitWrite;
+  /** The budget checks before a hire or a prompt; unset, crew work costs nothing. */
+  spend?: Pick<SpendService, 'gate' | 'cancel' | 'attach' | 'crewSettled'>;
 };
 
 /**
@@ -224,6 +238,12 @@ export class CrewService {
    */
   private readonly turns = new Map<number, { reported: boolean; idle: number }>();
 
+  /** Turns each member ended, for a step's cap. In memory, like `turns`. */
+  private readonly worked = new Map<number, number>();
+
+  /** Stops members whose step's minute cap ran out. */
+  private readonly capClock = new Ticker();
+
   /** `needs-you`, `limited`, `user-driven` and `stuck`. */
   readonly flags: CrewFlags;
 
@@ -239,6 +259,59 @@ export class CrewService {
 
   private get store(): AgencyStore {
     return this.deps.store;
+  }
+
+  startTicking(): void {
+    this.flags.startTicking();
+    this.capClock.start(() => this.checkCaps(), CREW_TICK_MS);
+  }
+
+  stopTicking(): void {
+    this.flags.stopTicking();
+    this.capClock.stop();
+  }
+
+  /** Stop each live member whose step's minute cap ran out. */
+  checkCaps(): void {
+    const now = this.deps.now();
+    for (const crew of this.store.crew.live()) {
+      const minutes = this.capOf(crew)?.minutes;
+      if (
+        crew.status === CREW_LIVE &&
+        minutes !== undefined &&
+        now - crew.startedAt >= minutes * 60_000
+      ) {
+        void this.stopAtCap(crew, { minutes });
+      }
+    }
+  }
+
+  /** The cap of a member's step in the approved plan, for a step whose cost Fleet cannot measure. */
+  private capOf(crew: CrewRecord): StepCap | undefined {
+    return this.store.plans.approved(crew.jobId)?.plan.steps.find((s) => s.id === crew.stepId)?.cap;
+  }
+
+  /**
+   * End a member at its step's cap. Its step waits for the client's OK to
+   * hire again, so going past the cap is their call.
+   */
+  private async stopAtCap(crew: CrewRecord, cap: StepCap): Promise<void> {
+    const note = `was stopped at the step's cap of ${capText(cap)}`;
+    this.worked.delete(crew.id);
+    await this.deps.jobs.stopCrew([crew.id], note);
+    const job = this.store.getJob(crew.jobId);
+    if (job)
+      this.record(job, crew.stepId, `Stopped ${crew.label} at the cap of ${capText(cap)}`, {
+        crewId: crew.id
+      });
+    this.deps.jobs.crewLeft({
+      jobId: crew.jobId,
+      stepId: crew.stepId,
+      status: 'stopped',
+      label: crew.label,
+      note
+    });
+    this.touch(crew.jobId);
   }
 
   private newId(): string {
@@ -275,18 +348,37 @@ export class CrewService {
     if (!role) {
       throw new Error(`Not hired: the approved plan keeps no role ${step.role}. Propose it again.`);
     }
-    const held = this.flags.hireRefusal(step.runtime ?? role.runtime);
+    const runtime = step.runtime ?? role.runtime;
+    const held = this.flags.hireRefusal(runtime);
     if (held !== null) throw new Error(held);
     const before = this.store.plans.step(jobId, step.id)?.status ?? 'pending';
     const lost = before === 'interrupted' ? this.lostMember(jobId, step.id) : null;
     const swap = lost === null ? pendingSwap(this.store, jobId, step.id) : null;
+    const reservation = this.spendGate(job, runtime, lost?.id ?? null, 'Not hired');
     this.deps.jobs.hireMoved(jobId, step.id, 'running');
     try {
-      return await this.start({ panes, job, step, role, args, lost, swap });
+      return await this.start({ panes, job, step, role, args, lost, swap, reservation });
     } catch (err) {
+      if (reservation !== null) this.deps.spend?.cancel(reservation);
       this.deps.jobs.hireMoved(jobId, step.id, before);
       throw err;
     }
+  }
+
+  /**
+   * Check the job's budgets and the monthly cap before crew work starts, and
+   * reserve its estimate. Returns the reservation, or null with no budget checks.
+   */
+  private spendGate(
+    job: AgencyJob,
+    runtime: CrewRuntime,
+    crewId: number | null,
+    refusal: string
+  ): number | null {
+    const gate = this.deps.spend?.gate(job, { runtime, crewId });
+    if (gate === undefined) return null;
+    if (!gate.ok) throw new Error(`${refusal}: ${gate.text}`);
+    return gate.reservationId;
   }
 
   private async start(input: {
@@ -297,8 +389,9 @@ export class CrewService {
     args: CrewHireArgs;
     lost: CrewRecord | null;
     swap: CrewSwap | null;
+    reservation: number | null;
   }): Promise<AgencyToolOutput> {
-    const { panes, job, step, role, args, lost, swap } = input;
+    const { panes, job, step, role, args, lost, swap, reservation } = input;
     const runtime: CrewRuntime = step.runtime ?? role.runtime;
     const model =
       step.model ??
@@ -327,6 +420,7 @@ export class CrewService {
       status: CREW_STARTING,
       replaces: lost?.id ?? swap?.replaced.id ?? null
     });
+    if (reservation !== null) this.deps.spend?.attach(reservation, crew.id);
     const evaHook = runtime === 'eva' ? await panes.evaHook(workspace.cwd) : undefined;
     try {
       const launch = crewLaunch({
@@ -341,7 +435,9 @@ export class CrewService {
         resume: lost !== null,
         dir: join(jobDir(this.deps.home(), job.id), 'crew', `${step.id}-${member}`),
         addDirs: handback === undefined ? [] : [handback],
+        label: crew.label,
         hooks: panes.hooks(),
+        hookCommand: panes.hookCommand(),
         evaHook
       });
       await this.openPane(panes, job, crew, workspace, launch);
@@ -463,9 +559,11 @@ export class CrewService {
     const refused = panes.prompter.refusal(crew.sessionId) ?? promptProblem(text);
     if (refused !== null) throw new Error(refused);
     this.checkRate(jobId);
+    const reservation = this.spendGate(job, crewRuntime(crew), crew.id, 'Not sent');
     const at = this.deps.now();
     const result = await panes.prompter.send(crew.sessionId, text);
     const typed = result.ok || result.reason === PROMPT_MISMATCH;
+    if (!typed && reservation !== null) this.deps.spend?.cancel(reservation);
     if (typed) {
       this.limiter.note(this.limitKey(jobId), at);
       const how = result.ok ? 'a prompt' : 'a prompt that arrived different';
@@ -489,7 +587,7 @@ export class CrewService {
   /** Press Esc in a crew member's pane, as the client would. */
   interrupt(jobId: number, args: CrewInterruptArgs): AgencyToolOutput {
     const panes = this.requirePanes();
-    const job = this.actingJob(jobId);
+    const job = this.actingJob(jobId, false);
     const crew = this.resolve(jobId, args.crew, 'interrupt');
     if (crew.paneId !== null) panes.write(crew.paneId, '\x1b');
     this.record(job, crew.stepId, `Interrupted ${crew.label}`, { crewId: crew.id });
@@ -502,7 +600,7 @@ export class CrewService {
   /** End a crew member's process. Its step stays as it is, so the Admiral can hire for it again. */
   async stop(jobId: number, args: CrewStopArgs): Promise<AgencyToolOutput> {
     this.requirePanes();
-    const job = this.actingJob(jobId);
+    const job = this.actingJob(jobId, false);
     const crew = this.resolve(jobId, args.crew, 'stop');
     await this.deps.jobs.stopCrew([crew.id], 'stopped by the Admiral');
     this.record(job, crew.stepId, `Stopped ${crew.label}`, {
@@ -565,8 +663,16 @@ export class CrewService {
     const crew = this.store.crew
       .live()
       .find((c) => c.sessionId === sessionId && c.status === CREW_LIVE);
+    if (crew) this.deps.spend?.crewSettled(crew.id);
     // The client drives it now: its turns are theirs, not idle ones.
     if (!crew || crew.flag === 'user-driven') return;
+    const worked = (this.worked.get(crew.id) ?? 0) + 1;
+    this.worked.set(crew.id, worked);
+    const turns = this.capOf(crew)?.turns;
+    if (turns !== undefined && worked >= turns) {
+      void this.stopAtCap(crew, { turns });
+      return;
+    }
     const turn = this.turns.get(crew.id);
     if (turn?.reported === true) {
       this.turns.set(crew.id, { reported: false, idle: 0 });
@@ -606,6 +712,7 @@ export class CrewService {
           ? 'ended on its own'
           : `ended with exit code ${how.exitCode}`;
     this.store.crew.end(crew.id, note);
+    this.deps.spend?.crewSettled(crew.id);
     log.info('crew member ended', { crewId: crew.id, jobId: crew.jobId, how: how.kind });
     this.deps.jobs.crewLeft({
       jobId: crew.jobId,
@@ -622,8 +729,12 @@ export class CrewService {
     return this.deps.panes;
   }
 
-  /** The job crew act for, refused while its automatic turns are held at the chain limit. */
-  private actingJob(jobId: number): AgencyJob {
+  /**
+   * The job crew act for, refused while its automatic turns are held at the
+   * chain limit, and for an act that `spends`, while it waits on the client
+   * to raise its budget. Interrupting and stopping spend nothing.
+   */
+  private actingJob(jobId: number, spends = true): AgencyJob {
     const job = this.store.getJob(jobId);
     if (!job) throw new Error(`There is no job ${jobDisplayId(jobId)}.`);
     if (job.holds.includes('chain_limit')) {
@@ -631,7 +742,30 @@ export class CrewService {
         `Not done: ${jobDisplayId(jobId)} has run its automatic turns in a row, so crew acts wait until the client writes.`
       );
     }
+    if (spends && job.holds.includes('budget')) {
+      const why =
+        this.store.holdDetail(jobId, 'budget') || `${jobDisplayId(jobId)} reached its budget`;
+      throw new Error(
+        `Not done: ${why}. No new crew work starts until the client raises the budget or stops the job; their answer arrives as a wakeup.`
+      );
+    }
     return job;
+  }
+
+  /**
+   * Press Esc in the job's crew panes that are in a turn, as its spend passed
+   * 120% of a budget. Not an Admiral act, so no hold refuses it.
+   */
+  interruptJob(jobId: number, why: string): void {
+    const panes = this.deps.panes;
+    const job = this.store.getJob(jobId);
+    if (panes === null || !job) return;
+    for (const crew of this.store.crew.live(jobId)) {
+      const session = crew.sessionId === null ? undefined : panes.session(crew.sessionId);
+      if (crew.paneId === null || !inATurn(session)) continue;
+      panes.write(crew.paneId, '\x1b');
+      this.record(job, crew.stepId, `Interrupted ${crew.label}: ${why}`, { crewId: crew.id });
+    }
   }
 
   private limitKey(jobId: number): string {

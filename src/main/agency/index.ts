@@ -14,6 +14,7 @@ import {
   type AgencyQuestion,
   type AgencyRepoRef,
   type AgencySnapshot,
+  type BudgetRaise,
   type ClientFileProposal,
   type RepoResolution,
   type WakeupPull,
@@ -64,7 +65,7 @@ import {
   saveRole,
   type CrewDirs
 } from './crew/catalog';
-import { CrewService, type CrewPaneHost } from './crew/crew-service';
+import { CrewService, inATurn, type CrewPaneHost } from './crew/crew-service';
 import { testRuntime, type RuntimeTestDeps } from './crew/runtime-test';
 import { CrewPermissions, type PermissionDeps } from './crew/permissions';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
@@ -97,6 +98,8 @@ import type { RegisteredProject } from './store/project-registry';
 import { AgencySettingsService, type AgencySettingsAccess } from './settings';
 import { agencyDbPath } from './store/agency-db';
 import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
+import { SpendService } from './spend/spend-service';
+import { pctText, usdText } from '../../shared/agency-spend';
 
 const PASSING_RUNTIME = { path: null, version: null, checks: [] };
 
@@ -214,6 +217,7 @@ export class AgencyService {
   readonly merges: MergeQueue;
   readonly crew: CrewService;
   readonly permissions: CrewPermissions;
+  readonly spend: SpendService;
   /** How crew panes are stopped and found live. */
   private readonly crewControl: CrewControl;
   /** Folders already written to the trust table this run. */
@@ -245,6 +249,15 @@ export class AgencyService {
     const agencySettings = deps.agencySettings ?? memorySettings();
     this.agencySettings = agencySettings;
     this.crewControl = deps.crew ?? (panes === null ? NO_CREW : paneControl(panes));
+    this.spend = new SpendService({
+      store: this.store,
+      settings: () => agencySettings.get().admiral,
+      changed: (touched) => this.changed(touched),
+      now: () => deps.now?.() ?? Date.now(),
+      working: (sessionId) => inATurn(panes?.session(sessionId)),
+      interruptCrew: (jobId, why) => this.crew.interruptJob(jobId, why),
+      admitQueued: () => this.jobs.admitQueued()
+    });
     this.servers = new ServerWatch({
       store: this.store,
       changed: (touched) => this.changed(touched)
@@ -261,6 +274,10 @@ export class AgencyService {
       crewLimit: (runtime) => this.crewAtOnce(runtime),
       stack: this.stack,
       servers: (jobId) => this.servers.servers(jobId),
+      spend: (job) => this.spend.jobSpend(job),
+      claudeReserve: () => this.spend.claudeWait()?.why ?? null,
+      monthlyCapUsd: () => agencySettings.get().admiral.monthlyCapUsd,
+      defaultWeekPct: () => agencySettings.get().admiral.defaultBudgetWeekPct,
       planFacts: async (input) => this.planFacts(input),
       crewSnapshot: deps.crewDirs
         ? async (job, plan) => crewSnapshot(await this.crewCatalog(job.repoId), plan)
@@ -326,7 +343,8 @@ export class AgencyService {
       now: () => deps.now?.() ?? Date.now(),
       newId: deps.newCrewId,
       nudgeLimit: () => agencySettings.get().admiral.nudgeLimit,
-      defaultModel: (runtime) => agencySettings.get().crew[runtime].defaultModel || undefined
+      defaultModel: (runtime) => agencySettings.get().crew[runtime].defaultModel || undefined,
+      spend: this.spend
     });
     this.permissions = new CrewPermissions({
       store: this.store,
@@ -440,9 +458,55 @@ export class AgencyService {
     if (kind === 'resume' && req.option === 1 && jobId !== null) {
       this.closeJob({ jobId, action: 'cancel' });
     }
+    if (kind === 'budget' && jobId !== null) this.answerBudget(outcome.question, req.option);
     if (outcome.question.jobId !== null) this.jobs.refreshClientHold(outcome.question.jobId);
     this.changed([{ repoId: outcome.question.repoId, jobId: outcome.question.jobId }]);
     return outcome.question;
+  }
+
+  /**
+   * The client's pick on a raise-or-stop card: raise the job's budget, or the
+   * monthly cap, and let it go on if that leaves room; or cancel the job.
+   */
+  private answerBudget(q: AgencyQuestion, option: number | undefined): void {
+    const job = q.jobId === null ? null : this.store.getJob(q.jobId);
+    if (!job) return;
+    if (option === 1) {
+      this.closeJob({ jobId: job.id, action: 'cancel' });
+      return;
+    }
+    if (option !== 0 || q.raise === null) return;
+    const line =
+      q.raise.target === 'cap' ? this.raiseCap(job, q.raise.to) : this.raiseJob(job, q.raise);
+    if (line === null) return;
+    this.store.enqueueWakeup({
+      repoId: job.repoId,
+      jobId: job.id,
+      kind: 'client_action',
+      payload: { line }
+    });
+    // A raised cap frees every job it held; each of their Admirals hears of it.
+    if (q.raise.target === 'cap') this.spend.recheck();
+    else this.spend.recheck(job.id, false);
+  }
+
+  private raiseCap(job: AgencyJob, to: number): string {
+    const agency = this.agencySettings.get();
+    this.agencySettings.set({ ...agency, admiral: { ...agency.admiral, monthlyCapUsd: to } });
+    this.deps.emit({ repoId: job.repoId, jobIds: [], settings: true });
+    return `The client raised the monthly cap to ${usdText(to)}`;
+  }
+
+  /** The job's budget raised as a plan version the client approved; null when it has no plan. */
+  private raiseJob(job: AgencyJob, { target, to }: BudgetRaise): string | null {
+    const budget = { ...(this.store.plans.approved(job.id)?.plan.budget ?? { usd: to }) };
+    if (target === 'usd') budget.usd = to;
+    else budget.weekPct = to;
+    const version = this.jobs.raiseBudget(job.id, budget);
+    if (version === null) return null;
+    return target === 'usd'
+      ? `The client raised the budget to ${usdText(to)} (plan v${version})`
+      : `The client raised the share of the weekly Claude limit to ${pctText(to)} (plan v${version})`;
   }
 
   /**
@@ -564,7 +628,9 @@ export class AgencyService {
 
   /** The wakeups due for one job, as one turn's text, with env file values masked. */
   async pullWakeups(input: { repoId: string; jobId: number | null }): Promise<WakeupPull> {
-    const pull = this.store.pullWakeups(input);
+    const pull = this.spend.admiralPull(input.jobId, (clientOnly) =>
+      this.store.pullWakeups(input, clientOnly)
+    );
     if (pull.text === null) return pull;
     return { ...pull, text: (await this.redactor(input.repoId)).redact(pull.text) };
   }
@@ -649,8 +715,9 @@ export class AgencyService {
     this.prs.startWatching();
     this.stack.startPolling();
     this.servers.startPolling();
-    this.crew.flags.startTicking();
+    this.crew.startTicking();
     this.permissions.startTicking();
+    this.spend.startTicking();
     await Promise.all([this.cleanup.resumeAll(), this.merges.advanceAll(), this.prs.watchAll()]);
   }
 
@@ -922,8 +989,9 @@ export class AgencyService {
     this.prs.stopWatching();
     this.stack.stopPolling();
     this.servers.stopPolling();
-    this.crew.flags.stopTicking();
+    this.crew.stopTicking();
     this.permissions.stopTicking();
+    this.spend.stopTicking();
     this.store.close();
   }
 

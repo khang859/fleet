@@ -6,6 +6,8 @@ import {
   PLAN_MAX_NEW_ROLES,
   PLAN_MAX_STEPS,
   PlanSchema,
+  STEP_CAP_MAX_MINUTES,
+  STEP_CAP_MAX_TURNS,
   type DeliverableKind
 } from './agency-plan';
 import { offeredToolSpecs } from './capability-tools';
@@ -330,6 +332,7 @@ const PLAN_DESCRIPTION = [
   "Propose this job's plan as a card for the client: the playbook, a short summary, the steps, the budget and what you will ask before doing.",
   "Each step's crew member works in its own worktree. A step works only in what the steps it waits for committed, so tell each crew member to commit its work. For a playbook step with `count` > 1, make one step per member, each with one of the playbook's scopes, and a later step that merges them.",
   "When no crew role fits a step, add a role to `newRoles` and give the step that role. Fleet saves it in the project's crew folder, not the repository, only when the client approves the plan. Keep sending it in later versions; a role already saved with the same text stays as it is.",
+  'Give every eva step a `cap`. Fleet cannot always measure what eva costs, so the client accepts those steps on the card, and Fleet stops their crew at the cap.',
   'Always send the whole plan. To change an approved plan, send it again with the change: keep the ids of steps that stay, so Fleet can show the client what changes. A step that is done, or already delivered something, cannot change or go.',
   'Returns at once. The client approves, edits or rejects it, and that arrives as a wakeup. Nothing starts before the client approves, and only the newest version can be approved, so a new call replaces one still waiting.'
 ].join('\n\n');
@@ -468,6 +471,17 @@ const stepSchema = {
     skills: stringList(
       "Skills the crew member uses, by name, from those the crew note lists for the step's working folder and runtime."
     ),
+    cap: {
+      type: 'object',
+      description:
+        "The most turns or minutes each crew member of the step may work before Fleet stops it; hiring again needs the client's OK. Needed on an eva step: Fleet cannot always measure what eva costs.",
+      properties: {
+        turns: { type: 'integer', minimum: 1, maximum: STEP_CAP_MAX_TURNS },
+        minutes: { type: 'integer', minimum: 1, maximum: STEP_CAP_MAX_MINUTES }
+      },
+      minProperties: 1,
+      additionalProperties: false
+    },
     deliverables: {
       type: 'array',
       description: 'What the step hands back: a kind, or {kind, label}.',

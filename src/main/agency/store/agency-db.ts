@@ -44,6 +44,13 @@ export function agencyDbPath(): string {
  * phase, since when, and until when.
  *
  * Version 10 adds crew permission requests, with who answered each and why.
+ *
+ * Version 11 adds spend on two meters: each sample says whether it is dollars
+ * or a share of the weekly Claude limit and whether it is an estimate, and a
+ * lobby's Admiral turns are samples with `job_id` NULL. It adds the estimates
+ * reserved before crew acts and Admiral turns, the budget levels already acted
+ * on, how each crew member is billed and the session cost it last reported,
+ * and the job's share of the weekly limit.
  */
 const MIGRATIONS: readonly string[] = [
   `
@@ -362,6 +369,44 @@ const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX permission_requests_job ON permission_requests(job_id, id);
   CREATE INDEX permission_requests_state ON permission_requests(state);
+  `,
+  `
+  CREATE TABLE spend_samples_v11 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER,
+    crew_id INTEGER,
+    source TEXT NOT NULL,
+    meter TEXT NOT NULL,
+    amount REAL NOT NULL,
+    estimate INTEGER NOT NULL DEFAULT 0,
+    at INTEGER NOT NULL
+  );
+  INSERT INTO spend_samples_v11 (id, job_id, crew_id, source, meter, amount, at)
+    SELECT id, job_id, crew_id, source, 'usd', usd, at FROM spend_samples;
+  DROP TABLE spend_samples;
+  ALTER TABLE spend_samples_v11 RENAME TO spend_samples;
+  CREATE INDEX spend_samples_job ON spend_samples(job_id, meter);
+  CREATE INDEX spend_samples_at ON spend_samples(at);
+  CREATE TABLE spend_reservations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER,
+    crew_id INTEGER,
+    meter TEXT NOT NULL,
+    amount REAL NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE TABLE spend_marks (
+    job_id INTEGER NOT NULL,
+    meter TEXT NOT NULL,
+    level TEXT NOT NULL,
+    budget REAL NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (job_id, meter, level)
+  );
+  ALTER TABLE crew_members ADD COLUMN billing TEXT;
+  ALTER TABLE crew_members ADD COLUMN cost_seen REAL;
+  ALTER TABLE jobs ADD COLUMN budget_week_pct REAL;
   `
 ];
 

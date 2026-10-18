@@ -14,7 +14,7 @@ import {
   type RuntimeCheck
 } from '../../../shared/agency-crew';
 import type { RuntimeSkills } from '../../../shared/agency-agent-files';
-import type { Plan, PlanStep } from '../../../shared/agency-plan';
+import { capText, type Plan, type PlanStep } from '../../../shared/agency-plan';
 import { roleFileText } from '../crew/catalog';
 
 /** What Fleet read about one member repository just before the check. */
@@ -305,13 +305,40 @@ function skillIssues(plan: Plan, facts: PlanFacts): PlanIssue[] {
   });
 }
 
+/**
+ * eva steps, whose cost Fleet cannot always measure: eva reports a cost only
+ * when its model server does. Each needs a cap on its turns or minutes, and
+ * the client accepts them on the card.
+ */
+function costIssues(plan: Plan, crew: CrewFacts): PlanIssue[] {
+  return plan.steps
+    .filter((step) => stepRuntime(step, crew.roles) === 'eva')
+    .map(
+      (step): PlanIssue =>
+        step.cap === undefined
+          ? {
+              code: 'cost-uncapped',
+              severity: 'block',
+              text: `${step.id} runs on eva, whose cost Fleet cannot always measure, so it needs a cap: the most turns or minutes its crew may work.`,
+              step: step.id
+            }
+          : {
+              code: 'cost-unknown',
+              severity: 'accept',
+              text: `${step.id} runs on eva, which reports a cost only when its model server does, so the budget may not count it. Fleet stops each crew member after ${capText(step.cap)}.`,
+              step: step.id
+            }
+    );
+}
+
 function crewIssues(plan: Plan, crew: CrewFacts | null): PlanIssue[] {
   if (crew === null) return [];
   return [
     ...unknownRoles(plan, crew.roles),
     ...roleClashes(plan, crew),
     ...runtimeIssues(plan, crew),
-    ...modelIssues(plan, crew)
+    ...modelIssues(plan, crew),
+    ...costIssues(plan, crew)
   ];
 }
 

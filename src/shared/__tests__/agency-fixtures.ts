@@ -19,6 +19,7 @@ export function agencyQuestion(over: Partial<AgencyQuestion> = {}): AgencyQuesti
     answerOption: null,
     answerText: null,
     proposal: null,
+    raise: null,
     late: false,
     withdrawnReason: null,
     createdAt: 1,
@@ -45,6 +46,7 @@ export function agencyJob(over: Partial<AgencyJob> = {}): AgencyJob {
     sessionId: 'job-session',
     handoffDone: true,
     budgetUsd: 10,
+    budgetWeekPct: null,
     createdAt: 1,
     updatedAt: 1,
     ...over

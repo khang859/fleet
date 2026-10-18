@@ -111,12 +111,13 @@ function OpenPlan({
       <DecisionBar
         version={version}
         decision={decision}
-        onApprove={() =>
+        onApprove={(acceptCost) =>
           void decision.run({
             planVersionId: version.id,
             action: 'approve',
             swaps,
-            baseChoice: bases
+            baseChoice: bases,
+            acceptCost
           })
         }
         onEdit={onEdit}
@@ -448,7 +449,8 @@ function DecisionBar({
 }: {
   version: AgencyPlanVersion;
   decision: Decision;
-  onApprove: () => void;
+  /** `acceptCost`: the client accepted the steps whose cost Fleet cannot measure. */
+  onApprove: (acceptCost: boolean) => void;
   onEdit: () => void;
 }): React.JSX.Element {
   const { plan } = version;
@@ -456,6 +458,8 @@ function DecisionBar({
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState('');
   const blocked = version.checks.issues.some((i) => i.severity === 'block');
+  const unmeasured = version.checks.issues.filter((i) => i.severity === 'accept');
+  const [accepted, setAccepted] = useState(false);
 
   return (
     <div className="flex flex-col gap-2 px-3.5 py-3">
@@ -488,23 +492,48 @@ function DecisionBar({
           </div>
         </form>
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-fleet-text-muted">
-            Budget ${formatUsd(plan.budget.usd)}
-            {plan.budget.weekPct !== undefined && ` and ${plan.budget.weekPct}% of week`} ·{' '}
-            {plural(plan.steps.length, 'step')}
-          </span>
-          <div className="flex-1" />
-          <OnboardingButton kind="ghost" disabled={busy} onClick={() => setRejecting(true)}>
-            Reject
-          </OnboardingButton>
-          <OnboardingButton disabled={busy} onClick={onEdit}>
-            Change something
-          </OnboardingButton>
-          <OnboardingButton kind="primary" disabled={busy || blocked} onClick={onApprove}>
-            {version.kind === 'change' ? 'Approve change' : 'Approve plan'}
-          </OnboardingButton>
-        </div>
+        <>
+          {unmeasured.length > 0 && (
+            <label className="flex items-start gap-2 text-xs text-fleet-text">
+              <input
+                type="checkbox"
+                checked={accepted}
+                onChange={(e) => setAccepted(e.target.checked)}
+                className="fleet-accent-input mt-0.5"
+              />
+              <span>
+                I accept that the budget may not count {unmeasured.map((i) => i.step).join(', ')}.
+                Fleet stops their crew at the cap.
+              </span>
+            </label>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-fleet-text-muted">
+              Budget ${formatUsd(plan.budget.usd)}
+              {plan.budget.weekPct !== undefined && ` and ${plan.budget.weekPct}% of week`} ·{' '}
+              {plural(plan.steps.length, 'step')}
+            </span>
+            <div className="flex-1" />
+            <OnboardingButton kind="ghost" disabled={busy} onClick={() => setRejecting(true)}>
+              Reject
+            </OnboardingButton>
+            <OnboardingButton disabled={busy} onClick={onEdit}>
+              Change something
+            </OnboardingButton>
+            <OnboardingButton
+              kind="primary"
+              disabled={busy || blocked || (unmeasured.length > 0 && !accepted)}
+              onClick={() => onApprove(accepted)}
+            >
+              {version.kind === 'change' ? 'Approve change' : 'Approve plan'}
+            </OnboardingButton>
+          </div>
+        </>
+      )}
+      {!rejecting && (
+        <p className="text-[11px] text-fleet-text-subtle">
+          Cloud costs, such as Neon, Vercel or AWS, are not counted in the budget.
+        </p>
       )}
       {refused !== null && (
         <p role="status" className="text-[11px] text-amber-700 dark:text-amber-400/90">

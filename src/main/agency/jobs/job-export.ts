@@ -147,7 +147,7 @@ function recordLines(detail: AgencyJobDetail): string[] {
  * project's chosen env files are masked wherever they appear.
  */
 export function exportJob(record: JobRecord, secrets: readonly string[] = []): string {
-  const { job, versions, steps, results, spendUsd, permissions } = record.detail;
+  const { job, versions, steps, results, spend, permissions } = record.detail;
   const budget = job.budgetUsd === null ? '' : ` of a $${job.budgetUsd} budget`;
   const lines = [
     `# ${jobDisplayId(job.id)}: ${job.title}`,
@@ -155,7 +155,7 @@ export function exportJob(record: JobRecord, secrets: readonly string[] = []): s
     `- Project: ${record.project}`,
     `- State: ${job.state}`,
     `- Opened: ${stamp(job.createdAt)}, last change ${stamp(job.updatedAt)}`,
-    `- Spent: $${spendUsd.toFixed(2)}${budget}`,
+    `- Spent: $${spend.usd.toFixed(2)}${budget}`,
     '',
     '## Brief',
     '',

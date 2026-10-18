@@ -82,6 +82,34 @@ export function workspaceSources(ws: WorkspaceSpec): string[] {
 /** A skill's name, as its folder has it; Claude Code shows a nested one as `<dir>:<name>`. */
 export const SKILL_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/;
 
+/** The most a crew member of a capped step may work. */
+export const STEP_CAP_MAX_TURNS = 200;
+export const STEP_CAP_MAX_MINUTES = 24 * 60;
+
+/**
+ * The most turns or minutes each crew member of a step may work before Fleet
+ * stops it, for a step whose cost Fleet cannot measure. Hiring again after a
+ * stop needs the client's OK, so each round is theirs to allow.
+ */
+export const StepCapSchema = z
+  .object({
+    turns: z.number().int().min(1).max(STEP_CAP_MAX_TURNS).optional(),
+    minutes: z.number().int().min(1).max(STEP_CAP_MAX_MINUTES).optional()
+  })
+  .refine((cap) => cap.turns !== undefined || cap.minutes !== undefined, {
+    message: 'A cap needs turns, minutes or both.'
+  });
+export type StepCap = z.infer<typeof StepCapSchema>;
+
+/** `20 turns or 60 minutes`. */
+export function capText(cap: StepCap): string {
+  const parts = [
+    cap.turns === undefined ? null : `${cap.turns} turn${cap.turns === 1 ? '' : 's'}`,
+    cap.minutes === undefined ? null : `${cap.minutes} minute${cap.minutes === 1 ? '' : 's'}`
+  ];
+  return parts.filter((p) => p !== null).join(' or ');
+}
+
 export const PlanStepSchema = z.object({
   /** Stable across versions: the same id is the same step. */
   id: StepIdSchema,
@@ -101,7 +129,8 @@ export const PlanStepSchema = z.object({
   /** The part of the code the step owns, when it changes a member side by side with another step. */
   scope: z.string().trim().min(1).max(80).optional(),
   /** Skills of the repository it works in that the crew member uses, by name. */
-  skills: z.array(z.string().regex(SKILL_NAME_PATTERN)).max(10).default([])
+  skills: z.array(z.string().regex(SKILL_NAME_PATTERN)).max(10).default([]),
+  cap: StepCapSchema.optional()
 });
 
 export const NEW_ROLE_MAX_CHARS = 8_000;
@@ -322,7 +351,8 @@ export type StepChange =
   | 'deliverables'
   | 'members'
   | 'workspace'
-  | 'skills';
+  | 'skills'
+  | 'cap';
 
 /** One line of a plan change card. */
 export type PlanDiffEntry =
@@ -331,6 +361,8 @@ export type PlanDiffEntry =
   | { kind: 'changed'; step: string; fields: StepChange[] }
   | { kind: 'moved'; step: string }
   | { kind: 'budget'; from: number; to: number }
+  /** The share of the weekly Claude limit; null where the plan named none. */
+  | { kind: 'week_share'; from: number | null; to: number | null }
   | { kind: 'playbook'; from: string; to: string }
   | { kind: 'summary' }
   | { kind: 'queue'; from: number | null; to: number | null }
@@ -352,6 +384,7 @@ function stepChanges(a: PlanStep, b: PlanStep): StepChange[] {
     fields.push('workspace');
   }
   if (!sameList(a.skills, b.skills)) fields.push('skills');
+  if (JSON.stringify(a.cap) !== JSON.stringify(b.cap)) fields.push('cap');
   return fields;
 }
 
@@ -391,6 +424,13 @@ export function diffPlans(prev: Plan | null, next: Plan): PlanDiffEntry[] {
   if (prev.budget.usd !== next.budget.usd) {
     diff.push({ kind: 'budget', from: prev.budget.usd, to: next.budget.usd });
   }
+  if (prev.budget.weekPct !== next.budget.weekPct) {
+    diff.push({
+      kind: 'week_share',
+      from: prev.budget.weekPct ?? null,
+      to: next.budget.weekPct ?? null
+    });
+  }
   if (prev.queueBehind !== next.queueBehind) {
     diff.push({ kind: 'queue', from: prev.queueBehind, to: next.queueBehind });
   }
@@ -414,6 +454,8 @@ export function diffLine(entry: PlanDiffEntry): string {
       return `Moves ${entry.step}`;
     case 'budget':
       return `Budget $${entry.from} to $${entry.to}`;
+    case 'week_share':
+      return `Share of the weekly Claude limit ${entry.from === null ? 'none' : `${entry.from}%`} to ${entry.to === null ? 'none' : `${entry.to}%`}`;
     case 'playbook':
       return `Playbook ${entry.from} to ${entry.to}`;
     case 'summary':

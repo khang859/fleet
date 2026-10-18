@@ -227,12 +227,21 @@ Phase 3 notes (decisions made while building):
 
 ## 6. Phase 6 - budgets and spend (PR 6)
 
-- [ ] 6.1 Add the spend sampler for Admiral cost, Claude crew usage from the status line `rate_limits` (and `cost` when no `rate_limits`), and eva cost when reported; verify with tests using fake sessions
-- [ ] 6.2 Enforce the job budget and monthly cap before `crew_hire` and `crew_send`, with the 80% notice and the raise-or-stop card; verify with tool tests
-- [ ] 6.3 Add the SPEND sheet section with per-crew spend, estimate markers and the warning color; verify with a screenshot
+- [x] 6.1 Add the spend sampler for Admiral cost, Claude crew usage from the status line `rate_limits` (and `cost` when no `rate_limits`), and eva cost when reported; verify with tests using fake sessions
+- [x] 6.2 Enforce the job budget and monthly cap before `crew_hire` and `crew_send`, with the 80% notice and the raise-or-stop card; verify with tool tests
+- [x] 6.3 Add the SPEND sheet section with per-crew spend, estimate markers and the warning color; verify with a screenshot
+- [x] 6.4 Split the dollar meter from the subscription usage meter, add the `statusline` verb to the Go hook and the `statusLine` entry in crew `--settings`, split weekly-percentage rises across jobs, add the per-job weekly share and the 5-hour and weekly reserve settings, with presets and a validated Custom value for both budgets in Settings, the starter question and the plan card, require acceptance for unknown-cost steps, and state that cloud costs are not counted; verify with Go tests for the verb, tests with fake `rate_limits` for the split and the reserve, and a screenshot
+- [x] 6.5 Reserve budget in one SQLite transaction before crew acts and Admiral turns, stop at 100%, interrupt at 120%, and reset the monthly cap in local time; verify with concurrency tests
 
-- [ ] 6.4 Split the dollar meter from the subscription usage meter, add the `statusline` verb to the Go hook and the `statusLine` entry in crew `--settings`, split weekly-percentage rises across jobs, add the per-job weekly share and the 5-hour and weekly reserve settings, with presets and a validated Custom value for both budgets in Settings, the starter question and the plan card, require acceptance for unknown-cost steps, and state that cloud costs are not counted; verify with Go tests for the verb, tests with fake `rate_limits` for the split and the reserve, and a screenshot
-- [ ] 6.5 Reserve budget in one SQLite transaction before crew acts and Admiral turns, stop at 100%, interrupt at 120%, and reset the monthly cap in local time; verify with concurrency tests
+- 6.1: billing comes from the status line. A session with `rate_limits` is on the subscription, so its `cost` is never counted as dollars. A session with a cost and no `rate_limits` is on an API key.
+- 6.1: a cost lower than the last one is a new conversation after `/clear`, counted from zero.
+- 6.1: eva reports a cost only when its model server does. Fleet does not guess a cost from tokens.
+- 6.2: a gate refused only by the reservations under way says `busy` and makes no card. Only a real budget or cap refusal holds the job and puts up the raise-or-stop card.
+- 6.2: raising a budget from the card makes a new plan version, and it replaces a change the client has not approved yet. A plan budget may not go over the monthly cap or under what was spent.
+- 6.4: a plan with no weekly share gets the default share when it is proposed.
+- 6.4: every eva step is unknown-cost. It needs a `cap` (turns or minutes) or the plan is blocked, and the client must accept it on the plan card. The cap is per crew member. At the cap Fleet stops the crew member and the Admiral asks the client before it hires again.
+- 6.4: the job detail has one spend object, `spend`, for both meters. The old `spendUsd` field is gone.
+- 6.3, 6.4: checked with `npm run drive` screenshots of Settings > Admiral and the j17 sheet, where one live Admiral turn showed as `$0.04 of $1.00`.
 
 ## 7. Release
 

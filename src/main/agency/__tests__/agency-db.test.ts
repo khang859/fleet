@@ -54,6 +54,8 @@ describe('agency.db', () => {
       'results',
       'settings_history',
       'settings_proposals',
+      'spend_marks',
+      'spend_reservations',
       'spend_samples',
       'wakeups'
     ]);
@@ -97,6 +99,34 @@ describe('agency.db', () => {
         .get()
     ).toEqual({ approved_version: null, close_target: null, chain_count: 0, linked_job_id: null });
     expect(db.prepare('SELECT payload_json FROM questions').get()).toEqual({ payload_json: '{}' });
+    db.close();
+  });
+
+  it('keeps v10 dollar spend as usd samples on the two-meter table', () => {
+    const path = tempPath();
+    mkdirSync(dirname(path), { recursive: true });
+    const v10 = new Database(path);
+    migrateAgencyDb(v10, 10);
+    v10
+      .prepare(
+        "INSERT INTO spend_samples (job_id, crew_id, source, usd, at) VALUES (4, 7, 'crew', 1.25, 9)"
+      )
+      .run();
+    v10.close();
+
+    const db = openAgencyDb(path);
+    expect(db.prepare('SELECT * FROM spend_samples').all()).toEqual([
+      {
+        id: 1,
+        job_id: 4,
+        crew_id: 7,
+        source: 'crew',
+        meter: 'usd',
+        amount: 1.25,
+        estimate: 0,
+        at: 9
+      }
+    ]);
     db.close();
   });
 

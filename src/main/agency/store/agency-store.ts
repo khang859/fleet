@@ -18,12 +18,14 @@ import {
   type AgencyQuestionStatus,
   type AgencyRepoRef,
   type AgencySnapshot,
+  type BudgetRaise,
   type ClientFileProposal,
   type JobHoldKind,
   type JobState,
   type WakeupPull
 } from '../../../shared/agency';
 import type { AgencyProjectSummary } from '../../../shared/agency-projects';
+import type { Plan } from '../../../shared/agency-plan';
 import { parseJsonAs } from '../../../shared/parse-json';
 import { WAKEUP_GIVE_UP_ATTEMPTS, WAKEUP_STALE_CLAIM_MS, wakeupBackoffMs } from '../backoff';
 import { CHAIN_LIMIT, chainExhausted } from '../jobs/chain';
@@ -37,6 +39,7 @@ import { MergeStore, ResultStore } from './result-store';
 import { PlanStore } from './plan-store';
 import { ProjectRegistry } from './project-registry';
 import { SettingChangeStore } from './setting-change-store';
+import { SpendStore } from './spend-store';
 
 type JobRow = {
   id: number;
@@ -47,6 +50,7 @@ type JobRow = {
   session_id: string;
   handoff_done: number;
   budget_usd: number | null;
+  budget_week_pct: number | null;
   created_at: number;
   updated_at: number;
   approved_version: number | null;
@@ -120,6 +124,8 @@ export type AskQuestionInput = {
   kind?: AgencyQuestionKind;
   /** What a `client_file` card proposes. */
   proposal?: ClientFileProposal;
+  /** What a `budget` card raises, and to what. */
+  raise?: BudgetRaise;
 };
 
 export type AnswerOutcome = {
@@ -130,6 +136,9 @@ export type AnswerOutcome = {
   withdrew: number[];
 };
 
+/** The wakeups that carry the client's own answers and actions, which run over a budget too. */
+const CLIENT_KINDS = "AND kind IN ('answer', 'client_action')";
+
 export type EnqueueWakeupInput = {
   repoId: string;
   jobId: number | null;
@@ -139,6 +148,8 @@ export type EnqueueWakeupInput = {
   payload?: Record<string, unknown>;
   /** Higher runs first. Permission requests outrank everything else. */
   priority?: number;
+  /** Not due before this time; due at once when unset. */
+  notBefore?: number;
 };
 
 export type ReleaseOutcome = {
@@ -176,6 +187,9 @@ const QuestionData = z.object({
       add: z.array(z.object({ text: z.string(), replaces: z.string().nullable() })),
       remove: z.array(z.string())
     })
+    .optional(),
+  raise: z
+    .object({ target: z.enum(['usd', 'week_pct', 'cap']), to: z.number().positive() })
     .optional()
 });
 
@@ -222,6 +236,7 @@ function toJob(
     sessionId: row.session_id,
     handoffDone: row.handoff_done === 1,
     budgetUsd: row.budget_usd,
+    budgetWeekPct: row.budget_week_pct,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -250,6 +265,7 @@ function toQuestion(row: QuestionRow): AgencyQuestion {
       row.kind === 'client_file'
         ? (parseJsonAs(QuestionData, row.data_json)?.proposal ?? null)
         : null,
+    raise: row.kind === 'budget' ? (parseJsonAs(QuestionData, row.data_json)?.raise ?? null) : null,
     late: row.late === 1,
     withdrawnReason: row.withdrawn_reason,
     createdAt: row.created_at,
@@ -303,6 +319,7 @@ export class AgencyStore {
   readonly merges: MergeStore;
   readonly settings: SettingChangeStore;
   readonly projects: ProjectRegistry;
+  readonly spend: SpendStore;
 
   constructor(db: Database.Database | string, opts: { now?: () => number } = {}) {
     this.db = typeof db === 'string' ? openAgencyDb(db) : db;
@@ -315,6 +332,7 @@ export class AgencyStore {
     this.merges = new MergeStore(this.db, this.now);
     this.settings = new SettingChangeStore(this.db, this.now);
     this.projects = new ProjectRegistry(this.db, this.now);
+    this.spend = new SpendStore(this.db, this.now);
   }
 
   /**
@@ -447,11 +465,13 @@ export class AgencyStore {
     );
   }
 
-  /** Put an approved plan version in force, with the budget it set. */
-  setApprovedVersion(jobId: number, version: number, budgetUsd: number): void {
+  /** Put an approved plan version in force, with the budgets it set. */
+  setApprovedVersion(jobId: number, version: number, budget: Plan['budget']): void {
     this.db
-      .prepare('UPDATE jobs SET approved_version = ?, budget_usd = ?, updated_at = ? WHERE id = ?')
-      .run(version, budgetUsd, this.now(), jobId);
+      .prepare(
+        'UPDATE jobs SET approved_version = ?, budget_usd = ?, budget_week_pct = ?, updated_at = ? WHERE id = ?'
+      )
+      .run(version, budget.usd, budget.weekPct ?? null, this.now(), jobId);
   }
 
   /** A repository's jobs, oldest first; closed, cancelled and failed ones only when asked. */
@@ -564,6 +584,18 @@ export class AgencyStore {
     return HOLD_KINDS.filter((k) => kinds.has(k));
   }
 
+  /** What a hold on a job says, such as when it lifts; null when the job is not held so. */
+  holdDetail(jobId: number, kind: JobHoldKind): string | null {
+    return (
+      this.db
+        .prepare<
+          [number, string],
+          { detail: string }
+        >('SELECT detail FROM job_holds WHERE job_id = ? AND kind = ?')
+        .get(jobId, kind)?.detail ?? null
+    );
+  }
+
   /** Hold a job, so a running one waits until every hold is released. */
   addHold(jobId: number, kind: JobHoldKind, detail = ''): void {
     this.db.transaction(() => {
@@ -643,6 +675,18 @@ export class AgencyStore {
     }
     this.addHold(job.id, 'chain_limit');
     return false;
+  }
+
+  /** A job's open cards of one kind that Fleet itself put up. */
+  openFleetCards(jobId: number, kind: AgencyQuestionKind): AgencyQuestion[] {
+    return this.listOpenFleetCards(jobId, kind);
+  }
+
+  /** Take down a job's open cards of one kind, and what waits on them. */
+  withdrawFleetCards(jobId: number, kind: AgencyQuestionKind, reason: string): void {
+    this.db.transaction(() => {
+      for (const q of this.listOpenFleetCards(jobId, kind)) this.withdrawCascade(q.id, reason);
+    })();
   }
 
   private listOpenFleetCards(jobId: number, kind: AgencyQuestionKind): AgencyQuestion[] {
@@ -787,7 +831,10 @@ export class AgencyStore {
           status,
           withdrawnReason,
           this.now(),
-          JSON.stringify(input.proposal === undefined ? {} : { proposal: input.proposal })
+          JSON.stringify({
+            ...(input.proposal !== undefined && { proposal: input.proposal }),
+            ...(input.raise !== undefined && { raise: input.raise })
+          })
         );
       const question = this.getQuestion(Number(lastInsertRowid));
       if (!question) throw new Error('question vanished on insert');
@@ -1038,8 +1085,8 @@ export class AgencyStore {
   enqueueWakeup(input: EnqueueWakeupInput): number {
     const { lastInsertRowid } = this.db
       .prepare(
-        `INSERT INTO wakeups (repo_id, job_id, kind, question_id, payload_json, priority, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO wakeups (repo_id, job_id, kind, question_id, payload_json, priority, not_before, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         input.repoId,
@@ -1048,6 +1095,7 @@ export class AgencyStore {
         input.questionId ?? null,
         JSON.stringify(input.payload ?? {}),
         input.priority ?? 1,
+        input.notBefore ?? 0,
         this.now()
       );
     return Number(lastInsertRowid);
@@ -1057,8 +1105,10 @@ export class AgencyStore {
    * Claim every wakeup due for one job (null: the lobby) and render them as
    * the text of one turn. Claims gone stale for that job are released first,
    * so a turn lost to a reload does not hold its wakeups forever.
+   * `clientOnly` claims only the client's own answers and actions, for a job
+   * over its budget.
    */
-  pullWakeups(input: { repoId: string; jobId: number | null }): WakeupPull {
+  pullWakeups(input: { repoId: string; jobId: number | null }, clientOnly = false): WakeupPull {
     return this.db.transaction(() => {
       this.releaseStaleClaims(WAKEUP_STALE_CLAIM_MS, input);
       const now = this.now();
@@ -1066,7 +1116,7 @@ export class AgencyStore {
         .prepare<[string, number | null, number], WakeupRow>(
           `SELECT id, repo_id, job_id, kind, question_id, payload_json, attempts FROM wakeups
            WHERE repo_id = ? AND job_id IS ? AND done_at IS NULL AND claimed_at IS NULL AND not_before <= ?
-           ORDER BY priority DESC, id`
+           ${clientOnly ? CLIENT_KINDS : ''} ORDER BY priority DESC, id`
         )
         .all(input.repoId, input.jobId, now);
       const job = input.jobId === null ? null : this.getJob(input.jobId);
@@ -1082,7 +1132,7 @@ export class AgencyStore {
       return {
         ids: rows.map((r) => r.id),
         text: renderWakeupText(rows.flatMap((r) => this.wakeupItem(r))),
-        nextDueAt: this.nextDueAt(input.repoId, input.jobId)
+        nextDueAt: this.nextDueAt(input.repoId, input.jobId, clientOnly)
       };
     })();
   }
@@ -1103,11 +1153,12 @@ export class AgencyStore {
   }
 
   /** When the next unclaimed wakeup for a job becomes due, or null when none waits. */
-  private nextDueAt(repoId: string, jobId: number | null): number | null {
+  private nextDueAt(repoId: string, jobId: number | null, clientOnly = false): number | null {
     const row = this.db
       .prepare<[string, number | null], { due: number | null }>(
         `SELECT MIN(not_before) AS due FROM wakeups
-         WHERE repo_id = ? AND job_id IS ? AND done_at IS NULL AND claimed_at IS NULL`
+         WHERE repo_id = ? AND job_id IS ? AND done_at IS NULL AND claimed_at IS NULL
+         ${clientOnly ? CLIENT_KINDS : ''}`
       )
       .get(repoId, jobId);
     return row?.due ?? null;

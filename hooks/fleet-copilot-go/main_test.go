@@ -520,3 +520,47 @@ func TestRun_UnknownRuntimeAndNoFleetSessionDoNothing(t *testing.T) {
 		t.Errorf("outside Fleet the hook must do nothing: %d %q", code, out.String())
 	}
 }
+
+func TestRun_StatusLinePrintsTheCrewLineAndSendsTheSpend(t *testing.T) {
+	events := startAnsweringServer(t, ``)
+	env := map[string]string{"FLEET_SESSION": "1", "FLEET_PANE_ID": "pane-1", "FLEET_CREW_STATUS": "J4 · builder 1"}
+	var out bytes.Buffer
+	code := run([]string{"statusline"}, strings.NewReader(`{"session_id":"c1","cwd":"/w",
+		"cost":{"total_cost_usd":0.42},
+		"rate_limits":{"five_hour":{"used_percentage":23.5,"resets_at":1738425600}}}`),
+		&out, func(k string) string { return env[k] }, func() int { return 1 })
+
+	if code != 0 || out.String() != "J4 · builder 1\n" {
+		t.Fatalf("exit %d, stdout %q", code, out.String())
+	}
+	sent := <-events
+	if sent.Event != "StatusLine" || sent.Status != "status_line" || sent.SessionID != "c1" ||
+		sent.PaneID != "pane-1" || sent.CostUSD == nil || *sent.CostUSD != 0.42 || sent.Protocol != protocolVersion {
+		t.Errorf("sent %+v", sent)
+	}
+	if sent.RateLimits == nil || sent.RateLimits.FiveHour == nil || sent.RateLimits.FiveHour.UsedPercentage != 23.5 ||
+		sent.RateLimits.FiveHour.ResetsAt != 1738425600 || sent.RateLimits.SevenDay != nil {
+		t.Errorf("rate limits %+v", sent.RateLimits)
+	}
+}
+
+func TestRun_StatusLineOutsideFleetOnlyPrints(t *testing.T) {
+	var out bytes.Buffer
+	code := run([]string{"statusline"}, strings.NewReader("not json"), &out,
+		func(k string) string { return map[string]string{"FLEET_CREW_STATUS": "x"}[k] }, func() int { return 1 })
+	if code != 0 || out.String() != "x\n" {
+		t.Errorf("exit %d, stdout %q", code, out.String())
+	}
+}
+
+func TestRun_EvaStopCarriesTheCost(t *testing.T) {
+	events := startAnsweringServer(t, ``)
+	runHook(t, []string{"--runtime", "eva"}, `{"session_id":"e1","hook_event_name":"Stop","pid":5,"usage":{"cost":1.25,"max_cost":null}}`)
+	if sent := <-events; sent.CostUSD == nil || *sent.CostUSD != 1.25 {
+		t.Errorf("sent %+v", sent)
+	}
+	runHook(t, []string{"--runtime", "eva"}, `{"session_id":"e1","hook_event_name":"Stop","pid":5,"usage":{"cost":null}}`)
+	if sent := <-events; sent.CostUSD != nil {
+		t.Errorf("an unknown cost stays unset: %v", *sent.CostUSD)
+	}
+}
