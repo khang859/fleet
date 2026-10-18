@@ -41,6 +41,8 @@ export type RuntimeTestDeps = {
   /** Whether a file exists with something in it. */
   readable: (path: string) => Promise<boolean>;
   hooks: () => Record<string, HookEntry[]>;
+  /** Fleet's hook command for eva, when the eva a pane in `cwd` runs takes a hooks file. */
+  evaHook: (cwd: string) => Promise<string | undefined>;
   /** A folder for the files of a launch. */
   dir: string;
   now: () => number;
@@ -85,17 +87,21 @@ function follow(
 }
 
 /** Why nothing reached Fleet, for the first row. */
-function silentReason(runtime: CrewRuntime, cwd: string): string {
-  return runtime === 'claude'
-    ? `No event came. Claude Code may be waiting at its folder trust prompt for ${cwd}, or for a sign-in.`
-    : "No event came. eva sends events only through Fleet's hook in its config.toml.";
+function silentReason(runtime: CrewRuntime, cwd: string, hooked: boolean): string {
+  if (runtime === 'claude') {
+    return `No event came. Claude Code may be waiting at its folder trust prompt for ${cwd}, or for a sign-in.`;
+  }
+  return hooked
+    ? 'No event came. eva may be waiting at a prompt in its pane.'
+    : 'No event came. This eva cannot take a hooks file (--hooks), so it sends Fleet no events. Update eva once a version with --hooks is out.';
 }
 
 function rows(
   runtime: CrewRuntime,
   cwd: string,
   seen: Seen,
-  transcript: boolean | null
+  transcript: boolean | null,
+  hooked: boolean
 ): RuntimeTestRow[] {
   const label = RUNTIME_LABEL[runtime];
   const names = [...new Set(seen.events.map((e) => e.event))];
@@ -111,7 +117,7 @@ function rows(
     {
       what: 'Hook events reach Fleet',
       ok: names.length > 0,
-      detail: names.length > 0 ? names.join(', ') : silentReason(runtime, cwd)
+      detail: names.length > 0 ? names.join(', ') : silentReason(runtime, cwd, hooked)
     },
     {
       what: 'The turn ended',
@@ -147,11 +153,13 @@ export async function testRuntime(
   deps: RuntimeTestDeps
 ): Promise<RuntimeTestResult> {
   const paneId = deps.newId();
+  const evaHook = runtime === 'eva' ? await deps.evaHook(cwd) : undefined;
   const launch = testLaunch({
     runtime,
     sessionId: deps.newId(),
     dir: deps.dir,
     hooks: deps.hooks(),
+    evaHook,
     model,
     prompt: TEST_PROMPT
   });
@@ -171,5 +179,5 @@ export async function testRuntime(
   deps.kill(paneId);
   const path = seen.events.find((e) => e.transcriptPath !== null)?.transcriptPath ?? null;
   const transcript = runtime === 'claude' ? path !== null && (await deps.readable(path)) : null;
-  return { ok: true, rows: rows(runtime, cwd, seen, transcript) };
+  return { ok: true, rows: rows(runtime, cwd, seen, transcript, evaHook !== undefined) };
 }

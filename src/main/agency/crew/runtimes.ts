@@ -29,6 +29,8 @@ export type CrewHire = {
   addDirs: string[];
   /** Fleet's hook entries, as the global install in the member's Claude config folder writes them. */
   hooks: Record<string, HookEntry[]>;
+  /** Fleet's hook command, for an eva that takes a hooks file; unset when it cannot. */
+  evaHook?: string;
 };
 
 /**
@@ -52,6 +54,7 @@ const ENV = {
   model: 'FLEET_CREW_MODEL',
   name: 'FLEET_CREW_NAME',
   goal: 'FLEET_CREW_GOAL',
+  hooks: 'FLEET_CREW_HOOKS',
   addDir: (i: number) => `FLEET_CREW_ADD_DIR_${i}`
 } as const;
 
@@ -102,11 +105,55 @@ function claudeLaunch(hire: CrewHire, prompt: string): CrewLaunch {
 }
 
 /**
+ * The eva events Fleet follows a session by, each running Fleet's hook. A
+ * permission request waits as long as Claude Code's does for an answer.
+ */
+const EVA_HOOK_EVENTS: Array<[event: string, timeout?: number]> = [
+  ['SessionStart'],
+  ['UserPromptSubmit'],
+  ['PreToolUse'],
+  ['PermissionRequest', 86_400],
+  ['PostToolUse'],
+  ['Stop'],
+  ['StopFailure'],
+  ['SubagentStop'],
+  ['PreCompact'],
+  ['SessionEnd']
+];
+
+/** A hooks file for `eva --hooks`, in the `[[hooks.<Event>]]` tables of eva's `config.toml`. */
+export function evaHooksToml(command: string): string {
+  // A JSON string is a TOML basic string.
+  const line = `command = ${JSON.stringify(`${command} --runtime eva`)}`;
+  return EVA_HOOK_EVENTS.map(([event, timeout]) =>
+    [`[[hooks.${event}]]`, line, ...(timeout === undefined ? [] : [`timeout = ${timeout}`])].join(
+      '\n'
+    )
+  ).join('\n\n');
+}
+
+/** `--hooks` and its file, for an eva that takes one, so its events reach Fleet. */
+function evaHooks(
+  dir: string,
+  command: string | undefined,
+  env: Record<string, string>
+): { args: string[]; files: CrewLaunch['files'] } {
+  if (command === undefined) return { args: [], files: [] };
+  const path = join(dir, 'eva-hooks.toml');
+  env[ENV.hooks] = path;
+  return {
+    args: ['--hooks', ref(ENV.hooks)],
+    files: [{ path, text: `${evaHooksToml(command)}\n` }]
+  };
+}
+
+/**
  * eva in the same way: the role as instructions kept with the conversation,
  * a goal that keeps it working until the step is done, and no question tool.
  * Never `-b`, so eva asks before each change as the user's settings say. Its
  * model comes from `CHAT_MODEL`, which takes the place of the saved one. A
- * resumed conversation has its instructions saved with it already.
+ * resumed conversation has its instructions saved with it already. Its hooks
+ * file comes from Fleet, never from eva's `config.toml`, which holds its key.
  */
 function evaLaunch(hire: CrewHire, prompt: string): CrewLaunch {
   const instructions = join(hire.dir, 'role.md');
@@ -121,9 +168,11 @@ function evaLaunch(hire: CrewHire, prompt: string): CrewLaunch {
     ? ['--resume', ref(ENV.session)]
     : ['--session-id', ref(ENV.session), '--instructions', ref(ENV.role)];
   if (!hire.resume) env[ENV.role] = instructions;
+  const hooks = evaHooks(hire.dir, hire.evaHook, env);
   const cmd = [
     'eva',
     ...args,
+    ...hooks.args,
     '--name',
     ref(ENV.name),
     '--goal',
@@ -133,7 +182,7 @@ function evaLaunch(hire: CrewHire, prompt: string): CrewLaunch {
     ref(SPAWN_PROMPT_ENV)
   ].join(' ');
   const files = hire.resume ? [] : [{ path: instructions, text: hire.rolePrompt }];
-  return { cmd, env, files, prompt };
+  return { cmd, env, files: [...files, ...hooks.files], prompt };
 }
 
 const LAUNCH: Record<CrewRuntime, (hire: CrewHire, prompt: string) => CrewLaunch> = {
@@ -170,6 +219,8 @@ export type TestStart = {
   /** Where the files of the launch go, outside every repository. */
   dir: string;
   hooks: Record<string, HookEntry[]>;
+  /** Fleet's hook command, for an eva that takes a hooks file. */
+  evaHook?: string;
   /** The default model from Settings; unset takes the runtime's own. */
   model?: string;
   prompt: string;
@@ -188,11 +239,12 @@ export function testLaunch(test: TestStart): CrewLaunch {
   if (test.runtime === 'eva') {
     env[ENV.name] = 'Fleet runtime test';
     if (test.model !== undefined) env.CHAT_MODEL = test.model;
+    const hooks = evaHooks(test.dir, test.evaHook, env);
     const args = ['--session-id', ref(ENV.session), '--name', ref(ENV.name), '--no-ask-user'];
     return {
-      cmd: ['eva', ...args, '--', ref(SPAWN_PROMPT_ENV)].join(' '),
+      cmd: ['eva', ...args, ...hooks.args, '--', ref(SPAWN_PROMPT_ENV)].join(' '),
       env,
-      files: [],
+      files: hooks.files,
       prompt: test.prompt
     };
   }

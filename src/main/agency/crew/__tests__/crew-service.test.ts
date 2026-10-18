@@ -33,6 +33,8 @@ type FakePanes = CrewPaneHost & {
   sendResult: SendResult | null;
   screens: Map<string, string>;
   sessions: Map<string, CrewSessionState>;
+  /** Fleet's hook command, for an eva that takes a hooks file. */
+  evaHookCommand: string | undefined;
 };
 
 function fakePanes(): FakePanes {
@@ -46,6 +48,7 @@ function fakePanes(): FakePanes {
     sendResult: null,
     screens: new Map(),
     sessions: new Map(),
+    evaHookCommand: undefined,
     open: async (pane) => {
       if (host.openError !== null) return Promise.resolve(host.openError);
       host.opened.push(pane);
@@ -67,6 +70,7 @@ function fakePanes(): FakePanes {
       }
     },
     hooks: () => ({}),
+    evaHook: async () => Promise.resolve(host.evaHookCommand),
     screen: async (paneId) => Promise.resolve(host.screens.get(paneId) ?? null),
     session: (sessionId) => host.sessions.get(sessionId)
   };
@@ -243,6 +247,23 @@ describe('crew_hire', () => {
       { label: 'builder 1', stepId: 'front', runtime: 'claude', status: 'starting' }
     ]);
     expect(service.store.plans.logTail(jobId).at(-1)?.text).toBe('Hired builder 1 for step front');
+  });
+
+  it('starts eva with a hooks file when it takes one, and says when it cannot report', async () => {
+    const eva = [step('front', { runtime: 'eva' })];
+    panes.evaHookCommand = "'/home/u/.claude/hooks/fleet-hook'";
+    const hooked = await toolsOf(await approvedJob(eva)).crewHire!({ step: 'front', brief: 'x' });
+    panes.evaHookCommand = undefined;
+    const silent = await toolsOf(await approvedJob(eva)).crewHire!({ step: 'front', brief: 'x' });
+
+    const [front, back] = panes.opened;
+    expect(front.launch.cmd).toContain('--hooks "$FLEET_CREW_HOOKS"');
+    expect(readFileSync(front.launch.env.FLEET_CREW_HOOKS, 'utf8')).toContain(
+      `command = "'/home/u/.claude/hooks/fleet-hook' --runtime eva"`
+    );
+    expect(hooked.text).not.toContain('hooks file');
+    expect(back.launch.cmd).not.toContain('--hooks');
+    expect(silent.text).toContain('This eva cannot take a hooks file');
   });
 
   it("gives a reader of another step's worktree a hand-back folder outside it", async () => {

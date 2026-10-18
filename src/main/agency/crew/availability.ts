@@ -31,6 +31,31 @@ export type RuntimeCheckDeps = {
   hookCurrent: () => boolean;
 };
 
+/**
+ * Whether the eva a pane in `cwd` runs takes `--hooks`, the file Fleet's hook
+ * comes in (khang859/eva#43). Without it, eva crew send Fleet no events.
+ */
+export async function evaTakesHooks(
+  cwd: string,
+  shell: RuntimeCheckDeps['shell']
+): Promise<boolean> {
+  const out = await shell('eva --help', cwd);
+  return out?.code === 0 && /(^|\s)--hooks(?![\w-])/.test(out.stdout);
+}
+
+/** Fleet's hook binary, which both runtimes report through. */
+function hookItem(deps: RuntimeCheckDeps): RuntimeCheckItem {
+  return item(
+    'Fleet hook',
+    'The same version as this Fleet.',
+    deps.hookCurrent()
+      ? []
+      : [
+          "Fleet's hook is missing or out of date. Turn on Track Claude Code sessions in Settings > Workspaces."
+        ]
+  );
+}
+
 /** Each part as a number, so 2.1.100 is newer than 2.1.78. */
 export function versionAtLeast(version: string, min: string): boolean {
   const a = version.split('.').map(Number);
@@ -179,16 +204,23 @@ export async function checkRuntime(
   const checks = binaryChecks(runtime, path, version);
   if (runtime === 'claude' && path !== null) {
     checks.push(
+      hookItem(deps),
+      ...claudeSettingsChecks(await claudeSettings(cwd, deps), managedSettingsPath(deps.platform))
+    );
+  }
+  if (runtime === 'eva' && path !== null) {
+    checks.push(
+      hookItem(deps),
       item(
-        'Fleet hook',
-        'The same version as this Fleet.',
-        deps.hookCurrent()
+        'Hooks file',
+        'Fleet sees when eva crew start, stop and ask.',
+        (await evaTakesHooks(cwd, deps.shell))
           ? []
           : [
-              "Fleet's Claude Code hook is missing or out of date. Turn on Track Claude Code sessions in Settings > Workspaces."
-            ]
-      ),
-      ...claudeSettingsChecks(await claudeSettings(cwd, deps), managedSettingsPath(deps.platform))
+              'This eva cannot take a hooks file (--hooks), so eva crew send Fleet no events and show as needing you. Update eva once a version with --hooks is out.'
+            ],
+        'warn'
+      )
     );
   }
   return { runtime, path, version, checks };

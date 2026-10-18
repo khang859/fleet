@@ -140,7 +140,10 @@ export class CrewFlags {
     if (crew.flag !== null || now - crew.startedAt < NEEDS_YOU_MS) return;
     this.flag(crew, 'needs-you', null, {
       line: `${crew.label} has not started a minute after its hire`,
-      body: 'It is probably waiting at a login or trust screen that only the client can answer, and the client has a card for it. Read its screen with fleet_read. Fleet types nothing into it.'
+      body:
+        crewRuntime(crew) === 'eva'
+          ? 'It may be waiting at a prompt in its pane, or this eva cannot send Fleet events. Read its screen with fleet_read. Fleet types nothing into it.'
+          : 'It is probably waiting at a login or trust screen that only the client can answer, and the client has a card for it. Read its screen with fleet_read. Fleet types nothing into it.'
     });
   }
 
