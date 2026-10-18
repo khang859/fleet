@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FLEET_TOOL_PAGE_CHARS } from '../../../../shared/fleet-tools';
 import { BriefBuilder } from '../../../claude-sessions/brief';
 import { hashPrompt, type NotedInput } from '../../../claude-sessions/registry';
-import type { SessionTranscript } from '../../../claude-sessions/session-transcripts';
+import { claudeTranscript } from '../../../claude-sessions/session-transcripts';
 import { TranscriptTail } from '../../../claude-sessions/transcript';
 import { createFleetCapability } from '../capability';
 import type { FleetHost, FleetSession } from '../host';
@@ -77,22 +77,21 @@ function session(over: Partial<FleetSession> = {}): FleetSession {
   };
 }
 
+type Followed = { path: string; tail: TranscriptTail; brief: BriefBuilder };
+
 describe('fleet reads', () => {
   let dir: string;
   let path: string;
   let current: FleetSession;
   let inputs: NotedInput[];
-  let transcript: SessionTranscript;
+  let transcript: Followed;
   let ledger: FleetLedgerStore;
 
   /** A transcript read the way the session service reads it: only new bytes each time. */
-  function follow(p: string): SessionTranscript {
-    const t: SessionTranscript = {
-      path: p,
-      brief: new BriefBuilder(),
-      tail: new TranscriptTail({ onLine: (l) => l.events.forEach((e) => t.brief.apply(e)) })
-    };
-    return t;
+  function follow(p: string): Followed {
+    const brief = new BriefBuilder();
+    const tail = new TranscriptTail({ onLine: (l) => l.events.forEach((e) => brief.apply(e)) });
+    return { path: p, tail, brief };
   }
 
   const host = (): FleetHost => ({
@@ -101,7 +100,7 @@ describe('fleet reads', () => {
     starting: () => [],
     transcript: async () => {
       await transcript.tail.read(transcript.path);
-      return transcript;
+      return claudeTranscript(transcript.path, transcript.tail, transcript.brief);
     },
     inputsFor: () => inputs,
     git: async () => Promise.reject(new Error('no git in this test')),

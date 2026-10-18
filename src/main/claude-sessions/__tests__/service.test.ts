@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { appendFileSync, mkdtempSync, rmSync, existsSync, writeFileSync } from 'fs';
+import { appendFileSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { connect } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -353,7 +353,7 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
       appendFileSync(transcript, jsonl({ type: 'queue-operation', operation: 'dequeue' }));
       await vi.waitFor(() => expect(service.registry.get('s1')?.phase).toBe('processing'));
       const brief = await service.transcript('s1');
-      expect(brief?.path).toBe(transcript);
+      expect(brief?.end).toBe(readFileSync(transcript).length);
     });
   });
 

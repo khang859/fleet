@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ClaudeSessionChange } from '../../../../shared/claude-sessions';
 import { FLEET_CHAIN_LIMIT } from '../../../../shared/fleet-tools';
 import { BriefBuilder } from '../../../claude-sessions/brief';
-import type { SessionTranscript } from '../../../claude-sessions/session-transcripts';
+import { claudeTranscript } from '../../../claude-sessions/session-transcripts';
 import { TranscriptTail } from '../../../claude-sessions/transcript';
 import { FleetAttention } from '../attention';
 import { pullDigest } from '../digest';
@@ -66,7 +66,7 @@ const finished = (n: number, over: Partial<FleetSession> = {}): FleetSession =>
 describe('pullDigest', () => {
   let dir: string;
   let sessions: FleetSession[];
-  let transcripts: Map<string, SessionTranscript>;
+  let transcripts: Map<string, { path: string; tail: TranscriptTail; brief: BriefBuilder }>;
   let ledger: FleetLedgerStore;
   let attention: FleetAttention;
 
@@ -78,7 +78,7 @@ describe('pullDigest', () => {
       const t = transcripts.get(sessionId);
       if (t === undefined) return null;
       await t.tail.read(t.path);
-      return t;
+      return claudeTranscript(t.path, t.tail, t.brief);
     },
     inputsFor: () => [],
     git: async () => Promise.reject(new Error('unused')),
@@ -99,12 +99,9 @@ describe('pullDigest', () => {
   function withTranscript(sessionId: string, content: string): void {
     const path = join(dir, `${sessionId}.jsonl`);
     writeFileSync(path, content);
-    const t: SessionTranscript = {
-      path,
-      brief: new BriefBuilder(),
-      tail: new TranscriptTail({ onLine: (l) => l.events.forEach((e) => t.brief.apply(e)) })
-    };
-    transcripts.set(sessionId, t);
+    const brief = new BriefBuilder();
+    const tail = new TranscriptTail({ onLine: (l) => l.events.forEach((e) => brief.apply(e)) });
+    transcripts.set(sessionId, { path, tail, brief });
   }
 
   beforeEach(() => {
