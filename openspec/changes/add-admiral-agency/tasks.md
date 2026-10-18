@@ -204,6 +204,7 @@ Phase 3 notes (decisions made while building):
 - 4.9: eva 0.3.0 has no `--hooks` (khang859/eva#43 is open). The runtime check warns "Hooks file", the hire text tells the Admiral to read the crew's screen, and the crew shows as `needs you` with an eva text on the card and the row.
 - 4.9: with `--hooks`, the hire writes `eva-hooks.toml` in the crew's launch folder with Fleet's hook for ten events, `PermissionRequest` with a one-day timeout, and passes it as `--hooks "$FLEET_CREW_HOOKS"`. eva's own config is never read or changed.
 - 4.10: a later prompt goes to eva as one bracketed paste, then Enter. eva takes up to 1 MB in one paste; a longer prompt is not sent.
+- 4.5: the Go hook prints Fleet's answer in the Claude Code form, which eva takes, and Test reports an eva that cannot take hook answers. Sending a crew request to the Admiral is the same for both runtimes, so it lands with 5.1 to 5.3.
 - 4.6: end to end in the envdemo repo with eva 0.3.0: the Admiral hired an eva scout, the crew showed `needs you` until events came, and then `live`. The events eva would send went through the real hook binary with the crew pane's id, since this eva cannot take a hooks file. On `Stop` the Admiral woke, reviewed `NOTES.md`, and read the turn from eva's database: 14 tool calls named Bash, Read and Write. See `docs/learnings/eva-crew-is-not-claude.md`.
 - 4.6: the live run with eva's own hooks waits for khang859/eva#43.
 
