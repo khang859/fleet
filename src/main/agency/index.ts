@@ -44,6 +44,7 @@ import {
 import { CrewService, type CrewPaneHost } from './crew/crew-service';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
 import { StackSlots } from './jobs/stack-slots';
+import { ServerWatch } from './workspaces/server-watch';
 import { exportJob } from './jobs/job-export';
 import { reconcileAtStartup } from './jobs/reconcile';
 import { runPreflight, type Probe } from './preflight';
@@ -163,6 +164,7 @@ export class AgencyService {
   readonly settings: AgencySettingsService;
   readonly workspaces: JobWorkspaces;
   readonly stack: StackSlots;
+  readonly servers: ServerWatch;
   readonly merges: MergeQueue;
   readonly crew: CrewService;
   /** How crew panes are stopped and found live. */
@@ -188,6 +190,10 @@ export class AgencyService {
     });
     const panes = deps.crewPanes ?? null;
     this.crewControl = deps.crew ?? (panes === null ? NO_CREW : paneControl(panes));
+    this.servers = new ServerWatch({
+      store: this.store,
+      changed: (touched) => this.changed(touched)
+    });
     this.stack = new StackSlots({
       store: this.store,
       home: () => deps.agencyHome ?? agencyHome(),
@@ -199,6 +205,7 @@ export class AgencyService {
       changed: (touched) => this.changed(touched),
       crewLimit: deps.crewLimit,
       stack: this.stack,
+      servers: (jobId) => this.servers.servers(jobId),
       planFacts: async (input) => this.planFacts(input),
       crewSnapshot: deps.crewDirs
         ? async (job, plan) => crewSnapshot(await this.crewCatalog(job.repoId), plan)
@@ -521,6 +528,7 @@ export class AgencyService {
     this.merges.startTicking();
     this.prs.startWatching();
     this.stack.startPolling();
+    this.servers.startPolling();
     await Promise.all([this.cleanup.resumeAll(), this.merges.advanceAll(), this.prs.watchAll()]);
   }
 
@@ -678,6 +686,7 @@ export class AgencyService {
     this.merges.stopTicking();
     this.prs.stopWatching();
     this.stack.stopPolling();
+    this.servers.stopPolling();
     this.store.close();
   }
 

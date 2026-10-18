@@ -206,6 +206,18 @@ export class ResourceStore {
     return row === undefined ? {} : StringRecord.parse(JSON.parse(row.env_json));
   }
 
+  /** A workspace's step and port block, or null when it has none. */
+  workspacePorts(workspaceId: number): { stepId: string; start: number; size: number } | null {
+    return (
+      this.db
+        .prepare<[number], { stepId: string; start: number; size: number }>(
+          `SELECT step_id AS stepId, ports_start AS start, ports_size AS size FROM job_workspaces
+           WHERE id = ? AND ports_start IS NOT NULL`
+        )
+        .get(workspaceId) ?? null
+    );
+  }
+
   /** The port blocks of workspaces whose job has not ended, so no two jobs share a port. */
   heldPorts(): PortRange[] {
     return this.db

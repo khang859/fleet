@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgencySnapshot } from '../../../../../shared/agency';
 import type {
   AgencyCrewMember,
+  AgencyServer,
   AgencyJobDetail,
   AgencyPlanVersion,
   AgencyStep
@@ -73,7 +74,8 @@ function step(id: string, status: AgencyStep['status'], note = ''): AgencyStep {
 function detail(
   versions: AgencyPlanVersion[],
   steps: AgencyStep[] = [],
-  crew: AgencyCrewMember[] = []
+  crew: AgencyCrewMember[] = [],
+  servers: AgencyServer[] = []
 ): AgencyJobDetail {
   const approved = versions.find((v) => v.status === 'approved');
   return {
@@ -85,7 +87,8 @@ function detail(
     results: [],
     spendUsd: 2.5,
     merge: null,
-    crew
+    crew,
+    servers
   };
 }
 
@@ -304,6 +307,31 @@ describe('the sheet', () => {
     expect(html).toContain('Reading the diff');
     expect(html).toContain('$2.50 of $10');
     expect(html).toContain('Nothing needs you right now.');
+  });
+
+  it('lists the servers the crew started, with the variable each is on and its address', () => {
+    const html = sheet(
+      snap(false),
+      detail(
+        [version({ status: 'approved' })],
+        [],
+        [],
+        [
+          { stepId: 'qa', name: 'API_PORT', port: 41000, url: 'http://localhost:41000' },
+          { stepId: 'qa', name: null, port: 41007, url: 'http://localhost:41007' }
+        ]
+      )
+    );
+    expect(html).toContain('SERVERS');
+    expect(html).toContain('2 running');
+    expect(html).toContain('API_PORT');
+    expect(html).toContain('port 41007');
+    expect(html).toContain('>localhost:41000<');
+    expect(html).toContain('title="Open http://localhost:41007"');
+  });
+
+  it('shows no SERVERS while none listen', () => {
+    expect(sheet(snap(false), detail([version({ status: 'approved' })]))).not.toContain('SERVERS');
   });
 
   it('lists the crew, working ones first, with Peek only on a working member', () => {

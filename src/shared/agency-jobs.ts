@@ -226,6 +226,15 @@ export type AgencyCrewMember = {
   endReason: string | null;
 };
 
+/** A server a crew member started on a port of its job workspace's block, as SERVERS shows it. */
+export type AgencyServer = {
+  stepId: string;
+  /** The port variable set to its port, or null for another port of the block. */
+  name: string | null;
+  port: number;
+  url: string;
+};
+
 export type AgencyJobDetail = {
   job: AgencyJob;
   /** Every version, oldest first. */
@@ -240,6 +249,8 @@ export type AgencyJobDetail = {
   merge: AgencyMergeRun | null;
   /** Every crew member the job hired, oldest first. */
   crew: AgencyCrewMember[];
+  /** Servers listening in the blocks of workspaces with crew at work, by port. */
+  servers: AgencyServer[];
 };
 
 /** The client opens a delivered file with the app their system picks for it. */

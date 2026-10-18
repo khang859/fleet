@@ -12,6 +12,7 @@ import {
   type AgencyJobDetail,
   type AgencyMergeRun,
   type AgencyPlanVersion,
+  type AgencyServer,
   type AgencyStep,
   type PlanAction,
   type PlanActionResult,
@@ -95,6 +96,8 @@ export type JobsServiceDeps = {
   crewSnapshot?: (job: AgencyJob, plan: Plan) => Promise<CrewSnapshot>;
   /** The project's stack slots; without it, steps that run the stack wait on none. */
   stack?: Pick<StackSlots, 'gate' | 'runsStack'>;
+  /** The servers a job's crew started, for its sheet; none unless set. */
+  servers?: (jobId: number) => AgencyServer[];
 };
 
 /**
@@ -740,7 +743,8 @@ export class JobsService {
       results: this.store.results.forJob(jobId),
       spendUsd: this.store.plans.spendUsd(jobId),
       merge: mergeView(this.store.merges.run(jobId)),
-      crew: this.store.crew.all(jobId).map(crewView)
+      crew: this.store.crew.all(jobId).map(crewView),
+      servers: this.deps.servers?.(jobId) ?? []
     };
   }
 }

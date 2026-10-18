@@ -99,6 +99,8 @@ export function JobSheet({
 
       <CrewSection detail={detail} />
 
+      <ServersSection detail={detail} />
+
       <ResultsSection detail={detail} />
 
       {job !== null && approved !== null && detail !== undefined && (
@@ -324,6 +326,41 @@ function CrewRow({ member }: { member: AgencyCrewMember }): React.JSX.Element {
         </button>
       )}
     </li>
+  );
+}
+
+/** The servers the crew started, each with the port variable it is on and its address. */
+function ServersSection({
+  detail
+}: {
+  detail: AgencyJobDetail | undefined;
+}): React.JSX.Element | null {
+  if (detail === undefined || detail.servers.length === 0) return null;
+  return (
+    <Section label="SERVERS" gap="gap-1" aside={`${detail.servers.length} running`}>
+      <ul className="flex flex-col">
+        {detail.servers.map((server) => (
+          <li
+            key={server.port}
+            className="flex items-center gap-2 border-b border-fleet-border/60 py-1.5 text-xs last:border-b-0"
+          >
+            <span className={`size-1.5 shrink-0 rounded-full ${CREW_DOT.live}`} />
+            <span className="min-w-0 flex-1 truncate text-fleet-text">
+              {server.name ?? `port ${server.port}`}
+              <span className="text-fleet-text-subtle"> · {server.stepId}</span>
+            </span>
+            <button
+              type="button"
+              title={`Open ${server.url}`}
+              onClick={() => void window.fleet.shell.openExternal(server.url)}
+              className="shrink-0 rounded font-mono text-[11px] text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring"
+            >
+              localhost:{server.port}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }
 
