@@ -17,6 +17,7 @@ const NOW = 10_000_000;
 function session(over: Partial<FleetSession> = {}): FleetSession {
   return {
     sessionId: 's1',
+    runtime: 'claude',
     paneId: 'abcdef12-pane',
     ref: 'abcdef12',
     label: 'fleet › api',

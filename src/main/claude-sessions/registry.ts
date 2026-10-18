@@ -175,6 +175,7 @@ export class ClaudeSessionRegistry {
       entry = {
         session: {
           sessionId: event.sessionId,
+          runtime: event.runtime,
           paneId: placement.paneId,
           epoch,
           cwd: event.cwd,

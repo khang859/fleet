@@ -39,6 +39,7 @@ const reply = (uuid: string, text: string): string =>
 function session(n: number, over: Partial<FleetSession> = {}): FleetSession {
   return {
     sessionId: `s${n}`,
+    runtime: 'claude',
     paneId: `pane000${n}-x`,
     ref: `pane000${n}`,
     label: `work › tab ${n}`,

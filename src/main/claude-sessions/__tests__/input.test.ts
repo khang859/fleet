@@ -17,6 +17,7 @@ const PANE = 'pane-1';
 function session(over: Partial<ClaudeSession> = {}): ClaudeSession {
   return {
     sessionId: 's1',
+    runtime: 'claude',
     paneId: PANE,
     epoch: 0,
     cwd: '/work',

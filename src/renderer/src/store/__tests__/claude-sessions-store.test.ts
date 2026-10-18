@@ -15,6 +15,7 @@ import type { ClaudeSessionView, ClaudeSessionsSnapshot } from '../../../../shar
 function session(over: Partial<ClaudeSessionView> = {}): ClaudeSessionView {
   return {
     sessionId: 's',
+    runtime: 'claude',
     paneId: 'p',
     epoch: 0,
     cwd: '/repo',

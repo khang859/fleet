@@ -12,6 +12,7 @@ import type { CopilotSession } from '../../../../../shared/types';
 function session(overrides: Partial<CopilotSession> = {}): CopilotSession {
   return {
     sessionId: 's1',
+    runtime: 'claude',
     paneId: 'p1',
     epoch: 0,
     cwd: '/tmp/project',

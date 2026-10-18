@@ -20,6 +20,7 @@ describe('parseHookEvent', () => {
       sessionId: 's1',
       cwd: '/repo',
       event: 'PreToolUse',
+      runtime: 'claude',
       status: 'running_tool',
       pid: 42,
       tool: 'Bash',
@@ -62,6 +63,24 @@ describe('parseHookEvent', () => {
     expect(
       parseHookEvent(JSON.stringify({ ...v1, prompt_sha256: 'not a hash' }))?.promptHash
     ).toBeUndefined();
+  });
+
+  it('reads the runtime and database of a protocol 4 eva event', () => {
+    const event = parseHookEvent(
+      JSON.stringify({
+        ...v1,
+        tool: 'bash',
+        runtime: 'eva',
+        db_path: '/home/u/.eva/sessions.db',
+        protocol: 4
+      })
+    );
+    expect(event).toMatchObject({
+      runtime: 'eva',
+      dbPath: '/home/u/.eva/sessions.db',
+      protocol: 4
+    });
+    expect(parseHookEvent(JSON.stringify({ ...v1, runtime: 'codex' }))?.runtime).toBe('claude');
   });
 
   it('reads the API error of a StopFailure', () => {

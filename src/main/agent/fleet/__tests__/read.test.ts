@@ -56,6 +56,7 @@ const bash = (id: string, command: string, output: string, isError = false): str
 function session(over: Partial<FleetSession> = {}): FleetSession {
   return {
     sessionId: 'sess-1',
+    runtime: 'claude',
     paneId: 'abcdef12-0000-4000-8000-000000000000',
     ref: 'abcdef12',
     label: 'work › claude',

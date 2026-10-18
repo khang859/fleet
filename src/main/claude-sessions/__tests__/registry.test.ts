@@ -37,6 +37,7 @@ function fakeClock(): Clock & { advance(ms: number): void; pending(): number } {
 
 const ev = (overrides: Partial<HookEvent> = {}): HookEvent => ({
   sessionId: 's1',
+  runtime: 'claude',
   cwd: '/home/u/repo',
   event: 'UserPromptSubmit',
   status: 'processing',
@@ -64,6 +65,13 @@ describe('ClaudeSessionRegistry', () => {
     });
     changes = [];
     registry.subscribe((change) => changes.push(change));
+  });
+
+  it('keeps the runtime a session first reported', () => {
+    registry.ingest(ev({ sessionId: 'e1', runtime: 'eva' }), pane);
+    registry.ingest(ev({ sessionId: 'e1', event: 'Stop', status: 'waiting_for_input' }), pane);
+
+    expect(registry.get('e1')?.runtime).toBe('eva');
   });
 
   it('tracks a session in the pane it was placed in', () => {

@@ -2,7 +2,7 @@ import { createServer, type Server, type Socket } from 'net';
 import { unlinkSync, existsSync, chmodSync } from 'fs';
 import { createLogger } from '../logger';
 import { COPILOT_SOCKET_PATH } from '../../shared/constants';
-import { parseHookEvent, type HookEvent } from './hook-events';
+import { HOOK_PROTOCOL, parseHookEvent, type HookEvent } from './hook-events';
 
 const log = createLogger('claude-sessions:hook-server');
 
@@ -28,6 +28,8 @@ export const PERMISSION_HOLD_MS = 295_000;
  */
 export class HookServer {
   private server: Server | null = null;
+  /** Protocols newer than this Fleet that were already logged, so each is logged once. */
+  private readonly unknownProtocols = new Set<number>();
 
   constructor(
     private readonly onEvent: HookEventHandler,
@@ -107,6 +109,15 @@ export class HookServer {
       const event = parseHookEvent(buffer);
       if (!event) {
         log.warn('invalid hook event', { data: buffer.substring(0, 200) });
+        client.end();
+        return;
+      }
+      if (event.protocol > HOOK_PROTOCOL) {
+        // A newer hook binary's fields may mean something this Fleet misreads.
+        if (!this.unknownProtocols.has(event.protocol)) {
+          this.unknownProtocols.add(event.protocol);
+          log.warn('ignoring hook events of an unknown protocol', { protocol: event.protocol });
+        }
         client.end();
         return;
       }
