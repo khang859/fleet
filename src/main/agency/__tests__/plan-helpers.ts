@@ -64,13 +64,13 @@ export function planHelpers(service: () => AgencyService, base: PlanInput): Plan
 }
 
 /**
- * A job in `repo` with a one-step plan approved by the client, through the
+ * A job in `repo` with a plan of `steps` approved by the client, through the
  * Admiral's tools, so each member's base is pinned the way a real job's is.
  */
 export async function approvedJobIn(
   service: AgencyService,
   repo: AgencyRepoRef,
-  step: PlanInput['steps'][number]
+  steps: PlanInput['steps'][number] | PlanInput['steps']
 ): Promise<{ jobId: number; tools: AgentAgencyCapability }> {
   service.ensureLobby(repo);
   const job = service.openJob({
@@ -86,7 +86,7 @@ export async function approvedJobIn(
   const plan = PlanSchema.parse({
     playbook: 'feature',
     summary: 'Do it.',
-    steps: [step],
+    steps: Array.isArray(steps) ? steps : [steps],
     budget: { usd: 5 }
   });
   const out = await tools.jobPlan!(plan);
@@ -94,4 +94,11 @@ export async function approvedJobIn(
   const decided = await service.jobs.decide({ planVersionId: id, action: 'approve' });
   if (!decided.ok) throw new Error(`${decided.reason} ${out.text}`);
   return { jobId: job.id, tools };
+}
+
+/** The project at `root`, as the Admiral's tools name it. */
+export async function repoAt(service: AgencyService, root: string): Promise<AgencyRepoRef> {
+  const res = await service.resolveRepo(root);
+  if (!res.ok) throw new Error(`${root} is not a project`);
+  return { repoId: res.repoId, root: res.root, name: res.name };
 }

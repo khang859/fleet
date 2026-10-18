@@ -35,7 +35,9 @@ const SETUP: ProjectSetup = {
       reviewBots: []
     }
   ],
-  imports: []
+  imports: [],
+  setupCommand: '',
+  setupTimeoutSec: 600
 };
 
 let tmp: { dir: string; cleanup: () => void };
@@ -63,6 +65,18 @@ describe('setup TOML', () => {
     const text = setupToToml(local);
     expect(text).not.toContain('remote');
     expect(parseSetupToml(text)).toEqual(local);
+  });
+
+  it('round-trips the workspace setup that runs after the members', () => {
+    const umbrella: ProjectSetup = {
+      ...SETUP,
+      kind: 'submodules',
+      setupCommand: 'make bootstrap',
+      setupTimeoutSec: 1_200
+    };
+    const text = setupToToml(umbrella);
+    expect(text).toContain('setup_command = "make bootstrap"');
+    expect(parseSetupToml(text)).toEqual(umbrella);
   });
 
   it('turns away a file that is not TOML or not a setup', () => {

@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { PLAN_MAX_STEPS, StepIdSchema, validatePlanGraph } from './agency-plan';
+import {
+  PLAN_MAX_STEPS,
+  StepIdSchema,
+  validatePlanGraph,
+  WorkspaceSpecSchema
+} from './agency-plan';
 
 /**
  * Crew roles and playbooks: Markdown files with a frontmatter block, in
@@ -33,17 +38,6 @@ export const RoleFrontmatter = z.strictObject({
   /** Its steps need the project's running stack, so they wait for a stack slot. */
   stack: z.boolean().default(false)
 });
-
-/**
- * Where a step works: `new` is a fresh worktree, `{of}` reads another step's
- * worktree, `{integrate}` is a fresh worktree that merges those steps' branches.
- */
-export const WorkspaceSpecSchema = z.union([
-  z.literal('new'),
-  z.strictObject({ of: StepIdSchema }),
-  z.strictObject({ integrate: z.array(StepIdSchema).min(1).max(PLAN_MAX_STEPS) })
-]);
-export type WorkspaceSpec = z.output<typeof WorkspaceSpecSchema>;
 
 export const PLAYBOOK_MAX_COUNT = 6;
 
@@ -83,37 +77,6 @@ export type CrewCatalog = {
 
 export const EMPTY_CREW: CrewCatalog = { roles: [], playbooks: [], errors: [] };
 
-/** Each step as the wait graph sees it: `after`, plus the steps its workspace reads or merges. */
-function waits(step: PlaybookStep): string[] {
-  const ws = step.workspace;
-  if (ws === 'new') return step.after;
-  return [...step.after, ...('of' in ws ? [ws.of] : ws.integrate)];
-}
-
-/** Every step `id` waits on, directly or through others. */
-function upstream(id: string, after: Map<string, string[]>): Set<string> {
-  const seen = new Set<string>();
-  const walk = (at: string): void => {
-    for (const dep of after.get(at) ?? []) {
-      if (seen.has(dep)) continue;
-      seen.add(dep);
-      walk(dep);
-    }
-  };
-  walk(id);
-  return seen;
-}
-
-/** A step that works in another step's output has to wait for that step. */
-function workspaceProblems(step: PlaybookStep, after: Map<string, string[]>): string[] {
-  const ws = step.workspace;
-  const reads = ws === 'new' ? [] : 'of' in ws ? [ws.of] : ws.integrate;
-  const done = upstream(step.id, after);
-  return reads
-    .filter((id) => after.has(id) && !done.has(id))
-    .map((id) => `Step ${step.id} works in ${id}'s output, so it has to wait for ${id}.`);
-}
-
 /** Side-by-side members need one scope each, and a later step that merges their branches. */
 function countProblems(step: PlaybookStep, steps: PlaybookStep[]): string[] {
   if (step.count === 1) {
@@ -147,14 +110,12 @@ export function checkPlaybook(
   roles: ReadonlySet<string>
 ): string[] {
   const { steps } = playbook;
-  const after = new Map(steps.map((s) => [s.id, s.after]));
   const problems = [
-    ...validatePlanGraph({ steps: steps.map((s) => ({ id: s.id, after: waits(s) })) }),
+    ...validatePlanGraph({ steps }),
     ...steps.flatMap((step) => [
       ...(roles.has(step.role)
         ? []
         : [`Step ${step.id} uses role ${step.role}, which is not a role.`]),
-      ...workspaceProblems(step, after),
       ...countProblems(step, steps)
     ])
   ];

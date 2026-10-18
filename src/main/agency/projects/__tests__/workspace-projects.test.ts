@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import type { ProjectFolder, ProjectSetup } from '../../../../shared/agency-projects';
 import { AgencyService } from '../../index';
+import { repoAt } from '../../__tests__/plan-helpers';
 import { detectWorkspace, parseGitmodules } from '../workspace-detect';
 import { fakeGh, git, initRepo, shopUmbrella, tempDir, workFolder } from './git-fixture';
 
@@ -31,11 +32,7 @@ afterEach(() => {
   home.cleanup();
 });
 
-async function project(path: string): Promise<AgencyRepoRef> {
-  const res = await service.resolveRepo(path);
-  if (!res.ok) throw new Error(`${path} is not a project`);
-  return { repoId: res.repoId, root: res.root, name: res.name };
-}
+const project = async (path: string): Promise<AgencyRepoRef> => repoAt(service, path);
 
 const workspace = (folders: ProjectFolder[]): Extract<ProjectFolder, { kind: 'workspace' }> => {
   const row = folders.find((f) => f.kind === 'workspace');

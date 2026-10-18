@@ -117,7 +117,10 @@ export const ProjectSetupSchema = z.object({
   kind: z.enum(['repo', 'submodules', 'folder']),
   name: z.string().min(1).max(200),
   members: z.array(ProjectMemberSetupSchema).min(1).max(50),
-  imports: z.array(ProjectImportSchema).max(200)
+  imports: z.array(ProjectImportSchema).max(200),
+  /** What a new job workspace of several repositories runs at its root, after each member's setup. */
+  setupCommand: Text.default(''),
+  setupTimeoutSec: z.number().int().min(10).max(7_200).default(600)
 });
 export type ProjectSetup = z.infer<typeof ProjectSetupSchema>;
 

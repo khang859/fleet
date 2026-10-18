@@ -73,6 +73,8 @@ export function setupToToml(setup: ProjectSetup): string {
       version: setup.version,
       kind: setup.kind,
       name: setup.name,
+      setup_command: setup.setupCommand,
+      setup_timeout_sec: setup.setupTimeoutSec,
       members: setup.members.map(memberToToml),
       imports: setup.imports.map((i) => ({ path: i.path, kind: i.kind, sha256: i.sha256 }))
     })
@@ -92,6 +94,8 @@ export function parseSetupToml(text: string): ProjectSetup | null {
     version: raw.version,
     kind: raw.kind ?? 'repo',
     name: raw.name,
+    setupCommand: raw.setup_command ?? '',
+    setupTimeoutSec: raw.setup_timeout_sec ?? 600,
     members: members.map(memberFromToml),
     imports: Array.isArray(raw.imports) ? raw.imports : []
   });

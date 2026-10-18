@@ -195,7 +195,8 @@ const blankStep = (id: string): PlanStep => ({
   changes: [],
   reads: [],
   paths: [],
-  deliverables: []
+  deliverables: [],
+  workspace: 'new'
 });
 
 /** One step in the editor: locked when done, else its title and role, with Remove or Undo. */

@@ -45,7 +45,9 @@ const SETUP: ProjectSetup = {
   kind: 'repo',
   name: 'fleet',
   members: [member()],
-  imports: []
+  imports: [],
+  setupCommand: '',
+  setupTimeoutSec: 600
 };
 
 beforeEach(async () => {

@@ -20,7 +20,13 @@ import {
   type PlanEffects,
   type StepStatus
 } from '../../../shared/agency-jobs';
-import { PlanSchema, diffPlans, validatePlanGraph, type Plan } from '../../../shared/agency-plan';
+import {
+  PlanSchema,
+  diffPlans,
+  scopeProblems,
+  validatePlanGraph,
+  type Plan
+} from '../../../shared/agency-plan';
 import type { CrewSnapshot } from '../../../shared/agency-crew';
 import { createLogger } from '../../logger';
 import {
@@ -184,6 +190,7 @@ export class JobsService {
     }
     const problems = [
       ...validatePlanGraph(plan),
+      ...scopeProblems(plan.steps),
       ...lockedViolations({
         approved: this.store.plans.approved(job.id)?.plan ?? null,
         next: plan,

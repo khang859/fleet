@@ -93,11 +93,13 @@ describe('checkPlaybook', () => {
     ]);
   });
 
-  it('names a wait loop, including one through a workspace', () => {
+  it('names a wait loop, and a workspace read against the waits', () => {
     const loop = steps({ id: 'a', after: ['b'] }, { id: 'b', after: ['a'] });
     expect(checkPlaybook({ steps: loop }, ROLES).join(' ')).toContain('loop');
     const through = steps({ id: 'a', workspace: { of: 'b' } }, { id: 'b', after: ['a'] });
-    expect(checkPlaybook({ steps: through }, ROLES).join(' ')).toContain('loop');
+    expect(checkPlaybook({ steps: through }, ROLES)).toContain(
+      "Step a works in b's output, so it has to wait for b."
+    );
   });
 
   it('wants a step to wait for the step whose output it works in', () => {

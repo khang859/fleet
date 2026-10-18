@@ -38,12 +38,16 @@ export type ShellProcess = ChildProcessByStdio<null, Readable, Readable>;
  * Both streams are piped and left for the caller to drain, because what to do
  * with the output is the only part of this the two tools disagree about.
  */
-export function spawnShell(command: string, cwd: string): ShellProcess {
+export function spawnShell(
+  command: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env
+): ShellProcess {
   const child = spawn(SHELL, ['-c', command], {
     cwd,
     // The main process resolved the user's real PATH at startup, so the
     // commands that work in their terminal work here.
-    env: process.env,
+    env,
     // Its own process group, so killing it kills what it started. A test run
     // that hangs is never the shell at the top - it is the child three levels
     // under it, and that one would survive a kill aimed at its parent.

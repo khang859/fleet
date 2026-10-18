@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_AGENCY_SETTINGS, type AgencyRepoRef } from '../../../../shared/agency';
-import { PlanSchema, type PlanInput } from '../../../../shared/agency-plan';
+import { PlanSchema, PlanStepSchema, type PlanInput } from '../../../../shared/agency-plan';
 import type { AgentAgencyCapability } from '../../../../shared/agency-tools';
 import { AgencyService } from '../../index';
 import { fakeGh, initRepo, tempDir } from '../../projects/__tests__/git-fixture';
 import { createAgencyCapability } from '../../tools';
 import { PROMPT_MISMATCH, type SendResult } from '../../../claude-sessions/input';
-import type { CrewPaneHost, CrewPaneOpen } from '../crew-service';
+import { stepBrief, type CrewPaneHost, type CrewPaneOpen } from '../crew-service';
 
 /**
  * Hiring crew on a real repository, with Fleet's panes faked: what opens,
@@ -136,6 +136,24 @@ const stepStatus = (jobId: number, id: string): string | undefined =>
 
 const crewOf = (jobId: number) => service.jobs.detail(jobId)?.crew ?? [];
 
+describe('stepBrief', () => {
+  const step = (over: Partial<PlanInput['steps'][number]> = {}) =>
+    PlanStepSchema.parse({ id: 'web', role: 'builder', title: 'Web', ...over });
+
+  it('passes a plain step brief as it is', () => {
+    expect(stepBrief(step(), 'Build it.')).toBe('Build it.');
+  });
+
+  it('tells a scoped member its part, and a reader to change nothing', () => {
+    expect(stepBrief(step({ scope: 'the web UI' }), 'Build it.')).toBe(
+      'Build it.\n\nYour scope is the web UI. Change only that part: other crew members own the rest.'
+    );
+    expect(stepBrief(step({ workspace: { of: 'api' } }), 'Review it.')).toBe(
+      "Review it.\n\nThis worktree is step api's. Read and run it, but change and commit nothing."
+    );
+  });
+});
+
 describe('crew_hire', () => {
   it('opens the role on its runtime in a new worktree, as a pane of the job tab', async () => {
     const jobId = await approvedJob();
@@ -193,7 +211,10 @@ describe('crew_hire', () => {
   it('queues a step over the crew limit, without opening a pane', async () => {
     service.close();
     start(1);
-    const jobId = await approvedJob([step('front'), step('back')]);
+    const jobId = await approvedJob([
+      step('front', { scope: 'front' }),
+      step('back', { scope: 'back' })
+    ]);
     const tools = toolsOf(jobId);
     await tools.crewHire!({ step: 'front', brief: 'x' });
     const out = await tools.crewHire!({ step: 'back', brief: 'x' });

@@ -272,7 +272,15 @@ describe('workspace setup', () => {
   const scan: SetupScan = {
     repo: WORKSPACE.project,
     kind: 'submodules',
-    setup: { version: 1, kind: 'submodules', name: 'shop', members, imports: [] },
+    setup: {
+      version: 1,
+      kind: 'submodules',
+      name: 'shop',
+      members,
+      imports: [],
+      setupCommand: '',
+      setupTimeoutSec: 600
+    },
     saved: false,
     newer: [],
     members: members.map((m) => ({
@@ -283,7 +291,15 @@ describe('workspace setup', () => {
     })),
     missing: [{ name: 'api', path: 'libs/api' }],
     repoFiles: [],
-    teamSetup: { version: 1, kind: 'submodules', name: 'shop', members, imports: [] },
+    teamSetup: {
+      version: 1,
+      kind: 'submodules',
+      name: 'shop',
+      members,
+      imports: [],
+      setupCommand: '',
+      setupTimeoutSec: 600
+    },
     ghSignedIn: false
   };
 

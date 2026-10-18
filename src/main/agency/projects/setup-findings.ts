@@ -476,7 +476,9 @@ export async function scanProject(
     kind: target.kind,
     name: target.repo.name,
     members: found.map((f) => f.member),
-    imports: []
+    imports: [],
+    setupCommand: '',
+    setupTimeoutSec: DEFAULT_SETUP_TIMEOUT_SEC
   };
   // A teammate's setup lives in the project root's repository: the umbrella, or the one repository.
   const root = found.find((f) => f.member.path === '.');

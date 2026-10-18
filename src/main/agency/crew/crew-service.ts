@@ -23,7 +23,7 @@ import type { JobsService } from '../jobs';
 import { jobDir } from '../projects/paths';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import { CREW_STARTING, LOST_AT_RESTART, type CrewRecord } from '../store/crew-store';
-import type { JobWorkspaces } from '../workspaces/job-workspace';
+import type { JobWorkspaces, StepFolder } from '../workspaces/job-workspace';
 import { crewLaunch, type CrewLaunch } from './runtimes';
 
 const log = createLogger('agency:crew');
@@ -58,7 +58,7 @@ export type CrewPaneHost = {
 export type CrewServiceDeps = {
   store: AgencyStore;
   jobs: JobsService;
-  workspaces: Pick<JobWorkspaces, 'make'>;
+  workspaces: Pick<JobWorkspaces, 'open' | 'folder'>;
   /** Unset where Fleet has no panes (tests of other parts): nothing can be hired. */
   panes: CrewPaneHost | null;
   home: () => string;
@@ -66,6 +66,26 @@ export type CrewServiceDeps = {
   now: () => number;
   newId?: () => string;
 };
+
+/**
+ * The Admiral's brief, with what the plan says about where the step works:
+ * the part of the code it owns, and that a step reading another's worktree
+ * changes nothing in it.
+ */
+export function stepBrief(step: PlanStep, brief: string): string {
+  const notes: string[] = [];
+  if (step.scope !== undefined) {
+    notes.push(
+      `Your scope is ${step.scope}. Change only that part: other crew members own the rest.`
+    );
+  }
+  if (step.workspace !== 'new' && 'of' in step.workspace) {
+    notes.push(
+      `This worktree is step ${step.workspace.of}'s. Read and run it, but change and commit nothing.`
+    );
+  }
+  return [brief, ...notes].join('\n\n');
+}
 
 /** How a crew member's pane went away. */
 export type CrewEnd = { kind: 'exit'; exitCode: number } | { kind: 'closed' };
@@ -165,14 +185,14 @@ export class CrewService {
         runtime,
         model,
         rolePrompt: role.prompt,
-        brief: args.brief,
+        brief: stepBrief(step, args.brief),
         sessionId: crew.sessionId ?? '',
         resume: lost !== null,
         dir: join(jobDir(this.deps.home(), job.id), 'crew', `${step.id}-${member}`),
         addDirs: [],
         hooks: panes.hooks()
       });
-      await this.openPane(panes, job, crew, workspace.root, launch);
+      await this.openPane(panes, job, crew, workspace.cwd, launch);
     } catch (err) {
       this.store.crew.end(crew.id, `did not start: ${String(err)}`);
       throw err;
@@ -187,27 +207,27 @@ export class CrewService {
     });
     return {
       text: [
-        `${verb} ${crew.label} (ref ${this.refOf(crew)}) on ${runtime} for step ${step.id}, in ${workspace.root}.`,
+        `${verb} ${crew.label} (ref ${this.refOf(crew)}) on ${runtime} for step ${step.id}, in ${workspace.cwd}.`,
         'Its pane is in the job tab. It shows as starting until its session reports; one that stays starting is probably waiting at a prompt only the client can answer.'
       ].join(' '),
       summary: `${verb.toLowerCase()} ${crew.label}`
     };
   }
 
-  /** A new workspace for the step, or the one a resumed member left. */
+  /** The step's folder, or the one a resumed member left, so `--resume` finds its session. */
   private async workspaceFor(
     jobId: number,
     stepId: string,
     lost: CrewRecord | null
-  ): Promise<{ id: number | null; root: string }> {
+  ): Promise<StepFolder> {
     if (lost !== null) {
-      const root =
-        lost.workspaceId === null ? null : this.store.resources.workspaceRoot(lost.workspaceId);
-      if (root === null) throw new Error(`Not hired: ${lost.label}'s workspace is gone.`);
-      return { id: lost.workspaceId, root };
+      const folder =
+        lost.workspaceId === null ? null : this.deps.workspaces.folder(jobId, lost.workspaceId);
+      if (folder === null) throw new Error(`Not hired: ${lost.label}'s workspace is gone.`);
+      return folder;
     }
     try {
-      return await this.deps.workspaces.make(jobId, stepId);
+      return await this.deps.workspaces.open(jobId, stepId);
     } catch (err) {
       throw new Error(`Not hired: the step's workspace could not be made. ${String(err)}`);
     }

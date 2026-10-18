@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { PlanSchema, diffLine, diffPlans, validatePlanGraph, type PlanInput } from '../agency-plan';
+import {
+  PlanSchema,
+  diffLine,
+  diffPlans,
+  scopeProblems,
+  validatePlanGraph,
+  type PlanInput
+} from '../agency-plan';
 
 const BASE: PlanInput = {
   playbook: 'feature',
@@ -75,6 +82,74 @@ describe('validatePlanGraph', () => {
 
   it('is empty for a fine plan', () => {
     expect(validatePlanGraph(plan())).toEqual([]);
+  });
+
+  it('wants a workspace of a step the step waits for, and one that made a worktree', () => {
+    const problems = validatePlanGraph(
+      plan({
+        steps: [
+          { id: 'build', role: 'b', title: 'Build' },
+          { id: 'join', role: 'b', title: 'Join', workspace: { integrate: ['build'] } },
+          {
+            id: 'review',
+            role: 'b',
+            title: 'Review',
+            after: ['build'],
+            workspace: { of: 'ghost' }
+          },
+          { id: 'qa', role: 'b', title: 'QA', after: ['build'], workspace: { of: 'build' } },
+          { id: 'look', role: 'b', title: 'Look', after: ['qa'], workspace: { of: 'qa' } }
+        ]
+      })
+    );
+    expect(problems).toEqual([
+      "Step join works in build's output, so it has to wait for build.",
+      "Step review works in ghost's output, which is not in the plan.",
+      "Step look reads qa's worktree, but qa works in another step's. Read that one."
+    ]);
+  });
+});
+
+describe('scopeProblems', () => {
+  const steps = (...list: PlanInput['steps']): ReturnType<typeof PlanSchema.parse>['steps'] =>
+    plan({ steps: list }).steps;
+
+  it('wants a scope each for side-by-side steps that hand back code in one member', () => {
+    expect(
+      scopeProblems(
+        steps(
+          { id: 'a', role: 'b', title: 'A', deliverables: ['branch'] },
+          { id: 'b', role: 'b', title: 'B', scope: 'x' },
+          { id: 'join', role: 'b', title: 'Join', after: ['a', 'b'], deliverables: ['pr'] }
+        )
+      )
+    ).toEqual(['Steps a and b change the same code side by side, so each needs its own scope.']);
+  });
+
+  it('lets a doc step, a step in another member, and a later step go without scopes', () => {
+    expect(
+      scopeProblems(
+        steps(
+          { id: 'build', role: 'b', title: 'Build', changes: ['web'], deliverables: ['pr'] },
+          { id: 'api', role: 'b', title: 'API', changes: ['api'], deliverables: ['pr'] },
+          { id: 'notes', role: 'w', title: 'Notes', deliverables: ['doc'] },
+          {
+            id: 'fix',
+            role: 'b',
+            title: 'Fix',
+            after: ['build'],
+            changes: ['web'],
+            deliverables: ['pr']
+          }
+        )
+      )
+    ).toEqual([]);
+  });
+
+  it('wants a later merge for a scoped step with no branch of its own', () => {
+    expect(scopeProblems(steps({ id: 'a', role: 'b', title: 'A', scope: 'x' }))).toEqual([
+      'Step a has a scope, so a later step has to merge its branch, or it hands back its own branch or PR.'
+    ]);
   });
 });
 

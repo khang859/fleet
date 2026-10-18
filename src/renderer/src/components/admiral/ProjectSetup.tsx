@@ -117,6 +117,15 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
               onChange={(patch) => setMember(i, patch)}
             />
           ))}
+          {workspace && (
+            <WorkspaceSetupCard
+              setup={setup}
+              onChange={(patch) => {
+                edited.current = true;
+                setSetup({ ...setup, ...patch });
+              }}
+            />
+          )}
           {scan.repoFiles.length > 0 && (
             <FoundCard
               repo={repo}
@@ -345,7 +354,6 @@ function RepoCardHeader({
   editing: boolean;
   onEdit: () => void;
 }): React.JSX.Element {
-  const action = editing ? 'Done' : 'Edit';
   return (
     <div className="flex items-center gap-2">
       <div className="min-w-0 flex-1">
@@ -353,15 +361,119 @@ function RepoCardHeader({
           {title?.toUpperCase() ?? 'REPO'}
         </SectionLabel>
       </div>
-      <button
-        type="button"
-        onClick={onEdit}
-        aria-label={title === null ? undefined : `${action} ${title}`}
-        className="text-xs text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
-      >
-        {action}
-      </button>
+      <EditButton editing={editing} name={title} onClick={onEdit} />
     </div>
+  );
+}
+
+function EditButton({
+  editing,
+  name,
+  onClick
+}: {
+  editing: boolean;
+  /** What it edits, for its accessible name when there are several. */
+  name: string | null;
+  onClick: () => void;
+}): React.JSX.Element {
+  const action = editing ? 'Done' : 'Edit';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={name === null ? undefined : `${action} ${name}`}
+      className="text-xs text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
+    >
+      {action}
+    </button>
+  );
+}
+
+/** A setup command and the minutes before it stops, as inputs while editing. */
+function SetupCommandField({
+  label,
+  command,
+  timeoutSec,
+  editing,
+  onChange
+}: {
+  label: string;
+  command: string;
+  timeoutSec: number;
+  editing: boolean;
+  onChange: (patch: { setupCommand?: string; setupTimeoutSec?: number }) => void;
+}): React.JSX.Element {
+  if (!editing) {
+    return command === '' ? (
+      <None>nothing to run</None>
+    ) : (
+      <span className="font-mono text-fleet-text">
+        {command}
+        <span className="font-sans text-fleet-text-subtle">
+          {' '}
+          · stops after {Math.round(timeoutSec / 60)} min
+        </span>
+      </span>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        aria-label={`${label} command`}
+        value={command}
+        onChange={(e) => onChange({ setupCommand: e.target.value })}
+        className={`${textInputCls} min-w-[200px] flex-1 font-mono`}
+      />
+      <label className="flex items-center gap-1.5 text-fleet-text-muted">
+        stops after
+        <input
+          type="number"
+          min={1}
+          max={120}
+          aria-label={`Minutes before the ${label.toLowerCase()} command stops`}
+          value={Math.round(timeoutSec / 60)}
+          onChange={(e) =>
+            onChange({
+              setupTimeoutSec: Math.min(120, Math.max(1, Number(e.target.value) || 1)) * 60
+            })
+          }
+          className={`${textInputCls} w-14`}
+        />
+        min
+      </label>
+    </div>
+  );
+}
+
+/** What a new job workspace runs at its root once each member is set up. */
+function WorkspaceSetupCard({
+  setup,
+  onChange
+}: {
+  setup: Setup;
+  onChange: (patch: { setupCommand?: string; setupTimeoutSec?: number }) => void;
+}): React.JSX.Element {
+  const [editing, setEditing] = useState(false);
+  return (
+    <OnboardingCard>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <SectionLabel note="after each member's setup">WORKSPACE SETUP</SectionLabel>
+        </div>
+        <EditButton editing={editing} name="workspace setup" onClick={() => setEditing(!editing)} />
+      </div>
+      <dl className="mt-3 grid grid-cols-[minmax(96px,max-content)_1fr] gap-x-4 text-xs">
+        <Row label="New workspace" last>
+          <SetupCommandField
+            label="New workspace"
+            command={setup.setupCommand}
+            timeoutSec={setup.setupTimeoutSec}
+            editing={editing}
+            onChange={onChange}
+          />
+        </Row>
+      </dl>
+    </OnboardingCard>
   );
 }
 
@@ -413,43 +525,13 @@ function RepoCard({
           )}
         </Row>
         <Row label="New worktree" note={changed('setupCommand', 'setupTimeoutSec')}>
-          {editing ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                aria-label="New worktree command"
-                value={member.setupCommand}
-                onChange={(e) => onChange({ setupCommand: e.target.value })}
-                className={`${textInputCls} min-w-[200px] flex-1 font-mono`}
-              />
-              <label className="flex items-center gap-1.5 text-fleet-text-muted">
-                stops after
-                <input
-                  type="number"
-                  min={1}
-                  max={120}
-                  aria-label="Minutes before the worktree command stops"
-                  value={Math.round(member.setupTimeoutSec / 60)}
-                  onChange={(e) =>
-                    onChange({
-                      setupTimeoutSec: Math.min(120, Math.max(1, Number(e.target.value) || 1)) * 60
-                    })
-                  }
-                  className={`${textInputCls} w-14`}
-                />
-                min
-              </label>
-            </div>
-          ) : member.setupCommand === '' ? (
-            <None>nothing to run</None>
-          ) : (
-            <span className="font-mono text-fleet-text">
-              {member.setupCommand}
-              <span className="font-sans text-fleet-text-subtle">
-                {' '}
-                · stops after {Math.round(member.setupTimeoutSec / 60)} min
-              </span>
-            </span>
-          )}
+          <SetupCommandField
+            label="New worktree"
+            command={member.setupCommand}
+            timeoutSec={member.setupTimeoutSec}
+            editing={editing}
+            onChange={onChange}
+          />
         </Row>
         <Row label="Crew checks" note={changed('checkCommands')}>
           {editing ? (

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { AgencyChanged, AgencyRepoRef } from '../../../../shared/agency';
 import { AgencyService } from '../../index';
 import type { GitRun } from '../../repo-identity';
+import { repoAt } from '../../__tests__/plan-helpers';
 import { readOnlyGit } from '../repo-reader';
 import { repoTarget, scanProject } from '../setup-findings';
 import { fakeGh, git, initRepo, tempDir, writeFiles } from './git-fixture';
@@ -148,11 +149,7 @@ afterEach(() => {
   home.cleanup();
 });
 
-async function resolved(): Promise<AgencyRepoRef> {
-  const res = await service.resolveRepo(root);
-  if (!res.ok) throw new Error('not a repo');
-  return { repoId: res.repoId, root: res.root, name: res.name };
-}
+const resolved = async (): Promise<AgencyRepoRef> => repoAt(service, root);
 
 describe('setup scan', () => {
   it('finds the stack, pnpm, its checks, the CI jobs, the required checks and the remote', async () => {

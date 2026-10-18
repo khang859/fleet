@@ -299,6 +299,7 @@ const LIST_DESCRIPTION =
 
 const PLAN_DESCRIPTION = [
   "Propose this job's plan as a card for the client: the playbook, a short summary, the steps, the budget and what you will ask before doing.",
+  "Each step's crew member works in its own worktree. A step works only in what the steps it waits for committed, so tell each crew member to commit its work. For a playbook step with `count` > 1, make one step per member, each with one of the playbook's scopes, and a later step that merges them.",
   'Always send the whole plan. To change an approved plan, send it again with the change: keep the ids of steps that stay, so Fleet can show the client what changes. A step that is done, or already delivered something, cannot change or go.',
   'Returns at once. The client approves, edits or rejects it, and that arrives as a wakeup. Nothing starts before the client approves, and only the newest version can be approved, so a new call replaces one still waiting.'
 ].join('\n\n');
@@ -316,7 +317,7 @@ const DELIVER_DESCRIPTION = [
 ].join('\n\n');
 
 const HIRE_DESCRIPTION = [
-  "Hire the crew member for a step of the approved plan: Fleet makes the step a new worktree on its own branch, opens a terminal pane in the job tab, and starts the step's role on its runtime there with your brief as its first prompt.",
+  "Hire the crew member for a step of the approved plan: Fleet makes the step a new worktree on its own branch with the branches of the steps it works on merged in, runs the project's setup there, opens a terminal pane in the job tab, and starts the step's role on its runtime with your brief as its first prompt. A step with workspace {of} works in that step's worktree instead, and changes nothing.",
   "Hire only for a step that may start: its `after` steps are done and it has no crew member working. Over the crew limit the step is queued, and a wakeup tells you when it can start. A step a crew member left before it was done needs the client's OK first: Fleet asks them, and their answer arrives as a wakeup.",
   "Write the brief for someone who knows nothing of this conversation: the goal, what done looks like, the files and decisions that matter, and what to hand back. A long brief is fine: Fleet passes it as a file. The crew member works with the client's own logins and tools, in its worktree only.",
   'Give `why` and `expect`, which go in the job record with the brief.'
@@ -379,6 +380,30 @@ const stepSchema = {
     changes: stringList('Project members the step changes; empty for every member.'),
     reads: stringList('Project members the step only reads.'),
     paths: stringList('Paths the step expects to touch, as member/dir.'),
+    workspace: {
+      description:
+        "Where the step works. new (the default): a fresh worktree from the base with the branches of its after steps merged in. {of: step}: read that step's worktree, for a review or QA step. {integrate: [steps]}: a fresh worktree that merges those steps' branches.",
+      anyOf: [
+        { type: 'string', enum: ['new'] },
+        {
+          type: 'object',
+          properties: { of: { type: 'string' } },
+          required: ['of'],
+          additionalProperties: false
+        },
+        {
+          type: 'object',
+          properties: { integrate: { type: 'array', items: { type: 'string' }, minItems: 1 } },
+          required: ['integrate'],
+          additionalProperties: false
+        }
+      ]
+    },
+    scope: {
+      type: 'string',
+      description:
+        'The part of the code the step owns, like server or client. Needed when steps change the same code side by side.'
+    },
     deliverables: {
       type: 'array',
       description: 'What the step hands back: a kind, or {kind, label}.',
