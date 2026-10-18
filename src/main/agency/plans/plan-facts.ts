@@ -8,7 +8,9 @@ import { repoFacts } from '../projects/repo-reader';
 import type { GitRun } from '../repo-identity';
 import { planOverlap, type OtherJobPaths } from './overlap';
 import {
+  planModels,
   planRoles,
+  stepModel,
   stepRuntime,
   type CrewFacts,
   type MemberFacts,
@@ -17,19 +19,32 @@ import {
 
 export type PlanFactsDeps = { git: GitRun; gh: GhRun };
 
-/** The crew as the check reads it: roles, how to check a runtime, and Claude Code's folder trust. */
-export type CrewInput = Omit<CrewFacts, 'runtimes'> & {
+/**
+ * The crew as the check reads it: roles, how to check a runtime and list
+ * eva's models, and Claude Code's folder trust.
+ */
+export type CrewInput = Omit<CrewFacts, 'runtimes' | 'evaModels'> & {
   check: (runtime: CrewRuntime) => Promise<RuntimeCheck>;
+  evaModels: () => Promise<ReadonlySet<string> | null>;
 };
 
-/** Checks only the runtimes the plan's steps run on. */
+/** Checks only the runtimes the plan's steps run on, and lists eva's models only for an eva model. */
 async function crewFacts(plan: Plan, crew: CrewInput): Promise<CrewFacts> {
   const roles = planRoles(plan, crew.roles);
+  const models = planModels(plan, crew.roles, crew.models);
   const used = new Set(plan.steps.flatMap((s) => stepRuntime(s, roles) ?? []));
-  const checks = await Promise.all([...used].map(async (r) => crew.check(r)));
+  const evaModel = plan.steps.some(
+    (s) => stepRuntime(s, roles) === 'eva' && stepModel(s, roles, models) !== undefined
+  );
+  const [checks, evaModels] = await Promise.all([
+    Promise.all([...used].map(async (r) => crew.check(r))),
+    evaModel ? crew.evaModels() : null
+  ]);
   return {
     roles,
     roleText: crew.roleText,
+    models,
+    evaModels,
     runtimes: Object.fromEntries(checks.map((c) => [c.runtime, c])),
     claudeTrust: crew.claudeTrust
   };

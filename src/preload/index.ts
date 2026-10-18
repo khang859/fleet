@@ -43,6 +43,7 @@ import type {
   WslHomeDirResponse
 } from '../shared/ipc-api';
 import type { TerminalMenuAction } from '../shared/ipc-api';
+import type { CrewCatalog, CrewRuntimeView, RoleSave, RoleSaveResult } from '../shared/agency-crew';
 import type { WslDistroState, PathContext } from '../shared/shell-profiles';
 import type { ReleaseNote } from '../shared/release-notes';
 import type { ClaudeSessionsSnapshot, HookFolderStatus } from '../shared/claude-sessions';
@@ -1161,6 +1162,15 @@ const fleetApi = {
     /** Hand a crew member back to the Admiral: one the client took over, or one held at a usage limit. */
     handBackCrew: async (crewId: number): Promise<void> =>
       typedInvoke(IPC_CHANNELS.AGENCY_CREW_HAND_BACK, crewId),
+    /** Settings › Agency › Crew: a project's roles and playbooks, its runtimes, and saving a role. */
+    crew: {
+      list: async (repoId: string): Promise<CrewCatalog> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CREW_LIST, repoId),
+      runtimes: async (repoId: string): Promise<CrewRuntimeView[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CREW_RUNTIMES, repoId),
+      saveRole: async (input: RoleSave): Promise<RoleSaveResult> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CREW_SAVE_ROLE, input)
+    },
     /** Open a delivered file with the system's app for it; resolves with an error, or ''. */
     openResult: async (open: ResultOpen): Promise<string> =>
       typedInvoke(IPC_CHANNELS.AGENCY_RESULT_OPEN, open),

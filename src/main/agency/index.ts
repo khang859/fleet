@@ -31,7 +31,18 @@ import { WorktreeService } from '../worktree-service';
 import { AdmiralRegistry } from './admiral-registry';
 import { defaultCleaners, type WorktreeRemover } from './cleanup/cleaners';
 import { CleanupRunner, type ResourceCleaner } from './cleanup/cleanup-runner';
-import type { CrewCatalog, CrewRuntime, RuntimeCheck } from '../../shared/agency-crew';
+import {
+  CLAUDE_MODEL_NAMES,
+  RoleSaveSchema,
+  type CrewCatalog,
+  type CrewModel,
+  type CrewRuntime,
+  type CrewRuntimeView,
+  type EvaServer,
+  type RoleSave,
+  type RoleSaveResult,
+  type RuntimeCheck
+} from '../../shared/agency-crew';
 import type { Plan } from '../../shared/agency-plan';
 import {
   asNewRole,
@@ -42,6 +53,7 @@ import {
   projectCrewDir,
   roleFileText,
   saveNewRoles,
+  saveRole,
   type CrewDirs
 } from './crew/catalog';
 import { CrewService, type CrewPaneHost } from './crew/crew-service';
@@ -117,6 +129,10 @@ export type AgencyServiceDeps = {
   crewDirs?: CrewDirs;
   /** Whether crew can run on a runtime in a folder. Unset, every runtime passes. */
   checkRuntime?: (runtime: CrewRuntime, cwd: string) => Promise<RuntimeCheck>;
+  /** eva's model server as a crew pane in a folder sees it. Unset, eva has none. */
+  evaServer?: (cwd: string) => Promise<EvaServer>;
+  /** The models an eva server lists, or null when the list is unknown. */
+  evaModels?: (server: EvaServer) => Promise<CrewModel[] | null>;
   /** Crew members that may work at once; 4 unless set. */
   crewLimit?: () => number;
   /** Git that writes: worktrees, the umbrella bump. Defaults to git on the PATH. */
@@ -667,6 +683,13 @@ export class AgencyService {
         crew: crew && {
           roles: new Map(crew.roles.map((r) => [r.name, r.runtime])),
           roleText: new Map(crew.roles.map((r) => [r.name, roleFileText(asNewRole(r))])),
+          models: new Map(
+            crew.roles.flatMap((r) => (r.model === undefined ? [] : [[r.name, r.model]]))
+          ),
+          evaModels: async () => {
+            const { models } = await this.evaModelList(repo.root);
+            return models && new Set(models.map((m) => m.id));
+          },
           check: async (runtime) => check?.(runtime, repo.root) ?? { ...PASSING_RUNTIME, runtime },
           claudeTrust: { folder: trust, trusted: this.store.claudeTrusted(trust) }
         }
@@ -689,6 +712,43 @@ export class AgencyService {
   async crewCatalog(repoId: string): Promise<CrewCatalog> {
     const home = this.deps.agencyHome ?? agencyHome();
     return loadCrew(crewSources(this.deps.crewDirs ?? NO_CREW_DIRS, projectCrewDir(repoId, home)));
+  }
+
+  /** The models eva crew in a folder can use, and the server they come from. */
+  private async evaModelList(
+    cwd: string
+  ): Promise<{ server: EvaServer | null; models: CrewModel[] | null }> {
+    const server = (await this.deps.evaServer?.(cwd)) ?? null;
+    const models = server === null ? null : ((await this.deps.evaModels?.(server)) ?? null);
+    return { server, models };
+  }
+
+  /** Settings › Agency › Crew: each runtime as the project's crew panes would start it. */
+  async crewRuntimes(repoId: string): Promise<CrewRuntimeView[]> {
+    const repo = this.store.repo(repoId);
+    if (!repo) throw new Error('That project is not known.');
+    const check = async (runtime: CrewRuntime): Promise<RuntimeCheck> =>
+      (await this.deps.checkRuntime?.(runtime, repo.root)) ?? { ...PASSING_RUNTIME, runtime };
+    const [claude, eva, evaList] = await Promise.all([
+      check('claude'),
+      check('eva'),
+      this.evaModelList(repo.root)
+    ]);
+    const claudeModels = CLAUDE_MODEL_NAMES.map((id) => ({ id, contextLimit: null, cost: null }));
+    return [
+      { check: claude, server: null, models: claudeModels },
+      { check: eva, ...evaList }
+    ];
+  }
+
+  /** Save a role from Settings › Agency › Crew in the file it came from. */
+  async saveCrewRole(input: RoleSave): Promise<RoleSaveResult> {
+    const { repoId, base, role } = RoleSaveSchema.parse(input);
+    const dirs = this.deps.crewDirs;
+    if (!this.store.repo(repoId)) return { ok: false, reason: 'That project is not known.' };
+    if (!dirs) return { ok: false, reason: 'Fleet has no crew folders.' };
+    const project = projectCrewDir(repoId, this.deps.agencyHome ?? agencyHome());
+    return saveRole(await this.crewCatalog(repoId), { user: dirs.user, project }, { base, role });
   }
 
   /** The panes of a job's crew, which are all its fleet read tools may see. None in the lobby. */

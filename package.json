@@ -103,6 +103,7 @@
     "react-markdown": "^10.1.0",
     "react-zoom-pan-pinch": "^4.0.4",
     "rehype-highlight": "^7.0.2",
+    "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
     "shell-env": "^4.0.3",
     "shiki": "^4.4.3",

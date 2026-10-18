@@ -34,6 +34,23 @@ const NEXT_PAGE_WITHIN_PX = 160;
  * matching alone puts "GPT-3.5-turbo" above "GPT-5" for the query "gpt-5",
  * which is wrong in a list this long.
  */
+/** What is typed, when it is an id no model in the list has. */
+function unlistedId(models: PickerModel[], query: string): string | null {
+  const typed = query.trim();
+  return typed === '' || models.some((m) => m.id === typed) ? null : typed;
+}
+
+/** The closed picker's second line, or null when it would only repeat the name. */
+function triggerSubtitle(model: PickerModel): string | null {
+  // The wire id of a local model is a `.gguf` path as often as it is a name,
+  // so the server it is on is the more useful second line - and it is what
+  // tells two of them apart.
+  if (model.local !== undefined) {
+    return `${model.local.label}${model.local.reachable ? '' : ' · offline'}`;
+  }
+  return model.name === model.id ? null : model.id;
+}
+
 function rank<T extends PickerModel>(models: T[], query: string): T[] {
   const needle = query.trim().toLowerCase();
   if (needle === '') return models;
@@ -71,7 +88,8 @@ export function ModelPicker<T extends PickerModel>({
   renderMeta,
   allowNone = false,
   noneLabel = 'None',
-  placeholder = 'Select a model'
+  placeholder = 'Select a model',
+  allowCustom = false
 }: {
   models: T[];
   value: string | null;
@@ -81,6 +99,8 @@ export function ModelPicker<T extends PickerModel>({
   allowNone?: boolean;
   noneLabel?: string;
   placeholder?: string;
+  /** Offer what is typed as a model id when no model in the list has it. */
+  allowCustom?: boolean;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -90,6 +110,8 @@ export function ModelPicker<T extends PickerModel>({
 
   const selected = models.find((m) => m.id === value) ?? null;
   const filtered = useMemo(() => rank(models, query), [models, query]);
+  const custom = allowCustom ? unlistedId(models, query) : null;
+  const secondLine = selected === null ? null : triggerSubtitle(selected);
   const groups = useMemo(
     () => groupBySource(filtered.slice(0, shown), query.trim() === ''),
     [filtered, shown, query]
@@ -130,15 +152,8 @@ export function ModelPicker<T extends PickerModel>({
             <span className="block truncate text-sm text-fleet-text">
               {selected?.name ?? value ?? (allowNone ? noneLabel : placeholder)}
             </span>
-            {selected && (
-              <span className="block truncate text-xs text-fleet-text-muted">
-                {selected.local === undefined
-                  ? selected.id
-                  : // The wire id of a local model is a `.gguf` path as often as
-                    // it is a name, so the server it is on is the more useful
-                    // second line - and it is what tells two of them apart.
-                    `${selected.local.label}${selected.local.reachable ? '' : ' · offline'}`}
-              </span>
+            {secondLine !== null && (
+              <span className="block truncate text-xs text-fleet-text-muted">{secondLine}</span>
             )}
           </span>
           <ChevronDown size={14} className="shrink-0 text-fleet-text-muted" />
@@ -165,7 +180,15 @@ export function ModelPicker<T extends PickerModel>({
             {allowNone && (
               <Row selected={value === null} onSelect={() => choose(null)} title={noneLabel} />
             )}
-            {filtered.length === 0 && !allowNone && (
+            {custom !== null && (
+              <Row
+                selected={false}
+                onSelect={() => choose(custom)}
+                title={`Use ${custom}`}
+                subtitle="A model id the list does not show"
+              />
+            )}
+            {filtered.length === 0 && !allowNone && custom === null && (
               <p className="px-3 py-4 text-sm text-fleet-text-muted">No models match.</p>
             )}
             {groups.map((group) => (
@@ -181,7 +204,7 @@ export function ModelPicker<T extends PickerModel>({
                     selected={m.id === value}
                     onSelect={() => choose(m.id)}
                     title={m.name}
-                    subtitle={m.id}
+                    subtitle={m.id === m.name ? undefined : m.id}
                     meta={renderMeta?.(m)}
                     // Dimmed rather than removed, and still selectable. NN/g:
                     // taking an option out of a list moves everything under it,

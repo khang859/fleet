@@ -93,6 +93,7 @@ import { registerAgentIpc } from './agent/agent-ipc';
 import { createAgencyService, type AgencyService } from './agency';
 import { registerAgencyIpc } from './agency/agency-ipc';
 import { checkRuntime, paneRuntimeDeps } from './agency/crew/availability';
+import { evaModels, paneEvaServerDeps, readEvaServer } from './agency/crew/eva-server';
 import { resolveClaudeConfig } from '../shared/claude-config';
 import { createFleetHost } from './agent/fleet/host';
 import { FleetLedgerStore } from './agent/fleet/ledger-store';
@@ -1623,6 +1624,10 @@ void app.whenReady().then(async () => {
     },
     checkRuntime: async (runtime, cwd) =>
       checkRuntime(runtime, cwd, paneRuntimeDeps(crewClaudeConfigDir())),
+    evaServer: async (cwd) =>
+      readEvaServer(cwd, paneEvaServerDeps(paneRuntimeDeps(crewClaudeConfigDir()).shell)),
+    evaModels: async (server) =>
+      evaModels(server, { openRouter: async () => (await agentCatalog.list()).models, fetch }),
     crewPanes: {
       open: async (pane) => {
         const { paneId, cwd, prompt, at, launch } = pane;

@@ -48,6 +48,10 @@ export type CrewFacts = {
   roles: ReadonlyMap<string, CrewRuntime>;
   /** Each crew role's file text, by role name, to tell a new role from one already there. */
   roleText: ReadonlyMap<string, string>;
+  /** The model of each role that names one, with the roles the plan brings. */
+  models: ReadonlyMap<string, string>;
+  /** The models eva's server lists, or null when the plan has no eva model or the list is unknown. */
+  evaModels: ReadonlySet<string> | null;
   /** What the check found for each runtime a step runs on. */
   runtimes: Partial<Record<CrewRuntime, RuntimeCheck>>;
   /**
@@ -138,6 +142,50 @@ function unknownRoles(plan: Plan, roles: ReadonlyMap<string, CrewRuntime>): Plan
     );
 }
 
+/**
+ * The model a step runs on: its own, else its role's when the step keeps the
+ * role's runtime. Undefined takes the runtime's default.
+ */
+export function stepModel(
+  step: PlanStep,
+  roles: ReadonlyMap<string, CrewRuntime>,
+  models: ReadonlyMap<string, string>
+): string | undefined {
+  if (step.model !== undefined) return step.model;
+  return stepRuntime(step, roles) === roles.get(step.role) ? models.get(step.role) : undefined;
+}
+
+/** The crew's role models with the new roles' models; a role already there keeps its own. */
+export function planModels(
+  plan: Plan,
+  roles: ReadonlyMap<string, CrewRuntime>,
+  models: ReadonlyMap<string, string>
+): ReadonlyMap<string, string> {
+  const fresh = plan.newRoles.filter((r) => !roles.has(r.name) && r.model !== undefined);
+  if (fresh.length === 0) return models;
+  return new Map([...fresh.map((r) => [r.name, r.model ?? ''] as const), ...models]);
+}
+
+/** eva steps on a model eva's server does not list. */
+function modelIssues(plan: Plan, crew: CrewFacts): PlanIssue[] {
+  const listed = crew.evaModels;
+  if (listed === null) return [];
+  return plan.steps.flatMap((step): PlanIssue[] => {
+    const model = stepModel(step, crew.roles, crew.models);
+    if (stepRuntime(step, crew.roles) !== 'eva' || model === undefined || listed.has(model)) {
+      return [];
+    }
+    return [
+      {
+        code: 'model-missing',
+        severity: 'block',
+        text: `${step.id} runs on the model ${model}, which eva's model server does not list. Change the step's model, or the ${step.role} role's in Settings › Agency › Crew.`,
+        step: step.id
+      }
+    ];
+  });
+}
+
 /** The crew's roles with the new ones the plan brings; a role already there keeps its runtime. */
 export function planRoles(
   plan: Plan,
@@ -202,6 +250,7 @@ function crewIssues(plan: Plan, crew: CrewFacts | null): PlanIssue[] {
     ...unknownRoles(plan, crew.roles),
     ...roleClashes(plan, crew),
     ...runtimeIssues(plan, crew),
+    ...modelIssues(plan, crew),
     ...trustIssue(plan, crew)
   ];
 }

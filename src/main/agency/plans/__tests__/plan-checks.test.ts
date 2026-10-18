@@ -50,6 +50,8 @@ const runtime = (r: CrewRuntime, problems: string[] = []): RuntimeCheck => ({
 const crew = (patch: Partial<CrewFacts> = {}): CrewFacts => ({
   roles: new Map([['builder', 'claude']]),
   roleText: new Map(),
+  models: new Map(),
+  evaModels: null,
   runtimes: { claude: runtime('claude') },
   claudeTrust: { folder: '/repo', trusted: true },
   ...patch
@@ -106,6 +108,37 @@ describe('checkPlan', () => {
     expect(codes(PR, facts({ members: [member({ hasAdmiralBranch: true })] }))).toEqual([
       'admiral-branch-exists'
     ]);
+  });
+
+  it("blocks an eva step on a model eva's server does not list, once the list is known", () => {
+    const eva = (patch: Partial<CrewFacts>): PlanFacts =>
+      facts({
+        crew: crew({
+          roles: new Map([['builder', 'eva']]),
+          models: new Map([['builder', 'qwen3']]),
+          runtimes: { eva: runtime('eva') },
+          ...patch
+        })
+      });
+    expect(codes(PR, eva({ evaModels: new Set(['qwen3']) }))).toEqual([]);
+    expect(codes(PR, eva({ evaModels: null }))).toEqual([]);
+    expect(checkPlan(PR, eva({ evaModels: new Set(['llama']) })).issues).toEqual([
+      {
+        code: 'model-missing',
+        severity: 'block',
+        text: "builder-1 runs on the model qwen3, which eva's model server does not list. Change the step's model, or the builder role's in Settings › Agency › Crew.",
+        step: 'builder-1'
+      }
+    ]);
+    const own = plan([{ id: 'builder-1', role: 'builder', title: 'B', model: 'llama' }]);
+    expect(codes(own, eva({ evaModels: new Set(['llama']) }))).toEqual([]);
+  });
+
+  it('never checks a Claude step against the eva list', () => {
+    const claude = facts({
+      crew: crew({ models: new Map([['builder', 'opus']]), evaModels: new Set(['qwen3']) })
+    });
+    expect(codes(PR, claude)).toEqual([]);
   });
 
   it('blocks a step whose role the crew does not have, once the crew is known', () => {

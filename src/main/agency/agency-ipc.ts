@@ -22,6 +22,12 @@ import {
   type ImportDiff,
   type SetupScan
 } from '../../shared/agency-projects';
+import {
+  RoleSaveSchema,
+  type CrewCatalog,
+  type CrewRuntimeView,
+  type RoleSaveResult
+} from '../../shared/agency-crew';
 import type { AgencyJobDetail, JobControlResult, PlanActionResult } from '../../shared/agency-jobs';
 import { PlanSchema } from '../../shared/agency-plan';
 import type { AdmiralSettingMark, SettingsUndoOutcome } from '../../shared/agency-settings';
@@ -203,6 +209,20 @@ export function registerAgencyIpc(service: AgencyService): void {
   ipcMain.handle(IPC_CHANNELS.AGENCY_CREW_HAND_BACK, (_e, crewId: unknown): void => {
     service.crew.flags.handBack(CrewId.parse(crewId));
   });
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CREW_LIST,
+    async (_e, repoId: unknown): Promise<CrewCatalog> => service.crewCatalog(RepoId.parse(repoId))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CREW_RUNTIMES,
+    async (_e, repoId: unknown): Promise<CrewRuntimeView[]> =>
+      service.crewRuntimes(RepoId.parse(repoId))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CREW_SAVE_ROLE,
+    async (_e, input: unknown): Promise<RoleSaveResult> =>
+      service.saveCrewRole(RoleSaveSchema.parse(input))
+  );
 
   // Opens only a copy in the job's results folder, never a path the renderer names.
   ipcMain.handle(IPC_CHANNELS.AGENCY_RESULT_OPEN, async (_e, open: unknown): Promise<string> => {

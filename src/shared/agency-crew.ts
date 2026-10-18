@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  NEW_ROLE_MAX_CHARS,
   PLAN_MAX_STEPS,
   StepIdSchema,
   validatePlanGraph,
@@ -169,7 +170,63 @@ export type RuntimeCheck = {
   warnings: string[];
 };
 
-/** How a crew member ends its step with `fleet agency done`. */
+/** The names Claude Code takes for `--model`. A full model id works too. */
+export const CLAUDE_MODEL_NAMES = ['opus', 'sonnet', 'haiku'] as const;
+
+/** A model crew of a runtime can use, as the Model list shows it. */
+export type CrewModel = {
+  id: string;
+  /** In tokens, when the server says. */
+  contextLimit: number | null;
+  /** USD per million tokens, when the server says. */
+  cost: { input: number; output: number } | null;
+};
+
+/** The model server eva uses, from its settings and environment. Never its key. */
+export type EvaServer = {
+  provider: string;
+  /** Where its API is, or null when eva has no address for the provider. */
+  baseUrl: string | null;
+  /** eva's own default model, or null when it takes the provider's. */
+  model: string | null;
+  /** On this machine, so tokens cost nothing. */
+  local: boolean;
+};
+
+/** What Settings › Agency › Crew shows of a runtime. */
+export type CrewRuntimeView = {
+  check: RuntimeCheck;
+  /** eva's model server; null for Claude Code. */
+  server: EvaServer | null;
+  /** The models crew can pick, or null when the list could not be read. */
+  models: CrewModel[] | null;
+};
+
+/** A role as the editor holds it: its frontmatter, with the instructions as their own field. */
+export const RoleDraftSchema = RoleFrontmatter.extend({
+  instructions: z.string().trim().min(1).max(NEW_ROLE_MAX_CHARS)
+});
+export type RoleDraft = z.output<typeof RoleDraftSchema>;
+
+/**
+ * A role to save from Settings. `base` is the role as the editor loaded it,
+ * so a file changed outside Fleet since then is not overwritten; null makes
+ * a new role in the project.
+ */
+export const RoleSaveSchema = z.strictObject({
+  repoId: z.string().regex(/^[0-9a-f]{16}$/),
+  base: RoleDraftSchema.nullable(),
+  role: RoleDraftSchema
+});
+export type RoleSave = z.input<typeof RoleSaveSchema>;
+export type RoleSaveResult = { ok: true; path: string } | { ok: false; reason: string };
+
+/** A role as the editor holds it. */
+export function draftOf(role: CrewRole): RoleDraft {
+  const { name, description, runtime, model, stack, prompt } = role;
+  return { name, description, runtime, model, stack, instructions: prompt.trim() };
+}
+
 /**
  * What a working crew member needs beyond its session phase: `needs-you` has
  * not started a minute after its hire, `limited` hit a usage limit,
@@ -185,6 +242,7 @@ export function clockTime(at: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+/** How a crew member ends its step with `fleet agency done`. */
 export const CREW_REPORT_STATUSES = ['done', 'blocked', 'question'] as const;
 export type CrewReportStatus = (typeof CREW_REPORT_STATUSES)[number];
 

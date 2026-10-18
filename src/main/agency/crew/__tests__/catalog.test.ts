@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PlanSchema } from '../../../../shared/agency-plan';
 import { tempDir, writeFiles } from '../../projects/__tests__/git-fixture';
-import { crewSnapshot, crewSources, loadCrew } from '../catalog';
+import { draftOf, type RoleDraft } from '../../../../shared/agency-crew';
+import { crewSnapshot, crewSources, loadCrew, saveRole } from '../catalog';
 
 /** The crew this repo ships, from a path only the source tree moves. */
 const SHIPPED = fileURLToPath(new URL('../../../../../resources/crew', import.meta.url));
@@ -99,5 +101,83 @@ describe('crewSnapshot', () => {
     expect(snap.playbook?.name).toBe('bug-fix');
     expect(snap.roles[0].sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(crewSnapshot(crew, { ...plan, playbook: 'custom' }).playbook).toBeNull();
+  });
+});
+
+describe('saveRole', () => {
+  const draft = (name: string, extra: Partial<RoleDraft> = {}): RoleDraft => ({
+    name,
+    description: `The ${name}.`,
+    runtime: 'claude',
+    stack: false,
+    instructions: `You are the ${name}.`,
+    ...extra
+  });
+
+  /** A user and a project crew folder, and the crew they load with what ships. */
+  async function setup(project: Record<string, string> = {}) {
+    const user = crewDir({});
+    const proj = crewDir(project);
+    const crew = await loadCrew(crewSources({ bundled: SHIPPED, user }, proj));
+    return { crew, dirs: { user, project: proj } };
+  }
+
+  it('saves a new role in the project, and it loads back the same', async () => {
+    const { crew, dirs } = await setup();
+    const role = draft('data-migrator', { runtime: 'eva', model: 'qwen3' });
+    const result = await saveRole(crew, dirs, { base: null, role });
+    expect(result).toEqual({ ok: true, path: join(dirs.project, 'roles/data-migrator.md') });
+    const again = await loadCrew(crewSources({ bundled: SHIPPED, user: dirs.user }, dirs.project));
+    const saved = again.roles.find((r) => r.name === 'data-migrator');
+    expect(saved).toMatchObject({ source: 'project', runtime: 'eva', model: 'qwen3' });
+    expect(saved?.prompt.trim()).toBe(role.instructions);
+  });
+
+  it('leaves the defaults out of the file', async () => {
+    const { crew, dirs } = await setup();
+    await saveRole(crew, dirs, { base: null, role: draft('tester') });
+    const text = readFileSync(join(dirs.project, 'roles/tester.md'), 'utf8');
+    expect(text).not.toMatch(/^(model|stack):/m);
+  });
+
+  it('refuses a new role with a name the crew has', async () => {
+    const { crew, dirs } = await setup();
+    const result = await saveRole(crew, dirs, { base: null, role: draft('builder') });
+    expect(result).toEqual({ ok: false, reason: expect.stringContaining('already there') });
+  });
+
+  it('saves a bundled role as the user own copy, which then wins', async () => {
+    const { crew, dirs } = await setup();
+    const shipped = crew.roles.find((r) => r.name === 'builder');
+    if (shipped === undefined) throw new Error('no builder');
+    const base = draftOf(shipped);
+    const result = await saveRole(crew, dirs, { base, role: { ...base, model: 'opus' } });
+    expect(result).toEqual({ ok: true, path: join(dirs.user, 'roles/builder.md') });
+    const again = await loadCrew(crewSources({ bundled: SHIPPED, user: dirs.user }, dirs.project));
+    expect(again.roles.find((r) => r.name === 'builder')).toMatchObject({
+      source: 'user',
+      model: 'opus'
+    });
+  });
+
+  it('refuses a rename', async () => {
+    const { crew, dirs } = await setup({ 'roles/scout.md': role('scout') });
+    const known = crew.roles.find((r) => r.name === 'scout');
+    if (known === undefined) throw new Error('no scout');
+    const base = draftOf(known);
+    const result = await saveRole(crew, dirs, { base, role: { ...base, name: 'ranger' } });
+    expect(result).toEqual({ ok: false, reason: expect.stringContaining('keeps its name') });
+  });
+
+  it('does not overwrite a file that changed after the editor loaded it', async () => {
+    const { crew, dirs } = await setup({ 'roles/scout.md': role('scout') });
+    const known = crew.roles.find((r) => r.name === 'scout');
+    if (known === undefined) throw new Error('no scout');
+    const base = { ...draftOf(known), instructions: 'What the editor had before.' };
+    const path = join(dirs.project, 'roles/scout.md');
+    const before = readFileSync(path, 'utf8');
+    const result = await saveRole(crew, dirs, { base, role: { ...base, model: 'opus' } });
+    expect(result).toEqual({ ok: false, reason: expect.stringContaining('changed outside Fleet') });
+    expect(readFileSync(path, 'utf8')).toBe(before);
   });
 });

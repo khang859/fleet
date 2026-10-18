@@ -77,7 +77,7 @@ Phase 2 notes:
 - [x] 3.6 Add `crew_hire` and `crew_send` over `spawnSession` and `sendToSession`, auto-approved only for steps in the approved plan, with job-scoped chain and rate limits; verify with tool tests for in-plan, out-of-plan and limit cases
 - [x] 3.7 Add the CREW sheet section with role, runtime, status and peek that focuses the pane; verify in the running app
 - [x] 3.8 Let the Admiral propose a new role in a plan and save it in the project's crew folder only on approval; verify with a tool test
-- [ ] 3.9 Add Settings › Agency › Crew (role and playbook lists, source, errors, open file) matching canvas boards 3.4 and 3.4b, with the role editor: runtime cards with status, a runtime switch that resets the model, Save and Discard, the Model list per runtime (Claude Code names, eva server models with tool calls, missing-model state); verify with a screenshot and a round trip to the role file
+- [x] 3.9 Add Settings › Agency › Crew (role and playbook lists, source, errors, open file) matching canvas boards 3.4 and 3.4b, with the role editor: runtime cards with status, a runtime switch that resets the model, Save and Discard, the Model list per runtime (Claude Code names, eva server models with tool calls, missing-model state); verify with a screenshot and a round trip to the role file
 - [ ] 3.25 Add the Runtimes tab to Settings › Agency › Crew matching canvas board 3.8: for Claude Code and eva the path, version, checks, models with roles, default model, crew at once and the Test button; the Claude Code login state without reading it; eva's model server without its key; verify with a test that no credential reaches the renderer, and with a screenshot
 - [ ] 3.26 Add Swap on crew cards with "Continue its work" (same workspace, handoff brief) and "Start over" (new branch), stop-before-start, and an Admiral-proposed swap on `limited`; verify with tool tests for swap-continue, swap-restart, the proposed swap, and a role edit that does not reach a running job
 - [ ] 3.27 End to end (was 2.26): in a fixture workspace modeled on `Fola-Fi/fola-journey` (umbrella, three submodules, SSH submodule URLs, fixed Postgres port), brief a change across two members, approve, and see linked PRs and the bump PR; verify with `npm run drive` steps and screenshots
@@ -133,6 +133,12 @@ Phase 3 notes (decisions made while building):
 - 3.8: the plan card shows each new role with its instructions. On approval Fleet writes it to `crew/roles/<name>.md` in the project folder in Fleet, never in the repository, and logs it.
 - 3.8: a job opened from the lobby now wakes its Admiral once to plan. Before this, it got no turn until the client wrote again.
 - 3.8: end to end in the dev app: a job opened from the lobby planned on its own with the new role `changelog-writer`, the card showed it, and Approve wrote the role file and hired a member of it.
+- 3.9: a bundled role saves as the user's own copy in `~/.fleet/crew/roles`. A new role saves in the project folder in Fleet. A role keeps its name.
+- 3.9: Save refuses a file that changed outside Fleet since the editor loaded it. Discard reads the files again.
+- 3.9: eva's model list comes from eva's server: OpenRouter's catalog models that call tools, or a local server's `/models`, asked with no key. Fleet reads only provider, base_url and model from eva's config.
+- 3.9: a plan step on an eva model the server does not list is blocked with `model-missing`.
+- 3.9: Markdown previews now show a file's YAML front matter as a code block, so crew files read well in Open file.
+- 3.9: end to end in the dev app: runtime switch and note, the eva model list, a typed Claude model id, Discard, a new role saved and loaded back, the stale-file refusal, and Open file all worked.
 
 - [x] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`
 - [x] 3.12 Build the job `--settings` file (AskUserQuestion denied, `disableBypassPermissionsMode`, Fleet hooks with the global command string including `PermissionRequest` and `StopFailure`); verify with snapshot tests

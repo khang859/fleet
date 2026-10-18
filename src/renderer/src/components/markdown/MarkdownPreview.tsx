@@ -1,11 +1,13 @@
 import { forwardRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkFrontmatter from 'remark-frontmatter';
 import rehypeHighlight from 'rehype-highlight';
 import type { Components } from 'react-markdown';
 import type { ElementContent, Element as HastElement } from 'hast';
 import { CodeBlock } from './CodeBlock';
 import { MermaidDiagram } from './MermaidDiagram';
+import { remarkFrontmatterAsCode } from './frontmatter-as-code';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { resolve } from '../../lib/path-utils';
 import { toFleetImageUrl } from '../../../../shared/path-platform';
@@ -153,7 +155,7 @@ export const MarkdownPreview = forwardRef<HTMLDivElement, Props>(function Markdo
   return (
     <div ref={ref} className={className ?? 'markdown-preview'}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkFrontmatter, remarkFrontmatterAsCode]}
         rehypePlugins={[rehypeHighlight]}
         components={components}
       >
