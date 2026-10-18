@@ -22,7 +22,7 @@ function whyEmpty(status: ClaudeTrackingStatus): string {
 
 async function line(host: FleetHost, s: FleetSession, now: number): Promise<string> {
   const parts = [
-    `${s.ref} · ${s.label}`,
+    `${s.ref} · ${s.label}${s.runtime === 'eva' ? ' · eva' : ''}`,
     s.git?.branch ? `${s.projectName} on ${s.git.branch}` : s.projectName
   ];
   parts.push(describePhase(s, now) + (needsUser(s) ? ' · NEEDS THE USER' : ''));

@@ -146,7 +146,7 @@ describe('SessionTranscripts', () => {
     transcripts.onHookEvent('s1', path);
     const read = await transcripts.read('s1');
     expect(read?.brief.state.goal?.value).toBe('fix the login bug');
-    expect(read?.tail.turns).toHaveLength(1);
+    expect(read?.index.turns).toHaveLength(1);
     expect(changed).toEqual(['s1']);
     await transcripts.read('s1');
     expect(changed).toEqual(['s1']);
@@ -160,7 +160,7 @@ describe('SessionTranscripts', () => {
     writeFileSync(other, prompt('u9', 'second'));
     transcripts.onHookEvent('s1', other);
     const read = await transcripts.read('s1');
-    expect(read?.path).toBe(other);
+    expect(read?.index.turns.map((t) => t.preview)).toEqual(['second']);
     expect(read?.brief.state.goal?.value).toBe('second');
   });
 
@@ -175,7 +175,7 @@ describe('SessionTranscripts', () => {
 
   it('tracks a session whose transcript does not exist yet', async () => {
     transcripts.onHookEvent('s1', path);
-    expect((await transcripts.read('s1'))?.tail.position).toBe(0);
+    expect((await transcripts.read('s1'))?.end).toBe(0);
     writeFileSync(path, prompt('u1', 'hello'));
     expect((await transcripts.read('s1'))?.brief.state.goal?.value).toBe('hello');
   });

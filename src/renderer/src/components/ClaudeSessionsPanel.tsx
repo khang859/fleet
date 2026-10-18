@@ -102,8 +102,6 @@ function SessionRow({
   const tabLabel = place?.tab ?? session.projectName;
   const paneLabel = place?.pane ?? null;
   const label = paneLabel ? `${tabLabel} › ${paneLabel}` : tabLabel;
-  const cost = session.usage.costUsd;
-  const context = contextPercent(session);
   const branch = session.git?.branch;
   const needsYou = urgency === 'needsYou';
   const tool = session.pendingPermissions[0]?.tool.toolName;
@@ -150,21 +148,35 @@ function SessionRow({
         <span className="min-w-0 truncate text-teal-700 dark:text-teal-400/70">
           {branch ?? '-'}
         </span>
-        <span className="ml-auto shrink-0 fleet-tnum" title="Estimated cost">
-          {cost === null ? '$-' : formatCost(cost)}
-        </span>
-        <span
-          className={`shrink-0 fleet-tnum ${context !== null && context >= 80 ? 'text-amber-700 dark:text-amber-400' : ''}`}
-          title={
-            context === null
-              ? 'Context use not known yet'
-              : `${session.usage.contextTokens?.toLocaleString()} of ${session.usage.contextLimit?.toLocaleString()} tokens`
-          }
-        >
-          {context === null ? '-%' : `${context}%`}
-        </span>
+        <SessionUsage session={session} />
       </span>
     </button>
+  );
+}
+
+/** What a session has cost and how full its context is; eva tells Fleet neither. */
+function SessionUsage({ session }: { session: ClaudeSessionView }): React.JSX.Element {
+  if (session.runtime === 'eva') {
+    return <span className="ml-auto shrink-0 text-fleet-text-subtle">eva</span>;
+  }
+  const cost = session.usage.costUsd;
+  const context = contextPercent(session);
+  return (
+    <>
+      <span className="ml-auto shrink-0 fleet-tnum" title="Estimated cost">
+        {cost === null ? '$-' : formatCost(cost)}
+      </span>
+      <span
+        className={`shrink-0 fleet-tnum ${context !== null && context >= 80 ? 'text-amber-700 dark:text-amber-400' : ''}`}
+        title={
+          context === null
+            ? 'Context use not known yet'
+            : `${session.usage.contextTokens?.toLocaleString()} of ${session.usage.contextLimit?.toLocaleString()} tokens`
+        }
+      >
+        {context === null ? '-%' : `${context}%`}
+      </span>
+    </>
   );
 }
 
@@ -261,7 +273,11 @@ export function ClaudeSessionsPanel(): React.JSX.Element | null {
 
   return (
     <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
-      <SectionHeader label="Claude Code" collapsed={collapsed} onToggle={() => toggle('claude')}>
+      <SectionHeader
+        label={sessions.some((s) => s.runtime === 'eva') ? 'Claude Code · eva' : 'Claude Code'}
+        collapsed={collapsed}
+        onToggle={() => toggle('claude')}
+      >
         {needYou > 0 ? (
           <span className="rounded bg-amber-400/15 px-1.5 py-px text-[10px] font-medium tabular-nums text-amber-700 dark:text-amber-400">
             {needYou} need{needYou === 1 ? 's' : ''} you

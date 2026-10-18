@@ -2,7 +2,14 @@ import { statSync, watch, type FSWatcher } from 'fs';
 import { createLogger } from '../logger';
 import { BriefBuilder } from './brief';
 import type { TranscriptSignal } from './phase';
-import { TranscriptTail, type TailLine, type TranscriptEvent } from './transcript';
+import {
+  readTranscriptRange,
+  TranscriptTail,
+  type Span,
+  type TailLine,
+  type TranscriptEvent,
+  type TranscriptIndex
+} from './transcript';
 
 const log = createLogger('claude-sessions:transcripts');
 
@@ -77,12 +84,34 @@ export type SessionTranscriptsOptions = {
   debounceMs?: number;
 };
 
-/** A session's transcript as read so far. */
+/** A session's transcript as read so far, from whichever source it has. */
 export type SessionTranscript = {
-  path: string;
-  tail: TranscriptTail;
+  index: Pick<TranscriptIndex, 'turns' | 'tool'>;
+  /** Where the source has been read to; an unfinished turn runs to here. */
+  end: number;
   brief: BriefBuilder;
+  /**
+   * The events of the whole lines or records in `span`; empty when the source
+   * is gone. A file is read with a promise, eva's database at once.
+   */
+  events(span: Span): Promise<TranscriptEvent[]> | TranscriptEvent[];
+  /** Why turns cannot be read, when they cannot. */
+  unreadable?: string;
 };
+
+/** A Claude Code transcript file, as read so far by `tail`. */
+export function claudeTranscript(
+  path: string,
+  tail: TranscriptTail,
+  brief: BriefBuilder
+): SessionTranscript {
+  return {
+    index: tail.index,
+    end: tail.lineEnd,
+    brief,
+    events: async (span) => (await readTranscriptRange(path, span)).flatMap((l) => l.events)
+  };
+}
 
 /**
  * Follows the transcript of each live session: reads it as it grows, keeps
@@ -115,9 +144,7 @@ export class SessionTranscripts {
     const t = this.tracked.get(sessionId);
     if (!t) return null;
     await this.run(sessionId, t);
-    return this.tracked.get(sessionId) === t
-      ? { path: t.path, tail: t.tail, brief: t.brief }
-      : null;
+    return this.tracked.get(sessionId) === t ? claudeTranscript(t.path, t.tail, t.brief) : null;
   }
 
   forget(sessionId: string): void {

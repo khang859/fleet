@@ -17,7 +17,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
  */
 function deps(
   events: Array<Omit<TestEvent, 'paneId'>>,
-  opts: { refuse?: string; readable?: boolean } = {}
+  opts: { refuse?: string; readable?: boolean; evaHook?: string } = {}
 ): RuntimeTestDeps & { spawned: Array<{ cmd: string; env: Record<string, string> }> } {
   const listeners = new Set<(e: TestEvent) => void>();
   const spawned: Array<{ cmd: string; env: Record<string, string> }> = [];
@@ -43,6 +43,7 @@ function deps(
     },
     readable: vi.fn().mockResolvedValue(opts.readable ?? true),
     hooks: () => ({}),
+    evaHook: async () => Promise.resolve(opts.evaHook),
     dir,
     now: () => clock,
     newId: () => `id-${++ids}`,
@@ -113,6 +114,20 @@ describe('testRuntime', () => {
     expect(rows[2]).toEqual({ what: 'The turn ended', ok: false, detail: 'No Stop event' });
     expect(rows[3]).toMatchObject({ ok: false, detail: 'Not reported, or not found' });
     expect(d.kill).toHaveBeenCalled();
+  });
+
+  it("starts eva with Fleet's hooks file when it takes one, and says why an eva is silent", async () => {
+    const hooked = deps([], { evaHook: "'/h/fleet-hook'" });
+    const out = await run('eva', hooked);
+    expect(hooked.spawned[0].cmd).toContain('--hooks "$FLEET_CREW_HOOKS"');
+    expect(out.ok && out.rows[1].detail).toBe(
+      'No event came. eva may be waiting at a prompt in its pane.'
+    );
+
+    const old = deps([]);
+    const silent = await run('eva', old);
+    expect(old.spawned[0].cmd).not.toContain('--hooks');
+    expect(silent.ok && silent.rows[1].detail).toContain('This eva cannot take a hooks file');
   });
 
   it('reports a turn that stopped on an error', async () => {

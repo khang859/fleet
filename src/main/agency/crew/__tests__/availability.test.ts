@@ -15,6 +15,8 @@ function deps(
     bins?: Record<string, string | null>;
     files?: Record<string, unknown>;
     hookCurrent?: boolean;
+    /** What `eva --help` prints. */
+    evaHelp?: string;
   } = {}
 ): RuntimeCheckDeps & { lines: string[] } {
   const bins = opts.bins ?? { claude: '2.1.302 (Claude Code)', eva: 'eva 0.3.0' };
@@ -31,6 +33,7 @@ function deps(
       const name = cmd === 'command' ? third : cmd;
       const version = bins[name] as string | null | undefined;
       if (version == null) return Promise.resolve({ code: 1, stdout: '' });
+      if (arg === '--help') return Promise.resolve({ code: 0, stdout: opts.evaHelp ?? '' });
       return Promise.resolve({
         code: 0,
         stdout: arg === '-v' ? `/usr/local/bin/${name}` : version
@@ -98,7 +101,7 @@ describe('checkRuntime', () => {
       })
     );
     expect(runtimeProblems(check)).toEqual([
-      "Fleet's Claude Code hook is missing or out of date. Turn on Track Claude Code sessions in Settings > Workspaces.",
+      "Fleet's hook is missing or out of date. Turn on Track Claude Code sessions in Settings > Workspaces.",
       'disableAllHooks is on in /repo/.claude/settings.json, so Fleet cannot follow Claude crew. Turn it off to hire them.'
     ]);
   });
@@ -121,6 +124,22 @@ describe('checkRuntime', () => {
     expect(runtimeWarnings(check)).toEqual([
       '/home/u/.claude/settings.json starts Claude Code in bypass mode. Crew start in default mode, with bypass mode locked off.',
       'Managed settings turn on vim mode, so text Fleet types into a crew pane can run as vim commands. Roles can still be hired.'
+    ]);
+  });
+
+  it('warns when eva cannot take a hooks file, so its crew cannot report', async () => {
+    const help = 'Options:\n      --hooks <FILE>  Hooks for this session\n';
+    const takes = await checkRuntime('eva', '/repo', deps({ evaHelp: help }));
+    expect(takes.checks.map((c) => [c.name, c.state])).toEqual([
+      ['Installed', 'ok'],
+      ['Version', 'ok'],
+      ['Fleet hook', 'ok'],
+      ['Hooks file', 'ok']
+    ]);
+    const old = await checkRuntime('eva', '/repo', deps({ evaHelp: '--hooks-dir is not it' }));
+    expect(runtimeProblems(old)).toEqual([]);
+    expect(runtimeWarnings(old)).toEqual([
+      'This eva cannot take a hooks file (--hooks), so eva crew send Fleet no events and show as needing you. Update eva once a version with --hooks is out.'
     ]);
   });
 

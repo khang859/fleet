@@ -11,7 +11,6 @@ import { oneLine, promptText, renderBrief, type BriefStatus } from '../../claude
 import { hashPrompt, type NotedInput } from '../../claude-sessions/registry';
 import type { SessionTranscript } from '../../claude-sessions/session-transcripts';
 import {
-  readTranscriptRange,
   toolInputPreview,
   type TranscriptEvent,
   type TurnEntry
@@ -74,7 +73,7 @@ function currentCursor(
     // The transcript was read again from scratch, so revisions and turns restarted.
     (transcript !== null &&
       (cursor.rev > transcript.brief.state.rev ||
-        cursor.turn > (transcript.tail.turns.at(-1)?.n ?? 0)));
+        cursor.turn > (transcript.index.turns.at(-1)?.n ?? 0)));
   return { cursor: cleared ? null : cursor, cleared };
 }
 
@@ -126,6 +125,9 @@ async function readBrief(
       summary: 'no transcript yet'
     };
   }
+  if (transcript.unreadable !== undefined) {
+    return { text: `${session.ref}: ${st.phase}. ${transcript.unreadable}`, summary: 'unreadable' };
+  }
   const { cursor, cleared } = currentCursor(cursors.get(session.ref), session, transcript);
   const state = transcript.brief.state;
   const delta = since === 'last' && cursor !== null && cursor.rev > 0;
@@ -150,7 +152,9 @@ function renderTurn(
   turn: TurnEntry,
   events: TranscriptEvent[],
   inputs: NotedInput[],
-  open: boolean
+  open: boolean,
+  /** Who answers in the session: Claude, or eva. */
+  speaker: string
 ): string {
   const lines: string[] = [];
   const results = new Map<string, TranscriptEvent & { kind: 'tool_result' }>();
@@ -175,7 +179,7 @@ function renderTurn(
         break;
       }
       case 'assistant_text':
-        lines.push(`Claude: ${oneLine(e.text, e === lastText ? LAST_TEXT_CHARS : TEXT_CHARS)}`);
+        lines.push(`${speaker}: ${oneLine(e.text, e === lastText ? LAST_TEXT_CHARS : TEXT_CHARS)}`);
         break;
       case 'tool_use': {
         const result = results.get(e.id);
@@ -233,8 +237,14 @@ async function readTurns(
       summary: 'no transcript yet'
     };
   }
+  if (transcript.unreadable !== undefined) {
+    return {
+      text: `${session.ref}: ${describePhase(session, host.now())}. ${transcript.unreadable}`,
+      summary: 'unreadable'
+    };
+  }
   const { cursor, cleared } = currentCursor(cursors.get(session.ref), session, transcript);
-  const all = transcript.tail.turns;
+  const all = transcript.index.turns;
   // Paging back is a look at older turns, not a read of what is new, so it
   // neither starts from the cursor nor moves it.
   const back = before !== undefined;
@@ -262,15 +272,13 @@ async function readTurns(
   }
 
   const inputs = host.inputsFor(session.sessionId);
-  const end = transcript.tail.lineEnd;
+  const speaker = session.runtime === 'eva' ? 'eva' : 'Claude';
   const rendered: string[] = [];
   for (const turn of shown) {
-    const lines = await readTranscriptRange(transcript.path, {
-      start: turn.start,
-      end: turn.end ?? end
-    });
-    const events = lines.flatMap((l) => l.events);
-    rendered.push(renderTurn(turn, events, inputs, turn.end === null && turn.n > finished));
+    const events = await transcript.events({ start: turn.start, end: turn.end ?? transcript.end });
+    rendered.push(
+      renderTurn(turn, events, inputs, turn.end === null && turn.n > finished, speaker)
+    );
   }
   // Oldest go first when it is too long: the latest turn is what matters most.
   let skipped = fresh.length - shown.length;
@@ -310,16 +318,17 @@ async function readTool(
     );
   }
   const transcript = await host.transcript(session.sessionId);
-  const entry = transcript?.tail.tool(toolUseId);
+  if (transcript?.unreadable !== undefined) throw new Error(transcript.unreadable);
+  const entry = transcript?.index.tool(toolUseId);
   if (transcript == null || entry === undefined) {
     throw new Error(
       `${session.ref} has no tool call ${toolUseId} in its current conversation. Take ids from a fresh turns read.`
     );
   }
   const events = [
-    ...(await readTranscriptRange(transcript.path, entry.use)),
-    ...(entry.result ? await readTranscriptRange(transcript.path, entry.result) : [])
-  ].flatMap((l) => l.events);
+    ...(await transcript.events(entry.use)),
+    ...(entry.result ? await transcript.events(entry.result) : [])
+  ];
   const use = events.find((e) => e.kind === 'tool_use' && e.id === toolUseId);
   const result = events.find((e) => e.kind === 'tool_result' && e.toolUseId === toolUseId);
   const input = use?.kind === 'tool_use' ? JSON.stringify(use.input, null, 2) : '(not found)';

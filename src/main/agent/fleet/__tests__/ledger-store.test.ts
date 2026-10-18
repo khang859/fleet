@@ -67,6 +67,7 @@ const AT = 1_000_000;
 function claude(over: Partial<ClaudeSession> = {}): ClaudeSession {
   return {
     sessionId: 's1',
+    runtime: 'claude',
     paneId: 'pane-1-aaaa',
     epoch: 0,
     cwd: '/work',

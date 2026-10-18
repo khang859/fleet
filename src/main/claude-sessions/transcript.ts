@@ -334,11 +334,14 @@ export function toolInputPreview(toolName: string, input: Record<string, unknown
   }
 }
 
-/** Where some bytes sit in a transcript: `[start, end)`. */
-export type ByteRange = { start: number; end: number };
+/**
+ * Where something sits in its source, `[start, end)`: bytes of a Claude Code
+ * transcript, or record ids of eva's database.
+ */
+export type Span = { start: number; end: number };
 
-/** One line of a transcript and the events it holds. */
-export type TailLine = ByteRange & { events: TranscriptEvent[] };
+/** One line of a transcript, or one eva record, and the events it holds. */
+export type TailLine = Span & { events: TranscriptEvent[] };
 
 /**
  * A turn: from a prompt to the next one. `end` is null while it is the
@@ -359,19 +362,22 @@ export type TurnEntry = {
 /** Where a tool call and its result sit, so the result can be read back when asked for. */
 export type ToolEntry = {
   name: string;
-  use: ByteRange;
-  result: ByteRange | null;
+  use: Span;
+  result: Span | null;
 };
 
-export type TranscriptTailOptions = {
-  /** Called for each complete line, in order. */
-  onLine?: (line: TailLine) => void;
-  /** Called when the transcript was replaced by a shorter file and is read again from the start. */
-  onReset?: () => void;
+export type TranscriptIndexOptions = {
   /** How many tool calls to remember where to find. */
   toolLimit?: number;
   /** How many turns to remember. */
   turnLimit?: number;
+};
+
+export type TranscriptTailOptions = TranscriptIndexOptions & {
+  /** Called for each complete line, in order. */
+  onLine?: (line: TailLine) => void;
+  /** Called when the transcript was replaced by a shorter file and is read again from the start. */
+  onReset?: () => void;
 };
 
 const DEFAULT_TOOL_LIMIT = 5_000;
@@ -385,6 +391,72 @@ function startsTurn(event: TranscriptEvent): event is TranscriptEvent & { kind: 
 }
 
 /**
+ * Where each turn and tool call of a transcript sits, from its lines in order.
+ * It keeps spans, never the text, and a bounded number of each, so memory
+ * stays flat however long the session runs.
+ */
+export class TranscriptIndex {
+  private readonly turnList: TurnEntry[] = [];
+  private readonly toolMap = new Map<string, ToolEntry>();
+  private readonly toolLimit: number;
+  private readonly turnLimit: number;
+  private turnCount = 0;
+
+  constructor(opts: TranscriptIndexOptions = {}) {
+    this.toolLimit = opts.toolLimit ?? DEFAULT_TOOL_LIMIT;
+    this.turnLimit = opts.turnLimit ?? DEFAULT_TURN_LIMIT;
+  }
+
+  /** Turns since the transcript began or was last cleared, oldest first. */
+  get turns(): readonly TurnEntry[] {
+    return this.turnList;
+  }
+
+  tool(toolUseId: string): ToolEntry | undefined {
+    return this.toolMap.get(toolUseId);
+  }
+
+  add(line: TailLine): void {
+    for (const event of line.events) {
+      if (event.kind === 'clear') {
+        this.reset();
+      } else if (startsTurn(event)) {
+        // Several text blocks on one line are one prompt.
+        const last = this.turnList.at(-1);
+        if (last?.start === line.start) continue;
+        if (last) last.end = line.start;
+        this.turnList.push({
+          n: ++this.turnCount,
+          start: line.start,
+          end: null,
+          timestamp: event.timestamp,
+          uuid: event.uuid,
+          source: event.source,
+          preview: event.text.slice(0, PREVIEW_CHARS)
+        });
+        if (this.turnList.length > this.turnLimit) this.turnList.shift();
+      } else if (event.kind === 'tool_use' && event.id) {
+        this.toolMap.delete(event.id);
+        this.toolMap.set(event.id, { name: event.name, use: span(line), result: null });
+        if (this.toolMap.size > this.toolLimit) {
+          const oldest = this.toolMap.keys().next().value;
+          if (oldest !== undefined) this.toolMap.delete(oldest);
+        }
+      } else if (event.kind === 'tool_result') {
+        const entry = this.toolMap.get(event.toolUseId);
+        if (entry) entry.result = span(line);
+      }
+    }
+  }
+
+  reset(): void {
+    this.turnList.length = 0;
+    this.toolMap.clear();
+    this.turnCount = 0;
+  }
+}
+
+/**
  * Follows a transcript as it grows, reading only bytes it has not seen.
  *
  * Lines are split on bytes, so offsets are exact file positions and a
@@ -392,23 +464,17 @@ function startsTurn(event: TranscriptEvent): event is TranscriptEvent & { kind: 
  * unfinished last line waits for the rest. A file that got shorter was
  * replaced, and is read again from the start.
  *
- * It keeps a turn index and a bounded map from tool use id to byte ranges,
- * never the text itself, so memory stays flat however long the session runs.
+ * Its `index` says where each turn and tool call sits.
  */
 export class TranscriptTail {
-  private readonly turnList: TurnEntry[] = [];
-  private readonly toolMap = new Map<string, ToolEntry>();
-  private readonly toolLimit: number;
-  private readonly turnLimit: number;
+  readonly index: TranscriptIndex;
   /** Bytes consumed, including an unfinished last line held in `partial`. */
   private offset = 0;
   private partial: Buffer[] = [];
   private partialStart = 0;
-  private turnCount = 0;
 
   constructor(private readonly opts: TranscriptTailOptions = {}) {
-    this.toolLimit = opts.toolLimit ?? DEFAULT_TOOL_LIMIT;
-    this.turnLimit = opts.turnLimit ?? DEFAULT_TURN_LIMIT;
+    this.index = new TranscriptIndex(opts);
   }
 
   /** How many bytes of the file have been read. */
@@ -423,11 +489,11 @@ export class TranscriptTail {
 
   /** Turns since the transcript began or was last cleared, oldest first. */
   get turns(): readonly TurnEntry[] {
-    return this.turnList;
+    return this.index.turns;
   }
 
   tool(toolUseId: string): ToolEntry | undefined {
-    return this.toolMap.get(toolUseId);
+    return this.index.tool(toolUseId);
   }
 
   /** Read whatever the file gained since the last read. */
@@ -496,38 +562,7 @@ export class TranscriptTail {
   }
 
   private line(line: TailLine): void {
-    for (const event of line.events) {
-      if (event.kind === 'clear') {
-        this.turnList.length = 0;
-        this.toolMap.clear();
-        this.turnCount = 0;
-      } else if (startsTurn(event)) {
-        // Several text blocks on one line are one prompt.
-        const last = this.turnList.at(-1);
-        if (last?.start === line.start) continue;
-        if (last) last.end = line.start;
-        this.turnList.push({
-          n: ++this.turnCount,
-          start: line.start,
-          end: null,
-          timestamp: event.timestamp,
-          uuid: event.uuid,
-          source: event.source,
-          preview: event.text.slice(0, PREVIEW_CHARS)
-        });
-        if (this.turnList.length > this.turnLimit) this.turnList.shift();
-      } else if (event.kind === 'tool_use' && event.id) {
-        this.toolMap.delete(event.id);
-        this.toolMap.set(event.id, { name: event.name, use: range(line), result: null });
-        if (this.toolMap.size > this.toolLimit) {
-          const oldest = this.toolMap.keys().next().value;
-          if (oldest !== undefined) this.toolMap.delete(oldest);
-        }
-      } else if (event.kind === 'tool_result') {
-        const entry = this.toolMap.get(event.toolUseId);
-        if (entry) entry.result = range(line);
-      }
-    }
+    this.index.add(line);
     this.opts.onLine?.(line);
   }
 
@@ -535,14 +570,12 @@ export class TranscriptTail {
     this.offset = 0;
     this.partial = [];
     this.partialStart = 0;
-    this.turnList.length = 0;
-    this.toolMap.clear();
-    this.turnCount = 0;
+    this.index.reset();
     this.opts.onReset?.();
   }
 }
 
-function range(line: ByteRange): ByteRange {
+function span(line: Span): Span {
   return { start: line.start, end: line.end };
 }
 
@@ -551,7 +584,7 @@ function range(line: ByteRange): ByteRange {
  * tail recorded. Returns the events of the whole lines in it; empty when the
  * file is gone.
  */
-export async function readTranscriptRange(path: string, span: ByteRange): Promise<TailLine[]> {
+export async function readTranscriptRange(path: string, span: Span): Promise<TailLine[]> {
   let handle: FileHandle;
   try {
     handle = await open(path, 'r');

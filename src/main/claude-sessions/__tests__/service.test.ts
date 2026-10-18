@@ -1,5 +1,6 @@
+import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { appendFileSync, mkdtempSync, rmSync, existsSync, writeFileSync } from 'fs';
+import { appendFileSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { connect } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -353,8 +354,31 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
       appendFileSync(transcript, jsonl({ type: 'queue-operation', operation: 'dequeue' }));
       await vi.waitFor(() => expect(service.registry.get('s1')?.phase).toBe('processing'));
       const brief = await service.transcript('s1');
-      expect(brief?.path).toBe(transcript);
+      expect(brief?.end).toBe(readFileSync(transcript).length);
     });
+  });
+
+  it("reads an eva session's turns from eva's database, and no transcript file", async () => {
+    vi.stubEnv('EVA_HOME', dir);
+    const dbPath = join(dir, 'sessions.db');
+    const eva = new Database(dbPath);
+    const fixtures = join(__dirname, 'fixtures');
+    eva.exec(readFileSync(join(fixtures, 'eva-0.3.0-tables.sql'), 'utf8'));
+    eva.exec(readFileSync(join(fixtures, 'eva-0.3.0-views.sql'), 'utf8'));
+    eva.exec(`INSERT INTO sessions (id, created_at, updated_at, model, title, uuid)
+              VALUES (1, 0, 0, 'm', 't', 's1');
+              INSERT INTO records (session_id, kind, content) VALUES (1, 'question', 'Fix the bug.');`);
+    try {
+      await service.start();
+      await send(socketPath, event({ runtime: 'eva', db_path: dbPath, protocol: 4 }));
+      expect(service.registry.get('s1')?.runtime).toBe('eva');
+      const transcript = await service.transcript('s1');
+      expect(transcript?.unreadable).toBeUndefined();
+      expect(transcript?.index.turns.map((t) => t.preview)).toEqual(['Fix the bug.']);
+    } finally {
+      eva.close();
+      vi.unstubAllEnvs();
+    }
   });
 
   it('types a prompt into the pane unless the user is typing there', async () => {

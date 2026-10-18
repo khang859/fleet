@@ -41,8 +41,12 @@ export type ClaudePendingPermission = {
   receivedAt: number;
 };
 
+/** The program a tracked session runs: Claude Code, or eva crew. */
+export type SessionRuntime = 'claude' | 'eva';
+
 export type ClaudeSession = {
   sessionId: string;
+  runtime: SessionRuntime;
   /** The Fleet pane the session runs in. Sessions outside Fleet panes are never tracked. */
   paneId: string;
   /**

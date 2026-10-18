@@ -66,6 +66,8 @@ export type CrewPaneHost = {
   prompter: FleetPrompter;
   /** Fleet's hook entries, as its global install writes them. */
   hooks(): Record<string, HookEntry[]>;
+  /** Fleet's hook command for eva, when the eva a pane in `cwd` runs takes a hooks file. */
+  evaHook(cwd: string): Promise<string | undefined>;
   /** What a crew pane shows now, as text, or null when Fleet keeps no copy of it. */
   screen(paneId: string): Promise<string | null>;
   /** The Claude Code session a crew member runs, as its flags read it. */
@@ -325,6 +327,7 @@ export class CrewService {
       status: CREW_STARTING,
       replaces: lost?.id ?? swap?.replaced.id ?? null
     });
+    const evaHook = runtime === 'eva' ? await panes.evaHook(workspace.cwd) : undefined;
     try {
       const launch = crewLaunch({
         jobId: job.id,
@@ -338,7 +341,8 @@ export class CrewService {
         resume: lost !== null,
         dir: join(jobDir(this.deps.home(), job.id), 'crew', `${step.id}-${member}`),
         addDirs: handback === undefined ? [] : [handback],
-        hooks: panes.hooks()
+        hooks: panes.hooks(),
+        evaHook
       });
       await this.openPane(panes, job, crew, workspace, launch);
     } catch (err) {
@@ -357,7 +361,12 @@ export class CrewService {
     return {
       text: [
         `${verb} ${crew.label} (ref ${this.refOf(crew)}) on ${runtime} for step ${step.id}${instead}, in ${workspace.cwd}.`,
-        'Its pane is in the job tab. It shows as starting until its session reports; one that stays starting is probably waiting at a prompt only the client can answer.'
+        'Its pane is in the job tab. It shows as starting until its session reports; one that stays starting is probably waiting at a prompt only the client can answer.',
+        ...(runtime === 'eva' && evaHook === undefined
+          ? [
+              'This eva cannot take a hooks file, so it sends Fleet no events: it will show as needing you, and you cannot follow its turns. Read its screen with fleet_read.'
+            ]
+          : [])
       ].join(' '),
       summary: `${verb.toLowerCase()} ${crew.label}`
     };
@@ -447,11 +456,6 @@ export class CrewService {
     const panes = this.requirePanes();
     const job = this.actingJob(jobId);
     const crew = this.resolve(jobId, args.crew, 'send');
-    if (crew.runtime === 'eva') {
-      throw new Error(
-        `Not sent: Fleet cannot type into eva crew yet. Ask the client to type into ${crew.label}'s pane.`
-      );
-    }
     if (crew.status === CREW_STARTING || crew.sessionId === null) {
       throw new Error(`Not sent: ${crew.label} has not reported yet, so it cannot take a prompt.`);
     }

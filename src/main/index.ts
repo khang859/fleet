@@ -92,14 +92,19 @@ import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
 import { createAgencyService, type AgencyService } from './agency';
 import { registerAgencyIpc } from './agency/agency-ipc';
-import { checkRuntime, claudeSignedIn, paneRuntimeDeps } from './agency/crew/availability';
+import {
+  checkRuntime,
+  claudeSignedIn,
+  evaTakesHooks,
+  paneRuntimeDeps
+} from './agency/crew/availability';
 import { evaModels, readEvaServer } from './agency/crew/eva-server';
 import { resolveClaudeConfig } from '../shared/claude-config';
 import { createFleetHost } from './agent/fleet/host';
 import { FleetLedgerStore } from './agent/fleet/ledger-store';
 import { ActLimiter } from './agent/fleet/limiter';
 import { lazyPrompter } from './agent/fleet/send';
-import { fleetHookEntries } from './claude-sessions/hook-installer';
+import { fleetHookCommand, fleetHookEntries } from './claude-sessions/hook-installer';
 import { RendererRpc } from './agent/fleet/renderer-rpc';
 import { FleetSpawns } from './agent/fleet/spawns';
 import { FleetAttention } from './agent/fleet/attention';
@@ -1672,6 +1677,10 @@ void app.whenReady().then(async () => {
         }) ?? (() => {}),
       readable: async (path) => ((await stat(path).catch(() => null))?.size ?? 0) > 0,
       hooks: () => fleetHookEntries(crewClaudeConfigDir()),
+      evaHook: async (cwd) =>
+        (await evaTakesHooks(cwd, paneRuntimeDeps(crewClaudeConfigDir()).shell))
+          ? fleetHookCommand(crewClaudeConfigDir())
+          : undefined,
       now: () => Date.now(),
       newId: () => randomUUID()
     },
@@ -1708,6 +1717,10 @@ void app.whenReady().then(async () => {
         claudeSessions?.registry.notePaneInput(paneId, 'orchestrator', text),
       prompter: lazyPrompter(() => claudeSessions),
       hooks: () => fleetHookEntries(crewClaudeConfigDir()),
+      evaHook: async (cwd) =>
+        (await evaTakesHooks(cwd, paneRuntimeDeps(crewClaudeConfigDir()).shell))
+          ? fleetHookCommand(crewClaudeConfigDir())
+          : undefined,
       screen: async (paneId) => ptyManager.screen(paneId),
       session: (sessionId) => claudeSessions?.registry.get(sessionId)
     },
@@ -1721,7 +1734,8 @@ void app.whenReady().then(async () => {
   // A session reports only once Claude Code's folder trust prompt is answered.
   claudeSessions.registry.subscribe(({ session, event }) => {
     if (!session) return;
-    agency.noteClaudeSession(session.cwd);
+    // An eva session says nothing of Claude Code's folder trust.
+    if (session.runtime === 'claude') agency.noteClaudeSession(session.cwd);
     agency.crew.reported(session.paneId, session.sessionId);
     if (event?.event === 'Stop') agency.crew.turnEnded(session.sessionId);
     if (event?.event === 'StopFailure') {

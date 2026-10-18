@@ -1,11 +1,13 @@
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import Database from 'better-sqlite3';
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FLEET_TOOL_PAGE_CHARS } from '../../../../shared/fleet-tools';
 import { BriefBuilder } from '../../../claude-sessions/brief';
+import { EvaTranscripts } from '../../../claude-sessions/eva-transcripts';
 import { hashPrompt, type NotedInput } from '../../../claude-sessions/registry';
-import type { SessionTranscript } from '../../../claude-sessions/session-transcripts';
+import { claudeTranscript } from '../../../claude-sessions/session-transcripts';
 import { TranscriptTail } from '../../../claude-sessions/transcript';
 import { createFleetCapability } from '../capability';
 import type { FleetHost, FleetSession } from '../host';
@@ -56,6 +58,7 @@ const bash = (id: string, command: string, output: string, isError = false): str
 function session(over: Partial<FleetSession> = {}): FleetSession {
   return {
     sessionId: 'sess-1',
+    runtime: 'claude',
     paneId: 'abcdef12-0000-4000-8000-000000000000',
     ref: 'abcdef12',
     label: 'work › claude',
@@ -76,22 +79,21 @@ function session(over: Partial<FleetSession> = {}): FleetSession {
   };
 }
 
+type Followed = { path: string; tail: TranscriptTail; brief: BriefBuilder };
+
 describe('fleet reads', () => {
   let dir: string;
   let path: string;
   let current: FleetSession;
   let inputs: NotedInput[];
-  let transcript: SessionTranscript;
+  let transcript: Followed;
   let ledger: FleetLedgerStore;
 
   /** A transcript read the way the session service reads it: only new bytes each time. */
-  function follow(p: string): SessionTranscript {
-    const t: SessionTranscript = {
-      path: p,
-      brief: new BriefBuilder(),
-      tail: new TranscriptTail({ onLine: (l) => l.events.forEach((e) => t.brief.apply(e)) })
-    };
-    return t;
+  function follow(p: string): Followed {
+    const brief = new BriefBuilder();
+    const tail = new TranscriptTail({ onLine: (l) => l.events.forEach((e) => brief.apply(e)) });
+    return { path: p, tail, brief };
   }
 
   const host = (): FleetHost => ({
@@ -100,7 +102,7 @@ describe('fleet reads', () => {
     starting: () => [],
     transcript: async () => {
       await transcript.tail.read(transcript.path);
-      return transcript;
+      return claudeTranscript(transcript.path, transcript.tail, transcript.brief);
     },
     inputsFor: () => inputs,
     git: async () => Promise.reject(new Error('no git in this test')),
@@ -160,6 +162,65 @@ describe('fleet reads', () => {
     await expect(read({ ...withScreen, screen: undefined })).rejects.toThrow(
       'No session has the ref'
     );
+  });
+
+  it('reads an eva session from its database, and says why when it cannot', async () => {
+    const fixtures = join(__dirname, '../../../claude-sessions/__tests__/fixtures');
+    const dbPath = join(dir, 'sessions.db');
+    const db = new Database(dbPath);
+    db.exec(readFileSync(join(fixtures, 'eva-0.3.0-tables.sql'), 'utf8'));
+    db.exec(readFileSync(join(fixtures, 'eva-0.3.0-views.sql'), 'utf8'));
+    const calls = JSON.stringify([{ id: 'c1', name: 'bash', arguments: '{"command":"ls"}' }]);
+    db.exec(`INSERT INTO sessions (id, created_at, updated_at, model, title, uuid)
+             VALUES (1, 0, 0, 'm', 't', 'sess-1')`);
+    db.prepare(
+      `INSERT INTO records (session_id, kind, content, calls, call_id, status) VALUES
+       (1, 'question', 'Fix the login bug.', NULL, NULL, NULL),
+       (1, 'answer', 'Looking.', ?, NULL, NULL),
+       (1, 'result', 'src', NULL, 'c1', 'ok'),
+       (1, 'answer', 'Fixed it.', NULL, NULL, NULL)`
+    ).run(calls);
+    const eva = new EvaTranscripts({ databases: () => [dbPath] });
+    eva.follow('sess-1', dbPath);
+    current = session({ runtime: 'eva' });
+    const fleet = createFleetCapability(
+      {
+        host: { ...host(), transcript: async () => Promise.resolve(eva.read('sess-1')) },
+        ledger,
+        act: null
+      },
+      THREAD,
+      'orchestrator',
+      '/work'
+    );
+    try {
+      const turns = (await fleet.read({ session: 'abcdef12', level: 'turns' }, signal)).text;
+      expect(turns).toContain('Prompt (typed by the user):\nFix the login bug.');
+      expect(turns).toContain('- Bash ls → ok [c1]');
+      expect(turns).toContain('eva: Fixed it.');
+      const tool = await fleet.read(
+        { session: 'abcdef12', level: 'tool', tool_use_id: 'c1' },
+        signal
+      );
+      expect(tool.text).toContain('Bash input:');
+      expect((await fleet.sessions({}, signal)).text).toContain(
+        '- abcdef12 · work › claude · eva · app'
+      );
+
+      eva.follow('sess-1', undefined);
+      expect((await fleet.read({ session: 'abcdef12', level: 'turns' }, signal)).text).toContain(
+        'eva is not saving this session'
+      );
+      expect((await fleet.read({ session: 'abcdef12', level: 'brief' }, signal)).text).toContain(
+        'eva is not saving this session'
+      );
+      await expect(
+        fleet.read({ session: 'abcdef12', level: 'tool', tool_use_id: 'c1' }, signal)
+      ).rejects.toThrow('eva is not saving this session');
+    } finally {
+      eva.dispose();
+      db.close();
+    }
   });
 
   it('says why the list is empty', async () => {

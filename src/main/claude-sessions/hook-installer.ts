@@ -179,7 +179,12 @@ function buildHookEntries(command: string): Record<string, HookEntry[]> {
  * event once, and one whose install is missing still reports.
  */
 export function fleetHookEntries(configDir?: string): Record<string, HookEntry[]> {
-  return buildHookEntries(quoteHookCommand(resolvePaths(configDir).hookDest, process.platform));
+  return buildHookEntries(fleetHookCommand(configDir));
+}
+
+/** The command that runs the hook binary installed in a config folder. */
+export function fleetHookCommand(configDir?: string): string {
+  return quoteHookCommand(resolvePaths(configDir).hookDest, process.platform);
 }
 
 /**

@@ -353,3 +353,170 @@ func TestClaudePID_StepsPastTheHookShell(t *testing.T) {
 		}
 	}
 }
+
+func TestRuntimeArg(t *testing.T) {
+	cases := []struct {
+		args []string
+		want string
+		ok   bool
+	}{
+		{nil, "claude", true},
+		{[]string{"--runtime", "eva"}, "eva", true},
+		{[]string{"--runtime=claude"}, "claude", true},
+		{[]string{"--runtime", "codex"}, "", false},
+		{[]string{"--color"}, "", false},
+	}
+	for _, c := range cases {
+		got, ok := runtimeArg(c.args)
+		if got != c.want || ok != c.ok {
+			t.Errorf("runtimeArg(%v) = %q, %v; want %q, %v", c.args, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestEvaState_NamesRuntimeDatabaseAndLimitReset(t *testing.T) {
+	input := readInput(t, `{"session_id":"e1","hook_event_name":"StopFailure","cwd":"/w","pid":4242,
+		"db_path":"/home/u/.eva/sessions.db","error_kind":"rate_limit",
+		"error_message":"Too many requests","retry_after":1760000000,
+		"transcript_path":"/x.jsonl"}`)
+	env := map[string]string{"FLEET_PANE_ID": "pane-1", "CLAUDE_CONFIG_DIR": "/c"}
+	state := evaState(input, nil, 4242, func(k string) string { return env[k] })
+
+	if state.Runtime != "eva" || state.DBPath != "/home/u/.eva/sessions.db" || state.PID != 4242 {
+		t.Fatalf("runtime, db path or pid not forwarded: %+v", state)
+	}
+	if state.TranscriptPath != "" || state.ConfigDir != "" {
+		t.Errorf("eva has no transcript file or Claude config dir: %+v", state)
+	}
+	if state.Error != "rate_limit" || state.Message != "Too many requests|1760000000" {
+		t.Errorf("error = %q, message = %q", state.Error, state.Message)
+	}
+}
+
+func TestEvaFailureText_KeepsResetTimeAfterTheCut(t *testing.T) {
+	retry := int64(1760000000)
+	input := &HookInput{ErrorMessage: strings.Repeat("x", 900), RetryAfter: &retry}
+	got := evaFailureText(input)
+	if !strings.HasSuffix(got, "|1760000000") || len([]rune(got)) != stopFailureMessageRunes+11 {
+		t.Errorf("got %d runes ending %q", len([]rune(got)), got[len(got)-12:])
+	}
+	if evaFailureText(&HookInput{ErrorMessage: "down"}) != "down" {
+		t.Error("no reset time should add no bar")
+	}
+}
+
+func TestToolInputOf_TextIsNotFatal(t *testing.T) {
+	input := readInput(t, `{"session_id":"e1","hook_event_name":"PreToolUse","tool_input":"not json"}`)
+	if toolInputOf(input.ToolInput) != nil {
+		t.Error("text input should give no object")
+	}
+	input = readInput(t, `{"session_id":"e1","hook_event_name":"PreToolUse","tool_input":{"command":"ls"}}`)
+	if toolInputOf(input.ToolInput)["command"] != "ls" {
+		t.Error("object input should be kept")
+	}
+}
+
+// startAnsweringServer is a socket that answers each event with `answer`.
+func startAnsweringServer(t *testing.T, answer string) chan State {
+	t.Helper()
+	// A short folder: a unix socket path has a 104-byte limit on macOS.
+	dir, err := os.MkdirTemp("", "fh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "a.sock")
+	origPath := socketPath
+	socketPath = sock
+	t.Cleanup(func() { socketPath = origPath })
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	ch := make(chan State, 4)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			data, _ := io.ReadAll(conn)
+			var s State
+			if json.Unmarshal(data, &s) == nil {
+				ch <- s
+			}
+			conn.Write([]byte(answer))
+			conn.Close()
+		}
+	}()
+	return ch
+}
+
+func runHook(t *testing.T, args []string, payload string) (int, string) {
+	t.Helper()
+	env := map[string]string{"FLEET_SESSION": "1", "FLEET_PANE_ID": "pane-1"}
+	var out bytes.Buffer
+	code := run(args, strings.NewReader(payload), &out, func(k string) string { return env[k] }, func() int { return 1 })
+	return code, out.String()
+}
+
+func TestRun_EvaPermissionPrintsTheAnswerEvaTakes(t *testing.T) {
+	events := startAnsweringServer(t, `{"decision":"allow"}`)
+	code, out := runHook(t, []string{"--runtime", "eva"}, `{"session_id":"e1","hook_event_name":"PermissionRequest",
+		"cwd":"/w","pid":77,"db_path":"/d","tool_name":"bash","tool_input":{"command":"git push"},"tool_use_id":"call_1"}`)
+
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	want := `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}`
+	if strings.TrimSpace(out) != want {
+		t.Errorf("stdout = %q", out)
+	}
+	sent := <-events
+	if sent.Runtime != "eva" || sent.Status != "waiting_for_approval" || sent.ToolUseID != "call_1" ||
+		sent.PID != 77 || sent.Protocol != protocolVersion || sent.ToolInput["command"] != "git push" {
+		t.Errorf("sent %+v", sent)
+	}
+}
+
+func TestRun_DenyCarriesTheReason(t *testing.T) {
+	startAnsweringServer(t, `{"decision":"deny","reason":"not in the plan"}`)
+	_, out := runHook(t, []string{"--runtime", "eva"}, `{"session_id":"e1","hook_event_name":"PermissionRequest","tool_name":"bash","tool_use_id":"c"}`)
+	if !strings.Contains(out, `"behavior":"deny","message":"not in the plan"`) {
+		t.Errorf("stdout = %q", out)
+	}
+}
+
+func TestRun_EvaSessionStartPrintsNothing(t *testing.T) {
+	events := startAnsweringServer(t, ``)
+	_, out := runHook(t, []string{"--runtime", "eva"}, `{"session_id":"e1","hook_event_name":"SessionStart","source":"startup","pid":5}`)
+	if out != "" {
+		t.Errorf("eva takes no context from a hook: %q", out)
+	}
+	if sent := <-events; sent.Status != "waiting_for_input" || sent.Runtime != "eva" {
+		t.Errorf("sent %+v", sent)
+	}
+}
+
+func TestRun_ClaudeEventsAreUnchanged(t *testing.T) {
+	events := startAnsweringServer(t, ``)
+	_, out := runHook(t, nil, `{"session_id":"c1","hook_event_name":"SessionStart","transcript_path":"/t.jsonl"}`)
+	if !strings.Contains(out, "additionalContext") {
+		t.Errorf("Claude still gets the Fleet skill pointer: %q", out)
+	}
+	if sent := <-events; sent.Runtime != "" || sent.TranscriptPath != "/t.jsonl" || sent.PID != 1 {
+		t.Errorf("sent %+v", sent)
+	}
+}
+
+func TestRun_UnknownRuntimeAndNoFleetSessionDoNothing(t *testing.T) {
+	if code, out := runHook(t, []string{"--runtime", "codex"}, `{}`); code != 0 || out != "" {
+		t.Errorf("unknown runtime: %d %q", code, out)
+	}
+	var out bytes.Buffer
+	code := run(nil, strings.NewReader("not json"), &out, func(string) string { return "" }, func() int { return 1 })
+	if code != 0 || out.Len() != 0 {
+		t.Errorf("outside Fleet the hook must do nothing: %d %q", code, out.String())
+	}
+}

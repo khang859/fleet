@@ -7,6 +7,7 @@ const THREAD = 't1';
 function session(over: Partial<ClaudeSession> = {}): ClaudeSession {
   return {
     sessionId: 's1',
+    runtime: 'claude',
     paneId: 'p1',
     epoch: 0,
     cwd: '/work',

@@ -9,6 +9,7 @@ import type {
 function session(overrides: Partial<ClaudeSession> = {}): ClaudeSession {
   return {
     sessionId: 'session-1',
+    runtime: 'claude',
     paneId: 'pane-1',
     epoch: 1,
     cwd: '/repo',

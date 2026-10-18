@@ -9,7 +9,7 @@ const { warn } = vi.hoisted(() => ({ warn: vi.fn() }));
 vi.mock('../../logger', () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() })
 }));
-import type { HookEvent } from '../hook-events';
+import { HOOK_PROTOCOL, type HookEvent } from '../hook-events';
 
 /** Send one event the way the Go hook does, and collect whatever comes back. */
 async function sendEvent(socketPath: string, event: object): Promise<string> {
@@ -88,6 +88,44 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
   it('closes the connection on an invalid event without calling the handler', async () => {
     await expect(sendEvent(socketPath, { nope: true })).resolves.toBe('');
     expect(received).toEqual([]);
+  });
+
+  it('ignores events of a newer protocol, warning once per version', async () => {
+    warn.mockClear();
+    const newer = { ...stop, protocol: HOOK_PROTOCOL + 1 };
+    await sendEvent(socketPath, newer);
+    await sendEvent(socketPath, newer);
+    await sendEvent(socketPath, { ...stop, protocol: HOOK_PROTOCOL });
+
+    expect(received).toEqual([expect.objectContaining({ protocol: HOOK_PROTOCOL })]);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the same protocol the Go hook sends', () => {
+    const goSource = readFileSync(
+      join(__dirname, '../../../../hooks/fleet-copilot-go/main.go'),
+      'utf8'
+    );
+    expect(Number(/protocolVersion\s*=\s*(\d+)/.exec(goSource)?.[1])).toBe(HOOK_PROTOCOL);
+  });
+
+  it('holds an eva permission request and answers it the same way', async () => {
+    const eva = {
+      ...permission,
+      runtime: 'eva',
+      db_path: '/home/u/.eva/sessions.db',
+      tool: 'bash',
+      tool_use_id: 'call_1',
+      protocol: 4
+    };
+    const reply = sendEvent(socketPath, eva);
+    await vi.waitFor(() => expect(broker.has('call_1')).toBe(true));
+
+    expect(received).toEqual([
+      expect.objectContaining({ runtime: 'eva', dbPath: '/home/u/.eva/sessions.db' })
+    ]);
+    expect(broker.respond('call_1', 'allow')).toBe(true);
+    expect(JSON.parse(await reply)).toEqual({ decision: 'allow', reason: '' });
   });
 
   it('holds a permission request until it is answered', async () => {

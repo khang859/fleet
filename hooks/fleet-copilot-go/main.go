@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -25,8 +26,8 @@ const (
 	timeoutSeconds = 300
 	// protocolVersion tells Fleet which fields this binary sends. Version 2 adds
 	// pane_id, transcript_path, config_dir and source. Version 3 adds
-	// prompt_sha256.
-	protocolVersion = 3
+	// prompt_sha256. Version 4 adds runtime and db_path, for eva.
+	protocolVersion = 4
 )
 
 var socketPath = func() string {
@@ -45,21 +46,32 @@ func homeDir() string {
 }
 
 type HookInput struct {
-	SessionID        string                 `json:"session_id"`
-	HookEventName    string                 `json:"hook_event_name"`
-	CWD              string                 `json:"cwd"`
-	ToolName         string                 `json:"tool_name,omitempty"`
-	ToolInput        map[string]interface{} `json:"tool_input,omitempty"`
-	ToolUseID        string                 `json:"tool_use_id,omitempty"`
-	NotificationType string                 `json:"notification_type,omitempty"`
-	Message          string                 `json:"message,omitempty"`
-	TranscriptPath   string                 `json:"transcript_path,omitempty"`
-	Source           string                 `json:"source,omitempty"`
-	Error            string                 `json:"error,omitempty"`
-	ErrorDetails     string                 `json:"error_details,omitempty"`
-	Prompt           string                 `json:"prompt,omitempty"`
+	SessionID     string `json:"session_id"`
+	HookEventName string `json:"hook_event_name"`
+	CWD           string `json:"cwd"`
+	ToolName      string `json:"tool_name,omitempty"`
+	// ToolInput is an object, except that eva sends the model's arguments as
+	// text when they are not JSON; toolInputOf keeps only an object.
+	ToolInput        json.RawMessage `json:"tool_input,omitempty"`
+	ToolUseID        string          `json:"tool_use_id,omitempty"`
+	NotificationType string          `json:"notification_type,omitempty"`
+	Message          string          `json:"message,omitempty"`
+	TranscriptPath   string          `json:"transcript_path,omitempty"`
+	Source           string          `json:"source,omitempty"`
+	Error            string          `json:"error,omitempty"`
+	ErrorDetails     string          `json:"error_details,omitempty"`
+	Prompt           string          `json:"prompt,omitempty"`
 	// LastAssistantMessage is set on StopFailure to the API error text.
 	LastAssistantMessage string `json:"last_assistant_message,omitempty"`
+
+	// eva's own fields: its pid, its sessions.db (empty when it saves
+	// nothing), and on StopFailure the error's kind, text and the epoch
+	// second a rate limit lifts.
+	PID          int    `json:"pid,omitempty"`
+	DBPath       string `json:"db_path,omitempty"`
+	ErrorKind    string `json:"error_kind,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+	RetryAfter   *int64 `json:"retry_after,omitempty"`
 }
 
 type State struct {
@@ -81,6 +93,8 @@ type State struct {
 	Error            string                 `json:"error,omitempty"`
 	ErrorDetails     string                 `json:"error_details,omitempty"`
 	PromptSHA256     string                 `json:"prompt_sha256,omitempty"`
+	Runtime          string                 `json:"runtime,omitempty"`
+	DBPath           string                 `json:"db_path,omitempty"`
 	Protocol         int                    `json:"protocol"`
 }
 
@@ -278,6 +292,88 @@ func newState(input *HookInput, tty *string, pid int, getenv func(string) string
 	}
 }
 
+// evaState is newState for an event eva sent: eva has no transcript file or
+// Claude config dir, names its database instead, and reports an API error
+// as a kind and a text.
+func evaState(input *HookInput, tty *string, pid int, getenv func(string) string) *State {
+	state := newState(input, tty, pid, getenv)
+	state.Runtime = "eva"
+	state.TranscriptPath = ""
+	state.ConfigDir = ""
+	state.DBPath = input.DBPath
+	if input.HookEventName == "StopFailure" {
+		state.Error = input.ErrorKind
+		state.Message = evaFailureText(input)
+	}
+	return state
+}
+
+// evaFailureText is eva's error text, cut like Claude's, with the time a
+// rate limit lifts after a bar, the form Fleet reads a reset time from.
+func evaFailureText(input *HookInput) string {
+	text := []rune(input.ErrorMessage)
+	if len(text) > stopFailureMessageRunes {
+		text = text[:stopFailureMessageRunes]
+	}
+	if input.RetryAfter != nil {
+		return fmt.Sprintf("%s|%d", string(text), *input.RetryAfter)
+	}
+	return string(text)
+}
+
+// toolInputOf is a tool's input when it is a JSON object, else nil.
+func toolInputOf(raw json.RawMessage) map[string]interface{} {
+	var input map[string]interface{}
+	if json.Unmarshal(raw, &input) != nil {
+		return nil
+	}
+	return input
+}
+
+// runtimeArg reads `--runtime claude|eva`; claude when it is not given, and
+// false for anything else, so a newer Fleet's runtime is not misread.
+func runtimeArg(args []string) (string, bool) {
+	flags := flag.NewFlagSet("fleet-copilot", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	name := flags.String("runtime", "claude", "")
+	if flags.Parse(args) != nil {
+		return "", false
+	}
+	switch *name {
+	case "claude", "eva":
+		return *name, true
+	}
+	return "", false
+}
+
+// permissionOutput is the hook's answer to a permission request, in Claude
+// Code's form, which eva takes too; nil when Fleet left it to the pane.
+func permissionOutput(resp *SocketResponse) []byte {
+	if resp == nil {
+		return nil
+	}
+	var output PermissionDecision
+	output.HookSpecificOutput.HookEventName = "PermissionRequest"
+	switch resp.Decision {
+	case "allow":
+		output.HookSpecificOutput.Decision.Behavior = "allow"
+	case "deny":
+		output.HookSpecificOutput.Decision.Behavior = "deny"
+		msg := resp.Reason
+		if msg == "" {
+			msg = "Denied by user via Fleet Copilot"
+		}
+		output.HookSpecificOutput.Decision.Message = msg
+	default:
+		return nil
+	}
+	result, err := json.Marshal(output)
+	if err != nil {
+		return nil
+	}
+	return result
+}
+
 // stopFailureMessageRunes caps the API error text a StopFailure forwards.
 const stopFailureMessageRunes = 500
 
@@ -300,69 +396,73 @@ func main() {
 	// foreground process group. Without this, the binary is killed
 	// before it can send the Stop/SubagentStop event to Fleet.
 	signal.Ignore(syscall.SIGINT)
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Getenv, hookPID))
+}
 
-	if os.Getenv("FLEET_SESSION") == "" {
-		os.Exit(0)
-	}
-
-	var input HookInput
-	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
-		os.Exit(1)
-	}
-
+// hookPID is the pid of the program that ran this hook: the parent, past the
+// shell a hook command runs through.
+func hookPID() int {
 	pid := os.Getppid()
 	if runtime.GOOS != "windows" {
 		pid = claudePID(pid, psComm, psParent)
 	}
-	state := newState(&input, getTTY(pid), pid, os.Getenv)
+	return pid
+}
+
+// run handles one hook call and returns the exit code.
+func run(args []string, stdin io.Reader, stdout io.Writer, getenv func(string) string, parentPID func() int) int {
+	if getenv("FLEET_SESSION") == "" {
+		return 0
+	}
+	runtimeName, ok := runtimeArg(args)
+	if !ok {
+		return 0
+	}
+
+	var input HookInput
+	if err := json.NewDecoder(stdin).Decode(&input); err != nil {
+		return 1
+	}
+
+	var state *State
+	if runtimeName == "eva" {
+		// eva names its own pid; it runs hooks through `sh -c` too.
+		pid := input.PID
+		if pid == 0 {
+			pid = parentPID()
+		}
+		state = evaState(&input, getTTY(pid), pid, getenv)
+	} else {
+		pid := parentPID()
+		state = newState(&input, getTTY(pid), pid, getenv)
+	}
 
 	state.Status = statusFor(input.HookEventName)
 
 	switch input.HookEventName {
 	case "PreToolUse", "PostToolUse", "PostToolUseFailure":
 		state.Tool = input.ToolName
-		state.ToolInput = input.ToolInput
+		state.ToolInput = toolInputOf(input.ToolInput)
 		state.ToolUseID = input.ToolUseID
 
 	case "PermissionRequest":
 		state.Tool = input.ToolName
-		state.ToolInput = input.ToolInput
+		state.ToolInput = toolInputOf(input.ToolInput)
 		state.ToolUseID = input.ToolUseID
 
 		if state.Tool == "AskUserQuestion" {
 			sendEvent(state, false)
-			os.Exit(0)
+			return 0
 		}
 
-		resp := sendEvent(state, true)
-		if resp != nil {
-			var output PermissionDecision
-			output.HookSpecificOutput.HookEventName = "PermissionRequest"
-
-			switch resp.Decision {
-			case "allow":
-				output.HookSpecificOutput.Decision.Behavior = "allow"
-			case "deny":
-				output.HookSpecificOutput.Decision.Behavior = "deny"
-				msg := resp.Reason
-				if msg == "" {
-					msg = "Denied by user via Fleet Copilot"
-				}
-				output.HookSpecificOutput.Decision.Message = msg
-			default:
-				os.Exit(0)
-			}
-
-			result, err := json.Marshal(output)
-			if err == nil {
-				fmt.Println(string(result))
-			}
+		if out := permissionOutput(sendEvent(state, true)); out != nil {
+			fmt.Fprintln(stdout, string(out))
 		}
-		os.Exit(0)
+		return 0
 
 	case "Notification":
 		if input.NotificationType == "permission_prompt" {
-			os.Exit(0)
+			return 0
 		} else if input.NotificationType == "idle_prompt" {
 			state.Status = "waiting_for_input"
 		}
@@ -370,8 +470,11 @@ func main() {
 		state.Message = input.Message
 
 	case "SessionStart":
-		emitSessionStartContext(os.Stdout)
+		if runtimeName == "claude" {
+			emitSessionStartContext(stdout)
+		}
 	}
 
 	sendEvent(state, false)
+	return 0
 }

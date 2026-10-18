@@ -184,17 +184,29 @@ Phase 3 notes (decisions made while building):
 - [x] 3.26 Add Swap on crew cards with "Continue its work" (same workspace, handoff brief) and "Start over" (new branch), stop-before-start, and an Admiral-proposed swap on `limited`; verify with tool tests for swap-continue, swap-restart, the proposed swap, and a role edit that does not reach a running job
 - [x] 3.10 End to end: brief a small bug fix in a test repo, approve the plan, and see a Claude Code Builder start in a TUI pane, get its brief typed in, and a Reviewer follow; verify with `npm run drive` steps and screenshots
 
-## 4. Phase 4 - eva session tracking (PR 4, needs khang859/eva#9, #10, #13, and #12 for hook permission answers)
+## 4. Phase 4 - eva session tracking (PR 4, needs khang859/eva#9, #10, #13, #12 for hook permission answers, and #43 for a per-session hooks file)
 
-- [ ] 4.1 Add a `--runtime eva` argument and protocol 3 fields (`runtime`, `db_path`, `last_record_id`) to the Go hook; verify with Go tests and `npm run build:hook` for darwin and linux
-- [ ] 4.2 Accept protocol 3 in `hook-events.ts` and store `runtime` on registry sessions, ignoring unknown protocols with one log line; verify with parser and registry tests
-- [ ] 4.3 Add `EvaTranscriptSource` that opens `sessions.db` read-only, checks the `transcript_v1` view version, and reads records after the cursor into `SessionTranscript`; verify with tests against a fixture database made from eva's schema
-- [ ] 4.4 Fall back to phase-only tracking with an "update eva" message when views are missing; verify with a fixture without views
-- [ ] 4.5 Send eva permission requests to the Admiral and return its answer through the Go hook's reply, with "answer in pane" when eva cannot take hook answers; verify with a hook-server test and a Go test
-- [ ] 4.6 End to end: hire an eva role in a test repo and see it in CREW, read its turns, and wake the Admiral on `Stop`; verify with `npm run drive` steps
+- [x] 4.1 Add a `--runtime eva` argument and protocol 4 fields (`runtime`, `db_path`) to the Go hook; verify with Go tests and `npm run build:hook` for darwin and linux
+- [x] 4.2 Accept protocol 4 in `hook-events.ts` and store `runtime` on registry sessions, ignoring unknown protocols with one log line; verify with parser and registry tests
+- [x] 4.3 Add `EvaTranscriptSource` that opens `sessions.db` read-only, checks the `transcript_v1` view version, and reads records after the cursor into `SessionTranscript`; verify with tests against a fixture database made from eva's schema
+- [x] 4.4 Fall back to phase-only tracking with an "update eva" message when views are missing; verify with a fixture without views
+- [x] 4.5 Send eva permission requests to the Admiral and return its answer through the Go hook's reply, with "answer in pane" when eva cannot take hook answers; verify with a hook-server test and a Go test
+- [x] 4.6 End to end: hire an eva role in a test repo and see it in CREW, read its turns, and wake the Admiral on `Stop`; verify with `npm run drive` steps
 
-- [ ] 4.7 Accept eva `db_path` only for eva's own database, and read with `fileMustExist`, a busy timeout and one short transaction per read; verify with tests
-- [ ] 4.8 Never pass eva's bypass flag, use the user's eva permission settings, and resume eva by session id; verify with command-line tests
+- [x] 4.7 Accept eva `db_path` only for eva's own database, and read with `fileMustExist`, a busy timeout and one short transaction per read; verify with tests
+- [x] 4.8 Never pass eva's bypass flag, use the user's eva permission settings, and resume eva by session id; verify with command-line tests
+- [x] 4.9 Check that the installed eva takes `--hooks`; start eva crew with a per-session hooks file when it does, and warn in the runtime check and show `needs you` when it does not; verify with launch tests and a screenshot
+- [x] 4.10 Send later prompts to eva crew with bracketed paste, and drop the eva refusal in `crew_send`; verify with input tests
+
+- 4.3: eva records map to the events Claude transcripts make: `question` is a prompt, `answer` is text and tool calls, `result` is a tool result (`declined` is a rejection), and `summary` and `checkpoint` are compactions. Tool names map to Claude's (`bash` is Bash, `write_file` is Write), and `path` is copied to `file_path`.
+- 4.3: each session keeps its own cursor and reads only `id > cursor` with `agent IS NULL`, so subagent records stay out. The database opens read-only with `fileMustExist` and a 2 second busy timeout.
+- 4.7: a `db_path` is read only when its real path is `$EVA_HOME/sessions.db` or `~/.eva/sessions.db`. A path eva has not made yet is tried again on the next event.
+- 4.9: eva 0.3.0 has no `--hooks` (khang859/eva#43 is open). The runtime check warns "Hooks file", the hire text tells the Admiral to read the crew's screen, and the crew shows as `needs you` with an eva text on the card and the row.
+- 4.9: with `--hooks`, the hire writes `eva-hooks.toml` in the crew's launch folder with Fleet's hook for ten events, `PermissionRequest` with a one-day timeout, and passes it as `--hooks "$FLEET_CREW_HOOKS"`. eva's own config is never read or changed.
+- 4.10: a later prompt goes to eva as one bracketed paste, then Enter. eva takes up to 1 MB in one paste; a longer prompt is not sent.
+- 4.5: the Go hook prints Fleet's answer in the Claude Code form, which eva takes, and Test reports an eva that cannot take hook answers. Sending a crew request to the Admiral is the same for both runtimes, so it lands with 5.1 to 5.3.
+- 4.6: end to end in the envdemo repo with eva 0.3.0: the Admiral hired an eva scout, the crew showed `needs you` until events came, and then `live`. The events eva would send went through the real hook binary with the crew pane's id, since this eva cannot take a hooks file. On `Stop` the Admiral woke, reviewed `NOTES.md`, and read the turn from eva's database: 14 tool calls named Bash, Read and Write. See `docs/learnings/eva-crew-is-not-claude.md`.
+- 4.6: the live run with eva's own hooks waits for khang859/eva#43.
 
 ## 5. Phase 5 - permission answers (PR 5)
 

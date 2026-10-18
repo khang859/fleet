@@ -271,8 +271,9 @@ function NeedsYouCard({ member }: { member: AgencyCrewMember }): React.JSX.Eleme
         {member.label} needs you in its pane
       </span>
       <p className="text-xs leading-relaxed text-fleet-text-muted">
-        It has not started a minute after its hire. It may wait at a login or trust screen that only
-        you can answer. Fleet types nothing into it.
+        {member.runtime === 'eva'
+          ? EVA_NEEDS_YOU_CARD
+          : 'It has not started a minute after its hire. It may wait at a login or trust screen that only you can answer. Fleet types nothing into it.'}
       </p>
       {paneId !== null && (
         <div className="flex pt-0.5">
@@ -364,6 +365,12 @@ const FLAG_TITLE: Record<NonNullable<AgencyCrewMember['flag']>, string> = {
   stuck: 'It shows no progress for 15 minutes. The Admiral was told.'
 };
 
+/** eva sends Fleet events only through a hooks file, which an older eva cannot take. */
+const EVA_NEEDS_YOU_WHY =
+  'It has not reported a minute after its hire. It may wait at a prompt, or this eva cannot send Fleet events.';
+const EVA_NEEDS_YOU = `${EVA_NEEDS_YOU_WHY} Peek at its pane.`;
+const EVA_NEEDS_YOU_CARD = `${EVA_NEEDS_YOU_WHY} Fleet types nothing into it.`;
+
 /** A member's dot: red when stuck, amber for any other flag, else its status color. */
 function crewDot(member: AgencyCrewMember): string {
   if (member.flag === 'stuck') return 'bg-red-400';
@@ -379,7 +386,13 @@ function CrewStatus({ member }: { member: AgencyCrewMember }): React.JSX.Element
       className={`shrink-0 text-[11px] ${
         flagged === null ? 'text-fleet-text-muted' : 'text-amber-700 dark:text-amber-400/90'
       }`}
-      title={flag === null ? (member.endReason ?? undefined) : FLAG_TITLE[flag]}
+      title={
+        flag === null
+          ? (member.endReason ?? undefined)
+          : flag === 'needs-you' && member.runtime === 'eva'
+            ? EVA_NEEDS_YOU
+            : FLAG_TITLE[flag]
+      }
     >
       {flagged ?? CREW_STATUS[member.status]}
     </span>

@@ -64,7 +64,7 @@ Wakeups stay in `agency.db` until the renderer pulls them, which it does only wh
 `job_plan` from the lobby makes the job row and a new agent session seeded with the lobby messages since the last handoff, and writes a link line into the lobby.
 The lobby gets the read side of the agency tools across all jobs, and no tool that changes a job.
 
-*Alternative:* a separate Admiral process or engine.
+_Alternative:_ a separate Admiral process or engine.
 Rejected: it would duplicate streaming, cost tracking, sessions, compaction and model routing.
 
 ### 2. Agency tools
@@ -119,7 +119,7 @@ The Admiral answers permission prompts only through `permission_answer` (decisio
 A new `~/.fleet/agency.db` (better-sqlite3, WAL, `user_version` migrations, like the learnings store) holds jobs, plans and plan versions, steps, crew members, questions, results, spend samples, and permission answers.
 The client file is Markdown at `~/.fleet/agency/clients/<repo-hash>.md`, so the user can edit it by hand.
 
-*Alternative:* JSON files like the ledger.
+_Alternative:_ JSON files like the ledger.
 Rejected: the monthly cap needs queries across jobs, and several writers (tools, the hook server, cleanup) touch the same job.
 
 ### 5. One tab per job for crew panes
@@ -143,7 +143,7 @@ A failed setup makes the step `blocked` with the log.
 Each job workspace gets its own port block (decision 16), so dev servers do not collide.
 A global and per-job limit on concurrent crew (default 4) queues extra steps.
 
-*Alternative:* truly hidden PTYs with no layout entry.
+_Alternative:_ truly hidden PTYs with no layout entry.
 Rejected: the user would lose the ability to watch or type into crew, and session mapping depends on panes.
 
 ### 6. Roles and playbooks reuse the Markdown loader
@@ -159,6 +159,7 @@ description: Writes and tests code for one well-scoped step.
 runtime: claude
 model: sonnet
 ---
+
 You build one step of an approved plan...
 ```
 
@@ -167,7 +168,14 @@ Example playbook step list:
 ```yaml
 steps:
   - { id: design, role: architect, gate: client, workspace: new }
-  - { id: build, role: builder, count: 2, after: [design], workspace: new, scopes: [server, client] }
+  - {
+      id: build,
+      role: builder,
+      count: 2,
+      after: [design],
+      workspace: new,
+      scopes: [server, client]
+    }
   - { id: integrate, role: builder, after: [build], workspace: { integrate: [build] } }
   - { id: review, role: reviewer, after: [integrate], workspace: { of: integrate } }
   - { id: qa, role: qa, after: [review], workspace: { of: integrate } }
@@ -187,7 +195,7 @@ Project settings live in Fleet, not in the repo: `~/.fleet/agency/projects/<proj
 The folder mirrors the repo `.fleet/` layout, so "Share with team" is a copy into the main checkout (never committed), and import is a copy back.
 Repo `.fleet/` files are suggestions read from the main checkout at the default branch tip, never from a crew worktree.
 They change nothing until the user imports them; Fleet stores the imported hash and shows "newer version in repo" when the default branch differs.
-*Alternative:* rules only in committed `.fleet/` files. Rejected: setup would need a commit before the first job, and anyone with push access could change how crew work.
+_Alternative:_ rules only in committed `.fleet/` files. Rejected: setup would need a commit before the first job, and anyone with push access could change how crew work.
 At approval, the plan stores a snapshot (content and hash) of every role and playbook it uses, and the job uses only that snapshot.
 
 ### 7. Runtimes behind one adapter
@@ -200,11 +208,11 @@ A `CrewRuntime` adapter has `available()`, `command(role, step, job)`, and `firs
   - `--append-system-prompt` with the role body, so it survives `/clear` and compaction;
   - `--permission-mode default`;
   - `--settings <job file>` with: `deny` for AskUserQuestion; `disableBypassPermissionsMode`; Fleet's hook entries with the same command string as a global install, so Claude Code drops duplicates, including a `PermissionRequest` hook that sends each prompt to the Admiral; a `StopFailure` hook; and a `statusLine` command (the Go hook binary's `statusline` verb) that forwards `rate_limits` and `cost` to Fleet and prints the job and step.
-  All other permission rules come from the user's own Claude Code settings.
-  The step brief is typed as the first prompt through `FleetSpawns`.
-  A brief over about 4k characters goes in a brief file in a folder passed with `--add-dir`, and the typed prompt points to it.
-  No `-p`, no SDK, no `ANTHROPIC_*` env, and Fleet never writes the Claude config folder or `~/.claude.json`.
-  Every flag and settings key here is checked against the Claude Code docs for the minimum supported version before phase 3 ships.
+    All other permission rules come from the user's own Claude Code settings.
+    The step brief is typed as the first prompt through `FleetSpawns`.
+    A brief over about 4k characters goes in a brief file in a folder passed with `--add-dir`, and the typed prompt points to it.
+    No `-p`, no SDK, no `ANTHROPIC_*` env, and Fleet never writes the Claude config folder or `~/.claude.json`.
+    Every flag and settings key here is checked against the Claude Code docs for the minimum supported version before phase 3 ships.
 - **eva:** the pane command is `eva --session-id <id> --name <job/role> --goal <brief> --model <model> --instructions <role file>` (eva #13, #15 and the new issues), with eva hooks pointed at Fleet's hook binary (eva #9).
   Fleet never passes `-b`.
   eva uses the user's own permission settings.
@@ -258,13 +266,18 @@ It runs after ANSI strip and line unwrap, and holds back the longest value lengt
 ### 10. eva tracking as a second event source
 
 The Go hook binary gets a `--runtime eva` argument.
-eva's hook config, written by Fleet per job, calls it.
-The wire event becomes protocol 3 with optional `runtime`, `db_path` and `last_record_id`; protocol 1 and 2 stay accepted.
+Fleet writes a hooks file per crew member that calls it, and starts eva with `--hooks <file>` (khang859/eva#43).
+Fleet never reads or writes eva's `config.toml`, which holds the API key.
+When the installed eva has no `--hooks`, the runtime check warns, and eva crew show `needs you` because they never report.
+The wire event becomes protocol 4 with optional `runtime` and `db_path`; protocols 1 to 3 stay accepted, and a higher one is ignored with one warning per version.
+Fleet keeps its own read cursor per session, because eva saves some records without a hook event.
 The registry stores `runtime` on the session.
 Fleet accepts `db_path` only when its realpath equals the resolved `$EVA_HOME/sessions.db` or `~/.eva/sessions.db`, because any local process can send a hook payload.
 An `EvaTranscriptSource` opens `db_path` with better-sqlite3 `readonly` and `fileMustExist` and a busy timeout, checks for the `transcript_v1` view (eva #10), and reads `WHERE session_id = ? AND id > ? ORDER BY id` in one short transaction per read, so it never blocks eva's WAL checkpoints.
+Reads happen when a reader asks, with no file watch or timer.
+A turn or a tool call is a span of positions in its source: byte offsets in a Claude Code transcript, record ids in eva's database.
 It returns the same `SessionTranscript` shape `brief.ts` and `read.ts` use.
-For permission requests the Go hook waits for Fleet's answer on the socket and prints it as eva's hook decision (eva #12).
+For permission requests the Go hook waits for Fleet's answer on the socket and prints it in the Claude Code form, which eva also takes (eva #12).
 
 ### 11. Spend
 
@@ -277,7 +290,7 @@ Two meters, never mixed:
   The percentages are account-wide, so a job's share is the rise in `seven_day.used_percentage` while its Claude crew work, split evenly across jobs with Claude crew working at that time, and marked as an estimate.
   A job's subscription budget is a share of the week (default 10%). A reserve keeps room for the user: no new Claude work while `five_hour` is at or above 80% or `seven_day` at or above 90% (settings); the step waits for `resets_at`.
   No `rate_limits` after the first response means Claude Code is on an API key, and `cost.total_cost_usd` counts as dollars.
-  *Alternative:* estimate usage from transcript token counts. Rejected: Fleet cannot know the limit, so a token count says nothing about how close the user is to it.
+  _Alternative:_ estimate usage from transcript token counts. Rejected: Fleet cannot know the limit, so a token count says nothing about how close the user is to it.
 
 A step with unknown cost needs explicit acceptance on the plan card, plus a turn or time cap.
 The plan says that cloud costs (Neon compute, Vercel builds, AWS) are not counted.
@@ -307,20 +320,20 @@ With no model key, no job starts, and the pane links to Settings.
 
 The job state machine has a transition table:
 
-| From | To | When |
-| --- | --- | --- |
-| briefing | planned | the Admiral proposes a plan |
-| planned | running | the client approves the newest plan version |
-| planned | briefing | the client rejects the plan |
-| running | waiting | every remaining step waits on the client, the chain limit, the budget, or the model |
-| waiting | running | the blocker clears |
-| running | delivered | every step is done and results are posted |
-| delivered | running | the client asks for a follow-up inside the plan, or approves a plan change |
-| delivered | closing | the client accepts |
-| any open state | closing | the client cancels, or the job fails |
-| closing | closed, cancelled or failed | cleanup ends |
-| running or waiting | interrupted | Fleet restarts with live steps |
-| interrupted | running or closing | the client picks Resume or Cancel |
+| From               | To                          | When                                                                                |
+| ------------------ | --------------------------- | ----------------------------------------------------------------------------------- |
+| briefing           | planned                     | the Admiral proposes a plan                                                         |
+| planned            | running                     | the client approves the newest plan version                                         |
+| planned            | briefing                    | the client rejects the plan                                                         |
+| running            | waiting                     | every remaining step waits on the client, the chain limit, the budget, or the model |
+| waiting            | running                     | the blocker clears                                                                  |
+| running            | delivered                   | every step is done and results are posted                                           |
+| delivered          | running                     | the client asks for a follow-up inside the plan, or approves a plan change          |
+| delivered          | closing                     | the client accepts                                                                  |
+| any open state     | closing                     | the client cancels, or the job fails                                                |
+| closing            | closed, cancelled or failed | cleanup ends                                                                        |
+| running or waiting | interrupted                 | Fleet restarts with live steps                                                      |
+| interrupted        | running or closing          | the client picks Resume or Cancel                                                   |
 
 A closed job is read-only; a follow-up opens a new job linked to it.
 `closing` refuses `crew_hire` and `crew_send`.
@@ -385,9 +398,9 @@ A copy, not a symlink, so a crew edit never changes the user's file.
 Setup lists `.claude/agents/*.md` and `.opencode/agents/*.md` and maps their frontmatter to a project role.
 Skills stay in place; the Admiral gets the skill names each crew member's working folder exposes.
 
-*Alternative:* linked jobs, one job per repo with a shared approval and budget.
+_Alternative:_ linked jobs, one job per repo with a shared approval and budget.
 Rejected: runner scripts and cross-repo checks need all members side by side in one folder, and the umbrella pointer bump needs one worktree that sees every member's commits.
-*Alternative:* symlink env files from the main checkout, as `scripts/wt-setup.sh` does.
+_Alternative:_ symlink env files from the main checkout, as `scripts/wt-setup.sh` does.
 Rejected: a crew edit would change the user's own file.
 
 ### 17. The Admiral edits settings through one tool
@@ -402,7 +415,7 @@ The kind comes from the key and the direction of the change, never from the Admi
 Settings pages read the newest row per key to show "Changed by the Admiral".
 Each Settings › Agency page has "Ask the Admiral", which opens the project's Admiral with the page and the request.
 Approved plans keep their snapshot (decision 6), so a settings change reaches a running job only through a plan change card.
-*Alternative:* every Admiral settings change needs approval. Rejected: setup and check fixes are frequent and add no money or reach, and a card for each one would bury the cards that matter.
+_Alternative:_ every Admiral settings change needs approval. Rejected: setup and check fixes are frequent and add no money or reach, and a card for each one would bury the cards that matter.
 
 ### 12. Settings
 

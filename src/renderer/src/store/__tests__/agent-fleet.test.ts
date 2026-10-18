@@ -53,6 +53,7 @@ let stop: () => void;
 function session(over: Partial<ClaudeSessionView> = {}): ClaudeSessionView {
   return {
     sessionId: 'claude-1',
+    runtime: 'claude',
     paneId: 'term-1',
     epoch: 0,
     cwd: '/work',

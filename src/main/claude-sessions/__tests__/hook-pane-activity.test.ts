@@ -9,6 +9,7 @@ const AGENT_PID = 4242;
 
 const hook = (overrides: Partial<HookEvent>): HookEvent => ({
   sessionId: 'session-1',
+  runtime: 'claude',
   cwd: '/repo',
   event: 'PermissionRequest',
   status: 'waiting_for_approval',

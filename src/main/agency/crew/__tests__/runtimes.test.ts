@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { fleetHookEntries } from '../../../claude-sessions/hook-installer';
 import { claudeJobSettings } from '../job-settings';
-import { crewLaunch, TYPED_BRIEF_MAX_CHARS, type CrewHire } from '../runtimes';
+import {
+  crewLaunch,
+  evaHooksToml,
+  testLaunch,
+  TYPED_BRIEF_MAX_CHARS,
+  type CrewHire
+} from '../runtimes';
 
 const HOOKS = fleetHookEntries('/home/u/.claude');
 const HOOK_COMMAND = HOOKS.UserPromptSubmit[0].hooks[0].command;
@@ -157,5 +163,68 @@ describe('eva launch', () => {
 
   it('keeps the saved model when the step names none', () => {
     expect(Object.keys(crewLaunch(hire({ runtime: 'eva' })).env)).not.toContain('CHAT_MODEL');
+  });
+
+  it("reports through Fleet's hook in a hooks file of its own, never eva's config.toml", () => {
+    for (const resume of [false, true]) {
+      const launch = crewLaunch(hire({ runtime: 'eva', resume, evaHook: HOOK_COMMAND }));
+      expect(launch.cmd).toContain(' --hooks "$FLEET_CREW_HOOKS" ');
+      const path = '/fleet/agency/jobs/42/crew/build-2/eva-hooks.toml';
+      expect(launch.env.FLEET_CREW_HOOKS).toBe(path);
+      expect(launch.files.find((f) => f.path === path)?.text).toBe(
+        `${evaHooksToml(HOOK_COMMAND)}\n`
+      );
+      expect(JSON.stringify(launch)).not.toContain('config.toml');
+    }
+    const toml = evaHooksToml("'/h/fleet-hook'");
+    expect(toml.match(/^\[\[hooks\.(\w+)\]\]$/gm)).toEqual(
+      [
+        'SessionStart',
+        'UserPromptSubmit',
+        'PreToolUse',
+        'PermissionRequest',
+        'PostToolUse',
+        'Stop',
+        'StopFailure',
+        'SubagentStop',
+        'PreCompact',
+        'SessionEnd'
+      ].map((e) => `[[hooks.${e}]]`)
+    );
+    expect(toml).toContain(
+      `[[hooks.PermissionRequest]]\ncommand = "'/h/fleet-hook' --runtime eva"\ntimeout = 86400\n`
+    );
+    expect(evaHooksToml('"/a b/fleet-hook"')).toContain(
+      'command = "\\"/a b/fleet-hook\\" --runtime eva"'
+    );
+  });
+
+  it('starts with no hooks file for an eva that cannot take one', () => {
+    const launch = crewLaunch(hire({ runtime: 'eva' }));
+    expect(launch.cmd).not.toContain('--hooks');
+    expect(launch.env.FLEET_CREW_HOOKS).toBeUndefined();
+  });
+
+  it("never sets eva's permissions, and never starts a prompt with a slash command", () => {
+    for (const resume of [false, true]) {
+      const launch = crewLaunch(hire({ runtime: 'eva', resume, brief: '/clear then build' }));
+      const words = launch.cmd.split(' ');
+      for (const flag of ['-b', '--bypass', '--permissions', '-p', '--print']) {
+        expect(words).not.toContain(flag);
+      }
+      expect(launch.prompt.startsWith('/')).toBe(false);
+    }
+    const test = testLaunch({
+      runtime: 'eva',
+      sessionId: 's',
+      dir: '/t',
+      hooks: HOOKS,
+      evaHook: HOOK_COMMAND,
+      prompt: 'Reply.'
+    });
+    expect(test.cmd).toBe(
+      'eva --session-id "$FLEET_CREW_SESSION_ID" --name "$FLEET_CREW_NAME" --no-ask-user --hooks "$FLEET_CREW_HOOKS" -- "$FLEET_SPAWN_PROMPT"'
+    );
+    expect(test.files.map((f) => f.path)).toEqual(['/t/eva-hooks.toml']);
   });
 });
