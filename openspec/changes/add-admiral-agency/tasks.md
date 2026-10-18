@@ -80,7 +80,6 @@ Phase 2 notes:
 - [x] 3.9 Add Settings › Agency › Crew (role and playbook lists, source, errors, open file) matching canvas boards 3.4 and 3.4b, with the role editor: runtime cards with status, a runtime switch that resets the model, Save and Discard, the Model list per runtime (Claude Code names, eva server models with tool calls, missing-model state); verify with a screenshot and a round trip to the role file
 - [x] 3.25 Add the Runtimes tab to Settings › Agency › Crew matching canvas board 3.8: for Claude Code and eva the path, version, checks, models with roles, default model, crew at once and the Test button; the Claude Code login state without reading it; eva's model server without its key; verify with a test that no credential reaches the renderer, and with a screenshot
 - [ ] 3.27 End to end (was 2.26): in a fixture workspace modeled on `Fola-Fi/fola-journey` (umbrella, three submodules, SSH submodule URLs, fixed Postgres port), brief a change across two members, approve, and see linked PRs and the bump PR; verify with `npm run drive` steps and screenshots
-- [ ] 3.10 End to end: brief a small bug fix in a test repo, approve the plan, and see a Claude Code Builder start in a TUI pane, get its brief typed in, and a Reviewer follow; verify with `npm run drive` steps and screenshots
 
 Phase 3 notes (decisions made while building):
 
@@ -159,6 +158,9 @@ Phase 3 notes (decisions made while building):
 - 3.26: the `limited` wakeup now tells the Admiral to propose a plan change that swaps the step to the other runtime when the job cannot wait.
 - 3.26: a role edit in Settings does not reach a running job, since the approved plan keeps its own copy of the roles.
 - 3.26: end to end in the dev app: a Claude Code builder waited at the trust screen in envdemo. Swap to eva made plan v2 with "Continue its work". Approve stopped the builder, and the Admiral hired an eva builder in the same worktree with the handoff note, which listed the untracked `NOTES.md`. The plan card header now wraps its tags as whole words.
+- 3.10: end to end in the dev app on the `journey` umbrella: a bug-fix brief made a plan with `fix` (builder) and `review` (reviewer, in fix's worktree). On approval a Claude Code builder started in its TUI pane with its brief typed in, fixed and committed, and a reviewer followed. The job ended delivered with a Local branch card and a Review notes file card.
+- 3.10: the first run could not finish. The review step may not change fix's worktree, but the reviewer role wrote its notes on its branch, and the brief never named what the step hands back. The brief now lists the step's deliverables. A step that reads another's worktree and hands back files gets a hand-back folder in the job folder, passed to Claude with `--add-dir`.
+- 3.10: the first run also showed the wrong commit on the Local branch card. A step workspace gives every member the same branch name, so `job_deliver` now takes the member where the branch moved past its base, and asks for `member` when it moved in more than one.
 
 - [x] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`
 - [x] 3.12 Build the job `--settings` file (AskUserQuestion denied, `disableBypassPermissionsMode`, Fleet hooks with the global command string including `PermissionRequest` and `StopFailure`); verify with snapshot tests
@@ -175,6 +177,7 @@ Phase 3 notes (decisions made while building):
 - [x] 3.23 List untracked env files with names only, copy the chosen ones into new worktrees with mode 600, block paths git does not ignore, and add values to the env redaction; verify with tests that a crew edit never changes the user's file
 - [x] 3.24 Find `CLAUDE.md`, `AGENTS.md`, `.claude/agents`, `.claude/skills` and `.opencode/agents` at setup, import agent files as roles, and tell the Admiral which skills each working folder exposes; verify with loader tests and check in Claude Code which skills load from a member subfolder, recording the result in `docs/learnings/`
 - [x] 3.26 Add Swap on crew cards with "Continue its work" (same workspace, handoff brief) and "Start over" (new branch), stop-before-start, and an Admiral-proposed swap on `limited`; verify with tool tests for swap-continue, swap-restart, the proposed swap, and a role edit that does not reach a running job
+- [x] 3.10 End to end: brief a small bug fix in a test repo, approve the plan, and see a Claude Code Builder start in a TUI pane, get its brief typed in, and a Reviewer follow; verify with `npm run drive` steps and screenshots
 
 ## 4. Phase 4 - eva session tracking (PR 4, needs khang859/eva#9, #10, #13, and #12 for hook permission answers)
 
