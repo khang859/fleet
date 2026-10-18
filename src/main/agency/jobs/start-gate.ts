@@ -1,6 +1,7 @@
 import { jobDisplayId, type AgencyJob } from '../../../shared/agency';
 import type { AgencyStep } from '../../../shared/agency-jobs';
 import type { Plan } from '../../../shared/agency-plan';
+import type { StackGate } from './stack-slots';
 
 export type StartVerdict = { ok: true } | { ok: false; reason: string; queue?: boolean };
 
@@ -13,8 +14,8 @@ export type StartVerdict = { ok: true } | { ok: false; reason: string; queue?: b
  * approved plan has no such step, while a step it waits on is not done, and
  * for a step its crew member left before it was done, until the client says
  * it may go again.
- * Over the crew limit, or behind a job it queues after, it is not refused but
- * queued: it starts once a place frees up.
+ * Over the crew limit, behind a job it queues after, or with every stack slot
+ * taken, it is not refused but queued: it starts once a place frees up.
  */
 export function canStartStep(input: {
   job: Pick<AgencyJob, 'id' | 'state'>;
@@ -24,6 +25,8 @@ export function canStartStep(input: {
   /** The job this one runs after, while that job is still under way. */
   queuedBehind?: number | null;
   live?: { job: number; all: number; limit: number };
+  /** The project's stack slots, for a step whose role runs the stack. */
+  stack?: StackGate | null;
 }): StartVerdict {
   const id = jobDisplayId(input.job.id);
   if (input.job.state !== 'running') {
@@ -52,20 +55,24 @@ export function canStartStep(input: {
   if (waiting.length > 0) {
     return { ok: false, reason: `Step ${input.stepId} waits on ${waiting.join(', ')}.` };
   }
+  const wait = waitReason(input);
+  return wait === null ? { ok: true } : { ok: false, reason: wait, queue: true };
+}
+
+/** Why a step that may start has to wait for a place first, or null when it can go now. */
+function waitReason(input: Parameters<typeof canStartStep>[0]): string | null {
   if (input.queuedBehind != null) {
-    return {
-      ok: false,
-      reason: `${id} runs after ${jobDisplayId(input.queuedBehind)}, which is still under way.`,
-      queue: true
-    };
+    return `${jobDisplayId(input.job.id)} runs after ${jobDisplayId(input.queuedBehind)}, which is still under way.`;
   }
   const live = input.live;
   if (live && (live.job >= live.limit || live.all >= live.limit)) {
-    return {
-      ok: false,
-      reason: `${live.limit} crew members are already working; this step starts when one finishes.`,
-      queue: true
-    };
+    return `${live.limit} crew members are already working; this step starts when one finishes.`;
   }
-  return { ok: true };
+  const stack = input.stack;
+  if (!stack || stack.held < stack.slots) return null;
+  const outside =
+    stack.outsidePort === null
+      ? ''
+      : ` A program outside Fleet listens on port ${stack.outsidePort}, which takes one; Fleet does not stop it.`;
+  return `Waiting for a stack slot: the project runs ${stack.slots === 1 ? 'one stack' : `${stack.slots} stacks`} at a time.${outside}`;
 }

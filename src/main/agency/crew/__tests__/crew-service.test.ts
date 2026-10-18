@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { DEFAULT_AGENCY_SETTINGS, type AgencyRepoRef } from '../../../../shared/agency';
 import { PlanSchema, PlanStepSchema, type PlanInput } from '../../../../shared/agency-plan';
@@ -160,7 +161,7 @@ describe('stepBrief', () => {
       FLEET_PORTS: '41000-41019',
       COMPOSE_PROJECT_NAME: 'admiral-j1-web-1'
     };
-    expect(stepBrief(step(), 'Build it.', env)).toBe(
+    expect(stepBrief(step(), 'Build it.', { env })).toBe(
       "Build it.\n\nYour env sets the servers' ports: API_PORT=41000, WEB_PORT=41001. Use them, never the defaults: other jobs run servers too. For any other server, pick a free port in 41000-41019 (FLEET_PORTS)."
     );
   });
@@ -249,6 +250,105 @@ describe('crew_hire', () => {
     );
     expect(stepStatus(jobId, 'front')).toBe('pending');
     expect(crewOf(jobId)).toMatchObject([{ status: 'ended' }]);
+  });
+});
+
+describe('stack slots', () => {
+  async function oneSlot(fixedPort: number): Promise<void> {
+    const scan = await service.projects.scan(ref);
+    await service.projects.saveSetup(
+      {
+        repo: ref,
+        setup: {
+          ...scan.setup,
+          stackSlots: 1,
+          members: scan.setup.members.map((m) => ({
+            ...m,
+            fixedPorts: [{ port: fixedPort, service: 'postgres' }]
+          }))
+        },
+        imports: []
+      },
+      { finish: true }
+    );
+  }
+
+  const qaJob = async (): Promise<number> =>
+    approvedJob([
+      step('build'),
+      step('qa', { role: 'qa', after: ['build'], deliverables: ['report'] })
+    ]);
+
+  /** A port nothing listens on, then a server outside Fleet on it while `held`. */
+  async function outsideServer(): Promise<{
+    port: number;
+    listen: () => Promise<void>;
+    close: () => Promise<void>;
+  }> {
+    const server = createServer();
+    const port = await new Promise<number>((done) =>
+      server.listen(0, () => {
+        const address = server.address();
+        done(typeof address === 'object' && address !== null ? address.port : 0);
+      })
+    );
+    const close = async (): Promise<void> =>
+      new Promise((done) => (server.listening ? server.close(() => done()) : done()));
+    await close();
+    return {
+      port,
+      listen: async () => new Promise((done) => server.listen(port, () => done())),
+      close
+    };
+  }
+
+  it('lets one job run the stack at a time while the builders of both keep working', async () => {
+    const outside = await outsideServer();
+    await oneSlot(outside.port);
+    const [one, two] = [await qaJob(), await qaJob()];
+    for (const jobId of [one, two]) {
+      await toolsOf(jobId).crewHire!({ step: 'build', brief: 'x' });
+      service.jobs.updateStep(jobId, { step: 'build', status: 'done' });
+    }
+    expect(panes.opened.map((p) => p.label)).toEqual(['builder 1', 'builder 1']);
+
+    await toolsOf(one).crewHire!({ step: 'qa', brief: 'x' });
+    const out = await toolsOf(two).crewHire!({ step: 'qa', brief: 'x' });
+    expect(out.text).toContain(
+      'Step qa is queued: Waiting for a stack slot: the project runs one stack at a time.'
+    );
+    expect(stepStatus(two, 'qa')).toBe('queued');
+    expect(service.store.plans.step(two, 'qa')?.note).toBe(
+      'Waiting for a stack slot: the project runs one stack at a time.'
+    );
+    expect(panes.opened.at(-1)?.prompt).toContain('You run the stack');
+
+    // The first QA finishes, then its pane exits: the slot is free.
+    service.jobs.updateStep(one, { step: 'qa', status: 'done' });
+    expect(stepStatus(two, 'qa')).toBe('queued');
+    service.crew.ended(panes.opened.at(-1)?.paneId ?? '', { kind: 'exit', exitCode: 0 });
+    expect(stepStatus(two, 'qa')).toBe('pending');
+    expect(service.store.plans.step(two, 'qa')?.note).toBe('');
+  });
+
+  it('counts a fixed port a program outside Fleet holds as a taken slot, until it lets go', async () => {
+    const outside = await outsideServer();
+    await oneSlot(outside.port);
+    const jobId = await qaJob();
+    await toolsOf(jobId).crewHire!({ step: 'build', brief: 'x' });
+    service.jobs.updateStep(jobId, { step: 'build', status: 'done' });
+    await outside.listen();
+
+    const out = await toolsOf(jobId).crewHire!({ step: 'qa', brief: 'x' });
+    expect(out.text).toContain(
+      `A program outside Fleet listens on port ${outside.port}, which takes one; Fleet does not stop it.`
+    );
+    await service.stack.poll();
+    expect(stepStatus(jobId, 'qa')).toBe('queued');
+
+    await outside.close();
+    await service.stack.poll();
+    expect(stepStatus(jobId, 'qa')).toBe('pending');
   });
 });
 

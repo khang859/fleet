@@ -43,6 +43,7 @@ import {
 } from './crew/catalog';
 import { CrewService, type CrewPaneHost } from './crew/crew-service';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
+import { StackSlots } from './jobs/stack-slots';
 import { exportJob } from './jobs/job-export';
 import { reconcileAtStartup } from './jobs/reconcile';
 import { runPreflight, type Probe } from './preflight';
@@ -161,6 +162,7 @@ export class AgencyService {
   readonly clientFiles: ClientFiles;
   readonly settings: AgencySettingsService;
   readonly workspaces: JobWorkspaces;
+  readonly stack: StackSlots;
   readonly merges: MergeQueue;
   readonly crew: CrewService;
   /** How crew panes are stopped and found live. */
@@ -186,11 +188,17 @@ export class AgencyService {
     });
     const panes = deps.crewPanes ?? null;
     this.crewControl = deps.crew ?? (panes === null ? NO_CREW : paneControl(panes));
+    this.stack = new StackSlots({
+      store: this.store,
+      home: () => deps.agencyHome ?? agencyHome(),
+      admit: () => this.jobs.admitQueued()
+    });
     this.jobs = new JobsService({
       store: this.store,
       crew: this.crewControl,
       changed: (touched) => this.changed(touched),
       crewLimit: deps.crewLimit,
+      stack: this.stack,
       planFacts: async (input) => this.planFacts(input),
       crewSnapshot: deps.crewDirs
         ? async (job, plan) => crewSnapshot(await this.crewCatalog(job.repoId), plan)
@@ -241,6 +249,7 @@ export class AgencyService {
       store: this.store,
       jobs: this.jobs,
       workspaces: this.workspaces,
+      stack: this.stack,
       panes,
       home: () => deps.agencyHome ?? agencyHome(),
       changed: (touched) => this.changed(touched),
@@ -511,6 +520,7 @@ export class AgencyService {
     this.cleanup.startRetrying();
     this.merges.startTicking();
     this.prs.startWatching();
+    this.stack.startPolling();
     await Promise.all([this.cleanup.resumeAll(), this.merges.advanceAll(), this.prs.watchAll()]);
   }
 
@@ -667,6 +677,7 @@ export class AgencyService {
     this.cleanup.stopRetrying();
     this.merges.stopTicking();
     this.prs.stopWatching();
+    this.stack.stopPolling();
     this.store.close();
   }
 

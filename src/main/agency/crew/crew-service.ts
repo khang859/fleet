@@ -23,6 +23,7 @@ import type { JobsService } from '../jobs';
 import { jobDir } from '../projects/paths';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import { CREW_STARTING, LOST_AT_RESTART, type CrewRecord } from '../store/crew-store';
+import type { StackSlots } from '../jobs/stack-slots';
 import type { JobWorkspaces, StepFolder } from '../workspaces/job-workspace';
 import { crewLaunch, type CrewLaunch } from './runtimes';
 
@@ -59,6 +60,8 @@ export type CrewServiceDeps = {
   store: AgencyStore;
   jobs: JobsService;
   workspaces: Pick<JobWorkspaces, 'open' | 'folder'>;
+  /** Read ahead before each hire, so the start check knows the project's stack slots. */
+  stack?: Pick<StackSlots, 'refresh'>;
   /** Unset where Fleet has no panes (tests of other parts): nothing can be hired. */
   panes: CrewPaneHost | null;
   home: () => string;
@@ -70,9 +73,14 @@ export type CrewServiceDeps = {
 /**
  * The Admiral's brief, with what the plan says about where the step works:
  * the part of the code it owns, that a step reading another's worktree
- * changes nothing in it, and the ports its workspace's servers use.
+ * changes nothing in it, the ports its workspace's servers use, and for a
+ * role that runs the stack, to stop it so the next step gets the slot.
  */
-export function stepBrief(step: PlanStep, brief: string, env: Record<string, string> = {}): string {
+export function stepBrief(
+  step: PlanStep,
+  brief: string,
+  workspace: { env?: Record<string, string>; stack?: boolean } = {}
+): string {
   const notes: string[] = [];
   if (step.scope !== undefined) {
     notes.push(
@@ -84,8 +92,13 @@ export function stepBrief(step: PlanStep, brief: string, env: Record<string, str
       `This worktree is step ${step.workspace.of}'s. Read and run it, but change and commit nothing.`
     );
   }
-  const note = portsNote(env);
+  const note = portsNote(workspace.env ?? {});
   if (note !== null) notes.push(note);
+  if (workspace.stack === true) {
+    notes.push(
+      'You run the stack, which holds one of the project’s stack slots. Stop every server and container you started before you finish, so the next step can run it.'
+    );
+  }
   return [brief, ...notes].join('\n\n');
 }
 
@@ -142,11 +155,12 @@ export class CrewService {
         `Not hired: ${working.label} (${this.refOf(working)}) is working on step ${step.id}. Talk to it with crew_send.`
       );
     }
+    await this.deps.stack?.refresh(job.repoId);
     const verdict = this.deps.jobs.startCheck(jobId, step.id);
     if (!verdict.ok && verdict.queue !== true) throw new Error(`Not hired: ${verdict.reason}`);
     this.checkRate(jobId);
     if (!verdict.ok) {
-      this.deps.jobs.hireMoved(jobId, step.id, 'queued');
+      this.deps.jobs.hireMoved(jobId, step.id, 'queued', verdict.reason);
       return {
         text: `Step ${step.id} is queued: ${verdict.reason} A wakeup tells you when it can start; hire for it then.`,
         summary: `${step.id} queued`
@@ -202,7 +216,7 @@ export class CrewService {
         runtime,
         model,
         rolePrompt: role.prompt,
-        brief: stepBrief(step, args.brief, workspace.env),
+        brief: stepBrief(step, args.brief, { env: workspace.env, stack: role.stack }),
         sessionId: crew.sessionId ?? '',
         resume: lost !== null,
         dir: join(jobDir(this.deps.home(), job.id), 'crew', `${step.id}-${member}`),

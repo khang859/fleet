@@ -42,6 +42,7 @@ import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import { CREW_ENDED, CREW_LIVE, type CrewRecord } from '../store/crew-store';
 import type { PlanVersionRecord } from '../store/plan-store';
 import { acceptsPlans } from './job-machine';
+import type { StackSlots } from './stack-slots';
 import { canStartStep, type StartVerdict } from './start-gate';
 
 const log = createLogger('agency:jobs');
@@ -92,6 +93,8 @@ export type JobsServiceDeps = {
    * approval so the job runs on them. Without it the approval keeps no crew.
    */
   crewSnapshot?: (job: AgencyJob, plan: Plan) => Promise<CrewSnapshot>;
+  /** The project's stack slots; without it, steps that run the stack wait on none. */
+  stack?: Pick<StackSlots, 'gate' | 'runsStack'>;
 };
 
 /**
@@ -442,7 +445,7 @@ export class JobsService {
     const target = this.targetStatus(current, approved.plan, step, update);
     if (!target.ok) return target;
 
-    this.writeStepUpdate(current, update, target.status);
+    this.writeStepUpdate(current, update, target.status, target.queued);
     if (target.queued !== null) {
       return {
         ok: true,
@@ -480,13 +483,18 @@ export class JobsService {
     return { ok: true, status: queued === null ? update.status : 'queued', queued };
   }
 
+  /** Move the step and keep the Admiral's note, or why the step is queued. */
   private writeStepUpdate(
     job: AgencyJob,
     update: StepUpdate,
-    status: StepStatus | undefined
+    status: StepStatus | undefined,
+    queued: string | null
   ): void {
     this.store.tx(() => {
       if (status !== undefined) this.moveStep(job, update.step, status);
+      if (queued !== null && update.note === undefined) {
+        this.store.plans.setStepNote(job.id, update.step, queued);
+      }
       if (update.note !== undefined) {
         this.store.plans.setStepNote(job.id, update.step, update.note);
         this.store.plans.log({
@@ -517,10 +525,13 @@ export class JobsService {
    * A hire moves its step: `running` as its crew member starts, `queued`
    * while it waits for a place, or back to where it was when the hire failed.
    */
-  hireMoved(jobId: number, stepId: string, status: StepStatus): void {
+  hireMoved(jobId: number, stepId: string, status: StepStatus, note?: string): void {
     const job = this.store.getJob(jobId);
     if (!job) return;
-    this.store.tx(() => this.moveStep(job, stepId, status));
+    this.store.tx(() => {
+      this.moveStep(job, stepId, status);
+      if (note !== undefined) this.store.plans.setStepNote(jobId, stepId, note);
+    });
     this.refreshClientHold(jobId);
     this.deps.changed([{ repoId: job.repoId, jobId }]);
   }
@@ -539,7 +550,11 @@ export class JobsService {
   }): void {
     const { jobId, stepId } = input;
     const job = this.store.getJob(jobId);
-    if (!job || this.store.plans.step(jobId, stepId)?.status !== 'running') return;
+    if (!job || this.store.plans.step(jobId, stepId)?.status !== 'running') {
+      // The step moved on before its member left, but the member's place is free now.
+      this.admitQueued();
+      return;
+    }
     const what = input.status === 'stopped' ? 'was stopped' : 'failed';
     this.store.tx(() => {
       this.moveStep(job, stepId, input.status);
@@ -574,8 +589,16 @@ export class JobsService {
     this.admitQueued();
   }
 
-  /** Whether a step may start now, with the crew limit and the job it queues behind. */
-  private startVerdict(job: AgencyJob, plan: Plan, stepId: string, admitted = 0): StartVerdict {
+  /**
+   * Whether a step may start now, with the crew limit, the job it queues
+   * behind and the stack slots. `admitted` counts steps let go but not hired yet.
+   */
+  private startVerdict(
+    job: AgencyJob,
+    plan: Plan,
+    stepId: string,
+    admitted = { crew: 0, stack: 0 }
+  ): StartVerdict {
     const behind = plan.queueBehind === null ? null : this.store.getJob(plan.queueBehind);
     return canStartStep({
       job,
@@ -584,10 +607,11 @@ export class JobsService {
       stepId,
       queuedBehind: behind && UNDER_WAY.includes(behind.state) ? behind.id : null,
       live: {
-        job: this.store.crew.live(job.id).length + admitted,
-        all: this.store.crew.live().length + admitted,
+        job: this.store.crew.live(job.id).length + admitted.crew,
+        all: this.store.crew.live().length + admitted.crew,
         limit: this.deps.crewLimit?.() ?? DEFAULT_CREW_LIMIT
-      }
+      },
+      stack: this.deps.stack?.gate(job, stepId, admitted.stack)
     });
   }
 
@@ -598,14 +622,18 @@ export class JobsService {
    */
   admitQueued(): void {
     const touched: AgencyTouched[] = [];
-    let admitted = 0;
+    let crew = 0;
+    const stack = new Map<string, number>();
     for (const { jobId, stepId } of this.store.plans.queuedSteps()) {
       const job = this.store.getJob(jobId);
       const plan = this.store.plans.approved(jobId)?.plan;
+      const admitted = { crew, stack: job ? (stack.get(job.repoId) ?? 0) : 0 };
       if (!job || !plan || !this.startVerdict(job, plan, stepId, admitted).ok) continue;
-      admitted += 1;
+      crew += 1;
+      if (this.deps.stack?.runsStack(jobId, stepId)) stack.set(job.repoId, admitted.stack + 1);
       this.store.tx(() => {
         this.store.plans.setStepStatus(jobId, stepId, 'pending');
+        this.store.plans.setStepNote(jobId, stepId, '');
         this.store.plans.log({ jobId, kind: 'step', stepId, text: `Step ${stepId} may start` });
         this.store.enqueueWakeup({
           repoId: job.repoId,
