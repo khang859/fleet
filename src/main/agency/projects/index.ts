@@ -15,6 +15,7 @@ import type {
   AgencyProjectSummary,
   BriefIdeas,
   ClientFileView,
+  ProjectTrust,
   ClientLineInput,
   ClientLineResult,
   ImportDiff,
@@ -246,8 +247,20 @@ export class ProjectsService {
     return {
       path: clientFiles.path(layer),
       text: clientFiles.read(layer) || null,
-      changedOutside: clientFiles.changedOutside(layer)
+      changedOutside: clientFiles.changedOutside(layer),
+      uses: Object.fromEntries(this.deps.store.preferences.useCounts(layer))
     };
+  }
+
+  /** How much Fleet does on its own in a project. */
+  trust(repoId: string): ProjectTrust {
+    return this.deps.store.preferences.trust(repoId);
+  }
+
+  /** Set a project's trust level from Settings, so its Bridge says what now happens. */
+  setTrust(input: { repoId: string; trust: ProjectTrust }): void {
+    this.deps.store.preferences.setTrust(input.repoId, input.trust);
+    this.deps.emit({ repoId: input.repoId, jobIds: [] });
   }
 
   /**

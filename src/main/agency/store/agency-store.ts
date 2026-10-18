@@ -1342,6 +1342,7 @@ export class AgencyStore {
       questions: [...open, ...recent].sort((a, b) => a.id - b.id),
       nextRetryAt: retry?.due ?? null,
       onboarding: this.onboarding(repoId),
+      trust: this.preferences.trust(repoId),
       leftovers: this.resources.leftovers(repoId),
       pastJobs: this.pastJobs(repoId),
       settingsCards: this.settings.cards(repoId, SNAPSHOT_SETTINGS_CARDS)

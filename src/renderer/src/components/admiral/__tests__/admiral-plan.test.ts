@@ -55,6 +55,8 @@ function version(over: Partial<AgencyPlanVersion> = {}): AgencyPlanVersion {
     decidedAt: null,
     diff: [],
     effects: null,
+    uses: [],
+    autoStartUsd: null,
     ...over
   };
 }
@@ -300,6 +302,37 @@ describe('PlanCard', () => {
     const one = version({ status: 'approved', plan: { ...PLAN, steps: PLAN.steps.slice(0, 1) } });
     expect(card(one)).toContain('Plan v1 approved · 1 step, $10');
   });
+
+  it('lists the saved lines a plan follows as chips, and nothing when it cites none', () => {
+    const uses = [
+      { id: 'Y1', layer: 'you' as const, text: 'Never push to main.' },
+      { id: 'P2', layer: 'project' as const, text: 'Open PRs as drafts.' }
+    ];
+    const html = card(version({ uses }));
+    expect(html).toContain('>USING WHAT I KNOW ABOUT YOU<');
+    expect(html).toContain('title="You · every project: Never push to main."');
+    expect(html).toContain('title="This project: Open PRs as drafts."');
+    expect(card(version())).not.toContain('USING WHAT I KNOW ABOUT YOU');
+  });
+
+  it('keeps a plan that started on its own open, with Stop and Change instead of Approve', () => {
+    const started = version({ status: 'approved', autoStartUsd: 10 });
+    const html = card(started);
+    expect(html).toContain('Started on its own · within $10');
+    expect(html).toContain('>Stop<');
+    expect(html).toContain('Change something');
+    expect(html).not.toContain('Approve plan');
+    expect(html).not.toContain('Reject');
+  });
+
+  it('folds a plan that started on its own once it is replaced or the job ends', () => {
+    const started = version({ status: 'approved', autoStartUsd: 10 });
+    const newer = version({ id: 8, version: 2, kind: 'change' });
+    expect(card(started, detail([started, newer]))).not.toContain('>Stop<');
+    const closed = { ...detail([started]), job: agencyJob({ id: 2, state: 'closed' }) };
+    expect(card(started, closed)).toContain('Plan v1 approved');
+    expect(card(started, closed)).not.toContain('>Stop<');
+  });
 });
 
 describe('the sheet', () => {
@@ -314,6 +347,7 @@ describe('the sheet', () => {
     onboarding: { setupDoneAt: 1, starterDoneAt: 1, meetDue: false, meetLeft: [] },
     leftovers: [],
     clientFileChanged: false,
+    trust: { level: 'ask', autoStartUsd: null },
     pastJobs: [],
     settingsCards: []
   });
@@ -349,6 +383,7 @@ describe('the sheet', () => {
       )
     );
     expect(html).toContain('v1 approved');
+    expect(html).not.toContain('USING WHAT I KNOW ABOUT YOU');
     expect(html).toContain('1 of 2 steps done');
     expect(html).toContain('Build the toggle');
     expect(html).toContain('>done<');
@@ -356,6 +391,24 @@ describe('the sheet', () => {
     expect(html).toContain('Reading the diff');
     expect(html).toContain('$2.50 of $10.00');
     expect(html).toContain('Nothing needs you right now.');
+  });
+
+  it('says when the approved plan started on its own, with the lines it follows', () => {
+    const started = version({
+      status: 'approved',
+      autoStartUsd: 10,
+      uses: [{ id: 'P1', layer: 'project', text: 'Open PRs as drafts.' }]
+    });
+    const html = sheet(snap(false), detail([started]));
+    expect(html).toContain('v1 started on its own');
+    expect(html).toMatch(/USING WHAT I KNOW ABOUT YOU.*Open PRs as drafts\./s);
+  });
+
+  it('says a small first plan starts on its own under a trust level that allows it', () => {
+    const job = { ...detail([]), job: agencyJob({ id: 2, approvedVersion: null }) };
+    expect(sheet(snap(false), job)).toContain('Nothing starts until you approve it.');
+    const pr = { ...snap(false), trust: { level: 'pr' as const, autoStartUsd: null } };
+    expect(sheet(pr, job)).toContain('A small first plan starts on its own.');
   });
 
   it('shows both meters, who spent what, the estimate marker and the overshoot', () => {

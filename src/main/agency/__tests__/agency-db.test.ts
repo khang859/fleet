@@ -139,7 +139,7 @@ describe('agency.db', () => {
     const path = tempPath();
     mkdirSync(dirname(path), { recursive: true });
     const old = new Database(path);
-    migrateAgencyDb(old, AGENCY_SCHEMA_VERSION - 2);
+    migrateAgencyDb(old, AGENCY_SCHEMA_VERSION - 3);
     expect(tables(old)).not.toContain('project_trust');
     old.close();
 
@@ -153,6 +153,31 @@ describe('agency.db', () => {
     ]) {
       expect(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()).toEqual({ n: 0 });
     }
+    db.close();
+  });
+
+  it('gives older plan versions no uses and no auto-start, and older merges the client as starter', () => {
+    const path = tempPath();
+    mkdirSync(dirname(path), { recursive: true });
+    const old = new Database(path);
+    migrateAgencyDb(old, AGENCY_SCHEMA_VERSION - 1);
+    old.close();
+
+    const db = openAgencyDb(path);
+    const columns = (table: string): Array<{ name: string; dflt_value: string | null }> =>
+      db
+        .prepare<
+          [],
+          { name: string; dflt_value: string | null }
+        >(`SELECT name, dflt_value FROM pragma_table_info('${table}')`)
+        .all();
+    expect(columns('plan_versions')).toEqual(
+      expect.arrayContaining([
+        { name: 'uses_json', dflt_value: "'[]'" },
+        { name: 'auto_start_usd', dflt_value: null }
+      ])
+    );
+    expect(columns('merge_runs')).toContainEqual({ name: 'started_by', dflt_value: "'client'" });
     db.close();
   });
 

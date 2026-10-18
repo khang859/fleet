@@ -228,6 +228,8 @@ export type ClientFileView = {
   text: string | null;
   /** Changed outside Fleet since Fleet last wrote it, and not kept yet. */
   changedOutside: boolean;
+  /** How many jobs used each line, by the line's normal form (`normText`). */
+  uses: Record<string, number>;
 };
 
 /** A line the client file can take, with where it came from. */
@@ -288,7 +290,21 @@ export function githubSlug(url: string | null): string | null {
  * result on a card, `pr` starts a small plan on its own, and `ship` also merges
  * the pull requests once their checks pass.
  */
-export type TrustLevel = 'ask' | 'pr' | 'ship';
+export const TRUST_LEVELS = ['ask', 'pr', 'ship'] as const;
+export type TrustLevel = (typeof TRUST_LEVELS)[number];
+
+/** Each trust level as the client reads it. */
+export const TRUST_NAME: Record<TrustLevel, string> = {
+  ask: 'Ask me',
+  pr: 'Show me the PR',
+  ship: 'Ship it'
+};
 
 /** A project's trust level. A null `autoStartUsd` means the project's default job budget. */
 export type ProjectTrust = { level: TrustLevel; autoStartUsd: number | null };
+
+/**
+ * When Fleet approves a project's first plan on its own: the trust level, and
+ * the most the plan may spend in dollars and in share of the weekly Claude limit.
+ */
+export type AutoStartRule = { level: 'pr' | 'ship'; usd: number; weekPct: number };

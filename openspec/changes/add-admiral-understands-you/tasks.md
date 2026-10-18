@@ -17,14 +17,14 @@
 
 ## 3. Phase 3: trust levels and preferences used (one PR)
 
-- [ ] 3.1 Add `uses` to `PlanSchema` and `job_plan` (line ids from the note, at most 20, unknown ids dropped with a note); verify with `agency-tools` tests.
-- [ ] 3.2 Write `preference_uses` rows when a plan version with `uses` is approved, once per line per job; verify the count goes up once per job across two plan versions.
-- [ ] 3.3 Auto-start under Show me the PR and Ship it: run `approvable`, then approve without a card when the budget is within `auto_start_usd` and the default Claude share, no new role, and no client tick, logging "Started on its own"; verify with jobs tests for a small plan, a big plan, a plan with a new role, and an eva step needing a tick.
-- [ ] 3.4 Show an auto-started plan card with Stop and Change instead of Approve; verify with a `PlanCard` renderer test.
-- [ ] 3.5 Ship it: when a job reaches `delivered` with only pull request deliverables, start the merge queue, then accept and close and post a report card when every merge is in; leave the job waiting when the queue stops; verify with merge-queue tests for green, red check, and failed merge.
-- [ ] 3.6 Show the trust level and auto-start budget on the What the Admiral knows page for each project; verify with a renderer test.
-- [ ] 3.7 Show the cited lines as chips under "Using what I know about you" on the plan card and the job sheet, and the use count on the profile page; verify with renderer tests and in the running app on a real job.
-- [ ] 3.8 Tell the Admiral the trust level in the prompt, only to describe what will happen, and to cite `uses`; verify with the Admiral prompt test.
+- [x] 3.1 Add `uses` to `PlanSchema` and `job_plan` (line ids from the note, at most 20, unknown ids dropped with a note); verify with `agency-tools` tests.
+- [x] 3.2 Write `preference_uses` rows when a plan version with `uses` is approved, once per line per job; verify the count goes up once per job across two plan versions.
+- [x] 3.3 Auto-start under Show me the PR and Ship it: run `approvable`, then approve without a card when the budget is within `auto_start_usd` and the default Claude share, no new role, and no client tick, logging "Started on its own"; verify with jobs tests for a small plan, a big plan, a plan with a new role, and an eva step needing a tick.
+- [x] 3.4 Show an auto-started plan card with Stop and Change instead of Approve; verify with a `PlanCard` renderer test.
+- [x] 3.5 Ship it: when a job reaches `delivered` with only pull request deliverables, start the merge queue, then accept and close and post a report card when every merge is in; leave the job waiting when the queue stops; verify with merge-queue tests for green, red check, and failed merge.
+- [x] 3.6 Show the trust level and auto-start budget on the What the Admiral knows page for each project; verify with a renderer test.
+- [x] 3.7 Show the cited lines as chips under "Using what I know about you" on the plan card and the job sheet, and the use count on the profile page; verify with renderer tests and in the running app on a real job.
+- [x] 3.8 Tell the Admiral the trust level in the prompt, only to describe what will happen, and to cite `uses`; verify with the Admiral prompt test.
 
 ## 4. Phase 4: Read your work (one PR)
 

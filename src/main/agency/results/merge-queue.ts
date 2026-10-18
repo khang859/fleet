@@ -6,7 +6,7 @@ import { repoFacts } from '../projects/repo-reader';
 import { memberOf } from '../projects/workspace-projects';
 import type { GitRun } from '../repo-identity';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
-import type { MergeRunRecord } from '../store/result-store';
+import type { MergeRunRecord, MergeStarter } from '../store/result-store';
 import { joinOnce } from '../join-once';
 import { bumpBranch, type BumpInput } from '../workspaces/umbrella-bump';
 import { prAddress, readMergeView, readPr, type PrMergeView } from './gh-pr';
@@ -29,6 +29,8 @@ export type MergeQueueDeps = {
   /** Commits and pushes the umbrella bump; returns the worktree it is in. */
   bump: (input: BumpInput) => Promise<{ path: string; branch: string }>;
   changed: (touched: AgencyTouched[]) => void;
+  /** Every PR of a merge Fleet started under Ship it merged; nothing happens unless set. */
+  shipped?: (jobId: number) => void;
 };
 
 /** What the next PR in line needs now. */
@@ -78,7 +80,7 @@ export function mergeVerdict(view: PrMergeView, run: MergeRunRecord): MergeVerdi
 }
 
 /**
- * Merges a job's PRs when the client asks: one at a time in member order,
+ * Merges a job's PRs when the client asks, or on its own under Ship it: one at a time in member order,
  * each after its checks pass on the updated base, then, for an umbrella
  * project, opens the pointer bump PR and merges it last. The run is kept in
  * `merge_runs`, so a restart picks it up where it was.
@@ -89,8 +91,11 @@ export class MergeQueue {
 
   constructor(private readonly deps: MergeQueueDeps) {}
 
-  /** The client asked to merge the job's PRs. */
-  async start(jobId: number): Promise<{ ok: true } | { ok: false; reason: string }> {
+  /** The client asked to merge the job's PRs, or Fleet did under Ship it. */
+  async start(
+    jobId: number,
+    by: MergeStarter = 'client'
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
     const { store } = this.deps;
     const found = store.jobRepo(jobId);
     if (found === null) return { ok: false, reason: `${jobDisplayId(jobId)} is not known.` };
@@ -110,12 +115,17 @@ export class MergeQueue {
     }
     store.merges.begin(
       jobId,
-      prs.map((r) => r.id)
+      prs.map((r) => r.id),
+      by
     );
+    const what = prs.length === 1 ? 'the PR' : `${prs.length} PRs in member order`;
     store.plans.log({
       jobId,
       kind: 'merge',
-      text: `The client asked to merge ${prs.length === 1 ? 'the PR' : `${prs.length} PRs in member order`}.`
+      text:
+        by === 'client'
+          ? `The client asked to merge ${what}.`
+          : `Ship it: Fleet started to merge ${what} on its own.`
     });
     this.touch(jobId);
     void this.advance(jobId);
@@ -368,14 +378,21 @@ export class MergeQueue {
     return false;
   }
 
-  /** The run ends; the Admiral hears how, and the client sees it on the sheet. */
+  /**
+   * The run ends; the Admiral hears how, and the client sees it on the sheet.
+   * A run Fleet started that merged everything goes on to `shipped` instead.
+   */
   private finish(jobId: number, status: 'done' | 'failed', note: string, failed?: number): void {
     const { store } = this.deps;
     const job = store.getJob(jobId);
+    const shipped =
+      status === 'done' &&
+      store.merges.run(jobId)?.startedBy === 'trust' &&
+      this.deps.shipped !== undefined;
     store.tx(() => {
       store.merges.finish(jobId, status, note, failed);
       store.plans.log({ jobId, kind: 'merge', text: note });
-      if (job) {
+      if (job && !shipped) {
         store.enqueueWakeup({
           repoId: job.repoId,
           jobId,
@@ -391,6 +408,7 @@ export class MergeQueue {
       }
     });
     this.touch(jobId);
+    if (shipped) this.deps.shipped?.(jobId);
   }
 
   private touch(jobId: number): void {

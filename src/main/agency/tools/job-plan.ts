@@ -39,13 +39,23 @@ export async function jobPlan(
   if (!result.ok)
     return { text: `The plan was not proposed: ${result.error}`, summary: 'plan refused' };
   const { version } = result;
+  const dropped =
+    result.dropped.length > 0
+      ? `\n\nLeft out of \`uses\`, as no saved line has these ids: ${result.dropped.join(', ')}.`
+      : '';
+  if (result.autoStarted) {
+    return {
+      text: `Plan v${version.version} started on its own: the project's trust level lets Fleet start a plan this small, and it passed every check. Hire for the steps that may start now with crew_hire, and tell the client in a line what you started and why. They can still stop or change it from its card.${dropped}`,
+      summary: `started plan v${version.version} on its own ${planToken(version.id)}`
+    };
+  }
   const changes = diffPlans(approved, version.plan).map(diffLine);
   const what =
     changes.length === 0
       ? `Plan v${version.version}`
       : `Plan change v${version.version} (${changes.join('; ')})`;
   return {
-    text: `${what} is up for the client as a card. Their decision arrives as a wakeup. Nothing starts until they approve; tell them in a line what you propose and why.${checkLines(version.checks.issues)}`,
+    text: `${what} is up for the client as a card. Their decision arrives as a wakeup. Nothing starts until they approve; tell them in a line what you propose and why.${checkLines(version.checks.issues)}${dropped}`,
     summary: `proposed plan v${version.version} ${planToken(version.id)}`
   };
 }

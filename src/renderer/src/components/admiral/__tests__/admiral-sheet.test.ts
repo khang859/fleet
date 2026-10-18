@@ -66,6 +66,7 @@ const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
   onboarding: { setupDoneAt: 1, starterDoneAt: 1, meetDue: false, meetLeft: [] },
   leftovers: [],
   clientFileChanged: false,
+  trust: { level: 'ask', autoStartUsd: null },
   pastJobs: [],
   settingsCards: [],
   ...over
@@ -135,6 +136,10 @@ describe('JobSheet', () => {
     expect(html).toContain('Default budget');
     expect(html).toContain('$10');
     expect(html).not.toContain('>WAITING ON YOU');
+    expect(html).toContain('You approve. Crew start in their own tab');
+    expect(sheet(snap({ trust: { level: 'pr', autoStartUsd: null } }), null)).toContain(
+      'A small plan starts on its own, a bigger one when you approve.'
+    );
   });
 
   it('shows the job on screen with only its own questions', () => {

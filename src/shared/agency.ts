@@ -1,6 +1,7 @@
 import type { CrewRuntime } from './agency-crew';
 import type { SettingsCard } from './agency-settings';
 import type { MeetQuestionId } from './agency-meet';
+import type { ProjectTrust } from './agency-projects';
 import { PERMISSION_EXPIRY_SEC_DEFAULT } from './agency-permissions';
 
 /**
@@ -236,6 +237,8 @@ export type AgencySnapshot = {
   leftovers: AgencyLeftover[];
   /** The client file changed outside Fleet since Fleet last wrote it, and the client has not kept it yet. */
   clientFileChanged: boolean;
+  /** How much Fleet does on its own in this project. */
+  trust: ProjectTrust;
   /** The last closed, cancelled or failed jobs, newest first, for export. */
   pastJobs: AgencyJob[];
   /** The newest settings cards the Admiral put up, oldest first. */

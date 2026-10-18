@@ -3,6 +3,7 @@ import { Check, CircleAlert, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
   YOU_LAYER,
   clientEntryList,
+  normText,
   sourceLabel,
   type ClientEntry
 } from '../../../../shared/agency-client-file';
@@ -13,6 +14,7 @@ import type {
 } from '../../../../shared/agency-projects';
 import { useSettingsNavStore } from '../../store/settings-nav-store';
 import { ClientFileEditor } from './ClientFileEditor';
+import { TrustPicker } from './TrustPicker';
 
 const FIELD =
   'min-w-0 rounded border border-fleet-border-strong bg-fleet-surface-3 px-2 py-1 text-sm text-fleet-text';
@@ -91,6 +93,8 @@ export function AdmiralKnows(): React.JSX.Element {
 
       <LayerTabs projects={projects ?? []} layer={layer} onLayer={setLayer} />
 
+      {layer !== YOU_LAYER && <TrustPicker repoId={layer} />}
+
       {file?.changedOutside === true && (
         <OutsideChange
           busy={busy}
@@ -119,6 +123,7 @@ export function AdmiralKnows(): React.JSX.Element {
         <>
           <PreferenceLines
             entries={entries}
+            uses={file.uses}
             draft={draft}
             disabled={busy || file.changedOutside}
             onDraft={setDraft}
@@ -239,6 +244,8 @@ function OutsideChange(props: { busy: boolean; onKeep: () => void }): React.JSX.
 /** A layer's lines, each with where it came from, to edit or remove one at a time. */
 export function PreferenceLines(props: {
   entries: ClientEntry[];
+  /** How many jobs used each line, by its normal form. */
+  uses: Record<string, number>;
   draft: LineDraft | null;
   disabled: boolean;
   onDraft: (draft: LineDraft | null) => void;
@@ -264,6 +271,7 @@ export function PreferenceLines(props: {
             <span className="shrink-0 text-xs text-fleet-text-subtle">
               {sourceLabel(entry.source)}
             </span>
+            <UseCount n={props.uses[normText(entry.text)] ?? 0} />
             <span className="flex shrink-0">
               <button
                 type="button"
@@ -289,6 +297,15 @@ export function PreferenceLines(props: {
       )}
       {draft?.index === null && <DraftRow {...props} draft={draft} />}
     </ul>
+  );
+}
+
+function UseCount({ n }: { n: number }): React.JSX.Element | null {
+  if (n === 0) return null;
+  return (
+    <span className="shrink-0 text-xs text-fleet-text-subtle">
+      used {n === 1 ? '1 time' : `${n} times`}
+    </span>
   );
 }
 

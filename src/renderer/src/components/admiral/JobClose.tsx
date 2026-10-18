@@ -133,7 +133,6 @@ export function DeliveredCard({
  */
 export function CancelJob({ job }: { job: AgencyJob }): React.JSX.Element | null {
   const [asking, setAsking] = useState(false);
-  const { busy, refused, run: close } = useClose(job);
   if (job.state === 'closing') return null;
   if (!asking) {
     return (
@@ -146,6 +145,18 @@ export function CancelJob({ job }: { job: AgencyJob }): React.JSX.Element | null
       </button>
     );
   }
+  return <CancelConfirm job={job} onKeep={() => setAsking(false)} />;
+}
+
+/** Ask before a job is cancelled: what goes, and what is kept. */
+export function CancelConfirm({
+  job,
+  onKeep
+}: {
+  job: AgencyJob;
+  onKeep: () => void;
+}): React.JSX.Element {
+  const { busy, refused, run: close } = useClose(job);
   return (
     <div
       role="group"
@@ -165,12 +176,7 @@ export function CancelJob({ job }: { job: AgencyJob }): React.JSX.Element | null
         >
           Cancel job
         </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => setAsking(false)}
-          className={SECONDARY}
-        >
+        <button type="button" disabled={busy} onClick={onKeep} className={SECONDARY}>
           Keep it
         </button>
       </div>

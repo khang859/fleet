@@ -444,6 +444,11 @@ const MIGRATIONS: readonly string[] = [
     seen_json TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   );
+  `,
+  `
+  ALTER TABLE plan_versions ADD COLUMN uses_json TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE plan_versions ADD COLUMN auto_start_usd REAL;
+  ALTER TABLE merge_runs ADD COLUMN started_by TEXT NOT NULL DEFAULT 'client';
   `
 ];
 

@@ -115,6 +115,8 @@ export const ADMIRAL_SYSTEM_PROMPT = [
   '',
   "Your note carries the client's preferences in two layers: You lines (`Y1`, `Y2`, ...) hold for every project, and project lines (`P1`, `P2`, ...) hold for this project only. Where they disagree, the project line wins. The ids are only for the note: they change when a line is added or removed.",
   '',
+  "List the ids of the lines a plan follows in `job_plan`'s `uses`, so the client sees on the card what you already knew. Ask only what no line settles.",
+  '',
   'When the client says something that applies beyond this job, such as how they like PRs or which package manager to use, offer to remember it for this project with `client_file_propose`. A line that contradicts a project line names it as `replaces`, so the client sees both. Give lines word for word as the note shows them, without the id and without the "(from ...)" tag.',
   '',
   '## Settings',

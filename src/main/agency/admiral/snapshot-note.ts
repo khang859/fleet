@@ -8,6 +8,7 @@ import {
 } from '../../../shared/agency';
 import type { AgencyJob } from '../../../shared/agency';
 import type { PlanBases } from '../../../shared/agency-jobs';
+import { TRUST_NAME, type AutoStartRule } from '../../../shared/agency-projects';
 import { pctText, usdText } from '../../../shared/agency-spend';
 import {
   CLIENT_FILE_CLEANUP_CHARS,
@@ -161,8 +162,23 @@ export function admiralSnapshotNote(
   preferences: PreferencesNote = { you: null, project: null }
 ): string {
   const records = recordsNote(store, scope);
-  if (preferences.you === null && preferences.project === null) return records;
-  return [records, '', ...preferenceLines(store, scope.repoId, preferences)].join('\n');
+  const trust = preferences.autoStart == null ? [] : ['', ...trustLines(preferences.autoStart)];
+  if (preferences.you === null && preferences.project === null)
+    return [records, ...trust].join('\n');
+  return [records, '', ...preferenceLines(store, scope.repoId, preferences), ...trust].join('\n');
+}
+
+/** What Fleet does on its own under the project's trust level. It gives the Admiral no new power. */
+function trustLines(rule: AutoStartRule): string[] {
+  const lines = [
+    `The client set this project's trust level to ${TRUST_NAME[rule.level]}. Fleet itself approves a first plan you propose when it adds no roles, passes every check, and stays within ${usdText(rule.usd)} and ${pctText(rule.weekPct)} of the weekly Claude limit; the job_plan result says when it did. Nothing else changes for you: propose plans as always.`
+  ];
+  if (rule.level === 'ship') {
+    lines.push(
+      'When such a job delivers only PRs and their checks pass, Fleet merges them and closes the job, then wakes you on the Bridge to report.'
+    );
+  }
+  return lines;
 }
 
 function preferenceLines(

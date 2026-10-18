@@ -85,10 +85,21 @@ type MergeRunRow = {
   note: string;
   since: number | null;
   rerun_at: number | null;
+  started_by: string;
 };
 
-/** A job's merge run as the queue reads it: when the last merge was, and when it asked for checks again. */
-export type MergeRunRecord = AgencyMergeRun & { since: number | null; rerunAt: number | null };
+/** Who started a merge: the client's Merge, or Fleet under Ship it. */
+export type MergeStarter = 'client' | 'trust';
+
+/**
+ * A job's merge run as the queue reads it: when the last merge was, when it
+ * asked for checks again, and who started it.
+ */
+export type MergeRunRecord = AgencyMergeRun & {
+  since: number | null;
+  rerunAt: number | null;
+  startedBy: MergeStarter;
+};
 
 /**
  * A PR shows as GitHub last reported it, so a force-push shows its new diff
@@ -224,7 +235,7 @@ export class MergeStore {
   ) {}
 
   /** Start, or start again, a job's merge with its PR results in `order`. */
-  begin(jobId: number, order: number[]): void {
+  begin(jobId: number, order: number[], startedBy: MergeStarter = 'client'): void {
     this.db.transaction(() => {
       const place = this.db.prepare(
         `UPDATE results SET merge_position = ?,
@@ -235,12 +246,12 @@ export class MergeStore {
       const at = this.now();
       this.db
         .prepare(
-          `INSERT INTO merge_runs (job_id, status, note, since, rerun_at, started_at, updated_at)
-           VALUES (?, 'running', '', NULL, NULL, ?, ?)
+          `INSERT INTO merge_runs (job_id, status, note, since, rerun_at, started_at, updated_at, started_by)
+           VALUES (?, 'running', '', NULL, NULL, ?, ?, ?)
            ON CONFLICT(job_id) DO UPDATE SET status = 'running', note = '', rerun_at = NULL,
-             updated_at = excluded.updated_at`
+             updated_at = excluded.updated_at, started_by = excluded.started_by`
         )
-        .run(jobId, at, at);
+        .run(jobId, at, at, startedBy);
     })();
   }
 
@@ -285,7 +296,13 @@ export class MergeStore {
       .prepare<[number], MergeRunRow>('SELECT * FROM merge_runs WHERE job_id = ?')
       .get(jobId);
     return row
-      ? { status: row.status, note: row.note, since: row.since, rerunAt: row.rerun_at }
+      ? {
+          status: row.status,
+          note: row.note,
+          since: row.since,
+          rerunAt: row.rerun_at,
+          startedBy: row.started_by === 'trust' ? 'trust' : 'client'
+        }
       : null;
   }
 

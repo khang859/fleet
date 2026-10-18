@@ -5,6 +5,7 @@ import type {
   AgencyPlanVersion,
   MemberBase,
   PlanAction,
+  PlanUse,
   StepEnvFiles,
   SwapChoice
 } from '../../../../shared/agency-jobs';
@@ -14,9 +15,10 @@ import {
   type NewRole,
   type PlanInput
 } from '../../../../shared/agency-plan';
-import { jobDisplayId } from '../../../../shared/agency';
+import { jobDisplayId, TERMINAL_JOB_STATES } from '../../../../shared/agency';
 import { useAgencyStore } from '../../store/agency-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
+import { CancelConfirm } from './JobClose';
 import { OnboardingButton } from './onboarding-ui';
 import { PillRadio } from '../ui/pill-radio';
 import { PlanEditor } from './PlanEditor';
@@ -42,7 +44,9 @@ export function PlanCard({
   detail: AgencyJobDetail;
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false);
-  if (version.status !== 'proposed') return <SettledPlan version={version} detail={detail} />;
+  const started = startedOnItsOwn(version, detail);
+  if (version.status !== 'proposed' && !started)
+    return <SettledPlan version={version} detail={detail} />;
   if (editing) {
     return (
       <PlanEditor
@@ -59,7 +63,94 @@ export function PlanCard({
       />
     );
   }
+  if (started)
+    return <StartedPlan version={version} detail={detail} onEdit={() => setEditing(true)} />;
   return <OpenPlan version={version} detail={detail} onEdit={() => setEditing(true)} />;
+}
+
+/**
+ * Fleet approved the version on its own, it is still the newest, and the job
+ * is open: the client can still stop the job or change the plan.
+ */
+function startedOnItsOwn(version: AgencyPlanVersion, detail: AgencyJobDetail): boolean {
+  const { state } = detail.job;
+  return (
+    version.status === 'approved' &&
+    version.autoStartUsd !== null &&
+    detail.versions[detail.versions.length - 1]?.id === version.id &&
+    state !== 'closing' &&
+    !TERMINAL_JOB_STATES.includes(state)
+  );
+}
+
+/** A plan the project's trust level started: what runs, and Stop and Change instead of Approve. */
+function StartedPlan({
+  version,
+  detail,
+  onEdit
+}: {
+  version: AgencyPlanVersion;
+  detail: AgencyJobDetail;
+  onEdit: () => void;
+}): React.JSX.Element {
+  const { plan } = version;
+  const [stopping, setStopping] = useState(false);
+  return (
+    <section
+      aria-label={`Plan v${version.version}`}
+      className="flex flex-col overflow-hidden rounded-lg border border-fleet-border-strong bg-fleet-surface"
+    >
+      <PlanSteps version={version} />
+      <UsesChips uses={version.uses} />
+      {plan.steps.some((s) => s.deliverables.length > 0) && <YouGet version={version} />}
+      <div className="flex flex-col gap-2 px-3.5 py-3">
+        {stopping ? (
+          <CancelConfirm job={detail.job} onKeep={() => setStopping(false)} />
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-fleet-text-muted">
+              Budget ${formatUsd(plan.budget.usd)}
+              {plan.budget.weekPct !== undefined && ` and ${plan.budget.weekPct}% of week`} ·{' '}
+              {plural(plan.steps.length, 'step')}
+            </span>
+            <div className="flex-1" />
+            <OnboardingButton kind="ghost" onClick={() => setStopping(true)}>
+              Stop
+            </OnboardingButton>
+            <OnboardingButton onClick={onEdit}>Change something</OnboardingButton>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** The client's saved lines the plan follows, as a block of the card. */
+function UsesChips({ uses }: { uses: PlanUse[] }): React.JSX.Element | null {
+  if (uses.length === 0) return null;
+  return (
+    <Block>
+      <Label>USING WHAT I KNOW ABOUT YOU</Label>
+      <UseChipList uses={uses} />
+    </Block>
+  );
+}
+
+/** The client's saved lines a plan follows, as chips. */
+export function UseChipList({ uses }: { uses: PlanUse[] }): React.JSX.Element {
+  return (
+    <ul aria-label="Using what I know about you" className="flex flex-wrap gap-1.5">
+      {uses.map((use) => (
+        <li
+          key={use.id}
+          title={`${use.layer === 'you' ? 'You · every project' : 'This project'}: ${use.text}`}
+          className="max-w-full truncate rounded-full bg-fleet-surface-2 px-2.5 py-1 text-xs text-fleet-text-secondary"
+        >
+          {use.text}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function OpenPlan({
@@ -81,6 +172,7 @@ function OpenPlan({
       className="flex flex-col overflow-hidden rounded-lg border border-fleet-border-strong bg-fleet-surface"
     >
       <PlanSteps version={version} />
+      <UsesChips uses={version.uses} />
       {version.kind === 'change' && (
         <ChangeBlock
           version={version}
@@ -140,6 +232,11 @@ function PlanSteps({ version }: { version: AgencyPlanVersion }): React.JSX.Eleme
         </span>
         {version.author === 'client' && (
           <span className="text-[11px] text-fleet-text-subtle">your edit</span>
+        )}
+        {version.autoStartUsd !== null && (
+          <span className="rounded bg-blue-500/10 px-1.5 text-[11px] text-blue-600 dark:text-blue-400">
+            Started on its own · within ${formatUsd(version.autoStartUsd)}
+          </span>
         )}
       </div>
       <p className="text-[13px] text-fleet-text-secondary">{plan.summary}</p>
