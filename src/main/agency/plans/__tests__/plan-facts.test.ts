@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readOnlyGit } from '../../projects/repo-reader';
@@ -58,8 +58,16 @@ describe('memberFacts', () => {
       defaultBranch: 'main',
       defaultSha: tip,
       headBranch: 'main',
-      headSha: tip
+      headSha: tip,
+      skills: { claude: [], eva: [] }
     });
+  });
+
+  it("reads the skills in the repository's root at the default branch tip", async () => {
+    mkdirSync(join(repo, '.claude/skills/sweep'), { recursive: true });
+    commit('.claude/skills/sweep/SKILL.md');
+
+    expect((await memberFacts(APP(), readOnlyGit)).skills).toEqual({ claude: ['sweep'], eva: [] });
   });
 
   it('counts uncommitted and untracked changes, and sees a branch named admiral', async () => {

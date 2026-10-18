@@ -115,6 +115,14 @@ Phase 3 notes (decisions made while building):
 - 3.23: the values of the given files feed the job export redaction now. Task 5.5 adds them to the stream Redactor.
 - 3.23: the Admiral's `read`, `glob` and `grep` tools already refuse `.env` files, so the Admiral never sees the values.
 - 3.23: end to end in a test repo: the plan card listed the step's env file, the worktree got a 75-byte `.env` with mode 600 that git showed as clean, `.env.test` (not ignored) was not copied, and cancelling the job removed the worktree and left the client's file as it was.
+- 3.24: setup also finds `.eva/agents`, `.agents/agents`, `.eva/skills` and `.agents/skills`. An agent file at the project root imports as a project role named after the file. Agents from `.claude/agents` become Claude Code roles; the others become eva roles.
+- 3.24: an opencode agent's model is a `provider/model` id, and Claude Code's `inherit` is not a model, so those roles take the runtime's default model.
+- 3.24: the import diff compares the role the repo file makes with the saved role, so a reformatted role is not reported as newer.
+- 3.24: two files that make the same role, or a file that makes a role the project already has, stop the save with a message that names both.
+- 3.24: a member's `.fleet/crew` files now import too. Before, only the root's did.
+- 3.24: skills stay in place. Claude Code and eva load the ones in their start folder and each folder above it up to the nearest `.git`, so a member repo gets only its own. See `docs/learnings/2026-10-18-claude-code-skills-scope.md`.
+- 3.24: the crew note lists each member's root skills per runtime, read at the default branch tip. A plan step can name skills; the brief tells the crew member to use them, and the plan check warns when the step's start repo and runtime do not have one.
+- 3.24: the Claude Code trust check now covers each member folder a Claude step starts in, since a trusted umbrella does not trust its submodules. The plan card shows one "Open Claude Code" button per folder.
 - 3.25: "Claude crew at once" and "eva crew at once" replace the one crew limit of 4. They count live crew of that runtime over all jobs. The defaults are 2 for Claude Code, 4 for a remote eva server and 1 for a local one. Lowering one applies at once; raising one needs the client's OK.
 - 3.25: a default model per runtime is for roles that name no model. Changing it needs the client's OK.
 - 3.25: Claude Code's sign-in comes from `claude auth status --json` piped through `awk` in the pane's shell, so Fleet gets only yes or no. eva's key comes from the same shell filter that reads its server, so Fleet gets only a flag, never the key. A test runs both against a real shell and checks that no key and no email reach the renderer.
@@ -158,7 +166,7 @@ Phase 3 notes (decisions made while building):
 - [x] 3.21 Add the one-time folder trust step and check end to end whether trust carries down to new worktrees; record the result in `docs/learnings/`
 - [x] 3.22 Find port variables and fixed host ports at setup, give each job workspace a free port block, set port variables in the pane env, show server addresses on the job sheet, and hold stack slots for `stack: true` steps; verify with tests for two jobs and one slot and a port held by an outside process
 - [x] 3.23 List untracked env files with names only, copy the chosen ones into new worktrees with mode 600, block paths git does not ignore, and add values to the env redaction; verify with tests that a crew edit never changes the user's file
-- [ ] 3.24 Find `CLAUDE.md`, `AGENTS.md`, `.claude/agents`, `.claude/skills` and `.opencode/agents` at setup, import agent files as roles, and tell the Admiral which skills each working folder exposes; verify with loader tests and check in Claude Code which skills load from a member subfolder, recording the result in `docs/learnings/`
+- [x] 3.24 Find `CLAUDE.md`, `AGENTS.md`, `.claude/agents`, `.claude/skills` and `.opencode/agents` at setup, import agent files as roles, and tell the Admiral which skills each working folder exposes; verify with loader tests and check in Claude Code which skills load from a member subfolder, recording the result in `docs/learnings/`
 
 ## 4. Phase 4 - eva session tracking (PR 4, needs khang859/eva#9, #10, #13, and #12 for hook permission answers)
 

@@ -434,6 +434,9 @@ const stepSchema = {
       description:
         'The part of the code the step owns, like server or client. Needed when steps change the same code side by side.'
     },
+    skills: stringList(
+      "Skills the crew member uses, by name, from those the crew note lists for the step's working folder and runtime."
+    ),
     deliverables: {
       type: 'array',
       description: 'What the step hands back: a kind, or {kind, label}.',

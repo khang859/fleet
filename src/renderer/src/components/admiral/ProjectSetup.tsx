@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { diffLines, formatUnified, toHunks } from '../../../../shared/agent-diff';
 import type { AgencyRepoRef } from '../../../../shared/agency';
+import { agentFile, skillFolder } from '../../../../shared/agency-agent-files';
+import { RUNTIME_LABEL } from '../../../../shared/agency-crew';
 import type {
   EnvFileFound,
   MemberScan,
@@ -803,6 +805,16 @@ const FILE_ROLE: Record<RepoFile['kind'], string> = {
   other: 'Jobs never read it'
 };
 
+/** What a found file is to jobs, naming the role an agent makes and the runtime a skill is for. */
+function fileRole(file: RepoFile): string {
+  const agent = file.kind === 'agent' ? agentFile(file.path) : null;
+  if (agent !== null)
+    return `Agent · becomes the ${RUNTIME_LABEL[agent.runtime]} role ${agent.role}`;
+  const skill = file.kind === 'skill' ? skillFolder(file.path) : null;
+  if (skill !== null) return `${RUNTIME_LABEL[skill.runtime]} skill · crew use it in place`;
+  return FILE_ROLE[file.kind];
+}
+
 function FoundCard({
   repo,
   files,
@@ -824,7 +836,10 @@ function FoundCard({
 }): React.JSX.Element {
   return (
     <OnboardingCard tone="amber">
-      <SectionLabel tone="amber" note="jobs use these only if you import them">
+      <SectionLabel
+        tone="amber"
+        note="jobs use in-place files as they are, and others only if you import them"
+      >
         FOUND IN THE REPO
       </SectionLabel>
       <ul className="mt-2 flex flex-col">
@@ -833,7 +848,7 @@ function FoundCard({
             <span className="min-w-0 flex-1 truncate font-mono text-xs text-fleet-text">
               {f.path}
             </span>
-            <span className="text-xs text-fleet-text-muted">{FILE_ROLE[f.kind]}</span>
+            <span className="text-xs text-fleet-text-muted">{fileRole(f)}</span>
             <span className="flex w-[84px] justify-end">
               <ImportToggle file={f} imported={imports.has(f.path)} onToggle={() => onToggle(f)} />
             </span>

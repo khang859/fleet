@@ -26,6 +26,7 @@ const member = (patch: Partial<MemberFacts> = {}): MemberFacts => ({
   defaultSha: TIP,
   headBranch: 'feat/x',
   headSha: HEAD,
+  skills: { claude: [], eva: [] },
   ...patch
 });
 
@@ -53,6 +54,7 @@ const crew = (patch: Partial<CrewFacts> = {}): CrewFacts => ({
   evaModels: null,
   runtimes: { claude: runtime('claude') },
   claudeTrust: { folder: '/repo', trusted: true },
+  memberTrust: new Map(),
   ...patch
 });
 
@@ -191,6 +193,28 @@ describe('checkPlan', () => {
     expect(codes(PR, facts({ crew: onEva }))).toEqual([]);
   });
 
+  it("asks for a member's own trust when a Claude step works in that member alone", () => {
+    const members = [
+      member({ name: 'journey', atRoot: true }),
+      member({ name: 'core' }),
+      member({ name: 'web' })
+    ];
+    const memberTrust = new Map([
+      ['core', { folder: '/journey/libs/core', trusted: false }],
+      ['web', { folder: '/journey/libs/web', trusted: true }]
+    ]);
+    const steps = plan([
+      { id: 'core-1', role: 'builder', title: 'Core', changes: ['core'] },
+      { id: 'core-2', role: 'builder', title: 'Core again', changes: ['core'] },
+      { id: 'web-1', role: 'builder', title: 'Web', changes: ['web'] },
+      { id: 'both', role: 'builder', title: 'Both', changes: ['core', 'web'] }
+    ]);
+    const issues = checkPlan(steps, facts({ members, crew: crew({ memberTrust }) })).issues;
+    expect(issues.filter((i) => i.code === 'claude-trust')).toEqual([
+      expect.objectContaining({ path: '/journey/libs/core', member: 'core' })
+    ]);
+  });
+
   it('warns about a dirty main checkout and about overlap with another job', () => {
     const checks = checkPlan(
       PR,
@@ -290,5 +314,41 @@ describe('pinBases', () => {
       ok: false,
       reason: 'fleet has no commit to start from.'
     });
+  });
+});
+
+describe('skills', () => {
+  const members = [
+    member({ name: 'journey', atRoot: true, skills: { claude: ['umbrella-sweep'], eva: [] } }),
+    member({ name: 'fola-journey', skills: { claude: ['journey-qa-sweep'], eva: ['lint'] } }),
+    member({ name: 'api' })
+  ];
+  const qa = (patch: Partial<PlanInput['steps'][number]>): ReturnType<typeof plan> =>
+    plan([{ id: 'qa', role: 'qa', title: 'QA pass', runtime: 'claude', ...patch }]);
+  const missing = (p: ReturnType<typeof plan>): string[] =>
+    checkPlan(p, facts({ members }))
+      .issues.filter((i) => i.code === 'skill-missing')
+      .map((i) => i.text);
+
+  it("finds a member's skill when the step works in that member alone", () => {
+    expect(missing(qa({ changes: ['fola-journey'], skills: ['journey-qa-sweep'] }))).toEqual([]);
+    expect(
+      missing(qa({ reads: ['fola-journey'], changes: ['journey'], skills: ['journey-qa-sweep'] }))
+    ).toEqual([]);
+  });
+
+  it("warns when the step works at the umbrella's root, where a member's skill does not load", () => {
+    expect(missing(qa({ skills: ['journey-qa-sweep', 'umbrella-sweep'] }))).toEqual([
+      'qa uses the skill journey-qa-sweep, which Claude Code does not find in journey. It works only if you have a skill of your own by that name.'
+    ]);
+  });
+
+  it("looks in the step's runtime's skills", () => {
+    expect(missing(qa({ runtime: 'eva', changes: ['fola-journey'], skills: ['lint'] }))).toEqual(
+      []
+    );
+    expect(
+      missing(qa({ runtime: 'eva', changes: ['fola-journey'], skills: ['journey-qa-sweep'] }))
+    ).toHaveLength(1);
   });
 });

@@ -164,6 +164,15 @@ describe('stepBrief', () => {
     );
   });
 
+  it('names the skills the step uses', () => {
+    expect(stepBrief(step({ skills: ['journey-qa-sweep'] }), 'Test it.')).toBe(
+      'Test it.\n\nUse the skill journey-qa-sweep for this work.'
+    );
+    expect(stepBrief(step({ skills: ['lint', 'sweep'] }), 'Test it.')).toContain(
+      'Use the skills lint, sweep for this work.'
+    );
+  });
+
   it('gives the port each server variable is set to, and the block for any other server', () => {
     const env = {
       API_PORT: '41000',

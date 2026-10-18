@@ -13,6 +13,7 @@ import {
   type CrewRuntime,
   type RuntimeCheck
 } from '../../../shared/agency-crew';
+import type { RuntimeSkills } from '../../../shared/agency-agent-files';
 import type { Plan, PlanStep } from '../../../shared/agency-plan';
 import { roleFileText } from '../crew/catalog';
 
@@ -34,6 +35,8 @@ export type MemberFacts = {
   defaultSha: string | null;
   headBranch: string | null;
   headSha: string | null;
+  /** The skills each runtime loads in its repository's root, at the default branch tip. */
+  skills: RuntimeSkills;
 };
 
 export type PlanFacts = {
@@ -65,6 +68,12 @@ export type CrewFacts = {
    * it only does once the trust prompt is accepted.
    */
   claudeTrust: { folder: string; trusted: boolean };
+  /**
+   * The same for each member that is its own repository below the root, at
+   * its main checkout: Claude Code keys the trust of a worktree on that, so
+   * a step that works in the member alone needs it.
+   */
+  memberTrust: ReadonlyMap<string, { folder: string; trusted: boolean }>;
 };
 
 /** What a step runs on: its own runtime, else its role's; null for a role that is not there. */
@@ -235,19 +244,65 @@ function runtimeIssues(plan: Plan, crew: CrewFacts): PlanIssue[] {
 /**
  * Claude Code asks once per folder whether to trust it, and no hook runs
  * until someone answers, so a crew member would wait at that prompt unseen.
+ * One issue for each folder a Claude step needs trusted.
  */
-function trustIssue(plan: Plan, crew: CrewFacts): PlanIssue[] {
-  const { folder, trusted } = crew.claudeTrust;
-  if (trusted || !plan.steps.some((s) => stepRuntime(s, crew.roles) === 'claude')) return [];
-  return [
-    {
-      code: 'claude-trust',
-      severity: 'warn',
-      text: `Claude Code has not run in ${folder} yet. Open it there once and trust the folder, or each Claude crew member waits for you at that prompt.`,
-      fix: 'trust-claude',
-      path: folder
-    }
-  ];
+function trustIssues(plan: Plan, facts: PlanFacts): PlanIssue[] {
+  const { crew } = facts;
+  if (crew === null) return [];
+  const untrusted = new Map<string, string | undefined>();
+  for (const step of plan.steps) {
+    if (stepRuntime(step, crew.roles) !== 'claude') continue;
+    const member = workingMember(step, facts.members);
+    const own = member === null || member.atRoot ? undefined : crew.memberTrust.get(member.name);
+    const { folder, trusted } = own ?? crew.claudeTrust;
+    if (!trusted) untrusted.set(folder, own && member?.name);
+  }
+  return [...untrusted].map(([folder, member]) => ({
+    code: 'claude-trust',
+    severity: 'warn',
+    text: `Claude Code has not run in ${folder} yet. Open it there once and trust the folder, or each Claude crew member waits for you at that prompt.`,
+    fix: 'trust-claude',
+    path: folder,
+    ...(member !== undefined && { member })
+  }));
+}
+
+/**
+ * The member whose repository a step's crew member starts in: the one member
+ * it holds besides the root, else the root. As `crewFolder` picks it.
+ */
+function workingMember(step: PlanStep, members: MemberFacts[]): MemberFacts | null {
+  const held = new Set([
+    ...changedMembers(
+      step,
+      members.map((m) => m.name)
+    ),
+    ...step.reads
+  ]);
+  const inside = members.filter((m) => !m.atRoot && held.has(m.name));
+  return inside.length === 1 ? inside[0] : (members.find((m) => m.atRoot) ?? null);
+}
+
+/**
+ * A skill a step names that its runtime does not find where the step works.
+ * Claude Code and eva look no higher than the repository's root, so a
+ * member's skill is not there for a step at the umbrella's root.
+ */
+function skillIssues(plan: Plan, facts: PlanFacts): PlanIssue[] {
+  return plan.steps.flatMap((step): PlanIssue[] => {
+    const runtime = stepRuntime(step, facts.crew?.roles ?? new Map());
+    if (runtime === null) return [];
+    const member = workingMember(step, facts.members);
+    const where = member?.name ?? 'the job folder';
+    return step.skills
+      .filter((name) => !member?.skills[runtime].includes(name))
+      .map((name) => ({
+        code: 'skill-missing',
+        severity: 'warn',
+        text: `${step.id} uses the skill ${name}, which ${RUNTIME_LABEL[runtime]} does not find in ${where}. It works only if you have a skill of your own by that name.`,
+        step: step.id
+      }));
+  });
 }
 
 function crewIssues(plan: Plan, crew: CrewFacts | null): PlanIssue[] {
@@ -256,8 +311,7 @@ function crewIssues(plan: Plan, crew: CrewFacts | null): PlanIssue[] {
     ...unknownRoles(plan, crew.roles),
     ...roleClashes(plan, crew),
     ...runtimeIssues(plan, crew),
-    ...modelIssues(plan, crew),
-    ...trustIssue(plan, crew)
+    ...modelIssues(plan, crew)
   ];
 }
 
@@ -318,6 +372,8 @@ export function checkPlan(plan: Plan, facts: PlanFacts): PlanChecks {
     issues: [
       ...outsideProject(plan, names),
       ...crewIssues(plan, facts.crew),
+      ...trustIssues(plan, facts),
+      ...skillIssues(plan, facts),
       ...members.flatMap(memberIssues),
       ...prUnavailable(plan, facts),
       ...overlapIssue(facts.overlap)

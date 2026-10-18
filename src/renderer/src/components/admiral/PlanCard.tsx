@@ -153,6 +153,7 @@ function PlanSteps({ version }: { version: AgencyPlanVersion }): React.JSX.Eleme
                 · {step.role}
                 {step.runtime !== undefined && ` · ${runtimeName(step.runtime)}`}
                 {step.model !== undefined && ` · ${step.model}`}
+                {step.skills.length > 0 && ` · uses ${step.skills.join(', ')}`}
               </span>
             </span>
           </li>
@@ -298,7 +299,7 @@ function Cautions({
   onUseBranch: () => void;
 }): React.JSX.Element {
   const { plan, checks } = version;
-  const trust = checks.issues.find((i) => i.fix === 'trust-claude')?.path;
+  const trust = checks.issues.filter((i) => i.fix === 'trust-claude');
   return (
     <Block>
       {plan.asksFirst.length > 0 && (
@@ -337,14 +338,21 @@ function Cautions({
           Deliver local branches instead
         </OnboardingButton>
       )}
-      {trust !== undefined && (
-        <OnboardingButton
-          kind="ghost"
-          className="w-fit"
-          onClick={() => useWorkspaceStore.getState().openResumeTab(trust, 'claude', 'Claude Code')}
-        >
-          Open Claude Code there
-        </OnboardingButton>
+      {trust.map(({ path, member }) =>
+        path === undefined ? null : (
+          <OnboardingButton
+            key={path}
+            kind="ghost"
+            className="w-fit"
+            onClick={() =>
+              useWorkspaceStore.getState().openResumeTab(path, 'claude', 'Claude Code')
+            }
+          >
+            {trust.length === 1
+              ? 'Open Claude Code there'
+              : `Open Claude Code in ${member ?? 'the root'}`}
+          </OnboardingButton>
+        )
       )}
     </Block>
   );

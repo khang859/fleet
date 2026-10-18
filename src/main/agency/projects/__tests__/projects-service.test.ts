@@ -97,6 +97,65 @@ describe('ProjectsService', () => {
     expect((await service.projects.scan(repo)).newer).toEqual([]);
   });
 
+  it('imports an agent file as a project crew role the Admiral can plan with', async () => {
+    const agent = '.opencode/agents/journey-domain-reviewer.md';
+    writeFiles(root, {
+      [agent]: [
+        '---',
+        'description: >-',
+        '  Reviews changes against the',
+        '  journey domain rules.',
+        'mode: subagent',
+        'model: anthropic/claude-sonnet-4-5',
+        'tools:',
+        '  write: false',
+        '---',
+        'Check every change against docs/domain.md.',
+        ''
+      ].join('\n'),
+      '.claude/agents/sweeper.md':
+        '---\nname: sweeper\ndescription: Sweeps.\nmodel: haiku\n---\nSweep it.\n'
+    });
+    git(root, 'add', '.');
+    git(root, 'commit', '-qm', 'agents');
+    const scan = await service.projects.scan(repo);
+    await service.projects.saveSetup(
+      { repo, setup: scan.setup, imports: [agent, '.claude/agents/sweeper.md'] },
+      { finish: true }
+    );
+
+    const crew = await service.crewCatalog(repo.repoId);
+    expect(crew.errors).toEqual([]);
+    expect(
+      crew.roles.map(({ name, description, runtime, model, prompt }) => ({
+        name,
+        description,
+        runtime,
+        model,
+        prompt
+      }))
+    ).toEqual([
+      {
+        name: 'journey-domain-reviewer',
+        description: 'Reviews changes against the journey domain rules.',
+        runtime: 'eva',
+        model: undefined,
+        prompt: 'Check every change against docs/domain.md.'
+      },
+      {
+        name: 'sweeper',
+        description: 'Sweeps.',
+        runtime: 'claude',
+        model: 'haiku',
+        prompt: 'Sweep it.'
+      }
+    ]);
+    // The repository's version is compared as the role it makes.
+    expect((await service.projects.scan(repo)).newer).toEqual([]);
+    const diff = await service.projects.importDiff({ repo, path: agent });
+    expect(diff.ours).toBe(diff.theirs);
+  });
+
   it('refuses to import a file that is not one setup offers', async () => {
     const { setup } = await service.projects.scan(repo);
     await expect(

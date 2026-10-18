@@ -1,7 +1,8 @@
 import { rm } from 'node:fs/promises';
-import { basename, join, sep } from 'node:path';
+import { join, sep } from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import type { AgencyRepoRef } from '../../../shared/agency';
+import { agentFile } from '../../../shared/agency-agent-files';
 import {
   ProjectSetupSchema,
   type ProjectImport,
@@ -120,16 +121,40 @@ export async function loadSetup(
 }
 
 /**
- * Where an imported repository file lives in the project folder: a `.fleet/`
- * file at the same place under it, an agent definition under `crew/agents/`
- * until roles can be made from it.
+ * Where an imported repository file lives in the project folder: a crew file
+ * from any member's `.fleet/` at the same place under it, and an agent file as
+ * the crew role it makes.
  */
 export function importDestination(path: string): string | null {
-  if (path.startsWith('.fleet/') && path !== `.fleet/${SETUP_FILE}`)
-    return path.slice('.fleet/'.length);
-  if (/^\.(claude|opencode)\/agents\/[^/]+\.md$/.test(path))
-    return join('crew', 'agents', basename(path));
-  return null;
+  const crew = /^(?:.+\/)?\.fleet\/(crew\/(?:roles|playbooks)\/[^/]+\.md)$/.exec(path);
+  if (crew !== null && !path.split('/').includes('..')) return crew[1];
+  const agent = agentFile(path);
+  return agent === null ? null : join('crew', 'roles', `${agent.role}.md`);
+}
+
+/**
+ * Refuse imports that would write one file twice, or over a crew file the
+ * project made itself, such as a role a plan added.
+ */
+async function checkDestinations(
+  dir: string,
+  imported: ImportedFile[],
+  before: ProjectImport[]
+): Promise<void> {
+  const ours = new Set(before.map((i) => importDestination(i.path)));
+  const taken = new Map<string, string>();
+  for (const file of imported) {
+    const dest = importDestination(file.path);
+    if (dest === null) continue;
+    const other = taken.get(dest);
+    if (other !== undefined) {
+      throw new Error(`${other} and ${file.path} both make ${dest}. Import only one of them.`);
+    }
+    taken.set(dest, file.path);
+    if (!ours.has(dest) && (await readTextOrNull(join(dir, dest))) !== null) {
+      throw new Error(`The project already has ${dest}. Rename it or leave ${file.path} out.`);
+    }
+  }
 }
 
 /**
@@ -157,9 +182,11 @@ export async function saveSetup(
   home: string = agencyHome()
 ): Promise<{ path: string; setup: ProjectSetup }> {
   const dir = projectDir(input.repo.repoId, home);
+  const before = (await loadSetup(input.repo.repoId, home))?.imports ?? [];
+  await checkDestinations(dir, input.imported, before);
   // A file imported before and unchecked now goes, so nothing reads or shares it.
   const keep = new Set(input.imported.map((f) => importDestination(f.path)));
-  for (const old of (await loadSetup(input.repo.repoId, home))?.imports ?? []) {
+  for (const old of before) {
     const dest = importDestination(old.path);
     if (dest !== null && !keep.has(dest)) await rm(join(dir, dest), { force: true });
   }

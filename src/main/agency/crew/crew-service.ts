@@ -80,8 +80,8 @@ export type CrewServiceDeps = {
 };
 
 /**
- * The Admiral's brief, with what the plan says about where the step works:
- * the part of the code it owns, that a step reading another's worktree
+ * The Admiral's brief, with what the plan says about the step: the skills
+ * it uses, the part of the code it owns, that a step reading another's worktree
  * changes nothing in it, the ports its workspace's servers use, and for a
  * role that runs the stack, to stop it so the next step gets the slot.
  */
@@ -91,6 +91,12 @@ export function stepBrief(
   workspace: { env?: Record<string, string>; stack?: boolean } = {}
 ): string {
   const notes: string[] = [];
+  if (step.skills.length > 0) {
+    const names = step.skills.join(', ');
+    notes.push(
+      `Use ${step.skills.length === 1 ? 'the skill' : 'the skills'} ${names} for this work.`
+    );
+  }
   if (step.scope !== undefined) {
     notes.push(
       `Your scope is ${step.scope}. Change only that part: other crew members own the rest.`

@@ -3,6 +3,7 @@ import { basename } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { AgencyRepoRef } from '../../../shared/agency';
+import { agentFile, skillFolder } from '../../../shared/agency-agent-files';
 import {
   githubSlug,
   type EnvFileFound,
@@ -335,11 +336,10 @@ function classify(path: string): Omit<RepoFile, 'sha256'> | null {
     return { path, kind: 'playbook', disposition: 'importable' };
   }
   if (path.startsWith('.fleet/')) return { path, kind: 'other', disposition: 'not-used' };
-  if (/^\.(claude|opencode)\/agents\/[^/]+\.md$/.test(path)) {
-    return { path, kind: 'agent', disposition: 'importable' };
-  }
-  if (/^\.claude\/skills\/[^/]+\/SKILL\.md$/.test(path)) {
-    return { path: path.replace(/\/SKILL\.md$/, ''), kind: 'skill', disposition: 'in-place' };
+  if (agentFile(path)?.folder === '.') return { path, kind: 'agent', disposition: 'importable' };
+  const skill = path.endsWith('/SKILL.md') ? path.slice(0, -'/SKILL.md'.length) : null;
+  if (skill !== null && skillFolder(skill)?.folder === '.') {
+    return { path: skill, kind: 'skill', disposition: 'in-place' };
   }
   if (path === 'CLAUDE.md' || path === 'AGENTS.md') {
     return { path, kind: 'instructions', disposition: 'in-place' };

@@ -79,6 +79,9 @@ export function workspaceSources(ws: WorkspaceSpec): string[] {
   return ws === 'new' ? [] : 'of' in ws ? [ws.of] : ws.integrate;
 }
 
+/** A skill's name, as its folder has it; Claude Code shows a nested one as `<dir>:<name>`. */
+export const SKILL_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/;
+
 export const PlanStepSchema = z.object({
   /** Stable across versions: the same id is the same step. */
   id: StepIdSchema,
@@ -96,7 +99,9 @@ export const PlanStepSchema = z.object({
   deliverables: z.array(DeliverableSchema).max(10).default([]),
   workspace: WorkspaceSpecSchema.default('new'),
   /** The part of the code the step owns, when it changes a member side by side with another step. */
-  scope: z.string().trim().min(1).max(80).optional()
+  scope: z.string().trim().min(1).max(80).optional(),
+  /** Skills of the repository it works in that the crew member uses, by name. */
+  skills: z.array(z.string().regex(SKILL_NAME_PATTERN)).max(10).default([])
 });
 
 export const NEW_ROLE_MAX_CHARS = 8_000;
@@ -316,7 +321,8 @@ export type StepChange =
   | 'after'
   | 'deliverables'
   | 'members'
-  | 'workspace';
+  | 'workspace'
+  | 'skills';
 
 /** One line of a plan change card. */
 export type PlanDiffEntry =
@@ -345,6 +351,7 @@ function stepChanges(a: PlanStep, b: PlanStep): StepChange[] {
   if (JSON.stringify(a.workspace) !== JSON.stringify(b.workspace) || a.scope !== b.scope) {
     fields.push('workspace');
   }
+  if (!sameList(a.skills, b.skills)) fields.push('skills');
   return fields;
 }
 

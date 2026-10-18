@@ -32,6 +32,7 @@ export type AdmiralDeps = {
     | 'proposeClientFile'
     | 'settings'
     | 'crewCatalog'
+    | 'crewSkills'
   >;
   settings: () => AgencySettings;
 };
@@ -98,7 +99,11 @@ export async function planAdmiralTurn(input: {
           req.cwd
         );
   const instructions = await loadProjectInstructions(req.cwd);
-  const crew = crewNote(await admiral.agency.crewCatalog(scope.repoId));
+  const [catalog, skills] = await Promise.all([
+    admiral.agency.crewCatalog(scope.repoId),
+    admiral.agency.crewSkills(scope.repoId)
+  ]);
+  const crew = crewNote(catalog, skills);
   const env = await readEnvironment(req.cwd, input.model);
   const tools = toolSpecsFor({
     image: null,

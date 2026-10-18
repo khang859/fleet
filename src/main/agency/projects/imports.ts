@@ -7,16 +7,17 @@ import type {
   SaveSetupRequest
 } from '../../../shared/agency-projects';
 import type { GitRun } from '../repo-identity';
+import { agentRoleText } from './agent-roles';
 import { readTextOrNull } from './files';
 import { projectDir } from './paths';
 import { importDestination, loadSetup, type ImportedFile } from './project-store';
 import { memberOfPath, readRepoFile, scanProject, type ScanTarget } from './setup-findings';
 
 /**
- * Crew and setup files imported from a repository's `.fleet/`. The project
- * folder's copy is what jobs use: a teammate's newer commit, a fresh clone
- * and the client's own edits all change nothing until the client takes the
- * repository's version.
+ * Crew and setup files imported from a repository's `.fleet/`, and agent
+ * files imported as roles. The project folder's copy is what jobs use: a
+ * teammate's newer commit, a fresh clone and the client's own edits all
+ * change nothing until the client takes the repository's version.
  */
 
 type ImportDeps = { home: string; git: GitRun };
@@ -81,7 +82,11 @@ async function projectCopy(repoId: string, path: string, home: string): Promise<
   return dest === null ? null : readTextOrNull(join(projectDir(repoId, home), dest));
 }
 
-/** A file setup offers to import, as the default branch of the main checkout has it. */
+/**
+ * A file setup offers to import, as the default branch of the main checkout
+ * has it. An agent file comes as the role it makes, the text the project
+ * keeps, so a diff compares role with role.
+ */
 async function repoVersion(
   target: ScanTarget,
   path: string,
@@ -93,7 +98,8 @@ async function repoVersion(
   if (file === undefined || where === null) {
     throw new Error(`${path} is not a file setup can import.`);
   }
-  const content = await readRepoFile(where.member.root, where.path, git);
-  if (content === null || file.sha256 === null) return null;
-  return { path, kind: file.kind, sha256: file.sha256, content };
+  const text = await readRepoFile(where.member.root, where.path, git);
+  if (text === null || file.sha256 === null) return null;
+  const content = file.kind === 'agent' ? agentRoleText(path, text) : text;
+  return content === null ? null : { path, kind: file.kind, sha256: file.sha256, content };
 }

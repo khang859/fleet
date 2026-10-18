@@ -5,6 +5,7 @@ import type { Plan } from '../../../shared/agency-plan';
 import { ghState, type GhRun } from '../projects/gh';
 import type { ProjectMember } from '../projects/workspace-projects';
 import { repoFacts } from '../projects/repo-reader';
+import { repoSkills } from '../projects/repo-skills';
 import type { GitRun } from '../repo-identity';
 import { planOverlap, type OtherJobPaths } from './overlap';
 import {
@@ -46,7 +47,8 @@ async function crewFacts(plan: Plan, crew: CrewInput): Promise<CrewFacts> {
     models,
     evaModels,
     runtimes: Object.fromEntries(checks.map((c) => [c.runtime, c])),
-    claudeTrust: crew.claudeTrust
+    claudeTrust: crew.claudeTrust,
+    memberTrust: crew.memberTrust
   };
 }
 
@@ -89,7 +91,8 @@ export async function memberFacts(
     defaultBranch,
     defaultSha: await defaultTip(git, root, defaultBranch),
     headBranch: head === null || head.trim() === '' ? null : head.trim(),
-    headSha: await sha(git, root, 'HEAD')
+    headSha: await sha(git, root, 'HEAD'),
+    skills: await repoSkills(root, defaultBranch, git)
   };
 }
 

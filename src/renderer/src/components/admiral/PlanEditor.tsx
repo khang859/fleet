@@ -198,6 +198,7 @@ const blankStep = (id: string): PlanStep => ({
   reads: [],
   paths: [],
   deliverables: [],
+  skills: [],
   workspace: 'new'
 });
 

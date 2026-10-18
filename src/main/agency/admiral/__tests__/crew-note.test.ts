@@ -17,6 +17,27 @@ describe('crewNote', () => {
     expect(note).toContain('session="crew roles"');
   });
 
+  it("lists each member's skills by runtime, in a fence, and leaves out members with none", async () => {
+    const crew = await loadCrew([['bundled', SHIPPED]]);
+    const note = crewNote(crew, [
+      { member: 'journey', atRoot: true, skills: { claude: ['release'], eva: [] } },
+      {
+        member: 'fola-journey',
+        atRoot: false,
+        skills: { claude: ['journey-qa-sweep'], eva: ['lint'] }
+      },
+      { member: 'api', atRoot: false, skills: { claude: [], eva: [] } }
+    ]);
+    expect(note).toContain('session="skills"');
+    expect(note).toContain(
+      'journey (root) - claude: release\nfola-journey - claude: journey-qa-sweep; eva: lint'
+    );
+    expect(note).not.toContain('api -');
+    expect(
+      crewNote(crew, [{ member: 'api', atRoot: true, skills: { claude: [], eva: [] } }])
+    ).not.toContain('Skills in');
+  });
+
   it('says so when the project has no roles', () => {
     expect(crewNote(EMPTY_CREW)).toBe(
       'This project has no crew roles, so no plan can be approved.'

@@ -46,6 +46,7 @@ import {
   type RuntimeCheck,
   type RuntimeTestResult
 } from '../../shared/agency-crew';
+import type { MemberSkills } from '../../shared/agency-agent-files';
 import type { Plan } from '../../shared/agency-plan';
 import {
   asNewRole,
@@ -76,7 +77,8 @@ import { projectPath } from './projects/setup-findings';
 import { PrCards } from './results/pr-cards';
 import { ResultsService } from './results';
 import { readOnlyGit } from './projects/repo-reader';
-import { projectMembers } from './projects/workspace-projects';
+import { memberSkills } from './projects/repo-skills';
+import { projectMembers, type ProjectMember } from './projects/workspace-projects';
 import { claudeTrustFolder, JobWorkspaces, type GitWrite } from './workspaces/job-workspace';
 import { pushUmbrellaBump } from './workspaces/umbrella-bump';
 import { MergeQueue } from './results/merge-queue';
@@ -500,10 +502,15 @@ export class AgencyService {
 
   /** The values of the env files a project's crew get, which nothing the Admiral or an export shows. */
   private async envSecrets(repoId: string): Promise<string[]> {
+    const members = this.membersOf(repoId);
+    if (members === null) return [];
+    return envSecrets(await loadSetup(repoId, this.deps.agencyHome ?? agencyHome()), members);
+  }
+
+  /** A known project's members, in member order. */
+  private membersOf(repoId: string): ProjectMember[] | null {
     const repo = this.store.repo(repoId);
-    if (repo === null) return [];
-    const setup = await loadSetup(repoId, this.deps.agencyHome ?? agencyHome());
-    return envSecrets(setup, projectMembers(this.store.projects, repo).members);
+    return repo === null ? null : projectMembers(this.store.projects, repo).members;
   }
 
   /** The client keeps a change made outside Fleet as it is. */
@@ -708,7 +715,12 @@ export class AgencyService {
             return models && new Set(models.map((m) => m.id));
           },
           check: async (runtime) => check?.(runtime, repo.root) ?? { ...PASSING_RUNTIME, runtime },
-          claudeTrust: { folder: trust, trusted: this.store.claudeTrusted(trust) }
+          claudeTrust: { folder: trust, trusted: this.store.claudeTrusted(trust) },
+          memberTrust: new Map(
+            members
+              .filter((m) => m.path !== '.')
+              .map((m) => [m.name, { folder: m.root, trusted: this.store.claudeTrusted(m.root) }])
+          )
         }
       },
       { git: this.deps.git ?? readOnlyGit, gh: this.deps.gh ?? nativeGh }
@@ -729,6 +741,15 @@ export class AgencyService {
   async crewCatalog(repoId: string): Promise<CrewCatalog> {
     const home = this.deps.agencyHome ?? agencyHome();
     return loadCrew(crewSources(this.deps.crewDirs ?? NO_CREW_DIRS, projectCrewDir(repoId, home)));
+  }
+
+  /**
+   * The skills each member's repository has, for the Admiral to name in a
+   * plan. A member it cannot read lists none rather than failing the turn.
+   */
+  async crewSkills(repoId: string): Promise<MemberSkills[]> {
+    const members = this.membersOf(repoId);
+    return members === null ? [] : memberSkills(members, this.deps.git ?? readOnlyGit);
   }
 
   /** Crew of a runtime that may work at once: the client's number, else the runtime's default. */

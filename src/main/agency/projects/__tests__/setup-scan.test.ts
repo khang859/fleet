@@ -122,6 +122,11 @@ beforeEach(() => {
       '.fleet/env-sync.json': '{}',
       '.claude/agents/reviewer.md': '# Reviewer\n',
       '.claude/skills/sweep/SKILL.md': '# Sweep\n',
+      '.opencode/agents/journey-domain-reviewer.md': '# Domain\n',
+      '.agents/skills/lint/SKILL.md': '# Lint\n',
+      '.eva/skills/deploy/SKILL.md': '# Deploy\n',
+      // Claude Code loads a nested skill only once the session works on files there.
+      'src/.claude/skills/deep/SKILL.md': '# Deep\n',
       'fsmonitor.sh': TRAP
     },
     { origin: 'git@github.com:acme/shop.git' }
@@ -174,10 +179,13 @@ describe('setup scan', () => {
     expect(scan.ghSignedIn).toBe(true);
     expect(scan.members[0].readFrom).toBe('main');
     expect(scan.repoFiles.map((f) => [f.path, f.kind, f.disposition])).toEqual([
+      ['.agents/skills/lint', 'skill', 'in-place'],
       ['.claude/agents/reviewer.md', 'agent', 'importable'],
       ['.claude/skills/sweep', 'skill', 'in-place'],
+      ['.eva/skills/deploy', 'skill', 'in-place'],
       ['.fleet/crew/roles/qa.md', 'role', 'importable'],
       ['.fleet/env-sync.json', 'other', 'not-used'],
+      ['.opencode/agents/journey-domain-reviewer.md', 'agent', 'importable'],
       ['CLAUDE.md', 'instructions', 'in-place']
     ]);
   });
