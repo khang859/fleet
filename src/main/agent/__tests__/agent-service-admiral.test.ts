@@ -227,7 +227,6 @@ describe('Admiral turn', () => {
       'fleet_sessions',
       'fleet_read',
       'fleet_diff',
-      'fleet_wait',
       'settings_read',
       'settings_change',
       'client_file_propose',
@@ -255,6 +254,8 @@ describe('Admiral turn', () => {
       'fleet_send',
       'fleet_spawn',
       'fleet_permission',
+      // Fleet wakes it for every crew event; a wait would only hold the client's messages back.
+      'fleet_wait',
       'schedule_create',
       'todo_add',
       'todo_update',

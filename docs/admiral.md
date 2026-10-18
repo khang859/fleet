@@ -90,7 +90,7 @@ The setup file holds no paths from your machine, so a teammate can import it as 
 
 ## Run a job
 
-1. **Brief the Admiral** in the lobby.
+1. **Brief the Admiral** on the **Bridge**, the first tab in the Admiral's header.
 2. The Admiral opens a job (shown as `j12`) in its own tab and writes a plan: the steps, the crew, what you get back, and a budget.
 3. On the plan card, click **Approve plan**, **Change something** to edit it, or **Reject** to say what to do instead.
    Nothing starts until you approve.

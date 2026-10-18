@@ -1,14 +1,15 @@
-import { Plus } from 'lucide-react';
 import type { AgencySnapshot } from '../../../../shared/agency';
 import { jobDisplayId } from '../../../../shared/agency';
 import { waitingCount } from '../../store/agency-store';
 import { jobStatus, TONE_DOT } from './job-view';
 
 /**
- * The job tabs in an Admiral pane's header, one per open job, and the new
- * brief button that goes back to the lobby. A dot says which jobs want
- * something - amber for a question, green while one is being worked on - so
- * a glance at the header answers "where am I needed".
+ * The tabs in an Admiral pane's header: the lobby, pinned first and named the
+ * Bridge, then one per open job. The lobby is a place of its own, where new work is briefed, so it
+ * gets a labelled tab that lights up while it is on screen rather than a "+"
+ * that reads as "add". A dot says which tabs want something - amber for a
+ * question, green while a job is being worked on - so a glance at the header
+ * answers "where am I needed".
  */
 export function JobTabs({
   snapshot,
@@ -27,17 +28,29 @@ export function JobTabs({
   const lobbyAsking = waitingCount(snapshot, null) > 0;
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1">
+    <div
+      role="tablist"
+      aria-label="Bridge and jobs"
+      className="flex min-w-0 flex-1 items-center gap-1"
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={activeJobId === null}
+        title="Brief new work and see past jobs"
+        onClick={() => onSelect(null)}
+        className={`${TAB} shrink-0 ${activeJobId === null ? SELECTED : IDLE}`}
+      >
+        {lobbyAsking && <span className="size-1.5 shrink-0 rounded-full bg-amber-400" />}
+        Bridge
+      </button>
+      <div className="mx-0.5 h-4 w-px shrink-0 bg-fleet-border" />
       {jobs.length === 0 ? (
         <span className="truncate px-1 text-xs text-fleet-text-subtle">
           {(snapshot?.pastJobs.length ?? 0) > 0 ? 'No open jobs' : 'No jobs yet'}
         </span>
       ) : (
-        <div
-          role="tablist"
-          aria-label="Jobs"
-          className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
+        <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {jobs.map((job) => {
             const selected = job.id === activeJobId;
             const status = jobStatus(job, {
@@ -53,11 +66,7 @@ export function JobTabs({
                 aria-selected={selected}
                 title={`${jobDisplayId(job.id)} · ${job.title} · ${status.label}`}
                 onClick={() => onSelect(job.id)}
-                className={`flex h-7 max-w-[200px] min-w-[88px] shrink items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors focus-ring ${
-                  selected
-                    ? 'bg-fleet-surface-2 text-fleet-text'
-                    : 'text-fleet-text-muted hover:bg-fleet-surface-2/60 hover:text-fleet-text-secondary'
-                }`}
+                className={`${TAB} max-w-[200px] min-w-[88px] shrink ${selected ? SELECTED : IDLE}`}
               >
                 {dot && (
                   <span className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[status.tone]}`} />
@@ -68,23 +77,10 @@ export function JobTabs({
           })}
         </div>
       )}
-      <button
-        type="button"
-        onClick={() => onSelect(null)}
-        aria-label="New brief"
-        aria-pressed={activeJobId === null}
-        title={jobs.length === 0 ? 'Brief the Admiral' : 'New brief'}
-        className={`relative flex size-7 shrink-0 items-center justify-center rounded-md transition-colors focus-ring ${
-          activeJobId === null && jobs.length > 0
-            ? 'bg-fleet-surface-2 text-fleet-text'
-            : 'text-fleet-text-muted hover:bg-fleet-surface-2/60 hover:text-fleet-text'
-        }`}
-      >
-        <Plus size={14} />
-        {lobbyAsking && (
-          <span className="absolute top-1 right-1 size-1.5 rounded-full bg-amber-400" />
-        )}
-      </button>
     </div>
   );
 }
+
+const TAB = 'flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors focus-ring';
+const SELECTED = 'bg-fleet-surface-2 text-fleet-text';
+const IDLE = 'text-fleet-text-muted hover:bg-fleet-surface-2/60 hover:text-fleet-text-secondary';

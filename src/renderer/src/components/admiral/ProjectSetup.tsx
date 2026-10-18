@@ -363,8 +363,8 @@ function AskCard({ repo }: { repo: AgencyRepoRef }): React.JSX.Element {
       <SectionLabel>ASK THE ADMIRAL</SectionLabel>
       <p className="mt-2 mb-2.5 text-xs text-fleet-text-secondary">
         {asked
-          ? 'Asked. I answer in the lobby when setup is done.'
-          : 'Not sure about something here? Ask, and I answer in the lobby when setup is done.'}
+          ? 'Asked. I answer on the Bridge when setup is done.'
+          : 'Not sure about something here? Ask, and I answer on the Bridge when setup is done.'}
       </p>
       <AskAdmiralForm
         page="Project setup"

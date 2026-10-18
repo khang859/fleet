@@ -320,8 +320,8 @@ const ASK_DESCRIPTION = [
 ].join('\n\n');
 
 const OPEN_DESCRIPTION = [
-  'Open a new job from the lobby, once the client has asked for a piece of work and you know enough to name it.',
-  'The job gets its own tab and conversation, which carries this lobby conversation over. Everything about the job happens there from then on.',
+  'Open a new job from the Bridge, once the client has asked for a piece of work and you know enough to name it.',
+  'The job gets its own tab and conversation, which carries this Bridge conversation over. Everything about the job happens there from then on.',
   'The title is a few words for the tab; the brief says what the client wants, in their terms, with what you agreed so far.'
 ].join('\n\n');
 

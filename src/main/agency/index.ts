@@ -521,7 +521,7 @@ export class AgencyService {
     if (q.proposal === null || this.clientFiles.changedOutside(q.repoId)) return false;
     this.clientFiles.apply(q.repoId, {
       name: this.store.repo(q.repoId)?.name ?? q.repoId,
-      source: q.jobId === null ? 'the lobby' : `job ${jobDisplayId(q.jobId)}`,
+      source: q.jobId === null ? 'the Bridge' : `job ${jobDisplayId(q.jobId)}`,
       proposal: q.proposal
     });
     return true;
@@ -757,7 +757,7 @@ export class AgencyService {
     }
     if (input.jobId === null) {
       if (this.store.lobbySessionId(repo.repoId) !== input.threadId) {
-        throw new Error(`This conversation is not the lobby of ${repo.name}.`);
+        throw new Error(`This conversation is not the Bridge of ${repo.name}.`);
       }
       return { repoId: repo.repoId, jobId: null };
     }

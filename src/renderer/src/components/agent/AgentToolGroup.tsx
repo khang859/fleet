@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 import { AgentToolRow } from './AgentToolRow';
-import { runLabel, runPreview, runRunning } from './tool-group';
+import { CREW_RUN, crewRunLabel, runLabel, runPreview, runRunning } from './tool-group';
 
 /**
  * A run of the same lookup, on one line, with the rows behind a disclosure.
@@ -19,15 +19,19 @@ import { runLabel, runPreview, runRunning } from './tool-group';
 export function AgentToolGroup({
   name,
   calls,
-  cleared
+  cleared,
+  row
 }: {
   name: string;
   calls: AgentToolCall[];
   /** Calls whose result is no longer being sent to the model, by call id. */
   cleared: Set<string>;
+  /** How a call the transcript draws as something other than a plain row is drawn here. */
+  row?: (call: AgentToolCall) => React.ReactNode;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const running = runRunning(calls);
+  const label = name === CREW_RUN ? crewRunLabel(calls) : runLabel(name, calls.length, running);
 
   // A running group opens like any other, which is where it parts company with a
   // running row. A row that has not come back has nothing underneath it to show;
@@ -50,7 +54,7 @@ export function AgentToolGroup({
         <span
           className={`flex min-w-0 items-center gap-1.5 ${running ? 'fleet-shimmer-text' : ''}`}
         >
-          <span className="shrink-0">{runLabel(name, calls.length, running)}</span>
+          <span className="shrink-0">{label}</span>
           <span className="truncate font-mono text-[11px]">{runPreview(name, calls)}</span>
         </span>
       </button>
@@ -59,7 +63,9 @@ export function AgentToolGroup({
         // belonging to the line above rather than as the transcript resuming.
         <div className="flex flex-col gap-1.5 border-l-2 border-fleet-border pl-3">
           {calls.map((call) => (
-            <AgentToolRow key={call.id} call={call} cleared={cleared.has(call.id)} />
+            <Fragment key={call.id}>
+              {row?.(call) ?? <AgentToolRow call={call} cleared={cleared.has(call.id)} />}
+            </Fragment>
           ))}
         </div>
       )}

@@ -155,7 +155,7 @@ describe('threadScope', () => {
       service.threadScope({ repoId: REPO.repoId, jobId: job.id, threadId: 'not-its-session' })
     ).toThrow(`This conversation is not j${job.id}'s.`);
     expect(() => service.threadScope({ ...lobby, threadId: job.sessionId })).toThrow(
-      'This conversation is not the lobby of fleet.'
+      'This conversation is not the Bridge of fleet.'
     );
     expect(() => service.threadScope({ repoId: 'nope', jobId: null, threadId: 'x' })).toThrow(
       'Fleet has no record of the repository'
@@ -186,7 +186,7 @@ describe('admiralSnapshotNote', () => {
 
     const note = admiralSnapshotNote(service.store, lobby);
 
-    expect(note).toContain('the lobby of fleet');
+    expect(note).toContain('the Bridge of fleet');
     expect(note).toContain(`- j${job.id}: briefing, 0 questions waiting`);
     expect(note).toContain(`<session-data session="job titles">\nj${job.id}: Fix the login bug\n`);
     expect(note).toContain('No questions are waiting on the client.');

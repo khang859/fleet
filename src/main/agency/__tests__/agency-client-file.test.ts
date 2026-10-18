@@ -118,7 +118,7 @@ describe('client_file_propose', () => {
     expect(fileText()).toContain('ready for review');
 
     service.answer({ id: out.id!, option: 0 });
-    expect(fileText()).toBe('# fleet\n- Open PRs as drafts. (from the lobby, 2026-10-17)\n');
+    expect(fileText()).toBe('# fleet\n- Open PRs as drafts. (from the Bridge, 2026-10-17)\n');
   });
 
   it('refuses to replace or remove a line that is not in the file', async () => {
@@ -164,6 +164,6 @@ describe('a client file changed outside Fleet', () => {
     expect(service.snapshot(REPO.repoId).clientFileChanged).toBe(false);
     expect(note(LOBBY)).toContain('Raise any budget');
     expect(service.answer({ id: pending.id!, option: 0 })?.status).toBe('answered');
-    expect(fileText()).toContain('- Use drafts. (from the lobby');
+    expect(fileText()).toContain('- Use drafts. (from the Bridge');
   });
 });
