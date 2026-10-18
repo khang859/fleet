@@ -3,6 +3,7 @@ import type { ClaudeSession, ClaudeSessionChange } from '../../../shared/claude-
 import {
   ACK_TIMEOUT_MS,
   cleanPrompt,
+  EVA_PASTE_MAX_BYTES,
   PROMPT_MISMATCH,
   PromptInput,
   QUIET_MS,
@@ -102,6 +103,23 @@ describe('PromptInput', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('pastes the prompt into eva as one message, then submits it', async () => {
+    current = session({ runtime: 'eva' });
+    const text = `[admiral] ${'Fix the login form. '.repeat(10)}\n- Keep it small.`;
+    const result = await input.send('s1', text, 'orchestrator');
+    expect(result).toEqual({ ok: true, confirmed: true, text });
+    expect(writes).toEqual([`\x1b[200~${text}\x1b[201~`, '\r']);
+    expect(sleeps).toEqual([SUBMIT_DELAY_MS]);
+
+    writes = [];
+    const long = await input.send('s1', 'x'.repeat(EVA_PASTE_MAX_BYTES + 1), 'orchestrator');
+    expect(long).toEqual({
+      ok: false,
+      reason: 'Not sent: the prompt is longer than eva takes in one message.'
+    });
+    expect(writes).toEqual([]);
   });
 
   it('types the prompt, submits it, and reports the acknowledgement', async () => {

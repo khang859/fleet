@@ -14,6 +14,10 @@ import { hashPrompt } from './registry';
  * `<pasted_content>`, and its model will not follow pasted instructions. Typed
  * in small chunks, LF inserts a line break, `\r` submits, and the transcript
  * records exactly what was written (docs/learnings/2026-09-30-claude-code-wraps-pasted-prompts.md).
+ *
+ * eva is the other way round: it takes a bracketed paste as typed text, sent
+ * as it is, while typed text can open its command list. So an eva session
+ * gets the prompt as one paste, then `\r`.
  */
 
 /** Characters per write: a sixth of the size Claude Code takes as a paste. */
@@ -26,6 +30,10 @@ export const SUBMIT_DELAY_MS = 50;
 export const QUIET_MS = 3_000;
 /** How long Claude Code has to acknowledge the prompt with `UserPromptSubmit`. */
 export const ACK_TIMEOUT_MS = 5_000;
+/** The most eva takes in one paste, in bytes. */
+export const EVA_PASTE_MAX_BYTES = 1_000_000;
+const PASTE_START = '\x1b[200~';
+const PASTE_END = '\x1b[201~';
 /** What `send` says when Claude Code submitted some other text than the prompt typed. */
 export const PROMPT_MISMATCH =
   'Claude Code got a different prompt than the one typed. It was not sent again; read the session to see what it got.';
@@ -182,12 +190,17 @@ export class PromptInput {
     if (reason !== null) return { ok: false, reason };
     const session = this.deps.session(sessionId);
     if (!session) return { ok: false, reason: 'That session is not running in a Fleet pane.' };
+    const eva = session.runtime === 'eva';
+    if (eva && Buffer.byteLength(clean) > EVA_PASTE_MAX_BYTES) {
+      return { ok: false, reason: 'Not sent: the prompt is longer than eva takes in one message.' };
+    }
 
     this.sending.add(sessionId);
     const ack = this.watchAck(sessionId, hashPrompt(clean));
     try {
       this.deps.noteInput(sessionId, origin, clean);
-      await this.type(session.paneId, clean);
+      if (eva) this.deps.write(session.paneId, `${PASTE_START}${clean}${PASTE_END}`);
+      else await this.type(session.paneId, clean);
       await this.sleep(SUBMIT_DELAY_MS);
       this.deps.write(session.paneId, '\r');
       const heard = await ack.wait();
