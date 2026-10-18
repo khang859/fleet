@@ -15,11 +15,13 @@ function checkLines(issues: readonly PlanIssue[]): string {
     issues.filter((i) => i.severity === severity).map((i) => i.text);
   const blocks = of('block');
   const warns = of('warn');
+  const accepts = of('accept');
   return [
     blocks.length > 0
       ? `\n\nBlocking, so the client cannot approve it yet: ${blocks.join(' ')} Propose a new version that fixes these.`
       : '',
-    warns.length > 0 ? `\n\nWarnings: ${warns.join(' ')}` : ''
+    warns.length > 0 ? `\n\nWarnings: ${warns.join(' ')}` : '',
+    accepts.length > 0 ? `\n\nThe client accepts these to approve: ${accepts.join(' ')}` : ''
   ].join('');
 }
 

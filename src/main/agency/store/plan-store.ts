@@ -441,18 +441,6 @@ export class PlanStore {
       .map((r) => ({ id: r.id, at: r.at, kind: r.kind, stepId: r.step_id, text: r.text }));
   }
 
-  /** What the job's results and spend come to, for the change card and the budget floor. */
-  spendUsd(jobId: number): number {
-    return (
-      this.db
-        .prepare<
-          [number],
-          { usd: number | null }
-        >('SELECT SUM(usd) AS usd FROM spend_samples WHERE job_id = ?')
-        .get(jobId)?.usd ?? 0
-    );
-  }
-
   /** Delivered results per step and kind, for "every listed deliverable is in". */
   resultsByStep(jobId: number): Array<{ stepId: string | null; kind: string; label: string }> {
     return this.db

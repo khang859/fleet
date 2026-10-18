@@ -15,8 +15,9 @@ export type StartVerdict = { ok: true } | { ok: false; reason: string; queue?: b
  * approved plan has no such step, while a step it waits on is not done, and
  * for a step its crew member left before it was done, until the client says
  * it may go again.
- * Over its runtime's crew limit, behind a job it queues after, or with every stack slot
- * taken, it is not refused but queued: it starts once a place frees up.
+ * Over its runtime's crew limit, behind a job it queues after, with every stack slot
+ * taken, or for Claude crew while the subscription is at the reserve kept for
+ * the user, it is not refused but queued: it starts once a place frees up.
  */
 export function canStartStep(input: {
   job: Pick<AgencyJob, 'id' | 'state'>;
@@ -29,6 +30,8 @@ export function canStartStep(input: {
   live?: { runtime: CrewRuntime; working: number; limit: number };
   /** The project's stack slots, for a step whose role runs the stack. */
   stack?: StackGate | null;
+  /** Why the step's crew wait for the user's subscription reserve, or null when they need not. */
+  reserve?: string | null;
 }): StartVerdict {
   const id = jobDisplayId(input.job.id);
   if (input.job.state !== 'running') {
@@ -71,6 +74,7 @@ function waitReason(input: Parameters<typeof canStartStep>[0]): string | null {
     const who = `${RUNTIME_LABEL[live.runtime]} crew ${live.limit === 1 ? 'member is' : 'members are'}`;
     return `${live.limit} ${who} already working; this step starts when one finishes.`;
   }
+  if (input.reserve != null) return input.reserve;
   const stack = input.stack;
   if (!stack || stack.held < stack.slots) return null;
   const outside =

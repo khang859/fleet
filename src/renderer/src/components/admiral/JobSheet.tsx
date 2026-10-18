@@ -23,6 +23,13 @@ import { ResultCard } from './ResultCard';
 import { SettingsCardView } from './SettingsCard';
 import { QuestionCard, type QuestionAnswer } from './QuestionCard';
 import { useRefusable } from './use-refusable';
+import {
+  pctText,
+  spendLevel,
+  usdText,
+  type JobSpend,
+  type SpendLevel
+} from '../../../../shared/agency-spend';
 import { formatUsd, jobStatus, runtimeName, TONE_DOT } from './job-view';
 
 /** How wide the sheet is beside the conversation. */
@@ -117,7 +124,7 @@ export function JobSheet({
       <ResultsSection detail={detail} />
 
       {job !== null && approved !== null && detail !== undefined && (
-        <SpendSection spendUsd={detail.spendUsd} budgetUsd={approved.plan.budget.usd} />
+        <SpendSection spend={detail.spend} />
       )}
 
       {firstRun && <HowAJobGoes />}
@@ -610,22 +617,102 @@ function ServersSection({
   );
 }
 
-function SpendSection({
-  spendUsd,
-  budgetUsd
-}: {
-  spendUsd: number;
-  budgetUsd: number;
-}): React.JSX.Element {
+const LEVEL_BAR: Record<SpendLevel, string> = {
+  none: 'bg-blue-400',
+  ok: 'bg-blue-400',
+  warn: 'bg-amber-400',
+  over: 'bg-red-500',
+  hard: 'bg-red-500'
+};
+
+const LEVEL_TEXT: Record<SpendLevel, string> = {
+  none: 'text-fleet-text-muted',
+  ok: 'text-fleet-text-muted',
+  warn: 'text-amber-700 dark:text-amber-400',
+  over: 'text-red-600 dark:text-red-400',
+  hard: 'text-red-600 dark:text-red-400'
+};
+
+/** Both meters against their budgets, then who spent it: the Admiral first, then each crew member. */
+function SpendSection({ spend }: { spend: JobSpend }): React.JSX.Element {
+  const showWeek = spend.budgetWeekPct !== null || spend.weekPct > 0;
+  const estimated = spend.lines.some((line) => line.estimate);
   return (
-    <Section label="SPEND" aside={`$${formatUsd(spendUsd)} of $${formatUsd(budgetUsd)}`}>
-      <div className="h-1.5 overflow-hidden rounded-full bg-fleet-surface-2">
-        <div
-          className="h-full bg-blue-400"
-          style={{ width: `${Math.min(100, (spendUsd / budgetUsd) * 100)}%` }}
+    <Section label="SPEND">
+      <SpendMeterRow label="Money" spent={spend.usd} budget={spend.budgetUsd} text={usdText} />
+      {showWeek && (
+        <SpendMeterRow
+          label="Claude sub"
+          spent={spend.weekPct}
+          budget={spend.budgetWeekPct}
+          text={pctText}
+          approx={estimated}
         />
-      </div>
+      )}
+      {spend.lines.length > 0 && (
+        <ul className="flex flex-col gap-0.5 text-[11px]">
+          {spend.lines.map((line) => (
+            <li key={line.crewId ?? 'admiral'} className="flex items-baseline gap-2">
+              <span className="min-w-0 flex-1 truncate text-fleet-text-muted">{line.label}</span>
+              <span className="font-mono text-fleet-text">{usdText(line.usd)}</span>
+              {showWeek && (
+                <span className="w-12 text-right font-mono text-fleet-text">
+                  {line.weekPct > 0 ? `${line.estimate ? '~' : ''}${pctText(line.weekPct)}` : '-'}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {estimated && (
+        <p className="text-[11px] text-fleet-text-subtle">
+          ~ is an estimate. Claude Code reports one weekly share for the whole account.
+        </p>
+      )}
+      {spend.reserveUntil !== null && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-400">
+          Claude crew wait for your usage reserve until {clockTime(spend.reserveUntil)}.
+        </p>
+      )}
     </Section>
+  );
+}
+
+function SpendMeterRow({
+  label,
+  spent,
+  budget,
+  text,
+  approx = false
+}: {
+  label: string;
+  spent: number;
+  budget: number | null;
+  text: (n: number) => string;
+  /** The spent amount is an estimate, marked "~". */
+  approx?: boolean;
+}): React.JSX.Element {
+  const level = spendLevel(spent, budget);
+  const share = budget !== null && budget > 0 ? spent / budget : 0;
+  const over = share > 1 ? ` · ${Math.round((share - 1) * 100)}% over` : '';
+  const used = `${approx ? '~' : ''}${text(spent)}`;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline gap-2 text-[11px]">
+        <span className="flex-1 text-fleet-text-muted">{label}</span>
+        <span className={`font-mono ${LEVEL_TEXT[level]}`}>
+          {budget === null ? `${used} · no budget` : `${used} of ${text(budget)}${over}`}
+        </span>
+      </div>
+      {budget !== null && (
+        <div className="h-1.5 overflow-hidden rounded-full bg-fleet-surface-2">
+          <div
+            className={`h-full ${LEVEL_BAR[level]}`}
+            style={{ width: `${Math.min(100, share * 100)}%` }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -8,6 +8,7 @@ import {
 } from '../../../shared/agency';
 import type { AgencyJob } from '../../../shared/agency';
 import type { PlanBases } from '../../../shared/agency-jobs';
+import { pctText, usdText } from '../../../shared/agency-spend';
 import { CLIENT_FILE_CLEANUP_CHARS, type ClientFileNote } from '../projects/client-file';
 import type { AgencyStore } from '../store/agency-store';
 import { proposalLines } from '../wakeup-text';
@@ -15,7 +16,7 @@ import { permissionDisplayId } from '../../../shared/agency-permissions';
 
 type SnapshotReader = Pick<
   AgencyStore,
-  'repo' | 'getJob' | 'listJobs' | 'listQuestions' | 'plans' | 'permissions'
+  'repo' | 'getJob' | 'listJobs' | 'listQuestions' | 'plans' | 'permissions' | 'spend'
 >;
 
 /** The commits a job's work starts from, as the approval pinned them. */
@@ -66,9 +67,14 @@ function planLines(store: SnapshotReader, job: AgencyJob): string[] {
     lines.push('No plan is approved yet; nothing may start. Propose one with job_plan.');
   } else {
     const steps = store.plans.steps(job.id);
-    const spent = store.plans.spendUsd(job.id);
+    const spent = store.spend.jobTotals(job.id);
+    const { usd, weekPct } = approved.plan.budget;
+    const share =
+      weekPct === undefined
+        ? ''
+        : `, ${pctText(weekPct)} of the weekly Claude limit, about ${pctText(spent.weekPct)} used`;
     lines.push(
-      `Approved plan v${approved.version} (${approved.plan.playbook}), budget $${approved.plan.budget.usd}, spent $${spent.toFixed(2)}${baseText(approved.bases)}. Steps:`,
+      `Approved plan v${approved.version} (${approved.plan.playbook}), budget $${usd}, spent ${usdText(spent.usd)}${share}${baseText(approved.bases)}. Steps:`,
       fence(
         `plan v${approved.version}`,
         approved.plan.steps

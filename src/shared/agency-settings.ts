@@ -67,6 +67,8 @@ const needsOk = {
 };
 
 const Usd = z.number().min(0).max(100_000);
+/** A share of a Claude usage window, in percent. */
+const Pct = z.number().min(1).max(100);
 /** Crew of one runtime at once; null takes the runtime's default. */
 const AtOnce = z.number().int().min(1).max(AT_ONCE_MAX).nullable();
 const Model = z.string().max(200);
@@ -91,6 +93,22 @@ const AGENCY_SETTINGS = {
   'agency.admiral.monthlyCapUsd': {
     label: 'Monthly cap (USD)',
     schema: Usd,
+    ...moreNeedsOk
+  },
+  'agency.admiral.defaultBudgetWeekPct': {
+    label: 'Default job share of the weekly Claude limit (%)',
+    schema: Pct,
+    ...moreNeedsOk
+  },
+  // A higher line leaves the user less of their own subscription.
+  'agency.admiral.reserveFiveHourPct': {
+    label: 'Claude crew stop at this much of the 5-hour window (%)',
+    schema: Pct,
+    ...moreNeedsOk
+  },
+  'agency.admiral.reserveSevenDayPct': {
+    label: 'Claude crew stop at this much of the weekly limit (%)',
+    schema: Pct,
     ...moreNeedsOk
   },
   // Each nudge is another crew turn the job pays for.

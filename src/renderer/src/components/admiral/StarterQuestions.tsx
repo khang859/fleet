@@ -8,21 +8,20 @@ import {
 } from '../../../../shared/agency-client-file';
 import { localDateStamp } from '../../../../shared/local-date';
 import {
-  BUDGET_SHARE_PRESETS,
-  BUDGET_USD_PRESETS,
   RECOMMENDED_STARTER,
   STARTER_CHOICE_QUESTIONS,
   starterLines,
   type StarterAnswers
 } from '../../../../shared/agency-starter';
+import { useSettingsStore } from '../../store/settings-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
+import { BudgetPicker } from './BudgetPicker';
 import {
   AdmiralSays,
   ChoiceButton,
   OnboardingButton,
   OnboardingCard,
-  SectionLabel,
-  textInputCls
+  SectionLabel
 } from './onboarding-ui';
 import { homePath } from './onboarding-view';
 
@@ -52,6 +51,9 @@ export function StarterQuestions({
   const [trustOpened, setTrustOpened] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A Custom budget that cannot be used holds Finish until it is fixed.
+  const [badBudgets, setBadBudgets] = useState<ReadonlySet<keyof StarterAnswers>>(new Set());
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
 
   // Keyed on the repository's fields, not the object, which a redraw replaces with an equal copy.
   const { repoId, root, name } = repo;
@@ -92,6 +94,15 @@ export function StarterQuestions({
   const finish = (): void => {
     setBusy(true);
     setError(null);
+    // The budgets are the defaults each new plan starts from, not only words in the client file.
+    void updateSettings({
+      agency: {
+        admiral: {
+          defaultBudgetUsd: answers.budgetUsd,
+          defaultBudgetWeekPct: answers.budgetShare
+        }
+      }
+    });
     window.fleet.agency.projects
       .finishStarter({ repo, lines })
       .catch((err: unknown) => setError(String(err)))
@@ -99,6 +110,13 @@ export function StarterQuestions({
   };
 
   const set = (patch: Partial<StarterAnswers>): void => setAnswers({ ...answers, ...patch });
+  const setBudget = (key: 'budgetUsd' | 'budgetShare', value: number | null): void => {
+    const bad = new Set(badBudgets);
+    if (value === null) bad.add(key);
+    else bad.delete(key);
+    setBadBudgets(bad);
+    if (value !== null) set({ [key]: value });
+  };
 
   const questions = (
     <div className="flex flex-col gap-3">
@@ -115,7 +133,7 @@ export function StarterQuestions({
           onChange={(i) => set({ [q.id]: i })}
         />
       ))}
-      <BudgetCard answers={answers} onChange={set} />
+      <BudgetCard answers={answers} onChange={setBudget} />
       {STARTER_CHOICE_QUESTIONS.slice(2).map((q) => (
         <ChoiceCard
           key={q.id}
@@ -166,7 +184,12 @@ export function StarterQuestions({
   const footer = (
     <div className="flex items-center justify-end gap-3">
       {error !== null && <p className="mr-auto text-xs text-red-500">{error}</p>}
-      <OnboardingButton kind="primary" size="lg" disabled={busy} onClick={finish}>
+      <OnboardingButton
+        kind="primary"
+        size="lg"
+        disabled={busy || badBudgets.size > 0}
+        onClick={finish}
+      >
         {busy ? 'Saving…' : 'Finish setup'}
       </OnboardingButton>
     </div>
@@ -231,98 +254,40 @@ function BudgetCard({
   onChange
 }: {
   answers: StarterAnswers;
-  onChange: (patch: Partial<StarterAnswers>) => void;
+  onChange: (key: 'budgetUsd' | 'budgetShare', value: number | null) => void;
 }): React.JSX.Element {
+  const monthlyCapUsd = useSettingsStore((s) => s.settings?.agency.admiral.monthlyCapUsd ?? null);
   return (
     <OnboardingCard>
       <span className="text-[13px] font-semibold text-fleet-text">Default budget for a job?</span>
       <div className="mt-2.5 flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
           <span className="text-xs text-fleet-text-muted">Money</span>
-          <PresetRow
-            presets={BUDGET_USD_PRESETS}
+          <BudgetPicker
+            meter="usd"
             value={answers.budgetUsd}
             pick={RECOMMENDED_STARTER.budgetUsd}
-            format={(n) => `$${n}`}
-            max={10_000}
+            monthlyCapUsd={monthlyCapUsd}
             label="Custom budget in dollars"
-            onChange={(budgetUsd) => onChange({ budgetUsd })}
+            onChange={(n) => onChange('budgetUsd', n)}
           />
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-xs text-fleet-text-muted">Claude sub</span>
-          <PresetRow
-            presets={BUDGET_SHARE_PRESETS}
+          <BudgetPicker
+            meter="week_pct"
             value={answers.budgetShare}
             pick={RECOMMENDED_STARTER.budgetShare}
-            format={(n) => `${n}%`}
-            max={100}
             label="Custom share of the weekly Claude limit, in percent"
-            onChange={(budgetShare) => onChange({ budgetShare })}
+            onChange={(n) => onChange('budgetShare', n)}
           />
         </div>
       </div>
       <p className="mt-2.5 text-[11px] leading-relaxed text-fleet-text-subtle">
         Money pays for the Admiral’s model, eva and API crew. Claude sub is a share of your weekly
-        Claude Code limit.
+        Claude Code limit. Cloud costs, such as Neon, Vercel or AWS, are not counted.
       </p>
     </OnboardingCard>
-  );
-}
-
-function PresetRow({
-  presets,
-  value,
-  pick,
-  format,
-  max,
-  label,
-  onChange
-}: {
-  presets: readonly number[];
-  value: number;
-  pick: number;
-  format: (n: number) => string;
-  max: number;
-  label: string;
-  onChange: (n: number) => void;
-}): React.JSX.Element {
-  const custom = !presets.includes(value);
-  const [editing, setEditing] = useState(custom);
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {presets.map((n) => (
-        <ChoiceButton
-          key={n}
-          selected={!editing && value === n}
-          onClick={() => {
-            setEditing(false);
-            onChange(n);
-          }}
-        >
-          {format(n)}
-          {n === pick && <span className="text-fleet-text-muted"> · My pick</span>}
-        </ChoiceButton>
-      ))}
-      {editing ? (
-        <input
-          type="number"
-          min={1}
-          max={max}
-          autoFocus
-          aria-label={label}
-          value={value}
-          onChange={(e) =>
-            onChange(Math.min(max, Math.max(1, Math.round(Number(e.target.value)) || 1)))
-          }
-          className={`${textInputCls} w-20 border-blue-500/70`}
-        />
-      ) : (
-        <ChoiceButton selected={false} onClick={() => setEditing(true)}>
-          Custom
-        </ChoiceButton>
-      )}
-    </div>
   );
 }
 

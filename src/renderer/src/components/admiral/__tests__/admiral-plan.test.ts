@@ -17,6 +17,7 @@ import { CrewSwapForm } from '../CrewSwap';
 import { JobSheet } from '../JobSheet';
 import { PlanCard } from '../PlanCard';
 import { proposedPlanId } from '../job-view';
+import { NO_JOB_SPEND } from '../../../../../shared/agency-spend';
 
 /** The plan card and the sheet's plan sections, in each state a version can be in. */
 
@@ -87,7 +88,7 @@ function detail(
     events: [],
     log: [],
     results: [],
-    spendUsd: 2.5,
+    spend: { ...NO_JOB_SPEND, usd: 2.5, budgetUsd: 10 },
     merge: null,
     crew,
     servers,
@@ -353,8 +354,34 @@ describe('the sheet', () => {
     expect(html).toContain('>done<');
     expect(html).toContain('>running<');
     expect(html).toContain('Reading the diff');
-    expect(html).toContain('$2.50 of $10');
+    expect(html).toContain('$2.50 of $10.00');
     expect(html).toContain('Nothing needs you right now.');
+  });
+
+  it('shows both meters, who spent what, the estimate marker and the overshoot', () => {
+    const approved = version({ status: 'approved' });
+    const d = {
+      ...detail([approved]),
+      spend: {
+        usd: 12.5,
+        weekPct: 8.5,
+        budgetUsd: 10,
+        budgetWeekPct: 10,
+        lines: [
+          { crewId: null, label: 'Admiral', usd: 0.5, weekPct: 0, estimate: false },
+          { crewId: 3, label: 'builder 1', usd: 12, weekPct: 8.5, estimate: true }
+        ],
+        reserveUntil: new Date(2026, 9, 18, 14, 30).getTime()
+      }
+    };
+    const html = sheet(snap(false), d);
+    expect(html).toContain('$12.50 of $10.00 · 25% over');
+    expect(html).toContain('~8.5% of 10%');
+    expect(html).toContain('bg-red-500');
+    expect(html).toContain('bg-amber-400');
+    expect(html).toContain('~8.5%</span>');
+    expect(html).toContain('~ is an estimate.');
+    expect(html).toContain('Claude crew wait for your usage reserve until 14:30.');
   });
 
   it('lists the servers the crew started, with the variable each is on and its address', () => {

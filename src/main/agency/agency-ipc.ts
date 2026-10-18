@@ -85,7 +85,8 @@ const PlanActionArgs = z.discriminatedUnion('action', [
     planVersionId: JobId,
     action: z.literal('approve'),
     baseChoice: z.record(StepKey, z.enum(['default', 'head'])).optional(),
-    swaps: z.record(StepKey, z.enum(['continue', 'restart'])).optional()
+    swaps: z.record(StepKey, z.enum(['continue', 'restart'])).optional(),
+    acceptCost: z.boolean().optional()
   }),
   z.object({
     planVersionId: JobId,

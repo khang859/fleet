@@ -176,7 +176,10 @@ describe('SettingsStore settings merge', () => {
       admiral: {
         model: '',
         defaultBudgetUsd: 10,
+        defaultBudgetWeekPct: 10,
         monthlyCapUsd: 100,
+        reserveFiveHourPct: 80,
+        reserveSevenDayPct: 90,
         nudgeLimit: 3,
         permissionExpirySec: 180
       },
@@ -196,7 +199,10 @@ describe('SettingsStore settings merge', () => {
       admiral: {
         model: 'openrouter:some/model',
         defaultBudgetUsd: 10,
+        defaultBudgetWeekPct: 10,
         monthlyCapUsd: 250,
+        reserveFiveHourPct: 80,
+        reserveSevenDayPct: 90,
         nudgeLimit: 3,
         permissionExpirySec: 180
       },

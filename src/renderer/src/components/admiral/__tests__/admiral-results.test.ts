@@ -12,6 +12,7 @@ import { agencyJob } from '../../../../../shared/__tests__/agency-fixtures';
 import { DeliveredCard } from '../JobClose';
 import { ResultCard } from '../ResultCard';
 import { deliveredResultId } from '../job-view';
+import { NO_JOB_SPEND } from '../../../../../shared/agency-spend';
 
 /** A result card for each kind a step can hand back. */
 
@@ -195,7 +196,7 @@ describe('DeliveredCard', () => {
       crew: [],
       servers: [],
       permissions: [],
-      spendUsd: 0,
+      spend: NO_JOB_SPEND,
       merge
     };
     return renderToStaticMarkup(createElement(DeliveredCard, { job, detail }));

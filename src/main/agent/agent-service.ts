@@ -1152,6 +1152,8 @@ export class AgentService {
   private readonly inflight = new Map<string, AbortController>();
   /** The inbox of each running Admiral turn, by stream. */
   private readonly inboxes = new Map<string, AgentInbox>();
+  /** The job (null: the lobby) of each running Admiral turn, by stream. */
+  private readonly admiralJobs = new Map<string, number | null>();
 
   constructor(private readonly deps: Deps) {}
 
@@ -1168,12 +1170,19 @@ export class AgentService {
       // Open before the turn starts, so a message sent a moment after it is
       // taken in rather than refused.
       const inbox = new AgentInbox();
+      const jobId = req.admiral?.jobId ?? null;
       this.inboxes.set(req.streamId, inbox);
-      void this.run(req.streamId, this.modelFor(mode), async (ctx, account) =>
-        this.admiralTurn(req, ctx, account, inbox)
+      this.admiralJobs.set(req.streamId, jobId);
+      void this.run(
+        req.streamId,
+        this.modelFor(mode),
+        async (ctx, account) => this.admiralTurn(req, ctx, account, inbox),
+        // Cancelled or failed, what the rounds before cost still counts.
+        (usage) => this.deps.admiral?.agency.spend.admiralTurn(jobId, usage?.billed.costUsd ?? null)
       ).finally(() => {
         inbox.close();
         this.inboxes.delete(req.streamId);
+        this.admiralJobs.delete(req.streamId);
       });
       return;
     }
@@ -1208,6 +1217,13 @@ export class AgentService {
 
   cancel(streamId: string): void {
     this.inflight.get(streamId)?.abort();
+  }
+
+  /** Stop a job's running Admiral turns, as its spend passed 120% of a budget. */
+  cancelAdmiral(jobId: number): void {
+    for (const [streamId, turnJob] of this.admiralJobs) {
+      if (turnJob === jobId) this.cancel(streamId);
+    }
   }
 
   /** Aborts every live turn, e.g. on window teardown. */
@@ -1249,7 +1265,8 @@ export class AgentService {
   private async run(
     streamId: string,
     model: (settings: AgentSettings) => string | null,
-    work: (ctx: CallContext, account: TurnAccount) => Promise<void>
+    work: (ctx: CallContext, account: TurnAccount) => Promise<void>,
+    ended?: (usage: AgentTurnUsage | null) => void
   ): Promise<void> {
     const controller = new AbortController();
     this.inflight.set(streamId, controller);
@@ -1293,6 +1310,11 @@ export class AgentService {
       this.inflight.delete(streamId);
       // A question nobody answered does not outlive the turn that asked it.
       this.deps.gate.endTurn(streamId);
+      try {
+        ended?.(account.report());
+      } catch (err) {
+        log.error('turn end handler failed', { streamId, error: String(err) });
+      }
     }
   }
 

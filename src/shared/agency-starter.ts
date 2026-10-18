@@ -42,11 +42,6 @@ export const STARTER_CHOICE_QUESTIONS: readonly StarterChoiceQuestion[] = [
   }
 ];
 
-/** Dollar presets for the default job budget; the second is the Admiral's pick. */
-export const BUDGET_USD_PRESETS = [5, 10, 25, 50] as const;
-/** Presets for the share of the weekly Claude limit a job may use, in percent. */
-export const BUDGET_SHARE_PRESETS = [5, 10, 25, 50] as const;
-
 export type StarterAnswers = {
   prs: number;
   delivery: number;

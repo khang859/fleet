@@ -27,8 +27,12 @@ export type CrewHire = {
   dir: string;
   /** Folders besides the working folder the member may use. */
   addDirs: string[];
+  /** `<role> <n>`, which names its pane. */
+  label: string;
   /** Fleet's hook entries, as the global install in the member's Claude config folder writes them. */
   hooks: Record<string, HookEntry[]>;
+  /** Fleet's hook command, for a Claude Code member's status line. */
+  hookCommand: string;
   /** Fleet's hook command, for an eva that takes a hooks file; unset when it cannot. */
   evaHook?: string;
 };
@@ -55,6 +59,7 @@ const ENV = {
   name: 'FLEET_CREW_NAME',
   goal: 'FLEET_CREW_GOAL',
   hooks: 'FLEET_CREW_HOOKS',
+  status: 'FLEET_CREW_STATUS',
   addDir: (i: number) => `FLEET_CREW_ADD_DIR_${i}`
 } as const;
 
@@ -73,6 +78,7 @@ function claudeLaunch(hire: CrewHire, prompt: string): CrewLaunch {
     [ENV.session]: hire.sessionId,
     [ENV.settings]: settings,
     [ENV.role]: hire.rolePrompt,
+    [ENV.status]: `Fleet crew · ${jobDisplayId(hire.jobId)} · ${hire.label}`,
     [SPAWN_PROMPT_ENV]: prompt
   };
   const args: string[] = [];
@@ -98,7 +104,10 @@ function claudeLaunch(hire: CrewHire, prompt: string): CrewLaunch {
     cmd: ['claude', ...args, '--', ref(SPAWN_PROMPT_ENV)].join(' '),
     env,
     files: [
-      { path: settings, text: `${JSON.stringify(claudeJobSettings(hire.hooks), null, 2)}\n` }
+      {
+        path: settings,
+        text: `${JSON.stringify(claudeJobSettings(hire.hooks, hire.hookCommand), null, 2)}\n`
+      }
     ],
     prompt
   };

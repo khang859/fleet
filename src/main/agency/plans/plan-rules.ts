@@ -2,6 +2,7 @@ import type { AgencyQuestion } from '../../../shared/agency';
 import type { AgencyStep, PlanEffects, StepSwap } from '../../../shared/agency-jobs';
 import type { Plan } from '../../../shared/agency-plan';
 import { jsonEqual } from '../../../shared/json-equal';
+import { pctText, usdText } from '../../../shared/agency-spend';
 import type { CrewRecord } from '../store/crew-store';
 import type { PlanVersionRecord } from '../store/plan-store';
 
@@ -17,7 +18,7 @@ const SWAP_FIELDS = ['role', 'runtime', 'model'] as const;
 
 /**
  * What a new version may not do to the approved one: change or drop a step
- * that is done or already delivered something, or set the budget below what
+ * that is done or already delivered something, or set a budget below what
  * was spent. One sentence each; empty when the version is fine.
  */
 export function lockedViolations(input: {
@@ -25,12 +26,16 @@ export function lockedViolations(input: {
   next: Plan;
   steps: AgencyStep[];
   delivered: Delivered[];
-  spendUsd: number;
+  spent: { usd: number; weekPct: number };
 }): string[] {
   const problems: string[] = [];
-  if (input.next.budget.usd < input.spendUsd) {
+  const { usd, weekPct } = input.spent;
+  if (input.next.budget.usd < usd) {
+    problems.push(`The budget cannot go below what the job already spent (${usdText(usd)}).`);
+  }
+  if (input.next.budget.weekPct !== undefined && input.next.budget.weekPct < weekPct) {
     problems.push(
-      `The budget cannot go below what the job already spent ($${input.spendUsd.toFixed(2)}).`
+      `The share of the weekly Claude limit cannot go below what the job already used (about ${pctText(weekPct)}).`
     );
   }
   if (input.approved === null) return problems;

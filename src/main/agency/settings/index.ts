@@ -50,20 +50,29 @@ export type SettingsChangeOutcome =
   | { ok: false; reason: string }
   | { ok: true; card: SettingsCard | null; unchanged: string[] };
 
+/** The Admiral's number settings, by key, with the field each one is. */
+const ADMIRAL_NUMBERS = {
+  'agency.admiral.defaultBudgetUsd': 'defaultBudgetUsd',
+  'agency.admiral.monthlyCapUsd': 'monthlyCapUsd',
+  'agency.admiral.defaultBudgetWeekPct': 'defaultBudgetWeekPct',
+  'agency.admiral.reserveFiveHourPct': 'reserveFiveHourPct',
+  'agency.admiral.reserveSevenDayPct': 'reserveSevenDayPct',
+  'agency.admiral.nudgeLimit': 'nudgeLimit',
+  'agency.admiral.permissionExpirySec': 'permissionExpirySec'
+} as const satisfies Partial<Record<AgencySettingKey, keyof AgencySettings['admiral']>>;
+
+type AdmiralNumberKey = keyof typeof ADMIRAL_NUMBERS;
+
+const isAdmiralNumber = (key: AgencySettingKey): key is AdmiralNumberKey =>
+  Object.hasOwn(ADMIRAL_NUMBERS, key);
+
 function readAgency(settings: AgencySettings, key: AgencySettingKey): SettingValue {
+  if (isAdmiralNumber(key)) return settings.admiral[ADMIRAL_NUMBERS[key]];
   switch (key) {
     case 'agency.enabled':
       return settings.enabled;
     case 'agency.admiral.model':
       return settings.admiral.model;
-    case 'agency.admiral.defaultBudgetUsd':
-      return settings.admiral.defaultBudgetUsd;
-    case 'agency.admiral.monthlyCapUsd':
-      return settings.admiral.monthlyCapUsd;
-    case 'agency.admiral.nudgeLimit':
-      return settings.admiral.nudgeLimit;
-    case 'agency.admiral.permissionExpirySec':
-      return settings.admiral.permissionExpirySec;
     case 'agency.crew.claude.atOnce':
       return settings.crew.claude.atOnce;
     case 'agency.crew.eva.atOnce':
@@ -94,27 +103,16 @@ function writeAgency(
   value: SettingValue
 ): AgencySettings {
   const { admiral } = settings;
+  if (isAdmiralNumber(key)) {
+    return typeof value === 'number'
+      ? { ...settings, admiral: { ...admiral, [ADMIRAL_NUMBERS[key]]: value } }
+      : settings;
+  }
   switch (key) {
     case 'agency.enabled':
       return { ...settings, enabled: value === true };
     case 'agency.admiral.model':
       return { ...settings, admiral: { ...admiral, model: String(value ?? '') } };
-    case 'agency.admiral.defaultBudgetUsd':
-      return typeof value === 'number'
-        ? { ...settings, admiral: { ...admiral, defaultBudgetUsd: value } }
-        : settings;
-    case 'agency.admiral.monthlyCapUsd':
-      return typeof value === 'number'
-        ? { ...settings, admiral: { ...admiral, monthlyCapUsd: value } }
-        : settings;
-    case 'agency.admiral.nudgeLimit':
-      return typeof value === 'number'
-        ? { ...settings, admiral: { ...admiral, nudgeLimit: value } }
-        : settings;
-    case 'agency.admiral.permissionExpirySec':
-      return typeof value === 'number'
-        ? { ...settings, admiral: { ...admiral, permissionExpirySec: value } }
-        : settings;
     case 'agency.crew.claude.atOnce':
     case 'agency.crew.eva.atOnce':
       return writeCrew(settings, key === 'agency.crew.eva.atOnce' ? 'eva' : 'claude', {

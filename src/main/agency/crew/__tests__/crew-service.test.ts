@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
@@ -73,6 +73,7 @@ function fakePanes(): FakePanes {
       }
     },
     hooks: () => ({}),
+    hookCommand: () => '/fleet-hook',
     evaHook: async () => Promise.resolve(host.evaHookCommand),
     screen: async (paneId) => Promise.resolve(host.screens.get(paneId) ?? null),
     session: (sessionId) => host.sessions.get(sessionId)
@@ -166,7 +167,11 @@ async function approvedJob(steps = [step('front')]): Promise<number> {
   const plan = PlanSchema.parse({ playbook: 'feature', summary: 's', steps, budget: { usd: 5 } });
   const out = await toolsOf(job.id).jobPlan!(plan);
   const id = Number(/plan#(\d+)/.exec(out.summary)?.[1]);
-  const decided = await service.jobs.decide({ planVersionId: id, action: 'approve' });
+  const decided = await service.jobs.decide({
+    planVersionId: id,
+    action: 'approve',
+    acceptCost: true
+  });
   if (!decided.ok) throw new Error(decided.reason);
   return job.id;
 }
@@ -275,7 +280,7 @@ describe('crew_hire', () => {
   });
 
   it('starts eva with a hooks file when it takes one, and says when it cannot report', async () => {
-    const eva = [step('front', { runtime: 'eva' })];
+    const eva = [step('front', { runtime: 'eva', cap: { turns: 20 } })];
     panes.evaHookCommand = "'/home/u/.claude/hooks/fleet-hook'";
     const hooked = await toolsOf(await approvedJob(eva)).crewHire!({ step: 'front', brief: 'x' });
     panes.evaHookCommand = undefined;
@@ -681,6 +686,64 @@ describe('crew reports and idle turns', () => {
     wakeups(jobId);
     service.crew.turnEnded('session-b');
     expect(wakeups(jobId)).toBe('');
+  });
+});
+
+describe('a step whose cost Fleet cannot measure', () => {
+  const capped = (cap: { turns?: number; minutes?: number }) => [
+    step('front', { runtime: 'eva', cap })
+  ];
+
+  async function live(cap: { turns?: number; minutes?: number }): Promise<number> {
+    const jobId = await approvedJob(capped(cap));
+    await toolsOf(jobId).crewHire!({ step: 'front', brief: 'x' });
+    service.crew.reported(panes.opened[0].paneId, 'session-a');
+    return jobId;
+  }
+
+  const rehireCard = (jobId: number) =>
+    service.store
+      .listQuestions(ref.repoId, { jobId, statuses: ['open'] })
+      .find((q) => q.kind === 'rehire');
+
+  it('needs the client to accept it before the plan is approved', async () => {
+    const job = service.openJob({ repoId: ref.repoId, title: 'T', brief: 'b', budgetUsd: null });
+    const plan = PlanSchema.parse({
+      playbook: 'feature',
+      summary: 's',
+      steps: capped({ turns: 5 }),
+      budget: { usd: 5 }
+    });
+    const out = await toolsOf(job.id).jobPlan!(plan);
+    const planVersionId = Number(/plan#(\d+)/.exec(out.summary)?.[1]);
+    expect(await service.jobs.decide({ planVersionId, action: 'approve' })).toEqual({
+      ok: false,
+      reason: 'Accept the steps whose cost Fleet cannot measure on the plan card first.'
+    });
+    expect(
+      await service.jobs.decide({ planVersionId, action: 'approve', acceptCost: true })
+    ).toEqual({ ok: true, version: 1 });
+  });
+
+  it('stops the crew member at the turn cap, and asks the client before hiring again', async () => {
+    const jobId = await live({ turns: 2 });
+    service.crew.turnEnded('session-a');
+    expect(crewOf(jobId)[0]?.status).toBe('live');
+    service.crew.turnEnded('session-a');
+    await vi.waitFor(() => expect(stepStatus(jobId, 'front')).toBe('stopped'));
+    expect(crewOf(jobId)[0]?.status).toBe('ended');
+    expect(rehireCard(jobId)?.context).toContain("was stopped at the step's cap of 2 turns");
+  });
+
+  it('stops the crew member at the minute cap', async () => {
+    const jobId = await live({ minutes: 30 });
+    clock += 29 * 60_000;
+    service.crew.checkCaps();
+    expect(crewOf(jobId)[0]?.status).toBe('live');
+    clock += 60_000;
+    service.crew.checkCaps();
+    await vi.waitFor(() => expect(stepStatus(jobId, 'front')).toBe('stopped'));
+    expect(rehireCard(jobId)?.context).toContain("was stopped at the step's cap of 30 minutes");
   });
 });
 

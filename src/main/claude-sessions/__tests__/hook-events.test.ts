@@ -89,6 +89,38 @@ describe('parseHookEvent', () => {
     expect(parseHookEvent(JSON.stringify({ ...v1, runtime: 'codex' }))?.runtime).toBe('claude');
   });
 
+  it('reads the cost and usage windows of a protocol 5 status line', () => {
+    const event = parseHookEvent(
+      JSON.stringify({
+        ...v1,
+        event: 'StatusLine',
+        status: 'status_line',
+        cost_usd: 0.42,
+        rate_limits: {
+          five_hour: { used_percentage: 23.5, resets_at: 1_760_000_000 },
+          seven_day: { used_percentage: 41, resets_at: 1_760_500_000 }
+        },
+        protocol: 5
+      })
+    );
+    expect(event).toMatchObject({
+      event: 'StatusLine',
+      costUsd: 0.42,
+      rateLimits: {
+        fiveHour: { usedPct: 23.5, resetsAt: 1_760_000_000_000 },
+        sevenDay: { usedPct: 41, resetsAt: 1_760_500_000_000 }
+      },
+      protocol: 5
+    });
+    // A window Claude Code leaves out, or one that does not parse, is unknown.
+    expect(
+      parseHookEvent(
+        JSON.stringify({ ...v1, rate_limits: { five_hour: { used_percentage: 'x' } }, protocol: 5 })
+      )?.rateLimits
+    ).toEqual({ fiveHour: null, sevenDay: null });
+    expect(parseHookEvent(JSON.stringify({ ...v1, cost_usd: -1 }))?.costUsd).toBeUndefined();
+  });
+
   it('reads the API error of a StopFailure', () => {
     const event = parseHookEvent(
       JSON.stringify({

@@ -5,6 +5,7 @@ import type { CrewFlag, CrewRuntime } from './agency-crew';
 import type { DeliverableKind, Plan, PlanDiffEntry, PlanInput } from './agency-plan';
 import type { PrReview } from './pr-review';
 import type { AgencyPermission } from './agency-permissions';
+import type { JobSpend } from './agency-spend';
 
 /** The states a job takes results and step updates in: crew are at work, or it delivered. */
 export const ACCEPTS_RESULTS: readonly JobState[] = ['running', 'waiting', 'delivered'];
@@ -18,13 +19,14 @@ export const ACCEPTS_RESULTS: readonly JobState[] = ['running', 'waiting', 'deli
 export type PlanVersionStatus = 'proposed' | 'approved' | 'rejected' | 'replaced' | 'superseded';
 
 /**
- * One thing the pre-approval check found. `block` keeps Approve disabled.
+ * One thing the pre-approval check found. `block` keeps Approve disabled;
+ * `accept` keeps it disabled until the client accepts it on the card.
  * `fix: 'use-branch'` means the card can offer local branches in place of PRs;
  * `fix: 'trust-claude'` that it can open Claude Code in `path` to trust it.
  */
 export type PlanIssue = {
   code: string;
-  severity: 'warn' | 'block';
+  severity: 'warn' | 'block' | 'accept';
   text: string;
   step?: string;
   member?: string;
@@ -262,7 +264,8 @@ export type AgencyJobDetail = {
   log: AgencyJobLogEntry[];
   /** Oldest first. */
   results: AgencyResult[];
-  spendUsd: number;
+  /** Both meters against the budgets, by the Admiral and each crew member. */
+  spend: JobSpend;
   merge: AgencyMergeRun | null;
   /** Every crew member the job hired, oldest first. */
   crew: AgencyCrewMember[];
@@ -292,6 +295,8 @@ export type PlanAction =
       baseChoice?: Record<string, 'default' | 'head'>;
       /** Per swapped running step: keep its work, or start over on a new branch. */
       swaps?: Record<string, SwapChoice>;
+      /** The client accepts the steps whose cost Fleet cannot measure. */
+      acceptCost?: boolean;
     }
   | { planVersionId: number; action: 'reject'; note: string }
   | { planVersionId: number; action: 'edit'; plan: PlanInput };

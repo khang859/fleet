@@ -42,9 +42,23 @@ describe('lockedViolations', () => {
         next: plan({ budget: { usd: 1 } }),
         steps: [],
         delivered: [],
-        spendUsd: 2
+        spent: { usd: 2, weekPct: 0 }
       })
     ).toEqual(['The budget cannot go below what the job already spent ($2.00).']);
+  });
+
+  it('holds the weekly share to what the job already used', () => {
+    expect(
+      lockedViolations({
+        approved: null,
+        next: plan({ budget: { usd: 10, weekPct: 5 } }),
+        steps: [],
+        delivered: [],
+        spent: { usd: 0, weekPct: 6.25 }
+      })
+    ).toEqual([
+      'The share of the weekly Claude limit cannot go below what the job already used (about 6.3%).'
+    ]);
   });
 
   it('locks a done step and a step that delivered', () => {
@@ -55,7 +69,7 @@ describe('lockedViolations', () => {
       }),
       steps: [step('a', 'done'), step('b', 'running')],
       delivered: [{ stepId: 'b', kind: 'review', label: 'Review notes' }],
-      spendUsd: 0
+      spent: { usd: 0, weekPct: 0 }
     });
     expect(problems).toEqual([
       'Step a is done, so it cannot change.',

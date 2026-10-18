@@ -5,8 +5,10 @@ import type { FleetSettings } from '../../shared/types';
 import type {
   ClaudeInputOrigin,
   ClaudePendingPermission,
-  ClaudeSession
+  ClaudeSession,
+  SessionRuntime
 } from '../../shared/claude-sessions';
+import type { UsageWindow } from '../../shared/agency-spend';
 import type { PriceTable } from '../../shared/claude-pricing';
 import type {
   ClaudeHookInstallProblem,
@@ -70,6 +72,18 @@ export type PermissionHookEvent =
   | { kind: 'held'; session: ClaudeSession; request: ClaudePendingPermission }
   | { kind: 'released'; sessionId: string; toolUseId: string; answer: PermissionAnswer | null };
 
+/**
+ * What a session's runtime reported of its spend: Claude Code's status line,
+ * or eva's `Stop`. `costUsd` is the session's cost so far, null when it said
+ * none; `rateLimits` are Claude Code's subscription windows, null on an API key.
+ */
+export type SessionSpend = {
+  sessionId: string;
+  runtime: SessionRuntime;
+  costUsd: number | null;
+  rateLimits: { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null } | null;
+};
+
 type CanAnswer = (request: PermissionRequestContext) => boolean;
 
 type Answerer = {
@@ -121,6 +135,7 @@ export class ClaudeSessionsService {
   /** The consumers that may answer a permission request, each saying whether it can answer one. */
   private readonly answerers = new Set<Answerer>();
   private readonly permissionListeners = new Set<(event: PermissionHookEvent) => void>();
+  private readonly spendListeners = new Set<(spend: SessionSpend) => void>();
   private readonly usage: SessionUsageTracker;
   private readonly transcripts: SessionTranscripts;
   private readonly evaTranscripts = new EvaTranscripts();
@@ -276,6 +291,12 @@ export class ClaudeSessionsService {
   onPermission(listener: (event: PermissionHookEvent) => void): () => void {
     this.permissionListeners.add(listener);
     return () => this.permissionListeners.delete(listener);
+  }
+
+  /** Hear of each spend a session in a Fleet pane reports, until the returned function is called. */
+  onSpend(listener: (spend: SessionSpend) => void): () => void {
+    this.spendListeners.add(listener);
+    return () => this.spendListeners.delete(listener);
   }
 
   /**
@@ -465,6 +486,13 @@ export class ClaudeSessionsService {
       log.debug('hook event from outside a Fleet pane dropped', { sessionId: event.sessionId });
       return false;
     }
+    // A status line tells of spend only; the session's state is the hooks'.
+    if (event.event === 'StatusLine') {
+      this.emitSpend(event);
+      return false;
+    }
+    // Before the turn's end is known, so its cost is in before what it held is let go.
+    if (event.runtime === 'eva' && event.event === 'Stop') this.emitSpend(event);
     const recorded = this.registry.ingest(event, placement, (toolUseId) =>
       [...this.answerers].some(
         (a) =>
@@ -490,6 +518,22 @@ export class ClaudeSessionsService {
 
   private canAnswer(request: PermissionRequestContext): boolean {
     return [...this.answerers].some((a) => a.canAnswer(request));
+  }
+
+  private emitSpend(event: HookEvent): void {
+    const spend: SessionSpend = {
+      sessionId: event.sessionId,
+      runtime: event.runtime,
+      costUsd: event.costUsd ?? null,
+      rateLimits: event.rateLimits ?? null
+    };
+    for (const listener of this.spendListeners) {
+      try {
+        listener(spend);
+      } catch (err) {
+        log.error('spend listener failed', { error: String(err) });
+      }
+    }
   }
 
   private emitPermission(event: PermissionHookEvent): void {

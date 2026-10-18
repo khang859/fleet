@@ -279,7 +279,10 @@ describe('plan changes', () => {
   it('the budget cannot go below what was spent', async () => {
     const { job, tools } = openJob();
     await approve(tools);
-    sql(`INSERT INTO spend_samples (job_id, source, usd, at) VALUES (?, 'crew', 7.5, 1)`, job.id);
+    sql(
+      `INSERT INTO spend_samples (job_id, source, meter, amount, at) VALUES (?, 'crew', 'usd', 7.5, 1)`,
+      job.id
+    );
 
     const out = await tools.jobPlan!(plan({ budget: { usd: 5 } }));
 
@@ -390,10 +393,58 @@ describe('the snapshot note', () => {
     const note = admiralSnapshotNote(service.store, { repoId: REPO.repoId, jobId: job.id });
 
     expect(note).toContain(
-      'Approved plan v1 (feature), budget $10, spent $0.00, starting from fleet at aaaaaaaaaaaa (default branch tip). Steps:'
+      'Approved plan v1 (feature), budget $10, spent $0.00, 10% of the weekly Claude limit, about 0% used, starting from fleet at aaaaaaaaaaaa (default branch tip). Steps:'
     );
     expect(note).toContain('- builder-1 (builder): running. Build the toggle');
     expect(note).toContain('- reviewer (reviewer, after builder-1): pending.');
     expect(note).toContain('Plan v2 is waiting on the client');
+  });
+});
+
+describe('the raise-or-stop card', () => {
+  const budgetCard = (jobId: number) =>
+    service.store
+      .listQuestions(REPO.repoId, { jobId, statuses: ['open'] })
+      .find((q) => q.kind === 'budget');
+
+  it('raises the budget as a new plan version the client approved, and lets the job go on', async () => {
+    const { job, tools } = openJob();
+    await approve(tools);
+    service.spend.admiralTurn(job.id, 10.5);
+    const card = budgetCard(job.id);
+    expect(card?.options.map((o) => o.label)).toEqual(['Raise to $15.00', 'Stop the job']);
+    expect(service.store.getJob(job.id)?.holds).toEqual(['budget']);
+
+    service.answer({ id: card!.id, option: 0 });
+
+    expect(service.store.getJob(job.id)).toMatchObject({
+      approvedVersion: 2,
+      budgetUsd: 15,
+      holds: []
+    });
+    expect(service.store.plans.approved(job.id)?.plan.steps.map((s) => s.id)).toEqual([
+      'builder-1',
+      'reviewer'
+    ]);
+    expect(wakeupText(job.id)).toContain('The client raised the budget to $15.00 (plan v2)');
+  });
+
+  it('cancels the job when the client stops it', async () => {
+    const { job, tools } = openJob();
+    await approve(tools);
+    service.spend.admiralTurn(job.id, 10);
+    service.answer({ id: budgetCard(job.id)!.id, option: 1 });
+    await service.cleanup.start(job.id);
+    expect(state(job.id)).toBe('cancelled');
+  });
+
+  it('cannot approve a plan budget over the monthly cap or below what was spent', async () => {
+    const { job, tools } = openJob();
+    await expect(propose(tools, plan({ budget: { usd: 500 } }))).rejects.toThrow(
+      'monthly cap of $100.00'
+    );
+    await approve(tools);
+    service.spend.admiralTurn(job.id, 4);
+    await expect(propose(tools, plan({ budget: { usd: 3 } }))).rejects.toThrow('$4.00');
   });
 });

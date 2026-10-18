@@ -26,8 +26,9 @@ const (
 	timeoutSeconds = 300
 	// protocolVersion tells Fleet which fields this binary sends. Version 2 adds
 	// pane_id, transcript_path, config_dir and source. Version 3 adds
-	// prompt_sha256. Version 4 adds runtime and db_path, for eva.
-	protocolVersion = 4
+	// prompt_sha256. Version 4 adds runtime and db_path, for eva. Version 5
+	// adds cost_usd and rate_limits, and the StatusLine event.
+	protocolVersion = 5
 )
 
 var socketPath = func() string {
@@ -72,6 +73,33 @@ type HookInput struct {
 	ErrorKind    string `json:"error_kind,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`
 	RetryAfter   *int64 `json:"retry_after,omitempty"`
+	// On eva's Stop: what the conversation cost so far, null when its server
+	// reports no cost.
+	Usage *struct {
+		Cost *float64 `json:"cost"`
+	} `json:"usage,omitempty"`
+}
+
+// StatusLineInput is the part of Claude Code's status line input Fleet
+// reads: the session's cost so far and, on a subscription, its usage windows.
+type StatusLineInput struct {
+	SessionID string `json:"session_id"`
+	CWD       string `json:"cwd"`
+	Cost      *struct {
+		TotalCostUSD *float64 `json:"total_cost_usd"`
+	} `json:"cost,omitempty"`
+	RateLimits *RateLimits `json:"rate_limits,omitempty"`
+}
+
+// RateLimits are Claude Code's subscription windows, passed on as it sends them.
+type RateLimits struct {
+	FiveHour *UsageWindow `json:"five_hour,omitempty"`
+	SevenDay *UsageWindow `json:"seven_day,omitempty"`
+}
+
+type UsageWindow struct {
+	UsedPercentage float64 `json:"used_percentage"`
+	ResetsAt       int64   `json:"resets_at"`
 }
 
 type State struct {
@@ -95,6 +123,8 @@ type State struct {
 	PromptSHA256     string                 `json:"prompt_sha256,omitempty"`
 	Runtime          string                 `json:"runtime,omitempty"`
 	DBPath           string                 `json:"db_path,omitempty"`
+	CostUSD          *float64               `json:"cost_usd,omitempty"`
+	RateLimits       *RateLimits            `json:"rate_limits,omitempty"`
 	Protocol         int                    `json:"protocol"`
 }
 
@@ -409,8 +439,52 @@ func hookPID() int {
 	return pid
 }
 
+// statusLine prints the line Fleet gave a crew member's pane and passes the
+// session's cost and usage windows on to Fleet. Claude Code shows whatever
+// it prints, so it prints the line even outside Fleet.
+func statusLine(stdin io.Reader, stdout io.Writer, getenv func(string) string, parentPID func() int) int {
+	fmt.Fprintln(stdout, getenv("FLEET_CREW_STATUS"))
+	if getenv("FLEET_SESSION") == "" {
+		return 0
+	}
+	var input StatusLineInput
+	if err := json.NewDecoder(stdin).Decode(&input); err != nil {
+		return 0
+	}
+	pid := parentPID()
+	state := newState(&HookInput{SessionID: input.SessionID, CWD: input.CWD, HookEventName: "StatusLine"}, getTTY(pid), pid, getenv)
+	state.Status = "status_line"
+	if input.Cost != nil {
+		state.CostUSD = input.Cost.TotalCostUSD
+	}
+	state.RateLimits = input.RateLimits
+	sendEvent(state, false)
+	return 0
+}
+
 // run handles one hook call and returns the exit code.
+// hookState is the event's state for the runtime that sent it.
+func hookState(runtimeName string, input *HookInput, getenv func(string) string, parentPID func() int) *State {
+	if runtimeName != "eva" {
+		pid := parentPID()
+		return newState(input, getTTY(pid), pid, getenv)
+	}
+	// eva names its own pid; it runs hooks through `sh -c` too.
+	pid := input.PID
+	if pid == 0 {
+		pid = parentPID()
+	}
+	state := evaState(input, getTTY(pid), pid, getenv)
+	if input.HookEventName == "Stop" && input.Usage != nil {
+		state.CostUSD = input.Usage.Cost
+	}
+	return state
+}
+
 func run(args []string, stdin io.Reader, stdout io.Writer, getenv func(string) string, parentPID func() int) int {
+	if len(args) > 0 && args[0] == "statusline" {
+		return statusLine(stdin, stdout, getenv, parentPID)
+	}
 	if getenv("FLEET_SESSION") == "" {
 		return 0
 	}
@@ -424,19 +498,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer, getenv func(string) s
 		return 1
 	}
 
-	var state *State
-	if runtimeName == "eva" {
-		// eva names its own pid; it runs hooks through `sh -c` too.
-		pid := input.PID
-		if pid == 0 {
-			pid = parentPID()
-		}
-		state = evaState(&input, getTTY(pid), pid, getenv)
-	} else {
-		pid := parentPID()
-		state = newState(&input, getTTY(pid), pid, getenv)
-	}
-
+	state := hookState(runtimeName, &input, getenv, parentPID)
 	state.Status = statusFor(input.HookEventName)
 
 	switch input.HookEventName {
