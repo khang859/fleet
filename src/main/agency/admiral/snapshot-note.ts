@@ -9,7 +9,11 @@ import {
 import type { AgencyJob } from '../../../shared/agency';
 import type { PlanBases } from '../../../shared/agency-jobs';
 import { pctText, usdText } from '../../../shared/agency-spend';
-import { CLIENT_FILE_CLEANUP_CHARS, type ClientFileNote } from '../projects/client-file';
+import {
+  CLIENT_FILE_CLEANUP_CHARS,
+  type ClientFileNote,
+  type PreferencesNote
+} from '../projects/client-file';
 import type { AgencyStore } from '../store/agency-store';
 import { proposalLines } from '../wakeup-text';
 import { permissionDisplayId } from '../../../shared/agency-permissions';
@@ -148,41 +152,52 @@ function questionLines(store: SnapshotReader, scope: AdmiralThreadScope): string
  * lands mid-turn is in the next one, and compaction cannot lose it.
  *
  * A job thread gets its job and that job's questions; the lobby gets the open
- * jobs and its own questions. Both get the client file, so a job starts from
- * how the client likes to work.
+ * jobs and its own questions. Both get the client's preferences, so a job
+ * starts from how the client likes to work.
  */
 export function admiralSnapshotNote(
   store: SnapshotReader,
   scope: AdmiralThreadScope,
-  clientFile: ClientFileNote | null = null
+  preferences: PreferencesNote = { you: null, project: null }
 ): string {
   const records = recordsNote(store, scope);
-  if (clientFile === null) return records;
-  return [records, '', ...clientFileLines(store, scope.repoId, clientFile)].join('\n');
+  if (preferences.you === null && preferences.project === null) return records;
+  return [records, '', ...preferenceLines(store, scope.repoId, preferences)].join('\n');
 }
 
-function clientFileLines(
+function preferenceLines(
   store: SnapshotReader,
   repoId: string,
-  clientFile: ClientFileNote
+  { you, project }: PreferencesNote
 ): string[] {
   const lines = [
-    "The client file: the client's standing preferences for this project, written by their own answers and picks. Follow it, and do not ask what it already settles."
+    "The client's preferences, written by their own answers and picks. Follow them, and do not ask what they already settle. The project lines win over the You lines where they disagree."
   ];
-  if (clientFile.changedOutside) {
+  if (you !== null) {
+    lines.push('', 'You (every project):', ...layerLines(you));
+  }
+  if (project !== null) {
+    lines.push('', 'This project:', ...layerLines(project));
+    const proposing = store
+      .listQuestions(repoId, { statuses: ['open'] })
+      .some((q) => q.kind === 'client_file');
+    if (project.oversize && !project.changedOutside && !proposing) {
+      lines.push(
+        `The project lines are over their ${CLIENT_FILE_CLEANUP_CHARS}-character limit. Propose a cleanup with client_file_propose: merge repeats and remove lines that no longer apply.`
+      );
+    }
+  }
+  return lines;
+}
+
+function layerLines(layer: ClientFileNote): string[] {
+  const lines: string[] = [];
+  if (layer.changedOutside) {
     lines.push(
-      'It changed outside Fleet, and the client has not looked at the change yet. Until they keep it in Settings > Agency > Admiral, this is the version Fleet last wrote, and it takes no proposals.'
+      'These changed outside Fleet, and the client has not looked at the change yet. Until they keep it in Settings > Agency > Admiral, this is the version Fleet last wrote, and it takes no proposals.'
     );
   }
-  if (clientFile.text !== '') lines.push(clientFile.text);
-  const proposing = store
-    .listQuestions(repoId, { statuses: ['open'] })
-    .some((q) => q.kind === 'client_file');
-  if (clientFile.oversize && !clientFile.changedOutside && !proposing) {
-    lines.push(
-      `The client file is over its ${CLIENT_FILE_CLEANUP_CHARS}-character limit. Propose a cleanup with client_file_propose: merge repeats and remove lines that no longer apply.`
-    );
-  }
+  if (layer.text !== '') lines.push(layer.text);
   return lines;
 }
 

@@ -39,6 +39,7 @@ import { MergeStore, ResultStore } from './result-store';
 import { PlanStore } from './plan-store';
 import { ProjectRegistry } from './project-registry';
 import { SettingChangeStore } from './setting-change-store';
+import { PreferenceStore } from './preference-store';
 import { SpendStore } from './spend-store';
 
 type JobRow = {
@@ -320,6 +321,7 @@ export class AgencyStore {
   readonly settings: SettingChangeStore;
   readonly projects: ProjectRegistry;
   readonly spend: SpendStore;
+  readonly preferences: PreferenceStore;
 
   constructor(db: Database.Database | string, opts: { now?: () => number } = {}) {
     this.db = typeof db === 'string' ? openAgencyDb(db) : db;
@@ -333,6 +335,7 @@ export class AgencyStore {
     this.settings = new SettingChangeStore(this.db, this.now);
     this.projects = new ProjectRegistry(this.db, this.now);
     this.spend = new SpendStore(this.db, this.now);
+    this.preferences = new PreferenceStore(this.db, this.now);
   }
 
   /**

@@ -15,7 +15,7 @@ import { useAdmiralMarks } from '../../hooks/use-admiral-marks';
 import { BudgetPicker } from '../admiral/BudgetPicker';
 import { AdmiralChangeNote } from './AdmiralChangeNote';
 import { AskAdmiralButton } from './AskAdmiral';
-import { ClientFileEditor } from './ClientFileEditor';
+import { AdmiralKnows } from './AdmiralKnows';
 import { SettingRow } from './SettingRow';
 
 /** A dollar amount, stored when editing ends. See `BoundedNumber`. */
@@ -250,7 +250,7 @@ export function AgencyAdmiralSection(): React.JSX.Element | null {
           </p>
         </div>
 
-        <ClientFileEditor />
+        <AdmiralKnows />
       </div>
     </div>
   );

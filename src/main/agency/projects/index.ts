@@ -233,12 +233,13 @@ export class ProjectsService {
     return shareWithTeam(await this.verified(input.repo), this.home);
   }
 
-  clientFile(repoId: string): ClientFileView {
+  /** One layer of the client's preferences: `you` or a project id. */
+  clientFile(layer: string): ClientFileView {
     const { clientFiles } = this.deps;
     return {
-      path: clientFiles.path(repoId),
-      text: clientFiles.read(repoId) || null,
-      changedOutside: clientFiles.changedOutside(repoId)
+      path: clientFiles.path(layer),
+      text: clientFiles.read(layer) || null,
+      changedOutside: clientFiles.changedOutside(layer)
     };
   }
 

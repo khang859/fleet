@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { YOU_LAYER } from '../../../shared/agency-client-file';
 
 /**
  * Where the agency keeps per-project files: `~/.fleet/agency/`, or
@@ -29,7 +30,7 @@ export function setupFilePath(repoId: string, home: string = agencyHome()): stri
   return join(projectDir(repoId, home), SETUP_FILE);
 }
 
-/** The client file: how the client likes to work on one project. */
-export function clientFilePath(repoId: string, home: string = agencyHome()): string {
-  return join(home, 'clients', `${repoId}.md`);
+/** A layer of client preferences: the You file for every project, or one project's client file. */
+export function clientFilePath(layer: string, home: string = agencyHome()): string {
+  return layer === YOU_LAYER ? join(home, 'you.md') : join(home, 'clients', `${layer}.md`);
 }

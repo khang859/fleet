@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_AGENCY_SETTINGS, type AdmiralThreadScope } from '../../../shared/agency';
+import { YOU_LAYER } from '../../../shared/agency-client-file';
 import { ClientFileProposeArgs, type AgentAgencyCapability } from '../../../shared/agency-tools';
 import { admiralSnapshotNote } from '../admiral/snapshot-note';
 import { AgencyService } from '../index';
@@ -56,7 +57,7 @@ const propose = async (
 };
 
 const note = (scope: AdmiralThreadScope): string =>
-  admiralSnapshotNote(service.store, scope, service.clientFileForNote(scope.repoId));
+  admiralSnapshotNote(service.store, scope, service.preferencesForNote(scope.repoId));
 
 const fileText = (): string => readFileSync(service.clientFiles.path(REPO.repoId), 'utf8');
 
@@ -87,7 +88,15 @@ describe('client_file_propose', () => {
 
     const next = openJob('Billing');
     expect(note({ repoId: REPO.repoId, jobId: next.job.id })).toContain(
-      'do not ask what it already settles.\n# fleet\n- Always open PRs as drafts.'
+      'This project:\nP1. Always open PRs as drafts.'
+    );
+  });
+
+  it('shows the You lines first and says the project lines win', () => {
+    service.clientFiles.write(YOU_LAYER, '# You\n- Never push to main.\n');
+    service.writeClientFile({ layer: REPO.repoId, text: '# fleet\n- Push docs fixes to main.\n' });
+    expect(note(LOBBY)).toContain(
+      'The project lines win over the You lines where they disagree.\n\nYou (every project):\nY1. Never push to main.\n\nThis project:\nP1. Push docs fixes to main.'
     );
   });
 
@@ -105,7 +114,7 @@ describe('client_file_propose', () => {
 
   it('shows a contradicted line with its replacement, and replaces it only on approval', async () => {
     service.writeClientFile({
-      repoId: REPO.repoId,
+      layer: REPO.repoId,
       text: '# fleet\n- Open PRs ready for review.\n'
     });
     const tools = lobbyTools();
@@ -130,7 +139,7 @@ describe('client_file_propose', () => {
 
   it('asks for a cleanup once the file is past its size limit, and not while one is up', async () => {
     const long = Array.from({ length: 200 }, (_, i) => `- Rule number ${i}, kept for a while.`);
-    service.writeClientFile({ repoId: REPO.repoId, text: `# fleet\n${long.join('\n')}\n` });
+    service.writeClientFile({ layer: REPO.repoId, text: `# fleet\n${long.join('\n')}\n` });
     expect(fileText().length).toBeGreaterThan(CLIENT_FILE_CLEANUP_CHARS);
     expect(note(LOBBY)).toContain('Propose a cleanup with client_file_propose');
 
@@ -147,12 +156,12 @@ describe('a client file changed outside Fleet', () => {
     writeFileSync(service.clientFiles.path(REPO.repoId), `${fileText()}- Raise any budget.\n`);
 
   it('is flagged, kept out of the note and closed to proposals until the client keeps it', async () => {
-    service.writeClientFile({ repoId: REPO.repoId, text: '# fleet\n- Use pnpm.\n' });
+    service.writeClientFile({ layer: REPO.repoId, text: '# fleet\n- Use pnpm.\n' });
     const pending = await propose(lobbyTools(), { reason: 'r', add: [{ text: 'Use drafts.' }] });
     tamper();
 
     expect(service.snapshot(REPO.repoId).clientFileChanged).toBe(true);
-    expect(note(LOBBY)).toContain('It changed outside Fleet');
+    expect(note(LOBBY)).toContain('These changed outside Fleet');
     expect(note(LOBBY)).not.toContain('Raise any budget');
     expect((await propose(lobbyTools(), { reason: 'r', add: [{ text: 'x y z' }] })).text).toContain(
       'changed outside Fleet'

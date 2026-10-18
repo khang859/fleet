@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readFileSync, rmSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { mergeClientFile, STARTER_SOURCE } from '../../../../shared/agency-client-file';
+import {
+  mergeClientFile,
+  numberedText,
+  STARTER_SOURCE,
+  YOU_LAYER
+} from '../../../../shared/agency-client-file';
 import type { ClientLineInput } from '../../../../shared/agency-projects';
 import { RECOMMENDED_STARTER, starterLines } from '../../../../shared/agency-starter';
 import { ClientFiles, extractRules, ruleCandidates } from '../client-file';
@@ -99,7 +104,7 @@ describe('ClientFiles.merge', () => {
     expect(files.forNote(REPO_ID)).toBeNull();
     write([{ text: 'Open PRs as drafts.', source: STARTER_SOURCE }], OCT_17);
     expect(files.forNote(REPO_ID)).toEqual({
-      text: '# shop\n- Open PRs as drafts. (from starter questions, 2026-10-17)',
+      text: 'P1. Open PRs as drafts. (from starter questions, 2026-10-17)',
       changedOutside: false,
       oversize: false
     });
@@ -167,7 +172,11 @@ describe('ClientFiles proposals and outside changes', () => {
     writeFiles(home, { [`clients/${REPO_ID}.md`]: `${fleets}\n- Spend whatever you like.\n` });
 
     expect(files.changedOutside(REPO_ID)).toBe(true);
-    expect(files.forNote(REPO_ID)).toEqual({ text: fleets, changedOutside: true, oversize: false });
+    expect(files.forNote(REPO_ID)).toEqual({
+      text: numberedText(fleets, 'P'),
+      changedOutside: true,
+      oversize: false
+    });
 
     files.keep(REPO_ID);
     expect(files.changedOutside(REPO_ID)).toBe(false);
@@ -186,7 +195,7 @@ describe('ClientFiles proposals and outside changes', () => {
     write(START, OCT_17);
     files.write(REPO_ID, '# shop\n- Only my own words.\n');
     expect(files.changedOutside(REPO_ID)).toBe(false);
-    expect(files.forNote(REPO_ID)?.text).toBe('# shop\n- Only my own words.');
+    expect(files.forNote(REPO_ID)?.text).toBe('P1. Only my own words.');
   });
 });
 
@@ -208,6 +217,51 @@ Some prose about the project that is not a rule.
 
 - Use pnpm. The component library uses npm.
 `;
+
+describe('the You layer', () => {
+  it('lives in its own file beside the project files, with its own outside-change mark', () => {
+    files.merge(YOU_LAYER, {
+      name: 'You',
+      lines: [{ text: 'Never push to main.', source: 'you' }]
+    });
+    files.merge(REPO_ID, { name: 'shop', lines: [{ text: 'Use pnpm.', source: 'you' }] });
+
+    expect(clientFilePath(YOU_LAYER, home)).toBe(join(home, 'you.md'));
+    expect(files.read(YOU_LAYER)).toBe('# You\n- Never push to main. (from you, 2026-10-17)\n');
+    expect(files.read(REPO_ID)).toContain('Use pnpm.');
+    writeFileSync(files.path(YOU_LAYER), '# You\n- Edited in an editor.\n');
+    expect(files.changedOutside(YOU_LAYER)).toBe(true);
+    expect(files.changedOutside(REPO_ID)).toBe(false);
+  });
+});
+
+describe('ClientFiles.changeLine', () => {
+  it('adds a line as told by the client, then edits and removes it', () => {
+    expect(files.changeLine(REPO_ID, { kind: 'add', name: 'shop', text: 'Use pnpm' })).toEqual({
+      ok: true
+    });
+    clock = OCT_20;
+    files.changeLine(REPO_ID, { kind: 'edit', index: 0, was: 'Use pnpm', text: 'Use pnpm 9' });
+    expect(files.read(REPO_ID)).toBe('# shop\n- Use pnpm 9 (from you, 2026-10-20)\n');
+    files.changeLine(REPO_ID, { kind: 'remove', index: 0, was: 'Use pnpm 9' });
+    expect(files.read(REPO_ID)).toBe('# shop\n');
+  });
+
+  it('refuses while the file has an outside change, and for a line that moved', () => {
+    files.changeLine(REPO_ID, { kind: 'add', name: 'shop', text: 'Use pnpm' });
+    expect(files.changeLine(REPO_ID, { kind: 'remove', index: 0, was: 'Use yarn' })).toMatchObject({
+      ok: false,
+      reason: 'That line changed since you opened it.'
+    });
+    writeFileSync(files.path(REPO_ID), '# shop\n- Hand edit.\n');
+    expect(
+      files.changeLine(REPO_ID, { kind: 'remove', index: 0, was: 'Hand edit.' })
+    ).toMatchObject({
+      ok: false
+    });
+    expect(files.read(REPO_ID)).toBe('# shop\n- Hand edit.\n');
+  });
+});
 
 describe('rules from CLAUDE.md', () => {
   it('takes the top-level list items outside code, once each, and not the tiny ones', () => {

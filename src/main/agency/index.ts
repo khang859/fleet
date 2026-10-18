@@ -20,7 +20,8 @@ import {
   type WakeupPull,
   type WakeupRelease
 } from '../../shared/agency';
-import { clientEntries, sameText } from '../../shared/agency-client-file';
+import { clientEntries, sameText, YOU_LAYER } from '../../shared/agency-client-file';
+import type { ClientLineChange, ClientLineResult } from '../../shared/agency-projects';
 import { createLogger } from '../logger';
 import type {
   JobControl,
@@ -75,7 +76,7 @@ import { ServerWatch } from './workspaces/server-watch';
 import { exportJob } from './jobs/job-export';
 import { reconcileAtStartup } from './jobs/reconcile';
 import { runPreflight, type Probe } from './preflight';
-import { ClientFiles, type ClientFileNote } from './projects/client-file';
+import { ClientFiles, type PreferencesNote } from './projects/client-file';
 import { nativeGh, type GhRun } from './projects/gh';
 import { envSecrets } from './projects/env-files';
 import { maskInLogs, Redactor } from '../redactor';
@@ -553,7 +554,7 @@ export class AgencyService {
     if (missing !== undefined) {
       return {
         ok: false,
-        reason: `"${missing}" is not a line in the client file. Give the line word for word, as your note shows it, without its "(from ...)" tag.`
+        reason: `"${missing}" is not a line in the client file. Give the line word for word, as your note shows it, without its id and its "(from ...)" tag.`
       };
     }
     const onlyAdds = named.length === 0;
@@ -572,9 +573,19 @@ export class AgencyService {
   }
 
   /** The client saved the client file in Settings: hand edits win. */
-  writeClientFile(input: { repoId: string; text: string }): void {
-    this.clientFiles.write(input.repoId, input.text);
-    this.changed([{ repoId: input.repoId, jobId: null }]);
+  writeClientFile(input: { layer: string; text: string }): void {
+    this.clientFiles.write(input.layer, input.text);
+    this.layerChanged(input.layer);
+  }
+
+  /** The client added, edited or removed one line on the What the Admiral knows page. */
+  changeClientLine(input: { layer: string; change: ClientLineChange }): ClientLineResult {
+    const { layer, change } = input;
+    const result = this.clientFiles.changeLine(layer, change);
+    if (!result.ok) return result;
+    if (change.kind === 'edit') this.store.preferences.moveUses(layer, change.was, change.text);
+    this.layerChanged(layer);
+    return result;
   }
 
   /**
@@ -622,9 +633,14 @@ export class AgencyService {
   }
 
   /** The client keeps a change made outside Fleet as it is. */
-  keepClientFile(repoId: string): void {
-    this.clientFiles.keep(repoId);
-    this.changed([{ repoId, jobId: null }]);
+  keepClientFile(layer: string): void {
+    this.clientFiles.keep(layer);
+    this.layerChanged(layer);
+  }
+
+  /** A project's snapshot shows its file's outside change; the You layer is in no snapshot. */
+  private layerChanged(layer: string): void {
+    if (layer !== YOU_LAYER) this.changed([{ repoId: layer, jobId: null }]);
   }
 
   /** The wakeups due for one job, as one turn's text, with env file values masked. */
@@ -972,9 +988,9 @@ export class AgencyService {
     return new Redactor(await this.envSecrets(repoId));
   }
 
-  /** The project's client file for an Admiral turn's note, or null when there is none. */
-  clientFileForNote(repoId: string): ClientFileNote | null {
-    return this.clientFiles.forNote(repoId);
+  /** Both layers of the client's preferences for an Admiral turn's note on a project. */
+  preferencesForNote(repoId: string): PreferencesNote {
+    return { you: this.clientFiles.forNote(YOU_LAYER), project: this.clientFiles.forNote(repoId) };
   }
 
   /** Whether an agent session is an Admiral lobby's or job's, for its session header. */

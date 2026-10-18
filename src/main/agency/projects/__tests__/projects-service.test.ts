@@ -203,6 +203,8 @@ describe('ProjectsService', { timeout: 20_000 }, () => {
     );
     expect(service.store.onboarding(repo.repoId).starterDoneAt).not.toBeNull();
     expect(emitted).toEqual([{ repoId: repo.repoId, jobIds: [] }]);
-    expect(service.clientFileForNote(repo.repoId)?.text).toBe(text.trim());
+    expect(service.preferencesForNote(repo.repoId).project?.text).toMatch(
+      /^P1\. Open PRs as drafts\. \(from starter questions, [\d-]+\)\nP2\. Use pnpm\./
+    );
   });
 });
