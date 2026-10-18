@@ -454,6 +454,118 @@ describe('a crew member at work', () => {
   });
 });
 
+describe('crew reports and idle turns', () => {
+  async function live(steps = [step('front')]): Promise<{ jobId: number; paneId: string }> {
+    const jobId = await approvedJob(steps);
+    await toolsOf(jobId).crewHire!({ step: 'front', brief: 'x' });
+    const { paneId } = panes.opened[0];
+    service.crew.reported(paneId, 'session-a');
+    return { jobId, paneId };
+  }
+
+  /** The text of the wakeups due for the job, claimed so the next read starts fresh. */
+  const wakeups = (jobId: number): string =>
+    service.store.pullWakeups({ repoId: ref.repoId, jobId }).text ?? '';
+
+  it('finishes the step on done, and wakes the Admiral with the summary and deliverables', async () => {
+    const { jobId, paneId } = await live();
+    wakeups(jobId);
+    const out = service.crew.report({
+      paneId,
+      summary: 'Toggle built and tested',
+      deliver: ['/tmp/front/notes.md']
+    });
+
+    expect(out).toBe('Reported step front done to the Admiral. Stop now.');
+    expect(stepStatus(jobId, 'front')).toBe('done');
+    expect(service.store.plans.step(jobId, 'front')?.note).toBe('Toggle built and tested');
+    const text = wakeups(jobId);
+    expect(text).toContain('builder 1 reported step front done: Toggle built and tested');
+    expect(text).toContain('It delivered /tmp/front/notes.md: record each with job_deliver.');
+    expect(service.store.plans.logTail(jobId).at(-1)).toMatchObject({
+      kind: 'crew',
+      text: 'builder 1 reported done: Toggle built and tested'
+    });
+  });
+
+  it('blocks the step on blocked, and leaves it running on a question', async () => {
+    const { jobId, paneId } = await live();
+    service.crew.report({ paneId, status: 'question', summary: 'Keep the old API? I say yes' });
+    expect(stepStatus(jobId, 'front')).toBe('running');
+    expect(wakeups(jobId)).toContain('Answer it with crew_send');
+
+    service.crew.report({ paneId, status: 'blocked', summary: 'The tests need a database' });
+    expect(stepStatus(jobId, 'front')).toBe('blocked');
+    expect(service.store.plans.step(jobId, 'front')?.note).toBe('The tests need a database');
+  });
+
+  it('refuses a report from a pane that is not working crew, or without a summary', async () => {
+    const { jobId, paneId } = await live();
+    expect(() => service.crew.report({ paneId: 'someone-else', summary: 'done' })).toThrow(
+      'Not reported: this pane is not a working crew member.'
+    );
+    expect(() => service.crew.report({ paneId, summary: ' ' })).toThrow(
+      'Not reported: a report needs a --summary.'
+    );
+    expect(() => service.crew.report({ paneId, status: 'finished', summary: 'x' })).toThrow(
+      'Not reported'
+    );
+    service.crew.report({ paneId, summary: 'All done' });
+    expect(() => service.crew.report({ paneId, summary: 'Again' })).toThrow(
+      'Not reported: step front is done.'
+    );
+    expect(stepStatus(jobId, 'front')).toBe('done');
+  });
+
+  it('takes a turn that ends after a report as waiting, not idle', async () => {
+    const { jobId, paneId } = await live();
+    service.crew.report({ paneId, status: 'question', summary: 'Which color?' });
+    wakeups(jobId);
+    service.crew.turnEnded('session-a');
+    expect(wakeups(jobId)).toBe('');
+  });
+
+  it('wakes the Admiral on each idle turn, and blocks the step past the nudge limit', async () => {
+    const { jobId } = await live();
+    wakeups(jobId);
+    // The client's limit is the default 3 nudges.
+    service.crew.turnEnded('session-a');
+    const first = wakeups(jobId);
+    expect(first).toContain('builder 1 ended a turn on step front without reporting');
+    expect(first).toContain('It has 3 prompts left before the step is blocked.');
+    service.crew.turnEnded('session-a');
+    expect(wakeups(jobId)).toContain('ended 2 turns in a row on step front without reporting');
+    service.crew.turnEnded('session-a');
+    expect(wakeups(jobId)).toContain('This is its last prompt before the step is blocked.');
+    expect(stepStatus(jobId, 'front')).toBe('running');
+
+    service.crew.turnEnded('session-a');
+    expect(stepStatus(jobId, 'front')).toBe('blocked');
+    expect(service.store.plans.step(jobId, 'front')?.note).toBe(
+      'builder 1 ended 4 turns in a row without reporting'
+    );
+    expect(wakeups(jobId)).toContain(
+      'Step front is blocked: builder 1 ended 4 turns in a row without reporting'
+    );
+  });
+
+  it('starts counting again after a report', async () => {
+    const { jobId, paneId } = await live();
+    for (let i = 0; i < 3; i++) service.crew.turnEnded('session-a');
+    service.crew.report({ paneId, status: 'question', summary: 'Which color?' });
+    service.crew.turnEnded('session-a');
+    for (let i = 0; i < 3; i++) service.crew.turnEnded('session-a');
+    expect(stepStatus(jobId, 'front')).toBe('running');
+  });
+
+  it('ignores a turn from a session that is no crew member', async () => {
+    const { jobId } = await live();
+    wakeups(jobId);
+    service.crew.turnEnded('session-b');
+    expect(wakeups(jobId)).toBe('');
+  });
+});
+
 describe('after a restart', () => {
   it('resumes the member a restart took, in its worktree and conversation', async () => {
     const jobId = await approvedJob();

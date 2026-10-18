@@ -63,6 +63,9 @@ const Usd = z.number().min(0).max(100_000);
 const Text = z.string().max(2_000);
 const List = z.array(z.string().max(400)).max(200);
 
+/** The most nudges the client can allow an idle crew member. */
+export const NUDGE_LIMIT_MAX = 20;
+
 /** Agency settings, the same for every project. */
 const AGENCY_SETTINGS = {
   'agency.enabled': { label: 'Agency on', schema: z.boolean(), ...clientOnly },
@@ -75,6 +78,12 @@ const AGENCY_SETTINGS = {
   'agency.admiral.monthlyCapUsd': {
     label: 'Monthly cap (USD)',
     schema: Usd,
+    ...moreNeedsOk
+  },
+  // Each nudge is another crew turn the job pays for.
+  'agency.admiral.nudgeLimit': {
+    label: 'Nudges per idle crew member',
+    schema: z.number().int().min(0).max(NUDGE_LIMIT_MAX),
     ...moreNeedsOk
   }
 } satisfies Record<string, SettingDef>;

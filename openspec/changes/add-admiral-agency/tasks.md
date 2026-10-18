@@ -115,6 +115,11 @@ Phase 3 notes (decisions made while building):
 - 3.23: the values of the given files feed the job export redaction now. Task 5.5 adds them to the stream Redactor.
 - 3.23: the Admiral's `read`, `glob` and `grep` tools already refuse `.env` files, so the Admiral never sees the values.
 - 3.23: end to end in a test repo: the plan card listed the step's env file, the worktree got a 75-byte `.env` with mode 600 that git showed as clean, `.env.test` (not ignored) was not copied, and cancelling the job removed the worktree and left the client's file as it was.
+- 3.18: a crew member ends its step with `fleet agency done --summary "..."`, with `--deliver <path>` for each file and `--status blocked` or `--status question` when it cannot finish.
+- 3.18: Fleet finds the crew member by the `FLEET_PANE_ID` of its pane, so there is no extra token. The socket has mode 600, so only the user can send a report.
+- 3.18: `done` marks the step done, `blocked` blocks it, and `question` keeps it running. Each report wakes the Admiral with the summary. A done member stays live until the Admiral calls `crew_stop`.
+- 3.18: a `Stop` hook with no report since the last turn is an idle turn. Each idle turn wakes the Admiral to read and nudge. After the nudge limit (Settings, default 3) in a row, Fleet blocks the step.
+- 3.18: end to end in a dev terminal pane: `fleet agency done` reached the dev app, was refused as "not a working crew member", and exited with 1.
 
 - [x] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`
 - [x] 3.12 Build the job `--settings` file (AskUserQuestion denied, `disableBypassPermissionsMode`, Fleet hooks with the global command string including `PermissionRequest` and `StopFailure`); verify with snapshot tests
@@ -123,7 +128,7 @@ Phase 3 notes (decisions made while building):
 - [x] 3.15 Add step workspaces (`new`, `of`, `integrate`), one writer per worktree, scopes for `count` > 1, and merging of `after` branches; verify with tests on a temp repo
 - [x] 3.16 Name branches `admiral/<job-id>/<step>-<n>`, fail the plan check on a branch named `admiral`, run `.fleet/fleet.agency.toml` setup with a timeout, and run each member's setup and the workspace setup; verify with tests
 - [x] 3.17 Run crew with `exitOnComplete: true`, and on exit or close mark the step, and wake the Admiral; verify with a pty-manager test that no shell is left
-- [ ] 3.18 Add `fleet agency done` over the socket, idle-versus-done handling and the nudge limit; verify with socket and tool tests
+- [x] 3.18 Add `fleet agency done` over the socket, idle-versus-done handling and the nudge limit; verify with socket and tool tests
 - [ ] 3.19 Add crew states `needs you`, `limited`, `user-driven` and `stuck`, the read-only last-screen read, and `crew_interrupt` and `crew_stop`; verify with registry and tool tests
 - [x] 3.20 Compare `UserPromptSubmit` text with the typed prompt, fail on mismatch, and pass long briefs as a file via `--add-dir`; verify with input tests
 - [x] 3.21 Add the one-time folder trust step and check end to end whether trust carries down to new worktrees; record the result in `docs/learnings/`

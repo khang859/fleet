@@ -230,9 +230,10 @@ export class AgencyService {
       changed: (touched) => this.changed(touched),
       afterResult: (jobId) => this.jobs.afterStepChange(jobId)
     });
+    const agencySettings = deps.agencySettings ?? memorySettings();
     this.settings = new AgencySettingsService({
       store: this.store,
-      agency: deps.agencySettings ?? memorySettings(),
+      agency: agencySettings,
       home: () => deps.agencyHome ?? agencyHome(),
       changed: (repoId, jobId) => deps.emit({ repoId, jobIds: [jobId], settings: true })
     });
@@ -264,7 +265,8 @@ export class AgencyService {
       home: () => deps.agencyHome ?? agencyHome(),
       changed: (touched) => this.changed(touched),
       now: () => deps.now?.() ?? Date.now(),
-      newId: deps.newCrewId
+      newId: deps.newCrewId,
+      nudgeLimit: () => agencySettings.get().admiral.nudgeLimit
     });
     const crew = this.crewControl;
     this.cleanup = new CleanupRunner({

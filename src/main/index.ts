@@ -857,7 +857,12 @@ void app.whenReady().then(async () => {
   });
 
   // Start socket server for fleet CLI (images + open commands)
-  socketSupervisor = new SocketSupervisor(SOCKET_PATH, annotateService);
+  // The agency starts later; crew can report only once it is up.
+  socketSupervisor = new SocketSupervisor(
+    SOCKET_PATH,
+    annotateService,
+    () => agencyService?.crew ?? null
+  );
   socketSupervisor.on('file-open', (payload: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
@@ -1658,10 +1663,11 @@ void app.whenReady().then(async () => {
   // Before the Agent service, which runs Admiral turns against it.
   const agency = agencyService;
   // A session reports only once Claude Code's folder trust prompt is answered.
-  claudeSessions.registry.subscribe(({ session }) => {
+  claudeSessions.registry.subscribe(({ session, event }) => {
     if (!session) return;
     agency.noteClaudeSession(session.cwd);
     agency.crew.reported(session.paneId, session.sessionId);
+    if (event?.event === 'Stop') agency.crew.turnEnded(session.sessionId);
   });
   // A crew pane whose runtime ended, or that the user closed, ends its member.
   eventBus.on('pty-exit', (event) => {

@@ -28,7 +28,7 @@ import {
   validatePlanGraph,
   type Plan
 } from '../../../shared/agency-plan';
-import type { CrewSnapshot } from '../../../shared/agency-crew';
+import type { CrewReportStatus, CrewSnapshot } from '../../../shared/agency-crew';
 import { createLogger } from '../../logger';
 import {
   canDecide,
@@ -47,6 +47,23 @@ import type { StackSlots } from './stack-slots';
 import { canStartStep, type StartVerdict } from './start-gate';
 
 const log = createLogger('agency:jobs');
+
+/** What the Admiral does next with a crew member's report. */
+function reportBody(status: CrewReportStatus, deliver: string[]): string {
+  switch (status) {
+    case 'done':
+      return [
+        deliver.length > 0
+          ? `It delivered ${deliver.join(', ')}: record each with job_deliver.`
+          : 'Record what the step delivered with job_deliver.',
+        'Stop it with crew_stop once you need nothing more from it; it holds a crew place until then.'
+      ].join(' ');
+    case 'blocked':
+      return 'Unblock it with crew_send, ask the client with ask_client, or propose a plan change.';
+    case 'question':
+      return 'Answer it with crew_send, or ask the client with ask_client when the decision is theirs.';
+  }
+}
 
 /** A job another one queues behind holds it until it delivers or ends. */
 const UNDER_WAY: readonly JobState[] = ['planned', 'running', 'waiting', 'interrupted'];
@@ -590,6 +607,99 @@ export class JobsService {
     this.refreshClientHold(jobId);
     this.deps.changed([{ repoId: job.repoId, jobId }]);
     this.admitQueued();
+  }
+
+  /**
+   * A crew member reported its step with `fleet agency done`: `done` finishes
+   * the step, `blocked` blocks it, and a `question` leaves it running. The
+   * summary becomes the step's note, and the Admiral wakes to it.
+   */
+  crewReported(input: {
+    jobId: number;
+    stepId: string;
+    label: string;
+    status: CrewReportStatus;
+    summary: string;
+    deliver: string[];
+  }): void {
+    const { jobId, stepId, label, status, summary, deliver } = input;
+    const job = this.store.getJob(jobId);
+    const step = this.store.plans.step(jobId, stepId);
+    if (!job || !ACCEPTS_RESULTS.includes(job.state)) {
+      throw new Error(`Not reported: ${jobDisplayId(jobId)} is ${job?.state ?? 'gone'}.`);
+    }
+    if (step?.status !== 'running' && step?.status !== 'blocked') {
+      throw new Error(`Not reported: step ${stepId} is ${step?.status ?? 'not in the plan'}.`);
+    }
+    this.store.tx(() => {
+      if (status !== 'question') this.moveStep(job, stepId, status);
+      this.store.plans.setStepNote(jobId, stepId, summary);
+      this.store.plans.log({
+        jobId,
+        kind: 'crew',
+        stepId,
+        text: `${label} reported ${status}: ${summary}`,
+        data: { status, deliver }
+      });
+      this.store.enqueueWakeup({
+        repoId: job.repoId,
+        jobId,
+        kind: 'event',
+        payload: {
+          line: `${label} reported step ${stepId} ${status}: ${summary}`,
+          body: reportBody(status, deliver)
+        }
+      });
+    });
+    this.refreshClientHold(jobId);
+    this.afterStepChange(jobId);
+    this.deps.changed([{ repoId: job.repoId, jobId }]);
+    if (status === 'done') this.admitQueued();
+  }
+
+  /**
+   * A crew member ended a turn without reporting. The Admiral wakes to answer
+   * or nudge it, until it has been idle more times than the nudge limit
+   * allows: then a running step is blocked.
+   */
+  crewIdle(input: {
+    jobId: number;
+    stepId: string;
+    label: string;
+    idle: number;
+    nudgeLimit: number;
+  }): void {
+    const { jobId, stepId, label, idle, nudgeLimit } = input;
+    const job = this.store.getJob(jobId);
+    if (!job || !ACCEPTS_RESULTS.includes(job.state)) return;
+    const running = this.store.plans.step(jobId, stepId)?.status === 'running';
+    const blocks = running && idle > nudgeLimit;
+    const left = nudgeLimit - idle + 1;
+    const turns = idle === 1 ? 'a turn' : `${idle} turns in a row`;
+    this.store.tx(() => {
+      if (blocks) {
+        this.moveStep(job, stepId, 'blocked');
+        this.store.plans.setStepNote(jobId, stepId, `${label} ended ${turns} without reporting`);
+      }
+      this.store.enqueueWakeup({
+        repoId: job.repoId,
+        jobId,
+        kind: 'event',
+        payload: blocks
+          ? {
+              line: `Step ${stepId} is blocked: ${label} ended ${turns} without reporting`,
+              body: "Read its last message with fleet_read. Ask the client what to do with ask_client, or propose a plan change. Prompting it again needs a higher nudge limit, which is the client's call."
+            }
+          : {
+              line: `${label} ended ${turns} on step ${stepId} without reporting`,
+              body: running
+                ? `Read its last message with fleet_read. Answer its question, or nudge it to finish and report, with crew_send. ${left === 1 ? 'This is its last prompt' : `It has ${left} prompts left`} before the step is blocked.`
+                : 'Read its last message with fleet_read.'
+            }
+      });
+    });
+    if (blocks) this.refreshClientHold(jobId);
+    this.deps.changed([{ repoId: job.repoId, jobId }]);
   }
 
   /**

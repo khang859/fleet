@@ -290,10 +290,12 @@ export type AgencySettings = {
     defaultBudgetUsd: number;
     /** What all jobs together may spend in a calendar month. */
     monthlyCapUsd: number;
+    /** How many times the Admiral may nudge a crew member that ends a turn without reporting. */
+    nudgeLimit: number;
   };
 };
 
 export const DEFAULT_AGENCY_SETTINGS: AgencySettings = {
   enabled: false,
-  admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100 }
+  admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100, nudgeLimit: 3 }
 };

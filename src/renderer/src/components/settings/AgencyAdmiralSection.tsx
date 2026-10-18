@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { DEFAULT_AGENCY_SETTINGS, type AgencySettings } from '../../../../shared/agency';
+import { NUDGE_LIMIT_MAX } from '../../../../shared/agency-settings';
 import { useSettingsStore } from '../../store/settings-store';
 import { useAgentStore } from '../../store/agent-store';
 import { ModelSelect } from '../agent/settings/ModelSelect';
@@ -132,6 +133,25 @@ export function AgencyAdmiralSection(): React.JSX.Element | null {
             All jobs together in a calendar month. At the cap no new work starts.
           </p>
           <AdmiralChangeNote marks={marks} settingKey="agency.admiral.monthlyCapUsd" />
+        </div>
+
+        <div>
+          <SettingRow label="Nudges per crew member">
+            <BoundedNumber
+              id="agency-nudge-limit"
+              label="Nudges per crew member"
+              value={agency.admiral.nudgeLimit}
+              min={0}
+              max={NUDGE_LIMIT_MAX}
+              fallback={DEFAULT_AGENCY_SETTINGS.admiral.nudgeLimit}
+              onCommit={(nudgeLimit) => patchAdmiral({ nudgeLimit })}
+            />
+          </SettingRow>
+          <p className="text-xs text-fleet-text-subtle mt-1">
+            How many times the Admiral may nudge a crew member that stops without reporting. After
+            that, its step is blocked.
+          </p>
+          <AdmiralChangeNote marks={marks} settingKey="agency.admiral.nudgeLimit" />
         </div>
 
         <ClientFileEditor />

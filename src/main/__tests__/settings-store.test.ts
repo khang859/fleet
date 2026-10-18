@@ -173,7 +173,7 @@ describe('SettingsStore settings merge', () => {
     store.set({ annotate: { retentionDays: 5 } });
     expect(store.get().agency).toEqual({
       enabled: false,
-      admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100 }
+      admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100, nudgeLimit: 3 }
     });
   });
 
@@ -183,7 +183,12 @@ describe('SettingsStore settings merge', () => {
     store.set({ agency: { admiral: { monthlyCapUsd: 250 } } });
     expect(store.get().agency).toEqual({
       enabled: true,
-      admiral: { model: 'openrouter:some/model', defaultBudgetUsd: 10, monthlyCapUsd: 250 }
+      admiral: {
+        model: 'openrouter:some/model',
+        defaultBudgetUsd: 10,
+        monthlyCapUsd: 250,
+        nudgeLimit: 3
+      }
     });
   });
 });

@@ -55,6 +55,8 @@ function readAgency(settings: AgencySettings, key: AgencySettingKey): SettingVal
       return settings.admiral.defaultBudgetUsd;
     case 'agency.admiral.monthlyCapUsd':
       return settings.admiral.monthlyCapUsd;
+    case 'agency.admiral.nudgeLimit':
+      return settings.admiral.nudgeLimit;
   }
 }
 
@@ -77,6 +79,10 @@ function writeAgency(
     case 'agency.admiral.monthlyCapUsd':
       return typeof value === 'number'
         ? { ...settings, admiral: { ...admiral, monthlyCapUsd: value } }
+        : settings;
+    case 'agency.admiral.nudgeLimit':
+      return typeof value === 'number'
+        ? { ...settings, admiral: { ...admiral, nudgeLimit: value } }
         : settings;
   }
 }

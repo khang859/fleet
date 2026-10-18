@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { jobDisplayId, type AgencyJob } from '../../../shared/agency';
-import type { CrewRuntime, CrewSnapshot } from '../../../shared/agency-crew';
+import { CrewReportSchema, type CrewRuntime, type CrewSnapshot } from '../../../shared/agency-crew';
 import type { PlanStep } from '../../../shared/agency-plan';
 import {
   CREW_PROMPT_PREFIX,
@@ -22,7 +22,7 @@ import { createLogger } from '../../logger';
 import type { JobsService } from '../jobs';
 import { jobDir } from '../projects/paths';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
-import { CREW_STARTING, LOST_AT_RESTART, type CrewRecord } from '../store/crew-store';
+import { CREW_LIVE, CREW_STARTING, LOST_AT_RESTART, type CrewRecord } from '../store/crew-store';
 import type { StackSlots } from '../jobs/stack-slots';
 import type { JobWorkspaces, StepFolder } from '../workspaces/job-workspace';
 import { crewLaunch, type CrewLaunch } from './runtimes';
@@ -68,6 +68,8 @@ export type CrewServiceDeps = {
   changed: (touched: AgencyTouched[]) => void;
   now: () => number;
   newId?: () => string;
+  /** How many times the Admiral may nudge a member that ends a turn without reporting. */
+  nudgeLimit: () => number;
 };
 
 /**
@@ -129,6 +131,12 @@ export type CrewEnd = { kind: 'exit'; exitCode: number } | { kind: 'closed' };
  */
 export class CrewService {
   private readonly limiter = new ActLimiter();
+
+  /**
+   * Per crew member: whether it reported since its last turn ended, and its
+   * idle turns in a row. Kept in memory, as a restart ends every member.
+   */
+  private readonly turns = new Map<number, { reported: boolean; idle: number }>();
 
   constructor(private readonly deps: CrewServiceDeps) {}
 
@@ -366,6 +374,55 @@ export class CrewService {
     return new Set(
       this.store.crew.all(jobId).flatMap((c) => (c.paneId === null ? [] : [c.paneId]))
     );
+  }
+
+  /**
+   * A crew member's `fleet agency done`, over Fleet's socket: the pane it
+   * runs in names it. Returns what the member's shell prints.
+   */
+  report(input: unknown): string {
+    const parsed = CrewReportSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new Error(`Not reported: ${parsed.error.issues.map((i) => i.message).join('; ')}.`);
+    }
+    const report = parsed.data;
+    const crew = this.store.crew.live().find((c) => c.paneId === report.paneId);
+    if (!crew) throw new Error('Not reported: this pane is not a working crew member.');
+    this.deps.jobs.crewReported({
+      ...report,
+      jobId: crew.jobId,
+      stepId: crew.stepId,
+      label: crew.label
+    });
+    this.turns.set(crew.id, { reported: true, idle: 0 });
+    return report.status === 'done'
+      ? `Reported step ${crew.stepId} done to the Admiral. Stop now.`
+      : `Sent your ${report.status === 'blocked' ? 'blocker' : 'question'} to the Admiral. Stop now; its answer arrives as your next prompt.`;
+  }
+
+  /**
+   * A crew member's turn ended. One that reported first is waiting as it
+   * should; one that did not is idle, and its Admiral hears of it.
+   */
+  turnEnded(sessionId: string): void {
+    const crew = this.store.crew
+      .live()
+      .find((c) => c.sessionId === sessionId && c.status === CREW_LIVE);
+    if (!crew) return;
+    const turn = this.turns.get(crew.id);
+    if (turn?.reported === true) {
+      this.turns.set(crew.id, { reported: false, idle: 0 });
+      return;
+    }
+    const idle = (turn?.idle ?? 0) + 1;
+    this.turns.set(crew.id, { reported: false, idle });
+    this.deps.jobs.crewIdle({
+      jobId: crew.jobId,
+      stepId: crew.stepId,
+      label: crew.label,
+      idle,
+      nudgeLimit: this.deps.nudgeLimit()
+    });
   }
 
   /** A session reported from a pane: a crew member there is live, on that session. */

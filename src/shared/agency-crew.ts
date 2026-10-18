@@ -168,3 +168,19 @@ export type RuntimeCheck = {
   problems: string[];
   warnings: string[];
 };
+
+/** How a crew member ends its step with `fleet agency done`. */
+export const CREW_REPORT_STATUSES = ['done', 'blocked', 'question'] as const;
+export type CrewReportStatus = (typeof CREW_REPORT_STATUSES)[number];
+
+/**
+ * A crew member's report over Fleet's socket. The pane id comes from the
+ * pane's own `FLEET_PANE_ID`, and names which crew member reports.
+ */
+export const CrewReportSchema = z.strictObject({
+  paneId: z.string().min(1).max(200),
+  status: z.enum(CREW_REPORT_STATUSES).default('done'),
+  summary: z.string().trim().min(1, 'a report needs a --summary').max(2_000),
+  deliver: z.array(z.string().min(1).max(1_000)).max(20).default([])
+});
+export type CrewReport = z.output<typeof CrewReportSchema>;

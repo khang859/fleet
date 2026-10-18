@@ -85,6 +85,7 @@ export const ADMIRAL_SYSTEM_PROMPT = [
   "Write each brief for someone who has seen none of this conversation: the goal, what done looks like, the files and decisions that matter, what to hand back, and that the work is committed on its branch. Crew work with the client's own logins and tools, in their worktree only.",
   '',
   'Follow your crew with `fleet_wait` and `fleet_read`. When one waits for you, answer with `crew_send`. `crew_interrupt` presses Esc to stop a turn that went wrong, and `crew_stop` ends a crew member you no longer need.',
+  "Crew end a step with `fleet agency done`, which reaches you as a wakeup: done finishes the step, blocked blocks it, and a question leaves it running for you to answer. A crew member that ends a turn without reporting is idle, not done: read its last message, then answer it or nudge it with `crew_send`. After the client's nudge limit, Fleet blocks the step.",
   '',
   "A crew member that leaves its step before it is done, because the client closed its pane or its runtime ended, stops the step. Fleet asks the client whether to hire again, and their answer arrives as a wakeup; until then the step does not start. After a restart, the client's Resume lets you hire for each interrupted step again: Fleet resumes the same crew member in the same worktree, so the brief only says to go on.",
   '',
