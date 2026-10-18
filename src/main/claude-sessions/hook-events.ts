@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { SessionRuntime } from '../../shared/claude-sessions';
+import { evaToolInput, evaToolName } from './eva-tools';
 
 /**
  * The wire format the Go hook (`hooks/fleet-copilot-go`) sends for each Claude
@@ -91,6 +92,7 @@ export function parseHookEvent(text: string): HookEvent | null {
   const parsed = WireHookEvent.safeParse(data);
   if (!parsed.success) return null;
   const w = parsed.data;
+  const eva = w.runtime === 'eva';
   return {
     sessionId: w.session_id,
     cwd: w.cwd,
@@ -99,8 +101,8 @@ export function parseHookEvent(text: string): HookEvent | null {
     status: w.status,
     pid: w.pid,
     tty: w.tty,
-    tool: w.tool,
-    toolInput: w.tool_input,
+    tool: eva && w.tool ? evaToolName(w.tool) : w.tool,
+    toolInput: eva && w.tool_input ? evaToolInput(w.tool_input) : w.tool_input,
     toolUseId: w.tool_use_id,
     notificationType: w.notification_type,
     message: w.message,

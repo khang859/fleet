@@ -90,8 +90,11 @@ export type SessionTranscript = {
   /** Where the source has been read to; an unfinished turn runs to here. */
   end: number;
   brief: BriefBuilder;
-  /** The events of the whole lines or records in `span`; empty when the source is gone. */
-  events(span: Span): Promise<TranscriptEvent[]>;
+  /**
+   * The events of the whole lines or records in `span`; empty when the source
+   * is gone. A file is read with a promise, eva's database at once.
+   */
+  events(span: Span): Promise<TranscriptEvent[]> | TranscriptEvent[];
   /** Why turns cannot be read, when they cannot. */
   unreadable?: string;
 };

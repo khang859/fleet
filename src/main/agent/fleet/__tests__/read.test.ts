@@ -1,9 +1,11 @@
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import Database from 'better-sqlite3';
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FLEET_TOOL_PAGE_CHARS } from '../../../../shared/fleet-tools';
 import { BriefBuilder } from '../../../claude-sessions/brief';
+import { EvaTranscripts } from '../../../claude-sessions/eva-transcripts';
 import { hashPrompt, type NotedInput } from '../../../claude-sessions/registry';
 import { claudeTranscript } from '../../../claude-sessions/session-transcripts';
 import { TranscriptTail } from '../../../claude-sessions/transcript';
@@ -160,6 +162,65 @@ describe('fleet reads', () => {
     await expect(read({ ...withScreen, screen: undefined })).rejects.toThrow(
       'No session has the ref'
     );
+  });
+
+  it('reads an eva session from its database, and says why when it cannot', async () => {
+    const fixtures = join(__dirname, '../../../claude-sessions/__tests__/fixtures');
+    const dbPath = join(dir, 'sessions.db');
+    const db = new Database(dbPath);
+    db.exec(readFileSync(join(fixtures, 'eva-0.3.0-tables.sql'), 'utf8'));
+    db.exec(readFileSync(join(fixtures, 'eva-0.3.0-views.sql'), 'utf8'));
+    const calls = JSON.stringify([{ id: 'c1', name: 'bash', arguments: '{"command":"ls"}' }]);
+    db.exec(`INSERT INTO sessions (id, created_at, updated_at, model, title, uuid)
+             VALUES (1, 0, 0, 'm', 't', 'sess-1')`);
+    db.prepare(
+      `INSERT INTO records (session_id, kind, content, calls, call_id, status) VALUES
+       (1, 'question', 'Fix the login bug.', NULL, NULL, NULL),
+       (1, 'answer', 'Looking.', ?, NULL, NULL),
+       (1, 'result', 'src', NULL, 'c1', 'ok'),
+       (1, 'answer', 'Fixed it.', NULL, NULL, NULL)`
+    ).run(calls);
+    const eva = new EvaTranscripts({ databases: () => [dbPath] });
+    eva.follow('sess-1', dbPath);
+    current = session({ runtime: 'eva' });
+    const fleet = createFleetCapability(
+      {
+        host: { ...host(), transcript: async () => Promise.resolve(eva.read('sess-1')) },
+        ledger,
+        act: null
+      },
+      THREAD,
+      'orchestrator',
+      '/work'
+    );
+    try {
+      const turns = (await fleet.read({ session: 'abcdef12', level: 'turns' }, signal)).text;
+      expect(turns).toContain('Prompt (typed by the user):\nFix the login bug.');
+      expect(turns).toContain('- Bash ls → ok [c1]');
+      expect(turns).toContain('eva: Fixed it.');
+      const tool = await fleet.read(
+        { session: 'abcdef12', level: 'tool', tool_use_id: 'c1' },
+        signal
+      );
+      expect(tool.text).toContain('Bash input:');
+      expect((await fleet.sessions({}, signal)).text).toContain(
+        '- abcdef12 · work › claude · eva · app'
+      );
+
+      eva.follow('sess-1', undefined);
+      expect((await fleet.read({ session: 'abcdef12', level: 'turns' }, signal)).text).toContain(
+        'eva is not saving this session'
+      );
+      expect((await fleet.read({ session: 'abcdef12', level: 'brief' }, signal)).text).toContain(
+        'eva is not saving this session'
+      );
+      await expect(
+        fleet.read({ session: 'abcdef12', level: 'tool', tool_use_id: 'c1' }, signal)
+      ).rejects.toThrow('eva is not saving this session');
+    } finally {
+      eva.dispose();
+      db.close();
+    }
   });
 
   it('says why the list is empty', async () => {

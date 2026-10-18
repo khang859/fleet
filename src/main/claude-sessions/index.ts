@@ -20,6 +20,7 @@ import { registerClaudeSessionsIpc, type IpcRegistrar } from './ipc-handlers';
 import { PaneActivityBridge, type SetHookState } from './pane-activity-bridge';
 import { PaneResolver, type PaneHost, type WorkspaceLookup } from './pane-resolver';
 import { ClaudeSessionRegistry, type NotedInput } from './registry';
+import { EvaTranscripts } from './eva-transcripts';
 import { SessionTranscripts, type SessionTranscript } from './session-transcripts';
 import { SessionUsageTracker } from './session-usage';
 import { transcriptPathFor } from './transcript-path';
@@ -98,6 +99,7 @@ export class ClaudeSessionsService {
   private readonly answerers = new Set<() => boolean>();
   private readonly usage: SessionUsageTracker;
   private readonly transcripts: SessionTranscripts;
+  private readonly evaTranscripts = new EvaTranscripts();
   private readonly git: GitRunner;
   private readonly gitStates = new Map<string, GitState>();
   private installProblems: ClaudeHookInstallProblem[] = [];
@@ -248,7 +250,9 @@ export class ClaudeSessionsService {
 
   /** A live session's transcript, read up to now, with its brief. */
   async transcript(sessionId: string): Promise<SessionTranscript | null> {
-    return this.transcripts.read(sessionId);
+    return this.registry.get(sessionId)?.runtime === 'eva'
+      ? this.evaTranscripts.read(sessionId)
+      : this.transcripts.read(sessionId);
   }
 
   /** Prompts typed into a session through Fleet, newest last, with who typed them. */
@@ -335,6 +339,7 @@ export class ClaudeSessionsService {
     this.registry.clear();
     this.usage.dispose();
     this.transcripts.dispose();
+    this.evaTranscripts.dispose();
     for (const sessionId of [...this.gitStates.keys()]) this.forgetGit(sessionId);
     this.scheduleSnapshot();
     log.info('claude session tracking stopped');
@@ -347,11 +352,15 @@ export class ClaudeSessionsService {
     if (!session) {
       this.usage.forget(sessionId);
       this.transcripts.forget(sessionId);
+      this.evaTranscripts.forget(sessionId);
       this.forgetGit(sessionId);
       return;
     }
     if (session.phase === 'ended') return;
     const firstSight = !this.gitStates.has(sessionId);
+    if (firstSight || (event && GIT_EVENTS.has(event.event))) this.checkGit(sessionId, session.cwd);
+    // eva's turns are read from its database when asked, and it has no transcript file to total.
+    if (session.runtime === 'eva') return;
     const transcriptPath = transcriptPathFor(session, this.deps.homeDir);
     // Only a hook event moves the transcript mark; a change the transcript
     // itself caused must not.
@@ -360,7 +369,6 @@ export class ClaudeSessionsService {
       const turnOver = event?.event === 'Stop' || event?.event === 'SessionStart';
       this.usage.refresh(sessionId, transcriptPath, turnOver);
     }
-    if (firstSight || (event && GIT_EVENTS.has(event.event))) this.checkGit(sessionId, session.cwd);
   }
 
   /** Ask git about a session's folder, at most every few seconds, and once more after a skipped ask. */
@@ -414,6 +422,9 @@ export class ClaudeSessionsService {
       return false;
     }
     const recorded = this.registry.ingest(event, placement);
+    if (event.runtime === 'eva' && this.registry.get(event.sessionId)) {
+      this.evaTranscripts.follow(event.sessionId, event.dbPath);
+    }
     const toolUseId = recorded?.toolUseId;
     if (event.status !== 'waiting_for_approval' || !toolUseId) return false;
     if (![...this.answerers].some((canAnswer) => canAnswer())) return false;

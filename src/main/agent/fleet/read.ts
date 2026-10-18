@@ -125,6 +125,9 @@ async function readBrief(
       summary: 'no transcript yet'
     };
   }
+  if (transcript.unreadable !== undefined) {
+    return { text: `${session.ref}: ${st.phase}. ${transcript.unreadable}`, summary: 'unreadable' };
+  }
   const { cursor, cleared } = currentCursor(cursors.get(session.ref), session, transcript);
   const state = transcript.brief.state;
   const delta = since === 'last' && cursor !== null && cursor.rev > 0;
@@ -149,7 +152,9 @@ function renderTurn(
   turn: TurnEntry,
   events: TranscriptEvent[],
   inputs: NotedInput[],
-  open: boolean
+  open: boolean,
+  /** Who answers in the session: Claude, or eva. */
+  speaker: string
 ): string {
   const lines: string[] = [];
   const results = new Map<string, TranscriptEvent & { kind: 'tool_result' }>();
@@ -174,7 +179,7 @@ function renderTurn(
         break;
       }
       case 'assistant_text':
-        lines.push(`Claude: ${oneLine(e.text, e === lastText ? LAST_TEXT_CHARS : TEXT_CHARS)}`);
+        lines.push(`${speaker}: ${oneLine(e.text, e === lastText ? LAST_TEXT_CHARS : TEXT_CHARS)}`);
         break;
       case 'tool_use': {
         const result = results.get(e.id);
@@ -232,6 +237,12 @@ async function readTurns(
       summary: 'no transcript yet'
     };
   }
+  if (transcript.unreadable !== undefined) {
+    return {
+      text: `${session.ref}: ${describePhase(session, host.now())}. ${transcript.unreadable}`,
+      summary: 'unreadable'
+    };
+  }
   const { cursor, cleared } = currentCursor(cursors.get(session.ref), session, transcript);
   const all = transcript.index.turns;
   // Paging back is a look at older turns, not a read of what is new, so it
@@ -261,10 +272,13 @@ async function readTurns(
   }
 
   const inputs = host.inputsFor(session.sessionId);
+  const speaker = session.runtime === 'eva' ? 'eva' : 'Claude';
   const rendered: string[] = [];
   for (const turn of shown) {
     const events = await transcript.events({ start: turn.start, end: turn.end ?? transcript.end });
-    rendered.push(renderTurn(turn, events, inputs, turn.end === null && turn.n > finished));
+    rendered.push(
+      renderTurn(turn, events, inputs, turn.end === null && turn.n > finished, speaker)
+    );
   }
   // Oldest go first when it is too long: the latest turn is what matters most.
   let skipped = fresh.length - shown.length;
@@ -304,6 +318,7 @@ async function readTool(
     );
   }
   const transcript = await host.transcript(session.sessionId);
+  if (transcript?.unreadable !== undefined) throw new Error(transcript.unreadable);
   const entry = transcript?.index.tool(toolUseId);
   if (transcript == null || entry === undefined) {
     throw new Error(

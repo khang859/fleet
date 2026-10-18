@@ -78,8 +78,14 @@ describe('parseHookEvent', () => {
     expect(event).toMatchObject({
       runtime: 'eva',
       dbPath: '/home/u/.eva/sessions.db',
+      tool: 'Bash',
       protocol: 4
     });
+    expect(
+      parseHookEvent(
+        JSON.stringify({ ...v1, runtime: 'eva', tool: 'edit_file', tool_input: { path: 'a.ts' } })
+      )
+    ).toMatchObject({ tool: 'Edit', toolInput: { path: 'a.ts', file_path: 'a.ts' } });
     expect(parseHookEvent(JSON.stringify({ ...v1, runtime: 'codex' }))?.runtime).toBe('claude');
   });
 
