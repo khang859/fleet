@@ -728,7 +728,7 @@ export const AGENCY_TOOL_SPECS: AgentToolSpec[] = [
           member: {
             type: 'string',
             description:
-              'For branch in a project of several repositories: the member it is in. Fleet looks in every member when not given.'
+              'For branch in a project of several repositories: the member it is in. When not given, Fleet takes the one member where the branch has new commits.'
           }
         },
         required: ['step', 'kind'],

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import type { PlanInput } from '../../../../shared/agency-plan';
 import type { ProjectSetup } from '../../../../shared/agency-projects';
+import { JobDeliverArgs } from '../../../../shared/agency-tools';
 import { approvedJobIn, repoAt } from '../../__tests__/plan-helpers';
 import { AgencyService } from '../../index';
 import { fakeGh, git, initRepo, shopUmbrella, tempDir } from '../../projects/__tests__/git-fixture';
@@ -143,6 +144,27 @@ describe('step workspaces', { timeout: GIT_TIMEOUT_MS }, () => {
     const root = join(home.dir, 'agency-home', 'jobs', '1', 'ws', 'join-1');
     expect(git(root, 'status', '--porcelain')).toBe('');
     expect(readFileSync(join(root, 'a.txt'), 'utf8')).toBe('a changed\n');
+  });
+
+  it('hands back the branch of the member the work is in, since every member gets its name', async () => {
+    const root = shopUmbrella(home.dir);
+    const ref = await service.projects.chooseWorkspace({ path: root, leftOut: [] });
+    const { jobId, tools } = await approvedJobIn(service, ref, step('fix'));
+    const ws = await service.workspaces.open(jobId, 'fix');
+    commit(ws.root, 'README.md', '# Shop!\n');
+    const branch = 'admiral/j1/fix-1';
+    const deliver = async (): Promise<string> =>
+      (await tools.jobDeliver!(JobDeliverArgs.parse({ step: 'fix', kind: 'branch', branch }))).text;
+
+    await deliver();
+    const [card] = service.jobs.detail(jobId)!.results;
+    expect(card.member).toBe('shop');
+    expect(card.body).toEqual({ kind: 'branch', branch, sha: git(ws.root, 'rev-parse', 'HEAD') });
+
+    commit(join(ws.root, 'libs', 'core'), 'package.json', '{}\n');
+    expect(await deliver()).toContain(
+      `${branch} has new commits in core, shop. Deliver it once for each, with member set.`
+    );
   });
 
   it('refuses to read the worktree of a step nobody worked yet', async () => {
