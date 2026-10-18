@@ -4,7 +4,8 @@ import type {
   PlanBases,
   PlanChecks,
   PlanIssue,
-  PlanOverlap
+  PlanOverlap,
+  StepEnvFiles
 } from '../../../shared/agency-jobs';
 import { RUNTIME_LABEL, type CrewRuntime, type RuntimeCheck } from '../../../shared/agency-crew';
 import type { Plan, PlanStep } from '../../../shared/agency-plan';
@@ -37,6 +38,8 @@ export type PlanFacts = {
   pinned: PlanBases | null;
   /** The project's crew, or null when it is not known. */
   crew: CrewFacts | null;
+  /** The env files the client gave crew, each with its member and its path from the project root. */
+  envFiles: Array<{ member: string; file: string }>;
 };
 
 export type CrewFacts = {
@@ -212,6 +215,17 @@ function overlapIssue(overlap: PlanOverlap[]): PlanIssue[] {
  * the client should know before approving. Pure over facts read just before,
  * so the same plan and facts always give the same card.
  */
+/** The env files each step's workspace gets: those of the members it holds, the root always. */
+function stepEnvFiles(plan: Plan, facts: PlanFacts): StepEnvFiles[] {
+  const names = facts.members.map((m) => m.name);
+  const root = facts.members.filter((m) => m.atRoot).map((m) => m.name);
+  return plan.steps.flatMap((step) => {
+    const held = new Set([...root, ...changedMembers(step, names), ...step.reads]);
+    const files = facts.envFiles.filter((f) => held.has(f.member)).map((f) => f.file);
+    return files.length === 0 ? [] : [{ stepId: step.id, files }];
+  });
+}
+
 export function checkPlan(plan: Plan, facts: PlanFacts): PlanChecks {
   const names = new Set(facts.members.map((m) => m.name));
   const used = new Set(plan.steps.flatMap((s) => [...changedMembers(s, [...names]), ...s.reads]));
@@ -234,7 +248,8 @@ export function checkPlan(plan: Plan, facts: PlanFacts): PlanChecks {
         headSha: m.headSha,
         pinned: facts.pinned?.[m.name] ?? null
       })
-    )
+    ),
+    envFiles: stepEnvFiles(plan, facts)
   };
 }
 

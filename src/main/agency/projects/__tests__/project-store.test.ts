@@ -34,7 +34,8 @@ const SETUP: ProjectSetup = {
       requiredChecks: ['Unit tests'],
       reviewBots: [],
       portVars: ['PORT', 'API_PORT'],
-      fixedPorts: [{ port: 5432, service: 'db' }]
+      fixedPorts: [{ port: 5432, service: 'db' }],
+      envFiles: ['.env', 'config/.env.local']
     }
   ],
   imports: [],
@@ -57,6 +58,7 @@ describe('setup TOML', () => {
     const text = setupToToml(SETUP);
     expect(text).toContain('[[members]]');
     expect(text).toContain('setup_command = "pnpm install --frozen-lockfile"');
+    expect(text).toContain('env_files = [ ".env", "config/.env.local" ]');
     expect(parseSetupToml(text)).toEqual(SETUP);
   });
 

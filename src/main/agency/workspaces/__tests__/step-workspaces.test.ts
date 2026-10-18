@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import type { PlanInput } from '../../../../shared/agency-plan';
@@ -237,6 +237,51 @@ describe('ports of a new workspace', () => {
     expect(service.store.resources.heldPorts()).toEqual([
       { start: Number(b.env.API_PORT), size: 20 }
     ]);
+  });
+});
+
+describe('env files of a new workspace', () => {
+  beforeEach(() => {
+    // The user's own global ignore file must not decide what git ignores here.
+    vi.stubEnv('GIT_CONFIG_GLOBAL', '/dev/null');
+  });
+
+  it('copies the chosen env files before setup, mode 600, so a crew edit never reaches the user', async () => {
+    const repo = await soloRepo({ 'a.txt': 'a\n', '.gitignore': '.env\n' });
+    const userFile = join(repo.root, '.env');
+    writeFileSync(userFile, 'API_KEY=sk_test_123456\n');
+    writeFileSync(join(repo.root, '.env.test'), 'TOKEN=x\n');
+    const scan = await service.projects.scan(repo);
+    expect(scan.envFiles).toEqual([
+      { member: 'solo', path: '.env', vars: ['API_KEY'], ignored: true },
+      { member: 'solo', path: '.env.test', vars: ['TOKEN'], ignored: false }
+    ]);
+    await saveSetup(repo, (s) => ({
+      ...s,
+      members: s.members.map((m) => ({ ...m, envFiles: ['.env'], setupCommand: 'cp .env seen' }))
+    }));
+    const { jobId } = await approvedJobIn(service, repo, step('build'));
+    const ws = await service.workspaces.open(jobId, 'build');
+
+    const copy = join(ws.root, '.env');
+    expect(statSync(copy).mode & 0o777).toBe(0o600);
+    expect(readFileSync(join(ws.root, 'seen'), 'utf8')).toBe('API_KEY=sk_test_123456\n');
+    writeFileSync(copy, 'API_KEY=changed by crew\n');
+    expect(readFileSync(userFile, 'utf8')).toBe('API_KEY=sk_test_123456\n');
+    expect(git(ws.root, 'status', '--porcelain')).toBe('?? seen');
+  });
+
+  it('refuses an env file git does not ignore, naming it', async () => {
+    const repo = await soloRepo({ 'a.txt': 'a\n', '.gitignore': '.env\n' });
+    writeFileSync(join(repo.root, '.env.test'), 'TOKEN=x\n');
+    await saveSetup(repo, (s) => ({
+      ...s,
+      members: s.members.map((m) => ({ ...m, envFiles: ['.env.test'] }))
+    }));
+    const { jobId } = await approvedJobIn(service, repo, step('build'));
+    await expect(service.workspaces.open(jobId, 'build')).rejects.toThrow(
+      '.env.test is not ignored by git, so crew could commit it.'
+    );
   });
 });
 

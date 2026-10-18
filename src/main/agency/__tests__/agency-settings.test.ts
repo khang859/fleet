@@ -39,6 +39,7 @@ const member = (over: Partial<ProjectMemberSetup> = {}): ProjectMemberSetup => (
   reviewBots: [],
   portVars: [],
   fixedPorts: [],
+  envFiles: [],
   ...over
 });
 

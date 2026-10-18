@@ -50,6 +50,15 @@ const droppingNeedsOk = {
   rule: "adding one applies at once; removing one needs the client's OK"
 };
 
+/** Crew getting one more env file is the client's call; getting one less is not. */
+const addingNeedsOk = {
+  kind: (before: SettingValue, after: SettingValue): SettingKind => {
+    const had = new Set(Array.isArray(before) ? before : []);
+    return (Array.isArray(after) ? after : []).every((v) => had.has(v)) ? 'apply' : 'approve';
+  },
+  rule: "removing one applies at once; adding one needs the client's OK"
+};
+
 const Usd = z.number().min(0).max(100_000);
 const Text = z.string().max(2_000);
 const List = z.array(z.string().max(400)).max(200);
@@ -87,7 +96,8 @@ const MEMBER_SETTINGS = {
   stack: { label: 'stack', schema: List, ...apply },
   packageManager: { label: 'package manager', schema: z.string().max(80).nullable(), ...apply },
   defaultBranch: { label: 'default branch', schema: z.string().max(200).nullable(), ...apply },
-  portVars: { label: 'port variables', schema: List, ...apply }
+  portVars: { label: 'port variables', schema: List, ...apply },
+  envFiles: { label: 'env files for crew', schema: List, ...addingNeedsOk }
 } satisfies Partial<Record<keyof ProjectMemberSetup, SettingDef>>;
 
 export type MemberSettingField = keyof typeof MEMBER_SETTINGS;

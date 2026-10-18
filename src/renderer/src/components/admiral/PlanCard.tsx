@@ -5,6 +5,7 @@ import type {
   AgencyPlanVersion,
   MemberBase,
   PlanAction,
+  StepEnvFiles,
   SwapChoice
 } from '../../../../shared/agency-jobs';
 import { diffLine, withLocalBranches, type PlanInput } from '../../../../shared/agency-plan';
@@ -88,6 +89,7 @@ function OpenPlan({
         choice={bases}
         onChoose={(member, choice) => setBases({ ...bases, [member]: choice })}
       />
+      <EnvFiles files={checks.envFiles} />
       {(plan.asksFirst.length > 0 || checks.issues.length > 0) && (
         <Cautions
           version={version}
@@ -205,6 +207,22 @@ function ChangeBlock({
             onChange={(choice) => onSwap(swap.stepId, choice)}
             className="bg-fleet-bg"
           />
+        </div>
+      ))}
+    </Block>
+  );
+}
+
+/** The env files each step's crew get a copy of, so the client sees where its secrets go. */
+function EnvFiles({ files }: { files: StepEnvFiles[] }): React.JSX.Element | null {
+  if (files.length === 0) return null;
+  return (
+    <Block>
+      <Label>ENV FILES</Label>
+      {files.map((f) => (
+        <div key={f.stepId} className="flex flex-wrap items-baseline gap-x-2 text-xs">
+          <span className="text-fleet-text-secondary">{f.stepId}</span>
+          <span className="font-mono text-fleet-text-muted">{f.files.join(' · ')}</span>
         </div>
       ))}
     </Block>

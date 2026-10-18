@@ -1,5 +1,5 @@
-import { lstat, rm } from 'node:fs/promises';
-import { basename, join, relative, sep } from 'node:path';
+import { rm } from 'node:fs/promises';
+import { basename, join, sep } from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import type { AgencyRepoRef } from '../../../shared/agency';
 import {
@@ -9,7 +9,7 @@ import {
   type ProjectSetup
 } from '../../../shared/agency-projects';
 import { isRecord } from '../../../shared/is-record';
-import { readTextOrNull, writeAtomic } from './files';
+import { firstLink, readTextOrNull, writeAtomic } from './files';
 import { agencyHome, projectDir, SETUP_FILE, setupFilePath } from './paths';
 
 /**
@@ -46,7 +46,8 @@ function memberToToml(m: ProjectMemberSetup): TomlMember {
       required_checks: m.requiredChecks,
       review_bots: m.reviewBots,
       port_vars: m.portVars,
-      fixed_ports: m.fixedPorts
+      fixed_ports: m.fixedPorts,
+      env_files: m.envFiles
     }).filter(([, v]) => v !== null)
   );
 }
@@ -66,7 +67,8 @@ function memberFromToml(t: TomlMember): unknown {
     requiredChecks: t.required_checks ?? [],
     reviewBots: t.review_bots ?? [],
     portVars: t.port_vars ?? [],
-    fixedPorts: t.fixed_ports ?? []
+    fixedPorts: t.fixed_ports ?? [],
+    envFiles: t.env_files ?? []
   };
 }
 
@@ -200,23 +202,10 @@ export async function shareWithTeam(
     const text = rel === SETUP_FILE ? setup : await readTextOrNull(join(dir, rel));
     if (text === null) continue;
     const target = join(repo.root, '.fleet', rel);
-    await refuseLinks(repo.root, target);
+    const link = await firstLink(repo.root, target);
+    if (link !== null) throw new Error(`Not sharing through ${link}: it is a symlink`);
     await writeAtomic(target, text);
     written.push(`.fleet/${rel.split(sep).join('/')}`);
   }
   return written;
-}
-
-/** Throw if any part of `target` below `root` is a symlink. A part not there yet is fine. */
-async function refuseLinks(root: string, target: string): Promise<void> {
-  const parts = relative(root, target).split(sep);
-  let at = root;
-  for (const part of parts) {
-    at = join(at, part);
-    const stat = await lstat(at).catch(() => null);
-    if (stat === null) return;
-    if (stat.isSymbolicLink()) {
-      throw new Error(`Not sharing through ${relative(root, at)}: it is a symlink`);
-    }
-  }
 }

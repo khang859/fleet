@@ -82,6 +82,7 @@ export async function gatherPlanFacts(
     others: OtherJobPaths[];
     pinned: PlanBases | null;
     crew: CrewInput | null;
+    envFiles: PlanFacts['envFiles'];
   },
   deps: PlanFactsDeps
 ): Promise<PlanFacts> {
@@ -96,6 +97,7 @@ export async function gatherPlanFacts(
       input.others
     ),
     pinned: input.pinned,
-    crew: input.crew && (await crewFacts(input.plan, input.crew))
+    crew: input.crew && (await crewFacts(input.plan, input.crew)),
+    envFiles: input.envFiles
   };
 }

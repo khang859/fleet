@@ -90,6 +90,15 @@ export const FixedPortSchema = z.object({
 });
 export type FixedPort = z.infer<typeof FixedPortSchema>;
 
+/** A path inside a member, `/`-separated, that cannot climb out of it. */
+const MemberPath = z
+  .string()
+  .min(1)
+  .max(400)
+  .refine((p) => !p.startsWith('/') && !p.includes('\\') && !p.split('/').includes('..'), {
+    message: 'must be a path inside the member'
+  });
+
 export const ProjectMemberSetupSchema = z.object({
   name: z.string().min(1).max(200),
   /** Relative to the project root; `.` for a one-repository project. */
@@ -111,7 +120,9 @@ export const ProjectMemberSetupSchema = z.object({
   /** Port variables Fleet sets to free ports in each job workspace, like `JOURNEY_API_PORT`. */
   portVars: List.default([]),
   /** Host ports a file fixes and no port variable moves, like Postgres on 5432. */
-  fixedPorts: z.array(FixedPortSchema).max(50).default([])
+  fixedPorts: z.array(FixedPortSchema).max(50).default([]),
+  /** Untracked env files, by path in the member, that Fleet copies into each new worktree of it. */
+  envFiles: z.array(MemberPath).max(20).default([])
 });
 export type ProjectMemberSetup = z.infer<typeof ProjectMemberSetupSchema>;
 
@@ -169,6 +180,16 @@ export type MemberScan = {
   requiredChecksFrom: RequiredChecksSource;
 };
 
+/** An untracked env file in a member's main checkout: its variable names, never its values. */
+export type EnvFileFound = {
+  member: string;
+  /** In the member, `/`-separated. */
+  path: string;
+  vars: string[];
+  /** Git ignores it, so a copy in a worktree is never committed. Fleet copies only these. */
+  ignored: boolean;
+};
+
 /** What a read-only setup scan of a project hands the setup screen. */
 export type SetupScan = {
   repo: AgencyRepoRef;
@@ -183,6 +204,8 @@ export type SetupScan = {
   missing: Array<{ name: string; path: string }>;
   /** Crew and setup files in every member, by path from the project root. */
   repoFiles: RepoFile[];
+  /** Untracked env files in every member's main checkout, members in member order. */
+  envFiles: EnvFileFound[];
   /** A setup a teammate shared in `.fleet/fleet.agency.toml`, if it parses. */
   teamSetup: ProjectSetup | null;
   /** Imported files the repository's default branch has a different version of. */

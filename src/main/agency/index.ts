@@ -50,7 +50,10 @@ import { reconcileAtStartup } from './jobs/reconcile';
 import { runPreflight, type Probe } from './preflight';
 import { ClientFiles, type ClientFileNote } from './projects/client-file';
 import { nativeGh, type GhRun } from './projects/gh';
+import { envSecrets } from './projects/env-files';
 import { agencyHome } from './projects/paths';
+import { loadSetup } from './projects/project-store';
+import { projectPath } from './projects/setup-findings';
 import { PrCards } from './results/pr-cards';
 import { ResultsService } from './results';
 import { readOnlyGit } from './projects/repo-reader';
@@ -430,20 +433,31 @@ export class AgencyService {
    * A job that ended, as Markdown with a file name to save it under. Null for
    * a job still open: its record is not done yet.
    */
-  exportJob(jobId: number): { name: string; text: string } | null {
+  async exportJob(jobId: number): Promise<{ name: string; text: string } | null> {
     const detail = this.jobs.detail(jobId);
     if (detail === null || !TERMINAL_JOB_STATES.includes(detail.job.state)) return null;
     const { job } = detail;
-    const text = exportJob({
-      project: this.store.repo(job.repoId)?.name ?? job.repoId,
-      detail,
-      questions: this.store.listQuestions(job.repoId, { jobId })
-    });
+    const text = exportJob(
+      {
+        project: this.store.repo(job.repoId)?.name ?? job.repoId,
+        detail,
+        questions: this.store.listQuestions(job.repoId, { jobId })
+      },
+      await this.envSecrets(job.repoId)
+    );
     const slug = job.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
     return { name: `${jobDisplayId(jobId)}-${slug || 'job'}.md`, text };
+  }
+
+  /** The values of the env files a project's crew get, which nothing the Admiral or an export shows. */
+  private async envSecrets(repoId: string): Promise<string[]> {
+    const repo = this.store.repo(repoId);
+    if (repo === null) return [];
+    const setup = await loadSetup(repoId, this.deps.agencyHome ?? agencyHome());
+    return envSecrets(setup, projectMembers(this.store.projects, repo).members);
   }
 
   /** The client keeps a change made outside Fleet as it is. */
@@ -625,12 +639,17 @@ export class AgencyService {
     if (!repo) throw new Error(`The project of ${jobDisplayId(job.id)} is not known.`);
     const crew = this.deps.crewDirs ? await this.crewCatalog(job.repoId) : null;
     const { kind, members } = projectMembers(this.store.projects, repo);
-    const trust = claudeTrustFolder(kind, repo.root, this.deps.agencyHome ?? agencyHome());
+    const home = this.deps.agencyHome ?? agencyHome();
+    const trust = claudeTrustFolder(kind, repo.root, home);
     const check = this.deps.checkRuntime;
+    const setup = await loadSetup(job.repoId, home);
     return gatherPlanFacts(
       {
         ...input,
         members,
+        envFiles: (setup?.members ?? []).flatMap((m) =>
+          m.envFiles.map((file) => ({ member: m.name, file: projectPath(m.path, file) }))
+        ),
         crew: crew && {
           roles: new Map(crew.roles.map((r) => [r.name, r.runtime])),
           check: async (runtime) => check?.(runtime, repo.root) ?? { ...PASSING_RUNTIME, runtime },

@@ -214,8 +214,9 @@ describe('setup scan', () => {
       setupDoneAt: null,
       starterDoneAt: null
     });
-    // Only commands that read. File contents come through `cat-file blob`, outside `GitRun`.
-    const READ_ONLY = new Set(['symbolic-ref', 'rev-parse', 'remote', 'ls-tree']);
+    // Only commands that read. File contents come through `cat-file blob`, outside `GitRun`;
+    // `ls-files` lists the untracked env files.
+    const READ_ONLY = new Set(['symbolic-ref', 'rev-parse', 'remote', 'ls-tree', 'ls-files']);
     for (const args of gitCalls) expect(READ_ONLY).toContain(args[0]);
     // And none that could start the repository's fsmonitor.
     expect(gitCalls.flat()).not.toContain('status');

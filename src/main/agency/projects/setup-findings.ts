@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { AgencyRepoRef } from '../../../shared/agency';
 import {
   githubSlug,
+  type EnvFileFound,
   type MemberScan,
   type ProjectKind,
   type ProjectMemberSetup,
@@ -15,6 +16,7 @@ import {
 } from '../../../shared/agency-projects';
 import type { GitRun } from '../repo-identity';
 import { ghJson, ghState, type GhRun } from './gh';
+import { findEnvFiles } from './env-files';
 import { findPorts } from './port-findings';
 import { parseSetupToml } from './project-store';
 import { openRepoReader, readOnlyGit, repoFacts, type RepoReader } from './repo-reader';
@@ -25,7 +27,8 @@ import { openRepoReader, readOnlyGit, repoFacts, type RepoReader } from './repo-
  *
  * Read-only and deterministic. It reads the default branch tip out of git's
  * object store, so nothing is checked out and the working tree is not
- * touched; it runs `git` for reading and `gh` for GitHub's view, and never a
+ * touched; only the untracked env files are read from it, for their variable
+ * names. It runs `git` for reading and `gh` for GitHub's view, and never a
  * command the repository defines. No pane, worktree or branch comes of it.
  */
 
@@ -408,6 +411,7 @@ type MemberFindings = {
   member: ProjectMemberSetup;
   scan: MemberScan;
   repoFiles: RepoFile[];
+  envFiles: EnvFileFound[];
   reader: RepoReader;
 };
 
@@ -417,11 +421,12 @@ async function scanMember(
 ): Promise<MemberFindings> {
   const facts = await repoFacts(target.root, deps.git);
   const reader = await openRepoReader(target.root, facts.defaultBranch, deps.git);
-  const [stack, checks, files, ports] = await Promise.all([
+  const [stack, checks, files, ports, envFiles] = await Promise.all([
     detectStack(reader),
     ciChecks(reader),
     repoFiles(reader),
-    findPorts(reader)
+    findPorts(reader),
+    findEnvFiles(target.root, target.name, deps.git)
   ]);
 
   const slug = githubSlug(facts.remote);
@@ -454,10 +459,12 @@ async function scanMember(
       requiredChecks: required,
       reviewBots: bots,
       portVars: ports.portVars,
-      fixedPorts: ports.fixedPorts
+      fixedPorts: ports.fixedPorts,
+      envFiles: []
     },
     scan: { name: target.name, path: target.path, readFrom: reader.readFrom, requiredChecksFrom },
     repoFiles: files.map((f) => ({ ...f, path: projectPath(target.path, f.path) })),
+    envFiles,
     reader
   };
 }
@@ -498,6 +505,7 @@ export async function scanProject(
     members: found.map((f) => f.scan),
     missing: target.missing,
     repoFiles: found.flatMap((f) => f.repoFiles),
+    envFiles: found.flatMap((f) => f.envFiles),
     teamSetup: teamText === null ? null : parseSetupToml(teamText),
     ghSignedIn: signedIn
   };

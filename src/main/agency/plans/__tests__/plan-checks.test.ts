@@ -35,6 +35,7 @@ const facts = (patch: Partial<PlanFacts> = {}): PlanFacts => ({
   overlap: [],
   pinned: null,
   crew: null,
+  envFiles: [],
   ...patch
 });
 
@@ -70,7 +71,8 @@ describe('checkPlan', () => {
           headSha: HEAD,
           pinned: null
         }
-      ]
+      ],
+      envFiles: []
     });
   });
 
@@ -185,6 +187,29 @@ describe('checkPlan', () => {
     });
     const p = plan([{ id: 'b', role: 'builder', title: 'Build', changes: ['api'] }]);
     expect(checkPlan(p, f).bases.map((b) => b.member)).toEqual(['api', 'shop']);
+  });
+
+  it("lists the env files each step gets: its members' and the umbrella's", () => {
+    const f = facts({
+      members: [
+        member({ name: 'api' }),
+        member({ name: 'web' }),
+        member({ name: 'shop', atRoot: true })
+      ],
+      envFiles: [
+        { member: 'api', file: 'api/.env' },
+        { member: 'web', file: 'web/.env.local' },
+        { member: 'shop', file: '.env' }
+      ]
+    });
+    const p = plan([
+      { id: 'b', role: 'builder', title: 'Build', changes: ['api'] },
+      { id: 'q', role: 'qa', title: 'Check', changes: ['shop'], reads: ['web'] }
+    ]);
+    expect(checkPlan(p, f).envFiles).toEqual([
+      { stepId: 'b', files: ['api/.env', '.env'] },
+      { stepId: 'q', files: ['web/.env.local', '.env'] }
+    ]);
   });
 
   it('carries the bases an earlier approval pinned', () => {

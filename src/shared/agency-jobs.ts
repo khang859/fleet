@@ -48,13 +48,17 @@ export type MemberBase = {
   pinned: { sha: string; from: 'default' | 'head' } | null;
 };
 
+/** The env files a step's crew get, by path from the project root. */
+export type StepEnvFiles = { stepId: string; files: string[] };
+
 export type PlanChecks = {
   issues: PlanIssue[];
   overlap: PlanOverlap[];
   bases: MemberBase[];
+  envFiles: StepEnvFiles[];
 };
 
-export const NO_PLAN_CHECKS: PlanChecks = { issues: [], overlap: [], bases: [] };
+export const NO_PLAN_CHECKS: PlanChecks = { issues: [], overlap: [], bases: [], envFiles: [] };
 
 /** Crew members that may work at once, in one job and across every job. */
 export const DEFAULT_CREW_LIMIT = 4;

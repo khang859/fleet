@@ -109,6 +109,12 @@ Phase 3 notes (decisions made while building):
 - 3.22: each job workspace holds a block of 20 ports from 41000 until the job ends. The pane env sets each port variable in order, plus `FLEET_PORTS` and `COMPOSE_PROJECT_NAME` (`admiral-j<job>-<step>-<n>`).
 - 3.22: a fixed port that is busy while no stack crew of the project is live takes one stack slot. Fleet never stops that program. Waiting stack steps check again every 10 seconds.
 - 3.22: SERVERS lists the ports of the block that answer a TCP connect, checked every 5 seconds, named by the port variable when one matches. End to end in the journey repo: the builder pane had `JOURNEY_API_PORT=41001`, and a server on it showed as `localhost:41001` and went away when it stopped.
+- 3.23: env files are chosen per member and saved as `env_files` in `fleet.agency.toml`. Adding one needs the client's OK in settings; taking one back applies at once.
+- 3.23: setup lists untracked env files with their variable names only, and marks the ones git does not ignore as "Not ignored by git". Those cannot be given to crew.
+- 3.23: a new worktree gets its own copy with mode 600 before setup runs. The copy is refused when the path goes through a symlink, when git does not ignore it in the worktree, or when the client's file is gone.
+- 3.23: the values of the given files feed the job export redaction now. Task 5.5 adds them to the stream Redactor.
+- 3.23: the Admiral's `read`, `glob` and `grep` tools already refuse `.env` files, so the Admiral never sees the values.
+- 3.23: end to end in a test repo: the plan card listed the step's env file, the worktree got a 75-byte `.env` with mode 600 that git showed as clean, `.env.test` (not ignored) was not copied, and cancelling the job removed the worktree and left the client's file as it was.
 
 - [x] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`
 - [x] 3.12 Build the job `--settings` file (AskUserQuestion denied, `disableBypassPermissionsMode`, Fleet hooks with the global command string including `PermissionRequest` and `StopFailure`); verify with snapshot tests
@@ -122,7 +128,7 @@ Phase 3 notes (decisions made while building):
 - [x] 3.20 Compare `UserPromptSubmit` text with the typed prompt, fail on mismatch, and pass long briefs as a file via `--add-dir`; verify with input tests
 - [x] 3.21 Add the one-time folder trust step and check end to end whether trust carries down to new worktrees; record the result in `docs/learnings/`
 - [x] 3.22 Find port variables and fixed host ports at setup, give each job workspace a free port block, set port variables in the pane env, show server addresses on the job sheet, and hold stack slots for `stack: true` steps; verify with tests for two jobs and one slot and a port held by an outside process
-- [ ] 3.23 List untracked env files with names only, copy the chosen ones into new worktrees with mode 600, block paths git does not ignore, and add values to the env redaction; verify with tests that a crew edit never changes the user's file
+- [x] 3.23 List untracked env files with names only, copy the chosen ones into new worktrees with mode 600, block paths git does not ignore, and add values to the env redaction; verify with tests that a crew edit never changes the user's file
 - [ ] 3.24 Find `CLAUDE.md`, `AGENTS.md`, `.claude/agents`, `.claude/skills` and `.opencode/agents` at setup, import agent files as roles, and tell the Admiral which skills each working folder exposes; verify with loader tests and check in Claude Code which skills load from a member subfolder, recording the result in `docs/learnings/`
 
 ## 4. Phase 4 - eva session tracking (PR 4, needs khang859/eva#9, #10, #13, and #12 for hook permission answers)

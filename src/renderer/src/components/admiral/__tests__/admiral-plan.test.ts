@@ -9,6 +9,7 @@ import type {
   AgencyPlanVersion,
   AgencyStep
 } from '../../../../../shared/agency-jobs';
+import { NO_PLAN_CHECKS } from '../../../../../shared/agency-jobs';
 import { PlanSchema } from '../../../../../shared/agency-plan';
 import { agencyJob } from '../../../../../shared/__tests__/agency-fixtures';
 import { waitingCount } from '../../../store/agency-store';
@@ -45,7 +46,7 @@ function version(over: Partial<AgencyPlanVersion> = {}): AgencyPlanVersion {
     author: 'admiral',
     parentVersion: null,
     plan: PLAN,
-    checks: { issues: [], overlap: [], bases: [] },
+    checks: { envFiles: [], issues: [], overlap: [], bases: [] },
     bases: null,
     decisionNote: null,
     proposedAt: 1,
@@ -146,6 +147,7 @@ describe('PlanCard', () => {
     const html = card(
       version({
         checks: {
+          envFiles: [],
           issues: [
             {
               code: 'pr-unavailable',
@@ -168,6 +170,7 @@ describe('PlanCard', () => {
     const html = card(
       version({
         checks: {
+          envFiles: [],
           issues: [
             {
               code: 'claude-trust',
@@ -186,6 +189,14 @@ describe('PlanCard', () => {
     expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>Approve plan<\/button>/);
   });
 
+  it('lists the env files each step gets, and nothing when no step gets one', () => {
+    const files = [{ stepId: 'builder-1', files: ['api/.env', '.env'] }];
+    const html = card(version({ checks: { ...NO_PLAN_CHECKS, envFiles: files } }));
+    expect(html).toContain('ENV FILES');
+    expect(html).toContain('>api/.env · .env<');
+    expect(card(version())).not.toContain('ENV FILES');
+  });
+
   it('offers where the work starts when the default tip and HEAD differ', () => {
     const base = {
       member: 'fleet',
@@ -195,7 +206,9 @@ describe('PlanCard', () => {
       headSha: 'f6e5d4c3b2'.padEnd(40, '0'),
       pinned: null
     };
-    const html = card(version({ checks: { issues: [], overlap: [], bases: [base] } }));
+    const html = card(
+      version({ checks: { envFiles: [], issues: [], overlap: [], bases: [base] } })
+    );
     expect(html).toContain('STARTS FROM');
     expect(html).toContain('aria-label="Where fleet starts"');
     expect(html).toContain('main a1b2c3d');
@@ -203,7 +216,12 @@ describe('PlanCard', () => {
 
     const same = card(
       version({
-        checks: { issues: [], overlap: [], bases: [{ ...base, headSha: base.defaultSha }] }
+        checks: {
+          envFiles: [],
+          issues: [],
+          overlap: [],
+          bases: [{ ...base, headSha: base.defaultSha }]
+        }
       })
     );
     expect(same).toContain('main a1b2c3d');
@@ -212,6 +230,7 @@ describe('PlanCard', () => {
     const pinned = card(
       version({
         checks: {
+          envFiles: [],
           issues: [],
           overlap: [],
           bases: [{ ...base, pinned: { sha: base.headSha, from: 'head' } }]
@@ -225,6 +244,7 @@ describe('PlanCard', () => {
     const html = card(
       version({
         checks: {
+          envFiles: [],
           issues: [{ code: 'overlap', severity: 'warn', text: 'j3 is also working on 1 path.' }],
           overlap: [{ jobId: 3, member: 'fleet', path: 'src/Sidebar.tsx', step: 'builder-1' }],
           bases: []

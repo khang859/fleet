@@ -11,6 +11,7 @@ import { projectMembers, type ProjectMember } from '../projects/workspace-projec
 import type { AgencyStore } from '../store/agency-store';
 import type { ResourceMode } from '../store/resource-store';
 import { jobDir } from '../projects/paths';
+import { copyEnvFiles } from '../projects/env-files';
 import { loadSetup } from '../projects/project-store';
 import { composeProjectName, portEnv, PortBlocks } from './port-blocks';
 import { runSetup, type SetupRun } from './setup-run';
@@ -228,6 +229,7 @@ export class JobWorkspaces {
       store.resources.made(rows[i].id);
     }
     await this.mergeSources(jobId, step, parts);
+    await copyEnvFiles(setup, parts, this.git);
     const logs = join(jobDir(this.deps.home(), jobId), 'setup', `${stepId}-${n}`);
     await this.setUp(setup, { kind, members, parts, root, logs, env });
     return { id, root, cwd: crewFolder(kind, root, parts), branch, parts, env };

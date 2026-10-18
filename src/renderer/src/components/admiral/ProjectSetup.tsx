@@ -3,6 +3,7 @@ import { Check, Loader2 } from 'lucide-react';
 import { diffLines, formatUnified, toHunks } from '../../../../shared/agent-diff';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import type {
+  EnvFileFound,
   MemberScan,
   ProjectMemberSetup,
   ProjectSetup as Setup,
@@ -131,6 +132,12 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
               edited.current = true;
               setSetup({ ...setup, ...patch });
             }}
+          />
+          <EnvFilesCard
+            files={scan.envFiles}
+            setup={setup}
+            workspace={workspace}
+            onMember={setMember}
           />
           {scan.repoFiles.length > 0 && (
             <FoundCard
@@ -863,17 +870,109 @@ function ImportToggle({
     );
   }
   if (!imported) return <OnboardingButton onClick={onToggle}>Import</OnboardingButton>;
+  return <ChosenButton label="Imported" title="Ignore it instead" onClick={onToggle} />;
+}
+
+/** A pressed toggle in green: the client picked this, and a click takes it back. */
+function ChosenButton({
+  label,
+  title,
+  onClick
+}: {
+  label: string;
+  title: string;
+  onClick: () => void;
+}): React.JSX.Element {
   return (
     <button
       type="button"
-      onClick={onToggle}
+      onClick={onClick}
       aria-pressed
-      title="Ignore it instead"
-      className="flex items-center gap-1 rounded-md bg-green-500/10 px-2.5 py-1.5 text-xs text-green-600 transition hover:bg-green-500/15 focus-ring dark:text-green-400"
+      title={title}
+      className="flex items-center gap-1 rounded-md border border-transparent bg-green-500/10 px-2.5 py-1.5 text-xs text-green-600 transition hover:bg-green-500/15 focus-ring dark:text-green-400"
     >
-      <Check size={12} strokeWidth={3} /> Imported
+      <Check size={12} strokeWidth={3} /> {label}
     </button>
   );
+}
+
+/**
+ * The untracked env files setup found, by their variable names only. Crew
+ * get a copy of the ones the client gives them; none is given until then.
+ */
+function EnvFilesCard({
+  files,
+  setup,
+  workspace,
+  onMember
+}: {
+  files: EnvFileFound[];
+  setup: Setup;
+  workspace: boolean;
+  onMember: (index: number, patch: Partial<ProjectMemberSetup>) => void;
+}): React.JSX.Element | null {
+  if (files.length === 0) return null;
+  const onToggle = (file: EnvFileFound): void => {
+    const i = setup.members.findIndex((m) => m.name === file.member);
+    if (i !== -1) {
+      onMember(i, { envFiles: [...toggled(new Set(setup.members[i].envFiles), file.path)] });
+    }
+  };
+  return (
+    <OnboardingCard>
+      <SectionLabel note="crew get only the ones you give them">ENV FILES</SectionLabel>
+      <ul className="mt-2 flex flex-col">
+        {files.map((f) => {
+          const member = setup.members.find((m) => m.name === f.member);
+          const label = workspace && member?.path !== '.' ? `${member?.path}/${f.path}` : f.path;
+          const given = member?.envFiles.includes(f.path) ?? false;
+          const vars = f.vars.length === 0 ? 'no variables' : f.vars.join(' · ');
+          return (
+            <li key={label} className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1 py-1">
+              <span className="shrink-0 font-mono text-xs text-fleet-text">{label}</span>
+              <span
+                className="min-w-0 flex-1 truncate font-mono text-xs text-fleet-text-muted"
+                title={vars}
+              >
+                {vars}
+              </span>
+              <span className="flex w-[104px] justify-end">
+                <EnvFileToggle file={f} given={given} onToggle={() => onToggle(f)} />
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 text-xs text-fleet-text-secondary">
+        I never see the values. Each new worktree gets its own copy, so a crew edit never changes
+        your file.
+      </p>
+    </OnboardingCard>
+  );
+}
+
+/** Give an env file to crew, or take it back; one git does not ignore cannot be given. */
+function EnvFileToggle({
+  file,
+  given,
+  onToggle
+}: {
+  file: EnvFileFound;
+  given: boolean;
+  onToggle: () => void;
+}): React.JSX.Element {
+  if (given) return <ChosenButton label="Given" title="Take it back" onClick={onToggle} />;
+  if (!file.ignored) {
+    return (
+      <span
+        className="text-[11px] text-fleet-text-subtle"
+        title="Git does not ignore this file, so crew could commit it. Add it to .gitignore first."
+      >
+        Not ignored by git
+      </span>
+    );
+  }
+  return <OnboardingButton onClick={onToggle}>Give to crew</OnboardingButton>;
 }
 
 /**

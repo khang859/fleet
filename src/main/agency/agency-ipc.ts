@@ -216,7 +216,7 @@ export function registerAgencyIpc(service: AgencyService): void {
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_JOB_EXPORT,
     async (event, jobId: unknown): Promise<string | null> => {
-      const out = service.exportJob(JobId.parse(jobId));
+      const out = await service.exportJob(JobId.parse(jobId));
       if (out === null) return null;
       const defaultPath = join(app.getPath('downloads'), out.name);
       const win = BrowserWindow.fromWebContents(event.sender);

@@ -271,7 +271,8 @@ describe('workspace setup', () => {
     requiredChecks: [],
     reviewBots: [],
     portVars: [],
-    fixedPorts: []
+    fixedPorts: [],
+    envFiles: []
   });
   const members = [setupMember('core', 'libs/core'), setupMember('shop', '.')];
   const scan: SetupScan = {
@@ -297,6 +298,7 @@ describe('workspace setup', () => {
     })),
     missing: [{ name: 'api', path: 'libs/api' }],
     repoFiles: [],
+    envFiles: [],
     teamSetup: {
       version: 1,
       kind: 'submodules',

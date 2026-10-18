@@ -120,7 +120,9 @@ const ChecksSchema = z.object({
         pinned: PinSchema.nullable()
       })
     )
-    .default([])
+    .default([]),
+  // Checks saved before env files were given to crew have none.
+  envFiles: z.array(z.object({ stepId: z.string(), files: z.array(z.string()) })).default([])
 });
 const BasesSchema = z.record(z.string(), PinSchema);
 const EffectsSchema = z.object({
