@@ -118,7 +118,7 @@ describe('client_file_propose', () => {
     expect(fileText()).toContain('ready for review');
 
     service.answer({ id: out.id!, option: 0 });
-    expect(fileText()).toBe('# fleet\n- Open PRs as drafts. (from the lobby, 2026-10-17)\n');
+    expect(fileText()).toBe('# fleet\n- Open PRs as drafts. (from the Bridge, 2026-10-17)\n');
   });
 
   it('refuses to replace or remove a line that is not in the file', async () => {

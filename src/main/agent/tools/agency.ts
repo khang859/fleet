@@ -14,7 +14,7 @@ export function agencyMember<K extends keyof AgentAgencyCapability>(
 ): NonNullable<AgentAgencyCapability[K]> {
   return capabilityMember(ctx.agency, key, `${name} works only in an Admiral pane.`, () =>
     key === 'jobOpen'
-      ? `${name} works only in the lobby. This conversation is already a job; to start another, ask the client to brief it in the lobby.`
+      ? `${name} works only on the Bridge. This conversation is already a job; to start another, ask the client to brief it on the Bridge.`
       : `${name} is not available in this conversation.`
   );
 }

@@ -192,7 +192,7 @@ function recordsNote(store: SnapshotReader, scope: AdmiralThreadScope): string {
     const jobs = store.listJobs(scope.repoId);
     const waiting = store.listQuestions(scope.repoId, { statuses: ['open'] });
     return [
-      `Fleet's records for this conversation: the lobby of ${repo}.`,
+      `Fleet's records for this conversation: the Bridge of ${repo}.`,
       ...(jobs.length === 0
         ? ['There are no open jobs.']
         : [

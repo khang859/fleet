@@ -753,7 +753,7 @@ export class AgencyStore {
           jobId: job.id,
           kind: 'event',
           payload: {
-            line: 'Job opened from the lobby',
+            line: 'Job opened from the Bridge',
             body: 'The talk that led to it is above. Propose the plan with job_plan, or ask the client what is still missing.'
           }
         });

@@ -4,8 +4,8 @@ import { waitingCount } from '../../store/agency-store';
 import { jobStatus, TONE_DOT } from './job-view';
 
 /**
- * The tabs in an Admiral pane's header: the lobby, pinned first, then one per
- * open job. The lobby is a place of its own, where new work is briefed, so it
+ * The tabs in an Admiral pane's header: the lobby, pinned first and named the
+ * Bridge, then one per open job. The lobby is a place of its own, where new work is briefed, so it
  * gets a labelled tab that lights up while it is on screen rather than a "+"
  * that reads as "add". A dot says which tabs want something - amber for a
  * question, green while a job is being worked on - so a glance at the header
@@ -30,7 +30,7 @@ export function JobTabs({
   return (
     <div
       role="tablist"
-      aria-label="Lobby and jobs"
+      aria-label="Bridge and jobs"
       className="flex min-w-0 flex-1 items-center gap-1"
     >
       <button
@@ -42,7 +42,7 @@ export function JobTabs({
         className={`${TAB} shrink-0 ${activeJobId === null ? SELECTED : IDLE}`}
       >
         {lobbyAsking && <span className="size-1.5 shrink-0 rounded-full bg-amber-400" />}
-        Lobby
+        Bridge
       </button>
       <div className="mx-0.5 h-4 w-px shrink-0 bg-fleet-border" />
       {jobs.length === 0 ? (
