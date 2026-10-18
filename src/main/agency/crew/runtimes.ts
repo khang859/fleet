@@ -162,3 +162,54 @@ export function crewLaunch(hire: CrewHire): CrewLaunch {
   const launch = LAUNCH[hire.runtime]({ ...hire, addDirs: [...hire.addDirs, hire.dir] }, prompt);
   return { ...launch, files: [...launch.files, { path, text: `${brief}\n` }] };
 }
+
+/** A runtime started by the Test button in Settings › Agency › Crew. */
+export type TestStart = {
+  runtime: CrewRuntime;
+  sessionId: string;
+  /** Where the files of the launch go, outside every repository. */
+  dir: string;
+  hooks: Record<string, HookEntry[]>;
+  /** The default model from Settings; unset takes the runtime's own. */
+  model?: string;
+  prompt: string;
+};
+
+/**
+ * The runtime with the flags crew start with, and no role, goal or brief:
+ * Claude Code with the job settings, so its hooks reach Fleet as crew's do,
+ * and eva with no goal, so it answers once and waits.
+ */
+export function testLaunch(test: TestStart): CrewLaunch {
+  const env: Record<string, string> = {
+    [ENV.session]: test.sessionId,
+    [SPAWN_PROMPT_ENV]: test.prompt
+  };
+  if (test.runtime === 'eva') {
+    env[ENV.name] = 'Fleet runtime test';
+    if (test.model !== undefined) env.CHAT_MODEL = test.model;
+    const args = ['--session-id', ref(ENV.session), '--name', ref(ENV.name), '--no-ask-user'];
+    return {
+      cmd: ['eva', ...args, '--', ref(SPAWN_PROMPT_ENV)].join(' '),
+      env,
+      files: [],
+      prompt: test.prompt
+    };
+  }
+  const settings = join(test.dir, 'claude-settings.json');
+  env[ENV.settings] = settings;
+  const args = ['--session-id', ref(ENV.session), '--settings', ref(ENV.settings)];
+  args.push('--permission-mode', 'default');
+  if (test.model !== undefined) {
+    env[ENV.model] = test.model;
+    args.push('--model', ref(ENV.model));
+  }
+  return {
+    cmd: ['claude', ...args, '--', ref(SPAWN_PROMPT_ENV)].join(' '),
+    env,
+    files: [
+      { path: settings, text: `${JSON.stringify(claudeJobSettings(test.hooks), null, 2)}\n` }
+    ],
+    prompt: test.prompt
+  };
+}

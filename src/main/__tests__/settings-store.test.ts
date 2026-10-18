@@ -173,7 +173,11 @@ describe('SettingsStore settings merge', () => {
     store.set({ annotate: { retentionDays: 5 } });
     expect(store.get().agency).toEqual({
       enabled: false,
-      admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100, nudgeLimit: 3 }
+      admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100, nudgeLimit: 3 },
+      crew: {
+        claude: { atOnce: null, defaultModel: '' },
+        eva: { atOnce: null, defaultModel: '' }
+      }
     });
   });
 
@@ -188,7 +192,21 @@ describe('SettingsStore settings merge', () => {
         defaultBudgetUsd: 10,
         monthlyCapUsd: 250,
         nudgeLimit: 3
+      },
+      crew: {
+        claude: { atOnce: null, defaultModel: '' },
+        eva: { atOnce: null, defaultModel: '' }
       }
+    });
+  });
+
+  it("keeps each runtime's crew settings when one is changed", () => {
+    store.set({ agency: { crew: { eva: { atOnce: 6 } } } });
+    store.set({ agency: { crew: { eva: { defaultModel: 'qwen/qwen3-coder' } } } });
+    store.set({ agency: { crew: { claude: { atOnce: 1 } } } });
+    expect(store.get().agency.crew).toEqual({
+      claude: { atOnce: 1, defaultModel: '' },
+      eva: { atOnce: 6, defaultModel: 'qwen/qwen3-coder' }
     });
   });
 });

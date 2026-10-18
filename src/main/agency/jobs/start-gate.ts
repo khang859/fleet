@@ -1,4 +1,5 @@
 import { jobDisplayId, type AgencyJob } from '../../../shared/agency';
+import { RUNTIME_LABEL, type CrewRuntime } from '../../../shared/agency-crew';
 import type { AgencyStep } from '../../../shared/agency-jobs';
 import type { Plan } from '../../../shared/agency-plan';
 import type { StackGate } from './stack-slots';
@@ -14,7 +15,7 @@ export type StartVerdict = { ok: true } | { ok: false; reason: string; queue?: b
  * approved plan has no such step, while a step it waits on is not done, and
  * for a step its crew member left before it was done, until the client says
  * it may go again.
- * Over the crew limit, behind a job it queues after, or with every stack slot
+ * Over its runtime's crew limit, behind a job it queues after, or with every stack slot
  * taken, it is not refused but queued: it starts once a place frees up.
  */
 export function canStartStep(input: {
@@ -24,7 +25,8 @@ export function canStartStep(input: {
   stepId: string;
   /** The job this one runs after, while that job is still under way. */
   queuedBehind?: number | null;
-  live?: { job: number; all: number; limit: number };
+  /** Crew of the step's runtime working now, across jobs, and how many may. */
+  live?: { runtime: CrewRuntime; working: number; limit: number };
   /** The project's stack slots, for a step whose role runs the stack. */
   stack?: StackGate | null;
 }): StartVerdict {
@@ -65,8 +67,9 @@ function waitReason(input: Parameters<typeof canStartStep>[0]): string | null {
     return `${jobDisplayId(input.job.id)} runs after ${jobDisplayId(input.queuedBehind)}, which is still under way.`;
   }
   const live = input.live;
-  if (live && (live.job >= live.limit || live.all >= live.limit)) {
-    return `${live.limit} crew members are already working; this step starts when one finishes.`;
+  if (live && live.working >= live.limit) {
+    const who = `${RUNTIME_LABEL[live.runtime]} crew ${live.limit === 1 ? 'member is' : 'members are'}`;
+    return `${live.limit} ${who} already working; this step starts when one finishes.`;
   }
   const stack = input.stack;
   if (!stack || stack.held < stack.slots) return null;

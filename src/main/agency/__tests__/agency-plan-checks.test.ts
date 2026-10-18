@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import type { CrewRuntime, RuntimeCheck } from '../../../shared/agency-crew';
 import type { PlanInput } from '../../../shared/agency-plan';
 import { AgencyService } from '../index';
-import { BASE_SHA, factsGit, fakeGh, REPO, type GitFacts } from './fixture';
+import { BASE_SHA, crewAtOnce, factsGit, fakeGh, REPO, type GitFacts } from './fixture';
 import { planHelpers } from './plan-helpers';
 
 /** The pre-approval check, the base pin and the crew limit, through the service. */
@@ -34,7 +34,7 @@ function start(
     hasModelKey: () => true,
     git: factsGit({ sha: (ref) => (ref === 'HEAD' ? HEAD_SHA : BASE_SHA), ...opts.git }),
     gh: fakeGh(opts.gh),
-    crewLimit: opts.crewLimit === undefined ? undefined : () => opts.crewLimit!,
+    agencySettings: opts.crewLimit === undefined ? undefined : crewAtOnce(opts.crewLimit),
     agencyHome: join(dir, 'home'),
     crewDirs: opts.crew ? { bundled: SHIPPED_CREW, user: null } : undefined,
     checkRuntime: opts.runtime && (async (runtime) => Promise.resolve(opts.runtime!(runtime)))
@@ -236,7 +236,9 @@ describe('crew limit and queue', () => {
 
     const out = await tools.jobUpdate!({ step: 'builder-1', status: 'running' });
 
-    expect(out.text).toContain('Step builder-1 is queued: 1 crew members are already working');
+    expect(out.text).toContain(
+      'Step builder-1 is queued: 1 Claude Code crew member is already working'
+    );
     expect(stepStatus(job.id, 'builder-1')).toBe('queued');
 
     await service.jobs.stopCrew([crew.id], 'test');
@@ -247,6 +249,27 @@ describe('crew limit and queue', () => {
     expect((await tools.jobUpdate!({ step: 'builder-1', status: 'running' })).text).toContain(
       'is running'
     );
+  });
+
+  it('counts crew per runtime, so busy eva crew do not hold up a Claude Code step', async () => {
+    start({ crewLimit: 1 });
+    const busy = openJob('Busy');
+    await approve(busy.tools);
+    service.store.crew.insert({
+      jobId: busy.job.id,
+      stepId: 'builder-1',
+      role: 'builder',
+      runtime: 'eva',
+      label: 'Builder 1',
+      status: 'working'
+    });
+    const { job, tools } = openJob('Next');
+    await approve(tools);
+
+    expect((await tools.jobUpdate!({ step: 'builder-1', status: 'running' })).text).toContain(
+      'is running'
+    );
+    expect(stepStatus(job.id, 'builder-1')).toBe('running');
   });
 
   it('queues a job behind another until that one delivers', async () => {
@@ -291,8 +314,13 @@ describe('crew roles', () => {
         runtime,
         path: '/usr/local/bin/claude',
         version: '2.0.1',
-        problems: ['Claude Code 2.0.1 is older than 2.1.78, the oldest crew run on.'],
-        warnings: []
+        checks: [
+          {
+            name: 'Version',
+            state: 'fail',
+            note: 'Claude Code 2.0.1 is older than 2.1.78, the oldest crew run on.'
+          }
+        ]
       })
     });
     const { tools } = openJob();

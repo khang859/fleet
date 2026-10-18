@@ -1,11 +1,8 @@
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
 import type { CrewModel, EvaServer } from '../../../shared/agency-crew';
 import type { AgentCatalogModel } from '../../../shared/agent-types';
 import type { Captured } from '../exec';
-import { readTextOrNull } from '../projects/files';
 
 /** The settings Fleet reads of eva's. Its key and every other setting stay in the file. */
 const KEYS = ['provider', 'base_url', 'model'] as const;
@@ -78,31 +75,55 @@ export function evaServer(
   };
 }
 
-export type EvaServerDeps = {
-  /** Runs a line in the shell a terminal pane gets, in `cwd`. */
-  shell: (line: string, cwd: string) => Promise<Captured>;
-  readText: (path: string) => Promise<string | null>;
-  home: string;
-};
+/** Runs a line in the shell a terminal pane gets, in `cwd`. */
+export type EvaShell = (line: string, cwd: string) => Promise<Captured>;
+
+/** The line `awk` prints for a non-empty `api_key`, in place of the line itself. */
+const KEY_SET = '# api_key set';
 
 /**
- * eva's server as a crew pane in `cwd` would start it. The pane's shell is
- * asked for `EVA_HOME` and the three variables by name, never for
- * `CHAT_API_KEY`.
+ * The shell line that reads eva's server as a pane would: each of the three
+ * variables as `NAME=value`, `CHAT_API_KEY=set` for a key that has a value,
+ * then the top-level `provider`, `base_url` and `model` lines of
+ * `config.toml`, and `KEY_SET` for an `api_key` line with a value. The key
+ * itself stays in the shell: Fleet is handed neither its value nor any other
+ * line of the file. Each variable is named, so a trimmed empty one moves no
+ * other.
  */
-export async function readEvaServer(cwd: string, deps: EvaServerDeps): Promise<EvaServer> {
-  const names = ['EVA_HOME', ...KEYS.map((k) => ENV[k])];
-  const out = await deps.shell(`printf '%s\\n' ${names.map((n) => `"$${n}"`).join(' ')}`, cwd);
-  const values = out?.code === 0 ? out.stdout.split('\n') : [];
-  const value = (i: number): string | undefined => values[i]?.trim() || undefined;
+const READ_LINE = [
+  ...KEYS.map((k) => `printf '${ENV[k]}=%s\\n' "$${ENV[k]}"`),
+  `printf 'CHAT_API_KEY=%s\\n' "\${CHAT_API_KEY:+set}"`,
+  'f="${EVA_HOME:-$HOME/.eva}/config.toml"',
+  `[ -r "$f" ] && awk '/^[[:space:]]*\\[/ { exit } /^[[:space:]]*(${KEYS.join('|')})[[:space:]]*=/ { print; next } /^[[:space:]]*api_key[[:space:]]*=[[:space:]]*"[^"]/ { print "${KEY_SET}" }' "$f"`
+].join('; ');
+
+/**
+ * eva's server as a crew pane in `cwd` would start it, and whether eva has
+ * a key, from its settings or its environment.
+ */
+export async function readEvaServer(
+  cwd: string,
+  shell: EvaShell
+): Promise<{ server: EvaServer; keySet: boolean | null }> {
+  const out = await shell(READ_LINE, cwd);
+  if (out === null) return { server: evaServer({}, {}), keySet: null };
+  const vars = new Map<string, string>();
+  const file: string[] = [];
+  for (const line of out.stdout.split('\n')) {
+    const named = /^(CHAT_[A-Z_]+)=(.*)$/.exec(line);
+    if (named) vars.set(named[1], named[2].trim());
+    else file.push(line);
+  }
   const env = Object.fromEntries(
-    KEYS.flatMap((key, i) => {
-      const v = value(i + 1);
-      return v === undefined ? [] : [[key, v]];
+    KEYS.flatMap((key) => {
+      const v = vars.get(ENV[key]);
+      return v ? [[key, v]] : [];
     })
   );
-  const text = await deps.readText(join(value(0) ?? join(deps.home, '.eva'), 'config.toml'));
-  return evaServer(text === null ? {} : evaSettings(text), env);
+  return {
+    server: evaServer(evaSettings(file.join('\n')), env),
+    keySet: vars.get('CHAT_API_KEY') === 'set' || file.some((l) => l.trim() === KEY_SET)
+  };
 }
 
 const ServerModels = z.object({
@@ -147,8 +168,4 @@ export async function evaModels(
   } catch {
     return null;
   }
-}
-
-export function paneEvaServerDeps(shell: EvaServerDeps['shell']): EvaServerDeps {
-  return { shell, readText: readTextOrNull, home: homedir() };
 }

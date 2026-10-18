@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { checkRuntime, versionAtLeast, type RuntimeCheckDeps } from '../availability';
+import { describe, expect, it, vi } from 'vitest';
+import { runtimeProblems, runtimeWarnings } from '../../../../shared/agency-crew';
+import {
+  checkRuntime,
+  claudeSignedIn,
+  versionAtLeast,
+  type RuntimeCheckDeps
+} from '../availability';
 
 const MANAGED = '/Library/Application Support/ClaudeCode/managed-settings.json';
 
@@ -45,28 +51,41 @@ describe('versionAtLeast', () => {
 describe('checkRuntime', () => {
   it('passes Claude Code that is new enough, with the hook in place', async () => {
     const d = deps();
-    expect(await checkRuntime('claude', '/repo', d)).toEqual({
+    const check = await checkRuntime('claude', '/repo', d);
+    expect(check).toMatchObject({
       runtime: 'claude',
       path: '/usr/local/bin/claude',
-      version: '2.1.302',
-      problems: [],
-      warnings: []
+      version: '2.1.302'
     });
+    expect(check.checks.map((c) => [c.name, c.state])).toEqual([
+      ['Installed', 'ok'],
+      ['Version', 'ok'],
+      ['Fleet hook', 'ok'],
+      ['Hooks on', 'ok'],
+      ['No bypass mode', 'ok'],
+      ['Vim mode off', 'ok']
+    ]);
     // Through the pane's shell, so its PATH and a wrapper script are what is checked.
     expect(d.lines).toEqual(['command -v claude', 'claude --version']);
   });
 
   it('refuses a runtime that is missing or too old', async () => {
     const missing = await checkRuntime('eva', '/repo', deps({ bins: { eva: null } }));
-    expect(missing.problems).toEqual([
-      'eva is not installed, or not on the PATH a terminal pane gets.'
+    expect(missing.checks).toEqual([
+      {
+        name: 'Installed',
+        state: 'fail',
+        note: 'eva is not installed, or not on the PATH a terminal pane gets.'
+      }
     ]);
     const old = await checkRuntime('claude', '/repo', deps({ bins: { claude: '2.1.69' } }));
-    expect(old.problems).toEqual([
+    expect(runtimeProblems(old)).toEqual([
       'Claude Code 2.1.69 is older than 2.1.78, the oldest crew run on.'
     ]);
     const eva = await checkRuntime('eva', '/repo', deps({ bins: { eva: 'eva 0.2.0' } }));
-    expect(eva.problems).toEqual(['eva 0.2.0 is older than 0.3.0, the oldest crew run on.']);
+    expect(runtimeProblems(eva)).toEqual([
+      'eva 0.2.0 is older than 0.3.0, the oldest crew run on.'
+    ]);
   });
 
   it('refuses Claude Code when the hook is out of date or hooks are off', async () => {
@@ -78,7 +97,7 @@ describe('checkRuntime', () => {
         files: { '/repo/.claude/settings.json': { disableAllHooks: true } }
       })
     );
-    expect(check.problems).toEqual([
+    expect(runtimeProblems(check)).toEqual([
       "Fleet's Claude Code hook is missing or out of date. Turn on Track Claude Code sessions in Settings > Workspaces.",
       'disableAllHooks is on in /repo/.claude/settings.json, so Fleet cannot follow Claude crew. Turn it off to hire them.'
     ]);
@@ -98,10 +117,10 @@ describe('checkRuntime', () => {
         }
       })
     );
-    expect(check.problems).toEqual([]);
-    expect(check.warnings).toEqual([
-      'Managed settings turn on vim mode, so text Fleet types into a crew pane can run as vim commands.',
-      '/home/u/.claude/settings.json starts Claude Code in bypass mode. Crew start in default mode, with bypass mode locked off.'
+    expect(runtimeProblems(check)).toEqual([]);
+    expect(runtimeWarnings(check)).toEqual([
+      '/home/u/.claude/settings.json starts Claude Code in bypass mode. Crew start in default mode, with bypass mode locked off.',
+      'Managed settings turn on vim mode, so text Fleet types into a crew pane can run as vim commands. Roles can still be hired.'
     ]);
   });
 
@@ -116,5 +135,28 @@ describe('checkRuntime', () => {
       }
     });
     expect(read).toEqual([]);
+  });
+});
+
+describe('claudeSignedIn', () => {
+  const shell = (stdout: string | null): RuntimeCheckDeps['shell'] =>
+    vi
+      .fn<RuntimeCheckDeps['shell']>()
+      .mockResolvedValue(stdout === null ? null : { code: 0, stdout });
+
+  it('takes only the yes or no the shell passes on', async () => {
+    expect(await claudeSignedIn('/repo', {}, shell('yes\n'))).toBe(true);
+    expect(await claudeSignedIn('/repo', {}, shell('no\n'))).toBe(false);
+    expect(await claudeSignedIn('/repo', {}, shell(''))).toBeNull();
+    expect(await claudeSignedIn('/repo', {}, shell(null))).toBeNull();
+  });
+
+  it('lets Claude Code read its own login, with the folder a crew pane gets', async () => {
+    const run = shell('yes\n');
+    await claudeSignedIn('/repo', { CLAUDE_CONFIG_DIR: '/cfg' }, run);
+    const [line, cwd, env] = vi.mocked(run).mock.calls[0];
+    expect(line).toMatch(/^claude auth status --json 2>\/dev\/null \| awk /);
+    expect(cwd).toBe('/repo');
+    expect(env).toEqual({ CLAUDE_CONFIG_DIR: '/cfg' });
   });
 });

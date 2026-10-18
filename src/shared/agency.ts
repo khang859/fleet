@@ -1,3 +1,4 @@
+import type { CrewRuntime } from './agency-crew';
 import type { SettingsCard } from './agency-settings';
 
 /**
@@ -295,9 +296,22 @@ export type AgencySettings = {
     /** How many times the Admiral may nudge a crew member that ends a turn without reporting. */
     nudgeLimit: number;
   };
+  /** Settings › Agency › Crew › Runtimes, for each runtime. */
+  crew: Record<CrewRuntime, CrewRuntimeSettings>;
+};
+
+export type CrewRuntimeSettings = {
+  /** The most crew of the runtime that work at once, across jobs; null takes `defaultAtOnce`. */
+  atOnce: number | null;
+  /** The model of a role that names none; empty leaves it to the runtime. */
+  defaultModel: string;
 };
 
 export const DEFAULT_AGENCY_SETTINGS: AgencySettings = {
   enabled: false,
-  admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100, nudgeLimit: 3 }
+  admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100, nudgeLimit: 3 },
+  crew: {
+    claude: { atOnce: null, defaultModel: '' },
+    eva: { atOnce: null, defaultModel: '' }
+  }
 };

@@ -2,14 +2,17 @@ import { CircleAlert } from 'lucide-react';
 import {
   CREW_RUNTIMES,
   RUNTIME_LABEL,
+  runtimeProblems,
+  runtimeWarnings,
   type CrewModel,
   type CrewRuntime,
   type CrewRuntimeView,
   type RoleDraft
 } from '../../../../../shared/agency-crew';
+import { useSettingsStore } from '../../../store/settings-store';
 import { ModelPicker } from '../../agent/settings/ModelSelect';
-import { formatCost, formatTokens } from '../../agent/settings/format';
 import { modelMissing, rolesUsing } from './role-draft';
+import { modelFigures } from './runtime-view';
 
 const CAPTION = 'text-xs text-fleet-text-muted';
 
@@ -28,9 +31,11 @@ function runsOn(view: CrewRuntimeView | undefined, runtime: CrewRuntime): string
 function status(view: CrewRuntimeView | undefined): { text: string; tone: string } {
   if (view === undefined) return { text: 'Checking…', tone: 'bg-fleet-text-subtle' };
   const { check } = view;
-  if (check.problems.length > 0) return { text: check.problems[0], tone: 'bg-red-500' };
+  const problem = runtimeProblems(check).at(0);
+  if (problem !== undefined) return { text: problem, tone: 'bg-red-500' };
   const ready = check.version === null ? 'Ready' : `Ready · ${check.version}`;
-  if (check.warnings.length > 0) return { text: check.warnings[0], tone: 'bg-amber-400' };
+  const warning = runtimeWarnings(check).at(0);
+  if (warning !== undefined) return { text: warning, tone: 'bg-amber-400' };
   return { text: ready, tone: 'bg-emerald-500' };
 }
 
@@ -46,22 +51,20 @@ function costNote(runtime: CrewRuntime, view: CrewRuntimeView | undefined): stri
 
 function modelMeta(runtime: CrewRuntime, model: CrewModel): string {
   if (runtime === 'claude') return `claude --model ${model.id}`;
-  const parts = [
-    model.cost === null ? null : formatCost(model.cost),
-    model.contextLimit === null ? null : `${formatTokens(model.contextLimit)} context`
-  ].filter((p) => p !== null);
-  return parts.length === 0 ? 'Listed by the server' : parts.join(' · ');
+  return modelFigures(model, true) ?? 'Listed by the server';
 }
 
 /** The line under the Model picker: the default, the picked model, or a typed id. */
 function modelLine(
   draft: RoleDraft,
   picked: CrewModel | undefined,
+  fleetDefault: string,
   view?: CrewRuntimeView
 ): string {
   if (draft.model !== undefined) {
     return picked ? modelMeta(draft.runtime, picked) : `${draft.model}, a model id you typed.`;
   }
+  if (fleetDefault !== '') return `The default from the Runtimes tab: ${fleetDefault}.`;
   if (draft.runtime === 'claude') return 'Claude Code uses its own default model.';
   const fallback = view?.server?.model;
   return fallback ? `eva's default: ${fallback}.` : "eva uses its server's default model.";
@@ -135,6 +138,9 @@ export function ModelField(props: {
     return n === 0 ? '' : n === 1 ? ' · 1 role' : ` · ${n} roles`;
   };
   const picked = rows.find((r) => r.id === draft.model)?.model;
+  const fleetDefault = useSettingsStore(
+    (s) => s.settings?.agency.crew[draft.runtime].defaultModel ?? ''
+  );
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-fleet-border bg-fleet-bg px-3 py-2.5 @lg:flex-row @lg:items-start">
@@ -165,7 +171,9 @@ export function ModelField(props: {
             </span>
           </p>
         ) : (
-          <p className="text-xs text-fleet-text-secondary">{modelLine(draft, picked, view)}</p>
+          <p className="text-xs text-fleet-text-secondary">
+            {modelLine(draft, picked, fleetDefault, view)}
+          </p>
         )}
         {draft.runtime === 'eva' && models === null && view !== undefined && (
           <p className="text-[11px] text-fleet-text-subtle">

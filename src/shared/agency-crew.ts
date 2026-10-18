@@ -159,16 +159,41 @@ export const RUNTIME_MIN_VERSION: Record<CrewRuntime, string> = {
 export const RUNTIME_LABEL: Record<CrewRuntime, string> = { claude: 'Claude Code', eva: 'eva' };
 
 /**
+ * One thing checked about a runtime. `note` says what works when it passes,
+ * and what does not work when it fails or warns.
+ */
+export type RuntimeCheckItem = { name: string; state: 'ok' | 'warn' | 'fail'; note: string };
+
+/**
  * Whether crew can run on a runtime, as a pane in the project would start it.
- * `problems` keep Approve off for a plan that needs it; `warnings` do not.
+ * A failed check keeps Approve off for a plan that needs it; a warning does not.
  */
 export type RuntimeCheck = {
   runtime: CrewRuntime;
   path: string | null;
   version: string | null;
-  problems: string[];
-  warnings: string[];
+  checks: RuntimeCheckItem[];
 };
+
+/** What keeps crew off a runtime, one sentence each. */
+export const runtimeProblems = (check: RuntimeCheck): string[] =>
+  check.checks.filter((c) => c.state === 'fail').map((c) => c.note);
+
+export const runtimeWarnings = (check: RuntimeCheck): string[] =>
+  check.checks.filter((c) => c.state === 'warn').map((c) => c.note);
+
+/**
+ * How many crew of a runtime work at once when Settings names no number:
+ * few Claude crew keep plan usage ordinary, and a local model server
+ * answers one request at a time.
+ */
+export function defaultAtOnce(runtime: CrewRuntime, localServer: boolean): number {
+  if (runtime === 'claude') return 2;
+  return localServer ? 1 : 4;
+}
+
+/** The most crew of one runtime the client can let work at once. */
+export const AT_ONCE_MAX = 12;
 
 /** The names Claude Code takes for `--model`. A full model id works too. */
 export const CLAUDE_MODEL_NAMES = ['opus', 'sonnet', 'haiku'] as const;
@@ -200,7 +225,24 @@ export type CrewRuntimeView = {
   server: EvaServer | null;
   /** The models crew can pick, or null when the list could not be read. */
   models: CrewModel[] | null;
+  /**
+   * Claude Code: signed in. eva: a key is set in its settings or
+   * environment. Null when it could not be told. Never the login or the key.
+   */
+  signedIn: boolean | null;
+  /** `at its usage limit until 15:00, which Builder hit.` while new hires wait for it, or null. */
+  limited: string | null;
+  /** `defaultAtOnce` for this runtime and server. */
+  defaultAtOnce: number;
 };
+
+/** One thing the Test button looked for, as it saw it. */
+export type RuntimeTestRow = { what: string; ok: boolean; detail: string };
+
+/** What the Test button found: each row, or why the test could not run. */
+export type RuntimeTestResult =
+  | { ok: true; rows: RuntimeTestRow[] }
+  | { ok: false; reason: string };
 
 /** A role as the editor holds it: its frontmatter, with the instructions as their own field. */
 export const RoleDraftSchema = RoleFrontmatter.extend({

@@ -43,8 +43,7 @@ const runtime = (r: CrewRuntime, problems: string[] = []): RuntimeCheck => ({
   runtime: r,
   path: `/usr/local/bin/${r}`,
   version: '9.9.9',
-  problems,
-  warnings: []
+  checks: problems.map((note) => ({ name: 'Version', state: 'fail', note }))
 });
 
 const crew = (patch: Partial<CrewFacts> = {}): CrewFacts => ({

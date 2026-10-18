@@ -75,6 +75,8 @@ export type CrewServiceDeps = {
   newId?: () => string;
   /** How many times the Admiral may nudge a member that ends a turn without reporting. */
   nudgeLimit: () => number;
+  /** The model of a role that names none, from Settings; unset leaves it to the runtime. */
+  defaultModel?: (runtime: CrewRuntime) => string | undefined;
 };
 
 /**
@@ -217,7 +219,10 @@ export class CrewService {
   }): Promise<AgencyToolOutput> {
     const { panes, job, step, role, args, lost } = input;
     const runtime: CrewRuntime = step.runtime ?? role.runtime;
-    const model = step.model ?? (runtime === role.runtime ? role.model : undefined);
+    const model =
+      step.model ??
+      (runtime === role.runtime ? role.model : undefined) ??
+      this.deps.defaultModel?.(runtime);
     const workspace = await this.workspaceFor(job.id, step.id, lost);
     const all = this.store.crew.all(job.id);
     const member = all.filter((c) => c.stepId === step.id).length + 1;

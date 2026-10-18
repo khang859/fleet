@@ -7,7 +7,12 @@ import type {
   PlanOverlap,
   StepEnvFiles
 } from '../../../shared/agency-jobs';
-import { RUNTIME_LABEL, type CrewRuntime, type RuntimeCheck } from '../../../shared/agency-crew';
+import {
+  RUNTIME_LABEL,
+  runtimeProblems,
+  type CrewRuntime,
+  type RuntimeCheck
+} from '../../../shared/agency-crew';
 import type { Plan, PlanStep } from '../../../shared/agency-plan';
 import { roleFileText } from '../crew/catalog';
 
@@ -214,13 +219,14 @@ function roleClashes(plan: Plan, crew: CrewFacts): PlanIssue[] {
 /** Steps on a runtime crew cannot use, one issue per runtime. */
 function runtimeIssues(plan: Plan, crew: CrewFacts): PlanIssue[] {
   return Object.values(crew.runtimes).flatMap((check): PlanIssue[] => {
-    if (check.problems.length === 0) return [];
+    const problems = runtimeProblems(check);
+    if (problems.length === 0) return [];
     const steps = plan.steps.filter((s) => stepRuntime(s, crew.roles) === check.runtime);
     return [
       {
         code: 'runtime-unavailable',
         severity: 'block',
-        text: `${steps.map((s) => s.id).join(', ')} ${steps.length === 1 ? 'runs' : 'run'} on ${RUNTIME_LABEL[check.runtime]}. ${check.problems.join(' ')}`
+        text: `${steps.map((s) => s.id).join(', ')} ${steps.length === 1 ? 'runs' : 'run'} on ${RUNTIME_LABEL[check.runtime]}. ${problems.join(' ')}`
       }
     ];
   });

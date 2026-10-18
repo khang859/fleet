@@ -43,7 +43,14 @@ import type {
   WslHomeDirResponse
 } from '../shared/ipc-api';
 import type { TerminalMenuAction } from '../shared/ipc-api';
-import type { CrewCatalog, CrewRuntimeView, RoleSave, RoleSaveResult } from '../shared/agency-crew';
+import type {
+  CrewCatalog,
+  CrewRuntime,
+  CrewRuntimeView,
+  RoleSave,
+  RoleSaveResult,
+  RuntimeTestResult
+} from '../shared/agency-crew';
 import type { WslDistroState, PathContext } from '../shared/shell-profiles';
 import type { ReleaseNote } from '../shared/release-notes';
 import type { ClaudeSessionsSnapshot, HookFolderStatus } from '../shared/claude-sessions';
@@ -1168,6 +1175,9 @@ const fleetApi = {
         typedInvoke(IPC_CHANNELS.AGENCY_CREW_LIST, repoId),
       runtimes: async (repoId: string): Promise<CrewRuntimeView[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_CREW_RUNTIMES, repoId),
+      /** The Test button: start a runtime in a hidden terminal and say what reached Fleet. */
+      testRuntime: async (repoId: string, runtime: CrewRuntime): Promise<RuntimeTestResult> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CREW_RUNTIME_TEST, { repoId, runtime }),
       saveRole: async (input: RoleSave): Promise<RoleSaveResult> =>
         typedInvoke(IPC_CHANNELS.AGENCY_CREW_SAVE_ROLE, input)
     },

@@ -6,7 +6,6 @@ import {
 } from '../../../shared/agency';
 import {
   ACCEPTS_RESULTS,
-  DEFAULT_CREW_LIMIT,
   NO_PLAN_CHECKS,
   type AgencyCrewMember,
   type AgencyJobDetail,
@@ -29,7 +28,12 @@ import {
   validatePlanGraph,
   type Plan
 } from '../../../shared/agency-plan';
-import type { CrewReportStatus, CrewSnapshot } from '../../../shared/agency-crew';
+import {
+  defaultAtOnce,
+  type CrewReportStatus,
+  type CrewRuntime,
+  type CrewSnapshot
+} from '../../../shared/agency-crew';
 import { createLogger } from '../../logger';
 import {
   canDecide,
@@ -41,7 +45,7 @@ import {
 import { checkPlan, pinBases, type PlanFacts } from '../plans/plan-checks';
 import type { OtherJobPaths } from '../plans/overlap';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
-import { CREW_ENDED, CREW_LIVE, type CrewRecord } from '../store/crew-store';
+import { CREW_ENDED, CREW_LIVE, crewRuntime, type CrewRecord } from '../store/crew-store';
 import type { PlanVersionRecord } from '../store/plan-store';
 import { acceptsPlans } from './job-machine';
 import type { StackSlots } from './stack-slots';
@@ -105,8 +109,8 @@ export type JobsServiceDeps = {
     others: OtherJobPaths[];
     pinned: PlanBases | null;
   }) => Promise<PlanFacts>;
-  /** Crew members that may work at once, per job and across every job. */
-  crewLimit?: () => number;
+  /** Crew of a runtime that may work at once, across every job; `defaultAtOnce` unless set. */
+  crewLimit?: (runtime: CrewRuntime) => number;
   /**
    * The roles and playbook a plan uses, as their files say now, kept with the
    * approval so the job runs on them. Without it the approval keeps no crew.
@@ -755,17 +759,29 @@ export class JobsService {
     this.deps.changed([{ repoId: job.repoId, jobId }]);
   }
 
+  /** The runtime a step's crew run on: the step's, else its role's in the approved crew. */
+  private stepRuntime(jobId: number, plan: Plan, stepId: string): CrewRuntime {
+    const step = plan.steps.find((s) => s.id === stepId);
+    const role = this.store.plans.approved(jobId)?.crew?.roles.find((r) => r.name === step?.role);
+    return step?.runtime ?? role?.runtime ?? 'claude';
+  }
+
   /**
-   * Whether a step may start now, with the crew limit, the job it queues
-   * behind and the stack slots. `admitted` counts steps let go but not hired yet.
+   * Whether a step may start now, with its runtime's crew limit, the job it
+   * queues behind and the stack slots. `admitted` counts steps let go but not
+   * hired yet.
    */
   private startVerdict(
     job: AgencyJob,
     plan: Plan,
     stepId: string,
-    admitted = { crew: 0, stack: 0 }
+    admitted: { crew: Partial<Record<CrewRuntime, number>>; stack: number } = {
+      crew: {},
+      stack: 0
+    }
   ): StartVerdict {
     const behind = plan.queueBehind === null ? null : this.store.getJob(plan.queueBehind);
+    const runtime = this.stepRuntime(job.id, plan, stepId);
     return canStartStep({
       job,
       plan,
@@ -773,9 +789,11 @@ export class JobsService {
       stepId,
       queuedBehind: behind && UNDER_WAY.includes(behind.state) ? behind.id : null,
       live: {
-        job: this.store.crew.live(job.id).length + admitted.crew,
-        all: this.store.crew.live().length + admitted.crew,
-        limit: this.deps.crewLimit?.() ?? DEFAULT_CREW_LIMIT
+        runtime,
+        working:
+          this.store.crew.live().filter((c) => crewRuntime(c) === runtime).length +
+          (admitted.crew[runtime] ?? 0),
+        limit: this.deps.crewLimit?.(runtime) ?? defaultAtOnce(runtime, false)
       },
       stack: this.deps.stack?.gate(job, stepId, admitted.stack)
     });
@@ -788,14 +806,15 @@ export class JobsService {
    */
   admitQueued(): void {
     const touched: AgencyTouched[] = [];
-    let crew = 0;
+    const crew: Partial<Record<CrewRuntime, number>> = {};
     const stack = new Map<string, number>();
     for (const { jobId, stepId } of this.store.plans.queuedSteps()) {
       const job = this.store.getJob(jobId);
       const plan = this.store.plans.approved(jobId)?.plan;
       const admitted = { crew, stack: job ? (stack.get(job.repoId) ?? 0) : 0 };
       if (!job || !plan || !this.startVerdict(job, plan, stepId, admitted).ok) continue;
-      crew += 1;
+      const runtime = this.stepRuntime(jobId, plan, stepId);
+      crew[runtime] = (crew[runtime] ?? 0) + 1;
       if (this.deps.stack?.runsStack(jobId, stepId)) stack.set(job.repoId, admitted.stack + 1);
       this.store.tx(() => {
         this.store.plans.setStepStatus(jobId, stepId, 'pending');

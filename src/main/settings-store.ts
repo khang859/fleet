@@ -1,5 +1,10 @@
 import Store from 'electron-store';
-import type { CopilotWorkspaceOverride, FleetSettings, FleetSettingsPatch } from '../shared/types';
+import type {
+  CopilotWorkspaceOverride,
+  DeepPartial,
+  FleetSettings,
+  FleetSettingsPatch
+} from '../shared/types';
 import { DEFAULT_SCROLLBACK } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/constants';
 import { readCompactThreshold } from '../shared/agent-context';
@@ -19,6 +24,17 @@ function readRcConsent(
     if (value === 'installed' || value === 'declined') out[key] = value;
   }
   return out;
+}
+
+/** Each runtime's crew settings, merged one level down so a patch to one field keeps the rest. */
+function mergeCrew(
+  base: FleetSettings['agency']['crew'],
+  patch: DeepPartial<FleetSettings['agency']['crew']> | undefined
+): FleetSettings['agency']['crew'] {
+  return {
+    claude: { ...base.claude, ...patch?.claude },
+    eva: { ...base.eva, ...patch?.eva }
+  };
 }
 
 /**
@@ -243,7 +259,8 @@ export class SettingsStore {
       agency: {
         ...DEFAULT_SETTINGS.agency,
         ...saved.agency,
-        admiral: { ...DEFAULT_SETTINGS.agency.admiral, ...saved.agency?.admiral }
+        admiral: { ...DEFAULT_SETTINGS.agency.admiral, ...saved.agency?.admiral },
+        crew: mergeCrew(DEFAULT_SETTINGS.agency.crew, saved.agency?.crew)
       }
     };
     return this.cached;
@@ -357,7 +374,8 @@ export class SettingsStore {
       agency: {
         ...current.agency,
         ...(partial.agency ?? {}),
-        admiral: { ...current.agency.admiral, ...(partial.agency?.admiral ?? {}) }
+        admiral: { ...current.agency.admiral, ...(partial.agency?.admiral ?? {}) },
+        crew: mergeCrew(current.agency.crew, partial.agency?.crew)
       }
     };
     // Ahead of the write rather than after it: the watcher that would clear

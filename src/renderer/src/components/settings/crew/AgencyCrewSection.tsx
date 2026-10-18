@@ -9,11 +9,13 @@ import type {
   RoleDraft
 } from '../../../../../shared/agency-crew';
 import { draftOf, RUNTIME_LABEL } from '../../../../../shared/agency-crew';
+import type { AgencyRepoRef } from '../../../../../shared/agency';
 import type { AgencyProjectSummary } from '../../../../../shared/agency-projects';
 import { AskAdmiralButton } from '../AskAdmiral';
 import { openCrewFile } from './open-file';
 import { RoleEditor } from './RoleEditor';
 import { PlaybookView } from './PlaybookView';
+import { RuntimesTab } from './RuntimesTab';
 import { NEW_ROLE, playbookLine, roleTitle, sameDraft, SOURCE_LABEL } from './role-draft';
 
 const FIELD =
@@ -22,6 +24,18 @@ const LABEL = 'text-[11px] font-semibold tracking-wider text-fleet-text-muted';
 const SOURCES: CrewSource[] = ['project', 'user', 'bundled'];
 
 type Selection = { kind: 'role'; name: string } | { kind: 'playbook'; name: string };
+type Tab = 'roles' | 'runtimes';
+
+function repoOf(
+  projects: AgencyProjectSummary[] | null,
+  repoId: string | null
+): AgencyRepoRef | null {
+  return projects?.find((p) => p.repo.repoId === repoId)?.repo ?? null;
+}
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'roles', label: 'Roles and playbooks' },
+  { id: 'runtimes', label: 'Runtimes' }
+];
 
 /**
  * Settings › Agency › Crew: the roles and playbooks a project's Admiral can
@@ -36,6 +50,7 @@ export function AgencyCrewSection(): React.JSX.Element {
   const [runtimes, setRuntimes] = useState<CrewRuntimeView[] | null>(null);
   const [selected, setSelected] = useState<Selection | null>(null);
   const [drafts, setDrafts] = useState<Partial<Record<string, RoleDraft>>>({});
+  const [tab, setTab] = useState<Tab>('roles');
 
   useEffect(() => {
     void window.fleet.agency.projects.list().then((list) => {
@@ -63,6 +78,7 @@ export function AgencyCrewSection(): React.JSX.Element {
   }, [repoId, load]);
 
   const roles = useMemo(() => crew?.roles ?? [], [crew]);
+  const repo = repoOf(projects, repoId);
   const role =
     selected?.kind === 'role' ? (roles.find((r) => r.name === selected.name) ?? null) : null;
   const isNew = selected?.kind === 'role' && selected.name === NEW_ROLE;
@@ -135,45 +151,78 @@ export function AgencyCrewSection(): React.JSX.Element {
           Open an Admiral on a project to see the crew it can hire.
         </p>
       ) : (
-        <div className="flex flex-col gap-5 @xl:flex-row @xl:items-start">
-          <div className="shrink-0 space-y-5 @xl:w-[190px] @3xl:w-[240px]">
-            <Playbooks
-              playbooks={crew?.playbooks ?? []}
-              selected={playbook?.name ?? null}
-              onPick={(name) => setSelected({ kind: 'playbook', name })}
-            />
-            <Roles
-              roles={roles}
-              selected={draftKey}
-              runtimeOf={(r) => (drafts[r.name] ?? r).runtime}
-              unsaved={unsaved}
-              onPick={(name) => setSelected({ kind: 'role', name })}
-              onNew={() => setSelected({ kind: 'role', name: NEW_ROLE })}
-            />
-            {crew !== null && crew.errors.length > 0 && <FileErrors errors={crew.errors} />}
-          </div>
+        <>
+          <Tabs tab={tab} onTab={setTab} />
+          {tab === 'runtimes' ? (
+            <RuntimesTab repo={repo} runtimes={runtimes} roles={current} />
+          ) : (
+            <div className="flex flex-col gap-5 @xl:flex-row @xl:items-start">
+              <div className="shrink-0 space-y-5 @xl:w-[190px] @3xl:w-[240px]">
+                <Playbooks
+                  playbooks={crew?.playbooks ?? []}
+                  selected={playbook?.name ?? null}
+                  onPick={(name) => setSelected({ kind: 'playbook', name })}
+                />
+                <Roles
+                  roles={roles}
+                  selected={draftKey}
+                  runtimeOf={(r) => (drafts[r.name] ?? r).runtime}
+                  unsaved={unsaved}
+                  onPick={(name) => setSelected({ kind: 'role', name })}
+                  onNew={() => setSelected({ kind: 'role', name: NEW_ROLE })}
+                />
+                {crew !== null && crew.errors.length > 0 && <FileErrors errors={crew.errors} />}
+              </div>
 
-          <div className="min-w-0 flex-1">
-            {repoId !== null && draftKey !== null && (
-              <RoleEditor
-                key={draftKey}
-                repoId={repoId}
-                role={role}
-                draft={drafts[draftKey]}
-                onDraft={(d) => setDraft(draftKey, d)}
-                onSaved={(name) => void saved(draftKey, name)}
-                onDiscard={() => discard(draftKey)}
-                runtimes={runtimes}
-                roles={current}
-              />
-            )}
-            {playbook !== null && <PlaybookView playbook={playbook} />}
-            {crew !== null && draftKey === null && playbook === null && (
-              <p className="pt-2 text-sm text-fleet-text-muted">Pick a role or a playbook.</p>
-            )}
-          </div>
-        </div>
+              <div className="min-w-0 flex-1">
+                {repoId !== null && draftKey !== null && (
+                  <RoleEditor
+                    key={draftKey}
+                    repoId={repoId}
+                    role={role}
+                    draft={drafts[draftKey]}
+                    onDraft={(d) => setDraft(draftKey, d)}
+                    onSaved={(name) => void saved(draftKey, name)}
+                    onDiscard={() => discard(draftKey)}
+                    runtimes={runtimes}
+                    roles={current}
+                  />
+                )}
+                {playbook !== null && <PlaybookView playbook={playbook} />}
+                {crew !== null && draftKey === null && playbook === null && (
+                  <p className="pt-2 text-sm text-fleet-text-muted">Pick a role or a playbook.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+function Tabs(props: { tab: Tab; onTab: (tab: Tab) => void }): React.JSX.Element {
+  return (
+    <div role="tablist" aria-label="Crew" className="flex gap-5 border-b border-fleet-border">
+      {TABS.map((t) => {
+        const on = props.tab === t.id;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            onClick={() => props.onTab(t.id)}
+            className={`-mb-px border-b-2 pb-2 text-sm transition-colors focus-ring ${
+              on
+                ? 'border-blue-400 font-medium text-fleet-text'
+                : 'border-transparent text-fleet-text-muted hover:text-fleet-text'
+            }`}
+          >
+            {t.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

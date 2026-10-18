@@ -16,7 +16,7 @@ import { shouldCheck, UPDATE_CHECK_INTERVAL_MS } from './update-scheduler';
 import { nextStaged } from './update-staging';
 import { loadReleaseHistory } from './release-notes-history';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { readFile } from 'fs/promises';
+import { readFile, stat } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { join, dirname, resolve } from 'path';
 import { homedir } from 'os';
@@ -92,8 +92,8 @@ import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
 import { createAgencyService, type AgencyService } from './agency';
 import { registerAgencyIpc } from './agency/agency-ipc';
-import { checkRuntime, paneRuntimeDeps } from './agency/crew/availability';
-import { evaModels, paneEvaServerDeps, readEvaServer } from './agency/crew/eva-server';
+import { checkRuntime, claudeSignedIn, paneRuntimeDeps } from './agency/crew/availability';
+import { evaModels, readEvaServer } from './agency/crew/eva-server';
 import { resolveClaudeConfig } from '../shared/claude-config';
 import { createFleetHost } from './agent/fleet/host';
 import { FleetLedgerStore } from './agent/fleet/ledger-store';
@@ -1624,10 +1624,57 @@ void app.whenReady().then(async () => {
     },
     checkRuntime: async (runtime, cwd) =>
       checkRuntime(runtime, cwd, paneRuntimeDeps(crewClaudeConfigDir())),
-    evaServer: async (cwd) =>
-      readEvaServer(cwd, paneEvaServerDeps(paneRuntimeDeps(crewClaudeConfigDir()).shell)),
+    evaServer: async (cwd) => readEvaServer(cwd, paneRuntimeDeps(crewClaudeConfigDir()).shell),
+    // A crew pane gets CLAUDE_CONFIG_DIR only for a folder set in Settings, as a terminal pane does.
+    claudeSignedIn: async (cwd) => {
+      const dir = settingsStore.get().copilot.claudeConfigDir;
+      const env: Record<string, string> = dir ? { CLAUDE_CONFIG_DIR: dir } : {};
+      return claudeSignedIn(cwd, env, paneRuntimeDeps(crewClaudeConfigDir()).shell);
+    },
     evaModels: async (server) =>
       evaModels(server, { openRouter: async () => (await agentCatalog.list()).models, fetch }),
+    // A terminal of its own that no pane shows: protected from the pane
+    // sweep, its output dropped, and its session forgotten once it ends.
+    runtimeTest: {
+      spawn: async ({ paneId, cwd, cmd, env }) => {
+        await enrichProcessEnv();
+        const dir = settingsStore.get().copilot.claudeConfigDir;
+        try {
+          ptyManager.create({
+            paneId,
+            cwd,
+            cmd,
+            exitOnComplete: true,
+            cols: 120,
+            rows: 40,
+            env: { ...process.env, ...(dir ? { CLAUDE_CONFIG_DIR: dir } : {}), ...env }
+          });
+        } catch (err) {
+          return `The terminal did not start: ${String(err)}`;
+        }
+        ptyManager.protect(paneId);
+        ptyManager.onData(paneId, () => {});
+        return null;
+      },
+      kill: (paneId) => {
+        ptyManager.kill(paneId);
+        claudeSessions?.registry.releasePane(paneId);
+      },
+      subscribe: (listener) =>
+        claudeSessions?.registry.subscribe(({ session, event }) => {
+          if (!session || !event) return;
+          listener({
+            paneId: session.paneId,
+            event: event.event,
+            transcriptPath: session.transcriptPath,
+            error: event.error
+          });
+        }) ?? (() => {}),
+      readable: async (path) => ((await stat(path).catch(() => null))?.size ?? 0) > 0,
+      hooks: () => fleetHookEntries(crewClaudeConfigDir()),
+      now: () => Date.now(),
+      newId: () => randomUUID()
+    },
     crewPanes: {
       open: async (pane) => {
         const { paneId, cwd, prompt, at, launch } = pane;

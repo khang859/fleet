@@ -1,4 +1,9 @@
-import type { AdmiralThreadScope, AgencySettings } from '../../../shared/agency';
+import type {
+  AdmiralThreadScope,
+  AgencySettings,
+  CrewRuntimeSettings
+} from '../../../shared/agency';
+import type { CrewRuntime } from '../../../shared/agency-crew';
 import type { ProjectSetup } from '../../../shared/agency-projects';
 import { jsonEqual } from '../../../shared/json-equal';
 import {
@@ -57,7 +62,27 @@ function readAgency(settings: AgencySettings, key: AgencySettingKey): SettingVal
       return settings.admiral.monthlyCapUsd;
     case 'agency.admiral.nudgeLimit':
       return settings.admiral.nudgeLimit;
+    case 'agency.crew.claude.atOnce':
+      return settings.crew.claude.atOnce;
+    case 'agency.crew.eva.atOnce':
+      return settings.crew.eva.atOnce;
+    case 'agency.crew.claude.defaultModel':
+      return settings.crew.claude.defaultModel;
+    case 'agency.crew.eva.defaultModel':
+      return settings.crew.eva.defaultModel;
   }
+}
+
+/** One runtime's crew settings with a field changed. */
+function writeCrew(
+  settings: AgencySettings,
+  runtime: CrewRuntime,
+  patch: Partial<CrewRuntimeSettings>
+): AgencySettings {
+  return {
+    ...settings,
+    crew: { ...settings.crew, [runtime]: { ...settings.crew[runtime], ...patch } }
+  };
 }
 
 /** `value` has passed the key's schema, so the type checks only narrow it. */
@@ -84,6 +109,16 @@ function writeAgency(
       return typeof value === 'number'
         ? { ...settings, admiral: { ...admiral, nudgeLimit: value } }
         : settings;
+    case 'agency.crew.claude.atOnce':
+    case 'agency.crew.eva.atOnce':
+      return writeCrew(settings, key === 'agency.crew.eva.atOnce' ? 'eva' : 'claude', {
+        atOnce: typeof value === 'number' ? value : null
+      });
+    case 'agency.crew.claude.defaultModel':
+    case 'agency.crew.eva.defaultModel':
+      return writeCrew(settings, key === 'agency.crew.eva.defaultModel' ? 'eva' : 'claude', {
+        defaultModel: String(value ?? '')
+      });
   }
 }
 

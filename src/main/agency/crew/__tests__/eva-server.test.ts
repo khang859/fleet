@@ -1,12 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { execFile } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AgentCatalogModel } from '../../../../shared/agent-types';
-import {
-  evaModels,
-  evaServer,
-  evaSettings,
-  readEvaServer,
-  type EvaServerDeps
-} from '../eva-server';
+import { evaModels, evaServer, evaSettings, readEvaServer, type EvaShell } from '../eva-server';
 
 const KEY = 'sk-or-v1-not-a-real-key';
 
@@ -70,28 +68,70 @@ describe('evaServer', () => {
 });
 
 describe('readEvaServer', () => {
-  const deps = (stdout: string, config: string): EvaServerDeps => ({
-    shell: vi.fn<EvaServerDeps['shell']>().mockResolvedValue({ code: 0, stdout }),
-    readText: vi.fn<EvaServerDeps['readText']>().mockResolvedValue(config),
-    home: '/home/me'
+  let home: string;
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'fleet-eva-home-'));
+  });
+  afterEach(() => rmSync(home, { recursive: true, force: true }));
+
+  /**
+   * The real line in `sh`, with `env` as the pane's environment, keeping what
+   * Fleet is handed. Trimmed, as `runCapture` hands it over.
+   */
+  const shell = (env: Record<string, string> = {}): EvaShell & { seen: string[] } => {
+    const seen: string[] = [];
+    const run: EvaShell = async (line, cwd) =>
+      new Promise((done) => {
+        execFile(
+          '/bin/sh',
+          ['-c', line],
+          { cwd, env: { PATH: process.env.PATH ?? '', HOME: home, ...env } },
+          (err, stdout) => {
+            seen.push(stdout);
+            done({ code: err ? 1 : 0, stdout: stdout.trim() });
+          }
+        );
+      });
+    return Object.assign(run, { seen });
+  };
+
+  it('reads the server from the file, and hands Fleet no part of the key', async () => {
+    mkdirSync(join(home, '.eva'));
+    writeFileSync(join(home, '.eva', 'config.toml'), CONFIG);
+    const sh = shell();
+    const read = await readEvaServer(home, sh);
+    expect(read).toEqual({
+      server: {
+        provider: 'openrouter',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'deepseek/deepseek-chat',
+        local: false
+      },
+      keySet: true
+    });
+    expect(sh.seen.join('')).not.toContain(KEY);
+    expect(sh.seen.join('')).not.toContain('not-the-chat-model');
   });
 
-  it('asks the shell for the variables by name, never for the key', async () => {
-    const d = deps('\n\n\n\n', CONFIG);
-    const server = await readEvaServer('/repo', d);
-    expect(server.model).toBe('deepseek/deepseek-chat');
-    expect(d.readText).toHaveBeenCalledWith('/home/me/.eva/config.toml');
-    const line = vi.mocked(d.shell).mock.calls[0][0];
-    expect(line).toContain('$CHAT_MODEL');
-    expect(line).not.toContain('CHAT_API_KEY');
-    expect(JSON.stringify(server)).not.toContain(KEY);
+  it('reads the config from EVA_HOME and lets the variables win', async () => {
+    writeFileSync(join(home, 'config.toml'), 'provider = "openrouter"\n');
+    const sh = shell({ EVA_HOME: home, CHAT_MODEL: 'local-model', CHAT_API_KEY: KEY });
+    const read = await readEvaServer(home, sh);
+    expect(read.server).toMatchObject({ provider: 'openrouter', model: 'local-model' });
+    expect(read.keySet).toBe(true);
+    expect(sh.seen.join('')).not.toContain(KEY);
   });
 
-  it('reads the config from EVA_HOME and takes the variables first', async () => {
-    const d = deps('/opt/eva\n\n\nlocal-model\n', CONFIG);
-    const server = await readEvaServer('/repo', d);
-    expect(d.readText).toHaveBeenCalledWith('/opt/eva/config.toml');
-    expect(server).toMatchObject({ provider: 'openrouter', model: 'local-model' });
+  it('says no key for a file and an environment with none', async () => {
+    const read = await readEvaServer(home, shell({ CHAT_API_KEY: '' }));
+    expect(read).toEqual({ server: evaServer({}, {}), keySet: false });
+    writeFileSync(join(home, 'config.toml'), 'api_key = ""\n');
+    expect((await readEvaServer(home, shell({ EVA_HOME: home }))).keySet).toBe(false);
+  });
+
+  it('knows nothing of the key when the shell cannot start', async () => {
+    const read = await readEvaServer(home, vi.fn<EvaShell>().mockResolvedValue(null));
+    expect(read.keySet).toBeNull();
   });
 });
 

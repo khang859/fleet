@@ -60,9 +60,6 @@ export type PlanChecks = {
 
 export const NO_PLAN_CHECKS: PlanChecks = { issues: [], overlap: [], bases: [], envFiles: [] };
 
-/** Crew members that may work at once, in one job and across every job. */
-export const DEFAULT_CREW_LIMIT = 4;
-
 /** A crew member a plan change stops, by its step. */
 export type StoppedCrew = { crewId: number; stepId: string; label: string };
 

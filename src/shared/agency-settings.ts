@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AT_ONCE_MAX } from './agency-crew';
 import type { ProjectMemberSetup } from './agency-projects';
 
 /**
@@ -59,7 +60,16 @@ const addingNeedsOk = {
   rule: "removing one applies at once; adding one needs the client's OK"
 };
 
+/** A change that can cost more either way, such as another model. */
+const needsOk = {
+  kind: (): SettingKind => 'approve',
+  rule: "needs the client's OK"
+};
+
 const Usd = z.number().min(0).max(100_000);
+/** Crew of one runtime at once; null takes the runtime's default. */
+const AtOnce = z.number().int().min(1).max(AT_ONCE_MAX).nullable();
+const Model = z.string().max(200);
 const Text = z.string().max(2_000);
 const List = z.array(z.string().max(400)).max(200);
 
@@ -85,7 +95,15 @@ const AGENCY_SETTINGS = {
     label: 'Nudges per idle crew member',
     schema: z.number().int().min(0).max(NUDGE_LIMIT_MAX),
     ...moreNeedsOk
-  }
+  },
+  'agency.crew.claude.atOnce': { label: 'Claude crew at once', schema: AtOnce, ...moreNeedsOk },
+  'agency.crew.eva.atOnce': { label: 'eva crew at once', schema: AtOnce, ...moreNeedsOk },
+  'agency.crew.claude.defaultModel': {
+    label: 'Default Claude Code model',
+    schema: Model,
+    ...needsOk
+  },
+  'agency.crew.eva.defaultModel': { label: 'Default eva model', schema: Model, ...needsOk }
 } satisfies Record<string, SettingDef>;
 
 export type AgencySettingKey = keyof typeof AGENCY_SETTINGS;

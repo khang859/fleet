@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   DEFAULT_AGENCY_SETTINGS,
   TERMINAL_JOB_STATES,
@@ -33,6 +34,7 @@ import { defaultCleaners, type WorktreeRemover } from './cleanup/cleaners';
 import { CleanupRunner, type ResourceCleaner } from './cleanup/cleanup-runner';
 import {
   CLAUDE_MODEL_NAMES,
+  defaultAtOnce,
   RoleSaveSchema,
   type CrewCatalog,
   type CrewModel,
@@ -41,7 +43,8 @@ import {
   type EvaServer,
   type RoleSave,
   type RoleSaveResult,
-  type RuntimeCheck
+  type RuntimeCheck,
+  type RuntimeTestResult
 } from '../../shared/agency-crew';
 import type { Plan } from '../../shared/agency-plan';
 import {
@@ -57,6 +60,7 @@ import {
   type CrewDirs
 } from './crew/catalog';
 import { CrewService, type CrewPaneHost } from './crew/crew-service';
+import { testRuntime, type RuntimeTestDeps } from './crew/runtime-test';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
 import { StackSlots } from './jobs/stack-slots';
 import { ServerWatch } from './workspaces/server-watch';
@@ -86,7 +90,7 @@ import { AgencySettingsService, type AgencySettingsAccess } from './settings';
 import { agencyDbPath } from './store/agency-db';
 import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
 
-const PASSING_RUNTIME = { path: null, version: null, problems: [], warnings: [] };
+const PASSING_RUNTIME = { path: null, version: null, checks: [] };
 
 /** Crew stop as their pane's process ends; a pane is live while its process runs. */
 const paneControl = (panes: CrewPaneHost): CrewControl => ({
@@ -129,12 +133,17 @@ export type AgencyServiceDeps = {
   crewDirs?: CrewDirs;
   /** Whether crew can run on a runtime in a folder. Unset, every runtime passes. */
   checkRuntime?: (runtime: CrewRuntime, cwd: string) => Promise<RuntimeCheck>;
-  /** eva's model server as a crew pane in a folder sees it. Unset, eva has none. */
-  evaServer?: (cwd: string) => Promise<EvaServer>;
+  /**
+   * eva's model server as a crew pane in a folder sees it, and whether eva
+   * has a key, never the key itself. Unset, eva has none.
+   */
+  evaServer?: (cwd: string) => Promise<{ server: EvaServer; keySet: boolean | null }>;
+  /** Whether Claude Code is signed in for a crew pane in a folder, never the login itself. */
+  claudeSignedIn?: (cwd: string) => Promise<boolean | null>;
   /** The models an eva server lists, or null when the list is unknown. */
   evaModels?: (server: EvaServer) => Promise<CrewModel[] | null>;
-  /** Crew members that may work at once; 4 unless set. */
-  crewLimit?: () => number;
+  /** How the Test button starts a runtime where no pane shows it. Unset, it cannot run. */
+  runtimeTest?: Omit<RuntimeTestDeps, 'dir'>;
   /** Git that writes: worktrees, the umbrella bump. Defaults to git on the PATH. */
   gitWrite?: GitWrite;
   /** Removes a job's worktrees at close, never forced. */
@@ -193,6 +202,12 @@ export class AgencyService {
   private readonly crewControl: CrewControl;
   /** Folders already written to the trust table this run. */
   private readonly claudeFolders = new Set<string>();
+  /** Fleet's agency settings, in Fleet's settings file or in memory. */
+  private readonly agencySettings: AgencySettingsAccess;
+  /** Whether eva's server was on this machine when last read, for eva's default crew at once. */
+  private evaLocal = false;
+  /** The Test button's run for each runtime, while one runs. */
+  private readonly runtimeTests = new Map<CrewRuntime, Promise<RuntimeTestResult>>();
 
   constructor(private readonly deps: AgencyServiceDeps) {
     this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
@@ -211,6 +226,8 @@ export class AgencyService {
       home: deps.agencyHome
     });
     const panes = deps.crewPanes ?? null;
+    const agencySettings = deps.agencySettings ?? memorySettings();
+    this.agencySettings = agencySettings;
     this.crewControl = deps.crew ?? (panes === null ? NO_CREW : paneControl(panes));
     this.servers = new ServerWatch({
       store: this.store,
@@ -225,7 +242,7 @@ export class AgencyService {
       store: this.store,
       crew: this.crewControl,
       changed: (touched) => this.changed(touched),
-      crewLimit: deps.crewLimit,
+      crewLimit: (runtime) => this.crewAtOnce(runtime),
       stack: this.stack,
       servers: (jobId) => this.servers.servers(jobId),
       planFacts: async (input) => this.planFacts(input),
@@ -257,7 +274,6 @@ export class AgencyService {
       changed: (touched) => this.changed(touched),
       afterResult: (jobId) => this.jobs.afterStepChange(jobId)
     });
-    const agencySettings = deps.agencySettings ?? memorySettings();
     this.settings = new AgencySettingsService({
       store: this.store,
       agency: agencySettings,
@@ -293,7 +309,8 @@ export class AgencyService {
       changed: (touched) => this.changed(touched),
       now: () => deps.now?.() ?? Date.now(),
       newId: deps.newCrewId,
-      nudgeLimit: () => agencySettings.get().admiral.nudgeLimit
+      nudgeLimit: () => agencySettings.get().admiral.nudgeLimit,
+      defaultModel: (runtime) => agencySettings.get().crew[runtime].defaultModel || undefined
     });
     const crew = this.crewControl;
     this.cleanup = new CleanupRunner({
@@ -714,13 +731,20 @@ export class AgencyService {
     return loadCrew(crewSources(this.deps.crewDirs ?? NO_CREW_DIRS, projectCrewDir(repoId, home)));
   }
 
-  /** The models eva crew in a folder can use, and the server they come from. */
+  /** Crew of a runtime that may work at once: the client's number, else the runtime's default. */
+  private crewAtOnce(runtime: CrewRuntime): number {
+    return this.agencySettings.get().crew[runtime].atOnce ?? defaultAtOnce(runtime, this.evaLocal);
+  }
+
+  /** The models eva crew in a folder can use, the server they come from, and whether it has a key. */
   private async evaModelList(
     cwd: string
-  ): Promise<{ server: EvaServer | null; models: CrewModel[] | null }> {
-    const server = (await this.deps.evaServer?.(cwd)) ?? null;
-    const models = server === null ? null : ((await this.deps.evaModels?.(server)) ?? null);
-    return { server, models };
+  ): Promise<{ server: EvaServer | null; models: CrewModel[] | null; keySet: boolean | null }> {
+    const read = (await this.deps.evaServer?.(cwd)) ?? null;
+    if (read === null) return { server: null, models: null, keySet: null };
+    this.evaLocal = read.server.local;
+    const models = (await this.deps.evaModels?.(read.server)) ?? null;
+    return { server: read.server, models, keySet: read.keySet };
   }
 
   /** Settings › Agency › Crew: each runtime as the project's crew panes would start it. */
@@ -729,16 +753,48 @@ export class AgencyService {
     if (!repo) throw new Error('That project is not known.');
     const check = async (runtime: CrewRuntime): Promise<RuntimeCheck> =>
       (await this.deps.checkRuntime?.(runtime, repo.root)) ?? { ...PASSING_RUNTIME, runtime };
-    const [claude, eva, evaList] = await Promise.all([
+    const [claude, signedIn, eva, evaList] = await Promise.all([
       check('claude'),
+      this.deps.claudeSignedIn?.(repo.root) ?? null,
       check('eva'),
       this.evaModelList(repo.root)
     ]);
-    const claudeModels = CLAUDE_MODEL_NAMES.map((id) => ({ id, contextLimit: null, cost: null }));
+    const { keySet, ...evaServer } = evaList;
+    const view = (runtime: CrewRuntime): Pick<CrewRuntimeView, 'limited' | 'defaultAtOnce'> => ({
+      limited: this.crew.flags.usageLimit(runtime),
+      defaultAtOnce: defaultAtOnce(runtime, evaServer.server?.local === true)
+    });
     return [
-      { check: claude, server: null, models: claudeModels },
-      { check: eva, ...evaList }
+      {
+        check: claude,
+        server: null,
+        models: CLAUDE_MODEL_NAMES.map((id) => ({ id, contextLimit: null, cost: null })),
+        signedIn,
+        ...view('claude')
+      },
+      { check: eva, ...evaServer, signedIn: keySet, ...view('eva') }
     ];
+  }
+
+  /**
+   * The Test button: start the runtime in a hidden terminal in the project,
+   * with the default model from Settings, and say what reached Fleet. A
+   * second press while one runs waits for the same run.
+   */
+  async testCrewRuntime(repoId: string, runtime: CrewRuntime): Promise<RuntimeTestResult> {
+    const repo = this.store.repo(repoId);
+    if (!repo) return { ok: false, reason: 'That project is not known.' };
+    const test = this.deps.runtimeTest;
+    if (!test) return { ok: false, reason: 'Fleet cannot start a terminal for the test here.' };
+    const running = this.runtimeTests.get(runtime);
+    if (running) return running;
+    const model = this.agencySettings.get().crew[runtime].defaultModel || undefined;
+    const dir = join(this.deps.agencyHome ?? agencyHome(), 'runtime-test');
+    const run = testRuntime(runtime, repo.root, model, { ...test, dir }).finally(() =>
+      this.runtimeTests.delete(runtime)
+    );
+    this.runtimeTests.set(runtime, run);
+    return run;
   }
 
   /** Save a role from Settings › Agency › Crew in the file it came from. */

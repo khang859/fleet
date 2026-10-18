@@ -449,6 +449,7 @@ export const IPC_CHANNELS = {
   AGENCY_CREW_HAND_BACK: 'agency:crew-hand-back',
   AGENCY_CREW_LIST: 'agency:crew-list',
   AGENCY_CREW_RUNTIMES: 'agency:crew-runtimes',
+  AGENCY_CREW_RUNTIME_TEST: 'agency:crew-runtime-test',
   AGENCY_CREW_SAVE_ROLE: 'agency:crew-save-role',
   AGENCY_RESULT_OPEN: 'agency:result-open',
   AGENCY_PREFLIGHT: 'agency:preflight',

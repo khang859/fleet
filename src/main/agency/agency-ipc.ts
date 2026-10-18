@@ -23,10 +23,12 @@ import {
   type SetupScan
 } from '../../shared/agency-projects';
 import {
+  CREW_RUNTIMES,
   RoleSaveSchema,
   type CrewCatalog,
   type CrewRuntimeView,
-  type RoleSaveResult
+  type RoleSaveResult,
+  type RuntimeTestResult
 } from '../../shared/agency-crew';
 import type { AgencyJobDetail, JobControlResult, PlanActionResult } from '../../shared/agency-jobs';
 import { PlanSchema } from '../../shared/agency-plan';
@@ -73,6 +75,7 @@ const JobControlArgs = z.object({ jobId: JobId, action: z.enum(['cancel', 'accep
 const LeftoverArgs = z.object({ resourceId: JobId, action: z.enum(['retry', 'dismiss']) });
 /** A client file is a page or two of Markdown; anything far past that is not one. */
 const ClientFileWriteArgs = z.object({ repoId: RepoId, text: z.string().max(200_000) });
+const RuntimeTestArgs = z.object({ repoId: RepoId, runtime: z.enum(CREW_RUNTIMES) });
 const ResultOpenArgs = z.object({ resultId: JobId, file: z.number().int().min(0).max(100) });
 const StepKey = z.string().max(80);
 const PlanActionArgs = z.discriminatedUnion('action', [
@@ -217,6 +220,13 @@ export function registerAgencyIpc(service: AgencyService): void {
     IPC_CHANNELS.AGENCY_CREW_RUNTIMES,
     async (_e, repoId: unknown): Promise<CrewRuntimeView[]> =>
       service.crewRuntimes(RepoId.parse(repoId))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CREW_RUNTIME_TEST,
+    async (_e, args: unknown): Promise<RuntimeTestResult> => {
+      const { repoId, runtime } = RuntimeTestArgs.parse(args);
+      return service.testCrewRuntime(repoId, runtime);
+    }
   );
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_CREW_SAVE_ROLE,

@@ -6,6 +6,7 @@ import { DEFAULT_AGENCY_SETTINGS, type AgencyRepoRef } from '../../../../shared/
 import { PlanSchema, PlanStepSchema, type PlanInput } from '../../../../shared/agency-plan';
 import type { AgentAgencyCapability } from '../../../../shared/agency-tools';
 import { AgencyService } from '../../index';
+import { crewAtOnce } from '../../__tests__/fixture';
 import { fakeGh, initRepo, tempDir } from '../../projects/__tests__/git-fixture';
 import { createAgencyCapability } from '../../tools';
 import { PROMPT_MISMATCH, type SendResult } from '../../../claude-sessions/input';
@@ -84,7 +85,7 @@ function start(crewLimit = 4): void {
     agencyHome: join(home.dir, 'agency-home'),
     crewDirs: { bundled: join(process.cwd(), 'resources', 'crew'), user: null },
     crewPanes: panes,
-    crewLimit: () => crewLimit,
+    agencySettings: crewAtOnce(crewLimit),
     now: () => clock,
     // Pane and session ids, in a known order.
     newCrewId: () => {

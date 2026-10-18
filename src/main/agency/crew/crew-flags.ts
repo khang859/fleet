@@ -8,7 +8,7 @@ import type { ClaudeSession } from '../../../shared/claude-sessions';
 import { isKeystroke } from '../../claude-sessions/input';
 import type { JobsService } from '../jobs';
 import type { AgencyStore } from '../store/agency-store';
-import { CREW_LIVE, CREW_STARTING, type CrewRecord } from '../store/crew-store';
+import { CREW_LIVE, CREW_STARTING, crewRuntime, type CrewRecord } from '../store/crew-store';
 import { Ticker } from '../ticker';
 import { limitResetAt } from './limits';
 
@@ -30,9 +30,6 @@ export type CrewFlagsDeps = {
   touch: (jobId: number) => void;
   now: () => number;
 };
-
-/** A member's runtime; the row keeps it as plain text. */
-const runtimeOf = (crew: CrewRecord): CrewRuntime => (crew.runtime === 'eva' ? 'eva' : 'claude');
 
 /** What the Admiral may do to a member. */
 export type CrewAct = 'send' | 'interrupt' | 'stop';
@@ -116,7 +113,7 @@ export class CrewFlags {
     }
     const until = limitResetAt(message, this.deps.now());
     const when = until === null ? '' : ` until ${clockTime(until)}`;
-    const runtime = RUNTIME_LABEL[runtimeOf(crew)];
+    const runtime = RUNTIME_LABEL[crewRuntime(crew)];
     this.flag(crew, 'limited', until, {
       line: `${crew.label} hit its ${runtime} usage limit${when}`,
       body: `Fleet sends it nothing${until === null ? ' until the client says it can work again' : ' before then'}, and new ${runtime} hires wait. If the job cannot wait, propose a plan change that moves the step to another runtime.`
@@ -195,12 +192,19 @@ export class CrewFlags {
 
   /** Why a new hire of a runtime must wait, or null: a member of any job is at its usage limit. */
   hireRefusal(runtime: CrewRuntime): string | null {
+    const limit = this.usageLimit(runtime);
+    if (limit === null) return null;
+    return `Not hired: ${RUNTIME_LABEL[runtime]} is ${limit} Wait for it to reset, or propose a plan change that moves the step to another runtime.`;
+  }
+
+  /** `at its usage limit until 15:00, which Builder hit.`, or null when no crew of the runtime is limited. */
+  usageLimit(runtime: CrewRuntime): string | null {
     const held = this.store.crew
       .live()
-      .find((c) => c.flag === 'limited' && runtimeOf(c) === runtime);
+      .find((c) => c.flag === 'limited' && crewRuntime(c) === runtime);
     if (!held) return null;
     const until = held.flagUntil === null ? '' : ` until ${clockTime(held.flagUntil)}`;
-    return `Not hired: ${RUNTIME_LABEL[runtime]} is at its usage limit${until}, which ${held.label} hit. Wait for it to reset, or propose a plan change that moves the step to another runtime.`;
+    return `at its usage limit${until}, which ${held.label} hit.`;
   }
 
   private flag(

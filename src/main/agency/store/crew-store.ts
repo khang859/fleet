@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { CrewFlag } from '../../../shared/agency-crew';
+import type { CrewFlag, CrewRuntime } from '../../../shared/agency-crew';
 
 /** The status a crew member has once its pane is gone for good. */
 export const CREW_ENDED = 'ended';
@@ -31,6 +31,10 @@ export type CrewRecord = {
   flagSince: number | null;
   flagUntil: number | null;
 };
+
+/** A member's runtime; the row keeps it as plain text. */
+export const crewRuntime = (crew: Pick<CrewRecord, 'runtime'>): CrewRuntime =>
+  crew.runtime === 'eva' ? 'eva' : 'claude';
 
 type CrewRow = {
   id: number;
