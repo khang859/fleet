@@ -58,7 +58,9 @@ describe('parseGitmodules', () => {
   });
 });
 
-describe('an umbrella with three submodules', () => {
+// Each test builds four real repositories and scans them a few times, about
+// 2.5 s alone and past the 5 s default when the whole suite runs at once.
+describe('an umbrella with three submodules', { timeout: 20_000 }, () => {
   it('lists the members dependencies first and the umbrella last', async () => {
     const root = shopUmbrella(home.dir);
     const ws = await detectWorkspace(root, { identify: async (p) => service.identify(p) });
