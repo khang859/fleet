@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { AgencySnapshot } from '../../../../../shared/agency';
 import type {
+  AgencyCrewMember,
   AgencyJobDetail,
   AgencyPlanVersion,
   AgencyStep
@@ -69,7 +70,11 @@ function step(id: string, status: AgencyStep['status'], note = ''): AgencyStep {
   };
 }
 
-function detail(versions: AgencyPlanVersion[], steps: AgencyStep[] = []): AgencyJobDetail {
+function detail(
+  versions: AgencyPlanVersion[],
+  steps: AgencyStep[] = [],
+  crew: AgencyCrewMember[] = []
+): AgencyJobDetail {
   const approved = versions.find((v) => v.status === 'approved');
   return {
     job: agencyJob({ id: 2, approvedVersion: approved?.version ?? null }),
@@ -79,7 +84,8 @@ function detail(versions: AgencyPlanVersion[], steps: AgencyStep[] = []): Agency
     log: [],
     results: [],
     spendUsd: 2.5,
-    merge: null
+    merge: null,
+    crew
   };
 }
 
@@ -239,6 +245,8 @@ describe('PlanCard', () => {
     });
     expect(card(approved)).toContain('Plan v1 approved · 2 steps, $10 · from a1b2c3d');
     expect(card(approved)).not.toContain('Approve plan');
+    const one = version({ status: 'approved', plan: { ...PLAN, steps: PLAN.steps.slice(0, 1) } });
+    expect(card(one)).toContain('Plan v1 approved · 1 step, $10');
   });
 });
 
@@ -296,6 +304,46 @@ describe('the sheet', () => {
     expect(html).toContain('Reading the diff');
     expect(html).toContain('$2.50 of $10');
     expect(html).toContain('Nothing needs you right now.');
+  });
+
+  it('lists the crew, working ones first, with Peek only on a working member', () => {
+    const member = (over: Partial<AgencyCrewMember>): AgencyCrewMember => ({
+      id: 1,
+      stepId: 'builder-1',
+      role: 'builder',
+      runtime: 'claude',
+      model: null,
+      label: 'builder 1',
+      paneId: 'pane-1',
+      status: 'live',
+      startedAt: 1,
+      endedAt: null,
+      endReason: null,
+      ...over
+    });
+    const html = sheet(
+      snap(false),
+      detail(
+        [version({ status: 'approved' })],
+        [step('builder-1', 'failed'), step('reviewer', 'running')],
+        [
+          member({ status: 'ended', endReason: 'ended with exit code 1' }),
+          member({ id: 2, stepId: 'reviewer', label: 'reviewer 1', model: 'opus', paneId: 'p2' })
+        ]
+      )
+    );
+    expect(html).toContain('CREW');
+    expect(html).toContain('1 working');
+    expect(html.indexOf('reviewer 1')).toBeLessThan(html.indexOf('builder 1'));
+    expect(html).toContain('· reviewer · Claude Code opus');
+    expect(html).toContain('>working<');
+    expect(html).toContain('title="ended with exit code 1"');
+    expect(html.match(/>Peek</g)).toHaveLength(1);
+    expect(html).toContain('>failed<');
+  });
+
+  it('has no CREW section before anyone is hired', () => {
+    expect(sheet(snap(false), detail([version({ status: 'approved' })]))).not.toContain('CREW');
   });
 });
 

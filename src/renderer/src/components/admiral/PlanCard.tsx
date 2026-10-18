@@ -469,7 +469,7 @@ function SettledPlan({
     switch (version.status) {
       case 'approved':
         return {
-          text: `${name} approved · ${version.plan.steps.length} steps, $${formatUsd(version.plan.budget.usd)}${baseNote(version)}`,
+          text: `${name} approved · ${plural(version.plan.steps.length, 'step')}, $${formatUsd(version.plan.budget.usd)}${baseNote(version)}`,
           icon: <Check size={12} className="shrink-0 text-green-500" />
         };
       case 'superseded':

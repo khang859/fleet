@@ -109,22 +109,24 @@ export type AgencyQuestionOption = { label: string; detail?: string };
 /**
  * `ask` is the Admiral's own question. The rest are Fleet's cards, answered
  * the same way: `model_unreachable` (Retry or Settings), `continue` (go on
- * after the automatic-turn limit) and `resume` (Resume or Cancel after a
- * restart).
+ * after the automatic-turn limit), `resume` (Resume or Cancel after a
+ * restart) and `rehire` (hire for a step again after its crew member left).
  */
 export type AgencyQuestionKind =
   | 'ask'
   | 'client_file'
   | 'model_unreachable'
   | 'continue'
-  | 'resume';
+  | 'resume'
+  | 'rehire';
 
 export const AGENCY_QUESTION_KINDS: readonly AgencyQuestionKind[] = [
   'ask',
   'client_file',
   'model_unreachable',
   'continue',
-  'resume'
+  'resume',
+  'rehire'
 ];
 
 /** The kinds the Admiral puts up itself, whose answers wake it; the rest are Fleet's own cards. */

@@ -84,6 +84,22 @@ describe('LayoutStore', () => {
     expect(list.map((w) => w.id)).toEqual(['ws-1', 'ws-2']);
   });
 
+  it('drops the job tabs, whose crew panes end with Fleet, and keeps the rest', () => {
+    const tab = (id: string, agencyJobId?: number) => ({
+      id,
+      label: id,
+      labelIsCustom: false,
+      cwd: '/tmp',
+      splitRoot: { type: 'leaf' as const, id: `pane-${id}`, cwd: '/tmp' },
+      ...(agencyJobId === undefined ? {} : { agencyJobId })
+    });
+    store.save({ id: 'ws-1', label: 'A', tabs: [tab('shell'), tab('j4', 4)], activeTabId: 'j4' });
+    store.save({ id: 'ws-2', label: 'B', tabs: [tab('j5', 5)] });
+    store.dropJobTabs();
+    expect(store.load('ws-1')?.tabs.map((t) => t.id)).toEqual(['shell']);
+    expect(store.load('ws-2')?.tabs).toEqual([]);
+  });
+
   it('deletes a workspace', () => {
     store.save({ id: 'ws-1', label: 'A', tabs: [] });
     store.delete('ws-1');

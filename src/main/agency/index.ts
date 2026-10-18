@@ -41,6 +41,7 @@ import {
   projectCrewDir,
   type CrewDirs
 } from './crew/catalog';
+import { CrewService, type CrewPaneHost } from './crew/crew-service';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
 import { exportJob } from './jobs/job-export';
 import { reconcileAtStartup } from './jobs/reconcile';
@@ -67,6 +68,15 @@ import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/
 
 const PASSING_RUNTIME = { path: null, version: null, problems: [], warnings: [] };
 
+/** Crew stop as their pane's process ends; a pane is live while its process runs. */
+const paneControl = (panes: CrewPaneHost): CrewControl => ({
+  stop: async (paneId) => {
+    panes.kill(paneId);
+    return Promise.resolve();
+  },
+  livePanes: () => panes.live()
+});
+
 const MERGE_CLOSED = 'The job closed before the merge finished.';
 
 const log = createLogger('agency');
@@ -84,8 +94,12 @@ export type AgencyServiceDeps = {
   /** Seams for onboarding: the GitHub CLI and the per-project folder. */
   gh?: GhRun;
   agencyHome?: string;
-  /** How crew panes are stopped; nothing is ever hired until the crew phase. */
+  /** Fleet's terminal panes, which crew are hired into. Unset, nothing can be hired. */
+  crewPanes?: CrewPaneHost;
+  /** How crew panes are stopped, for tests; unset, through `crewPanes`. */
   crew?: CrewControl;
+  /** Crew pane and session ids; random UUIDs unless set. */
+  newCrewId?: () => string;
   /** Read-only git for the pre-approval check. */
   git?: GitRun;
   /**
@@ -148,6 +162,9 @@ export class AgencyService {
   readonly settings: AgencySettingsService;
   readonly workspaces: JobWorkspaces;
   readonly merges: MergeQueue;
+  readonly crew: CrewService;
+  /** How crew panes are stopped and found live. */
+  private readonly crewControl: CrewControl;
   /** Folders already written to the trust table this run. */
   private readonly claudeFolders = new Set<string>();
 
@@ -167,9 +184,11 @@ export class AgencyService {
       gh: deps.gh,
       home: deps.agencyHome
     });
+    const panes = deps.crewPanes ?? null;
+    this.crewControl = deps.crew ?? (panes === null ? NO_CREW : paneControl(panes));
     this.jobs = new JobsService({
       store: this.store,
-      crew: deps.crew ?? NO_CREW,
+      crew: this.crewControl,
       changed: (touched) => this.changed(touched),
       crewLimit: deps.crewLimit,
       planFacts: async (input) => this.planFacts(input),
@@ -218,7 +237,17 @@ export class AgencyService {
         }),
       changed: (touched) => this.changed(touched)
     });
-    const crew = deps.crew ?? NO_CREW;
+    this.crew = new CrewService({
+      store: this.store,
+      jobs: this.jobs,
+      workspaces: this.workspaces,
+      panes,
+      home: () => deps.agencyHome ?? agencyHome(),
+      changed: (touched) => this.changed(touched),
+      now: () => deps.now?.() ?? Date.now(),
+      newId: deps.newCrewId
+    });
+    const crew = this.crewControl;
     this.cleanup = new CleanupRunner({
       store: this.store,
       cleaners: {
@@ -475,7 +504,7 @@ export class AgencyService {
     await this.jobs.replayStops();
     const touched = await reconcileAtStartup({
       store: this.store,
-      crew: this.deps.crew ?? NO_CREW,
+      crew: this.crewControl,
       git: this.deps.git ?? readOnlyGit
     });
     if (touched.length > 0) this.changed(touched);
@@ -610,13 +639,9 @@ export class AgencyService {
     return loadCrew(crewSources(this.deps.crewDirs ?? NO_CREW_DIRS, projectCrewDir(repoId, home)));
   }
 
-  /**
-   * The panes of a job's crew, which are all its fleet read tools may see.
-   * Empty for every thread until crew can be hired; that phase takes the
-   * thread's scope here and answers from the job's hires.
-   */
-  crewPanes(): ReadonlySet<string> {
-    return new Set();
+  /** The panes of a job's crew, which are all its fleet read tools may see. None in the lobby. */
+  crewPanes(jobId: number | null): ReadonlySet<string> {
+    return jobId === null ? new Set() : this.crew.panes(jobId);
   }
 
   /** The project's client file for an Admiral turn's note, or null when there is none. */

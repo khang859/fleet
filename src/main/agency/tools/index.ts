@@ -17,7 +17,7 @@ import { settingsChange, settingsRead } from './settings';
 export function createAgencyCapability(
   agency: Pick<
     AgencyService,
-    'ask' | 'openJob' | 'snapshot' | 'jobs' | 'results' | 'proposeClientFile' | 'settings'
+    'ask' | 'openJob' | 'snapshot' | 'jobs' | 'results' | 'proposeClientFile' | 'settings' | 'crew'
   >,
   scope: AdmiralThreadScope,
   settings: () => AgencySettings
@@ -38,6 +38,11 @@ export function createAgencyCapability(
     jobUpdate:
       jobId === null ? null : async (args) => Promise.resolve(jobUpdate(agency.jobs, jobId, args)),
     jobDeliver: jobId === null ? null : async (args) => jobDeliver(agency.results, jobId, args),
+    crewHire: jobId === null ? null : async (args) => agency.crew.hire(jobId, args),
+    crewSend: jobId === null ? null : async (args) => agency.crew.send(jobId, args),
+    crewInterrupt:
+      jobId === null ? null : async (args) => Promise.resolve(agency.crew.interrupt(jobId, args)),
+    crewStop: jobId === null ? null : async (args) => agency.crew.stop(jobId, args),
     clientFilePropose: async (args) => Promise.resolve(clientFilePropose(agency, scope, args)),
     settingsRead: async () => settingsRead(agency.settings, scope),
     settingsChange: async (args) => settingsChange(agency.settings, scope, args)

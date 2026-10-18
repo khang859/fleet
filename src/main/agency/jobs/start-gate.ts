@@ -10,7 +10,9 @@ export type StartVerdict = { ok: true } | { ok: false; reason: string; queue?: b
  * it, or ahead of the steps it waits on.
  *
  * Refused while the job is not running (a `closing` job included), when the
- * approved plan has no such step, and while a step it waits on is not done.
+ * approved plan has no such step, while a step it waits on is not done, and
+ * for a step its crew member left before it was done, until the client says
+ * it may go again.
  * Over the crew limit, or behind a job it queues after, it is not refused but
  * queued: it starts once a place frees up.
  */
@@ -37,6 +39,12 @@ export function canStartStep(input: {
   const row = input.steps.find((s) => s.id === input.stepId);
   if (row?.status === 'removed' || row?.status === 'done') {
     return { ok: false, reason: `Step ${input.stepId} is ${row.status}.` };
+  }
+  if (row?.status === 'stopped' || row?.status === 'failed') {
+    return {
+      ok: false,
+      reason: `Step ${input.stepId} ${row.status === 'stopped' ? 'was stopped' : 'failed'} before it was done, so it starts again only with the client's OK. Fleet asked them; their answer arrives as a wakeup.`
+    };
   }
   const waiting = step.after.filter(
     (dep) => input.steps.find((s) => s.id === dep)?.status !== 'done'

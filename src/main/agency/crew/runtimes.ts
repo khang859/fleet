@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { jobDisplayId } from '../../../shared/agency';
 import type { CrewRuntime } from '../../../shared/agency-crew';
+import { CREW_PROMPT_PREFIX } from '../../../shared/agency-tools';
 import { SPAWN_PROMPT_ENV } from '../../agent/fleet/spawns';
 import type { HookEntry } from '../../claude-sessions/hook-installer';
 import { cleanPrompt } from '../../claude-sessions/input';
@@ -20,6 +21,8 @@ export type CrewHire = {
   brief: string;
   /** The session id Fleet picks, so the session maps to the member and can be resumed. */
   sessionId: string;
+  /** Go on with the conversation `sessionId` names, after a restart, in place of starting it. */
+  resume: boolean;
   /** This member's folder in the job folder, for the files its command reads. Never a worktree. */
   dir: string;
   /** Folders besides the working folder the member may use. */
@@ -75,7 +78,7 @@ function claudeLaunch(hire: CrewHire, prompt: string): CrewLaunch {
     args.push('--add-dir', ...hire.addDirs.map((_, i) => ref(ENV.addDir(i))));
   }
   args.push(
-    '--session-id',
+    hire.resume ? '--resume' : '--session-id',
     ref(ENV.session),
     '--settings',
     ref(ENV.settings),
@@ -102,33 +105,35 @@ function claudeLaunch(hire: CrewHire, prompt: string): CrewLaunch {
  * eva in the same way: the role as instructions kept with the conversation,
  * a goal that keeps it working until the step is done, and no question tool.
  * Never `-b`, so eva asks before each change as the user's settings say. Its
- * model comes from `CHAT_MODEL`, which takes the place of the saved one.
+ * model comes from `CHAT_MODEL`, which takes the place of the saved one. A
+ * resumed conversation has its instructions saved with it already.
  */
 function evaLaunch(hire: CrewHire, prompt: string): CrewLaunch {
   const instructions = join(hire.dir, 'role.md');
   const env: Record<string, string> = {
     [ENV.session]: hire.sessionId,
     [ENV.name]: `${jobDisplayId(hire.jobId)} ${hire.stepId}-${hire.member}`,
-    [ENV.role]: instructions,
     [ENV.goal]: `Step ${hire.stepId} of ${jobDisplayId(hire.jobId)} is done as its brief asks, with the work committed.`,
     [SPAWN_PROMPT_ENV]: prompt
   };
   if (hire.model !== undefined) env.CHAT_MODEL = hire.model;
+  const args = hire.resume
+    ? ['--resume', ref(ENV.session)]
+    : ['--session-id', ref(ENV.session), '--instructions', ref(ENV.role)];
+  if (!hire.resume) env[ENV.role] = instructions;
   const cmd = [
     'eva',
-    '--session-id',
-    ref(ENV.session),
+    ...args,
     '--name',
     ref(ENV.name),
-    '--instructions',
-    ref(ENV.role),
     '--goal',
     ref(ENV.goal),
     '--no-ask-user',
     '--',
     ref(SPAWN_PROMPT_ENV)
   ].join(' ');
-  return { cmd, env, files: [{ path: instructions, text: hire.rolePrompt }], prompt };
+  const files = hire.resume ? [] : [{ path: instructions, text: hire.rolePrompt }];
+  return { cmd, env, files, prompt };
 }
 
 const LAUNCH: Record<CrewRuntime, (hire: CrewHire, prompt: string) => CrewLaunch> = {
@@ -136,7 +141,24 @@ const LAUNCH: Record<CrewRuntime, (hire: CrewHire, prompt: string) => CrewLaunch
   eva: evaLaunch
 };
 
-/** How a crew member's pane starts on its runtime, with its brief as the first message. */
+/**
+ * The longest brief typed as the first prompt. A longer one goes in a file
+ * in the member's folder, which the member may read, and the prompt points
+ * to it.
+ */
+export const TYPED_BRIEF_MAX_CHARS = 4_000;
+
+/**
+ * How a crew member's pane starts on its runtime, with its brief as the first
+ * message, marked as the Admiral's.
+ */
 export function crewLaunch(hire: CrewHire): CrewLaunch {
-  return LAUNCH[hire.runtime](hire, cleanPrompt(hire.brief));
+  const brief = cleanPrompt(hire.brief);
+  if ([...brief].length <= TYPED_BRIEF_MAX_CHARS) {
+    return LAUNCH[hire.runtime](hire, `${CREW_PROMPT_PREFIX} ${brief}`);
+  }
+  const path = join(hire.dir, 'brief.md');
+  const prompt = `${CREW_PROMPT_PREFIX} Your brief for step ${hire.stepId} is in ${path}. Read all of it first, then do what it says.`;
+  const launch = LAUNCH[hire.runtime]({ ...hire, addDirs: [...hire.addDirs, hire.dir] }, prompt);
+  return { ...launch, files: [...launch.files, { path, text: `${brief}\n` }] };
 }

@@ -34,6 +34,7 @@ const LabelArgs = z.object({
   url: z.string().optional(),
   background: z.boolean().optional(),
   session: z.string().optional(),
+  crew: z.string().optional(),
   sessions: z.array(z.string()).optional(),
   level: z.string().optional(),
   view: z.string().optional(),
@@ -175,6 +176,17 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       return { verb: args.status === undefined ? 'Note' : 'Update', target: args.step ?? '' };
     case 'job_deliver':
       return { verb: 'Deliver', target: args.title ?? args.url ?? args.branch ?? args.kind ?? '' };
+    case 'crew_hire':
+      return { verb: 'Hire', target: args.step ?? '' };
+    case 'crew_send':
+      return {
+        verb: 'Send',
+        target: joinDetail(args.crew, (args.prompt ?? '').replace(/\s*\n\s*/g, ' '), ': ')
+      };
+    case 'crew_interrupt':
+      return { verb: 'Interrupt', target: args.crew ?? '' };
+    case 'crew_stop':
+      return { verb: 'Stop', target: args.crew ?? '' };
     case 'client_file_propose':
       return { verb: 'Remember', target: args.reason ?? '' };
     case 'settings_read':

@@ -8,6 +8,7 @@ import {
   ACCEPTS_RESULTS,
   DEFAULT_CREW_LIMIT,
   NO_PLAN_CHECKS,
+  type AgencyCrewMember,
   type AgencyJobDetail,
   type AgencyMergeRun,
   type AgencyPlanVersion,
@@ -32,7 +33,7 @@ import {
 import { checkPlan, pinBases, type PlanFacts } from '../plans/plan-checks';
 import type { OtherJobPaths } from '../plans/overlap';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
-import { CREW_ENDED } from '../store/crew-store';
+import { CREW_ENDED, CREW_LIVE, type CrewRecord } from '../store/crew-store';
 import type { PlanVersionRecord } from '../store/plan-store';
 import { acceptsPlans } from './job-machine';
 import { canStartStep, type StartVerdict } from './start-gate';
@@ -495,6 +496,77 @@ export class JobsService {
     if (status === 'done') this.admitQueued();
   }
 
+  /** Whether a step of the job's approved plan may be hired for now. */
+  startCheck(jobId: number, stepId: string): StartVerdict {
+    const job = this.store.getJob(jobId);
+    const plan = this.store.plans.approved(jobId)?.plan ?? null;
+    if (!job || plan === null) {
+      return { ok: false, reason: 'There is no approved plan yet; propose one with job_plan.' };
+    }
+    return this.startVerdict(job, plan, stepId);
+  }
+
+  /**
+   * A hire moves its step: `running` as its crew member starts, `queued`
+   * while it waits for a place, or back to where it was when the hire failed.
+   */
+  hireMoved(jobId: number, stepId: string, status: StepStatus): void {
+    const job = this.store.getJob(jobId);
+    if (!job) return;
+    this.store.tx(() => this.moveStep(job, stepId, status));
+    this.refreshClientHold(jobId);
+    this.deps.changed([{ repoId: job.repoId, jobId }]);
+  }
+
+  /**
+   * A crew member left its step before the step was done: the client closed
+   * its pane (`stopped`) or its runtime ended (`failed`). The step waits for
+   * the client's OK to hire again, and the Admiral hears of it.
+   */
+  crewLeft(input: {
+    jobId: number;
+    stepId: string;
+    status: 'stopped' | 'failed';
+    label: string;
+    note: string;
+  }): void {
+    const { jobId, stepId } = input;
+    const job = this.store.getJob(jobId);
+    if (!job || this.store.plans.step(jobId, stepId)?.status !== 'running') return;
+    const what = input.status === 'stopped' ? 'was stopped' : 'failed';
+    this.store.tx(() => {
+      this.moveStep(job, stepId, input.status);
+      this.store.plans.setStepNote(jobId, stepId, input.note);
+      this.store.askQuestion({
+        repoId: job.repoId,
+        jobId,
+        kind: 'rehire',
+        step: stepId,
+        planVersion: job.approvedVersion,
+        question: `Step ${stepId} ${what} before it was done`,
+        context: `${input.label} ${input.note}. Its pane is closed; its worktree and branch stay as it left them.`,
+        options: [
+          { label: 'Hire again', detail: 'the Admiral hires a new crew member for the step' },
+          { label: 'Leave it', detail: 'the step stays stopped until you say more' }
+        ],
+        recommended: null
+      });
+      this.store.resetChain(jobId);
+      this.store.enqueueWakeup({
+        repoId: job.repoId,
+        jobId,
+        kind: 'event',
+        payload: {
+          line: `Step ${stepId} ${what}: ${input.label} ${input.note}`,
+          body: 'Fleet asked the client whether to hire for it again; their answer arrives as a wakeup. Until then the step does not start.'
+        }
+      });
+    });
+    this.refreshClientHold(jobId);
+    this.deps.changed([{ repoId: job.repoId, jobId }]);
+    this.admitQueued();
+  }
+
   /** Whether a step may start now, with the crew limit and the job it queues behind. */
   private startVerdict(job: AgencyJob, plan: Plan, stepId: string, admitted = 0): StartVerdict {
     const behind = plan.queueBehind === null ? null : this.store.getJob(plan.queueBehind);
@@ -632,10 +704,25 @@ export class JobsService {
       log: this.store.plans.logTail(jobId),
       results: this.store.results.forJob(jobId),
       spendUsd: this.store.plans.spendUsd(jobId),
-      merge: mergeView(this.store.merges.run(jobId))
+      merge: mergeView(this.store.merges.run(jobId)),
+      crew: this.store.crew.all(jobId).map(crewView)
     };
   }
 }
+
+const crewView = (c: CrewRecord): AgencyCrewMember => ({
+  id: c.id,
+  stepId: c.stepId,
+  role: c.role,
+  runtime: c.runtime === 'eva' ? 'eva' : 'claude',
+  model: c.model,
+  label: c.label,
+  paneId: c.paneId,
+  status: c.status === CREW_ENDED ? 'ended' : c.status === CREW_LIVE ? 'live' : 'starting',
+  startedAt: c.startedAt,
+  endedAt: c.endedAt,
+  endReason: c.endReason
+});
 
 const mergeView = (run: AgencyMergeRun | null): AgencyMergeRun | null =>
   run === null ? null : { status: run.status, note: run.note };

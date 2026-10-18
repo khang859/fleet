@@ -1,0 +1,424 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { jobDisplayId, type AgencyJob } from '../../../shared/agency';
+import type { CrewRuntime, CrewSnapshot } from '../../../shared/agency-crew';
+import type { PlanStep } from '../../../shared/agency-plan';
+import {
+  CREW_PROMPT_PREFIX,
+  type AgencyToolOutput,
+  type CrewHireArgs,
+  type CrewInterruptArgs,
+  type CrewSendArgs,
+  type CrewStopArgs
+} from '../../../shared/agency-tools';
+import { sessionRef } from '../../agent/fleet/host';
+import { ActLimiter } from '../../agent/fleet/limiter';
+import type { FleetPrompter } from '../../agent/fleet/send';
+import type { PaneLaunch } from '../../agent/fleet/spawns';
+import type { HookEntry } from '../../claude-sessions/hook-installer';
+import { cleanPrompt, promptProblem } from '../../claude-sessions/input';
+import { createLogger } from '../../logger';
+import type { JobsService } from '../jobs';
+import { jobDir } from '../projects/paths';
+import type { AgencyStore, AgencyTouched } from '../store/agency-store';
+import { CREW_STARTING, LOST_AT_RESTART, type CrewRecord } from '../store/crew-store';
+import type { JobWorkspaces } from '../workspaces/job-workspace';
+import { crewLaunch, type CrewLaunch } from './runtimes';
+
+const log = createLogger('agency:crew');
+
+/** A crew pane to open: unfocused, as a split of its job's one tab. */
+export type CrewPaneOpen = {
+  paneId: string;
+  cwd: string;
+  /** Names the pane, like `builder 1`. */
+  label: string;
+  job: { jobId: number; label: string };
+  launch: PaneLaunch;
+  prompt: string;
+  at: number;
+};
+
+/** Fleet's terminal panes, as crew use them. */
+export type CrewPaneHost = {
+  /** Resolves to null once the pane is in the layout, or why it is not. */
+  open(pane: CrewPaneOpen): Promise<string | null>;
+  write(paneId: string, data: string): void;
+  /** Ends the pane's process; the pane then closes. */
+  kill(paneId: string): void;
+  live(): ReadonlySet<string>;
+  /** Record a prompt as Fleet's, for the session that reports from the pane. */
+  notePaneInput(paneId: string, text: string): void;
+  prompter: FleetPrompter;
+  /** Fleet's hook entries, as its global install writes them. */
+  hooks(): Record<string, HookEntry[]>;
+};
+
+export type CrewServiceDeps = {
+  store: AgencyStore;
+  jobs: JobsService;
+  workspaces: Pick<JobWorkspaces, 'make'>;
+  /** Unset where Fleet has no panes (tests of other parts): nothing can be hired. */
+  panes: CrewPaneHost | null;
+  home: () => string;
+  changed: (touched: AgencyTouched[]) => void;
+  now: () => number;
+  newId?: () => string;
+};
+
+/** How a crew member's pane went away. */
+export type CrewEnd = { kind: 'exit'; exitCode: number } | { kind: 'closed' };
+
+/**
+ * Hires a job's crew into panes and talks to them: `crew_hire`, `crew_send`,
+ * `crew_interrupt` and `crew_stop`. Each plan step has at most one crew
+ * member working. A hire is allowed only for a step of the approved plan that
+ * may start, and every act is written to the job record. Each job has its own
+ * rate limit, and its automatic-turn chain stops crew acts with its turns.
+ */
+export class CrewService {
+  private readonly limiter = new ActLimiter();
+
+  constructor(private readonly deps: CrewServiceDeps) {}
+
+  private get store(): AgencyStore {
+    return this.deps.store;
+  }
+
+  private newId(): string {
+    return this.deps.newId?.() ?? randomUUID();
+  }
+
+  /** Hire the crew member for a step, or resume the one a restart took. */
+  async hire(jobId: number, args: CrewHireArgs): Promise<AgencyToolOutput> {
+    const panes = this.requirePanes();
+    const job = this.actingJob(jobId);
+    const approved = this.store.plans.approved(jobId);
+    const step = approved?.plan.steps.find((s) => s.id === args.step);
+    if (!approved || !step) {
+      throw new Error(`Not hired: step ${args.step} is not in the approved plan.`);
+    }
+    const working = this.store.crew.live(jobId).find((c) => c.stepId === step.id);
+    if (working) {
+      throw new Error(
+        `Not hired: ${working.label} (${this.refOf(working)}) is working on step ${step.id}. Talk to it with crew_send.`
+      );
+    }
+    const verdict = this.deps.jobs.startCheck(jobId, step.id);
+    if (!verdict.ok && verdict.queue !== true) throw new Error(`Not hired: ${verdict.reason}`);
+    this.checkRate(jobId);
+    if (!verdict.ok) {
+      this.deps.jobs.hireMoved(jobId, step.id, 'queued');
+      return {
+        text: `Step ${step.id} is queued: ${verdict.reason} A wakeup tells you when it can start; hire for it then.`,
+        summary: `${step.id} queued`
+      };
+    }
+    const role = approved.crew?.roles.find((r) => r.name === step.role);
+    if (!role) {
+      throw new Error(`Not hired: the approved plan keeps no role ${step.role}. Propose it again.`);
+    }
+    const before = this.store.plans.step(jobId, step.id)?.status ?? 'pending';
+    const lost = before === 'interrupted' ? this.lostMember(jobId, step.id) : null;
+    this.deps.jobs.hireMoved(jobId, step.id, 'running');
+    try {
+      return await this.start({ panes, job, step, role, args, lost });
+    } catch (err) {
+      this.deps.jobs.hireMoved(jobId, step.id, before);
+      throw err;
+    }
+  }
+
+  private async start(input: {
+    panes: CrewPaneHost;
+    job: AgencyJob;
+    step: PlanStep;
+    role: CrewSnapshot['roles'][number];
+    args: CrewHireArgs;
+    lost: CrewRecord | null;
+  }): Promise<AgencyToolOutput> {
+    const { panes, job, step, role, args, lost } = input;
+    const runtime: CrewRuntime = step.runtime ?? role.runtime;
+    const model = step.model ?? (runtime === role.runtime ? role.model : undefined);
+    const workspace = await this.workspaceFor(job.id, step.id, lost);
+    const all = this.store.crew.all(job.id);
+    const member = all.filter((c) => c.stepId === step.id).length + 1;
+    const crew = this.store.crew.insert({
+      jobId: job.id,
+      stepId: step.id,
+      role: role.name,
+      runtime,
+      model: model ?? null,
+      label: lost?.label ?? `${role.name} ${all.filter((c) => c.role === role.name).length + 1}`,
+      paneId: this.newId(),
+      sessionId: lost?.sessionId ?? this.newId(),
+      workspaceId: workspace.id,
+      status: CREW_STARTING,
+      replaces: lost?.id ?? null
+    });
+    try {
+      const launch = crewLaunch({
+        jobId: job.id,
+        stepId: step.id,
+        member,
+        runtime,
+        model,
+        rolePrompt: role.prompt,
+        brief: args.brief,
+        sessionId: crew.sessionId ?? '',
+        resume: lost !== null,
+        dir: join(jobDir(this.deps.home(), job.id), 'crew', `${step.id}-${member}`),
+        addDirs: [],
+        hooks: panes.hooks()
+      });
+      await this.openPane(panes, job, crew, workspace.root, launch);
+    } catch (err) {
+      this.store.crew.end(crew.id, `did not start: ${String(err)}`);
+      throw err;
+    }
+    const verb = lost ? 'Resumed' : 'Hired';
+    this.record(job, step.id, `${verb} ${crew.label} for step ${step.id}`, {
+      crewId: crew.id,
+      runtime,
+      model: model ?? null,
+      why: args.why ?? null,
+      expect: args.expect ?? null
+    });
+    return {
+      text: [
+        `${verb} ${crew.label} (ref ${this.refOf(crew)}) on ${runtime} for step ${step.id}, in ${workspace.root}.`,
+        'Its pane is in the job tab. It shows as starting until its session reports; one that stays starting is probably waiting at a prompt only the client can answer.'
+      ].join(' '),
+      summary: `${verb.toLowerCase()} ${crew.label}`
+    };
+  }
+
+  /** A new workspace for the step, or the one a resumed member left. */
+  private async workspaceFor(
+    jobId: number,
+    stepId: string,
+    lost: CrewRecord | null
+  ): Promise<{ id: number | null; root: string }> {
+    if (lost !== null) {
+      const root =
+        lost.workspaceId === null ? null : this.store.resources.workspaceRoot(lost.workspaceId);
+      if (root === null) throw new Error(`Not hired: ${lost.label}'s workspace is gone.`);
+      return { id: lost.workspaceId, root };
+    }
+    try {
+      return await this.deps.workspaces.make(jobId, stepId);
+    } catch (err) {
+      throw new Error(`Not hired: the step's workspace could not be made. ${String(err)}`);
+    }
+  }
+
+  /** Write the launch's files, then open the member's pane in the job tab. */
+  private async openPane(
+    panes: CrewPaneHost,
+    job: AgencyJob,
+    crew: CrewRecord,
+    cwd: string,
+    launch: CrewLaunch
+  ): Promise<void> {
+    for (const file of launch.files) {
+      await mkdir(dirname(file.path), { recursive: true });
+      await writeFile(file.path, file.text);
+    }
+    const paneId = crew.paneId ?? '';
+    panes.notePaneInput(paneId, launch.prompt);
+    const at = this.deps.now();
+    const error = await panes.open({
+      paneId,
+      cwd,
+      label: crew.label,
+      job: { jobId: job.id, label: `${jobDisplayId(job.id)} ${job.title}` },
+      launch: { cmd: launch.cmd, env: launch.env, exitOnComplete: true },
+      prompt: launch.prompt,
+      at
+    });
+    if (error !== null) throw new Error(`Not hired: ${error}`);
+    this.limiter.note(this.limitKey(job.id), at);
+  }
+
+  /** Type a prompt into a crew member that is waiting for one. */
+  async send(jobId: number, args: CrewSendArgs): Promise<AgencyToolOutput> {
+    const panes = this.requirePanes();
+    const job = this.actingJob(jobId);
+    const crew = this.resolve(jobId, args.crew);
+    if (crew.runtime === 'eva') {
+      throw new Error(
+        `Not sent: Fleet cannot type into eva crew yet. Ask the client to type into ${crew.label}'s pane.`
+      );
+    }
+    if (crew.status === CREW_STARTING || crew.sessionId === null) {
+      throw new Error(`Not sent: ${crew.label} has not reported yet, so it cannot take a prompt.`);
+    }
+    const text = cleanPrompt(`${CREW_PROMPT_PREFIX} ${args.prompt}`);
+    const refused = panes.prompter.refusal(crew.sessionId) ?? promptProblem(text);
+    if (refused !== null) throw new Error(refused);
+    this.checkRate(jobId);
+    const at = this.deps.now();
+    const result = await panes.prompter.send(crew.sessionId, text);
+    if (!result.ok) throw new Error(result.reason);
+    this.limiter.note(this.limitKey(jobId), at);
+    this.record(job, crew.stepId, `Sent ${crew.label} a prompt`, {
+      crewId: crew.id,
+      prompt: result.text,
+      why: args.why ?? null,
+      expect: args.expect ?? null
+    });
+    const ack = result.confirmed
+      ? 'It took it and is working on it.'
+      : 'It has not acknowledged it yet. Check with fleet_read before sending it again.';
+    return {
+      text: `Sent to ${crew.label} (${this.refOf(crew)}). ${ack}`,
+      summary: `sent ${crew.label}`
+    };
+  }
+
+  /** Press Esc in a crew member's pane, as the client would. */
+  interrupt(jobId: number, args: CrewInterruptArgs): AgencyToolOutput {
+    const panes = this.requirePanes();
+    const job = this.actingJob(jobId);
+    const crew = this.resolve(jobId, args.crew);
+    if (crew.paneId !== null) panes.write(crew.paneId, '\x1b');
+    this.record(job, crew.stepId, `Interrupted ${crew.label}`, { crewId: crew.id });
+    return {
+      text: `Pressed Esc in ${crew.label}'s pane. It keeps its conversation and waits for a prompt.`,
+      summary: `interrupted ${crew.label}`
+    };
+  }
+
+  /** End a crew member's process. Its step stays as it is, so the Admiral can hire for it again. */
+  async stop(jobId: number, args: CrewStopArgs): Promise<AgencyToolOutput> {
+    this.requirePanes();
+    const job = this.actingJob(jobId);
+    const crew = this.resolve(jobId, args.crew);
+    await this.deps.jobs.stopCrew([crew.id], 'stopped by the Admiral');
+    this.record(job, crew.stepId, `Stopped ${crew.label}`, {
+      crewId: crew.id,
+      why: args.why ?? null
+    });
+    return {
+      text: `Stopped ${crew.label}. Its worktree and branch stay until the job closes; step ${crew.stepId} is still yours to hire for or finish.`,
+      summary: `stopped ${crew.label}`
+    };
+  }
+
+  /** The panes of a job's crew, ended ones too: all its fleet read tools may see. */
+  panes(jobId: number): ReadonlySet<string> {
+    return new Set(
+      this.store.crew.all(jobId).flatMap((c) => (c.paneId === null ? [] : [c.paneId]))
+    );
+  }
+
+  /** A session reported from a pane: a crew member there is live, on that session. */
+  reported(paneId: string, sessionId: string): void {
+    const crew = this.store.crew.live().find((c) => c.paneId === paneId);
+    if (!crew || (crew.status !== CREW_STARTING && crew.sessionId === sessionId)) return;
+    this.store.crew.reported(crew.id, sessionId);
+    this.touch(crew.jobId);
+  }
+
+  /**
+   * A crew member's pane went away before Fleet stopped it. The member ends,
+   * and a step it left running waits for the client's OK to hire again.
+   */
+  ended(paneId: string, how: CrewEnd): void {
+    const crew = this.store.crew.live().find((c) => c.paneId === paneId);
+    if (!crew) return;
+    const note =
+      how.kind === 'closed'
+        ? 'was closed by you'
+        : how.exitCode === 0
+          ? 'ended on its own'
+          : `ended with exit code ${how.exitCode}`;
+    this.store.crew.end(crew.id, note);
+    log.info('crew member ended', { crewId: crew.id, jobId: crew.jobId, how: how.kind });
+    this.deps.jobs.crewLeft({
+      jobId: crew.jobId,
+      stepId: crew.stepId,
+      status: how.kind === 'closed' || how.exitCode === 0 ? 'stopped' : 'failed',
+      label: crew.label,
+      note
+    });
+    this.touch(crew.jobId);
+  }
+
+  private requirePanes(): CrewPaneHost {
+    if (this.deps.panes === null) throw new Error('Crew panes are not available in this Fleet.');
+    return this.deps.panes;
+  }
+
+  /** The job crew act for, refused while its automatic turns are held at the chain limit. */
+  private actingJob(jobId: number): AgencyJob {
+    const job = this.store.getJob(jobId);
+    if (!job) throw new Error(`There is no job ${jobDisplayId(jobId)}.`);
+    if (job.holds.includes('chain_limit')) {
+      throw new Error(
+        `Not done: ${jobDisplayId(jobId)} has run its automatic turns in a row, so crew acts wait until the client writes.`
+      );
+    }
+    return job;
+  }
+
+  private limitKey(jobId: number): string {
+    return `job:${jobId}`;
+  }
+
+  private checkRate(jobId: number): void {
+    const refused = this.limiter.refusal(this.limitKey(jobId), this.deps.now());
+    if (refused !== null) throw new Error(refused);
+  }
+
+  /** The last member a restart took from an interrupted step, which a hire resumes. */
+  private lostMember(jobId: number, stepId: string): CrewRecord | null {
+    const last = this.store.crew
+      .all(jobId)
+      .filter((c) => c.stepId === stepId)
+      .at(-1);
+    return last?.endReason === LOST_AT_RESTART &&
+      last.sessionId !== null &&
+      last.workspaceId !== null &&
+      this.store.resources.workspaceRoot(last.workspaceId) !== null
+      ? last
+      : null;
+  }
+
+  private refOf(crew: CrewRecord): string {
+    return crew.paneId === null ? crew.label : sessionRef(crew.paneId);
+  }
+
+  /** A live crew member of the job by its ref, label, pane or session id. */
+  private resolve(jobId: number, ref: string): CrewRecord {
+    const needle = ref.trim().toLowerCase();
+    const live = this.store.crew.live(jobId);
+    const found = live.find(
+      (c) =>
+        c.label.toLowerCase() === needle ||
+        (c.paneId !== null && (c.paneId === needle || sessionRef(c.paneId) === needle)) ||
+        c.sessionId === needle
+    );
+    if (found) return found;
+    const names = live.map((c) => `${c.label} (${this.refOf(c)})`).join(', ');
+    throw new Error(
+      `${jobDisplayId(jobId)} has no crew member working called "${ref.trim()}". ${names === '' ? 'None is working.' : `Working now: ${names}.`}`
+    );
+  }
+
+  private record(
+    job: AgencyJob,
+    stepId: string,
+    text: string,
+    data: Record<string, unknown>
+  ): void {
+    this.store.plans.log({ jobId: job.id, kind: 'crew', stepId, text, data });
+    this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
+  }
+
+  private touch(jobId: number): void {
+    const job = this.store.getJob(jobId);
+    if (job) this.deps.changed([{ repoId: job.repoId, jobId }]);
+  }
+}

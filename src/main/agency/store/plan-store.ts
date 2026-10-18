@@ -80,15 +80,19 @@ const STATUSES: readonly PlanVersionStatus[] = [
   'replaced',
   'superseded'
 ];
-const STEP_STATUSES: readonly StepStatus[] = [
-  'pending',
-  'queued',
-  'running',
-  'blocked',
-  'interrupted',
-  'done',
-  'removed'
-];
+/** Every step status, as a record so a new status cannot be left out and read back as pending. */
+const STEP_STATUSES: Record<StepStatus, true> = {
+  pending: true,
+  queued: true,
+  running: true,
+  blocked: true,
+  interrupted: true,
+  stopped: true,
+  failed: true,
+  done: true,
+  removed: true
+};
+const isStepStatus = (s: string): s is StepStatus => Object.hasOwn(STEP_STATUSES, s);
 
 const IssueSchema = z.object({
   code: z.string(),
@@ -161,7 +165,7 @@ function toStep(row: StepRow): AgencyStep {
     id: row.step_id,
     role: row.role,
     position: row.position,
-    status: STEP_STATUSES.find((s) => s === row.status) ?? 'pending',
+    status: isStepStatus(row.status) ? row.status : 'pending',
     addedIn: row.added_in,
     removedIn: row.removed_in,
     note: row.note,

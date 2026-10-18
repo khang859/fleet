@@ -60,7 +60,7 @@ import { WslService } from './wsl-service';
 import { parseFleetUrl } from './protocol-paths';
 import { toWslUncPath, isUncPath, FLEET_MEDIA_ORIGIN } from '../shared/path-platform';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
-import type { HostContextPayload } from '../shared/ipc-api';
+import type { HostContextPayload, PtyExitPayload } from '../shared/ipc-api';
 import type {
   NotificationLevel,
   StagedUpdate,
@@ -98,6 +98,7 @@ import { createFleetHost } from './agent/fleet/host';
 import { FleetLedgerStore } from './agent/fleet/ledger-store';
 import { ActLimiter } from './agent/fleet/limiter';
 import { lazyPrompter } from './agent/fleet/send';
+import { fleetHookEntries } from './claude-sessions/hook-installer';
 import { RendererRpc } from './agent/fleet/renderer-rpc';
 import { FleetSpawns } from './agent/fleet/spawns';
 import { FleetAttention } from './agent/fleet/attention';
@@ -199,6 +200,7 @@ ipcMain.on(IPC_CHANNELS.AGENT_FLEET_OPEN_TAB_DONE, (_event, payload: unknown) =>
 
 const ptyManager = new PtyManager(app.getVersion());
 const layoutStore = new LayoutStore();
+layoutStore.dropJobTabs();
 const eventBus = new EventBus();
 const settingsStore = new SettingsStore();
 const activityTracker = new ActivityTracker(eventBus, {
@@ -1590,6 +1592,12 @@ void app.whenReady().then(async () => {
   claudeSessions.addPermissionAnswerer(
     () => settingsStore.get().ai.agent.orchestrator.answerPermissions && orchestrating.size > 0
   );
+  // Crew panes get Fleet's default Claude config folder, as a workspace without its own.
+  const crewClaudeConfigDir = (): string =>
+    resolveClaudeConfig({
+      defaultDir: settingsStore.get().copilot.claudeConfigDir,
+      homeDir: homedir()
+    }).path;
   // The Admiral agency's durable state. Opened whether or not the user has
   // turned Admiral on: jobs outlive the setting, and the quit guard asks.
   agencyService = createAgencyService({
@@ -1608,11 +1616,39 @@ void app.whenReady().then(async () => {
         : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources', 'crew'),
       user: join(homedir(), '.fleet', 'crew')
     },
-    // Crew panes get Fleet's default Claude config folder, as a workspace without its own.
-    checkRuntime: async (runtime, cwd) => {
-      const { claudeConfigDir } = settingsStore.get().copilot;
-      const dir = resolveClaudeConfig({ defaultDir: claudeConfigDir, homeDir: homedir() }).path;
-      return checkRuntime(runtime, cwd, paneRuntimeDeps(dir));
+    checkRuntime: async (runtime, cwd) =>
+      checkRuntime(runtime, cwd, paneRuntimeDeps(crewClaudeConfigDir())),
+    crewPanes: {
+      open: async (pane) => {
+        const { paneId, cwd, prompt, at, launch } = pane;
+        fleetSpawns.add({ paneId, cwd, prompt, at, launch });
+        const error = await fleetTabs.openTab({
+          paneId,
+          cwd,
+          label: pane.label,
+          worktree: null,
+          job: pane.job
+        });
+        if (error !== null) fleetSpawns.settle(paneId);
+        return error;
+      },
+      write: (paneId, data) => ptyManager.write(paneId, data),
+      // Killing a PTY drops its exit listener, so the renderer is told here
+      // and closes the pane as it does for any process that ends.
+      kill: (paneId) => {
+        ptyManager.kill(paneId);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.PTY_EXIT, {
+            paneId,
+            exitCode: 0
+          } satisfies PtyExitPayload);
+        }
+      },
+      live: () => new Set(ptyManager.paneIds()),
+      notePaneInput: (paneId, text) =>
+        claudeSessions?.registry.notePaneInput(paneId, 'orchestrator', text),
+      prompter: lazyPrompter(() => claudeSessions),
+      hooks: () => fleetHookEntries(crewClaudeConfigDir())
     },
     agencySettings: {
       get: () => settingsStore.get().agency,
@@ -1623,8 +1659,15 @@ void app.whenReady().then(async () => {
   const agency = agencyService;
   // A session reports only once Claude Code's folder trust prompt is answered.
   claudeSessions.registry.subscribe(({ session }) => {
-    if (session) agency.noteClaudeSession(session.cwd);
+    if (!session) return;
+    agency.noteClaudeSession(session.cwd);
+    agency.crew.reported(session.paneId, session.sessionId);
   });
+  // A crew pane whose runtime ended, or that the user closed, ends its member.
+  eventBus.on('pty-exit', (event) => {
+    agency.crew.ended(event.paneId, { kind: 'exit', exitCode: event.exitCode });
+  });
+  eventBus.on('pane-closed', (event) => agency.crew.ended(event.paneId, { kind: 'closed' }));
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),

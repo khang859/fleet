@@ -2,6 +2,12 @@ import type Database from 'better-sqlite3';
 
 /** The status a crew member has once its pane is gone for good. */
 export const CREW_ENDED = 'ended';
+/** Its pane opened, and its session has not reported yet. */
+export const CREW_STARTING = 'starting';
+/** Its session reported from its pane. */
+export const CREW_LIVE = 'live';
+/** Why a member a restart took ended; a hire for its step resumes it. */
+export const LOST_AT_RESTART = 'lost at restart';
 
 export type CrewRecord = {
   id: number;
@@ -60,9 +66,8 @@ function toCrew(row: CrewRow): CrewRecord {
 }
 
 /**
- * A job's crew members. Hiring writes live rows (crew phase); what this phase
- * relies on is that a member not `ended` may still have a pane to stop, and
- * that an ended one keeps its row, spend and transcript link.
+ * A job's crew members. A member not `ended` may still have a pane to stop;
+ * an ended one keeps its row, spend and transcript link.
  */
 export class CrewStore {
   constructor(
@@ -129,6 +134,21 @@ export class CrewStore {
             >('SELECT * FROM crew_members WHERE job_id = ? AND status != ? ORDER BY id')
             .all(jobId, CREW_ENDED);
     return rows.map(toCrew);
+  }
+
+  /** Every crew member a job has hired, ended ones too, oldest first. */
+  all(jobId: number): CrewRecord[] {
+    return this.db
+      .prepare<[number], CrewRow>('SELECT * FROM crew_members WHERE job_id = ? ORDER BY id')
+      .all(jobId)
+      .map(toCrew);
+  }
+
+  /** A member's session reported: it is live, on the session its pane runs now. */
+  reported(id: number, sessionId: string): void {
+    this.db
+      .prepare('UPDATE crew_members SET status = ?, session_id = ? WHERE id = ? AND status != ?')
+      .run(CREW_LIVE, sessionId, id, CREW_ENDED);
   }
 
   end(id: number, reason: string): void {

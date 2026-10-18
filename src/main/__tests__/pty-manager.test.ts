@@ -406,4 +406,21 @@ describe('PtyManager profile-aware spawn', () => {
       expect.objectContaining({ cwd: '/tmp' })
     );
   });
+
+  it('leaves no shell behind a command that ends with the pane, as a crew pane runs', () => {
+    const manager = new PtyManager('0.0.0-test');
+    manager.create({
+      paneId: 'pane-crew',
+      cwd: '/tmp',
+      shell: '/bin/zsh',
+      cmd: 'claude --session-id "$FLEET_CREW_SESSION_ID" -- "$FLEET_SPAWN_PROMPT"',
+      exitOnComplete: true
+    });
+    const args = vi.mocked(ptyModule.spawn).mock.calls.at(-1)?.[1];
+    expect(args).toEqual([
+      '-c',
+      'claude --session-id "$FLEET_CREW_SESSION_ID" -- "$FLEET_SPAWN_PROMPT"'
+    ]);
+    expect([args].flat().join(' ')).not.toContain('exec');
+  });
 });

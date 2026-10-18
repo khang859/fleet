@@ -73,9 +73,9 @@ Phase 2 notes:
 - [x] 3.2 Add `src/main/agency/crew/` loaders over `loadDefinitions` for `resources/crew/`, `~/.fleet/crew/` and `~/.fleet/agency/projects/<project-id>/crew/`, with role-name and wait-cycle checks; verify with loader tests for precedence, unknown roles and cycles, and check `resources/crew/` ships in a packaged build per `docs/learnings/2026-06-28-chat-skills-missing-from-packaged-app.md`
 - [x] 3.3 Write the bundled roles (architect, builder, reviewer, qa, strategist, copywriter, designer, editor) and playbooks (engineering, bug-fix, launch); verify they load with no errors in a test
 - [x] 3.4 Add the `CrewRuntime` adapter with `claude` and `eva` implementations and an availability check that disables Approve for a missing runtime; verify with unit tests of the built command lines, including that `claude` never gets `-p`, `--print` or `ANTHROPIC_*` env
-- [ ] 3.5 Extend the renderer `openTab` request with "split into job tab" so each job has one unfocused tab of crew panes; verify with a renderer test and a screenshot
-- [ ] 3.6 Add `crew_hire` and `crew_send` over `spawnSession` and `sendToSession`, auto-approved only for steps in the approved plan, with job-scoped chain and rate limits; verify with tool tests for in-plan, out-of-plan and limit cases
-- [ ] 3.7 Add the CREW sheet section with role, runtime, status and peek that focuses the pane; verify in the running app
+- [x] 3.5 Extend the renderer `openTab` request with "split into job tab" so each job has one unfocused tab of crew panes; verify with a renderer test and a screenshot
+- [x] 3.6 Add `crew_hire` and `crew_send` over `spawnSession` and `sendToSession`, auto-approved only for steps in the approved plan, with job-scoped chain and rate limits; verify with tool tests for in-plan, out-of-plan and limit cases
+- [x] 3.7 Add the CREW sheet section with role, runtime, status and peek that focuses the pane; verify in the running app
 - [ ] 3.8 Let the Admiral propose a new role in a plan and save it in the project's crew folder only on approval; verify with a tool test
 - [ ] 3.9 Add Settings › Agency › Crew (role and playbook lists, source, errors, open file) matching canvas boards 3.4 and 3.4b, with the role editor: runtime cards with status, a runtime switch that resets the model, Save and Discard, the Model list per runtime (Claude Code names, eva server models with tool calls, missing-model state); verify with a screenshot and a round trip to the role file
 - [ ] 3.25 Add the Runtimes tab to Settings › Agency › Crew matching canvas board 3.8: for Claude Code and eva the path, version, checks, models with roles, default model, crew at once and the Test button; the Claude Code login state without reading it; eva's model server without its key; verify with a test that no credential reaches the renderer, and with a screenshot
@@ -98,6 +98,11 @@ Phase 3 notes (decisions made while building):
 - 3.13: a bypass `defaultMode` is a warning, not a block, because `disableBypassPermissionsMode` is a lock the strictest file wins. `disableAllHooks` is a block: Fleet does not override that choice from the job file.
 - 3.21: Fleet never reads `~/.claude.json`. It learns that a folder is trusted when a Claude Code session reports from it (`claude_trust`, v7). The plan card offers "Open Claude Code there" for an untrusted folder. Trust carries to worktrees, as checked end to end.
 - eva has no `--model` flag, so a model goes in `CHAT_MODEL`. A crew statusLine waits for 6.4.
+- 3.6: a step has at most one live crew member, and each hire gets a new workspace. A hire for an `interrupted` step whose last member was lost at restart resumes it with `--resume` in the same worktree, conversation and label.
+- 3.6: every typed prompt starts with `[admiral]`. `crew_send` to eva is refused until Phase 4 can track its turns. Crew acts are refused while the job has a `chain_limit` hold.
+- 3.17: exit code 0 or a close by the client marks the step `stopped`, any other exit `failed`. The Admiral gets a `rehire` card (Hire again / Leave it) and a wakeup. `crew_stop` leaves the step `running`, so the Admiral may hire again.
+- 3.5: job tabs are dropped at startup, since their panes do not outlive Fleet.
+- 3.20: long briefs as a file are done. The `UserPromptSubmit` compare comes in its own commit.
 
 - [x] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`
 - [x] 3.12 Build the job `--settings` file (AskUserQuestion denied, `disableBypassPermissionsMode`, Fleet hooks with the global command string including `PermissionRequest` and `StopFailure`); verify with snapshot tests
@@ -105,7 +110,7 @@ Phase 3 notes (decisions made while building):
 - [x] 3.14 Add the project folder `~/.fleet/agency/projects/<project-id>/` (hash of repo identity) with `fleet.agency.toml` and `crew/`; import repo `.fleet/` files from the default branch of the main checkout with a diff, store the imported hash and show "newer version in repo", export with "Share with team" without committing, and snapshot into the approved plan; verify with tests that a crew edit, a fresh clone and a teammate's new commit change nothing until import
 - [ ] 3.15 Add step workspaces (`new`, `of`, `integrate`), one writer per worktree, scopes for `count` > 1, and merging of `after` branches; verify with tests on a temp repo
 - [ ] 3.16 Name branches `admiral/<job-id>/<step>-<n>`, fail the plan check on a branch named `admiral`, run `.fleet/fleet.agency.toml` setup with a timeout, and run each member's setup and the workspace setup; verify with tests
-- [ ] 3.17 Run crew with `exitOnComplete: true`, and on exit or close mark the step, and wake the Admiral; verify with a pty-manager test that no shell is left
+- [x] 3.17 Run crew with `exitOnComplete: true`, and on exit or close mark the step, and wake the Admiral; verify with a pty-manager test that no shell is left
 - [ ] 3.18 Add `fleet agency done` over the socket, idle-versus-done handling and the nudge limit; verify with socket and tool tests
 - [ ] 3.19 Add crew states `needs you`, `limited`, `user-driven` and `stuck`, the read-only last-screen read, and `crew_interrupt` and `crew_stop`; verify with registry and tool tests
 - [ ] 3.20 Compare `UserPromptSubmit` text with the typed prompt, fail on mismatch, and pass long briefs as a file via `--add-dir`; verify with input tests

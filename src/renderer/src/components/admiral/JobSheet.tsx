@@ -3,11 +3,13 @@ import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../shar
 import type { SettingsCard } from '../../../../shared/agency-settings';
 import { jobDisplayId } from '../../../../shared/agency';
 import type {
+  AgencyCrewMember,
   AgencyJobDetail,
   AgencyPlanVersion,
   AgencyStep,
   StepStatus
 } from '../../../../shared/agency-jobs';
+import { focusPane } from '../../lib/focus-pane';
 import { openQuestions, planVersions } from '../../store/agency-store';
 import { ClientFileNotice } from './ClientFileViews';
 import { CancelJob, DeliveredCard, LeftoverList } from './JobClose';
@@ -94,6 +96,8 @@ export function JobSheet({
       )}
 
       {job !== null && <PlanSection detail={detail} />}
+
+      <CrewSection detail={detail} />
 
       <ResultsSection detail={detail} />
 
@@ -253,6 +257,76 @@ function PlanSection({ detail }: { detail: AgencyJobDetail | undefined }): React
   );
 }
 
+const CREW_DOT: Record<AgencyCrewMember['status'], string> = {
+  starting: 'bg-amber-400',
+  live: 'bg-green-400',
+  ended: 'bg-fleet-text-subtle'
+};
+
+const CREW_STATUS: Record<AgencyCrewMember['status'], string> = {
+  starting: 'starting',
+  live: 'working',
+  ended: 'ended'
+};
+
+/**
+ * The job's crew members, working ones first, each with its step, runtime
+ * and status. Peek brings a working member's pane in front of the client.
+ */
+function CrewSection({
+  detail
+}: {
+  detail: AgencyJobDetail | undefined;
+}): React.JSX.Element | null {
+  if (detail === undefined || detail.crew.length === 0) return null;
+  const working = detail.crew.filter((c) => c.status !== 'ended');
+  const ended = detail.crew.filter((c) => c.status === 'ended').reverse();
+  return (
+    <Section label="CREW" gap="gap-1" aside={`${working.length} working`}>
+      <ul className="flex flex-col">
+        {[...working, ...ended].map((member) => (
+          <CrewRow key={member.id} member={member} />
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+function CrewRow({ member }: { member: AgencyCrewMember }): React.JSX.Element {
+  const { paneId } = member;
+  const ended = member.status === 'ended';
+  return (
+    <li className="flex items-center gap-2 border-b border-fleet-border/60 py-1.5 text-xs last:border-b-0">
+      <span className={`size-1.5 shrink-0 rounded-full ${CREW_DOT[member.status]}`} />
+      <span
+        className={`min-w-0 flex-1 truncate ${ended ? 'text-fleet-text-muted' : 'text-fleet-text'}`}
+      >
+        {member.label}
+        <span className="text-fleet-text-subtle">
+          {' '}
+          · {member.stepId} · {runtimeName(member.runtime)}
+          {member.model !== null && ` ${member.model}`}
+        </span>
+      </span>
+      <span
+        className="shrink-0 text-[11px] text-fleet-text-muted"
+        title={member.endReason ?? undefined}
+      >
+        {CREW_STATUS[member.status]}
+      </span>
+      {!ended && paneId !== null && (
+        <button
+          type="button"
+          onClick={() => void focusPane(paneId)}
+          className="shrink-0 rounded text-[11px] font-medium text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring"
+        >
+          Peek
+        </button>
+      )}
+    </li>
+  );
+}
+
 function SpendSection({
   spendUsd,
   budgetUsd
@@ -311,6 +385,8 @@ const STEP_TONE: Record<StepStatus, string> = {
   running: 'text-green-600 dark:text-green-400',
   blocked: 'text-amber-700 dark:text-amber-400',
   interrupted: 'text-amber-700 dark:text-amber-400',
+  stopped: 'text-amber-700 dark:text-amber-400',
+  failed: 'text-red-600 dark:text-red-400',
   done: 'text-fleet-text-muted',
   removed: 'text-fleet-text-subtle'
 };
@@ -321,6 +397,8 @@ const STEP_LABEL: Record<StepStatus, string> = {
   running: 'running',
   blocked: 'blocked',
   interrupted: 'interrupted',
+  stopped: 'stopped',
+  failed: 'failed',
   done: 'done',
   removed: 'removed'
 };

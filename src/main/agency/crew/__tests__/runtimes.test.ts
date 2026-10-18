@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fleetHookEntries } from '../../../claude-sessions/hook-installer';
 import { claudeJobSettings } from '../job-settings';
-import { crewLaunch, type CrewHire } from '../runtimes';
+import { crewLaunch, TYPED_BRIEF_MAX_CHARS, type CrewHire } from '../runtimes';
 
 const HOOKS = fleetHookEntries('/home/u/.claude');
 const HOOK_COMMAND = HOOKS.UserPromptSubmit[0].hooks[0].command;
@@ -14,6 +14,7 @@ const hire = (patch: Partial<CrewHire> = {}): CrewHire => ({
   rolePrompt: '- You build what the brief asks.',
   brief: 'Build the toggle.\r\nKeep it small.',
   sessionId: '0b7e4c2a-9f1d-4a51-8c3e-2d6f0a9b1c7e',
+  resume: false,
   dir: '/fleet/agency/jobs/42/crew/build-2',
   addDirs: [],
   hooks: HOOKS,
@@ -33,9 +34,9 @@ describe('claude launch', () => {
       FLEET_CREW_SETTINGS: '/fleet/agency/jobs/42/crew/build-2/claude-settings.json',
       FLEET_CREW_ROLE: '- You build what the brief asks.',
       FLEET_CREW_MODEL: 'sonnet',
-      FLEET_SPAWN_PROMPT: 'Build the toggle.\nKeep it small.'
+      FLEET_SPAWN_PROMPT: '[admiral] Build the toggle.\nKeep it small.'
     });
-    expect(launch.prompt).toBe('Build the toggle.\nKeep it small.');
+    expect(launch.prompt).toBe('[admiral] Build the toggle.\nKeep it small.');
   });
 
   it('leaves out --model and --add-dir when there is nothing to give them', () => {
@@ -62,6 +63,44 @@ describe('claude launch', () => {
       '/fleet/agency/jobs/42/crew/build-2/claude-settings.json'
     ]);
     expect(JSON.parse(files[0].text)).toEqual(claudeJobSettings(HOOKS));
+  });
+
+  it('goes on with the same conversation after a restart', () => {
+    const { cmd, env } = crewLaunch(hire({ resume: true, brief: 'Fleet restarted. Go on.' }));
+    expect(cmd).toMatch(/^claude --resume "\$FLEET_CREW_SESSION_ID" --settings /);
+    expect(cmd).not.toContain('--session-id');
+    expect(env.FLEET_CREW_SESSION_ID).toBe('0b7e4c2a-9f1d-4a51-8c3e-2d6f0a9b1c7e');
+    expect(env.FLEET_SPAWN_PROMPT).toBe('[admiral] Fleet restarted. Go on.');
+  });
+});
+
+describe('long briefs', () => {
+  const long = `${'Do the thing. '.repeat(400)}Then stop.`;
+
+  it('types a brief of up to the typed size as it is', () => {
+    const brief = 'x'.repeat(TYPED_BRIEF_MAX_CHARS);
+    expect(crewLaunch(hire({ brief })).prompt).toBe(`[admiral] ${brief}`);
+  });
+
+  it('puts a longer brief in a file the member may read, and points to it', () => {
+    const launch = crewLaunch(hire({ brief: long }));
+    const path = '/fleet/agency/jobs/42/crew/build-2/brief.md';
+    expect(launch.prompt).toBe(
+      `[admiral] Your brief for step build is in ${path}. Read all of it first, then do what it says.`
+    );
+    expect(launch.env.FLEET_SPAWN_PROMPT).toBe(launch.prompt);
+    expect(launch.files).toContainEqual({ path, text: `${long}\n` });
+    expect(launch.cmd).toMatch(/^claude --add-dir "\$FLEET_CREW_ADD_DIR_0" --session-id/);
+    expect(launch.env.FLEET_CREW_ADD_DIR_0).toBe('/fleet/agency/jobs/42/crew/build-2');
+  });
+
+  it('does the same for eva, which reads the file from its folder', () => {
+    const launch = crewLaunch(hire({ runtime: 'eva', brief: long }));
+    expect(launch.prompt).toContain('/fleet/agency/jobs/42/crew/build-2/brief.md');
+    expect(launch.files.map((f) => f.path)).toEqual([
+      '/fleet/agency/jobs/42/crew/build-2/role.md',
+      '/fleet/agency/jobs/42/crew/build-2/brief.md'
+    ]);
   });
 });
 
@@ -90,7 +129,7 @@ describe('eva launch', () => {
   it('runs eva with the role as instructions, a goal, no question tool, and never -b', () => {
     const launch = crewLaunch(hire({ runtime: 'eva', model: 'qwen3-coder' }));
     expect(launch.cmd).toBe(
-      'eva --session-id "$FLEET_CREW_SESSION_ID" --name "$FLEET_CREW_NAME" --instructions "$FLEET_CREW_ROLE" --goal "$FLEET_CREW_GOAL" --no-ask-user -- "$FLEET_SPAWN_PROMPT"'
+      'eva --session-id "$FLEET_CREW_SESSION_ID" --instructions "$FLEET_CREW_ROLE" --name "$FLEET_CREW_NAME" --goal "$FLEET_CREW_GOAL" --no-ask-user -- "$FLEET_SPAWN_PROMPT"'
     );
     expect(launch.cmd.split(' ')).not.toContain('-b');
     expect(launch.cmd).not.toContain('--bypass');
@@ -105,6 +144,15 @@ describe('eva launch', () => {
         text: '- You build what the brief asks.'
       }
     ]);
+  });
+
+  it('resumes by id, with the instructions the conversation already saved', () => {
+    const launch = crewLaunch(hire({ runtime: 'eva', resume: true }));
+    expect(launch.cmd).toBe(
+      'eva --resume "$FLEET_CREW_SESSION_ID" --name "$FLEET_CREW_NAME" --goal "$FLEET_CREW_GOAL" --no-ask-user -- "$FLEET_SPAWN_PROMPT"'
+    );
+    expect(Object.keys(launch.env)).not.toContain('FLEET_CREW_ROLE');
+    expect(launch.files).toEqual([]);
   });
 
   it('keeps the saved model when the step names none', () => {

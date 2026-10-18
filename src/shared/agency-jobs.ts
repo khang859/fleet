@@ -1,6 +1,7 @@
 import type { AgencyJob, AgencyJobEvent, JobState } from './agency';
 
 export type { AgencyLeftover, ResourceKind } from './agency';
+import type { CrewRuntime } from './agency-crew';
 import type { DeliverableKind, Plan, PlanDiffEntry, PlanInput } from './agency-plan';
 import type { PrReview } from './pr-review';
 
@@ -111,6 +112,10 @@ export type StepStatus =
   | 'running'
   | 'blocked'
   | 'interrupted'
+  /** Its crew member left before it was done: the client closed the pane. */
+  | 'stopped'
+  /** Its crew member's runtime exited before it was done. */
+  | 'failed'
   | 'done'
   | 'removed';
 
@@ -202,6 +207,25 @@ export type ResultMergeStatus = 'queued' | 'merged' | 'failed';
  */
 export type AgencyMergeRun = { status: 'running' | 'failed' | 'done'; note: string };
 
+/**
+ * A crew member as the CREW section shows it. `starting` until its runtime
+ * reports, `live` after, and `ended` once its pane is gone for good.
+ */
+export type AgencyCrewMember = {
+  id: number;
+  stepId: string;
+  role: string;
+  runtime: CrewRuntime;
+  model: string | null;
+  /** `<role> <n>`, which names its pane. */
+  label: string;
+  paneId: string | null;
+  status: 'starting' | 'live' | 'ended';
+  startedAt: number;
+  endedAt: number | null;
+  endReason: string | null;
+};
+
 export type AgencyJobDetail = {
   job: AgencyJob;
   /** Every version, oldest first. */
@@ -214,6 +238,8 @@ export type AgencyJobDetail = {
   results: AgencyResult[];
   spendUsd: number;
   merge: AgencyMergeRun | null;
+  /** Every crew member the job hired, oldest first. */
+  crew: AgencyCrewMember[];
 };
 
 /** The client opens a delivered file with the app their system picks for it. */

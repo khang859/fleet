@@ -192,6 +192,7 @@ describe('DeliveredCard', () => {
       events: [],
       log: [],
       results: [result({ kind: 'pr', pr })],
+      crew: [],
       spendUsd: 0,
       merge
     };

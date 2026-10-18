@@ -877,6 +877,38 @@ export class AgencyStore {
     if (q.kind === 'model_unreachable' && option === 0) this.retryNow(q.repoId);
     if (q.kind === 'continue' && option === 0 && q.jobId !== null) this.resetChain(q.jobId);
     if (q.kind === 'resume' && option === 0 && q.jobId !== null) this.resumeJob(q.jobId);
+    if (q.kind === 'rehire') this.answerRehire(q, option === 0);
+  }
+
+  /**
+   * The client's pick on a `rehire` card, put up when a step's crew member
+   * left before the step was done: the step may be hired for again, or it
+   * stays stopped. Either way the Admiral hears of it.
+   */
+  private answerRehire(q: AgencyQuestion, again: boolean): void {
+    const { jobId, step: stepId } = q;
+    if (jobId === null || stepId === null) return;
+    const status = this.plans.step(jobId, stepId)?.status;
+    const reopens = again && (status === 'stopped' || status === 'failed');
+    if (reopens) {
+      this.plans.setStepStatus(jobId, stepId, 'pending');
+      this.plans.log({ jobId, kind: 'step', stepId, text: `Step ${stepId} may be hired again` });
+    }
+    this.resetChain(jobId);
+    this.enqueueWakeup({
+      repoId: q.repoId,
+      jobId,
+      kind: 'event',
+      payload: reopens
+        ? {
+            line: `The client lets step ${stepId} be hired again`,
+            body: 'Hire for it with crew_hire, with a brief that says what the last crew member left in its worktree.'
+          }
+        : {
+            line: `The client leaves step ${stepId} as it is`,
+            body: 'Ask the client what they want instead, or propose a plan change.'
+          }
+    });
   }
 
   /** The client picked Resume after a restart: the job runs again, and the Admiral restarts its steps. */
@@ -894,7 +926,7 @@ export class AgencyStore {
       kind: 'event',
       payload: {
         line: 'The client picked Resume',
-        body: 'Set each interrupted step running again with job_update.'
+        body: 'Hire for each interrupted step again with crew_hire: Fleet resumes its crew member where it was, in the same worktree and conversation.'
       }
     });
   }
