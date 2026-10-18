@@ -9,6 +9,8 @@ export const CREW_STARTING = 'starting';
 export const CREW_LIVE = 'live';
 /** Why a member a restart took ended; a hire for its step resumes it. */
 export const LOST_AT_RESTART = 'lost at restart';
+/** Why a member whose pane did not open ended; the swap it was hired for still waits. */
+export const NOT_STARTED = 'did not start';
 
 export type CrewRecord = {
   id: number;

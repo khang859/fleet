@@ -69,6 +69,18 @@ export type StepSwap = { stepId: string; fields: Array<'role' | 'runtime' | 'mod
 export type SwapChoice = 'continue' | 'restart';
 
 /**
+ * Swap on a crew card: the role, runtime and model the client moves a running
+ * step to. A null runtime or model is the role's own.
+ */
+export type StepSwapRequest = {
+  jobId: number;
+  stepId: string;
+  role: string;
+  runtime: CrewRuntime | null;
+  model: string | null;
+};
+
+/**
  * What approving a plan change would do, for the change card: the crew it
  * stops, the running steps it swaps, the open questions it withdraws, what
  * was already delivered and what was spent.

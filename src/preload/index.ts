@@ -202,7 +202,8 @@ import type {
   LeftoverAction,
   ResultOpen,
   PlanAction,
-  PlanActionResult
+  PlanActionResult,
+  StepSwapRequest
 } from '../shared/agency-jobs';
 import type { AdmiralSettingMark, SettingsUndoOutcome } from '../shared/agency-settings';
 import type {
@@ -1154,6 +1155,9 @@ const fleetApi = {
     /** The client's approve, edit or reject on a plan card. */
     planAction: async (action: PlanAction): Promise<PlanActionResult> =>
       typedInvoke(IPC_CHANNELS.AGENCY_PLAN_ACTION, action),
+    /** Swap on a crew card: propose the approved plan with the step's role, runtime or model changed. */
+    swapStep: async (swap: StepSwapRequest): Promise<PlanActionResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_STEP_SWAP, swap),
     /** The client cancels a job, or accepts its results; either way it closes and cleans up. */
     jobControl: async (control: JobControl): Promise<JobControlResult> =>
       typedInvoke(IPC_CHANNELS.AGENCY_JOB_CONTROL, control),

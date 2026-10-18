@@ -114,9 +114,10 @@ export class CrewFlags {
     const until = limitResetAt(message, this.deps.now());
     const when = until === null ? '' : ` until ${clockTime(until)}`;
     const runtime = RUNTIME_LABEL[crewRuntime(crew)];
+    const other = crewRuntime(crew) === 'claude' ? 'eva' : 'claude';
     this.flag(crew, 'limited', until, {
       line: `${crew.label} hit its ${runtime} usage limit${when}`,
-      body: `Fleet sends it nothing${until === null ? ' until the client says it can work again' : ' before then'}, and new ${runtime} hires wait. If the job cannot wait, propose a plan change that moves the step to another runtime.`
+      body: `Fleet sends it nothing${until === null ? ' until the client says it can work again' : ' before then'}, and new ${runtime} hires wait. If the job cannot wait, propose a plan change that swaps step ${crew.stepId} to ${RUNTIME_LABEL[other]}: set its runtime to "${other}", or give it a role that runs on ${RUNTIME_LABEL[other]}. The client picks whether the new member continues its work.`
     });
   }
 

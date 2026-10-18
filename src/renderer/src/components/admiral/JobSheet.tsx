@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { clockTime } from '../../../../shared/agency-crew';
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../shared/agency';
 import type { SettingsCard } from '../../../../shared/agency-settings';
@@ -13,6 +13,7 @@ import type {
 import { focusPane } from '../../lib/focus-pane';
 import { openQuestions, planVersions } from '../../store/agency-store';
 import { ClientFileNotice } from './ClientFileViews';
+import { CrewSwapForm } from './CrewSwap';
 import { CancelJob, DeliveredCard, LeftoverList, SECONDARY } from './JobClose';
 import { PastJobList } from './PastJobs';
 import { PlanCard } from './PlanCard';
@@ -333,7 +334,7 @@ function CrewSection({
     <Section label="CREW" gap="gap-1" aside={`${working.length} working`}>
       <ul className="flex flex-col">
         {[...working, ...ended].map((member) => (
-          <CrewRow key={member.id} member={member} />
+          <CrewRow key={member.id} member={member} detail={detail} />
         ))}
       </ul>
     </Section>
@@ -363,62 +364,109 @@ const FLAG_TITLE: Record<NonNullable<AgencyCrewMember['flag']>, string> = {
   stuck: 'It shows no progress for 15 minutes. The Admiral was told.'
 };
 
-function CrewRow({ member }: { member: AgencyCrewMember }): React.JSX.Element {
-  const { paneId, flag } = member;
-  const ended = member.status === 'ended';
+/** A member's dot: red when stuck, amber for any other flag, else its status color. */
+function crewDot(member: AgencyCrewMember): string {
+  if (member.flag === 'stuck') return 'bg-red-400';
+  return member.flag === null ? CREW_DOT[member.status] : 'bg-amber-400';
+}
+
+/** A member's status, or its flag in amber, with what it means on hover. */
+function CrewStatus({ member }: { member: AgencyCrewMember }): React.JSX.Element {
+  const { flag } = member;
   const flagged = flagLabel(member);
+  return (
+    <span
+      className={`shrink-0 text-[11px] ${
+        flagged === null ? 'text-fleet-text-muted' : 'text-amber-700 dark:text-amber-400/90'
+      }`}
+      title={flag === null ? (member.endReason ?? undefined) : FLAG_TITLE[flag]}
+    >
+      {flagged ?? CREW_STATUS[member.status]}
+    </span>
+  );
+}
+
+const ROW_ACTION =
+  'shrink-0 rounded text-[11px] font-medium text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring disabled:opacity-50';
+
+/** Hand back or Resume, for a flag that waits on the client. */
+function HandBack({ member }: { member: AgencyCrewMember }): React.JSX.Element | null {
   const handBack = useRefusable(async () => {
     await window.fleet.agency.handBackCrew(member.id);
     return { ok: true } as const;
   });
+  if (member.flag !== 'user-driven' && member.flag !== 'limited') return null;
+  const yours = member.flag === 'user-driven';
   return (
-    <li className="flex items-center gap-2 border-b border-fleet-border/60 py-1.5 text-xs last:border-b-0">
-      <span
-        className={`size-1.5 shrink-0 rounded-full ${
-          flag === 'stuck' ? 'bg-red-400' : flag !== null ? 'bg-amber-400' : CREW_DOT[member.status]
-        }`}
-      />
-      <span
-        className={`min-w-0 flex-1 truncate ${ended ? 'text-fleet-text-muted' : 'text-fleet-text'}`}
-      >
-        {member.label}
-        <span className="text-fleet-text-subtle">
-          {' '}
-          · {member.stepId} · {runtimeName(member.runtime)}
-          {member.model !== null && ` ${member.model}`}
+    <button
+      type="button"
+      disabled={handBack.busy}
+      onClick={() => void handBack.run(undefined)}
+      title={yours ? 'Give it back to the Admiral' : 'Tell the Admiral it can work again'}
+      className={ROW_ACTION}
+    >
+      {yours ? 'Hand back' : 'Resume'}
+    </button>
+  );
+}
+
+/**
+ * A crew member: its step, runtime and status, with Hand back or Resume for
+ * a flag that waits on the client, Swap for a working one, and Peek.
+ */
+function CrewRow({
+  member,
+  detail
+}: {
+  member: AgencyCrewMember;
+  detail: AgencyJobDetail;
+}): React.JSX.Element {
+  const { paneId } = member;
+  const ended = member.status === 'ended';
+  const [swapping, setSwapping] = useState(false);
+  const step = ended
+    ? undefined
+    : planVersions(detail).approved?.plan.steps.find((s) => s.id === member.stepId);
+  return (
+    <li className="flex flex-col gap-1.5 border-b border-fleet-border/60 py-1.5 text-xs last:border-b-0">
+      <div className="flex items-center gap-2">
+        <span className={`size-1.5 shrink-0 rounded-full ${crewDot(member)}`} />
+        <span
+          className={`min-w-0 flex-1 truncate ${ended ? 'text-fleet-text-muted' : 'text-fleet-text'}`}
+        >
+          {member.label}
+          <span className="text-fleet-text-subtle">
+            {' '}
+            · {member.stepId} · {runtimeName(member.runtime)}
+            {member.model !== null && ` ${member.model}`}
+          </span>
         </span>
-      </span>
-      <span
-        className={`shrink-0 text-[11px] ${
-          flagged !== null ? 'text-amber-700 dark:text-amber-400/90' : 'text-fleet-text-muted'
-        }`}
-        title={flag !== null ? FLAG_TITLE[flag] : (member.endReason ?? undefined)}
-      >
-        {flagged ?? CREW_STATUS[member.status]}
-      </span>
-      {(flag === 'user-driven' || flag === 'limited') && (
-        <button
-          type="button"
-          disabled={handBack.busy}
-          onClick={() => void handBack.run(undefined)}
-          title={
-            flag === 'user-driven'
-              ? 'Give it back to the Admiral'
-              : 'Tell the Admiral it can work again'
-          }
-          className="shrink-0 rounded text-[11px] font-medium text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring disabled:opacity-50"
-        >
-          {flag === 'user-driven' ? 'Hand back' : 'Resume'}
-        </button>
-      )}
-      {!ended && paneId !== null && (
-        <button
-          type="button"
-          onClick={() => void focusPane(paneId)}
-          className="shrink-0 rounded text-[11px] font-medium text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring"
-        >
-          Peek
-        </button>
+        <CrewStatus member={member} />
+        <HandBack member={member} />
+        {step !== undefined && (
+          <button
+            type="button"
+            aria-expanded={swapping}
+            onClick={() => setSwapping(!swapping)}
+            title="Move its step to another role, runtime or model"
+            className={ROW_ACTION}
+          >
+            Swap
+          </button>
+        )}
+        {!ended && paneId !== null && (
+          <button type="button" onClick={() => void focusPane(paneId)} className={ROW_ACTION}>
+            Peek
+          </button>
+        )}
+      </div>
+      {swapping && step !== undefined && (
+        <CrewSwapForm
+          repoId={detail.job.repoId}
+          jobId={detail.job.id}
+          step={step}
+          onClose={() => setSwapping(false)}
+        />
       )}
     </li>
   );

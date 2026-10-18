@@ -92,6 +92,13 @@ const PlanActionArgs = z.discriminatedUnion('action', [
   }),
   z.object({ planVersionId: JobId, action: z.literal('edit'), plan: PlanSchema })
 ]);
+const StepSwapArgs = z.object({
+  jobId: JobId,
+  stepId: StepKey,
+  role: z.string().min(1).max(80),
+  runtime: z.enum(CREW_RUNTIMES).nullable(),
+  model: z.string().trim().min(1).max(120).nullable()
+});
 
 const Paths = z.array(z.string().min(1)).max(200);
 const ChooseWorkspaceArgs = z.object({
@@ -187,6 +194,12 @@ export function registerAgencyIpc(service: AgencyService): void {
     IPC_CHANNELS.AGENCY_PLAN_ACTION,
     async (_e, action: unknown): Promise<PlanActionResult> =>
       service.jobs.decide(PlanActionArgs.parse(action))
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_STEP_SWAP,
+    async (_e, swap: unknown): Promise<PlanActionResult> =>
+      service.jobs.swapStep(StepSwapArgs.parse(swap))
   );
 
   ipcMain.handle(

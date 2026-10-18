@@ -22,10 +22,18 @@ import { createLogger } from '../../logger';
 import type { JobsService } from '../jobs';
 import { jobDir } from '../projects/paths';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
-import { CREW_LIVE, CREW_STARTING, LOST_AT_RESTART, type CrewRecord } from '../store/crew-store';
+import {
+  CREW_LIVE,
+  CREW_STARTING,
+  LOST_AT_RESTART,
+  NOT_STARTED,
+  type CrewRecord
+} from '../store/crew-store';
 import type { StackSlots } from '../jobs/stack-slots';
-import type { JobWorkspaces, StepFolder } from '../workspaces/job-workspace';
+import type { GitWrite, JobWorkspaces, StepFolder } from '../workspaces/job-workspace';
+import { gitExec } from '../exec';
 import { CrewFlags, type CrewAct, type CrewSessionState } from './crew-flags';
+import { handoffNote, pendingSwap, type CrewSwap } from './handoff';
 import { crewLaunch, type CrewLaunch } from './runtimes';
 
 const log = createLogger('agency:crew');
@@ -77,6 +85,8 @@ export type CrewServiceDeps = {
   nudgeLimit: () => number;
   /** The model of a role that names none, from Settings; unset leaves it to the runtime. */
   defaultModel?: (runtime: CrewRuntime) => string | undefined;
+  /** Reads a swapped-out member's changes for the handoff; defaults to the `git` on PATH. */
+  git?: GitWrite;
 };
 
 /**
@@ -206,9 +216,10 @@ export class CrewService {
     if (held !== null) throw new Error(held);
     const before = this.store.plans.step(jobId, step.id)?.status ?? 'pending';
     const lost = before === 'interrupted' ? this.lostMember(jobId, step.id) : null;
+    const swap = lost === null ? pendingSwap(this.store, jobId, step.id) : null;
     this.deps.jobs.hireMoved(jobId, step.id, 'running');
     try {
-      return await this.start({ panes, job, step, role, args, lost });
+      return await this.start({ panes, job, step, role, args, lost, swap });
     } catch (err) {
       this.deps.jobs.hireMoved(jobId, step.id, before);
       throw err;
@@ -222,14 +233,16 @@ export class CrewService {
     role: CrewSnapshot['roles'][number];
     args: CrewHireArgs;
     lost: CrewRecord | null;
+    swap: CrewSwap | null;
   }): Promise<AgencyToolOutput> {
-    const { panes, job, step, role, args, lost } = input;
+    const { panes, job, step, role, args, lost, swap } = input;
     const runtime: CrewRuntime = step.runtime ?? role.runtime;
     const model =
       step.model ??
       (runtime === role.runtime ? role.model : undefined) ??
       this.deps.defaultModel?.(runtime);
-    const workspace = await this.workspaceFor(job.id, step.id, lost);
+    const workspace = await this.workspaceFor(job.id, step.id, lost, swap);
+    const brief = stepBrief(step, args.brief, { env: workspace.env, stack: role.stack });
     const all = this.store.crew.all(job.id);
     const member = all.filter((c) => c.stepId === step.id).length + 1;
     const crew = this.store.crew.insert({
@@ -243,7 +256,7 @@ export class CrewService {
       sessionId: lost?.sessionId ?? this.newId(),
       workspaceId: workspace.id,
       status: CREW_STARTING,
-      replaces: lost?.id ?? null
+      replaces: lost?.id ?? swap?.replaced.id ?? null
     });
     try {
       const launch = crewLaunch({
@@ -253,7 +266,7 @@ export class CrewService {
         runtime,
         model,
         rolePrompt: role.prompt,
-        brief: stepBrief(step, args.brief, { env: workspace.env, stack: role.stack }),
+        brief: swap === null ? brief : `${brief}\n\n${await this.handoff(job, step.id, swap)}`,
         sessionId: crew.sessionId ?? '',
         resume: lost !== null,
         dir: join(jobDir(this.deps.home(), job.id), 'crew', `${step.id}-${member}`),
@@ -262,11 +275,12 @@ export class CrewService {
       });
       await this.openPane(panes, job, crew, workspace, launch);
     } catch (err) {
-      this.store.crew.end(crew.id, `did not start: ${String(err)}`);
+      this.store.crew.end(crew.id, `${NOT_STARTED}: ${String(err)}`);
       throw err;
     }
     const verb = lost ? 'Resumed' : 'Hired';
-    this.record(job, step.id, `${verb} ${crew.label} for step ${step.id}`, {
+    const instead = swap === null ? '' : ` in place of ${swap.replaced.label}`;
+    this.record(job, step.id, `${verb} ${crew.label} for step ${step.id}${instead}`, {
       crewId: crew.id,
       runtime,
       model: model ?? null,
@@ -275,23 +289,28 @@ export class CrewService {
     });
     return {
       text: [
-        `${verb} ${crew.label} (ref ${this.refOf(crew)}) on ${runtime} for step ${step.id}, in ${workspace.cwd}.`,
+        `${verb} ${crew.label} (ref ${this.refOf(crew)}) on ${runtime} for step ${step.id}${instead}, in ${workspace.cwd}.`,
         'Its pane is in the job tab. It shows as starting until its session reports; one that stays starting is probably waiting at a prompt only the client can answer.'
       ].join(' '),
       summary: `${verb.toLowerCase()} ${crew.label}`
     };
   }
 
-  /** The step's folder, or the one a resumed member left, so `--resume` finds its session. */
+  /**
+   * The step's folder: the one a resumed member left, so `--resume` finds its
+   * session, or a swapped-out one's, to continue its work; else a new one.
+   */
   private async workspaceFor(
     jobId: number,
     stepId: string,
-    lost: CrewRecord | null
+    lost: CrewRecord | null,
+    swap: CrewSwap | null
   ): Promise<StepFolder> {
-    if (lost !== null) {
+    const left = lost ?? (swap?.choice === 'continue' ? swap.replaced : null);
+    if (left !== null) {
       const folder =
-        lost.workspaceId === null ? null : this.deps.workspaces.folder(jobId, lost.workspaceId);
-      if (folder === null) throw new Error(`Not hired: ${lost.label}'s workspace is gone.`);
+        left.workspaceId === null ? null : this.deps.workspaces.folder(jobId, left.workspaceId);
+      if (folder === null) throw new Error(`Not hired: ${left.label}'s workspace is gone.`);
       return folder;
     }
     try {
@@ -299,6 +318,21 @@ export class CrewService {
     } catch (err) {
       throw new Error(`Not hired: the step's workspace could not be made. ${String(err)}`);
     }
+  }
+
+  /** The handoff for a swapped-in member, from the old member's workspace and the step's open questions. */
+  private async handoff(job: AgencyJob, stepId: string, swap: CrewSwap): Promise<string> {
+    const { workspaceId } = swap.replaced;
+    const questions = this.store
+      .listQuestions(job.repoId, { jobId: job.id, statuses: ['open', 'hidden'] })
+      .filter((q) => q.step === stepId)
+      .map((q) => q.question);
+    return handoffNote({
+      swap,
+      parts: workspaceId === null ? [] : this.store.resources.ofWorkspace(workspaceId),
+      questions,
+      git: this.deps.git ?? gitExec
+    });
   }
 
   /** Write the launch's files, then open the member's pane in the job tab. */

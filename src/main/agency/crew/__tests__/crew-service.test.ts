@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { DEFAULT_AGENCY_SETTINGS, type AgencyRepoRef } from '../../../../shared/agency';
@@ -708,7 +708,9 @@ describe('crew flags', () => {
       flag: 'limited',
       flagUntil: new Date(2026, 9, 17, 15, 0).getTime()
     });
-    expect(wakeups(jobId)).toContain('builder 1 hit its Claude Code usage limit until 15:00');
+    const limited = wakeups(jobId);
+    expect(limited).toContain('builder 1 hit its Claude Code usage limit until 15:00');
+    expect(limited).toContain('propose a plan change that swaps step front to eva');
     const tools = toolsOf(jobId);
     await expect(tools.crewSend!({ crew: 'builder 1', prompt: 'go on' })).rejects.toThrow(
       'Not sent: builder 1 is at its usage limit until 15:00.'
@@ -750,5 +752,180 @@ describe('crew flags', () => {
     });
     service.crew.flags.tick();
     expect(flagOf(jobId).flag).toBeNull();
+  });
+});
+
+describe('a swap', () => {
+  /** The brief a pane got, typed or in its brief file. */
+  const briefOf = (pane: CrewPaneOpen): string => {
+    const file = /is in (\S+brief\.md)\./.exec(pane.prompt)?.[1];
+    return file === undefined ? pane.prompt : readFileSync(file, 'utf8');
+  };
+
+  /** Propose `steps` as a change to the approved plan; its plan version id. */
+  async function change(jobId: number, steps: PlanInput['steps']): Promise<number> {
+    const plan = PlanSchema.parse({ playbook: 'feature', summary: 's', steps, budget: { usd: 5 } });
+    const out = await toolsOf(jobId).jobPlan!(plan);
+    return Number(/plan#(\d+)/.exec(out.summary)?.[1]);
+  }
+
+  const back = step('back', { scope: 'back' });
+
+  /**
+   * Builder 1 on step front, with a changed and a new file and a question
+   * open, swapped to another model. Step back keeps the job running.
+   */
+  async function swapped(choice: 'continue' | 'restart'): Promise<{
+    jobId: number;
+    first: CrewPaneOpen;
+  }> {
+    const jobId = await approvedJob([step('front', { scope: 'front' }), back]);
+    await toolsOf(jobId).crewHire!({ step: 'front', brief: 'x' });
+    const first = panes.opened[0];
+    service.crew.reported(first.paneId, 'session-a');
+    writeFileSync(join(first.cwd, 'a.txt'), 'changed\n');
+    writeFileSync(join(first.cwd, 'new.txt'), 'n');
+    service.store.askQuestion({
+      repoId: ref.repoId,
+      jobId,
+      kind: 'ask',
+      step: 'front',
+      planVersion: 1,
+      question: 'Keep the old toggle?',
+      context: '',
+      options: [{ label: 'Yes' }, { label: 'No' }],
+      recommended: 0
+    });
+    const id = await change(jobId, [step('front', { scope: 'front', model: 'opus' }), back]);
+    const decided = await service.jobs.decide({
+      planVersionId: id,
+      action: 'approve',
+      swaps: { front: choice }
+    });
+    if (!decided.ok) throw new Error(decided.reason);
+    await new Promise((r) => setImmediate(r));
+    return { jobId, first };
+  }
+
+  it('stops the old member first, and continues its work in the same worktree with a handoff', async () => {
+    const { jobId, first } = await swapped('continue');
+    expect(panes.killed).toEqual([first.paneId]);
+
+    await toolsOf(jobId).crewHire!({ step: 'front', brief: 'It built half the toggle.' });
+    const next = panes.opened[1];
+    expect(next.cwd).toBe(first.cwd);
+    expect(next.launch.env.FLEET_CREW_MODEL).toBe('opus');
+    const brief = briefOf(next);
+    expect(brief).toContain('It built half the toggle.');
+    expect(brief).toContain(
+      'builder 1 worked on this step on Claude Code before you. You continue its work: its worktree is yours as it left it, uncommitted changes included.'
+    );
+    expect(brief).toMatch(
+      /Changes in solo since the base [0-9a-f]{7} \(git diff [0-9a-f]{40}\):\n a\.txt \| 2/
+    );
+    expect(brief).toContain('New files git does not track yet: new.txt');
+    expect(brief).toContain('Open questions for this step:\n- Keep the old toggle?');
+    expect(readFileSync(join(next.cwd, 'a.txt'), 'utf8')).toBe('changed\n');
+
+    const [old, now] = service.store.crew.all(jobId);
+    expect(now).toMatchObject({
+      label: 'builder 2',
+      replaces: old.id,
+      workspaceId: old.workspaceId
+    });
+    expect(service.store.plans.logTail(jobId).at(-1)?.text).toBe(
+      'Hired builder 2 for step front in place of builder 1'
+    );
+  });
+
+  it('starts over on a new branch from the base, keeping the old worktree', async () => {
+    const { jobId, first } = await swapped('restart');
+    await toolsOf(jobId).crewHire!({ step: 'front', brief: 'x' });
+    const next = panes.opened[1];
+
+    expect(next.cwd).toBe(join(home.dir, 'agency-home', 'jobs', '1', 'ws', 'front-2'));
+    expect(readFileSync(join(next.cwd, 'a.txt'), 'utf8')).toBe('a');
+    expect(existsSync(join(first.cwd, 'new.txt'))).toBe(true);
+    const brief = briefOf(next);
+    expect(brief).toContain(
+      'builder 1 worked on this step on Claude Code before you. You start over from the base on a new branch. Its work stays on the branch admiral/j1/front-1, which you do not use.'
+    );
+    expect(brief).toContain('- Keep the old toggle?');
+    const [old, now] = service.store.crew.all(jobId);
+    expect(now.replaces).toBe(old.id);
+  });
+
+  it('hands over only once: a later hire for the step is a plain one', async () => {
+    const { jobId } = await swapped('continue');
+    const tools = toolsOf(jobId);
+    await tools.crewHire!({ step: 'front', brief: 'x' });
+    await tools.crewStop!({ crew: 'builder 2' });
+    await tools.crewHire!({ step: 'front', brief: 'Plain.' });
+
+    expect(briefOf(panes.opened[2])).not.toContain('before you');
+    expect(service.store.crew.all(jobId)[2].replaces).toBeNull();
+  });
+
+  it('waits for nothing on a proposed swap: the member works on until the client approves', async () => {
+    const jobId = await approvedJob();
+    await toolsOf(jobId).crewHire!({ step: 'front', brief: 'x' });
+    const id = await change(jobId, [step('front', { runtime: 'eva' })]);
+
+    const card = service.jobs.detail(jobId)?.versions.find((v) => v.id === id);
+    expect(card?.effects?.swaps).toEqual([{ stepId: 'front', fields: ['runtime'] }]);
+    expect(card?.effects?.stopCrew).toMatchObject([{ label: 'builder 1' }]);
+    expect(panes.killed).toEqual([]);
+    expect(crewOf(jobId)[0].status).not.toBe('ended');
+  });
+
+  it('is proposed from a crew card as the client’s plan change, and refused while one waits', async () => {
+    const jobId = await approvedJob();
+    await toolsOf(jobId).crewHire!({ step: 'front', brief: 'x' });
+    const swap = { jobId, stepId: 'front', role: 'builder', runtime: null, model: null };
+
+    expect(await service.jobs.swapStep(swap)).toEqual({
+      ok: false,
+      reason: 'The step runs that way now.'
+    });
+    const out = await service.jobs.swapStep({ ...swap, runtime: 'eva' });
+    expect(out).toEqual({ ok: true, version: 2 });
+    const card = service.jobs.detail(jobId)?.versions.find((v) => v.version === 2);
+    expect(card).toMatchObject({ author: 'client', status: 'proposed' });
+    expect(card?.plan.steps[0]).toMatchObject({ id: 'front', runtime: 'eva' });
+    expect(card?.effects?.swaps).toEqual([{ stepId: 'front', fields: ['runtime'] }]);
+    expect(service.store.pullWakeups({ repoId: ref.repoId, jobId }).text).toContain(
+      'Client swapped step front on a crew card, as plan v2'
+    );
+
+    expect(await service.jobs.swapStep({ ...swap, model: 'opus' })).toMatchObject({
+      ok: false,
+      reason: 'Plan v2 is waiting for you. Approve or reject it first.'
+    });
+  });
+
+  it('keeps the role the plan was approved with when the role file changes', async () => {
+    const draft = {
+      name: 'tester',
+      description: 'Tests things.',
+      runtime: 'claude' as const,
+      stack: false,
+      instructions: 'You are the old tester.'
+    };
+    expect(
+      await service.saveCrewRole({ repoId: ref.repoId, base: null, role: draft })
+    ).toMatchObject({ ok: true });
+    const jobId = await approvedJob([step('front', { role: 'tester' })]);
+    expect(
+      await service.saveCrewRole({
+        repoId: ref.repoId,
+        base: draft,
+        role: { ...draft, instructions: 'You are the new tester.' }
+      })
+    ).toMatchObject({ ok: true });
+
+    await toolsOf(jobId).crewHire!({ step: 'front', brief: 'x' });
+    const role = panes.opened[0].launch.env.FLEET_CREW_ROLE;
+    expect(role).toContain('You are the old tester.');
+    expect(role).not.toContain('new tester');
   });
 });

@@ -18,8 +18,10 @@ import {
   type PlanBases,
   type PlanChecks,
   type PlanEffects,
-  type StepStatus
+  type StepStatus,
+  type StepSwapRequest
 } from '../../../shared/agency-jobs';
+import { jsonEqual } from '../../../shared/json-equal';
 import {
   PlanSchema,
   diffPlans,
@@ -258,24 +260,72 @@ export class JobsService {
       case 'edit': {
         const parsed = PlanSchema.safeParse(action.plan);
         if (!parsed.success) return { ok: false, reason: parsed.error.issues[0]?.message ?? '' };
-        const result = await this.propose(job.id, parsed.data, 'client');
-        if (!result.ok) return { ok: false, reason: result.error };
-        this.store.tx(() => {
-          this.store.resetChain(job.id);
-          this.store.enqueueWakeup({
-            repoId: job.repoId,
-            jobId: job.id,
-            kind: 'client_action',
-            payload: {
-              line: `Client edited plan v${version.version} into v${result.version.version}`,
-              note: null
-            }
-          });
-        });
-        this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
-        return { ok: true, version: result.version.version };
+        return this.proposeForClient(
+          job,
+          parsed.data,
+          (v) => `Client edited plan v${version.version} into v${v}`
+        );
       }
     }
+  }
+
+  /**
+   * Swap on a crew card: the approved plan with a running step's role, runtime
+   * or model changed, as the client's plan change card. Refused while another
+   * version waits, so the client decides on that one first.
+   */
+  async swapStep(swap: StepSwapRequest): Promise<PlanActionResult> {
+    const job = this.store.getJob(swap.jobId);
+    const approved = this.store.plans.approved(swap.jobId);
+    const step = approved?.plan.steps.find((s) => s.id === swap.stepId);
+    if (!job || !approved || !step) {
+      return { ok: false, reason: `Step ${swap.stepId} is not in the approved plan.` };
+    }
+    const newest = this.store.plans.newest(job.id);
+    if (newest?.status === 'proposed') {
+      return {
+        ok: false,
+        reason: `Plan v${newest.version} is waiting for you. Approve or reject it first.`,
+        newestVersion: newest.version
+      };
+    }
+    const swapped = {
+      ...step,
+      role: swap.role,
+      runtime: swap.runtime ?? undefined,
+      model: swap.model ?? undefined
+    };
+    if (jsonEqual(swapped, step)) return { ok: false, reason: 'The step runs that way now.' };
+    const plan = {
+      ...approved.plan,
+      steps: approved.plan.steps.map((s) => (s.id === step.id ? swapped : s))
+    };
+    return this.proposeForClient(
+      job,
+      plan,
+      (v) => `Client swapped step ${step.id} on a crew card, as plan v${v}`
+    );
+  }
+
+  /** A plan version from the client, which wakes the Admiral with `line`. */
+  private async proposeForClient(
+    job: AgencyJob,
+    plan: Plan,
+    line: (version: number) => string
+  ): Promise<PlanActionResult> {
+    const result = await this.propose(job.id, plan, 'client');
+    if (!result.ok) return { ok: false, reason: result.error };
+    this.store.tx(() => {
+      this.store.resetChain(job.id);
+      this.store.enqueueWakeup({
+        repoId: job.repoId,
+        jobId: job.id,
+        kind: 'client_action',
+        payload: { line: line(result.version.version), note: null }
+      });
+    });
+    this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
+    return { ok: true, version: result.version.version };
   }
 
   private async approve(
@@ -955,5 +1005,7 @@ function swapNote(swaps: Record<string, 'continue' | 'restart'>): string | null 
     ([step, choice]) =>
       `${step}: ${choice === 'continue' ? 'continue its work in the same workspace' : 'start over on a new branch'}`
   );
-  return lines.length === 0 ? null : `Swaps: ${lines.join('; ')}.`;
+  return lines.length === 0
+    ? null
+    : `Swaps: ${lines.join('; ')}. Hire each swapped step again once its old member has stopped.`;
 }

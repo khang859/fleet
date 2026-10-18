@@ -130,7 +130,7 @@ function PlanSteps({ version }: { version: AgencyPlanVersion }): React.JSX.Eleme
   const change = version.kind === 'change';
   return (
     <Block>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 whitespace-nowrap">
         <Label tone={change ? 'amber' : 'muted'}>
           {change ? `PLAN CHANGE · v${version.version} · NEEDS YOUR OK` : 'PLAN'}
         </Label>

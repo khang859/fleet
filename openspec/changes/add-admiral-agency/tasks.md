@@ -79,7 +79,6 @@ Phase 2 notes:
 - [x] 3.8 Let the Admiral propose a new role in a plan and save it in the project's crew folder only on approval; verify with a tool test
 - [x] 3.9 Add Settings › Agency › Crew (role and playbook lists, source, errors, open file) matching canvas boards 3.4 and 3.4b, with the role editor: runtime cards with status, a runtime switch that resets the model, Save and Discard, the Model list per runtime (Claude Code names, eva server models with tool calls, missing-model state); verify with a screenshot and a round trip to the role file
 - [x] 3.25 Add the Runtimes tab to Settings › Agency › Crew matching canvas board 3.8: for Claude Code and eva the path, version, checks, models with roles, default model, crew at once and the Test button; the Claude Code login state without reading it; eva's model server without its key; verify with a test that no credential reaches the renderer, and with a screenshot
-- [ ] 3.26 Add Swap on crew cards with "Continue its work" (same workspace, handoff brief) and "Start over" (new branch), stop-before-start, and an Admiral-proposed swap on `limited`; verify with tool tests for swap-continue, swap-restart, the proposed swap, and a role edit that does not reach a running job
 - [ ] 3.27 End to end (was 2.26): in a fixture workspace modeled on `Fola-Fi/fola-journey` (umbrella, three submodules, SSH submodule URLs, fixed Postgres port), brief a change across two members, approve, and see linked PRs and the bump PR; verify with `npm run drive` steps and screenshots
 - [ ] 3.10 End to end: brief a small bug fix in a test repo, approve the plan, and see a Claude Code Builder start in a TUI pane, get its brief typed in, and a Reviewer follow; verify with `npm run drive` steps and screenshots
 
@@ -152,6 +151,14 @@ Phase 3 notes (decisions made while building):
 - 3.9: a plan step on an eva model the server does not list is blocked with `model-missing`.
 - 3.9: Markdown previews now show a file's YAML front matter as a code block, so crew files read well in Open file.
 - 3.9: end to end in the dev app: runtime switch and note, the eva model list, a typed Claude model id, Discard, a new role saved and loaded back, the stale-file refusal, and Open file all worked.
+- 3.26: Swap on a crew card picks a role, runtime and model for the member's step. It makes a client plan change from the approved plan, so the swap shows on the plan change card with "Continue its work" or "Start over". Swap is refused while another plan version waits for the client.
+- 3.26: nothing stops before approval. On approval the old member stops and the step stays running. The Admiral hires the step again, and Fleet finds the swap from the approved plan's stop list.
+- 3.26: "Continue its work" gives the new member the old worktree as it is. "Start over" gives it a new branch from the base. The new member's `replaces` is the old member.
+- 3.26: the handoff note goes after the Admiral's brief. It names the old member and its runtime, and for "Continue" the `git diff --stat` since the base and the untracked files. The step's open questions come along. The Admiral writes the summary of the old member's work in its brief.
+- 3.26: a hire that fails before its member starts ends as "did not start", so a second try still carries the swap.
+- 3.26: the `limited` wakeup now tells the Admiral to propose a plan change that swaps the step to the other runtime when the job cannot wait.
+- 3.26: a role edit in Settings does not reach a running job, since the approved plan keeps its own copy of the roles.
+- 3.26: end to end in the dev app: a Claude Code builder waited at the trust screen in envdemo. Swap to eva made plan v2 with "Continue its work". Approve stopped the builder, and the Admiral hired an eva builder in the same worktree with the handoff note, which listed the untracked `NOTES.md`. The plan card header now wraps its tags as whole words.
 
 - [x] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`
 - [x] 3.12 Build the job `--settings` file (AskUserQuestion denied, `disableBypassPermissionsMode`, Fleet hooks with the global command string including `PermissionRequest` and `StopFailure`); verify with snapshot tests
@@ -167,6 +174,7 @@ Phase 3 notes (decisions made while building):
 - [x] 3.22 Find port variables and fixed host ports at setup, give each job workspace a free port block, set port variables in the pane env, show server addresses on the job sheet, and hold stack slots for `stack: true` steps; verify with tests for two jobs and one slot and a port held by an outside process
 - [x] 3.23 List untracked env files with names only, copy the chosen ones into new worktrees with mode 600, block paths git does not ignore, and add values to the env redaction; verify with tests that a crew edit never changes the user's file
 - [x] 3.24 Find `CLAUDE.md`, `AGENTS.md`, `.claude/agents`, `.claude/skills` and `.opencode/agents` at setup, import agent files as roles, and tell the Admiral which skills each working folder exposes; verify with loader tests and check in Claude Code which skills load from a member subfolder, recording the result in `docs/learnings/`
+- [x] 3.26 Add Swap on crew cards with "Continue its work" (same workspace, handoff brief) and "Start over" (new branch), stop-before-start, and an Admiral-proposed swap on `limited`; verify with tool tests for swap-continue, swap-restart, the proposed swap, and a role edit that does not reach a running job
 
 ## 4. Phase 4 - eva session tracking (PR 4, needs khang859/eva#9, #10, #13, and #12 for hook permission answers)
 

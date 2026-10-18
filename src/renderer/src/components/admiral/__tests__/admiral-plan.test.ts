@@ -13,6 +13,7 @@ import { NO_PLAN_CHECKS } from '../../../../../shared/agency-jobs';
 import { PlanSchema } from '../../../../../shared/agency-plan';
 import { agencyJob } from '../../../../../shared/__tests__/agency-fixtures';
 import { waitingCount } from '../../../store/agency-store';
+import { CrewSwapForm } from '../CrewSwap';
 import { JobSheet } from '../JobSheet';
 import { PlanCard } from '../PlanCard';
 import { proposedPlanId } from '../job-view';
@@ -417,6 +418,43 @@ describe('the sheet', () => {
     expect(html).toContain('title="ended with exit code 1"');
     expect(html.match(/>Peek</g)).toHaveLength(1);
     expect(html).toContain('>failed<');
+  });
+
+  it('offers Swap only on a working member of a step in the approved plan', () => {
+    const html = sheet(
+      snap(false),
+      detail(
+        [version({ status: 'approved' })],
+        [step('reviewer', 'running')],
+        [
+          member({ status: 'ended' }),
+          member({ id: 2, stepId: 'reviewer', label: 'reviewer 1', paneId: 'p2' }),
+          member({ id: 3, stepId: 'gone', label: 'qa 1', paneId: 'p3' })
+        ]
+      )
+    );
+    expect(html.match(/>Swap</g)).toHaveLength(1);
+    expect(html).toContain('title="Move its step to another role, runtime or model"');
+  });
+
+  it('starts the swap form at what the approved step runs', () => {
+    const html = renderToStaticMarkup(
+      createElement(CrewSwapForm, {
+        repoId: 'repo-1',
+        jobId: 2,
+        step: PLAN.steps[1],
+        onClose: () => {}
+      })
+    );
+    expect(html).toContain('aria-label="Swap reviewer"');
+    expect(html).toMatch(/<option value="reviewer" selected="">reviewer<\/option>/);
+    expect(html).toMatch(/<option value="claude" selected="">Claude Code<\/option>/);
+    expect(html).toContain('<option value="eva">eva</option>');
+    expect(html).toContain('placeholder="The role&#x27;s own"');
+    expect(html).toContain(
+      'This makes a plan change. The member keeps working until you approve it.'
+    );
+    expect(html).toContain('>Propose swap<');
   });
 
   it('shows each flag in place of the status, with Hand back or Resume where the client can act', () => {

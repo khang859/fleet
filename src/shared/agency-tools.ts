@@ -327,6 +327,7 @@ const DELIVER_DESCRIPTION = [
 const HIRE_DESCRIPTION = [
   "Hire the crew member for a step of the approved plan: Fleet makes the step a new worktree on its own branch with the branches of the steps it works on merged in, runs the project's setup there, opens a terminal pane in the job tab, and starts the step's role on its runtime with your brief as its first prompt. A step with workspace {of} works in that step's worktree instead, and changes nothing.",
   "Hire only for a step that may start: its `after` steps are done and it has no crew member working. Over the crew limit the step is queued, and a wakeup tells you when it can start. A step a crew member left before it was done needs the client's OK first: Fleet asks them, and their answer arrives as a wakeup.",
+  'After an approved plan change swaps a running step, hire for it again once its old member has stopped. With "Continue its work" the new member works in the old worktree on the same branch; put a summary of what the old member did in the brief (read it with `fleet_read`), and Fleet adds its changes since the base and the step\'s open questions. With "Start over" it gets a new worktree from the base.',
   "Write the brief for someone who knows nothing of this conversation: the goal, what done looks like, the files and decisions that matter, and what to hand back. A long brief is fine: Fleet passes it as a file. The crew member works with the client's own logins and tools, in its worktree only.",
   'Give `why` and `expect`, which go in the job record with the brief.'
 ].join('\n\n');
