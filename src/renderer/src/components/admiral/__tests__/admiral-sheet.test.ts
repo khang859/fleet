@@ -5,7 +5,8 @@ import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../../s
 import { agencyJob, agencyQuestion } from '../../../../../shared/__tests__/agency-fixtures';
 import { QuestionCard } from '../QuestionCard';
 import { JobSheet } from '../JobSheet';
-import { askedQuestionId, jobStatus } from '../job-view';
+import { JobTabs } from '../JobTabs';
+import { askedQuestionId, jobLink, jobStatus } from '../job-view';
 
 /** The question card and the job sheet, in each state the client can find them in. */
 
@@ -212,7 +213,37 @@ describe('JobSheet', () => {
   });
 });
 
+describe('JobTabs', () => {
+  const tabs = (snapshot: AgencySnapshot): string =>
+    renderToStaticMarkup(
+      createElement(JobTabs, {
+        snapshot,
+        activeJobId: null,
+        working: new Set<number>(),
+        onSelect: () => {}
+      })
+    );
+
+  it('says no jobs yet only before the first job, and no open jobs after', () => {
+    expect(tabs(snap())).toContain('No jobs yet');
+    const after = tabs(snap({ pastJobs: [job({ state: 'cancelled' })] }));
+    expect(after).toContain('No open jobs');
+    expect(after).not.toContain('No jobs yet');
+    expect(tabs(snap({ jobs: [job()] }))).toContain('role="tablist"');
+  });
+});
+
 describe('job view helpers', () => {
+  it('links a lobby line to an open job, and says how a job with no tab ended', () => {
+    expect(jobLink(snap({ jobs: [job()] }), 2)).toEqual({ open: true, ended: null });
+    expect(jobLink(snap({ pastJobs: [job({ state: 'cancelled' })] }), 2)).toEqual({
+      open: false,
+      ended: 'Cancelled'
+    });
+    expect(jobLink(snap(), 2)).toEqual({ open: false, ended: null });
+    expect(jobLink(undefined, 2)).toEqual({ open: false, ended: null });
+  });
+
   it('puts a question to the client ahead of everything else', () => {
     expect(jobStatus({ state: 'running' }, { asking: true, working: true })).toEqual({
       label: 'Waiting on you',

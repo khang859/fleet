@@ -1,12 +1,7 @@
 import { useState } from 'react';
 import type { AgencyJob } from '../../../../shared/agency';
 import { jobDisplayId } from '../../../../shared/agency';
-
-const STATE_LABEL: Partial<Record<AgencyJob['state'], string>> = {
-  closed: 'Closed',
-  cancelled: 'Cancelled',
-  failed: 'Failed'
-};
+import { ENDED_LABEL } from './job-view';
 
 /** The repository's last jobs that ended, each with its record to export as Markdown. */
 export function PastJobList({ jobs }: { jobs: AgencyJob[] }): React.JSX.Element {
@@ -37,7 +32,7 @@ function PastJobRow({ job }: { job: AgencyJob }): React.JSX.Element {
         </span>
         <span className="min-w-0 flex-1 truncate text-fleet-text">{job.title}</span>
         <span className="shrink-0 text-fleet-text-muted">
-          {STATE_LABEL[job.state] ?? job.state}
+          {ENDED_LABEL[job.state] ?? job.state}
         </span>
         <button
           type="button"

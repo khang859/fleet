@@ -24,3 +24,7 @@ The test then passes the detail it wants straight to `JobSheet`.
   Keep each check's test to one fault: one test for duplicates and unknown steps, one for the loop.
 - `npm test` output is cut down by rtk to `PASS (n) FAIL (m)`.
   To see a failure, read the newest tee log: `ls -t ~/Library/Application\ Support/rtk/tee/*vitest* | head -1`.
+
+Repeated on 2026-10-17 with `JobLinkLine`: the test set the store and the render still saw an empty snapshot.
+The fix was the same: move the decision into a pure helper (`jobLink` in `job-view.ts`) and test that.
+Do not return a new object from a zustand selector to avoid this, since that renders in a loop; select the snapshot and call the helper after.
