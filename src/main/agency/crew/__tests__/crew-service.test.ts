@@ -181,6 +181,19 @@ describe('stepBrief', () => {
     );
   });
 
+  it('names the members checked out for a writer, and says not to update them', () => {
+    const members = [
+      { member: 'core', path: 'libs/core', branch: 'admiral/j1/web-1' },
+      { member: 'api', path: 'libs/api', branch: 'admiral/j1/web-1' }
+    ];
+    expect(stepBrief(step(), 'Build it.', { members })).toBe(
+      'Build it.\n\nFleet checked out libs/core (core), libs/api (api) for you, on the branch admiral/j1/web-1. Commit in each one as it is. Do not run `git submodule update` or switch branches in them: that moves them off the branch. Other members are not checked out, because this step does not change them.'
+    );
+    expect(stepBrief(step({ workspace: { of: 'api' } }), 'Review it.', { members })).not.toContain(
+      'checked out'
+    );
+  });
+
   it('names the skills the step uses', () => {
     expect(stepBrief(step({ skills: ['journey-qa-sweep'] }), 'Test it.')).toBe(
       'Test it.\n\nUse the skill journey-qa-sweep for this work.'

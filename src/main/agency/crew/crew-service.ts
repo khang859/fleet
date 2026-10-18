@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { jobDisplayId, type AgencyJob } from '../../../shared/agency';
 import { isFileResultKind } from '../../../shared/agency-jobs';
 import { CrewReportSchema, type CrewRuntime, type CrewSnapshot } from '../../../shared/agency-crew';
@@ -24,6 +24,7 @@ import type { JobsService } from '../jobs';
 import { jobDir } from '../projects/paths';
 import { handbackDir } from '../results/result-files';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
+import type { ResourceRecord } from '../store/resource-store';
 import {
   CREW_LIVE,
   CREW_STARTING,
@@ -94,14 +95,19 @@ export type CrewServiceDeps = {
 /**
  * The Admiral's brief, with what the plan says about the step: the skills
  * it uses, the part of the code it owns, that a step reading another's worktree
- * changes nothing in it, what it hands back and where its files go, the
- * ports its workspace's servers use, and for a role that runs the stack, to
+ * changes nothing in it, which members are checked out for it, what it hands
+ * back and where its files go, the ports its workspace's servers use, and for a role that runs the stack, to
  * stop it so the next step gets the slot.
  */
 export function stepBrief(
   step: PlanStep,
   brief: string,
-  workspace: { env?: Record<string, string>; stack?: boolean; handback?: string } = {}
+  workspace: {
+    env?: Record<string, string>;
+    stack?: boolean;
+    handback?: string;
+    members?: CheckedOutMember[];
+  } = {}
 ): string {
   const notes: string[] = [];
   if (step.skills.length > 0) {
@@ -120,6 +126,8 @@ export function stepBrief(
       `This worktree is step ${step.workspace.of}'s. Read and run it, but change and commit nothing.`
     );
   }
+  const checkedOut = membersNote(step, workspace.members ?? []);
+  if (checkedOut !== null) notes.push(checkedOut);
   const handsBack = handbackNote(step, workspace.handback);
   if (handsBack !== null) notes.push(handsBack);
   const note = portsNote(workspace.env ?? {});
@@ -130,6 +138,38 @@ export function stepBrief(
     );
   }
   return [brief, ...notes].join('\n\n');
+}
+
+/** A member worktree in a crew member's folder: where it is, relative to the folder, and its branch. */
+export type CheckedOutMember = { member: string; path: string; branch: string };
+
+/** The member worktrees inside the folder a crew member starts in, other than that folder itself. */
+function checkedOut(parts: ResourceRecord[], cwd: string): CheckedOutMember[] {
+  return parts.flatMap((r) =>
+    r.kind === 'member_worktree' &&
+    r.member !== null &&
+    r.path !== null &&
+    r.branch !== null &&
+    r.path !== cwd
+      ? [{ member: r.member, path: relative(cwd, r.path), branch: r.branch }]
+      : []
+  );
+}
+
+/**
+ * The members Fleet checked out in a writer's folder, on the step's branch.
+ * A builder in an umbrella otherwise runs `git submodule update`, which moves
+ * the members off that branch, so its commits land on no branch.
+ */
+function membersNote(step: PlanStep, members: CheckedOutMember[]): string | null {
+  if (members.length === 0 || (step.workspace !== 'new' && 'of' in step.workspace)) return null;
+  const listed = members.map((m) => `${m.path} (${m.member})`).join(', ');
+  return [
+    `Fleet checked out ${listed} for you, on the branch ${members[0].branch}.`,
+    'Commit in each one as it is.',
+    'Do not run `git submodule update` or switch branches in them: that moves them off the branch.',
+    'Other members are not checked out, because this step does not change them.'
+  ].join(' ');
 }
 
 /**
@@ -267,7 +307,8 @@ export class CrewService {
     const brief = stepBrief(step, args.brief, {
       env: workspace.env,
       stack: role.stack,
-      handback
+      handback,
+      members: checkedOut(this.store.resources.ofWorkspace(workspace.id), workspace.cwd)
     });
     const all = this.store.crew.all(job.id);
     const member = all.filter((c) => c.stepId === step.id).length + 1;
