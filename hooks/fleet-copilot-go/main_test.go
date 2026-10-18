@@ -238,15 +238,21 @@ func TestEmitSessionStartContext(t *testing.T) {
 	}
 }
 
-func TestNewState_ForwardsPaneTranscriptAndConfigDir(t *testing.T) {
+// readInput parses a hook payload the way main does.
+func readInput(t *testing.T, payload string) *HookInput {
+	t.Helper()
 	var input HookInput
-	payload := `{"session_id":"s1","hook_event_name":"SessionStart","cwd":"/repo",` +
-		`"transcript_path":"/c/projects/-repo/s1.jsonl","source":"clear"}`
 	if err := json.Unmarshal([]byte(payload), &input); err != nil {
 		t.Fatal(err)
 	}
+	return &input
+}
+
+func TestNewState_ForwardsPaneTranscriptAndConfigDir(t *testing.T) {
+	input := readInput(t, `{"session_id":"s1","hook_event_name":"SessionStart","cwd":"/repo",`+
+		`"transcript_path":"/c/projects/-repo/s1.jsonl","source":"clear"}`)
 	env := map[string]string{"FLEET_PANE_ID": "pane-7", "CLAUDE_CONFIG_DIR": "/c"}
-	state := newState(&input, nil, 42, func(k string) string { return env[k] })
+	state := newState(input, nil, 42, func(k string) string { return env[k] })
 
 	data, err := json.Marshal(state)
 	if err != nil {
@@ -272,16 +278,27 @@ func TestNewState_ForwardsPaneTranscriptAndConfigDir(t *testing.T) {
 }
 
 func TestNewState_ForwardsStopFailureError(t *testing.T) {
-	var input HookInput
-	payload := `{"session_id":"s1","hook_event_name":"StopFailure","cwd":"/repo",` +
-		`"error":"rate_limit","error_details":"429 Too Many Requests",` +
-		`"last_assistant_message":"API Error: Rate limit reached"}`
-	if err := json.Unmarshal([]byte(payload), &input); err != nil {
-		t.Fatal(err)
-	}
-	state := newState(&input, nil, 1, func(string) string { return "" })
+	input := readInput(t, `{"session_id":"s1","hook_event_name":"StopFailure","cwd":"/repo",`+
+		`"error":"rate_limit","error_details":"429 Too Many Requests",`+
+		`"last_assistant_message":"API Error: Rate limit reached"}`)
+	state := newState(input, nil, 1, func(string) string { return "" })
 	if state.Error != "rate_limit" || state.ErrorDetails != "429 Too Many Requests" {
 		t.Errorf("error = %q, details = %q", state.Error, state.ErrorDetails)
+	}
+}
+
+func TestNewState_ForwardsPromptHashNotText(t *testing.T) {
+	input := readInput(t, `{"session_id":"s1","hook_event_name":"UserPromptSubmit","cwd":"/repo",`+
+		`"prompt":"  [admiral] Build the toggle.\nKeep it small.\n"}`)
+	state := newState(input, nil, 1, func(string) string { return "" })
+	// The same value Fleet's hashPrompt gives the text Fleet typed (hook-events.test.ts).
+	const want = "6f89735c79e3511775b5bcaccc42af7c104e2765fad1562204beddd44b8cee94"
+	if state.PromptSHA256 != want {
+		t.Errorf("prompt_sha256 = %q, want %q", state.PromptSHA256, want)
+	}
+	data, _ := json.Marshal(state)
+	if strings.Contains(string(data), "Build the toggle") {
+		t.Errorf("the prompt text crossed the socket: %s", data)
 	}
 }
 
@@ -289,7 +306,7 @@ func TestNewState_OmitsUnsetFields(t *testing.T) {
 	input := HookInput{SessionID: "s1", HookEventName: "Stop", CWD: "/repo"}
 	state := newState(&input, nil, 1, func(string) string { return "" })
 	data, _ := json.Marshal(state)
-	for _, key := range []string{"pane_id", "transcript_path", "config_dir", "source", "error", "error_details"} {
+	for _, key := range []string{"pane_id", "transcript_path", "config_dir", "source", "error", "error_details", "prompt_sha256"} {
 		if strings.Contains(string(data), `"`+key+`"`) {
 			t.Errorf("%s should be omitted when empty: %s", key, data)
 		}

@@ -3,6 +3,7 @@ import type {
   ClaudeSession,
   ClaudeSessionChange
 } from '../../shared/claude-sessions';
+import { hashPrompt } from './registry';
 
 /**
  * Typing into a Claude Code session on someone's behalf, without clobbering
@@ -25,6 +26,12 @@ export const SUBMIT_DELAY_MS = 50;
 export const QUIET_MS = 3_000;
 /** How long Claude Code has to acknowledge the prompt with `UserPromptSubmit`. */
 export const ACK_TIMEOUT_MS = 5_000;
+/** What `send` says when Claude Code submitted some other text than the prompt typed. */
+export const PROMPT_MISMATCH =
+  'Claude Code got a different prompt than the one typed. It was not sent again; read the session to see what it got.';
+
+/** What the session's `UserPromptSubmit` said about a typed prompt, if anything. */
+type Heard = 'match' | 'mismatch' | 'none';
 
 export type SendResult =
   | {
@@ -176,13 +183,15 @@ export class PromptInput {
     if (!session) return { ok: false, reason: 'That session is not running in a Fleet pane.' };
 
     this.sending.add(sessionId);
-    const ack = this.watchAck(sessionId);
+    const ack = this.watchAck(sessionId, hashPrompt(clean));
     try {
       this.deps.noteInput(sessionId, origin, clean);
       await this.type(session.paneId, clean);
       await this.sleep(SUBMIT_DELAY_MS);
       this.deps.write(session.paneId, '\r');
-      return { ok: true, confirmed: await ack.wait(), text: clean };
+      const heard = await ack.wait();
+      if (heard === 'mismatch') return { ok: false, reason: PROMPT_MISMATCH };
+      return { ok: true, confirmed: heard === 'match', text: clean };
     } finally {
       ack.stop();
       this.sending.delete(sessionId);
@@ -218,27 +227,45 @@ export class PromptInput {
   }
 
   /**
-   * Listen for the session's next `UserPromptSubmit` from before the first
+   * Listen for the session's `UserPromptSubmit` from before the first
    * keystroke, so an acknowledgement that beats the wait is not missed. The
    * timeout runs from `wait()`, which is called after the submit.
+   *
+   * A hook binary of protocol 3 on sends the prompt's hash, and only a match
+   * acknowledges. Claude Code also submits prompts of its own (a scheduled
+   * task, a subagent reporting back), so a different hash is a mismatch only
+   * when no match follows before the timeout. An older binary sends no hash,
+   * and its `UserPromptSubmit` acknowledges as before.
    */
-  private watchAck(sessionId: string): { wait: () => Promise<boolean>; stop: () => void } {
-    let acked = false;
+  private watchAck(
+    sessionId: string,
+    hash: string
+  ): { wait: () => Promise<Heard>; stop: () => void } {
+    let matched = false;
+    let mismatched = false;
     let wake: (() => void) | null = null;
     const stop = this.deps.subscribe((change) => {
       if (change.sessionId !== sessionId || change.event?.event !== 'UserPromptSubmit') return;
-      acked = true;
+      const got = change.event.promptHash;
+      if (got !== undefined && got !== hash) {
+        mismatched = true;
+        return;
+      }
+      matched = true;
       wake?.();
     });
-    const wait = async (): Promise<boolean> => {
-      if (acked) return true;
-      return new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => resolve(false), this.ackTimeoutMs);
-        wake = () => {
-          clearTimeout(timer);
-          resolve(true);
-        };
-      });
+    const wait = async (): Promise<Heard> => {
+      if (!matched) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, this.ackTimeoutMs);
+          wake = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
+      }
+      if (matched) return 'match';
+      return mismatched ? 'mismatch' : 'none';
     };
     return { wait, stop };
   }

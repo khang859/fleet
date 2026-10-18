@@ -7,6 +7,7 @@ import type { AgentAgencyCapability } from '../../../../shared/agency-tools';
 import { AgencyService } from '../../index';
 import { fakeGh, initRepo, tempDir } from '../../projects/__tests__/git-fixture';
 import { createAgencyCapability } from '../../tools';
+import { PROMPT_MISMATCH, type SendResult } from '../../../claude-sessions/input';
 import type { CrewPaneHost, CrewPaneOpen } from '../crew-service';
 
 /**
@@ -26,6 +27,7 @@ type FakePanes = CrewPaneHost & {
   sent: Array<[string, string]>;
   running: Set<string>;
   openError: string | null;
+  sendResult: SendResult | null;
 };
 
 function fakePanes(): FakePanes {
@@ -36,6 +38,7 @@ function fakePanes(): FakePanes {
     sent: [],
     running: new Set(),
     openError: null,
+    sendResult: null,
     open: async (pane) => {
       if (host.openError !== null) return Promise.resolve(host.openError);
       host.opened.push(pane);
@@ -53,7 +56,7 @@ function fakePanes(): FakePanes {
       refusal: () => null,
       send: async (sessionId, text) => {
         host.sent.push([sessionId, text]);
-        return Promise.resolve({ ok: true, text, confirmed: true });
+        return Promise.resolve(host.sendResult ?? { ok: true, text, confirmed: true });
       }
     },
     hooks: () => ({})
@@ -234,6 +237,19 @@ describe('a crew member at work', () => {
     expect(service.store.plans.logTail(jobId).at(-1)).toMatchObject({
       kind: 'crew',
       text: 'Sent builder 1 a prompt'
+    });
+  });
+
+  it('counts and logs a prompt that arrived different, and fails the send', async () => {
+    const { jobId, paneId } = await hired();
+    service.crew.reported(paneId, 'session-a');
+    panes.sendResult = { ok: false, reason: PROMPT_MISMATCH };
+    await expect(toolsOf(jobId).crewSend!({ crew: 'builder 1', prompt: 'Go on.' })).rejects.toThrow(
+      PROMPT_MISMATCH
+    );
+    expect(service.store.plans.logTail(jobId).at(-1)).toMatchObject({
+      kind: 'crew',
+      text: 'Sent builder 1 a prompt that arrived different'
     });
   });
 

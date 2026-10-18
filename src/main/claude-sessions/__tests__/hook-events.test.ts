@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseHookEvent } from '../hook-events';
+import { hashPrompt } from '../registry';
 
 const v1 = {
   session_id: 's1',
@@ -48,6 +49,19 @@ describe('parseHookEvent', () => {
       source: 'clear',
       protocol: 2
     });
+  });
+
+  it('reads the prompt hash of a protocol 3 UserPromptSubmit', () => {
+    const hash = '6f89735c79e3511775b5bcaccc42af7c104e2765fad1562204beddd44b8cee94';
+    const event = parseHookEvent(
+      JSON.stringify({ ...v1, event: 'UserPromptSubmit', prompt_sha256: hash, protocol: 3 })
+    );
+    expect(event).toMatchObject({ promptHash: hash, protocol: 3 });
+    // The Go hook's test checks the same value for the same text.
+    expect(hashPrompt('[admiral] Build the toggle.\nKeep it small.')).toBe(hash);
+    expect(
+      parseHookEvent(JSON.stringify({ ...v1, prompt_sha256: 'not a hash' }))?.promptHash
+    ).toBeUndefined();
   });
 
   it('reads the API error of a StopFailure', () => {

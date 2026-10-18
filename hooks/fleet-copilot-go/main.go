@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,8 +24,9 @@ const (
 	// there reads this value to keep the two in order.
 	timeoutSeconds = 300
 	// protocolVersion tells Fleet which fields this binary sends. Version 2 adds
-	// pane_id, transcript_path, config_dir and source.
-	protocolVersion = 2
+	// pane_id, transcript_path, config_dir and source. Version 3 adds
+	// prompt_sha256.
+	protocolVersion = 3
 )
 
 var socketPath = func() string {
@@ -54,6 +57,7 @@ type HookInput struct {
 	Source           string                 `json:"source,omitempty"`
 	Error            string                 `json:"error,omitempty"`
 	ErrorDetails     string                 `json:"error_details,omitempty"`
+	Prompt           string                 `json:"prompt,omitempty"`
 }
 
 type State struct {
@@ -74,6 +78,7 @@ type State struct {
 	Source           string                 `json:"source,omitempty"`
 	Error            string                 `json:"error,omitempty"`
 	ErrorDetails     string                 `json:"error_details,omitempty"`
+	PromptSHA256     string                 `json:"prompt_sha256,omitempty"`
 	Protocol         int                    `json:"protocol"`
 }
 
@@ -237,6 +242,17 @@ func statusFor(event string) string {
 	}
 }
 
+// promptHash is the sha256 of a submitted prompt, trimmed, so Fleet can check
+// that the prompt it typed arrived as it was typed without the text itself
+// crossing the socket.
+func promptHash(prompt string) string {
+	if prompt == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.TrimSpace(prompt)))
+	return hex.EncodeToString(sum[:])
+}
+
 // newState builds the event Fleet receives. The pane id comes from the
 // environment Fleet gave the pane's shell, so Fleet can place the session
 // without walking the process tree; the config dir lets Fleet find the
@@ -254,6 +270,7 @@ func newState(input *HookInput, tty *string, pid int, getenv func(string) string
 		Source:         input.Source,
 		Error:          input.Error,
 		ErrorDetails:   input.ErrorDetails,
+		PromptSHA256:   promptHash(input.Prompt),
 		Protocol:       protocolVersion,
 	}
 }

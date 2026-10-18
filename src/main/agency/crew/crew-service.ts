@@ -17,7 +17,7 @@ import { ActLimiter } from '../../agent/fleet/limiter';
 import type { FleetPrompter } from '../../agent/fleet/send';
 import type { PaneLaunch } from '../../agent/fleet/spawns';
 import type { HookEntry } from '../../claude-sessions/hook-installer';
-import { cleanPrompt, promptProblem } from '../../claude-sessions/input';
+import { cleanPrompt, PROMPT_MISMATCH, promptProblem } from '../../claude-sessions/input';
 import { createLogger } from '../../logger';
 import type { JobsService } from '../jobs';
 import { jobDir } from '../projects/paths';
@@ -260,14 +260,18 @@ export class CrewService {
     this.checkRate(jobId);
     const at = this.deps.now();
     const result = await panes.prompter.send(crew.sessionId, text);
+    const typed = result.ok || result.reason === PROMPT_MISMATCH;
+    if (typed) {
+      this.limiter.note(this.limitKey(jobId), at);
+      const how = result.ok ? 'a prompt' : 'a prompt that arrived different';
+      this.record(job, crew.stepId, `Sent ${crew.label} ${how}`, {
+        crewId: crew.id,
+        prompt: text,
+        why: args.why ?? null,
+        expect: args.expect ?? null
+      });
+    }
     if (!result.ok) throw new Error(result.reason);
-    this.limiter.note(this.limitKey(jobId), at);
-    this.record(job, crew.stepId, `Sent ${crew.label} a prompt`, {
-      crewId: crew.id,
-      prompt: result.text,
-      why: args.why ?? null,
-      expect: args.expect ?? null
-    });
     const ack = result.confirmed
       ? 'It took it and is working on it.'
       : 'It has not acknowledged it yet. Check with fleet_read before sending it again.';

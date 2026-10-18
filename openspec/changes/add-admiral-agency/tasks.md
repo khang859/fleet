@@ -102,7 +102,7 @@ Phase 3 notes (decisions made while building):
 - 3.6: every typed prompt starts with `[admiral]`. `crew_send` to eva is refused until Phase 4 can track its turns. Crew acts are refused while the job has a `chain_limit` hold.
 - 3.17: exit code 0 or a close by the client marks the step `stopped`, any other exit `failed`. The Admiral gets a `rehire` card (Hire again / Leave it) and a wakeup. `crew_stop` leaves the step `running`, so the Admiral may hire again.
 - 3.5: job tabs are dropped at startup, since their panes do not outlive Fleet.
-- 3.20: long briefs as a file are done. The `UserPromptSubmit` compare comes in its own commit.
+- 3.20: long briefs go as a file. The hook sends only a sha256 of the trimmed prompt (protocol 3), never the text. A typed prompt with a different hash fails the send, and it is not typed again. A hash Claude Code submits on its own (a scheduled task, a subagent report) does not count. The first prompt goes as a CLI argument, not typed, so it is not compared. An older hook with no hash acknowledges as before.
 
 - [x] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`
 - [x] 3.12 Build the job `--settings` file (AskUserQuestion denied, `disableBypassPermissionsMode`, Fleet hooks with the global command string including `PermissionRequest` and `StopFailure`); verify with snapshot tests
@@ -113,7 +113,7 @@ Phase 3 notes (decisions made while building):
 - [x] 3.17 Run crew with `exitOnComplete: true`, and on exit or close mark the step, and wake the Admiral; verify with a pty-manager test that no shell is left
 - [ ] 3.18 Add `fleet agency done` over the socket, idle-versus-done handling and the nudge limit; verify with socket and tool tests
 - [ ] 3.19 Add crew states `needs you`, `limited`, `user-driven` and `stuck`, the read-only last-screen read, and `crew_interrupt` and `crew_stop`; verify with registry and tool tests
-- [ ] 3.20 Compare `UserPromptSubmit` text with the typed prompt, fail on mismatch, and pass long briefs as a file via `--add-dir`; verify with input tests
+- [x] 3.20 Compare `UserPromptSubmit` text with the typed prompt, fail on mismatch, and pass long briefs as a file via `--add-dir`; verify with input tests
 - [x] 3.21 Add the one-time folder trust step and check end to end whether trust carries down to new worktrees; record the result in `docs/learnings/`
 - [ ] 3.22 Find port variables and fixed host ports at setup, give each job workspace a free port block, set port variables in the pane env, show server addresses on the job sheet, and hold stack slots for `stack: true` steps; verify with tests for two jobs and one slot and a port held by an outside process
 - [ ] 3.23 List untracked env files with names only, copy the chosen ones into new worktrees with mode 600, block paths git does not ignore, and add values to the env redaction; verify with tests that a crew edit never changes the user's file
