@@ -15,6 +15,25 @@ import type { ClientLineInput } from './agency-projects';
 /** Where starter question answers come from, so finishing them again replaces the last answers. */
 export const STARTER_SOURCE = 'starter questions';
 
+/** A line the client gave Fleet themselves: an answer, or a line added or edited in Settings. */
+export const YOU_SOURCE = 'you';
+
+/**
+ * The layer key of the preferences that hold for every project. A project's
+ * layer is keyed by its project id, which is hex, so the two cannot meet.
+ */
+export const YOU_LAYER = 'you';
+
+/** How the What the Admiral knows page names a line's source. */
+export function sourceLabel(source: string | null): string {
+  if (source === null || source === YOU_SOURCE) return 'You told me';
+  if (source === STARTER_SOURCE) return 'Starter questions';
+  const job = /^job (j\d+)$/.exec(source);
+  if (job) return `Learned on ${job[1]}`;
+  if (source === 'the Bridge') return 'Learned on the Bridge';
+  return `Read from ${source}`;
+}
+
 const TAGGED = /^- (.*) \(from (.+), (\d{4}-\d{2}-\d{2})\)$/;
 
 type Entry = { text: string; source: string; date: string };
@@ -44,9 +63,12 @@ export function clientEntries(text: string | null): string[] {
 
 /** Two lines say the same thing when they differ only in case, spacing or a final period. */
 export function sameText(a: string, b: string): boolean {
-  const norm = (s: string): string =>
-    s.trim().replace(/\s+/g, ' ').replace(/\.$/, '').toLowerCase();
-  return norm(a) === norm(b);
+  return normText(a) === normText(b);
+}
+
+/** A line's normal form: what `sameText` compares, and what a line's records are keyed by. */
+export function normText(s: string): string {
+  return oneLine(s).replace(/\.$/, '').toLowerCase();
 }
 
 /** A rule as one line: no line breaks, no leading list marker. */
@@ -114,3 +136,100 @@ export function applyClientProposal(
   }
   return mergeClientFile(lines.join('\n'), { name: input.name, add: rest }, date);
 }
+
+/** One list line of a layer: what it says, and where it came from when Fleet wrote it. */
+export type ClientEntry = { text: string; source: string | null; date: string | null };
+
+/** Every list line of a layer, in order, with its tag. Their positions are what edits name. */
+export function clientEntryList(text: string | null): ClientEntry[] {
+  return (text ?? '').split('\n').flatMap((line): ClientEntry[] => {
+    const tagged = parseClientLine(line);
+    if (tagged) return [tagged];
+    return line.startsWith('- ') ? [{ text: line.slice(2), source: null, date: null }] : [];
+  });
+}
+
+/**
+ * The file line of the list line at `index`, when it still says `was`. A
+ * line that moved or changed since the client saw it is not touched.
+ */
+function entryLine(lines: string[], index: number, was: string): number {
+  let seen = -1;
+  for (const [i, line] of lines.entries()) {
+    const said = lineText(line);
+    if (said === null) continue;
+    seen += 1;
+    if (seen === index) return sameText(said, was) ? i : -1;
+  }
+  return -1;
+}
+
+/**
+ * The layer with the list line at `index` rewritten as `text`: a Fleet line
+ * becomes one the client told Fleet, a hand line stays a hand line. Null when
+ * the line is no longer there as the client saw it.
+ */
+export function editClientLine(
+  existing: string | null,
+  input: { index: number; was: string; text: string },
+  date: string
+): string | null {
+  const lines = (existing ?? '').replace(/\s+$/, '').split('\n');
+  const i = entryLine(lines, input.index, input.was);
+  const text = oneLine(input.text);
+  if (i < 0 || text === '') return null;
+  lines[i] =
+    parseClientLine(lines[i]) === null
+      ? `- ${text}`
+      : formatClientLine({ text, source: YOU_SOURCE, date });
+  return `${lines.join('\n')}\n`;
+}
+
+/** The layer without the list line at `index`; null when it is no longer there as the client saw it. */
+export function removeClientLine(
+  existing: string | null,
+  input: { index: number; was: string }
+): string | null {
+  const lines = (existing ?? '').replace(/\s+$/, '').split('\n');
+  const i = entryLine(lines, input.index, input.was);
+  if (i < 0) return null;
+  lines.splice(i, 1);
+  return `${lines.join('\n')}\n`;
+}
+
+/** A layer's list lines numbered for the Admiral's note, as `Y1`, `Y2` or `P1`, `P2`. */
+export function numberedEntries(
+  text: string | null,
+  prefix: 'Y' | 'P'
+): Array<{ id: string; entry: ClientEntry }> {
+  return clientEntryList(text).map((entry, i) => ({ id: `${prefix}${i + 1}`, entry }));
+}
+
+/**
+ * A layer as the Admiral's note shows it: each list line numbered by its id,
+ * other lines as written, the file's own heading left out.
+ */
+export function numberedText(text: string, prefix: 'Y' | 'P'): string {
+  let n = 0;
+  return text
+    .split('\n')
+    .filter((line) => !line.startsWith('# '))
+    .map((line) => (lineText(line) === null ? line : `${prefix}${(n += 1)}. ${line.slice(2)}`))
+    .join('\n')
+    .trim();
+}
+
+/**
+ * A preference line that clashes with a rule in an instruction file. It stays
+ * `open` until the client picks the line (`line`) or the rule (`rule`).
+ */
+export type PreferenceConflict = {
+  id: number;
+  layer: string;
+  /** The line in `sameText`'s normal form. */
+  normText: string;
+  /** Where the rule is, like `CLAUDE.md`. */
+  ruleSource: string;
+  ruleText: string;
+  status: 'open' | 'line' | 'rule';
+};

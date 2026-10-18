@@ -16,12 +16,14 @@ import {
   ProjectSetupSchema,
   type AgencyProjectSummary,
   type ClientFileView,
+  type ClientLineResult,
   type BriefIdeas,
   type ProjectFolder,
   type RuleCandidates,
   type ImportDiff,
   type SetupScan
 } from '../../shared/agency-projects';
+import { YOU_LAYER } from '../../shared/agency-client-file';
 import {
   CREW_RUNTIMES,
   RoleSaveSchema,
@@ -44,6 +46,8 @@ import type { AgencyService } from './index';
  */
 
 const RepoId = z.string().regex(/^[0-9a-f]{16}$/);
+/** A layer of the client's preferences: the You layer or a project's. */
+const Layer = z.union([z.literal(YOU_LAYER), RepoId]);
 const PaneId = z.string().min(1);
 const JobId = z.number().int().positive();
 const CrewId = z.number().int().positive();
@@ -76,7 +80,17 @@ const JobControlArgs = z.object({ jobId: JobId, action: z.enum(['cancel', 'accep
 const PermissionAnswerArgs = z.object({ id: JobId, decision: z.enum(['allow', 'deny']) });
 const LeftoverArgs = z.object({ resourceId: JobId, action: z.enum(['retry', 'dismiss']) });
 /** A client file is a page or two of Markdown; anything far past that is not one. */
-const ClientFileWriteArgs = z.object({ repoId: RepoId, text: z.string().max(200_000) });
+const ClientFileWriteArgs = z.object({ layer: Layer, text: z.string().max(200_000) });
+const LineText = z.string().trim().min(1).max(1_000);
+const LineAt = { index: z.number().int().min(0), was: LineText };
+const ClientLineArgs = z.object({
+  layer: Layer,
+  change: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('add'), name: z.string().trim().min(1).max(200), text: LineText }),
+    z.object({ kind: z.literal('edit'), ...LineAt, text: LineText }),
+    z.object({ kind: z.literal('remove'), ...LineAt })
+  ])
+});
 const RuntimeTestArgs = z.object({ repoId: RepoId, runtime: z.enum(CREW_RUNTIMES) });
 const ResultOpenArgs = z.object({ resultId: JobId, file: z.number().int().min(0).max(100) });
 const StepKey = z.string().max(80);
@@ -265,9 +279,13 @@ export function registerAgencyIpc(service: AgencyService): void {
   ipcMain.handle(IPC_CHANNELS.AGENCY_CLIENT_FILE_WRITE, (_e, args: unknown): void => {
     service.writeClientFile(ClientFileWriteArgs.parse(args));
   });
-  ipcMain.handle(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, (_e, repoId: unknown): void => {
-    service.keepClientFile(RepoId.parse(repoId));
+  ipcMain.handle(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, (_e, layer: unknown): void => {
+    service.keepClientFile(Layer.parse(layer));
   });
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CLIENT_FILE_LINE,
+    (_e, args: unknown): ClientLineResult => service.changeClientLine(ClientLineArgs.parse(args))
+  );
 
   // Resolves with the saved path, or null when the job cannot be exported or the client cancelled.
   ipcMain.handle(
@@ -362,7 +380,7 @@ function registerProjectsIpc(service: AgencyService): void {
   );
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_CLIENT_FILE,
-    (_e, repoId: unknown): ClientFileView => projects.clientFile(RepoId.parse(repoId))
+    (_e, layer: unknown): ClientFileView => projects.clientFile(Layer.parse(layer))
   );
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_RULE_CANDIDATES,

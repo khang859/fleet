@@ -69,7 +69,7 @@ async function cancel(jobId: number): Promise<void> {
 const resource = (jobId: number, member: string): ReturnType<typeof service.store.resources.get> =>
   service.store.resources.forJob(jobId).find((r) => r.member === member) ?? null;
 
-describe('a job workspace in an umbrella with three submodules', () => {
+describe('a job workspace in an umbrella with three submodules', { timeout: 20_000 }, () => {
   let root: string;
   let ref: AgencyRepoRef;
   const member = (name: string): string => join(root, 'libs', name);

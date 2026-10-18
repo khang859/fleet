@@ -29,7 +29,7 @@ export type AdmiralDeps = {
     | 'crew'
     | 'permissions'
     | 'store'
-    | 'clientFileForNote'
+    | 'preferencesForNote'
     | 'jobs'
     | 'results'
     | 'proposeClientFile'
@@ -150,7 +150,7 @@ export async function planAdmiralTurn(input: {
         admiralSnapshotNote(
           admiral.agency.store,
           scope,
-          admiral.agency.clientFileForNote(scope.repoId)
+          admiral.agency.preferencesForNote(scope.repoId)
         ),
         crew
       ].join('\n\n'),

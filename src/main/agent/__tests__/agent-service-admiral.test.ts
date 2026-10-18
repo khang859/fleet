@@ -411,7 +411,7 @@ describe('Admiral turn', () => {
     expect(toolResult(rounds[1], 'call-job_open')).toContain(`Opened j${job.id}`);
   });
 
-  it('starts every round from the client file, so a job knows how the client works', async () => {
+  it("starts every round from the client's preferences, so a job knows how the client works", async () => {
     agency.clientFiles.write(
       REPO.repoId,
       '# repo\n- Open PRs as drafts. (from starter questions, 2026-10-17)\n'
@@ -419,8 +419,8 @@ describe('Admiral turn', () => {
 
     const { rounds } = await turn();
 
-    const note = rounds[0].messages.map(text).find((t) => t.includes('The client file'));
-    expect(note).toContain('- Open PRs as drafts. (from starter questions, 2026-10-17)');
+    const note = rounds[0].messages.map(text).find((t) => t.includes('This project:'));
+    expect(note).toContain('P1. Open PRs as drafts. (from starter questions, 2026-10-17)');
   });
 
   it('refuses a turn whose thread is not the scope it claims', async () => {

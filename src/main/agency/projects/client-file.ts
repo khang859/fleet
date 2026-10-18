@@ -1,21 +1,37 @@
 import { readFileSync } from 'node:fs';
 import type { ClientFileProposal } from '../../../shared/agency';
-import { applyClientProposal, mergeClientFile } from '../../../shared/agency-client-file';
+import {
+  applyClientProposal,
+  editClientLine,
+  mergeClientFile,
+  numberedText,
+  removeClientLine,
+  YOU_LAYER,
+  YOU_SOURCE
+} from '../../../shared/agency-client-file';
 import { localDateStamp } from '../../../shared/local-date';
-import type { ClientLineInput, RuleCandidates } from '../../../shared/agency-projects';
+import type {
+  ClientLineChange,
+  ClientLineInput,
+  ClientLineResult,
+  RuleCandidates
+} from '../../../shared/agency-projects';
 import type { GitRun } from '../repo-identity';
 import type { AgencyStore } from '../store/agency-store';
 import { writeAtomicSync } from '../../fs-atomic';
 import { clientFilePath } from './paths';
 import { openRepoReader, readOnlyGit, repoFacts } from './repo-reader';
 
-/** The most of the client file a turn's note carries, so a runaway file cannot fill the context. */
-const NOTE_LIMIT_CHARS = 8_000;
+/** The most of one layer a turn's note carries, so a runaway file cannot fill the context. */
+const NOTE_LIMIT_CHARS = 4_000;
 
-/** Past this size the Admiral is asked to propose a cleanup. */
-export const CLIENT_FILE_CLEANUP_CHARS = 6_000;
+/** Past this size a layer's cleanup is due, before the note starts cutting it off. */
+export const CLIENT_FILE_CLEANUP_CHARS = 3_500;
 
-/** The client file as a turn's note carries it. */
+/** Both layers of the client's preferences for a turn's note; a layer with nothing in it is null. */
+export type PreferencesNote = { you: ClientFileNote | null; project: ClientFileNote | null };
+
+/** One layer of the client's preferences as a turn's note carries it. */
 export type ClientFileNote = {
   text: string;
   /** The file changed outside Fleet; `text` is what Fleet last wrote until the client keeps the change. */
@@ -25,9 +41,10 @@ export type ClientFileNote = {
 };
 
 /**
- * The client files: one Markdown file per repository, changed only by the
- * Fleet UI (starter answers, the Settings editor) or a proposal the client
- * approved. Each write is noted in the store, so a change made any other way
+ * The client files: the client's preferences as Markdown, one file per layer
+ * (`YOU_LAYER` for every project, and one per project keyed by its id),
+ * changed only by the Fleet UI (answers, the Settings page) or a proposal the
+ * client approved. Each write is noted in the store, so a change made any other way
  * (by hand in an editor, or by a crew member) shows as changed outside Fleet,
  * and the Admiral keeps working from Fleet's last version until the client
  * keeps the change.
@@ -44,68 +61,98 @@ export class ClientFiles {
     }
   ) {}
 
-  path(repoId: string): string {
-    return clientFilePath(repoId, this.deps.home());
+  path(layer: string): string {
+    return clientFilePath(layer, this.deps.home());
   }
 
   /** The file as it is on disk; empty when there is none. */
-  read(repoId: string): string {
+  read(layer: string): string {
     try {
-      return readFileSync(this.path(repoId), 'utf8');
+      return readFileSync(this.path(layer), 'utf8');
     } catch {
       return '';
     }
   }
 
-  changedOutside(repoId: string): boolean {
-    return this.read(repoId) !== (this.deps.store.clientFileMark(repoId) ?? '');
+  changedOutside(layer: string): boolean {
+    return this.read(layer) !== (this.deps.store.clientFileMark(layer) ?? '');
   }
 
   /** Write the whole file, as the client's Save in Settings does: hand edits win. */
-  write(repoId: string, text: string): void {
-    writeAtomicSync(this.path(repoId), text);
-    this.deps.store.markClientFile(repoId, text);
+  write(layer: string, text: string): void {
+    writeAtomicSync(this.path(layer), text);
+    this.deps.store.markClientFile(layer, text);
   }
 
   /** The client keeps the file as it is now, outside change and all. */
-  keep(repoId: string): void {
-    this.deps.store.markClientFile(repoId, this.read(repoId));
+  keep(layer: string): void {
+    this.deps.store.markClientFile(layer, this.read(layer));
+  }
+
+  /**
+   * A change the client made on the What the Admiral knows page: add a line,
+   * or edit or remove the line at `index` that said `was`. Refused while the
+   * layer has an outside change the client has not kept, or when the line is
+   * no longer there as the client saw it.
+   */
+  changeLine(layer: string, change: ClientLineChange): ClientLineResult {
+    if (this.changedOutside(layer)) {
+      return {
+        ok: false,
+        reason: 'This file changed outside Fleet. Keep or undo that change first.'
+      };
+    }
+    const existing = this.read(layer) || null;
+    const text =
+      change.kind === 'add'
+        ? mergeClientFile(
+            existing,
+            { name: change.name, add: [{ text: change.text, source: YOU_SOURCE }] },
+            this.today()
+          )
+        : change.kind === 'edit'
+          ? editClientLine(existing, change, this.today())
+          : removeClientLine(existing, change);
+    if (text === null) return { ok: false, reason: 'That line changed since you opened it.' };
+    this.write(layer, text);
+    return { ok: true };
   }
 
   /** Add tagged lines. See `mergeClientFile` for replacing a source and duplicates. */
   merge(
-    repoId: string,
+    layer: string,
     input: { name: string; replaceSource?: string; lines: ClientLineInput[] }
   ): string {
     const text = mergeClientFile(
-      this.read(repoId) || null,
+      this.read(layer) || null,
       { name: input.name, replaceSource: input.replaceSource, add: input.lines },
       this.today()
     );
-    this.write(repoId, text);
+    this.write(layer, text);
     return text;
   }
 
   /** Write an approved proposal in, tagged with where it came from. */
   apply(
-    repoId: string,
+    layer: string,
     input: { name: string; source: string; proposal: ClientFileProposal }
   ): string {
-    const text = applyClientProposal(this.read(repoId) || null, input, this.today());
-    this.write(repoId, text);
+    const text = applyClientProposal(this.read(layer) || null, input, this.today());
+    this.write(layer, text);
     return text;
   }
 
   /**
-   * The client file for a turn's note, read fresh each round so a line written
+   * A layer for a turn's note, read fresh each round so a line written
    * mid-job is in the next one. While an outside change waits on the client,
    * it is Fleet's last version, never the changed one.
    */
-  forNote(repoId: string): ClientFileNote | null {
-    const changedOutside = this.changedOutside(repoId);
-    const base = (
-      changedOutside ? (this.deps.store.clientFileMark(repoId) ?? '') : this.read(repoId)
-    ).trim();
+  forNote(layer: string): ClientFileNote | null {
+    const changedOutside = this.changedOutside(layer);
+    const base = numberedText(
+      changedOutside ? (this.deps.store.clientFileMark(layer) ?? '') : this.read(layer),
+      layer === YOU_LAYER ? 'Y' : 'P'
+    );
     if (base === '' && !changedOutside) return null;
     return {
       text: base.length > NOTE_LIMIT_CHARS ? `${base.slice(0, NOTE_LIMIT_CHARS)}\n[cut off]` : base,

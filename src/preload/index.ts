@@ -188,6 +188,8 @@ import type {
   AgencyProjectSummary,
   BriefIdeas,
   ClientFileView,
+  ClientLineChange,
+  ClientLineResult,
   ClientLineInput,
   ProjectFolder,
   RuleCandidates,
@@ -1233,14 +1235,20 @@ const fleetApi = {
       /** An imported file's project copy beside the repository's newer version. */
       importDiff: async (input: { repo: AgencyRepoRef; path: string }): Promise<ImportDiff> =>
         typedInvoke(IPC_CHANNELS.AGENCY_IMPORT_DIFF, input),
-      clientFile: async (repoId: string): Promise<ClientFileView> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE, repoId),
-      /** Save the whole client file from Settings: the client's edits win. */
-      writeClientFile: async (input: { repoId: string; text: string }): Promise<void> =>
+      /** One layer of the client's preferences: `you` or a project id. */
+      clientFile: async (layer: string): Promise<ClientFileView> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE, layer),
+      /** Save a whole layer from Settings: the client's edits win. */
+      writeClientFile: async (input: { layer: string; text: string }): Promise<void> =>
         typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_WRITE, input),
-      /** Keep a change made to the client file outside Fleet. */
-      keepClientFile: async (repoId: string): Promise<void> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, repoId),
+      /** Add, edit or remove one line of a layer. */
+      changeClientLine: async (input: {
+        layer: string;
+        change: ClientLineChange;
+      }): Promise<ClientLineResult> => typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_LINE, input),
+      /** Keep a change made to a layer outside Fleet. */
+      keepClientFile: async (layer: string): Promise<void> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, layer),
       ruleCandidates: async (repo: AgencyRepoRef): Promise<RuleCandidates[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_RULE_CANDIDATES, repo),
       /** Write the starter answers and picked rules, and mark the starter questions done. */

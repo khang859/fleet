@@ -35,6 +35,7 @@ describe('agency.db', () => {
       'claude_trust',
       'client_files',
       'crew_members',
+      'declined_topics',
       'job_events',
       'job_holds',
       'job_log',
@@ -47,7 +48,10 @@ describe('agency.db', () => {
       'onboarding',
       'permission_requests',
       'plan_versions',
+      'preference_conflicts',
+      'preference_uses',
       'project_members',
+      'project_trust',
       'projects',
       'questions',
       'repos',
@@ -127,6 +131,26 @@ describe('agency.db', () => {
         at: 9
       }
     ]);
+    db.close();
+  });
+
+  it('gives a database from before the preference tables those tables, empty', () => {
+    const path = tempPath();
+    mkdirSync(dirname(path), { recursive: true });
+    const old = new Database(path);
+    migrateAgencyDb(old, AGENCY_SCHEMA_VERSION - 1);
+    expect(tables(old)).not.toContain('project_trust');
+    old.close();
+
+    const db = openAgencyDb(path);
+    for (const table of [
+      'preference_uses',
+      'preference_conflicts',
+      'declined_topics',
+      'project_trust'
+    ]) {
+      expect(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()).toEqual({ n: 0 });
+    }
     db.close();
   });
 

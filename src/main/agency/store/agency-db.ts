@@ -407,6 +407,36 @@ const MIGRATIONS: readonly string[] = [
   ALTER TABLE crew_members ADD COLUMN billing TEXT;
   ALTER TABLE crew_members ADD COLUMN cost_seen REAL;
   ALTER TABLE jobs ADD COLUMN budget_week_pct REAL;
+  `,
+  `
+  CREATE TABLE preference_uses (
+    layer TEXT NOT NULL,
+    norm_text TEXT NOT NULL,
+    job_id INTEGER NOT NULL,
+    PRIMARY KEY (layer, norm_text, job_id)
+  );
+  CREATE TABLE preference_conflicts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    layer TEXT NOT NULL,
+    norm_text TEXT NOT NULL,
+    rule_source TEXT NOT NULL,
+    rule_text TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX preference_conflicts_layer ON preference_conflicts(layer, status);
+  CREATE TABLE declined_topics (
+    project_id TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, topic)
+  );
+  CREATE TABLE project_trust (
+    project_id TEXT PRIMARY KEY,
+    level TEXT NOT NULL,
+    auto_start_usd REAL,
+    updated_at INTEGER NOT NULL
+  );
   `
 ];
 

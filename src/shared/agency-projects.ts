@@ -233,6 +233,15 @@ export type ClientFileView = {
 /** A line the client file can take, with where it came from. */
 export type ClientLineInput = { text: string; source: string };
 
+/** A change the client makes to one line on the What the Admiral knows page. */
+export type ClientLineChange =
+  | { kind: 'add'; name: string; text: string }
+  | { kind: 'edit'; index: number; was: string; text: string }
+  | { kind: 'remove'; index: number; was: string };
+
+/** Whether a line change was made, or why not. */
+export type ClientLineResult = { ok: true } | { ok: false; reason: string };
+
 /** Rules found in a repository's agent instruction file. */
 export type RuleCandidates = { source: string; rules: string[] };
 
@@ -273,3 +282,13 @@ export function githubSlug(url: string | null): string | null {
   const m = /^github\.com\/([^/]+)\/([^/]+)$/.exec(remoteLabel(url));
   return m ? `${m[1]}/${m[2]}` : null;
 }
+
+/**
+ * How much the Admiral does on its own in a project: `ask` puts every plan and
+ * result on a card, `pr` starts a small plan on its own, and `ship` also merges
+ * the pull requests once their checks pass.
+ */
+export type TrustLevel = 'ask' | 'pr' | 'ship';
+
+/** A project's trust level. A null `autoStartUsd` means the project's default job budget. */
+export type ProjectTrust = { level: TrustLevel; autoStartUsd: number | null };
