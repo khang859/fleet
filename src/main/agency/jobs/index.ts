@@ -18,9 +18,12 @@ import {
   type PlanBases,
   type PlanChecks,
   type PlanEffects,
+  type PlanUse,
   type StepStatus,
   type StepSwapRequest
 } from '../../../shared/agency-jobs';
+import { YOU_LAYER } from '../../../shared/agency-client-file';
+import { TRUST_NAME, type AutoStartRule } from '../../../shared/agency-projects';
 import { jsonEqual } from '../../../shared/json-equal';
 import {
   PlanSchema,
@@ -91,7 +94,28 @@ export const NO_CREW: CrewControl = {
   livePanes: () => new Set()
 };
 
-export type ProposeResult = { ok: true; version: PlanVersionRecord } | { ok: false; error: string };
+export type ProposeResult =
+  | {
+      ok: true;
+      version: PlanVersionRecord;
+      /** Ids in the plan's `uses` that name no saved line, left out. */
+      dropped: string[];
+      /** Fleet approved it on its own, under the project's trust level. */
+      autoStarted: boolean;
+    }
+  | { ok: false; error: string };
+
+/** Whether a plan is small enough to start without the client, before the pre-approval checks. */
+export function autoStartable(version: PlanVersionRecord, rule: AutoStartRule): boolean {
+  const { plan } = version;
+  return (
+    version.kind === 'initial' &&
+    version.author === 'admiral' &&
+    plan.newRoles.length === 0 &&
+    plan.budget.usd <= rule.usd &&
+    (plan.budget.weekPct ?? 0) <= rule.weekPct
+  );
+}
 
 /** What the Admiral may set a step to with `job_update`. Removal is a plan change. */
 export type StepUpdate = { step: string; status?: 'running' | 'blocked' | 'done'; note?: string };
@@ -136,6 +160,12 @@ export type JobsServiceDeps = {
   monthlyCapUsd?: () => number;
   /** The share of the weekly Claude limit a plan that names none gets; none unless set. */
   defaultWeekPct?: () => number;
+  /** The project's saved preference lines by their note id, for a plan's `uses`; none unless set. */
+  preferenceLines?: (repoId: string) => PlanUse[];
+  /** When the project lets Fleet start a plan on its own; never unless set. */
+  autoStart?: (repoId: string) => AutoStartRule | null;
+  /** A job just delivered everything; nothing happens unless set. */
+  delivered?: (jobId: number) => void;
 };
 
 /**
@@ -168,6 +198,8 @@ export class JobsService {
     }
     const refused = this.refusePlan(job, plan);
     if (refused !== null) return { ok: false, error: refused };
+    const { uses, dropped } = this.resolveUses(job.repoId, plan.uses);
+    plan = { ...plan, uses: uses.map((u) => u.id) };
     const checks = await this.check(job, plan);
 
     const version = this.store.tx(() => {
@@ -179,7 +211,8 @@ export class JobsService {
         author,
         parentVersion: approved?.version ?? null,
         plan,
-        checks
+        checks,
+        uses
       });
       this.store.applyJobEvent(jobId, { type: 'plan_proposed' }, `plan v${inserted.version}`);
       this.store.plans.log({
@@ -190,7 +223,41 @@ export class JobsService {
       return inserted;
     });
     this.deps.changed([{ repoId: job.repoId, jobId }]);
-    return { ok: true, version };
+    const autoStarted = await this.autoStart(job, version);
+    return {
+      ok: true,
+      version: this.store.plans.version(version.id) ?? version,
+      dropped,
+      autoStarted
+    };
+  }
+
+  /** The saved lines a plan's `uses` names, and the ids that name none. */
+  private resolveUses(repoId: string, ids: string[]): { uses: PlanUse[]; dropped: string[] } {
+    const lines = new Map((this.deps.preferenceLines?.(repoId) ?? []).map((l) => [l.id, l]));
+    const wanted = [...new Set(ids.map((id) => id.toUpperCase()))];
+    return {
+      uses: wanted.flatMap((id) => lines.get(id) ?? []),
+      dropped: wanted.filter((id) => !lines.has(id))
+    };
+  }
+
+  /**
+   * Approve a first plan without a card when the project's trust level lets
+   * Fleet: it must be small enough and pass the same checks the client's
+   * Approve runs, with nothing for the client to tick. False leaves the card.
+   */
+  private async autoStart(job: AgencyJob, version: PlanVersionRecord): Promise<boolean> {
+    const rule = this.deps.autoStart?.(job.repoId) ?? null;
+    if (rule === null || !autoStartable(version, rule)) return false;
+    const current = this.store.getJob(job.id) ?? job;
+    const result = await this.approve(
+      current,
+      version,
+      { planVersionId: version.id, action: 'approve' },
+      rule
+    );
+    return result.ok;
   }
 
   /**
@@ -213,7 +280,8 @@ export class JobsService {
         author: 'client',
         parentVersion: approved.version,
         plan: { ...approved.plan, budget },
-        checks: approved.checks
+        checks: approved.checks,
+        uses: approved.uses
       });
       this.store.plans.supersede(jobId);
       this.store.plans.decide(inserted.id, 'approved');
@@ -293,6 +361,9 @@ export class JobsService {
   /** The client's approve, edit or reject on a plan card. */
   async decide(action: PlanAction): Promise<PlanActionResult> {
     const version = this.store.plans.version(action.planVersionId);
+    if (action.action === 'edit' && version !== null && this.changesStarted(version)) {
+      return this.editStarted(version, action.plan);
+    }
     const verdict = canDecide(
       version,
       version === null ? null : this.store.plans.newest(version.jobId)
@@ -319,6 +390,30 @@ export class JobsService {
         );
       }
     }
+  }
+
+  /** A plan Fleet started on its own that is still the newest, which the client may change. */
+  private changesStarted(version: PlanVersionRecord): boolean {
+    return (
+      version.autoStartUsd !== null &&
+      version.status === 'approved' &&
+      this.store.plans.newest(version.jobId)?.id === version.id
+    );
+  }
+
+  /** Change on a plan Fleet started on its own: the client's edit, as a plan change card. */
+  private async editStarted(version: PlanVersionRecord, input: unknown): Promise<PlanActionResult> {
+    const job = this.store.getJob(version.jobId);
+    if (!job || !acceptsPlans(job.state)) {
+      return { ok: false, reason: `${jobDisplayId(version.jobId)} takes no plan changes now.` };
+    }
+    const parsed = PlanSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, reason: parsed.error.issues[0]?.message ?? '' };
+    return this.proposeForClient(
+      job,
+      parsed.data,
+      (v) => `Client changed plan v${version.version}, which started on its own, into v${v}`
+    );
   }
 
   /**
@@ -380,10 +475,12 @@ export class JobsService {
     return { ok: true, version: result.version.version };
   }
 
+  /** Approve a plan version: the client's Approve, or Fleet's under `rule`. */
   private async approve(
     job: AgencyJob,
     version: PlanVersionRecord,
-    action: Extract<PlanAction, { action: 'approve' }>
+    action: Extract<PlanAction, { action: 'approve' }>,
+    rule: AutoStartRule | null = null
   ): Promise<PlanActionResult> {
     const swapChoice = action.swaps ?? {};
     const gate = await this.approvable(job, version, action);
@@ -402,6 +499,14 @@ export class JobsService {
       );
       this.store.plans.supersede(job.id);
       this.store.plans.decide(version.id, 'approved');
+      if (rule !== null) this.store.plans.markAutoStarted(version.id, rule.usd);
+      for (const use of version.uses) {
+        this.store.preferences.recordUse(
+          use.layer === 'you' ? YOU_LAYER : job.repoId,
+          use.text,
+          job.id
+        );
+      }
       if (checks.bases.length > 0) this.store.plans.setBases(version.id, bases);
       if (crew !== null) this.store.plans.setCrew(version.id, crew);
       this.store.setApprovedVersion(job.id, version.version, version.plan.budget);
@@ -432,16 +537,22 @@ export class JobsService {
         `plan v${version.version} approved`
       );
       this.store.resetChain(job.id);
-      this.store.enqueueWakeup({
-        repoId: job.repoId,
-        jobId: job.id,
-        kind: 'client_action',
-        payload: { line: `Client approved plan v${version.version}`, note: swapNote(swaps) }
-      });
+      // Fleet's own approval answers the Admiral's job_plan call, so no wakeup says it again.
+      if (rule === null) {
+        this.store.enqueueWakeup({
+          repoId: job.repoId,
+          jobId: job.id,
+          kind: 'client_action',
+          payload: { line: `Client approved plan v${version.version}`, note: swapNote(swaps) }
+        });
+      }
       this.store.plans.log({
         jobId: job.id,
         kind: 'decision',
-        text: `Plan v${version.version} approved`
+        text:
+          rule === null
+            ? `Plan v${version.version} approved`
+            : `Plan v${version.version} started on its own: ${TRUST_NAME[rule.level]}, within $${rule.usd}`
       });
       for (const name of saved) {
         this.store.plans.log({
@@ -964,6 +1075,7 @@ export class JobsService {
       return;
     }
     this.store.applyJobEvent(jobId, { type: 'delivered' }, 'every step is done and delivered');
+    this.deps.delivered?.(jobId);
   }
 
   /**
@@ -1027,7 +1139,9 @@ export class JobsService {
         effects:
           v.status === 'proposed' && v.kind === 'change'
             ? this.effectsOf(job, v.plan, approved)
-            : null
+            : null,
+        uses: v.uses,
+        autoStartUsd: v.autoStartUsd
       };
     });
     return {

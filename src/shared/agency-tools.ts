@@ -4,6 +4,7 @@ import {
   DELIVERABLE_KINDS,
   NEW_ROLE_MAX_CHARS,
   PLAN_MAX_NEW_ROLES,
+  PLAN_MAX_USES,
   PLAN_MAX_STEPS,
   PlanSchema,
   STEP_CAP_MAX_MINUTES,
@@ -334,7 +335,8 @@ const PLAN_DESCRIPTION = [
   "When no crew role fits a step, add a role to `newRoles` and give the step that role. Fleet saves it in the project's crew folder, not the repository, only when the client approves the plan. Keep sending it in later versions; a role already saved with the same text stays as it is.",
   'Give every eva step a `cap`. Fleet cannot always measure what eva costs, so the client accepts those steps on the card, and Fleet stops their crew at the cap.',
   'Always send the whole plan. To change an approved plan, send it again with the change: keep the ids of steps that stay, so Fleet can show the client what changes. A step that is done, or already delivered something, cannot change or go.',
-  'Returns at once. The client approves, edits or rejects it, and that arrives as a wakeup. Nothing starts before the client approves, and only the newest version can be approved, so a new call replaces one still waiting.'
+  "List in `uses` the ids of the client's saved preference lines the plan follows, like Y1 or P2, from the note. The client sees them on the card. Do not ask the client what a saved line already answers.",
+  "Returns at once. The client approves, edits or rejects it, and that arrives as a wakeup. Only the newest version can be approved, so a new call replaces one still waiting. Nothing starts before the client approves, unless the project's trust level lets Fleet start a first plan on its own: the result says when it did."
 ].join('\n\n');
 
 const UPDATE_DESCRIPTION = [
@@ -714,6 +716,10 @@ export const AGENCY_TOOL_SPECS: AgentToolSpec[] = [
             maxItems: PLAN_MAX_NEW_ROLES,
             description: 'Roles this plan brings, when no crew role fits a step.',
             items: newRoleSchema
+          },
+          uses: {
+            ...stringList("Ids of the client's saved preference lines the plan follows: Y1, P2."),
+            maxItems: PLAN_MAX_USES
           }
         },
         required: ['playbook', 'summary', 'steps', 'budget'],

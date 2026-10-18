@@ -21,7 +21,11 @@ import {
   type WakeupRelease
 } from '../../shared/agency';
 import { clientEntries, sameText, YOU_LAYER } from '../../shared/agency-client-file';
-import type { ClientLineChange, ClientLineResult } from '../../shared/agency-projects';
+import type {
+  AutoStartRule,
+  ClientLineChange,
+  ClientLineResult
+} from '../../shared/agency-projects';
 import { createLogger } from '../logger';
 import type {
   JobControl,
@@ -280,6 +284,12 @@ export class AgencyService {
       claudeReserve: () => this.spend.claudeWait()?.why ?? null,
       monthlyCapUsd: () => agencySettings.get().admiral.monthlyCapUsd,
       defaultWeekPct: () => agencySettings.get().admiral.defaultBudgetWeekPct,
+      preferenceLines: (repoId) => [
+        ...this.clientFiles.noteLines(YOU_LAYER),
+        ...this.clientFiles.noteLines(repoId)
+      ],
+      autoStart: (repoId) => this.autoStartRule(repoId),
+      delivered: (jobId) => void this.shipIt(jobId),
       planFacts: async (input) => this.planFacts(input),
       crewSnapshot: deps.crewDirs
         ? async (job, plan) => crewSnapshot(await this.crewCatalog(job.repoId), plan)
@@ -332,7 +342,8 @@ export class AgencyService {
           home: () => deps.agencyHome ?? agencyHome(),
           git: deps.gitWrite
         }),
-      changed: (touched) => this.changed(touched)
+      changed: (touched) => this.changed(touched),
+      shipped: (jobId) => this.shipped(jobId)
     });
     this.crew = new CrewService({
       store: this.store,
@@ -696,6 +707,61 @@ export class AgencyService {
     return { ok: true };
   }
 
+  /** When the project lets Fleet start a plan on its own, and how big a plan may be. */
+  private autoStartRule(repoId: string): AutoStartRule | null {
+    const trust = this.store.preferences.trust(repoId);
+    if (trust.level === 'ask') return null;
+    const admiral = this.agencySettings.get().admiral;
+    return {
+      level: trust.level,
+      usd: trust.autoStartUsd ?? admiral.defaultBudgetUsd,
+      weekPct: admiral.defaultBudgetWeekPct
+    };
+  }
+
+  /** Under Ship it, a job that delivered only PRs merges them as if the client pressed Merge. */
+  private async shipIt(jobId: number): Promise<void> {
+    const job = this.store.getJob(jobId);
+    if (!job || this.store.preferences.trust(job.repoId).level !== 'ship') return;
+    const listed = this.store.results.forJob(jobId).filter((r) => r.listed);
+    if (listed.length === 0 || listed.some((r) => r.body.kind !== 'pr')) return;
+    const started = await this.merges.start(jobId, 'trust');
+    if (!started.ok) log.warn('Ship it could not start the merge', { jobId, ...started });
+  }
+
+  /**
+   * A merge Fleet started under Ship it merged every PR: the job is accepted
+   * and closes, and the Admiral reports to the client on the Bridge.
+   */
+  private shipped(jobId: number): void {
+    const job = this.store.getJob(jobId);
+    if (!job) return;
+    const prs = this.store.results
+      .forJob(jobId)
+      .flatMap((r) => (r.body.kind === 'pr' ? [`#${r.body.pr.number} ${r.body.pr.url}`] : []));
+    this.store.plans.log({
+      jobId,
+      kind: 'decision',
+      text: 'Ship it: merged and closed on its own'
+    });
+    const closed = this.closeJob({ jobId, action: 'accept' });
+    if (!closed.ok) {
+      log.warn('Ship it could not close the job', { jobId, reason: closed.reason });
+      return;
+    }
+    const id = jobDisplayId(jobId);
+    this.store.enqueueWakeup({
+      repoId: job.repoId,
+      jobId: null,
+      kind: 'event',
+      payload: {
+        line: `${id} shipped on its own`,
+        body: `The project is at Ship it, so Fleet merged every PR of ${id} once its checks passed, and closed the job: ${prs.join(', ')}. Give the client a short report of what shipped, with the PR links.`
+      }
+    });
+    this.changed([{ repoId: job.repoId, jobId: null }]);
+  }
+
   /** The client asks to merge a delivered job's PRs, in member order. */
   async mergePrs(jobId: number): Promise<JobControlResult> {
     return this.merges.start(jobId);
@@ -990,7 +1056,11 @@ export class AgencyService {
 
   /** Both layers of the client's preferences for an Admiral turn's note on a project. */
   preferencesForNote(repoId: string): PreferencesNote {
-    return { you: this.clientFiles.forNote(YOU_LAYER), project: this.clientFiles.forNote(repoId) };
+    return {
+      you: this.clientFiles.forNote(YOU_LAYER),
+      project: this.clientFiles.forNote(repoId),
+      autoStart: this.autoStartRule(repoId)
+    };
   }
 
   /** Whether an agent session is an Admiral lobby's or job's, for its session header. */

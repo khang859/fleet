@@ -2,10 +2,12 @@ import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import {
   NO_PLAN_CHECKS,
+  PLAN_ISSUE_SEVERITIES,
   type AgencyJobLogEntry,
   type AgencyStep,
   type PlanBases,
   type PlanChecks,
+  type PlanUse,
   type PlanVersionStatus,
   type StepStatus
 } from '../../../shared/agency-jobs';
@@ -29,6 +31,8 @@ type VersionRow = {
   decision_note: string | null;
   proposed_at: number;
   decided_at: number | null;
+  uses_json: string;
+  auto_start_usd: number | null;
 };
 
 type StepRow = {
@@ -64,6 +68,10 @@ export type PlanVersionRecord = {
   decisionNote: string | null;
   proposedAt: number;
   decidedAt: number | null;
+  /** The saved preference lines the plan follows, as they read when it went up. */
+  uses: PlanUse[];
+  /** The dollar limit Fleet approved it under, on its own by the project's trust level; null when the client approved it. */
+  autoStartUsd: number | null;
 };
 
 /** What an approval stopped and withdrew, kept so a restart can finish the job. */
@@ -96,7 +104,7 @@ const isStepStatus = (s: string): s is StepStatus => Object.hasOwn(STEP_STATUSES
 
 const IssueSchema = z.object({
   code: z.string(),
-  severity: z.enum(['warn', 'block']),
+  severity: z.enum(PLAN_ISSUE_SEVERITIES),
   text: z.string(),
   step: z.string().optional(),
   member: z.string().optional(),
@@ -125,6 +133,9 @@ const ChecksSchema = z.object({
   envFiles: z.array(z.object({ stepId: z.string(), files: z.array(z.string()) })).default([])
 });
 const BasesSchema = z.record(z.string(), PinSchema);
+const UsesSchema = z.array(
+  z.object({ id: z.string(), layer: z.enum(['you', 'project']), text: z.string() })
+);
 const EffectsSchema = z.object({
   stopCrewIds: z.array(z.number()),
   withdrawnQuestionIds: z.array(z.number()),
@@ -139,7 +150,8 @@ const EMPTY_PLAN: Plan = {
   budget: { usd: 0 },
   queueBehind: null,
   asksFirst: [],
-  newRoles: []
+  newRoles: [],
+  uses: []
 };
 
 function toVersion(row: VersionRow): PlanVersionRecord {
@@ -158,7 +170,9 @@ function toVersion(row: VersionRow): PlanVersionRecord {
     effects: parseJsonAs(EffectsSchema, row.effects_json),
     decisionNote: row.decision_note,
     proposedAt: row.proposed_at,
-    decidedAt: row.decided_at
+    decidedAt: row.decided_at,
+    uses: parseJsonAs(UsesSchema, row.uses_json) ?? [],
+    autoStartUsd: row.auto_start_usd
   };
 }
 
@@ -196,6 +210,7 @@ export class PlanStore {
     parentVersion: number | null;
     plan: Plan;
     checks: PlanChecks;
+    uses?: PlanUse[];
   }): PlanVersionRecord {
     const next =
       (this.db
@@ -206,8 +221,8 @@ export class PlanStore {
         .get(input.jobId)?.v ?? 0) + 1;
     const { lastInsertRowid } = this.db
       .prepare(
-        `INSERT INTO plan_versions (job_id, version, status, kind, author, parent_version, plan_json, checks_json, proposed_at)
-         VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO plan_versions (job_id, version, status, kind, author, parent_version, plan_json, checks_json, uses_json, proposed_at)
+         VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         input.jobId,
@@ -217,6 +232,7 @@ export class PlanStore {
         input.parentVersion,
         JSON.stringify(input.plan),
         JSON.stringify(input.checks),
+        JSON.stringify(input.uses ?? []),
         this.now()
       );
     const version = this.version(Number(lastInsertRowid));
@@ -281,6 +297,11 @@ export class PlanStore {
         'UPDATE plan_versions SET status = ?, decision_note = ?, decided_at = ? WHERE id = ?'
       )
       .run(status, note, this.now(), id);
+  }
+
+  /** Fleet approved the version on its own, under the project's trust level and its dollar limit. */
+  markAutoStarted(id: number, usd: number): void {
+    this.db.prepare('UPDATE plan_versions SET auto_start_usd = ? WHERE id = ?').run(usd, id);
   }
 
   /** The previous approved version steps down when a change is approved. */

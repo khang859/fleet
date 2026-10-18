@@ -924,11 +924,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       // Inject live CWDs so undo-close restores the PTY at the correct directory
       const closedTab = rawTab ? { ...rawTab, splitRoot: injectLiveCwd(rawTab.splitRoot) } : rawTab;
       const tabs = state.workspace.tabs.filter((t) => t.id !== tabId);
-      const nextTab = pickNextTab(tabs, tabIndex);
+      // A tab closed in the background, such as a finished crew member's, leaves the client where they are.
+      const stay = tabs.some((t) => t.id === state.activeTabId);
+      const nextTab = stay ? undefined : pickNextTab(tabs, tabIndex);
       return {
         workspace: { ...state.workspace, tabs },
-        activeTabId: nextTab?.id ?? null,
-        activePaneId: nextTab ? (collectPaneIds(nextTab.splitRoot)[0] ?? null) : null,
+        ...(stay
+          ? {}
+          : {
+              activeTabId: nextTab?.id ?? null,
+              activePaneId: nextTab ? (collectPaneIds(nextTab.splitRoot)[0] ?? null) : null
+            }),
         lastClosedTab: closedTab
           ? {
               tab: closedTab,

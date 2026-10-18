@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -59,7 +59,9 @@ const github = {
   calls: [] as string[][],
   created: '',
   /** `gh pr create` fails, as when GitHub is down. */
-  refuseCreate: false
+  refuseCreate: false,
+  /** `gh pr merge` fails, as when branch protection refuses it. */
+  refuseMerge: false
 };
 
 /** A PR whose checks passed before the run began, as the recorded PR's did. */
@@ -196,7 +198,7 @@ function prAnswer(args: string[]): { code: number; stdout: string } {
     p.body = args[args.indexOf('--body') + 1];
     return ok();
   }
-  if (sub === 'merge' && p.state === 'OPEN') {
+  if (sub === 'merge' && p.state === 'OPEN' && !github.refuseMerge) {
     Object.assign(p, { state: 'MERGED', mergeState: 'UNKNOWN', mergeSha: mergeShaOf(p.url) });
     return ok();
   }
@@ -259,7 +261,13 @@ describe('merging a job PR by PR', { timeout: 20_000 }, () => {
   beforeEach(async () => {
     home = tempDir('fleet-merge-');
     clock.now = Date.parse('2026-10-17T19:00:00Z');
-    Object.assign(github, { prs: new Map(), calls: [], created: '', refuseCreate: false });
+    Object.assign(github, {
+      prs: new Map(),
+      calls: [],
+      created: '',
+      refuseCreate: false,
+      refuseMerge: false
+    });
     service = new AgencyService({
       dbPath: join(home.dir, 'agency.db'),
       emit: () => {},
@@ -429,6 +437,80 @@ describe('merging a job PR by PR', { timeout: 20_000 }, () => {
     expect(github.calls.some((c) => c[1] === 'merge')).toBe(false);
   });
 
+  describe('under Ship it', () => {
+    /** A delivered job whose one PR Fleet starts to merge on its own. */
+    const shipping = async (core: string): Promise<number> => {
+      const { jobId, tools } = await approvedJob();
+      service.store.preferences.setTrust(ref.repoId, { level: 'ship', autoStartUsd: null });
+      await deliverPr(tools, core);
+      finishStep(jobId);
+      // The merge's first pass starts with it, so it may be past running by now.
+      await vi.waitFor(() => expect(detail(jobId).merge).not.toBeNull());
+      await service.merges.advance(jobId);
+      return jobId;
+    };
+    const lobby = (): string =>
+      service.store.pullWakeups({ repoId: ref.repoId, jobId: null }).text ?? '';
+
+    it('merges once checks pass, closes the job, and has the Admiral report on the Bridge', async () => {
+      const core = openPr('shop/core', 11);
+      const jobId = await shipping(core);
+
+      expect(pr(core).state).toBe('MERGED');
+      expect(detail(jobId).merge).toEqual({ status: 'done', note: 'Every PR merged.' });
+      // Accepting the job starts its cleanup; let it finish before the store closes.
+      await vi.waitFor(() => expect(service.store.getJob(jobId)?.state).toBe('closed'));
+      expect(detail(jobId).log.map((l) => l.text)).toEqual(
+        expect.arrayContaining([
+          'Ship it: Fleet started to merge the PR on its own.',
+          'Ship it: merged and closed on its own'
+        ])
+      );
+      const report = lobby();
+      expect(report).toContain('j1 shipped on its own');
+      expect(report).toContain('#11 https://github.com/shop/core/pull/11');
+      expect(service.store.pullWakeups({ repoId: ref.repoId, jobId }).text ?? '').not.toContain(
+        'The merge finished'
+      );
+    });
+
+    it('leaves the job waiting for the client when a check fails', async () => {
+      const core = openPr('shop/core', 11, [
+        { conclusion: 'FAILURE', completedAt: iso(clock.now) }
+      ]);
+      const jobId = await shipping(core);
+
+      expect(pr(core).state).toBe('OPEN');
+      expect(detail(jobId).merge).toEqual({ status: 'failed', note: 'PR #11 has failing checks.' });
+      expect(service.store.getJob(jobId)?.state).toBe('delivered');
+      expect(service.store.pullWakeups({ repoId: ref.repoId, jobId }).text).toContain(
+        'The merge stopped'
+      );
+      expect(lobby()).not.toContain('shipped on its own');
+    });
+
+    it('leaves the job waiting for the client when GitHub refuses the merge', async () => {
+      github.refuseMerge = true;
+      const core = openPr('shop/core', 11);
+      const jobId = await shipping(core);
+
+      expect(pr(core).state).toBe('OPEN');
+      expect(detail(jobId).merge?.status).toBe('failed');
+      expect(service.store.getJob(jobId)?.state).toBe('delivered');
+      expect(lobby()).not.toContain('shipped on its own');
+    });
+
+    it('waits for the client under Show me the PR', async () => {
+      const core = openPr('shop/core', 11);
+      const { jobId, tools } = await approvedJob();
+      service.store.preferences.setTrust(ref.repoId, { level: 'pr', autoStartUsd: null });
+      await deliverPr(tools, core);
+      finishStep(jobId);
+      await new Promise((r) => setTimeout(r, 20));
+      expect(detail(jobId).merge).toBeNull();
+    });
+  });
+
   it('waits for the review bot setup lists, and tells the Admiral about its comments', async () => {
     const { setup } = await service.projects.scan(ref);
     const members = setup.members.map((m) =>
@@ -497,6 +579,7 @@ describe('mergeVerdict', () => {
   const run = (o: Partial<MergeRunRecord> = {}): MergeRunRecord => ({
     status: 'running',
     note: '',
+    startedBy: 'client',
     since: null,
     rerunAt: null,
     ...o

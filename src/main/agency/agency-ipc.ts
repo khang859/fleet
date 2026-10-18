@@ -21,7 +21,9 @@ import {
   type ProjectFolder,
   type RuleCandidates,
   type ImportDiff,
-  type SetupScan
+  type ProjectTrust,
+  type SetupScan,
+  TRUST_LEVELS
 } from '../../shared/agency-projects';
 import { YOU_LAYER } from '../../shared/agency-client-file';
 import { MEET_QUESTION_IDS, MEET_TEXT_MAX } from '../../shared/agency-meet';
@@ -144,6 +146,14 @@ const MeetAnswerArgs = z.object({
     }),
     z.object({ kind: z.literal('skip') })
   ])
+});
+
+const ProjectTrustArgs = z.object({
+  repoId: RepoId,
+  trust: z.object({
+    level: z.enum(TRUST_LEVELS),
+    autoStartUsd: z.number().positive().max(100_000).nullable()
+  })
 });
 
 const MeetFinishArgs = z.object({
@@ -402,6 +412,13 @@ function registerProjectsIpc(service: AgencyService): void {
     IPC_CHANNELS.AGENCY_RULE_CANDIDATES,
     async (_e, repo: unknown): Promise<RuleCandidates[]> =>
       projects.ruleCandidates(RepoRef.parse(repo))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_PROJECT_TRUST,
+    (_e, repoId: unknown): ProjectTrust => projects.trust(RepoId.parse(repoId))
+  );
+  ipcMain.handle(IPC_CHANNELS.AGENCY_PROJECT_TRUST_SET, (_e, args: unknown): void =>
+    projects.setTrust(ProjectTrustArgs.parse(args))
   );
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_MEET_ANSWER,

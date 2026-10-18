@@ -135,6 +135,8 @@ export const PlanStepSchema = z.object({
 
 export const NEW_ROLE_MAX_CHARS = 8_000;
 export const PLAN_MAX_NEW_ROLES = 5;
+/** The most saved preference lines a plan may cite. */
+export const PLAN_MAX_USES = 20;
 
 /**
  * A role the plan brings because no crew role fits a step, written as the
@@ -169,7 +171,9 @@ export const PlanSchema = z.object({
   queueBehind: z.number().int().positive().nullable().default(null),
   /** What the Admiral checks with the client before doing it: merge, deploy, deletes. */
   asksFirst: z.array(z.string().trim().min(1).max(200)).max(10).default([]),
-  newRoles: z.array(NewRoleSchema).max(PLAN_MAX_NEW_ROLES).default([])
+  newRoles: z.array(NewRoleSchema).max(PLAN_MAX_NEW_ROLES).default([]),
+  /** The client's saved preference lines the plan follows, by their id in the note: Y1, P2. */
+  uses: z.array(z.string().trim().max(12)).max(PLAN_MAX_USES).default([])
 });
 
 export type PlanStep = z.output<typeof PlanStepSchema>;

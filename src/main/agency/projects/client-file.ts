@@ -4,13 +4,16 @@ import {
   applyClientProposal,
   editClientLine,
   mergeClientFile,
+  numberedEntries,
   numberedText,
   removeClientLine,
   YOU_LAYER,
   YOU_SOURCE
 } from '../../../shared/agency-client-file';
 import { localDateStamp } from '../../../shared/local-date';
+import type { PlanUse } from '../../../shared/agency-jobs';
 import type {
+  AutoStartRule,
   ClientLineChange,
   ClientLineInput,
   ClientLineResult,
@@ -29,7 +32,12 @@ const NOTE_LIMIT_CHARS = 4_000;
 export const CLIENT_FILE_CLEANUP_CHARS = 3_500;
 
 /** Both layers of the client's preferences for a turn's note; a layer with nothing in it is null. */
-export type PreferencesNote = { you: ClientFileNote | null; project: ClientFileNote | null };
+export type PreferencesNote = {
+  you: ClientFileNote | null;
+  project: ClientFileNote | null;
+  /** The project's trust level, when it lets a first plan start on its own. */
+  autoStart?: AutoStartRule | null;
+};
 
 /** One layer of the client's preferences as a turn's note carries it. */
 export type ClientFileNote = {
@@ -149,16 +157,30 @@ export class ClientFiles {
    */
   forNote(layer: string): ClientFileNote | null {
     const changedOutside = this.changedOutside(layer);
-    const base = numberedText(
-      changedOutside ? (this.deps.store.clientFileMark(layer) ?? '') : this.read(layer),
-      layer === YOU_LAYER ? 'Y' : 'P'
-    );
+    const base = numberedText(this.noteText(layer), layer === YOU_LAYER ? 'Y' : 'P');
     if (base === '' && !changedOutside) return null;
     return {
       text: base.length > NOTE_LIMIT_CHARS ? `${base.slice(0, NOTE_LIMIT_CHARS)}\n[cut off]` : base,
       changedOutside,
       oversize: base.length > CLIENT_FILE_CLEANUP_CHARS
     };
+  }
+
+  /** The layer's lines by the ids the note gives them now, for a plan's `uses`. */
+  noteLines(layer: string): PlanUse[] {
+    const you = layer === YOU_LAYER;
+    return numberedEntries(this.noteText(layer), you ? 'Y' : 'P').map(({ id, entry }) => ({
+      id,
+      layer: you ? 'you' : 'project',
+      text: entry.text
+    }));
+  }
+
+  /** The layer as the note reads it: Fleet's last version while an outside change waits. */
+  private noteText(layer: string): string {
+    return this.changedOutside(layer)
+      ? (this.deps.store.clientFileMark(layer) ?? '')
+      : this.read(layer);
   }
 
   private today(): string {

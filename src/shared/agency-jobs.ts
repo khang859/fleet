@@ -24,9 +24,12 @@ export type PlanVersionStatus = 'proposed' | 'approved' | 'rejected' | 'replaced
  * `fix: 'use-branch'` means the card can offer local branches in place of PRs;
  * `fix: 'trust-claude'` that it can open Claude Code in `path` to trust it.
  */
+/** How much an issue holds a plan: not at all, until fixed, or until the client accepts it. */
+export const PLAN_ISSUE_SEVERITIES = ['warn', 'block', 'accept'] as const;
+
 export type PlanIssue = {
   code: string;
-  severity: 'warn' | 'block' | 'accept';
+  severity: (typeof PLAN_ISSUE_SEVERITIES)[number];
   text: string;
   step?: string;
   member?: string;
@@ -99,6 +102,9 @@ export type PlanEffects = {
 /** The base commit each member's work starts from, pinned at approval. */
 export type PlanBases = Record<string, { sha: string; from: 'default' | 'head' }>;
 
+/** A saved preference line a plan follows, as it read when the plan went up. */
+export type PlanUse = { id: string; layer: 'you' | 'project'; text: string };
+
 export type AgencyPlanVersion = {
   /** Global id: what the tool result and the plan action carry. */
   id: number;
@@ -120,6 +126,10 @@ export type AgencyPlanVersion = {
   diff: PlanDiffEntry[];
   /** For a proposed change, what approving it would do. */
   effects: PlanEffects | null;
+  /** The saved preference lines the plan follows. */
+  uses: PlanUse[];
+  /** The dollar limit Fleet approved it under, on its own by the project's trust level; null when the client approved it. */
+  autoStartUsd: number | null;
 };
 
 export type StepStatus =

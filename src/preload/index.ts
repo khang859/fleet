@@ -188,6 +188,7 @@ import type {
   AgencyProjectSummary,
   BriefIdeas,
   ClientFileView,
+  ProjectTrust,
   ClientLineChange,
   ClientLineResult,
   ClientLineInput,
@@ -1250,6 +1251,11 @@ const fleetApi = {
       /** Keep a change made to a layer outside Fleet. */
       keepClientFile: async (layer: string): Promise<void> =>
         typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, layer),
+      /** How much Fleet does on its own in a project. */
+      trust: async (repoId: string): Promise<ProjectTrust> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_PROJECT_TRUST, repoId),
+      setTrust: async (input: { repoId: string; trust: ProjectTrust }): Promise<void> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_PROJECT_TRUST_SET, input),
       ruleCandidates: async (repo: AgencyRepoRef): Promise<RuleCandidates[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_RULE_CANDIDATES, repo),
       /** Save one Meet you answer to its layer, or the project's trust level. */

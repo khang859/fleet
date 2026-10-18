@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { clockTime } from '../../../../shared/agency-crew';
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../shared/agency';
 import type { SettingsCard } from '../../../../shared/agency-settings';
+import type { TrustLevel } from '../../../../shared/agency-projects';
 import type { AgencyPermission, PermissionState } from '../../../../shared/agency-permissions';
 import { jobDisplayId } from '../../../../shared/agency';
 import type {
@@ -18,7 +19,7 @@ import { CrewSwapForm } from './CrewSwap';
 import { CancelJob, DeliveredCard, LeftoverList, SECONDARY } from './JobClose';
 import { PastJobList } from './PastJobs';
 import { PermissionCard } from './PermissionCard';
-import { PlanCard } from './PlanCard';
+import { PlanCard, UseChipList } from './PlanCard';
 import { ResultCard } from './ResultCard';
 import { SettingsCardView } from './SettingsCard';
 import { QuestionCard, type QuestionAnswer } from './QuestionCard';
@@ -113,7 +114,7 @@ export function JobSheet({
         />
       )}
 
-      {job !== null && <PlanSection detail={detail} />}
+      {job !== null && <PlanSection detail={detail} trust={snapshot?.trust.level ?? 'ask'} />}
 
       <CrewSection detail={detail} />
 
@@ -127,7 +128,7 @@ export function JobSheet({
         <SpendSection spend={detail.spend} />
       )}
 
-      {firstRun && <HowAJobGoes />}
+      {firstRun && <HowAJobGoes trust={snapshot?.trust.level ?? 'ask'} />}
 
       <LeftoversSection snapshot={snapshot} />
 
@@ -312,22 +313,38 @@ function NeedsYouCard({ member }: { member: AgencyCrewMember }): React.JSX.Eleme
   );
 }
 
-function PlanSection({ detail }: { detail: AgencyJobDetail | undefined }): React.JSX.Element {
+function PlanSection({
+  detail,
+  trust
+}: {
+  detail: AgencyJobDetail | undefined;
+  trust: TrustLevel;
+}): React.JSX.Element {
   const { pending, approved } = planVersions(detail);
+  const aside =
+    approved === null
+      ? undefined
+      : `v${approved.version} ${approved.autoStartUsd === null ? 'approved' : 'started on its own'}`;
   return (
-    <Section
-      label="PLAN"
-      gap="gap-1"
-      aside={approved === null ? undefined : `v${approved.version} approved`}
-    >
+    <Section label="PLAN" gap="gap-1" aside={aside}>
       {approved === null || detail === undefined ? (
         <p className="text-[13px] text-fleet-text-muted">
           {pending === null
-            ? 'The plan shows up here once the Admiral writes one: the crew, what you get back, and a budget. Nothing starts until you approve it.'
+            ? `The plan shows up here once the Admiral writes one: the crew, what you get back, and a budget. ${trust === 'ask' ? 'Nothing starts until you approve it.' : 'A small first plan starts on its own.'}`
             : 'Nothing starts until you approve the plan above.'}
         </p>
       ) : (
-        <PlanSteps detail={detail} />
+        <>
+          <PlanSteps detail={detail} />
+          {approved.uses.length > 0 && (
+            <div className="flex flex-col gap-1.5 pt-2">
+              <h4 className="text-[11px] font-semibold tracking-[0.04em] text-fleet-text-muted">
+                USING WHAT I KNOW ABOUT YOU
+              </h4>
+              <UseChipList uses={approved.uses} />
+            </div>
+          )}
+        </>
       )}
     </Section>
   );
@@ -867,19 +884,20 @@ function JobHeading({
   );
 }
 
-const STEPS = [
-  'You brief me.',
-  'I send a plan: the crew, what you get back, and a budget.',
-  'You approve. Crew start in their own tab, and you can peek any time.',
-  'Questions show up under WAITING ON YOU. Results come back as cards.'
-];
-
-/** The four steps of a job, for a client who has not run one yet. */
-export function HowAJobGoes(): React.JSX.Element {
+/** The four steps of a job, for a client who has not run one yet; the third follows the trust level. */
+export function HowAJobGoes({ trust }: { trust: TrustLevel }): React.JSX.Element {
+  const steps = [
+    'You brief me.',
+    'I send a plan: the crew, what you get back, and a budget.',
+    trust === 'ask'
+      ? 'You approve. Crew start in their own tab, and you can peek any time.'
+      : 'A small plan starts on its own, a bigger one when you approve. Crew work in their own tab, and you can peek any time.',
+    'Questions show up under WAITING ON YOU. Results come back as cards.'
+  ];
   return (
     <Section label="HOW A JOB GOES" gap="gap-2.5">
       <ol className="flex flex-col gap-2.5">
-        {STEPS.map((step, i) => (
+        {steps.map((step, i) => (
           <li key={i} className="flex gap-2.5 text-[13px] text-fleet-text-secondary">
             <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-fleet-surface-2 text-[11px] text-fleet-text">
               {i + 1}

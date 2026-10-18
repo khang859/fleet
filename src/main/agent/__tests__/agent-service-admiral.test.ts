@@ -12,7 +12,11 @@ import {
   type AgentStreamError
 } from '../../../shared/agent-types';
 import { DEFAULT_AGENCY_SETTINGS, type AgencySettings } from '../../../shared/agency';
-import { ADMIRAL_TOOLS, ADMIRAL_WAKEUP_WIRE_PREFIX } from '../../../shared/agency-prompt';
+import {
+  ADMIRAL_SYSTEM_PROMPT,
+  ADMIRAL_TOOLS,
+  ADMIRAL_WAKEUP_WIRE_PREFIX
+} from '../../../shared/agency-prompt';
 import { AgentService } from '../agent-service';
 import { ScheduleStore } from '../schedule-store';
 import { PermissionGate } from '../permissions/gate';
@@ -421,6 +425,23 @@ describe('Admiral turn', () => {
 
     const note = rounds[0].messages.map(text).find((t) => t.includes('This project:'));
     expect(note).toContain('P1. Open PRs as drafts. (from starter questions, 2026-10-17)');
+    expect(note).not.toContain('trust level');
+    expect(ADMIRAL_SYSTEM_PROMPT).toContain(
+      "List the ids of the lines a plan follows in `job_plan`'s `uses`"
+    );
+  });
+
+  it('tells the Admiral what Fleet does on its own under the trust level, and no more', async () => {
+    agency.store.preferences.setTrust(REPO.repoId, { level: 'pr', autoStartUsd: 4 });
+
+    const { rounds } = await turn();
+
+    const note = rounds[0].messages.map(text).find((t) => t.includes('trust level'));
+    expect(note).toContain(
+      "The client set this project's trust level to Show me the PR. Fleet itself approves a first plan you propose"
+    );
+    expect(note).toContain('within $4.00');
+    expect(note).toContain('Nothing else changes for you: propose plans as always.');
   });
 
   it('refuses a turn whose thread is not the scope it claims', async () => {

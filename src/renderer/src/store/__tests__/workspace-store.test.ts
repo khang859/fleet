@@ -690,6 +690,41 @@ describe('closeTab — live CWD for undo', () => {
   });
 });
 
+describe('closeTab — focus', () => {
+  const CREW_TAB = {
+    id: 'tab-a2',
+    label: 'Crew',
+    labelIsCustom: false,
+    cwd: '/tmp',
+    splitRoot: { type: 'leaf' as const, id: 'pane-a2', cwd: '/tmp' }
+  };
+
+  beforeEach(() => {
+    useWorkspaceStore.setState({
+      workspace: {
+        ...WS_A,
+        tabs: [
+          ...WS_A.tabs,
+          CREW_TAB,
+          { ...CREW_TAB, id: 'tab-a3', splitRoot: { ...CREW_TAB.splitRoot, id: 'pane-a3' } }
+        ]
+      }
+    });
+  });
+
+  it('leaves the client on their tab when a tab closes in the background', () => {
+    useWorkspaceStore.getState().closeTab('tab-a2');
+    const { activeTabId, activePaneId, workspace } = useWorkspaceStore.getState();
+    expect(workspace.tabs.map((t) => t.id)).not.toContain('tab-a2');
+    expect([activeTabId, activePaneId]).toEqual(['tab-a1', 'pane-a1']);
+  });
+
+  it('moves to a neighbour when the active tab closes', () => {
+    useWorkspaceStore.getState().closeTab('tab-a1');
+    expect(useWorkspaceStore.getState().activeTabId).not.toBe('tab-a1');
+  });
+});
+
 describe('closeWorktreeTab — dissolved group', () => {
   const DISSOLVED_WORKTREE_TAB = {
     id: 'tab-wt1',
@@ -1572,6 +1607,7 @@ describe('Admiral panes', () => {
           onboarding: { setupDoneAt: 1, starterDoneAt: 1, meetDue: false, meetLeft: [] },
           leftovers: [],
           clientFileChanged: false,
+          trust: { level: 'ask', autoStartUsd: null },
           pastJobs: [],
           settingsCards: []
         }

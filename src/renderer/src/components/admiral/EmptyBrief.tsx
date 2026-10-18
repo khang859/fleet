@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { AgencyRepoRef } from '../../../../shared/agency';
-import type { BriefIdea, BriefIdeas } from '../../../../shared/agency-projects';
+import type { BriefIdea, BriefIdeas, TrustLevel } from '../../../../shared/agency-projects';
 import { useAdmiralOnboardingStore } from '../../store/admiral-onboarding-store';
 import { useAgencyStore } from '../../store/agency-store';
 import { admiralKey } from '../../store/admiral-thread';
@@ -23,6 +23,7 @@ export function EmptyBrief({
   const questionsLeft = useAgencyStore(
     (s) => s.snapshots[repo.repoId]?.onboarding.meetLeft.length ?? 0
   );
+  const trust = useAgencyStore((s) => s.snapshots[repo.repoId]?.trust.level ?? 'ask');
 
   // Read each time the lobby comes up empty, so the ideas are as fresh as the project.
   const { repoId, root, name } = repo;
@@ -36,8 +37,7 @@ export function EmptyBrief({
         <div className="flex flex-col gap-1.5">
           <h2 className="text-xl font-semibold text-fleet-text">Ready. What should we work on?</h2>
           <p className="text-[13px] text-fleet-text-muted">
-            Tell me what you want, like you would tell a person. I write a plan first, and nothing
-            starts until you approve it.
+            Tell me what you want, like you would tell a person. {PLAN_FIRST[trust]}
           </p>
         </div>
         {questionsLeft > 0 && (
@@ -61,6 +61,13 @@ export function EmptyBrief({
     </div>
   );
 }
+
+/** What happens to a plan under each trust level. */
+const PLAN_FIRST: Record<TrustLevel, string> = {
+  ask: 'I write a plan first, and nothing starts until you approve it.',
+  pr: 'I write a plan first. A small one starts on its own, and you get the PR.',
+  ship: 'I write a plan first. A small one starts on its own, and I merge it when its checks pass.'
+};
 
 const GITHUB_NOTE: Record<BriefIdeas['github'], string | null> = {
   ok: null,
