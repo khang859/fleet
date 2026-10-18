@@ -95,6 +95,19 @@ It can run shell commands, edit files, search code, fetch web pages, and generat
 
 **Scratch chat** (`Cmd+Shift+J`) opens a quick agent chat in its own folder.
 
+### Admiral
+
+An Admiral runs one repository's work for you.
+You brief it, it plans the job, it hires Claude Code or eva crew in their own panes, and it brings back the result.
+
+- Plans you approve before anything starts, with a budget on dollars and on your weekly Claude Code limit
+- Crew in their own git worktrees, with permission prompts answered by the plan or sent to you
+- Project setup that reads the repo without running it, and imports `.claude/agents`, `CLAUDE.md` rules and team `.fleet/` files
+- Crew roles and playbooks as Markdown files, shared with your team through `.fleet/`
+
+Crew are not sandboxed: they use your own logins and tools.
+See the [Admiral guide](docs/admiral.md).
+
 ### Copilot (macOS)
 
 A floating overlay panel that monitors active Claude Code sessions across all your panes.

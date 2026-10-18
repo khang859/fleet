@@ -214,7 +214,7 @@ describe('settings_change', () => {
     expect(agency.admiral).toMatchObject({ model: '', monthlyCapUsd: 100 });
     expect(cards()).toEqual([]);
     expect((await change([{ key: 'agency.enabled', value: false }])).summary).toBe('not changed');
-    expect(agency.enabled).toBe(false);
+    expect(agency.enabled).toBe(true);
   });
 
   it('refuses unknown keys, bad values and members the project does not have', async () => {

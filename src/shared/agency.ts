@@ -333,7 +333,7 @@ export type CrewRuntimeSettings = {
 };
 
 export const DEFAULT_AGENCY_SETTINGS: AgencySettings = {
-  enabled: false,
+  enabled: true,
   admiral: {
     model: '',
     defaultBudgetUsd: 10,

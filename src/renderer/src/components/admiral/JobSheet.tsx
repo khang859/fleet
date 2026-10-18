@@ -909,10 +909,6 @@ function SettingsBox({
           {budgetUsd === null ? 'none set' : `$${formatUsd(budgetUsd)}`}
         </span>
       </div>
-      <div className="flex justify-between gap-2">
-        <span className="text-fleet-text-muted">Crew</span>
-        <span className="text-fleet-text">Claude Code</span>
-      </div>
       <button
         type="button"
         onClick={onOpenSettings}
