@@ -1,3 +1,4 @@
+import type { CrewRuntime } from './agency-crew';
 import type { SettingsCard } from './agency-settings';
 
 /**
@@ -87,6 +88,8 @@ export type AgencyJob = {
   holds: JobHoldKind[];
   /** A plan version waiting on the client, or null when none is. */
   pendingPlan: { id: number; version: number } | null;
+  /** Crew members waiting on the client in their pane, at a login or trust screen. */
+  crewNeedingYou: number;
   /** The agent session the job's conversation is written to. */
   sessionId: string;
   /** Whether the lobby messages that led to this job were carried into it. */
@@ -109,22 +112,24 @@ export type AgencyQuestionOption = { label: string; detail?: string };
 /**
  * `ask` is the Admiral's own question. The rest are Fleet's cards, answered
  * the same way: `model_unreachable` (Retry or Settings), `continue` (go on
- * after the automatic-turn limit) and `resume` (Resume or Cancel after a
- * restart).
+ * after the automatic-turn limit), `resume` (Resume or Cancel after a
+ * restart) and `rehire` (hire for a step again after its crew member left).
  */
 export type AgencyQuestionKind =
   | 'ask'
   | 'client_file'
   | 'model_unreachable'
   | 'continue'
-  | 'resume';
+  | 'resume'
+  | 'rehire';
 
 export const AGENCY_QUESTION_KINDS: readonly AgencyQuestionKind[] = [
   'ask',
   'client_file',
   'model_unreachable',
   'continue',
-  'resume'
+  'resume',
+  'rehire'
 ];
 
 /** The kinds the Admiral puts up itself, whose answers wake it; the rest are Fleet's own cards. */
@@ -288,10 +293,25 @@ export type AgencySettings = {
     defaultBudgetUsd: number;
     /** What all jobs together may spend in a calendar month. */
     monthlyCapUsd: number;
+    /** How many times the Admiral may nudge a crew member that ends a turn without reporting. */
+    nudgeLimit: number;
   };
+  /** Settings › Agency › Crew › Runtimes, for each runtime. */
+  crew: Record<CrewRuntime, CrewRuntimeSettings>;
+};
+
+export type CrewRuntimeSettings = {
+  /** The most crew of the runtime that work at once, across jobs; null takes `defaultAtOnce`. */
+  atOnce: number | null;
+  /** The model of a role that names none; empty leaves it to the runtime. */
+  defaultModel: string;
 };
 
 export const DEFAULT_AGENCY_SETTINGS: AgencySettings = {
   enabled: false,
-  admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100 }
+  admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100, nudgeLimit: 3 },
+  crew: {
+    claude: { atOnce: null, defaultModel: '' },
+    eva: { atOnce: null, defaultModel: '' }
+  }
 };

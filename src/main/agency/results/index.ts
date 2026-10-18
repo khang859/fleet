@@ -183,7 +183,7 @@ export class ResultsService {
     const title = args.title ?? '';
     if (kind === 'pr' && url !== undefined) return this.buildPr(repo, url);
     if (kind === 'branch' && branch !== undefined) {
-      return this.buildBranch(repo, branch, args.member);
+      return this.buildBranch(repo, jobId, branch, args.member);
     }
     if (kind === 'copy' && text !== undefined) {
       return { ok: true, title, member: null, body: { kind, text } };
@@ -220,26 +220,51 @@ export class ResultsService {
     return { ok: true, title: pr.title, member: member.name, body: { kind: 'pr', pr } };
   }
 
-  /** A local branch in the named member, or in the first member that has it. */
-  private async buildBranch(repo: AgencyRepoRef, branch: string, name?: string): Promise<Built> {
+  /**
+   * A local branch in the named member, or else in the member where it moved
+   * past the base its job worktree was made at. A step workspace gives every
+   * member the same branch name, so the first member that has the branch may
+   * not be the one the work is in.
+   */
+  private async buildBranch(
+    repo: AgencyRepoRef,
+    jobId: number,
+    branch: string,
+    name?: string
+  ): Promise<Built> {
     const { members } = projectMembers(this.deps.store.projects, repo);
     const named = members.filter((m) => name === undefined || m.name === name);
     if (named.length === 0) return { ok: false, reason: `${name} is not a member of ${repo.name}` };
+    const bases = new Map(
+      this.deps.store.resources
+        .forJob(jobId)
+        .filter((r) => r.branch === branch)
+        .map((r) => [r.member, r.baseSha])
+    );
+    const found: Array<{ member: string; sha: string }> = [];
     for (const m of named) {
       const sha = await this.deps.git(
         ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`],
         m.root
       );
-      if (sha) {
-        return {
-          ok: true,
-          title: branch,
-          member: m.name,
-          body: { kind: 'branch', branch, sha: sha.trim() }
-        };
-      }
+      if (sha) found.push({ member: m.name, sha: sha.trim() });
     }
-    return { ok: false, reason: `there is no local branch ${branch}` };
+    const moved = found.filter((f) => f.sha !== bases.get(f.member));
+    if (moved.length > 1) {
+      const names = moved.map((f) => f.member).join(', ');
+      return {
+        ok: false,
+        reason: `${branch} has new commits in ${names}. Deliver it once for each, with member set.`
+      };
+    }
+    const pick = moved.at(0) ?? found.at(0);
+    if (pick === undefined) return { ok: false, reason: `there is no local branch ${branch}` };
+    return {
+      ok: true,
+      title: branch,
+      member: pick.member,
+      body: { kind: 'branch', branch, sha: pick.sha }
+    };
   }
 }
 

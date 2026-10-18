@@ -119,6 +119,7 @@ function AdmiralStages({
   );
   const firstRunDone = useAdmiralOnboardingStore((s) => s.firstRunDone);
   const picking = useAdmiralOnboardingStore((s) => s.picking[paneId] === true);
+  const redoingSetup = useAdmiralOnboardingStore((s) => s.redoingSetup[paneId] === true);
   const [keyChecked, setKeyChecked] = useState(false);
 
   // The catalog carries the context limits the pane compacts by; the key is
@@ -134,22 +135,26 @@ function AdmiralStages({
     hasModel: keyPresent || localModels,
     firstRunDone,
     picking,
+    redoingSetup,
     onboarding
   });
   if (stage === 'ready') {
     return <AdmiralWorkspace paneId={paneId} repo={repo} activeJob={activeJob} ready={ready} />;
   }
-  return <AdmiralOnboarding paneId={paneId} repo={repo} stage={stage} />;
+  return <AdmiralOnboarding paneId={paneId} repo={repo} stage={stage} redoing={redoingSetup} />;
 }
 
 function AdmiralOnboarding({
   paneId,
   repo,
-  stage
+  stage,
+  redoing
 }: {
   paneId: string;
   repo: AgencyRepoRef;
   stage: Exclude<AdmiralStage, 'ready'>;
+  /** Setup shows again for a project already set up, and leads back to the lobby. */
+  redoing: boolean;
 }): React.JSX.Element {
   const frameRef = useRef<HTMLDivElement>(null);
   const width = useElementWidth(frameRef);
@@ -162,7 +167,16 @@ function AdmiralOnboarding({
     loading: null,
     'first-run': <AdmiralFirstRun onPick={pickProject} />,
     picker: <ProjectPicker paneId={paneId} current={repo} wide={wide} />,
-    setup: <ProjectSetup repo={repo} />,
+    setup: (
+      <ProjectSetup
+        repo={repo}
+        onClose={
+          redoing
+            ? () => useAdmiralOnboardingStore.getState().setRedoingSetup(paneId, false)
+            : undefined
+        }
+      />
+    ),
     starter: <StarterQuestions repo={repo} wide={wide} />
   };
 
@@ -171,7 +185,9 @@ function AdmiralOnboarding({
       <AdmiralHeader>
         {(stage === 'setup' || stage === 'starter') && <RepoChip repo={repo} />}
         {stage !== 'loading' && (
-          <span className="truncate text-xs text-fleet-text-muted">{STAGE_LABEL[stage]}</span>
+          <span className="truncate text-xs text-fleet-text-muted">
+            {redoing && stage === 'setup' ? 'Project setup' : STAGE_LABEL[stage]}
+          </span>
         )}
       </AdmiralHeader>
       <div className="flex min-h-0 min-w-0 flex-1">{body[stage]}</div>

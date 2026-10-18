@@ -1,14 +1,56 @@
 import type { PlanBases } from '../../../shared/agency-jobs';
 import { githubSlug } from '../../../shared/agency-projects';
+import type { CrewRuntime, RuntimeCheck } from '../../../shared/agency-crew';
 import type { Plan } from '../../../shared/agency-plan';
 import { ghState, type GhRun } from '../projects/gh';
 import type { ProjectMember } from '../projects/workspace-projects';
 import { repoFacts } from '../projects/repo-reader';
+import { repoSkills } from '../projects/repo-skills';
 import type { GitRun } from '../repo-identity';
 import { planOverlap, type OtherJobPaths } from './overlap';
-import type { MemberFacts, PlanFacts } from './plan-checks';
+import {
+  planModels,
+  planRoles,
+  stepModel,
+  stepRuntime,
+  type CrewFacts,
+  type MemberFacts,
+  type PlanFacts
+} from './plan-checks';
 
 export type PlanFactsDeps = { git: GitRun; gh: GhRun };
+
+/**
+ * The crew as the check reads it: roles, how to check a runtime and list
+ * eva's models, and Claude Code's folder trust.
+ */
+export type CrewInput = Omit<CrewFacts, 'runtimes' | 'evaModels'> & {
+  check: (runtime: CrewRuntime) => Promise<RuntimeCheck>;
+  evaModels: () => Promise<ReadonlySet<string> | null>;
+};
+
+/** Checks only the runtimes the plan's steps run on, and lists eva's models only for an eva model. */
+async function crewFacts(plan: Plan, crew: CrewInput): Promise<CrewFacts> {
+  const roles = planRoles(plan, crew.roles);
+  const models = planModels(plan, crew.roles, crew.models);
+  const used = new Set(plan.steps.flatMap((s) => stepRuntime(s, roles) ?? []));
+  const evaModel = plan.steps.some(
+    (s) => stepRuntime(s, roles) === 'eva' && stepModel(s, roles, models) !== undefined
+  );
+  const [checks, evaModels] = await Promise.all([
+    Promise.all([...used].map(async (r) => crew.check(r))),
+    evaModel ? crew.evaModels() : null
+  ]);
+  return {
+    roles,
+    roleText: crew.roleText,
+    models,
+    evaModels,
+    runtimes: Object.fromEntries(checks.map((c) => [c.runtime, c])),
+    claudeTrust: crew.claudeTrust,
+    memberTrust: crew.memberTrust
+  };
+}
 
 async function sha(git: GitRun, root: string, ref: string): Promise<string | null> {
   const out = await git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], root);
@@ -49,7 +91,8 @@ export async function memberFacts(
     defaultBranch,
     defaultSha: await defaultTip(git, root, defaultBranch),
     headBranch: head === null || head.trim() === '' ? null : head.trim(),
-    headSha: await sha(git, root, 'HEAD')
+    headSha: await sha(git, root, 'HEAD'),
+    skills: await repoSkills(root, defaultBranch, git)
   };
 }
 
@@ -64,6 +107,8 @@ export async function gatherPlanFacts(
     plan: Plan;
     others: OtherJobPaths[];
     pinned: PlanBases | null;
+    crew: CrewInput | null;
+    envFiles: PlanFacts['envFiles'];
   },
   deps: PlanFactsDeps
 ): Promise<PlanFacts> {
@@ -77,6 +122,8 @@ export async function gatherPlanFacts(
       members.map((m) => m.name),
       input.others
     ),
-    pinned: input.pinned
+    pinned: input.pinned,
+    crew: input.crew && (await crewFacts(input.plan, input.crew)),
+    envFiles: input.envFiles
   };
 }

@@ -19,8 +19,17 @@ import {
   type BriefIdeas,
   type ProjectFolder,
   type RuleCandidates,
+  type ImportDiff,
   type SetupScan
 } from '../../shared/agency-projects';
+import {
+  CREW_RUNTIMES,
+  RoleSaveSchema,
+  type CrewCatalog,
+  type CrewRuntimeView,
+  type RoleSaveResult,
+  type RuntimeTestResult
+} from '../../shared/agency-crew';
 import type { AgencyJobDetail, JobControlResult, PlanActionResult } from '../../shared/agency-jobs';
 import { PlanSchema } from '../../shared/agency-plan';
 import type { AdmiralSettingMark, SettingsUndoOutcome } from '../../shared/agency-settings';
@@ -36,6 +45,7 @@ import type { AgencyService } from './index';
 const RepoId = z.string().regex(/^[0-9a-f]{16}$/);
 const PaneId = z.string().min(1);
 const JobId = z.number().int().positive();
+const CrewId = z.number().int().positive();
 const Ids = z.array(z.number().int().positive());
 
 const PathContextArg = z.union([
@@ -65,6 +75,7 @@ const JobControlArgs = z.object({ jobId: JobId, action: z.enum(['cancel', 'accep
 const LeftoverArgs = z.object({ resourceId: JobId, action: z.enum(['retry', 'dismiss']) });
 /** A client file is a page or two of Markdown; anything far past that is not one. */
 const ClientFileWriteArgs = z.object({ repoId: RepoId, text: z.string().max(200_000) });
+const RuntimeTestArgs = z.object({ repoId: RepoId, runtime: z.enum(CREW_RUNTIMES) });
 const ResultOpenArgs = z.object({ resultId: JobId, file: z.number().int().min(0).max(100) });
 const StepKey = z.string().max(80);
 const PlanActionArgs = z.discriminatedUnion('action', [
@@ -81,6 +92,13 @@ const PlanActionArgs = z.discriminatedUnion('action', [
   }),
   z.object({ planVersionId: JobId, action: z.literal('edit'), plan: PlanSchema })
 ]);
+const StepSwapArgs = z.object({
+  jobId: JobId,
+  stepId: StepKey,
+  role: z.string().min(1).max(80),
+  runtime: z.enum(CREW_RUNTIMES).nullable(),
+  model: z.string().trim().min(1).max(120).nullable()
+});
 
 const Paths = z.array(z.string().min(1)).max(200);
 const ChooseWorkspaceArgs = z.object({
@@ -91,7 +109,8 @@ const CheckOutMemberArgs = z.object({ repo: RepoRef, path: z.string().min(1).max
 const SaveSetupArgs = z.object({
   repo: RepoRef,
   setup: ProjectSetupSchema,
-  imports: z.array(z.string().min(1)).max(200)
+  imports: z.array(z.string().min(1)).max(200),
+  updates: z.array(z.string().min(1)).max(200).optional()
 });
 const SaveSetupFinishArgs = SaveSetupArgs.extend({ finish: z.boolean() });
 const FinishStarterArgs = z.object({
@@ -178,6 +197,12 @@ export function registerAgencyIpc(service: AgencyService): void {
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.AGENCY_STEP_SWAP,
+    async (_e, swap: unknown): Promise<PlanActionResult> =>
+      service.jobs.swapStep(StepSwapArgs.parse(swap))
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.AGENCY_JOB_CONTROL,
     (_e, control: unknown): JobControlResult => service.closeJob(JobControlArgs.parse(control))
   );
@@ -197,6 +222,31 @@ export function registerAgencyIpc(service: AgencyService): void {
     async (_e, jobId: unknown): Promise<void> => service.prs.refreshPrs(JobId.parse(jobId))
   );
 
+  ipcMain.handle(IPC_CHANNELS.AGENCY_CREW_HAND_BACK, (_e, crewId: unknown): void => {
+    service.crew.flags.handBack(CrewId.parse(crewId));
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CREW_LIST,
+    async (_e, repoId: unknown): Promise<CrewCatalog> => service.crewCatalog(RepoId.parse(repoId))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CREW_RUNTIMES,
+    async (_e, repoId: unknown): Promise<CrewRuntimeView[]> =>
+      service.crewRuntimes(RepoId.parse(repoId))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CREW_RUNTIME_TEST,
+    async (_e, args: unknown): Promise<RuntimeTestResult> => {
+      const { repoId, runtime } = RuntimeTestArgs.parse(args);
+      return service.testCrewRuntime(repoId, runtime);
+    }
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CREW_SAVE_ROLE,
+    async (_e, input: unknown): Promise<RoleSaveResult> =>
+      service.saveCrewRole(RoleSaveSchema.parse(input))
+  );
+
   // Opens only a copy in the job's results folder, never a path the renderer names.
   ipcMain.handle(IPC_CHANNELS.AGENCY_RESULT_OPEN, async (_e, open: unknown): Promise<string> => {
     const path = service.results.filePath(ResultOpenArgs.parse(open));
@@ -214,7 +264,7 @@ export function registerAgencyIpc(service: AgencyService): void {
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_JOB_EXPORT,
     async (event, jobId: unknown): Promise<string | null> => {
-      const out = service.exportJob(JobId.parse(jobId));
+      const out = await service.exportJob(JobId.parse(jobId));
       if (out === null) return null;
       const defaultPath = join(app.getPath('downloads'), out.name);
       const win = BrowserWindow.fromWebContents(event.sender);
@@ -292,6 +342,11 @@ function registerProjectsIpc(service: AgencyService): void {
     const { finish, ...input } = SaveSetupFinishArgs.parse(args);
     return projects.saveSetup(input, { finish });
   });
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_IMPORT_DIFF,
+    async (_e, args: unknown): Promise<ImportDiff> =>
+      projects.importDiff(CheckOutMemberArgs.parse(args))
+  );
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_SHARE_SETUP,
     async (_e, args: unknown): Promise<string[]> => projects.share(SaveSetupArgs.parse(args))

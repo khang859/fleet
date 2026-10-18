@@ -68,7 +68,9 @@ export function PlanEditor({
       summary: summary.trim(),
       budget: { ...version.plan.budget, usd },
       // A step that waited on a removed one now starts without it.
-      steps: kept.map((r) => ({ ...r.step, after: r.step.after.filter((id) => ids.has(id)) }))
+      steps: kept.map((r) => ({ ...r.step, after: r.step.after.filter((id) => ids.has(id)) })),
+      // A new role goes with the last step that used it.
+      newRoles: version.plan.newRoles.filter((role) => kept.some((r) => r.step.role === role.name))
     };
     setBusy(true);
     setRefused(null);
@@ -195,7 +197,9 @@ const blankStep = (id: string): PlanStep => ({
   changes: [],
   reads: [],
   paths: [],
-  deliverables: []
+  deliverables: [],
+  skills: [],
+  workspace: 'new'
 });
 
 /** One step in the editor: locked when done, else its title and role, with Remove or Undo. */

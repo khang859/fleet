@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
+import { sep } from 'node:path';
 import { z } from 'zod';
 import {
   ADMIRAL_QUESTION_KINDS,
@@ -199,7 +200,8 @@ function questionStatus(raw: string): AgencyQuestionStatus {
 function toJob(
   row: JobRow,
   holds: JobHoldKind[],
-  pendingPlan: AgencyJob['pendingPlan']
+  pendingPlan: AgencyJob['pendingPlan'],
+  crewNeedingYou: number
 ): AgencyJob {
   return {
     id: row.id,
@@ -213,6 +215,7 @@ function toJob(
     linkedJobId: row.linked_job_id,
     holds,
     pendingPlan,
+    crewNeedingYou,
     sessionId: row.session_id,
     handoffDone: row.handoff_done === 1,
     budgetUsd: row.budget_usd,
@@ -433,7 +436,8 @@ export class AgencyStore {
     return toJob(
       row,
       this.holds(row.id),
-      pending ? { id: pending.id, version: pending.version } : null
+      pending ? { id: pending.id, version: pending.version } : null,
+      this.crew.needingYou(row.id)
     );
   }
 
@@ -678,6 +682,11 @@ export class AgencyStore {
    * `jobId`. Idempotent: the renderer reconciles on attach and may call it for
    * a handoff that already went through.
    */
+  /**
+   * The lobby talk that led to a job is in its conversation now. The first
+   * time, the job's Admiral wakes to plan from it: nothing else would start a
+   * turn there before the client writes.
+   */
   markHandoff(input: { jobId: number; lobbyMessageId: string }): AgencyJob | null {
     return this.db.transaction(() => {
       const job = this.getJob(input.jobId);
@@ -688,6 +697,17 @@ export class AgencyStore {
       this.db
         .prepare('UPDATE lobbies SET last_handoff_message_id = ? WHERE repo_id = ?')
         .run(input.lobbyMessageId, job.repoId);
+      if (!job.handoffDone) {
+        this.enqueueWakeup({
+          repoId: job.repoId,
+          jobId: job.id,
+          kind: 'event',
+          payload: {
+            line: 'Job opened from the lobby',
+            body: 'The talk that led to it is above. Propose the plan with job_plan, or ask the client what is still missing.'
+          }
+        });
+      }
       return this.getJob(job.id);
     })();
   }
@@ -876,6 +896,38 @@ export class AgencyStore {
     if (q.kind === 'model_unreachable' && option === 0) this.retryNow(q.repoId);
     if (q.kind === 'continue' && option === 0 && q.jobId !== null) this.resetChain(q.jobId);
     if (q.kind === 'resume' && option === 0 && q.jobId !== null) this.resumeJob(q.jobId);
+    if (q.kind === 'rehire') this.answerRehire(q, option === 0);
+  }
+
+  /**
+   * The client's pick on a `rehire` card, put up when a step's crew member
+   * left before the step was done: the step may be hired for again, or it
+   * stays stopped. Either way the Admiral hears of it.
+   */
+  private answerRehire(q: AgencyQuestion, again: boolean): void {
+    const { jobId, step: stepId } = q;
+    if (jobId === null || stepId === null) return;
+    const status = this.plans.step(jobId, stepId)?.status;
+    const reopens = again && (status === 'stopped' || status === 'failed');
+    if (reopens) {
+      this.plans.setStepStatus(jobId, stepId, 'pending');
+      this.plans.log({ jobId, kind: 'step', stepId, text: `Step ${stepId} may be hired again` });
+    }
+    this.resetChain(jobId);
+    this.enqueueWakeup({
+      repoId: q.repoId,
+      jobId,
+      kind: 'event',
+      payload: reopens
+        ? {
+            line: `The client lets step ${stepId} be hired again`,
+            body: 'Hire for it with crew_hire, with a brief that says what the last crew member left in its worktree.'
+          }
+        : {
+            line: `The client leaves step ${stepId} as it is`,
+            body: 'Ask the client what they want instead, or propose a plan change.'
+          }
+    });
   }
 
   /** The client picked Resume after a restart: the job runs again, and the Admiral restarts its steps. */
@@ -893,7 +945,7 @@ export class AgencyStore {
       kind: 'event',
       payload: {
         line: 'The client picked Resume',
-        body: 'Set each interrupted step running again with job_update.'
+        body: 'Hire for each interrupted step again with crew_hire: Fleet resumes its crew member where it was, in the same worktree and conversation.'
       }
     });
   }
@@ -1266,6 +1318,32 @@ export class AgencyStore {
          ON CONFLICT(key) DO NOTHING`
       )
       .run(String(this.now()));
+  }
+
+  /**
+   * Whether a Claude Code session has reported from `folder` or a folder in
+   * it, so the trust prompt that covers it was answered.
+   */
+  claudeTrusted(folder: string): boolean {
+    const inside = `${folder}${sep}`;
+    return (
+      this.db
+        .prepare<
+          [string, string, string],
+          { folder: string }
+        >('SELECT folder FROM claude_trust WHERE folder = ? OR substr(folder, 1, length(?)) = ? LIMIT 1')
+        .get(folder, inside, inside) !== undefined
+    );
+  }
+
+  /** A Claude Code session reported from `folder`. */
+  noteClaudeFolder(folder: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO claude_trust (folder, seen_at) VALUES (?, ?)
+         ON CONFLICT(folder) DO NOTHING`
+      )
+      .run(folder, this.now());
   }
 
   onboarding(repoId: string): AgencyOnboarding {

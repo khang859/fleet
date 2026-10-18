@@ -29,7 +29,9 @@ export function JobTabs({
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {jobs.length === 0 ? (
-        <span className="truncate px-1 text-xs text-fleet-text-subtle">No jobs yet</span>
+        <span className="truncate px-1 text-xs text-fleet-text-subtle">
+          {(snapshot?.pastJobs.length ?? 0) > 0 ? 'No open jobs' : 'No jobs yet'}
+        </span>
       ) : (
         <div
           role="tablist"

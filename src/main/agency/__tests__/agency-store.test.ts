@@ -29,6 +29,10 @@ describe('lobbies', () => {
     expect(store.markHandoff({ jobId: job.id, lobbyMessageId: 'm-7' })?.handoffDone).toBe(true);
     expect(store.markHandoff({ jobId: job.id, lobbyMessageId: 'm-7' })?.handoffDone).toBe(true);
     expect(store.lastHandoffMessageId(REPO.repoId)).toBe('m-7');
+    // The job's Admiral wakes once, to plan from the talk carried over.
+    const pull = store.pullWakeups({ repoId: REPO.repoId, jobId: job.id });
+    expect(pull.ids).toHaveLength(1);
+    expect(pull.text).toContain('Job opened from the lobby');
     expect(store.markHandoff({ jobId: 999, lobbyMessageId: 'm-8' })).toBeNull();
   });
 });

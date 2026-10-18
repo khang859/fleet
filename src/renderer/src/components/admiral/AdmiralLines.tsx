@@ -18,7 +18,13 @@ import { PlanCard } from './PlanCard';
 import { QuestionCard } from './QuestionCard';
 import { ResultCard } from './ResultCard';
 import { SettingsCardView } from './SettingsCard';
-import { askedQuestionId, deliveredResultId, proposedPlanId, settingsCardId } from './job-view';
+import {
+  askedQuestionId,
+  deliveredResultId,
+  jobLink,
+  proposedPlanId,
+  settingsCardId
+} from './job-view';
 
 /**
  * The lines an Admiral transcript has that an Agent one does not: what woke
@@ -63,15 +69,25 @@ export function AdmiralEventLine({ message }: { message: AgentMessage }): React.
   );
 }
 
-/** The lobby's line for a job it opened, which takes the client to that job's tab. */
+/**
+ * The lobby's line for a job it opened, which takes the client to that job's
+ * tab while the job is open, and says how it ended once it has no tab.
+ */
 export function JobLinkLine({ message }: { message: AgentMessage }): React.JSX.Element {
   const admiral = useAdmiralThread();
   const jobId = message.meta?.kind === 'job-link' ? message.meta.jobId : null;
+  const snapshot = useAgencyStore((s) =>
+    admiral === null ? undefined : s.snapshots[admiral.repoId]
+  );
+  const { open, ended } = jobLink(snapshot, jobId ?? -1);
   return (
     <div className="flex items-center justify-center gap-1.5 text-[11px] text-fleet-text-subtle">
       <Briefcase size={11} className="shrink-0" />
-      <span className="truncate">{messageText(message)}</span>
-      {admiral !== null && jobId !== null && (
+      <span className="truncate">
+        {messageText(message)}
+        {ended !== null && ` · ${ended}`}
+      </span>
+      {admiral !== null && jobId !== null && open && (
         <button
           type="button"
           onClick={() => admiral.onOpenJob(jobId)}

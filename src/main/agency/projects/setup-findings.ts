@@ -3,8 +3,10 @@ import { basename } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { AgencyRepoRef } from '../../../shared/agency';
+import { agentFile, skillFolder } from '../../../shared/agency-agent-files';
 import {
   githubSlug,
+  type EnvFileFound,
   type MemberScan,
   type ProjectKind,
   type ProjectMemberSetup,
@@ -15,6 +17,8 @@ import {
 } from '../../../shared/agency-projects';
 import type { GitRun } from '../repo-identity';
 import { ghJson, ghState, type GhRun } from './gh';
+import { findEnvFiles } from './env-files';
+import { findPorts } from './port-findings';
 import { parseSetupToml } from './project-store';
 import { openRepoReader, readOnlyGit, repoFacts, type RepoReader } from './repo-reader';
 
@@ -24,7 +28,8 @@ import { openRepoReader, readOnlyGit, repoFacts, type RepoReader } from './repo-
  *
  * Read-only and deterministic. It reads the default branch tip out of git's
  * object store, so nothing is checked out and the working tree is not
- * touched; it runs `git` for reading and `gh` for GitHub's view, and never a
+ * touched; only the untracked env files are read from it, for their variable
+ * names. It runs `git` for reading and `gh` for GitHub's view, and never a
  * command the repository defines. No pane, worktree or branch comes of it.
  */
 
@@ -331,11 +336,10 @@ function classify(path: string): Omit<RepoFile, 'sha256'> | null {
     return { path, kind: 'playbook', disposition: 'importable' };
   }
   if (path.startsWith('.fleet/')) return { path, kind: 'other', disposition: 'not-used' };
-  if (/^\.(claude|opencode)\/agents\/[^/]+\.md$/.test(path)) {
-    return { path, kind: 'agent', disposition: 'importable' };
-  }
-  if (/^\.claude\/skills\/[^/]+\/SKILL\.md$/.test(path)) {
-    return { path: path.replace(/\/SKILL\.md$/, ''), kind: 'skill', disposition: 'in-place' };
+  if (agentFile(path)?.folder === '.') return { path, kind: 'agent', disposition: 'importable' };
+  const skill = path.endsWith('/SKILL.md') ? path.slice(0, -'/SKILL.md'.length) : null;
+  if (skill !== null && skillFolder(skill)?.folder === '.') {
+    return { path: skill, kind: 'skill', disposition: 'in-place' };
   }
   if (path === 'CLAUDE.md' || path === 'AGENTS.md') {
     return { path, kind: 'instructions', disposition: 'in-place' };
@@ -407,6 +411,7 @@ type MemberFindings = {
   member: ProjectMemberSetup;
   scan: MemberScan;
   repoFiles: RepoFile[];
+  envFiles: EnvFileFound[];
   reader: RepoReader;
 };
 
@@ -416,10 +421,12 @@ async function scanMember(
 ): Promise<MemberFindings> {
   const facts = await repoFacts(target.root, deps.git);
   const reader = await openRepoReader(target.root, facts.defaultBranch, deps.git);
-  const [stack, checks, files] = await Promise.all([
+  const [stack, checks, files, ports, envFiles] = await Promise.all([
     detectStack(reader),
     ciChecks(reader),
-    repoFiles(reader)
+    repoFiles(reader),
+    findPorts(reader),
+    findEnvFiles(target.root, target.name, deps.git)
   ]);
 
   const slug = githubSlug(facts.remote);
@@ -450,10 +457,14 @@ async function scanMember(
       checkCommands: stack.checkCommands,
       checks,
       requiredChecks: required,
-      reviewBots: bots
+      reviewBots: bots,
+      portVars: ports.portVars,
+      fixedPorts: ports.fixedPorts,
+      envFiles: []
     },
     scan: { name: target.name, path: target.path, readFrom: reader.readFrom, requiredChecksFrom },
     repoFiles: files.map((f) => ({ ...f, path: projectPath(target.path, f.path) })),
+    envFiles,
     reader
   };
 }
@@ -462,7 +473,7 @@ async function scanMember(
 export async function scanProject(
   target: ScanTarget,
   deps: ScanDeps = {}
-): Promise<Omit<SetupScan, 'saved'>> {
+): Promise<Omit<SetupScan, 'saved' | 'newer'>> {
   const git = deps.git ?? readOnlyGit;
   const gh = deps.gh;
   const first = target.members.at(0);
@@ -476,7 +487,11 @@ export async function scanProject(
     kind: target.kind,
     name: target.repo.name,
     members: found.map((f) => f.member),
-    imports: []
+    imports: [],
+    setupCommand: '',
+    setupTimeoutSec: DEFAULT_SETUP_TIMEOUT_SEC,
+    // A port no variable moves lets only one stack hold it at a time.
+    stackSlots: found.some((f) => f.member.fixedPorts.length > 0) ? 1 : null
   };
   // A teammate's setup lives in the project root's repository: the umbrella, or the one repository.
   const root = found.find((f) => f.member.path === '.');
@@ -490,6 +505,7 @@ export async function scanProject(
     members: found.map((f) => f.scan),
     missing: target.missing,
     repoFiles: found.flatMap((f) => f.repoFiles),
+    envFiles: found.flatMap((f) => f.envFiles),
     teamSetup: teamText === null ? null : parseSetupToml(teamText),
     ghSignedIn: signedIn
   };

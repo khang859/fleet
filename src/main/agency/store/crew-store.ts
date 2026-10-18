@@ -1,7 +1,16 @@
 import type Database from 'better-sqlite3';
+import type { CrewFlag, CrewRuntime } from '../../../shared/agency-crew';
 
 /** The status a crew member has once its pane is gone for good. */
 export const CREW_ENDED = 'ended';
+/** Its pane opened, and its session has not reported yet. */
+export const CREW_STARTING = 'starting';
+/** Its session reported from its pane. */
+export const CREW_LIVE = 'live';
+/** Why a member a restart took ended; a hire for its step resumes it. */
+export const LOST_AT_RESTART = 'lost at restart';
+/** Why a member whose pane did not open ended; the swap it was hired for still waits. */
+export const NOT_STARTED = 'did not start';
 
 export type CrewRecord = {
   id: number;
@@ -19,7 +28,15 @@ export type CrewRecord = {
   startedAt: number;
   endedAt: number | null;
   endReason: string | null;
+  /** What it needs beyond its session phase, since when, and for `limited` until when. */
+  flag: CrewFlag | null;
+  flagSince: number | null;
+  flagUntil: number | null;
 };
+
+/** A member's runtime; the row keeps it as plain text. */
+export const crewRuntime = (crew: Pick<CrewRecord, 'runtime'>): CrewRuntime =>
+  crew.runtime === 'eva' ? 'eva' : 'claude';
 
 type CrewRow = {
   id: number;
@@ -37,6 +54,9 @@ type CrewRow = {
   started_at: number;
   ended_at: number | null;
   end_reason: string | null;
+  flag: CrewFlag | null;
+  flag_since: number | null;
+  flag_until: number | null;
 };
 
 function toCrew(row: CrewRow): CrewRecord {
@@ -55,14 +75,16 @@ function toCrew(row: CrewRow): CrewRecord {
     replaces: row.replaces,
     startedAt: row.started_at,
     endedAt: row.ended_at,
-    endReason: row.end_reason
+    endReason: row.end_reason,
+    flag: row.flag,
+    flagSince: row.flag_since,
+    flagUntil: row.flag_until
   };
 }
 
 /**
- * A job's crew members. Hiring writes live rows (crew phase); what this phase
- * relies on is that a member not `ended` may still have a pane to stop, and
- * that an ended one keeps its row, spend and transcript link.
+ * A job's crew members. A member not `ended` may still have a pane to stop;
+ * an ended one keeps its row, spend and transcript link.
  */
 export class CrewStore {
   constructor(
@@ -131,10 +153,47 @@ export class CrewStore {
     return rows.map(toCrew);
   }
 
+  /** How many of a job's members wait on the client in their pane. */
+  needingYou(jobId: number): number {
+    return (
+      this.db
+        .prepare<
+          [number, CrewFlag],
+          { n: number }
+        >('SELECT COUNT(*) AS n FROM crew_members WHERE job_id = ? AND flag = ?')
+        .get(jobId, 'needs-you')?.n ?? 0
+    );
+  }
+
+  /** Every crew member a job has hired, ended ones too, oldest first. */
+  all(jobId: number): CrewRecord[] {
+    return this.db
+      .prepare<[number], CrewRow>('SELECT * FROM crew_members WHERE job_id = ? ORDER BY id')
+      .all(jobId)
+      .map(toCrew);
+  }
+
+  /** A member's session reported: it is live, on the session its pane runs now. */
+  reported(id: number, sessionId: string): void {
+    this.db
+      .prepare('UPDATE crew_members SET status = ?, session_id = ? WHERE id = ? AND status != ?')
+      .run(CREW_LIVE, sessionId, id, CREW_ENDED);
+  }
+
+  /** Set or clear what a working member needs; an ended one keeps none. */
+  setFlag(id: number, flag: CrewFlag | null, until: number | null = null): void {
+    this.db
+      .prepare(
+        'UPDATE crew_members SET flag = ?, flag_since = ?, flag_until = ? WHERE id = ? AND status != ?'
+      )
+      .run(flag, flag === null ? null : this.now(), until, id, CREW_ENDED);
+  }
+
   end(id: number, reason: string): void {
     this.db
       .prepare(
-        'UPDATE crew_members SET status = ?, ended_at = ?, end_reason = ? WHERE id = ? AND status != ?'
+        `UPDATE crew_members SET status = ?, ended_at = ?, end_reason = ?, flag = NULL, flag_since = NULL,
+           flag_until = NULL WHERE id = ? AND status != ?`
       )
       .run(CREW_ENDED, this.now(), reason, id, CREW_ENDED);
   }

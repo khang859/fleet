@@ -288,7 +288,7 @@ export function registerIpcHandlers(
       }
     }
 
-    // A pane `fleet_spawn` opened runs Claude Code with its prompt, once. The
+    // A pane `fleet_spawn` or a crew hire opened runs its command, once. The
     // prompt is only ever here and in the environment, never in the layout.
     const spawn = ptyManager.has(req.paneId) ? null : fleetSpawns.take(req.paneId);
     if (spawn !== null) {
@@ -299,7 +299,7 @@ export function registerIpcHandlers(
     const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create({
       ...req,
-      ...(spawn === null ? {} : { cmd: spawn.cmd, exitOnComplete: false }),
+      ...(spawn === null ? {} : { cmd: spawn.cmd, exitOnComplete: spawn.exitOnComplete }),
       profile,
       env: Object.keys(extraEnv).length > 0 ? { ...process.env, ...extraEnv } : undefined,
       envSources
@@ -350,6 +350,7 @@ export function registerIpcHandlers(
     notificationDetector.onUserInput(payload.paneId);
     activityTracker.onUserInput(payload.paneId);
     claudeSessions.onPaneInput(payload.paneId, payload.data);
+    eventBus.emit('pane-input', { type: 'pane-input', paneId: payload.paneId, data: payload.data });
     ptyManager.write(payload.paneId, payload.data);
   });
 

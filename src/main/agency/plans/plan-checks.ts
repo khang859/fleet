@@ -4,9 +4,18 @@ import type {
   PlanBases,
   PlanChecks,
   PlanIssue,
-  PlanOverlap
+  PlanOverlap,
+  StepEnvFiles
 } from '../../../shared/agency-jobs';
+import {
+  RUNTIME_LABEL,
+  runtimeProblems,
+  type CrewRuntime,
+  type RuntimeCheck
+} from '../../../shared/agency-crew';
+import type { RuntimeSkills } from '../../../shared/agency-agent-files';
 import type { Plan, PlanStep } from '../../../shared/agency-plan';
+import { roleFileText } from '../crew/catalog';
 
 /** What Fleet read about one member repository just before the check. */
 export type MemberFacts = {
@@ -26,6 +35,8 @@ export type MemberFacts = {
   defaultSha: string | null;
   headBranch: string | null;
   headSha: string | null;
+  /** The skills each runtime loads in its repository's root, at the default branch tip. */
+  skills: RuntimeSkills;
 };
 
 export type PlanFacts = {
@@ -34,7 +45,44 @@ export type PlanFacts = {
   overlap: PlanOverlap[];
   /** Bases an earlier approval pinned; a change keeps them. */
   pinned: PlanBases | null;
+  /** The project's crew, or null when it is not known. */
+  crew: CrewFacts | null;
+  /** The env files the client gave crew, each with its member and its path from the project root. */
+  envFiles: Array<{ member: string; file: string }>;
 };
+
+export type CrewFacts = {
+  /** Each crew role's runtime, by role name, with the roles the plan brings. */
+  roles: ReadonlyMap<string, CrewRuntime>;
+  /** Each crew role's file text, by role name, to tell a new role from one already there. */
+  roleText: ReadonlyMap<string, string>;
+  /** The model of each role that names one, with the roles the plan brings. */
+  models: ReadonlyMap<string, string>;
+  /** The models eva's server lists, or null when the plan has no eva model or the list is unknown. */
+  evaModels: ReadonlySet<string> | null;
+  /** What the check found for each runtime a step runs on. */
+  runtimes: Partial<Record<CrewRuntime, RuntimeCheck>>;
+  /**
+   * The folder whose Claude Code folder trust covers the crew's working
+   * folders, and whether a Claude Code session has reported from it, which
+   * it only does once the trust prompt is accepted.
+   */
+  claudeTrust: { folder: string; trusted: boolean };
+  /**
+   * The same for each member that is its own repository below the root, at
+   * its main checkout: Claude Code keys the trust of a worktree on that, so
+   * a step that works in the member alone needs it.
+   */
+  memberTrust: ReadonlyMap<string, { folder: string; trusted: boolean }>;
+};
+
+/** What a step runs on: its own runtime, else its role's; null for a role that is not there. */
+export function stepRuntime(
+  step: PlanStep,
+  roles: ReadonlyMap<string, CrewRuntime>
+): CrewRuntime | null {
+  return step.runtime ?? roles.get(step.role) ?? null;
+}
 
 /** The members a step changes: those it names, or every member when it names none. */
 export function changedMembers(step: PlanStep, members: readonly string[]): string[] {
@@ -94,6 +142,179 @@ function prUnavailable(plan: Plan, facts: PlanFacts): PlanIssue[] {
   });
 }
 
+/** A step whose role is not one of the project's crew roles. */
+function unknownRoles(plan: Plan, roles: ReadonlyMap<string, CrewRuntime>): PlanIssue[] {
+  return plan.steps
+    .filter((step) => !roles.has(step.role))
+    .map(
+      (step): PlanIssue => ({
+        code: 'unknown-role',
+        severity: 'block',
+        text: `${step.id} uses the role ${step.role}, which is not one of this project's crew roles.`,
+        step: step.id
+      })
+    );
+}
+
+/**
+ * The model a step runs on: its own, else its role's when the step keeps the
+ * role's runtime. Undefined takes the runtime's default.
+ */
+export function stepModel(
+  step: PlanStep,
+  roles: ReadonlyMap<string, CrewRuntime>,
+  models: ReadonlyMap<string, string>
+): string | undefined {
+  if (step.model !== undefined) return step.model;
+  return stepRuntime(step, roles) === roles.get(step.role) ? models.get(step.role) : undefined;
+}
+
+/** The crew's role models with the new roles' models; a role already there keeps its own. */
+export function planModels(
+  plan: Plan,
+  roles: ReadonlyMap<string, CrewRuntime>,
+  models: ReadonlyMap<string, string>
+): ReadonlyMap<string, string> {
+  const fresh = plan.newRoles.filter((r) => !roles.has(r.name) && r.model !== undefined);
+  if (fresh.length === 0) return models;
+  return new Map([...fresh.map((r) => [r.name, r.model ?? ''] as const), ...models]);
+}
+
+/** eva steps on a model eva's server does not list. */
+function modelIssues(plan: Plan, crew: CrewFacts): PlanIssue[] {
+  const listed = crew.evaModels;
+  if (listed === null) return [];
+  return plan.steps.flatMap((step): PlanIssue[] => {
+    const model = stepModel(step, crew.roles, crew.models);
+    if (stepRuntime(step, crew.roles) !== 'eva' || model === undefined || listed.has(model)) {
+      return [];
+    }
+    return [
+      {
+        code: 'model-missing',
+        severity: 'block',
+        text: `${step.id} runs on the model ${model}, which eva's model server does not list. Change the step's model, or the ${step.role} role's in Settings › Agency › Crew.`,
+        step: step.id
+      }
+    ];
+  });
+}
+
+/** The crew's roles with the new ones the plan brings; a role already there keeps its runtime. */
+export function planRoles(
+  plan: Plan,
+  roles: ReadonlyMap<string, CrewRuntime>
+): ReadonlyMap<string, CrewRuntime> {
+  if (plan.newRoles.length === 0) return roles;
+  return new Map([...plan.newRoles.map((r) => [r.name, r.runtime] as const), ...roles]);
+}
+
+/** A new role named like a crew role that says something else. */
+function roleClashes(plan: Plan, crew: CrewFacts): PlanIssue[] {
+  return plan.newRoles
+    .filter((role) => {
+      const text = crew.roleText.get(role.name);
+      return text !== undefined && text !== roleFileText(role);
+    })
+    .map(
+      (role): PlanIssue => ({
+        code: 'role-exists',
+        severity: 'block',
+        text: `The new role ${role.name} has the name of a crew role that says something else. Use that role, or give the new one another name.`
+      })
+    );
+}
+
+/** Steps on a runtime crew cannot use, one issue per runtime. */
+function runtimeIssues(plan: Plan, crew: CrewFacts): PlanIssue[] {
+  return Object.values(crew.runtimes).flatMap((check): PlanIssue[] => {
+    const problems = runtimeProblems(check);
+    if (problems.length === 0) return [];
+    const steps = plan.steps.filter((s) => stepRuntime(s, crew.roles) === check.runtime);
+    return [
+      {
+        code: 'runtime-unavailable',
+        severity: 'block',
+        text: `${steps.map((s) => s.id).join(', ')} ${steps.length === 1 ? 'runs' : 'run'} on ${RUNTIME_LABEL[check.runtime]}. ${problems.join(' ')}`
+      }
+    ];
+  });
+}
+
+/**
+ * Claude Code asks once per folder whether to trust it, and no hook runs
+ * until someone answers, so a crew member would wait at that prompt unseen.
+ * One issue for each folder a Claude step needs trusted.
+ */
+function trustIssues(plan: Plan, facts: PlanFacts): PlanIssue[] {
+  const { crew } = facts;
+  if (crew === null) return [];
+  const untrusted = new Map<string, string | undefined>();
+  for (const step of plan.steps) {
+    if (stepRuntime(step, crew.roles) !== 'claude') continue;
+    const member = workingMember(step, facts.members);
+    const own = member === null || member.atRoot ? undefined : crew.memberTrust.get(member.name);
+    const { folder, trusted } = own ?? crew.claudeTrust;
+    if (!trusted) untrusted.set(folder, own && member?.name);
+  }
+  return [...untrusted].map(([folder, member]) => ({
+    code: 'claude-trust',
+    severity: 'warn',
+    text: `Claude Code has not run in ${folder} yet. Open it there once and trust the folder, or each Claude crew member waits for you at that prompt.`,
+    fix: 'trust-claude',
+    path: folder,
+    ...(member !== undefined && { member })
+  }));
+}
+
+/**
+ * The member whose repository a step's crew member starts in: the one member
+ * it holds besides the root, else the root. As `crewFolder` picks it.
+ */
+function workingMember(step: PlanStep, members: MemberFacts[]): MemberFacts | null {
+  const held = new Set([
+    ...changedMembers(
+      step,
+      members.map((m) => m.name)
+    ),
+    ...step.reads
+  ]);
+  const inside = members.filter((m) => !m.atRoot && held.has(m.name));
+  return inside.length === 1 ? inside[0] : (members.find((m) => m.atRoot) ?? null);
+}
+
+/**
+ * A skill a step names that its runtime does not find where the step works.
+ * Claude Code and eva look no higher than the repository's root, so a
+ * member's skill is not there for a step at the umbrella's root.
+ */
+function skillIssues(plan: Plan, facts: PlanFacts): PlanIssue[] {
+  return plan.steps.flatMap((step): PlanIssue[] => {
+    const runtime = stepRuntime(step, facts.crew?.roles ?? new Map());
+    if (runtime === null) return [];
+    const member = workingMember(step, facts.members);
+    const where = member?.name ?? 'the job folder';
+    return step.skills
+      .filter((name) => !member?.skills[runtime].includes(name))
+      .map((name) => ({
+        code: 'skill-missing',
+        severity: 'warn',
+        text: `${step.id} uses the skill ${name}, which ${RUNTIME_LABEL[runtime]} does not find in ${where}. It works only if you have a skill of your own by that name.`,
+        step: step.id
+      }));
+  });
+}
+
+function crewIssues(plan: Plan, crew: CrewFacts | null): PlanIssue[] {
+  if (crew === null) return [];
+  return [
+    ...unknownRoles(plan, crew.roles),
+    ...roleClashes(plan, crew),
+    ...runtimeIssues(plan, crew),
+    ...modelIssues(plan, crew)
+  ];
+}
+
 function memberIssues(member: MemberFacts): PlanIssue[] {
   const issues: PlanIssue[] = [];
   if (member.hasAdmiralBranch) {
@@ -132,6 +353,17 @@ function overlapIssue(overlap: PlanOverlap[]): PlanIssue[] {
  * the client should know before approving. Pure over facts read just before,
  * so the same plan and facts always give the same card.
  */
+/** The env files each step's workspace gets: those of the members it holds, the root always. */
+function stepEnvFiles(plan: Plan, facts: PlanFacts): StepEnvFiles[] {
+  const names = facts.members.map((m) => m.name);
+  const root = facts.members.filter((m) => m.atRoot).map((m) => m.name);
+  return plan.steps.flatMap((step) => {
+    const held = new Set([...root, ...changedMembers(step, names), ...step.reads]);
+    const files = facts.envFiles.filter((f) => held.has(f.member)).map((f) => f.file);
+    return files.length === 0 ? [] : [{ stepId: step.id, files }];
+  });
+}
+
 export function checkPlan(plan: Plan, facts: PlanFacts): PlanChecks {
   const names = new Set(facts.members.map((m) => m.name));
   const used = new Set(plan.steps.flatMap((s) => [...changedMembers(s, [...names]), ...s.reads]));
@@ -139,6 +371,9 @@ export function checkPlan(plan: Plan, facts: PlanFacts): PlanChecks {
   return {
     issues: [
       ...outsideProject(plan, names),
+      ...crewIssues(plan, facts.crew),
+      ...trustIssues(plan, facts),
+      ...skillIssues(plan, facts),
       ...members.flatMap(memberIssues),
       ...prUnavailable(plan, facts),
       ...overlapIssue(facts.overlap)
@@ -153,7 +388,8 @@ export function checkPlan(plan: Plan, facts: PlanFacts): PlanChecks {
         headSha: m.headSha,
         pinned: facts.pinned?.[m.name] ?? null
       })
-    )
+    ),
+    envFiles: stepEnvFiles(plan, facts)
   };
 }
 

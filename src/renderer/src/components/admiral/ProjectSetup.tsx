@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
+import { diffLines, formatUnified, toHunks } from '../../../../shared/agent-diff';
 import type { AgencyRepoRef } from '../../../../shared/agency';
+import { agentFile, skillFolder } from '../../../../shared/agency-agent-files';
+import { RUNTIME_LABEL } from '../../../../shared/agency-crew';
 import type {
+  EnvFileFound,
   MemberScan,
   ProjectMemberSetup,
   ProjectSetup as Setup,
   RepoFile,
+  SaveSetupRequest,
   SetupScan
 } from '../../../../shared/agency-projects';
 import {
@@ -14,6 +19,8 @@ import {
   type MemberSettingField
 } from '../../../../shared/agency-settings';
 import { useAdmiralMarks } from '../../hooks/use-admiral-marks';
+import { cleanIpcError } from '../../lib/ipc-error';
+import { toggled } from '../../lib/toggled';
 import { AdmiralChangeNote } from '../settings/AdmiralChangeNote';
 import { AskAdmiralForm } from '../settings/AskAdmiral';
 import {
@@ -23,23 +30,35 @@ import {
   SectionLabel,
   textInputCls
 } from './onboarding-ui';
+import { DiffBody } from '../ui/DiffBody';
 import { MissingCard } from './MissingCard';
-import { memberOrder, NOTE_DOT, repoNotes } from './onboarding-view';
+import {
+  memberOrder,
+  NOTE_DOT,
+  repoNotes,
+  runsServers,
+  serversNote,
+  stackSlotsLabel
+} from './onboarding-view';
 
 /**
  * Setup, step 2: what a read-only scan of the repository found, for the
  * client to check, fix and save. The scan runs in main and runs nothing from
  * the repository; saving writes only to Fleet's own folder, and "Share with
  * team" is the one action that writes into the repository, uncommitted.
+ * Given `onClose`, it is setup done again for a project set up before: saving
+ * or keeping the current setup goes back to the lobby.
  */
-export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Element {
+export function ProjectSetup({
+  repo,
+  onClose
+}: {
+  repo: AgencyRepoRef;
+  onClose?: () => void;
+}): React.JSX.Element {
   const edited = useRef(false);
-  const { scan, setup, setSetup, imports, setImports, error, setError, reread } = useSetupScan(
-    repo,
-    edited
-  );
-  const [busy, setBusy] = useState<'save' | 'share' | null>(null);
-  const [shared, setShared] = useState<string[] | null>(null);
+  const { scan, setup, setSetup, imports, setImports, error, reread } = useSetupScan(repo, edited);
+  const [updates, setUpdates] = useState<ReadonlySet<string>>(new Set());
   const marks = useAdmiralMarks(repo.repoId);
 
   if (error !== null) {
@@ -48,6 +67,9 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
         <p className="max-w-md text-[13px] text-fleet-text-muted">
           Setup could not read {repo.name}: {error}
         </p>
+        {onClose !== undefined && (
+          <OnboardingButton onClick={onClose}>Keep current setup</OnboardingButton>
+        )}
       </Centered>
     );
   }
@@ -72,9 +94,7 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
 
   const toggleImport = (file: RepoFile): void => {
     edited.current = true;
-    const next = new Set(imports);
-    if (next.has(file.path)) next.delete(file.path);
-    else next.add(file.path);
+    const next = toggled(imports, file.path);
     setImports(next);
     // The team's setup file is not copied: importing it means taking its findings.
     // Only for the members this project has: a teammate's may hold others.
@@ -83,15 +103,11 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
     }
   };
 
-  const request = { repo, setup, imports: [...imports] };
-  const run = (kind: 'save' | 'share'): void => {
-    setBusy(kind);
-    setError(null);
-    const done =
-      kind === 'save'
-        ? window.fleet.agency.projects.saveSetup({ ...request, finish: true }).then(() => {})
-        : window.fleet.agency.projects.shareSetup(request).then(setShared);
-    done.catch((err: unknown) => setError(String(err))).finally(() => setBusy(null));
+  const request = {
+    repo,
+    setup,
+    imports: [...imports],
+    updates: [...updates].filter((p) => imports.has(p))
   };
 
   return (
@@ -110,8 +126,30 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
               onChange={(patch) => setMember(i, patch)}
             />
           ))}
+          <ProjectCards
+            setup={setup}
+            workspace={workspace}
+            onChange={(patch) => {
+              edited.current = true;
+              setSetup({ ...setup, ...patch });
+            }}
+          />
+          <EnvFilesCard
+            files={scan.envFiles}
+            setup={setup}
+            workspace={workspace}
+            onMember={setMember}
+          />
           {scan.repoFiles.length > 0 && (
-            <FoundCard files={scan.repoFiles} imports={imports} onToggle={toggleImport} />
+            <FoundCard
+              repo={repo}
+              files={scan.repoFiles}
+              imports={imports}
+              newer={new Set(scan.newer)}
+              updates={updates}
+              onToggle={toggleImport}
+              onUpdate={(path) => setUpdates(toggled(updates, path))}
+            />
           )}
           <OnboardingCard>
             <SectionLabel>PERMISSIONS</SectionLabel>
@@ -125,24 +163,68 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
           <AskCard repo={repo} />
         </div>
       </div>
-      <footer className="shrink-0 border-t border-fleet-border bg-fleet-bg">
-        <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-end gap-2 px-5 py-3">
-          <p className="mr-auto min-w-0 text-[11px] text-fleet-text-subtle">
-            {shared !== null
-              ? `Copied ${shared.length === 1 ? 'the setup' : `${shared.length} files`} to .fleet/. Nothing is committed.`
-              : scan.saved
-                ? 'Showing the setup you saved before.'
-                : 'Saved in Fleet, not in the repository.'}
-          </p>
-          <OnboardingButton disabled={busy !== null} onClick={() => run('share')}>
-            {busy === 'share' ? 'Sharing…' : 'Share with team'}
-          </OnboardingButton>
-          <OnboardingButton kind="primary" disabled={busy !== null} onClick={() => run('save')}>
-            {busy === 'save' ? 'Saving…' : 'Looks right'}
-          </OnboardingButton>
-        </div>
-      </footer>
+      <SetupFooter request={request} saved={scan.saved} onClose={onClose} />
     </div>
+  );
+}
+
+/**
+ * Setup's save bar: what is saved where, or why a save was refused, and
+ * Share with team and Looks right. Saving setup done again closes it.
+ */
+function SetupFooter({
+  request,
+  saved,
+  onClose
+}: {
+  request: SaveSetupRequest;
+  saved: boolean;
+  onClose?: () => void;
+}): React.JSX.Element {
+  const [busy, setBusy] = useState<'save' | 'share' | null>(null);
+  const [shared, setShared] = useState<string[] | null>(null);
+  const [refused, setRefused] = useState<string | null>(null);
+  const run = (kind: 'save' | 'share'): void => {
+    setBusy(kind);
+    setRefused(null);
+    const done =
+      kind === 'save'
+        ? window.fleet.agency.projects
+            .saveSetup({ ...request, finish: true })
+            .then(() => onClose?.())
+        : window.fleet.agency.projects.shareSetup(request).then(setShared);
+    done
+      .catch((err: unknown) => setRefused(cleanIpcError(String(err))))
+      .finally(() => setBusy(null));
+  };
+  const note =
+    shared !== null
+      ? `Copied ${shared.length === 1 ? 'the setup' : `${shared.length} files`} to .fleet/. Nothing is committed.`
+      : saved
+        ? 'Showing the setup you saved before.'
+        : 'Saved in Fleet, not in the repository.';
+
+  return (
+    <footer className="shrink-0 border-t border-fleet-border bg-fleet-bg">
+      <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-end gap-2 px-5 py-3">
+        {refused !== null ? (
+          <p className="min-w-0 basis-full text-[11px] text-red-400">{refused}</p>
+        ) : (
+          <p className="mr-auto min-w-0 text-[11px] text-fleet-text-subtle">{note}</p>
+        )}
+        {onClose !== undefined && (
+          <OnboardingButton disabled={busy !== null} onClick={onClose}>
+            Keep current setup
+          </OnboardingButton>
+        )}
+        <OnboardingButton disabled={busy !== null} onClick={() => run('share')}>
+          {busy === 'share' ? 'Sharing…' : 'Share with team'}
+        </OnboardingButton>
+        <OnboardingButton kind="primary" disabled={busy !== null} onClick={() => run('save')}>
+          {busy === 'save' ? 'Saving…' : 'Looks right'}
+        </OnboardingButton>
+      </div>
+    </footer>
   );
 }
 
@@ -171,7 +253,6 @@ type SetupScanState = {
   imports: ReadonlySet<string>;
   setImports: (imports: ReadonlySet<string>) => void;
   error: string | null;
-  setError: (error: string | null) => void;
   reread: () => void;
 };
 
@@ -205,7 +286,7 @@ function useSetupScan(repo: AgencyRepoRef, edited: React.RefObject<boolean>): Se
     };
   }, [repoId, root, name, edited, admiralChanges, rereads]);
   const reread = (): void => setRereads((n) => n + 1);
-  return { scan, setup, setSetup, imports, setImports, error, setError, reread };
+  return { scan, setup, setSetup, imports, setImports, error, reread };
 }
 
 /** What the Admiral says it read, what it could not, and the member order. */
@@ -297,7 +378,7 @@ function AskCard({ repo }: { repo: AgencyRepoRef }): React.JSX.Element {
 
 function Centered({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-6 text-center">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
       {children}
     </div>
   );
@@ -330,7 +411,6 @@ function RepoCardHeader({
   editing: boolean;
   onEdit: () => void;
 }): React.JSX.Element {
-  const action = editing ? 'Done' : 'Edit';
   return (
     <div className="flex items-center gap-2">
       <div className="min-w-0 flex-1">
@@ -338,15 +418,186 @@ function RepoCardHeader({
           {title?.toUpperCase() ?? 'REPO'}
         </SectionLabel>
       </div>
-      <button
-        type="button"
-        onClick={onEdit}
-        aria-label={title === null ? undefined : `${action} ${title}`}
-        className="text-xs text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
-      >
-        {action}
-      </button>
+      <EditButton editing={editing} name={title} onClick={onEdit} />
     </div>
+  );
+}
+
+function EditButton({
+  editing,
+  name,
+  onClick
+}: {
+  editing: boolean;
+  /** What it edits, for its accessible name when there are several. */
+  name: string | null;
+  onClick: () => void;
+}): React.JSX.Element {
+  const action = editing ? 'Done' : 'Edit';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={name === null ? undefined : `${action} ${name}`}
+      className="text-xs text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
+    >
+      {action}
+    </button>
+  );
+}
+
+/** A setup command and the minutes before it stops, as inputs while editing. */
+function SetupCommandField({
+  label,
+  command,
+  timeoutSec,
+  editing,
+  onChange
+}: {
+  label: string;
+  command: string;
+  timeoutSec: number;
+  editing: boolean;
+  onChange: (patch: { setupCommand?: string; setupTimeoutSec?: number }) => void;
+}): React.JSX.Element {
+  if (!editing) {
+    return command === '' ? (
+      <None>nothing to run</None>
+    ) : (
+      <span className="font-mono text-fleet-text">
+        {command}
+        <span className="font-sans text-fleet-text-subtle">
+          {' '}
+          · stops after {Math.round(timeoutSec / 60)} min
+        </span>
+      </span>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        aria-label={`${label} command`}
+        value={command}
+        onChange={(e) => onChange({ setupCommand: e.target.value })}
+        className={`${textInputCls} min-w-[200px] flex-1 font-mono`}
+      />
+      <label className="flex items-center gap-1.5 text-fleet-text-muted">
+        stops after
+        <input
+          type="number"
+          min={1}
+          max={120}
+          aria-label={`Minutes before the ${label.toLowerCase()} command stops`}
+          value={Math.round(timeoutSec / 60)}
+          onChange={(e) =>
+            onChange({
+              setupTimeoutSec: Math.min(120, Math.max(1, Number(e.target.value) || 1)) * 60
+            })
+          }
+          className={`${textInputCls} w-14`}
+        />
+        min
+      </label>
+    </div>
+  );
+}
+
+/** What a new job workspace runs at its root once each member is set up. */
+function WorkspaceSetupCard({
+  setup,
+  onChange
+}: {
+  setup: Setup;
+  onChange: (patch: { setupCommand?: string; setupTimeoutSec?: number }) => void;
+}): React.JSX.Element {
+  const [editing, setEditing] = useState(false);
+  return (
+    <OnboardingCard>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <SectionLabel note="after each member's setup">WORKSPACE SETUP</SectionLabel>
+        </div>
+        <EditButton editing={editing} name="workspace setup" onClick={() => setEditing(!editing)} />
+      </div>
+      <dl className="mt-3 grid grid-cols-[minmax(96px,max-content)_1fr] gap-x-4 text-xs">
+        <Row label="New workspace" last>
+          <SetupCommandField
+            label="New workspace"
+            command={setup.setupCommand}
+            timeoutSec={setup.setupTimeoutSec}
+            editing={editing}
+            onChange={onChange}
+          />
+        </Row>
+      </dl>
+    </OnboardingCard>
+  );
+}
+
+type ProjectPatch = Partial<Pick<Setup, 'setupCommand' | 'setupTimeoutSec' | 'stackSlots'>>;
+
+/** The cards for the whole project: the workspace setup, and the stack slots when it runs servers. */
+function ProjectCards({
+  setup,
+  workspace,
+  onChange
+}: {
+  setup: Setup;
+  workspace: boolean;
+  onChange: (patch: ProjectPatch) => void;
+}): React.JSX.Element {
+  return (
+    <>
+      {workspace && <WorkspaceSetupCard setup={setup} onChange={onChange} />}
+      {runsServers(setup) && <ServersCard setup={setup} onChange={onChange} />}
+    </>
+  );
+}
+
+const SLOT_CHOICES = [null, 1, 2, 3, 4] as const;
+
+/** How many steps that run the project's servers may run at once. */
+function ServersCard({
+  setup,
+  onChange
+}: {
+  setup: Setup;
+  onChange: (patch: ProjectPatch) => void;
+}): React.JSX.Element {
+  const [editing, setEditing] = useState(false);
+  const fixed = setup.members.flatMap((m) => m.fixedPorts);
+  return (
+    <OnboardingCard>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <SectionLabel note="each job workspace gets its own ports">SERVERS</SectionLabel>
+        </div>
+        <EditButton editing={editing} name="stack slots" onClick={() => setEditing(!editing)} />
+      </div>
+      <dl className="mt-3 grid grid-cols-[minmax(96px,max-content)_1fr] gap-x-4 text-xs">
+        <Row label="Stack slots" last>
+          {editing ? (
+            <select
+              aria-label="Stack slots"
+              value={setup.stackSlots ?? ''}
+              onChange={(e) =>
+                onChange({ stackSlots: e.target.value === '' ? null : Number(e.target.value) })
+              }
+              className={`${textInputCls} w-32`}
+            >
+              {SLOT_CHOICES.map((n) => (
+                <option key={n ?? 'none'} value={n ?? ''}>
+                  {n ?? 'No limit'}
+                </option>
+              ))}
+            </select>
+          ) : (
+            stackSlotsLabel(setup.stackSlots)
+          )}
+        </Row>
+      </dl>
+      <p className="mt-3 text-xs text-fleet-text-secondary">{serversNote(fixed)}</p>
+    </OnboardingCard>
   );
 }
 
@@ -398,86 +649,59 @@ function RepoCard({
           )}
         </Row>
         <Row label="New worktree" note={changed('setupCommand', 'setupTimeoutSec')}>
-          {editing ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                aria-label="New worktree command"
-                value={member.setupCommand}
-                onChange={(e) => onChange({ setupCommand: e.target.value })}
-                className={`${textInputCls} min-w-[200px] flex-1 font-mono`}
-              />
-              <label className="flex items-center gap-1.5 text-fleet-text-muted">
-                stops after
-                <input
-                  type="number"
-                  min={1}
-                  max={120}
-                  aria-label="Minutes before the worktree command stops"
-                  value={Math.round(member.setupTimeoutSec / 60)}
-                  onChange={(e) =>
-                    onChange({
-                      setupTimeoutSec: Math.min(120, Math.max(1, Number(e.target.value) || 1)) * 60
-                    })
-                  }
-                  className={`${textInputCls} w-14`}
-                />
-                min
-              </label>
-            </div>
-          ) : member.setupCommand === '' ? (
-            <None>nothing to run</None>
-          ) : (
-            <span className="font-mono text-fleet-text">
-              {member.setupCommand}
-              <span className="font-sans text-fleet-text-subtle">
-                {' '}
-                · stops after {Math.round(member.setupTimeoutSec / 60)} min
-              </span>
-            </span>
-          )}
+          <SetupCommandField
+            label="New worktree"
+            command={member.setupCommand}
+            timeoutSec={member.setupTimeoutSec}
+            editing={editing}
+            onChange={onChange}
+          />
         </Row>
-        <Row label="Crew checks" note={changed('checkCommands')}>
+        <ListRow
+          label="Crew checks"
+          inputLabel="Crew checks"
+          value={member.checkCommands}
+          empty="none found"
+          editing={editing}
+          note={changed('checkCommands')}
+          onChange={(checkCommands) => onChange({ checkCommands })}
+        />
+        <ListRow
+          label="CI checks"
+          inputLabel="CI checks"
+          value={member.checks}
+          empty="no workflows found"
+          editing={editing}
+          note={changed('checks')}
+          onChange={(checks) => onChange({ checks })}
+        />
+        <ListRow
+          label="Must pass"
+          inputLabel="Must pass"
+          value={member.requiredChecks}
+          empty="none required"
+          editing={editing}
+          note={changed('requiredChecks')}
+          onChange={(requiredChecks) => onChange({ requiredChecks })}
+        />
+        <ListRow
+          label="Review bot"
+          inputLabel="Review bots"
+          value={member.reviewBots}
+          empty="none"
+          editing={editing}
+          note={changed('reviewBots')}
+          onChange={(reviewBots) => onChange({ reviewBots })}
+        />
+        <Row label="Ports" note={changed('portVars')}>
           {editing ? (
             <ListInput
-              label="Crew checks"
-              value={member.checkCommands}
-              onChange={(checkCommands) => onChange({ checkCommands })}
+              label="Port variables"
+              value={member.portVars}
+              onChange={(portVars) => onChange({ portVars })}
             />
           ) : (
-            <Mono items={member.checkCommands} empty="none found" />
-          )}
-        </Row>
-        <Row label="CI checks" note={changed('checks')}>
-          {editing ? (
-            <ListInput
-              label="CI checks"
-              value={member.checks}
-              onChange={(checks) => onChange({ checks })}
-            />
-          ) : (
-            <Mono items={member.checks} empty="no workflows found" />
-          )}
-        </Row>
-        <Row label="Must pass" note={changed('requiredChecks')}>
-          {editing ? (
-            <ListInput
-              label="Must pass"
-              value={member.requiredChecks}
-              onChange={(requiredChecks) => onChange({ requiredChecks })}
-            />
-          ) : (
-            <Mono items={member.requiredChecks} empty="none required" />
-          )}
-        </Row>
-        <Row label="Review bot" note={changed('reviewBots')}>
-          {editing ? (
-            <ListInput
-              label="Review bots"
-              value={member.reviewBots}
-              onChange={(reviewBots) => onChange({ reviewBots })}
-            />
-          ) : (
-            <Mono items={member.reviewBots} empty="none" />
+            <Ports member={member} />
           )}
         </Row>
         <Row label="Default branch" last note={changed('defaultBranch')}>
@@ -507,6 +731,35 @@ function RepoCard({
   );
 }
 
+/** A list setting: a comma-separated input while editing, else the items. */
+function ListRow({
+  label,
+  inputLabel,
+  value,
+  empty,
+  editing,
+  note,
+  onChange
+}: {
+  label: string;
+  inputLabel: string;
+  value: string[];
+  empty: string;
+  editing: boolean;
+  note: React.ReactNode;
+  onChange: (value: string[]) => void;
+}): React.JSX.Element {
+  return (
+    <Row label={label} note={note}>
+      {editing ? (
+        <ListInput label={inputLabel} value={value} onChange={onChange} />
+      ) : (
+        <Mono items={value} empty={empty} />
+      )}
+    </Row>
+  );
+}
+
 function Row({
   label,
   last = false,
@@ -533,6 +786,24 @@ function Row({
 
 function None({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <span className="text-fleet-text-subtle">{children}</span>;
+}
+
+/** A member's port variables, and the host ports its files fix. */
+function Ports({ member }: { member: ProjectMemberSetup }): React.JSX.Element {
+  if (member.portVars.length === 0 && member.fixedPorts.length === 0) {
+    return <None>none found</None>;
+  }
+  return (
+    <span className="font-mono text-fleet-text">
+      {member.portVars.join(' · ')}
+      {member.fixedPorts.map((f, i) => (
+        <span key={f.port} className="font-sans text-fleet-text-secondary">
+          {member.portVars.length > 0 || i > 0 ? ' · ' : ''}
+          {f.service} fixed on <span className="font-mono text-fleet-text">{f.port}</span>
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function Mono({ items, empty }: { items: string[]; empty: string }): React.JSX.Element {
@@ -576,18 +847,41 @@ const FILE_ROLE: Record<RepoFile['kind'], string> = {
   other: 'Jobs never read it'
 };
 
+/** What a found file is to jobs, naming the role an agent makes and the runtime a skill is for. */
+function fileRole(file: RepoFile): string {
+  const agent = file.kind === 'agent' ? agentFile(file.path) : null;
+  if (agent !== null)
+    return `Agent · becomes the ${RUNTIME_LABEL[agent.runtime]} role ${agent.role}`;
+  const skill = file.kind === 'skill' ? skillFolder(file.path) : null;
+  if (skill !== null) return `${RUNTIME_LABEL[skill.runtime]} skill · crew use it in place`;
+  return FILE_ROLE[file.kind];
+}
+
 function FoundCard({
+  repo,
   files,
   imports,
-  onToggle
+  newer,
+  updates,
+  onToggle,
+  onUpdate
 }: {
+  repo: AgencyRepoRef;
   files: RepoFile[];
   imports: ReadonlySet<string>;
+  /** Imported files the repository has a different version of. */
+  newer: ReadonlySet<string>;
+  /** Of those, the ones the client takes on save. */
+  updates: ReadonlySet<string>;
   onToggle: (file: RepoFile) => void;
+  onUpdate: (path: string) => void;
 }): React.JSX.Element {
   return (
     <OnboardingCard tone="amber">
-      <SectionLabel tone="amber" note="jobs use these only if you import them">
+      <SectionLabel
+        tone="amber"
+        note="jobs use in-place files as they are, and others only if you import them"
+      >
         FOUND IN THE REPO
       </SectionLabel>
       <ul className="mt-2 flex flex-col">
@@ -596,31 +890,201 @@ function FoundCard({
             <span className="min-w-0 flex-1 truncate font-mono text-xs text-fleet-text">
               {f.path}
             </span>
-            <span className="text-xs text-fleet-text-muted">{FILE_ROLE[f.kind]}</span>
+            <span className="text-xs text-fleet-text-muted">{fileRole(f)}</span>
             <span className="flex w-[84px] justify-end">
-              {f.disposition === 'importable' ? (
-                imports.has(f.path) ? (
-                  <button
-                    type="button"
-                    onClick={() => onToggle(f)}
-                    aria-pressed
-                    title="Ignore it instead"
-                    className="flex items-center gap-1 rounded-md bg-green-500/10 px-2.5 py-1.5 text-xs text-green-600 transition hover:bg-green-500/15 focus-ring dark:text-green-400"
-                  >
-                    <Check size={12} strokeWidth={3} /> Imported
-                  </button>
-                ) : (
-                  <OnboardingButton onClick={() => onToggle(f)}>Import</OnboardingButton>
-                )
-              ) : (
-                <span className="text-[11px] text-fleet-text-subtle">
-                  {f.disposition === 'in-place' ? 'In place' : 'Not used'}
-                </span>
-              )}
+              <ImportToggle file={f} imported={imports.has(f.path)} onToggle={() => onToggle(f)} />
             </span>
+            {imports.has(f.path) && newer.has(f.path) && (
+              <NewerInRepo
+                repo={repo}
+                path={f.path}
+                updating={updates.has(f.path)}
+                onUpdate={() => onUpdate(f.path)}
+              />
+            )}
           </li>
         ))}
       </ul>
     </OnboardingCard>
+  );
+}
+
+/** Import or ignore a file setup can import; say how crew use one it cannot. */
+function ImportToggle({
+  file,
+  imported,
+  onToggle
+}: {
+  file: RepoFile;
+  imported: boolean;
+  onToggle: () => void;
+}): React.JSX.Element {
+  if (file.disposition !== 'importable') {
+    return (
+      <span className="text-[11px] text-fleet-text-subtle">
+        {file.disposition === 'in-place' ? 'In place' : 'Not used'}
+      </span>
+    );
+  }
+  if (!imported) return <OnboardingButton onClick={onToggle}>Import</OnboardingButton>;
+  return <ChosenButton label="Imported" title="Ignore it instead" onClick={onToggle} />;
+}
+
+/** A pressed toggle in green: the client picked this, and a click takes it back. */
+function ChosenButton({
+  label,
+  title,
+  onClick
+}: {
+  label: string;
+  title: string;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed
+      title={title}
+      className="flex items-center gap-1 rounded-md border border-transparent bg-green-500/10 px-2.5 py-1.5 text-xs text-green-600 transition hover:bg-green-500/15 focus-ring dark:text-green-400"
+    >
+      <Check size={12} strokeWidth={3} /> {label}
+    </button>
+  );
+}
+
+/**
+ * The untracked env files setup found, by their variable names only. Crew
+ * get a copy of the ones the client gives them; none is given until then.
+ */
+function EnvFilesCard({
+  files,
+  setup,
+  workspace,
+  onMember
+}: {
+  files: EnvFileFound[];
+  setup: Setup;
+  workspace: boolean;
+  onMember: (index: number, patch: Partial<ProjectMemberSetup>) => void;
+}): React.JSX.Element | null {
+  if (files.length === 0) return null;
+  const onToggle = (file: EnvFileFound): void => {
+    const i = setup.members.findIndex((m) => m.name === file.member);
+    if (i !== -1) {
+      onMember(i, { envFiles: [...toggled(new Set(setup.members[i].envFiles), file.path)] });
+    }
+  };
+  return (
+    <OnboardingCard>
+      <SectionLabel note="crew get only the ones you give them">ENV FILES</SectionLabel>
+      <ul className="mt-2 flex flex-col">
+        {files.map((f) => {
+          const member = setup.members.find((m) => m.name === f.member);
+          const label = workspace && member?.path !== '.' ? `${member?.path}/${f.path}` : f.path;
+          const given = member?.envFiles.includes(f.path) ?? false;
+          const vars = f.vars.length === 0 ? 'no variables' : f.vars.join(' · ');
+          return (
+            <li key={label} className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1 py-1">
+              <span className="shrink-0 font-mono text-xs text-fleet-text">{label}</span>
+              <span
+                className="min-w-0 flex-1 truncate font-mono text-xs text-fleet-text-muted"
+                title={vars}
+              >
+                {vars}
+              </span>
+              <span className="flex w-[104px] justify-end">
+                <EnvFileToggle file={f} given={given} onToggle={() => onToggle(f)} />
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 text-xs text-fleet-text-secondary">
+        I never see the values. Each new worktree gets its own copy, so a crew edit never changes
+        your file.
+      </p>
+    </OnboardingCard>
+  );
+}
+
+/** Give an env file to crew, or take it back; one git does not ignore cannot be given. */
+function EnvFileToggle({
+  file,
+  given,
+  onToggle
+}: {
+  file: EnvFileFound;
+  given: boolean;
+  onToggle: () => void;
+}): React.JSX.Element {
+  if (given) return <ChosenButton label="Given" title="Take it back" onClick={onToggle} />;
+  if (!file.ignored) {
+    return (
+      <span
+        className="text-[11px] text-fleet-text-subtle"
+        title="Git does not ignore this file, so crew could commit it. Add it to .gitignore first."
+      >
+        Not ignored by git
+      </span>
+    );
+  }
+  return <OnboardingButton onClick={onToggle}>Give to crew</OnboardingButton>;
+}
+
+/**
+ * An imported file the repository has a newer version of. Jobs keep using the
+ * project's copy until the client reviews the change and takes it on save.
+ */
+function NewerInRepo({
+  repo,
+  path,
+  updating,
+  onUpdate
+}: {
+  repo: AgencyRepoRef;
+  path: string;
+  updating: boolean;
+  onUpdate: () => void;
+}): React.JSX.Element {
+  const [diff, setDiff] = useState<string[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const review = (): void => {
+    setOpen(!open);
+    if (diff !== null) return;
+    window.fleet.agency.projects
+      .importDiff({ repo, path })
+      .then((d) => setDiff(formatUnified(toHunks(diffLines(d.ours, d.theirs)), 400).split('\n')))
+      .catch((err: unknown) => setError(String(err)));
+  };
+
+  return (
+    <div className="flex w-full flex-col gap-2 pb-1">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="mr-auto text-xs text-amber-600 dark:text-amber-400">
+          {updating
+            ? 'Takes the repo version when you save.'
+            : 'Newer in the repo. Jobs keep your copy until you update.'}
+        </span>
+        <OnboardingButton onClick={review}>{open ? 'Hide changes' : 'Review'}</OnboardingButton>
+        <OnboardingButton kind={updating ? 'primary' : undefined} onClick={onUpdate}>
+          {updating ? 'Keep mine' : 'Update'}
+        </OnboardingButton>
+      </div>
+      {open &&
+        (error !== null ? (
+          <p className="text-xs text-fleet-text-muted">Could not read the change: {error}</p>
+        ) : diff === null ? (
+          <span className="flex items-center gap-2 text-xs text-fleet-text-muted">
+            <Loader2 size={12} className="animate-spin" /> Reading both versions.
+          </span>
+        ) : diff.length === 1 && diff[0] === '' ? (
+          <p className="text-xs text-fleet-text-muted">Only the line endings differ.</p>
+        ) : (
+          <DiffBody lines={diff} />
+        ))}
+    </div>
   );
 }

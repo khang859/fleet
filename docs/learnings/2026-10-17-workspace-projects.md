@@ -30,3 +30,11 @@ A `drive restart` also loses recent folders added with `addRecentFolder` through
 `orderMembers` reads each member's `package.json` to order dependencies first.
 A submodule that is not checked out has no file to read, so it came first by default and looked wrong in the picker.
 Members that are not checked out now follow the ordered ones, before the umbrella.
+
+## The umbrella tests timed out only in the full suite
+
+Each umbrella test builds four real repositories (about 0.8 s) and scans them a few times (about 0.4 s each).
+Alone a test takes about 2.5 s, so it passed every time in a single-file run.
+In `npm test`, many workers run git at once, and two tests went past the 5 s default.
+The umbrella `describe` now has `{ timeout: 20_000 }`.
+Time a real-git test alone with `--reporter=verbose`, and give it room if it is over half the default.

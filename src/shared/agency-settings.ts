@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AT_ONCE_MAX } from './agency-crew';
 import type { ProjectMemberSetup } from './agency-projects';
 
 /**
@@ -50,9 +51,30 @@ const droppingNeedsOk = {
   rule: "adding one applies at once; removing one needs the client's OK"
 };
 
+/** Crew getting one more env file is the client's call; getting one less is not. */
+const addingNeedsOk = {
+  kind: (before: SettingValue, after: SettingValue): SettingKind => {
+    const had = new Set(Array.isArray(before) ? before : []);
+    return (Array.isArray(after) ? after : []).every((v) => had.has(v)) ? 'apply' : 'approve';
+  },
+  rule: "removing one applies at once; adding one needs the client's OK"
+};
+
+/** A change that can cost more either way, such as another model. */
+const needsOk = {
+  kind: (): SettingKind => 'approve',
+  rule: "needs the client's OK"
+};
+
 const Usd = z.number().min(0).max(100_000);
+/** Crew of one runtime at once; null takes the runtime's default. */
+const AtOnce = z.number().int().min(1).max(AT_ONCE_MAX).nullable();
+const Model = z.string().max(200);
 const Text = z.string().max(2_000);
 const List = z.array(z.string().max(400)).max(200);
+
+/** The most nudges the client can allow an idle crew member. */
+export const NUDGE_LIMIT_MAX = 20;
 
 /** Agency settings, the same for every project. */
 const AGENCY_SETTINGS = {
@@ -67,7 +89,21 @@ const AGENCY_SETTINGS = {
     label: 'Monthly cap (USD)',
     schema: Usd,
     ...moreNeedsOk
-  }
+  },
+  // Each nudge is another crew turn the job pays for.
+  'agency.admiral.nudgeLimit': {
+    label: 'Nudges per idle crew member',
+    schema: z.number().int().min(0).max(NUDGE_LIMIT_MAX),
+    ...moreNeedsOk
+  },
+  'agency.crew.claude.atOnce': { label: 'Claude crew at once', schema: AtOnce, ...moreNeedsOk },
+  'agency.crew.eva.atOnce': { label: 'eva crew at once', schema: AtOnce, ...moreNeedsOk },
+  'agency.crew.claude.defaultModel': {
+    label: 'Default Claude Code model',
+    schema: Model,
+    ...needsOk
+  },
+  'agency.crew.eva.defaultModel': { label: 'Default eva model', schema: Model, ...needsOk }
 } satisfies Record<string, SettingDef>;
 
 export type AgencySettingKey = keyof typeof AGENCY_SETTINGS;
@@ -86,7 +122,9 @@ const MEMBER_SETTINGS = {
   reviewBots: { label: 'review bots', schema: List, ...droppingNeedsOk },
   stack: { label: 'stack', schema: List, ...apply },
   packageManager: { label: 'package manager', schema: z.string().max(80).nullable(), ...apply },
-  defaultBranch: { label: 'default branch', schema: z.string().max(200).nullable(), ...apply }
+  defaultBranch: { label: 'default branch', schema: z.string().max(200).nullable(), ...apply },
+  portVars: { label: 'port variables', schema: List, ...apply },
+  envFiles: { label: 'env files for crew', schema: List, ...addingNeedsOk }
 } satisfies Partial<Record<keyof ProjectMemberSetup, SettingDef>>;
 
 export type MemberSettingField = keyof typeof MEMBER_SETTINGS;

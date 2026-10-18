@@ -56,28 +56,77 @@ export const DeliverableSchema = z
 export const PLAN_MAX_STEPS = 30;
 export const STEP_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
-const Slug = z
+export const StepIdSchema = z
   .string()
   .regex(STEP_ID_PATTERN, 'a step id is lower-case letters, digits and dashes, like builder-1');
 const Member = z.string().trim().min(1).max(200);
 const Names = z.array(Member).max(50);
 
+/**
+ * Where a step works: `new` is a fresh worktree from the base with the
+ * branches of its `after` steps merged in, `{of}` reads another step's
+ * worktree, `{integrate}` is a fresh worktree that merges those steps' branches.
+ */
+export const WorkspaceSpecSchema = z.union([
+  z.literal('new'),
+  z.strictObject({ of: StepIdSchema }),
+  z.strictObject({ integrate: z.array(StepIdSchema).min(1).max(PLAN_MAX_STEPS) })
+]);
+export type WorkspaceSpec = z.output<typeof WorkspaceSpecSchema>;
+
+/** The steps whose output a workspace reads or merges. */
+export function workspaceSources(ws: WorkspaceSpec): string[] {
+  return ws === 'new' ? [] : 'of' in ws ? [ws.of] : ws.integrate;
+}
+
+/** A skill's name, as its folder has it; Claude Code shows a nested one as `<dir>:<name>`. */
+export const SKILL_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/;
+
 export const PlanStepSchema = z.object({
   /** Stable across versions: the same id is the same step. */
-  id: Slug,
+  id: StepIdSchema,
   role: z.string().trim().min(1).max(60),
   title: z.string().trim().min(1).max(200),
   runtime: z.enum(['claude', 'eva']).optional(),
   model: z.string().trim().min(1).max(120).optional(),
   /** Steps that must be done before this one starts. */
-  after: z.array(Slug).max(PLAN_MAX_STEPS).default([]),
+  after: z.array(StepIdSchema).max(PLAN_MAX_STEPS).default([]),
   /** Member repositories the step changes, and those it only reads. Empty: every member. */
   changes: Names.default([]),
   reads: Names.default([]),
   /** Paths the step expects to touch, as `member/dir`, for the overlap check. */
   paths: z.array(z.string().trim().min(1).max(400)).max(100).default([]),
-  deliverables: z.array(DeliverableSchema).max(10).default([])
+  deliverables: z.array(DeliverableSchema).max(10).default([]),
+  workspace: WorkspaceSpecSchema.default('new'),
+  /** The part of the code the step owns, when it changes a member side by side with another step. */
+  scope: z.string().trim().min(1).max(80).optional(),
+  /** Skills of the repository it works in that the crew member uses, by name. */
+  skills: z.array(z.string().regex(SKILL_NAME_PATTERN)).max(10).default([])
 });
+
+export const NEW_ROLE_MAX_CHARS = 8_000;
+export const PLAN_MAX_NEW_ROLES = 5;
+
+/**
+ * A role the plan brings because no crew role fits a step, written as the
+ * fields of a role file. Fleet saves it in the project's crew folder, never
+ * in the repository, only when the client approves the plan.
+ */
+export const NewRoleSchema = z.object({
+  name: z
+    .string()
+    .regex(
+      STEP_ID_PATTERN,
+      'a role name is lower-case letters, digits and dashes, like data-migrator'
+    ),
+  description: z.string().trim().min(1).max(400),
+  runtime: z.enum(['claude', 'eva']).default('claude'),
+  model: z.string().trim().min(1).max(120).optional(),
+  stack: z.boolean().default(false),
+  /** The role file's body: the instructions every crew member of the role gets. */
+  instructions: z.string().trim().min(1).max(NEW_ROLE_MAX_CHARS)
+});
+export type NewRole = z.output<typeof NewRoleSchema>;
 
 export const PlanSchema = z.object({
   playbook: z.string().trim().min(1).max(80),
@@ -90,7 +139,8 @@ export const PlanSchema = z.object({
   /** Run this job after that one, rather than next to it. */
   queueBehind: z.number().int().positive().nullable().default(null),
   /** What the Admiral checks with the client before doing it: merge, deploy, deletes. */
-  asksFirst: z.array(z.string().trim().min(1).max(200)).max(10).default([])
+  asksFirst: z.array(z.string().trim().min(1).max(200)).max(10).default([]),
+  newRoles: z.array(NewRoleSchema).max(PLAN_MAX_NEW_ROLES).default([])
 });
 
 export type PlanStep = z.output<typeof PlanStepSchema>;
@@ -110,11 +160,61 @@ export function withLocalBranches(plan: Plan): Plan {
   };
 }
 
+/** A step as the wait graph sees it: a plan's, or a playbook's. */
+export type GraphStep = { id: string; after: string[]; workspace?: WorkspaceSpec };
+
+/** Every step `id` waits on, directly or through others. */
+export function upstream(id: string, after: ReadonlyMap<string, string[]>): Set<string> {
+  const seen = new Set<string>();
+  const walk = (at: string): void => {
+    for (const dep of after.get(at) ?? []) {
+      if (seen.has(dep)) continue;
+      seen.add(dep);
+      walk(dep);
+    }
+  };
+  walk(id);
+  return seen;
+}
+
+/**
+ * A step works only in the committed output of steps it waits for, and reads
+ * a worktree only of a step that made one, so each worktree has one writer.
+ */
+function workspaceProblems(steps: GraphStep[]): string[] {
+  const byId = new Map(steps.map((s) => [s.id, s]));
+  const after = new Map(steps.map((s) => [s.id, s.after]));
+  return steps.flatMap((step) => {
+    const ws = step.workspace ?? 'new';
+    const done = upstream(step.id, after);
+    return workspaceSources(ws).flatMap((id) => {
+      const source = byId.get(id);
+      if (source === undefined)
+        return [`Step ${step.id} works in ${id}'s output, which is not in the plan.`];
+      if (!done.has(id))
+        return [`Step ${step.id} works in ${id}'s output, so it has to wait for ${id}.`];
+      if (
+        ws !== 'new' &&
+        'of' in ws &&
+        source.workspace !== undefined &&
+        source.workspace !== 'new' &&
+        'of' in source.workspace
+      ) {
+        return [
+          `Step ${step.id} reads ${id}'s worktree, but ${id} works in another step's. Read that one.`
+        ];
+      }
+      return [];
+    });
+  });
+}
+
 /**
  * What is wrong with a plan's step graph, one sentence each: duplicate ids,
- * `after` naming a step that is not there, and cycles. Empty when it is fine.
+ * `after` naming a step that is not there, cycles, and workspaces of steps
+ * that are not there or not waited for. Empty when it is fine.
  */
-export function validatePlanGraph(plan: Pick<Plan, 'steps'>): string[] {
+export function validatePlanGraph(plan: { steps: GraphStep[] }): string[] {
   const problems: string[] = [];
   const ids = new Set<string>();
   for (const step of plan.steps) {
@@ -128,12 +228,74 @@ export function validatePlanGraph(plan: Pick<Plan, 'steps'>): string[] {
       if (dep === step.id) problems.push(`Step ${step.id} waits on itself.`);
     }
   }
-  problems.push(...stepLoops(plan.steps));
+  problems.push(...stepLoops(plan.steps), ...workspaceProblems(plan.steps));
   return [...new Set(problems)];
 }
 
+/** A new role named twice, or one no step uses, one sentence each. */
+export function newRoleProblems(plan: Plan): string[] {
+  const used = new Set(plan.steps.map((s) => s.role));
+  const seen = new Set<string>();
+  return plan.newRoles.flatMap((role) => {
+    if (seen.has(role.name)) return [`The new role ${role.name} is listed twice.`];
+    seen.add(role.name);
+    return used.has(role.name) ? [] : [`The new role ${role.name} is not used by any step.`];
+  });
+}
+
+const OWN_BRANCH: ReadonlySet<DeliverableKind> = new Set(['pr', 'branch']);
+
+/** Whether two members lists overlap; an empty list is every member. */
+const shareMember = (a: string[], b: string[]): boolean =>
+  a.length === 0 || b.length === 0 || a.some((m) => b.includes(m));
+
+/**
+ * Steps that hand back code side by side in the same member need a scope
+ * each, so their branches merge cleanly. A step hands back code when it
+ * delivers a branch or PR, or a later step merges its branch. A scoped step
+ * nobody merges has to hand back its own branch, or its work goes nowhere.
+ */
+export function scopeProblems(steps: PlanStep[]): string[] {
+  const merged = new Set(
+    steps.flatMap((s) =>
+      s.workspace === 'new' ? s.after : 'of' in s.workspace ? [] : s.workspace.integrate
+    )
+  );
+  const ownBranch = (s: PlanStep): boolean => s.deliverables.some((d) => OWN_BRANCH.has(d.kind));
+  const code = steps.filter(
+    (s) => (s.workspace === 'new' || !('of' in s.workspace)) && (ownBranch(s) || merged.has(s.id))
+  );
+  const unmerged = steps.filter((s) => s.scope !== undefined && !ownBranch(s) && !merged.has(s.id));
+  return [
+    ...sideBySide(steps, code).map(
+      ([a, b]) =>
+        `Steps ${a.id} and ${b.id} change the same code side by side, so each needs its own scope.`
+    ),
+    ...unmerged.map(
+      (s) =>
+        `Step ${s.id} has a scope, so a later step has to merge its branch, or it hands back its own branch or PR.`
+    )
+  ];
+}
+
+/** The pairs of `code` steps that run side by side in a shared member without distinct scopes. */
+function sideBySide(steps: PlanStep[], code: PlanStep[]): Array<[PlanStep, PlanStep]> {
+  const after = new Map(steps.map((s) => [s.id, s.after]));
+  const before = new Map(steps.map((s) => [s.id, upstream(s.id, after)]));
+  const ordered = (a: PlanStep, b: PlanStep): boolean =>
+    before.get(a.id)?.has(b.id) === true || before.get(b.id)?.has(a.id) === true;
+  const scoped = (a: PlanStep, b: PlanStep): boolean =>
+    a.scope !== undefined && b.scope !== undefined && a.scope !== b.scope;
+  return code.flatMap((a, i) =>
+    code
+      .slice(i + 1)
+      .filter((b) => !ordered(a, b) && shareMember(a.changes, b.changes) && !scoped(a, b))
+      .map((b): [PlanStep, PlanStep] => [a, b])
+  );
+}
+
 /** Each loop in the `after` graph, as one sentence. A step waiting on itself is reported apart. */
-function stepLoops(steps: PlanStep[]): string[] {
+function stepLoops(steps: GraphStep[]): string[] {
   const loops: string[] = [];
   const after = new Map(steps.map((s) => [s.id, s.after]));
   const state = new Map<string, 'visiting' | 'done'>();
@@ -158,7 +320,9 @@ export type StepChange =
   | 'title'
   | 'after'
   | 'deliverables'
-  | 'members';
+  | 'members'
+  | 'workspace'
+  | 'skills';
 
 /** One line of a plan change card. */
 export type PlanDiffEntry =
@@ -169,7 +333,8 @@ export type PlanDiffEntry =
   | { kind: 'budget'; from: number; to: number }
   | { kind: 'playbook'; from: string; to: string }
   | { kind: 'summary' }
-  | { kind: 'queue'; from: number | null; to: number | null };
+  | { kind: 'queue'; from: number | null; to: number | null }
+  | { kind: 'role'; name: string };
 
 const sameList = (a: readonly unknown[], b: readonly unknown[]): boolean =>
   a.length === b.length && a.every((x, i) => JSON.stringify(x) === JSON.stringify(b[i]));
@@ -183,22 +348,20 @@ function stepChanges(a: PlanStep, b: PlanStep): StepChange[] {
   if (!sameList(a.after, b.after)) fields.push('after');
   if (!sameList(a.deliverables, b.deliverables)) fields.push('deliverables');
   if (!sameList(a.changes, b.changes) || !sameList(a.reads, b.reads)) fields.push('members');
+  if (JSON.stringify(a.workspace) !== JSON.stringify(b.workspace) || a.scope !== b.scope) {
+    fields.push('workspace');
+  }
+  if (!sameList(a.skills, b.skills)) fields.push('skills');
   return fields;
 }
 
-/** What `next` changes against `prev` (null: nothing approved yet, so no diff). */
-export function diffPlans(prev: Plan | null, next: Plan): PlanDiffEntry[] {
-  if (prev === null) return [];
+/** The steps `next` adds, removes, changes or moves against `prev`. */
+function stepDiff(prev: Plan, next: Plan): PlanDiffEntry[] {
   const before = new Map(prev.steps.map((s) => [s.id, s]));
-  const after = new Map(next.steps.map((s) => [s.id, s]));
-  const diff: PlanDiffEntry[] = [];
-  if (prev.playbook !== next.playbook) {
-    diff.push({ kind: 'playbook', from: prev.playbook, to: next.playbook });
-  }
-  if (prev.summary !== next.summary) diff.push({ kind: 'summary' });
-  for (const step of prev.steps) {
-    if (!after.has(step.id)) diff.push({ kind: 'removed', step: step.id });
-  }
+  const after = new Set(next.steps.map((s) => s.id));
+  const diff: PlanDiffEntry[] = prev.steps
+    .filter((s) => !after.has(s.id))
+    .map((s) => ({ kind: 'removed', step: s.id }));
   const kept = prev.steps.filter((s) => after.has(s.id)).map((s) => s.id);
   const keptNext = next.steps.filter((s) => before.has(s.id)).map((s) => s.id);
   for (const step of next.steps) {
@@ -213,11 +376,27 @@ export function diffPlans(prev: Plan | null, next: Plan): PlanDiffEntry[] {
       diff.push({ kind: 'moved', step: step.id });
     }
   }
+  return diff;
+}
+
+/** What `next` changes against `prev` (null: nothing approved yet, so no diff). */
+export function diffPlans(prev: Plan | null, next: Plan): PlanDiffEntry[] {
+  if (prev === null) return [];
+  const diff: PlanDiffEntry[] = [];
+  if (prev.playbook !== next.playbook) {
+    diff.push({ kind: 'playbook', from: prev.playbook, to: next.playbook });
+  }
+  if (prev.summary !== next.summary) diff.push({ kind: 'summary' });
+  diff.push(...stepDiff(prev, next));
   if (prev.budget.usd !== next.budget.usd) {
     diff.push({ kind: 'budget', from: prev.budget.usd, to: next.budget.usd });
   }
   if (prev.queueBehind !== next.queueBehind) {
     diff.push({ kind: 'queue', from: prev.queueBehind, to: next.queueBehind });
+  }
+  const roles = new Set(prev.newRoles.map((r) => r.name));
+  for (const role of next.newRoles) {
+    if (!roles.has(role.name)) diff.push({ kind: 'role', name: role.name });
   }
   return diff;
 }
@@ -241,5 +420,7 @@ export function diffLine(entry: PlanDiffEntry): string {
       return 'New summary';
     case 'queue':
       return entry.to === null ? 'Runs next to other jobs' : `Waits for j${entry.to}`;
+    case 'role':
+      return `Adds the role ${entry.name}`;
   }
 }

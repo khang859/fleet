@@ -84,6 +84,7 @@ function ResultBody({ result }: { result: AgencyResult }): React.JSX.Element {
     case 'branch':
       return (
         <p className="text-xs text-fleet-text-secondary">
+          {result.member !== null && <span className="mr-1.5 font-medium">{result.member}</span>}
           <span className="font-mono">{body.branch}</span>{' '}
           <span className="font-mono text-fleet-text-subtle">{body.sha.slice(0, 7)}</span>
         </p>

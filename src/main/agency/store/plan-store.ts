@@ -9,6 +9,7 @@ import {
   type PlanVersionStatus,
   type StepStatus
 } from '../../../shared/agency-jobs';
+import { CrewSnapshotSchema, type CrewSnapshot } from '../../../shared/agency-crew';
 import { PlanSchema, type Plan } from '../../../shared/agency-plan';
 import { parseJsonAs } from '../../../shared/parse-json';
 
@@ -23,6 +24,7 @@ type VersionRow = {
   plan_json: string;
   checks_json: string;
   bases_json: string | null;
+  snapshot_json: string;
   effects_json: string | null;
   decision_note: string | null;
   proposed_at: number;
@@ -55,6 +57,8 @@ export type PlanVersionRecord = {
   plan: Plan;
   checks: PlanChecks;
   bases: PlanBases | null;
+  /** The roles and playbook as approved; null before approval or without a crew. */
+  crew: CrewSnapshot | null;
   /** What approving it did, written before the effects ran. */
   effects: AppliedEffects | null;
   decisionNote: string | null;
@@ -76,15 +80,19 @@ const STATUSES: readonly PlanVersionStatus[] = [
   'replaced',
   'superseded'
 ];
-const STEP_STATUSES: readonly StepStatus[] = [
-  'pending',
-  'queued',
-  'running',
-  'blocked',
-  'interrupted',
-  'done',
-  'removed'
-];
+/** Every step status, as a record so a new status cannot be left out and read back as pending. */
+const STEP_STATUSES: Record<StepStatus, true> = {
+  pending: true,
+  queued: true,
+  running: true,
+  blocked: true,
+  interrupted: true,
+  stopped: true,
+  failed: true,
+  done: true,
+  removed: true
+};
+const isStepStatus = (s: string): s is StepStatus => Object.hasOwn(STEP_STATUSES, s);
 
 const IssueSchema = z.object({
   code: z.string(),
@@ -92,7 +100,8 @@ const IssueSchema = z.object({
   text: z.string(),
   step: z.string().optional(),
   member: z.string().optional(),
-  fix: z.literal('use-branch').optional()
+  fix: z.enum(['use-branch', 'trust-claude']).optional(),
+  path: z.string().optional()
 });
 const PinSchema = z.object({ sha: z.string(), from: z.enum(['default', 'head']) });
 const ChecksSchema = z.object({
@@ -111,7 +120,9 @@ const ChecksSchema = z.object({
         pinned: PinSchema.nullable()
       })
     )
-    .default([])
+    .default([]),
+  // Checks saved before env files were given to crew have none.
+  envFiles: z.array(z.object({ stepId: z.string(), files: z.array(z.string()) })).default([])
 });
 const BasesSchema = z.record(z.string(), PinSchema);
 const EffectsSchema = z.object({
@@ -127,7 +138,8 @@ const EMPTY_PLAN: Plan = {
   steps: [],
   budget: { usd: 0 },
   queueBehind: null,
-  asksFirst: []
+  asksFirst: [],
+  newRoles: []
 };
 
 function toVersion(row: VersionRow): PlanVersionRecord {
@@ -142,6 +154,7 @@ function toVersion(row: VersionRow): PlanVersionRecord {
     plan: parseJsonAs(PlanSchema, row.plan_json) ?? EMPTY_PLAN,
     checks: parseJsonAs(ChecksSchema, row.checks_json) ?? NO_PLAN_CHECKS,
     bases: parseJsonAs(BasesSchema, row.bases_json),
+    crew: parseJsonAs(CrewSnapshotSchema, row.snapshot_json),
     effects: parseJsonAs(EffectsSchema, row.effects_json),
     decisionNote: row.decision_note,
     proposedAt: row.proposed_at,
@@ -155,7 +168,7 @@ function toStep(row: StepRow): AgencyStep {
     id: row.step_id,
     role: row.role,
     position: row.position,
-    status: STEP_STATUSES.find((s) => s === row.status) ?? 'pending',
+    status: isStepStatus(row.status) ? row.status : 'pending',
     addedIn: row.added_in,
     removedIn: row.removed_in,
     note: row.note,
@@ -279,22 +292,31 @@ export class PlanStore {
       .run(jobId);
   }
 
-  setBases(id: number, bases: PlanBases): void {
+  /** Write one JSON column of a plan version. */
+  private setJson(
+    id: number,
+    column: 'bases_json' | 'snapshot_json' | 'checks_json' | 'effects_json',
+    value: unknown
+  ): void {
     this.db
-      .prepare('UPDATE plan_versions SET bases_json = ? WHERE id = ?')
-      .run(JSON.stringify(bases), id);
+      .prepare(`UPDATE plan_versions SET ${column} = ? WHERE id = ?`)
+      .run(JSON.stringify(value), id);
+  }
+
+  setBases(id: number, bases: PlanBases): void {
+    this.setJson(id, 'bases_json', bases);
+  }
+
+  setCrew(id: number, crew: CrewSnapshot): void {
+    this.setJson(id, 'snapshot_json', crew);
   }
 
   setChecks(id: number, checks: PlanChecks): void {
-    this.db
-      .prepare('UPDATE plan_versions SET checks_json = ? WHERE id = ?')
-      .run(JSON.stringify(checks), id);
+    this.setJson(id, 'checks_json', checks);
   }
 
   setEffects(id: number, effects: AppliedEffects): void {
-    this.db
-      .prepare('UPDATE plan_versions SET effects_json = ? WHERE id = ?')
-      .run(JSON.stringify(effects), id);
+    this.setJson(id, 'effects_json', effects);
   }
 
   // ── Steps ────────────────────────────────────────────────────────────────

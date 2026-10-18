@@ -64,6 +64,8 @@ export interface DefinitionLoader<F, D> {
     dir: string;
   }) => D | null;
   log: Logger;
+  /** Told about each file skipped as broken, for a screen that lists what did not load. */
+  onSkip?: (file: { path: string; source: DefinitionSource; why: string }) => void;
 }
 
 /** Every definition in `sources`, later sources winning a repeated name. */
@@ -168,19 +170,23 @@ async function readOne<F, D extends { name: string }>(
   loader: DefinitionLoader<F, D>,
   options: { quietWhenMissing?: boolean } = {}
 ): Promise<D | null> {
-  const { kind, schema, build, log } = loader;
+  const { kind, schema, build, log, onSkip } = loader;
 
   let contents: string;
   try {
     contents = await readFile(path, 'utf8');
   } catch (error) {
-    if (options.quietWhenMissing !== true) log.warn(`could not read ${path}`, error);
+    if (options.quietWhenMissing !== true) {
+      log.warn(`could not read ${path}`, error);
+      onSkip?.({ path, source, why: 'could not be read' });
+    }
     return null;
   }
 
   const parsed = parseDefinitionFile(contents, schema, kind);
   if (!parsed.ok) {
     log.warn(`${path} ${parsed.why}; skipping`);
+    onSkip?.({ path, source, why: parsed.why });
     return null;
   }
 

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,8 +24,9 @@ const (
 	// there reads this value to keep the two in order.
 	timeoutSeconds = 300
 	// protocolVersion tells Fleet which fields this binary sends. Version 2 adds
-	// pane_id, transcript_path, config_dir and source.
-	protocolVersion = 2
+	// pane_id, transcript_path, config_dir and source. Version 3 adds
+	// prompt_sha256.
+	protocolVersion = 3
 )
 
 var socketPath = func() string {
@@ -52,6 +55,11 @@ type HookInput struct {
 	Message          string                 `json:"message,omitempty"`
 	TranscriptPath   string                 `json:"transcript_path,omitempty"`
 	Source           string                 `json:"source,omitempty"`
+	Error            string                 `json:"error,omitempty"`
+	ErrorDetails     string                 `json:"error_details,omitempty"`
+	Prompt           string                 `json:"prompt,omitempty"`
+	// LastAssistantMessage is set on StopFailure to the API error text.
+	LastAssistantMessage string `json:"last_assistant_message,omitempty"`
 }
 
 type State struct {
@@ -70,6 +78,9 @@ type State struct {
 	TranscriptPath   string                 `json:"transcript_path,omitempty"`
 	ConfigDir        string                 `json:"config_dir,omitempty"`
 	Source           string                 `json:"source,omitempty"`
+	Error            string                 `json:"error,omitempty"`
+	ErrorDetails     string                 `json:"error_details,omitempty"`
+	PromptSHA256     string                 `json:"prompt_sha256,omitempty"`
 	Protocol         int                    `json:"protocol"`
 }
 
@@ -205,7 +216,9 @@ func sendEvent(state *State, waitForResponse bool) *SocketResponse {
 //
 // SubagentStop has its own status: a subagent finishing says nothing about
 // whether the parent turn is done, so Fleet must not read it as "waiting for
-// input". Notification is refined by type in main.
+// input". Notification is refined by type in main. StopFailure ends the turn
+// like Stop, but on an API error such as a rate limit, which Fleet must tell
+// apart from a turn that finished.
 func statusFor(event string) string {
 	switch event {
 	case "UserPromptSubmit", "PostToolUse", "PostToolUseFailure":
@@ -218,6 +231,8 @@ func statusFor(event string) string {
 		return "notification"
 	case "Stop", "SessionStart":
 		return "waiting_for_input"
+	case "StopFailure":
+		return "api_error"
 	case "SubagentStop":
 		return "subagent_stop"
 	case "SessionEnd":
@@ -227,6 +242,17 @@ func statusFor(event string) string {
 	default:
 		return "unknown"
 	}
+}
+
+// promptHash is the sha256 of a submitted prompt, trimmed, so Fleet can check
+// that the prompt it typed arrived as it was typed without the text itself
+// crossing the socket.
+func promptHash(prompt string) string {
+	if prompt == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.TrimSpace(prompt)))
+	return hex.EncodeToString(sum[:])
 }
 
 // newState builds the event Fleet receives. The pane id comes from the
@@ -244,8 +270,28 @@ func newState(input *HookInput, tty *string, pid int, getenv func(string) string
 		TranscriptPath: input.TranscriptPath,
 		ConfigDir:      getenv("CLAUDE_CONFIG_DIR"),
 		Source:         input.Source,
+		Error:          input.Error,
+		ErrorDetails:   input.ErrorDetails,
+		Message:        stopFailureText(input),
+		PromptSHA256:   promptHash(input.Prompt),
 		Protocol:       protocolVersion,
 	}
+}
+
+// stopFailureMessageRunes caps the API error text a StopFailure forwards.
+const stopFailureMessageRunes = 500
+
+// stopFailureText is the API error text Claude Code shows when a turn ends on
+// one, such as a usage limit with its reset time. Other events send none.
+func stopFailureText(input *HookInput) string {
+	if input.HookEventName != "StopFailure" {
+		return ""
+	}
+	text := []rune(input.LastAssistantMessage)
+	if len(text) > stopFailureMessageRunes {
+		text = text[:stopFailureMessageRunes]
+	}
+	return string(text)
 }
 
 func main() {

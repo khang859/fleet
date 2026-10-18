@@ -15,6 +15,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import {
   ensureHooks,
+  fleetHookEntries,
+  hookBinaryCurrent,
   hookStatus,
   install,
   isInstalled,
@@ -250,5 +252,22 @@ describe('ensureHooks', () => {
     expect(isInstalled(configDir)).toBe(true);
     expect(isInstalled(other)).toBe(true);
     expect(readFileSync(join(broken, 'settings.json'), 'utf-8')).toBe('{ broken');
+  });
+});
+
+describe('crew job hooks', () => {
+  it('gives the entries an install writes, word for word, StopFailure included', () => {
+    install(configDir);
+    const written = readSettings().hooks;
+    expect(fleetHookEntries(configDir)).toEqual(written);
+    expect(Object.keys(written ?? {})).toContain('StopFailure');
+  });
+
+  it('tells a hook binary this Fleet ships from a missing or older one', () => {
+    expect(hookBinaryCurrent(configDir)).toBe(false);
+    install(configDir);
+    expect(hookBinaryCurrent(configDir)).toBe(true);
+    writeFileSync(join(configDir, 'hooks', BINARY), '#!/bin/sh\necho older\n');
+    expect(hookBinaryCurrent(configDir)).toBe(false);
   });
 });

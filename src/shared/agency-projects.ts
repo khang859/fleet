@@ -83,6 +83,22 @@ export type RepoFile = {
 const Text = z.string().max(2_000);
 const List = z.array(z.string().max(400)).max(200);
 
+export const FixedPortSchema = z.object({
+  port: z.number().int().min(1).max(65_535),
+  /** The Compose service that publishes it. */
+  service: z.string().max(200)
+});
+export type FixedPort = z.infer<typeof FixedPortSchema>;
+
+/** A path inside a member, `/`-separated, that cannot climb out of it. */
+const MemberPath = z
+  .string()
+  .min(1)
+  .max(400)
+  .refine((p) => !p.startsWith('/') && !p.includes('\\') && !p.split('/').includes('..'), {
+    message: 'must be a path inside the member'
+  });
+
 export const ProjectMemberSetupSchema = z.object({
   name: z.string().min(1).max(200),
   /** Relative to the project root; `.` for a one-repository project. */
@@ -100,7 +116,13 @@ export const ProjectMemberSetupSchema = z.object({
   checks: List,
   /** Checks the default branch requires before a merge. */
   requiredChecks: List,
-  reviewBots: List
+  reviewBots: List,
+  /** Port variables Fleet sets to free ports in each job workspace, like `JOURNEY_API_PORT`. */
+  portVars: List.default([]),
+  /** Host ports a file fixes and no port variable moves, like Postgres on 5432. */
+  fixedPorts: z.array(FixedPortSchema).max(50).default([]),
+  /** Untracked env files, by path in the member, that Fleet copies into each new worktree of it. */
+  envFiles: z.array(MemberPath).max(20).default([])
 });
 export type ProjectMemberSetup = z.infer<typeof ProjectMemberSetupSchema>;
 
@@ -117,7 +139,12 @@ export const ProjectSetupSchema = z.object({
   kind: z.enum(['repo', 'submodules', 'folder']),
   name: z.string().min(1).max(200),
   members: z.array(ProjectMemberSetupSchema).min(1).max(50),
-  imports: z.array(ProjectImportSchema).max(200)
+  imports: z.array(ProjectImportSchema).max(200),
+  /** What a new job workspace of several repositories runs at its root, after each member's setup. */
+  setupCommand: Text.default(''),
+  setupTimeoutSec: z.number().int().min(10).max(7_200).default(600),
+  /** How many steps that run the stack may run at once; null for no limit. */
+  stackSlots: z.number().int().min(1).max(20).nullable().default(null)
 });
 export type ProjectSetup = z.infer<typeof ProjectSetupSchema>;
 
@@ -128,12 +155,21 @@ export type RequiredChecksSource =
   | 'gh-signed-out'
   | 'no-github';
 
-/** What the setup screen sends back to save: the setup and the repository files to import, by path. */
+/**
+ * What the setup screen sends back to save: the setup and the repository
+ * files to import, by path. A file imported before keeps the project's copy,
+ * edits and all, unless it is in `updates`: then the repository's newer
+ * version replaces it.
+ */
 export type SaveSetupRequest = {
   repo: AgencyRepoRef;
   setup: ProjectSetup;
   imports: string[];
+  updates?: string[];
 };
+
+/** An imported file beside the repository's newer version, for the setup screen's diff. */
+export type ImportDiff = { path: string; ours: string; theirs: string };
 
 /** What setup read in one member, beside the findings saved in its setup entry. */
 export type MemberScan = {
@@ -142,6 +178,16 @@ export type MemberScan = {
   /** What was read: a branch name, or `working tree` for a repository with no commits. */
   readFrom: string;
   requiredChecksFrom: RequiredChecksSource;
+};
+
+/** An untracked env file in a member's main checkout: its variable names, never its values. */
+export type EnvFileFound = {
+  member: string;
+  /** In the member, `/`-separated. */
+  path: string;
+  vars: string[];
+  /** Git ignores it, so a copy in a worktree is never committed. Fleet copies only these. */
+  ignored: boolean;
 };
 
 /** What a read-only setup scan of a project hands the setup screen. */
@@ -158,8 +204,12 @@ export type SetupScan = {
   missing: Array<{ name: string; path: string }>;
   /** Crew and setup files in every member, by path from the project root. */
   repoFiles: RepoFile[];
+  /** Untracked env files in every member's main checkout, members in member order. */
+  envFiles: EnvFileFound[];
   /** A setup a teammate shared in `.fleet/fleet.agency.toml`, if it parses. */
   teamSetup: ProjectSetup | null;
+  /** Imported files the repository's default branch has a different version of. */
+  newer: string[];
   ghSignedIn: boolean;
 };
 

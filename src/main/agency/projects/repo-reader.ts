@@ -68,6 +68,19 @@ function under(files: string[], dir: string): string[] {
   return files.filter((f) => f.startsWith(prefix));
 }
 
+/** The ref of the default branch tip: the local branch, else origin's; null when neither has a commit. */
+export async function defaultRef(
+  root: string,
+  defaultBranch: string | null,
+  git: GitRun
+): Promise<string | null> {
+  if (defaultBranch === null) return null;
+  for (const ref of [`refs/heads/${defaultBranch}`, `refs/remotes/origin/${defaultBranch}`]) {
+    if (await verifies(git, root, ref)) return ref;
+  }
+  return null;
+}
+
 /**
  * A reader for the default branch tip, from git's object store. A repository
  * with no commit on it yet is read from its working tree instead.
@@ -77,18 +90,7 @@ export async function openRepoReader(
   defaultBranch: string | null,
   git: GitRun
 ): Promise<RepoReader> {
-  let ref: string | null = null;
-  if (defaultBranch !== null) {
-    for (const candidate of [
-      `refs/heads/${defaultBranch}`,
-      `refs/remotes/origin/${defaultBranch}`
-    ]) {
-      if (await verifies(git, root, candidate)) {
-        ref = candidate;
-        break;
-      }
-    }
-  }
+  const ref = await defaultRef(root, defaultBranch, git);
   if (ref !== null) {
     const tree = await git(['ls-tree', '-r', '--name-only', '-z', ref], root);
     const files = (tree ?? '').split('\0').filter((f) => f !== '');

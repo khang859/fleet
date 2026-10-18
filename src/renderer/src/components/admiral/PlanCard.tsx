@@ -5,11 +5,18 @@ import type {
   AgencyPlanVersion,
   MemberBase,
   PlanAction,
+  StepEnvFiles,
   SwapChoice
 } from '../../../../shared/agency-jobs';
-import { diffLine, withLocalBranches, type PlanInput } from '../../../../shared/agency-plan';
+import {
+  diffLine,
+  withLocalBranches,
+  type NewRole,
+  type PlanInput
+} from '../../../../shared/agency-plan';
 import { jobDisplayId } from '../../../../shared/agency';
 import { useAgencyStore } from '../../store/agency-store';
+import { useWorkspaceStore } from '../../store/workspace-store';
 import { OnboardingButton } from './onboarding-ui';
 import { PillRadio } from '../ui/pill-radio';
 import { PlanEditor } from './PlanEditor';
@@ -81,12 +88,14 @@ function OpenPlan({
           onSwap={(stepId, choice) => setSwaps({ ...swaps, [stepId]: choice })}
         />
       )}
+      {plan.newRoles.length > 0 && <NewRoles roles={plan.newRoles} />}
       {plan.steps.some((s) => s.deliverables.length > 0) && <YouGet version={version} />}
       <StartsFrom
         bases={checks.bases}
         choice={bases}
         onChoose={(member, choice) => setBases({ ...bases, [member]: choice })}
       />
+      <EnvFiles files={checks.envFiles} />
       {(plan.asksFirst.length > 0 || checks.issues.length > 0) && (
         <Cautions
           version={version}
@@ -121,7 +130,7 @@ function PlanSteps({ version }: { version: AgencyPlanVersion }): React.JSX.Eleme
   const change = version.kind === 'change';
   return (
     <Block>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 whitespace-nowrap">
         <Label tone={change ? 'amber' : 'muted'}>
           {change ? `PLAN CHANGE · v${version.version} · NEEDS YOUR OK` : 'PLAN'}
         </Label>
@@ -144,6 +153,7 @@ function PlanSteps({ version }: { version: AgencyPlanVersion }): React.JSX.Eleme
                 · {step.role}
                 {step.runtime !== undefined && ` · ${runtimeName(step.runtime)}`}
                 {step.model !== undefined && ` · ${step.model}`}
+                {step.skills.length > 0 && ` · uses ${step.skills.join(', ')}`}
               </span>
             </span>
           </li>
@@ -210,6 +220,56 @@ function ChangeBlock({
   );
 }
 
+/** The env files each step's crew get a copy of, so the client sees where its secrets go. */
+function EnvFiles({ files }: { files: StepEnvFiles[] }): React.JSX.Element | null {
+  if (files.length === 0) return null;
+  return (
+    <Block>
+      <Label>ENV FILES</Label>
+      {files.map((f) => (
+        <div key={f.stepId} className="flex flex-wrap items-baseline gap-x-2 text-xs">
+          <span className="text-fleet-text-secondary">{f.stepId}</span>
+          <span className="font-mono text-fleet-text-muted">{f.files.join(' · ')}</span>
+        </div>
+      ))}
+    </Block>
+  );
+}
+
+/** Roles the plan brings, each with what it says, saved only if the client approves. */
+function NewRoles({ roles }: { roles: NewRole[] }): React.JSX.Element {
+  return (
+    <Block>
+      <Label>{roles.length === 1 ? 'NEW ROLE' : 'NEW ROLES'}</Label>
+      {roles.map((role) => (
+        <details key={role.name} className="group text-xs">
+          <summary className="flex cursor-pointer list-none flex-col gap-0.5 rounded focus-ring">
+            <span className="text-[13px] text-fleet-text">
+              {role.name}
+              <span className="text-xs text-fleet-text-muted">
+                {' '}
+                · {runtimeName(role.runtime)}
+                {role.model !== undefined && ` · ${role.model}`}
+              </span>
+            </span>
+            <span className="text-fleet-text-secondary">{role.description}</span>
+            <span className="text-[11px] text-fleet-text-subtle group-open:hidden">
+              Show instructions
+            </span>
+          </summary>
+          <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-fleet-surface-2 px-2 py-1.5 text-fleet-text-secondary">
+            {role.instructions}
+          </p>
+        </details>
+      ))}
+      <p className="text-[11px] text-fleet-text-subtle">
+        Approving saves {roles.length === 1 ? 'it' : 'them'} in this project&apos;s crew in Fleet.
+        The repository gets no file.
+      </p>
+    </Block>
+  );
+}
+
 function YouGet({ version }: { version: AgencyPlanVersion }): React.JSX.Element {
   return (
     <Block>
@@ -239,6 +299,7 @@ function Cautions({
   onUseBranch: () => void;
 }): React.JSX.Element {
   const { plan, checks } = version;
+  const trust = checks.issues.filter((i) => i.fix === 'trust-claude');
   return (
     <Block>
       {plan.asksFirst.length > 0 && (
@@ -276,6 +337,22 @@ function Cautions({
         <OnboardingButton kind="ghost" className="w-fit" onClick={onUseBranch}>
           Deliver local branches instead
         </OnboardingButton>
+      )}
+      {trust.map(({ path, member }) =>
+        path === undefined ? null : (
+          <OnboardingButton
+            key={path}
+            kind="ghost"
+            className="w-fit"
+            onClick={() =>
+              useWorkspaceStore.getState().openResumeTab(path, 'claude', 'Claude Code')
+            }
+          >
+            {trust.length === 1
+              ? 'Open Claude Code there'
+              : `Open Claude Code in ${member ?? 'the root'}`}
+          </OnboardingButton>
+        )
       )}
     </Block>
   );
@@ -458,7 +535,7 @@ function SettledPlan({
     switch (version.status) {
       case 'approved':
         return {
-          text: `${name} approved · ${version.plan.steps.length} steps, $${formatUsd(version.plan.budget.usd)}${baseNote(version)}`,
+          text: `${name} approved · ${plural(version.plan.steps.length, 'step')}, $${formatUsd(version.plan.budget.usd)}${baseNote(version)}`,
           icon: <Check size={12} className="shrink-0 text-green-500" />
         };
       case 'superseded':

@@ -12,6 +12,7 @@ export type SettingsSection =
   | 'remoteHosts'
   | 'learnings'
   | 'agencyAdmiral'
+  | 'agencyCrew'
   | 'diagnostics';
 
 type NavGroup = {
@@ -43,7 +44,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     heading: 'Agency',
-    items: [{ id: 'agencyAdmiral', label: 'Admiral' }]
+    items: [
+      { id: 'agencyAdmiral', label: 'Admiral' },
+      { id: 'agencyCrew', label: 'Crew' }
+    ]
   },
   {
     heading: 'Advanced',

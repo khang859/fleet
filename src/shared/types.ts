@@ -74,6 +74,8 @@ export type Tab = {
   shellProfileId?: string;
   /** Path semantics for this tab (driven by the chosen shellProfile). Optional for legacy tabs. */
   pathContext?: PathContext;
+  /** The Admiral job whose crew panes this tab holds. Such a tab is dropped at app start. */
+  agencyJobId?: number;
 };
 
 export type PaneNode = PaneSplit | PaneLeaf;

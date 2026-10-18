@@ -1,6 +1,7 @@
 import type { AgencyJob, AgencyJobEvent, JobState } from './agency';
 
 export type { AgencyLeftover, ResourceKind } from './agency';
+import type { CrewFlag, CrewRuntime } from './agency-crew';
 import type { DeliverableKind, Plan, PlanDiffEntry, PlanInput } from './agency-plan';
 import type { PrReview } from './pr-review';
 
@@ -17,7 +18,8 @@ export type PlanVersionStatus = 'proposed' | 'approved' | 'rejected' | 'replaced
 
 /**
  * One thing the pre-approval check found. `block` keeps Approve disabled.
- * `fix: 'use-branch'` means the card can offer local branches in place of PRs.
+ * `fix: 'use-branch'` means the card can offer local branches in place of PRs;
+ * `fix: 'trust-claude'` that it can open Claude Code in `path` to trust it.
  */
 export type PlanIssue = {
   code: string;
@@ -25,7 +27,8 @@ export type PlanIssue = {
   text: string;
   step?: string;
   member?: string;
-  fix?: 'use-branch';
+  fix?: 'use-branch' | 'trust-claude';
+  path?: string;
 };
 
 /** A path this plan's `step` and a step of another running job both expect to touch. */
@@ -45,16 +48,17 @@ export type MemberBase = {
   pinned: { sha: string; from: 'default' | 'head' } | null;
 };
 
+/** The env files a step's crew get, by path from the project root. */
+export type StepEnvFiles = { stepId: string; files: string[] };
+
 export type PlanChecks = {
   issues: PlanIssue[];
   overlap: PlanOverlap[];
   bases: MemberBase[];
+  envFiles: StepEnvFiles[];
 };
 
-export const NO_PLAN_CHECKS: PlanChecks = { issues: [], overlap: [], bases: [] };
-
-/** Crew members that may work at once, in one job and across every job. */
-export const DEFAULT_CREW_LIMIT = 4;
+export const NO_PLAN_CHECKS: PlanChecks = { issues: [], overlap: [], bases: [], envFiles: [] };
 
 /** A crew member a plan change stops, by its step. */
 export type StoppedCrew = { crewId: number; stepId: string; label: string };
@@ -63,6 +67,18 @@ export type StoppedCrew = { crewId: number; stepId: string; label: string };
 export type StepSwap = { stepId: string; fields: Array<'role' | 'runtime' | 'model'> };
 
 export type SwapChoice = 'continue' | 'restart';
+
+/**
+ * Swap on a crew card: the role, runtime and model the client moves a running
+ * step to. A null runtime or model is the role's own.
+ */
+export type StepSwapRequest = {
+  jobId: number;
+  stepId: string;
+  role: string;
+  runtime: CrewRuntime | null;
+  model: string | null;
+};
 
 /**
  * What approving a plan change would do, for the change card: the crew it
@@ -109,6 +125,10 @@ export type StepStatus =
   | 'running'
   | 'blocked'
   | 'interrupted'
+  /** Its crew member left before it was done: the client closed the pane. */
+  | 'stopped'
+  /** Its crew member's runtime exited before it was done. */
+  | 'failed'
   | 'done'
   | 'removed';
 
@@ -200,6 +220,37 @@ export type ResultMergeStatus = 'queued' | 'merged' | 'failed';
  */
 export type AgencyMergeRun = { status: 'running' | 'failed' | 'done'; note: string };
 
+/**
+ * A crew member as the CREW section shows it. `starting` until its runtime
+ * reports, `live` after, and `ended` once its pane is gone for good.
+ */
+export type AgencyCrewMember = {
+  id: number;
+  stepId: string;
+  role: string;
+  runtime: CrewRuntime;
+  model: string | null;
+  /** `<role> <n>`, which names its pane. */
+  label: string;
+  paneId: string | null;
+  status: 'starting' | 'live' | 'ended';
+  /** What it needs beyond its status, and for `limited` when the limit resets, if known. */
+  flag: CrewFlag | null;
+  flagUntil: number | null;
+  startedAt: number;
+  endedAt: number | null;
+  endReason: string | null;
+};
+
+/** A server a crew member started on a port of its job workspace's block, as SERVERS shows it. */
+export type AgencyServer = {
+  stepId: string;
+  /** The port variable set to its port, or null for another port of the block. */
+  name: string | null;
+  port: number;
+  url: string;
+};
+
 export type AgencyJobDetail = {
   job: AgencyJob;
   /** Every version, oldest first. */
@@ -212,6 +263,10 @@ export type AgencyJobDetail = {
   results: AgencyResult[];
   spendUsd: number;
   merge: AgencyMergeRun | null;
+  /** Every crew member the job hired, oldest first. */
+  crew: AgencyCrewMember[];
+  /** Servers listening in the blocks of workspaces with crew at work, by port. */
+  servers: AgencyServer[];
 };
 
 /** The client opens a delivered file with the app their system picks for it. */

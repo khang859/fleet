@@ -37,6 +37,9 @@ const member = (over: Partial<ProjectMemberSetup> = {}): ProjectMemberSetup => (
   checks: ['test'],
   requiredChecks: ['test', 'lint'],
   reviewBots: [],
+  portVars: [],
+  fixedPorts: [],
+  envFiles: [],
   ...over
 });
 
@@ -45,7 +48,10 @@ const SETUP: ProjectSetup = {
   kind: 'repo',
   name: 'fleet',
   members: [member()],
-  imports: []
+  imports: [],
+  setupCommand: '',
+  setupTimeoutSec: 600,
+  stackSlots: null
 };
 
 beforeEach(async () => {
@@ -164,6 +170,30 @@ describe('settings_change', () => {
     expect(woke).toContain('Client refused Monthly cap (USD) on s1');
     // A decided change cannot be decided again.
     expect(await service.settings.decide(pending[0].id, false)).toBe(false);
+  });
+
+  it("lowers a runtime's crew at once at once, and waits for the client on more or another model", async () => {
+    agency = { ...agency, crew: { ...agency.crew, eva: { atOnce: 6, defaultModel: '' } } };
+    await change([
+      { key: 'agency.crew.eva.atOnce', value: 3 },
+      { key: 'agency.crew.claude.atOnce', value: 4 },
+      { key: 'agency.crew.eva.defaultModel', value: 'qwen/qwen3-coder' }
+    ]);
+    expect(agency.crew).toEqual({
+      claude: { atOnce: null, defaultModel: '' },
+      eva: { atOnce: 3, defaultModel: '' }
+    });
+
+    const pending = cards()[0].changes.filter((c) => c.status === 'pending');
+    expect(pending.map((c) => c.key)).toEqual([
+      'agency.crew.claude.atOnce',
+      'agency.crew.eva.defaultModel'
+    ]);
+    for (const c of pending) expect(await service.settings.decide(c.id, true)).toBe(true);
+    expect(agency.crew).toEqual({
+      claude: { atOnce: 4, defaultModel: '' },
+      eva: { atOnce: 3, defaultModel: 'qwen/qwen3-coder' }
+    });
   });
 
   it('turns a request injected into a file into a card at most', async () => {

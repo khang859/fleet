@@ -45,6 +45,10 @@ import { agencyMember } from './agency';
 import {
   AskClientArgs,
   ClientFileProposeArgs,
+  CrewHireArgs,
+  CrewInterruptArgs,
+  CrewSendArgs,
+  CrewStopArgs,
   SettingsChangeArgs,
   SettingsReadArgs,
   JobDeliverArgs,
@@ -187,6 +191,14 @@ export async function runAgentTool(
       return agencyMember(ctx, name, 'jobUpdate')(checked(JobUpdateArgs, args, name));
     case 'job_deliver':
       return agencyMember(ctx, name, 'jobDeliver')(checked(JobDeliverArgs, args, name));
+    case 'crew_hire':
+      return agencyMember(ctx, name, 'crewHire')(checked(CrewHireArgs, args, name));
+    case 'crew_send':
+      return agencyMember(ctx, name, 'crewSend')(checked(CrewSendArgs, args, name));
+    case 'crew_interrupt':
+      return agencyMember(ctx, name, 'crewInterrupt')(checked(CrewInterruptArgs, args, name));
+    case 'crew_stop':
+      return agencyMember(ctx, name, 'crewStop')(checked(CrewStopArgs, args, name));
     case 'client_file_propose':
       return agencyMember(
         ctx,

@@ -6,20 +6,36 @@ import {
 } from '../../../shared/agency';
 import {
   ACCEPTS_RESULTS,
-  DEFAULT_CREW_LIMIT,
   NO_PLAN_CHECKS,
+  type AgencyCrewMember,
   type AgencyJobDetail,
   type AgencyMergeRun,
   type AgencyPlanVersion,
+  type AgencyServer,
   type AgencyStep,
   type PlanAction,
   type PlanActionResult,
   type PlanBases,
   type PlanChecks,
   type PlanEffects,
-  type StepStatus
+  type StepStatus,
+  type StepSwapRequest
 } from '../../../shared/agency-jobs';
-import { PlanSchema, diffPlans, validatePlanGraph, type Plan } from '../../../shared/agency-plan';
+import { jsonEqual } from '../../../shared/json-equal';
+import {
+  PlanSchema,
+  diffPlans,
+  newRoleProblems,
+  scopeProblems,
+  validatePlanGraph,
+  type Plan
+} from '../../../shared/agency-plan';
+import {
+  defaultAtOnce,
+  type CrewReportStatus,
+  type CrewRuntime,
+  type CrewSnapshot
+} from '../../../shared/agency-crew';
 import { createLogger } from '../../logger';
 import {
   canDecide,
@@ -31,12 +47,30 @@ import {
 import { checkPlan, pinBases, type PlanFacts } from '../plans/plan-checks';
 import type { OtherJobPaths } from '../plans/overlap';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
-import { CREW_ENDED } from '../store/crew-store';
+import { CREW_ENDED, CREW_LIVE, crewRuntime, type CrewRecord } from '../store/crew-store';
 import type { PlanVersionRecord } from '../store/plan-store';
 import { acceptsPlans } from './job-machine';
+import type { StackSlots } from './stack-slots';
 import { canStartStep, type StartVerdict } from './start-gate';
 
 const log = createLogger('agency:jobs');
+
+/** What the Admiral does next with a crew member's report. */
+function reportBody(status: CrewReportStatus, deliver: string[]): string {
+  switch (status) {
+    case 'done':
+      return [
+        deliver.length > 0
+          ? `It delivered ${deliver.join(', ')}: record each with job_deliver.`
+          : 'Record what the step delivered with job_deliver.',
+        'Stop it with crew_stop once you need nothing more from it; it holds a crew place until then.'
+      ].join(' ');
+    case 'blocked':
+      return 'Unblock it with crew_send, ask the client with ask_client, or propose a plan change.';
+    case 'question':
+      return 'Answer it with crew_send, or ask the client with ask_client when the decision is theirs.';
+  }
+}
 
 /** A job another one queues behind holds it until it delivers or ends. */
 const UNDER_WAY: readonly JobState[] = ['planned', 'running', 'waiting', 'interrupted'];
@@ -77,8 +111,22 @@ export type JobsServiceDeps = {
     others: OtherJobPaths[];
     pinned: PlanBases | null;
   }) => Promise<PlanFacts>;
-  /** Crew members that may work at once, per job and across every job. */
-  crewLimit?: () => number;
+  /** Crew of a runtime that may work at once, across every job; `defaultAtOnce` unless set. */
+  crewLimit?: (runtime: CrewRuntime) => number;
+  /**
+   * The roles and playbook a plan uses, as their files say now, kept with the
+   * approval so the job runs on them. Without it the approval keeps no crew.
+   */
+  crewSnapshot?: (job: AgencyJob, plan: Plan) => Promise<CrewSnapshot>;
+  /**
+   * Save the roles a plan brings in the project's crew folder, on its
+   * approval and before its crew is snapshotted. Without it they are not saved.
+   */
+  saveRoles?: (job: AgencyJob, plan: Plan) => Promise<{ saved: string[] } | { refused: string }>;
+  /** The project's stack slots; without it, steps that run the stack wait on none. */
+  stack?: Pick<StackSlots, 'gate' | 'runsStack'>;
+  /** The servers a job's crew started, for its sheet; none unless set. */
+  servers?: (jobId: number) => AgencyServer[];
 };
 
 /**
@@ -177,6 +225,8 @@ export class JobsService {
     }
     const problems = [
       ...validatePlanGraph(plan),
+      ...scopeProblems(plan.steps),
+      ...newRoleProblems(plan),
       ...lockedViolations({
         approved: this.store.plans.approved(job.id)?.plan ?? null,
         next: plan,
@@ -210,24 +260,72 @@ export class JobsService {
       case 'edit': {
         const parsed = PlanSchema.safeParse(action.plan);
         if (!parsed.success) return { ok: false, reason: parsed.error.issues[0]?.message ?? '' };
-        const result = await this.propose(job.id, parsed.data, 'client');
-        if (!result.ok) return { ok: false, reason: result.error };
-        this.store.tx(() => {
-          this.store.resetChain(job.id);
-          this.store.enqueueWakeup({
-            repoId: job.repoId,
-            jobId: job.id,
-            kind: 'client_action',
-            payload: {
-              line: `Client edited plan v${version.version} into v${result.version.version}`,
-              note: null
-            }
-          });
-        });
-        this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
-        return { ok: true, version: result.version.version };
+        return this.proposeForClient(
+          job,
+          parsed.data,
+          (v) => `Client edited plan v${version.version} into v${v}`
+        );
       }
     }
+  }
+
+  /**
+   * Swap on a crew card: the approved plan with a running step's role, runtime
+   * or model changed, as the client's plan change card. Refused while another
+   * version waits, so the client decides on that one first.
+   */
+  async swapStep(swap: StepSwapRequest): Promise<PlanActionResult> {
+    const job = this.store.getJob(swap.jobId);
+    const approved = this.store.plans.approved(swap.jobId);
+    const step = approved?.plan.steps.find((s) => s.id === swap.stepId);
+    if (!job || !approved || !step) {
+      return { ok: false, reason: `Step ${swap.stepId} is not in the approved plan.` };
+    }
+    const newest = this.store.plans.newest(job.id);
+    if (newest?.status === 'proposed') {
+      return {
+        ok: false,
+        reason: `Plan v${newest.version} is waiting for you. Approve or reject it first.`,
+        newestVersion: newest.version
+      };
+    }
+    const swapped = {
+      ...step,
+      role: swap.role,
+      runtime: swap.runtime ?? undefined,
+      model: swap.model ?? undefined
+    };
+    if (jsonEqual(swapped, step)) return { ok: false, reason: 'The step runs that way now.' };
+    const plan = {
+      ...approved.plan,
+      steps: approved.plan.steps.map((s) => (s.id === step.id ? swapped : s))
+    };
+    return this.proposeForClient(
+      job,
+      plan,
+      (v) => `Client swapped step ${step.id} on a crew card, as plan v${v}`
+    );
+  }
+
+  /** A plan version from the client, which wakes the Admiral with `line`. */
+  private async proposeForClient(
+    job: AgencyJob,
+    plan: Plan,
+    line: (version: number) => string
+  ): Promise<PlanActionResult> {
+    const result = await this.propose(job.id, plan, 'client');
+    if (!result.ok) return { ok: false, reason: result.error };
+    this.store.tx(() => {
+      this.store.resetChain(job.id);
+      this.store.enqueueWakeup({
+        repoId: job.repoId,
+        jobId: job.id,
+        kind: 'client_action',
+        payload: { line: line(result.version.version), note: null }
+      });
+    });
+    this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
+    return { ok: true, version: result.version.version };
   }
 
   private async approve(
@@ -239,6 +337,9 @@ export class JobsService {
     const gate = await this.approvable(job, version, baseChoice);
     if (!gate.ok) return gate;
     const { checks, bases } = gate;
+    const hired = await this.approvedCrew(job, version.plan);
+    if (!hired.ok) return hired;
+    const { crew, saved } = hired;
 
     const effects = this.store.tx(() => {
       const approved = this.store.plans.approved(job.id);
@@ -250,6 +351,7 @@ export class JobsService {
       this.store.plans.supersede(job.id);
       this.store.plans.decide(version.id, 'approved');
       if (checks.bases.length > 0) this.store.plans.setBases(version.id, bases);
+      if (crew !== null) this.store.plans.setCrew(version.id, crew);
       this.store.setApprovedVersion(job.id, version.version, version.plan.budget.usd);
       version.plan.steps.forEach((step, position) => {
         this.store.plans.putStep({
@@ -289,6 +391,13 @@ export class JobsService {
         kind: 'decision',
         text: `Plan v${version.version} approved`
       });
+      for (const name of saved) {
+        this.store.plans.log({
+          jobId: job.id,
+          kind: 'decision',
+          text: `Saved the role ${name} in the project's crew`
+        });
+      }
       return preview;
     });
     this.refreshClientHold(job.id);
@@ -300,6 +409,26 @@ export class JobsService {
       `plan v${version.version}`
     );
     return { ok: true, version: version.version };
+  }
+
+  /**
+   * Saves the plan's new roles in the project's crew, then snapshots the
+   * roles the plan uses, so the job runs on the files as they are now.
+   */
+  private async approvedCrew(
+    job: AgencyJob,
+    plan: Plan
+  ): Promise<
+    { ok: false; reason: string } | { ok: true; crew: CrewSnapshot | null; saved: string[] }
+  > {
+    const roles =
+      plan.newRoles.length === 0 ? null : ((await this.deps.saveRoles?.(job, plan)) ?? null);
+    if (roles !== null && 'refused' in roles) return { ok: false, reason: roles.refused };
+    const crew = (await this.deps.crewSnapshot?.(job, plan)) ?? null;
+    // A role file can go between the check and here; the job must not start without it.
+    const lost = plan.steps.find((s) => crew && !crew.roles.some((r) => r.name === s.role));
+    if (lost) return { ok: false, reason: `The role ${lost.role} is gone. Check the plan again.` };
+    return { ok: true, crew, saved: roles?.saved ?? [] };
   }
 
   /**
@@ -423,7 +552,7 @@ export class JobsService {
     const target = this.targetStatus(current, approved.plan, step, update);
     if (!target.ok) return target;
 
-    this.writeStepUpdate(current, update, target.status);
+    this.writeStepUpdate(current, update, target.status, target.queued);
     if (target.queued !== null) {
       return {
         ok: true,
@@ -461,13 +590,18 @@ export class JobsService {
     return { ok: true, status: queued === null ? update.status : 'queued', queued };
   }
 
+  /** Move the step and keep the Admiral's note, or why the step is queued. */
   private writeStepUpdate(
     job: AgencyJob,
     update: StepUpdate,
-    status: StepStatus | undefined
+    status: StepStatus | undefined,
+    queued: string | null
   ): void {
     this.store.tx(() => {
       if (status !== undefined) this.moveStep(job, update.step, status);
+      if (queued !== null && update.note === undefined) {
+        this.store.plans.setStepNote(job.id, update.step, queued);
+      }
       if (update.note !== undefined) {
         this.store.plans.setStepNote(job.id, update.step, update.note);
         this.store.plans.log({
@@ -484,9 +618,220 @@ export class JobsService {
     if (status === 'done') this.admitQueued();
   }
 
-  /** Whether a step may start now, with the crew limit and the job it queues behind. */
-  private startVerdict(job: AgencyJob, plan: Plan, stepId: string, admitted = 0): StartVerdict {
+  /** Whether a step of the job's approved plan may be hired for now. */
+  startCheck(jobId: number, stepId: string): StartVerdict {
+    const job = this.store.getJob(jobId);
+    const plan = this.store.plans.approved(jobId)?.plan ?? null;
+    if (!job || plan === null) {
+      return { ok: false, reason: 'There is no approved plan yet; propose one with job_plan.' };
+    }
+    return this.startVerdict(job, plan, stepId);
+  }
+
+  /**
+   * A hire moves its step: `running` as its crew member starts, `queued`
+   * while it waits for a place, or back to where it was when the hire failed.
+   */
+  hireMoved(jobId: number, stepId: string, status: StepStatus, note?: string): void {
+    const job = this.store.getJob(jobId);
+    if (!job) return;
+    this.store.tx(() => {
+      this.moveStep(job, stepId, status);
+      if (note !== undefined) this.store.plans.setStepNote(jobId, stepId, note);
+    });
+    this.refreshClientHold(jobId);
+    this.deps.changed([{ repoId: job.repoId, jobId }]);
+  }
+
+  /**
+   * A crew member left its step before the step was done: the client closed
+   * its pane (`stopped`) or its runtime ended (`failed`). The step waits for
+   * the client's OK to hire again, and the Admiral hears of it.
+   */
+  crewLeft(input: {
+    jobId: number;
+    stepId: string;
+    status: 'stopped' | 'failed';
+    label: string;
+    note: string;
+  }): void {
+    const { jobId, stepId } = input;
+    const job = this.store.getJob(jobId);
+    if (!job || this.store.plans.step(jobId, stepId)?.status !== 'running') {
+      // The step moved on before its member left, but the member's place is free now.
+      this.admitQueued();
+      return;
+    }
+    const what = input.status === 'stopped' ? 'was stopped' : 'failed';
+    this.store.tx(() => {
+      this.moveStep(job, stepId, input.status);
+      this.store.plans.setStepNote(jobId, stepId, input.note);
+      this.store.askQuestion({
+        repoId: job.repoId,
+        jobId,
+        kind: 'rehire',
+        step: stepId,
+        planVersion: job.approvedVersion,
+        question: `Step ${stepId} ${what} before it was done`,
+        context: `${input.label} ${input.note}. Its pane is closed; its worktree and branch stay as it left them.`,
+        options: [
+          { label: 'Hire again', detail: 'the Admiral hires a new crew member for the step' },
+          { label: 'Leave it', detail: 'the step stays stopped until you say more' }
+        ],
+        recommended: null
+      });
+      this.store.resetChain(jobId);
+      this.store.enqueueWakeup({
+        repoId: job.repoId,
+        jobId,
+        kind: 'event',
+        payload: {
+          line: `Step ${stepId} ${what}: ${input.label} ${input.note}`,
+          body: 'Fleet asked the client whether to hire for it again; their answer arrives as a wakeup. Until then the step does not start.'
+        }
+      });
+    });
+    this.refreshClientHold(jobId);
+    this.deps.changed([{ repoId: job.repoId, jobId }]);
+    this.admitQueued();
+  }
+
+  /**
+   * A crew member reported its step with `fleet agency done`: `done` finishes
+   * the step, `blocked` blocks it, and a `question` leaves it running. The
+   * summary becomes the step's note, and the Admiral wakes to it.
+   */
+  crewReported(input: {
+    jobId: number;
+    stepId: string;
+    label: string;
+    status: CrewReportStatus;
+    summary: string;
+    deliver: string[];
+  }): void {
+    const { jobId, stepId, label, status, summary, deliver } = input;
+    const job = this.store.getJob(jobId);
+    const step = this.store.plans.step(jobId, stepId);
+    if (!job || !ACCEPTS_RESULTS.includes(job.state)) {
+      throw new Error(`Not reported: ${jobDisplayId(jobId)} is ${job?.state ?? 'gone'}.`);
+    }
+    if (step?.status !== 'running' && step?.status !== 'blocked') {
+      throw new Error(`Not reported: step ${stepId} is ${step?.status ?? 'not in the plan'}.`);
+    }
+    this.store.tx(() => {
+      if (status !== 'question') this.moveStep(job, stepId, status);
+      this.store.plans.setStepNote(jobId, stepId, summary);
+      this.store.plans.log({
+        jobId,
+        kind: 'crew',
+        stepId,
+        text: `${label} reported ${status}: ${summary}`,
+        data: { status, deliver }
+      });
+      this.store.enqueueWakeup({
+        repoId: job.repoId,
+        jobId,
+        kind: 'event',
+        payload: {
+          line: `${label} reported step ${stepId} ${status}: ${summary}`,
+          body: reportBody(status, deliver)
+        }
+      });
+    });
+    this.refreshClientHold(jobId);
+    this.afterStepChange(jobId);
+    this.deps.changed([{ repoId: job.repoId, jobId }]);
+    if (status === 'done') this.admitQueued();
+  }
+
+  /**
+   * A crew member ended a turn without reporting. The Admiral wakes to answer
+   * or nudge it, until it has been idle more times than the nudge limit
+   * allows: then a running step is blocked.
+   */
+  crewIdle(input: {
+    jobId: number;
+    stepId: string;
+    label: string;
+    idle: number;
+    nudgeLimit: number;
+  }): void {
+    const { jobId, stepId, label, idle, nudgeLimit } = input;
+    const job = this.store.getJob(jobId);
+    if (!job || !ACCEPTS_RESULTS.includes(job.state)) return;
+    const running = this.store.plans.step(jobId, stepId)?.status === 'running';
+    const blocks = running && idle > nudgeLimit;
+    const left = nudgeLimit - idle + 1;
+    const turns = idle === 1 ? 'a turn' : `${idle} turns in a row`;
+    this.store.tx(() => {
+      if (blocks) {
+        this.moveStep(job, stepId, 'blocked');
+        this.store.plans.setStepNote(jobId, stepId, `${label} ended ${turns} without reporting`);
+      }
+      this.store.enqueueWakeup({
+        repoId: job.repoId,
+        jobId,
+        kind: 'event',
+        payload: blocks
+          ? {
+              line: `Step ${stepId} is blocked: ${label} ended ${turns} without reporting`,
+              body: "Read its last message with fleet_read. Ask the client what to do with ask_client, or propose a plan change. Prompting it again needs a higher nudge limit, which is the client's call."
+            }
+          : {
+              line: `${label} ended ${turns} on step ${stepId} without reporting`,
+              body: running
+                ? `Read its last message with fleet_read. Answer its question, or nudge it to finish and report, with crew_send. ${left === 1 ? 'This is its last prompt' : `It has ${left} prompts left`} before the step is blocked.`
+                : 'Read its last message with fleet_read.'
+            }
+      });
+    });
+    if (blocks) this.refreshClientHold(jobId);
+    this.deps.changed([{ repoId: job.repoId, jobId }]);
+  }
+
+  /**
+   * Something happened to a crew member that the Admiral should hear of, such
+   * as a new crew flag: it goes in the job record, and the Admiral wakes to it.
+   */
+  crewNotice(input: { jobId: number; stepId: string; line: string; body: string }): void {
+    const { jobId, stepId, line, body } = input;
+    const job = this.store.getJob(jobId);
+    if (!job || !ACCEPTS_RESULTS.includes(job.state)) return;
+    this.store.tx(() => {
+      this.store.plans.log({ jobId, kind: 'crew', stepId, text: line });
+      this.store.enqueueWakeup({
+        repoId: job.repoId,
+        jobId,
+        kind: 'event',
+        payload: { line, body }
+      });
+    });
+    this.deps.changed([{ repoId: job.repoId, jobId }]);
+  }
+
+  /** The runtime a step's crew run on: the step's, else its role's in the approved crew. */
+  private stepRuntime(jobId: number, plan: Plan, stepId: string): CrewRuntime {
+    const step = plan.steps.find((s) => s.id === stepId);
+    const role = this.store.plans.approved(jobId)?.crew?.roles.find((r) => r.name === step?.role);
+    return step?.runtime ?? role?.runtime ?? 'claude';
+  }
+
+  /**
+   * Whether a step may start now, with its runtime's crew limit, the job it
+   * queues behind and the stack slots. `admitted` counts steps let go but not
+   * hired yet.
+   */
+  private startVerdict(
+    job: AgencyJob,
+    plan: Plan,
+    stepId: string,
+    admitted: { crew: Partial<Record<CrewRuntime, number>>; stack: number } = {
+      crew: {},
+      stack: 0
+    }
+  ): StartVerdict {
     const behind = plan.queueBehind === null ? null : this.store.getJob(plan.queueBehind);
+    const runtime = this.stepRuntime(job.id, plan, stepId);
     return canStartStep({
       job,
       plan,
@@ -494,10 +839,13 @@ export class JobsService {
       stepId,
       queuedBehind: behind && UNDER_WAY.includes(behind.state) ? behind.id : null,
       live: {
-        job: this.store.crew.live(job.id).length + admitted,
-        all: this.store.crew.live().length + admitted,
-        limit: this.deps.crewLimit?.() ?? DEFAULT_CREW_LIMIT
-      }
+        runtime,
+        working:
+          this.store.crew.live().filter((c) => crewRuntime(c) === runtime).length +
+          (admitted.crew[runtime] ?? 0),
+        limit: this.deps.crewLimit?.(runtime) ?? defaultAtOnce(runtime, false)
+      },
+      stack: this.deps.stack?.gate(job, stepId, admitted.stack)
     });
   }
 
@@ -508,14 +856,19 @@ export class JobsService {
    */
   admitQueued(): void {
     const touched: AgencyTouched[] = [];
-    let admitted = 0;
+    const crew: Partial<Record<CrewRuntime, number>> = {};
+    const stack = new Map<string, number>();
     for (const { jobId, stepId } of this.store.plans.queuedSteps()) {
       const job = this.store.getJob(jobId);
       const plan = this.store.plans.approved(jobId)?.plan;
+      const admitted = { crew, stack: job ? (stack.get(job.repoId) ?? 0) : 0 };
       if (!job || !plan || !this.startVerdict(job, plan, stepId, admitted).ok) continue;
-      admitted += 1;
+      const runtime = this.stepRuntime(jobId, plan, stepId);
+      crew[runtime] = (crew[runtime] ?? 0) + 1;
+      if (this.deps.stack?.runsStack(jobId, stepId)) stack.set(job.repoId, admitted.stack + 1);
       this.store.tx(() => {
         this.store.plans.setStepStatus(jobId, stepId, 'pending');
+        this.store.plans.setStepNote(jobId, stepId, '');
         this.store.plans.log({ jobId, kind: 'step', stepId, text: `Step ${stepId} may start` });
         this.store.enqueueWakeup({
           repoId: job.repoId,
@@ -621,10 +974,28 @@ export class JobsService {
       log: this.store.plans.logTail(jobId),
       results: this.store.results.forJob(jobId),
       spendUsd: this.store.plans.spendUsd(jobId),
-      merge: mergeView(this.store.merges.run(jobId))
+      merge: mergeView(this.store.merges.run(jobId)),
+      crew: this.store.crew.all(jobId).map(crewView),
+      servers: this.deps.servers?.(jobId) ?? []
     };
   }
 }
+
+const crewView = (c: CrewRecord): AgencyCrewMember => ({
+  id: c.id,
+  stepId: c.stepId,
+  role: c.role,
+  runtime: c.runtime === 'eva' ? 'eva' : 'claude',
+  model: c.model,
+  label: c.label,
+  paneId: c.paneId,
+  status: c.status === CREW_ENDED ? 'ended' : c.status === CREW_LIVE ? 'live' : 'starting',
+  flag: c.flag,
+  flagUntil: c.flagUntil,
+  startedAt: c.startedAt,
+  endedAt: c.endedAt,
+  endReason: c.endReason
+});
 
 const mergeView = (run: AgencyMergeRun | null): AgencyMergeRun | null =>
   run === null ? null : { status: run.status, note: run.note };
@@ -634,5 +1005,7 @@ function swapNote(swaps: Record<string, 'continue' | 'restart'>): string | null 
     ([step, choice]) =>
       `${step}: ${choice === 'continue' ? 'continue its work in the same workspace' : 'start over on a new branch'}`
   );
-  return lines.length === 0 ? null : `Swaps: ${lines.join('; ')}.`;
+  return lines.length === 0
+    ? null
+    : `Swaps: ${lines.join('; ')}. Hire each swapped step again once its old member has stopped.`;
 }

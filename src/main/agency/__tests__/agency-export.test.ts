@@ -94,14 +94,14 @@ async function closedJob(): Promise<number> {
 describe('job export', () => {
   it('writes the brief, plan, questions and answers, results, steps and record', async () => {
     const jobId = await closedJob();
-    const out = service.exportJob(jobId);
+    const out = await service.exportJob(jobId);
     expect(out?.name).toBe(`j${jobId}-dark-mode.md`);
     expect(out?.text).toMatchSnapshot();
   });
 
-  it('is only for a job that ended', () => {
+  it('is only for a job that ended', async () => {
     const { job } = openJob();
-    expect(service.exportJob(job.id)).toBeNull();
+    expect(await service.exportJob(job.id)).toBeNull();
   });
 
   it('masks the values of chosen env files wherever they appear', async () => {

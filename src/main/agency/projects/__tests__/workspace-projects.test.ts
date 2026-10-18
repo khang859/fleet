@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import type { ProjectFolder, ProjectSetup } from '../../../../shared/agency-projects';
 import { AgencyService } from '../../index';
+import { approvedJobIn, repoAt } from '../../__tests__/plan-helpers';
 import { detectWorkspace, parseGitmodules } from '../workspace-detect';
 import { fakeGh, git, initRepo, shopUmbrella, tempDir, workFolder } from './git-fixture';
 
@@ -31,11 +32,7 @@ afterEach(() => {
   home.cleanup();
 });
 
-async function project(path: string): Promise<AgencyRepoRef> {
-  const res = await service.resolveRepo(path);
-  if (!res.ok) throw new Error(`${path} is not a project`);
-  return { repoId: res.repoId, root: res.root, name: res.name };
-}
+const project = async (path: string): Promise<AgencyRepoRef> => repoAt(service, path);
 
 const workspace = (folders: ProjectFolder[]): Extract<ProjectFolder, { kind: 'workspace' }> => {
   const row = folders.find((f) => f.kind === 'workspace');
@@ -58,7 +55,9 @@ describe('parseGitmodules', () => {
   });
 });
 
-describe('an umbrella with three submodules', () => {
+// Each test builds four real repositories and scans them a few times, about
+// 2.5 s alone and past the 5 s default when the whole suite runs at once.
+describe('an umbrella with three submodules', { timeout: 20_000 }, () => {
   it('lists the members dependencies first and the umbrella last', async () => {
     const root = shopUmbrella(home.dir);
     const ws = await detectWorkspace(root, { identify: async (p) => service.identify(p) });
@@ -171,6 +170,47 @@ describe('an umbrella with three submodules', () => {
     await expect(
       service.projects.saveSetup({ repo: ref, setup: stranger, imports: [] }, { finish: false })
     ).rejects.toThrow('cart is not a member of shop.');
+  });
+
+  it('takes a submodule added after setup, once no job is running', async () => {
+    const root = shopUmbrella(home.dir);
+    const ref = await service.projects.chooseWorkspace({ path: root, leftOut: [] });
+    const save = async (): Promise<string> => {
+      const { setup } = await service.projects.scan(ref);
+      return service.projects.saveSetup({ repo: ref, setup, imports: [] }, { finish: true });
+    };
+    await save();
+    const { jobId } = await approvedJobIn(service, ref, {
+      id: 'fix',
+      role: 'builder',
+      title: 'Fix',
+      deliverables: ['branch']
+    });
+    // An unchanged setup saves while the job runs.
+    await expect(save()).resolves.toContain(ref.repoId);
+
+    initRepo(join(home.dir, 'src', 'pay'), { 'package.json': '{"name":"@shop/pay"}\n' });
+    git(
+      root,
+      '-c',
+      'protocol.file.allow=always',
+      'submodule',
+      'add',
+      '-q',
+      join(home.dir, 'src', 'pay'),
+      'libs/pay'
+    );
+    git(root, 'commit', '-q', '-m', 'pay');
+    await expect(save()).rejects.toThrow(
+      "shop's members changed. Finish or cancel its running job first, since they work in the members it has now."
+    );
+    expect(service.store.projects.byId(ref.repoId)?.members.map((m) => m.name)).not.toContain(
+      'pay'
+    );
+
+    expect(service.cancelJobs(ref.repoId)).toEqual([jobId]);
+    await save();
+    expect(service.store.projects.byId(ref.repoId)?.members.map((m) => m.name)).toContain('pay');
   });
 });
 

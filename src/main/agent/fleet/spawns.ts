@@ -8,11 +8,18 @@ export const SPAWN_PROMPT_ENV = 'FLEET_SPAWN_PROMPT';
  */
 export const SPAWN_COMMAND = `claude "$${SPAWN_PROMPT_ENV}"`;
 
+/**
+ * How a spawned pane's PTY starts. `exitOnComplete` ends the pane's process
+ * with the command, so no shell is left behind it.
+ */
+export type PaneLaunch = { cmd: string; env: Record<string, string>; exitOnComplete: boolean };
+
 export type FleetSpawn = {
   paneId: string;
   cwd: string;
   prompt: string;
   at: number;
+  launch: PaneLaunch;
   /** Its PTY has been created with the spawn's command. */
   launched: boolean;
 };
@@ -29,16 +36,25 @@ export type FleetSpawn = {
 export class FleetSpawns {
   private readonly spawns = new Map<string, FleetSpawn>();
 
-  add(spawn: Omit<FleetSpawn, 'launched'>): void {
-    this.spawns.set(spawn.paneId, { ...spawn, launched: false });
+  /**
+   * `launch` is how the pane starts; unset, it runs Claude Code with the
+   * prompt and leaves a shell behind, as `fleet_spawn` does.
+   */
+  add(spawn: Omit<FleetSpawn, 'launched' | 'launch'> & { launch?: PaneLaunch }): void {
+    const launch = spawn.launch ?? {
+      cmd: SPAWN_COMMAND,
+      env: { [SPAWN_PROMPT_ENV]: spawn.prompt },
+      exitOnComplete: false
+    };
+    this.spawns.set(spawn.paneId, { ...spawn, launch, launched: false });
   }
 
-  /** For `PTY_CREATE`: the command and environment of a spawned pane, the first time only. */
-  take(paneId: string): { cmd: string; env: Record<string, string> } | null {
+  /** For `PTY_CREATE`: how a spawned pane starts, the first time only. */
+  take(paneId: string): PaneLaunch | null {
     const spawn = this.spawns.get(paneId);
     if (spawn === undefined || spawn.launched) return null;
     spawn.launched = true;
-    return { cmd: SPAWN_COMMAND, env: { [SPAWN_PROMPT_ENV]: spawn.prompt } };
+    return spawn.launch;
   }
 
   /** Spawned panes whose session has not reported yet, oldest first. */

@@ -3,6 +3,7 @@ import { copyFile, lstat, mkdir, mkdtemp, realpath } from 'node:fs/promises';
 import { basename, extname, isAbsolute, join, sep } from 'node:path';
 import type { ResultFile } from '../../../shared/agency-jobs';
 import { MEDIA_MIME_TYPES } from '../../../shared/file-open';
+import { ENV_FILE } from '../projects/env-files';
 import { jobDir } from '../projects/paths';
 
 /** The largest file a result may hand back. */
@@ -29,17 +30,23 @@ const MIME: Record<string, string> = {
   '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 };
 
-/** An env file holds secrets, and a job record never holds an env file's values. */
-const ENV_FILE = /^\.env(\..+)?$/i;
-
 /** The folder a job's delivered files are copied into, outside every worktree. */
 export function resultsDir(home: string, jobId: number): string {
   return join(jobDir(home, jobId), 'results');
 }
 
+/**
+ * Where a step that reads another's worktree writes the files it hands
+ * back. It is in the job's folder, so `job_deliver` takes paths in it.
+ */
+export function handbackDir(home: string, jobId: number, stepId: string): string {
+  return join(jobDir(home, jobId), 'handback', stepId);
+}
+
 /** Why a path may not be handed back, or null when it may. */
 async function refusal(path: string, roots: string[]): Promise<string | null> {
   if (!isAbsolute(path)) return `${path} is not an absolute path`;
+  // An env file holds secrets, and a job record never holds an env file's values.
   if (ENV_FILE.test(basename(path))) return `${basename(path)} is an env file`;
   const real = await realpath(path).catch(() => null);
   if (real === null) return `${path} does not exist`;

@@ -1,12 +1,17 @@
-import type { AgencyChanged, AgencyRepoRef, RepoResolution } from '../../../shared/agency';
+import {
+  RUNNING_JOB_STATES,
+  type AgencyChanged,
+  type AgencyRepoRef,
+  type RepoResolution
+} from '../../../shared/agency';
 import { STARTER_SOURCE } from '../../../shared/agency-client-file';
 import type {
   AgencyProjectSummary,
   BriefIdeas,
   ClientFileView,
   ClientLineInput,
+  ImportDiff,
   ProjectFolder,
-  RepoFile,
   RuleCandidates,
   SaveSetupRequest,
   SetupScan
@@ -18,18 +23,18 @@ import { briefIdeas } from './brief-ideas';
 import { ruleCandidates, type ClientFiles } from './client-file';
 import { probeFolders } from './folders';
 import { nativeGh, type GhRun } from './gh';
+import { importDiff, importedFiles, newerImports } from './imports';
 import { agencyHome } from './paths';
-import { loadSetup, saveSetup, shareWithTeam, type ImportedFile } from './project-store';
+import { loadSetup, saveSetup, shareWithTeam } from './project-store';
 import { readOnlyGit } from './repo-reader';
-import {
-  memberOfPath,
-  readRepoFile,
-  repoTarget,
-  scanProject,
-  type ScanTarget
-} from './setup-findings';
+import { repoTarget, scanProject, type ScanTarget } from './setup-findings';
 import { detectWorkspace, type DetectedWorkspace } from './workspace-detect';
-import { checkedLeftOut, registeredProject, workspaceTarget } from './workspace-projects';
+import {
+  checkedLeftOut,
+  memberChangeRefusal,
+  registeredProject,
+  workspaceTarget
+} from './workspace-projects';
 import { checkOutSubmodule } from '../workspaces/submodules';
 
 export type ProjectsDeps = {
@@ -147,36 +152,31 @@ export class ProjectsService {
       scanProject(target, { git: this.git, gh: this.gh }),
       loadSetup(checked.repoId, this.home)
     ]);
-    if (saved === null) return { ...found, saved: false };
+    if (saved === null) return { ...found, saved: false, newer: [] };
     const members = found.setup.members.map(
       (fresh) => saved.members.find((m) => m.name === fresh.name) ?? fresh
     );
-    return { ...found, setup: { ...saved, kind: found.kind, members }, saved: true };
+    return {
+      ...found,
+      setup: { ...saved, kind: found.kind, members },
+      saved: true,
+      newer: newerImports(saved, found.repoFiles)
+    };
   }
 
-  private async importedFiles(target: ScanTarget, paths: string[]): Promise<ImportedFile[]> {
-    const found = await scanProject(target, { git: this.git });
-    const importable = new Map<string, RepoFile>(
-      found.repoFiles.filter((f) => f.disposition === 'importable').map((f) => [f.path, f])
-    );
-    const out: ImportedFile[] = [];
-    for (const path of paths) {
-      const file = importable.get(path);
-      const where = memberOfPath(target.members, path);
-      if (file === undefined || where === null) {
-        throw new Error(`${path} is not a file setup can import.`);
-      }
-      const content = await readRepoFile(where.member.root, where.path, this.git);
-      if (content === null || file.sha256 === null) continue;
-      out.push({ path, kind: file.kind, sha256: file.sha256, content });
-    }
-    return out;
+  /** An imported file's project copy beside the repository's version, for the diff. */
+  async importDiff(input: { repo: AgencyRepoRef; path: string }): Promise<ImportDiff> {
+    const repo = await this.verified(input.repo);
+    const { target } = await this.target(repo);
+    return importDiff(repo, target, input.path, { home: this.home, git: this.git });
   }
 
   /**
    * Save a project's setup; `finish` also marks setup done, which moves the
    * pane on. The members must be the project's own, at their own paths, so a
-   * renderer cannot name a folder that is not one of them.
+   * renderer cannot name a folder that is not one of them. Setup that adds or
+   * drops a member waits until no job is running, since jobs work in the
+   * members the project has now.
    */
   async saveSetup(input: SaveSetupInput, opts: { finish: boolean }): Promise<string> {
     const repo = await this.verified(input.repo);
@@ -189,7 +189,21 @@ export class ProjectsService {
         throw new Error(`${m.name} is not a member of ${repo.name}.`);
       }
     }
-    const imported = await this.importedFiles(target, input.imports);
+    if (workspace !== null) {
+      const { store } = this.deps;
+      const refusal = memberChangeRefusal({
+        name: repo.name,
+        before: store.projects.byId(repo.repoId)?.members ?? [],
+        after: registeredProject(workspace, leftOut, null).members,
+        running: store.listJobs(repo.repoId).filter((j) => RUNNING_JOB_STATES.includes(j.state))
+          .length
+      });
+      if (refusal !== null) throw new Error(refusal);
+    }
+    const imported = await importedFiles(repo.repoId, target, input, {
+      home: this.home,
+      git: this.git
+    });
     const { path } = await saveSetup({ repo, setup: input.setup, imported }, this.home);
     if (workspace !== null) {
       this.deps.store.projects.save(registeredProject(workspace, leftOut, input.setup));

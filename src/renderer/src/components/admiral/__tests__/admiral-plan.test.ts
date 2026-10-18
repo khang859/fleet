@@ -3,13 +3,17 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { AgencySnapshot } from '../../../../../shared/agency';
 import type {
+  AgencyCrewMember,
+  AgencyServer,
   AgencyJobDetail,
   AgencyPlanVersion,
   AgencyStep
 } from '../../../../../shared/agency-jobs';
+import { NO_PLAN_CHECKS } from '../../../../../shared/agency-jobs';
 import { PlanSchema } from '../../../../../shared/agency-plan';
 import { agencyJob } from '../../../../../shared/__tests__/agency-fixtures';
 import { waitingCount } from '../../../store/agency-store';
+import { CrewSwapForm } from '../CrewSwap';
 import { JobSheet } from '../JobSheet';
 import { PlanCard } from '../PlanCard';
 import { proposedPlanId } from '../job-view';
@@ -43,7 +47,7 @@ function version(over: Partial<AgencyPlanVersion> = {}): AgencyPlanVersion {
     author: 'admiral',
     parentVersion: null,
     plan: PLAN,
-    checks: { issues: [], overlap: [], bases: [] },
+    checks: { envFiles: [], issues: [], overlap: [], bases: [] },
     bases: null,
     decisionNote: null,
     proposedAt: 1,
@@ -69,7 +73,12 @@ function step(id: string, status: AgencyStep['status'], note = ''): AgencyStep {
   };
 }
 
-function detail(versions: AgencyPlanVersion[], steps: AgencyStep[] = []): AgencyJobDetail {
+function detail(
+  versions: AgencyPlanVersion[],
+  steps: AgencyStep[] = [],
+  crew: AgencyCrewMember[] = [],
+  servers: AgencyServer[] = []
+): AgencyJobDetail {
   const approved = versions.find((v) => v.status === 'approved');
   return {
     job: agencyJob({ id: 2, approvedVersion: approved?.version ?? null }),
@@ -79,7 +88,9 @@ function detail(versions: AgencyPlanVersion[], steps: AgencyStep[] = []): Agency
     log: [],
     results: [],
     spendUsd: 2.5,
-    merge: null
+    merge: null,
+    crew,
+    servers
   };
 }
 
@@ -87,6 +98,32 @@ const card = (v: AgencyPlanVersion, d = detail([v])): string =>
   renderToStaticMarkup(createElement(PlanCard, { version: v, detail: d }));
 
 describe('PlanCard', () => {
+  it('shows a new role with its runtime, description and instructions, saved only on approval', () => {
+    const html = card(
+      version({
+        plan: PlanSchema.parse({
+          ...PLAN,
+          steps: [...PLAN.steps, { id: 'migrate', role: 'data-migrator', title: 'Migrate' }],
+          newRoles: [
+            {
+              name: 'data-migrator',
+              description: 'Writes database migrations.',
+              model: 'sonnet',
+              instructions: 'Run each migration up and down.'
+            }
+          ]
+        })
+      })
+    );
+    expect(html).toContain('>NEW ROLE<');
+    expect(html).toContain('data-migrator');
+    expect(html).toContain(' · Claude Code · sonnet');
+    expect(html).toContain('Writes database migrations.');
+    expect(html).toContain('Run each migration up and down.');
+    expect(html).toContain('The repository gets no file.');
+    expect(card(version())).not.toContain('NEW ROLE');
+  });
+
   it('puts a first plan up with its steps, deliverables, asks and budget', () => {
     const html = card(version());
     expect(html).toContain('aria-label="Plan v1"');
@@ -137,6 +174,7 @@ describe('PlanCard', () => {
     const html = card(
       version({
         checks: {
+          envFiles: [],
           issues: [
             {
               code: 'pr-unavailable',
@@ -155,6 +193,37 @@ describe('PlanCard', () => {
     expect(html).toContain('Deliver local branches instead');
   });
 
+  it('offers the Claude Code trust step without holding Approve', () => {
+    const html = card(
+      version({
+        checks: {
+          envFiles: [],
+          issues: [
+            {
+              code: 'claude-trust',
+              severity: 'warn',
+              text: 'Claude Code has not run in /dev/fleet yet.',
+              fix: 'trust-claude',
+              path: '/dev/fleet'
+            }
+          ],
+          overlap: [],
+          bases: []
+        }
+      })
+    );
+    expect(html).toContain('Open Claude Code there');
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>Approve plan<\/button>/);
+  });
+
+  it('lists the env files each step gets, and nothing when no step gets one', () => {
+    const files = [{ stepId: 'builder-1', files: ['api/.env', '.env'] }];
+    const html = card(version({ checks: { ...NO_PLAN_CHECKS, envFiles: files } }));
+    expect(html).toContain('ENV FILES');
+    expect(html).toContain('>api/.env · .env<');
+    expect(card(version())).not.toContain('ENV FILES');
+  });
+
   it('offers where the work starts when the default tip and HEAD differ', () => {
     const base = {
       member: 'fleet',
@@ -164,7 +233,9 @@ describe('PlanCard', () => {
       headSha: 'f6e5d4c3b2'.padEnd(40, '0'),
       pinned: null
     };
-    const html = card(version({ checks: { issues: [], overlap: [], bases: [base] } }));
+    const html = card(
+      version({ checks: { envFiles: [], issues: [], overlap: [], bases: [base] } })
+    );
     expect(html).toContain('STARTS FROM');
     expect(html).toContain('aria-label="Where fleet starts"');
     expect(html).toContain('main a1b2c3d');
@@ -172,7 +243,12 @@ describe('PlanCard', () => {
 
     const same = card(
       version({
-        checks: { issues: [], overlap: [], bases: [{ ...base, headSha: base.defaultSha }] }
+        checks: {
+          envFiles: [],
+          issues: [],
+          overlap: [],
+          bases: [{ ...base, headSha: base.defaultSha }]
+        }
       })
     );
     expect(same).toContain('main a1b2c3d');
@@ -181,6 +257,7 @@ describe('PlanCard', () => {
     const pinned = card(
       version({
         checks: {
+          envFiles: [],
           issues: [],
           overlap: [],
           bases: [{ ...base, pinned: { sha: base.headSha, from: 'head' } }]
@@ -194,6 +271,7 @@ describe('PlanCard', () => {
     const html = card(
       version({
         checks: {
+          envFiles: [],
           issues: [{ code: 'overlap', severity: 'warn', text: 'j3 is also working on 1 path.' }],
           overlap: [{ jobId: 3, member: 'fleet', path: 'src/Sidebar.tsx', step: 'builder-1' }],
           bases: []
@@ -217,6 +295,8 @@ describe('PlanCard', () => {
     });
     expect(card(approved)).toContain('Plan v1 approved · 2 steps, $10 · from a1b2c3d');
     expect(card(approved)).not.toContain('Approve plan');
+    const one = version({ status: 'approved', plan: { ...PLAN, steps: PLAN.steps.slice(0, 1) } });
+    expect(card(one)).toContain('Plan v1 approved · 1 step, $10');
   });
 });
 
@@ -274,6 +354,154 @@ describe('the sheet', () => {
     expect(html).toContain('Reading the diff');
     expect(html).toContain('$2.50 of $10');
     expect(html).toContain('Nothing needs you right now.');
+  });
+
+  it('lists the servers the crew started, with the variable each is on and its address', () => {
+    const html = sheet(
+      snap(false),
+      detail(
+        [version({ status: 'approved' })],
+        [],
+        [],
+        [
+          { stepId: 'qa', name: 'API_PORT', port: 41000, url: 'http://localhost:41000' },
+          { stepId: 'qa', name: null, port: 41007, url: 'http://localhost:41007' }
+        ]
+      )
+    );
+    expect(html).toContain('SERVERS');
+    expect(html).toContain('2 running');
+    expect(html).toContain('API_PORT');
+    expect(html).toContain('port 41007');
+    expect(html).toContain('>localhost:41000<');
+    expect(html).toContain('title="Open http://localhost:41007"');
+  });
+
+  it('shows no SERVERS while none listen', () => {
+    expect(sheet(snap(false), detail([version({ status: 'approved' })]))).not.toContain('SERVERS');
+  });
+
+  const member = (over: Partial<AgencyCrewMember>): AgencyCrewMember => ({
+    id: 1,
+    stepId: 'builder-1',
+    role: 'builder',
+    runtime: 'claude',
+    model: null,
+    label: 'builder 1',
+    paneId: 'pane-1',
+    status: 'live',
+    startedAt: 1,
+    endedAt: null,
+    endReason: null,
+    flag: null,
+    flagUntil: null,
+    ...over
+  });
+
+  it('lists the crew, working ones first, with Peek only on a working member', () => {
+    const html = sheet(
+      snap(false),
+      detail(
+        [version({ status: 'approved' })],
+        [step('builder-1', 'failed'), step('reviewer', 'running')],
+        [
+          member({ status: 'ended', endReason: 'ended with exit code 1' }),
+          member({ id: 2, stepId: 'reviewer', label: 'reviewer 1', model: 'opus', paneId: 'p2' })
+        ]
+      )
+    );
+    expect(html).toContain('CREW');
+    expect(html).toContain('1 working');
+    expect(html.indexOf('reviewer 1')).toBeLessThan(html.indexOf('builder 1'));
+    expect(html).toContain('· reviewer · Claude Code opus');
+    expect(html).toContain('>working<');
+    expect(html).toContain('title="ended with exit code 1"');
+    expect(html.match(/>Peek</g)).toHaveLength(1);
+    expect(html).toContain('>failed<');
+  });
+
+  it('offers Swap only on a working member of a step in the approved plan', () => {
+    const html = sheet(
+      snap(false),
+      detail(
+        [version({ status: 'approved' })],
+        [step('reviewer', 'running')],
+        [
+          member({ status: 'ended' }),
+          member({ id: 2, stepId: 'reviewer', label: 'reviewer 1', paneId: 'p2' }),
+          member({ id: 3, stepId: 'gone', label: 'qa 1', paneId: 'p3' })
+        ]
+      )
+    );
+    expect(html.match(/>Swap</g)).toHaveLength(1);
+    expect(html).toContain('title="Move its step to another role, runtime or model"');
+  });
+
+  it('starts the swap form at what the approved step runs', () => {
+    const html = renderToStaticMarkup(
+      createElement(CrewSwapForm, {
+        repoId: 'repo-1',
+        jobId: 2,
+        step: PLAN.steps[1],
+        onClose: () => {}
+      })
+    );
+    expect(html).toContain('aria-label="Swap reviewer"');
+    expect(html).toMatch(/<option value="reviewer" selected="">reviewer<\/option>/);
+    expect(html).toMatch(/<option value="claude" selected="">Claude Code<\/option>/);
+    expect(html).toContain('<option value="eva">eva</option>');
+    expect(html).toContain('placeholder="The role&#x27;s own"');
+    expect(html).toContain(
+      'This makes a plan change. The member keeps working until you approve it.'
+    );
+    expect(html).toContain('>Propose swap<');
+  });
+
+  it('shows each flag in place of the status, with Hand back or Resume where the client can act', () => {
+    const until = new Date(2026, 0, 1, 15, 0).getTime();
+    const html = sheet(
+      snap(false),
+      detail(
+        [version({ status: 'approved' })],
+        [],
+        [
+          member({ id: 1, label: 'builder 1', flag: 'user-driven' }),
+          member({ id: 2, label: 'builder 2', flag: 'limited', flagUntil: until }),
+          member({ id: 3, label: 'builder 3', flag: 'stuck' }),
+          member({ id: 4, label: 'builder 4', status: 'starting', flag: 'needs-you' })
+        ]
+      )
+    );
+    expect(html).toContain('>yours<');
+    expect(html).toContain('>limited until 15:00<');
+    expect(html).toContain('>stuck<');
+    expect(html).toContain('>needs you<');
+    expect(html).not.toContain('>working<');
+    expect(html.match(/>Hand back</g)).toHaveLength(1);
+    expect(html.match(/>Resume</g)).toHaveLength(1);
+    expect(html).toContain('bg-red-400');
+  });
+
+  it('puts a member that needs the client under WAITING ON YOU, and counts it', () => {
+    const html = sheet(
+      snap(false),
+      detail(
+        [version({ status: 'approved' })],
+        [],
+        [member({ status: 'starting', flag: 'needs-you' })]
+      )
+    );
+    expect(html).toContain('WAITING ON YOU · 1');
+    expect(html).toContain('aria-label="builder 1 needs you"');
+    expect(html).toContain('builder 1 needs you in its pane');
+    expect(html).not.toContain('Nothing needs you right now.');
+    expect(
+      waitingCount({ ...snap(false), jobs: [agencyJob({ id: 2, crewNeedingYou: 1 })] }, 2)
+    ).toBe(1);
+  });
+
+  it('has no CREW section before anyone is hired', () => {
+    expect(sheet(snap(false), detail([version({ status: 'approved' })]))).not.toContain('CREW');
   });
 });
 

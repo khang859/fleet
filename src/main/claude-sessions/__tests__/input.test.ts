@@ -3,12 +3,14 @@ import type { ClaudeSession, ClaudeSessionChange } from '../../../shared/claude-
 import {
   ACK_TIMEOUT_MS,
   cleanPrompt,
+  PROMPT_MISMATCH,
   PromptInput,
   QUIET_MS,
   SUBMIT_DELAY_MS,
   TYPE_CHUNK_CHARS,
   TYPE_CHUNK_GAP_MS
 } from '../input';
+import { hashPrompt } from '../registry';
 
 const PANE = 'pane-1';
 
@@ -41,12 +43,22 @@ describe('PromptInput', () => {
   let ackOnSubmit: boolean;
   let input: PromptInput;
 
-  const emit = (event: string, s = current): void => {
+  /** What Claude Code says it got on submit: no hash, as older hook binaries send. */
+  let submitHash: (typed: string) => string | undefined;
+  const emit = (event: string, s = current, promptHash?: string): void => {
     for (const l of [...listeners]) {
       l({
         sessionId: s?.sessionId ?? 's1',
         session: s ?? null,
-        event: { seq: 1, sessionId: 's1', at: now, event, status: '', phase: 'processing' }
+        event: {
+          seq: 1,
+          sessionId: 's1',
+          at: now,
+          event,
+          status: '',
+          phase: 'processing',
+          promptHash
+        }
       });
     }
   };
@@ -60,6 +72,8 @@ describe('PromptInput', () => {
     noted = [];
     listeners = new Set();
     ackOnSubmit = true;
+    submitHash = () => undefined;
+    let typed = '';
     input = new PromptInput({
       session: (id) => (current?.sessionId === id ? current : undefined),
       noteInput: (_id, origin, text) => noted.push({ origin, text }),
@@ -69,8 +83,13 @@ describe('PromptInput', () => {
       },
       write: (_pane, data) => {
         writes.push(data);
+        if (data !== '\r') {
+          typed += data;
+          return;
+        }
         // Claude Code acknowledges the submit with UserPromptSubmit.
-        if (data === '\r' && ackOnSubmit) emit('UserPromptSubmit');
+        if (ackOnSubmit) emit('UserPromptSubmit', current, submitHash(typed));
+        typed = '';
       },
       now: () => now,
       sleep: async (ms) => {
@@ -126,6 +145,33 @@ describe('PromptInput', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(await pending).toEqual({ ok: true, confirmed: false, text: 'hello' });
     expect(listeners.size).toBe(1);
+  });
+
+  it('confirms a prompt Claude Code got as it was typed', async () => {
+    submitHash = (typed) => hashPrompt(typed);
+    expect(await input.send('s1', '  Run the tests\n', 'user')).toEqual({
+      ok: true,
+      confirmed: true,
+      text: 'Run the tests'
+    });
+  });
+
+  it('fails a send whose prompt arrived different, and does not type it again', async () => {
+    submitHash = () => hashPrompt('Run the test');
+    const pending = input.send('s1', 'Run the tests', 'orchestrator');
+    await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS);
+    expect(await pending).toEqual({ ok: false, reason: PROMPT_MISMATCH });
+    expect(writes).toEqual(['Run the tests', '\r']);
+    expect(listeners.size).toBe(1);
+  });
+
+  it('waits past a prompt Claude Code submits on its own for the one typed', async () => {
+    ackOnSubmit = false;
+    const pending = input.send('s1', 'Run the tests', 'orchestrator');
+    await Promise.resolve();
+    emit('UserPromptSubmit', current, hashPrompt('A background agent finished.'));
+    emit('UserPromptSubmit', current, hashPrompt('Run the tests'));
+    expect(await pending).toEqual({ ok: true, confirmed: true, text: 'Run the tests' });
   });
 
   it.each([

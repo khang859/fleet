@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { AgencyChanged, AgencyRepoRef } from '../../../../shared/agency';
 import { AgencyService } from '../../index';
 import type { GitRun } from '../../repo-identity';
+import { repoAt } from '../../__tests__/plan-helpers';
 import { readOnlyGit } from '../repo-reader';
 import { repoTarget, scanProject } from '../setup-findings';
 import { fakeGh, git, initRepo, tempDir, writeFiles } from './git-fixture';
@@ -121,6 +122,11 @@ beforeEach(() => {
       '.fleet/env-sync.json': '{}',
       '.claude/agents/reviewer.md': '# Reviewer\n',
       '.claude/skills/sweep/SKILL.md': '# Sweep\n',
+      '.opencode/agents/journey-domain-reviewer.md': '# Domain\n',
+      '.agents/skills/lint/SKILL.md': '# Lint\n',
+      '.eva/skills/deploy/SKILL.md': '# Deploy\n',
+      // Claude Code loads a nested skill only once the session works on files there.
+      'src/.claude/skills/deep/SKILL.md': '# Deep\n',
       'fsmonitor.sh': TRAP
     },
     { origin: 'git@github.com:acme/shop.git' }
@@ -148,11 +154,7 @@ afterEach(() => {
   home.cleanup();
 });
 
-async function resolved(): Promise<AgencyRepoRef> {
-  const res = await service.resolveRepo(root);
-  if (!res.ok) throw new Error('not a repo');
-  return { repoId: res.repoId, root: res.root, name: res.name };
-}
+const resolved = async (): Promise<AgencyRepoRef> => repoAt(service, root);
 
 describe('setup scan', () => {
   it('finds the stack, pnpm, its checks, the CI jobs, the required checks and the remote', async () => {
@@ -177,10 +179,13 @@ describe('setup scan', () => {
     expect(scan.ghSignedIn).toBe(true);
     expect(scan.members[0].readFrom).toBe('main');
     expect(scan.repoFiles.map((f) => [f.path, f.kind, f.disposition])).toEqual([
+      ['.agents/skills/lint', 'skill', 'in-place'],
       ['.claude/agents/reviewer.md', 'agent', 'importable'],
       ['.claude/skills/sweep', 'skill', 'in-place'],
+      ['.eva/skills/deploy', 'skill', 'in-place'],
       ['.fleet/crew/roles/qa.md', 'role', 'importable'],
       ['.fleet/env-sync.json', 'other', 'not-used'],
+      ['.opencode/agents/journey-domain-reviewer.md', 'agent', 'importable'],
       ['CLAUDE.md', 'instructions', 'in-place']
     ]);
   });
@@ -217,8 +222,9 @@ describe('setup scan', () => {
       setupDoneAt: null,
       starterDoneAt: null
     });
-    // Only commands that read. File contents come through `cat-file blob`, outside `GitRun`.
-    const READ_ONLY = new Set(['symbolic-ref', 'rev-parse', 'remote', 'ls-tree']);
+    // Only commands that read. File contents come through `cat-file blob`, outside `GitRun`;
+    // `ls-files` lists the untracked env files.
+    const READ_ONLY = new Set(['symbolic-ref', 'rev-parse', 'remote', 'ls-tree', 'ls-files']);
     for (const args of gitCalls) expect(READ_ONLY).toContain(args[0]);
     // And none that could start the repository's fsmonitor.
     expect(gitCalls.flat()).not.toContain('status');

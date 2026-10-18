@@ -1,8 +1,8 @@
 /** Token counts as humans read them: 64000 → "64k", 1000000 → "1M". */
 export function formatTokens(tokens: number): string {
   if (tokens >= 1_000_000) {
-    const millions = tokens / 1_000_000;
-    return `${millions % 1 === 0 ? millions : millions.toFixed(1)}M`;
+    // One place after the point, and none when it is 0: 1048576 is "1M", not "1.0M".
+    return `${Number((tokens / 1_000_000).toFixed(1))}M`;
   }
   if (tokens >= 1000) return `${Math.round(tokens / 1000)}k`;
   return String(tokens);
@@ -18,10 +18,19 @@ export function relativeTime(epochMs: number): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
+/**
+ * Input and output price per million tokens, as `$0.30 / $1.00`, or as
+ * `$3 / $15` when both are whole dollars. Both take the same form.
+ */
+export function formatPrice(cost: { input: number; output: number }): string {
+  const whole = [cost.input, cost.output].every((n) => Number.isInteger(n) && n >= 1);
+  const price = (n: number): string => (whole ? `$${n}` : `$${n.toFixed(2)}`);
+  return `${price(cost.input)} / ${price(cost.output)}`;
+}
+
 /** models.dev quotes USD per million tokens. */
 export function formatCost(cost: { input: number; output: number }): string {
-  const price = (n: number): string => (n < 1 ? `$${n.toFixed(2)}` : `$${n}`);
-  return `${price(cost.input)} / ${price(cost.output)} per 1M`;
+  return `${formatPrice(cost)} per 1M`;
 }
 
 /**

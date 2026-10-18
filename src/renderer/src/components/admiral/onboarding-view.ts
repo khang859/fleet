@@ -2,6 +2,7 @@ import type { AgencyPreflight, AgencyRepoRef } from '../../../../shared/agency';
 import {
   githubSlug,
   type AgencyProjectSummary,
+  type FixedPort,
   type MemberScan,
   type ProjectFolder,
   type ProjectMemberSetup,
@@ -174,4 +175,25 @@ export function cloneSlug(input: string): string | null {
     /^git@github\.com:([\w.-]+)\/([\w.-]+)$/.exec(text) ??
     /^([\w.-]+)\/([\w.-]+)$/.exec(text);
   return m ? `${m[1]}/${m[2]}` : null;
+}
+
+/** Whether a project runs servers setup knows of: port variables, fixed ports, or a stack limit. */
+export function runsServers(setup: ProjectSetup): boolean {
+  return (
+    setup.stackSlots !== null ||
+    setup.members.some((m) => m.portVars.length > 0 || m.fixedPorts.length > 0)
+  );
+}
+
+export function stackSlotsLabel(slots: number | null): string {
+  if (slots === null) return 'No limit';
+  return slots === 1 ? '1 · one stack runs at a time' : `${slots} · ${slots} stacks run at a time`;
+}
+
+/** Why the stack slots are what they are, for the SERVERS card. */
+export function serversNote(fixed: FixedPort[]): string {
+  const moved = 'Fleet sets each port variable to a free port in the job workspace.';
+  if (fixed.length === 0) return `${moved} Steps whose role runs the stack wait for a free slot.`;
+  const held = fixed.map((f) => `${f.service} on ${f.port}`).join(', ');
+  return `${moved} ${held} cannot move, so steps whose role runs the stack wait for a free slot.`;
 }

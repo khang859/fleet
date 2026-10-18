@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   DEFAULT_AGENCY_SETTINGS,
   TERMINAL_JOB_STATES,
@@ -24,26 +25,65 @@ import type {
   JobControl,
   JobControlResult,
   LeftoverAction,
+  PlanBases,
   ResourceKind
 } from '../../shared/agency-jobs';
 import { WorktreeService } from '../worktree-service';
 import { AdmiralRegistry } from './admiral-registry';
 import { defaultCleaners, type WorktreeRemover } from './cleanup/cleaners';
 import { CleanupRunner, type ResourceCleaner } from './cleanup/cleanup-runner';
+import {
+  CLAUDE_MODEL_NAMES,
+  defaultAtOnce,
+  RoleSaveSchema,
+  type CrewCatalog,
+  type CrewModel,
+  type CrewRuntime,
+  type CrewRuntimeView,
+  type EvaServer,
+  type RoleSave,
+  type RoleSaveResult,
+  type RuntimeCheck,
+  type RuntimeTestResult
+} from '../../shared/agency-crew';
+import type { MemberSkills } from '../../shared/agency-agent-files';
+import type { Plan } from '../../shared/agency-plan';
+import {
+  asNewRole,
+  crewSnapshot,
+  crewSources,
+  loadCrew,
+  NO_CREW_DIRS,
+  projectCrewDir,
+  roleFileText,
+  saveNewRoles,
+  saveRole,
+  type CrewDirs
+} from './crew/catalog';
+import { CrewService, type CrewPaneHost } from './crew/crew-service';
+import { testRuntime, type RuntimeTestDeps } from './crew/runtime-test';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
+import { StackSlots } from './jobs/stack-slots';
+import { ServerWatch } from './workspaces/server-watch';
 import { exportJob } from './jobs/job-export';
 import { reconcileAtStartup } from './jobs/reconcile';
 import { runPreflight, type Probe } from './preflight';
 import { ClientFiles, type ClientFileNote } from './projects/client-file';
 import { nativeGh, type GhRun } from './projects/gh';
+import { envSecrets, redactEnvValues } from './projects/env-files';
 import { agencyHome } from './projects/paths';
+import { loadSetup } from './projects/project-store';
+import { projectPath } from './projects/setup-findings';
 import { PrCards } from './results/pr-cards';
 import { ResultsService } from './results';
 import { readOnlyGit } from './projects/repo-reader';
-import { projectMembers } from './projects/workspace-projects';
-import { JobWorkspaces, type GitWrite } from './workspaces/job-workspace';
+import { memberSkills } from './projects/repo-skills';
+import { projectMembers, type ProjectMember } from './projects/workspace-projects';
+import { claudeTrustFolder, JobWorkspaces, type GitWrite } from './workspaces/job-workspace';
 import { pushUmbrellaBump } from './workspaces/umbrella-bump';
 import { MergeQueue } from './results/merge-queue';
+import type { OtherJobPaths } from './plans/overlap';
+import type { PlanFacts } from './plans/plan-checks';
 import { gatherPlanFacts } from './plans/plan-facts';
 import { ProjectsService } from './projects';
 import { resolveRepoIdentity, type GitRun, type RepoIdentityOptions } from './repo-identity';
@@ -51,6 +91,17 @@ import type { RegisteredProject } from './store/project-registry';
 import { AgencySettingsService, type AgencySettingsAccess } from './settings';
 import { agencyDbPath } from './store/agency-db';
 import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
+
+const PASSING_RUNTIME = { path: null, version: null, checks: [] };
+
+/** Crew stop as their pane's process ends; a pane is live while its process runs. */
+const paneControl = (panes: CrewPaneHost): CrewControl => ({
+  stop: async (paneId) => {
+    panes.kill(paneId);
+    return Promise.resolve();
+  },
+  livePanes: () => panes.live()
+});
 
 const MERGE_CLOSED = 'The job closed before the merge finished.';
 
@@ -69,12 +120,32 @@ export type AgencyServiceDeps = {
   /** Seams for onboarding: the GitHub CLI and the per-project folder. */
   gh?: GhRun;
   agencyHome?: string;
-  /** How crew panes are stopped; nothing is ever hired until the crew phase. */
+  /** Fleet's terminal panes, which crew are hired into. Unset, nothing can be hired. */
+  crewPanes?: CrewPaneHost;
+  /** How crew panes are stopped, for tests; unset, through `crewPanes`. */
   crew?: CrewControl;
+  /** Crew pane and session ids; random UUIDs unless set. */
+  newCrewId?: () => string;
   /** Read-only git for the pre-approval check. */
   git?: GitRun;
-  /** Crew members that may work at once; 4 unless set. */
-  crewLimit?: () => number;
+  /**
+   * The crew folders outside a project: what Fleet ships and `~/.fleet/crew/`.
+   * Unset (tests of other parts), plans name any role and approval keeps no crew.
+   */
+  crewDirs?: CrewDirs;
+  /** Whether crew can run on a runtime in a folder. Unset, every runtime passes. */
+  checkRuntime?: (runtime: CrewRuntime, cwd: string) => Promise<RuntimeCheck>;
+  /**
+   * eva's model server as a crew pane in a folder sees it, and whether eva
+   * has a key, never the key itself. Unset, eva has none.
+   */
+  evaServer?: (cwd: string) => Promise<{ server: EvaServer; keySet: boolean | null }>;
+  /** Whether Claude Code is signed in for a crew pane in a folder, never the login itself. */
+  claudeSignedIn?: (cwd: string) => Promise<boolean | null>;
+  /** The models an eva server lists, or null when the list is unknown. */
+  evaModels?: (server: EvaServer) => Promise<CrewModel[] | null>;
+  /** How the Test button starts a runtime where no pane shows it. Unset, it cannot run. */
+  runtimeTest?: Omit<RuntimeTestDeps, 'dir'>;
   /** Git that writes: worktrees, the umbrella bump. Defaults to git on the PATH. */
   gitWrite?: GitWrite;
   /** Removes a job's worktrees at close, never forced. */
@@ -125,7 +196,20 @@ export class AgencyService {
   readonly clientFiles: ClientFiles;
   readonly settings: AgencySettingsService;
   readonly workspaces: JobWorkspaces;
+  readonly stack: StackSlots;
+  readonly servers: ServerWatch;
   readonly merges: MergeQueue;
+  readonly crew: CrewService;
+  /** How crew panes are stopped and found live. */
+  private readonly crewControl: CrewControl;
+  /** Folders already written to the trust table this run. */
+  private readonly claudeFolders = new Set<string>();
+  /** Fleet's agency settings, in Fleet's settings file or in memory. */
+  private readonly agencySettings: AgencySettingsAccess;
+  /** Whether eva's server was on this machine when last read, for eva's default crew at once. */
+  private evaLocal = false;
+  /** The Test button's run for each runtime, while one runs. */
+  private readonly runtimeTests = new Map<CrewRuntime, Promise<RuntimeTestResult>>();
 
   constructor(private readonly deps: AgencyServiceDeps) {
     this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
@@ -143,19 +227,38 @@ export class AgencyService {
       gh: deps.gh,
       home: deps.agencyHome
     });
+    const panes = deps.crewPanes ?? null;
+    const agencySettings = deps.agencySettings ?? memorySettings();
+    this.agencySettings = agencySettings;
+    this.crewControl = deps.crew ?? (panes === null ? NO_CREW : paneControl(panes));
+    this.servers = new ServerWatch({
+      store: this.store,
+      changed: (touched) => this.changed(touched)
+    });
+    this.stack = new StackSlots({
+      store: this.store,
+      home: () => deps.agencyHome ?? agencyHome(),
+      admit: () => this.jobs.admitQueued()
+    });
     this.jobs = new JobsService({
       store: this.store,
-      crew: deps.crew ?? NO_CREW,
+      crew: this.crewControl,
       changed: (touched) => this.changed(touched),
-      crewLimit: deps.crewLimit,
-      planFacts: async ({ job, plan, others, pinned }) => {
-        const repo = this.store.repo(job.repoId);
-        if (!repo) throw new Error(`The project of ${jobDisplayId(job.id)} is not known.`);
-        return gatherPlanFacts(
-          { members: projectMembers(this.store.projects, repo).members, plan, others, pinned },
-          { git: deps.git ?? readOnlyGit, gh: deps.gh ?? nativeGh }
-        );
-      }
+      crewLimit: (runtime) => this.crewAtOnce(runtime),
+      stack: this.stack,
+      servers: (jobId) => this.servers.servers(jobId),
+      planFacts: async (input) => this.planFacts(input),
+      crewSnapshot: deps.crewDirs
+        ? async (job, plan) => crewSnapshot(await this.crewCatalog(job.repoId), plan)
+        : undefined,
+      saveRoles: deps.crewDirs
+        ? async (job, plan) =>
+            saveNewRoles(
+              projectCrewDir(job.repoId, deps.agencyHome ?? agencyHome()),
+              plan.newRoles,
+              await this.crewCatalog(job.repoId)
+            )
+        : undefined
     });
     this.prs = new PrCards({
       store: this.store,
@@ -175,7 +278,7 @@ export class AgencyService {
     });
     this.settings = new AgencySettingsService({
       store: this.store,
-      agency: deps.agencySettings ?? memorySettings(),
+      agency: agencySettings,
       home: () => deps.agencyHome ?? agencyHome(),
       changed: (repoId, jobId) => deps.emit({ repoId, jobIds: [jobId], settings: true })
     });
@@ -198,7 +301,20 @@ export class AgencyService {
         }),
       changed: (touched) => this.changed(touched)
     });
-    const crew = deps.crew ?? NO_CREW;
+    this.crew = new CrewService({
+      store: this.store,
+      jobs: this.jobs,
+      workspaces: this.workspaces,
+      stack: this.stack,
+      panes,
+      home: () => deps.agencyHome ?? agencyHome(),
+      changed: (touched) => this.changed(touched),
+      now: () => deps.now?.() ?? Date.now(),
+      newId: deps.newCrewId,
+      nudgeLimit: () => agencySettings.get().admiral.nudgeLimit,
+      defaultModel: (runtime) => agencySettings.get().crew[runtime].defaultModel || undefined
+    });
+    const crew = this.crewControl;
     this.cleanup = new CleanupRunner({
       store: this.store,
       cleaners: {
@@ -365,20 +481,36 @@ export class AgencyService {
    * A job that ended, as Markdown with a file name to save it under. Null for
    * a job still open: its record is not done yet.
    */
-  exportJob(jobId: number): { name: string; text: string } | null {
+  async exportJob(jobId: number): Promise<{ name: string; text: string } | null> {
     const detail = this.jobs.detail(jobId);
     if (detail === null || !TERMINAL_JOB_STATES.includes(detail.job.state)) return null;
     const { job } = detail;
-    const text = exportJob({
-      project: this.store.repo(job.repoId)?.name ?? job.repoId,
-      detail,
-      questions: this.store.listQuestions(job.repoId, { jobId })
-    });
+    const text = exportJob(
+      {
+        project: this.store.repo(job.repoId)?.name ?? job.repoId,
+        detail,
+        questions: this.store.listQuestions(job.repoId, { jobId })
+      },
+      await this.envSecrets(job.repoId)
+    );
     const slug = job.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
     return { name: `${jobDisplayId(jobId)}-${slug || 'job'}.md`, text };
+  }
+
+  /** The values of the env files a project's crew get, which nothing the Admiral or an export shows. */
+  private async envSecrets(repoId: string): Promise<string[]> {
+    const members = this.membersOf(repoId);
+    if (members === null) return [];
+    return envSecrets(await loadSetup(repoId, this.deps.agencyHome ?? agencyHome()), members);
+  }
+
+  /** A known project's members, in member order. */
+  private membersOf(repoId: string): ProjectMember[] | null {
+    const repo = this.store.repo(repoId);
+    return repo === null ? null : projectMembers(this.store.projects, repo).members;
   }
 
   /** The client keeps a change made outside Fleet as it is. */
@@ -455,13 +587,16 @@ export class AgencyService {
     await this.jobs.replayStops();
     const touched = await reconcileAtStartup({
       store: this.store,
-      crew: this.deps.crew ?? NO_CREW,
+      crew: this.crewControl,
       git: this.deps.git ?? readOnlyGit
     });
     if (touched.length > 0) this.changed(touched);
     this.cleanup.startRetrying();
     this.merges.startTicking();
     this.prs.startWatching();
+    this.stack.startPolling();
+    this.servers.startPolling();
+    this.crew.flags.startTicking();
     await Promise.all([this.cleanup.resumeAll(), this.merges.advanceAll(), this.prs.watchAll()]);
   }
 
@@ -546,13 +681,167 @@ export class AgencyService {
     return job;
   }
 
+  /** What the pre-approval check reads about a job's project, its crew roles included. */
+  private async planFacts(input: {
+    job: AgencyJob;
+    plan: Plan;
+    others: OtherJobPaths[];
+    pinned: PlanBases | null;
+  }): Promise<PlanFacts> {
+    const { job } = input;
+    const repo = this.store.repo(job.repoId);
+    if (!repo) throw new Error(`The project of ${jobDisplayId(job.id)} is not known.`);
+    const crew = this.deps.crewDirs ? await this.crewCatalog(job.repoId) : null;
+    const { kind, members } = projectMembers(this.store.projects, repo);
+    const home = this.deps.agencyHome ?? agencyHome();
+    const trust = claudeTrustFolder(kind, repo.root, home);
+    const check = this.deps.checkRuntime;
+    const setup = await loadSetup(job.repoId, home);
+    return gatherPlanFacts(
+      {
+        ...input,
+        members,
+        envFiles: (setup?.members ?? []).flatMap((m) =>
+          m.envFiles.map((file) => ({ member: m.name, file: projectPath(m.path, file) }))
+        ),
+        crew: crew && {
+          roles: new Map(crew.roles.map((r) => [r.name, r.runtime])),
+          roleText: new Map(crew.roles.map((r) => [r.name, roleFileText(asNewRole(r))])),
+          models: new Map(
+            crew.roles.flatMap((r) => (r.model === undefined ? [] : [[r.name, r.model]]))
+          ),
+          evaModels: async () => {
+            const { models } = await this.evaModelList(repo.root);
+            return models && new Set(models.map((m) => m.id));
+          },
+          check: async (runtime) => check?.(runtime, repo.root) ?? { ...PASSING_RUNTIME, runtime },
+          claudeTrust: { folder: trust, trusted: this.store.claudeTrusted(trust) },
+          memberTrust: new Map(
+            members
+              .filter((m) => m.path !== '.')
+              .map((m) => [m.name, { folder: m.root, trusted: this.store.claudeTrusted(m.root) }])
+          )
+        }
+      },
+      { git: this.deps.git ?? readOnlyGit, gh: this.deps.gh ?? nativeGh }
+    );
+  }
+
   /**
-   * The panes of a job's crew, which are all its fleet read tools may see.
-   * Empty for every thread until crew can be hired; that phase takes the
-   * thread's scope here and answers from the job's hires.
+   * A Claude Code session reported from `cwd`. It only does once its folder
+   * trust prompt is answered, so the plan card stops asking for that folder.
    */
-  crewPanes(): ReadonlySet<string> {
-    return new Set();
+  noteClaudeSession(cwd: string): void {
+    if (this.claudeFolders.has(cwd)) return;
+    this.claudeFolders.add(cwd);
+    this.store.noteClaudeFolder(cwd);
+  }
+
+  /** The roles and playbooks a project's jobs can use, read fresh from their files. */
+  async crewCatalog(repoId: string): Promise<CrewCatalog> {
+    const home = this.deps.agencyHome ?? agencyHome();
+    return loadCrew(crewSources(this.deps.crewDirs ?? NO_CREW_DIRS, projectCrewDir(repoId, home)));
+  }
+
+  /**
+   * The skills each member's repository has, for the Admiral to name in a
+   * plan. A member it cannot read lists none rather than failing the turn.
+   */
+  async crewSkills(repoId: string): Promise<MemberSkills[]> {
+    const members = this.membersOf(repoId);
+    return members === null ? [] : memberSkills(members, this.deps.git ?? readOnlyGit);
+  }
+
+  /** Crew of a runtime that may work at once: the client's number, else the runtime's default. */
+  private crewAtOnce(runtime: CrewRuntime): number {
+    return this.agencySettings.get().crew[runtime].atOnce ?? defaultAtOnce(runtime, this.evaLocal);
+  }
+
+  /** The models eva crew in a folder can use, the server they come from, and whether it has a key. */
+  private async evaModelList(
+    cwd: string
+  ): Promise<{ server: EvaServer | null; models: CrewModel[] | null; keySet: boolean | null }> {
+    const read = (await this.deps.evaServer?.(cwd)) ?? null;
+    if (read === null) return { server: null, models: null, keySet: null };
+    this.evaLocal = read.server.local;
+    const models = (await this.deps.evaModels?.(read.server)) ?? null;
+    return { server: read.server, models, keySet: read.keySet };
+  }
+
+  /** Settings › Agency › Crew: each runtime as the project's crew panes would start it. */
+  async crewRuntimes(repoId: string): Promise<CrewRuntimeView[]> {
+    const repo = this.store.repo(repoId);
+    if (!repo) throw new Error('That project is not known.');
+    const check = async (runtime: CrewRuntime): Promise<RuntimeCheck> =>
+      (await this.deps.checkRuntime?.(runtime, repo.root)) ?? { ...PASSING_RUNTIME, runtime };
+    const [claude, signedIn, eva, evaList] = await Promise.all([
+      check('claude'),
+      this.deps.claudeSignedIn?.(repo.root) ?? null,
+      check('eva'),
+      this.evaModelList(repo.root)
+    ]);
+    const { keySet, ...evaServer } = evaList;
+    const view = (runtime: CrewRuntime): Pick<CrewRuntimeView, 'limited' | 'defaultAtOnce'> => ({
+      limited: this.crew.flags.usageLimit(runtime),
+      defaultAtOnce: defaultAtOnce(runtime, evaServer.server?.local === true)
+    });
+    return [
+      {
+        check: claude,
+        server: null,
+        models: CLAUDE_MODEL_NAMES.map((id) => ({ id, contextLimit: null, cost: null })),
+        signedIn,
+        ...view('claude')
+      },
+      { check: eva, ...evaServer, signedIn: keySet, ...view('eva') }
+    ];
+  }
+
+  /**
+   * The Test button: start the runtime in a hidden terminal in the project,
+   * with the default model from Settings, and say what reached Fleet. A
+   * second press while one runs waits for the same run.
+   */
+  async testCrewRuntime(repoId: string, runtime: CrewRuntime): Promise<RuntimeTestResult> {
+    const repo = this.store.repo(repoId);
+    if (!repo) return { ok: false, reason: 'That project is not known.' };
+    const test = this.deps.runtimeTest;
+    if (!test) return { ok: false, reason: 'Fleet cannot start a terminal for the test here.' };
+    const running = this.runtimeTests.get(runtime);
+    if (running) return running;
+    const model = this.agencySettings.get().crew[runtime].defaultModel || undefined;
+    const dir = join(this.deps.agencyHome ?? agencyHome(), 'runtime-test');
+    const run = testRuntime(runtime, repo.root, model, { ...test, dir }).finally(() =>
+      this.runtimeTests.delete(runtime)
+    );
+    this.runtimeTests.set(runtime, run);
+    return run;
+  }
+
+  /** Save a role from Settings › Agency › Crew in the file it came from. */
+  async saveCrewRole(input: RoleSave): Promise<RoleSaveResult> {
+    const { repoId, base, role } = RoleSaveSchema.parse(input);
+    const dirs = this.deps.crewDirs;
+    if (!this.store.repo(repoId)) return { ok: false, reason: 'That project is not known.' };
+    if (!dirs) return { ok: false, reason: 'Fleet has no crew folders.' };
+    const project = projectCrewDir(repoId, this.deps.agencyHome ?? agencyHome());
+    return saveRole(await this.crewCatalog(repoId), { user: dirs.user, project }, { base, role });
+  }
+
+  /** The panes of a job's crew, which are all its fleet read tools may see. None in the lobby. */
+  crewPanes(jobId: number | null): ReadonlySet<string> {
+    return jobId === null ? new Set() : this.crew.panes(jobId);
+  }
+
+  /**
+   * A starting crew pane's screen for a job's `fleet_read`, with the values
+   * of the env files crew get masked. Null for a pane that is not one.
+   */
+  async crewScreen(jobId: number | null, paneId: string): Promise<string | null> {
+    const job = jobId === null ? null : this.store.getJob(jobId);
+    if (!job) return null;
+    const screen = await this.crew.screen(job.id, paneId);
+    return screen === null ? null : redactEnvValues(screen, await this.envSecrets(job.repoId));
   }
 
   /** The project's client file for an Admiral turn's note, or null when there is none. */
@@ -578,6 +867,9 @@ export class AgencyService {
     this.cleanup.stopRetrying();
     this.merges.stopTicking();
     this.prs.stopWatching();
+    this.stack.stopPolling();
+    this.servers.stopPolling();
+    this.crew.flags.stopTicking();
     this.store.close();
   }
 

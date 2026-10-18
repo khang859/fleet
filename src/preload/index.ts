@@ -43,6 +43,14 @@ import type {
   WslHomeDirResponse
 } from '../shared/ipc-api';
 import type { TerminalMenuAction } from '../shared/ipc-api';
+import type {
+  CrewCatalog,
+  CrewRuntime,
+  CrewRuntimeView,
+  RoleSave,
+  RoleSaveResult,
+  RuntimeTestResult
+} from '../shared/agency-crew';
 import type { WslDistroState, PathContext } from '../shared/shell-profiles';
 import type { ReleaseNote } from '../shared/release-notes';
 import type { ClaudeSessionsSnapshot, HookFolderStatus } from '../shared/claude-sessions';
@@ -183,6 +191,7 @@ import type {
   ClientLineInput,
   ProjectFolder,
   RuleCandidates,
+  ImportDiff,
   SaveSetupRequest,
   SetupScan
 } from '../shared/agency-projects';
@@ -193,7 +202,8 @@ import type {
   LeftoverAction,
   ResultOpen,
   PlanAction,
-  PlanActionResult
+  PlanActionResult,
+  StepSwapRequest
 } from '../shared/agency-jobs';
 import type { AdmiralSettingMark, SettingsUndoOutcome } from '../shared/agency-settings';
 import type {
@@ -1145,6 +1155,9 @@ const fleetApi = {
     /** The client's approve, edit or reject on a plan card. */
     planAction: async (action: PlanAction): Promise<PlanActionResult> =>
       typedInvoke(IPC_CHANNELS.AGENCY_PLAN_ACTION, action),
+    /** Swap on a crew card: propose the approved plan with the step's role, runtime or model changed. */
+    swapStep: async (swap: StepSwapRequest): Promise<PlanActionResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_STEP_SWAP, swap),
     /** The client cancels a job, or accepts its results; either way it closes and cleans up. */
     jobControl: async (control: JobControl): Promise<JobControlResult> =>
       typedInvoke(IPC_CHANNELS.AGENCY_JOB_CONTROL, control),
@@ -1157,6 +1170,21 @@ const fleetApi = {
     /** Ask GitHub again about a job's PR results not asked in the last minute. */
     refreshResults: async (jobId: number): Promise<void> =>
       typedInvoke(IPC_CHANNELS.AGENCY_RESULTS_REFRESH, jobId),
+    /** Hand a crew member back to the Admiral: one the client took over, or one held at a usage limit. */
+    handBackCrew: async (crewId: number): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_CREW_HAND_BACK, crewId),
+    /** Settings › Agency › Crew: a project's roles and playbooks, its runtimes, and saving a role. */
+    crew: {
+      list: async (repoId: string): Promise<CrewCatalog> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CREW_LIST, repoId),
+      runtimes: async (repoId: string): Promise<CrewRuntimeView[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CREW_RUNTIMES, repoId),
+      /** The Test button: start a runtime in a hidden terminal and say what reached Fleet. */
+      testRuntime: async (repoId: string, runtime: CrewRuntime): Promise<RuntimeTestResult> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CREW_RUNTIME_TEST, { repoId, runtime }),
+      saveRole: async (input: RoleSave): Promise<RoleSaveResult> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CREW_SAVE_ROLE, input)
+    },
     /** Open a delivered file with the system's app for it; resolves with an error, or ''. */
     openResult: async (open: ResultOpen): Promise<string> =>
       typedInvoke(IPC_CHANNELS.AGENCY_RESULT_OPEN, open),
@@ -1198,6 +1226,9 @@ const fleetApi = {
       /** Save, then copy into the repository's `.fleet/`. Resolves with what was written. */
       shareSetup: async (input: SaveSetupRequest): Promise<string[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_SHARE_SETUP, input),
+      /** An imported file's project copy beside the repository's newer version. */
+      importDiff: async (input: { repo: AgencyRepoRef; path: string }): Promise<ImportDiff> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_IMPORT_DIFF, input),
       clientFile: async (repoId: string): Promise<ClientFileView> =>
         typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE, repoId),
       /** Save the whole client file from Settings: the client's edits win. */

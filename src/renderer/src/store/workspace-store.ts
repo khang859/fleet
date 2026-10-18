@@ -30,6 +30,7 @@ import type { AgencyRepoRef } from '../../../shared/agency';
 import { useShellProfilesStore } from './shell-profiles-store';
 import { runningJobs, useAgencyStore } from './agency-store';
 import { scratchDir, isScratchDir } from '../lib/scratch';
+import { addCrewPane } from '../lib/job-tab';
 
 const logTabs = createLogger('sidebar:tabs');
 const logLayout = createLogger('layout:state');
@@ -826,17 +827,38 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }));
   },
 
-  openTerminalTab: ({ paneId, cwd, label, worktree }) => {
+  openTerminalTab: ({ paneId, cwd, label, worktree, job }) => {
     const { id: profileId, pathContext } = resolveDefaultProfile();
     const leaf: PaneLeaf = { ...createLeafWithProfile(cwd, profileId, pathContext), id: paneId };
+    if (job !== undefined) {
+      leaf.label = label;
+      leaf.labelIsCustom = true;
+    }
+    // A crew pane joins its job's tab, which the job's first crew pane makes.
+    const jobTab =
+      job === undefined ? undefined : get().workspace.tabs.find((t) => t.agencyJobId === job.jobId);
+    if (jobTab !== undefined) {
+      logTabs.debug('openTerminalTab into job tab', { tabId: jobTab.id, label, cwd, paneId });
+      set((state) => ({
+        workspace: {
+          ...state.workspace,
+          tabs: state.workspace.tabs.map((t) =>
+            t.id === jobTab.id ? { ...t, splitRoot: addCrewPane(t.splitRoot, leaf) } : t
+          )
+        },
+        isDirty: true
+      }));
+      return;
+    }
     const tab: Tab = {
       id: generateId(),
-      label,
+      label: job?.label ?? label,
       labelIsCustom: true,
       cwd,
       splitRoot: leaf,
       shellProfileId: profileId,
       pathContext,
+      ...(job === undefined ? {} : { agencyJobId: job.jobId }),
       // Closed through the worktree flow, which offers to remove it.
       ...(worktree === null ? {} : { worktreePath: worktree.path, worktreeBranch: worktree.branch })
     };

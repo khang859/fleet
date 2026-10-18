@@ -1,10 +1,15 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { JobState } from '../../../shared/agency';
+import {
+  DEFAULT_AGENCY_SETTINGS,
+  type AgencySettings,
+  type JobState
+} from '../../../shared/agency';
 import type { JobEvent } from '../jobs/job-machine';
 import type { GhRun } from '../projects/gh';
 import type { GitRun } from '../repo-identity';
+import type { AgencySettingsAccess } from '../settings';
 import { AgencyStore } from '../store/agency-store';
 
 export const REPO = { repoId: '0123456789abcdef', root: '/dev/fleet', name: 'fleet' };
@@ -120,4 +125,16 @@ export function moveJob(store: AgencyStore, jobId: number, state: JobState): voi
     const { transition } = store.applyJobEvent(jobId, event, 'test');
     if (!transition.ok) throw new Error(transition.refused);
   }
+}
+
+/** Agency settings in memory, with `atOnce` crew of each runtime let work at once. */
+export function crewAtOnce(atOnce: number): AgencySettingsAccess {
+  let settings: AgencySettings = {
+    ...DEFAULT_AGENCY_SETTINGS,
+    crew: {
+      claude: { atOnce, defaultModel: '' },
+      eva: { atOnce, defaultModel: '' }
+    }
+  };
+  return { get: () => settings, set: (next) => void (settings = next) };
 }

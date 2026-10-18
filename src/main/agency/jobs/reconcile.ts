@@ -1,6 +1,6 @@
 import type { GitRun } from '../repo-identity';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
-import type { CrewRecord } from '../store/crew-store';
+import { LOST_AT_RESTART, type CrewRecord } from '../store/crew-store';
 import type { CrewControl } from './index';
 
 export type ReconcileDeps = { store: AgencyStore; crew: CrewControl; git: GitRun };
@@ -23,7 +23,7 @@ export async function reconcileAtStartup(deps: ReconcileDeps): Promise<AgencyTou
     store.tx(() => {
       const steps = new Map(store.plans.steps(job.id).map((s) => [s.id, s.status]));
       for (const crew of lost) {
-        store.crew.end(crew.id, 'lost at restart');
+        store.crew.end(crew.id, LOST_AT_RESTART);
         if (steps.get(crew.stepId) !== 'running') continue;
         steps.set(crew.stepId, 'interrupted');
         store.plans.setStepStatus(job.id, crew.stepId, 'interrupted');

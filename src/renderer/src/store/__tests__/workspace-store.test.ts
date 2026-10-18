@@ -1490,6 +1490,49 @@ describe('openTerminalTab', () => {
     expect(useWorkspaceStore.getState().activePaneId).toBe('pane-spawned');
     expect(useWorkspaceStore.getState().workspace.tabs[0]).not.toHaveProperty('worktreePath');
   });
+
+  it("puts a job's crew panes in one tab of the job, named for their roles, without focus", () => {
+    const open = (paneId: string, label: string): void =>
+      useWorkspaceStore.getState().openTerminalTab({
+        paneId,
+        cwd: `/jobs/42/ws/${paneId}`,
+        label,
+        worktree: null,
+        job: { jobId: 42, label: 'j42 Billing export' }
+      });
+    const before = useWorkspaceStore.getState().workspace.tabs.length;
+    open('crew-1', 'builder 1');
+    open('crew-2', 'reviewer 1');
+    const state = useWorkspaceStore.getState();
+    expect(state.workspace.tabs).toHaveLength(before + 1);
+    const tab = state.workspace.tabs.at(-1);
+    expect(tab).toMatchObject({ label: 'j42 Billing export', agencyJobId: 42 });
+    expect(tab?.splitRoot).toMatchObject({
+      type: 'split',
+      direction: 'horizontal',
+      children: [
+        { id: 'crew-1', label: 'builder 1', labelIsCustom: true, cwd: '/jobs/42/ws/crew-1' },
+        { id: 'crew-2', label: 'reviewer 1', labelIsCustom: true, cwd: '/jobs/42/ws/crew-2' }
+      ]
+    });
+    expect(state.activeTabId).toBe('tab-a1');
+    expect(state.activePaneId).toBe('pane-a1');
+  });
+
+  it('gives another job its own tab', () => {
+    const open = (jobId: number): void =>
+      useWorkspaceStore.getState().openTerminalTab({
+        paneId: `crew-of-${jobId}`,
+        cwd: '/w',
+        label: 'builder 1',
+        worktree: null,
+        job: { jobId, label: `j${jobId}` }
+      });
+    open(1);
+    open(2);
+    const jobs = useWorkspaceStore.getState().workspace.tabs.map((t) => t.agencyJobId);
+    expect(jobs.filter((id) => id !== undefined)).toEqual([1, 2]);
+  });
 });
 
 describe('Admiral panes', () => {

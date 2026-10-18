@@ -5,8 +5,9 @@ import { z } from 'zod';
  * Code hook event.
  *
  * Protocol 1 binaries send no `protocol` field and none of the pane, transcript,
- * config dir or source fields. Both versions are accepted, because a Claude
- * session started before Fleet updated its hook binary keeps running the old one.
+ * config dir or source fields; protocol 3 adds `prompt_sha256`. Every version is
+ * accepted, because a Claude session started before Fleet updated its hook binary
+ * keeps running the old one.
  */
 
 /** An optional field that is dropped, not fatal, when it has the wrong type. */
@@ -32,6 +33,9 @@ const WireHookEvent = z.object({
   transcript_path: lenient(nonEmpty),
   config_dir: lenient(nonEmpty),
   source: lenient(nonEmpty),
+  error: lenient(nonEmpty),
+  error_details: lenient(z.string()),
+  prompt_sha256: lenient(z.string().regex(/^[0-9a-f]{64}$/)),
   protocol: lenient(z.number().int().positive())
 });
 
@@ -56,6 +60,11 @@ export type HookEvent = {
   configDir?: string;
   /** `SessionStart` only: `startup`, `resume`, `clear` or `compact`. */
   source?: string;
+  /** `StopFailure` only: the API error type, such as `rate_limit`, and its details. */
+  error?: string;
+  errorDetails?: string;
+  /** `UserPromptSubmit` only, from protocol 3: the sha256 of the trimmed prompt. */
+  promptHash?: string;
   /** 1 for binaries that predate the field. */
   protocol: number;
 };
@@ -87,6 +96,9 @@ export function parseHookEvent(text: string): HookEvent | null {
     transcriptPath: w.transcript_path,
     configDir: w.config_dir,
     source: w.source,
+    error: w.error,
+    errorDetails: w.error_details,
+    promptHash: w.prompt_sha256,
     protocol: w.protocol ?? 1
   };
 }

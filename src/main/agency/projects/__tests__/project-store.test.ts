@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { ProjectSetup } from '../../../../shared/agency-projects';
 import { setupFilePath } from '../paths';
 import {
@@ -9,7 +17,8 @@ import {
   parseSetupToml,
   saveSetup,
   setupToToml,
-  shareWithTeam
+  shareWithTeam,
+  type ImportedFile
 } from '../project-store';
 import { git, initRepo, tempDir } from './git-fixture';
 
@@ -32,10 +41,16 @@ const SETUP: ProjectSetup = {
       checkCommands: ['pnpm run typecheck', 'pnpm run test'],
       checks: ['Unit tests', 'lint'],
       requiredChecks: ['Unit tests'],
-      reviewBots: []
+      reviewBots: [],
+      portVars: ['PORT', 'API_PORT'],
+      fixedPorts: [{ port: 5432, service: 'db' }],
+      envFiles: ['.env', 'config/.env.local']
     }
   ],
-  imports: []
+  imports: [],
+  setupCommand: '',
+  setupTimeoutSec: 600,
+  stackSlots: 1
 };
 
 let tmp: { dir: string; cleanup: () => void };
@@ -52,17 +67,32 @@ describe('setup TOML', () => {
     const text = setupToToml(SETUP);
     expect(text).toContain('[[members]]');
     expect(text).toContain('setup_command = "pnpm install --frozen-lockfile"');
+    expect(text).toContain('env_files = [ ".env", "config/.env.local" ]');
     expect(parseSetupToml(text)).toEqual(SETUP);
   });
 
   it('round-trips what TOML cannot say, a value not known, as a key left out', () => {
     const local: ProjectSetup = {
       ...SETUP,
-      members: [{ ...SETUP.members[0], remote: null, defaultBranch: null, packageManager: null }]
+      members: [{ ...SETUP.members[0], remote: null, defaultBranch: null, packageManager: null }],
+      stackSlots: null
     };
     const text = setupToToml(local);
     expect(text).not.toContain('remote');
+    expect(text).not.toContain('stack_slots');
     expect(parseSetupToml(text)).toEqual(local);
+  });
+
+  it('round-trips the workspace setup that runs after the members', () => {
+    const umbrella: ProjectSetup = {
+      ...SETUP,
+      kind: 'submodules',
+      setupCommand: 'make bootstrap',
+      setupTimeoutSec: 1_200
+    };
+    const text = setupToToml(umbrella);
+    expect(text).toContain('setup_command = "make bootstrap"');
+    expect(parseSetupToml(text)).toEqual(umbrella);
   });
 
   it('turns away a file that is not TOML or not a setup', () => {
@@ -107,7 +137,7 @@ describe('saveSetup', () => {
     ]);
     const dir = join(home, 'projects', repo.repoId);
     expect(readFileSync(join(dir, 'crew/roles/qa.md'), 'utf8')).toBe('# QA\n');
-    expect(readFileSync(join(dir, 'crew/agents/reviewer.md'), 'utf8')).toBe('# R\n');
+    expect(readFileSync(join(dir, 'crew/roles/reviewer.md'), 'utf8')).toBe('# R\n');
     expect(await loadSetup(repo.repoId, home)).toEqual(setup);
   });
 
@@ -116,6 +146,53 @@ describe('saveSetup', () => {
     expect(importDestination('.fleet/fleet.agency.toml')).toBeNull();
     expect(importDestination('.claude/agents/../../x.md')).toBeNull();
     expect(importDestination('src/index.ts')).toBeNull();
+    expect(importDestination('.fleet/env-sync.json')).toBeNull();
+  });
+
+  it("puts a member's crew file and an agent file where the crew loader reads roles", () => {
+    expect(importDestination('libs/core/.fleet/crew/playbooks/fix.md')).toBe(
+      'crew/playbooks/fix.md'
+    );
+    expect(importDestination('.claude/agents/Code Reviewer.md')).toBe(
+      'crew/roles/code-reviewer.md'
+    );
+    expect(importDestination('fola-journey/.opencode/agents/journey-domain-reviewer.md')).toBe(
+      'crew/roles/journey-domain-reviewer.md'
+    );
+    expect(importDestination('../.fleet/crew/roles/qa.md')).toBeNull();
+  });
+
+  it('refuses two imports that make one role, and one over a role the project made', async () => {
+    const repo = { repoId: 'fedcba9876543210', root: '/repo', name: 'shop' };
+    const file = (path: string): ImportedFile => ({
+      path,
+      kind: 'agent',
+      sha256: 'c'.repeat(64),
+      content: '# R\n'
+    });
+    await expect(
+      saveSetup(
+        { repo, setup: SETUP, imported: [file('.claude/agents/qa.md'), file('.eva/agents/qa.md')] },
+        home
+      )
+    ).rejects.toThrow('.claude/agents/qa.md and .eva/agents/qa.md both make crew/roles/qa.md.');
+
+    const own = join(home, 'projects', repo.repoId, 'crew/roles/qa.md');
+    mkdirSync(dirname(own), { recursive: true });
+    writeFileSync(own, 'mine\n');
+    await expect(
+      saveSetup({ repo, setup: SETUP, imported: [file('.claude/agents/qa.md')] }, home)
+    ).rejects.toThrow('The project already has crew/roles/qa.md.');
+    expect(readFileSync(own, 'utf8')).toBe('mine\n');
+
+    // Once imported, the role is the import's to update.
+    rmSync(own);
+    await saveSetup({ repo, setup: SETUP, imported: [file('.claude/agents/qa.md')] }, home);
+    await saveSetup(
+      { repo, setup: SETUP, imported: [{ ...file('.claude/agents/qa.md'), content: '# R2\n' }] },
+      home
+    );
+    expect(readFileSync(own, 'utf8')).toBe('# R2\n');
   });
 });
 

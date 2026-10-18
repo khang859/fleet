@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { MemberBase } from '../../../../shared/agency-jobs';
 import { PlanSchema, withLocalBranches, type PlanInput } from '../../../../shared/agency-plan';
-import { checkPlan, pinBases, type MemberFacts, type PlanFacts } from '../plan-checks';
+import type { CrewRuntime, RuntimeCheck } from '../../../../shared/agency-crew';
+import {
+  checkPlan,
+  pinBases,
+  type CrewFacts,
+  type MemberFacts,
+  type PlanFacts
+} from '../plan-checks';
 
 const HEAD = 'b'.repeat(40);
 const TIP = 'a'.repeat(40);
@@ -19,6 +26,7 @@ const member = (patch: Partial<MemberFacts> = {}): MemberFacts => ({
   defaultSha: TIP,
   headBranch: 'feat/x',
   headSha: HEAD,
+  skills: { claude: [], eva: [] },
   ...patch
 });
 
@@ -27,6 +35,26 @@ const facts = (patch: Partial<PlanFacts> = {}): PlanFacts => ({
   members: [member()],
   overlap: [],
   pinned: null,
+  crew: null,
+  envFiles: [],
+  ...patch
+});
+
+const runtime = (r: CrewRuntime, problems: string[] = []): RuntimeCheck => ({
+  runtime: r,
+  path: `/usr/local/bin/${r}`,
+  version: '9.9.9',
+  checks: problems.map((note) => ({ name: 'Version', state: 'fail', note }))
+});
+
+const crew = (patch: Partial<CrewFacts> = {}): CrewFacts => ({
+  roles: new Map([['builder', 'claude']]),
+  roleText: new Map(),
+  models: new Map(),
+  evaModels: null,
+  runtimes: { claude: runtime('claude') },
+  claudeTrust: { folder: '/repo', trusted: true },
+  memberTrust: new Map(),
   ...patch
 });
 
@@ -47,7 +75,8 @@ describe('checkPlan', () => {
           headSha: HEAD,
           pinned: null
         }
-      ]
+      ],
+      envFiles: []
     });
   });
 
@@ -82,6 +111,110 @@ describe('checkPlan', () => {
     ]);
   });
 
+  it("blocks an eva step on a model eva's server does not list, once the list is known", () => {
+    const eva = (patch: Partial<CrewFacts>): PlanFacts =>
+      facts({
+        crew: crew({
+          roles: new Map([['builder', 'eva']]),
+          models: new Map([['builder', 'qwen3']]),
+          runtimes: { eva: runtime('eva') },
+          ...patch
+        })
+      });
+    expect(codes(PR, eva({ evaModels: new Set(['qwen3']) }))).toEqual([]);
+    expect(codes(PR, eva({ evaModels: null }))).toEqual([]);
+    expect(checkPlan(PR, eva({ evaModels: new Set(['llama']) })).issues).toEqual([
+      {
+        code: 'model-missing',
+        severity: 'block',
+        text: "builder-1 runs on the model qwen3, which eva's model server does not list. Change the step's model, or the builder role's in Settings › Agency › Crew.",
+        step: 'builder-1'
+      }
+    ]);
+    const own = plan([{ id: 'builder-1', role: 'builder', title: 'B', model: 'llama' }]);
+    expect(codes(own, eva({ evaModels: new Set(['llama']) }))).toEqual([]);
+  });
+
+  it('never checks a Claude step against the eva list', () => {
+    const claude = facts({
+      crew: crew({ models: new Map([['builder', 'opus']]), evaModels: new Set(['qwen3']) })
+    });
+    expect(codes(PR, claude)).toEqual([]);
+  });
+
+  it('blocks a step whose role the crew does not have, once the crew is known', () => {
+    const reviewerOnly = facts({
+      crew: crew({ roles: new Map([['reviewer', 'claude']]), runtimes: {} })
+    });
+    expect(codes(PR, reviewerOnly)).toEqual(['unknown-role']);
+    expect(checkPlan(PR, reviewerOnly).issues[0]?.text).toBe(
+      "builder-1 uses the role builder, which is not one of this project's crew roles."
+    );
+    expect(codes(PR, facts({ crew: crew() }))).toEqual([]);
+  });
+
+  it('blocks steps on a runtime crew cannot use, naming each step once', () => {
+    const two = plan([
+      { id: 'build', role: 'builder', title: 'Build' },
+      { id: 'review', role: 'builder', title: 'Review', runtime: 'eva' }
+    ]);
+    const checks = checkPlan(
+      two,
+      facts({
+        crew: crew({
+          runtimes: {
+            claude: runtime('claude'),
+            eva: runtime('eva', ['eva is not installed, or not on the PATH a terminal pane gets.'])
+          }
+        })
+      })
+    );
+    expect(checks.issues).toEqual([
+      {
+        code: 'runtime-unavailable',
+        severity: 'block',
+        text: 'review runs on eva. eva is not installed, or not on the PATH a terminal pane gets.'
+      }
+    ]);
+  });
+
+  it('offers the trust step until Claude Code has run in the folder, for Claude steps only', () => {
+    const untrusted = crew({ claudeTrust: { folder: '/repo', trusted: false } });
+    expect(checkPlan(PR, facts({ crew: untrusted })).issues).toEqual([
+      {
+        code: 'claude-trust',
+        severity: 'warn',
+        text: 'Claude Code has not run in /repo yet. Open it there once and trust the folder, or each Claude crew member waits for you at that prompt.',
+        fix: 'trust-claude',
+        path: '/repo'
+      }
+    ]);
+    const onEva = crew({ ...untrusted, roles: new Map([['builder', 'eva']]), runtimes: {} });
+    expect(codes(PR, facts({ crew: onEva }))).toEqual([]);
+  });
+
+  it("asks for a member's own trust when a Claude step works in that member alone", () => {
+    const members = [
+      member({ name: 'journey', atRoot: true }),
+      member({ name: 'core' }),
+      member({ name: 'web' })
+    ];
+    const memberTrust = new Map([
+      ['core', { folder: '/journey/libs/core', trusted: false }],
+      ['web', { folder: '/journey/libs/web', trusted: true }]
+    ]);
+    const steps = plan([
+      { id: 'core-1', role: 'builder', title: 'Core', changes: ['core'] },
+      { id: 'core-2', role: 'builder', title: 'Core again', changes: ['core'] },
+      { id: 'web-1', role: 'builder', title: 'Web', changes: ['web'] },
+      { id: 'both', role: 'builder', title: 'Both', changes: ['core', 'web'] }
+    ]);
+    const issues = checkPlan(steps, facts({ members, crew: crew({ memberTrust }) })).issues;
+    expect(issues.filter((i) => i.code === 'claude-trust')).toEqual([
+      expect.objectContaining({ path: '/journey/libs/core', member: 'core' })
+    ]);
+  });
+
   it('warns about a dirty main checkout and about overlap with another job', () => {
     const checks = checkPlan(
       PR,
@@ -111,6 +244,29 @@ describe('checkPlan', () => {
     });
     const p = plan([{ id: 'b', role: 'builder', title: 'Build', changes: ['api'] }]);
     expect(checkPlan(p, f).bases.map((b) => b.member)).toEqual(['api', 'shop']);
+  });
+
+  it("lists the env files each step gets: its members' and the umbrella's", () => {
+    const f = facts({
+      members: [
+        member({ name: 'api' }),
+        member({ name: 'web' }),
+        member({ name: 'shop', atRoot: true })
+      ],
+      envFiles: [
+        { member: 'api', file: 'api/.env' },
+        { member: 'web', file: 'web/.env.local' },
+        { member: 'shop', file: '.env' }
+      ]
+    });
+    const p = plan([
+      { id: 'b', role: 'builder', title: 'Build', changes: ['api'] },
+      { id: 'q', role: 'qa', title: 'Check', changes: ['shop'], reads: ['web'] }
+    ]);
+    expect(checkPlan(p, f).envFiles).toEqual([
+      { stepId: 'b', files: ['api/.env', '.env'] },
+      { stepId: 'q', files: ['web/.env.local', '.env'] }
+    ]);
   });
 
   it('carries the bases an earlier approval pinned', () => {
@@ -158,5 +314,41 @@ describe('pinBases', () => {
       ok: false,
       reason: 'fleet has no commit to start from.'
     });
+  });
+});
+
+describe('skills', () => {
+  const members = [
+    member({ name: 'journey', atRoot: true, skills: { claude: ['umbrella-sweep'], eva: [] } }),
+    member({ name: 'fola-journey', skills: { claude: ['journey-qa-sweep'], eva: ['lint'] } }),
+    member({ name: 'api' })
+  ];
+  const qa = (patch: Partial<PlanInput['steps'][number]>): ReturnType<typeof plan> =>
+    plan([{ id: 'qa', role: 'qa', title: 'QA pass', runtime: 'claude', ...patch }]);
+  const missing = (p: ReturnType<typeof plan>): string[] =>
+    checkPlan(p, facts({ members }))
+      .issues.filter((i) => i.code === 'skill-missing')
+      .map((i) => i.text);
+
+  it("finds a member's skill when the step works in that member alone", () => {
+    expect(missing(qa({ changes: ['fola-journey'], skills: ['journey-qa-sweep'] }))).toEqual([]);
+    expect(
+      missing(qa({ reads: ['fola-journey'], changes: ['journey'], skills: ['journey-qa-sweep'] }))
+    ).toEqual([]);
+  });
+
+  it("warns when the step works at the umbrella's root, where a member's skill does not load", () => {
+    expect(missing(qa({ skills: ['journey-qa-sweep', 'umbrella-sweep'] }))).toEqual([
+      'qa uses the skill journey-qa-sweep, which Claude Code does not find in journey. It works only if you have a skill of your own by that name.'
+    ]);
+  });
+
+  it("looks in the step's runtime's skills", () => {
+    expect(missing(qa({ runtime: 'eva', changes: ['fola-journey'], skills: ['lint'] }))).toEqual(
+      []
+    );
+    expect(
+      missing(qa({ runtime: 'eva', changes: ['fola-journey'], skills: ['journey-qa-sweep'] }))
+    ).toHaveLength(1);
   });
 });

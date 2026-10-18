@@ -1,5 +1,27 @@
-import type { AgencyJob } from '../../../../shared/agency';
+import type { AgencyJob, AgencySnapshot } from '../../../../shared/agency';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
+
+/** How a job that ended is labeled wherever it shows. */
+export const ENDED_LABEL: Partial<Record<AgencyJob['state'], string>> = {
+  closed: 'Closed',
+  cancelled: 'Cancelled',
+  failed: 'Failed'
+};
+
+/**
+ * Where a lobby line about a job leads: its tab while the job is open, and
+ * how it ended once it has none. Neither for a job older than the past list.
+ */
+export function jobLink(
+  snapshot: AgencySnapshot | undefined,
+  jobId: number
+): { open: boolean; ended: string | null } {
+  const past = snapshot?.pastJobs.find((j) => j.id === jobId);
+  return {
+    open: snapshot?.jobs.some((j) => j.id === jobId) === true,
+    ended: past === undefined ? null : (ENDED_LABEL[past.state] ?? past.state)
+  };
+}
 
 /** The colour a job's dot and status line take. */
 export type JobTone = 'green' | 'amber' | 'blue' | 'muted';

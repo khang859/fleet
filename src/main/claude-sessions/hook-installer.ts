@@ -137,7 +137,7 @@ function resolvePaths(configDir?: string): {
   return { claudeDir, hooksDir, settingsPath, hookDest };
 }
 
-type HookEntry = {
+export type HookEntry = {
   matcher?: string;
   hooks: Array<{ type: string; command: string; timeout?: number }>;
 };
@@ -163,11 +163,34 @@ function buildHookEntries(command: string): Record<string, HookEntry[]> {
     PermissionRequest: [matcherHook('*', 86400)],
     Notification: [matcherHook('*')],
     Stop: [simpleHook()],
+    // A turn that ended on an API error, such as a rate limit, sends this instead of Stop.
+    StopFailure: [simpleHook()],
     SubagentStop: [simpleHook()],
     SessionStart: [simpleHook()],
     SessionEnd: [simpleHook()],
     PreCompact: [matcherHook('auto'), matcherHook('manual')]
   };
+}
+
+/**
+ * The hook entries an install writes in a config folder, word for word. A
+ * crew job's `--settings` file repeats them: Claude Code runs one identical
+ * command once, so a member whose global install is in place reports each
+ * event once, and one whose install is missing still reports.
+ */
+export function fleetHookEntries(configDir?: string): Record<string, HookEntry[]> {
+  return buildHookEntries(quoteHookCommand(resolvePaths(configDir).hookDest, process.platform));
+}
+
+/**
+ * Whether the hook binary in a config folder is the one this Fleet ships,
+ * so it speaks the current protocol. The install refreshes it at start.
+ */
+export function hookBinaryCurrent(configDir?: string): boolean {
+  const { hookDest } = resolvePaths(configDir);
+  const source = getHookBinarySourcePath();
+  if (!existsSync(hookDest) || !existsSync(source)) return false;
+  return readFileSync(hookDest).equals(readFileSync(source));
 }
 
 export function getHookBinarySourcePath(): string {

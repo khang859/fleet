@@ -18,7 +18,10 @@ import {
   memberOrder,
   pickBlocker,
   projectStatus,
-  repoNotes
+  repoNotes,
+  runsServers,
+  serversNote,
+  stackSlotsLabel
 } from '../onboarding-view';
 import { MemberList, ProjectRow } from '../ProjectPicker';
 import { MissingCard } from '../MissingCard';
@@ -32,6 +35,7 @@ const base = {
   hasModel: true,
   firstRunDone: true,
   picking: false,
+  redoingSetup: false,
   onboarding: done
 };
 
@@ -57,6 +61,11 @@ describe('admiralStage', () => {
       'starter'
     );
     expect(admiralStage(base)).toBe('ready');
+  });
+
+  it('shows setup again when the client redoes it, but the picker first', () => {
+    expect(admiralStage({ ...base, redoingSetup: true })).toBe('setup');
+    expect(admiralStage({ ...base, redoingSetup: true, picking: true })).toBe('picker');
   });
 });
 
@@ -266,14 +275,27 @@ describe('workspace setup', () => {
     checkCommands: [],
     checks: [],
     requiredChecks: [],
-    reviewBots: []
+    reviewBots: [],
+    portVars: [],
+    fixedPorts: [],
+    envFiles: []
   });
   const members = [setupMember('core', 'libs/core'), setupMember('shop', '.')];
   const scan: SetupScan = {
     repo: WORKSPACE.project,
     kind: 'submodules',
-    setup: { version: 1, kind: 'submodules', name: 'shop', members, imports: [] },
+    setup: {
+      version: 1,
+      kind: 'submodules',
+      name: 'shop',
+      members,
+      imports: [],
+      setupCommand: '',
+      setupTimeoutSec: 600,
+      stackSlots: null
+    },
     saved: false,
+    newer: [],
     members: members.map((m) => ({
       name: m.name,
       path: m.path,
@@ -282,7 +304,17 @@ describe('workspace setup', () => {
     })),
     missing: [{ name: 'api', path: 'libs/api' }],
     repoFiles: [],
-    teamSetup: { version: 1, kind: 'submodules', name: 'shop', members, imports: [] },
+    envFiles: [],
+    teamSetup: {
+      version: 1,
+      kind: 'submodules',
+      name: 'shop',
+      members,
+      imports: [],
+      setupCommand: '',
+      setupTimeoutSec: 600,
+      stackSlots: null
+    },
     ghSignedIn: false
   };
 
@@ -303,6 +335,21 @@ describe('workspace setup', () => {
     expect(html).toContain('NOT CHECKED OUT');
     expect(html).toContain('libs/api');
     expect(html).toContain('>Check out<');
+  });
+
+  it('shows the servers card only for a project with ports or a stack limit, and says why', () => {
+    expect(runsServers(scan.setup)).toBe(false);
+    const postgres = { port: 5432, service: 'postgres' };
+    const withPorts = {
+      ...scan.setup,
+      members: [{ ...members[0], portVars: ['API_PORT'], fixedPorts: [postgres] }, members[1]],
+      stackSlots: 1
+    };
+    expect(runsServers(withPorts)).toBe(true);
+    expect(runsServers({ ...scan.setup, stackSlots: 2 })).toBe(true);
+    expect(stackSlotsLabel(1)).toBe('1 · one stack runs at a time');
+    expect(stackSlotsLabel(null)).toBe('No limit');
+    expect(serversNote([postgres])).toContain('postgres on 5432 cannot move');
   });
 });
 

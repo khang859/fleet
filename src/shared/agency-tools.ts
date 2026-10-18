@@ -1,18 +1,27 @@
 import { z } from 'zod';
 import type { AgentToolSpec } from './agent-tools';
-import { DELIVERABLE_KINDS, PLAN_MAX_STEPS, PlanSchema, type DeliverableKind } from './agency-plan';
+import {
+  DELIVERABLE_KINDS,
+  NEW_ROLE_MAX_CHARS,
+  PLAN_MAX_NEW_ROLES,
+  PLAN_MAX_STEPS,
+  PlanSchema,
+  type DeliverableKind
+} from './agency-plan';
 import { offeredToolSpecs } from './capability-tools';
 
 /**
  * The tools only an Admiral turn has: putting a question to the client,
  * opening a job from the lobby, listing the repository's jobs, and in a job's
- * own thread proposing its plan, moving its steps and handing back results.
+ * own thread proposing its plan, moving its steps, hiring and prompting its
+ * crew, and handing back results.
  *
  * Like the fleet tools they sit behind a nullable capability (`ctx.agency`),
  * so a turn that is not an Admiral's has nothing behind them, and a member is
  * null where the tool does not apply: `job_open` exists only in the lobby,
  * because a change to a job happens only in that job's conversation, and
- * `job_plan`, `job_update` and `job_deliver` exist only in a job's thread.
+ * `job_plan`, `job_update`, `job_deliver` and the crew tools exist only in a
+ * job's thread.
  * `client_file_propose` and the settings tools work in both: a standing
  * preference or a setting can come up anywhere.
  *
@@ -28,6 +37,10 @@ export const AGENCY_TOOL_NAMES = [
   'job_plan',
   'job_update',
   'job_deliver',
+  'crew_hire',
+  'crew_send',
+  'crew_interrupt',
+  'crew_stop',
   'client_file_propose',
   'settings_read',
   'settings_change'
@@ -54,6 +67,15 @@ export const RESULT_TITLE_MAX_CHARS = 120;
 export const RESULT_COPY_MAX_CHARS = 20_000;
 /** Most files one result hands back. */
 export const RESULT_MAX_FILES = 20;
+
+/** Starts every prompt Fleet types into a crew pane, so the transcript shows it came from the Admiral. */
+export const CREW_PROMPT_PREFIX = '[admiral]';
+/** Longest brief a crew member is hired with; one over the typed size goes in a file. */
+export const CREW_BRIEF_MAX_CHARS = 40_000;
+/** Longest prompt the Admiral types into a crew pane. */
+export const CREW_PROMPT_MAX_CHARS = 4_000;
+/** Longest `why` or `expect` a crew prompt is recorded with. */
+export const CREW_NOTE_MAX_CHARS = 300;
 
 /** Longest client file line, which is one sentence or two. */
 export const CLIENT_LINE_MAX_CHARS = 300;
@@ -155,6 +177,28 @@ export const JobDeliverArgs = z
     }
   });
 
+const crewNote = z.string().trim().min(1).max(CREW_NOTE_MAX_CHARS);
+/** A crew member of this job: its ref, its label like `builder 1`, or its pane id. */
+const crewRef = z.string().trim().min(1).max(200);
+
+export const CrewHireArgs = z.object({
+  step: z.string().trim().min(1).max(40),
+  brief: z.string().trim().min(1).max(CREW_BRIEF_MAX_CHARS),
+  why: crewNote.optional(),
+  expect: crewNote.optional()
+});
+
+export const CrewSendArgs = z.object({
+  crew: crewRef,
+  prompt: z.string().trim().min(1).max(CREW_PROMPT_MAX_CHARS),
+  why: crewNote.optional(),
+  expect: crewNote.optional()
+});
+
+export const CrewInterruptArgs = z.object({ crew: crewRef });
+
+export const CrewStopArgs = z.object({ crew: crewRef, why: crewNote.optional() });
+
 const clientLine = z.string().trim().min(1).max(CLIENT_LINE_MAX_CHARS);
 
 export const ClientFileProposeArgs = z
@@ -186,6 +230,10 @@ export type JobListArgs = z.infer<typeof JobListArgs>;
 export type JobPlanArgs = z.output<typeof JobPlanArgs>;
 export type JobUpdateArgs = z.infer<typeof JobUpdateArgs>;
 export type JobDeliverArgs = z.infer<typeof JobDeliverArgs>;
+export type CrewHireArgs = z.infer<typeof CrewHireArgs>;
+export type CrewSendArgs = z.infer<typeof CrewSendArgs>;
+export type CrewInterruptArgs = z.infer<typeof CrewInterruptArgs>;
+export type CrewStopArgs = z.infer<typeof CrewStopArgs>;
 export type ClientFileProposeArgs = z.infer<typeof ClientFileProposeArgs>;
 export type SettingsReadArgs = z.infer<typeof SettingsReadArgs>;
 export type SettingsChangeArgs = z.infer<typeof SettingsChangeArgs>;
@@ -212,6 +260,11 @@ export type AgentAgencyCapability = {
   jobUpdate: Run<JobUpdateArgs> | null;
   /** Null in the lobby. */
   jobDeliver: Run<JobDeliverArgs> | null;
+  /** Null in the lobby: crew always work on one job. */
+  crewHire: Run<CrewHireArgs> | null;
+  crewSend: Run<CrewSendArgs> | null;
+  crewInterrupt: Run<CrewInterruptArgs> | null;
+  crewStop: Run<CrewStopArgs> | null;
   clientFilePropose: Run<ClientFileProposeArgs>;
   settingsRead: Run<SettingsReadArgs>;
   settingsChange: Run<SettingsChangeArgs>;
@@ -225,6 +278,10 @@ export const AGENCY_TOOL_MEMBER = {
   job_plan: 'jobPlan',
   job_update: 'jobUpdate',
   job_deliver: 'jobDeliver',
+  crew_hire: 'crewHire',
+  crew_send: 'crewSend',
+  crew_interrupt: 'crewInterrupt',
+  crew_stop: 'crewStop',
   client_file_propose: 'clientFilePropose',
   settings_read: 'settingsRead',
   settings_change: 'settingsChange'
@@ -249,6 +306,8 @@ const LIST_DESCRIPTION =
 
 const PLAN_DESCRIPTION = [
   "Propose this job's plan as a card for the client: the playbook, a short summary, the steps, the budget and what you will ask before doing.",
+  "Each step's crew member works in its own worktree. A step works only in what the steps it waits for committed, so tell each crew member to commit its work. For a playbook step with `count` > 1, make one step per member, each with one of the playbook's scopes, and a later step that merges them.",
+  "When no crew role fits a step, add a role to `newRoles` and give the step that role. Fleet saves it in the project's crew folder, not the repository, only when the client approves the plan. Keep sending it in later versions; a role already saved with the same text stays as it is.",
   'Always send the whole plan. To change an approved plan, send it again with the change: keep the ids of steps that stay, so Fleet can show the client what changes. A step that is done, or already delivered something, cannot change or go.',
   'Returns at once. The client approves, edits or rejects it, and that arrives as a wakeup. Nothing starts before the client approves, and only the newest version can be approved, so a new call replaces one still waiting.'
 ].join('\n\n');
@@ -263,6 +322,28 @@ const DELIVER_DESCRIPTION = [
   'Hand back a result of a plan step, as a card for the client: what a crew member made, or what you made yourself.',
   'Give the kind and, for a deliverable the step lists, its label. `pr` takes the PR `url` and reads the rest from GitHub; `branch` takes a local `branch`; `preview` and `link` take a `url`; `copy` takes the `text`; `doc`, `image`, `review`, `report` and `file` take absolute `paths` inside the project or the job folder, which Fleet copies, so they outlive the worktree.',
   'A result the step did not list is fine: it shows as an extra. The job is delivered once every step is done and handed back everything it lists.'
+].join('\n\n');
+
+const HIRE_DESCRIPTION = [
+  "Hire the crew member for a step of the approved plan: Fleet makes the step a new worktree on its own branch with the branches of the steps it works on merged in, runs the project's setup there, opens a terminal pane in the job tab, and starts the step's role on its runtime with your brief as its first prompt. A step with workspace {of} works in that step's worktree instead, and changes nothing.",
+  "Hire only for a step that may start: its `after` steps are done and it has no crew member working. Over the crew limit the step is queued, and a wakeup tells you when it can start. A step a crew member left before it was done needs the client's OK first: Fleet asks them, and their answer arrives as a wakeup.",
+  'After an approved plan change swaps a running step, hire for it again once its old member has stopped. With "Continue its work" the new member works in the old worktree on the same branch; put a summary of what the old member did in the brief (read it with `fleet_read`), and Fleet adds its changes since the base and the step\'s open questions. With "Start over" it gets a new worktree from the base.',
+  "Write the brief for someone who knows nothing of this conversation: the goal, what done looks like, the files and decisions that matter, and what to hand back. A long brief is fine: Fleet passes it as a file. The crew member works with the client's own logins and tools, in its worktree only.",
+  'Give `why` and `expect`, which go in the job record with the brief.'
+].join('\n\n');
+
+const CREW_SEND_DESCRIPTION = [
+  'Type a prompt into a crew member of this job that is waiting for one: an answer to its question, a nudge, or the next part of its step.',
+  'Refused while it is working, waiting on a permission prompt, at its usage limit, or the client is typing in its pane or took it over; read it with `fleet_read` and try again once it is waiting. Fleet checks that the runtime got the prompt as typed; a failed send is never retried for you.',
+  'Give `why` and `expect`, which go in the job record with the prompt.'
+].join('\n\n');
+
+const CREW_INTERRUPT_DESCRIPTION =
+  "Press Esc in a crew member's pane to stop the turn it is working on, as the client would. It keeps its conversation and waits for a prompt. Refused while the client took over its pane.";
+
+const CREW_STOP_DESCRIPTION = [
+  'End a crew member of this job: Fleet ends the process in its pane. Its worktree, branch and conversation stay until the job closes.',
+  'Stopping does not move its step; say what happens next with `job_update`. Refused while the client took over its pane.'
 ].join('\n\n');
 
 const CLIENT_FILE_DESCRIPTION = [
@@ -292,6 +373,28 @@ const stringList = (description: string): Record<string, unknown> => ({
   description
 });
 
+const newRoleSchema = {
+  type: 'object',
+  properties: {
+    name: {
+      type: 'string',
+      pattern: '^[a-z0-9][a-z0-9-]{0,39}$',
+      description: 'Like data-migrator.'
+    },
+    description: { type: 'string', description: 'When to hire this role.' },
+    runtime: { type: 'string', enum: ['claude', 'eva'] },
+    model: { type: 'string' },
+    stack: { type: 'boolean', description: "True when the role runs the project's servers." },
+    instructions: {
+      type: 'string',
+      maxLength: NEW_ROLE_MAX_CHARS,
+      description: 'What every crew member of this role is told: who it is and how it works.'
+    }
+  },
+  required: ['name', 'description', 'instructions'],
+  additionalProperties: false
+};
+
 const stepSchema = {
   type: 'object',
   properties: {
@@ -305,9 +408,38 @@ const stepSchema = {
     runtime: { type: 'string', enum: ['claude', 'eva'] },
     model: { type: 'string' },
     after: stringList('Ids of the steps that must be done before this one starts.'),
-    changes: stringList('Project members the step changes; empty for every member.'),
+    changes: stringList(
+      'Project members the step changes; empty for every member. Fleet checks out each one in the step workspace on the same branch.'
+    ),
     reads: stringList('Project members the step only reads.'),
     paths: stringList('Paths the step expects to touch, as member/dir.'),
+    workspace: {
+      description:
+        "Where the step works. new (the default): a fresh worktree from the base with the branches of its after steps merged in. {of: step}: read that step's worktree, for a review or QA step. {integrate: [steps]}: a fresh worktree that merges those steps' branches.",
+      anyOf: [
+        { type: 'string', enum: ['new'] },
+        {
+          type: 'object',
+          properties: { of: { type: 'string' } },
+          required: ['of'],
+          additionalProperties: false
+        },
+        {
+          type: 'object',
+          properties: { integrate: { type: 'array', items: { type: 'string' }, minItems: 1 } },
+          required: ['integrate'],
+          additionalProperties: false
+        }
+      ]
+    },
+    scope: {
+      type: 'string',
+      description:
+        'The part of the code the step owns, like server or client. Needed when steps change the same code side by side.'
+    },
+    skills: stringList(
+      "Skills the crew member uses, by name, from those the crew note lists for the step's working folder and runtime."
+    ),
     deliverables: {
       type: 'array',
       description: 'What the step hands back: a kind, or {kind, label}.',
@@ -339,6 +471,21 @@ const optionSchema = {
   },
   required: ['label'],
   additionalProperties: false
+};
+
+const crewRefSchema = {
+  type: 'string',
+  description: 'The crew member: its ref from fleet_sessions, or its label like builder 1.'
+};
+const whySchema = {
+  type: 'string',
+  maxLength: CREW_NOTE_MAX_CHARS,
+  description: 'Why you send it, for the job record.'
+};
+const expectSchema = {
+  type: 'string',
+  maxLength: CREW_NOTE_MAX_CHARS,
+  description: 'What you expect back, for the job record.'
 };
 
 export const AGENCY_TOOL_SPECS: AgentToolSpec[] = [
@@ -519,7 +666,13 @@ export const AGENCY_TOOL_SPECS: AgentToolSpec[] = [
           },
           asksFirst: stringList(
             'What you check with the client before doing it: merge, deploy, deletes.'
-          )
+          ),
+          newRoles: {
+            type: 'array',
+            maxItems: PLAN_MAX_NEW_ROLES,
+            description: 'Roles this plan brings, when no crew role fits a step.',
+            items: newRoleSchema
+          }
         },
         required: ['playbook', 'summary', 'steps', 'budget'],
         additionalProperties: false
@@ -577,10 +730,79 @@ export const AGENCY_TOOL_SPECS: AgentToolSpec[] = [
           member: {
             type: 'string',
             description:
-              'For branch in a project of several repositories: the member it is in. Fleet looks in every member when not given.'
+              'For branch in a project of several repositories: the member it is in. When not given, Fleet takes the one member where the branch has new commits.'
           }
         },
         required: ['step', 'kind'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crew_hire',
+      description: HIRE_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          step: { type: 'string', description: 'The id of the plan step to hire for.' },
+          brief: {
+            type: 'string',
+            maxLength: CREW_BRIEF_MAX_CHARS,
+            description: "The crew member's first prompt: everything it needs to do the step."
+          },
+          why: whySchema,
+          expect: expectSchema
+        },
+        required: ['step', 'brief'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crew_send',
+      description: CREW_SEND_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          crew: crewRefSchema,
+          prompt: { type: 'string', maxLength: CREW_PROMPT_MAX_CHARS },
+          why: whySchema,
+          expect: expectSchema
+        },
+        required: ['crew', 'prompt'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crew_interrupt',
+      description: CREW_INTERRUPT_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: { crew: crewRefSchema },
+        required: ['crew'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crew_stop',
+      description: CREW_STOP_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          crew: crewRefSchema,
+          why: { ...whySchema, description: 'Why you stop it, for the job record.' }
+        },
+        required: ['crew'],
         additionalProperties: false
       }
     }

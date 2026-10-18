@@ -1,5 +1,5 @@
 import { createServer, type Server, type Socket } from 'node:net';
-import { mkdirSync, unlinkSync } from 'node:fs';
+import { chmodSync, mkdirSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { AnnotateService } from './annotate-service';
@@ -36,6 +36,9 @@ type ErrorResponse = {
 
 type Response = SuccessResponse | ErrorResponse;
 
+/** Where crew reports go: the agency's crew, once it is up. */
+export type CrewReports = { report(input: unknown): string };
+
 /**
  * SocketServer — Unix socket server for Fleet CLI command dispatch.
  *
@@ -50,7 +53,8 @@ export class SocketServer extends EventEmitter {
 
   constructor(
     private socketPath: string,
-    private annotateService?: AnnotateService
+    private annotateService?: AnnotateService,
+    private crewReports?: () => CrewReports | null
   ) {
     super();
   }
@@ -101,6 +105,8 @@ export class SocketServer extends EventEmitter {
       this.server.listen(this.socketPath, () => {
         // Remove startup error handler and attach permanent one for post-startup errors
         this.server?.off('error', reject);
+        // Crew report their steps here, so only this user may connect.
+        if (process.platform !== 'win32') chmodSync(this.socketPath, 0o600);
         this.server?.on('error', (err) => {
           this.emit('server-error', err);
         });
@@ -209,6 +215,13 @@ export class SocketServer extends EventEmitter {
               : undefined;
         const resultPath = await this.annotateService.start({ url, timeout });
         return { resultPath };
+      }
+
+      // ── Agency ────────────────────────────────────────────────────────────────
+      case 'agency.done': {
+        const crew = this.crewReports?.() ?? null;
+        if (crew === null) throw new CodedError('The Admiral agency is not running', 'UNAVAILABLE');
+        return crew.report(args);
       }
 
       default: {

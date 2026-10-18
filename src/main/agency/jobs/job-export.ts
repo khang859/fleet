@@ -5,6 +5,7 @@ import {
   type AgencyQuestion
 } from '../../../shared/agency';
 import type { AgencyJobDetail, AgencyPlanVersion, AgencyResult } from '../../../shared/agency-jobs';
+import { redactEnvValues } from '../projects/env-files';
 import { proposalLines } from '../wakeup-text';
 
 /** What a job's export is made from: its detail, its questions, and its project's name. */
@@ -13,9 +14,6 @@ export type JobRecord = {
   detail: AgencyJobDetail;
   questions: AgencyQuestion[];
 };
-
-/** Shorter values would hide too much of the record behind the mask. */
-const SECRET_MIN_CHARS = 6;
 
 /** A local time as `2026-10-17 14:05`. */
 function stamp(at: number): string {
@@ -108,14 +106,6 @@ function recordLines(detail: AgencyJobDetail): string[] {
   return rows.map((r) => `- ${stamp(r.at)} ${r.text}`);
 }
 
-/** Every value in `secrets` masked, so an env file's values never leave in an export. */
-function redact(text: string, secrets: readonly string[]): string {
-  return secrets
-    .filter((s) => s.length >= SECRET_MIN_CHARS)
-    .sort((a, b) => b.length - a.length)
-    .reduce((out, secret) => out.split(secret).join('[env value]'), text);
-}
-
 /**
  * A job's record as Markdown, for the client to keep or share: the brief,
  * every plan version and its decision, the questions and answers, the
@@ -162,5 +152,5 @@ export function exportJob(record: JobRecord, secrets: readonly string[] = []): s
     ...recordLines(record.detail),
     ''
   ];
-  return redact(lines.join('\n'), secrets);
+  return redactEnvValues(lines.join('\n'), secrets);
 }

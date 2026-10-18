@@ -1,21 +1,26 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { clockTime } from '../../../../shared/agency-crew';
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../shared/agency';
 import type { SettingsCard } from '../../../../shared/agency-settings';
 import { jobDisplayId } from '../../../../shared/agency';
 import type {
+  AgencyCrewMember,
   AgencyJobDetail,
   AgencyPlanVersion,
   AgencyStep,
   StepStatus
 } from '../../../../shared/agency-jobs';
+import { focusPane } from '../../lib/focus-pane';
 import { openQuestions, planVersions } from '../../store/agency-store';
 import { ClientFileNotice } from './ClientFileViews';
-import { CancelJob, DeliveredCard, LeftoverList } from './JobClose';
+import { CrewSwapForm } from './CrewSwap';
+import { CancelJob, DeliveredCard, LeftoverList, SECONDARY } from './JobClose';
 import { PastJobList } from './PastJobs';
 import { PlanCard } from './PlanCard';
 import { ResultCard } from './ResultCard';
 import { SettingsCardView } from './SettingsCard';
 import { QuestionCard, type QuestionAnswer } from './QuestionCard';
+import { useRefusable } from './use-refusable';
 import { formatUsd, jobStatus, runtimeName, TONE_DOT } from './job-view';
 
 /** How wide the sheet is beside the conversation. */
@@ -54,7 +59,11 @@ export function JobSheet({
 }): React.JSX.Element {
   const job = jobId === null ? null : (snapshot?.jobs.find((j) => j.id === jobId) ?? null);
   const { approved } = planVersions(detail);
-  const { pending, waiting, settings, delivered, count } = waitingOnClient(snapshot, job, detail);
+  const { pending, waiting, settings, delivered, crew, count } = waitingOnClient(
+    snapshot,
+    job,
+    detail
+  );
   const firstRun = jobId === null && (snapshot?.jobs.length ?? 0) === 0;
 
   return (
@@ -87,6 +96,7 @@ export function JobSheet({
           detail={detail}
           questions={waiting}
           settings={settings}
+          crew={crew}
           clientFileChanged={snapshot?.clientFileChanged === true}
           onAnswer={onAnswer}
           onOpenSettings={onOpenSettings}
@@ -94,6 +104,10 @@ export function JobSheet({
       )}
 
       {job !== null && <PlanSection detail={detail} />}
+
+      <CrewSection detail={detail} />
+
+      <ServersSection detail={detail} />
 
       <ResultsSection detail={detail} />
 
@@ -132,6 +146,7 @@ function waitingOnClient(
   waiting: AgencyQuestion[];
   settings: SettingsCard[];
   delivered: AgencyJob | null;
+  crew: AgencyCrewMember[];
   count: number;
 } {
   const { pending } = planVersions(detail);
@@ -140,9 +155,13 @@ function waitingOnClient(
     (c) => c.jobId === (job?.id ?? null) && c.changes.some((x) => x.status === 'pending')
   );
   const delivered = job?.state === 'delivered' ? job : null;
+  const crew = (detail?.crew ?? []).filter((c) => c.flag === 'needs-you');
   const count =
-    waiting.length + settings.length + [pending, delivered].filter((x) => x !== null).length;
-  return { pending, waiting, settings, delivered, count };
+    waiting.length +
+    settings.length +
+    crew.length +
+    [pending, delivered].filter((x) => x !== null).length;
+  return { pending, waiting, settings, delivered, crew, count };
 }
 
 /**
@@ -183,7 +202,10 @@ function LeftoversSection({
   );
 }
 
-/** Open questions, settings changes and a plan version waiting on the client, as cards. */
+/**
+ * Open questions, settings changes, a plan version and crew members waiting
+ * on the client, as cards.
+ */
 function WaitingSection({
   count,
   delivered,
@@ -191,6 +213,7 @@ function WaitingSection({
   detail,
   questions,
   settings,
+  crew,
   clientFileChanged,
   onAnswer,
   onOpenSettings
@@ -202,6 +225,7 @@ function WaitingSection({
   detail: AgencyJobDetail | undefined;
   questions: AgencyQuestion[];
   settings: SettingsCard[];
+  crew: AgencyCrewMember[];
   clientFileChanged: boolean;
   onAnswer: (question: AgencyQuestion, answer: QuestionAnswer) => Promise<boolean>;
   onOpenSettings: () => void;
@@ -228,7 +252,36 @@ function WaitingSection({
       {settings.map((card) => (
         <SettingsCardView key={`s${card.id}`} card={card} />
       ))}
+      {crew.map((member) => (
+        <NeedsYouCard key={`c${member.id}`} member={member} />
+      ))}
     </Section>
+  );
+}
+
+/** A crew member that has not started a minute after its hire: its pane waits on the client. */
+function NeedsYouCard({ member }: { member: AgencyCrewMember }): React.JSX.Element {
+  const { paneId } = member;
+  return (
+    <section
+      aria-label={`${member.label} needs you`}
+      className="flex flex-col gap-1.5 rounded-md border border-amber-400/35 bg-fleet-bg p-2.5"
+    >
+      <span className="text-[13px] font-medium text-fleet-text">
+        {member.label} needs you in its pane
+      </span>
+      <p className="text-xs leading-relaxed text-fleet-text-muted">
+        It has not started a minute after its hire. It may wait at a login or trust screen that only
+        you can answer. Fleet types nothing into it.
+      </p>
+      {paneId !== null && (
+        <div className="flex pt-0.5">
+          <button type="button" onClick={() => void focusPane(paneId)} className={SECONDARY}>
+            Peek
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -249,6 +302,207 @@ function PlanSection({ detail }: { detail: AgencyJobDetail | undefined }): React
       ) : (
         <PlanSteps detail={detail} />
       )}
+    </Section>
+  );
+}
+
+const CREW_DOT: Record<AgencyCrewMember['status'], string> = {
+  starting: 'bg-amber-400',
+  live: 'bg-green-400',
+  ended: 'bg-fleet-text-subtle'
+};
+
+const CREW_STATUS: Record<AgencyCrewMember['status'], string> = {
+  starting: 'starting',
+  live: 'working',
+  ended: 'ended'
+};
+
+/**
+ * The job's crew members, working ones first, each with its step, runtime
+ * and status. Peek brings a working member's pane in front of the client.
+ */
+function CrewSection({
+  detail
+}: {
+  detail: AgencyJobDetail | undefined;
+}): React.JSX.Element | null {
+  if (detail === undefined || detail.crew.length === 0) return null;
+  const working = detail.crew.filter((c) => c.status !== 'ended');
+  const ended = detail.crew.filter((c) => c.status === 'ended').reverse();
+  return (
+    <Section label="CREW" gap="gap-1" aside={`${working.length} working`}>
+      <ul className="flex flex-col">
+        {[...working, ...ended].map((member) => (
+          <CrewRow key={member.id} member={member} detail={detail} />
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+/** What a flag on a working member says in its row, in place of its status. */
+function flagLabel(member: AgencyCrewMember): string | null {
+  switch (member.flag) {
+    case 'needs-you':
+      return 'needs you';
+    case 'limited':
+      return member.flagUntil === null ? 'limited' : `limited until ${clockTime(member.flagUntil)}`;
+    case 'user-driven':
+      return 'yours';
+    case 'stuck':
+      return 'stuck';
+    case null:
+      return null;
+  }
+}
+
+const FLAG_TITLE: Record<NonNullable<AgencyCrewMember['flag']>, string> = {
+  'needs-you': 'It has not started a minute after its hire. Peek to answer its pane.',
+  limited: 'It hit its usage limit. The Admiral sends it nothing until the limit resets.',
+  'user-driven': 'You typed in its pane. The Admiral leaves it alone until you hand it back.',
+  stuck: 'It shows no progress for 15 minutes. The Admiral was told.'
+};
+
+/** A member's dot: red when stuck, amber for any other flag, else its status color. */
+function crewDot(member: AgencyCrewMember): string {
+  if (member.flag === 'stuck') return 'bg-red-400';
+  return member.flag === null ? CREW_DOT[member.status] : 'bg-amber-400';
+}
+
+/** A member's status, or its flag in amber, with what it means on hover. */
+function CrewStatus({ member }: { member: AgencyCrewMember }): React.JSX.Element {
+  const { flag } = member;
+  const flagged = flagLabel(member);
+  return (
+    <span
+      className={`shrink-0 text-[11px] ${
+        flagged === null ? 'text-fleet-text-muted' : 'text-amber-700 dark:text-amber-400/90'
+      }`}
+      title={flag === null ? (member.endReason ?? undefined) : FLAG_TITLE[flag]}
+    >
+      {flagged ?? CREW_STATUS[member.status]}
+    </span>
+  );
+}
+
+const ROW_ACTION =
+  'shrink-0 rounded text-[11px] font-medium text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring disabled:opacity-50';
+
+/** Hand back or Resume, for a flag that waits on the client. */
+function HandBack({ member }: { member: AgencyCrewMember }): React.JSX.Element | null {
+  const handBack = useRefusable(async () => {
+    await window.fleet.agency.handBackCrew(member.id);
+    return { ok: true } as const;
+  });
+  if (member.flag !== 'user-driven' && member.flag !== 'limited') return null;
+  const yours = member.flag === 'user-driven';
+  return (
+    <button
+      type="button"
+      disabled={handBack.busy}
+      onClick={() => void handBack.run(undefined)}
+      title={yours ? 'Give it back to the Admiral' : 'Tell the Admiral it can work again'}
+      className={ROW_ACTION}
+    >
+      {yours ? 'Hand back' : 'Resume'}
+    </button>
+  );
+}
+
+/**
+ * A crew member: its step, runtime and status, with Hand back or Resume for
+ * a flag that waits on the client, Swap for a working one, and Peek.
+ */
+function CrewRow({
+  member,
+  detail
+}: {
+  member: AgencyCrewMember;
+  detail: AgencyJobDetail;
+}): React.JSX.Element {
+  const { paneId } = member;
+  const ended = member.status === 'ended';
+  const [swapping, setSwapping] = useState(false);
+  const step = ended
+    ? undefined
+    : planVersions(detail).approved?.plan.steps.find((s) => s.id === member.stepId);
+  return (
+    <li className="flex flex-col gap-1.5 border-b border-fleet-border/60 py-1.5 text-xs last:border-b-0">
+      <div className="flex items-center gap-2">
+        <span className={`size-1.5 shrink-0 rounded-full ${crewDot(member)}`} />
+        <span
+          className={`min-w-0 flex-1 truncate ${ended ? 'text-fleet-text-muted' : 'text-fleet-text'}`}
+        >
+          {member.label}
+          <span className="text-fleet-text-subtle">
+            {' '}
+            · {member.stepId} · {runtimeName(member.runtime)}
+            {member.model !== null && ` ${member.model}`}
+          </span>
+        </span>
+        <CrewStatus member={member} />
+        <HandBack member={member} />
+        {step !== undefined && (
+          <button
+            type="button"
+            aria-expanded={swapping}
+            onClick={() => setSwapping(!swapping)}
+            title="Move its step to another role, runtime or model"
+            className={ROW_ACTION}
+          >
+            Swap
+          </button>
+        )}
+        {!ended && paneId !== null && (
+          <button type="button" onClick={() => void focusPane(paneId)} className={ROW_ACTION}>
+            Peek
+          </button>
+        )}
+      </div>
+      {swapping && step !== undefined && (
+        <CrewSwapForm
+          repoId={detail.job.repoId}
+          jobId={detail.job.id}
+          step={step}
+          onClose={() => setSwapping(false)}
+        />
+      )}
+    </li>
+  );
+}
+
+/** The servers the crew started, each with the port variable it is on and its address. */
+function ServersSection({
+  detail
+}: {
+  detail: AgencyJobDetail | undefined;
+}): React.JSX.Element | null {
+  if (detail === undefined || detail.servers.length === 0) return null;
+  return (
+    <Section label="SERVERS" gap="gap-1" aside={`${detail.servers.length} running`}>
+      <ul className="flex flex-col">
+        {detail.servers.map((server) => (
+          <li
+            key={server.port}
+            className="flex items-center gap-2 border-b border-fleet-border/60 py-1.5 text-xs last:border-b-0"
+          >
+            <span className={`size-1.5 shrink-0 rounded-full ${CREW_DOT.live}`} />
+            <span className="min-w-0 flex-1 truncate text-fleet-text">
+              {server.name ?? `port ${server.port}`}
+              <span className="text-fleet-text-subtle"> · {server.stepId}</span>
+            </span>
+            <button
+              type="button"
+              title={`Open ${server.url}`}
+              onClick={() => void window.fleet.shell.openExternal(server.url)}
+              className="shrink-0 rounded font-mono text-[11px] text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring"
+            >
+              localhost:{server.port}
+            </button>
+          </li>
+        ))}
+      </ul>
     </Section>
   );
 }
@@ -311,6 +565,8 @@ const STEP_TONE: Record<StepStatus, string> = {
   running: 'text-green-600 dark:text-green-400',
   blocked: 'text-amber-700 dark:text-amber-400',
   interrupted: 'text-amber-700 dark:text-amber-400',
+  stopped: 'text-amber-700 dark:text-amber-400',
+  failed: 'text-red-600 dark:text-red-400',
   done: 'text-fleet-text-muted',
   removed: 'text-fleet-text-subtle'
 };
@@ -321,6 +577,8 @@ const STEP_LABEL: Record<StepStatus, string> = {
   running: 'running',
   blocked: 'blocked',
   interrupted: 'interrupted',
+  stopped: 'stopped',
+  failed: 'failed',
   done: 'done',
   removed: 'removed'
 };

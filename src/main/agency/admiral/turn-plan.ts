@@ -11,6 +11,7 @@ import { loadProjectInstructions } from '../../agent/project-instructions';
 import type { AgencyService } from '../index';
 import { createAgencyCapability } from '../tools';
 import { scopeFleetToCrew } from './crew-fleet';
+import { crewNote } from './crew-note';
 import { admiralSnapshotNote } from './snapshot-note';
 
 /** What the agent engine needs to run Admiral turns. */
@@ -22,12 +23,16 @@ export type AdmiralDeps = {
     | 'openJob'
     | 'snapshot'
     | 'crewPanes'
+    | 'crewScreen'
+    | 'crew'
     | 'store'
     | 'clientFileForNote'
     | 'jobs'
     | 'results'
     | 'proposeClientFile'
     | 'settings'
+    | 'crewCatalog'
+    | 'crewSkills'
   >;
   settings: () => AgencySettings;
 };
@@ -84,12 +89,21 @@ export async function planAdmiralTurn(input: {
     input.fleet === null
       ? null
       : createFleetCapability(
-          scopeFleetToCrew(input.fleet, () => admiral.agency.crewPanes()),
+          scopeFleetToCrew(
+            input.fleet,
+            () => admiral.agency.crewPanes(scope.jobId),
+            async (paneId) => admiral.agency.crewScreen(scope.jobId, paneId)
+          ),
           req.threadId,
           'admiral',
           req.cwd
         );
   const instructions = await loadProjectInstructions(req.cwd);
+  const [catalog, skills] = await Promise.all([
+    admiral.agency.crewCatalog(scope.repoId),
+    admiral.agency.crewSkills(scope.repoId)
+  ]);
+  const crew = crewNote(catalog, skills);
   const env = await readEnvironment(req.cwd, input.model);
   const tools = toolSpecsFor({
     image: null,
@@ -119,11 +133,14 @@ export async function planAdmiralTurn(input: {
     agency,
     fleet,
     note: () =>
-      admiralSnapshotNote(
-        admiral.agency.store,
-        scope,
-        admiral.agency.clientFileForNote(scope.repoId)
-      ),
+      [
+        admiralSnapshotNote(
+          admiral.agency.store,
+          scope,
+          admiral.agency.clientFileForNote(scope.repoId)
+        ),
+        crew
+      ].join('\n\n'),
     instructions:
       instructions === null
         ? null

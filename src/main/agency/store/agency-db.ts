@@ -33,6 +33,12 @@ export function agencyDbPath(): string {
  *
  * Version 6 adds the merge of a job's PRs: each PR result's place in the
  * merge order, its merge status and merged commit, and one merge run per job.
+ *
+ * Version 7 adds the folders Claude Code has reported from, which it only
+ * does once its folder trust prompt is accepted there.
+ *
+ * Version 8 adds each job workspace's block of ports and the env its panes
+ * and setup commands get.
  */
 const MIGRATIONS: readonly string[] = [
   `
@@ -312,6 +318,22 @@ const MIGRATIONS: readonly string[] = [
     started_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   );
+  `,
+  `
+  CREATE TABLE claude_trust (
+    folder TEXT PRIMARY KEY,
+    seen_at INTEGER NOT NULL
+  );
+  `,
+  `
+  ALTER TABLE job_workspaces ADD COLUMN ports_start INTEGER;
+  ALTER TABLE job_workspaces ADD COLUMN ports_size INTEGER;
+  ALTER TABLE job_workspaces ADD COLUMN env_json TEXT NOT NULL DEFAULT '{}';
+  `,
+  `
+  ALTER TABLE crew_members ADD COLUMN flag TEXT;
+  ALTER TABLE crew_members ADD COLUMN flag_since INTEGER;
+  ALTER TABLE crew_members ADD COLUMN flag_until INTEGER;
   `
 ];
 
