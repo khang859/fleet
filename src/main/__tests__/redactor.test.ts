@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ENV_MASK, Redactor, stripAnsi } from '../redactor';
+import { ENV_MASK, maskCredentials, Redactor, stripAnsi } from '../redactor';
 
 describe('Redactor', () => {
   it('masks every value, longest first, so a value holding another is masked whole', () => {
@@ -37,6 +37,35 @@ describe('stripAnsi', () => {
   it('drops CSI, OSC and two-byte escapes', () => {
     expect(stripAnsi('\x1b[1;32mok\x1b[0m \x1b]8;;https://x\x1b\\link\x1b]8;;\x1b\\ \x1bMup')).toBe(
       'ok link up'
+    );
+  });
+});
+
+describe('maskCredentials', () => {
+  it('masks GitHub, Slack, provider and AWS keys, bearer tokens and private keys', () => {
+    const text = [
+      `rotate ghp_${'a'.repeat(36)} and github_pat_${'B'.repeat(30)}`,
+      'slack xoxb-1234567890-abcdef',
+      'key sk-ant-abcdefghijk',
+      'aws AKIAABCDEFGHIJKLMNOP',
+      'curl -H "Authorization: Bearer abc.def"',
+      '-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaA\n-----END OPENSSH PRIVATE KEY-----'
+    ].join('\n');
+    expect(maskCredentials(text)).toBe(
+      [
+        'rotate [REDACTED_GITHUB_TOKEN] and [REDACTED_GITHUB_TOKEN]',
+        'slack [REDACTED_SLACK_TOKEN]',
+        'key sk-[REDACTED]',
+        'aws [REDACTED_AWS_KEY]',
+        'curl -H "Authorization: [REDACTED] [REDACTED]"',
+        '[REDACTED_PRIVATE_KEY]'
+      ].join('\n')
+    );
+  });
+
+  it('leaves words about tokens alone', () => {
+    expect(maskCredentials('fix(auth): refresh the token on 401')).toBe(
+      'fix(auth): refresh the token on 401'
     );
   });
 });

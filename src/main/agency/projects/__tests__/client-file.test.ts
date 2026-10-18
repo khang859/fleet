@@ -32,7 +32,8 @@ beforeEach(() => {
   files = new ClientFiles({
     store: {
       clientFileMark: (repoId) => marks.get(repoId) ?? null,
-      markClientFile: (repoId, text) => void marks.set(repoId, text)
+      markClientFile: (repoId, text) => void marks.set(repoId, text),
+      preferences: { conflicts: () => [] }
     },
     home: () => home,
     now: () => clock

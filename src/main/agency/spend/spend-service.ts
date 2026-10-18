@@ -222,6 +222,41 @@ export class SpendService {
     if (jobId !== null && (costUsd ?? 0) > 0) this.afterSpend(jobId);
   }
 
+  /**
+   * Hold the estimate of an Admiral call that belongs to no job, such as Read
+   * your work, or say why the monthly cap does not let it run.
+   */
+  reserveAdmiralCall(): SpendGate {
+    return this.store.tx(() => {
+      this.store.spend.purgeExpired();
+      const refused = this.capRefusal(null);
+      if (refused !== null) return refused;
+      const reservationId = this.store.spend.reserve({
+        jobId: null,
+        crewId: null,
+        meter: 'usd',
+        amount: ESTIMATE.admiralUsd,
+        ttlMs: RESERVE_TTL_MS
+      });
+      return { ok: true, reservationId };
+    });
+  }
+
+  /** That call ended, having cost `costUsd`: Admiral spend with no job. */
+  admiralCallDone(reservationId: number, costUsd: number | null): void {
+    this.store.tx(() => {
+      this.store.spend.cancel(reservationId);
+      if (costUsd === null || !(costUsd > 0)) return;
+      this.store.spend.record({
+        jobId: null,
+        crewId: null,
+        source: 'admiral',
+        meter: 'usd',
+        amount: costUsd
+      });
+    });
+  }
+
   /** A crew member's turn ended or it left: what it cost is in the samples now. */
   crewSettled(crewId: number): void {
     this.store.spend.releaseCrew(crewId);

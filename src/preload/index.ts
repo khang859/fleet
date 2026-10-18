@@ -200,6 +200,12 @@ import type {
 } from '../shared/agency-projects';
 import type { MeetAnswer, MeetQuestionId } from '../shared/agency-meet';
 import type {
+  ReadProposal,
+  ReadResult,
+  ReadSource,
+  ReadSourceId
+} from '../shared/agency-understanding';
+import type {
   AgencyJobDetail,
   JobControl,
   JobControlResult,
@@ -1268,7 +1274,27 @@ const fleetApi = {
       meetFinish: async (input: { repo: AgencyRepoRef; rules: ClientLineInput[] }): Promise<void> =>
         typedInvoke(IPC_CHANNELS.AGENCY_MEET_FINISH, input),
       briefIdeas: async (repo: AgencyRepoRef): Promise<BriefIdeas> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_BRIEF_IDEAS, repo)
+        typedInvoke(IPC_CHANNELS.AGENCY_BRIEF_IDEAS, repo),
+      /** Read your work: what each source holds, or why it cannot be read. */
+      readSources: async (repo: AgencyRepoRef): Promise<ReadSource[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_READ_SOURCES, repo),
+      /** Read the ticked sources once with the Admiral's model, for lines to keep or drop. */
+      readWork: async (input: {
+        repo: AgencyRepoRef;
+        sources: ReadSourceId[];
+      }): Promise<ReadResult> => typedInvoke(IPC_CHANNELS.AGENCY_READ_WORK, input),
+      /** Save lines the client kept from a read. */
+      keepRead: async (input: {
+        repo: AgencyRepoRef;
+        lines: ReadProposal[];
+      }): Promise<ClientLineResult> => typedInvoke(IPC_CHANNELS.AGENCY_READ_KEEP, input),
+      /** Pick the winner of a line's clash with a project rule. */
+      settleConflict: async (input: {
+        repoId: string;
+        layer: string;
+        id: number;
+        winner: 'line' | 'rule';
+      }): Promise<ClientLineResult> => typedInvoke(IPC_CHANNELS.AGENCY_CONFLICT_SETTLE, input)
     },
     onChanged: (callback: (change: AgencyChanged) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENCY_CHANGED, callback)

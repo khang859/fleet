@@ -207,14 +207,25 @@ export function numberedEntries(
 
 /**
  * A layer as the Admiral's note shows it: each list line numbered by its id,
- * other lines as written, the file's own heading left out.
+ * other lines as written, the file's own heading left out. A line the client
+ * chose over a rule says so, from `overrides`: the rule's file by the line's
+ * normal form.
  */
-export function numberedText(text: string, prefix: 'Y' | 'P'): string {
+export function numberedText(
+  text: string,
+  prefix: 'Y' | 'P',
+  overrides: ReadonlyMap<string, string> = new Map()
+): string {
   let n = 0;
   return text
     .split('\n')
     .filter((line) => !line.startsWith('# '))
-    .map((line) => (lineText(line) === null ? line : `${prefix}${(n += 1)}. ${line.slice(2)}`))
+    .map((line) => {
+      const said = lineText(line);
+      if (said === null) return line;
+      const rule = overrides.get(normText(said));
+      return `${prefix}${(n += 1)}. ${line.slice(2)}${rule === undefined ? '' : ` (overrides ${rule})`}`;
+    })
     .join('\n')
     .trim();
 }

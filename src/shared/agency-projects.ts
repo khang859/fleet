@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AgencyRepoRef } from './agency';
+import type { PreferenceConflict } from './agency-client-file';
 
 /**
  * Admiral projects as the onboarding screens see them: the folders the picker
@@ -230,6 +231,8 @@ export type ClientFileView = {
   changedOutside: boolean;
   /** How many jobs used each line, by the line's normal form (`normText`). */
   uses: Record<string, number>;
+  /** Lines that clash with a project rule: open, or settled for the line. */
+  conflicts: PreferenceConflict[];
 };
 
 /** A line the client file can take, with where it came from. */

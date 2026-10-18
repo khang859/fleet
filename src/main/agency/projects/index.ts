@@ -248,7 +248,8 @@ export class ProjectsService {
       path: clientFiles.path(layer),
       text: clientFiles.read(layer) || null,
       changedOutside: clientFiles.changedOutside(layer),
-      uses: Object.fromEntries(this.deps.store.preferences.useCounts(layer))
+      uses: Object.fromEntries(this.deps.store.preferences.useCounts(layer)),
+      conflicts: this.deps.store.preferences.conflicts(layer)
     };
   }
 
@@ -276,7 +277,12 @@ export class ProjectsService {
   }
 
   async ruleCandidates(repo: AgencyRepoRef): Promise<RuleCandidates[]> {
-    return ruleCandidates(this.gitRoot(await this.verified(repo)), this.git);
+    return ruleCandidates(await this.projectRoot(repo), this.git);
+  }
+
+  /** The repository that speaks for a project, after checking the renderer's ref against git. */
+  async projectRoot(repo: AgencyRepoRef): Promise<string> {
+    return this.gitRoot(await this.verified(repo));
   }
 
   /**

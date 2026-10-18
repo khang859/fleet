@@ -21,6 +21,7 @@ import type {
 } from '../../../shared/agency-projects';
 import type { GitRun } from '../repo-identity';
 import type { AgencyStore } from '../store/agency-store';
+import type { PreferenceStore } from '../store/preference-store';
 import { writeAtomicSync } from '../../fs-atomic';
 import { clientFilePath } from './paths';
 import { openRepoReader, readOnlyGit, repoFacts } from './repo-reader';
@@ -63,7 +64,9 @@ export type ClientFileNote = {
 export class ClientFiles {
   constructor(
     private readonly deps: {
-      store: Pick<AgencyStore, 'clientFileMark' | 'markClientFile'>;
+      store: Pick<AgencyStore, 'clientFileMark' | 'markClientFile'> & {
+        preferences: Pick<PreferenceStore, 'conflicts'>;
+      };
       home: () => string;
       now?: () => Date;
     }
@@ -157,7 +160,13 @@ export class ClientFiles {
    */
   forNote(layer: string): ClientFileNote | null {
     const changedOutside = this.changedOutside(layer);
-    const base = numberedText(this.noteText(layer), layer === YOU_LAYER ? 'Y' : 'P');
+    const overrides = new Map(
+      this.deps.store.preferences
+        .conflicts(layer)
+        .filter((c) => c.status === 'line')
+        .map((c) => [c.normText, c.ruleSource])
+    );
+    const base = numberedText(this.noteText(layer), layer === YOU_LAYER ? 'Y' : 'P', overrides);
     if (base === '' && !changedOutside) return null;
     return {
       text: base.length > NOTE_LIMIT_CHARS ? `${base.slice(0, NOTE_LIMIT_CHARS)}\n[cut off]` : base,
