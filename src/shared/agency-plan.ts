@@ -99,6 +99,30 @@ export const PlanStepSchema = z.object({
   scope: z.string().trim().min(1).max(80).optional()
 });
 
+export const NEW_ROLE_MAX_CHARS = 8_000;
+export const PLAN_MAX_NEW_ROLES = 5;
+
+/**
+ * A role the plan brings because no crew role fits a step, written as the
+ * fields of a role file. Fleet saves it in the project's crew folder, never
+ * in the repository, only when the client approves the plan.
+ */
+export const NewRoleSchema = z.object({
+  name: z
+    .string()
+    .regex(
+      STEP_ID_PATTERN,
+      'a role name is lower-case letters, digits and dashes, like data-migrator'
+    ),
+  description: z.string().trim().min(1).max(400),
+  runtime: z.enum(['claude', 'eva']).default('claude'),
+  model: z.string().trim().min(1).max(120).optional(),
+  stack: z.boolean().default(false),
+  /** The role file's body: the instructions every crew member of the role gets. */
+  instructions: z.string().trim().min(1).max(NEW_ROLE_MAX_CHARS)
+});
+export type NewRole = z.output<typeof NewRoleSchema>;
+
 export const PlanSchema = z.object({
   playbook: z.string().trim().min(1).max(80),
   summary: z.string().trim().min(1).max(2_000),
@@ -110,7 +134,8 @@ export const PlanSchema = z.object({
   /** Run this job after that one, rather than next to it. */
   queueBehind: z.number().int().positive().nullable().default(null),
   /** What the Admiral checks with the client before doing it: merge, deploy, deletes. */
-  asksFirst: z.array(z.string().trim().min(1).max(200)).max(10).default([])
+  asksFirst: z.array(z.string().trim().min(1).max(200)).max(10).default([]),
+  newRoles: z.array(NewRoleSchema).max(PLAN_MAX_NEW_ROLES).default([])
 });
 
 export type PlanStep = z.output<typeof PlanStepSchema>;
@@ -202,6 +227,17 @@ export function validatePlanGraph(plan: { steps: GraphStep[] }): string[] {
   return [...new Set(problems)];
 }
 
+/** A new role named twice, or one no step uses, one sentence each. */
+export function newRoleProblems(plan: Plan): string[] {
+  const used = new Set(plan.steps.map((s) => s.role));
+  const seen = new Set<string>();
+  return plan.newRoles.flatMap((role) => {
+    if (seen.has(role.name)) return [`The new role ${role.name} is listed twice.`];
+    seen.add(role.name);
+    return used.has(role.name) ? [] : [`The new role ${role.name} is not used by any step.`];
+  });
+}
+
 const OWN_BRANCH: ReadonlySet<DeliverableKind> = new Set(['pr', 'branch']);
 
 /** Whether two members lists overlap; an empty list is every member. */
@@ -291,7 +327,8 @@ export type PlanDiffEntry =
   | { kind: 'budget'; from: number; to: number }
   | { kind: 'playbook'; from: string; to: string }
   | { kind: 'summary' }
-  | { kind: 'queue'; from: number | null; to: number | null };
+  | { kind: 'queue'; from: number | null; to: number | null }
+  | { kind: 'role'; name: string };
 
 const sameList = (a: readonly unknown[], b: readonly unknown[]): boolean =>
   a.length === b.length && a.every((x, i) => JSON.stringify(x) === JSON.stringify(b[i]));
@@ -311,19 +348,13 @@ function stepChanges(a: PlanStep, b: PlanStep): StepChange[] {
   return fields;
 }
 
-/** What `next` changes against `prev` (null: nothing approved yet, so no diff). */
-export function diffPlans(prev: Plan | null, next: Plan): PlanDiffEntry[] {
-  if (prev === null) return [];
+/** The steps `next` adds, removes, changes or moves against `prev`. */
+function stepDiff(prev: Plan, next: Plan): PlanDiffEntry[] {
   const before = new Map(prev.steps.map((s) => [s.id, s]));
-  const after = new Map(next.steps.map((s) => [s.id, s]));
-  const diff: PlanDiffEntry[] = [];
-  if (prev.playbook !== next.playbook) {
-    diff.push({ kind: 'playbook', from: prev.playbook, to: next.playbook });
-  }
-  if (prev.summary !== next.summary) diff.push({ kind: 'summary' });
-  for (const step of prev.steps) {
-    if (!after.has(step.id)) diff.push({ kind: 'removed', step: step.id });
-  }
+  const after = new Set(next.steps.map((s) => s.id));
+  const diff: PlanDiffEntry[] = prev.steps
+    .filter((s) => !after.has(s.id))
+    .map((s) => ({ kind: 'removed', step: s.id }));
   const kept = prev.steps.filter((s) => after.has(s.id)).map((s) => s.id);
   const keptNext = next.steps.filter((s) => before.has(s.id)).map((s) => s.id);
   for (const step of next.steps) {
@@ -338,11 +369,27 @@ export function diffPlans(prev: Plan | null, next: Plan): PlanDiffEntry[] {
       diff.push({ kind: 'moved', step: step.id });
     }
   }
+  return diff;
+}
+
+/** What `next` changes against `prev` (null: nothing approved yet, so no diff). */
+export function diffPlans(prev: Plan | null, next: Plan): PlanDiffEntry[] {
+  if (prev === null) return [];
+  const diff: PlanDiffEntry[] = [];
+  if (prev.playbook !== next.playbook) {
+    diff.push({ kind: 'playbook', from: prev.playbook, to: next.playbook });
+  }
+  if (prev.summary !== next.summary) diff.push({ kind: 'summary' });
+  diff.push(...stepDiff(prev, next));
   if (prev.budget.usd !== next.budget.usd) {
     diff.push({ kind: 'budget', from: prev.budget.usd, to: next.budget.usd });
   }
   if (prev.queueBehind !== next.queueBehind) {
     diff.push({ kind: 'queue', from: prev.queueBehind, to: next.queueBehind });
+  }
+  const roles = new Set(prev.newRoles.map((r) => r.name));
+  for (const role of next.newRoles) {
+    if (!roles.has(role.name)) diff.push({ kind: 'role', name: role.name });
   }
   return diff;
 }
@@ -366,5 +413,7 @@ export function diffLine(entry: PlanDiffEntry): string {
       return 'New summary';
     case 'queue':
       return entry.to === null ? 'Runs next to other jobs' : `Waits for j${entry.to}`;
+    case 'role':
+      return `Adds the role ${entry.name}`;
   }
 }

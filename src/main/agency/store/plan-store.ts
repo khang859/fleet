@@ -138,7 +138,8 @@ const EMPTY_PLAN: Plan = {
   steps: [],
   budget: { usd: 0 },
   queueBehind: null,
-  asksFirst: []
+  asksFirst: [],
+  newRoles: []
 };
 
 function toVersion(row: VersionRow): PlanVersionRecord {

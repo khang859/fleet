@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -333,5 +333,74 @@ describe('crew roles', () => {
     expect(service.store.plans.approved(job.id)?.crew).toEqual(approved);
     const next = (await service.crewCatalog(job.repoId)).roles.find((r) => r.name === 'builder');
     expect(next).toMatchObject({ runtime: 'eva', source: 'project' });
+  });
+});
+
+describe('new roles', () => {
+  const migrator = {
+    name: 'data-migrator',
+    description: 'Writes and checks database migrations.',
+    instructions: 'You write database migrations, and run each one up and down before you commit.'
+  };
+  const withRole = (role = migrator): PlanInput => ({
+    ...PLAN,
+    steps: [{ id: 'migrate', role: role.name, title: 'Add the column' }],
+    newRoles: [role]
+  });
+  const roleFile = (repoId: string): string =>
+    join(dir, 'home', 'projects', repoId, 'crew', 'roles', 'data-migrator.md');
+
+  it('saves a proposed role in the project crew folder only when the client approves', async () => {
+    start({ crew: true });
+    const { job, tools } = openJob();
+    const { id, text } = await proposeOut(tools, withRole());
+    expect(text).not.toContain('not one of this project');
+    expect(existsSync(roleFile(job.repoId))).toBe(false);
+
+    expect(await service.jobs.decide({ planVersionId: id, action: 'approve' })).toEqual({
+      ok: true,
+      version: 1
+    });
+
+    expect(readFileSync(roleFile(job.repoId), 'utf8')).toBe(
+      '---\nname: data-migrator\ndescription: Writes and checks database migrations.\nruntime: claude\n---\n\nYou write database migrations, and run each one up and down before you commit.\n'
+    );
+    expect(existsSync(join(REPO.root, '.fleet'))).toBe(false);
+    expect(service.store.plans.version(id)?.crew?.roles).toContainEqual(
+      expect.objectContaining({ name: 'data-migrator', source: 'project' })
+    );
+    expect(service.store.plans.logTail(job.id).map((l) => l.text)).toContain(
+      "Saved the role data-migrator in the project's crew"
+    );
+
+    // The next version sends the role again, unchanged, and approves as is.
+    const next = await proposeOut(tools, {
+      ...withRole(),
+      summary: 'Add the column, then index it.'
+    });
+    expect(service.store.plans.version(next.id)?.checks.issues.map((i) => i.code)).not.toContain(
+      'role-exists'
+    );
+    expect((await service.jobs.decide({ planVersionId: next.id, action: 'approve' })).ok).toBe(
+      true
+    );
+  });
+
+  it('blocks a new role named like a crew role that says something else', async () => {
+    start({ crew: true });
+    const { tools } = openJob();
+    const { id, text } = await proposeOut(tools, withRole({ ...migrator, name: 'builder' }));
+    expect(text).toContain(
+      'The new role builder has the name of a crew role that says something else.'
+    );
+    expect((await service.jobs.decide({ planVersionId: id, action: 'approve' })).ok).toBe(false);
+  });
+
+  it('refuses a new role no step uses', async () => {
+    start({ crew: true });
+    const { tools } = openJob();
+    await expect(proposeOut(tools, { ...PLAN, newRoles: [migrator] })).rejects.toThrow(
+      'The new role data-migrator is not used by any step.'
+    );
   });
 });

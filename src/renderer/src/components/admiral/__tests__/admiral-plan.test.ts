@@ -97,6 +97,32 @@ const card = (v: AgencyPlanVersion, d = detail([v])): string =>
   renderToStaticMarkup(createElement(PlanCard, { version: v, detail: d }));
 
 describe('PlanCard', () => {
+  it('shows a new role with its runtime, description and instructions, saved only on approval', () => {
+    const html = card(
+      version({
+        plan: PlanSchema.parse({
+          ...PLAN,
+          steps: [...PLAN.steps, { id: 'migrate', role: 'data-migrator', title: 'Migrate' }],
+          newRoles: [
+            {
+              name: 'data-migrator',
+              description: 'Writes database migrations.',
+              model: 'sonnet',
+              instructions: 'Run each migration up and down.'
+            }
+          ]
+        })
+      })
+    );
+    expect(html).toContain('>NEW ROLE<');
+    expect(html).toContain('data-migrator');
+    expect(html).toContain(' · Claude Code · sonnet');
+    expect(html).toContain('Writes database migrations.');
+    expect(html).toContain('Run each migration up and down.');
+    expect(html).toContain('The repository gets no file.');
+    expect(card(version())).not.toContain('NEW ROLE');
+  });
+
   it('puts a first plan up with its steps, deliverables, asks and budget', () => {
     const html = card(version());
     expect(html).toContain('aria-label="Plan v1"');

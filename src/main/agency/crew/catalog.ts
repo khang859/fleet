@@ -1,15 +1,18 @@
 import { createHash } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { stringify as stringifyYaml } from 'yaml';
 import {
   checkPlaybook,
   PlaybookFrontmatter,
   RoleFrontmatter,
   type CrewCatalog,
   type CrewFileError,
+  type CrewRole,
   type CrewSnapshot,
   type CrewSource
 } from '../../../shared/agency-crew';
-import type { Plan } from '../../../shared/agency-plan';
+import type { NewRole, Plan } from '../../../shared/agency-plan';
 import { createLogger } from '../../logger';
 import { loadDefinitions } from '../../agent/markdown-definitions';
 import { projectDir } from '../projects/paths';
@@ -80,6 +83,45 @@ export async function loadCrew(sources: Array<[CrewSource, string]>): Promise<Cr
     return problems.length === 0;
   });
   return { roles, playbooks, errors };
+}
+
+/** A role as its file says it: the frontmatter block, then the instructions. */
+export function roleFileText(role: NewRole): string {
+  const { name, description, runtime, model, stack } = role;
+  const front = { name, description, runtime, ...(model && { model }), ...(stack && { stack }) };
+  return `---\n${stringifyYaml(front)}---\n\n${role.instructions.trim()}\n`;
+}
+
+/** A loaded role as the new role that would write the same file. */
+export const asNewRole = (role: CrewRole): NewRole => ({ ...role, instructions: role.prompt });
+
+/**
+ * Write a plan's new roles into the project's crew folder, on the client's
+ * approval. A role the crew already has with the same text counts as saved;
+ * one with that name that says something else refuses the lot, before any
+ * file is written.
+ */
+export async function saveNewRoles(
+  projectCrew: string,
+  roles: NewRole[],
+  crew: CrewCatalog
+): Promise<{ saved: string[] } | { refused: string }> {
+  const fresh: NewRole[] = [];
+  for (const role of roles) {
+    const known = crew.roles.find((r) => r.name === role.name);
+    if (known === undefined) fresh.push(role);
+    else if (roleFileText(asNewRole(known)) !== roleFileText(role)) {
+      return {
+        refused: `A crew role named ${role.name} now says something else. Check the plan again.`
+      };
+    }
+  }
+  const dir = join(projectCrew, 'roles');
+  await mkdir(dir, { recursive: true });
+  for (const role of fresh) {
+    await writeFile(join(dir, `${role.name}.md`), roleFileText(role), { flag: 'wx' });
+  }
+  return { saved: fresh.map((r) => r.name) };
 }
 
 const hashOf = (value: unknown): string =>

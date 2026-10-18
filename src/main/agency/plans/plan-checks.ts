@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/agency-jobs';
 import { RUNTIME_LABEL, type CrewRuntime, type RuntimeCheck } from '../../../shared/agency-crew';
 import type { Plan, PlanStep } from '../../../shared/agency-plan';
+import { roleFileText } from '../crew/catalog';
 
 /** What Fleet read about one member repository just before the check. */
 export type MemberFacts = {
@@ -43,8 +44,10 @@ export type PlanFacts = {
 };
 
 export type CrewFacts = {
-  /** Each crew role's runtime, by role name. */
+  /** Each crew role's runtime, by role name, with the roles the plan brings. */
   roles: ReadonlyMap<string, CrewRuntime>;
+  /** Each crew role's file text, by role name, to tell a new role from one already there. */
+  roleText: ReadonlyMap<string, string>;
   /** What the check found for each runtime a step runs on. */
   runtimes: Partial<Record<CrewRuntime, RuntimeCheck>>;
   /**
@@ -135,6 +138,31 @@ function unknownRoles(plan: Plan, roles: ReadonlyMap<string, CrewRuntime>): Plan
     );
 }
 
+/** The crew's roles with the new ones the plan brings; a role already there keeps its runtime. */
+export function planRoles(
+  plan: Plan,
+  roles: ReadonlyMap<string, CrewRuntime>
+): ReadonlyMap<string, CrewRuntime> {
+  if (plan.newRoles.length === 0) return roles;
+  return new Map([...plan.newRoles.map((r) => [r.name, r.runtime] as const), ...roles]);
+}
+
+/** A new role named like a crew role that says something else. */
+function roleClashes(plan: Plan, crew: CrewFacts): PlanIssue[] {
+  return plan.newRoles
+    .filter((role) => {
+      const text = crew.roleText.get(role.name);
+      return text !== undefined && text !== roleFileText(role);
+    })
+    .map(
+      (role): PlanIssue => ({
+        code: 'role-exists',
+        severity: 'block',
+        text: `The new role ${role.name} has the name of a crew role that says something else. Use that role, or give the new one another name.`
+      })
+    );
+}
+
 /** Steps on a runtime crew cannot use, one issue per runtime. */
 function runtimeIssues(plan: Plan, crew: CrewFacts): PlanIssue[] {
   return Object.values(crew.runtimes).flatMap((check): PlanIssue[] => {
@@ -172,6 +200,7 @@ function crewIssues(plan: Plan, crew: CrewFacts | null): PlanIssue[] {
   if (crew === null) return [];
   return [
     ...unknownRoles(plan, crew.roles),
+    ...roleClashes(plan, crew),
     ...runtimeIssues(plan, crew),
     ...trustIssue(plan, crew)
   ];

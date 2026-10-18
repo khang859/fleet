@@ -49,6 +49,7 @@ const runtime = (r: CrewRuntime, problems: string[] = []): RuntimeCheck => ({
 
 const crew = (patch: Partial<CrewFacts> = {}): CrewFacts => ({
   roles: new Map([['builder', 'claude']]),
+  roleText: new Map(),
   runtimes: { claude: runtime('claude') },
   claudeTrust: { folder: '/repo', trusted: true },
   ...patch

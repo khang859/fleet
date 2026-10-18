@@ -76,7 +76,7 @@ Phase 2 notes:
 - [x] 3.5 Extend the renderer `openTab` request with "split into job tab" so each job has one unfocused tab of crew panes; verify with a renderer test and a screenshot
 - [x] 3.6 Add `crew_hire` and `crew_send` over `spawnSession` and `sendToSession`, auto-approved only for steps in the approved plan, with job-scoped chain and rate limits; verify with tool tests for in-plan, out-of-plan and limit cases
 - [x] 3.7 Add the CREW sheet section with role, runtime, status and peek that focuses the pane; verify in the running app
-- [ ] 3.8 Let the Admiral propose a new role in a plan and save it in the project's crew folder only on approval; verify with a tool test
+- [x] 3.8 Let the Admiral propose a new role in a plan and save it in the project's crew folder only on approval; verify with a tool test
 - [ ] 3.9 Add Settings › Agency › Crew (role and playbook lists, source, errors, open file) matching canvas boards 3.4 and 3.4b, with the role editor: runtime cards with status, a runtime switch that resets the model, Save and Discard, the Model list per runtime (Claude Code names, eva server models with tool calls, missing-model state); verify with a screenshot and a round trip to the role file
 - [ ] 3.25 Add the Runtimes tab to Settings › Agency › Crew matching canvas board 3.8: for Claude Code and eva the path, version, checks, models with roles, default model, crew at once and the Test button; the Claude Code login state without reading it; eva's model server without its key; verify with a test that no credential reaches the renderer, and with a screenshot
 - [ ] 3.26 Add Swap on crew cards with "Continue its work" (same workspace, handoff brief) and "Start over" (new branch), stop-before-start, and an Admiral-proposed swap on `limited`; verify with tool tests for swap-continue, swap-restart, the proposed swap, and a role edit that does not reach a running job
@@ -128,6 +128,11 @@ Phase 3 notes (decisions made while building):
 - 3.19: `stuck` is a member mid-turn with no hook event for 15 minutes. The plan has no wall-clock limit per step, so there is no time-limit check.
 - 3.19: other API errors in `StopFailure` wake the Admiral with no flag.
 - 3.19: end to end in the dev app: a new hire waited at Claude Code's folder trust screen in its new worktree. After a minute it showed "needs you", the card and the count showed, and the Admiral read the trust screen with `fleet_read`. "Hand back" was not run end to end, because Fleet never answers the trust prompt for a crew member.
+- 3.8: a plan may list up to 5 `newRoles`, each with a name, description, runtime, optional model, `stack`, and instructions. A new role that no step uses, or that is listed twice, refuses the plan.
+- 3.8: a new role with the name of a crew role that says something else blocks the plan. One that says the same is the same role.
+- 3.8: the plan card shows each new role with its instructions. On approval Fleet writes it to `crew/roles/<name>.md` in the project folder in Fleet, never in the repository, and logs it.
+- 3.8: a job opened from the lobby now wakes its Admiral once to plan. Before this, it got no turn until the client wrote again.
+- 3.8: end to end in the dev app: a job opened from the lobby planned on its own with the new role `changelog-writer`, the card showed it, and Approve wrote the role file and hired a member of it.
 
 - [x] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`
 - [x] 3.12 Build the job `--settings` file (AskUserQuestion denied, `disableBypassPermissionsMode`, Fleet hooks with the global command string including `PermissionRequest` and `StopFailure`); verify with snapshot tests

@@ -8,7 +8,12 @@ import type {
   StepEnvFiles,
   SwapChoice
 } from '../../../../shared/agency-jobs';
-import { diffLine, withLocalBranches, type PlanInput } from '../../../../shared/agency-plan';
+import {
+  diffLine,
+  withLocalBranches,
+  type NewRole,
+  type PlanInput
+} from '../../../../shared/agency-plan';
 import { jobDisplayId } from '../../../../shared/agency';
 import { useAgencyStore } from '../../store/agency-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
@@ -83,6 +88,7 @@ function OpenPlan({
           onSwap={(stepId, choice) => setSwaps({ ...swaps, [stepId]: choice })}
         />
       )}
+      {plan.newRoles.length > 0 && <NewRoles roles={plan.newRoles} />}
       {plan.steps.some((s) => s.deliverables.length > 0) && <YouGet version={version} />}
       <StartsFrom
         bases={checks.bases}
@@ -225,6 +231,40 @@ function EnvFiles({ files }: { files: StepEnvFiles[] }): React.JSX.Element | nul
           <span className="font-mono text-fleet-text-muted">{f.files.join(' · ')}</span>
         </div>
       ))}
+    </Block>
+  );
+}
+
+/** Roles the plan brings, each with what it says, saved only if the client approves. */
+function NewRoles({ roles }: { roles: NewRole[] }): React.JSX.Element {
+  return (
+    <Block>
+      <Label>{roles.length === 1 ? 'NEW ROLE' : 'NEW ROLES'}</Label>
+      {roles.map((role) => (
+        <details key={role.name} className="group text-xs">
+          <summary className="flex cursor-pointer list-none flex-col gap-0.5 rounded focus-ring">
+            <span className="text-[13px] text-fleet-text">
+              {role.name}
+              <span className="text-xs text-fleet-text-muted">
+                {' '}
+                · {runtimeName(role.runtime)}
+                {role.model !== undefined && ` · ${role.model}`}
+              </span>
+            </span>
+            <span className="text-fleet-text-secondary">{role.description}</span>
+            <span className="text-[11px] text-fleet-text-subtle group-open:hidden">
+              Show instructions
+            </span>
+          </summary>
+          <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-fleet-surface-2 px-2 py-1.5 text-fleet-text-secondary">
+            {role.instructions}
+          </p>
+        </details>
+      ))}
+      <p className="text-[11px] text-fleet-text-subtle">
+        Approving saves {roles.length === 1 ? 'it' : 'them'} in this project&apos;s crew in Fleet.
+        The repository gets no file.
+      </p>
     </Block>
   );
 }

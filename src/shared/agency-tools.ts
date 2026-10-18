@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import type { AgentToolSpec } from './agent-tools';
-import { DELIVERABLE_KINDS, PLAN_MAX_STEPS, PlanSchema, type DeliverableKind } from './agency-plan';
+import {
+  DELIVERABLE_KINDS,
+  NEW_ROLE_MAX_CHARS,
+  PLAN_MAX_NEW_ROLES,
+  PLAN_MAX_STEPS,
+  PlanSchema,
+  type DeliverableKind
+} from './agency-plan';
 import { offeredToolSpecs } from './capability-tools';
 
 /**
@@ -300,6 +307,7 @@ const LIST_DESCRIPTION =
 const PLAN_DESCRIPTION = [
   "Propose this job's plan as a card for the client: the playbook, a short summary, the steps, the budget and what you will ask before doing.",
   "Each step's crew member works in its own worktree. A step works only in what the steps it waits for committed, so tell each crew member to commit its work. For a playbook step with `count` > 1, make one step per member, each with one of the playbook's scopes, and a later step that merges them.",
+  "When no crew role fits a step, add a role to `newRoles` and give the step that role. Fleet saves it in the project's crew folder, not the repository, only when the client approves the plan. Keep sending it in later versions; a role already saved with the same text stays as it is.",
   'Always send the whole plan. To change an approved plan, send it again with the change: keep the ids of steps that stay, so Fleet can show the client what changes. A step that is done, or already delivered something, cannot change or go.',
   'Returns at once. The client approves, edits or rejects it, and that arrives as a wakeup. Nothing starts before the client approves, and only the newest version can be approved, so a new call replaces one still waiting.'
 ].join('\n\n');
@@ -363,6 +371,28 @@ const stringList = (description: string): Record<string, unknown> => ({
   items: { type: 'string' },
   description
 });
+
+const newRoleSchema = {
+  type: 'object',
+  properties: {
+    name: {
+      type: 'string',
+      pattern: '^[a-z0-9][a-z0-9-]{0,39}$',
+      description: 'Like data-migrator.'
+    },
+    description: { type: 'string', description: 'When to hire this role.' },
+    runtime: { type: 'string', enum: ['claude', 'eva'] },
+    model: { type: 'string' },
+    stack: { type: 'boolean', description: "True when the role runs the project's servers." },
+    instructions: {
+      type: 'string',
+      maxLength: NEW_ROLE_MAX_CHARS,
+      description: 'What every crew member of this role is told: who it is and how it works.'
+    }
+  },
+  required: ['name', 'description', 'instructions'],
+  additionalProperties: false
+};
 
 const stepSchema = {
   type: 'object',
@@ -630,7 +660,13 @@ export const AGENCY_TOOL_SPECS: AgentToolSpec[] = [
           },
           asksFirst: stringList(
             'What you check with the client before doing it: merge, deploy, deletes.'
-          )
+          ),
+          newRoles: {
+            type: 'array',
+            maxItems: PLAN_MAX_NEW_ROLES,
+            description: 'Roles this plan brings, when no crew role fits a step.',
+            items: newRoleSchema
+          }
         },
         required: ['playbook', 'summary', 'steps', 'budget'],
         additionalProperties: false

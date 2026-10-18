@@ -7,7 +7,13 @@ import type { ProjectMember } from '../projects/workspace-projects';
 import { repoFacts } from '../projects/repo-reader';
 import type { GitRun } from '../repo-identity';
 import { planOverlap, type OtherJobPaths } from './overlap';
-import { stepRuntime, type CrewFacts, type MemberFacts, type PlanFacts } from './plan-checks';
+import {
+  planRoles,
+  stepRuntime,
+  type CrewFacts,
+  type MemberFacts,
+  type PlanFacts
+} from './plan-checks';
 
 export type PlanFactsDeps = { git: GitRun; gh: GhRun };
 
@@ -18,10 +24,12 @@ export type CrewInput = Omit<CrewFacts, 'runtimes'> & {
 
 /** Checks only the runtimes the plan's steps run on. */
 async function crewFacts(plan: Plan, crew: CrewInput): Promise<CrewFacts> {
-  const used = new Set(plan.steps.flatMap((s) => stepRuntime(s, crew.roles) ?? []));
+  const roles = planRoles(plan, crew.roles);
+  const used = new Set(plan.steps.flatMap((s) => stepRuntime(s, roles) ?? []));
   const checks = await Promise.all([...used].map(async (r) => crew.check(r)));
   return {
-    roles: crew.roles,
+    roles,
+    roleText: crew.roleText,
     runtimes: Object.fromEntries(checks.map((c) => [c.runtime, c])),
     claudeTrust: crew.claudeTrust
   };

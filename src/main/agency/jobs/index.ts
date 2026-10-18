@@ -24,6 +24,7 @@ import {
 import {
   PlanSchema,
   diffPlans,
+  newRoleProblems,
   scopeProblems,
   validatePlanGraph,
   type Plan
@@ -111,6 +112,11 @@ export type JobsServiceDeps = {
    * approval so the job runs on them. Without it the approval keeps no crew.
    */
   crewSnapshot?: (job: AgencyJob, plan: Plan) => Promise<CrewSnapshot>;
+  /**
+   * Save the roles a plan brings in the project's crew folder, on its
+   * approval and before its crew is snapshotted. Without it they are not saved.
+   */
+  saveRoles?: (job: AgencyJob, plan: Plan) => Promise<{ saved: string[] } | { refused: string }>;
   /** The project's stack slots; without it, steps that run the stack wait on none. */
   stack?: Pick<StackSlots, 'gate' | 'runsStack'>;
   /** The servers a job's crew started, for its sheet; none unless set. */
@@ -214,6 +220,7 @@ export class JobsService {
     const problems = [
       ...validatePlanGraph(plan),
       ...scopeProblems(plan.steps),
+      ...newRoleProblems(plan),
       ...lockedViolations({
         approved: this.store.plans.approved(job.id)?.plan ?? null,
         next: plan,
@@ -276,10 +283,9 @@ export class JobsService {
     const gate = await this.approvable(job, version, baseChoice);
     if (!gate.ok) return gate;
     const { checks, bases } = gate;
-    const crew = (await this.deps.crewSnapshot?.(job, version.plan)) ?? null;
-    // A role file can go between the check and here; the job must not start without it.
-    const lost = version.plan.steps.find((s) => crew && !crew.roles.some((r) => r.name === s.role));
-    if (lost) return { ok: false, reason: `The role ${lost.role} is gone. Check the plan again.` };
+    const hired = await this.approvedCrew(job, version.plan);
+    if (!hired.ok) return hired;
+    const { crew, saved } = hired;
 
     const effects = this.store.tx(() => {
       const approved = this.store.plans.approved(job.id);
@@ -331,6 +337,13 @@ export class JobsService {
         kind: 'decision',
         text: `Plan v${version.version} approved`
       });
+      for (const name of saved) {
+        this.store.plans.log({
+          jobId: job.id,
+          kind: 'decision',
+          text: `Saved the role ${name} in the project's crew`
+        });
+      }
       return preview;
     });
     this.refreshClientHold(job.id);
@@ -342,6 +355,26 @@ export class JobsService {
       `plan v${version.version}`
     );
     return { ok: true, version: version.version };
+  }
+
+  /**
+   * Saves the plan's new roles in the project's crew, then snapshots the
+   * roles the plan uses, so the job runs on the files as they are now.
+   */
+  private async approvedCrew(
+    job: AgencyJob,
+    plan: Plan
+  ): Promise<
+    { ok: false; reason: string } | { ok: true; crew: CrewSnapshot | null; saved: string[] }
+  > {
+    const roles =
+      plan.newRoles.length === 0 ? null : ((await this.deps.saveRoles?.(job, plan)) ?? null);
+    if (roles !== null && 'refused' in roles) return { ok: false, reason: roles.refused };
+    const crew = (await this.deps.crewSnapshot?.(job, plan)) ?? null;
+    // A role file can go between the check and here; the job must not start without it.
+    const lost = plan.steps.find((s) => crew && !crew.roles.some((r) => r.name === s.role));
+    if (lost) return { ok: false, reason: `The role ${lost.role} is gone. Check the plan again.` };
+    return { ok: true, crew, saved: roles?.saved ?? [] };
   }
 
   /**

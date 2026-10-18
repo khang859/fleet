@@ -3,6 +3,7 @@ import {
   PlanSchema,
   diffLine,
   diffPlans,
+  newRoleProblems,
   scopeProblems,
   validatePlanGraph,
   type PlanInput
@@ -188,5 +189,30 @@ describe('diffPlans', () => {
       { kind: 'moved', step: 'reviewer' },
       { kind: 'moved', step: 'builder-1' }
     ]);
+  });
+});
+
+describe('new roles', () => {
+  const role = { name: 'data-migrator', description: 'Migrations.', instructions: 'Migrate.' };
+
+  it('names a new role in a plan change, once', () => {
+    const steps = [...BASE.steps, { id: 'migrate', role: 'data-migrator', title: 'Migrate' }];
+    const next = plan({ steps, newRoles: [role] });
+    const diff = diffPlans(plan(), next);
+    expect(diff).toContainEqual({ kind: 'role', name: 'data-migrator' });
+    expect(diff.map(diffLine)).toContain('Adds the role data-migrator');
+    expect(diffPlans(next, next)).toEqual([]);
+  });
+
+  it('refuses a new role listed twice or used by no step', () => {
+    expect(newRoleProblems(plan({ newRoles: [role, role] }))).toEqual([
+      'The new role data-migrator is not used by any step.',
+      'The new role data-migrator is listed twice.'
+    ]);
+    const used = plan({
+      steps: [{ id: 'm', role: 'data-migrator', title: 'M' }],
+      newRoles: [role]
+    });
+    expect(newRoleProblems(used)).toEqual([]);
   });
 });

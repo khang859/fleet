@@ -34,11 +34,14 @@ import { CleanupRunner, type ResourceCleaner } from './cleanup/cleanup-runner';
 import type { CrewCatalog, CrewRuntime, RuntimeCheck } from '../../shared/agency-crew';
 import type { Plan } from '../../shared/agency-plan';
 import {
+  asNewRole,
   crewSnapshot,
   crewSources,
   loadCrew,
   NO_CREW_DIRS,
   projectCrewDir,
+  roleFileText,
+  saveNewRoles,
   type CrewDirs
 } from './crew/catalog';
 import { CrewService, type CrewPaneHost } from './crew/crew-service';
@@ -212,6 +215,14 @@ export class AgencyService {
       planFacts: async (input) => this.planFacts(input),
       crewSnapshot: deps.crewDirs
         ? async (job, plan) => crewSnapshot(await this.crewCatalog(job.repoId), plan)
+        : undefined,
+      saveRoles: deps.crewDirs
+        ? async (job, plan) =>
+            saveNewRoles(
+              projectCrewDir(job.repoId, deps.agencyHome ?? agencyHome()),
+              plan.newRoles,
+              await this.crewCatalog(job.repoId)
+            )
         : undefined
     });
     this.prs = new PrCards({
@@ -655,6 +666,7 @@ export class AgencyService {
         ),
         crew: crew && {
           roles: new Map(crew.roles.map((r) => [r.name, r.runtime])),
+          roleText: new Map(crew.roles.map((r) => [r.name, roleFileText(asNewRole(r))])),
           check: async (runtime) => check?.(runtime, repo.root) ?? { ...PASSING_RUNTIME, runtime },
           claudeTrust: { folder: trust, trusted: this.store.claudeTrusted(trust) }
         }
