@@ -921,14 +921,22 @@ const Message = memo(function Message({
         />
       )}
       {/* In the order the turn happened: what it said, what it looked at, and
-          what it said about what it found, with a run of the same lookup folded
-          into one row. Keyed by position because that is what a part is - text
+          what it said about what it found, with a run of the same lookup, or of
+          the Admiral waiting on and allowing its crew, folded into one row. Keyed by position because that is what a part is - text
           parts have no id, and two of them are only distinguishable by where
           they fall; a folded run takes the position of the first call in it. */}
       {groupParts(message.parts, ask?.callId ?? null).map((item) => {
         if (item.kind === 'run') {
           return (
-            <AgentToolGroup key={item.key} name={item.name} calls={item.calls} cleared={cleared} />
+            <AgentToolGroup
+              key={item.key}
+              name={item.name}
+              calls={item.calls}
+              cleared={cleared}
+              row={(call) =>
+                call.name === 'permission_answer' ? <PermissionAnswerRow call={call} /> : null
+              }
+            />
           );
         }
         const { part, key: i } = item;

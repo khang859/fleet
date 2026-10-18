@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentPart } from '../../../../../shared/agent-types';
 import type { AgentToolCall } from '../../../../../shared/agent-tools';
-import { groupParts, runLabel, runPreview, runRunning } from '../tool-group';
+import { crewRunLabel, groupParts, runLabel, runPreview, runRunning } from '../tool-group';
 
 let next = 0;
 const call = (name: string, args: string, over: Partial<AgentToolCall> = {}): AgentToolCall => ({
@@ -132,6 +132,67 @@ describe('groupParts', () => {
       '{"path":"b.ts"}',
       '{"path":"c.ts"}'
     ]);
+  });
+});
+
+describe('groupParts on an Admiral watching its crew', () => {
+  const wait = (over: Partial<AgentToolCall> = {}): AgentPart =>
+    tool('fleet_wait', '{"sessions":["648519c2"]}', {
+      summary: '648519c2 needs attention',
+      ...over
+    });
+  const answer = (summary: string): AgentPart =>
+    tool('permission_answer', '{"request":"p1","decision":"allow"}', { summary });
+  const allow = (): AgentPart => answer('allowed p1 [[p:1]]');
+
+  it('folds waits and the requests it allowed into one run', () => {
+    expect(shape([wait(), allow(), wait(), allow(), wait()])).toEqual(['run:crew×5']);
+  });
+
+  it('leaves a denial and a request put to the client out on their own', () => {
+    // Each is the row a reader needs to see; a count is where it would go to be missed.
+    expect(shape([wait(), allow(), answer('denied p2 [[p:2]]'), wait(), allow()])).toEqual([
+      'part',
+      'part',
+      'part',
+      'part',
+      'part'
+    ]);
+    expect(
+      shape([wait(), allow(), wait(), answer('asked the client about p3 [[p:3]]'), wait()])
+    ).toEqual(['run:crew×3', 'part', 'part']);
+  });
+
+  it('leaves a failed wait out on its own', () => {
+    expect(shape([wait(), allow(), wait({ result: null, error: 'gone' })])).toEqual([
+      'part',
+      'part',
+      'part'
+    ]);
+  });
+});
+
+describe('crewRunLabel', () => {
+  const wait = (over: Partial<AgentToolCall> = {}): AgentToolCall => call('fleet_wait', '{}', over);
+  const allow = (): AgentToolCall => call('permission_answer', '{}', { summary: 'allowed p1' });
+
+  it('counts what was allowed, not the waits between', () => {
+    expect(crewRunLabel([wait(), allow(), wait(), allow(), wait()])).toBe(
+      'Allowed 2 crew requests'
+    );
+    expect(crewRunLabel([wait(), allow(), wait()])).toBe('Allowed 1 crew request');
+    expect(crewRunLabel([wait(), wait(), wait()])).toBe('Waited on the crew 3 times');
+  });
+
+  it('says it is waiting while the last wait is out', () => {
+    expect(crewRunLabel([wait(), allow(), wait({ result: null })])).toBe(
+      'Waiting on the crew · 1 allowed'
+    );
+    expect(crewRunLabel([wait(), wait(), wait({ result: null })])).toBe('Waiting on the crew');
+  });
+
+  it('has no preview, since session ids say nothing a reader can use', () => {
+    expect(runPreview('crew', [wait(), allow(), wait({ result: null })])).toBe('');
   });
 });
 

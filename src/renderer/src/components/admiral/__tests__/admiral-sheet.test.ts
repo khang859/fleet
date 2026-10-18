@@ -231,6 +231,13 @@ describe('JobTabs', () => {
     expect(after).not.toContain('No jobs yet');
     expect(tabs(snap({ jobs: [job()] }))).toContain('role="tablist"');
   });
+
+  it('pins a lobby tab first, selected while the lobby is on screen, and no add button', () => {
+    const html = tabs(snap({ jobs: [job()] }));
+    expect(html.indexOf('Lobby')).toBeLessThan(html.indexOf(job().title));
+    expect(html).toMatch(/aria-selected="true"[^>]*>Lobby</);
+    expect(html).not.toContain('New brief');
+  });
 });
 
 describe('job view helpers', () => {

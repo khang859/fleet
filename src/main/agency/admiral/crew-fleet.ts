@@ -5,7 +5,7 @@ import type { FleetHost } from '../../agent/fleet/host';
 /**
  * A crew member as its Admiral sees it. A request Fleet holds for the agency
  * does not make the member wait on the user, but the Admiral answers it, so
- * to the Admiral the member waits for approval, and a wait wakes for it.
+ * to the Admiral the member waits for approval.
  */
 export function asAnswerer<T extends ClaudeSession>(session: T): T {
   return session.phase === 'processing' && session.pendingPermissions.some((p) => p.delegated)
@@ -15,8 +15,7 @@ export function asAnswerer<T extends ClaudeSession>(session: T): T {
 
 /**
  * The fleet deps narrowed to one job's crew panes: an Admiral's read tools
- * see those sessions and no others, and a wait over "all" means all of its
- * crew. `crew` is read on every call, so a pane hired mid-turn is seen at once.
+ * see those sessions and no others. `crew` is read on every call, so a pane hired mid-turn is seen at once.
  * `screen` reads a crew pane that has not reported yet.
  */
 export function scopeFleetToCrew(
