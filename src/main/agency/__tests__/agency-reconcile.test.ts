@@ -6,7 +6,7 @@ import type { PlanInput } from '../../../shared/agency-plan';
 import { AgencyService } from '../index';
 import type { CrewControl } from '../jobs';
 import type { GitRun } from '../repo-identity';
-import { factsGit, fakeGh, REPO } from './fixture';
+import { factsGit, fakeGh, REPO, YES_NO } from './fixture';
 import { planHelpers } from './plan-helpers';
 
 /** Fleet restarts while a job's crew are working: the job is interrupted and waits on the client. */
@@ -146,5 +146,30 @@ describe('startup reconcile', () => {
     await service.cleanup.start(jobId);
 
     expect(service.store.getJob(jobId)?.state).toBe('cancelled');
+  });
+
+  it('withdraws a question left open on a job that has ended', async () => {
+    start();
+    const { job } = openJob();
+    service.store.beginClose(job.id, { type: 'cancel' }, 'the client cancelled');
+    service.store.finishClose(job.id, 'cleanup done');
+    // Asked after the close, as an earlier Fleet let the Admiral do.
+    const late = service.store.askQuestion({
+      repoId: REPO.repoId,
+      jobId: job.id,
+      kind: 'ask',
+      question: 'Anything else?',
+      options: YES_NO,
+      recommended: 0,
+      planVersion: null
+    });
+    service.close();
+    start();
+    await service.startup();
+
+    expect(service.store.getQuestion(late.id)).toMatchObject({
+      status: 'withdrawn',
+      withdrawnReason: 'the job had ended'
+    });
   });
 });

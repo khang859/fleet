@@ -84,6 +84,21 @@ describe('ask_client', () => {
       tools.askClient({ question: 'Ship?', options: YES_NO, recommended: 3 })
     ).rejects.toThrow('The recommended option 3 is not one of the options');
   });
+
+  it('asks nothing on a job that is closing or closed', async () => {
+    const job = openJob();
+    const tools = createAgencyCapability(service, { repoId: REPO.repoId, jobId: job.id }, settings);
+    service.store.beginClose(job.id, { type: 'cancel' }, 'the client cancelled');
+
+    await expect(tools.askClient({ question: 'Ship?', options: YES_NO })).rejects.toThrow(
+      `Not asked: j${job.id} is closing`
+    );
+    service.store.finishClose(job.id, 'cleanup done');
+    await expect(tools.askClient({ question: 'Ship?', options: YES_NO })).rejects.toThrow(
+      `Not asked: j${job.id} is cancelled`
+    );
+    expect(service.store.listQuestions(REPO.repoId, { jobId: job.id })).toEqual([]);
+  });
 });
 
 describe('job_open', () => {

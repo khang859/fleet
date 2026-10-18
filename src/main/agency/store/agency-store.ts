@@ -561,6 +561,23 @@ export class AgencyStore {
     })();
   }
 
+  /**
+   * Withdraw the questions still open on jobs that have ended. Closing
+   * withdraws a job's questions, so these were asked after: nothing would
+   * ever take them off the client's list.
+   */
+  withdrawEndedJobQuestions(): AgencyTouched[] {
+    return this.db
+      .prepare<[string], { repo_id: string; job_id: number }>(
+        `UPDATE questions SET status = 'withdrawn', withdrawn_reason = ?
+         WHERE status IN ('open', 'hidden')
+           AND job_id IN (SELECT id FROM jobs WHERE state IN ('closed', 'cancelled', 'failed'))
+         RETURNING repo_id, job_id`
+      )
+      .all('the job had ended')
+      .map((row) => ({ repoId: row.repo_id, jobId: row.job_id }));
+  }
+
   /** End a closing job the way its close asked for, once cleanup is done. */
   finishClose(id: number, reason: string): AgencyJob | null {
     const job = this.getJob(id);
