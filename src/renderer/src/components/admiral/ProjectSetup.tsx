@@ -10,6 +10,7 @@ import type {
   ProjectMemberSetup,
   ProjectSetup as Setup,
   RepoFile,
+  SaveSetupRequest,
   SetupScan
 } from '../../../../shared/agency-projects';
 import {
@@ -18,6 +19,7 @@ import {
   type MemberSettingField
 } from '../../../../shared/agency-settings';
 import { useAdmiralMarks } from '../../hooks/use-admiral-marks';
+import { cleanIpcError } from '../../lib/ipc-error';
 import { toggled } from '../../lib/toggled';
 import { AdmiralChangeNote } from '../settings/AdmiralChangeNote';
 import { AskAdmiralForm } from '../settings/AskAdmiral';
@@ -44,15 +46,18 @@ import {
  * client to check, fix and save. The scan runs in main and runs nothing from
  * the repository; saving writes only to Fleet's own folder, and "Share with
  * team" is the one action that writes into the repository, uncommitted.
+ * Given `onClose`, it is setup done again for a project set up before: saving
+ * or keeping the current setup goes back to the lobby.
  */
-export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Element {
+export function ProjectSetup({
+  repo,
+  onClose
+}: {
+  repo: AgencyRepoRef;
+  onClose?: () => void;
+}): React.JSX.Element {
   const edited = useRef(false);
-  const { scan, setup, setSetup, imports, setImports, error, setError, reread } = useSetupScan(
-    repo,
-    edited
-  );
-  const [busy, setBusy] = useState<'save' | 'share' | null>(null);
-  const [shared, setShared] = useState<string[] | null>(null);
+  const { scan, setup, setSetup, imports, setImports, error, reread } = useSetupScan(repo, edited);
   const [updates, setUpdates] = useState<ReadonlySet<string>>(new Set());
   const marks = useAdmiralMarks(repo.repoId);
 
@@ -62,6 +67,9 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
         <p className="max-w-md text-[13px] text-fleet-text-muted">
           Setup could not read {repo.name}: {error}
         </p>
+        {onClose !== undefined && (
+          <OnboardingButton onClick={onClose}>Keep current setup</OnboardingButton>
+        )}
       </Centered>
     );
   }
@@ -100,15 +108,6 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
     setup,
     imports: [...imports],
     updates: [...updates].filter((p) => imports.has(p))
-  };
-  const run = (kind: 'save' | 'share'): void => {
-    setBusy(kind);
-    setError(null);
-    const done =
-      kind === 'save'
-        ? window.fleet.agency.projects.saveSetup({ ...request, finish: true }).then(() => {})
-        : window.fleet.agency.projects.shareSetup(request).then(setShared);
-    done.catch((err: unknown) => setError(String(err))).finally(() => setBusy(null));
   };
 
   return (
@@ -164,24 +163,68 @@ export function ProjectSetup({ repo }: { repo: AgencyRepoRef }): React.JSX.Eleme
           <AskCard repo={repo} />
         </div>
       </div>
-      <footer className="shrink-0 border-t border-fleet-border bg-fleet-bg">
-        <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-end gap-2 px-5 py-3">
-          <p className="mr-auto min-w-0 text-[11px] text-fleet-text-subtle">
-            {shared !== null
-              ? `Copied ${shared.length === 1 ? 'the setup' : `${shared.length} files`} to .fleet/. Nothing is committed.`
-              : scan.saved
-                ? 'Showing the setup you saved before.'
-                : 'Saved in Fleet, not in the repository.'}
-          </p>
-          <OnboardingButton disabled={busy !== null} onClick={() => run('share')}>
-            {busy === 'share' ? 'Sharing…' : 'Share with team'}
-          </OnboardingButton>
-          <OnboardingButton kind="primary" disabled={busy !== null} onClick={() => run('save')}>
-            {busy === 'save' ? 'Saving…' : 'Looks right'}
-          </OnboardingButton>
-        </div>
-      </footer>
+      <SetupFooter request={request} saved={scan.saved} onClose={onClose} />
     </div>
+  );
+}
+
+/**
+ * Setup's save bar: what is saved where, or why a save was refused, and
+ * Share with team and Looks right. Saving setup done again closes it.
+ */
+function SetupFooter({
+  request,
+  saved,
+  onClose
+}: {
+  request: SaveSetupRequest;
+  saved: boolean;
+  onClose?: () => void;
+}): React.JSX.Element {
+  const [busy, setBusy] = useState<'save' | 'share' | null>(null);
+  const [shared, setShared] = useState<string[] | null>(null);
+  const [refused, setRefused] = useState<string | null>(null);
+  const run = (kind: 'save' | 'share'): void => {
+    setBusy(kind);
+    setRefused(null);
+    const done =
+      kind === 'save'
+        ? window.fleet.agency.projects
+            .saveSetup({ ...request, finish: true })
+            .then(() => onClose?.())
+        : window.fleet.agency.projects.shareSetup(request).then(setShared);
+    done
+      .catch((err: unknown) => setRefused(cleanIpcError(String(err))))
+      .finally(() => setBusy(null));
+  };
+  const note =
+    shared !== null
+      ? `Copied ${shared.length === 1 ? 'the setup' : `${shared.length} files`} to .fleet/. Nothing is committed.`
+      : saved
+        ? 'Showing the setup you saved before.'
+        : 'Saved in Fleet, not in the repository.';
+
+  return (
+    <footer className="shrink-0 border-t border-fleet-border bg-fleet-bg">
+      <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-end gap-2 px-5 py-3">
+        {refused !== null ? (
+          <p className="min-w-0 basis-full text-[11px] text-red-400">{refused}</p>
+        ) : (
+          <p className="mr-auto min-w-0 text-[11px] text-fleet-text-subtle">{note}</p>
+        )}
+        {onClose !== undefined && (
+          <OnboardingButton disabled={busy !== null} onClick={onClose}>
+            Keep current setup
+          </OnboardingButton>
+        )}
+        <OnboardingButton disabled={busy !== null} onClick={() => run('share')}>
+          {busy === 'share' ? 'Sharing…' : 'Share with team'}
+        </OnboardingButton>
+        <OnboardingButton kind="primary" disabled={busy !== null} onClick={() => run('save')}>
+          {busy === 'save' ? 'Saving…' : 'Looks right'}
+        </OnboardingButton>
+      </div>
+    </footer>
   );
 }
 
@@ -210,7 +253,6 @@ type SetupScanState = {
   imports: ReadonlySet<string>;
   setImports: (imports: ReadonlySet<string>) => void;
   error: string | null;
-  setError: (error: string | null) => void;
   reread: () => void;
 };
 
@@ -244,7 +286,7 @@ function useSetupScan(repo: AgencyRepoRef, edited: React.RefObject<boolean>): Se
     };
   }, [repoId, root, name, edited, admiralChanges, rereads]);
   const reread = (): void => setRereads((n) => n + 1);
-  return { scan, setup, setSetup, imports, setImports, error, setError, reread };
+  return { scan, setup, setSetup, imports, setImports, error, reread };
 }
 
 /** What the Admiral says it read, what it could not, and the member order. */
@@ -336,7 +378,7 @@ function AskCard({ repo }: { repo: AgencyRepoRef }): React.JSX.Element {
 
 function Centered({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-6 text-center">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
       {children}
     </div>
   );

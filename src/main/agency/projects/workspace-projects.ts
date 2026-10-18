@@ -59,6 +59,23 @@ export function registeredProject(
 }
 
 /**
+ * Why a setup that adds or drops a member may not be saved yet, or null when
+ * it may: jobs that are running work in the members the project has now.
+ */
+export function memberChangeRefusal(input: {
+  name: string;
+  before: Array<{ name: string; path: string }>;
+  after: Array<{ name: string; path: string }>;
+  running: number;
+}): string | null {
+  const key = (ms: Array<{ name: string; path: string }>): string =>
+    ms.map((m) => `${m.name}:${m.path}`).join(',');
+  if (input.running === 0 || key(input.before) === key(input.after)) return null;
+  const jobs = input.running === 1 ? 'its running job' : `its ${input.running} running jobs`;
+  return `${input.name}'s members changed. Finish or cancel ${jobs} first, since they work in the members it has now.`;
+}
+
+/**
  * What setup reads in a workspace: the members the client kept, and the kept
  * submodules that are not checked out as missing.
  */

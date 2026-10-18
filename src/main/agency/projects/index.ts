@@ -1,4 +1,9 @@
-import type { AgencyChanged, AgencyRepoRef, RepoResolution } from '../../../shared/agency';
+import {
+  RUNNING_JOB_STATES,
+  type AgencyChanged,
+  type AgencyRepoRef,
+  type RepoResolution
+} from '../../../shared/agency';
 import { STARTER_SOURCE } from '../../../shared/agency-client-file';
 import type {
   AgencyProjectSummary,
@@ -24,7 +29,12 @@ import { loadSetup, saveSetup, shareWithTeam } from './project-store';
 import { readOnlyGit } from './repo-reader';
 import { repoTarget, scanProject, type ScanTarget } from './setup-findings';
 import { detectWorkspace, type DetectedWorkspace } from './workspace-detect';
-import { checkedLeftOut, registeredProject, workspaceTarget } from './workspace-projects';
+import {
+  checkedLeftOut,
+  memberChangeRefusal,
+  registeredProject,
+  workspaceTarget
+} from './workspace-projects';
 import { checkOutSubmodule } from '../workspaces/submodules';
 
 export type ProjectsDeps = {
@@ -164,7 +174,9 @@ export class ProjectsService {
   /**
    * Save a project's setup; `finish` also marks setup done, which moves the
    * pane on. The members must be the project's own, at their own paths, so a
-   * renderer cannot name a folder that is not one of them.
+   * renderer cannot name a folder that is not one of them. Setup that adds or
+   * drops a member waits until no job is running, since jobs work in the
+   * members the project has now.
    */
   async saveSetup(input: SaveSetupInput, opts: { finish: boolean }): Promise<string> {
     const repo = await this.verified(input.repo);
@@ -176,6 +188,17 @@ export class ProjectsService {
       if (!target.members.some((t) => t.name === m.name && t.path === m.path)) {
         throw new Error(`${m.name} is not a member of ${repo.name}.`);
       }
+    }
+    if (workspace !== null) {
+      const { store } = this.deps;
+      const refusal = memberChangeRefusal({
+        name: repo.name,
+        before: store.projects.byId(repo.repoId)?.members ?? [],
+        after: registeredProject(workspace, leftOut, null).members,
+        running: store.listJobs(repo.repoId).filter((j) => RUNNING_JOB_STATES.includes(j.state))
+          .length
+      });
+      if (refusal !== null) throw new Error(refusal);
     }
     const imported = await importedFiles(repo.repoId, target, input, {
       home: this.home,

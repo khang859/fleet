@@ -6,6 +6,7 @@ import type {
   SkillInstallOutcome
 } from '../../../shared/agent-skill-install';
 import { createLogger } from '../logger';
+import { cleanIpcError } from '../lib/ipc-error';
 
 const log = createLogger('store:agent-skills');
 
@@ -137,16 +138,4 @@ export function newlyFound(detected: FoundSkill[]): number {
  */
 export function defaultPicks(found: FoundSkill[]): Set<string> {
   return new Set(found.filter((f) => f.status !== 'known').map((f) => f.origin.path));
-}
-
-/**
- * The sentence inside an IPC rejection.
- *
- * Electron prefixes what main threw with its own channel plumbing, and "Error
- * invoking remote method 'agent:skills:fetch':" in front of the message is noise
- * to everyone who is not debugging Electron.
- */
-function cleanIpcError(message: string): string {
-  const marker = message.lastIndexOf('Error: ');
-  return marker === -1 ? message : message.slice(marker + 'Error: '.length);
 }

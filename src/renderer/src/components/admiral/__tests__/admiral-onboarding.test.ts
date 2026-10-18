@@ -35,6 +35,7 @@ const base = {
   hasModel: true,
   firstRunDone: true,
   picking: false,
+  redoingSetup: false,
   onboarding: done
 };
 
@@ -60,6 +61,11 @@ describe('admiralStage', () => {
       'starter'
     );
     expect(admiralStage(base)).toBe('ready');
+  });
+
+  it('shows setup again when the client redoes it, but the picker first', () => {
+    expect(admiralStage({ ...base, redoingSetup: true })).toBe('setup');
+    expect(admiralStage({ ...base, redoingSetup: true, picking: true })).toBe('picker');
   });
 });
 

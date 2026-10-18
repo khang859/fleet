@@ -25,6 +25,8 @@ type AdmiralOnboardingState = {
   ideas: Partial<Record<string, BriefIdeas>>;
   /** Admiral panes showing the project picker in place of their own screen. */
   picking: Partial<Record<string, true>>;
+  /** Admiral panes showing their project's setup again, after it was done. */
+  redoingSetup: Partial<Record<string, true>>;
 
   checkPreflight: () => Promise<void>;
   loadFirstRun: () => Promise<void>;
@@ -33,6 +35,7 @@ type AdmiralOnboardingState = {
   loadProjects: () => Promise<void>;
   loadIdeas: (repo: AgencyRepoRef) => Promise<void>;
   setPicking: (paneId: string, picking: boolean) => void;
+  setRedoingSetup: (paneId: string, redoing: boolean) => void;
 };
 
 export const useAdmiralOnboardingStore = create<AdmiralOnboardingState>((set) => ({
@@ -43,6 +46,7 @@ export const useAdmiralOnboardingStore = create<AdmiralOnboardingState>((set) =>
   projects: [],
   ideas: {},
   picking: {},
+  redoingSetup: {},
 
   checkPreflight: async () => {
     set({ checking: true });
@@ -90,6 +94,14 @@ export const useAdmiralOnboardingStore = create<AdmiralOnboardingState>((set) =>
       if (picking) next[paneId] = true;
       else delete next[paneId];
       return { picking: next };
+    }),
+
+  setRedoingSetup: (paneId, redoing) =>
+    set((s) => {
+      const next = { ...s.redoingSetup };
+      if (redoing) next[paneId] = true;
+      else delete next[paneId];
+      return { redoingSetup: next };
     })
 }));
 

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import type { ProjectFolder, ProjectSetup } from '../../../../shared/agency-projects';
 import { AgencyService } from '../../index';
-import { repoAt } from '../../__tests__/plan-helpers';
+import { approvedJobIn, repoAt } from '../../__tests__/plan-helpers';
 import { detectWorkspace, parseGitmodules } from '../workspace-detect';
 import { fakeGh, git, initRepo, shopUmbrella, tempDir, workFolder } from './git-fixture';
 
@@ -170,6 +170,47 @@ describe('an umbrella with three submodules', { timeout: 20_000 }, () => {
     await expect(
       service.projects.saveSetup({ repo: ref, setup: stranger, imports: [] }, { finish: false })
     ).rejects.toThrow('cart is not a member of shop.');
+  });
+
+  it('takes a submodule added after setup, once no job is running', async () => {
+    const root = shopUmbrella(home.dir);
+    const ref = await service.projects.chooseWorkspace({ path: root, leftOut: [] });
+    const save = async (): Promise<string> => {
+      const { setup } = await service.projects.scan(ref);
+      return service.projects.saveSetup({ repo: ref, setup, imports: [] }, { finish: true });
+    };
+    await save();
+    const { jobId } = await approvedJobIn(service, ref, {
+      id: 'fix',
+      role: 'builder',
+      title: 'Fix',
+      deliverables: ['branch']
+    });
+    // An unchanged setup saves while the job runs.
+    await expect(save()).resolves.toContain(ref.repoId);
+
+    initRepo(join(home.dir, 'src', 'pay'), { 'package.json': '{"name":"@shop/pay"}\n' });
+    git(
+      root,
+      '-c',
+      'protocol.file.allow=always',
+      'submodule',
+      'add',
+      '-q',
+      join(home.dir, 'src', 'pay'),
+      'libs/pay'
+    );
+    git(root, 'commit', '-q', '-m', 'pay');
+    await expect(save()).rejects.toThrow(
+      "shop's members changed. Finish or cancel its running job first, since they work in the members it has now."
+    );
+    expect(service.store.projects.byId(ref.repoId)?.members.map((m) => m.name)).not.toContain(
+      'pay'
+    );
+
+    expect(service.cancelJobs(ref.repoId)).toEqual([jobId]);
+    await save();
+    expect(service.store.projects.byId(ref.repoId)?.members.map((m) => m.name)).toContain('pay');
   });
 });
 

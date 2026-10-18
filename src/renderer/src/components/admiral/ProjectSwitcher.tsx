@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
-import { ChevronDown, Plus } from 'lucide-react';
+import { ChevronDown, Plus, Settings2 } from 'lucide-react';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import { popperAnim } from '../../lib/motion';
 import { switchToProject, useAdmiralOnboardingStore } from '../../store/admiral-onboarding-store';
@@ -9,7 +9,8 @@ import { projectStatus } from './onboarding-view';
 /**
  * The header's project chip: the projects the Admiral knows, each in its own
  * Admiral tab. Picking one brings that tab forward, or opens it; "Add a
- * project" turns this pane to the picker.
+ * project" turns this pane to the picker, and "Set up again" to the pane's
+ * project setup, for a member added or a finding changed since.
  */
 export function ProjectSwitcher({
   paneId,
@@ -22,6 +23,7 @@ export function ProjectSwitcher({
   const projects = useAdmiralOnboardingStore((s) => s.projects);
   const loadProjects = useAdmiralOnboardingStore((s) => s.loadProjects);
   const setPicking = useAdmiralOnboardingStore((s) => s.setPicking);
+  const setRedoingSetup = useAdmiralOnboardingStore((s) => s.setRedoingSetup);
 
   return (
     <Popover.Root
@@ -91,22 +93,50 @@ export function ProjectSwitcher({
             })}
           </div>
           <div className="my-1.5 h-px bg-fleet-border" />
-          <button
-            type="button"
+          <MenuAction
+            icon={<Plus size={14} className="shrink-0" />}
             onClick={() => {
               setOpen(false);
               setPicking(paneId, true);
             }}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[13px] text-fleet-text-secondary transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text focus-ring"
           >
-            <Plus size={14} />
             Add a project
-          </button>
+          </MenuAction>
+          <MenuAction
+            icon={<Settings2 size={14} className="shrink-0" />}
+            onClick={() => {
+              setOpen(false);
+              setRedoingSetup(paneId, true);
+            }}
+          >
+            Set up {repo.name} again
+          </MenuAction>
           <p className="px-2 pt-1 pb-1 text-[11px] text-fleet-text-subtle">
             Each project opens its own Admiral tab.
           </p>
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+function MenuAction({
+  icon,
+  onClick,
+  children
+}: {
+  icon: React.ReactNode;
+  onClick: () => void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[13px] text-fleet-text-secondary transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text focus-ring"
+    >
+      {icon}
+      <span className="truncate">{children}</span>
+    </button>
   );
 }
