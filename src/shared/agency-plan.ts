@@ -180,6 +180,12 @@ export type PlanStep = z.output<typeof PlanStepSchema>;
 export type Plan = z.output<typeof PlanSchema>;
 export type PlanInput = z.input<typeof PlanSchema>;
 
+/** A plan's steps on one line, each as its role, model when set, and title, to compare two versions. */
+export const planStepList = (plan: Plan): string =>
+  plan.steps
+    .map((s) => `${s.role}${s.model === undefined ? '' : ` (${s.model})`}: ${s.title}`)
+    .join('; ');
+
 /** The plan with every `pr` deliverable turned into a local branch, for the card's fix. */
 export function withLocalBranches(plan: Plan): Plan {
   return {

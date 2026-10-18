@@ -161,6 +161,7 @@ describe('plan decisions', () => {
     const text = wakeupText(job.id);
     expect(text).toContain('Client rejected plan v1');
     expect(text).toContain('The client wrote: Skip the review step');
+    expect(text).toContain('Consider whether this is a lasting preference.');
   });
 
   it("an edit is the client's own version, waiting like any other", async () => {
@@ -178,6 +179,21 @@ describe('plan decisions', () => {
     expect(pending).toMatchObject({ version: 2, author: 'client', status: 'proposed' });
     expect(pending?.plan.budget.usd).toBe(5);
     expect(wakeupText(job.id)).toContain('Client edited plan v1 into v2');
+  });
+
+  it('an edit wakes the Admiral with the steps before and after, to weigh as a lasting preference', async () => {
+    const { job, tools } = openJob();
+    const v1 = await propose(tools);
+    await service.jobs.decide({
+      planVersionId: v1,
+      action: 'edit',
+      plan: { ...PLAN, steps: [PLAN.steps[0]] }
+    });
+    const text = wakeupText(job.id);
+    expect(text).toContain(
+      'Before: builder: Build the toggle; reviewer: Review the change\nAfter: builder: Build the toggle'
+    );
+    expect(text).toContain('Consider whether this is a lasting preference.');
   });
 });
 

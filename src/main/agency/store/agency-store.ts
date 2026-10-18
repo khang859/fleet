@@ -183,12 +183,19 @@ const QUESTION_STATUSES: readonly AgencyQuestionStatus[] = [
 const OptionsJson = z.array(z.object({ label: z.string(), detail: z.string().optional() }));
 const EventPayload = z.object({ line: z.string(), body: z.string().nullable().optional() });
 const AnswerPayload = z.object({ withdrew: z.array(z.number()) });
-const ClientPayload = z.object({ line: z.string(), note: z.string().nullable().optional() });
+const ClientPayload = z.object({
+  line: z.string(),
+  note: z.string().nullable().optional(),
+  detail: z.string().nullable().optional()
+});
 const QuestionData = z.object({
   proposal: z
     .object({
       add: z.array(z.object({ text: z.string(), replaces: z.string().nullable() })),
-      remove: z.array(z.string())
+      remove: z.array(z.string()),
+      // Cards from before Remember this? have neither.
+      topic: z.string().nullable().default(null),
+      layer: z.enum(['project', 'you']).default('project')
     })
     .optional(),
   raise: z
@@ -1168,7 +1175,16 @@ export class AgencyStore {
     }
     if (row.kind === 'client_action') {
       const action = parseJsonAs(ClientPayload, row.payload_json);
-      return action ? [{ kind: 'client', line: action.line, note: action.note ?? null }] : [];
+      return action
+        ? [
+            {
+              kind: 'client',
+              line: action.line,
+              note: action.note ?? null,
+              detail: action.detail ?? null
+            }
+          ]
+        : [];
     }
     const event = parseJsonAs(EventPayload, row.payload_json);
     return event ? [{ kind: 'event', line: event.line, body: event.body ?? null }] : [];

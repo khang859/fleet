@@ -2,7 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { jobDisplayId } from '../../../shared/agency';
-import type { Plan } from '../../../shared/agency-plan';
+import { planStepList } from '../../../shared/agency-plan';
 import { RULE_FILES, type ReadTag } from '../../../shared/agency-understanding';
 import { ghJson, type GhRun } from '../projects/gh';
 import { openRepoReader, repoFacts } from '../projects/repo-reader';
@@ -198,8 +198,6 @@ export async function readPrs(
   return items.length === 0 ? null : { tag: 'your PR descriptions', items };
 }
 
-const stepList = (plan: Plan): string => plan.steps.map((s) => `${s.role}: ${s.title}`).join('; ');
-
 /** What the client did on one job: plan edits as before and after, turn-down notes, answers. */
 function jobItems(
   store: Pick<AgencyStore, 'plans' | 'listQuestions'>,
@@ -213,7 +211,7 @@ function jobItems(
     if (v.author === 'client' && i > 0) {
       const before = versions[i - 1];
       items.push(
-        `${id}: you changed plan v${before.version}.\nBefore: ${stepList(before.plan)}\nAfter: ${stepList(v.plan)}`
+        `${id}: you changed plan v${before.version}.\nBefore: ${planStepList(before.plan)}\nAfter: ${planStepList(v.plan)}`
       );
     }
     if (v.status === 'rejected' && (v.decisionNote ?? '').trim() !== '') {

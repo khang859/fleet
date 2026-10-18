@@ -114,7 +114,7 @@ export function mergeClientFile(
  */
 export function applyClientProposal(
   existing: string | null,
-  input: { name: string; source: string; proposal: ClientFileProposal },
+  input: { name: string; source: string; proposal: Pick<ClientFileProposal, 'add' | 'remove'> },
   date: string
 ): string {
   const lines = (existing ?? `# ${input.name}\n`).replace(/\s+$/, '').split('\n');

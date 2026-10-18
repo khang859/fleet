@@ -94,6 +94,8 @@ export const CLIENT_REASON_MAX_CHARS = 500;
 /** Most lines one client file card adds; a cleanup may remove more. */
 export const CLIENT_PROPOSAL_MAX_ADD = 20;
 export const CLIENT_PROPOSAL_MAX_REMOVE = 60;
+/** A Remember this? topic: a short kebab-case key, like `e2e-tests`. */
+export const CLIENT_TOPIC_MAX_CHARS = 40;
 
 /** Longest reason a settings card gives. */
 export const SETTINGS_REASON_MAX_CHARS = 500;
@@ -221,18 +223,43 @@ export const PermissionAnswerArgs = z.object({
 });
 
 const clientLine = z.string().trim().min(1).max(CLIENT_LINE_MAX_CHARS);
+/** Models send an empty `replaces` for a line that replaces nothing: read it as absent. */
+const replacedLine = z
+  .string()
+  .trim()
+  .max(CLIENT_LINE_MAX_CHARS)
+  .optional()
+  .transform((v) => (v === '' ? undefined : v));
+
+/** Only new lines, none replacing or removing one: a Remember this? card. */
+const onlyNewLines = (a: { add?: Array<{ replaces?: string }>; remove?: string[] }): boolean =>
+  (a.remove?.length ?? 0) === 0 && (a.add ?? []).every((l) => l.replaces === undefined);
 
 export const ClientFileProposeArgs = z
   .object({
     reason: z.string().trim().min(1).max(CLIENT_REASON_MAX_CHARS),
     add: z
-      .array(z.object({ text: clientLine, replaces: clientLine.optional() }))
+      .array(z.object({ text: clientLine, replaces: replacedLine }))
       .max(CLIENT_PROPOSAL_MAX_ADD)
       .optional(),
-    remove: z.array(clientLine).max(CLIENT_PROPOSAL_MAX_REMOVE).optional()
+    remove: z.array(clientLine).max(CLIENT_PROPOSAL_MAX_REMOVE).optional(),
+    topic: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .max(CLIENT_TOPIC_MAX_CHARS)
+      .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'give the topic as a short key, like e2e-tests')
+      .optional(),
+    layer: z.enum(['project', 'you']).default('project')
   })
   .refine((a) => (a.add?.length ?? 0) + (a.remove?.length ?? 0) > 0, {
     message: 'propose at least one line to add or remove'
+  })
+  .refine((a) => !onlyNewLines(a) || a.topic !== undefined, {
+    message: 'give a topic for a new line, like e2e-tests, so the client is asked once per topic'
+  })
+  .refine((a) => !onlyNewLines(a) || (a.add?.length ?? 0) === 1, {
+    message: 'propose one new line per call, each with its own topic'
   });
 
 export const SettingsReadArgs = z.object({});
@@ -256,7 +283,7 @@ export type CrewSendArgs = z.infer<typeof CrewSendArgs>;
 export type CrewInterruptArgs = z.infer<typeof CrewInterruptArgs>;
 export type CrewStopArgs = z.infer<typeof CrewStopArgs>;
 export type PermissionAnswerArgs = z.infer<typeof PermissionAnswerArgs>;
-export type ClientFileProposeArgs = z.infer<typeof ClientFileProposeArgs>;
+export type ClientFileProposeArgs = z.output<typeof ClientFileProposeArgs>;
 export type SettingsReadArgs = z.infer<typeof SettingsReadArgs>;
 export type SettingsChangeArgs = z.infer<typeof SettingsChangeArgs>;
 
@@ -380,9 +407,9 @@ const PERMISSION_ANSWER_DESCRIPTION = [
 ].join('\n\n');
 
 const CLIENT_FILE_DESCRIPTION = [
-  "Propose a change to the client file, the client's standing preferences for this project, as a card the client approves or turns down.",
-  'Propose a line when the client says something that applies beyond this job, like "always open PRs as drafts". Write each line as one short rule in their terms. Nothing is written until they approve.',
-  'When a new line contradicts one already in the file, give that line as `replaces`, word for word: the card shows both, and the old one goes only on approval. `remove` takes lines word for word too.',
+  "Propose a change to the client's standing preferences, as a card the client answers. There are two files: the project's, and the You file that holds for every project.",
+  'A new line is a Remember this? card: one line, one short rule in their terms like "always open PRs as drafts", with a `topic` and the `layer` you suggest. The client saves it for This project or All projects, may rewrite it first, or picks Just this job, which saves nothing and means: do not ask about that topic again on this project. Fleet refuses a topic the client declined and a second open card on one topic. Nothing is written until they answer.',
+  'When a new line contradicts one already in the file, give that line as `replaces`, word for word: the card shows both, and the old one goes only on approval. `remove` takes lines word for word too. Both change the file `layer` names.',
   'When Fleet says the file is over its size limit, propose a cleanup: merge repeats and drop lines that no longer apply, with `remove` and `add`.'
 ].join('\n\n');
 
@@ -611,6 +638,18 @@ export const AGENCY_TOOL_SPECS: AgentToolSpec[] = [
           remove: {
             ...stringList('Existing lines to take out, word for word.'),
             maxItems: CLIENT_PROPOSAL_MAX_REMOVE
+          },
+          topic: {
+            type: 'string',
+            maxLength: CLIENT_TOPIC_MAX_CHARS,
+            description:
+              'The kind of preference, as a short key like `e2e-tests` or `reviewer-model`. Required for a new line; the client is asked once per topic.'
+          },
+          layer: {
+            type: 'string',
+            enum: ['project', 'you'],
+            description:
+              'Which file you suggest: `project` for this project only (the default), `you` for every project. For a new line the client picks; a change or removal applies to this file.'
           }
         },
         required: ['reason'],

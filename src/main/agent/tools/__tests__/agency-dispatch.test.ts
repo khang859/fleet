@@ -28,7 +28,7 @@ const ARGS: Record<AgencyToolName, object> = {
   crew_interrupt: { crew: 'builder 1' },
   crew_stop: { crew: 'builder 1' },
   permission_answer: { request: 'p1', decision: 'allow', reason: 'fits step 1' },
-  client_file_propose: { reason: 'r', add: [{ text: 'Use pnpm.' }] },
+  client_file_propose: { reason: 'r', add: [{ text: 'Use pnpm.' }], topic: 'tooling' },
   settings_read: {},
   settings_change: { changes: [{ key: 'agency.admiral.monthlyCapUsd', value: 50 }], reason: 'r' }
 };

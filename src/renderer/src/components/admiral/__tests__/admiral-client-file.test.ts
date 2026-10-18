@@ -22,7 +22,24 @@ const proposal = (over: Partial<AgencyQuestion> = {}): AgencyQuestion =>
         { text: 'Open PRs as drafts.', replaces: 'Open PRs ready for review.' },
         { text: 'Use pnpm.', replaces: null }
       ],
-      remove: ['Notify me for everything.']
+      remove: ['Notify me for everything.'],
+      topic: null,
+      layer: 'project'
+    },
+    ...over
+  });
+
+const remember = (over: Partial<AgencyQuestion> = {}): AgencyQuestion =>
+  proposal({
+    question: 'Remember this?',
+    context: 'You changed my plan. Should I do it this way next time?',
+    options: [{ label: 'This project' }, { label: 'All projects' }, { label: 'Just this job' }],
+    recommended: 0,
+    proposal: {
+      add: [{ text: 'No end-to-end tests for a CLI flag.', replaces: null }],
+      remove: [],
+      topic: 'e2e-tests',
+      layer: 'project'
     },
     ...over
   });
@@ -100,6 +117,55 @@ describe('a client file card', () => {
     expect(html).toContain('You answered');
     expect(html).toContain('Change it');
     expect(html).toContain('Open PRs as drafts.');
+  });
+});
+
+describe('a Remember this? card', () => {
+  it("shows the line, a place for the client's own words, and the three places it can go", () => {
+    const html = card(remember());
+    const order = [
+      'Remember this?',
+      'No end-to-end tests for a CLI flag.',
+      'Or put it your way:',
+      `This project<span class="whitespace-nowrap"> · My pick</span>`,
+      'All projects',
+      'Just this job',
+      'Asked once per kind of change. Ignore it and nothing is saved.'
+    ].map((text) => html.indexOf(text));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(html).not.toContain('aria-label="Client file changes"');
+    expect(html).not.toContain('Or answer in your own words');
+  });
+
+  it('marks All projects when the Admiral suggests the You layer', () => {
+    expect(card(remember({ recommended: 1 }))).toContain(
+      `All projects<span class="whitespace-nowrap"> · My pick</span>`
+    );
+  });
+
+  it('keeps This project shut while the project file has an outside change', () => {
+    const html = card(remember(), true);
+    expect(html).toMatch(
+      /<button[^>]*disabled=""[^>]*>This project<span[^>]*> · My pick<\/span><\/button>/
+    );
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>All projects<\/button>/);
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>Just this job<\/button>/);
+  });
+
+  it('says where the line went once answered', () => {
+    const html = card(
+      remember({
+        status: 'answered',
+        answerOption: 1,
+        answerText: 'Unit tests only.',
+        answeredAt: 2
+      })
+    );
+    expect(html).toContain('You answered');
+    expect(html).toContain('All projects - Unit tests only.');
+    expect(html).toContain('No end-to-end tests for a CLI flag.');
+    expect(html).not.toContain('Or put it your way:');
   });
 });
 
