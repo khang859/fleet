@@ -70,6 +70,7 @@ import { testRuntime, type RuntimeTestDeps } from './crew/runtime-test';
 import { CrewPermissions, type PermissionDeps } from './crew/permissions';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
 import { StackSlots } from './jobs/stack-slots';
+import { OPEN_JOB_STATES } from './jobs/job-machine';
 import { ServerWatch } from './workspaces/server-watch';
 import { exportJob } from './jobs/job-export';
 import { reconcileAtStartup } from './jobs/reconcile';
@@ -778,6 +779,13 @@ export class AgencyService {
     input: Omit<AskQuestionInput, 'repoId' | 'jobId' | 'kind' | 'planVersion'>
   ): AgencyQuestion {
     const step = input.step ?? null;
+    const job = scope.jobId === null ? null : this.store.getJob(scope.jobId);
+    // Closing withdraws a job's questions; one asked after would wait on the client for good.
+    if (job && !OPEN_JOB_STATES.includes(job.state)) {
+      throw new Error(
+        `Not asked: ${jobDisplayId(job.id)} is ${job.state}, so nothing more is asked on it.`
+      );
+    }
     const plan =
       scope.jobId === null ? { planVersion: null } : this.jobs.questionPlan(scope.jobId, step);
     if (plan.error !== undefined) throw new Error(plan.error);

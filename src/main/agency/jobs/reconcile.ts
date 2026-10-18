@@ -10,12 +10,12 @@ export type ReconcileDeps = { store: AgencyStore; crew: CrewControl; git: GitRun
  * restart. Its crew end, their running steps become `interrupted`, the job is
  * interrupted with a Resume or Cancel card, and the Admiral gets a line on
  * where each step's worktree was left. Nothing restarts until the client
- * picks Resume.
+ * picks Resume. Questions still open on an ended job are withdrawn.
  */
 export async function reconcileAtStartup(deps: ReconcileDeps): Promise<AgencyTouched[]> {
   const { store } = deps;
   const live = deps.crew.livePanes();
-  const touched: AgencyTouched[] = [];
+  const touched: AgencyTouched[] = store.withdrawEndedJobQuestions();
   for (const job of store.jobsIn(['running', 'waiting'])) {
     const lost = store.crew.live(job.id).filter((c) => c.paneId === null || !live.has(c.paneId));
     if (lost.length === 0) continue;
