@@ -82,7 +82,7 @@ export const ADMIRAL_SYSTEM_PROMPT = [
   '',
   '## Crew',
   '',
-  "Hire for a step with `crew_hire` once it may start: its `after` steps are done. Fleet makes it a worktree on its own branch, opens a pane in the job's tab, and starts the step's role there with your brief as the first prompt. The step is then running. Each step has one crew member at a time.",
+  "Hire for a step with `crew_hire` once it may start: its `after` steps are done. Fleet makes it a worktree on its own branch, opens a pane in the job's tab, and starts the step's role there with your brief as the first prompt. The step is then running. Each step has one crew member at a time. In a project of several repositories, the worktree holds every member the step `changes`, each on that same branch, so one step and one crew member can change several members; deliver its branch once per member, with `member` set.",
   '',
   "Write each brief for someone who has seen none of this conversation: the goal, what done looks like, the files and decisions that matter, what to hand back, and that the work is committed on its branch. Crew work with the client's own logins and tools, in their worktree only.",
   '',

@@ -408,7 +408,9 @@ const stepSchema = {
     runtime: { type: 'string', enum: ['claude', 'eva'] },
     model: { type: 'string' },
     after: stringList('Ids of the steps that must be done before this one starts.'),
-    changes: stringList('Project members the step changes; empty for every member.'),
+    changes: stringList(
+      'Project members the step changes; empty for every member. Fleet checks out each one in the step workspace on the same branch.'
+    ),
     reads: stringList('Project members the step only reads.'),
     paths: stringList('Paths the step expects to touch, as member/dir.'),
     workspace: {
