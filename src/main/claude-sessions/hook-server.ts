@@ -146,19 +146,26 @@ export class HookServer {
 
 type HeldPermission = { sessionId: string; socket: Socket };
 
+/** The answer a held request got through Fleet. */
+export type PermissionAnswer = { decision: 'allow' | 'deny'; reason: string };
+
 /**
  * Keeps the connections of hook processes waiting on a permission answer, and
  * delivers the answer when one comes.
  *
- * `onReleased` fires once per held request that goes away: answered here, or
- * dropped because the hook exited (the user answered in the terminal, or the
- * hook timed out).
+ * `onReleased` fires once per held request that goes away: answered here,
+ * with the answer, or with null when Fleet let it go or the hook exited (the
+ * user answered in the terminal, or the hook timed out).
  */
 export class PermissionBroker {
   private readonly held = new Map<string, HeldPermission>();
 
   constructor(
-    private readonly onReleased: (sessionId: string, toolUseId: string) => void,
+    private readonly onReleased: (
+      sessionId: string,
+      toolUseId: string,
+      answer: PermissionAnswer | null
+    ) => void,
     private readonly holdMs: number = PERMISSION_HOLD_MS
   ) {}
 
@@ -172,13 +179,24 @@ export class PermissionBroker {
       const current = this.held.get(toolUseId);
       if (current?.socket !== socket) return;
       log.info('permission hook went away', { toolUseId, sessionId });
-      this.release(toolUseId);
+      this.release(toolUseId, null);
     });
     log.debug('holding permission', { toolUseId });
   }
 
   has(toolUseId: string): boolean {
     return this.held.has(toolUseId);
+  }
+
+  /** Every request held now. */
+  list(): Array<{ sessionId: string; toolUseId: string }> {
+    return [...this.held].map(([toolUseId, h]) => ({ sessionId: h.sessionId, toolUseId }));
+  }
+
+  /** Stop holding one request without an answer, so the runtime's own prompt takes it. */
+  letGo(toolUseId: string): void {
+    this.held.get(toolUseId)?.socket.end();
+    this.release(toolUseId, null);
   }
 
   respond(toolUseId: string, decision: 'allow' | 'deny', reason?: string): boolean {
@@ -194,7 +212,7 @@ export class PermissionBroker {
       log.error('failed to write permission answer', { toolUseId, error: String(err) });
       delivered = false;
     }
-    this.release(toolUseId);
+    this.release(toolUseId, delivered ? { decision, reason: reason ?? '' } : null);
     if (delivered) log.info('permission answered', { toolUseId, decision });
     return delivered;
   }
@@ -222,10 +240,10 @@ export class PermissionBroker {
     for (const socket of sockets) socket.destroy();
   }
 
-  private release(toolUseId: string): void {
+  private release(toolUseId: string, answer: PermissionAnswer | null): void {
     const pending = this.held.get(toolUseId);
     if (!pending) return;
     this.held.delete(toolUseId);
-    this.onReleased(pending.sessionId, toolUseId);
+    this.onReleased(pending.sessionId, toolUseId, answer);
   }
 }

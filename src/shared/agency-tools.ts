@@ -22,6 +22,7 @@ import { offeredToolSpecs } from './capability-tools';
  * because a change to a job happens only in that job's conversation, and
  * `job_plan`, `job_update`, `job_deliver` and the crew tools exist only in a
  * job's thread.
+ * `permission_answer` exists only in a job's thread too: crew always work on one job.
  * `client_file_propose` and the settings tools work in both: a standing
  * preference or a setting can come up anywhere.
  *
@@ -41,6 +42,7 @@ export const AGENCY_TOOL_NAMES = [
   'crew_send',
   'crew_interrupt',
   'crew_stop',
+  'permission_answer',
   'client_file_propose',
   'settings_read',
   'settings_change'
@@ -76,6 +78,11 @@ export const CREW_BRIEF_MAX_CHARS = 40_000;
 export const CREW_PROMPT_MAX_CHARS = 4_000;
 /** Longest `why` or `expect` a crew prompt is recorded with. */
 export const CREW_NOTE_MAX_CHARS = 300;
+
+/** Longest reason a permission answer gives, which the chat line shows. */
+export const PERMISSION_REASON_MAX_CHARS = 300;
+/** Longest summary a permission card is titled with. */
+export const PERMISSION_SUMMARY_MAX_CHARS = 80;
 
 /** Longest client file line, which is one sentence or two. */
 export const CLIENT_LINE_MAX_CHARS = 300;
@@ -199,6 +206,17 @@ export const CrewInterruptArgs = z.object({ crew: crewRef });
 
 export const CrewStopArgs = z.object({ crew: crewRef, why: crewNote.optional() });
 
+export const PermissionAnswerArgs = z.object({
+  request: z
+    .string()
+    .trim()
+    .regex(/^p?\d+$/i, 'give the request id, like p7'),
+  decision: z.enum(['allow', 'deny', 'ask_client']),
+  reason: z.string().trim().min(1).max(PERMISSION_REASON_MAX_CHARS),
+  summary: z.string().trim().min(1).max(PERMISSION_SUMMARY_MAX_CHARS).optional(),
+  recommend: z.enum(['allow', 'deny']).optional()
+});
+
 const clientLine = z.string().trim().min(1).max(CLIENT_LINE_MAX_CHARS);
 
 export const ClientFileProposeArgs = z
@@ -234,6 +252,7 @@ export type CrewHireArgs = z.infer<typeof CrewHireArgs>;
 export type CrewSendArgs = z.infer<typeof CrewSendArgs>;
 export type CrewInterruptArgs = z.infer<typeof CrewInterruptArgs>;
 export type CrewStopArgs = z.infer<typeof CrewStopArgs>;
+export type PermissionAnswerArgs = z.infer<typeof PermissionAnswerArgs>;
 export type ClientFileProposeArgs = z.infer<typeof ClientFileProposeArgs>;
 export type SettingsReadArgs = z.infer<typeof SettingsReadArgs>;
 export type SettingsChangeArgs = z.infer<typeof SettingsChangeArgs>;
@@ -265,6 +284,8 @@ export type AgentAgencyCapability = {
   crewSend: Run<CrewSendArgs> | null;
   crewInterrupt: Run<CrewInterruptArgs> | null;
   crewStop: Run<CrewStopArgs> | null;
+  /** Null in the lobby. */
+  permissionAnswer: Run<PermissionAnswerArgs> | null;
   clientFilePropose: Run<ClientFileProposeArgs>;
   settingsRead: Run<SettingsReadArgs>;
   settingsChange: Run<SettingsChangeArgs>;
@@ -282,6 +303,7 @@ export const AGENCY_TOOL_MEMBER = {
   crew_send: 'crewSend',
   crew_interrupt: 'crewInterrupt',
   crew_stop: 'crewStop',
+  permission_answer: 'permissionAnswer',
   client_file_propose: 'clientFilePropose',
   settings_read: 'settingsRead',
   settings_change: 'settingsChange'
@@ -344,6 +366,12 @@ const CREW_INTERRUPT_DESCRIPTION =
 const CREW_STOP_DESCRIPTION = [
   'End a crew member of this job: Fleet ends the process in its pane. Its worktree, branch and conversation stay until the job closes.',
   'Stopping does not move its step; say what happens next with `job_update`. Refused while the client took over its pane.'
+].join('\n\n');
+
+const PERMISSION_ANSWER_DESCRIPTION = [
+  'Answer a permission request from a crew member of this job, by its id like p7. The crew member waits until it is answered, so answer it first.',
+  '`allow` lets it run, and `deny` refuses it with your reason, which the crew member reads. `ask_client` puts it on a card for the client with your reason, a `summary` of the action that reads after "builder 1 asks to", like `deploy to production`, for the card title, and the answer you `recommend`; the answer arrives as a wakeup, and a card the client does not answer is denied.',
+  'Your reason goes in the job record and the chat: say in a few words why, like "fits step 3".'
 ].join('\n\n');
 
 const CLIENT_FILE_DESCRIPTION = [
@@ -803,6 +831,34 @@ export const AGENCY_TOOL_SPECS: AgentToolSpec[] = [
           why: { ...whySchema, description: 'Why you stop it, for the job record.' }
         },
         required: ['crew'],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'permission_answer',
+      description: PERMISSION_ANSWER_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          request: { type: 'string', description: 'The request id from the wakeup, like p7.' },
+          decision: { type: 'string', enum: ['allow', 'deny', 'ask_client'] },
+          reason: { type: 'string', maxLength: PERMISSION_REASON_MAX_CHARS },
+          summary: {
+            type: 'string',
+            maxLength: PERMISSION_SUMMARY_MAX_CHARS,
+            description:
+              'For ask_client: what the action does, in a few words, like "deploy to production".'
+          },
+          recommend: {
+            type: 'string',
+            enum: ['allow', 'deny'],
+            description: 'For ask_client: the answer you recommend.'
+          }
+        },
+        required: ['request', 'decision', 'reason'],
         additionalProperties: false
       }
     }

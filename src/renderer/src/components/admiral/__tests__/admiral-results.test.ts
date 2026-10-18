@@ -194,6 +194,7 @@ describe('DeliveredCard', () => {
       results: [result({ kind: 'pr', pr })],
       crew: [],
       servers: [],
+      permissions: [],
       spendUsd: 0,
       merge
     };

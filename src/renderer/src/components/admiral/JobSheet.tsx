@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { clockTime } from '../../../../shared/agency-crew';
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../shared/agency';
 import type { SettingsCard } from '../../../../shared/agency-settings';
+import type { AgencyPermission, PermissionState } from '../../../../shared/agency-permissions';
 import { jobDisplayId } from '../../../../shared/agency';
 import type {
   AgencyCrewMember,
@@ -16,6 +17,7 @@ import { ClientFileNotice } from './ClientFileViews';
 import { CrewSwapForm } from './CrewSwap';
 import { CancelJob, DeliveredCard, LeftoverList, SECONDARY } from './JobClose';
 import { PastJobList } from './PastJobs';
+import { PermissionCard } from './PermissionCard';
 import { PlanCard } from './PlanCard';
 import { ResultCard } from './ResultCard';
 import { SettingsCardView } from './SettingsCard';
@@ -59,7 +61,7 @@ export function JobSheet({
 }): React.JSX.Element {
   const job = jobId === null ? null : (snapshot?.jobs.find((j) => j.id === jobId) ?? null);
   const { approved } = planVersions(detail);
-  const { pending, waiting, settings, delivered, crew, count } = waitingOnClient(
+  const { pending, waiting, settings, delivered, crew, permissions, count } = waitingOnClient(
     snapshot,
     job,
     detail
@@ -97,6 +99,7 @@ export function JobSheet({
           questions={waiting}
           settings={settings}
           crew={crew}
+          permissions={permissions}
           clientFileChanged={snapshot?.clientFileChanged === true}
           onAnswer={onAnswer}
           onOpenSettings={onOpenSettings}
@@ -106,6 +109,8 @@ export function JobSheet({
       {job !== null && <PlanSection detail={detail} />}
 
       <CrewSection detail={detail} />
+
+      <PermissionsSection detail={detail} />
 
       <ServersSection detail={detail} />
 
@@ -147,6 +152,7 @@ function waitingOnClient(
   settings: SettingsCard[];
   delivered: AgencyJob | null;
   crew: AgencyCrewMember[];
+  permissions: AgencyPermission[];
   count: number;
 } {
   const { pending } = planVersions(detail);
@@ -156,12 +162,16 @@ function waitingOnClient(
   );
   const delivered = job?.state === 'delivered' ? job : null;
   const crew = (detail?.crew ?? []).filter((c) => c.flag === 'needs-you');
+  const permissions = (detail?.permissions ?? []).filter(
+    (p) => p.state === 'client' || p.state === 'in_pane'
+  );
   const count =
     waiting.length +
     settings.length +
     crew.length +
+    permissions.length +
     [pending, delivered].filter((x) => x !== null).length;
-  return { pending, waiting, settings, delivered, crew, count };
+  return { pending, waiting, settings, delivered, crew, permissions, count };
 }
 
 /**
@@ -203,8 +213,8 @@ function LeftoversSection({
 }
 
 /**
- * Open questions, settings changes, a plan version and crew members waiting
- * on the client, as cards.
+ * Open questions, settings changes, a plan version, permission requests and
+ * crew members waiting on the client, as cards.
  */
 function WaitingSection({
   count,
@@ -214,6 +224,7 @@ function WaitingSection({
   questions,
   settings,
   crew,
+  permissions,
   clientFileChanged,
   onAnswer,
   onOpenSettings
@@ -226,6 +237,7 @@ function WaitingSection({
   questions: AgencyQuestion[];
   settings: SettingsCard[];
   crew: AgencyCrewMember[];
+  permissions: AgencyPermission[];
   clientFileChanged: boolean;
   onAnswer: (question: AgencyQuestion, answer: QuestionAnswer) => Promise<boolean>;
   onOpenSettings: () => void;
@@ -239,6 +251,13 @@ function WaitingSection({
         <p className="text-[13px] text-fleet-text-muted">Nothing needs you right now.</p>
       )}
       {delivered !== null && <DeliveredCard job={delivered} detail={detail} />}
+      {permissions.map((p) => (
+        <PermissionCard
+          key={`p${p.id}`}
+          permission={p}
+          paneId={detail?.crew.find((c) => c.id === p.crewId)?.paneId ?? null}
+        />
+      ))}
       {pending !== null && detail !== undefined && <PlanCard version={pending} detail={detail} />}
       {questions.map((q) => (
         <QuestionCard
@@ -339,6 +358,77 @@ function CrewSection({
         ))}
       </ul>
     </Section>
+  );
+}
+
+/** How many answers the PERMISSIONS section shows before All. */
+const PERMISSION_ROWS = 5;
+
+const PERMISSION_STATE: Record<PermissionState, { label: string; tone: string }> = {
+  admiral: { label: 'with the Admiral', tone: 'text-fleet-text-muted' },
+  client: { label: 'asked you', tone: 'text-amber-700 dark:text-amber-400/90' },
+  in_pane: { label: 'in its pane', tone: 'text-amber-700 dark:text-amber-400/90' },
+  allowed: { label: 'allowed', tone: 'text-fleet-text-muted' },
+  denied: { label: 'denied', tone: 'text-fleet-text-muted' },
+  void: { label: 'gone', tone: 'text-fleet-text-subtle' }
+};
+
+/**
+ * What the job's crew asked permission for, newest first, and who answered
+ * each and why on hover. The record of every answer, past the few shown.
+ */
+function PermissionsSection({
+  detail
+}: {
+  detail: AgencyJobDetail | undefined;
+}): React.JSX.Element | null {
+  const [all, setAll] = useState(false);
+  if (detail === undefined || detail.permissions.length === 0) return null;
+  const rows = [...detail.permissions].reverse();
+  const more = rows.length > PERMISSION_ROWS;
+  return (
+    <Section
+      label="PERMISSIONS"
+      gap="gap-1"
+      action={
+        more && (
+          <button
+            type="button"
+            aria-expanded={all}
+            onClick={() => setAll(!all)}
+            className={ROW_ACTION}
+          >
+            {all ? 'Fewer' : `All ${rows.length} answers`}
+          </button>
+        )
+      }
+    >
+      <ul className="flex flex-col">
+        {(all ? rows : rows.slice(0, PERMISSION_ROWS)).map((p) => (
+          <PermissionRow key={p.id} permission={p} />
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+function PermissionRow({ permission: p }: { permission: AgencyPermission }): React.JSX.Element {
+  const state = PERMISSION_STATE[p.state];
+  const by = p.answeredBy === null ? '' : ` by ${p.answeredBy === 'client' ? 'you' : p.answeredBy}`;
+  return (
+    <li
+      title={p.reason === '' ? undefined : p.reason}
+      className="flex items-center gap-2 border-b border-fleet-border/60 py-1.5 text-xs last:border-b-0"
+    >
+      <span className="shrink-0 text-fleet-text">{p.crewLabel}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-fleet-text-muted">
+        {p.target.split('\n')[0]}
+      </span>
+      <span className={`shrink-0 text-[11px] ${state.tone}`}>
+        {state.label}
+        {p.state === 'allowed' || p.state === 'denied' ? by : ''}
+      </span>
+    </li>
   );
 }
 
@@ -544,6 +634,7 @@ function Section({
   tone = 'muted',
   gap = 'gap-2',
   aside,
+  action,
   children
 }: {
   label: string;
@@ -551,6 +642,8 @@ function Section({
   gap?: string;
   /** A short fact on the right of the heading. */
   aside?: string;
+  /** A control on the right of the heading. */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
@@ -566,6 +659,7 @@ function Section({
         {aside !== undefined && (
           <span className="font-mono text-[11px] text-fleet-text-muted">{aside}</span>
         )}
+        {action}
       </div>
       {children}
     </section>

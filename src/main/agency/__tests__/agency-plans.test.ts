@@ -66,7 +66,7 @@ const state = (jobId: number): string | undefined => service.store.getJob(jobId)
 const steps = (jobId: number): Record<string, string> =>
   Object.fromEntries(service.store.plans.steps(jobId).map((s) => [s.id, s.status]));
 const wakeupText = (jobId: number): string =>
-  service.pullWakeups({ repoId: REPO.repoId, jobId }).text ?? '';
+  service.store.pullWakeups({ repoId: REPO.repoId, jobId }).text ?? '';
 
 /** Write a row the way a later phase would, through a second connection to the same file. */
 function sql(statement: string, ...params: unknown[]): void {

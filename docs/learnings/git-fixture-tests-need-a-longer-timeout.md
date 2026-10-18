@@ -11,3 +11,5 @@ When the whole suite runs at once, every git process is slower, and the test wen
 
 Give each `describe` that runs real git a `{ timeout: 20_000 }`, as `workspace-projects.test.ts` already does.
 A test that spawns git or a shell gets a long timeout from the start, not after it flakes in CI.
+
+The same happened to `projects-service.test.ts` (5.3 seconds in a full run), which now has the same timeout.

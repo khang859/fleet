@@ -69,6 +69,7 @@ export class CrewFlags {
     if (crew?.status !== CREW_LIVE || crew.flag === 'user-driven') return;
     const session = crew.sessionId === null ? undefined : this.deps.session(crew.sessionId);
     if (session?.phase === 'waitingForApproval' || session?.waitingKind === 'question') return;
+    if (this.store.permissions.crewWaiting(crew.id)) return;
     this.flag(crew, 'user-driven', null, {
       line: `The client took over ${crew.label} in its pane`,
       body: 'Do not send to it, interrupt it or stop it until the client hands it back from CREW; a wakeup tells you when.'
@@ -186,6 +187,10 @@ export class CrewFlags {
     const verb = { send: 'sent', interrupt: 'interrupted', stop: 'stopped' }[act];
     if (crew.flag === 'user-driven') {
       return `Not ${verb}: the client took over ${crew.label}. Wait until they hand it back from CREW.`;
+    }
+    // Keys sent to a pane with a permission prompt on screen would answer it.
+    if (act !== 'stop' && this.store.permissions.crewWaiting(crew.id)) {
+      return `Not ${verb}: ${crew.label} waits on a permission answer. Answer it with permission_answer first.`;
     }
     if (crew.flag === 'limited' && act === 'send') {
       const until = crew.flagUntil === null ? '' : ` until ${clockTime(crew.flagUntil)}`;

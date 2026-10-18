@@ -1727,16 +1727,38 @@ void app.whenReady().then(async () => {
     agencySettings: {
       get: () => settingsStore.get().agency,
       set: (agency) => settingsStore.set({ agency })
+    },
+    permissionHooks: {
+      respond: (toolUseId, decision, reason) =>
+        claudeSessions?.respondToPermission(toolUseId, decision, reason) ?? false,
+      pending: (sessionId, toolUseId) => {
+        const session = claudeSessions?.registry.get(sessionId);
+        const request = session?.pendingPermissions.find((p) => p.toolUseId === toolUseId);
+        return session === undefined || request === undefined
+          ? undefined
+          : { request, cwd: session.cwd };
+      }
     }
   });
   // Before the Agent service, which runs Admiral turns against it.
   const agency = agencyService;
+  // A working crew member's permission requests are held for its job's
+  // Admiral and the client, and every answer is written to the job. The
+  // agency puts them to the client on its own cards, so they delegate.
+  claudeSessions.addPermissionAnswerer((request) => agency.permissions.canAnswer(request.paneId), {
+    delegates: true
+  });
+  claudeSessions.onPermission((e) => {
+    if (e.kind === 'held') agency.permissions.held(e.session, e.request);
+    else agency.permissions.released(e.toolUseId, e.answer);
+  });
   // A session reports only once Claude Code's folder trust prompt is answered.
   claudeSessions.registry.subscribe(({ session, event }) => {
     if (!session) return;
     // An eva session says nothing of Claude Code's folder trust.
     if (session.runtime === 'claude') agency.noteClaudeSession(session.cwd);
     agency.crew.reported(session.paneId, session.sessionId);
+    if (event) agency.permissions.sessionEvent(session, event);
     if (event?.event === 'Stop') agency.crew.turnEnded(session.sessionId);
     if (event?.event === 'StopFailure') {
       agency.crew.flags.turnFailed(

@@ -2,7 +2,11 @@ import type { Socket } from 'net';
 import { createLogger } from '../logger';
 import { resolveClaudeConfig } from '../../shared/claude-config';
 import type { FleetSettings } from '../../shared/types';
-import type { ClaudeInputOrigin } from '../../shared/claude-sessions';
+import type {
+  ClaudeInputOrigin,
+  ClaudePendingPermission,
+  ClaudeSession
+} from '../../shared/claude-sessions';
 import type { PriceTable } from '../../shared/claude-pricing';
 import type {
   ClaudeHookInstallProblem,
@@ -14,7 +18,7 @@ import type {
 import { createGitRunner, probeGit, type GitRunner } from './git-probe';
 import type { HookEvent } from './hook-events';
 import * as hookInstaller from './hook-installer';
-import { HookServer, PermissionBroker } from './hook-server';
+import { HookServer, PermissionBroker, type PermissionAnswer } from './hook-server';
 import { PromptInput, type SendResult } from './input';
 import { registerClaudeSessionsIpc, type IpcRegistrar } from './ipc-handlers';
 import { PaneActivityBridge, type SetHookState } from './pane-activity-bridge';
@@ -53,6 +57,25 @@ export type ClaudeSessionsDeps = {
   socketPath?: string;
   installer?: Pick<typeof hookInstaller, 'ensureHooks' | 'uninstall'>;
   git?: GitRunner;
+};
+
+/** A permission request an answerer is asked about: whose it is, and which. */
+export type PermissionRequestContext = { sessionId: string; paneId: string; toolUseId: string };
+
+/**
+ * A permission request Fleet started holding, or one that went away: with the
+ * answer it got through Fleet, or null when it went without one.
+ */
+export type PermissionHookEvent =
+  | { kind: 'held'; session: ClaudeSession; request: ClaudePendingPermission }
+  | { kind: 'released'; sessionId: string; toolUseId: string; answer: PermissionAnswer | null };
+
+type CanAnswer = (request: PermissionRequestContext) => boolean;
+
+type Answerer = {
+  canAnswer: CanAnswer;
+  /** It takes the requests it answers to the user its own way. */
+  delegates: boolean;
 };
 
 type GitState = {
@@ -95,8 +118,9 @@ export class ClaudeSessionsService {
   /** The setting as last applied, so turning it off can be told from starting with it off. */
   private tracking: boolean | null = null;
   private work: Promise<void> = Promise.resolve();
-  /** The consumers that may answer a permission request, each saying whether it can right now. */
-  private readonly answerers = new Set<() => boolean>();
+  /** The consumers that may answer a permission request, each saying whether it can answer one. */
+  private readonly answerers = new Set<Answerer>();
+  private readonly permissionListeners = new Set<(event: PermissionHookEvent) => void>();
   private readonly usage: SessionUsageTracker;
   private readonly transcripts: SessionTranscripts;
   private readonly evaTranscripts = new EvaTranscripts();
@@ -124,9 +148,12 @@ export class ClaudeSessionsService {
     });
     this.resolver = new PaneResolver(deps.panes, deps.workspaceOf);
     this.bridge = new PaneActivityBridge(deps.setHookState);
-    this.broker = new PermissionBroker((sessionId, toolUseId) =>
-      this.registry.resolvePermission(sessionId, toolUseId)
-    );
+    // Told before the registry drops the request, so a listener sees the
+    // release before the session change it causes.
+    this.broker = new PermissionBroker((sessionId, toolUseId, answer) => {
+      this.emitPermission({ kind: 'released', sessionId, toolUseId, answer });
+      this.registry.resolvePermission(sessionId, toolUseId);
+    });
     this.server = new HookServer(
       (event, client) => this.onHookEvent(event, client),
       deps.socketPath
@@ -225,27 +252,44 @@ export class ClaudeSessionsService {
   /**
    * Declare that a consumer can answer permission requests, until the returned
    * function is called. `canAnswer` is asked as each request arrives, for a
-   * consumer that can only sometimes answer. With none that can, the hook is
-   * released at once so Claude Code shows its own prompt: holding one nobody
-   * can answer would stall a background subagent, whose dialog waits for the
-   * hook.
+   * consumer that can only sometimes answer, or only some sessions. With none
+   * that can, the hook is released at once so the runtime shows its own
+   * prompt: holding one nobody can answer would stall a background subagent,
+   * whose dialog waits for the hook.
+   *
+   * An answerer that `delegates` takes the requests it can answer to the user
+   * its own way, so its sessions do not show as waiting for approval.
    */
-  addPermissionAnswerer(canAnswer: () => boolean = () => true): () => void {
-    // Its own function, so one consumer registering twice counts twice.
-    const answerer = (): boolean => canAnswer();
+  addPermissionAnswerer(
+    canAnswer: CanAnswer = () => true,
+    options: { delegates?: boolean } = {}
+  ): () => void {
+    // Its own object, so one consumer registering twice counts twice.
+    const answerer: Answerer = { canAnswer, delegates: options.delegates === true };
     this.answerers.add(answerer);
     return () => {
       if (this.answerers.delete(answerer)) this.releaseUnanswerable();
     };
   }
 
+  /** Hear of each permission request Fleet holds and each one that goes away, until the returned function is called. */
+  onPermission(listener: (event: PermissionHookEvent) => void): () => void {
+    this.permissionListeners.add(listener);
+    return () => this.permissionListeners.delete(listener);
+  }
+
   /**
-   * Release every held hook if no answerer can answer any more. Call it when
+   * Release every held hook no answerer can answer any more. Call it when
    * what an answerer's `canAnswer` reads changes, since a held hook is not
    * asked again.
    */
   releaseUnanswerable(): void {
-    if (![...this.answerers].some((canAnswer) => canAnswer())) void this.broker.dispose();
+    for (const held of this.broker.list()) {
+      const paneId = this.registry.get(held.sessionId)?.paneId;
+      if (paneId === undefined || !this.canAnswer({ ...held, paneId })) {
+        this.broker.letGo(held.toolUseId);
+      }
+    }
   }
 
   /** A live session's transcript, read up to now, with its brief. */
@@ -421,16 +465,40 @@ export class ClaudeSessionsService {
       log.debug('hook event from outside a Fleet pane dropped', { sessionId: event.sessionId });
       return false;
     }
-    const recorded = this.registry.ingest(event, placement);
+    const recorded = this.registry.ingest(event, placement, (toolUseId) =>
+      [...this.answerers].some(
+        (a) =>
+          a.delegates &&
+          a.canAnswer({ sessionId: event.sessionId, paneId: placement.paneId, toolUseId })
+      )
+    );
     if (event.runtime === 'eva' && this.registry.get(event.sessionId)) {
       this.evaTranscripts.follow(event.sessionId, event.dbPath);
     }
     const toolUseId = recorded?.toolUseId;
     if (event.status !== 'waiting_for_approval' || !toolUseId) return false;
-    if (![...this.answerers].some((canAnswer) => canAnswer())) return false;
-    const pending = this.registry.get(event.sessionId)?.pendingPermissions ?? [];
-    if (!pending.some((p) => p.toolUseId === toolUseId)) return false;
+    const session = this.registry.get(event.sessionId);
+    const request = session?.pendingPermissions.find((p) => p.toolUseId === toolUseId);
+    if (!session || !request) return false;
+    if (!this.canAnswer({ sessionId: session.sessionId, paneId: session.paneId, toolUseId })) {
+      return false;
+    }
     this.broker.hold(event.sessionId, toolUseId, client);
+    this.emitPermission({ kind: 'held', session, request });
     return true;
+  }
+
+  private canAnswer(request: PermissionRequestContext): boolean {
+    return [...this.answerers].some((a) => a.canAnswer(request));
+  }
+
+  private emitPermission(event: PermissionHookEvent): void {
+    for (const listener of this.permissionListeners) {
+      try {
+        listener(event);
+      } catch (err) {
+        log.error('permission listener failed', { error: String(err) });
+      }
+    }
   }
 }

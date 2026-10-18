@@ -483,13 +483,14 @@ function rollUp(paneId: string): void {
   publishActivity(paneId, rollUpState(paneId), pane.repo.name, fresh);
 }
 
-/** What waits on the client, by a key that is new for each new question or plan version. */
+/** What waits on the client, by a key that is new for each new question, plan version or permission card. */
 function waitingKeys(snapshot: AgencySnapshot | undefined): Set<string> {
   return new Set([
     ...openQuestions(snapshot).map((q) => `q${q.id}`),
-    ...(snapshot?.jobs ?? []).flatMap((j) =>
-      j.pendingPlan === null ? [] : [`plan${j.pendingPlan.id}`]
-    )
+    ...(snapshot?.jobs ?? []).flatMap((j) => [
+      ...(j.pendingPlan === null ? [] : [`plan${j.pendingPlan.id}`]),
+      ...j.permissionsWaiting.map((id) => `p${id}`)
+    ])
   ]);
 }
 

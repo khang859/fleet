@@ -253,7 +253,9 @@ const detail = (jobId: number): NonNullable<ReturnType<typeof service.jobs.detai
 const gitlink = (path: string): string =>
   git(origin, 'ls-tree', 'admiral/j1/bump', path).split(/\s+/)[2];
 
-describe('merging a job PR by PR', () => {
+// Each test builds an umbrella with submodules in real git, which takes over
+// the default five seconds while the whole suite runs at once.
+describe('merging a job PR by PR', { timeout: 20_000 }, () => {
   beforeEach(async () => {
     home = tempDir('fleet-merge-');
     clock.now = Date.parse('2026-10-17T19:00:00Z');

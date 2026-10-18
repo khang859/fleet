@@ -46,6 +46,10 @@ import {
   type RuntimeCheck,
   type RuntimeTestResult
 } from '../../shared/agency-crew';
+import type {
+  PermissionAnswerRequest,
+  PermissionAnswerResult
+} from '../../shared/agency-permissions';
 import type { MemberSkills } from '../../shared/agency-agent-files';
 import type { Plan } from '../../shared/agency-plan';
 import {
@@ -62,6 +66,7 @@ import {
 } from './crew/catalog';
 import { CrewService, type CrewPaneHost } from './crew/crew-service';
 import { testRuntime, type RuntimeTestDeps } from './crew/runtime-test';
+import { CrewPermissions, type PermissionDeps } from './crew/permissions';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
 import { StackSlots } from './jobs/stack-slots';
 import { ServerWatch } from './workspaces/server-watch';
@@ -70,7 +75,8 @@ import { reconcileAtStartup } from './jobs/reconcile';
 import { runPreflight, type Probe } from './preflight';
 import { ClientFiles, type ClientFileNote } from './projects/client-file';
 import { nativeGh, type GhRun } from './projects/gh';
-import { envSecrets, redactEnvValues } from './projects/env-files';
+import { envSecrets } from './projects/env-files';
+import { maskInLogs, Redactor } from '../redactor';
 import { agencyHome } from './projects/paths';
 import { loadSetup } from './projects/project-store';
 import { projectPath } from './projects/setup-findings';
@@ -156,6 +162,13 @@ export type AgencyServiceDeps = {
   cleaners?: Partial<Record<ResourceKind, ResourceCleaner>>;
   /** Fleet's agency settings, which the Admiral's settings tools change; in memory unless set. */
   agencySettings?: AgencySettingsAccess;
+  /** The permission hooks Fleet holds for crew. Unset, no answer reaches a crew member. */
+  permissionHooks?: Pick<PermissionDeps, 'respond' | 'pending'>;
+};
+
+const NO_PERMISSION_HOOKS: Pick<PermissionDeps, 'respond' | 'pending'> = {
+  respond: () => false,
+  pending: () => undefined
 };
 
 /** Agency settings kept in memory, for a service with no settings file behind it. */
@@ -200,6 +213,7 @@ export class AgencyService {
   readonly servers: ServerWatch;
   readonly merges: MergeQueue;
   readonly crew: CrewService;
+  readonly permissions: CrewPermissions;
   /** How crew panes are stopped and found live. */
   private readonly crewControl: CrewControl;
   /** Folders already written to the trust table this run. */
@@ -314,6 +328,15 @@ export class AgencyService {
       nudgeLimit: () => agencySettings.get().admiral.nudgeLimit,
       defaultModel: (runtime) => agencySettings.get().crew[runtime].defaultModel || undefined
     });
+    this.permissions = new CrewPermissions({
+      store: this.store,
+      ...(deps.permissionHooks ?? NO_PERMISSION_HOOKS),
+      admiralOpen: (repoId) => this.registry.claimed(repoId),
+      expirySec: () => agencySettings.get().admiral.permissionExpirySec,
+      refreshClientHold: (jobId) => this.jobs.refreshClientHold(jobId),
+      changed: (touched) => this.changed(touched),
+      now: () => deps.now?.() ?? Date.now()
+    });
     const crew = this.crewControl;
     this.cleanup = new CleanupRunner({
       store: this.store,
@@ -374,15 +397,27 @@ export class AgencyService {
   /**
    * A pane gave up its repository. The wakeups it had pulled and not finished
    * go back to the queue now, without counting as a failure: only that pane
-   * could have claimed them, and it will never ack them.
+   * could have claimed them, and it will never ack them. The permission
+   * requests that waited on its Admiral go to the client, since a crew member
+   * cannot wait for the pane to open again.
    */
   release(paneId: string): void {
-    for (const repoId of this.registry.release(paneId)) this.store.unclaimWakeups(repoId);
+    for (const repoId of this.registry.release(paneId)) this.unclaimed(repoId);
   }
 
   /** A window reloaded or closed: the same, for every repository it held. */
   releaseOwner(owner: number): void {
-    for (const repoId of this.registry.releaseOwner(owner)) this.store.unclaimWakeups(repoId);
+    for (const repoId of this.registry.releaseOwner(owner)) this.unclaimed(repoId);
+  }
+
+  private unclaimed(repoId: string): void {
+    this.store.unclaimWakeups(repoId);
+    this.permissions.admiralGone(repoId);
+  }
+
+  /** The client answers a permission card. */
+  answerPermission(req: PermissionAnswerRequest): PermissionAnswerResult {
+    return this.permissions.answerAsClient(req);
   }
 
   ensureLobby(repo: AgencyRepoRef): string {
@@ -500,11 +535,19 @@ export class AgencyService {
     return { name: `${jobDisplayId(jobId)}-${slug || 'job'}.md`, text };
   }
 
-  /** The values of the env files a project's crew get, which nothing the Admiral or an export shows. */
+  /**
+   * The values of the env files a project's crew get, which nothing the
+   * Admiral, an export or a log line shows. Each read masks them in the logs.
+   */
   private async envSecrets(repoId: string): Promise<string[]> {
     const members = this.membersOf(repoId);
     if (members === null) return [];
-    return envSecrets(await loadSetup(repoId, this.deps.agencyHome ?? agencyHome()), members);
+    const values = await envSecrets(
+      await loadSetup(repoId, this.deps.agencyHome ?? agencyHome()),
+      members
+    );
+    maskInLogs(values);
+    return values;
   }
 
   /** A known project's members, in member order. */
@@ -519,8 +562,11 @@ export class AgencyService {
     this.changed([{ repoId, jobId: null }]);
   }
 
-  pullWakeups(input: { repoId: string; jobId: number | null }): WakeupPull {
-    return this.store.pullWakeups(input);
+  /** The wakeups due for one job, as one turn's text, with env file values masked. */
+  async pullWakeups(input: { repoId: string; jobId: number | null }): Promise<WakeupPull> {
+    const pull = this.store.pullWakeups(input);
+    if (pull.text === null) return pull;
+    return { ...pull, text: (await this.redactor(input.repoId)).redact(pull.text) };
   }
 
   ackWakeups(ids: number[]): void {
@@ -591,12 +637,20 @@ export class AgencyService {
       git: this.deps.git ?? readOnlyGit
     });
     if (touched.length > 0) this.changed(touched);
+    // Mask every project's env file values in the logs before crew write any.
+    await Promise.all(
+      this.store.listProjects().map(async (p) => this.envSecrets(p.repo.repoId).catch(() => []))
+    );
+    // No hook from before this start is held now, so no open request can be answered.
+    const voided = this.permissions.voidAll('Fleet restarted.');
+    if (voided.length > 0) this.changed(voided);
     this.cleanup.startRetrying();
     this.merges.startTicking();
     this.prs.startWatching();
     this.stack.startPolling();
     this.servers.startPolling();
     this.crew.flags.startTicking();
+    this.permissions.startTicking();
     await Promise.all([this.cleanup.resumeAll(), this.merges.advanceAll(), this.prs.watchAll()]);
   }
 
@@ -833,15 +887,14 @@ export class AgencyService {
     return jobId === null ? new Set() : this.crew.panes(jobId);
   }
 
-  /**
-   * A starting crew pane's screen for a job's `fleet_read`, with the values
-   * of the env files crew get masked. Null for a pane that is not one.
-   */
+  /** A starting crew pane's screen for a job's `fleet_read`. Null for a pane that is not one. */
   async crewScreen(jobId: number | null, paneId: string): Promise<string | null> {
-    const job = jobId === null ? null : this.store.getJob(jobId);
-    if (!job) return null;
-    const screen = await this.crew.screen(job.id, paneId);
-    return screen === null ? null : redactEnvValues(screen, await this.envSecrets(job.repoId));
+    return jobId === null ? null : this.crew.screen(jobId, paneId);
+  }
+
+  /** What masks a project's env file values in text the Admiral reads. */
+  async redactor(repoId: string): Promise<Redactor> {
+    return new Redactor(await this.envSecrets(repoId));
   }
 
   /** The project's client file for an Admiral turn's note, or null when there is none. */
@@ -870,6 +923,7 @@ export class AgencyService {
     this.stack.stopPolling();
     this.servers.stopPolling();
     this.crew.flags.stopTicking();
+    this.permissions.stopTicking();
     this.store.close();
   }
 

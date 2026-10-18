@@ -81,7 +81,7 @@ describe('client_file_propose', () => {
       `# fleet\n- Always open PRs as drafts. (from job j${job.id}, 2026-10-17)\n`
     );
 
-    const wakeup = service.pullWakeups({ repoId: REPO.repoId, jobId: job.id }).text;
+    const wakeup = (await service.pullWakeups({ repoId: REPO.repoId, jobId: job.id })).text;
     expect(wakeup).toContain('Add: Always open PRs as drafts.');
     expect(wakeup).toContain('Fleet wrote it to the client file');
 
@@ -98,7 +98,7 @@ describe('client_file_propose', () => {
     service.answer({ id: a.id!, option: 1 });
     service.answer({ id: b.id!, text: 'Only for the web app' });
     expect(service.clientFiles.read(REPO.repoId)).toBe('');
-    expect(service.pullWakeups({ ...LOBBY }).text).toContain(
+    expect((await service.pullWakeups({ ...LOBBY })).text).toContain(
       'Nothing was written to the client file.'
     );
   });

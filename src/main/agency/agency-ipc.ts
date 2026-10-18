@@ -31,6 +31,7 @@ import {
   type RuntimeTestResult
 } from '../../shared/agency-crew';
 import type { AgencyJobDetail, JobControlResult, PlanActionResult } from '../../shared/agency-jobs';
+import type { PermissionAnswerResult } from '../../shared/agency-permissions';
 import { PlanSchema } from '../../shared/agency-plan';
 import type { AdmiralSettingMark, SettingsUndoOutcome } from '../../shared/agency-settings';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
@@ -72,6 +73,7 @@ const PullArgs = z.object({ repoId: RepoId, jobId: JobId.nullable() });
 const ReleaseArgs = z.object({ ids: Ids, error: z.string().max(4_000) });
 const HandoffArgs = z.object({ jobId: JobId, lobbyMessageId: z.string().min(1) });
 const JobControlArgs = z.object({ jobId: JobId, action: z.enum(['cancel', 'accept']) });
+const PermissionAnswerArgs = z.object({ id: JobId, decision: z.enum(['allow', 'deny']) });
 const LeftoverArgs = z.object({ resourceId: JobId, action: z.enum(['retry', 'dismiss']) });
 /** A client file is a page or two of Markdown; anything far past that is not one. */
 const ClientFileWriteArgs = z.object({ repoId: RepoId, text: z.string().max(200_000) });
@@ -162,7 +164,7 @@ export function registerAgencyIpc(service: AgencyService): void {
 
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_PULL_WAKEUPS,
-    (_e, args: unknown): WakeupPull => service.pullWakeups(PullArgs.parse(args))
+    async (_e, args: unknown): Promise<WakeupPull> => service.pullWakeups(PullArgs.parse(args))
   );
 
   ipcMain.handle(IPC_CHANNELS.AGENCY_ACK_WAKEUPS, (_e, ids: unknown) => {
@@ -205,6 +207,12 @@ export function registerAgencyIpc(service: AgencyService): void {
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_JOB_CONTROL,
     (_e, control: unknown): JobControlResult => service.closeJob(JobControlArgs.parse(control))
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_PERMISSION_ANSWER,
+    (_e, req: unknown): PermissionAnswerResult =>
+      service.answerPermission(PermissionAnswerArgs.parse(req))
   );
 
   ipcMain.handle(

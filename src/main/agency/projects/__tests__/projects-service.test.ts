@@ -43,7 +43,9 @@ afterEach(() => {
   tmp.cleanup();
 });
 
-describe('ProjectsService', () => {
+// Each test scans and commits in a real git repository, which can take over
+// the default five seconds while the whole suite runs at once.
+describe('ProjectsService', { timeout: 20_000 }, () => {
   it('saves a setup, imports what was picked, and moves the pane on only when finished', async () => {
     const scan = await service.projects.scan(repo);
     expect(scan.setup.members[0].setupCommand).toBe('npm ci');

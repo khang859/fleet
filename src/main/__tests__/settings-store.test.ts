@@ -173,7 +173,13 @@ describe('SettingsStore settings merge', () => {
     store.set({ annotate: { retentionDays: 5 } });
     expect(store.get().agency).toEqual({
       enabled: false,
-      admiral: { model: '', defaultBudgetUsd: 10, monthlyCapUsd: 100, nudgeLimit: 3 },
+      admiral: {
+        model: '',
+        defaultBudgetUsd: 10,
+        monthlyCapUsd: 100,
+        nudgeLimit: 3,
+        permissionExpirySec: 180
+      },
       crew: {
         claude: { atOnce: null, defaultModel: '' },
         eva: { atOnce: null, defaultModel: '' }
@@ -191,7 +197,8 @@ describe('SettingsStore settings merge', () => {
         model: 'openrouter:some/model',
         defaultBudgetUsd: 10,
         monthlyCapUsd: 250,
-        nudgeLimit: 3
+        nudgeLimit: 3,
+        permissionExpirySec: 180
       },
       crew: {
         claude: { atOnce: null, defaultModel: '' },

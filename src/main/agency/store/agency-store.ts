@@ -31,6 +31,7 @@ import { reduceJob, type CloseTarget, type JobEvent, type Transition } from '../
 import { renderWakeupText, type WakeupItem } from '../wakeup-text';
 import { openAgencyDb } from './agency-db';
 import { CrewStore } from './crew-store';
+import { PermissionStore } from './permission-store';
 import { ResourceStore } from './resource-store';
 import { MergeStore, ResultStore } from './result-store';
 import { PlanStore } from './plan-store';
@@ -201,7 +202,8 @@ function toJob(
   row: JobRow,
   holds: JobHoldKind[],
   pendingPlan: AgencyJob['pendingPlan'],
-  crewNeedingYou: number
+  crewNeedingYou: number,
+  permissionsWaiting: number[]
 ): AgencyJob {
   return {
     id: row.id,
@@ -216,6 +218,7 @@ function toJob(
     holds,
     pendingPlan,
     crewNeedingYou,
+    permissionsWaiting,
     sessionId: row.session_id,
     handoffDone: row.handoff_done === 1,
     budgetUsd: row.budget_usd,
@@ -294,6 +297,7 @@ export class AgencyStore {
   private readonly now: () => number;
   readonly plans: PlanStore;
   readonly crew: CrewStore;
+  readonly permissions: PermissionStore;
   readonly resources: ResourceStore;
   readonly results: ResultStore;
   readonly merges: MergeStore;
@@ -305,6 +309,7 @@ export class AgencyStore {
     this.now = opts.now ?? Date.now;
     this.plans = new PlanStore(this.db, this.now);
     this.crew = new CrewStore(this.db, this.now);
+    this.permissions = new PermissionStore(this.db, this.now);
     this.resources = new ResourceStore(this.db, this.now);
     this.results = new ResultStore(this.db, this.now);
     this.merges = new MergeStore(this.db, this.now);
@@ -437,7 +442,8 @@ export class AgencyStore {
       row,
       this.holds(row.id),
       pending ? { id: pending.id, version: pending.version } : null,
-      this.crew.needingYou(row.id)
+      this.crew.needingYou(row.id),
+      this.permissions.waitingOnClient(row.id)
     );
   }
 

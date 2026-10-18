@@ -41,6 +41,7 @@ export function agencyJob(over: Partial<AgencyJob> = {}): AgencyJob {
     holds: [],
     pendingPlan: null,
     crewNeedingYou: 0,
+    permissionsWaiting: [],
     sessionId: 'job-session',
     handoffDone: true,
     budgetUsd: 10,

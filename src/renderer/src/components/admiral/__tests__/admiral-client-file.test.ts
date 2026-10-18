@@ -75,7 +75,7 @@ describe('a client file card', () => {
       'Open PRs as drafts.',
       'Notify me for everything.',
       'Use pnpm.',
-      'Change it · My pick',
+      `Change it<span class="whitespace-nowrap"> · My pick</span>`,
       'Not now'
     ].map((text) => html.indexOf(text));
     expect(order.every((at) => at >= 0)).toBe(true);
@@ -88,7 +88,9 @@ describe('a client file card', () => {
     const html = card(proposal(), true);
     expect(html).toContain('The client file changed outside Fleet.');
     expect(html).toContain('Review it');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Change it · My pick<\/button>/);
+    expect(html).toMatch(
+      /<button[^>]*disabled=""[^>]*>Change it<span[^>]*> · My pick<\/span><\/button>/
+    );
     expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>Not now<\/button>/);
   });
 
@@ -107,7 +109,9 @@ describe('the job sheet', () => {
     expect(html).toContain('The client file changed outside Fleet');
     expect(html).toContain('>Review<');
     expect(html).toContain('>Keep the change<');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Change it · My pick<\/button>/);
+    expect(html).toMatch(
+      /<button[^>]*disabled=""[^>]*>Change it<span[^>]*> · My pick<\/span><\/button>/
+    );
   });
 
   it('lists past jobs to export in the lobby only', () => {

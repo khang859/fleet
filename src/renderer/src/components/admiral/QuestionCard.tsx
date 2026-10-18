@@ -155,13 +155,15 @@ function Options({
               disabled={busy || (blockFirst && i === 0)}
               title={option.detail}
               onClick={() => void answer({ option: i })}
-              className={`h-7 max-w-full truncate rounded-md border px-2.5 text-xs transition-colors focus-ring disabled:opacity-50 ${
+              // A long option wraps rather than cutting off its own end and the pick mark.
+              className={`min-h-7 max-w-full rounded-md border px-2.5 py-1 text-left text-xs transition-colors focus-ring disabled:opacity-50 ${
                 pick
                   ? 'border-blue-400/60 bg-fleet-surface-2 font-medium text-fleet-text hover:bg-fleet-surface-3'
                   : 'border-fleet-border-strong text-fleet-text-secondary hover:bg-fleet-surface-2 hover:text-fleet-text'
               }`}
             >
-              {pick ? `${option.label} · My pick` : option.label}
+              {option.label}
+              {pick && <span className="whitespace-nowrap"> · My pick</span>}
             </button>
           );
         })}

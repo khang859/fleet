@@ -244,7 +244,7 @@ describe('crew limit and queue', () => {
     await service.jobs.stopCrew([crew.id], 'test');
 
     expect(stepStatus(job.id, 'builder-1')).toBe('pending');
-    const wake = service.pullWakeups({ repoId: REPO.repoId, jobId: job.id }).text ?? '';
+    const wake = (await service.pullWakeups({ repoId: REPO.repoId, jobId: job.id })).text ?? '';
     expect(wake).toContain('Step builder-1 can start now');
     expect((await tools.jobUpdate!({ step: 'builder-1', status: 'running' })).text).toContain(
       'is running'

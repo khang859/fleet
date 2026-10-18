@@ -45,6 +45,7 @@ describe('agency.db', () => {
       'lobbies',
       'merge_runs',
       'onboarding',
+      'permission_requests',
       'plan_versions',
       'project_members',
       'projects',

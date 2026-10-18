@@ -77,7 +77,7 @@ describe('QuestionCard', () => {
     expect(html).toContain('Which database?');
     expect(html).toContain('q4');
     expect(html).toContain('Both are already in the lockfile.');
-    expect(html).toContain('SQLite · My pick');
+    expect(html).toContain('SQLite<span class="whitespace-nowrap"> · My pick</span>');
     expect(html).toContain('title="one file"');
     expect(html).toContain('>Postgres<');
     expect(html).toContain('Or answer in your own words');
