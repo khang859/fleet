@@ -164,6 +164,6 @@ describe('a client file changed outside Fleet', () => {
     expect(service.snapshot(REPO.repoId).clientFileChanged).toBe(false);
     expect(note(LOBBY)).toContain('Raise any budget');
     expect(service.answer({ id: pending.id!, option: 0 })?.status).toBe('answered');
-    expect(fileText()).toContain('- Use drafts. (from the lobby');
+    expect(fileText()).toContain('- Use drafts. (from the Bridge');
   });
 });
