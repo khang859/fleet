@@ -431,6 +431,16 @@ describe('Admiral turn', () => {
     );
   });
 
+  it('tells the Admiral to weigh plan edits, rejects and answers as lasting preferences, once per topic', () => {
+    expect(ADMIRAL_SYSTEM_PROMPT).toContain(
+      'Fleet wakes you when the client edits or rejects a plan or swaps a step, with what changed. After that, and after an answer to a question, consider whether it is a lasting preference'
+    );
+    expect(ADMIRAL_SYSTEM_PROMPT).toContain('Ask at most once per topic.');
+    expect(ADMIRAL_SYSTEM_PROMPT).toContain(
+      'Never ask to remember what a line in your note already says.'
+    );
+  });
+
   it('marks a line the client chose over a CLAUDE.md rule, and tells the Admiral to pass it on', async () => {
     agency.clientFiles.write(
       REPO.repoId,

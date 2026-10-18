@@ -12,7 +12,9 @@ export function clientFilePropose(
     reason: args.reason,
     proposal: {
       add: (args.add ?? []).map((a) => ({ text: a.text, replaces: a.replaces ?? null })),
-      remove: args.remove ?? []
+      remove: args.remove ?? [],
+      topic: args.topic ?? null,
+      layer: args.layer
     }
   });
   if (!out.ok) return { text: `Not proposed: ${out.reason}`, summary: 'not proposed' };

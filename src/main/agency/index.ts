@@ -4,8 +4,10 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   DEFAULT_AGENCY_SETTINGS,
+  REMEMBER_OPTION,
   TERMINAL_JOB_STATES,
   jobDisplayId,
+  questionDisplayId,
   type AdmiralClaimResult,
   type AdmiralThreadScope,
   type AgencyAnswerRequest,
@@ -22,6 +24,7 @@ import {
   type WakeupRelease
 } from '../../shared/agency';
 import { clientEntries, sameText, YOU_LAYER } from '../../shared/agency-client-file';
+import { CLIENT_LINE_MAX_CHARS } from '../../shared/agency-tools';
 import type {
   AutoStartRule,
   ClientLineChange,
@@ -121,6 +124,24 @@ const paneControl = (panes: CrewPaneHost): CrewControl => ({
 });
 
 const MERGE_CLOSED = 'The job closed before the merge finished.';
+
+/** The client file an answer to a `client_file` card writes, or null when it writes none. */
+function answerLayer(
+  repoId: string,
+  proposal: ClientFileProposal,
+  option: number | undefined
+): string | null {
+  if (proposal.topic === null) {
+    if (option !== 0) return null;
+    return proposal.layer === 'you' ? YOU_LAYER : repoId;
+  }
+  if (option === REMEMBER_OPTION.project) return repoId;
+  return option === REMEMBER_OPTION.all ? YOU_LAYER : null;
+}
+
+/** A line the client typed on a Remember this? card, on one line and within a line's length. */
+const clientWords = (text: string | undefined): string =>
+  (text ?? '').replace(/\s+/g, ' ').trim().slice(0, CLIENT_LINE_MAX_CHARS);
 
 const log = createLogger('agency');
 
@@ -483,7 +504,7 @@ export class AgencyService {
   }
 
   answer(req: AgencyAnswerRequest): AgencyQuestion | null {
-    if (!this.approveClientFile(req)) return null;
+    if (!this.applyClientFile(req)) return null;
     const outcome = this.store.answerQuestion(req);
     if (!outcome) return null;
     const { kind, jobId } = outcome.question;
@@ -543,19 +564,29 @@ export class AgencyService {
   }
 
   /**
-   * Approving a `client_file` card writes its lines first, so they are on disk
-   * before the wakeup that reports them runs. Refused while the file has a
-   * change from outside Fleet the client has not kept: approving would keep
-   * it without the client seeing it.
+   * Answering a `client_file` card writes its lines first, so they are on disk
+   * before the wakeup that reports them runs. On a Remember this? card, This
+   * project and All projects save the line, in the client's words when they
+   * typed some, and Just this job declines the topic for the project. Refused
+   * while the file has a change from outside Fleet the client has not kept:
+   * writing would keep it without the client seeing it.
    */
-  private approveClientFile(req: AgencyAnswerRequest): boolean {
+  private applyClientFile(req: AgencyAnswerRequest): boolean {
     const q = this.store.getQuestion(req.id);
-    if (q?.kind !== 'client_file' || q.status !== 'open' || req.option !== 0) return true;
-    if (q.proposal === null || this.clientFiles.changedOutside(q.repoId)) return false;
-    this.clientFiles.apply(q.repoId, {
-      name: this.store.repo(q.repoId)?.name ?? q.repoId,
+    if (q?.kind !== 'client_file' || q.status !== 'open' || q.proposal === null) return true;
+    const { proposal } = q;
+    if (proposal.topic !== null && req.option === REMEMBER_OPTION.decline) {
+      this.store.preferences.declineTopic(q.repoId, proposal.topic);
+      return true;
+    }
+    const layer = answerLayer(q.repoId, proposal, req.option);
+    if (layer === null) return true;
+    if (this.clientFiles.changedOutside(layer)) return false;
+    const typed = proposal.topic === null ? '' : clientWords(req.text);
+    this.clientFiles.apply(layer, {
+      name: layer === YOU_LAYER ? 'You' : (this.store.repo(q.repoId)?.name ?? q.repoId),
       source: q.jobId === null ? 'the Bridge' : `job ${jobDisplayId(q.jobId)}`,
-      proposal: q.proposal
+      proposal: typed === '' ? proposal : { ...proposal, add: [{ text: typed, replaces: null }] }
     });
     return true;
   }
@@ -569,14 +600,20 @@ export class AgencyService {
     scope: AdmiralThreadScope,
     input: { reason: string; proposal: ClientFileProposal }
   ): { ok: true; question: AgencyQuestion } | { ok: false; reason: string } {
-    if (this.clientFiles.changedOutside(scope.repoId)) {
+    const { topic } = input.proposal;
+    const layer = input.proposal.layer === 'you' ? YOU_LAYER : scope.repoId;
+    if (this.clientFiles.changedOutside(layer)) {
       return {
         ok: false,
         reason:
           'the client file changed outside Fleet. Ask the client to look at it in Settings > Agency > Admiral first.'
       };
     }
-    const entries = clientEntries(this.clientFiles.read(scope.repoId));
+    if (topic !== null) {
+      const refused = this.topicRefusal(scope.repoId, topic);
+      if (refused !== null) return { ok: false, reason: refused };
+    }
+    const entries = clientEntries(this.clientFiles.read(layer));
     const named = [
       ...input.proposal.add.flatMap((a) => (a.replaces === null ? [] : [a.replaces])),
       ...input.proposal.remove
@@ -588,19 +625,43 @@ export class AgencyService {
         reason: `"${missing}" is not a line in the client file. Give the line word for word, as your note shows it, without its id and its "(from ...)" tag.`
       };
     }
-    const onlyAdds = named.length === 0;
     const question = this.store.askQuestion({
       ...scope,
       kind: 'client_file',
-      question: onlyAdds ? 'Remember this for future jobs?' : 'Change the client file?',
+      ...(topic === null
+        ? {
+            question: 'Change the client file?',
+            options: [{ label: 'Change it' }, { label: 'Not now' }],
+            recommended: 0
+          }
+        : {
+            question: 'Remember this?',
+            options: [
+              { label: 'This project' },
+              { label: 'All projects' },
+              { label: scope.jobId === null ? 'Just this time' : 'Just this job' }
+            ],
+            recommended: input.proposal.layer === 'you' ? 1 : 0
+          }),
       context: input.reason,
-      options: [{ label: onlyAdds ? 'Remember it' : 'Change it' }, { label: 'Not now' }],
-      recommended: 0,
       proposal: input.proposal
     });
     if (scope.jobId !== null) this.jobs.refreshClientHold(scope.jobId);
     this.changed([scope]);
     return { ok: true, question };
+  }
+
+  /** Why a Remember this? card on `topic` may not go up now, or null when it may. */
+  private topicRefusal(repoId: string, topic: string): string | null {
+    if (this.store.preferences.topicDeclined(repoId, topic)) {
+      return `the client said Just this job to "${topic}" before. Do not ask about it again on this project.`;
+    }
+    const open = this.store
+      .listQuestions(repoId, { statuses: ['open'] })
+      .find((q) => q.kind === 'client_file' && q.proposal?.topic === topic);
+    return open === undefined
+      ? null
+      : `${questionDisplayId(open.id)} asks about "${topic}" already. Wait for the client's answer.`;
   }
 
   /** The client saved the client file in Settings: hand edits win. */

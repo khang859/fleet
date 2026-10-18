@@ -29,6 +29,7 @@ import {
   PlanSchema,
   diffPlans,
   newRoleProblems,
+  planStepList,
   scopeProblems,
   validatePlanGraph,
   type Plan
@@ -78,6 +79,10 @@ function reportBody(status: CrewReportStatus, deliver: string[]): string {
 
 /** A job another one queues behind holds it until it delivers or ends. */
 const UNDER_WAY: readonly JobState[] = ['planned', 'running', 'waiting', 'interrupted'];
+
+/** Closes the wakeup for a client plan edit or reject, so the Admiral weighs it beyond this job. */
+const LEARN_HINT =
+  'Consider whether this is a lasting preference. If it is, and no line in your note says it, offer to remember it with `client_file_propose`.';
 
 /**
  * How Fleet stops a crew member's pane. The crew phase wires the real panes;
@@ -386,6 +391,7 @@ export class JobsService {
         return this.proposeForClient(
           job,
           parsed.data,
+          version.plan,
           (v) => `Client edited plan v${version.version} into v${v}`
         );
       }
@@ -412,6 +418,7 @@ export class JobsService {
     return this.proposeForClient(
       job,
       parsed.data,
+      version.plan,
       (v) => `Client changed plan v${version.version}, which started on its own, into v${v}`
     );
   }
@@ -450,14 +457,19 @@ export class JobsService {
     return this.proposeForClient(
       job,
       plan,
+      approved.plan,
       (v) => `Client swapped step ${step.id} on a crew card, as plan v${v}`
     );
   }
 
-  /** A plan version from the client, which wakes the Admiral with `line`. */
+  /**
+   * A plan version from the client, which wakes the Admiral with `line` and
+   * the steps before and after, so it can ask whether to remember the change.
+   */
   private async proposeForClient(
     job: AgencyJob,
     plan: Plan,
+    before: Plan,
     line: (version: number) => string
   ): Promise<PlanActionResult> {
     const result = await this.propose(job.id, plan, 'client');
@@ -468,7 +480,11 @@ export class JobsService {
         repoId: job.repoId,
         jobId: job.id,
         kind: 'client_action',
-        payload: { line: line(result.version.version), note: null }
+        payload: {
+          line: line(result.version.version),
+          note: null,
+          detail: `Before: ${planStepList(before)}\nAfter: ${planStepList(plan)}\n${LEARN_HINT}`
+        }
       });
     });
     this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
@@ -646,7 +662,7 @@ export class JobsService {
         repoId: job.repoId,
         jobId: job.id,
         kind: 'client_action',
-        payload: { line: `Client rejected plan v${version.version}`, note }
+        payload: { line: `Client rejected plan v${version.version}`, note, detail: LEARN_HINT }
       });
       this.store.plans.log({
         jobId: job.id,

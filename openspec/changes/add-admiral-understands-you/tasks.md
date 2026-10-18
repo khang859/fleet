@@ -37,11 +37,11 @@
 
 ## 5. Phase 5: Learn from you (one PR)
 
-- [ ] 5.1 Enqueue a wakeup for the job's Admiral after a client plan edit or reject, with the before-and-after steps or the note; verify with jobs tests.
-- [ ] 5.2 Add `topic` and `layer` to `client_file_propose`, refuse a declined topic or a second open proposal with the same topic; verify with tool tests.
-- [ ] 5.3 Turn the proposal card into Remember this?: editable line, This project, All projects, Just this job, where Just this job records the declined topic and saves nothing; verify with `QuestionCard` renderer tests and service tests for each choice.
-- [ ] 5.4 Update the prompt: consider a lasting preference after plan edits, rejects and answers, ask at most once per topic, and never ask what a saved line answers; verify with the Admiral prompt test.
-- [ ] 5.5 Run one job end to end in the running app: edit a plan, answer Remember this? with This project, and see the next plan cite the new line; record the result in the PR.
+- [x] 5.1 Enqueue a wakeup for the job's Admiral after a client plan edit or reject, with the before-and-after steps or the note; verify with jobs tests.
+- [x] 5.2 Add `topic` and `layer` to `client_file_propose`, refuse a declined topic or a second open proposal with the same topic; verify with tool tests.
+- [x] 5.3 Turn the proposal card into Remember this?: editable line, This project, All projects, Just this job, where Just this job records the declined topic and saves nothing; verify with `QuestionCard` renderer tests and service tests for each choice.
+- [x] 5.4 Update the prompt: consider a lasting preference after plan edits, rejects and answers, ask at most once per topic, and never ask what a saved line answers; verify with the Admiral prompt test.
+- [x] 5.5 Run one job end to end in the running app: edit a plan, answer Remember this? with This project, and see the next plan cite the new line; record the result in the PR.
 
 ## 6. Phase 6: docs and wrap-up (one PR)
 

@@ -67,7 +67,11 @@ async function closedJob(): Promise<number> {
   tick(2);
   service.answer({ id: asked.id, option: 0, text: 'and keep it small' });
   await tools.clientFilePropose(
-    ClientFileProposeArgs.parse({ reason: 'You said so.', add: [{ text: 'Use pnpm.' }] })
+    ClientFileProposeArgs.parse({
+      reason: 'You said so.',
+      add: [{ text: 'Use pnpm.' }],
+      topic: 'package-manager'
+    })
   );
   for (const step of ['builder-1', 'writer-1']) {
     tick(10);

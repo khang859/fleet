@@ -158,8 +158,24 @@ export type ClientFileAddition = { text: string; replaces: string | null };
  */
 export type BudgetRaise = { target: 'usd' | 'week_pct' | 'cap'; to: number };
 
-/** What a `client_file` card asks to change in the client file. */
-export type ClientFileProposal = { add: ClientFileAddition[]; remove: string[] };
+/** A Remember this? card's options, in the order the card shows them. */
+export const REMEMBER_OPTION = { project: 0, all: 1, decline: 2 } as const;
+
+/** Which client file a card writes: the project's, or the You file for every project. */
+export type ClientLayerPick = 'project' | 'you';
+
+/**
+ * What a `client_file` card asks to change in the client file. A card with
+ * a `topic` is a Remember this? card: one new line, which the client saves
+ * for this project or all of them, or declines for the topic.
+ */
+export type ClientFileProposal = {
+  add: ClientFileAddition[];
+  remove: string[];
+  topic: string | null;
+  /** The layer the Admiral suggests, which the card marks as its pick. */
+  layer: ClientLayerPick;
+};
 
 /**
  * `hidden` is a question that depends on another one's answer and is not

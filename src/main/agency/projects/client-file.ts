@@ -146,7 +146,7 @@ export class ClientFiles {
   /** Write an approved proposal in, tagged with where it came from. */
   apply(
     layer: string,
-    input: { name: string; source: string; proposal: ClientFileProposal }
+    input: { name: string; source: string; proposal: Pick<ClientFileProposal, 'add' | 'remove'> }
   ): string {
     const text = applyClientProposal(this.read(layer) || null, input, this.today());
     this.write(layer, text);
