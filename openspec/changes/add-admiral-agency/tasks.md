@@ -184,10 +184,10 @@ Phase 3 notes (decisions made while building):
 - [x] 3.26 Add Swap on crew cards with "Continue its work" (same workspace, handoff brief) and "Start over" (new branch), stop-before-start, and an Admiral-proposed swap on `limited`; verify with tool tests for swap-continue, swap-restart, the proposed swap, and a role edit that does not reach a running job
 - [x] 3.10 End to end: brief a small bug fix in a test repo, approve the plan, and see a Claude Code Builder start in a TUI pane, get its brief typed in, and a Reviewer follow; verify with `npm run drive` steps and screenshots
 
-## 4. Phase 4 - eva session tracking (PR 4, needs khang859/eva#9, #10, #13, and #12 for hook permission answers)
+## 4. Phase 4 - eva session tracking (PR 4, needs khang859/eva#9, #10, #13, #12 for hook permission answers, and #43 for a per-session hooks file)
 
-- [ ] 4.1 Add a `--runtime eva` argument and protocol 3 fields (`runtime`, `db_path`, `last_record_id`) to the Go hook; verify with Go tests and `npm run build:hook` for darwin and linux
-- [ ] 4.2 Accept protocol 3 in `hook-events.ts` and store `runtime` on registry sessions, ignoring unknown protocols with one log line; verify with parser and registry tests
+- [ ] 4.1 Add a `--runtime eva` argument and protocol 4 fields (`runtime`, `db_path`) to the Go hook; verify with Go tests and `npm run build:hook` for darwin and linux
+- [ ] 4.2 Accept protocol 4 in `hook-events.ts` and store `runtime` on registry sessions, ignoring unknown protocols with one log line; verify with parser and registry tests
 - [ ] 4.3 Add `EvaTranscriptSource` that opens `sessions.db` read-only, checks the `transcript_v1` view version, and reads records after the cursor into `SessionTranscript`; verify with tests against a fixture database made from eva's schema
 - [ ] 4.4 Fall back to phase-only tracking with an "update eva" message when views are missing; verify with a fixture without views
 - [ ] 4.5 Send eva permission requests to the Admiral and return its answer through the Go hook's reply, with "answer in pane" when eva cannot take hook answers; verify with a hook-server test and a Go test
@@ -195,6 +195,8 @@ Phase 3 notes (decisions made while building):
 
 - [ ] 4.7 Accept eva `db_path` only for eva's own database, and read with `fileMustExist`, a busy timeout and one short transaction per read; verify with tests
 - [ ] 4.8 Never pass eva's bypass flag, use the user's eva permission settings, and resume eva by session id; verify with command-line tests
+- [ ] 4.9 Check that the installed eva takes `--hooks`; start eva crew with a per-session hooks file when it does, and warn in the runtime check and show `needs you` when it does not; verify with launch tests and a screenshot
+- [ ] 4.10 Send later prompts to eva crew with bracketed paste, and drop the eva refusal in `crew_send`; verify with input tests
 
 ## 5. Phase 5 - permission answers (PR 5)
 

@@ -7,7 +7,7 @@ Lets Fleet track eva sessions running in its terminal panes the same way it trac
 ### Requirement: eva hook events
 
 The system SHALL accept lifecycle events from eva hooks over the same local hook socket Claude Code uses.
-An eva event SHALL be identified by its source and SHALL carry the session id, the pane id from `FLEET_PANE_ID`, the working folder, the event name, the path to eva's session database, and the last record id.
+An eva event SHALL be identified by its source and SHALL carry the session id, the pane id from `FLEET_PANE_ID`, the working folder, the event name, and the path to eva's session database.
 The system SHALL map eva events to the same session phases as Claude Code: starting, processing, waiting for input, waiting for approval, compacting, ended.
 The system SHALL ignore eva events whose protocol version it does not know, and SHALL log them once.
 
@@ -63,6 +63,8 @@ The answer SHALL be sent back to eva as the hook's answer.
 ### Requirement: Starting eva
 
 The system SHALL start eva with its goal, name and settings as command-line arguments, not by typing them after start.
+The system SHALL give each eva crew member its hooks in a per-session hooks file passed on the command line, and SHALL NOT read or write eva's own `config.toml`.
+When the installed eva cannot take a hooks file, the system SHALL warn in the runtime check, and the crew member SHALL show `needs you` when it does not report.
 The system SHALL deliver later prompts by typing into eva's terminal with bracketed paste.
 
 #### Scenario: Start with a goal
