@@ -120,6 +120,14 @@ Phase 3 notes (decisions made while building):
 - 3.18: `done` marks the step done, `blocked` blocks it, and `question` keeps it running. Each report wakes the Admiral with the summary. A done member stays live until the Admiral calls `crew_stop`.
 - 3.18: a `Stop` hook with no report since the last turn is an idle turn. Each idle turn wakes the Admiral to read and nudge. After the nudge limit (Settings, default 3) in a row, Fleet blocks the step.
 - 3.18: end to end in a dev terminal pane: `fleet agency done` reached the dev app, was refused as "not a working crew member", and exited with 1.
+- 3.19: a flag is kept on the crew member's row, and each flag that is set or cleared wakes the Admiral with a notice.
+- 3.19: `needs you` is a member with no session report a minute after its hire. It shows as a card under WAITING ON YOU, and it counts on the job tab.
+- 3.19: `fleet_read` on such a member returns its screen as text, from a headless xterm copy of its pane in main, with env-file values redacted. Fleet types nothing into it.
+- 3.19: `user-driven` starts at the first key the client presses in a live member's pane, except keys that answer a permission or question dialog. The Admiral may not send to it, interrupt it or stop it until the client presses "Hand back" in CREW.
+- 3.19: `limited` comes from a `StopFailure` with `rate_limit`. The Go hook now sends the last assistant text on `StopFailure`, and Fleet reads the reset time from it. Sends to the member and new hires of its runtime in any job wait until that time, or until the client presses "Resume" when no time was found.
+- 3.19: `stuck` is a member mid-turn with no hook event for 15 minutes. The plan has no wall-clock limit per step, so there is no time-limit check.
+- 3.19: other API errors in `StopFailure` wake the Admiral with no flag.
+- 3.19: end to end in the dev app: a new hire waited at Claude Code's folder trust screen in its new worktree. After a minute it showed "needs you", the card and the count showed, and the Admiral read the trust screen with `fleet_read`. "Hand back" was not run end to end, because Fleet never answers the trust prompt for a crew member.
 
 - [x] 3.11 Check every Claude Code flag and settings key in design 7 (`--session-id`, `--append-system-prompt`, `--permission-mode`, `--settings`, `--add-dir`, `disableBypassPermissionsMode`, `PermissionRequest`, `StopFailure`) against the Claude Code docs through Context7, and record the minimum version in `docs/learnings/`
 - [x] 3.12 Build the job `--settings` file (AskUserQuestion denied, `disableBypassPermissionsMode`, Fleet hooks with the global command string including `PermissionRequest` and `StopFailure`); verify with snapshot tests
@@ -129,7 +137,7 @@ Phase 3 notes (decisions made while building):
 - [x] 3.16 Name branches `admiral/<job-id>/<step>-<n>`, fail the plan check on a branch named `admiral`, run `.fleet/fleet.agency.toml` setup with a timeout, and run each member's setup and the workspace setup; verify with tests
 - [x] 3.17 Run crew with `exitOnComplete: true`, and on exit or close mark the step, and wake the Admiral; verify with a pty-manager test that no shell is left
 - [x] 3.18 Add `fleet agency done` over the socket, idle-versus-done handling and the nudge limit; verify with socket and tool tests
-- [ ] 3.19 Add crew states `needs you`, `limited`, `user-driven` and `stuck`, the read-only last-screen read, and `crew_interrupt` and `crew_stop`; verify with registry and tool tests
+- [x] 3.19 Add crew states `needs you`, `limited`, `user-driven` and `stuck`, the read-only last-screen read, and `crew_interrupt` and `crew_stop`; verify with registry and tool tests
 - [x] 3.20 Compare `UserPromptSubmit` text with the typed prompt, fail on mismatch, and pass long briefs as a file via `--add-dir`; verify with input tests
 - [x] 3.21 Add the one-time folder trust step and check end to end whether trust carries down to new worktrees; record the result in `docs/learnings/`
 - [x] 3.22 Find port variables and fixed host ports at setup, give each job workspace a free port block, set port variables in the pane env, show server addresses on the job sheet, and hold stack slots for `stack: true` steps; verify with tests for two jobs and one slot and a port held by an outside process

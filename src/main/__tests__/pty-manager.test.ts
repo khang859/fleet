@@ -71,6 +71,21 @@ describe('PtyManager', () => {
     expect(snapshot?.vars.find((v) => v.key === 'TERM_PROGRAM')?.source).toBe('fleet-builtin');
   });
 
+  it('copies the screen of a pane named before it opens, and of no other pane', async () => {
+    manager.mirror('crew-1');
+    manager.create({ paneId: 'crew-1', cwd: '/tmp', shell: '/bin/zsh', cols: 30, rows: 3 });
+    manager.create({ paneId: 'plain', cwd: '/tmp', shell: '/bin/zsh' });
+    const results = vi.mocked(ptyModule.spawn).mock.results;
+    const crewPty = results.at(-2)?.value as { onData: ReturnType<typeof vi.fn> };
+    const feed = crewPty.onData.mock.calls[0][0] as (data: string) => void;
+    feed('\x1b[2J\x1b[HLog in to continue');
+
+    expect(await manager.screen('crew-1')).toBe('Log in to continue');
+    expect(await manager.screen('plain')).toBeNull();
+    manager.kill('crew-1');
+    expect(await manager.screen('crew-1')).toBeNull();
+  });
+
   it('gives a pane a UTF-8 locale when the app was launched without one', () => {
     expect(withUtf8Locale({ PATH: '/bin' }, 'darwin').LANG).toBe('en_US.UTF-8');
     expect(withUtf8Locale({ LANG: '' }, 'linux').LANG).toBe('C.UTF-8');

@@ -23,6 +23,7 @@ export type AdmiralDeps = {
     | 'openJob'
     | 'snapshot'
     | 'crewPanes'
+    | 'crewScreen'
     | 'crew'
     | 'store'
     | 'clientFileForNote'
@@ -87,7 +88,11 @@ export async function planAdmiralTurn(input: {
     input.fleet === null
       ? null
       : createFleetCapability(
-          scopeFleetToCrew(input.fleet, () => admiral.agency.crewPanes(scope.jobId)),
+          scopeFleetToCrew(
+            input.fleet,
+            () => admiral.agency.crewPanes(scope.jobId),
+            async (paneId) => admiral.agency.crewScreen(scope.jobId, paneId)
+          ),
           req.threadId,
           'admiral',
           req.cwd

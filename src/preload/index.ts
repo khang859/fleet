@@ -1158,6 +1158,9 @@ const fleetApi = {
     /** Ask GitHub again about a job's PR results not asked in the last minute. */
     refreshResults: async (jobId: number): Promise<void> =>
       typedInvoke(IPC_CHANNELS.AGENCY_RESULTS_REFRESH, jobId),
+    /** Hand a crew member back to the Admiral: one the client took over, or one held at a usage limit. */
+    handBackCrew: async (crewId: number): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_CREW_HAND_BACK, crewId),
     /** Open a delivered file with the system's app for it; resolves with an error, or ''. */
     openResult: async (open: ResultOpen): Promise<string> =>
       typedInvoke(IPC_CHANNELS.AGENCY_RESULT_OPEN, open),

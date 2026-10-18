@@ -200,7 +200,8 @@ function questionStatus(raw: string): AgencyQuestionStatus {
 function toJob(
   row: JobRow,
   holds: JobHoldKind[],
-  pendingPlan: AgencyJob['pendingPlan']
+  pendingPlan: AgencyJob['pendingPlan'],
+  crewNeedingYou: number
 ): AgencyJob {
   return {
     id: row.id,
@@ -214,6 +215,7 @@ function toJob(
     linkedJobId: row.linked_job_id,
     holds,
     pendingPlan,
+    crewNeedingYou,
     sessionId: row.session_id,
     handoffDone: row.handoff_done === 1,
     budgetUsd: row.budget_usd,
@@ -434,7 +436,8 @@ export class AgencyStore {
     return toJob(
       row,
       this.holds(row.id),
-      pending ? { id: pending.id, version: pending.version } : null
+      pending ? { id: pending.id, version: pending.version } : null,
+      this.crew.needingYou(row.id)
     );
   }
 

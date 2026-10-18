@@ -9,6 +9,7 @@ import { AgencyService } from '../../index';
 import { fakeGh, initRepo, tempDir } from '../../projects/__tests__/git-fixture';
 import { createAgencyCapability } from '../../tools';
 import { PROMPT_MISMATCH, type SendResult } from '../../../claude-sessions/input';
+import { NEEDS_YOU_MS, STUCK_MS, type CrewSessionState } from '../crew-flags';
 import { stepBrief, type CrewPaneHost, type CrewPaneOpen } from '../crew-service';
 
 /**
@@ -29,6 +30,8 @@ type FakePanes = CrewPaneHost & {
   running: Set<string>;
   openError: string | null;
   sendResult: SendResult | null;
+  screens: Map<string, string>;
+  sessions: Map<string, CrewSessionState>;
 };
 
 function fakePanes(): FakePanes {
@@ -40,6 +43,8 @@ function fakePanes(): FakePanes {
     running: new Set(),
     openError: null,
     sendResult: null,
+    screens: new Map(),
+    sessions: new Map(),
     open: async (pane) => {
       if (host.openError !== null) return Promise.resolve(host.openError);
       host.opened.push(pane);
@@ -60,12 +65,15 @@ function fakePanes(): FakePanes {
         return Promise.resolve(host.sendResult ?? { ok: true, text, confirmed: true });
       }
     },
-    hooks: () => ({})
+    hooks: () => ({}),
+    screen: async (paneId) => Promise.resolve(host.screens.get(paneId) ?? null),
+    session: (sessionId) => host.sessions.get(sessionId)
   };
   return host;
 }
 
 let ids = 0;
+let clock = 1_000_000;
 
 function start(crewLimit = 4): void {
   service = new AgencyService({
@@ -77,7 +85,7 @@ function start(crewLimit = 4): void {
     crewDirs: { bundled: join(process.cwd(), 'resources', 'crew'), user: null },
     crewPanes: panes,
     crewLimit: () => crewLimit,
-    now: () => 1_000_000,
+    now: () => clock,
     // Pane and session ids, in a known order.
     newCrewId: () => {
       ids += 1;
@@ -90,6 +98,7 @@ beforeEach(async () => {
   home = tempDir('fleet-crew-');
   panes = fakePanes();
   ids = 0;
+  clock = 1_000_000;
   start();
   const root = initRepo(join(home.dir, 'solo'), { 'a.txt': 'a' });
   const res = await service.resolveRepo(root);
@@ -592,5 +601,144 @@ describe('after a restart', () => {
     const crew = service.store.crew.all(jobId);
     expect(crew.at(-1)?.replaces).toBe(crew[0].id);
     expect(stepStatus(jobId, 'front')).toBe('running');
+  });
+});
+
+describe('crew flags', () => {
+  async function hired(steps = [step('front')]): Promise<{ jobId: number; paneId: string }> {
+    const jobId = await approvedJob(steps);
+    await toolsOf(jobId).crewHire!({ step: 'front', brief: 'x' });
+    return { jobId, paneId: panes.opened[0].paneId };
+  }
+
+  async function live(steps = [step('front')]): Promise<{ jobId: number; paneId: string }> {
+    const hire = await hired(steps);
+    service.crew.reported(hire.paneId, 'session-a');
+    panes.sessions.set('session-a', {
+      phase: 'waitingForInput',
+      waitingKind: 'prompt',
+      lastActivity: clock
+    });
+    return hire;
+  }
+
+  const wakeups = (jobId: number): string =>
+    service.store.pullWakeups({ repoId: ref.repoId, jobId }).text ?? '';
+  const flagOf = (jobId: number) => crewOf(jobId)[0];
+
+  it('marks a hire that has not started after a minute as needing the client, with its screen readable', async () => {
+    const { jobId, paneId } = await hired();
+    panes.screens.set(paneId, 'Do you trust the files in this folder?');
+    clock += NEEDS_YOU_MS - 1;
+    service.crew.flags.tick();
+    expect(flagOf(jobId).flag).toBeNull();
+
+    clock += 1;
+    service.crew.flags.tick();
+    expect(flagOf(jobId).flag).toBe('needs-you');
+    expect(wakeups(jobId)).toContain('builder 1 has not started a minute after its hire');
+    expect(await service.crewScreen(jobId, paneId)).toBe('Do you trust the files in this folder?');
+
+    service.crew.reported(paneId, 'session-a');
+    expect(flagOf(jobId).flag).toBeNull();
+    expect(await service.crewScreen(jobId, paneId)).toBeNull();
+  });
+
+  it('hands a member to the client when they type in its pane, until they hand it back', async () => {
+    const { jobId, paneId } = await live();
+    const tools = toolsOf(jobId);
+    wakeups(jobId);
+    service.crew.flags.userInput(paneId, '\x1b[I');
+    expect(flagOf(jobId).flag).toBeNull();
+    panes.sessions.set('session-a', {
+      phase: 'waitingForApproval',
+      waitingKind: null,
+      lastActivity: clock
+    });
+    service.crew.flags.userInput(paneId, '1');
+    expect(flagOf(jobId).flag).toBeNull();
+
+    panes.sessions.set('session-a', {
+      phase: 'processing',
+      waitingKind: null,
+      lastActivity: clock
+    });
+    service.crew.flags.userInput(paneId, '\x1b');
+    expect(flagOf(jobId).flag).toBe('user-driven');
+    expect(wakeups(jobId)).toContain('The client took over builder 1 in its pane');
+    await expect(tools.crewSend!({ crew: 'builder 1', prompt: 'go on' })).rejects.toThrow(
+      'Not sent: the client took over builder 1. Wait until they hand it back from CREW.'
+    );
+    await expect(tools.crewInterrupt!({ crew: 'builder 1' })).rejects.toThrow('Not interrupted');
+    await expect(tools.crewStop!({ crew: 'builder 1' })).rejects.toThrow('Not stopped');
+    service.crew.turnEnded('session-a');
+    expect(wakeups(jobId)).toBe('');
+
+    service.crew.flags.handBack(flagOf(jobId).id);
+    expect(flagOf(jobId).flag).toBeNull();
+    expect(wakeups(jobId)).toContain('The client handed builder 1 back');
+    panes.sessions.set('session-a', {
+      phase: 'waitingForInput',
+      waitingKind: 'prompt',
+      lastActivity: clock
+    });
+    await expect(tools.crewSend!({ crew: 'builder 1', prompt: 'go on' })).resolves.toBeDefined();
+  });
+
+  it('holds a member and new hires of its runtime at a usage limit until it resets', async () => {
+    clock = new Date(2026, 9, 17, 13, 0).getTime();
+    const { jobId } = await live([
+      step('front', { scope: 'front' }),
+      step('back', { scope: 'back' })
+    ]);
+    wakeups(jobId);
+    service.crew.flags.turnFailed('session-a', 'rate_limit', "You've hit your limit · resets 3pm");
+
+    expect(flagOf(jobId)).toMatchObject({
+      flag: 'limited',
+      flagUntil: new Date(2026, 9, 17, 15, 0).getTime()
+    });
+    expect(wakeups(jobId)).toContain('builder 1 hit its Claude Code usage limit until 15:00');
+    const tools = toolsOf(jobId);
+    await expect(tools.crewSend!({ crew: 'builder 1', prompt: 'go on' })).rejects.toThrow(
+      'Not sent: builder 1 is at its usage limit until 15:00.'
+    );
+    await expect(tools.crewHire!({ step: 'back', brief: 'x' })).rejects.toThrow(
+      'Not hired: Claude Code is at its usage limit until 15:00, which builder 1 hit.'
+    );
+
+    clock = new Date(2026, 9, 17, 15, 0).getTime();
+    service.crew.flags.tick();
+    expect(flagOf(jobId).flag).toBeNull();
+    expect(wakeups(jobId)).toContain("builder 1's usage limit has reset");
+  });
+
+  it('wakes the Admiral on another API error without holding the member', async () => {
+    const { jobId } = await live();
+    wakeups(jobId);
+    service.crew.flags.turnFailed('session-a', 'overloaded', 'API Error: Overloaded');
+    expect(flagOf(jobId).flag).toBeNull();
+    expect(wakeups(jobId)).toContain("builder 1's turn ended on an API error (overloaded)");
+  });
+
+  it('marks a turn with no hook event for a long time as stuck, until it moves again', async () => {
+    const { jobId } = await live();
+    panes.sessions.set('session-a', {
+      phase: 'processing',
+      waitingKind: null,
+      lastActivity: clock
+    });
+    clock += STUCK_MS;
+    service.crew.flags.tick();
+    expect(flagOf(jobId).flag).toBe('stuck');
+    expect(wakeups(jobId)).toContain('builder 1 shows no progress for 15 minutes');
+
+    panes.sessions.set('session-a', {
+      phase: 'processing',
+      waitingKind: null,
+      lastActivity: clock + 1
+    });
+    service.crew.flags.tick();
+    expect(flagOf(jobId).flag).toBeNull();
   });
 });

@@ -1626,6 +1626,8 @@ void app.whenReady().then(async () => {
     crewPanes: {
       open: async (pane) => {
         const { paneId, cwd, prompt, at, launch } = pane;
+        // Before the PTY starts, so the first screen, a login or trust prompt, is kept.
+        ptyManager.mirror(paneId);
         fleetSpawns.add({ paneId, cwd, prompt, at, launch });
         const error = await fleetTabs.openTab({
           paneId,
@@ -1653,7 +1655,9 @@ void app.whenReady().then(async () => {
       notePaneInput: (paneId, text) =>
         claudeSessions?.registry.notePaneInput(paneId, 'orchestrator', text),
       prompter: lazyPrompter(() => claudeSessions),
-      hooks: () => fleetHookEntries(crewClaudeConfigDir())
+      hooks: () => fleetHookEntries(crewClaudeConfigDir()),
+      screen: async (paneId) => ptyManager.screen(paneId),
+      session: (sessionId) => claudeSessions?.registry.get(sessionId)
     },
     agencySettings: {
       get: () => settingsStore.get().agency,
@@ -1668,7 +1672,16 @@ void app.whenReady().then(async () => {
     agency.noteClaudeSession(session.cwd);
     agency.crew.reported(session.paneId, session.sessionId);
     if (event?.event === 'Stop') agency.crew.turnEnded(session.sessionId);
+    if (event?.event === 'StopFailure') {
+      agency.crew.flags.turnFailed(
+        session.sessionId,
+        event.error ?? 'unknown',
+        event.message ?? ''
+      );
+    }
   });
+  // A key the user presses in a working crew pane takes it over from the Admiral.
+  eventBus.on('pane-input', (event) => agency.crew.flags.userInput(event.paneId, event.data));
   // A crew pane whose runtime ended, or that the user closed, ends its member.
   eventBus.on('pty-exit', (event) => {
     agency.crew.ended(event.paneId, { kind: 'exit', exitCode: event.exitCode });

@@ -703,6 +703,26 @@ export class JobsService {
   }
 
   /**
+   * Something happened to a crew member that the Admiral should hear of, such
+   * as a new crew flag: it goes in the job record, and the Admiral wakes to it.
+   */
+  crewNotice(input: { jobId: number; stepId: string; line: string; body: string }): void {
+    const { jobId, stepId, line, body } = input;
+    const job = this.store.getJob(jobId);
+    if (!job || !ACCEPTS_RESULTS.includes(job.state)) return;
+    this.store.tx(() => {
+      this.store.plans.log({ jobId, kind: 'crew', stepId, text: line });
+      this.store.enqueueWakeup({
+        repoId: job.repoId,
+        jobId,
+        kind: 'event',
+        payload: { line, body }
+      });
+    });
+    this.deps.changed([{ repoId: job.repoId, jobId }]);
+  }
+
+  /**
    * Whether a step may start now, with the crew limit, the job it queues
    * behind and the stack slots. `admitted` counts steps let go but not hired yet.
    */
@@ -868,6 +888,8 @@ const crewView = (c: CrewRecord): AgencyCrewMember => ({
   label: c.label,
   paneId: c.paneId,
   status: c.status === CREW_ENDED ? 'ended' : c.status === CREW_LIVE ? 'live' : 'starting',
+  flag: c.flag,
+  flagUntil: c.flagUntil,
   startedAt: c.startedAt,
   endedAt: c.endedAt,
   endReason: c.endReason

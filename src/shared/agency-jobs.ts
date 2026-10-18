@@ -1,7 +1,7 @@
 import type { AgencyJob, AgencyJobEvent, JobState } from './agency';
 
 export type { AgencyLeftover, ResourceKind } from './agency';
-import type { CrewRuntime } from './agency-crew';
+import type { CrewFlag, CrewRuntime } from './agency-crew';
 import type { DeliverableKind, Plan, PlanDiffEntry, PlanInput } from './agency-plan';
 import type { PrReview } from './pr-review';
 
@@ -225,6 +225,9 @@ export type AgencyCrewMember = {
   label: string;
   paneId: string | null;
   status: 'starting' | 'live' | 'ended';
+  /** What it needs beyond its status, and for `limited` when the limit resets, if known. */
+  flag: CrewFlag | null;
+  flagUntil: number | null;
   startedAt: number;
   endedAt: number | null;
   endReason: string | null;

@@ -84,7 +84,8 @@ function draftAfter(data: string): boolean | null {
   return dirty;
 }
 
-function isKeystroke(data: string): boolean {
+/** Whether pane input is a key the user pressed, not a report the terminal sent for them. */
+export function isKeystroke(data: string): boolean {
   if (data.length === 0) return false;
   return !(TERMINAL_REPORT.test(data) && data.replace(ESCAPE_SEQUENCE, '') === '');
 }

@@ -329,6 +329,11 @@ const MIGRATIONS: readonly string[] = [
   ALTER TABLE job_workspaces ADD COLUMN ports_start INTEGER;
   ALTER TABLE job_workspaces ADD COLUMN ports_size INTEGER;
   ALTER TABLE job_workspaces ADD COLUMN env_json TEXT NOT NULL DEFAULT '{}';
+  `,
+  `
+  ALTER TABLE crew_members ADD COLUMN flag TEXT;
+  ALTER TABLE crew_members ADD COLUMN flag_since INTEGER;
+  ALTER TABLE crew_members ADD COLUMN flag_until INTEGER;
   `
 ];
 

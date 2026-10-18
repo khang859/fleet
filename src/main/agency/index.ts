@@ -50,7 +50,7 @@ import { reconcileAtStartup } from './jobs/reconcile';
 import { runPreflight, type Probe } from './preflight';
 import { ClientFiles, type ClientFileNote } from './projects/client-file';
 import { nativeGh, type GhRun } from './projects/gh';
-import { envSecrets } from './projects/env-files';
+import { envSecrets, redactEnvValues } from './projects/env-files';
 import { agencyHome } from './projects/paths';
 import { loadSetup } from './projects/project-store';
 import { projectPath } from './projects/setup-findings';
@@ -545,6 +545,7 @@ export class AgencyService {
     this.prs.startWatching();
     this.stack.startPolling();
     this.servers.startPolling();
+    this.crew.flags.startTicking();
     await Promise.all([this.cleanup.resumeAll(), this.merges.advanceAll(), this.prs.watchAll()]);
   }
 
@@ -683,6 +684,17 @@ export class AgencyService {
     return jobId === null ? new Set() : this.crew.panes(jobId);
   }
 
+  /**
+   * A starting crew pane's screen for a job's `fleet_read`, with the values
+   * of the env files crew get masked. Null for a pane that is not one.
+   */
+  async crewScreen(jobId: number | null, paneId: string): Promise<string | null> {
+    const job = jobId === null ? null : this.store.getJob(jobId);
+    if (!job) return null;
+    const screen = await this.crew.screen(job.id, paneId);
+    return screen === null ? null : redactEnvValues(screen, await this.envSecrets(job.repoId));
+  }
+
   /** The project's client file for an Admiral turn's note, or null when there is none. */
   clientFileForNote(repoId: string): ClientFileNote | null {
     return this.clientFiles.forNote(repoId);
@@ -708,6 +720,7 @@ export class AgencyService {
     this.prs.stopWatching();
     this.stack.stopPolling();
     this.servers.stopPolling();
+    this.crew.flags.stopTicking();
     this.store.close();
   }
 

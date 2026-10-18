@@ -446,6 +446,7 @@ export const IPC_CHANNELS = {
   AGENCY_MERGE_PRS: 'agency:merge-prs',
   AGENCY_LEFTOVER: 'agency:leftover',
   AGENCY_RESULTS_REFRESH: 'agency:results-refresh',
+  AGENCY_CREW_HAND_BACK: 'agency:crew-hand-back',
   AGENCY_RESULT_OPEN: 'agency:result-open',
   AGENCY_PREFLIGHT: 'agency:preflight',
   // Onboarding: first run, the project picker, setup, the client file, ideas.

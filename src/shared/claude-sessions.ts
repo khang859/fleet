@@ -87,6 +87,8 @@ export type ClaudeSessionEvent = {
   message?: string;
   /** `UserPromptSubmit` only: the sha256 of the trimmed prompt, from hook binaries of protocol 3 on. */
   promptHash?: string;
+  /** `StopFailure` only: the API error type, such as `rate_limit`. */
+  error?: string;
 };
 
 /**

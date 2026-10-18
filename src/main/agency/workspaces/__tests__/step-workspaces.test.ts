@@ -15,6 +15,9 @@ import { runSetup } from '../setup-run';
  * and the project's setup commands run in each new workspace.
  */
 
+// Real git runs take a second or two alone, and far longer when the whole suite runs at once.
+const GIT_TIMEOUT_MS = 20_000;
+
 let home: { dir: string; cleanup: () => void };
 let service: AgencyService;
 
@@ -86,7 +89,7 @@ async function saveSetup(
   );
 }
 
-describe('step workspaces', () => {
+describe('step workspaces', { timeout: GIT_TIMEOUT_MS }, () => {
   it('merges what side-by-side steps committed, and lets later steps read or build on it', async () => {
     const repo = await soloRepo();
     const { jobId } = await approvedJobIn(service, repo, [
@@ -154,7 +157,7 @@ describe('step workspaces', () => {
   });
 });
 
-describe('setup in a new workspace', () => {
+describe('setup in a new workspace', { timeout: GIT_TIMEOUT_MS }, () => {
   it('runs the setup in the worktree, and fails the workspace with the end of its output', async () => {
     const repo = await soloRepo();
     await saveSetup(repo, (s) => ({
@@ -200,7 +203,7 @@ describe('setup in a new workspace', () => {
   });
 });
 
-describe('ports of a new workspace', () => {
+describe('ports of a new workspace', { timeout: GIT_TIMEOUT_MS }, () => {
   it('gives each job its own block, sets the port variables for setup and the crew, and frees the block when the job ends', async () => {
     const repo = await soloRepo();
     await saveSetup(repo, (s) => ({
@@ -240,7 +243,7 @@ describe('ports of a new workspace', () => {
   });
 });
 
-describe('env files of a new workspace', () => {
+describe('env files of a new workspace', { timeout: GIT_TIMEOUT_MS }, () => {
   beforeEach(() => {
     // The user's own global ignore file must not decide what git ignores here.
     vi.stubEnv('GIT_CONFIG_GLOBAL', '/dev/null');

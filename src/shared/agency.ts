@@ -87,6 +87,8 @@ export type AgencyJob = {
   holds: JobHoldKind[];
   /** A plan version waiting on the client, or null when none is. */
   pendingPlan: { id: number; version: number } | null;
+  /** Crew members waiting on the client in their pane, at a login or trust screen. */
+  crewNeedingYou: number;
   /** The agent session the job's conversation is written to. */
   sessionId: string;
   /** Whether the lobby messages that led to this job were carried into it. */

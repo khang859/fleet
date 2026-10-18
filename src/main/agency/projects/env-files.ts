@@ -49,6 +49,17 @@ export const envValues = (text: string): string[] =>
     .map((a) => a.value)
     .filter((v) => v !== '');
 
+/** Shorter values would hide too much text behind the mask. */
+const SECRET_MIN_CHARS = 6;
+
+/** Every value in `secrets` masked, so an env file's values never reach the Admiral or an export. */
+export function redactEnvValues(text: string, secrets: readonly string[]): string {
+  return secrets
+    .filter((s) => s.length >= SECRET_MIN_CHARS)
+    .sort((a, b) => b.length - a.length)
+    .reduce((out, secret) => out.split(secret).join('[env value]'), text);
+}
+
 /** A regular file's bytes, or null when it is missing, a link, or too big for an env file. */
 async function readEnvFile(path: string): Promise<Buffer | null> {
   const stat = await lstat(path).catch(() => null);

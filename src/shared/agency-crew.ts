@@ -170,6 +170,21 @@ export type RuntimeCheck = {
 };
 
 /** How a crew member ends its step with `fleet agency done`. */
+/**
+ * What a working crew member needs beyond its session phase: `needs-you` has
+ * not started a minute after its hire, `limited` hit a usage limit,
+ * `user-driven` is the client's until they hand it back, and `stuck` shows no
+ * progress.
+ */
+export const CREW_FLAGS = ['needs-you', 'limited', 'user-driven', 'stuck'] as const;
+export type CrewFlag = (typeof CREW_FLAGS)[number];
+
+/** A time as `15:00`, local: when a usage limit resets. */
+export function clockTime(at: number): string {
+  const d = new Date(at);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 export const CREW_REPORT_STATUSES = ['done', 'blocked', 'question'] as const;
 export type CrewReportStatus = (typeof CREW_REPORT_STATUSES)[number];
 

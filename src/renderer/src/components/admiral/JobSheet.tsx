@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { clockTime } from '../../../../shared/agency-crew';
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../shared/agency';
 import type { SettingsCard } from '../../../../shared/agency-settings';
 import { jobDisplayId } from '../../../../shared/agency';
@@ -12,12 +13,13 @@ import type {
 import { focusPane } from '../../lib/focus-pane';
 import { openQuestions, planVersions } from '../../store/agency-store';
 import { ClientFileNotice } from './ClientFileViews';
-import { CancelJob, DeliveredCard, LeftoverList } from './JobClose';
+import { CancelJob, DeliveredCard, LeftoverList, SECONDARY } from './JobClose';
 import { PastJobList } from './PastJobs';
 import { PlanCard } from './PlanCard';
 import { ResultCard } from './ResultCard';
 import { SettingsCardView } from './SettingsCard';
 import { QuestionCard, type QuestionAnswer } from './QuestionCard';
+import { useRefusable } from './use-refusable';
 import { formatUsd, jobStatus, runtimeName, TONE_DOT } from './job-view';
 
 /** How wide the sheet is beside the conversation. */
@@ -56,7 +58,11 @@ export function JobSheet({
 }): React.JSX.Element {
   const job = jobId === null ? null : (snapshot?.jobs.find((j) => j.id === jobId) ?? null);
   const { approved } = planVersions(detail);
-  const { pending, waiting, settings, delivered, count } = waitingOnClient(snapshot, job, detail);
+  const { pending, waiting, settings, delivered, crew, count } = waitingOnClient(
+    snapshot,
+    job,
+    detail
+  );
   const firstRun = jobId === null && (snapshot?.jobs.length ?? 0) === 0;
 
   return (
@@ -89,6 +95,7 @@ export function JobSheet({
           detail={detail}
           questions={waiting}
           settings={settings}
+          crew={crew}
           clientFileChanged={snapshot?.clientFileChanged === true}
           onAnswer={onAnswer}
           onOpenSettings={onOpenSettings}
@@ -138,6 +145,7 @@ function waitingOnClient(
   waiting: AgencyQuestion[];
   settings: SettingsCard[];
   delivered: AgencyJob | null;
+  crew: AgencyCrewMember[];
   count: number;
 } {
   const { pending } = planVersions(detail);
@@ -146,9 +154,13 @@ function waitingOnClient(
     (c) => c.jobId === (job?.id ?? null) && c.changes.some((x) => x.status === 'pending')
   );
   const delivered = job?.state === 'delivered' ? job : null;
+  const crew = (detail?.crew ?? []).filter((c) => c.flag === 'needs-you');
   const count =
-    waiting.length + settings.length + [pending, delivered].filter((x) => x !== null).length;
-  return { pending, waiting, settings, delivered, count };
+    waiting.length +
+    settings.length +
+    crew.length +
+    [pending, delivered].filter((x) => x !== null).length;
+  return { pending, waiting, settings, delivered, crew, count };
 }
 
 /**
@@ -189,7 +201,10 @@ function LeftoversSection({
   );
 }
 
-/** Open questions, settings changes and a plan version waiting on the client, as cards. */
+/**
+ * Open questions, settings changes, a plan version and crew members waiting
+ * on the client, as cards.
+ */
 function WaitingSection({
   count,
   delivered,
@@ -197,6 +212,7 @@ function WaitingSection({
   detail,
   questions,
   settings,
+  crew,
   clientFileChanged,
   onAnswer,
   onOpenSettings
@@ -208,6 +224,7 @@ function WaitingSection({
   detail: AgencyJobDetail | undefined;
   questions: AgencyQuestion[];
   settings: SettingsCard[];
+  crew: AgencyCrewMember[];
   clientFileChanged: boolean;
   onAnswer: (question: AgencyQuestion, answer: QuestionAnswer) => Promise<boolean>;
   onOpenSettings: () => void;
@@ -234,7 +251,36 @@ function WaitingSection({
       {settings.map((card) => (
         <SettingsCardView key={`s${card.id}`} card={card} />
       ))}
+      {crew.map((member) => (
+        <NeedsYouCard key={`c${member.id}`} member={member} />
+      ))}
     </Section>
+  );
+}
+
+/** A crew member that has not started a minute after its hire: its pane waits on the client. */
+function NeedsYouCard({ member }: { member: AgencyCrewMember }): React.JSX.Element {
+  const { paneId } = member;
+  return (
+    <section
+      aria-label={`${member.label} needs you`}
+      className="flex flex-col gap-1.5 rounded-md border border-amber-400/35 bg-fleet-bg p-2.5"
+    >
+      <span className="text-[13px] font-medium text-fleet-text">
+        {member.label} needs you in its pane
+      </span>
+      <p className="text-xs leading-relaxed text-fleet-text-muted">
+        It has not started a minute after its hire. It may wait at a login or trust screen that only
+        you can answer. Fleet types nothing into it.
+      </p>
+      {paneId !== null && (
+        <div className="flex pt-0.5">
+          <button type="button" onClick={() => void focusPane(paneId)} className={SECONDARY}>
+            Peek
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -294,12 +340,44 @@ function CrewSection({
   );
 }
 
+/** What a flag on a working member says in its row, in place of its status. */
+function flagLabel(member: AgencyCrewMember): string | null {
+  switch (member.flag) {
+    case 'needs-you':
+      return 'needs you';
+    case 'limited':
+      return member.flagUntil === null ? 'limited' : `limited until ${clockTime(member.flagUntil)}`;
+    case 'user-driven':
+      return 'yours';
+    case 'stuck':
+      return 'stuck';
+    case null:
+      return null;
+  }
+}
+
+const FLAG_TITLE: Record<NonNullable<AgencyCrewMember['flag']>, string> = {
+  'needs-you': 'It has not started a minute after its hire. Peek to answer its pane.',
+  limited: 'It hit its usage limit. The Admiral sends it nothing until the limit resets.',
+  'user-driven': 'You typed in its pane. The Admiral leaves it alone until you hand it back.',
+  stuck: 'It shows no progress for 15 minutes. The Admiral was told.'
+};
+
 function CrewRow({ member }: { member: AgencyCrewMember }): React.JSX.Element {
-  const { paneId } = member;
+  const { paneId, flag } = member;
   const ended = member.status === 'ended';
+  const flagged = flagLabel(member);
+  const handBack = useRefusable(async () => {
+    await window.fleet.agency.handBackCrew(member.id);
+    return { ok: true } as const;
+  });
   return (
     <li className="flex items-center gap-2 border-b border-fleet-border/60 py-1.5 text-xs last:border-b-0">
-      <span className={`size-1.5 shrink-0 rounded-full ${CREW_DOT[member.status]}`} />
+      <span
+        className={`size-1.5 shrink-0 rounded-full ${
+          flag === 'stuck' ? 'bg-red-400' : flag !== null ? 'bg-amber-400' : CREW_DOT[member.status]
+        }`}
+      />
       <span
         className={`min-w-0 flex-1 truncate ${ended ? 'text-fleet-text-muted' : 'text-fleet-text'}`}
       >
@@ -311,11 +389,28 @@ function CrewRow({ member }: { member: AgencyCrewMember }): React.JSX.Element {
         </span>
       </span>
       <span
-        className="shrink-0 text-[11px] text-fleet-text-muted"
-        title={member.endReason ?? undefined}
+        className={`shrink-0 text-[11px] ${
+          flagged !== null ? 'text-amber-700 dark:text-amber-400/90' : 'text-fleet-text-muted'
+        }`}
+        title={flag !== null ? FLAG_TITLE[flag] : (member.endReason ?? undefined)}
       >
-        {CREW_STATUS[member.status]}
+        {flagged ?? CREW_STATUS[member.status]}
       </span>
+      {(flag === 'user-driven' || flag === 'limited') && (
+        <button
+          type="button"
+          disabled={handBack.busy}
+          onClick={() => void handBack.run(undefined)}
+          title={
+            flag === 'user-driven'
+              ? 'Give it back to the Admiral'
+              : 'Tell the Admiral it can work again'
+          }
+          className="shrink-0 rounded text-[11px] font-medium text-fleet-text-muted transition-colors hover:text-fleet-text focus-ring disabled:opacity-50"
+        >
+          {flag === 'user-driven' ? 'Hand back' : 'Resume'}
+        </button>
+      )}
       {!ended && paneId !== null && (
         <button
           type="button"

@@ -37,6 +37,7 @@ import type { AgencyService } from './index';
 const RepoId = z.string().regex(/^[0-9a-f]{16}$/);
 const PaneId = z.string().min(1);
 const JobId = z.number().int().positive();
+const CrewId = z.number().int().positive();
 const Ids = z.array(z.number().int().positive());
 
 const PathContextArg = z.union([
@@ -198,6 +199,10 @@ export function registerAgencyIpc(service: AgencyService): void {
     IPC_CHANNELS.AGENCY_RESULTS_REFRESH,
     async (_e, jobId: unknown): Promise<void> => service.prs.refreshPrs(JobId.parse(jobId))
   );
+
+  ipcMain.handle(IPC_CHANNELS.AGENCY_CREW_HAND_BACK, (_e, crewId: unknown): void => {
+    service.crew.flags.handBack(CrewId.parse(crewId));
+  });
 
   // Opens only a copy in the job's results folder, never a path the renderer names.
   ipcMain.handle(IPC_CHANNELS.AGENCY_RESULT_OPEN, async (_e, open: unknown): Promise<string> => {

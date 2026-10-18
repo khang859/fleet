@@ -4,6 +4,7 @@ import { getDefaultShell } from './shell-detection';
 import { wslExePath } from './wsl-service';
 import { createLogger } from './logger';
 import { buildEnvSnapshot } from '../shared/shell-env-snapshot';
+import { PaneScreen } from './pane-screen';
 import type { ShellProfile } from '../shared/shell-profiles';
 import type { EnvSource, ShellEnvSnapshot } from '../shared/shell-env-types';
 
@@ -60,6 +61,8 @@ type PtyEntry = {
   dataDisposable: pty.IDisposable | null;
   exitDisposable: pty.IDisposable | null;
   snapshot: ShellEnvSnapshot | null;
+  /** A copy of what the pane shows, for a pane `mirror` named. */
+  screen: PaneScreen | null;
 };
 
 const FLUSH_INTERVAL_MS = 16;
@@ -94,6 +97,8 @@ export class PtyManager {
   /** PTYs that must not be killed by the renderer-driven GC. */
   private protectedPtys = new Set<string>();
   private dataCallbacks = new Map<string, (data: string, paused: boolean) => void>();
+  /** Panes whose screen is copied from the moment their PTY starts. */
+  private mirrored = new Set<string>();
   private flushTimer: ReturnType<typeof setInterval> | null = null;
 
   create(opts: PtyCreateOptions): PtyCreateResult {
@@ -187,13 +192,17 @@ export class PtyManager {
         shellName: basename(shell),
         cwd: opts.cwd,
         spawnedAt: Date.now()
-      })
+      }),
+      screen: this.mirrored.has(opts.paneId)
+        ? new PaneScreen(opts.cols ?? 80, opts.rows ?? 24)
+        : null
     };
 
     // Register the internal buffering callback immediately at create time so
     // the IDisposable is captured and can be disposed during kill().
     entry.dataDisposable = proc.onData((data: string) => {
       entry.outputBuffer += data;
+      entry.screen?.write(data);
       if (entry.outputBuffer.length > BUFFER_OVERFLOW_BYTES) {
         log.debug('backpressure pause', {
           paneId: opts.paneId,
@@ -223,7 +232,21 @@ export class PtyManager {
     if (entry) {
       log.debug('resize', { paneId, cols, rows });
       entry.process.resize(cols, rows);
+      entry.screen?.resize(cols, rows);
     }
+  }
+
+  /**
+   * Copy what a pane shows from the moment its PTY starts, so `screen` can
+   * read it. Named before the pane opens, so its first screen is not missed.
+   */
+  mirror(paneId: string): void {
+    this.mirrored.add(paneId);
+  }
+
+  /** What a mirrored pane shows now, as text, or null for a pane not mirrored or gone. */
+  async screen(paneId: string): Promise<string | null> {
+    return (await this.ptys.get(paneId)?.screen?.text()) ?? null;
   }
 
   protect(paneId: string): void {
@@ -238,10 +261,17 @@ export class PtyManager {
       entry.exitDisposable?.dispose();
       this.dataCallbacks.delete(paneId);
       entry.process.kill();
-      this.ptys.delete(paneId);
-      this.protectedPtys.delete(paneId);
-      this.clearFlushTimerIfEmpty();
+      this.forget(entry);
     }
+  }
+
+  /** Drop a PTY that was killed or exited, and what was kept for it. */
+  private forget(entry: PtyEntry): void {
+    this.ptys.delete(entry.paneId);
+    this.protectedPtys.delete(entry.paneId);
+    this.mirrored.delete(entry.paneId);
+    entry.screen?.dispose();
+    this.clearFlushTimerIfEmpty();
   }
 
   killAll(): void {
@@ -342,9 +372,7 @@ export class PtyManager {
         log.debug('exit', { paneId, exitCode });
         entry.dataDisposable?.dispose();
         this.dataCallbacks.delete(paneId);
-        this.ptys.delete(paneId);
-        this.protectedPtys.delete(paneId);
-        this.clearFlushTimerIfEmpty();
+        this.forget(entry);
         callback(exitCode);
       });
     }

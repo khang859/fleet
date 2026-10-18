@@ -325,16 +325,16 @@ const HIRE_DESCRIPTION = [
 
 const CREW_SEND_DESCRIPTION = [
   'Type a prompt into a crew member of this job that is waiting for one: an answer to its question, a nudge, or the next part of its step.',
-  'Refused while it is working, waiting on a permission prompt, or the client is typing in its pane; read it with `fleet_read` and try again once it is waiting. Fleet checks that the runtime got the prompt as typed; a failed send is never retried for you.',
+  'Refused while it is working, waiting on a permission prompt, at its usage limit, or the client is typing in its pane or took it over; read it with `fleet_read` and try again once it is waiting. Fleet checks that the runtime got the prompt as typed; a failed send is never retried for you.',
   'Give `why` and `expect`, which go in the job record with the prompt.'
 ].join('\n\n');
 
 const CREW_INTERRUPT_DESCRIPTION =
-  "Press Esc in a crew member's pane to stop the turn it is working on, as the client would. It keeps its conversation and waits for a prompt.";
+  "Press Esc in a crew member's pane to stop the turn it is working on, as the client would. It keeps its conversation and waits for a prompt. Refused while the client took over its pane.";
 
 const CREW_STOP_DESCRIPTION = [
   'End a crew member of this job: Fleet ends the process in its pane. Its worktree, branch and conversation stay until the job closes.',
-  'Stopping does not move its step; say what happens next with `job_update`.'
+  'Stopping does not move its step; say what happens next with `job_update`. Refused while the client took over its pane.'
 ].join('\n\n');
 
 const CLIENT_FILE_DESCRIPTION = [

@@ -58,6 +58,8 @@ type HookInput struct {
 	Error            string                 `json:"error,omitempty"`
 	ErrorDetails     string                 `json:"error_details,omitempty"`
 	Prompt           string                 `json:"prompt,omitempty"`
+	// LastAssistantMessage is set on StopFailure to the API error text.
+	LastAssistantMessage string `json:"last_assistant_message,omitempty"`
 }
 
 type State struct {
@@ -270,9 +272,26 @@ func newState(input *HookInput, tty *string, pid int, getenv func(string) string
 		Source:         input.Source,
 		Error:          input.Error,
 		ErrorDetails:   input.ErrorDetails,
+		Message:        stopFailureText(input),
 		PromptSHA256:   promptHash(input.Prompt),
 		Protocol:       protocolVersion,
 	}
+}
+
+// stopFailureMessageRunes caps the API error text a StopFailure forwards.
+const stopFailureMessageRunes = 500
+
+// stopFailureText is the API error text Claude Code shows when a turn ends on
+// one, such as a usage limit with its reset time. Other events send none.
+func stopFailureText(input *HookInput) string {
+	if input.HookEventName != "StopFailure" {
+		return ""
+	}
+	text := []rune(input.LastAssistantMessage)
+	if len(text) > stopFailureMessageRunes {
+		text = text[:stopFailureMessageRunes]
+	}
+	return string(text)
 }
 
 func main() {

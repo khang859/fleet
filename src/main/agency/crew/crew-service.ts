@@ -25,6 +25,7 @@ import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import { CREW_LIVE, CREW_STARTING, LOST_AT_RESTART, type CrewRecord } from '../store/crew-store';
 import type { StackSlots } from '../jobs/stack-slots';
 import type { JobWorkspaces, StepFolder } from '../workspaces/job-workspace';
+import { CrewFlags, type CrewAct, type CrewSessionState } from './crew-flags';
 import { crewLaunch, type CrewLaunch } from './runtimes';
 
 const log = createLogger('agency:crew');
@@ -54,6 +55,10 @@ export type CrewPaneHost = {
   prompter: FleetPrompter;
   /** Fleet's hook entries, as its global install writes them. */
   hooks(): Record<string, HookEntry[]>;
+  /** What a crew pane shows now, as text, or null when Fleet keeps no copy of it. */
+  screen(paneId: string): Promise<string | null>;
+  /** The Claude Code session a crew member runs, as its flags read it. */
+  session(sessionId: string): CrewSessionState | undefined;
 };
 
 export type CrewServiceDeps = {
@@ -138,7 +143,18 @@ export class CrewService {
    */
   private readonly turns = new Map<number, { reported: boolean; idle: number }>();
 
-  constructor(private readonly deps: CrewServiceDeps) {}
+  /** `needs-you`, `limited`, `user-driven` and `stuck`. */
+  readonly flags: CrewFlags;
+
+  constructor(private readonly deps: CrewServiceDeps) {
+    this.flags = new CrewFlags({
+      store: deps.store,
+      jobs: deps.jobs,
+      session: (sessionId) => deps.panes?.session(sessionId),
+      touch: (jobId) => this.touch(jobId),
+      now: deps.now
+    });
+  }
 
   private get store(): AgencyStore {
     return this.deps.store;
@@ -178,6 +194,8 @@ export class CrewService {
     if (!role) {
       throw new Error(`Not hired: the approved plan keeps no role ${step.role}. Propose it again.`);
     }
+    const held = this.flags.hireRefusal(step.runtime ?? role.runtime);
+    if (held !== null) throw new Error(held);
     const before = this.store.plans.step(jobId, step.id)?.status ?? 'pending';
     const lost = before === 'interrupted' ? this.lostMember(jobId, step.id) : null;
     this.deps.jobs.hireMoved(jobId, step.id, 'running');
@@ -304,7 +322,7 @@ export class CrewService {
   async send(jobId: number, args: CrewSendArgs): Promise<AgencyToolOutput> {
     const panes = this.requirePanes();
     const job = this.actingJob(jobId);
-    const crew = this.resolve(jobId, args.crew);
+    const crew = this.resolve(jobId, args.crew, 'send');
     if (crew.runtime === 'eva') {
       throw new Error(
         `Not sent: Fleet cannot type into eva crew yet. Ask the client to type into ${crew.label}'s pane.`
@@ -344,7 +362,7 @@ export class CrewService {
   interrupt(jobId: number, args: CrewInterruptArgs): AgencyToolOutput {
     const panes = this.requirePanes();
     const job = this.actingJob(jobId);
-    const crew = this.resolve(jobId, args.crew);
+    const crew = this.resolve(jobId, args.crew, 'interrupt');
     if (crew.paneId !== null) panes.write(crew.paneId, '\x1b');
     this.record(job, crew.stepId, `Interrupted ${crew.label}`, { crewId: crew.id });
     return {
@@ -357,7 +375,7 @@ export class CrewService {
   async stop(jobId: number, args: CrewStopArgs): Promise<AgencyToolOutput> {
     this.requirePanes();
     const job = this.actingJob(jobId);
-    const crew = this.resolve(jobId, args.crew);
+    const crew = this.resolve(jobId, args.crew, 'stop');
     await this.deps.jobs.stopCrew([crew.id], 'stopped by the Admiral');
     this.record(job, crew.stepId, `Stopped ${crew.label}`, {
       crewId: crew.id,
@@ -367,6 +385,17 @@ export class CrewService {
       text: `Stopped ${crew.label}. Its worktree and branch stay until the job closes; step ${crew.stepId} is still yours to hire for or finish.`,
       summary: `stopped ${crew.label}`
     };
+  }
+
+  /**
+   * What a job's crew member shows in its pane, for one that has not
+   * reported yet, so the Admiral can see a login or trust screen. Null for
+   * any other pane.
+   */
+  async screen(jobId: number, paneId: string): Promise<string | null> {
+    const crew = this.store.crew.live(jobId).find((c) => c.paneId === paneId);
+    if (crew?.status !== CREW_STARTING) return null;
+    return (await this.deps.panes?.screen(paneId)) ?? null;
   }
 
   /** The panes of a job's crew, ended ones too: all its fleet read tools may see. */
@@ -408,7 +437,8 @@ export class CrewService {
     const crew = this.store.crew
       .live()
       .find((c) => c.sessionId === sessionId && c.status === CREW_LIVE);
-    if (!crew) return;
+    // The client drives it now: its turns are theirs, not idle ones.
+    if (!crew || crew.flag === 'user-driven') return;
     const turn = this.turns.get(crew.id);
     if (turn?.reported === true) {
       this.turns.set(crew.id, { reported: false, idle: 0 });
@@ -430,6 +460,7 @@ export class CrewService {
     const crew = this.store.crew.live().find((c) => c.paneId === paneId);
     if (!crew || (crew.status !== CREW_STARTING && crew.sessionId === sessionId)) return;
     this.store.crew.reported(crew.id, sessionId);
+    this.flags.started(crew);
     this.touch(crew.jobId);
   }
 
@@ -502,8 +533,8 @@ export class CrewService {
     return crew.paneId === null ? crew.label : sessionRef(crew.paneId);
   }
 
-  /** A live crew member of the job by its ref, label, pane or session id. */
-  private resolve(jobId: number, ref: string): CrewRecord {
+  /** A live crew member of the job by its ref, label, pane or session id, that its flags let `act` reach. */
+  private resolve(jobId: number, ref: string, act: CrewAct): CrewRecord {
     const needle = ref.trim().toLowerCase();
     const live = this.store.crew.live(jobId);
     const found = live.find(
@@ -512,7 +543,11 @@ export class CrewService {
         (c.paneId !== null && (c.paneId === needle || sessionRef(c.paneId) === needle)) ||
         c.sessionId === needle
     );
-    if (found) return found;
+    if (found) {
+      const refused = this.flags.refusal(found, act);
+      if (refused !== null) throw new Error(refused);
+      return found;
+    }
     const names = live.map((c) => `${c.label} (${this.refOf(c)})`).join(', ');
     throw new Error(
       `${jobDisplayId(jobId)} has no crew member working called "${ref.trim()}". ${names === '' ? 'None is working.' : `Working now: ${names}.`}`

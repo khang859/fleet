@@ -285,6 +285,23 @@ func TestNewState_ForwardsStopFailureError(t *testing.T) {
 	if state.Error != "rate_limit" || state.ErrorDetails != "429 Too Many Requests" {
 		t.Errorf("error = %q, details = %q", state.Error, state.ErrorDetails)
 	}
+	if state.Message != "API Error: Rate limit reached" {
+		t.Errorf("message = %q, want the API error text", state.Message)
+	}
+}
+
+func TestNewState_SendsAssistantTextOnlyOnStopFailure(t *testing.T) {
+	input := readInput(t, `{"session_id":"s1","hook_event_name":"Stop","cwd":"/repo",`+
+		`"last_assistant_message":"Here is the plan for your secret project"}`)
+	if state := newState(input, nil, 1, func(string) string { return "" }); state.Message != "" {
+		t.Errorf("message = %q, want none on Stop", state.Message)
+	}
+	long := strings.Repeat("é", stopFailureMessageRunes+10)
+	input = readInput(t, `{"session_id":"s1","hook_event_name":"StopFailure","cwd":"/repo",`+
+		`"error":"rate_limit","last_assistant_message":"`+long+`"}`)
+	if got := []rune(newState(input, nil, 1, func(string) string { return "" }).Message); len(got) != stopFailureMessageRunes {
+		t.Errorf("message has %d runes, want %d", len(got), stopFailureMessageRunes)
+	}
 }
 
 func TestNewState_ForwardsPromptHashNotText(t *testing.T) {

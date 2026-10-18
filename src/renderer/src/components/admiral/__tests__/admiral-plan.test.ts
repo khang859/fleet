@@ -354,21 +354,24 @@ describe('the sheet', () => {
     expect(sheet(snap(false), detail([version({ status: 'approved' })]))).not.toContain('SERVERS');
   });
 
+  const member = (over: Partial<AgencyCrewMember>): AgencyCrewMember => ({
+    id: 1,
+    stepId: 'builder-1',
+    role: 'builder',
+    runtime: 'claude',
+    model: null,
+    label: 'builder 1',
+    paneId: 'pane-1',
+    status: 'live',
+    startedAt: 1,
+    endedAt: null,
+    endReason: null,
+    flag: null,
+    flagUntil: null,
+    ...over
+  });
+
   it('lists the crew, working ones first, with Peek only on a working member', () => {
-    const member = (over: Partial<AgencyCrewMember>): AgencyCrewMember => ({
-      id: 1,
-      stepId: 'builder-1',
-      role: 'builder',
-      runtime: 'claude',
-      model: null,
-      label: 'builder 1',
-      paneId: 'pane-1',
-      status: 'live',
-      startedAt: 1,
-      endedAt: null,
-      endReason: null,
-      ...over
-    });
     const html = sheet(
       snap(false),
       detail(
@@ -388,6 +391,49 @@ describe('the sheet', () => {
     expect(html).toContain('title="ended with exit code 1"');
     expect(html.match(/>Peek</g)).toHaveLength(1);
     expect(html).toContain('>failed<');
+  });
+
+  it('shows each flag in place of the status, with Hand back or Resume where the client can act', () => {
+    const until = new Date(2026, 0, 1, 15, 0).getTime();
+    const html = sheet(
+      snap(false),
+      detail(
+        [version({ status: 'approved' })],
+        [],
+        [
+          member({ id: 1, label: 'builder 1', flag: 'user-driven' }),
+          member({ id: 2, label: 'builder 2', flag: 'limited', flagUntil: until }),
+          member({ id: 3, label: 'builder 3', flag: 'stuck' }),
+          member({ id: 4, label: 'builder 4', status: 'starting', flag: 'needs-you' })
+        ]
+      )
+    );
+    expect(html).toContain('>yours<');
+    expect(html).toContain('>limited until 15:00<');
+    expect(html).toContain('>stuck<');
+    expect(html).toContain('>needs you<');
+    expect(html).not.toContain('>working<');
+    expect(html.match(/>Hand back</g)).toHaveLength(1);
+    expect(html.match(/>Resume</g)).toHaveLength(1);
+    expect(html).toContain('bg-red-400');
+  });
+
+  it('puts a member that needs the client under WAITING ON YOU, and counts it', () => {
+    const html = sheet(
+      snap(false),
+      detail(
+        [version({ status: 'approved' })],
+        [],
+        [member({ status: 'starting', flag: 'needs-you' })]
+      )
+    );
+    expect(html).toContain('WAITING ON YOU · 1');
+    expect(html).toContain('aria-label="builder 1 needs you"');
+    expect(html).toContain('builder 1 needs you in its pane');
+    expect(html).not.toContain('Nothing needs you right now.');
+    expect(
+      waitingCount({ ...snap(false), jobs: [agencyJob({ id: 2, crewNeedingYou: 1 })] }, 2)
+    ).toBe(1);
   });
 
   it('has no CREW section before anyone is hired', () => {

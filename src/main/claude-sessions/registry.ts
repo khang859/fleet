@@ -238,7 +238,8 @@ export class ClaudeSessionRegistry {
       toolUseId,
       notificationType: event.notificationType,
       message: event.message,
-      promptHash: event.promptHash
+      promptHash: event.promptHash,
+      error: event.error
     };
     entry.events.push(recorded);
     if (entry.events.length > this.eventLimit) entry.events.shift();
