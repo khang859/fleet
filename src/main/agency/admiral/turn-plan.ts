@@ -24,6 +24,7 @@ export type AdmiralDeps = {
     | 'ask'
     | 'openJob'
     | 'snapshot'
+    | 'findings'
     | 'crewPanes'
     | 'crewScreen'
     | 'crew'

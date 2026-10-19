@@ -236,7 +236,8 @@ describe('Admiral turn', () => {
       'client_file_propose',
       'ask_client',
       'job_open',
-      'job_list'
+      'job_list',
+      'job_results'
     ]);
     expect(names(rounds[0]).every((n) => (ADMIRAL_TOOLS as readonly string[]).includes(n))).toBe(
       true

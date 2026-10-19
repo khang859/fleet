@@ -860,6 +860,7 @@ function JobHeading({
           {job.title}
         </span>
         <span className="shrink-0 font-mono text-[11px] text-fleet-text-subtle">
+          {job.linkedJobId !== null && `follows ${jobDisplayId(job.linkedJobId)} · `}
           {jobDisplayId(job.id)}
         </span>
       </div>

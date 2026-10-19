@@ -466,6 +466,20 @@ export class PlanStore {
       );
   }
 
+  /** Each step's newest `perStep` crew reports, oldest first, however long the record is. */
+  crewReports(jobId: number, perStep: number): Array<{ stepId: string; text: string }> {
+    return this.db
+      .prepare<[number, number], { step_id: string; text: string }>(
+        `SELECT step_id, text FROM
+           (SELECT id, step_id, text,
+              ROW_NUMBER() OVER (PARTITION BY step_id ORDER BY id DESC) AS n
+            FROM job_log WHERE job_id = ? AND kind = 'crew' AND step_id IS NOT NULL)
+         WHERE n <= ? ORDER BY id`
+      )
+      .all(jobId, perStep)
+      .map((r) => ({ stepId: r.step_id, text: r.text }));
+  }
+
   /** The newest `limit` record lines, oldest first. */
   logTail(jobId: number, limit = 200): AgencyJobLogEntry[] {
     return this.db

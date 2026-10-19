@@ -6,6 +6,7 @@ import { clientFilePropose } from './client-file-propose';
 import { jobDeliver } from './job-deliver';
 import { jobList } from './job-list';
 import { jobOpen } from './job-open';
+import { jobResults } from './job-results';
 import { jobPlan } from './job-plan';
 import { jobUpdate } from './job-update';
 import { settingsChange, settingsRead } from './settings';
@@ -20,6 +21,7 @@ export function createAgencyCapability(
     | 'ask'
     | 'openJob'
     | 'snapshot'
+    | 'findings'
     | 'jobs'
     | 'results'
     | 'proposeClientFile'
@@ -41,6 +43,7 @@ export function createAgencyCapability(
             )
         : null,
     jobList: async () => Promise.resolve(jobList(agency, scope.repoId)),
+    jobResults: async (args) => jobResults(async (id) => agency.findings(id), scope.repoId, args),
     jobPlan:
       jobId === null ? null : async (args) => jobPlan(agency.jobs, { ...scope, jobId }, args),
     jobUpdate:

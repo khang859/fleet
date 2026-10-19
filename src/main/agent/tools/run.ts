@@ -54,6 +54,7 @@ import {
   SettingsReadArgs,
   JobDeliverArgs,
   JobListArgs,
+  JobResultsArgs,
   JobOpenArgs,
   JobPlanArgs,
   JobUpdateArgs
@@ -186,6 +187,8 @@ export async function runAgentTool(
       return agencyMember(ctx, name, 'jobOpen')(checked(JobOpenArgs, args, name));
     case 'job_list':
       return agencyMember(ctx, name, 'jobList')(checked(JobListArgs, args, name));
+    case 'job_results':
+      return agencyMember(ctx, name, 'jobResults')(checked(JobResultsArgs, args, name));
     case 'job_plan':
       return agencyMember(ctx, name, 'jobPlan')(checked(JobPlanArgs, args, name));
     case 'job_update':

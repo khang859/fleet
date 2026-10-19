@@ -7,6 +7,7 @@ import {
   AGENCY_QUESTION_KINDS,
   RUNNING_JOB_STATES,
   TERMINAL_JOB_STATES,
+  jobDisplayId,
   questionDisplayId,
   type AgencyAnswerRequest,
   type AgencyJob,
@@ -114,6 +115,8 @@ export type OpenJobInput = {
   brief: string;
   sessionId: string;
   budgetUsd?: number | null;
+  /** The job whose findings this one follows up on. */
+  linkedJobId?: number | null;
 };
 
 export type AskQuestionInput = {
@@ -443,8 +446,8 @@ export class AgencyStore {
       const at = this.now();
       const { lastInsertRowid } = this.db
         .prepare(
-          `INSERT INTO jobs (repo_id, title, brief, state, session_id, budget_usd, created_at, updated_at)
-           VALUES (?, ?, ?, 'briefing', ?, ?, ?, ?)`
+          `INSERT INTO jobs (repo_id, title, brief, state, session_id, budget_usd, linked_job_id, created_at, updated_at)
+           VALUES (?, ?, ?, 'briefing', ?, ?, ?, ?, ?)`
         )
         .run(
           input.repoId,
@@ -452,6 +455,7 @@ export class AgencyStore {
           input.brief,
           input.sessionId,
           input.budgetUsd ?? null,
+          input.linkedJobId ?? null,
           at,
           at
         );
@@ -785,7 +789,14 @@ export class AgencyStore {
           kind: 'event',
           payload: {
             line: 'Job opened from the Bridge',
-            body: 'The talk that led to it is above. Propose the plan with job_plan, or ask the client what is still missing.'
+            body: [
+              'The talk that led to it is above. Propose the plan with job_plan, or ask the client what is still missing.',
+              ...(job.linkedJobId === null
+                ? []
+                : [
+                    `It follows ${jobDisplayId(job.linkedJobId)}: read what that job found with job_results.`
+                  ])
+            ].join(' ')
           }
         });
       }
@@ -1387,13 +1398,13 @@ export class AgencyStore {
   }
 
   /** The repository's last few jobs that ended, newest first. */
-  private pastJobs(repoId: string): AgencyJob[] {
+  pastJobs(repoId: string, limit = SNAPSHOT_PAST_JOBS): AgencyJob[] {
     return this.db
       .prepare<unknown[], JobRow>(
         `SELECT * FROM jobs WHERE repo_id = ? AND state IN (${marks(TERMINAL_JOB_STATES.length)})
          ORDER BY updated_at DESC, id DESC LIMIT ?`
       )
-      .all(repoId, ...TERMINAL_JOB_STATES, SNAPSHOT_PAST_JOBS)
+      .all(repoId, ...TERMINAL_JOB_STATES, limit)
       .map((row) => this.toJob(row));
   }
 

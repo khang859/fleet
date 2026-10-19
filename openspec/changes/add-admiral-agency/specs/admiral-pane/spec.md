@@ -174,6 +174,8 @@ The system SHALL send a Fleet notification when a new question or approval arriv
 
 Each job SHALL have its own Admiral conversation, and the pane SHALL have one lobby conversation for new briefs.
 Wakeups for a job SHALL go only to that job's conversation.
+A job's delivery SHALL also wake the lobby conversation with what the job found, so the client can carry on from the Bridge.
+A job opened to follow up on another SHALL show which job it follows in its job sheet.
 Each Admiral turn SHALL start from the job's current state as stored by Fleet, so facts such as the approved plan, step status, open questions and budget left survive compaction.
 
 #### Scenario: Two jobs at once

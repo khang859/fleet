@@ -34,6 +34,14 @@ Claude Code started in a pane then saw `CLAUDE_CODE_CHILD_SESSION` and other `CL
 The pane was not testing what a user sees.
 `startDevApp` now removes `CLAUDECODE` and every `CLAUDE_*` variable before it spawns the app.
 
+## Env vars on `drive up` do not reach an app the daemon starts
+
+An E2E run needed the app on a scratch Agency database, so it ran `FLEET_AGENCY_DB_PATH=... FLEET_AGENCY_HOME=... npm run drive -- up`.
+A daemon was already running, and the daemon spawns `npm run dev` with its own environment, not the client's.
+The app came up on the real `~/.fleet/agency.db`.
+Stop the daemon first (its pid is in `.fleet-drive/daemon.json`), then run `drive up` with the env vars so a fresh daemon inherits them.
+Check which database the app opened before seeding or clicking anything.
+
 ## `util.parseArgs` eats text that starts with a dash
 
 The verbs parsed flags with `util.parseArgs`.
