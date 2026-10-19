@@ -5,6 +5,7 @@ import { z } from 'zod';
 import {
   ADMIRAL_QUESTION_KINDS,
   AGENCY_QUESTION_KINDS,
+  DEFAULT_AGENCY_SETTINGS,
   RUNNING_JOB_STATES,
   TERMINAL_JOB_STATES,
   jobDisplayId,
@@ -32,7 +33,7 @@ import { YOU_LAYER } from '../../../shared/agency-client-file';
 import { meetLeft } from '../../../shared/agency-meet';
 import { parseJsonAs } from '../../../shared/parse-json';
 import { WAKEUP_GIVE_UP_ATTEMPTS, WAKEUP_STALE_CLAIM_MS, wakeupBackoffMs } from '../backoff';
-import { CHAIN_LIMIT, chainExhausted } from '../jobs/chain';
+import { chainExhausted } from '../jobs/chain';
 import { reduceJob, type CloseTarget, type JobEvent, type Transition } from '../jobs/job-machine';
 import { renderWakeupText, type WakeupItem } from '../wakeup-text';
 import { openAgencyDb } from './agency-db';
@@ -326,6 +327,8 @@ function distinctTouched(rows: AgencyTouched[]): AgencyTouched[] {
 export class AgencyStore {
   private readonly db: Database.Database;
   private readonly now: () => number;
+  /** How many automatic Admiral turns a job takes in a row before it asks to continue. */
+  private readonly turnLimit: () => number;
   readonly plans: PlanStore;
   readonly crew: CrewStore;
   readonly permissions: PermissionStore;
@@ -337,9 +340,13 @@ export class AgencyStore {
   readonly spend: SpendStore;
   readonly preferences: PreferenceStore;
 
-  constructor(db: Database.Database | string, opts: { now?: () => number } = {}) {
+  constructor(
+    db: Database.Database | string,
+    opts: { now?: () => number; turnLimit?: () => number } = {}
+  ) {
     this.db = typeof db === 'string' ? openAgencyDb(db) : db;
     this.now = opts.now ?? Date.now;
+    this.turnLimit = opts.turnLimit ?? (() => DEFAULT_AGENCY_SETTINGS.admiral.turnLimit);
     this.plans = new PlanStore(this.db, this.now);
     this.crew = new CrewStore(this.db, this.now);
     this.permissions = new PermissionStore(this.db, this.now);
@@ -690,7 +697,8 @@ export class AgencyStore {
    */
   private countAutomaticTurn(job: AgencyJob): boolean {
     if (job.approvedVersion === null) return true;
-    if (!chainExhausted(job.chainCount)) {
+    const limit = this.turnLimit();
+    if (!chainExhausted(job.chainCount, limit)) {
       this.db.prepare('UPDATE jobs SET chain_count = chain_count + 1 WHERE id = ?').run(job.id);
       return true;
     }
@@ -699,10 +707,10 @@ export class AgencyStore {
         repoId: job.repoId,
         jobId: job.id,
         kind: 'continue',
-        question: `The Admiral took ${CHAIN_LIMIT} turns in a row on its own`,
+        question: `The Admiral took ${limit} turns in a row on its own`,
         context: 'The job waits so it does not run away. Continue to let it go on.',
         options: [
-          { label: 'Continue', detail: `${CHAIN_LIMIT} more turns` },
+          { label: 'Continue', detail: `${limit} more turns` },
           { label: 'Not now', detail: 'the job waits; send a message to go on' }
         ],
         recommended: 0

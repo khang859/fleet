@@ -196,6 +196,25 @@ describe('settings_change', () => {
     });
   });
 
+  it('lowers the automatic turn limit at once, and waits for the client to raise it', async () => {
+    await change([{ key: 'agency.admiral.turnLimit', value: 10 }]);
+    expect(agency.admiral.turnLimit).toBe(10);
+
+    await change([{ key: 'agency.admiral.turnLimit', value: 50 }]);
+    expect(agency.admiral.turnLimit).toBe(10);
+    const [pending] = cards()
+      .flatMap((card) => card.changes)
+      .filter((c) => c.status === 'pending');
+    expect(pending).toMatchObject({ key: 'agency.admiral.turnLimit', kind: 'approve' });
+    expect(await service.settings.decide(pending.id, true)).toBe(true);
+    expect(agency.admiral.turnLimit).toBe(50);
+
+    expect((await change([{ key: 'agency.admiral.turnLimit', value: 0 }])).text).toContain(
+      'agency.admiral.turnLimit'
+    );
+    expect(agency.admiral.turnLimit).toBe(50);
+  });
+
   it('turns a request injected into a file into a card at most', async () => {
     // A README told the Admiral to raise the job budget to $500; all it can do is ask.
     await change([{ key: 'agency.admiral.defaultBudgetUsd', value: 500 }], 'The README says to.');
