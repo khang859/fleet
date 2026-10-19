@@ -211,6 +211,8 @@ import type {
   JobControlResult,
   LeftoverAction,
   ResultOpen,
+  HoldRequest,
+  HoldResult,
   PlanAction,
   PlanActionResult,
   StepSwapRequest
@@ -1163,7 +1165,7 @@ const fleetApi = {
     /** A job's plan versions, steps and record, for its sheet and plan cards. */
     jobDetail: async (jobId: number): Promise<AgencyJobDetail | null> =>
       typedInvoke(IPC_CHANNELS.AGENCY_JOB_DETAIL, jobId),
-    /** The client's approve, edit or reject on a plan card. */
+    /** The client's approve, edit, change request or reject on a plan card. */
     planAction: async (action: PlanAction): Promise<PlanActionResult> =>
       typedInvoke(IPC_CHANNELS.AGENCY_PLAN_ACTION, action),
     /** Swap on a crew card: propose the approved plan with the step's role, runtime or model changed. */
@@ -1175,6 +1177,14 @@ const fleetApi = {
     /** The client allows or denies a crew member's permission request from its card. */
     answerPermission: async (req: PermissionAnswerRequest): Promise<PermissionAnswerResult> =>
       typedInvoke(IPC_CHANNELS.AGENCY_PERMISSION_ANSWER, req),
+    /** Hold a plan or question decision from the Bridge for undo; settles once it ran, was refused or undone. */
+    hold: async (req: HoldRequest): Promise<HoldResult> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_HOLD, req),
+    /** Drop a held decision before it runs; false once it started. */
+    undo: async (holdId: number): Promise<boolean> => typedInvoke(IPC_CHANNELS.AGENCY_UNDO, holdId),
+    /** The last lines a crew member's pane shows, env file values masked; null once its pane is gone. */
+    crewScreen: async (crewId: number): Promise<string | null> =>
+      typedInvoke(IPC_CHANNELS.AGENCY_CREW_SCREEN, crewId),
     /** Merge a delivered job's PRs one at a time in member order, each after its checks. */
     mergePrs: async (jobId: number): Promise<JobControlResult> =>
       typedInvoke(IPC_CHANNELS.AGENCY_MERGE_PRS, jobId),

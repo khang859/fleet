@@ -54,6 +54,7 @@ function version(over: Partial<AgencyPlanVersion> = {}): AgencyPlanVersion {
     proposedAt: 1,
     decidedAt: null,
     diff: [],
+    previous: null,
     effects: null,
     uses: [],
     autoStartUsd: null,
@@ -293,6 +294,10 @@ describe('PlanCard', () => {
     expect(card(replaced, detail([replaced, newer]))).toContain('Plan v1 was replaced by v2');
     const rejected = version({ status: 'rejected', decisionNote: 'Too big' });
     expect(card(rejected)).toContain('You rejected Plan v1: Too big');
+    const revised = version({ status: 'replaced', decisionNote: 'Fewer steps' });
+    expect(card(revised, detail([revised, newer]))).toContain(
+      'You asked for a change to Plan v1: Fewer steps'
+    );
     const approved = version({
       status: 'approved',
       bases: { fleet: { sha: 'a1b2c3d4e5'.padEnd(40, '0'), from: 'default' } }
@@ -349,7 +354,9 @@ describe('the sheet', () => {
     clientFileChanged: false,
     trust: { level: 'ask', autoStartUsd: null },
     pastJobs: [],
-    settingsCards: []
+    settingsCards: [],
+    decisions: [],
+    held: []
   });
   const sheet = (snapshot: AgencySnapshot, d: AgencyJobDetail): string =>
     renderToStaticMarkup(

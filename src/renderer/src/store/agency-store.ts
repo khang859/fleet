@@ -37,7 +37,7 @@ type AgencyStoreState = {
   loadDetail: (jobId: number) => Promise<AgencyJobDetail | null>;
   /** Read again the details already held for these jobs; others load when shown. */
   reloadDetails: (jobIds: Array<number | null>) => void;
-  /** The client's approve, edit or reject on a plan card. */
+  /** The client's approve, edit, change request or reject on a plan card. */
   decidePlan: (jobId: number, action: PlanAction) => Promise<PlanActionResult>;
   /** Read a repository's state again. Resolves with what was stored, or null when the read failed. */
   refresh: (repoId: string) => Promise<AgencySnapshot | null>;

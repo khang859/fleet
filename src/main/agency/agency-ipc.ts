@@ -45,9 +45,17 @@ import {
   type RoleSaveResult,
   type RuntimeTestResult
 } from '../../shared/agency-crew';
-import type { AgencyJobDetail, JobControlResult, PlanActionResult } from '../../shared/agency-jobs';
-import type { PermissionAnswerResult } from '../../shared/agency-permissions';
-import { PlanSchema } from '../../shared/agency-plan';
+import type {
+  AgencyJobDetail,
+  HoldResult,
+  JobControlResult,
+  PlanActionResult
+} from '../../shared/agency-jobs';
+import {
+  PERMISSION_REASON_MAX_CHARS,
+  type PermissionAnswerResult
+} from '../../shared/agency-permissions';
+import { PLAN_MAX_STEPS, PlanSchema } from '../../shared/agency-plan';
 import type { AdmiralSettingMark, SettingsUndoOutcome } from '../../shared/agency-settings';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type { AgencyService } from './index';
@@ -90,7 +98,11 @@ const PullArgs = z.object({ repoId: RepoId, jobId: JobId.nullable() });
 const ReleaseArgs = z.object({ ids: Ids, error: z.string().max(4_000) });
 const HandoffArgs = z.object({ jobId: JobId, lobbyMessageId: z.string().min(1) });
 const JobControlArgs = z.object({ jobId: JobId, action: z.enum(['cancel', 'accept']) });
-const PermissionAnswerArgs = z.object({ id: JobId, decision: z.enum(['allow', 'deny']) });
+const PermissionAnswerArgs = z.object({
+  id: JobId,
+  decision: z.enum(['allow', 'deny']),
+  reason: z.string().trim().max(PERMISSION_REASON_MAX_CHARS).optional()
+});
 const LeftoverArgs = z.object({ resourceId: JobId, action: z.enum(['retry', 'dismiss']) });
 /** A client file is a page or two of Markdown; anything far past that is not one. */
 const ClientFileWriteArgs = z.object({ layer: Layer, text: z.string().max(200_000) });
@@ -107,7 +119,8 @@ const ClientLineArgs = z.object({
 const RuntimeTestArgs = z.object({ repoId: RepoId, runtime: z.enum(CREW_RUNTIMES) });
 const ResultOpenArgs = z.object({ resultId: JobId, file: z.number().int().min(0).max(100) });
 const StepKey = z.string().max(80);
-const PlanActionArgs = z.discriminatedUnion('action', [
+/** The plan decisions the Bridge may hold for undo: every one but an edit. */
+const PlanDecisionArgs = z.discriminatedUnion('action', [
   z.object({
     planVersionId: JobId,
     action: z.literal('approve'),
@@ -120,7 +133,20 @@ const PlanActionArgs = z.discriminatedUnion('action', [
     action: z.literal('reject'),
     note: z.string().trim().min(1).max(4_000)
   }),
+  z.object({
+    planVersionId: JobId,
+    action: z.literal('revise'),
+    note: z.string().trim().min(1).max(4_000),
+    steps: z.array(StepKey).max(PLAN_MAX_STEPS)
+  })
+]);
+const PlanActionArgs = z.discriminatedUnion('action', [
+  ...PlanDecisionArgs.options,
   z.object({ planVersionId: JobId, action: z.literal('edit'), plan: PlanSchema })
+]);
+const HoldArgs = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('plan'), action: PlanDecisionArgs }),
+  z.object({ kind: z.literal('answer'), answer: AnswerArgs })
 ]);
 const StepSwapArgs = z.object({
   jobId: JobId,
@@ -293,6 +319,20 @@ export function registerAgencyIpc(service: AgencyService): void {
     IPC_CHANNELS.AGENCY_PERMISSION_ANSWER,
     (_e, req: unknown): PermissionAnswerResult =>
       service.answerPermission(PermissionAnswerArgs.parse(req))
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_HOLD,
+    async (_e, req: unknown): Promise<HoldResult> => service.hold(HoldArgs.parse(req))
+  );
+
+  ipcMain.handle(IPC_CHANNELS.AGENCY_UNDO, (_e, holdId: unknown): boolean =>
+    service.undo(JobId.parse(holdId))
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CREW_SCREEN,
+    async (_e, crewId: unknown): Promise<string | null> => service.crewTail(JobId.parse(crewId))
   );
 
   ipcMain.handle(

@@ -197,6 +197,121 @@ describe('plan decisions', () => {
   });
 });
 
+describe('ask for a change', () => {
+  it('sends a first plan back to briefing with the note and the steps it names', async () => {
+    const { job, tools } = openJob();
+    const v1 = await propose(tools);
+
+    const result = await service.jobs.decide({
+      planVersionId: v1,
+      action: 'revise',
+      note: 'Review with two people',
+      steps: ['reviewer']
+    });
+
+    expect(result).toEqual({ ok: true, version: 1 });
+    expect(state(job.id)).toBe('briefing');
+    expect(service.store.plans.version(v1)).toMatchObject({
+      status: 'replaced',
+      decisionNote: 'Review with two people'
+    });
+    const text = wakeupText(job.id);
+    expect(text).toContain('Client asked for a change to plan v1');
+    expect(text).toContain('The client wrote: Review with two people');
+    expect(text).toContain('About these steps: reviewer (Review the change).');
+    expect(text).toContain('Propose a new plan for this job with `job_plan`.');
+    expect(text).toContain('Consider whether this is a lasting preference.');
+  });
+
+  it('refuses a step the plan does not have', async () => {
+    const { job, tools } = openJob();
+    const v1 = await propose(tools);
+
+    const result = await service.jobs.decide({
+      planVersionId: v1,
+      action: 'revise',
+      note: 'Change it',
+      steps: ['tester']
+    });
+
+    expect(result).toEqual({ ok: false, reason: 'Plan v1 has no step tester.' });
+    expect(service.store.plans.version(v1)?.status).toBe('proposed');
+    expect(state(job.id)).toBe('planned');
+  });
+
+  it('leaves a running job on its approved plan when a proposed change is sent back', async () => {
+    const { job, tools } = openJob();
+    const v1 = await approve(tools);
+    wakeupText(job.id);
+    const v2 = await propose(tools, plan({ steps: [PLAN.steps[0]] }));
+
+    const result = await service.jobs.decide({
+      planVersionId: v2,
+      action: 'revise',
+      note: 'Keep the review',
+      steps: []
+    });
+
+    expect(result).toEqual({ ok: true, version: 2 });
+    expect(state(job.id)).toBe('running');
+    expect(service.store.plans.version(v1)?.status).toBe('approved');
+    expect(service.store.plans.version(v2)?.status).toBe('replaced');
+    const text = wakeupText(job.id);
+    expect(text).toContain('Client asked for a change to plan v2');
+    expect(text).not.toContain('About these steps');
+  });
+});
+
+describe('changes since the version before', () => {
+  const previousOf = (jobId: number, version: number): unknown =>
+    service.jobs.detail(jobId)?.versions.find((v) => v.version === version)?.previous;
+
+  it('is null for v1', async () => {
+    const { job, tools } = openJob();
+    await propose(tools);
+    expect(previousOf(job.id, 1)).toBeNull();
+  });
+
+  it('measures a change against the approved v1', async () => {
+    const { job, tools } = openJob();
+    await approve(tools);
+    await propose(tools, plan({ steps: [PLAN.steps[0]] }));
+    expect(previousOf(job.id, 2)).toEqual({
+      version: 1,
+      status: 'approved',
+      note: null,
+      diff: [{ kind: 'removed', step: 'reviewer' }]
+    });
+  });
+
+  it('carries the note of a rejected v1', async () => {
+    const { job, tools } = openJob();
+    const v1 = await propose(tools);
+    await service.jobs.decide({ planVersionId: v1, action: 'reject', note: 'Too costly' });
+    await propose(tools, plan({ budget: { usd: 5 } }));
+    expect(previousOf(job.id, 2)).toMatchObject({
+      version: 1,
+      status: 'rejected',
+      note: 'Too costly',
+      diff: [expect.objectContaining({ kind: 'budget' })]
+    });
+  });
+
+  it('measures against a v1 that a newer version replaced, though no version was approved', async () => {
+    const { job, tools } = openJob();
+    await propose(tools);
+    await propose(tools, plan({ summary: 'Add dark mode everywhere.' }));
+    const v2 = service.jobs.detail(job.id)?.versions[1];
+    expect(v2?.diff).toEqual([]);
+    expect(v2?.previous).toMatchObject({
+      version: 1,
+      status: 'replaced',
+      note: null,
+      diff: [expect.objectContaining({ kind: 'summary' })]
+    });
+  });
+});
+
 describe('plan changes', () => {
   it('approving a change that drops a step stops its crew and withdraws its questions', async () => {
     const { job, tools } = openJob();

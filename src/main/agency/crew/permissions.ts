@@ -228,19 +228,28 @@ export class CrewPermissions {
         reason: row === null ? 'That request is not known.' : this.stateNote(row)
       };
     }
-    const reason = req.decision === 'deny' ? 'Denied by the client.' : '';
+    // Claude Code and eva both read the deny message of the hook's answer.
+    const said = req.decision === 'deny' && req.reason ? req.reason : null;
+    const reason =
+      req.decision === 'allow'
+        ? ''
+        : said === null
+          ? 'Denied by the client.'
+          : `Denied by the client: ${said}`;
     const refused = this.deliver(
       row,
       req.decision,
       'client',
-      'The client answered the card.',
-      reason
+      said === null ? 'The client answered the card.' : `The client denied it: ${said}`,
+      reason,
+      said
     );
     if (refused !== null) return { ok: false, reason: refused };
     this.tellAdmiral(
       row,
       'client_action',
-      `The client ${req.decision === 'allow' ? 'allowed' : 'denied'} ${this.who(row)}`
+      `The client ${req.decision === 'allow' ? 'allowed' : 'denied'} ${this.who(row)}`,
+      said
     );
     return { ok: true };
   }
@@ -316,7 +325,8 @@ export class CrewPermissions {
     decision: PermissionDecision,
     by: PermissionAnsweredBy,
     why: string,
-    runtimeReason: string
+    runtimeReason: string,
+    said: string | null = null
   ): string | null {
     const now = this.deps.pending(row.sessionId, row.toolUseId);
     if (now !== undefined && permissionTarget(now.request.tool, now.cwd) !== row.target) {
@@ -334,24 +344,28 @@ export class CrewPermissions {
       if (this.store.permissions.inPane(row.id)) this.touch(row);
       return `Fleet no longer holds ${permissionDisplayId(row.id)}, so it waits in ${row.crewLabel}'s pane for the client.`;
     }
-    this.record(row, decision, by, why);
+    this.record(row, decision, by, why, said);
     return null;
   }
 
+  /** `said` is what the client wrote with their answer, for the job log. */
   private record(
     row: PermissionRecord,
     decision: PermissionDecision,
     by: PermissionAnsweredBy,
-    why: string
+    why: string,
+    said: string | null = null
   ): void {
     this.store.tx(() => {
       if (!this.store.permissions.answer(row.id, { decision, by, reason: why })) return;
       const note =
         by === 'admiral'
           ? why
-          : { client: 'by you', expiry: 'the card expired', elsewhere: 'outside the job sheet' }[
-              by
-            ];
+          : {
+              client: said === null ? 'by you' : `by you: ${said}`,
+              expiry: 'the card expired',
+              elsewhere: 'outside the job sheet'
+            }[by];
       this.store.plans.log({
         jobId: row.jobId,
         kind: 'permission',
@@ -389,14 +403,19 @@ export class CrewPermissions {
   }
 
   /** Tell the Admiral how a request it saw was answered; nothing to tell when it never saw one. */
-  private tellAdmiral(row: PermissionRecord, kind: 'event' | 'client_action', line: string): void {
+  private tellAdmiral(
+    row: PermissionRecord,
+    kind: 'event' | 'client_action',
+    line: string,
+    note: string | null = null
+  ): void {
     const job = this.store.getJob(row.jobId);
     if (!job || !ACCEPTS_RESULTS.includes(job.state)) return;
     this.store.enqueueWakeup({
       repoId: job.repoId,
       jobId: job.id,
       kind,
-      payload: kind === 'event' ? { line, body: row.target } : { line }
+      payload: kind === 'event' ? { line, body: row.target } : { line, note }
     });
     this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
   }

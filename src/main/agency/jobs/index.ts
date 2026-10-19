@@ -19,6 +19,7 @@ import {
   type PlanChecks,
   type PlanEffects,
   type PlanUse,
+  type PreviousPlanVersion,
   type StepStatus,
   type StepSwapRequest
 } from '../../../shared/agency-jobs';
@@ -363,7 +364,7 @@ export class JobsService {
     return problems.length === 0 ? null : problems.join(' ');
   }
 
-  /** The client's approve, edit or reject on a plan card. */
+  /** The client's approve, edit, change request or reject on a plan card. */
   async decide(action: PlanAction): Promise<PlanActionResult> {
     const version = this.store.plans.version(action.planVersionId);
     if (action.action === 'edit' && version !== null && this.changesStarted(version)) {
@@ -385,6 +386,8 @@ export class JobsService {
         return this.approve(job, version, action);
       case 'reject':
         return this.reject(job, version, action.note);
+      case 'revise':
+        return this.revise(job, version, action.note, action.steps);
       case 'edit': {
         const parsed = PlanSchema.safeParse(action.plan);
         if (!parsed.success) return { ok: false, reason: parsed.error.issues[0]?.message ?? '' };
@@ -648,13 +651,67 @@ export class JobsService {
   }
 
   private reject(job: AgencyJob, version: PlanVersionRecord, note: string): PlanActionResult {
+    return this.sendBack(job, version, {
+      status: 'rejected',
+      note,
+      line: `Client rejected plan v${version.version}`,
+      detail: LEARN_HINT,
+      what: 'rejected'
+    });
+  }
+
+  /**
+   * The client asks for a different plan: the version is replaced with their
+   * note, and the Admiral is woken to propose the next one. A first plan goes
+   * back to briefing; a change on a running job leaves it on its approved plan.
+   */
+  private revise(
+    job: AgencyJob,
+    version: PlanVersionRecord,
+    note: string,
+    stepIds: string[]
+  ): PlanActionResult {
+    const steps = stepIds.map((id) => version.plan.steps.find((s) => s.id === id));
+    const unknown = stepIds.filter((_, i) => steps[i] === undefined);
+    if (unknown.length > 0) {
+      return { ok: false, reason: `Plan v${version.version} has no step ${unknown.join(', ')}.` };
+    }
+    const about = steps.flatMap((s) => (s === undefined ? [] : [`${s.id} (${s.title})`]));
+    return this.sendBack(job, version, {
+      status: 'replaced',
+      note,
+      line: `Client asked for a change to plan v${version.version}`,
+      detail: [
+        ...(about.length === 0 ? [] : [`About these steps: ${about.join('; ')}.`]),
+        'Propose a new plan for this job with `job_plan`.',
+        LEARN_HINT
+      ].join('\n'),
+      what: 'sent back for a change'
+    });
+  }
+
+  /**
+   * A reject or a change request: record the client's note on the version,
+   * send a first plan back to briefing, and wake the Admiral with it.
+   */
+  private sendBack(
+    job: AgencyJob,
+    version: PlanVersionRecord,
+    back: {
+      status: 'rejected' | 'replaced';
+      note: string;
+      line: string;
+      detail: string;
+      what: string;
+    }
+  ): PlanActionResult {
     this.store.tx(() => {
-      this.store.plans.decide(version.id, 'rejected', note);
+      this.store.plans.decide(version.id, back.status, back.note);
       if (job.approvedVersion === null) {
         this.store.applyJobEvent(
           job.id,
           { type: 'plan_rejected' },
-          `plan v${version.version} rejected`
+          `plan v${version.version} ${back.what}`
         );
       }
       this.store.resetChain(job.id);
@@ -662,12 +719,12 @@ export class JobsService {
         repoId: job.repoId,
         jobId: job.id,
         kind: 'client_action',
-        payload: { line: `Client rejected plan v${version.version}`, note, detail: LEARN_HINT }
+        payload: { line: back.line, note: back.note, detail: back.detail }
       });
       this.store.plans.log({
         jobId: job.id,
         kind: 'decision',
-        text: `Plan v${version.version} rejected`
+        text: `Plan v${version.version} ${back.what}`
       });
     });
     this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
@@ -1152,6 +1209,7 @@ export class JobsService {
         proposedAt: v.proposedAt,
         decidedAt: v.decidedAt,
         diff: diffPlans(parent, v.plan),
+        previous: previousVersion(records, v),
         effects:
           v.status === 'proposed' && v.kind === 'change'
             ? this.effectsOf(job, v.plan, approved)
@@ -1200,6 +1258,26 @@ const crewView = (c: CrewRecord): AgencyCrewMember => ({
   endedAt: c.endedAt,
   endReason: c.endReason
 });
+
+/** The version right before `v` among a job's records, and what `v` changes against it. */
+function previousVersion(
+  records: PlanVersionRecord[],
+  v: PlanVersionRecord
+): PreviousPlanVersion | null {
+  const before = records
+    .filter((r) => r.version < v.version)
+    .reduce<PlanVersionRecord | null>(
+      (a, r) => (a === null || r.version > a.version ? r : a),
+      null
+    );
+  if (before === null) return null;
+  return {
+    version: before.version,
+    status: before.status,
+    note: before.decisionNote,
+    diff: diffPlans(before.plan, v.plan)
+  };
+}
 
 const mergeView = (run: AgencyMergeRun | null): AgencyMergeRun | null =>
   run === null ? null : { status: run.status, note: run.note };

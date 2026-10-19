@@ -363,7 +363,7 @@ const PLAN_DESCRIPTION = [
   'Give every eva step a `cap`. Fleet cannot always measure what eva costs, so the client accepts those steps on the card, and Fleet stops their crew at the cap.',
   'Always send the whole plan. To change an approved plan, send it again with the change: keep the ids of steps that stay, so Fleet can show the client what changes. A step that is done, or already delivered something, cannot change or go.',
   "List in `uses` the ids of the client's saved preference lines the plan follows, like Y1 or P2, from the note. The client sees them on the card. Do not ask the client what a saved line already answers.",
-  "Returns at once. The client approves, edits or rejects it, and that arrives as a wakeup. Only the newest version can be approved, so a new call replaces one still waiting. Nothing starts before the client approves, unless the project's trust level lets Fleet start a first plan on its own: the result says when it did."
+  "Returns at once. The client approves, edits, asks for a change to or rejects it, and that arrives as a wakeup. Only the newest version can be approved, so a new call replaces one still waiting. Nothing starts before the client approves, unless the project's trust level lets Fleet start a first plan on its own: the result says when it did."
 ].join('\n\n');
 
 const UPDATE_DESCRIPTION = [
