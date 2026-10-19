@@ -18,6 +18,8 @@ import { admiralStage, STAGE_LABEL, type AdmiralStage } from './admiral-stage';
 import { AdmiralFirstRun } from './AdmiralFirstRun';
 import { EmptyBrief, EmptyJob } from './EmptyBrief';
 import { BridgeQueue } from './BridgeQueue';
+import { QueueReader } from './QueueReader';
+import { useBridgeQueue, useQueueReading } from './use-bridge-queue';
 import { JOB_SHEET_WIDTH_PX, JobSheet } from './JobSheet';
 import { JobTabs } from './JobTabs';
 import { ProjectPicker } from './ProjectPicker';
@@ -265,6 +267,9 @@ function AdmiralWorkspace({
   // a job's sheet only that job, with other jobs' on their tabs' dots.
   const waiting = waitingCount(snapshot, jobId ?? undefined);
   const detail = useJobDetail(jobId);
+  // The Bridge's queue, and the item its reader shows over the conversation.
+  const queue = useBridgeQueue(jobId === null ? snapshot : undefined);
+  const { reading, read } = useQueueReading(paneId, queue.items);
 
   const selectJob = (id: number | null): void => {
     useWorkspaceStore.getState().setAdmiralActiveJob(paneId, id);
@@ -284,7 +289,14 @@ function AdmiralWorkspace({
     jobId === null ? (
       <BridgeQueue
         snapshot={snapshot}
+        items={queue.items}
+        refused={queue.refused}
+        reading={reading}
         defaultBudgetUsd={defaultBudgetUsd}
+        onRead={(key) => {
+          setSheetOpen(false);
+          read(key);
+        }}
         onOpenJob={selectJob}
         onOpenSettings={() => openSettings('agencyAdmiral')}
         className={className}
@@ -333,32 +345,43 @@ function AdmiralWorkspace({
       </AdmiralHeader>
 
       <div className="relative flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1">
-          {ready && (
-            <AdmiralThreadContext.Provider value={context}>
-              <AgentThread
-                key={key}
-                paneId={key}
-                cwd={repo.root}
-                variant="admiral"
-                empty={
-                  job === null ? (
-                    <EmptyBrief paneId={paneId} repo={repo} />
-                  ) : (
-                    <EmptyJob title={job.title} />
-                  )
-                }
-                placeholder={job === null ? 'Brief the Admiral…' : 'Message the Admiral…'}
-                todosInPanel={false}
-                running={NONE}
-                subagentsInPanel={false}
-                schedules={NONE}
-                schedulesInPanel={false}
-                background={NONE}
-                backgroundInPanel={false}
-              />
-            </AdmiralThreadContext.Provider>
-          )}
+        <div className="relative flex min-w-0 flex-1">
+          {/* Hidden, not unmounted, under the reader: the draft, scroll and stream stay. */}
+          <div className={`flex min-w-0 flex-1 ${reading === null ? '' : 'invisible'}`}>
+            {ready && (
+              <AdmiralThreadContext.Provider value={context}>
+                <AgentThread
+                  key={key}
+                  paneId={key}
+                  cwd={repo.root}
+                  variant="admiral"
+                  empty={
+                    job === null ? (
+                      <EmptyBrief paneId={paneId} repo={repo} />
+                    ) : (
+                      <EmptyJob title={job.title} />
+                    )
+                  }
+                  placeholder={job === null ? 'Brief the Admiral…' : 'Message the Admiral…'}
+                  todosInPanel={false}
+                  running={NONE}
+                  subagentsInPanel={false}
+                  schedules={NONE}
+                  schedulesInPanel={false}
+                  background={NONE}
+                  backgroundInPanel={false}
+                />
+              </AdmiralThreadContext.Provider>
+            )}
+          </div>
+          <QueueReader
+            items={queue.items}
+            reading={reading}
+            snapshot={snapshot}
+            refused={queue.refused}
+            onRead={read}
+            onOpenSettings={() => openSettings('agencyAdmiral')}
+          />
         </div>
         {wide && sheet('')}
         {!wide && sheetOpen && (

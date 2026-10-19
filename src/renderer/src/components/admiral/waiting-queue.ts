@@ -36,6 +36,32 @@ export type WaitingItem = Base &
 
 export type WaitingKind = WaitingItem['kind'];
 
+const LOADING_KIND: Record<Extract<WaitingItem, { kind: 'loading' }>['what'], string> = {
+  plan: 'PLAN',
+  permission: 'PERMISSION',
+  crew: 'NEEDS YOU'
+};
+
+/** An item's kind as the queue and the reader name it, such as `PLAN v2`. */
+export function kindLabel(item: WaitingItem): string {
+  switch (item.kind) {
+    case 'permission':
+      return 'PERMISSION';
+    case 'plan':
+      return `${item.version.kind === 'change' ? 'PLAN CHANGE' : 'PLAN'} v${item.version.version}`;
+    case 'question':
+      return 'QUESTION';
+    case 'settings':
+      return 'SETTINGS';
+    case 'delivered':
+      return 'DELIVERED';
+    case 'crew':
+      return 'NEEDS YOU';
+    case 'loading':
+      return LOADING_KIND[item.what];
+  }
+}
+
 /** Whether a job's waiting items need its detail: plans, permissions and crew are only there. */
 export function needsDetail(job: AgencyJob): boolean {
   return (

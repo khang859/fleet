@@ -28,12 +28,12 @@
 
 ## 4. Phase 4 - The reader
 
-- [ ] 4.1 Add `bridge-store.ts` with `reading` per pane, and `QueueReader` in the main column with the `AgentThread` kept mounted and hidden; Esc, Previous, Next, "N of M waiting", and moving on when the item leaves the queue
-- [ ] 4.2 Export the `PlanCard` pieces and build `PlanReader`: brief, summary, budget, week share, crew count, every step with role, runtime, model, skills, hands back, waits on and cap, uses with sources, new roles, starts from, env files, cautions; fixed footer with the decision bar
-- [ ] 4.3 Add `layout: 'reader'` to `PermissionCard`: full target, time left, why it came, the job's PR checks, the pane lines from `crewScreen` every 2 seconds as plain text, Peek, and Deny with a reason
-- [ ] 4.4 Add `layout: 'reader'` to `QuestionCard`: context, every option with detail and the Admiral's pick, free answer, answers through `hold`
-- [ ] 4.5 Show the other kinds (settings, delivered, needs you) in the reader as their existing cards at full width
-- [ ] 4.6 Component tests for the reader: open, Esc keeps the draft, item resolved while open, long plan scrolls with the footer in view
+- [x] 4.1 Add `bridge-store.ts` with `reading` per pane, and `QueueReader` in the main column with the `AgentThread` kept mounted and hidden; Esc, Previous, Next, "N of M waiting", and moving on when the item leaves the queue
+- [x] 4.2 Export the `PlanCard` pieces and build `PlanReader`: brief, summary, budget, week share, crew count, every step with role, runtime, model, skills, hands back, waits on and cap, uses with sources, new roles, starts from, env files, cautions; fixed footer with the decision bar
+- [x] 4.3 Add `layout: 'reader'` to `PermissionCard`: full target, time left, why it came, the job's PR checks, the pane lines from `crewScreen` every 2 seconds as plain text, Peek, and Deny with a reason
+- [x] 4.4 Add `layout: 'reader'` to `QuestionCard`: context, every option with detail and the Admiral's pick, free answer, answers through `hold`
+- [x] 4.5 Show the other kinds (settings, delivered, needs you) in the reader as their existing cards at full width
+- [x] 4.6 Component tests for the reader: open, Esc keeps the draft, item resolved while open, long plan scrolls with the footer in view
 
 ## 5. Phase 5 - Ask for a change and what changed
 

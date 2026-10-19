@@ -1,36 +1,42 @@
 import { useState } from 'react';
-import { CircleAlert, X } from 'lucide-react';
+import { CircleAlert, Maximize2, X } from 'lucide-react';
 import type { AgencyJob, AgencySnapshot } from '../../../../shared/agency';
-import { jobDisplayId, questionDisplayId } from '../../../../shared/agency';
-import type {
-  AgencyJobDetail,
-  AgencyPlanVersion,
-  PlanAction
-} from '../../../../shared/agency-jobs';
-import { useBridgeStore, type RefusedDecision } from '../../store/bridge-store';
+import { jobDisplayId } from '../../../../shared/agency';
+import type { AgencyJobDetail, AgencyPlanVersion } from '../../../../shared/agency-jobs';
+import {
+  holdAnswer,
+  holdPlan,
+  useBridgeStore,
+  type HeldPlanAction,
+  type RefusedDecision
+} from '../../store/bridge-store';
 import { relativeTime } from '../agent/settings/format';
 import { NeedsYouCard } from './JobSheet';
 import { DeliveredCard, PRIMARY, SECONDARY } from './JobClose';
 import { PermissionCard } from './PermissionCard';
+import { PlanNoteForm, type NoteAction } from './PlanNoteForm';
 import { QuestionCard } from './QuestionCard';
 import { SettingsCardView } from './SettingsCard';
-import { formatUsd, needsChoices, plural } from './job-view';
-import type { WaitingItem } from './waiting-queue';
+import { crewPaneId, formatUsd, needsChoices, plural } from './job-view';
+import { kindLabel, type WaitingItem } from './waiting-queue';
 
 /** How many of a plan's steps its queue card lists before "+ N more". */
 const PLAN_STEPS_SHOWN = 3;
 
 /**
  * One item in the Bridge queue: the card the job sheet shows for it, headed
- * by its kind and job, with its main actions on the card. A plan gets a short
- * card of its own; its full card is on the job's tab. Plan and question
- * decisions are held for undo, so the card leaves the queue at once.
+ * by its kind and job, with its main actions on the card and Read for the
+ * item in full in the main column. A plan gets a short card of its own.
+ * Plan and question decisions are held for undo, so the card leaves the queue
+ * at once.
  */
 export function QueueCard({
   item,
   job,
   snapshot,
   refusal,
+  reading,
+  onRead,
   onOpenJob,
   onOpenSettings
 }: {
@@ -40,23 +46,32 @@ export function QueueCard({
   snapshot: AgencySnapshot;
   /** Why main refused the client's last decision on this item. */
   refusal: RefusedDecision | null;
+  /** The reader shows this item. */
+  reading: boolean;
+  onRead: () => void;
   onOpenJob: (jobId: number) => void;
   onOpenSettings: () => void;
 }): React.JSX.Element {
-  const head = (kind: string, at: number | null = item.since): React.JSX.Element => (
+  // A permission counts down to its expiry in its own title row.
+  const at = item.kind === 'permission' ? null : item.since;
+  const head = (
     <>
-      <QueueHead kind={kind} job={job} at={at} />
+      <QueueHead
+        kind={kindLabel(item)}
+        job={job}
+        at={at}
+        action={<ReadAction reading={reading} onRead={onRead} />}
+      />
       {refusal !== null && <RefusalLine repoId={snapshot.repoId} refusal={refusal} />}
     </>
   );
   switch (item.kind) {
     case 'permission':
-      // The card counts down to its expiry in its own title row.
       return (
         <PermissionCard
           permission={item.permission}
-          paneId={item.detail.crew.find((c) => c.id === item.permission.crewId)?.paneId ?? null}
-          head={head('PERMISSION', null)}
+          paneId={crewPaneId(item.detail, item.permission.crewId)}
+          head={head}
         />
       );
     case 'plan':
@@ -64,82 +79,78 @@ export function QueueCard({
         <PlanQueueCard
           version={item.version}
           detail={item.detail}
-          head={head(
-            `${item.version.kind === 'change' ? 'PLAN CHANGE' : 'PLAN'} v${item.version.version}`
-          )}
+          head={head}
+          onRead={onRead}
           onOpenJob={onOpenJob}
         />
       );
-    case 'question': {
-      const { question } = item;
+    case 'question':
       return (
         <QuestionCard
-          question={question}
-          head={head('QUESTION')}
+          question={item.question}
+          head={head}
           clientFileChanged={snapshot.clientFileChanged}
           onOpenSettings={onOpenSettings}
-          // The answer is held for undo and the card leaves the queue now, so it
-          // counts as taken without waiting on the hold.
-          // eslint-disable-next-line @typescript-eslint/promise-function-async
-          onAnswer={(answer) => {
-            void useBridgeStore.getState().hold(
-              snapshot.repoId,
-              {
-                key: item.key,
-                jobId: item.jobId,
-                label: `Answer ${questionDisplayId(question.id)}`
-              },
-              { kind: 'answer', answer: { id: question.id, ...answer } }
-            );
-            return Promise.resolve(true);
-          }}
+          onAnswer={holdAnswer(snapshot.repoId, item.question)}
         />
       );
-    }
     case 'settings':
-      return <SettingsCardView card={item.card} head={head('SETTINGS')} />;
+      return <SettingsCardView card={item.card} head={head} />;
     case 'delivered':
-      return <DeliveredCard job={item.job} detail={item.detail} head={head('DELIVERED')} />;
+      return <DeliveredCard job={item.job} detail={item.detail} head={head} />;
     case 'crew':
-      return <NeedsYouCard member={item.member} head={head('NEEDS YOU')} />;
+      return <NeedsYouCard member={item.member} head={head} />;
     case 'loading':
-      return <LoadingRow what={item.what} job={item.job} />;
+      return (
+        <div
+          aria-busy
+          className="rounded-md border border-amber-400/35 bg-fleet-bg px-2.5 py-2 text-xs text-fleet-text-subtle"
+        >
+          <QueueHead kind={kindLabel(item)} job={item.job} at={null} />
+        </div>
+      );
   }
 }
 
-const LOADING_KIND: Record<Extract<WaitingItem, { kind: 'loading' }>['what'], string> = {
-  plan: 'PLAN',
-  permission: 'PERMISSION',
-  crew: 'NEEDS YOU'
-};
-
-/** A plan, permission or crew member the snapshot says waits, while its job's detail loads. */
-function LoadingRow({
-  what,
-  job
+/** Read for an item in full, or the mark that the reader shows it. */
+function ReadAction({
+  reading,
+  onRead
 }: {
-  what: Extract<WaitingItem, { kind: 'loading' }>['what'];
-  job: AgencyJob;
+  reading: boolean;
+  onRead: () => void;
 }): React.JSX.Element {
+  if (reading) {
+    return (
+      <span className="rounded bg-blue-500/15 px-1.5 text-[10px] leading-4 font-semibold tracking-[0.04em] text-blue-600 dark:text-blue-300">
+        READING
+      </span>
+    );
+  }
   return (
-    <div
-      aria-busy
-      className="rounded-md border border-amber-400/35 bg-fleet-bg px-2.5 py-2 text-xs text-fleet-text-subtle"
+    <button
+      type="button"
+      onClick={onRead}
+      aria-label="Read in full"
+      title="Read in full"
+      className="flex size-5 items-center justify-center rounded text-fleet-text-muted transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text focus-ring"
     >
-      <QueueHead kind={LOADING_KIND[what]} job={job} at={null} />
-    </div>
+      <Maximize2 size={11} />
+    </button>
   );
 }
 
-/** A queue card's first row: its kind, its job, and how long it has waited. */
-function QueueHead({
+/** A queue card's first row: its kind, its job, how long it has waited, and an action. */
+export function QueueHead({
   kind,
   job,
-  at
+  at,
+  action
 }: {
   kind: string;
   job: AgencyJob | null;
   at: number | null;
+  action?: React.ReactNode;
 }): React.JSX.Element {
   return (
     <div className="flex min-w-0 items-center gap-2">
@@ -159,11 +170,12 @@ function QueueHead({
           </span>
         </>
       )}
-      {at !== null && (
-        <span className="ml-auto shrink-0 text-[11px] text-fleet-text-subtle">
-          {relativeTime(at)}
-        </span>
-      )}
+      <span className="ml-auto flex shrink-0 items-center gap-1.5">
+        {at !== null && (
+          <span className="text-[11px] text-fleet-text-subtle">{relativeTime(at)}</span>
+        )}
+        {action}
+      </span>
     </div>
   );
 }
@@ -197,35 +209,22 @@ export function RefusalLine({
   );
 }
 
-type NoteAction = 'revise' | 'reject';
-
-const NOTE_FORM: Record<NoteAction, { placeholder: string; label: string; send: string }> = {
-  revise: {
-    placeholder: 'What should change?',
-    label: 'What should change in the plan',
-    send: 'Ask for the change'
-  },
-  reject: {
-    placeholder: 'What should the Admiral do instead?',
-    label: 'Why you reject the plan',
-    send: 'Reject plan'
-  }
-};
-
 /**
  * A plan waiting on the client, short: its summary, its first steps, what it
  * costs, and Approve, Change and Reject. A plan that takes a choice only its
- * full card asks for, or that a check holds, is approved from the job's tab.
+ * full form asks for is approved from the reader; one a check holds, not at all.
  */
 function PlanQueueCard({
   version,
   detail,
   head,
+  onRead,
   onOpenJob
 }: {
   version: AgencyPlanVersion;
   detail: AgencyJobDetail;
   head: React.ReactNode;
+  onRead: () => void;
   onOpenJob: (jobId: number) => void;
 }): React.JSX.Element {
   const job = detail.job;
@@ -233,14 +232,8 @@ function PlanQueueCard({
   const blocked = version.checks.issues.find((i) => i.severity === 'block');
   const choices = needsChoices(version);
   const name = `plan v${version.version}`;
-  const hold = (label: string, action: Exclude<PlanAction, { action: 'edit' }>): void =>
-    void useBridgeStore
-      .getState()
-      .hold(
-        job.repoId,
-        { key: `plan:${version.id}`, jobId: job.id, label },
-        { kind: 'plan', action }
-      );
+  const hold = (label: string, action: HeldPlanAction): void =>
+    holdPlan(job, version, label, action);
 
   return (
     <section
@@ -257,7 +250,15 @@ function PlanQueueCard({
       ) : (
         choices && (
           <p className="text-xs text-fleet-text-muted">
-            It has choices to make before you approve it. Open {jobDisplayId(job.id)} to see them.
+            It has choices to make before you approve it.{' '}
+            <button
+              type="button"
+              onClick={onRead}
+              className="rounded text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
+            >
+              Read it in full
+            </button>{' '}
+            to make them.
           </p>
         )
       )}
@@ -340,48 +341,8 @@ function PlanGist({ version }: { version: AgencyPlanVersion }): React.JSX.Elemen
   );
 }
 
-/** The note a change or a rejection needs, in place of the card's buttons. */
-function PlanNoteForm({
-  action,
-  onCancel,
-  onSend
-}: {
-  action: NoteAction;
-  onCancel: () => void;
-  onSend: (note: string) => void;
-}): React.JSX.Element {
-  const [note, setNote] = useState('');
-  return (
-    <form
-      className="flex flex-col gap-1.5 pt-0.5"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const text = note.trim();
-        if (text !== '') onSend(text);
-      }}
-    >
-      <textarea
-        value={note}
-        autoFocus
-        rows={2}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder={NOTE_FORM[action].placeholder}
-        aria-label={NOTE_FORM[action].label}
-        className="resize-none rounded-md border border-fleet-border bg-fleet-surface px-2 py-1.5 text-xs text-fleet-text outline-none placeholder:text-fleet-text-subtle focus:border-fleet-border-strong"
-      />
-      <div className="flex justify-end gap-1.5">
-        <button type="button" onClick={onCancel} className={SECONDARY}>
-          Cancel
-        </button>
-        <button type="submit" disabled={note.trim() === ''} className={PRIMARY}>
-          {NOTE_FORM[action].send}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function Chip({ children }: { children: React.ReactNode }): React.JSX.Element {
+/** A short fact about a plan, such as its budget. */
+export function Chip({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <span className="rounded bg-fleet-surface-2 px-1.5 py-0.5 text-[11px] text-fleet-text-secondary">
       {children}

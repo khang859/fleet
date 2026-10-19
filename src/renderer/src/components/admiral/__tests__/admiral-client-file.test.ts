@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { AgencyQuestion, AgencySnapshot } from '../../../../../shared/agency';
 import { agencyJob, agencyQuestion } from '../../../../../shared/__tests__/agency-fixtures';
-import { BridgeQueue } from '../BridgeQueue';
+import { bridgeQueue } from './queue-fixtures';
 import { JobSheet } from '../JobSheet';
 import { QuestionCard } from '../QuestionCard';
 
@@ -74,15 +74,10 @@ const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
 
 /** The column beside the conversation: the Bridge queue in the lobby, else the job's sheet. */
 const sheet = (snapshot: AgencySnapshot, jobId: number | null = null): string =>
-  renderToStaticMarkup(
-    jobId === null
-      ? createElement(BridgeQueue, {
-          snapshot,
-          defaultBudgetUsd: 10,
-          onOpenJob: () => {},
-          onOpenSettings: () => {}
-        })
-      : createElement(JobSheet, {
+  jobId === null
+    ? bridgeQueue(snapshot)
+    : renderToStaticMarkup(
+        createElement(JobSheet, {
           snapshot,
           jobId,
           detail: undefined,
@@ -91,7 +86,7 @@ const sheet = (snapshot: AgencySnapshot, jobId: number | null = null): string =>
           onAnswer: async () => Promise.resolve(true),
           onOpenSettings: () => {}
         })
-  );
+      );
 
 describe('a client file card', () => {
   it('shows the contradicted line struck out above its replacement, and the rest', () => {

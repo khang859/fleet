@@ -18,7 +18,7 @@ function useClose(job: AgencyJob): RefusableAction<'cancel' | 'accept'> {
   );
 }
 
-function Refused({ reason }: { reason: string | null }): React.JSX.Element | null {
+export function Refused({ reason }: { reason: string | null }): React.JSX.Element | null {
   if (reason === null) return null;
   return (
     <p role="status" className="text-[11px] text-amber-700 dark:text-amber-400/90">

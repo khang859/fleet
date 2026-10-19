@@ -1,3 +1,5 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgencyJob, AgencySnapshot } from '../../../../../shared/agency';
 import type {
   AgencyCrewMember,
@@ -10,6 +12,9 @@ import type { SettingsCard } from '../../../../../shared/agency-settings';
 import { PlanSchema } from '../../../../../shared/agency-plan';
 import { NO_JOB_SPEND } from '../../../../../shared/agency-spend';
 import { agencyJob } from '../../../../../shared/__tests__/agency-fixtures';
+import type { RefusedDecision } from '../../../store/bridge-store';
+import { BridgeQueue } from '../BridgeQueue';
+import { queueOrder, waitingItems } from '../waiting-queue';
 
 /** What waits on the client, of each kind, for the queue model and the Bridge queue tests. */
 
@@ -144,3 +149,24 @@ export const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
   held: [],
   ...over
 });
+
+/** The Bridge queue column as the workspace draws it, with the job details given. */
+export function bridgeQueue(
+  snapshot: AgencySnapshot | undefined,
+  details: Record<number, AgencyJobDetail> = {},
+  refused: RefusedDecision[] = [],
+  readingKey: string | null = null
+): string {
+  return renderToStaticMarkup(
+    createElement(BridgeQueue, {
+      snapshot,
+      items: queueOrder(waitingItems(snapshot, details)),
+      refused,
+      reading: readingKey === null ? null : { key: readingKey, index: 0 },
+      defaultBudgetUsd: 10,
+      onRead: () => {},
+      onOpenJob: () => {},
+      onOpenSettings: () => {}
+    })
+  );
+}

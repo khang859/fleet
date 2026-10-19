@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import type { HoldRequest } from '../../../shared/agency-jobs';
+import type { AgencyAnswerRequest, AgencyJob, AgencyQuestion } from '../../../shared/agency';
+import { questionDisplayId } from '../../../shared/agency';
+import type { AgencyPlanVersion, HoldRequest } from '../../../shared/agency-jobs';
 
 /** A decision from the Bridge that main would not carry out, with its reason. */
 export type RefusedDecision = {
@@ -10,6 +12,21 @@ export type RefusedDecision = {
   label: string;
   reason: string;
 };
+
+/** The queue item a pane's reader shows, and its place in the queue when last seen. */
+export type Reading = { key: string; index: number };
+
+/**
+ * What the reader shows once the queue changes: the same item where it is
+ * now, else the item that took its place, or nothing when the queue is empty.
+ */
+export function followReading(keys: readonly string[], reading: Reading | null): Reading | null {
+  if (reading === null || keys.length === 0) return null;
+  const at = keys.indexOf(reading.key);
+  if (at >= 0) return at === reading.index ? reading : { key: reading.key, index: at };
+  const index = Math.min(reading.index, keys.length - 1);
+  return { key: keys[index], index };
+}
 
 type BridgeState = {
   /** By repository, newest first, until the client dismisses one or decides on its item again. */
@@ -25,10 +42,21 @@ type BridgeState = {
     request: HoldRequest
   ) => Promise<void>;
   dismiss: (repoId: string, key: string) => void;
+  /** By pane: the item its reader shows in the main column; absent while the conversation shows. */
+  reading: Record<string, Reading>;
+  read: (paneId: string, reading: Reading | null) => void;
 };
 
 export const useBridgeStore = create<BridgeState>((set, get) => ({
   refused: {},
+  reading: {},
+  read: (paneId, reading) =>
+    set((s) => ({
+      reading:
+        reading === null
+          ? Object.fromEntries(Object.entries(s.reading).filter(([id]) => id !== paneId))
+          : { ...s.reading, [paneId]: reading }
+    })),
   hold: async (repoId, decision, request) => {
     get().dismiss(repoId, decision.key);
     const result = await window.fleet.agency
@@ -52,3 +80,45 @@ export const useBridgeStore = create<BridgeState>((set, get) => ({
       return { refused: { ...s.refused, [repoId]: list.filter((r) => r.key !== key) } };
     })
 }));
+
+/** A plan decision the Bridge holds for undo: any but a direct edit. */
+export type HeldPlanAction = Extract<HoldRequest, { kind: 'plan' }>['action'];
+
+/** Hold a decision on a plan version from the Bridge, keyed as its queue item. */
+export function holdPlan(
+  job: AgencyJob,
+  version: AgencyPlanVersion,
+  label: string,
+  action: HeldPlanAction
+): void {
+  void useBridgeStore
+    .getState()
+    .hold(
+      job.repoId,
+      { key: `plan:${version.id}`, jobId: job.id, label },
+      { kind: 'plan', action }
+    );
+}
+
+/**
+ * A question card's answer from the Bridge: held for undo, and taken at once,
+ * since the card leaves the queue without waiting on the hold.
+ */
+export function holdAnswer(
+  repoId: string,
+  question: AgencyQuestion
+): (answer: Omit<AgencyAnswerRequest, 'id'>) => Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/promise-function-async
+  return (answer) => {
+    void useBridgeStore.getState().hold(
+      repoId,
+      {
+        key: `q:${question.id}`,
+        jobId: question.jobId,
+        label: `Answer ${questionDisplayId(question.id)}`
+      },
+      { kind: 'answer', answer: { id: question.id, ...answer } }
+    );
+    return Promise.resolve(true);
+  };
+}

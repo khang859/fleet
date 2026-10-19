@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HoldRequest, HoldResult } from '../../../../shared/agency-jobs';
-import { useBridgeStore } from '../bridge-store';
+import { followReading, useBridgeStore } from '../bridge-store';
 
 /** Decisions from the Bridge: held for undo, and kept with main's reason when refused. */
 
@@ -53,5 +53,44 @@ describe('the bridge store', () => {
     const pending = useBridgeStore.getState().hold(REPO, DECISION, APPROVE);
     expect(refused()).toEqual([]);
     await pending;
+  });
+});
+
+describe('the reader on a changing queue', () => {
+  const keys = ['perm:5', 'plan:7', 'q:35'];
+
+  it('stays on its item, wherever the item moves', () => {
+    const reading = { key: 'plan:7', index: 1 };
+    expect(followReading(keys, reading)).toBe(reading);
+    expect(followReading(['q:35', 'perm:5', 'plan:7'], reading)).toEqual({
+      key: 'plan:7',
+      index: 2
+    });
+  });
+
+  it('moves to the item that took its place once its item is resolved', () => {
+    expect(followReading(['perm:5', 'q:35'], { key: 'plan:7', index: 1 })).toEqual({
+      key: 'q:35',
+      index: 1
+    });
+    // The last item gone: the one before it is now last.
+    expect(followReading(['perm:5', 'plan:7'], { key: 'q:35', index: 2 })).toEqual({
+      key: 'plan:7',
+      index: 1
+    });
+  });
+
+  it('closes once the queue is empty, and stays closed', () => {
+    expect(followReading([], { key: 'q:35', index: 0 })).toBeNull();
+    expect(followReading(keys, null)).toBeNull();
+  });
+
+  it('is kept by pane, and closing one pane leaves the others', () => {
+    const { read } = useBridgeStore.getState();
+    read('pane-a', { key: 'q:35', index: 2 });
+    read('pane-b', { key: 'perm:5', index: 0 });
+    read('pane-a', null);
+    expect(useBridgeStore.getState().reading).toEqual({ 'pane-b': { key: 'perm:5', index: 0 } });
+    read('pane-b', null);
   });
 });

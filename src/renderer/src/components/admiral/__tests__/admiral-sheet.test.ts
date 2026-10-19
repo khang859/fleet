@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../../shared/agency';
 import { agencyJob, agencyQuestion } from '../../../../../shared/__tests__/agency-fixtures';
 import { QuestionCard } from '../QuestionCard';
-import { BridgeQueue } from '../BridgeQueue';
+import { bridgeQueue } from './queue-fixtures';
 import { JobSheet } from '../JobSheet';
 import { JobTabs } from '../JobTabs';
 import { askedQuestionId, jobLink, jobStatus } from '../job-view';
@@ -45,15 +45,10 @@ function sheet(
   jobId: number | null,
   working = false
 ): string {
-  return renderToStaticMarkup(
-    jobId === null
-      ? createElement(BridgeQueue, {
-          snapshot,
-          defaultBudgetUsd: 10,
-          onOpenJob: () => {},
-          onOpenSettings: () => {}
-        })
-      : createElement(JobSheet, {
+  return jobId === null
+    ? bridgeQueue(snapshot)
+    : renderToStaticMarkup(
+        createElement(JobSheet, {
           snapshot,
           jobId,
           detail: undefined,
@@ -62,7 +57,7 @@ function sheet(
           onAnswer: async () => Promise.resolve(true),
           onOpenSettings: () => {}
         })
-  );
+      );
 }
 
 const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
