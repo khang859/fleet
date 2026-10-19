@@ -6,6 +6,8 @@ import { CLIENT_LINE_MAX_CHARS } from '../../../../shared/agency-tools';
 import { openClientFileSettings } from '../../store/settings-nav-store';
 import { AgentMarkdown } from '../agent/AgentMarkdown';
 import { ProposalLines } from './ClientFileViews';
+import { PRIMARY } from './JobClose';
+import { ReaderFrame, ReaderSection } from './ReaderFrame';
 import { useRefusable, type Refusable } from './use-refusable';
 
 /** What answering a card sends: an option, words, or both. */
@@ -32,7 +34,8 @@ export function QuestionCard({
   onAnswer,
   onOpenSettings,
   clientFileChanged = false,
-  head
+  head,
+  layout = 'card'
 }: {
   question: AgencyQuestion;
   /** Resolves false when main would not take the answer. */
@@ -42,9 +45,22 @@ export function QuestionCard({
   clientFileChanged?: boolean;
   /** A first row, as the Bridge queue names the job and kind. */
   head?: React.ReactNode;
+  /** `reader`: in full in the Bridge's main column, with Answer in a footer. */
+  layout?: 'card' | 'reader';
 }): React.JSX.Element | null {
   const outsideChange = question.proposal !== null && clientFileChanged;
   if (question.status === 'hidden') return null;
+  if (layout === 'reader') {
+    return (
+      <ReaderLayout
+        question={question}
+        onAnswer={onAnswer}
+        onOpenSettings={onOpenSettings}
+        clientFileChanged={clientFileChanged}
+        head={head}
+      />
+    );
+  }
   if (question.kind === 'model_unreachable') {
     return (
       <ModelUnreachableCard
@@ -436,5 +452,189 @@ function ModelUnreachableCard({
         </p>
       )}
     </section>
+  );
+}
+
+/**
+ * A question in the reader: an open question in full, any other kind (the
+ * model down, Remember this?, an answered one) as its card at full width.
+ */
+function ReaderLayout({
+  question,
+  onAnswer,
+  onOpenSettings,
+  clientFileChanged,
+  head
+}: {
+  question: AgencyQuestion;
+  onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
+  onOpenSettings: () => void;
+  clientFileChanged: boolean;
+  head: React.ReactNode;
+}): React.JSX.Element {
+  const plain =
+    question.kind !== 'model_unreachable' &&
+    question.answeredAt === null &&
+    rememberLine(question) === null;
+  if (!plain) {
+    return (
+      <ReaderFrame head={head}>
+        <QuestionCard
+          question={question}
+          onAnswer={onAnswer}
+          onOpenSettings={onOpenSettings}
+          clientFileChanged={clientFileChanged}
+        />
+      </ReaderFrame>
+    );
+  }
+  return (
+    <QuestionReader
+      question={question}
+      onAnswer={onAnswer}
+      head={head}
+      outsideChange={question.proposal !== null && clientFileChanged}
+    />
+  );
+}
+
+/**
+ * A question in full: why the Admiral asks, every option with its detail and
+ * the Admiral's pick ticked, and a box for the client's own words, sent
+ * together with the option ticked, if any.
+ */
+function QuestionReader({
+  question,
+  onAnswer,
+  head,
+  outsideChange
+}: {
+  question: AgencyQuestion;
+  onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
+  head: React.ReactNode;
+  outsideChange: boolean;
+}): React.JSX.Element {
+  const withdrawn = question.status === 'withdrawn';
+  const [pick, setPick] = useState<number | null>(withdrawn ? null : question.recommended);
+  const [text, setText] = useState('');
+  const { busy, refused, answer } = useAnswer(onAnswer, () => setText(''));
+  const typed = text.trim();
+  const blocked = (option: number): boolean => outsideChange && option === 0;
+  const ready = (pick !== null && !blocked(pick)) || typed !== '';
+  const id = questionDisplayId(question.id);
+
+  return (
+    <ReaderFrame
+      head={head}
+      footer={
+        <div className="flex items-center gap-2">
+          {refused && <Refused />}
+          <div className="flex-1" />
+          <button
+            type="button"
+            disabled={busy || !ready}
+            onClick={() =>
+              void answer({
+                ...(pick === null || blocked(pick) ? {} : { option: pick }),
+                ...(typed === '' ? {} : { text: typed })
+              })
+            }
+            className={PRIMARY}
+          >
+            Answer
+          </button>
+        </div>
+      }
+    >
+      <div className="flex items-baseline gap-2">
+        <h2 className="flex-1 text-base font-semibold text-fleet-text">{question.question}</h2>
+        <span className="shrink-0 font-mono text-xs text-fleet-text-subtle">{id}</span>
+      </div>
+      {withdrawn && (
+        <p className="text-xs text-fleet-text-subtle">
+          Withdrawn{question.withdrawnReason ? `: ${question.withdrawnReason}` : ''}. You can still
+          answer, and the Admiral will know it came late.
+        </p>
+      )}
+      {outsideChange && <OutsideChange repoId={question.repoId} />}
+      {question.context !== '' && (
+        <ReaderSection label="Why the Admiral asks">
+          <AgentMarkdown
+            streaming={false}
+            className="text-[13px] leading-relaxed text-fleet-text-secondary [&_code]:text-xs"
+          >
+            {question.context}
+          </AgentMarkdown>
+        </ReaderSection>
+      )}
+      {question.proposal !== null && <ProposalLines proposal={question.proposal} />}
+      <ReaderSection label="Options">
+        <OptionList
+          question={question}
+          pick={pick}
+          disabled={(i) => busy || blocked(i)}
+          onPick={setPick}
+        />
+      </ReaderSection>
+      <ReaderSection label="In your own words">
+        <textarea
+          value={text}
+          disabled={busy}
+          rows={3}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Add to the option, or answer in your own words"
+          aria-label={`Your own answer to ${id}`}
+          className="resize-none rounded-md border border-fleet-border bg-fleet-surface px-2.5 py-2 text-[13px] text-fleet-text outline-none placeholder:text-fleet-text-subtle focus:border-fleet-border-strong"
+        />
+      </ReaderSection>
+    </ReaderFrame>
+  );
+}
+
+/** A question's options as one choice, each with its detail, the Admiral's pick marked. */
+function OptionList({
+  question,
+  pick,
+  disabled,
+  onPick
+}: {
+  question: AgencyQuestion;
+  pick: number | null;
+  disabled: (option: number) => boolean;
+  onPick: (option: number) => void;
+}): React.JSX.Element {
+  const id = questionDisplayId(question.id);
+  const recommended = question.status === 'withdrawn' ? null : question.recommended;
+  return (
+    <div role="radiogroup" aria-label={`Options for ${id}`} className="flex flex-col gap-1.5">
+      {question.options.map((option, i) => (
+        <label
+          key={i}
+          className={`flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2 transition-colors has-disabled:cursor-default has-disabled:opacity-50 ${
+            pick === i
+              ? 'border-blue-400/60 bg-fleet-surface-2'
+              : 'border-fleet-border hover:bg-fleet-surface-2/60'
+          }`}
+        >
+          <input
+            type="radio"
+            name={`answer-${id}`}
+            checked={pick === i}
+            disabled={disabled(i)}
+            onChange={() => onPick(i)}
+            className="fleet-accent-input mt-0.5"
+          />
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-[13px] text-fleet-text">
+              {option.label}
+              {recommended === i && <span className="text-fleet-text-muted"> · My pick</span>}
+            </span>
+            {option.detail !== undefined && (
+              <span className="text-xs text-fleet-text-muted">{option.detail}</span>
+            )}
+          </span>
+        </label>
+      ))}
+    </div>
   );
 }

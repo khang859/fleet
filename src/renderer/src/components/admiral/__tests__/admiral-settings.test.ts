@@ -5,7 +5,7 @@ import type { AgencySnapshot } from '../../../../../shared/agency';
 import type { SettingChange, SettingsCard } from '../../../../../shared/agency-settings';
 import { agencyJob } from '../../../../../shared/__tests__/agency-fixtures';
 import { AdmiralChangeNote } from '../../settings/AdmiralChangeNote';
-import { BridgeQueue } from '../BridgeQueue';
+import { bridgeQueue } from './queue-fixtures';
 import { JobSheet } from '../JobSheet';
 import { SettingsCardView } from '../SettingsCard';
 
@@ -63,15 +63,10 @@ const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
 
 /** The column beside the conversation: the Bridge queue in the lobby, else the job's sheet. */
 const sheet = (snapshot: AgencySnapshot, jobId: number | null = null): string =>
-  renderToStaticMarkup(
-    jobId === null
-      ? createElement(BridgeQueue, {
-          snapshot,
-          defaultBudgetUsd: 10,
-          onOpenJob: () => {},
-          onOpenSettings: () => {}
-        })
-      : createElement(JobSheet, {
+  jobId === null
+    ? bridgeQueue(snapshot)
+    : renderToStaticMarkup(
+        createElement(JobSheet, {
           snapshot,
           jobId,
           detail: undefined,
@@ -80,7 +75,7 @@ const sheet = (snapshot: AgencySnapshot, jobId: number | null = null): string =>
           onAnswer: async () => Promise.resolve(true),
           onOpenSettings: () => {}
         })
-  );
+      );
 
 const view = (c: SettingsCard): string =>
   renderToStaticMarkup(createElement(SettingsCardView, { card: c }));

@@ -1,5 +1,9 @@
 import type { AgencyJob, AgencySnapshot } from '../../../../shared/agency';
-import type { AgencyPlanVersion, MemberBase } from '../../../../shared/agency-jobs';
+import type {
+  AgencyJobDetail,
+  AgencyPlanVersion,
+  MemberBase
+} from '../../../../shared/agency-jobs';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 
 /** How a job that ended is labeled wherever it shows. */
@@ -143,4 +147,9 @@ export function needsChoices(version: AgencyPlanVersion): boolean {
     (version.effects?.swaps.length ?? 0) > 0 ||
     version.checks.bases.some(baseChoice)
   );
+}
+
+/** The pane of a job's crew member, for Peek; null when the member or its pane is gone. */
+export function crewPaneId(detail: AgencyJobDetail, crewId: number): string | null {
+  return detail.crew.find((c) => c.id === crewId)?.paneId ?? null;
 }

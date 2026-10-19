@@ -1,31 +1,13 @@
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { AgencySnapshot, ClientDecision } from '../../../../../shared/agency';
 import type { AgencyJobDetail } from '../../../../../shared/agency-jobs';
 import { PlanSchema } from '../../../../../shared/agency-plan';
 import { agencyQuestion } from '../../../../../shared/__tests__/agency-fixtures';
-import type { RefusedDecision } from '../../../store/bridge-store';
-import { BridgeQueueView } from '../BridgeQueue';
-import { detail, job, permission, PLAN, snap, version } from './queue-fixtures';
+import { bridgeQueue, detail, job, permission, PLAN, snap, version } from './queue-fixtures';
 
 /** The Bridge's right-hand column, in each state the client can find it in. */
 
-const queue = (
-  snapshot: AgencySnapshot,
-  details: Record<number, AgencyJobDetail> = {},
-  refused: RefusedDecision[] = []
-): string =>
-  renderToStaticMarkup(
-    createElement(BridgeQueueView, {
-      snapshot,
-      details,
-      refused,
-      defaultBudgetUsd: 10,
-      onOpenJob: () => {},
-      onOpenSettings: () => {}
-    })
-  );
+const queue = bridgeQueue;
 
 /** Two open jobs: j2 with a plan and a permission request, j3 with a question. */
 function twoJobs(over: Partial<AgencySnapshot> = {}): {
@@ -114,7 +96,9 @@ describe('the Bridge queue', () => {
     };
     details[2].versions = [version({ checks: { ...version().checks, issues: [accept] } })];
     const choices = queue(snapshot, details);
-    expect(choices).toContain('It has choices to make before you approve it. Open j2 to see them.');
+    expect(choices).toMatch(
+      /It has choices to make before you approve it\.[^]*>Read it in full<\/button>[^]*to make them\./
+    );
     expect(choices).toMatch(/<button type="button" disabled=""[^>]*>Approve plan<\/button>/);
   });
 

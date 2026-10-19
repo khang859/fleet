@@ -262,7 +262,7 @@ function PlanSteps({ version }: { version: AgencyPlanVersion }): React.JSX.Eleme
 }
 
 /** What a change changes against the approved plan, and what approving it does. */
-function ChangeBlock({
+export function ChangeBlock({
   version,
   swaps,
   onSwap
@@ -317,7 +317,7 @@ function ChangeBlock({
 }
 
 /** The env files each step's crew get a copy of, so the client sees where its secrets go. */
-function EnvFiles({ files }: { files: StepEnvFiles[] }): React.JSX.Element | null {
+export function EnvFiles({ files }: { files: StepEnvFiles[] }): React.JSX.Element | null {
   if (files.length === 0) return null;
   return (
     <Block>
@@ -333,7 +333,7 @@ function EnvFiles({ files }: { files: StepEnvFiles[] }): React.JSX.Element | nul
 }
 
 /** Roles the plan brings, each with what it says, saved only if the client approves. */
-function NewRoles({ roles }: { roles: NewRole[] }): React.JSX.Element {
+export function NewRoles({ roles }: { roles: NewRole[] }): React.JSX.Element {
   return (
     <Block>
       <Label>{roles.length === 1 ? 'NEW ROLE' : 'NEW ROLES'}</Label>
@@ -387,7 +387,7 @@ function YouGet({ version }: { version: AgencyPlanVersion }): React.JSX.Element 
 }
 
 /** What the Admiral asks before doing, and what the pre-approval check found. */
-function Cautions({
+export function Cautions({
   version,
   onUseBranch
 }: {
@@ -463,7 +463,7 @@ function useDecision(jobId: number): Decision {
   );
 }
 
-type BaseChoice = 'default' | 'head';
+export type BaseChoice = 'default' | 'head';
 
 const shortSha = (sha: string | null): string => sha?.slice(0, 7) ?? 'no commit';
 
@@ -472,7 +472,7 @@ const shortSha = (sha: string | null): string => sha?.slice(0, 7) ?? 'no commit'
  * tip, or its current HEAD when the client picks it. A member an earlier
  * approval pinned keeps its pin.
  */
-function StartsFrom({
+export function StartsFrom({
   bases,
   choice,
   onChoose

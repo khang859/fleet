@@ -2,10 +2,8 @@ import { useState } from 'react';
 import { Check, CircleCheck } from 'lucide-react';
 import type { AgencySnapshot, ClientDecision, HeldDecision } from '../../../../shared/agency';
 import { jobDisplayId } from '../../../../shared/agency';
-import type { AgencyJobDetail } from '../../../../shared/agency-jobs';
 import { useNow } from '../../hooks/use-now';
-import { useJobDetails } from '../../store/agency-store';
-import { useBridgeStore, type RefusedDecision } from '../../store/bridge-store';
+import type { Reading, RefusedDecision } from '../../store/bridge-store';
 import { ClientFileNotice } from './ClientFileViews';
 import {
   HowAJobGoes,
@@ -18,54 +16,43 @@ import {
 import { PastJobList } from './PastJobs';
 import { QueueCard, RefusalLine } from './QueueCard';
 import { jobStatus, leftText } from './job-view';
-import { needsDetail, queueOrder, waitingItems } from './waiting-queue';
+import type { WaitingItem } from './waiting-queue';
 
 /** How many of today's decisions show before All. */
 const DONE_ROWS = 5;
 
-const NO_REFUSALS: RefusedDecision[] = [];
-
 /**
  * The Bridge's right-hand column: everything that waits on the client across
  * the project's open jobs, soonest to expire first, so no job tab needs
- * opening to answer it. Below it, what the client decided today, then what
- * the lobby sheet showed: the client file notice, leftovers and past jobs.
+ * opening to answer it. A click on a card, outside its buttons, reads it in
+ * full. Below it, what the client decided today, then what the lobby sheet
+ * showed: the client file notice, leftovers and past jobs.
  */
-export function BridgeQueue(props: {
-  snapshot: AgencySnapshot | undefined;
-  defaultBudgetUsd: number;
-  onOpenJob: (jobId: number) => void;
-  onOpenSettings: () => void;
-  className?: string;
-}): React.JSX.Element {
-  const { snapshot } = props;
-  const details = useJobDetails((snapshot?.jobs ?? []).filter(needsDetail).map((j) => j.id));
-  const refused = useBridgeStore((s) =>
-    snapshot === undefined ? NO_REFUSALS : (s.refused[snapshot.repoId] ?? NO_REFUSALS)
-  );
-  return <BridgeQueueView {...props} details={details} refused={refused} />;
-}
-
-/** The queue with its job details and refusals passed in, so a server render in a test sees them. */
-export function BridgeQueueView({
+export function BridgeQueue({
   snapshot,
-  details,
+  items,
   refused,
+  reading,
   defaultBudgetUsd,
+  onRead,
   onOpenJob,
   onOpenSettings,
   className = ''
 }: {
   snapshot: AgencySnapshot | undefined;
-  details: Partial<Record<number, AgencyJobDetail>>;
+  /** From `useBridgeQueue`, in queue order. */
+  items: WaitingItem[];
   refused: RefusedDecision[];
+  /** The item the reader shows; null while the conversation shows. */
+  reading: Reading | null;
   defaultBudgetUsd: number;
+  onRead: (key: string) => void;
   onOpenJob: (jobId: number) => void;
   onOpenSettings: () => void;
   className?: string;
 }): React.JSX.Element {
   const jobs = snapshot?.jobs ?? [];
-  const items = queueOrder(waitingItems(snapshot, details));
+  const readingKey = reading?.key ?? null;
   const held = snapshot?.held ?? [];
   const keys = new Set(items.map((i) => i.key));
   const firstRun = jobs.length === 0;
@@ -91,12 +78,24 @@ export function BridgeQueueView({
         {snapshot !== undefined && items.length > 0 && (
           <ul className="flex flex-col gap-2">
             {items.map((item) => (
-              <li key={item.key}>
+              // The card's Read button is the keyboard's way in; a click
+              // anywhere else on the card is the mouse's.
+              <li
+                key={item.key}
+                onClick={(e) => {
+                  if (item.kind !== 'loading' && !onControl(e.target)) onRead(item.key);
+                }}
+                className={`rounded-md ${item.kind === 'loading' ? '' : 'cursor-pointer'} ${
+                  readingKey === item.key ? 'ring-2 ring-blue-400/50' : ''
+                }`}
+              >
                 <QueueCard
                   item={item}
                   job={jobs.find((j) => j.id === item.jobId) ?? null}
                   snapshot={snapshot}
                   refusal={refused.find((r) => r.key === item.key) ?? null}
+                  reading={readingKey === item.key}
+                  onRead={() => onRead(item.key)}
                   onOpenJob={onOpenJob}
                   onOpenSettings={onOpenSettings}
                 />
@@ -131,6 +130,14 @@ export function BridgeQueueView({
         onOpenSettings={onOpenSettings}
       />
     </aside>
+  );
+}
+
+/** Whether a click landed on a control of its own, which a click on the card must not read. */
+function onControl(target: EventTarget): boolean {
+  return (
+    target instanceof Element &&
+    target.closest('button, a, input, textarea, select, label, summary') !== null
   );
 }
 
