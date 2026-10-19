@@ -154,8 +154,11 @@ const CLIENT_KINDS = "AND kind IN ('answer', 'client_action')";
 export type EnqueueWakeupInput = {
   repoId: string;
   jobId: number | null;
-  /** `client_action` is the client deciding on a card (a plan, a setting): their words, unfenced. */
-  kind: 'answer' | 'event' | 'client_action';
+  /**
+   * `client_action` is the client deciding on a card (a plan, a setting): their words, unfenced.
+   * `permission` is a crew member waiting on the Admiral to answer a permission request.
+   */
+  kind: 'answer' | 'event' | 'client_action' | 'permission';
   questionId?: number | null;
   payload?: Record<string, unknown>;
   /** Higher runs first. Permission requests outrank everything else. */
@@ -1182,19 +1185,24 @@ export class AgencyStore {
         )
         .all(input.repoId, input.jobId, now);
       const job = input.jobId === null ? null : this.getJob(input.jobId);
-      if (job?.holds.includes('chain_limit')) return { ids: [], text: null, nextDueAt: null };
-      if (job && rows.length > 0 && !this.countAutomaticTurn(job)) {
-        return { ids: [], text: null, nextDueAt: null };
-      }
-      if (rows.length > 0) {
+      // A crew member waiting on a permission answer is crew work, not the
+      // Admiral running on its own: it neither counts as an automatic turn nor
+      // waits behind the limit, while everything else does.
+      const limited =
+        job !== null &&
+        rows.some((r) => r.kind !== 'permission') &&
+        (job.holds.includes('chain_limit') || !this.countAutomaticTurn(job));
+      const due = limited ? rows.filter((r) => r.kind === 'permission') : rows;
+      if (limited && due.length === 0) return { ids: [], text: null, nextDueAt: null };
+      if (due.length > 0) {
         this.db
-          .prepare(`UPDATE wakeups SET claimed_at = ? WHERE id IN (${marks(rows.length)})`)
-          .run(now, ...rows.map((r) => r.id));
+          .prepare(`UPDATE wakeups SET claimed_at = ? WHERE id IN (${marks(due.length)})`)
+          .run(now, ...due.map((r) => r.id));
       }
       return {
-        ids: rows.map((r) => r.id),
-        text: renderWakeupText(rows.flatMap((r) => this.wakeupItem(r))),
-        nextDueAt: this.nextDueAt(input.repoId, input.jobId, clientOnly)
+        ids: due.map((r) => r.id),
+        text: renderWakeupText(due.flatMap((r) => this.wakeupItem(r))),
+        nextDueAt: limited ? null : this.nextDueAt(input.repoId, input.jobId, clientOnly)
       };
     })();
   }
