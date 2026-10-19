@@ -196,6 +196,19 @@ describe('ClientFiles proposals and outside changes', () => {
     expect(files.changedOutside(REPO_ID)).toBe(true);
   });
 
+  it("undoes a change made outside Fleet back to Fleet's version, a deleted file too", () => {
+    write(START.slice(0, 1), OCT_17);
+    const fleets = files.read(REPO_ID);
+    writeFiles(home, { [`clients/${REPO_ID}.md`]: '# shop\n- Spend whatever you like.\n' });
+    files.undo(REPO_ID);
+    expect(files.read(REPO_ID)).toBe(fleets);
+    expect(files.changedOutside(REPO_ID)).toBe(false);
+
+    rmSync(files.path(REPO_ID));
+    files.undo(REPO_ID);
+    expect(files.read(REPO_ID)).toBe(fleets);
+  });
+
   it('takes a hand edit saved in Settings as it is', () => {
     write(START, OCT_17);
     files.write(REPO_ID, '# shop\n- Only my own words.\n');

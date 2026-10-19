@@ -86,7 +86,7 @@ export class ClientFiles {
   }
 
   changedOutside(layer: string): boolean {
-    return this.read(layer) !== (this.deps.store.clientFileMark(layer) ?? '');
+    return this.read(layer) !== this.lastWritten(layer);
   }
 
   /** Write the whole file, as the client's Save in Settings does: hand edits win. */
@@ -98,6 +98,11 @@ export class ClientFiles {
   /** The client keeps the file as it is now, outside change and all. */
   keep(layer: string): void {
     this.deps.store.markClientFile(layer, this.read(layer));
+  }
+
+  /** The client undoes a change made outside Fleet: the file goes back to Fleet's last version. */
+  undo(layer: string): void {
+    this.write(layer, this.lastWritten(layer));
   }
 
   /**
@@ -187,9 +192,12 @@ export class ClientFiles {
 
   /** The layer as the note reads it: Fleet's last version while an outside change waits. */
   private noteText(layer: string): string {
-    return this.changedOutside(layer)
-      ? (this.deps.store.clientFileMark(layer) ?? '')
-      : this.read(layer);
+    return this.changedOutside(layer) ? this.lastWritten(layer) : this.read(layer);
+  }
+
+  /** The layer as Fleet last wrote it, or the client last kept it; empty when neither has. */
+  private lastWritten(layer: string): string {
+    return this.deps.store.clientFileMark(layer) ?? '';
   }
 
   private today(): string {

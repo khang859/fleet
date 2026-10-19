@@ -387,6 +387,9 @@ export function registerAgencyIpc(service: AgencyService): void {
   ipcMain.handle(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, (_e, layer: unknown): void => {
     service.keepClientFile(Layer.parse(layer));
   });
+  ipcMain.handle(IPC_CHANNELS.AGENCY_CLIENT_FILE_UNDO, (_e, layer: unknown): void => {
+    service.undoClientFile(Layer.parse(layer));
+  });
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_CLIENT_FILE_LINE,
     (_e, args: unknown): ClientLineResult => service.changeClientLine(ClientLineArgs.parse(args))

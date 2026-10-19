@@ -20,6 +20,7 @@ import type { ClientLineInput } from '../../../../shared/agency-projects';
 import { useAdmiralOnboardingStore } from '../../store/admiral-onboarding-store';
 import { openClientFileSettings } from '../../store/settings-nav-store';
 import { useSettingsStore } from '../../store/settings-store';
+import { OutsideChange } from '../settings/OutsideChange';
 import { AdmiralHeader, RepoChip } from './admiral-header';
 import { STAGE_LABEL } from './admiral-stage';
 import { BudgetPicker } from './BudgetPicker';
@@ -30,7 +31,12 @@ import { ReadYourWork } from './ReadYourWork';
 /** What the client said last, as a bubble, and what the Admiral took from it. */
 type LastAnswer = { said: string | null; got: string };
 
-type Layers = { you: string | null; project: string | null };
+/** One layer as the side panel shows it, and whether it changed outside Fleet. */
+type LayerFile = { text: string | null; changedOutside: boolean };
+
+type Layers = { you: LayerFile; project: LayerFile };
+
+const NO_FILE: LayerFile = { text: null, changedOutside: false };
 
 /** The budget pickers' values; null while a Custom value cannot be used. */
 type Budget = { usd: number | null; weekPct: number | null };
@@ -61,23 +67,18 @@ export function MeetYou({
   const [step, setStep] = useState(0);
   const [last, setLast] = useState<LastAnswer | null>(null);
   const [fresh, setFresh] = useState<string[]>([]);
-  const [layers, setLayers] = useState<Layers>({ you: null, project: null });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const atEnd = step >= order.length;
-
-  const { repoId } = repo;
-  const loadLayers = useCallback(async (): Promise<void> => {
-    const [you, project] = await Promise.all([
-      window.fleet.agency.projects.clientFile(YOU_LAYER),
-      window.fleet.agency.projects.clientFile(repoId)
-    ]);
-    setLayers({ you: you.text, project: project.text });
-  }, [repoId]);
-  useEffect(() => {
-    void loadLayers();
-  }, [loadLayers]);
+  const question = atEnd ? null : meetQuestion(order[step]);
+  const { layers, loadLayers, held } = useMeetLayers({
+    repoId: repo.repoId,
+    question,
+    busy,
+    setBusy,
+    setError
+  });
 
   const { reading, leave, finish, finishThenRead } = useMeetFinish({
     repo,
@@ -105,6 +106,8 @@ export function MeetYou({
       });
       if (!result.ok) {
         setError(result.reason);
+        // The refusal may be an outside change made since the layers were read.
+        await loadLayers();
         return;
       }
       // The budgets are the defaults each new plan starts from, not only words in the file.
@@ -129,7 +132,6 @@ export function MeetYou({
 
   if (reading) return <MeetRead repo={repo} wide={wide} onDone={leave} />;
 
-  const question = atEnd ? null : meetQuestion(order[step]);
   const knows = <MeetKnows repo={repo} layers={layers} fresh={fresh} />;
   const main =
     question !== null ? (
@@ -140,6 +142,7 @@ export function MeetYou({
         last={last}
         busy={busy}
         error={error}
+        held={held}
         onAnswer={(given) => void answer(question, given)}
         below={wide ? null : knows}
       />
@@ -177,6 +180,60 @@ export function MeetYou({
       </div>
     </div>
   );
+}
+
+/**
+ * Both layers for the side panel, read again after each answer, and the
+ * notice that holds the question while its layer changed outside Fleet.
+ */
+function useMeetLayers(deps: {
+  repoId: string;
+  question: MeetQuestion | null;
+  busy: boolean;
+  setBusy: (busy: boolean) => void;
+  setError: (error: string | null) => void;
+}): { layers: Layers; loadLayers: () => Promise<void>; held: React.ReactNode } {
+  const { repoId, question, busy, setBusy, setError } = deps;
+  const [layers, setLayers] = useState<Layers>({ you: NO_FILE, project: NO_FILE });
+
+  const loadLayers = useCallback(async (): Promise<void> => {
+    const [you, project] = await Promise.all([
+      window.fleet.agency.projects.clientFile(YOU_LAYER),
+      window.fleet.agency.projects.clientFile(repoId)
+    ]);
+    setLayers({
+      you: { text: you.text, changedOutside: you.changedOutside },
+      project: { text: project.text, changedOutside: project.changedOutside }
+    });
+  }, [repoId]);
+  useEffect(() => {
+    void loadLayers();
+  }, [loadLayers]);
+
+  const settle = async (call: (layer: string) => Promise<void>, layer: string): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      await call(layer);
+      await loadLayers();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const at = question === null ? null : heldLayer(question, layers, repoId);
+  const held =
+    at === null ? null : (
+      <OutsideChange
+        text={`${at.name} changed outside Fleet. Keep the change or undo it to go on.`}
+        busy={busy}
+        onKeep={() => void settle(window.fleet.agency.projects.keepClientFile, at.layer)}
+        onUndo={() => void settle(window.fleet.agency.projects.undoClientFile, at.layer)}
+      />
+    );
+  return { layers, loadLayers, held };
 }
 
 /**
@@ -369,6 +426,7 @@ function MeetStep({
   last,
   busy,
   error,
+  held,
   onAnswer,
   below
 }: {
@@ -377,6 +435,8 @@ function MeetStep({
   last: LastAnswer | null;
   busy: boolean;
   error: string | null;
+  /** The notice while the question's layer changed outside Fleet; nothing it writes lands until then. */
+  held: React.ReactNode;
   onAnswer: (answer: MeetAnswer) => void;
   /** The side panel, under the question when the pane is narrow. */
   below: React.ReactNode;
@@ -412,7 +472,7 @@ function MeetStep({
               <MeetPicks
                 question={question}
                 picked={picked}
-                disabled={busy}
+                disabled={busy || held !== null}
                 onPick={(i) => {
                   if (question.multi !== true) onAnswer({ kind: 'picks', picks: [i] });
                   else
@@ -430,14 +490,31 @@ function MeetStep({
       <MeetComposer
         text={text}
         error={error}
+        held={held}
         busy={busy}
-        canSend={toSend !== null}
+        canSend={toSend !== null && held === null}
         onText={setText}
         onSend={send}
         onSkip={() => onAnswer({ kind: 'skip' })}
       />
     </>
   );
+}
+
+/** The layer a question writes to, when it changed outside Fleet and so takes no answer. */
+function heldLayer(
+  question: MeetQuestion,
+  layers: Layers,
+  repoId: string
+): { layer: string; name: string } | null {
+  if (question.layer === 'you') {
+    return layers.you.changedOutside
+      ? { layer: YOU_LAYER, name: 'Your file for every project' }
+      : null;
+  }
+  return layers.project.changedOutside
+    ? { layer: repoId, name: 'The file for this project' }
+    : null;
 }
 
 /** What Send would answer: typed words first, then the budget or the several picks. */
@@ -459,6 +536,7 @@ function sendable(
 function MeetComposer(props: {
   text: string;
   error: string | null;
+  held: React.ReactNode;
   busy: boolean;
   canSend: boolean;
   onText: (text: string) => void;
@@ -468,7 +546,8 @@ function MeetComposer(props: {
   return (
     <div className="shrink-0 px-5 pt-1 pb-4">
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-1.5">
-        {props.error !== null && <p className="text-xs text-red-500">{props.error}</p>}
+        {props.held ??
+          (props.error !== null && <p className="text-xs text-red-500">{props.error}</p>)}
         <div className="flex items-center gap-1.5 rounded-xl border border-fleet-border-strong bg-fleet-surface py-1.5 pr-1.5 pl-3.5 focus-within:border-blue-500/70">
           <input
             aria-label="Answer in your own words"
@@ -613,26 +692,31 @@ export function MeetKnows({
           </button>
         </p>
       </div>
-      <KnowsLayer title="You · every project" text={layers.you} fresh={fresh} />
-      <KnowsLayer title={`This project · ${repo.name}`} text={layers.project} fresh={fresh} />
+      <KnowsLayer title="You · every project" file={layers.you} fresh={fresh} />
+      <KnowsLayer title={`This project · ${repo.name}`} file={layers.project} fresh={fresh} />
     </div>
   );
 }
 
 function KnowsLayer({
   title,
-  text,
+  file,
   fresh
 }: {
   title: string;
-  text: string | null;
+  file: LayerFile;
   fresh: string[];
 }): React.JSX.Element {
-  const entries = clientEntryList(text);
+  const entries = clientEntryList(file.text);
   const isFresh = (line: string): boolean => fresh.some((f) => normText(f) === normText(line));
   return (
     <section className="flex flex-col gap-2">
-      <h4 className="truncate text-xs text-fleet-text-muted">{title}</h4>
+      <h4 className="truncate text-xs text-fleet-text-muted">
+        {title}
+        {file.changedOutside && (
+          <span className="text-amber-700 dark:text-amber-400"> · changed outside Fleet</span>
+        )}
+      </h4>
       {entries.length === 0 ? (
         <p className="rounded-lg border border-dashed border-fleet-border px-3 py-2 text-xs text-fleet-text-subtle">
           Nothing yet.
