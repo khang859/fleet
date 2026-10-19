@@ -94,11 +94,12 @@ const AnswerArgs = z
   .refine((a) => a.option !== undefined || (a.text ?? '').trim() !== '', {
     message: 'An answer needs an option or some text'
   });
-const PullArgs = z.object({ repoId: RepoId, jobId: JobId.nullable() });
+/** One conversation of a repository: the lobby (`jobId` null) or a job. */
+const ConversationArgs = z.object({ repoId: RepoId, jobId: JobId.nullable() });
+const PullArgs = ConversationArgs;
 const ReleaseArgs = z.object({ ids: Ids, error: z.string().max(4_000) });
 const HandoffArgs = z.object({ jobId: JobId, lobbyMessageId: z.string().min(1) });
-/** The same conversation a pull names: the lobby (`jobId` null) or a job. */
-const ClearArgs = PullArgs;
+const ClearArgs = ConversationArgs;
 const JobControlArgs = z.object({ jobId: JobId, action: z.enum(['cancel', 'accept']) });
 const PermissionAnswerArgs = z.object({
   id: JobId,

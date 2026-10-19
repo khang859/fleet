@@ -45,6 +45,8 @@ describe('lobbies', () => {
 
     expect(fresh).toBe('lobby-new');
     expect(store.lobbySessionId(REPO.repoId)).toBe('lobby-new');
+    // A reload adopts the new lobby, not a freshly minted one.
+    expect(store.ensureLobby(REPO, () => 'x')).toBe('lobby-new');
     // Turns on the new session are scoped as the Admiral's.
     expect(store.isAdmiralSession('lobby-new')).toBe(true);
     expect(store.lobbySessionId(OTHER_REPO.repoId)).toBe('other-lobby');
