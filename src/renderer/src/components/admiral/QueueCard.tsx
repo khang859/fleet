@@ -18,6 +18,7 @@ import { PlanNoteForm, type NoteAction } from './PlanNoteForm';
 import { QuestionCard } from './QuestionCard';
 import { SettingsCardView } from './SettingsCard';
 import { crewPaneId, formatUsd, needsChoices, plural } from './job-view';
+import { keyProps } from './queue-keys';
 import { kindLabel, type WaitingItem } from './waiting-queue';
 
 /** How many of a plan's steps its queue card lists before "+ N more". */
@@ -239,26 +240,7 @@ function PlanQueueCard({
     >
       {head}
       <PlanGist version={version} />
-      {blocked !== undefined ? (
-        <p className="flex gap-1.5 text-xs text-red-600 dark:text-red-400">
-          <CircleAlert size={12} className="mt-0.5 shrink-0" />
-          {blocked.text}
-        </p>
-      ) : (
-        choices && (
-          <p className="text-xs text-fleet-text-muted">
-            It has choices to make before you approve it.{' '}
-            <button
-              type="button"
-              onClick={onRead}
-              className="rounded text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              Read it in full
-            </button>{' '}
-            to make them.
-          </p>
-        )
-      )}
+      <PlanHeld blocked={blocked?.text ?? null} choices={choices} onRead={onRead} />
       {noting === null ? (
         <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
           <button
@@ -271,13 +253,24 @@ function PlanQueueCard({
               })
             }
             className={PRIMARY}
+            {...keyProps('approve')}
           >
             {version.kind === 'change' ? 'Approve change' : 'Approve plan'}
           </button>
-          <button type="button" onClick={() => setNoting('revise')} className={SECONDARY}>
+          <button
+            type="button"
+            onClick={() => setNoting('revise')}
+            className={SECONDARY}
+            {...keyProps('change')}
+          >
             Change
           </button>
-          <button type="button" onClick={() => setNoting('reject')} className={SECONDARY}>
+          <button
+            type="button"
+            onClick={() => setNoting('reject')}
+            className={SECONDARY}
+            {...keyProps('deny')}
+          >
             Reject
           </button>
           <button
@@ -296,6 +289,40 @@ function PlanQueueCard({
         />
       )}
     </section>
+  );
+}
+
+/** Why a plan cannot be approved from its card: a check holds it, or it has choices to make. */
+function PlanHeld({
+  blocked,
+  choices,
+  onRead
+}: {
+  blocked: string | null;
+  choices: boolean;
+  onRead: () => void;
+}): React.JSX.Element | null {
+  if (blocked !== null) {
+    return (
+      <p className="flex gap-1.5 text-xs text-red-600 dark:text-red-400">
+        <CircleAlert size={12} className="mt-0.5 shrink-0" />
+        {blocked}
+      </p>
+    );
+  }
+  if (!choices) return null;
+  return (
+    <p className="text-xs text-fleet-text-muted">
+      It has choices to make before you approve it.{' '}
+      <button
+        type="button"
+        onClick={onRead}
+        className="rounded text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
+      >
+        Read it in full
+      </button>{' '}
+      to make them.
+    </p>
   );
 }
 

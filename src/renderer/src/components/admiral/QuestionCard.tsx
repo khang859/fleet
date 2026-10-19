@@ -7,7 +7,8 @@ import { openClientFileSettings } from '../../store/settings-nav-store';
 import { AgentMarkdown } from '../agent/AgentMarkdown';
 import { ProposalLines } from './ClientFileViews';
 import { PRIMARY } from './JobClose';
-import { ReaderFrame, ReaderSection } from './ReaderFrame';
+import { Kbd, ReaderFrame, ReaderSection } from './ReaderFrame';
+import { keyProps } from './queue-keys';
 import { useRefusable, type Refusable } from './use-refusable';
 
 /** What answering a card sends: an option, words, or both. */
@@ -230,6 +231,7 @@ function Options({
           onChange={(e) => setText(e.target.value)}
           placeholder="Or answer in your own words"
           aria-label={`Your own answer to ${questionDisplayId(question.id)}`}
+          {...keyProps('reply')}
           className="min-w-0 flex-1 bg-transparent text-xs text-fleet-text outline-none placeholder:text-fleet-text-subtle"
         />
         <button
@@ -540,8 +542,9 @@ function QuestionReader({
               })
             }
             className={PRIMARY}
+            {...keyProps('approve')}
           >
-            Answer
+            Answer<Kbd>A</Kbd>
           </button>
         </div>
       }
@@ -584,6 +587,7 @@ function QuestionReader({
           onChange={(e) => setText(e.target.value)}
           placeholder="Add to the option, or answer in your own words"
           aria-label={`Your own answer to ${id}`}
+          {...keyProps('reply')}
           className="resize-none rounded-md border border-fleet-border bg-fleet-surface px-2.5 py-2 text-[13px] text-fleet-text outline-none placeholder:text-fleet-text-subtle focus:border-fleet-border-strong"
         />
       </ReaderSection>

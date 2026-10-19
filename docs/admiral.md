@@ -126,7 +126,7 @@ The setup file holds no paths from your machine, so a teammate can import it as 
    Nothing starts until you approve.
 4. Crew start in their own panes in the job's tab, each in a worktree on a branch named `admiral/j12/<step>-<n>`.
    Click **Peek** on a crew row to watch one.
-5. Questions and cards show under **Waiting on you** in the job sheet.
+5. Questions and cards show under **Waiting on you** in the job sheet, and on the Bridge for every job at once.
    Results come back as cards, such as a pull request.
 6. When everything in the plan is in, click **Merge** to merge the pull requests in order after their checks pass, or **Accept and close**.
 
@@ -138,6 +138,57 @@ If you type into a crew pane, the crew member is marked **yours** until you clic
 
 A plan card lists the lines it used under **Using what I know about you**.
 The Admiral asks only what those lines do not answer.
+
+## Waiting on you
+
+The Bridge's right column lists everything that waits on you across the project's open jobs: permission requests, plans, questions, settings cards, delivered jobs, and crew that need you.
+Permission requests come first, soonest to expire on top.
+The **Bridge** tab shows how many items wait.
+
+Each card has its main actions, such as **Allow once**, **Approve plan**, or the question's options.
+Click a card, or its **Read in full** button, to read it in the wide column in place of the conversation.
+The reader shows the whole plan with every step, the full permission request with the crew pane's last lines, or the question with every option.
+Use **Previous** and **Next** to move through the queue, and **Close** or Esc to go back to the conversation.
+Your draft in the composer stays.
+
+### Undo
+
+A decision on a plan or a question waits a few seconds before it runs.
+Click **Undo** on its row to take it back.
+An approved plan does not hire crew until the time is up.
+Today's decisions are listed under **Done today**, with what became of each job.
+
+### Ask for a change
+
+1. In the plan reader, click **Change**.
+2. Click the steps your note is about.
+   Each one shows as a chip on the note.
+3. Type what should change, then press Cmd+Enter (Ctrl+Enter on Windows and Linux).
+
+The Admiral writes the next version of the plan.
+Nothing starts until you approve it.
+To edit the plan yourself, click **Edit the plan**.
+
+The new version shows what changed: your note under **You said**, the old budget struck through, and each step marked **New**, **Moved up**, **Moved down**, or **Changed**.
+Removed steps show in a red dashed row.
+Turn off **Show changes** to read the plan without the marks, or click **See v1** to read the version before.
+
+### Keys
+
+The keys work while focus is in the queue or the reader.
+They do nothing while you type in a text box, or while you hold Cmd, Ctrl, Alt, or Shift.
+
+| Key   | What it does                                   |
+| ----- | ---------------------------------------------- |
+| J, K  | Move to the next or previous item              |
+| Enter | Read the item in full                          |
+| Esc   | Close the reader                               |
+| A     | Approve the plan, allow the request, or answer |
+| D     | Deny the request, or reject the plan           |
+| C     | Ask for a change to the plan                   |
+| R     | Go to the answer box, or deny with a reason    |
+
+A key does nothing when its button is turned off, for example on a plan that a check holds.
 
 ## Remember this?
 

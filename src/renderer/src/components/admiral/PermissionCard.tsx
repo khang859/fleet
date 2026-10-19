@@ -11,7 +11,8 @@ import {
 import { useNow } from '../../hooks/use-now';
 import { focusPane } from '../../lib/focus-pane';
 import { PRIMARY, Refused, SECONDARY } from './JobClose';
-import { ReaderFrame, ReaderSection } from './ReaderFrame';
+import { Kbd, ReaderFrame, ReaderSection } from './ReaderFrame';
+import { keyProps } from './queue-keys';
 import { leftText } from './job-view';
 import { useRefusable, type RefusableAction } from './use-refusable';
 
@@ -136,10 +137,13 @@ function usePermissionAnswer(
 /** Allow once and Deny, the Admiral's pick first. */
 function AnswerButtons({
   permission: p,
-  answer
+  answer,
+  hints = false
 }: {
   permission: AgencyPermission;
   answer: RefusableAction<Omit<PermissionAnswerRequest, 'id'>>;
+  /** Show each button's key on it, as the reader does. */
+  hints?: boolean;
 }): React.JSX.Element {
   const pick = p.recommend ?? 'deny';
   const order: PermissionDecision[] = pick === 'deny' ? ['deny', 'allow'] : ['allow', 'deny'];
@@ -152,9 +156,11 @@ function AnswerButtons({
           disabled={answer.busy}
           onClick={() => void answer.run({ decision })}
           className={decision === pick ? PRIMARY : SECONDARY}
+          {...keyProps(decision === 'allow' ? 'approve' : 'deny')}
         >
           {decision === 'allow' ? 'Allow once' : 'Deny'}
           {decision === pick && ' · My pick'}
+          {hints && <Kbd>{decision === 'allow' ? 'A' : 'D'}</Kbd>}
         </button>
       ))}
     </>
@@ -316,6 +322,11 @@ function ReaderAnswers({ permission: p }: { permission: AgencyPermission }): Rea
             rows={2}
             maxLength={PERMISSION_REASON_MAX_CHARS}
             onChange={(e) => setReason(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Escape') return;
+              e.preventDefault();
+              setDenying(false);
+            }}
             placeholder={`What should ${p.crewLabel} do instead?`}
             aria-label="Why you deny it"
             className="resize-none rounded-md border border-fleet-border bg-fleet-bg px-2 py-1.5 text-xs text-fleet-text outline-none placeholder:text-fleet-text-subtle focus:border-fleet-border-strong"
@@ -331,14 +342,15 @@ function ReaderAnswers({ permission: p }: { permission: AgencyPermission }): Rea
         </form>
       ) : (
         <div className="flex flex-wrap items-center gap-1.5">
-          <AnswerButtons permission={p} answer={answer} />
+          <AnswerButtons permission={p} answer={answer} hints />
           <button
             type="button"
             disabled={answer.busy}
             onClick={() => setDenying(true)}
             className={SECONDARY}
+            {...keyProps('reply')}
           >
-            Deny and say why
+            Deny and say why<Kbd>R</Kbd>
           </button>
         </div>
       )}

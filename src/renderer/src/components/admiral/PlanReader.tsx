@@ -19,7 +19,7 @@ import { Cautions, ChangeBlock, EnvFiles, NewRoles, StartsFrom, type BaseChoice 
 import { PlanEditor } from './PlanEditor';
 import { PlanNoteForm, type NoteAction, type PointedStep } from './PlanNoteForm';
 import { Chip } from './QueueCard';
-import { ReaderFrame, ReaderSection } from './ReaderFrame';
+import { Kbd, ReaderFrame, ReaderSection } from './ReaderFrame';
 import { PlanDiffView, RemovedSteps, StepTags, Was } from './PlanDiffView';
 import { formatUsd, plural, runtimeName, stepLabel } from './job-view';
 import {
@@ -32,6 +32,7 @@ import {
   toggled,
   type StepMark
 } from './plan-diff';
+import { keyProps } from './queue-keys';
 import { useRefusable } from './use-refusable';
 
 /**
@@ -466,8 +467,8 @@ function PlanDecision({
           onAccept={setAccepted}
         />
       )}
-      <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-xs text-fleet-text-muted">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="whitespace-nowrap text-xs text-fleet-text-muted">
           ${formatUsd(plan.budget.usd)}
           {plan.budget.weekPct !== undefined && ` · ${plan.budget.weekPct}% of week`}
         </span>
@@ -478,22 +479,61 @@ function PlanDecision({
         >
           Edit the plan
         </button>
-        <button type="button" onClick={() => onNoting('reject')} className={SECONDARY}>
-          Reject
-        </button>
-        <button type="button" onClick={() => onNoting('revise')} className={SECONDARY}>
-          Change
-        </button>
-        <button
-          type="button"
-          disabled={blocked || (unmeasured.length > 0 && !accepted)}
-          onClick={() => onApprove(accepted)}
-          className={PRIMARY}
-        >
-          {version.kind === 'change' ? 'Approve change' : 'Approve plan'}
-        </button>
+        <DecisionButtons
+          approve={version.kind === 'change' ? 'Approve change' : 'Approve plan'}
+          approveDisabled={blocked || (unmeasured.length > 0 && !accepted)}
+          onNoting={onNoting}
+          onApprove={() => onApprove(accepted)}
+        />
       </div>
     </>
+  );
+}
+
+/**
+ * Reject, Change and Approve, each with its key. On a narrow reader they go
+ * to a line of their own, so the budget beside them is never cut.
+ */
+function DecisionButtons({
+  approve,
+  approveDisabled,
+  onNoting,
+  onApprove
+}: {
+  approve: string;
+  approveDisabled: boolean;
+  onNoting: (action: NoteAction) => void;
+  onApprove: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="ml-auto flex gap-2">
+      <button
+        type="button"
+        onClick={() => onNoting('reject')}
+        className={SECONDARY}
+        {...keyProps('deny')}
+      >
+        Reject<Kbd>D</Kbd>
+      </button>
+      <button
+        type="button"
+        onClick={() => onNoting('revise')}
+        className={SECONDARY}
+        {...keyProps('change')}
+      >
+        Change<Kbd>C</Kbd>
+      </button>
+      <button
+        type="button"
+        disabled={approveDisabled}
+        onClick={onApprove}
+        className={PRIMARY}
+        {...keyProps('approve')}
+      >
+        {approve}
+        <Kbd>A</Kbd>
+      </button>
+    </div>
   );
 }
 

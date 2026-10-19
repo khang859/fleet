@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Check, CircleCheck } from 'lucide-react';
 import type { AgencySnapshot, ClientDecision, HeldDecision } from '../../../../shared/agency';
 import { jobDisplayId } from '../../../../shared/agency';
@@ -16,6 +16,7 @@ import {
 import { PastJobList } from './PastJobs';
 import { QueueCard, RefusalLine } from './QueueCard';
 import { jobStatus, leftText } from './job-view';
+import { useKeepFocus } from './use-bridge-queue';
 import type { WaitingItem } from './waiting-queue';
 
 /** How many of today's decisions show before All. */
@@ -56,10 +57,14 @@ export function BridgeQueue({
   const held = snapshot?.held ?? [];
   const keys = new Set(items.map((i) => i.key));
   const firstRun = jobs.length === 0;
+  const ref = useRef<HTMLElement>(null);
+  useKeepFocus(ref, (el) => el.querySelector('[data-item][tabindex="0"]'));
 
   return (
     <aside
+      ref={ref}
       aria-label="Waiting on you"
+      data-queue-scope="queue"
       style={{ width: JOB_SHEET_WIDTH_PX }}
       className={`${SIDE_COLUMN} ${className}`}
     >
@@ -76,32 +81,15 @@ export function BridgeQueue({
               </div>
             ))}
         {snapshot !== undefined && items.length > 0 && (
-          <ul className="flex flex-col gap-2">
-            {items.map((item) => (
-              // The card's Read button is the keyboard's way in; a click
-              // anywhere else on the card is the mouse's.
-              <li
-                key={item.key}
-                onClick={(e) => {
-                  if (item.kind !== 'loading' && !onControl(e.target)) onRead(item.key);
-                }}
-                className={`rounded-md ${item.kind === 'loading' ? '' : 'cursor-pointer'} ${
-                  readingKey === item.key ? 'ring-2 ring-blue-400/50' : ''
-                }`}
-              >
-                <QueueCard
-                  item={item}
-                  job={jobs.find((j) => j.id === item.jobId) ?? null}
-                  snapshot={snapshot}
-                  refusal={refused.find((r) => r.key === item.key) ?? null}
-                  reading={readingKey === item.key}
-                  onRead={() => onRead(item.key)}
-                  onOpenJob={onOpenJob}
-                  onOpenSettings={onOpenSettings}
-                />
-              </li>
-            ))}
-          </ul>
+          <QueueList
+            items={items}
+            snapshot={snapshot}
+            refused={refused}
+            readingKey={readingKey}
+            onRead={onRead}
+            onOpenJob={onOpenJob}
+            onOpenSettings={onOpenSettings}
+          />
         )}
         {held.map((decision) => (
           <HeldRow key={decision.id} decision={decision} />
@@ -130,6 +118,86 @@ export function BridgeQueue({
         onOpenSettings={onOpenSettings}
       />
     </aside>
+  );
+}
+
+/**
+ * The waiting cards with their key hints. One card at a time is in the tab
+ * order: the one focus was last in, so Tab leaves the queue in one step.
+ */
+function QueueList({
+  items,
+  snapshot,
+  refused,
+  readingKey,
+  onRead,
+  onOpenJob,
+  onOpenSettings
+}: {
+  items: WaitingItem[];
+  snapshot: AgencySnapshot;
+  refused: RefusedDecision[];
+  readingKey: string | null;
+  onRead: (key: string) => void;
+  onOpenJob: (jobId: number) => void;
+  onOpenSettings: () => void;
+}): React.JSX.Element {
+  const [focused, setFocused] = useState<string | null>(null);
+  const current = items.some((i) => i.key === focused) ? focused : (items[0]?.key ?? null);
+  return (
+    <>
+      <KeyHints />
+      <ul className="flex flex-col gap-2">
+        {items.map((item) => (
+          // The card's Read button is the keyboard's way in; a click
+          // anywhere else on the card is the mouse's.
+          <li
+            key={item.key}
+            data-item={item.key}
+            tabIndex={item.key === current ? 0 : -1}
+            onFocus={() => setFocused(item.key)}
+            onClick={(e) => {
+              if (item.kind !== 'loading' && !onControl(e.target)) onRead(item.key);
+            }}
+            className={`rounded-md focus-ring ${item.kind === 'loading' ? '' : 'cursor-pointer'} ${
+              readingKey === item.key ? 'ring-2 ring-blue-400/50' : ''
+            }`}
+          >
+            <QueueCard
+              item={item}
+              job={snapshot.jobs.find((j) => j.id === item.jobId) ?? null}
+              snapshot={snapshot}
+              refusal={refused.find((r) => r.key === item.key) ?? null}
+              reading={readingKey === item.key}
+              onRead={() => onRead(item.key)}
+              onOpenJob={onOpenJob}
+              onOpenSettings={onOpenSettings}
+            />
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+/** The queue's keys, always in view while something waits. */
+function KeyHints(): React.JSX.Element {
+  const hints: Array<[string, string]> = [
+    ['J K', 'move'],
+    ['Enter', 'read'],
+    ['A', 'approve'],
+    ['D', 'deny'],
+    ['C', 'change'],
+    ['R', 'reply']
+  ];
+  return (
+    <p className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] text-fleet-text-subtle">
+      {hints.map(([key, does]) => (
+        <span key={key}>
+          <kbd className="font-sans font-medium text-fleet-text-muted">{key}</kbd> {does}
+        </span>
+      ))}
+    </p>
   );
 }
 
@@ -217,20 +285,20 @@ function DoneToday({ decisions }: { decisions: ClientDecision[] }): React.JSX.El
           >
             <span className="size-1.5 shrink-0 rounded-full bg-green-400" />
             <span
-              className="min-w-0 flex-1 truncate text-fleet-text-muted"
+              className="min-w-0 truncate text-fleet-text-muted"
               title={d.detail === null ? d.label : `${d.label} · ${d.detail}`}
             >
               {d.label}
               {d.detail !== null && <span className="text-fleet-text"> · {d.detail}</span>}
-              {d.jobId !== null && (
-                <span>
-                  {' '}
-                  · <span className="font-mono text-[11px]">{jobDisplayId(d.jobId)}</span>
-                </span>
-              )}
             </span>
+            {/* Out of the cut text, so a long detail never hides which job it was. */}
+            {d.jobId !== null && (
+              <span className="-ml-1 shrink-0 text-fleet-text-muted">
+                · <span className="font-mono text-[11px]">{jobDisplayId(d.jobId)}</span>
+              </span>
+            )}
             {d.jobState !== null && (
-              <span className="shrink-0 text-[11px] text-fleet-text-subtle">
+              <span className="ml-auto shrink-0 text-[11px] text-fleet-text-subtle">
                 {jobStatus({ state: d.jobState }, { asking: false, working: false }).label}
               </span>
             )}

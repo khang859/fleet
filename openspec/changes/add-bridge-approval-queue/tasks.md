@@ -43,8 +43,9 @@
 
 ## 6. Phase 6 - Keys, polish, docs
 
-- [ ] 6.1 Add the key handler on the Bridge root with roving focus in the queue; J, K, Enter, Esc, A, D, C, R press the matching enabled button; tests that typing in the composer and modifier keys do nothing
-- [ ] 6.2 Show key hints in the queue header and on reader buttons; check focus rings and screen reader names
-- [ ] 6.3 Update `docs/admiral.md` with the queue, the reader, change requests, undo and the keys
-- [ ] 6.4 E2E with fleet-drive in a throwaway git repository with its own Admiral: two jobs with waiting items, decide from the Bridge, Undo an approval before it hires crew, ask for a change and read v2, deny with a reason; never approve a plan in a way that hires real crew, and never touch jobs j23 and j24 in the main dev app
-- [ ] 6.5 Write a learning in `docs/learnings/` for any mistake found on the way; run typecheck, lint, `npm test`, `ripwire . --quality-delta`
+- [x] 6.1 Add the key handler on the Bridge root with roving focus in the queue; J, K, Enter, Esc, A, D, C, R press the matching enabled button; tests that typing in the composer and modifier keys do nothing
+- [x] 6.2 Show key hints in the queue header and on reader buttons; check focus rings and screen reader names
+- [x] 6.3 Update `docs/admiral.md` with the queue, the reader, change requests, undo and the keys
+- [x] 6.4 E2E with fleet-drive in a throwaway git repository with its own Admiral: two jobs with waiting items, decide from the Bridge, Undo an approval before it hires crew, ask for a change and read v2, deny with a reason; never approve a plan in a way that hires real crew, and never touch jobs j23 and j24 in the main dev app
+  - Note: deny with a reason was checked on a plan (Reject with a reason via D) in the E2E. A permission deny with a reason was checked with main tests (1.4) and renderer-only fake data, since a permission comes only from real Claude crew.
+- [x] 6.5 Write a learning in `docs/learnings/` for any mistake found on the way; run typecheck, lint, `npm test`, `ripwire . --quality-delta`
