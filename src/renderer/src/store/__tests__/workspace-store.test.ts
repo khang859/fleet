@@ -1609,7 +1609,9 @@ describe('Admiral panes', () => {
           clientFileChanged: false,
           trust: { level: 'ask', autoStartUsd: null },
           pastJobs: [],
-          settingsCards: []
+          settingsCards: [],
+          decisions: [],
+          held: []
         }
       }
     });

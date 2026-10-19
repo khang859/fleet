@@ -55,6 +55,8 @@ const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
   trust: { level: 'ask', autoStartUsd: null },
   pastJobs: [],
   settingsCards: [],
+  decisions: [],
+  held: [],
   ...over
 });
 

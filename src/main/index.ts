@@ -374,6 +374,21 @@ async function confirmClose(endsProcess: boolean): Promise<void> {
   mainWindow?.close();
 }
 
+/**
+ * A decision the client gave on the Bridge waits out its undo time in main.
+ * Carry it out before anything is torn down, then close the way the close
+ * came. True when this close waits on that.
+ */
+function holdCloseForDecisions(event: Electron.Event): boolean {
+  if (agencyService?.hasHeld() !== true) return false;
+  event.preventDefault();
+  void agencyService.runHeld().then(() => {
+    if (quitRequested) app.quit();
+    else mainWindow?.close();
+  });
+  return true;
+}
+
 function createWindow(): void {
   // A macOS window that was closed leaves the app in the dock, and reopening
   // it lands here. Both flags describe one close attempt, so a fresh window
@@ -414,6 +429,7 @@ function createWindow(): void {
   });
 
   mainWindow.on('close', (event) => {
+    if (holdCloseForDecisions(event)) return;
     // Already confirmed - this is the close `confirmClose` asked for.
     if (quitConfirmed) {
       ptyManager.killAll();

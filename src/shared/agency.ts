@@ -259,6 +259,35 @@ export type AgencySnapshot = {
   pastJobs: AgencyJob[];
   /** The newest settings cards the Admiral put up, oldest first. */
   settingsCards: SettingsCard[];
+  /** The client's decisions since local midnight, newest first, for Done today. */
+  decisions: ClientDecision[];
+  /** Decisions from the Bridge that Fleet holds a few seconds, so the client can undo them. */
+  held: HeldDecision[];
+};
+
+/** One decision the client made today, for the Bridge's Done today list. */
+export type ClientDecision = {
+  /** The queue item it decided: `plan:12`, `q:35`, `perm:7`. */
+  key: string;
+  jobId: number | null;
+  /** What the client did: `Approved plan v2`, `Answered q35`, `Allowed once`. */
+  label: string;
+  /** What it was about: the answer, the command, the client's note. */
+  detail: string | null;
+  /** Where the job stands now; null for a lobby question. */
+  jobState: JobState | null;
+  at: number;
+};
+
+/** A decision from the Bridge that Fleet carries out when `runsAt` comes, unless undone. */
+export type HeldDecision = {
+  id: number;
+  jobId: number | null;
+  /** The queue item it decides: `plan:12`, `q:35`. */
+  key: string;
+  /** What it does, for the line that stands in for the item: `Approved plan v1`. */
+  label: string;
+  runsAt: number;
 };
 
 /** When a repository's setup and starter questions were finished; null while they are not. */

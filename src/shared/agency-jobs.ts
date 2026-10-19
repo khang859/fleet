@@ -1,4 +1,4 @@
-import type { AgencyJob, AgencyJobEvent, JobState } from './agency';
+import type { AgencyAnswerRequest, AgencyJob, AgencyJobEvent, JobState } from './agency';
 
 export type { AgencyLeftover, ResourceKind } from './agency';
 import type { CrewFlag, CrewRuntime } from './agency-crew';
@@ -124,12 +124,23 @@ export type AgencyPlanVersion = {
   decidedAt: number | null;
   /** Worked out in main for the card: the change against `parentVersion`. */
   diff: PlanDiffEntry[];
+  /** The version right before this one, whatever became of it; null for v1. */
+  previous: PreviousPlanVersion | null;
   /** For a proposed change, what approving it would do. */
   effects: PlanEffects | null;
   /** The saved preference lines the plan follows. */
   uses: PlanUse[];
   /** The dollar limit Fleet approved it under, on its own by the project's trust level; null when the client approved it. */
   autoStartUsd: number | null;
+};
+
+/** What a version changes against the one right before it, for the reader's Show changes. */
+export type PreviousPlanVersion = {
+  version: number;
+  status: PlanVersionStatus;
+  /** The client's note on it: why they rejected it, or the change they asked for. */
+  note: string | null;
+  diff: PlanDiffEntry[];
 };
 
 export type StepStatus =
@@ -309,7 +320,20 @@ export type PlanAction =
       acceptCost?: boolean;
     }
   | { planVersionId: number; action: 'reject'; note: string }
+  /** The client asks for a different plan in words, about the steps they name, if any. */
+  | { planVersionId: number; action: 'revise'; note: string; steps: string[] }
   | { planVersionId: number; action: 'edit'; plan: PlanInput };
+
+/** A plan or question decision from the Bridge, which Fleet holds a few seconds before it carries it out. */
+export type HoldRequest =
+  | { kind: 'plan'; action: Exclude<PlanAction, { action: 'edit' }> }
+  | { kind: 'answer'; answer: AgencyAnswerRequest };
+
+/** How a held decision ended: carried out, refused by the check it runs through, or undone. */
+export type HoldResult =
+  | { outcome: 'done' }
+  | { outcome: 'refused'; reason: string }
+  | { outcome: 'undone' };
 
 export type PlanActionResult =
   | { ok: true; version: number }

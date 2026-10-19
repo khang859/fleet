@@ -160,7 +160,9 @@ beforeEach(async () => {
     clientFileChanged: false,
     trust: { level: 'ask', autoStartUsd: null },
     pastJobs: [],
-    settingsCards: []
+    settingsCards: [],
+    decisions: [],
+    held: []
   };
   agency.claimAdmiral.mockResolvedValue({ ok: true });
   agency.ensureLobby.mockResolvedValue(LOBBY);

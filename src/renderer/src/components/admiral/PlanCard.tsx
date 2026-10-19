@@ -672,7 +672,12 @@ function SettledPlan({
           icon: null
         };
       case 'replaced':
-        return { text: `${name} was replaced by v${newest.version}`, icon: null };
+        return {
+          text: version.decisionNote
+            ? `You asked for a change to ${name}: ${version.decisionNote}`
+            : `${name} was replaced by v${newest.version}`,
+          icon: null
+        };
       case 'proposed':
         return { text: name, icon: null };
     }

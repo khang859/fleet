@@ -45,8 +45,11 @@ export type AgencyPermission = {
   answeredAt: number | null;
 };
 
-/** The client answers a permission card. */
-export type PermissionAnswerRequest = { id: number; decision: PermissionDecision };
+/** The client answers a permission card; a deny may say why, which the crew member reads. */
+export type PermissionAnswerRequest = { id: number; decision: PermissionDecision; reason?: string };
+
+/** The most a client's deny reason may hold. */
+export const PERMISSION_REASON_MAX_CHARS = 300;
 
 export type PermissionAnswerResult = { ok: true } | { ok: false; reason: string };
 

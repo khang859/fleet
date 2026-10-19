@@ -141,6 +141,18 @@ export class PermissionStore {
       .map(toPermission);
   }
 
+  /** The requests the client answered since `since` in a repository, newest first. */
+  answeredByClient(repoId: string, since: number, limit: number): PermissionRecord[] {
+    return this.db
+      .prepare<[string, number, number], PermissionRow>(
+        `${SELECT} JOIN jobs j ON j.id = p.job_id
+         WHERE j.repo_id = ? AND p.answered_by = 'client' AND p.answered_at >= ?
+         ORDER BY p.answered_at DESC, p.id DESC LIMIT ?`
+      )
+      .all(repoId, since, limit)
+      .map(toPermission);
+  }
+
   /** A job's requests that wait on the client, on a card or in the crew pane, oldest first. */
   waitingOnClient(jobId: number): number[] {
     return this.db

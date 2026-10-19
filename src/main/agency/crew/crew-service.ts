@@ -26,6 +26,7 @@ import { handbackDir } from '../results/result-files';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import type { ResourceRecord } from '../store/resource-store';
 import {
+  CREW_ENDED,
   CREW_LIVE,
   CREW_STARTING,
   crewRuntime,
@@ -620,8 +621,14 @@ export class CrewService {
    */
   async screen(jobId: number, paneId: string): Promise<string | null> {
     const crew = this.store.crew.live(jobId).find((c) => c.paneId === paneId);
-    if (crew?.status !== CREW_STARTING) return null;
-    return (await this.deps.panes?.screen(paneId)) ?? null;
+    return crew?.status === CREW_STARTING ? this.paneText(crew.id) : null;
+  }
+
+  /** What a crew member's pane shows now, for the client. Null once it ended or its pane is gone. */
+  async paneText(crewId: number): Promise<string | null> {
+    const crew = this.store.crew.get(crewId);
+    if (crew === null || crew.status === CREW_ENDED || crew.paneId === null) return null;
+    return (await this.deps.panes?.screen(crew.paneId)) ?? null;
   }
 
   /** The panes of a job's crew, ended ones too: all its fleet read tools may see. */

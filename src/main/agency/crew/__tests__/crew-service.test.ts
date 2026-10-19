@@ -13,6 +13,7 @@ import { PROMPT_MISMATCH, type SendResult } from '../../../claude-sessions/input
 import { NEEDS_YOU_MS, STUCK_MS, type CrewSessionState } from '../crew-flags';
 import { stepBrief, type CrewPaneHost, type CrewPaneOpen } from '../crew-service';
 import { ADMIRAL_ANSWER_MS } from '../permissions';
+import { ENV_MASK, Redactor } from '../../../redactor';
 import { admiralSnapshotNote } from '../../admiral/snapshot-note';
 import type { ClaudePendingPermission, ClaudeSession } from '../../../../shared/claude-sessions';
 
@@ -816,6 +817,29 @@ describe('crew flags', () => {
     expect(await service.crewScreen(jobId, paneId)).toBeNull();
   });
 
+  it("shows the client a live member's last 12 lines, env values masked, and nothing once it ended", async () => {
+    const { jobId, paneId } = await live();
+    const crewId = flagOf(jobId).id;
+    vi.spyOn(service, 'redactor').mockResolvedValue(new Redactor(['s3cret-token']));
+    const lines = Array.from({ length: 14 }, (_, i) => `line ${i + 1}`);
+    panes.screens.set(
+      paneId,
+      ['', ...lines.slice(0, 7), '   ', ...lines.slice(7), 'TOKEN=s3cret-token', ''].join('\n')
+    );
+
+    const tail = await service.crewTail(crewId);
+
+    expect(tail?.split('\n')).toEqual([...lines.slice(3), `TOKEN=${ENV_MASK}`]);
+    expect(await service.crewTail(9_999)).toBeNull();
+    await service.jobs.stopCrew([crewId], 'test');
+    expect(await service.crewTail(crewId)).toBeNull();
+  });
+
+  it('has no lines for a pane Fleet does not mirror', async () => {
+    const { jobId } = await live();
+    expect(await service.crewTail(flagOf(jobId).id)).toBeNull();
+  });
+
   it('hands a member to the client when they type in its pane, until they hand it back', async () => {
     const { jobId, paneId } = await live();
     const tools = toolsOf(jobId);
@@ -1207,6 +1231,43 @@ describe('permission requests', () => {
     expect(service.store.getJob(jobId)?.permissionsWaiting).toEqual([]);
     expect(wakeups(jobId)).toContain("The client denied p1 (builder 1's Bash)");
     expect(service.answerPermission({ id: 1, decision: 'allow' })).toMatchObject({ ok: false });
+  });
+
+  it('passes the reason of a client deny to the crew member, the record and the Admiral', async () => {
+    claim();
+    const { jobId, paneId } = await live();
+    ask(paneId, 'tool-1', './deploy.sh --prod');
+    await toolsOf(jobId).permissionAnswer!({
+      request: 'p1',
+      decision: 'ask_client',
+      reason: 'a production deploy is outside the plan'
+    });
+    wakeups(jobId);
+
+    expect(
+      service.answerPermission({ id: 1, decision: 'deny', reason: 'Deploy to staging first' })
+    ).toEqual({ ok: true });
+
+    expect(hooks.responded).toEqual([
+      ['tool-1', 'deny', 'Denied by the client: Deploy to staging first']
+    ]);
+    expect(permissionsOf(jobId)[0]).toMatchObject({
+      state: 'denied',
+      reason: 'The client denied it: Deploy to staging first'
+    });
+    const log = service.jobs.detail(jobId)?.log.map((l) => l.text) ?? [];
+    expect(log).toContain('Denied builder 1: ./deploy.sh --prod · by you: Deploy to staging first');
+    const text = wakeups(jobId);
+    expect(text).toContain("The client denied p1 (builder 1's Bash)");
+    expect(text).toContain('The client wrote: Deploy to staging first');
+    expect(service.snapshot(ref.repoId).decisions).toContainEqual(
+      expect.objectContaining({
+        key: 'perm:1',
+        jobId,
+        label: 'Denied',
+        detail: './deploy.sh --prod'
+      })
+    );
   });
 
   it('goes straight to the client while the Admiral is paused, and expires as denied', async () => {

@@ -32,6 +32,8 @@ import type {
 } from '../../shared/agency-projects';
 import { createLogger } from '../logger';
 import type {
+  HoldRequest,
+  HoldResult,
   JobControl,
   JobControlResult,
   LeftoverAction,
@@ -40,6 +42,8 @@ import type {
 } from '../../shared/agency-jobs';
 import { WorktreeService } from '../worktree-service';
 import { AdmiralRegistry } from './admiral-registry';
+import { HeldDecisions } from './held-decisions';
+import { canDecide } from './plans/plan-rules';
 import { defaultCleaners, type WorktreeRemover } from './cleanup/cleaners';
 import { CleanupRunner, type ResourceCleaner } from './cleanup/cleanup-runner';
 import {
@@ -124,6 +128,8 @@ const paneControl = (panes: CrewPaneHost): CrewControl => ({
 });
 
 const MERGE_CLOSED = 'The job closed before the merge finished.';
+/** How many of a crew pane's last lines the client's permission reader shows. */
+const CREW_TAIL_LINES = 12;
 
 /** The client file an answer to a `client_file` card writes, or null when it writes none. */
 function answerLayer(
@@ -250,6 +256,7 @@ export class AgencyService {
   readonly merges: MergeQueue;
   readonly crew: CrewService;
   readonly permissions: CrewPermissions;
+  private readonly held: HeldDecisions;
   readonly spend: SpendService;
   readonly understanding: Understanding;
   /** How crew panes are stopped and found live. */
@@ -409,6 +416,11 @@ export class AgencyService {
       changed: (touched) => this.changed(touched),
       now: () => deps.now?.() ?? Date.now()
     });
+    this.held = new HeldDecisions({
+      run: async (request) => this.carryOut(request),
+      changed: (touched) => this.changed(touched),
+      now: () => deps.now?.() ?? Date.now()
+    });
     const crew = this.crewControl;
     this.cleanup = new CleanupRunner({
       store: this.store,
@@ -485,6 +497,85 @@ export class AgencyService {
   private unclaimed(repoId: string): void {
     this.store.unclaimWakeups(repoId);
     this.permissions.admiralGone(repoId);
+    // The pane that could undo them is gone, so they go through now.
+    void this.held.runAll(repoId);
+  }
+
+  /**
+   * A plan or question decision from the Bridge: held for `HOLD_MS`, then
+   * carried out as the card's own click is, unless undone. Settles with how
+   * it ended. Refused at once when the item no longer waits on the client.
+   */
+  async hold(request: HoldRequest): Promise<HoldResult> {
+    const target = this.holdTarget(request);
+    if (!target.ok) return { outcome: 'refused', reason: target.reason };
+    return this.held.hold(target.repoId, target.decision, request);
+  }
+
+  /** Drop a held decision before it runs. */
+  undo(holdId: number): boolean {
+    return this.held.undo(holdId);
+  }
+
+  /** Whether any decision is held, which a quit carries out first. */
+  hasHeld(): boolean {
+    return !this.held.isEmpty();
+  }
+
+  /** Carry out every held decision now, before Fleet quits. */
+  async runHeld(): Promise<void> {
+    await this.held.runAll();
+  }
+
+  /** The repository, job and line of a held decision, or why it cannot be held. */
+  private holdTarget(
+    request: HoldRequest
+  ):
+    | { ok: true; repoId: string; decision: { jobId: number | null; key: string; label: string } }
+    | { ok: false; reason: string } {
+    if (request.kind === 'answer') {
+      const q = this.store.getQuestion(request.answer.id);
+      if (q?.status !== 'open') {
+        return { ok: false, reason: `${questionDisplayId(request.answer.id)} is not open.` };
+      }
+      return {
+        ok: true,
+        repoId: q.repoId,
+        decision: { jobId: q.jobId, key: `q:${q.id}`, label: `Answered ${questionDisplayId(q.id)}` }
+      };
+    }
+    const { action } = request;
+    const version = this.store.plans.version(action.planVersionId);
+    const verdict = canDecide(
+      version,
+      version === null ? null : this.store.plans.newest(version.jobId)
+    );
+    if (!verdict.ok) return verdict;
+    const job = version === null ? null : this.store.getJob(version.jobId);
+    if (!job || version === null) return { ok: false, reason: 'There is no such plan version.' };
+    const verb = { approve: 'Approved', reject: 'Rejected', revise: 'Asked for a change to' }[
+      action.action
+    ];
+    return {
+      ok: true,
+      repoId: job.repoId,
+      decision: {
+        jobId: job.id,
+        key: `plan:${version.id}`,
+        label: `${verb} plan v${version.version}`
+      }
+    };
+  }
+
+  /** A held decision's time came: carry it out as the card's own click would. */
+  private async carryOut(request: HoldRequest): Promise<HoldResult> {
+    if (request.kind === 'plan') {
+      const result = await this.jobs.decide(request.action);
+      return result.ok ? { outcome: 'done' } : { outcome: 'refused', reason: result.reason };
+    }
+    return this.answer(request.answer) === null
+      ? { outcome: 'refused', reason: `${questionDisplayId(request.answer.id)} is not open.` }
+      : { outcome: 'done' };
   }
 
   /** The client answers a permission card. */
@@ -499,7 +590,8 @@ export class AgencyService {
   snapshot(repoId: string): AgencySnapshot {
     return {
       ...this.store.snapshot(repoId),
-      clientFileChanged: this.clientFiles.changedOutside(repoId)
+      clientFileChanged: this.clientFiles.changedOutside(repoId),
+      held: this.held.list(repoId)
     };
   }
 
@@ -1130,6 +1222,24 @@ export class AgencyService {
     return jobId === null ? null : this.crew.screen(jobId, paneId);
   }
 
+  /**
+   * The last lines a crew member's pane shows, for the client's permission
+   * reader, with the project's env file values masked. Null when the pane is
+   * gone or Fleet does not mirror it.
+   */
+  async crewTail(crewId: number): Promise<string | null> {
+    const crew = this.store.crew.get(crewId);
+    const job = crew === null ? null : this.store.getJob(crew.jobId);
+    const text = await this.crew.paneText(crewId);
+    if (!job || text === null) return null;
+    const lines = text
+      .split('\n')
+      .map((l) => l.trimEnd())
+      .filter((l) => l !== '')
+      .slice(-CREW_TAIL_LINES);
+    return (await this.redactor(job.repoId)).redact(lines.join('\n'));
+  }
+
   /** What masks a project's env file values in text the Admiral reads. */
   async redactor(repoId: string): Promise<Redactor> {
     return new Redactor(await this.envSecrets(repoId));
@@ -1167,6 +1277,7 @@ export class AgencyService {
     this.crew.stopTicking();
     this.permissions.stopTicking();
     this.spend.stopTicking();
+    this.held.stop();
     this.store.close();
   }
 

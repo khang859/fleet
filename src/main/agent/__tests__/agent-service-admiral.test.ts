@@ -433,7 +433,7 @@ describe('Admiral turn', () => {
 
   it('tells the Admiral to weigh plan edits, rejects and answers as lasting preferences, once per topic', () => {
     expect(ADMIRAL_SYSTEM_PROMPT).toContain(
-      'Fleet wakes you when the client edits or rejects a plan or swaps a step, with what changed. After that, and after an answer to a question, consider whether it is a lasting preference'
+      'Fleet wakes you when the client edits a plan, asks for a change to it, rejects it or swaps a step, with what changed. After that, and after an answer to a question, consider whether it is a lasting preference'
     );
     expect(ADMIRAL_SYSTEM_PROMPT).toContain('Ask at most once per topic.');
     expect(ADMIRAL_SYSTEM_PROMPT).toContain(

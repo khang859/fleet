@@ -19,6 +19,7 @@ import {
   type AgencyRepoRef,
   type AgencySnapshot,
   type BudgetRaise,
+  type ClientDecision,
   type ClientFileProposal,
   type JobHoldKind,
   type JobState,
@@ -34,6 +35,7 @@ import { CHAIN_LIMIT, chainExhausted } from '../jobs/chain';
 import { reduceJob, type CloseTarget, type JobEvent, type Transition } from '../jobs/job-machine';
 import { renderWakeupText, type WakeupItem } from '../wakeup-text';
 import { openAgencyDb } from './agency-db';
+import { clientDecisions, DECISIONS_MAX, startOfDay } from './client-decisions';
 import { CrewStore } from './crew-store';
 import { PermissionStore } from './permission-store';
 import { ResourceStore } from './resource-store';
@@ -1336,7 +1338,7 @@ export class AgencyStore {
    * questions and the most recently settled ones (so a card in the transcript
    * can show how it was answered), and when the next retry is due.
    */
-  snapshot(repoId: string): Omit<AgencySnapshot, 'clientFileChanged'> {
+  snapshot(repoId: string): Omit<AgencySnapshot, 'clientFileChanged' | 'held'> {
     const open = this.listQuestions(repoId, { statuses: ['open'] });
     const recent = this.db
       .prepare<[string, number], QuestionRow>(
@@ -1361,8 +1363,27 @@ export class AgencyStore {
       trust: this.preferences.trust(repoId),
       leftovers: this.resources.leftovers(repoId),
       pastJobs: this.pastJobs(repoId),
-      settingsCards: this.settings.cards(repoId, SNAPSHOT_SETTINGS_CARDS)
+      settingsCards: this.settings.cards(repoId, SNAPSHOT_SETTINGS_CARDS),
+      decisions: this.decisions(repoId)
     };
+  }
+
+  /** The client's decisions since local midnight across the repository's jobs, newest first. */
+  private decisions(repoId: string): ClientDecision[] {
+    const since = startOfDay(this.now());
+    const questions = this.db
+      .prepare<[string, number, number], QuestionRow>(
+        `SELECT * FROM questions WHERE repo_id = ? AND status = 'answered' AND answered_at >= ?
+         ORDER BY answered_at DESC, id DESC LIMIT ?`
+      )
+      .all(repoId, since, DECISIONS_MAX)
+      .map(toQuestion);
+    return clientDecisions({
+      plans: this.plans.decidedByClient(repoId, since, DECISIONS_MAX),
+      questions,
+      permissions: this.permissions.answeredByClient(repoId, since, DECISIONS_MAX),
+      jobState: (jobId) => this.getJob(jobId)?.state ?? null
+    });
   }
 
   /** The repository's last few jobs that ended, newest first. */
