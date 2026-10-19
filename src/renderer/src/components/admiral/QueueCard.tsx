@@ -6,8 +6,8 @@ import type { AgencyJobDetail, AgencyPlanVersion } from '../../../../shared/agen
 import {
   holdAnswer,
   holdPlan,
+  holdPlanNote,
   useBridgeStore,
-  type HeldPlanAction,
   type RefusedDecision
 } from '../../store/bridge-store';
 import { relativeTime } from '../agent/settings/format';
@@ -231,9 +231,6 @@ function PlanQueueCard({
   const [noting, setNoting] = useState<NoteAction | null>(null);
   const blocked = version.checks.issues.find((i) => i.severity === 'block');
   const choices = needsChoices(version);
-  const name = `plan v${version.version}`;
-  const hold = (label: string, action: HeldPlanAction): void =>
-    holdPlan(job, version, label, action);
 
   return (
     <section
@@ -268,7 +265,10 @@ function PlanQueueCard({
             type="button"
             disabled={blocked !== undefined || choices}
             onClick={() =>
-              hold(`Approve ${name}`, { planVersionId: version.id, action: 'approve' })
+              holdPlan(job, version, `Approve plan v${version.version}`, {
+                planVersionId: version.id,
+                action: 'approve'
+              })
             }
             className={PRIMARY}
           >
@@ -292,14 +292,7 @@ function PlanQueueCard({
         <PlanNoteForm
           action={noting}
           onCancel={() => setNoting(null)}
-          onSend={(note) =>
-            hold(
-              noting === 'revise' ? `Ask for a change to ${name}` : `Reject ${name}`,
-              noting === 'revise'
-                ? { planVersionId: version.id, action: 'revise', note, steps: [] }
-                : { planVersionId: version.id, action: 'reject', note }
-            )
-          }
+          onSend={(note) => holdPlanNote(job, version, noting, note, [])}
         />
       )}
     </section>
