@@ -11,7 +11,8 @@ import { QuestionCard } from './QuestionCard';
 import { ReaderFrame } from './ReaderFrame';
 import { SettingsCardView } from './SettingsCard';
 import { crewPaneId } from './job-view';
-import { closesReader } from './use-bridge-queue';
+import { keyHint, keyProps, type QueueKey } from './queue-keys';
+import { useKeepFocus } from './use-bridge-queue';
 import { kindLabel, type WaitingItem } from './waiting-queue';
 
 /**
@@ -64,6 +65,7 @@ function OpenReader({
     const el = ref.current;
     if (el !== null && !el.contains(document.activeElement)) el.focus();
   }, [item.key]);
+  useKeepFocus(ref, (el) => el);
 
   const head = (
     <div className="flex flex-col gap-1.5">
@@ -77,6 +79,7 @@ function OpenReader({
         <div className="flex shrink-0 items-center gap-0.5">
           <NavButton
             label="Previous"
+            queueKey="previous"
             disabled={reading.index === 0}
             onClick={() => onRead(items[reading.index - 1].key)}
           >
@@ -84,12 +87,13 @@ function OpenReader({
           </NavButton>
           <NavButton
             label="Next"
+            queueKey="next"
             disabled={reading.index === items.length - 1}
             onClick={() => onRead(items[reading.index + 1].key)}
           >
             <ChevronDown size={14} />
           </NavButton>
-          <NavButton label="Close" onClick={() => onRead(null)}>
+          <NavButton label="Close" queueKey="close" onClick={() => onRead(null)}>
             <X size={13} />
           </NavButton>
         </div>
@@ -104,11 +108,7 @@ function OpenReader({
       tabIndex={-1}
       role="region"
       aria-label={`Reading ${kind.toLowerCase()}`}
-      onKeyDown={(e) => {
-        if (!closesReader(e)) return;
-        e.preventDefault();
-        onRead(null);
-      }}
+      data-queue-scope="reader"
       className="absolute inset-0 flex bg-fleet-bg outline-none"
     >
       {/* Keyed, so a draft note or a ticked option stays with its item. */}
@@ -190,11 +190,13 @@ function ReaderBody({
 
 function NavButton({
   label,
+  queueKey,
   disabled = false,
   onClick,
   children
 }: {
   label: string;
+  queueKey: QueueKey;
   disabled?: boolean;
   onClick: () => void;
   children: React.ReactNode;
@@ -203,7 +205,8 @@ function NavButton({
     <button
       type="button"
       aria-label={label}
-      title={label}
+      title={`${label} (${keyHint(queueKey)})`}
+      {...keyProps(queueKey)}
       disabled={disabled}
       onClick={onClick}
       className="flex size-6 items-center justify-center rounded text-fleet-text-muted transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text focus-ring disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fleet-text-muted"

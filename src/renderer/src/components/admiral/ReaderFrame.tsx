@@ -39,3 +39,15 @@ export function ReaderSection({
 }): React.JSX.Element {
   return <Section label={label.toUpperCase()}>{children}</Section>;
 }
+
+/** The key that presses a reader button, shown on it; screen readers get `aria-keyshortcuts`. */
+export function Kbd({ children }: { children: React.ReactNode }): React.JSX.Element {
+  return (
+    <kbd
+      aria-hidden
+      className="ml-1.5 rounded border border-current/25 px-1 font-sans text-[10px] leading-4 opacity-70"
+    >
+      {children}
+    </kbd>
+  );
+}

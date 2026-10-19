@@ -74,7 +74,7 @@ describe('the Bridge queue', () => {
     expect(html).toContain('$8 budget');
     expect(html).toContain('12% Claude week');
     expect(html).toContain('4 crew members');
-    expect(html).toMatch(/<button type="button" class="[^"]*">Approve plan<\/button>/);
+    expect(html).toMatch(/<button type="button" class="[^"]*"[^>]*>Approve plan<\/button>/);
     expect(html).toContain('>Change<');
     expect(html).toContain('>Reject<');
     expect(html).toContain('>Open j2<');
@@ -157,7 +157,7 @@ describe('the Bridge queue', () => {
     expect(html).toContain('Nothing waits on you');
     expect(html).toContain('DONE TODAY');
     expect(html).toMatch(
-      /Answered q35<span[^>]*> · #58 and #63<\/span><span> · <span[^>]*>j3<\/span><\/span>/
+      /Answered q35<span[^>]*> · #58 and #63<\/span><\/span><span class="[^"]*shrink-0[^"]*">· <span[^>]*>j3<\/span><\/span>/
     );
     expect(html).toContain('>Working<');
     expect(html).toContain('>Closed<');

@@ -19,6 +19,7 @@ import { AdmiralFirstRun } from './AdmiralFirstRun';
 import { EmptyBrief, EmptyJob } from './EmptyBrief';
 import { BridgeQueue } from './BridgeQueue';
 import { QueueReader } from './QueueReader';
+import { onQueueKey } from './queue-keys';
 import { useBridgeQueue, useQueueReading } from './use-bridge-queue';
 import { JOB_SHEET_WIDTH_PX, JobSheet } from './JobSheet';
 import { JobTabs } from './JobTabs';
@@ -344,7 +345,7 @@ function AdmiralWorkspace({
         )}
       </AdmiralHeader>
 
-      <div className="relative flex min-h-0 flex-1">
+      <div onKeyDown={(e) => onQueueKey(e, reading, read)} className="relative flex min-h-0 flex-1">
         <div className="relative flex min-w-0 flex-1">
           {/* Hidden, not unmounted, under the reader: the draft, scroll and stream stay. */}
           <div className={`flex min-w-0 flex-1 ${reading === null ? '' : 'invisible'}`}>

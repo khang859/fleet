@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type RefObject } from 'react';
 import type { AgencySnapshot } from '../../../../shared/agency';
 import { useJobDetails } from '../../store/agency-store';
 import {
@@ -63,21 +63,24 @@ export function inTextField(target: EventTarget | null): boolean {
   );
 }
 
-/** Whether a key press closes the reader: Esc with no modifier, outside a text field. */
-export function closesReader(e: {
-  key: string;
-  target: EventTarget | null;
-  metaKey: boolean;
-  ctrlKey: boolean;
-  altKey: boolean;
-  defaultPrevented: boolean;
-}): boolean {
-  return (
-    e.key === 'Escape' &&
-    !e.defaultPrevented &&
-    !e.metaKey &&
-    !e.ctrlKey &&
-    !e.altKey &&
-    !inTextField(e.target)
-  );
+/**
+ * Keeps the keys working when the focused control inside `ref` goes away,
+ * as a note box does on Cancel: focus moves to `fallback`, not the page.
+ */
+export function useKeepFocus(
+  ref: RefObject<HTMLElement | null>,
+  fallback: (el: HTMLElement) => HTMLElement | null
+): void {
+  useEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    const onFocusOut = (e: FocusEvent): void => {
+      if (e.relatedTarget !== null) return;
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body) fallback(el)?.focus();
+      });
+    };
+    el.addEventListener('focusout', onFocusOut);
+    return () => el.removeEventListener('focusout', onFocusOut);
+  });
 }

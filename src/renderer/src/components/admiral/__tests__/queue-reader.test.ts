@@ -6,7 +6,6 @@ import type { AgencyJobDetail } from '../../../../../shared/agency-jobs';
 import { PlanSchema } from '../../../../../shared/agency-plan';
 import { agencyQuestion } from '../../../../../shared/__tests__/agency-fixtures';
 import { QueueReader } from '../QueueReader';
-import { closesReader } from '../use-bridge-queue';
 import { queueOrder, waitingItems } from '../waiting-queue';
 import {
   bridgeQueue,
@@ -85,13 +84,13 @@ describe('the Bridge reader', () => {
     expect(html).toContain('>PLAN v1<');
     expect(html).toContain('Get PR #61 to green CI');
     expect(html).toContain('2 of 4 waiting');
-    expect(html).toMatch(/<button type="button" aria-label="Previous" title="Previous" class/);
+    expect(html).toMatch(/aria-label="Previous" title="Previous \(K\)" data-key="previous"/);
     expect(html).toMatch(/aria-label="Next"/);
     expect(html).toMatch(/aria-label="Close"/);
 
     const first = read('perm:5');
     expect(first).toContain('1 of 4 waiting');
-    expect(first).toMatch(/aria-label="Previous" title="Previous" disabled=""/);
+    expect(first).toMatch(/aria-label="Previous"[^>]*disabled=""/);
   });
 
   it('shows a long plan in full, with its decision in a footer out of the scroll', () => {
@@ -141,30 +140,13 @@ describe('the Bridge reader', () => {
     expect(content.match(/checked=""/g)).toHaveLength(1);
     expect(content.indexOf('checked=""')).toBeGreaterThan(content.indexOf('#58 first'));
     expect(content).toContain('IN YOUR OWN WORDS');
-    expect(footer).toMatch(/<button type="button" class="[^"]*">Answer<\/button>/);
+    expect(footer).toMatch(/<button type="button" class="[^"]*"[^>]*>Answer<kbd/);
   });
 
   it('shows the other kinds as their cards at full width', () => {
     const html = read('settings:4');
     expect(html).toContain('aria-label="Settings');
     expect(html).toContain('max-w-[760px]');
-  });
-
-  it('closes on Esc outside a text field, with no modifier, and on nothing else', () => {
-    const key = (over: Partial<Parameters<typeof closesReader>[0]>): boolean =>
-      closesReader({
-        key: 'Escape',
-        target: null,
-        metaKey: false,
-        ctrlKey: false,
-        altKey: false,
-        defaultPrevented: false,
-        ...over
-      });
-    expect(key({})).toBe(true);
-    expect(key({ key: 'Enter' })).toBe(false);
-    expect(key({ metaKey: true })).toBe(false);
-    expect(key({ defaultPrevented: true })).toBe(false);
   });
 
   it('marks the card it shows in the queue, and offers Read on the others', () => {
