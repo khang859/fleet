@@ -18,6 +18,7 @@ import type { AgencyRepoRef } from '../../../../shared/agency';
 import { useSettingsNavStore } from '../../store/settings-nav-store';
 import { ReadYourWork } from '../admiral/ReadYourWork';
 import { ClientFileEditor } from './ClientFileEditor';
+import { LayerPicker } from './LayerPicker';
 import { OutsideChange } from './OutsideChange';
 import { TrustPicker } from './TrustPicker';
 
@@ -119,7 +120,7 @@ export function AdmiralKnows(): React.JSX.Element {
         </p>
       </div>
 
-      <LayerTabs projects={projects ?? []} layer={layer} onLayer={setLayer} />
+      <LayerPicker projects={projects ?? []} layer={layer} onLayer={setLayer} />
 
       {layer !== YOU_LAYER && <TrustPicker repoId={layer} />}
 
@@ -245,40 +246,6 @@ function ReadMyWork(props: { repo: AgencyRepoRef; onKept: () => void }): React.J
         onKept={props.onKept}
         onDone={() => setOpen(false)}
       />
-    </div>
-  );
-}
-
-function LayerTabs(props: {
-  projects: AgencyProjectSummary[];
-  layer: string;
-  onLayer: (layer: string) => void;
-}): React.JSX.Element {
-  const tabs = [
-    { id: YOU_LAYER, label: 'You · every project' },
-    ...props.projects.map((p) => ({ id: p.repo.repoId, label: p.repo.name }))
-  ];
-  return (
-    <div role="tablist" aria-label="Whose preferences" className="flex flex-wrap gap-1">
-      {tabs.map((t) => {
-        const on = props.layer === t.id;
-        return (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={on}
-            onClick={() => props.onLayer(t.id)}
-            className={`rounded px-2.5 py-1 text-sm transition-colors focus-ring ${
-              on
-                ? 'bg-fleet-surface-3 font-medium text-fleet-text'
-                : 'text-fleet-text-muted hover:bg-fleet-surface-3/60 hover:text-fleet-text'
-            }`}
-          >
-            {t.label}
-          </button>
-        );
-      })}
     </div>
   );
 }
