@@ -98,6 +98,17 @@ describe('client file IPC', () => {
     expect(emitted).toEqual([REPO.repoId, REPO.repoId]);
   });
 
+  it("undoes an outside change to a project's file, and tells its snapshot", () => {
+    call(IPC_CHANNELS.AGENCY_CLIENT_FILE_WRITE, {
+      layer: REPO.repoId,
+      text: '# fleet\n- Use pnpm.\n'
+    });
+    rmSync(service.clientFiles.path(REPO.repoId));
+    call(IPC_CHANNELS.AGENCY_CLIENT_FILE_UNDO, REPO.repoId);
+    expect(service.clientFiles.read(REPO.repoId)).toBe('# fleet\n- Use pnpm.\n');
+    expect(emitted).toEqual([REPO.repoId, REPO.repoId]);
+  });
+
   it('refuses a layer that is neither you nor a project id, and an empty line', () => {
     const add = { kind: 'add', name: 'x', text: 'Use pnpm.' };
     expect(() =>

@@ -472,6 +472,7 @@ export const IPC_CHANNELS = {
   AGENCY_CLIENT_FILE: 'agency:client-file',
   AGENCY_CLIENT_FILE_WRITE: 'agency:client-file-write',
   AGENCY_CLIENT_FILE_KEEP: 'agency:client-file-keep',
+  AGENCY_CLIENT_FILE_UNDO: 'agency:client-file-undo',
   AGENCY_CLIENT_FILE_LINE: 'agency:client-file-line',
   AGENCY_PROJECT_TRUST: 'agency:project-trust',
   AGENCY_PROJECT_TRUST_SET: 'agency:project-trust-set',

@@ -80,6 +80,12 @@ describe('MeetPicks', () => {
   });
 });
 
+/** A layer as Fleet last wrote it. */
+const file = (t: string | null): { text: string | null; changedOutside: boolean } => ({
+  text: t,
+  changedOutside: false
+});
+
 describe('MeetKnows', () => {
   it('shows both layers, each line with its source, the last answer marked new', () => {
     const html = text(
@@ -87,9 +93,10 @@ describe('MeetKnows', () => {
         createElement(MeetKnows, {
           repo: REPO,
           layers: {
-            you: '# You\n- Never force push. (from you, 2026-10-18)\n',
-            project:
+            you: file('# You\n- Never force push. (from you, 2026-10-18)\n'),
+            project: file(
               '# shop\n- Use pnpm. (from CLAUDE.md, 2026-10-18)\n- Open PRs as drafts. (from you, 2026-10-18)\n'
+            )
           },
           fresh: ['Open PRs as drafts.']
         })
@@ -104,9 +111,28 @@ describe('MeetKnows', () => {
   it('says when a layer has nothing yet', () => {
     const html = text(
       renderToStaticMarkup(
-        createElement(MeetKnows, { repo: REPO, layers: { you: null, project: null }, fresh: [] })
+        createElement(MeetKnows, {
+          repo: REPO,
+          layers: { you: file(null), project: file(null) },
+          fresh: []
+        })
       )
     );
     expect(html.match(/Nothing yet\./g)).toHaveLength(2);
+    expect(html).not.toContain('changed outside Fleet');
+  });
+
+  it('marks a layer that changed outside Fleet, a deleted one too', () => {
+    const html = text(
+      renderToStaticMarkup(
+        createElement(MeetKnows, {
+          repo: REPO,
+          layers: { you: file(null), project: { text: null, changedOutside: true } },
+          fresh: []
+        })
+      )
+    );
+    expect(html).toContain('This project · shop · changed outside Fleet');
+    expect(html).not.toContain('every project · changed');
   });
 });

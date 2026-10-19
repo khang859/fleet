@@ -822,6 +822,12 @@ export class AgencyService {
     this.layerChanged(layer);
   }
 
+  /** The client undoes a change made outside Fleet. */
+  undoClientFile(layer: string): void {
+    this.clientFiles.undo(layer);
+    this.layerChanged(layer);
+  }
+
   /** A project's snapshot shows its file's outside change; the You layer is in no snapshot. */
   private layerChanged(layer: string): void {
     if (layer !== YOU_LAYER) this.changed([{ repoId: layer, jobId: null }]);

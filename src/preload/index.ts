@@ -1267,6 +1267,9 @@ const fleetApi = {
       /** Keep a change made to a layer outside Fleet. */
       keepClientFile: async (layer: string): Promise<void> =>
         typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, layer),
+      /** Put a layer changed outside Fleet back to Fleet's last version. */
+      undoClientFile: async (layer: string): Promise<void> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_UNDO, layer),
       /** How much Fleet does on its own in a project. */
       trust: async (repoId: string): Promise<ProjectTrust> =>
         typedInvoke(IPC_CHANNELS.AGENCY_PROJECT_TRUST, repoId),

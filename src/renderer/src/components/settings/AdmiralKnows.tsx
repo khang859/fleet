@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, CircleAlert, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
   YOU_LAYER,
   clientEntryList,
@@ -18,6 +18,7 @@ import type { AgencyRepoRef } from '../../../../shared/agency';
 import { useSettingsNavStore } from '../../store/settings-nav-store';
 import { ReadYourWork } from '../admiral/ReadYourWork';
 import { ClientFileEditor } from './ClientFileEditor';
+import { OutsideChange } from './OutsideChange';
 import { TrustPicker } from './TrustPicker';
 
 const FIELD =
@@ -92,6 +93,17 @@ export function AdmiralKnows(): React.JSX.Element {
       window.fleet.agency.projects.settleConflict({ repoId: layer, layer, id, winner })
     );
 
+  /** Keep or undo the layer's outside change, then read the file again. */
+  const settleOutside = async (call: (layer: string) => Promise<void>): Promise<void> => {
+    setBusy(true);
+    try {
+      await call(layer);
+      await load(layer);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const entries = clientEntryList(file?.text ?? null);
   const saveDraft = (): void => {
     if (draft !== null && draft.text.trim() !== '') void change(draftChange(draft, entries, name));
@@ -117,14 +129,10 @@ export function AdmiralKnows(): React.JSX.Element {
 
       {file?.changedOutside === true && (
         <OutsideChange
+          text="This file changed outside Fleet. The Admiral works from the version Fleet last wrote until you keep the change."
           busy={busy}
-          onKeep={() => {
-            setBusy(true);
-            void window.fleet.agency.projects
-              .keepClientFile(layer)
-              .then(async () => load(layer))
-              .finally(() => setBusy(false));
-          }}
+          onKeep={() => void settleOutside(window.fleet.agency.projects.keepClientFile)}
+          onUndo={() => void settleOutside(window.fleet.agency.projects.undoClientFile)}
         />
       )}
 
@@ -271,26 +279,6 @@ function LayerTabs(props: {
           </button>
         );
       })}
-    </div>
-  );
-}
-
-function OutsideChange(props: { busy: boolean; onKeep: () => void }): React.JSX.Element {
-  return (
-    <div className="flex items-start gap-1.5 rounded border border-amber-400/35 bg-amber-400/5 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-400/90">
-      <CircleAlert size={13} className="mt-px shrink-0" />
-      <span className="flex-1">
-        This file changed outside Fleet. The Admiral works from the version Fleet last wrote until
-        you keep the change.
-      </span>
-      <button
-        type="button"
-        disabled={props.busy}
-        onClick={props.onKeep}
-        className="shrink-0 font-medium underline-offset-2 hover:underline focus-ring"
-      >
-        Keep this version
-      </button>
     </div>
   );
 }
