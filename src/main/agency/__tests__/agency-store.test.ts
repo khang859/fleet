@@ -36,6 +36,39 @@ describe('lobbies', () => {
     expect(pull.text).toContain('Job opened from the Bridge');
     expect(store.markHandoff({ jobId: 999, lobbyMessageId: 'm-8' })).toBeNull();
   });
+
+  it('clears the lobby onto a fresh session and leaves every job alone', () => {
+    store.ensureLobby(REPO, () => 'lobby-old');
+    store.ensureLobby(OTHER_REPO, () => 'other-lobby');
+    const job = openJob(store);
+    const fresh = store.clearConversation({ repoId: REPO.repoId, jobId: null }, () => 'lobby-new');
+
+    expect(fresh).toBe('lobby-new');
+    expect(store.lobbySessionId(REPO.repoId)).toBe('lobby-new');
+    // Turns on the new session are scoped as the Admiral's.
+    expect(store.isAdmiralSession('lobby-new')).toBe(true);
+    expect(store.lobbySessionId(OTHER_REPO.repoId)).toBe('other-lobby');
+    expect(store.getJob(job.id)?.sessionId).toBe(job.sessionId);
+    // A repository with no lobby has nothing to clear.
+    expect(store.clearConversation({ repoId: '0000000000000000', jobId: null })).toBeNull();
+  });
+
+  it('clears one job onto a fresh session and leaves the lobby and other jobs alone', () => {
+    store.ensureLobby(REPO, () => 'lobby-1');
+    const job = openJob(store);
+    const other = openJob(store, REPO.repoId, 'Another job');
+    clock.now += 10;
+    const fresh = store.clearConversation({ repoId: REPO.repoId, jobId: job.id }, () => 'job-new');
+
+    expect(fresh).toBe('job-new');
+    expect(store.getJob(job.id)).toMatchObject({ sessionId: 'job-new', updatedAt: clock.now });
+    expect(store.getJob(other.id)?.sessionId).toBe(other.sessionId);
+    expect(store.lobbySessionId(REPO.repoId)).toBe('lobby-1');
+    // Not a job of that repository, or no job at all.
+    expect(store.clearConversation({ repoId: OTHER_REPO.repoId, jobId: job.id })).toBeNull();
+    expect(store.clearConversation({ repoId: REPO.repoId, jobId: 999 })).toBeNull();
+    expect(store.getJob(job.id)?.sessionId).toBe('job-new');
+  });
 });
 
 describe('jobs', () => {

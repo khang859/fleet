@@ -66,6 +66,8 @@ const inFlight = new Map<string, { key: string; ids: number[] }>();
 const held = new Map<string, { ids: number[]; text: string }>();
 /** Threads with a pull in flight, so a burst of changes makes one round trip. */
 const pulling = new Set<string>();
+/** Threads waiting on main for a fresh session, which no wakeup may start a turn on meanwhile. */
+const clearing = new Set<string>();
 /** When each thread next has a wakeup coming due, as a timer that checks it then. */
 const timers = new Map<string, { at: number; timer: ReturnType<typeof setTimeout> }>();
 /** Jobs whose handoff is waiting for the lobby to be free, by pane. */
@@ -213,7 +215,7 @@ async function openThreads(paneId: string, snapshot: AgencySnapshot): Promise<vo
   ];
   for (const job of snapshot.jobs) {
     opening.push(store.openSession(admiralKey(paneId, job.id), job.sessionId, pane.repo.root));
-    useWorkspaceStore.getState().setAdmiralJobSession(paneId, job.id, job.sessionId);
+    useWorkspaceStore.getState().setAdmiralSession(paneId, job.id, job.sessionId);
   }
   await Promise.all(opening);
 }
@@ -246,7 +248,13 @@ export function check(key: string): void {
   const scope = parseAdmiralKey(key);
   const pane = scope === null ? undefined : attached.get(scope.paneId);
   const current = thread(key);
-  if (scope === null || pane === undefined || current === undefined || !canDeliverTo(current)) {
+  if (
+    scope === null ||
+    pane === undefined ||
+    current === undefined ||
+    !canDeliverTo(current) ||
+    clearing.has(key)
+  ) {
     return;
   }
   if (flushQueued(key)) return;
@@ -353,6 +361,40 @@ function turnEnded(key: string, streamId: string, error: string | null): void {
   check(key);
 }
 
+/**
+ * `/clear` on one Admiral thread: the lobby or one job, never the others.
+ *
+ * Main mints the fresh session id and records it, so a reload adopts the new
+ * conversation rather than the old one; the old transcript stays on disk. The
+ * thread then moves to it, unless a turn started in the meantime.
+ */
+export async function clearConversation(key: string): Promise<void> {
+  const scope = parseAdmiralKey(key);
+  const pane = scope === null ? undefined : attached.get(scope.paneId);
+  if (scope === null || pane === undefined || clearing.has(key)) return;
+  clearing.add(key);
+  try {
+    const sessionId = await window.fleet.agency.clearConversation({
+      repoId: pane.repo.repoId,
+      jobId: scope.jobId
+    });
+    if (sessionId === null || attached.get(scope.paneId) !== pane) return;
+    useWorkspaceStore.getState().setAdmiralSession(scope.paneId, scope.jobId, sessionId);
+    if (scope.jobId === null) {
+      attached.set(scope.paneId, { ...pane, lobbySessionId: sessionId });
+      setStatus(scope.paneId, { kind: 'ready', lobbySessionId: sessionId });
+    }
+    if (!useAgentStore.getState().adoptNewSession(key, sessionId, pane.repo.root)) {
+      log.warn('clear landed during a turn; the new session opens on reload', { key });
+    }
+  } catch (err) {
+    log.warn('clear failed', { key, error: String(err) });
+  } finally {
+    clearing.delete(key);
+    check(key);
+  }
+}
+
 /** Hand a job the lobby talk that led to it, now or once the lobby is free. */
 function requestHandoff(paneId: string, jobId: number, show: boolean): void {
   const pending = pendingHandoffs.get(paneId) ?? new Map<number, boolean>();
@@ -391,7 +433,7 @@ export async function handoff(paneId: string, jobId: number, show: boolean): Pro
     const jobKey = admiralKey(paneId, jobId);
     const lobbyKey = admiralKey(paneId, null);
     await useAgentStore.getState().openSession(jobKey, job.sessionId, pane.repo.root);
-    useWorkspaceStore.getState().setAdmiralJobSession(paneId, jobId, job.sessionId);
+    useWorkspaceStore.getState().setAdmiralSession(paneId, jobId, job.sessionId);
     if (attached.get(paneId) !== pane) return;
 
     if (!job.handoffDone) {
@@ -544,7 +586,8 @@ export function initAdmiralRuntime(): () => void {
       window.fleet.agency.clientActivity(jobId).catch((err: unknown) => {
         log.warn('client activity failed', { key, error: String(err) });
       });
-    }
+    },
+    clear: (key) => void clearConversation(key)
   });
 
   let signature = '';

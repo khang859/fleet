@@ -80,6 +80,27 @@ describe('AgencyService', () => {
     ]);
   });
 
+  it('raises a change for the conversation /clear gave a fresh session', () => {
+    service.ensureLobby(REPO);
+    const job = service.store.openJob({
+      repoId: REPO.repoId,
+      title: 't',
+      brief: 'b',
+      sessionId: 's-1'
+    });
+    const lobby = service.clearConversation({ repoId: REPO.repoId, jobId: null });
+    const jobSession = service.clearConversation({ repoId: REPO.repoId, jobId: job.id });
+    expect(service.clearConversation({ repoId: REPO.repoId, jobId: 999 })).toBeNull();
+
+    expect(service.store.lobbySessionId(REPO.repoId)).toBe(lobby);
+    expect(service.store.getJob(job.id)?.sessionId).toBe(jobSession);
+    expect(jobSession).not.toBe('s-1');
+    expect(emitted).toEqual([
+      { repoId: REPO.repoId, jobIds: [null] },
+      { repoId: REPO.repoId, jobIds: [job.id] }
+    ]);
+  });
+
   it('keeps the one-per-repo claim in main, tied to the window that made it', () => {
     expect(service.claim({ repoId: REPO.repoId, paneId: 'p1' }, 1)).toEqual({ ok: true });
     expect(service.claim({ repoId: REPO.repoId, paneId: 'p2' }, 2)).toEqual({

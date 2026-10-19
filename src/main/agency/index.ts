@@ -1056,6 +1056,13 @@ export class AgencyService {
     return job !== null;
   }
 
+  /** `/clear` on the lobby (`jobId` null) or a job: its fresh session id, or null when there is no such conversation. */
+  clearConversation(input: { repoId: string; jobId: number | null }): string | null {
+    const sessionId = this.store.clearConversation(input);
+    if (sessionId !== null) this.changed([input]);
+    return sessionId;
+  }
+
   /**
    * The conversation an Admiral turn says it is, checked against the records:
    * the repository is known, the job is that repository's, and the turn's

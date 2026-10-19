@@ -97,6 +97,8 @@ const AnswerArgs = z
 const PullArgs = z.object({ repoId: RepoId, jobId: JobId.nullable() });
 const ReleaseArgs = z.object({ ids: Ids, error: z.string().max(4_000) });
 const HandoffArgs = z.object({ jobId: JobId, lobbyMessageId: z.string().min(1) });
+/** The same conversation a pull names: the lobby (`jobId` null) or a job. */
+const ClearArgs = PullArgs;
 const JobControlArgs = z.object({ jobId: JobId, action: z.enum(['cancel', 'accept']) });
 const PermissionAnswerArgs = z.object({
   id: JobId,
@@ -288,6 +290,10 @@ export function registerAgencyIpc(service: AgencyService): void {
 
   ipcMain.handle(IPC_CHANNELS.AGENCY_MARK_HANDOFF, (_e, args: unknown): boolean =>
     service.markHandoff(HandoffArgs.parse(args))
+  );
+
+  ipcMain.handle(IPC_CHANNELS.AGENCY_CLEAR_CONVERSATION, (_e, args: unknown): string | null =>
+    service.clearConversation(ClearArgs.parse(args))
   );
 
   ipcMain.handle(IPC_CHANNELS.AGENCY_CLIENT_ACTIVITY, (_e, jobId: unknown) => {

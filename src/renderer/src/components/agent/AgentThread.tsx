@@ -220,8 +220,9 @@ export function AgentThread({
   cwd: string;
   /**
    * An Admiral's conversation rather than an Agent pane's: no tool mode,
-   * orchestrator or folder controls, no `/clear`, and a message sent while a
-   * turn runs is queued for it instead of refused.
+   * orchestrator or folder controls, `/clear` starts only this conversation
+   * over, and a message sent while a turn runs is queued for it instead of
+   * refused.
    */
   variant?: 'agent' | 'admiral';
   /** What an empty conversation shows instead of the Agent pane's watermark. */
@@ -427,6 +428,7 @@ export function AgentThread({
           blind={modelCard !== null && !modelCard.inputImage}
           onSend={(text, attachments) => send(paneId, cwd, text, attachments)}
           onStop={() => cancel(paneId)}
+          // An Admiral thread's new session comes from main; the store routes it there.
           onClear={() => startNewSession(paneId, cwd)}
           branch={gitHead?.branch ?? null}
           admiral={admiral}
@@ -1233,12 +1235,7 @@ function Composer({
     return () => document.removeEventListener('fleet:agent-prefill', handler);
   }, [paneId, onDraft]);
 
-  const found = useAgentCommands(cwd, isSlashQuery(text) && !menuDismissed);
-  // An Admiral's conversations are its repository's, not something to clear.
-  const commands = useMemo(
-    () => (admiral ? found.filter((c) => c.kind !== 'builtin') : found),
-    [admiral, found]
-  );
+  const commands = useAgentCommands(cwd, isSlashQuery(text) && !menuDismissed);
   const slashMenu = agentSlashMenu(text, commands, menuDismissed);
   const mentionQuery = agentMentionQuery(text, mentionDismissed);
 

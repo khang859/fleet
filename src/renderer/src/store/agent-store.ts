@@ -84,6 +84,11 @@ export type AdmiralThreadHooks = {
   turnEnded: (key: string, streamId: string, error: string | null) => void;
   /** The client wrote on an Admiral thread, now or queued behind a turn. */
   clientWrote: (key: string) => void;
+  /**
+   * Start an Admiral thread on a fresh session. Main records the session ids,
+   * so it mints the new one and the thread moves to it once main has it.
+   */
+  clear: (key: string) => void;
 };
 
 let admiralHooks: AdmiralThreadHooks | null = null;
@@ -392,6 +397,13 @@ type AgentStoreState = {
    */
   startNewSession: (paneId: string, cwd: string) => void;
   /**
+   * Start this pane on a fresh session someone else minted: an Admiral thread,
+   * whose session ids main records. Like `startNewSession` the old transcript
+   * stays on disk; unlike it the id is not written to the layout's agent
+   * session. False, and nothing changed, while a turn is in flight.
+   */
+  adoptNewSession: (paneId: string, sessionId: string, cwd: string) => boolean;
+  /**
    * Put a session this pane wrote earlier back on screen, in place. Unlike
    * `openSession` this deliberately replaces whatever the pane is showing,
    * which is why it cannot be the same call.
@@ -490,12 +502,25 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
 
   startNewSession: (paneId, cwd) => {
     if (!canSwitch(paneId)) return;
+    // A session id minted here would be undone by the next reload.
+    if (isAdmiralKey(paneId)) {
+      admiralHooks?.clear(paneId);
+      return;
+    }
     const sessionId = crypto.randomUUID();
     log.debug('startNewSession', { paneId, sessionId });
     // The transcript waits for a first event. Scratch still prepares a working
     // folder before the new chat can use any tools.
     switchTo(paneId, isScratchDir(cwd) ? scratchDir() : cwd, sessionId);
     if (isScratchDir(cwd)) void replayInto(paneId, sessionId);
+  },
+
+  adoptNewSession: (paneId, sessionId, cwd) => {
+    if (!canSwitch(paneId)) return false;
+    log.debug('adoptNewSession', { paneId, sessionId });
+    claimSession(paneId, cwd, sessionId);
+    reportActivity(paneId, 'idle');
+    return true;
   },
 
   resumeSession: async (paneId, cwd, sessionId) => {

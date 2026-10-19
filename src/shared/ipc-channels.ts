@@ -439,6 +439,7 @@ export const IPC_CHANNELS = {
   AGENCY_RELEASE_WAKEUPS: 'agency:release-wakeups',
   AGENCY_CANCEL_JOBS: 'agency:cancel-jobs',
   AGENCY_MARK_HANDOFF: 'agency:mark-handoff',
+  AGENCY_CLEAR_CONVERSATION: 'agency:clear-conversation',
   AGENCY_CLIENT_ACTIVITY: 'agency:client-activity',
   AGENCY_JOB_DETAIL: 'agency:job-detail',
   AGENCY_PLAN_ACTION: 'agency:plan-action',

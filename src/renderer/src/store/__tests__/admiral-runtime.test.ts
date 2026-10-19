@@ -50,7 +50,7 @@ vi.mock('../workspace-store', async () => {
       workspace: { id: 'default', label: 'Default', tabs: [{ id: 'tab', splitRoot: leaf }] },
       backgroundWorkspaces: new Map(),
       setAgentSession: () => {},
-      setAdmiralJobSession: () => {},
+      setAdmiralSession: admiralSession,
       setAdmiralActiveJob: activeJob
     }))
   };
@@ -71,6 +71,7 @@ function emit(channel: string, payload: unknown): void {
 }
 
 const activeJob = vi.fn();
+const admiralSession = vi.fn();
 const send = vi.fn();
 const queue = vi.fn();
 const appendSession = vi.fn();
@@ -84,6 +85,8 @@ const agency = {
   ackWakeups: vi.fn(),
   releaseWakeups: vi.fn(),
   markHandoff: vi.fn(),
+  clearConversation:
+    vi.fn<(args: { repoId: string; jobId: number | null }) => Promise<string | null>>(),
   answerQuestion: vi.fn(),
   cancelJobs: vi.fn(),
   clientActivity: vi.fn(),
@@ -146,7 +149,9 @@ beforeEach(async () => {
   vi.resetModules();
   listeners.clear();
   replays.clear();
-  for (const fn of [send, queue, appendSession, report, activeJob]) fn.mockReset();
+  for (const fn of [send, queue, appendSession, report, activeJob, admiralSession]) {
+    fn.mockReset();
+  }
   for (const fn of Object.values(agency)) if (vi.isMockFunction(fn)) fn.mockReset();
   agency.onChanged = listen('agency:changed');
   snap = {
@@ -420,6 +425,68 @@ describe('pulling wakeups', () => {
       role: 'fleet',
       parts: [{ text: 'Late news' }]
     });
+  });
+});
+
+describe('/clear', () => {
+  beforeEach(() => {
+    agency.clearConversation.mockImplementation(async ({ jobId }) =>
+      Promise.resolve(jobId === null ? 'lobby-fresh' : `job-fresh-${jobId}`)
+    );
+  });
+
+  it('starts the lobby over on a session main mints, and leaves the jobs alone', async () => {
+    agentStore.useAgentStore.getState().send(LOBBY_KEY, REPO.root, 'hello');
+    endTurn(LOBBY_KEY);
+    await tick();
+    expect(thread(LOBBY_KEY).messages).not.toHaveLength(0);
+
+    agentStore.useAgentStore.getState().startNewSession(LOBBY_KEY, REPO.root);
+    await tick();
+
+    expect(agency.clearConversation).toHaveBeenCalledWith({ repoId: REPO.repoId, jobId: null });
+    expect(thread(LOBBY_KEY)).toMatchObject({ sessionId: 'lobby-fresh', messages: [] });
+    expect(admiralSession).toHaveBeenCalledWith(PANE, null, 'lobby-fresh');
+    expect(runtime.useAdmiralRuntimeStore.getState().panes[PANE]).toEqual({
+      kind: 'ready',
+      lobbySessionId: 'lobby-fresh'
+    });
+    expect(thread(keyOf(1)).sessionId).toBe('job-session-1');
+    expect(thread(keyOf(2)).sessionId).toBe('job-session-2');
+
+    // The next turn is written to the new session.
+    agentStore.useAgentStore.getState().send(LOBBY_KEY, REPO.root, 'again');
+    expect(sends().at(-1)?.threadId).toBe('lobby-fresh');
+  });
+
+  it('starts one job over and leaves the lobby and the other job alone', async () => {
+    agentStore.useAgentStore.getState().startNewSession(keyOf(2), REPO.root);
+    await tick();
+
+    expect(agency.clearConversation).toHaveBeenCalledWith({ repoId: REPO.repoId, jobId: 2 });
+    expect(thread(keyOf(2)).sessionId).toBe('job-fresh-2');
+    expect(admiralSession).toHaveBeenCalledWith(PANE, 2, 'job-fresh-2');
+    expect(thread(LOBBY_KEY).sessionId).toBe(LOBBY);
+    expect(thread(keyOf(1)).sessionId).toBe('job-session-1');
+  });
+
+  it('does nothing while a turn is in flight', async () => {
+    agentStore.useAgentStore.getState().send(keyOf(1), REPO.root, 'start');
+    agentStore.useAgentStore.getState().startNewSession(keyOf(1), REPO.root);
+    await tick();
+
+    expect(agency.clearConversation).not.toHaveBeenCalled();
+    expect(thread(keyOf(1)).sessionId).toBe('job-session-1');
+  });
+
+  it('keeps the conversation when main has nothing to clear', async () => {
+    agency.clearConversation.mockResolvedValue(null);
+    admiralSession.mockClear();
+    agentStore.useAgentStore.getState().startNewSession(keyOf(1), REPO.root);
+    await tick();
+
+    expect(thread(keyOf(1)).sessionId).toBe('job-session-1');
+    expect(admiralSession).not.toHaveBeenCalled();
   });
 });
 

@@ -284,8 +284,8 @@ type WorkspaceStore = {
   setAgentSession: (paneId: string, sessionId: string, cwd?: string) => void;
   /** Turn orchestrator mode on or off for an agent pane. Persisted with the layout. */
   setAgentOrchestrator: (paneId: string, on: boolean) => void;
-  /** Record the agent session a job's conversation in an Admiral pane is written to. */
-  setAdmiralJobSession: (paneId: string, jobId: number, sessionId: string) => void;
+  /** Record the agent session an Admiral pane's lobby (`jobId` null) or a job's conversation is written to. */
+  setAdmiralSession: (paneId: string, jobId: number | null, sessionId: string) => void;
   /** Show a job's conversation in an Admiral pane, or the lobby for null. */
   setAdmiralActiveJob: (paneId: string, jobId: number | null) => void;
 
@@ -1504,7 +1504,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }));
   },
 
-  setAdmiralJobSession: (paneId, jobId, sessionId) => {
+  setAdmiralSession: (paneId, jobId, sessionId) => {
     set((state) => ({
       workspace: {
         ...state.workspace,
@@ -1514,10 +1514,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
             isAdmiralLeaf(leaf) && leaf.admiralSessions
               ? {
                   ...leaf,
-                  admiralSessions: {
-                    ...leaf.admiralSessions,
-                    jobs: { ...leaf.admiralSessions.jobs, [String(jobId)]: sessionId }
-                  }
+                  admiralSessions:
+                    jobId === null
+                      ? { ...leaf.admiralSessions, lobby: sessionId }
+                      : {
+                          ...leaf.admiralSessions,
+                          jobs: { ...leaf.admiralSessions.jobs, [String(jobId)]: sessionId }
+                        }
                 }
               : leaf
           )
