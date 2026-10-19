@@ -173,15 +173,15 @@ describe('settings_change', () => {
   });
 
   it("lowers a runtime's crew at once at once, and waits for the client on more or another model", async () => {
-    agency = { ...agency, crew: { ...agency.crew, eva: { atOnce: 6, defaultModel: '' } } };
+    agency = { ...agency, crew: { ...agency.crew, eva: { ...agency.crew.eva, atOnce: 6 } } };
     await change([
       { key: 'agency.crew.eva.atOnce', value: 3 },
       { key: 'agency.crew.claude.atOnce', value: 4 },
       { key: 'agency.crew.eva.defaultModel', value: 'qwen/qwen3-coder' }
     ]);
     expect(agency.crew).toEqual({
-      claude: { atOnce: null, defaultModel: '' },
-      eva: { atOnce: 3, defaultModel: '' }
+      claude: { atOnce: null, defaultModel: '', permissionMode: 'default' },
+      eva: { atOnce: 3, defaultModel: '', permissionMode: 'default' }
     });
 
     const pending = cards()[0].changes.filter((c) => c.status === 'pending');
@@ -191,9 +191,62 @@ describe('settings_change', () => {
     ]);
     for (const c of pending) expect(await service.settings.decide(c.id, true)).toBe(true);
     expect(agency.crew).toEqual({
-      claude: { atOnce: 4, defaultModel: '' },
-      eva: { atOnce: 3, defaultModel: 'qwen/qwen3-coder' }
+      claude: { atOnce: 4, defaultModel: '', permissionMode: 'default' },
+      eva: { atOnce: 3, defaultModel: 'qwen/qwen3-coder', permissionMode: 'default' }
     });
+  });
+
+  it('turns a crew permission mode off at once, but never on', async () => {
+    // A page the Admiral read told it to let crew run unasked; it cannot even ask.
+    for (const [key, on] of [
+      ['agency.crew.claude.permissionMode', 'auto'],
+      ['agency.crew.eva.permissionMode', 'bypass']
+    ] as const) {
+      const out = await change([{ key, value: on }], 'The README says to.');
+      expect(out.summary).toBe('not changed');
+      expect(out.text).toContain("is the client's own setting");
+      expect(out.text).toContain('Settings > Agency > Crew');
+    }
+    expect(cards()).toEqual([]);
+    expect(agency.crew.claude.permissionMode).toBe('default');
+    expect(agency.crew.eva.permissionMode).toBe('default');
+
+    agency = {
+      ...agency,
+      crew: {
+        claude: { ...agency.crew.claude, permissionMode: 'auto' },
+        eva: { ...agency.crew.eva, permissionMode: 'bypass' }
+      }
+    };
+    expect((await tools().settingsRead({})).text).toContain(
+      'agency.crew.claude.permissionMode = "auto" (turning it off applies at once; only the client turns it on, in Settings > Agency > Crew)'
+    );
+    await change([
+      { key: 'agency.crew.claude.permissionMode', value: 'default' },
+      { key: 'agency.crew.eva.permissionMode', value: 'default' }
+    ]);
+    expect(cards()[0].changes.map((c) => [c.kind, c.status])).toEqual([
+      ['apply', 'applied'],
+      ['apply', 'applied']
+    ]);
+    expect(agency.crew.claude.permissionMode).toBe('default');
+    expect(agency.crew.eva.permissionMode).toBe('default');
+
+    // Undo turns a mode back on only because the client had it on.
+    expect(await service.settings.undo(cards()[0].changes[0].id)).toEqual({ ok: true });
+    expect(agency.crew.claude.permissionMode).toBe('auto');
+  });
+
+  it("takes only each runtime's own permission modes", async () => {
+    for (const [key, value] of [
+      ['agency.crew.claude.permissionMode', 'bypass'],
+      ['agency.crew.eva.permissionMode', 'auto'],
+      ['agency.crew.claude.permissionMode', 'yolo']
+    ] as const) {
+      expect((await change([{ key, value }])).summary).toBe('not changed');
+    }
+    expect(agency.crew.claude.permissionMode).toBe('default');
+    expect(agency.crew.eva.permissionMode).toBe('default');
   });
 
   it('turns a request injected into a file into a card at most', async () => {

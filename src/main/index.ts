@@ -1643,8 +1643,8 @@ void app.whenReady().then(async () => {
         : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources', 'crew'),
       user: join(homedir(), '.fleet', 'crew')
     },
-    checkRuntime: async (runtime, cwd) =>
-      checkRuntime(runtime, cwd, paneRuntimeDeps(crewClaudeConfigDir())),
+    checkRuntime: async (runtime, cwd, mode) =>
+      checkRuntime(runtime, cwd, mode, paneRuntimeDeps(crewClaudeConfigDir())),
     evaServer: async (cwd) => readEvaServer(cwd, paneRuntimeDeps(crewClaudeConfigDir()).shell),
     // A crew pane gets CLAUDE_CONFIG_DIR only for a folder set in Settings, as a terminal pane does.
     claudeSignedIn: async (cwd) => {

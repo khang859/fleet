@@ -34,6 +34,14 @@ Crew need 2.1.78, for `StopFailure`.
 - Claude Code runs one identical hook command once, so the job file repeats the global entries word for word (`fleetHookEntries`).
 - `StopFailure` input has `error` (`rate_limit`, `overloaded`, `authentication_failed`, `billing_error`, ...), optional `error_details`, and `last_assistant_message`, which holds the API error text. Its output is ignored. The Go hook reports it as status `api_error`.
 
+## Auto mode (job j28, Claude Code 2.1.304)
+
+- `--permission-mode auto` works with Fleet's crew launch shape, checked on Claude Code 2.1.304.
+- `disableAutoMode` (top level or under `permissions`) set to `"disable"` in any settings file starts the session in Manual mode with no error. The settings schema text says otherwise; it is wrong. Fleet only warns (`Auto mode available`).
+- Claude Code reads `autoMode` from the `--settings` file, and `"$defaults"` as the first `hard_deny` entry keeps the built-in rules.
+- A call the classifier blocks fires `PermissionDenied`, not `PermissionRequest`, so it never reaches the Admiral.
+- `hard_deny` is a strong net, not a lock: one j28 run let a `/private/tmp` write pass. `permissions.deny` is the lock, so pushes and pull requests are denied there too.
+
 ## Folder trust
 
 The docs say how Claude Code keys the trust it stores:
@@ -54,4 +62,5 @@ Then a crew member waits at the trust prompt, which the `needs-you` crew state c
 eva 0.3.0 added every flag crew use: `--session-id`, `--name`, `--goal`, `--instructions` and `--no-ask-user`.
 eva has no `--model` flag; `CHAT_MODEL` in the environment takes the place of the saved model.
 eva also ends options with `--`.
-Fleet never passes `-b` and never reads `~/.eva/config.toml`, which holds the key.
+Fleet passes `-b` only when the client turns on eva bypass in Settings (see `eva-crew-is-not-claude.md`).
+Fleet never reads `~/.eva/config.toml` itself, which holds the key: the shell reads it, and prints only the lines Fleet needs.

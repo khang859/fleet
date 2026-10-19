@@ -1,11 +1,11 @@
 import { join } from 'node:path';
-import { jobDisplayId } from '../../../shared/agency';
+import { jobDisplayId, type CrewPermissionMode } from '../../../shared/agency';
 import type { CrewRuntime } from '../../../shared/agency-crew';
 import { CREW_PROMPT_PREFIX } from '../../../shared/agency-tools';
 import { SPAWN_PROMPT_ENV } from '../../agent/fleet/spawns';
 import type { HookEntry } from '../../claude-sessions/hook-installer';
 import { cleanPrompt } from '../../claude-sessions/input';
-import { claudeJobSettings } from './job-settings';
+import { claudeJobSettings, evaJobPermissions } from './job-settings';
 
 /** One crew member about to be hired: who it is, and what it works on. */
 export type CrewHire = {
@@ -35,6 +35,8 @@ export type CrewHire = {
   hookCommand: string;
   /** Fleet's hook command, for an eva that takes a hooks file; unset when it cannot. */
   evaHook?: string;
+  /** From Settings: Claude Code's `auto` or eva's `bypass`; any other value starts as `default`. */
+  permissionMode: CrewPermissionMode;
 };
 
 /**
@@ -60,6 +62,7 @@ const ENV = {
   goal: 'FLEET_CREW_GOAL',
   hooks: 'FLEET_CREW_HOOKS',
   status: 'FLEET_CREW_STATUS',
+  permissions: 'FLEET_CREW_PERMISSIONS',
   addDir: (i: number) => `FLEET_CREW_ADD_DIR_${i}`
 } as const;
 
@@ -73,6 +76,7 @@ const ref = (name: string): string => `"$${name}"`;
  * starts with a dash is still the prompt.
  */
 function claudeLaunch(hire: CrewHire, prompt: string): CrewLaunch {
+  const auto = hire.permissionMode === 'auto';
   const settings = join(hire.dir, 'claude-settings.json');
   const env: Record<string, string> = {
     [ENV.session]: hire.sessionId,
@@ -92,7 +96,7 @@ function claudeLaunch(hire: CrewHire, prompt: string): CrewLaunch {
     '--settings',
     ref(ENV.settings),
     '--permission-mode',
-    'default',
+    auto ? 'auto' : 'default',
     '--append-system-prompt',
     ref(ENV.role)
   );
@@ -106,7 +110,7 @@ function claudeLaunch(hire: CrewHire, prompt: string): CrewLaunch {
     files: [
       {
         path: settings,
-        text: `${JSON.stringify(claudeJobSettings(hire.hooks, hire.hookCommand), null, 2)}\n`
+        text: `${JSON.stringify(claudeJobSettings(hire.hooks, { hookCommand: hire.hookCommand, auto }), null, 2)}\n`
       }
     ],
     prompt
@@ -141,25 +145,56 @@ export function evaHooksToml(command: string): string {
   ).join('\n\n');
 }
 
+type EvaFileArgs = { args: string[]; files: CrewLaunch['files'] };
+
+const NO_FILE: EvaFileArgs = { args: [], files: [] };
+
+/** A file Fleet writes for eva, named in `env` as `name`, and the flags that pass it. */
+function evaFile(
+  path: string,
+  text: string,
+  name: string,
+  env: Record<string, string>,
+  flags: string[]
+): EvaFileArgs {
+  env[name] = path;
+  return { args: [...flags, ref(name)], files: [{ path, text }] };
+}
+
 /** `--hooks` and its file, for an eva that takes one, so its events reach Fleet. */
 function evaHooks(
   dir: string,
   command: string | undefined,
   env: Record<string, string>
-): { args: string[]; files: CrewLaunch['files'] } {
-  if (command === undefined) return { args: [], files: [] };
-  const path = join(dir, 'eva-hooks.toml');
-  env[ENV.hooks] = path;
-  return {
-    args: ['--hooks', ref(ENV.hooks)],
-    files: [{ path, text: `${evaHooksToml(command)}\n` }]
-  };
+): EvaFileArgs {
+  if (command === undefined) return NO_FILE;
+  return evaFile(join(dir, 'eva-hooks.toml'), `${evaHooksToml(command)}\n`, ENV.hooks, env, [
+    '--hooks'
+  ]);
+}
+
+/**
+ * `-b` and the `--permissions` file of Fleet's deny rules, in bypass mode
+ * only: the file takes the place of the user's `allow` rules, so in default
+ * mode it would make eva ask more.
+ */
+function evaBypass(
+  dir: string,
+  mode: CrewPermissionMode,
+  env: Record<string, string>
+): EvaFileArgs {
+  if (mode !== 'bypass') return NO_FILE;
+  return evaFile(join(dir, 'eva-permissions.toml'), evaJobPermissions(), ENV.permissions, env, [
+    '-b',
+    '--permissions'
+  ]);
 }
 
 /**
  * eva in the same way: the role as instructions kept with the conversation,
  * a goal that keeps it working until the step is done, and no question tool.
- * Never `-b`, so eva asks before each change as the user's settings say. Its
+ * `-b` only when eva bypass is on in Settings; else eva asks before each
+ * change as the user's settings say. Its
  * model comes from `CHAT_MODEL`, which takes the place of the saved one. A
  * resumed conversation has its instructions saved with it already. Its hooks
  * file comes from Fleet, never from eva's `config.toml`, which holds its key.
@@ -178,10 +213,12 @@ function evaLaunch(hire: CrewHire, prompt: string): CrewLaunch {
     : ['--session-id', ref(ENV.session), '--instructions', ref(ENV.role)];
   if (!hire.resume) env[ENV.role] = instructions;
   const hooks = evaHooks(hire.dir, hire.evaHook, env);
+  const bypass = evaBypass(hire.dir, hire.permissionMode, env);
   const cmd = [
     'eva',
     ...args,
     ...hooks.args,
+    ...bypass.args,
     '--name',
     ref(ENV.name),
     '--goal',
@@ -191,7 +228,7 @@ function evaLaunch(hire: CrewHire, prompt: string): CrewLaunch {
     ref(SPAWN_PROMPT_ENV)
   ].join(' ');
   const files = hire.resume ? [] : [{ path: instructions, text: hire.rolePrompt }];
-  return { cmd, env, files: [...files, ...hooks.files], prompt };
+  return { cmd, env, files: [...files, ...hooks.files, ...bypass.files], prompt };
 }
 
 const LAUNCH: Record<CrewRuntime, (hire: CrewHire, prompt: string) => CrewLaunch> = {
@@ -232,6 +269,8 @@ export type TestStart = {
   evaHook?: string;
   /** The default model from Settings; unset takes the runtime's own. */
   model?: string;
+  /** From Settings, as a hire takes it. */
+  permissionMode: CrewPermissionMode;
   prompt: string;
 };
 
@@ -249,18 +288,20 @@ export function testLaunch(test: TestStart): CrewLaunch {
     env[ENV.name] = 'Fleet runtime test';
     if (test.model !== undefined) env.CHAT_MODEL = test.model;
     const hooks = evaHooks(test.dir, test.evaHook, env);
+    const bypass = evaBypass(test.dir, test.permissionMode, env);
     const args = ['--session-id', ref(ENV.session), '--name', ref(ENV.name), '--no-ask-user'];
     return {
-      cmd: ['eva', ...args, ...hooks.args, '--', ref(SPAWN_PROMPT_ENV)].join(' '),
+      cmd: ['eva', ...args, ...hooks.args, ...bypass.args, '--', ref(SPAWN_PROMPT_ENV)].join(' '),
       env,
-      files: hooks.files,
+      files: [...hooks.files, ...bypass.files],
       prompt: test.prompt
     };
   }
+  const auto = test.permissionMode === 'auto';
   const settings = join(test.dir, 'claude-settings.json');
   env[ENV.settings] = settings;
   const args = ['--session-id', ref(ENV.session), '--settings', ref(ENV.settings)];
-  args.push('--permission-mode', 'default');
+  args.push('--permission-mode', auto ? 'auto' : 'default');
   if (test.model !== undefined) {
     env[ENV.model] = test.model;
     args.push('--model', ref(ENV.model));
@@ -269,7 +310,10 @@ export function testLaunch(test: TestStart): CrewLaunch {
     cmd: ['claude', ...args, '--', ref(SPAWN_PROMPT_ENV)].join(' '),
     env,
     files: [
-      { path: settings, text: `${JSON.stringify(claudeJobSettings(test.hooks), null, 2)}\n` }
+      {
+        path: settings,
+        text: `${JSON.stringify(claudeJobSettings(test.hooks, { auto }), null, 2)}\n`
+      }
     ],
     prompt: test.prompt
   };

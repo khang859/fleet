@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { parse as parseToml } from 'smol-toml';
+import type { CrewPermissionMode } from '../../../shared/agency';
 import {
   RUNTIME_LABEL,
   RUNTIME_MIN_VERSION,
@@ -41,6 +43,45 @@ export async function evaTakesHooks(
 ): Promise<boolean> {
   const out = await shell('eva --help', cwd);
   return out?.code === 0 && /(^|\s)--hooks(?![\w-])/.test(out.stdout);
+}
+
+/**
+ * The shell line that prints each eva rules file a pane in its folder reads,
+ * as `FILE=<path>`, then that file's `lock_bypass` line in `[permissions]`.
+ * No other line leaves the shell: `config.toml` holds eva's key.
+ */
+const LOCK_LINE = [
+  `lock() { [ -r "$1" ] && printf 'FILE=%s\\n' "$1" && awk '/^[[:space:]]*\\[/ { on = /^[[:space:]]*\\[[[:space:]]*permissions[[:space:]]*\\]/; next } on && /^[[:space:]]*lock_bypass[[:space:]]*=/ { print }' "$1"; }`,
+  'lock "${EVA_HOME:-$HOME/.eva}/config.toml"',
+  'lock "$PWD/.eva/settings.toml"',
+  'true'
+].join('; ');
+
+/** The eva rules files a pane in `cwd` reads that set `lock_bypass = true`. */
+export async function evaBypassLocks(
+  cwd: string,
+  shell: RuntimeCheckDeps['shell']
+): Promise<string[]> {
+  const out = await shell(LOCK_LINE, cwd);
+  const locked = new Set<string>();
+  let file: string | null = null;
+  for (const line of out?.stdout.split('\n') ?? []) {
+    const named = /^FILE=(.*)$/.exec(line);
+    if (named) {
+      file = named[1];
+      continue;
+    }
+    if (file === null || line.trim() === '') continue;
+    try {
+      const parsed = parseToml(`[permissions]\n${line}`) as {
+        permissions?: { lock_bypass?: unknown };
+      };
+      if (parsed.permissions?.lock_bypass === true) locked.add(file);
+    } catch {
+      // Not TOML eva would read either.
+    }
+  }
+  return [...locked];
 }
 
 /** Fleet's hook binary, which both runtimes report through. */
@@ -106,6 +147,11 @@ async function claudeSettings(cwd: string, deps: RuntimeCheckDeps): Promise<Sett
 const defaultMode = (data: Record<string, unknown>): unknown =>
   isRecord(data.permissions) ? data.permissions.defaultMode : undefined;
 
+/** Claude Code reads the lock at the top level and under `permissions`. */
+const autoModeOff = (data: Record<string, unknown>): boolean =>
+  data.disableAutoMode === 'disable' ||
+  (isRecord(data.permissions) && data.permissions.disableAutoMode === 'disable');
+
 /** The files that set a value, or none. */
 const pathsWhere = (
   files: SettingsFile[],
@@ -130,10 +176,29 @@ function item(
  * mode are warnings: the job's settings turn both off, and only managed
  * settings rank above them.
  */
-function claudeSettingsChecks(files: SettingsFile[], managed: string | null): RuntimeCheckItem[] {
+function claudeSettingsChecks(
+  files: SettingsFile[],
+  managed: string | null,
+  mode: CrewPermissionMode
+): RuntimeCheckItem[] {
   const noHooks = pathsWhere(files, (d) => d.disableAllHooks === true);
   const bypass = pathsWhere(files, (d) => defaultMode(d) === 'bypassPermissions');
   const vim = pathsWhere(files, (d) => d.editorMode === 'vim').filter((p) => p === managed);
+  // Claude Code starts in Manual with no error, so crew ask as before.
+  const auto =
+    mode === 'auto'
+      ? [
+          item(
+            'Auto mode available',
+            'Crew run routine work without asking.',
+            pathsWhere(files, autoModeOff).map(
+              (path) =>
+                `${path} turns off auto mode, so Claude crew start in Manual mode and ask as before.`
+            ),
+            'warn'
+          )
+        ]
+      : [];
   return [
     item(
       'Hooks on',
@@ -148,10 +213,11 @@ function claudeSettingsChecks(files: SettingsFile[], managed: string | null): Ru
       'Crew ask before risky actions.',
       bypass.map(
         (path) =>
-          `${path} starts Claude Code in bypass mode. Crew start in default mode, with bypass mode locked off.`
+          `${path} starts Claude Code in bypass mode. Crew never start in bypass mode, with bypass mode locked off.`
       ),
       'warn'
     ),
+    ...auto,
     item(
       'Vim mode off',
       'Text Fleet types into a crew pane lands as typed.',
@@ -191,13 +257,15 @@ function binaryChecks(
 }
 
 /**
- * Whether crew can run on `runtime` in `cwd`, the folder its panes start in.
- * Nothing secret is read: not the Claude login or `~/.claude.json`, and not
- * eva's settings, which hold its key.
+ * Whether crew can run on `runtime` in `cwd`, the folder its panes start in,
+ * in the permission mode Settings give its crew. Nothing secret is read: not
+ * the Claude login or `~/.claude.json`, and of eva's settings, which hold its
+ * key, only the `lock_bypass` line.
  */
 export async function checkRuntime(
   runtime: CrewRuntime,
   cwd: string,
+  mode: CrewPermissionMode,
   deps: RuntimeCheckDeps
 ): Promise<RuntimeCheck> {
   const { path, version } = await binary(runtime, cwd, deps);
@@ -205,7 +273,11 @@ export async function checkRuntime(
   if (runtime === 'claude' && path !== null) {
     checks.push(
       hookItem(deps),
-      ...claudeSettingsChecks(await claudeSettings(cwd, deps), managedSettingsPath(deps.platform))
+      ...claudeSettingsChecks(
+        await claudeSettings(cwd, deps),
+        managedSettingsPath(deps.platform),
+        mode
+      )
     );
   }
   if (runtime === 'eva' && path !== null) {
@@ -222,6 +294,19 @@ export async function checkRuntime(
         'warn'
       )
     );
+    // eva exits at start when `-b` meets the lock.
+    if (mode === 'bypass') {
+      checks.push(
+        item(
+          'Bypass allowed',
+          'eva crew can start in bypass mode.',
+          (await evaBypassLocks(cwd, deps.shell)).map(
+            (path) =>
+              `lock_bypass in ${path} stops eva crew starting in bypass mode. Turn eva bypass off in Settings, or remove the lock.`
+          )
+        )
+      );
+    }
   }
   return { runtime, path, version, checks };
 }

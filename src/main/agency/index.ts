@@ -19,6 +19,7 @@ import {
   type AgencySnapshot,
   type BudgetRaise,
   type ClientFileProposal,
+  type CrewPermissionMode,
   type RepoResolution,
   type WakeupPull,
   type WakeupRelease
@@ -181,7 +182,11 @@ export type AgencyServiceDeps = {
    */
   crewDirs?: CrewDirs;
   /** Whether crew can run on a runtime in a folder. Unset, every runtime passes. */
-  checkRuntime?: (runtime: CrewRuntime, cwd: string) => Promise<RuntimeCheck>;
+  checkRuntime?: (
+    runtime: CrewRuntime,
+    cwd: string,
+    mode: CrewPermissionMode
+  ) => Promise<RuntimeCheck>;
   /**
    * eva's model server as a crew pane in a folder sees it, and whether eva
    * has a key, never the key itself. Unset, eva has none.
@@ -412,6 +417,7 @@ export class AgencyService {
       newId: deps.newCrewId,
       nudgeLimit: () => agencySettings.get().admiral.nudgeLimit,
       defaultModel: (runtime) => agencySettings.get().crew[runtime].defaultModel || undefined,
+      permissionMode: (runtime) => agencySettings.get().crew[runtime].permissionMode,
       spend: this.spend
     });
     this.permissions = new CrewPermissions({
@@ -1142,7 +1148,6 @@ export class AgencyService {
     const { kind, members } = projectMembers(this.store.projects, repo);
     const home = this.deps.agencyHome ?? agencyHome();
     const trust = claudeTrustFolder(kind, repo.root, home);
-    const check = this.deps.checkRuntime;
     const setup = await loadSetup(job.repoId, home);
     return gatherPlanFacts(
       {
@@ -1161,7 +1166,7 @@ export class AgencyService {
             const { models } = await this.evaModelList(repo.root);
             return models && new Set(models.map((m) => m.id));
           },
-          check: async (runtime) => check?.(runtime, repo.root) ?? { ...PASSING_RUNTIME, runtime },
+          check: async (runtime) => this.runtimeCheck(runtime, repo.root),
           claudeTrust: { folder: trust, trusted: this.store.claudeTrusted(trust) },
           memberTrust: new Map(
             members
@@ -1215,16 +1220,20 @@ export class AgencyService {
     return { server: read.server, models, keySet: read.keySet };
   }
 
+  /** Whether crew can run on `runtime` in `cwd`, in the permission mode Settings give them. */
+  private async runtimeCheck(runtime: CrewRuntime, cwd: string): Promise<RuntimeCheck> {
+    const mode = this.agencySettings.get().crew[runtime].permissionMode;
+    return (await this.deps.checkRuntime?.(runtime, cwd, mode)) ?? { ...PASSING_RUNTIME, runtime };
+  }
+
   /** Settings › Agency › Crew: each runtime as the project's crew panes would start it. */
   async crewRuntimes(repoId: string): Promise<CrewRuntimeView[]> {
     const repo = this.store.repo(repoId);
     if (!repo) throw new Error('That project is not known.');
-    const check = async (runtime: CrewRuntime): Promise<RuntimeCheck> =>
-      (await this.deps.checkRuntime?.(runtime, repo.root)) ?? { ...PASSING_RUNTIME, runtime };
     const [claude, signedIn, eva, evaList] = await Promise.all([
-      check('claude'),
+      this.runtimeCheck('claude', repo.root),
       this.deps.claudeSignedIn?.(repo.root) ?? null,
-      check('eva'),
+      this.runtimeCheck('eva', repo.root),
       this.evaModelList(repo.root)
     ]);
     const { keySet, ...evaServer } = evaList;
@@ -1256,11 +1265,12 @@ export class AgencyService {
     if (!test) return { ok: false, reason: 'Fleet cannot start a terminal for the test here.' };
     const running = this.runtimeTests.get(runtime);
     if (running) return running;
-    const model = this.agencySettings.get().crew[runtime].defaultModel || undefined;
+    const { defaultModel, permissionMode } = this.agencySettings.get().crew[runtime];
     const dir = join(this.deps.agencyHome ?? agencyHome(), 'runtime-test');
-    const run = testRuntime(runtime, repo.root, model, { ...test, dir }).finally(() =>
-      this.runtimeTests.delete(runtime)
-    );
+    const run = testRuntime(runtime, repo.root, defaultModel || undefined, permissionMode, {
+      ...test,
+      dir
+    }).finally(() => this.runtimeTests.delete(runtime));
     this.runtimeTests.set(runtime, run);
     return run;
   }

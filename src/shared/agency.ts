@@ -385,11 +385,16 @@ export type AgencySettings = {
   crew: Record<CrewRuntime, CrewRuntimeSettings>;
 };
 
+/** How crew of a runtime are asked about tool calls. `auto` is Claude Code's, `bypass` is eva's. */
+export type CrewPermissionMode = 'default' | 'auto' | 'bypass';
+
 export type CrewRuntimeSettings = {
   /** The most crew of the runtime that work at once, across jobs; null takes `defaultAtOnce`. */
   atOnce: number | null;
   /** The model of a role that names none; empty leaves it to the runtime. */
   defaultModel: string;
+  /** `default` asks the Admiral, as crew always did. */
+  permissionMode: CrewPermissionMode;
 };
 
 export const DEFAULT_AGENCY_SETTINGS: AgencySettings = {
@@ -405,7 +410,7 @@ export const DEFAULT_AGENCY_SETTINGS: AgencySettings = {
     permissionExpirySec: PERMISSION_EXPIRY_SEC_DEFAULT
   },
   crew: {
-    claude: { atOnce: null, defaultModel: '' },
-    eva: { atOnce: null, defaultModel: '' }
+    claude: { atOnce: null, defaultModel: '', permissionMode: 'default' },
+    eva: { atOnce: null, defaultModel: '', permissionMode: 'default' }
   }
 };

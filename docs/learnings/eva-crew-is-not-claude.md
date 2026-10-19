@@ -31,7 +31,16 @@ printf '{"session_id":"<eva uuid>","hook_event_name":"Stop","cwd":"<worktree>","
 ```
 
 Get the uuid of the newest eva session with `sqlite3 -readonly ~/.eva/sessions.db "SELECT uuid FROM sessions ORDER BY id DESC LIMIT 1"`.
-Never read `~/.eva/config.toml`: it holds eva's key.
+Never read `~/.eva/config.toml` into Fleet: it holds eva's key.
+Read what Fleet needs through the shell, and print only those lines (`eva-server.ts`, and the `lock_bypass` read in `availability.ts`).
+
+## eva bypass mode (eva 0.6.0, job j30)
+
+- A `deny` rule holds even under `-b`, and `ask` and `deny` rules from every file combine.
+- `--permissions <file>` takes the place of the user's `allow` rules, so Fleet passes it only with `-b`. In default mode it would drop the user's `allow` rules and make eva ask more.
+- `lock_bypass = true` in `[permissions]` of any rules file makes `eva -b` exit at start. The `Bypass allowed` check fails then.
+- Under `-b`, eva's `PermissionRequest` hook never fires, so eva crew requests never reach the Admiral. `PreToolUse` hooks still run.
+- eva has no classifier and no path rule for "outside the worktree", so bypass holds only the push and pull request rules.
 
 ## Rule
 

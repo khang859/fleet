@@ -184,8 +184,8 @@ describe('SettingsStore settings merge', () => {
         permissionExpirySec: 180
       },
       crew: {
-        claude: { atOnce: null, defaultModel: '' },
-        eva: { atOnce: null, defaultModel: '' }
+        claude: { atOnce: null, defaultModel: '', permissionMode: 'default' },
+        eva: { atOnce: null, defaultModel: '', permissionMode: 'default' }
       }
     });
   });
@@ -207,8 +207,8 @@ describe('SettingsStore settings merge', () => {
         permissionExpirySec: 180
       },
       crew: {
-        claude: { atOnce: null, defaultModel: '' },
-        eva: { atOnce: null, defaultModel: '' }
+        claude: { atOnce: null, defaultModel: '', permissionMode: 'default' },
+        eva: { atOnce: null, defaultModel: '', permissionMode: 'default' }
       }
     });
   });
@@ -218,8 +218,27 @@ describe('SettingsStore settings merge', () => {
     store.set({ agency: { crew: { eva: { defaultModel: 'qwen/qwen3-coder' } } } });
     store.set({ agency: { crew: { claude: { atOnce: 1 } } } });
     expect(store.get().agency.crew).toEqual({
-      claude: { atOnce: 1, defaultModel: '' },
-      eva: { atOnce: 6, defaultModel: 'qwen/qwen3-coder' }
+      claude: { atOnce: 1, defaultModel: '', permissionMode: 'default' },
+      eva: { atOnce: 6, defaultModel: 'qwen/qwen3-coder', permissionMode: 'default' }
+    });
+    store.set({ agency: { crew: { claude: { permissionMode: 'auto' } } } });
+    store.set({ agency: { crew: { claude: { atOnce: 2 } } } });
+    expect(store.get().agency.crew.claude).toEqual({
+      atOnce: 2,
+      defaultModel: '',
+      permissionMode: 'auto'
+    });
+  });
+
+  it('reads crew settings saved before permission modes as default', () => {
+    const file = (store as unknown as { store: { set: (key: string, value: unknown) => void } })
+      .store;
+    file.set('settings', {
+      agency: { crew: { claude: { atOnce: 2, defaultModel: 'opus' }, eva: { atOnce: 3 } } }
+    });
+    expect(store.get().agency.crew).toEqual({
+      claude: { atOnce: 2, defaultModel: 'opus', permissionMode: 'default' },
+      eva: { atOnce: 3, defaultModel: '', permissionMode: 'default' }
     });
   });
 });

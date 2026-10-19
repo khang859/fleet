@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { CrewPermissionMode } from '../../../../shared/agency';
 import type { CrewRuntime } from '../../../../shared/agency-crew';
 import { TEST_PROMPT, testRuntime, type RuntimeTestDeps, type TestEvent } from '../runtime-test';
 
@@ -51,8 +52,12 @@ function deps(
   };
 }
 
-const run = async (runtime: CrewRuntime, d: RuntimeTestDeps, model?: string) =>
-  testRuntime(runtime, '/repo', model, d);
+const run = async (
+  runtime: CrewRuntime,
+  d: RuntimeTestDeps,
+  model?: string,
+  mode: CrewPermissionMode = 'default'
+) => testRuntime(runtime, '/repo', model, mode, d);
 
 describe('testRuntime', () => {
   it('reports each thing that reached Fleet for Claude Code, then ends the terminal', async () => {
@@ -147,6 +152,21 @@ describe('testRuntime', () => {
 
     expect(await run('claude', d)).toEqual({ ok: false, reason: 'claude: command not found' });
     expect(d.kill).toHaveBeenCalled();
+  });
+
+  it('starts each runtime in the permission mode its crew get', async () => {
+    const claude = deps([{ event: 'Stop', transcriptPath: null }]);
+    await run('claude', claude, undefined, 'auto');
+    expect(claude.spawned[0].cmd).toContain('--permission-mode auto');
+    const settings = JSON.parse(readFileSync(join(dir, 'claude-settings.json'), 'utf8')) as {
+      autoMode?: { hard_deny: string[] };
+    };
+    expect(settings.autoMode?.hard_deny[0]).toBe('$defaults');
+
+    const eva = deps([{ event: 'Stop', transcriptPath: null }]);
+    await run('eva', eva, undefined, 'bypass');
+    expect(eva.spawned[0].cmd).toContain(' -b --permissions "$FLEET_CREW_PERMISSIONS"');
+    expect(readFileSync(join(dir, 'eva-permissions.toml'), 'utf8')).toContain('[permissions]');
   });
 
   it('writes its launch files in its own folder', async () => {
