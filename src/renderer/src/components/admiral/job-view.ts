@@ -4,6 +4,7 @@ import type {
   AgencyPlanVersion,
   MemberBase
 } from '../../../../shared/agency-jobs';
+import type { Plan } from '../../../../shared/agency-plan';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 
 /** How a job that ended is labeled wherever it shows. */
@@ -152,4 +153,10 @@ export function needsChoices(version: AgencyPlanVersion): boolean {
 /** The pane of a job's crew member, for Peek; null when the member or its pane is gone. */
 export function crewPaneId(detail: AgencyJobDetail, crewId: number): string | null {
   return detail.crew.find((c) => c.id === crewId)?.paneId ?? null;
+}
+
+/** A step as a change request names it: its number and title, or its id once it is gone. */
+export function stepLabel(plan: Plan, id: string): string {
+  const at = plan.steps.findIndex((s) => s.id === id);
+  return at < 0 ? id : `Step ${at + 1}: ${plan.steps[at].title}`;
 }

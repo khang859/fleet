@@ -37,9 +37,9 @@
 
 ## 5. Phase 5 - Ask for a change and what changed
 
-- [ ] 5.1 Add the "What should change?" box to the plan reader footer: click a step to add it as a chip, Cmd+Enter sends `revise` through `hold`, Esc cancels; keep "Edit the plan" for the direct edit
-- [ ] 5.2 Add `PlanDiffView` from `previous`: the client's note, old values struck through for budget, week share and crew count, moved, changed, added and removed steps marked, a Show changes switch, and a link to the version before
-- [ ] 5.3 Tests for the diff view on moved, changed, added and removed steps, and for a v2 with no note
+- [x] 5.1 Add the "What should change?" box to the plan reader footer: click a step to add it as a chip, Cmd+Enter sends `revise` through `hold`, Esc cancels; keep "Edit the plan" for the direct edit
+- [x] 5.2 Add `PlanDiffView` from `previous`: the client's note, old values struck through for budget, week share and crew count, moved, changed, added and removed steps marked, a Show changes switch, and a link to the version before
+- [x] 5.3 Tests for the diff view on moved, changed, added and removed steps, and for a v2 with no note
 
 ## 6. Phase 6 - Keys, polish, docs
 

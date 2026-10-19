@@ -100,6 +100,25 @@ export function holdPlan(
     );
 }
 
+/** A change asked for or a rejection of a plan, held like the other plan decisions. */
+export function holdPlanNote(
+  job: AgencyJob,
+  version: AgencyPlanVersion,
+  action: 'revise' | 'reject',
+  note: string,
+  steps: string[]
+): void {
+  const name = `plan v${version.version}`;
+  holdPlan(
+    job,
+    version,
+    action === 'revise' ? `Ask for a change to ${name}` : `Reject ${name}`,
+    action === 'revise'
+      ? { planVersionId: version.id, action, note, steps }
+      : { planVersionId: version.id, action, note }
+  );
+}
+
 /**
  * A question card's answer from the Bridge: held for undo, and taken at once,
  * since the card leaves the queue without waiting on the hold.
