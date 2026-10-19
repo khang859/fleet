@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.136.0
+
+- **Findings come back to the Bridge.**
+  When a job delivers, the Admiral on the Bridge hears what it found: each step's crew reports, and the text of its reports and copied results.
+  A job that only found things (docs, reports, reviews, copied text or links) closes on its own, so you can ask for "look at these 10 issues" and then "work on these 10 issues" from the Bridge (#682).
+- **Follow-up jobs.**
+  The Admiral proposes how to split the work it found, and opens each job once you agree.
+  A follow-up job shows "follows jN" and reads what that job found.
+  The Admiral can read any job's findings, open or ended, with the new `job_results` tool (#682).
+
 ## v2.135.0
 
 - **Meet the Admiral.**
