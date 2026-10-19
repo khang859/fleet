@@ -1763,7 +1763,11 @@ void app.whenReady().then(async () => {
         temperature: 0,
         reasoning: { effort: 'low' }
       });
-      return { text: out.text, costUsd: out.usage?.costUsd ?? null };
+      return {
+        text: out.text,
+        costUsd: out.usage?.costUsd ?? null,
+        cutOff: out.finishReason === 'length'
+      };
     },
     permissionHooks: {
       respond: (toolUseId, decision, reason) =>

@@ -7,8 +7,12 @@ import {
 } from '../../../shared/agency-understanding';
 import type { Collected } from './collect';
 
-/** The most the model may answer with: twelve short lines and their evidence. */
-export const READ_MAX_TOKENS = 3_000;
+/**
+ * The most the model may answer with. Twelve lines and their evidence need
+ * about 2,000 tokens, but on a reasoning model thinking counts too, and low
+ * effort alone used over 2,000 on a hundred commits. Only what is used is paid.
+ */
+export const READ_MAX_TOKENS = 16_000;
 
 /**
  * The fixed prompt for Read your work. The text it reads is the client's,

@@ -598,7 +598,12 @@ const errorSchema = z.object({ error: z.object({ message: z.string() }) });
 
 const completionSchema = z.object({
   choices: z
-    .array(z.object({ message: z.object({ content: z.string().nullish() }).nullish() }))
+    .array(
+      z.object({
+        message: z.object({ content: z.string().nullish() }).nullish(),
+        finish_reason: z.string().nullish()
+      })
+    )
     .nullish(),
   usage: usageSchema.nullish()
 });
@@ -734,7 +739,7 @@ export type CompletionRequest = {
  */
 export async function completeOnce(
   req: CompletionRequest
-): Promise<{ text: string; usage: AgentUsage | null }> {
+): Promise<{ text: string; usage: AgentUsage | null; finishReason: string | null }> {
   const deadline = new IdleDeadline(req.signal, req.target.label);
   try {
     const res = await post(req.target, req.signal, deadline, '/chat/completions', {
@@ -750,7 +755,8 @@ export async function completeOnce(
     if (!parsed.success) throw new Error(`${req.target.label} returned an unreadable completion`);
     return {
       text: (parsed.data.choices?.[0]?.message?.content ?? '').trim(),
-      usage: toUsage(parsed.data.usage)
+      usage: toUsage(parsed.data.usage),
+      finishReason: parsed.data.choices?.[0]?.finish_reason ?? null
     };
   } finally {
     deadline.clear();
