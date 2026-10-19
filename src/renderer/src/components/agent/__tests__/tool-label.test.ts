@@ -115,6 +115,14 @@ describe('toolLabel', () => {
       target: 'Workspace reorder'
     });
     expect(toolLabel(call('job_list', '{}'))).toEqual({ verb: 'List jobs', target: '' });
+    expect(toolLabel(call('job_results', '{"job":7}'))).toEqual({
+      verb: 'Read results of',
+      target: 'j7'
+    });
+    expect(toolLabel(call('job_results', '{"job":7,"result":12,"offset":40000}'))).toEqual({
+      verb: 'Read results of',
+      target: 'j7 result#12'
+    });
   });
 
   it('falls back to the tool name for anything it does not know', () => {

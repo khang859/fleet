@@ -86,6 +86,8 @@ import { StackSlots } from './jobs/stack-slots';
 import { OPEN_JOB_STATES } from './jobs/job-machine';
 import { ServerWatch } from './workspaces/server-watch';
 import { exportJob } from './jobs/job-export';
+import { collectFindings, type Findings } from './findings';
+import { renderFindings, WAKEUP_FINDINGS_CHARS } from './findings/render';
 import { reconcileAtStartup } from './jobs/reconcile';
 import { runPreflight, type Probe } from './preflight';
 import { ClientFiles, type PreferencesNote } from './projects/client-file';
@@ -97,6 +99,7 @@ import { loadSetup } from './projects/project-store';
 import { projectPath } from './projects/setup-findings';
 import { PrCards } from './results/pr-cards';
 import { ResultsService } from './results';
+import { deliveryAction } from './results/delivery';
 import { readOnlyGit } from './projects/repo-reader';
 import { memberSkills } from './projects/repo-skills';
 import { projectMembers, type ProjectMember } from './projects/workspace-projects';
@@ -337,7 +340,11 @@ export class AgencyService {
         ...this.clientFiles.noteLines(repoId)
       ],
       autoStart: (repoId) => this.autoStartRule(repoId),
-      delivered: (jobId) => void this.shipIt(jobId),
+      delivered: (jobId) => {
+        this.delivered(jobId).catch((err: unknown) => {
+          log.error('Could not follow up a delivered job', { jobId, err: String(err) });
+        });
+      },
       planFacts: async (input) => this.planFacts(input),
       crewSnapshot: deps.crewDirs
         ? async (job, plan) => crewSnapshot(await this.crewCatalog(job.repoId), plan)
@@ -898,14 +905,59 @@ export class AgencyService {
     };
   }
 
-  /** Under Ship it, a job that delivered only PRs merges them as if the client pressed Merge. */
-  private async shipIt(jobId: number): Promise<void> {
+  /** What a job found: its crew reports and every result, with their text. */
+  async findings(jobId: number): Promise<Findings | null> {
+    return collectFindings(this.store, this.deps.agencyHome ?? agencyHome(), jobId);
+  }
+
+  /**
+   * A job delivered everything. Under Ship it, a job that delivered only PRs
+   * merges them as if the client pressed Merge, and `shipped` reports it.
+   * Otherwise the Bridge hears what it found, and a job that only found things
+   * closes, since there is nothing left on it for the client to accept.
+   */
+  private async delivered(jobId: number): Promise<void> {
     const job = this.store.getJob(jobId);
-    if (!job || this.store.preferences.trust(job.repoId).level !== 'ship') return;
-    const listed = this.store.results.forJob(jobId).filter((r) => r.listed);
-    if (listed.length === 0 || listed.some((r) => r.body.kind !== 'pr')) return;
-    const started = await this.merges.start(jobId, 'trust');
-    if (!started.ok) log.warn('Ship it could not start the merge', { jobId, ...started });
+    if (!job) return;
+    const trust = this.store.preferences.trust(job.repoId).level;
+    if (deliveryAction(this.store.results.forJob(jobId), trust) === 'merge') {
+      const started = await this.merges.start(jobId, 'trust');
+      if (started.ok) return;
+      log.warn('Ship it could not start the merge', { jobId, ...started });
+    }
+    // The merge was awaited: decide on the job as it is now, and close before
+    // reading the files. Its record and results outlive the close.
+    if (this.store.getJob(jobId)?.state !== 'delivered') return;
+    const closed =
+      deliveryAction(this.store.results.forJob(jobId), trust) === 'close' && this.closeFound(jobId);
+    const findings = await this.findings(jobId);
+    if (findings === null) return;
+    const id = jobDisplayId(jobId);
+    this.store.enqueueWakeup({
+      repoId: job.repoId,
+      jobId: null,
+      kind: 'event',
+      payload: {
+        line: closed ? `${id} delivered, and Fleet closed it` : `${id} delivered`,
+        body: renderFindings(findings, WAKEUP_FINDINGS_CHARS)
+      }
+    });
+    this.changed([{ repoId: job.repoId, jobId: null }]);
+  }
+
+  /** A job that only found things is accepted on the client's behalf. */
+  private closeFound(jobId: number): boolean {
+    const closed = this.closeJob({ jobId, action: 'accept' });
+    if (!closed.ok) {
+      log.warn('A job that only found things could not close', { jobId, reason: closed.reason });
+      return false;
+    }
+    this.store.plans.log({
+      jobId,
+      kind: 'decision',
+      text: 'Delivered only findings: closed on its own, and the Bridge is told what it found'
+    });
+    return true;
   }
 
   /**
@@ -1065,7 +1117,12 @@ export class AgencyService {
     title: string;
     brief: string;
     budgetUsd: number | null;
+    linkedJobId?: number | null;
   }): AgencyJob {
+    const follows = input.linkedJobId ?? null;
+    if (follows !== null && this.store.getJob(follows)?.repoId !== input.repoId) {
+      throw new Error(`Not opened: ${jobDisplayId(follows)} is not a job of this project.`);
+    }
     const job = this.store.openJob({ ...input, sessionId: randomUUID() });
     this.deps.emit({ repoId: job.repoId, jobIds: [job.id], openedJobId: job.id });
     return job;

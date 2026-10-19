@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { copyFile, lstat, mkdir, mkdtemp, realpath } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, mkdtemp, open, realpath } from 'node:fs/promises';
 import { basename, extname, isAbsolute, join, sep } from 'node:path';
 import type { ResultFile } from '../../../shared/agency-jobs';
 import { MEDIA_MIME_TYPES } from '../../../shared/file-open';
@@ -33,6 +33,42 @@ const MIME: Record<string, string> = {
 /** The folder a job's delivered files are copied into, outside every worktree. */
 export function resultsDir(home: string, jobId: number): string {
   return join(jobDir(home, jobId), 'results');
+}
+
+/** Whether a path is a file Fleet copied into the job's results folder. */
+export function insideResults(home: string, jobId: number, path: string): boolean {
+  return path.startsWith(resultsDir(home, jobId) + sep);
+}
+
+/** The most of one text result Fleet reads, so a huge file never fills memory. */
+const RESULT_TEXT_MAX_BYTES = 2 * 1024 * 1024;
+
+/** Whether a result file is text a model can read. */
+export function isTextResultFile(file: ResultFile): boolean {
+  return file.type.startsWith('text/') || file.type === 'application/json';
+}
+
+/**
+ * The text of a delivered file, from the start up to Fleet's read limit. Null
+ * for anything but a regular file in the job's results folder: a row naming
+ * another path, or a link, is never followed.
+ */
+export async function readResultText(
+  home: string,
+  jobId: number,
+  path: string
+): Promise<string | null> {
+  if (!insideResults(home, jobId, path)) return null;
+  const stat = await lstat(path).catch(() => null);
+  if (stat?.isFile() !== true) return null;
+  const handle = await open(path, 'r');
+  try {
+    const buffer = Buffer.alloc(Math.min(stat.size, RESULT_TEXT_MAX_BYTES));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, bytesRead).toString('utf8');
+  } finally {
+    await handle.close();
+  }
 }
 
 /**

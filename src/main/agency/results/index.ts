@@ -1,4 +1,3 @@
-import { sep } from 'node:path';
 import { z } from 'zod';
 import { jobDisplayId } from '../../../shared/agency';
 import {
@@ -24,7 +23,7 @@ import { githubRepo, prAddress, readPr } from './gh-pr';
 import { jobLinksSection, withJobLinks, type JobPrLink } from './pr-links';
 import type { PrCards } from './pr-cards';
 import { deliveryNote } from './pr-reviews';
-import { copyResultFiles, resultsDir } from './result-files';
+import { copyResultFiles, insideResults, resultsDir } from './result-files';
 import { jobDir } from '../projects/paths';
 
 export type ResultsDeps = {
@@ -174,7 +173,7 @@ export class ResultsService {
     const result = this.deps.store.results.get(resultId);
     if (result === null || !('files' in result.body)) return null;
     const path = result.body.files.at(file)?.path ?? '';
-    return path.startsWith(resultsDir(this.deps.home(), result.jobId) + sep) ? path : null;
+    return insideResults(this.deps.home(), result.jobId, path) ? path : null;
   }
 
   private async build(repo: AgencyRepoRef, jobId: number, args: JobDeliverArgs): Promise<Built> {
@@ -271,6 +270,27 @@ export class ResultsService {
 /** The token a transcript row carries so the pane can find the result card. */
 export function resultToken(resultId: number): string {
   return `result#${resultId}`;
+}
+
+/** A result in a line: where its PR, branch or link points, else its title. */
+export function resultSummary(r: AgencyResult): string {
+  const body = r.body;
+  switch (body.kind) {
+    case 'pr':
+      return `PR #${body.pr.number} ${body.pr.title} (${body.pr.state}) ${body.pr.url}`;
+    case 'branch':
+      return `branch ${body.branch} at ${body.sha.slice(0, 12)}`;
+    case 'preview':
+    case 'link':
+      return `${r.title} ${body.url}`;
+    case 'copy':
+    case 'doc':
+    case 'image':
+    case 'review':
+    case 'report':
+    case 'file':
+      return r.title;
+  }
 }
 
 /**

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 import { readMcpToolName } from '../../../../shared/agent-mcp-names';
+import { jobDisplayId } from '../../../../shared/agency';
 
 /**
  * What a tool call says about itself on one line.
@@ -47,7 +48,9 @@ const LabelArgs = z.object({
   kind: z.string().optional(),
   branch: z.string().optional(),
   reason: z.string().optional(),
-  request: z.string().optional()
+  request: z.string().optional(),
+  job: z.number().optional(),
+  result: z.number().optional()
 });
 
 const PERMISSION_VERB: Record<string, string> = {
@@ -177,6 +180,15 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
       return { verb: 'Open job', target: args.title ?? '' };
     case 'job_list':
       return { verb: 'List jobs', target: '' };
+    case 'job_results':
+      return {
+        verb: 'Read results of',
+        target: joinDetail(
+          args.job === undefined ? undefined : jobDisplayId(args.job),
+          args.result === undefined ? undefined : `result#${args.result}`,
+          ' '
+        )
+      };
     case 'job_plan':
       return { verb: 'Propose plan', target: args.summary ?? '' };
     case 'job_update':

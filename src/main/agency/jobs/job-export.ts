@@ -7,6 +7,7 @@ import {
 import type { AgencyJobDetail, AgencyPlanVersion, AgencyResult } from '../../../shared/agency-jobs';
 import { permissionDisplayId, type AgencyPermission } from '../../../shared/agency-permissions';
 import { Redactor } from '../../redactor';
+import { resultSummary } from '../results';
 import { proposalLines } from '../wakeup-text';
 
 /** What a job's export is made from: its detail, its questions, and its project's name. */
@@ -71,25 +72,11 @@ function questionSection(q: AgencyQuestion): string[] {
 }
 
 function resultLine(r: AgencyResult): string {
-  const head = `- ${r.label}${r.listed ? '' : ' (extra)'}, from ${r.stepId}`;
+  const line = `- ${r.label}${r.listed ? '' : ' (extra)'}, from ${r.stepId}: ${resultSummary(r)}`;
   const body = r.body;
-  switch (body.kind) {
-    case 'pr':
-      return `${head}: PR #${body.pr.number} ${body.pr.title} (${body.pr.state}) ${body.pr.url}`;
-    case 'branch':
-      return `${head}: branch ${body.branch} at ${body.sha.slice(0, 12)}`;
-    case 'copy':
-      return `${head}: ${r.title}\n\n${body.text.replace(/^/gm, '  > ')}`;
-    case 'preview':
-    case 'link':
-      return `${head}: ${r.title} ${body.url}`;
-    case 'doc':
-    case 'image':
-    case 'review':
-    case 'report':
-    case 'file':
-      return `${head}: ${r.title} (${body.files.map((f) => f.name).join(', ')})`;
-  }
+  if (body.kind === 'copy') return `${line}\n\n${body.text.replace(/^/gm, '  > ')}`;
+  if ('files' in body) return `${line} (${body.files.map((f) => f.name).join(', ')})`;
+  return line;
 }
 
 const ANSWERED_BY: Record<NonNullable<AgencyPermission['answeredBy']>, string> = {

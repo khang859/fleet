@@ -68,17 +68,17 @@ The client SHALL be able to change a step's deliverables before approval, with E
 A deliverable SHALL have a kind and an optional label in the client's words.
 The kind SHALL decide how Fleet shows and checks the result:
 
-| Kind | Default label | How Fleet shows and checks it |
-| --- | --- | --- |
-| `pr` | Branch and PR | PR card with checks and reviews |
-| `doc` | Document | Markdown or PDF opened in a Fleet pane |
-| `image` | Images | Image gallery |
-| `copy` | Copy drafts | Text with a copy control |
-| `preview` | Preview link | Preview deployment, opened in a browser pane |
-| `review` | Review notes | Findings with file and line |
-| `report` | Report with screenshots | Verdict with screenshots |
-| `file` | File | Any file, previewed when Fleet can show its type |
-| `link` | Link | Any web address |
+| Kind      | Default label           | How Fleet shows and checks it                    |
+| --------- | ----------------------- | ------------------------------------------------ |
+| `pr`      | Branch and PR           | PR card with checks and reviews                  |
+| `doc`     | Document                | Markdown or PDF opened in a Fleet pane           |
+| `image`   | Images                  | Image gallery                                    |
+| `copy`    | Copy drafts             | Text with a copy control                         |
+| `preview` | Preview link            | Preview deployment, opened in a browser pane     |
+| `review`  | Review notes            | Findings with file and line                      |
+| `report`  | Report with screenshots | Verdict with screenshots                         |
+| `file`    | File                    | Any file, previewed when Fleet can show its type |
+| `link`    | Link                    | Any web address                                  |
 
 `file` and `link` SHALL cover anything else, so a new kind of result needs no new Fleet code.
 A crew member SHALL be able to hand back a result that the step did not list, and Fleet SHALL show it as a result card of its kind.
@@ -191,6 +191,7 @@ The client SHALL be able to export a closed job's record as Markdown.
 ### Requirement: Close and cleanup
 
 When the client accepts the results, the job SHALL go to `closing` and then `closed`.
+A job that delivered only findings SHALL be accepted by the system itself, as described in Findings return to the Bridge.
 Closing or cancelling a job SHALL stop its crew panes, stop the job's Docker Compose project, and remove its worktrees.
 Cleanup SHALL be safe to run more than once: a second cancel or close SHALL join the running cleanup, and a cleanup cut short by a quit or crash SHALL resume when Fleet starts.
 A job in `closing` SHALL refuse new crew work.
@@ -217,6 +218,33 @@ If a cleanup step fails, the leftover SHALL stay in a Leftovers list with Retry 
 
 - **WHEN** Fleet quits while a job is closing
 - **THEN** cleanup resumes on the next start
+
+### Requirement: Findings return to the Bridge
+
+When a job is delivered, the system SHALL wake the Admiral on the Bridge with what the job found: each step's crew reports, and each result with the text of copied results and text files, cut to a size limit.
+A job whose plan listed results and whose results are all findings (`doc`, `review`, `report`, `copy` or `link`) SHALL be accepted and closed by the system, and the wakeup SHALL say that it closed.
+A job with any other result, or with no results its plan listed, SHALL stay `delivered` for the client to accept.
+Under Ship it, a job of only PRs SHALL merge as before, and the Bridge SHALL be told of it as delivered only if the merge cannot start.
+A cancelled or failed job SHALL NOT wake the Bridge.
+The Admiral SHALL be able to read any job of the project, open or ended, with `job_results`, from the Bridge or a job's conversation.
+Everything `job_results` and the wakeup carry from crew SHALL be fenced as data.
+The Bridge's note SHALL list the project's jobs that ended lately, with how many results of each kind they handed back.
+A job opened from the Bridge MAY name the job it follows up on; the system SHALL refuse a job of another project, and the follow-up's conversation SHALL be told to read the source job's findings.
+
+#### Scenario: Triage closes on its own
+
+- **WHEN** a job whose one step hands back a report of ten issues is delivered
+- **THEN** the Bridge is woken with the report, the Admiral summarises it to the client, and the job closes
+
+#### Scenario: Work on what was found
+
+- **WHEN** the client asks on the Bridge to work on the issues a closed job found
+- **THEN** the Admiral proposes how to split them into jobs, and opens each one with `follows` set to that job once the client agrees
+
+#### Scenario: A job with a PR
+
+- **WHEN** a job that handed back a report and a PR is delivered
+- **THEN** the Bridge is told what it found, and the job waits for the client to accept it
 
 ### Requirement: Plan versions and base commit
 

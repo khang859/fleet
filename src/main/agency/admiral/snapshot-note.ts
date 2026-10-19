@@ -16,13 +16,25 @@ import {
   type PreferencesNote
 } from '../projects/client-file';
 import type { AgencyStore } from '../store/agency-store';
+import { findingsHeadline } from '../findings/render';
 import { proposalLines } from '../wakeup-text';
 import { permissionDisplayId } from '../../../shared/agency-permissions';
 
 type SnapshotReader = Pick<
   AgencyStore,
-  'repo' | 'getJob' | 'listJobs' | 'listQuestions' | 'plans' | 'permissions' | 'spend'
+  | 'repo'
+  | 'getJob'
+  | 'listJobs'
+  | 'pastJobs'
+  | 'listQuestions'
+  | 'plans'
+  | 'permissions'
+  | 'results'
+  | 'spend'
 >;
+
+/** How many ended jobs the Bridge's note names, so it knows what it can read back. */
+const NOTE_PAST_JOBS = 8;
 
 /** The commits a job's work starts from, as the approval pinned them. */
 function baseText(bases: PlanBases | null): string {
@@ -217,6 +229,29 @@ function layerLines(layer: ClientFileNote): string[] {
   return lines;
 }
 
+/** The jobs that ended lately, so the Bridge knows whose findings it can read back. */
+function pastJobLines(store: SnapshotReader, repoId: string): string[] {
+  const past = store.pastJobs(repoId, NOTE_PAST_JOBS);
+  if (past.length === 0) return [];
+  return [
+    'Jobs that ended lately, newest first (read what any job found with job_results):',
+    ...past.map((job) => `- ${findingsHeadline(job, store.results.forJob(job.id))}`),
+    fence('ended job titles', past.map((job) => `${jobDisplayId(job.id)}: ${job.title}`).join('\n'))
+  ];
+}
+
+/** The job a follow-up was opened from, whose findings it works on. */
+function followsLines(store: SnapshotReader, job: AgencyJob): string[] {
+  if (job.linkedJobId === null) return [];
+  const from = store.getJob(job.linkedJobId);
+  const id = jobDisplayId(job.linkedJobId);
+  if (from === null) return [`This job follows ${id}, which Fleet has no record of.`];
+  return [
+    `This job follows ${id} (${from.state}). Read what it found with job_results.`,
+    fence(`${id} title`, from.title)
+  ];
+}
+
 function recordsNote(store: SnapshotReader, scope: AdmiralThreadScope): string {
   const repo = store.repo(scope.repoId)?.name ?? scope.repoId;
   if (scope.jobId === null) {
@@ -237,6 +272,7 @@ function recordsNote(store: SnapshotReader, scope: AdmiralThreadScope): string {
               jobs.map((job) => `${jobDisplayId(job.id)}: ${job.title}`).join('\n')
             )
           ]),
+      ...pastJobLines(store, scope.repoId),
       ...questionLines(store, scope)
     ].join('\n');
   }
@@ -246,6 +282,7 @@ function recordsNote(store: SnapshotReader, scope: AdmiralThreadScope): string {
   return [
     `Fleet's records for this conversation: ${id} in ${repo}, state ${job.state}.`,
     fence(id, `Title: ${job.title}\nBrief: ${job.brief}`),
+    ...followsLines(store, job),
     ...planLines(store, job),
     ...permissionLines(store, job.id),
     ...questionLines(store, scope)

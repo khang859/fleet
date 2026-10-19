@@ -15,6 +15,7 @@ const ARGS: Record<AgencyToolName, object> = {
   ask_client: { question: 'Which?', options: [{ label: 'A' }, { label: 'B' }] },
   job_open: { title: 'Dark mode', brief: 'Add it' },
   job_list: {},
+  job_results: { job: 1 },
   job_plan: {
     playbook: 'feature',
     summary: 'x',
