@@ -221,11 +221,11 @@ describe('JobSheet', () => {
 });
 
 describe('JobTabs', () => {
-  const tabs = (snapshot: AgencySnapshot): string =>
+  const tabs = (snapshot: AgencySnapshot, activeJobId: number | null = null): string =>
     renderToStaticMarkup(
       createElement(JobTabs, {
         snapshot,
-        activeJobId: null,
+        activeJobId,
         working: new Set<number>(),
         onSelect: () => {}
       })
@@ -244,6 +244,18 @@ describe('JobTabs', () => {
     expect(html.indexOf('Bridge')).toBeLessThan(html.indexOf(job().title));
     expect(html).toMatch(/aria-selected="true"[^>]*>Bridge</);
     expect(html).not.toContain('New brief');
+  });
+
+  it("counts on the Bridge tab what waits across the project, from a job's tab too", () => {
+    const asking = snap({
+      jobs: [job(), job({ id: 3, title: 'Other' })],
+      questions: [question({ id: 1, jobId: 2 }), question({ id: 2, jobId: null })],
+      held: [{ id: 1, jobId: 3, key: 'q:9', label: 'Answered q9', runsAt: 0 }]
+    });
+    const html = tabs(asking, 3);
+    expect(html).toContain('aria-label="Bridge, 2 waiting on you"');
+    expect(html).toMatch(/Bridge<span[^>]*>2<\/span>/);
+    expect(tabs(snap({ jobs: [job()] }))).not.toContain('waiting on you');
   });
 });
 

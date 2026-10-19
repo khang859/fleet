@@ -13,7 +13,8 @@ import type {
   StepStatus
 } from '../../../../shared/agency-jobs';
 import { focusPane } from '../../lib/focus-pane';
-import { openQuestions, planVersions } from '../../store/agency-store';
+import { planVersions } from '../../store/agency-store';
+import { itemsOf, waitingItems } from './waiting-queue';
 import { ClientFileNotice } from './ClientFileViews';
 import { CrewSwapForm } from './CrewSwap';
 import { CancelJob, DeliveredCard, LeftoverList, SECONDARY } from './JobClose';
@@ -149,7 +150,11 @@ export function JobSheet({
   );
 }
 
-/** Everything on the job on screen that waits on the client, and how many. */
+/**
+ * Everything on the job on screen that waits on the client, and how many:
+ * the queue's own items for that job, less the rows that stand in for a
+ * detail still loading.
+ */
 function waitingOnClient(
   snapshot: AgencySnapshot | undefined,
   job: AgencyJob | null,
@@ -163,23 +168,19 @@ function waitingOnClient(
   permissions: AgencyPermission[];
   count: number;
 } {
-  const { pending } = planVersions(detail);
-  const waiting = openQuestions(snapshot, job?.id ?? null);
-  const settings = (snapshot?.settingsCards ?? []).filter(
-    (c) => c.jobId === (job?.id ?? null) && c.changes.some((x) => x.status === 'pending')
+  const details = job === null || detail === undefined ? {} : { [job.id]: detail };
+  const items = waitingItems(snapshot, details, job?.id ?? null).filter(
+    (i) => i.kind !== 'loading'
   );
-  const delivered = job?.state === 'delivered' ? job : null;
-  const crew = (detail?.crew ?? []).filter((c) => c.flag === 'needs-you');
-  const permissions = (detail?.permissions ?? []).filter(
-    (p) => p.state === 'client' || p.state === 'in_pane'
-  );
-  const count =
-    waiting.length +
-    settings.length +
-    crew.length +
-    permissions.length +
-    [pending, delivered].filter((x) => x !== null).length;
-  return { pending, waiting, settings, delivered, crew, permissions, count };
+  return {
+    pending: itemsOf(items, 'plan')[0]?.version ?? null,
+    waiting: itemsOf(items, 'question').map((i) => i.question),
+    settings: itemsOf(items, 'settings').map((i) => i.card),
+    delivered: itemsOf(items, 'delivered')[0]?.job ?? null,
+    crew: itemsOf(items, 'crew').map((i) => i.member),
+    permissions: itemsOf(items, 'permission').map((i) => i.permission),
+    count: items.length
+  };
 }
 
 /**

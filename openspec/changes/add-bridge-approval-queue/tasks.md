@@ -12,16 +12,16 @@
 
 ## 2. Phase 2 - Renderer: one queue model
 
-- [ ] 2.1 Write `waitingItems` and `queueOrder` in `src/renderer/src/components/admiral/waiting-queue.ts` with stable keys per item; unit tests for every kind, the order, and held items hidden
-- [ ] 2.2 Rebuild `JobSheet`'s `waitingOnClient` on `waitingItems` with no change to what the sheet shows; existing sheet tests pass
-- [ ] 2.3 Make `waitingCount` count pending settings cards; test that it matches the queue length once details are loaded
-- [ ] 2.4 Add `useJobDetails(jobIds)` to `agency-store.ts` for every open job with waiting items that need details, and the one-line placeholder row while a detail loads
-- [ ] 2.5 Show the amber count badge on the Bridge tab in `JobTabs.tsx` in place of the lobby dot; test it from a job tab
+- [x] 2.1 Write `waitingItems` and `queueOrder` in `src/renderer/src/components/admiral/waiting-queue.ts` with stable keys per item; unit tests for every kind, the order, and held items hidden
+- [x] 2.2 Rebuild `JobSheet`'s `waitingOnClient` on `waitingItems` with no change to what the sheet shows; existing sheet tests pass
+- [x] 2.3 Make `waitingCount` count pending settings cards; test that it matches the queue length once details are loaded
+- [x] 2.4 Add `useJobDetails(jobIds)` to `agency-store.ts` for every open job with waiting items that need details, and `loading` items from the snapshot hints while a detail loads
+- [x] 2.5 Show the amber count badge on the Bridge tab in `JobTabs.tsx` in place of the lobby dot; test it from a job tab
 
 ## 3. Phase 3 - The queue on the Bridge
 
 - [ ] 3.1 Add `BridgeQueue` in place of the lobby `JobSheet` in `AdmiralWorkspace`, with the client file notice, leftovers, past jobs, first-run explainer and settings box below the queue; keep the narrow-pane toggle
-- [ ] 3.2 Add `QueueCard` per kind with inline actions: Allow once and Deny; Approve, Change and Reject; question picks and free answer; the existing settings, delivered and needs-you actions; refusals on the card
+- [ ] 3.2 Add `QueueCard` per kind, with a one-line row for a `loading` item, and inline actions: Allow once and Deny; Approve, Change and Reject; question picks and free answer; the existing settings, delivered and needs-you actions; refusals on the card
 - [ ] 3.3 Send plan and question decisions from the Bridge through `hold`, and show a held decision as one line with Undo and a countdown
 - [ ] 3.4 Add the empty state and the Done today list from `snapshot.decisions`
 - [ ] 3.5 Check every state against canvas row A with fleet-drive screenshots in light and dark themes, at a wide and a narrow pane

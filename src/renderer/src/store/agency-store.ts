@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import {
   RUNNING_JOB_STATES,
   type AgencyAnswerRequest,
@@ -17,6 +18,7 @@ import type {
   PlanActionResult
 } from '../../../shared/agency-jobs';
 import { createLogger } from '../logger';
+import { waitingItems } from '../components/admiral/waiting-queue';
 
 const log = createLogger('store:agency');
 
@@ -154,17 +156,13 @@ export function openQuestions(
 }
 
 /**
- * How many things wait on the client: open questions, plan versions to
- * decide and delivered jobs to accept, in the repository or one job (null:
- * the lobby, which has no plans).
+ * How many things wait on the client, in the repository or one job (null:
+ * the lobby): the length of the Bridge queue, read from the snapshot alone.
+ * Without details, each plan, permission and crew member counts by the
+ * snapshot's hint, so the count is the queue's before and after they load.
  */
 export function waitingCount(snapshot: AgencySnapshot | undefined, jobId?: number | null): number {
-  if (snapshot === undefined) return 0;
-  const jobs = snapshot.jobs.filter((j) => jobId === undefined || j.id === jobId);
-  const plans = jobs.filter((j) => j.pendingPlan !== null).length;
-  const delivered = jobs.filter((j) => j.state === 'delivered').length;
-  const crew = jobs.reduce((n, j) => n + j.crewNeedingYou + j.permissionsWaiting.length, 0);
-  return openQuestions(snapshot, jobId).length + plans + delivered + crew;
+  return waitingItems(snapshot, {}, jobId).length;
 }
 
 /** The plan versions a job's sheet shows: the one waiting on the client and the one it runs. */
@@ -210,6 +208,23 @@ export function useJobDetail(jobId: number | null): AgencyJobDetail | undefined 
     if (missing) void useAgencyStore.getState().loadDetail(jobId);
   }, [missing, jobId]);
   return detail;
+}
+
+/**
+ * The details of several jobs, each loaded the first time it is asked for
+ * and kept fresh by the change events after that. A job missing from the
+ * result has not arrived yet.
+ */
+export function useJobDetails(jobIds: readonly number[]): Partial<Record<number, AgencyJobDetail>> {
+  const details = useAgencyStore(
+    useShallow((s) => Object.fromEntries(jobIds.map((id) => [id, s.details[id]])))
+  );
+  const missing = jobIds.filter((id) => details[id] === undefined).join(',');
+  useEffect(() => {
+    if (missing === '') return;
+    for (const id of missing.split(',')) void useAgencyStore.getState().loadDetail(Number(id));
+  }, [missing]);
+  return details;
 }
 
 /**
