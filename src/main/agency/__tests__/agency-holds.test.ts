@@ -187,6 +187,15 @@ describe('automatic turn limit', () => {
       event(job.id, `again ${turn}`);
     }
     expect(store.getJob(job.id)?.chainCount).toBe(6);
+    store.ackWakeups(pull(job.id).ids);
+    event(job.id, 'past six');
+    expect(pull(job.id).ids).toEqual([]);
+    expect(store.getJob(job.id)).toMatchObject({ holds: ['chain_limit'] });
+    const again = store
+      .listQuestions(REPO.repoId, { jobId: job.id, statuses: ['open'] })
+      .find((q) => q.kind === 'continue');
+    expect(again?.question).toBe('The Admiral took 6 turns in a row on its own');
+    expect(again?.options[0]).toEqual({ label: 'Continue', detail: '6 more turns' });
   });
 });
 
