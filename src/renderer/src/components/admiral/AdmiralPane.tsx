@@ -17,6 +17,7 @@ import { AdmiralThreadContext, type AdmiralThreadContextValue } from './admiral-
 import { admiralStage, STAGE_LABEL, type AdmiralStage } from './admiral-stage';
 import { AdmiralFirstRun } from './AdmiralFirstRun';
 import { EmptyBrief, EmptyJob } from './EmptyBrief';
+import { BridgeQueue } from './BridgeQueue';
 import { JOB_SHEET_WIDTH_PX, JobSheet } from './JobSheet';
 import { JobTabs } from './JobTabs';
 import { ProjectPicker } from './ProjectPicker';
@@ -213,6 +214,12 @@ function AdmiralOnboarding({
   );
 }
 
+/** The right-hand column: the Bridge's queue, or a job's sheet. */
+const SIDE_COLUMN_NAME = {
+  bridge: { name: 'what waits on you', title: 'Waiting on you' },
+  job: { name: 'the job sheet', title: 'Job sheet' }
+};
+
 /** The lobby and its jobs, once onboarding is done. */
 function AdmiralWorkspace({
   paneId,
@@ -254,8 +261,9 @@ function AdmiralWorkspace({
   useEffect(() => {
     if (wide) setSheetOpen(false);
   }, [wide]);
-  // What the sheet would show if opened: other jobs' questions are on their tabs' dots.
-  const waiting = waitingCount(snapshot, jobId);
+  // What the column would show if opened: the Bridge queues the whole project,
+  // a job's sheet only that job, with other jobs' on their tabs' dots.
+  const waiting = waitingCount(snapshot, jobId ?? undefined);
   const detail = useJobDetail(jobId);
 
   const selectJob = (id: number | null): void => {
@@ -272,18 +280,28 @@ function AdmiralWorkspace({
   const answer = async (question: AgencyQuestion, req: QuestionAnswer): Promise<boolean> =>
     (await useAgencyStore.getState().answer({ id: question.id, ...req })) !== null;
 
-  const sheet = (className: string): React.JSX.Element => (
-    <JobSheet
-      snapshot={snapshot}
-      jobId={jobId}
-      detail={detail}
-      working={jobId !== null && working.has(jobId)}
-      defaultBudgetUsd={defaultBudgetUsd}
-      onAnswer={answer}
-      onOpenSettings={() => openSettings('agencyAdmiral')}
-      className={className}
-    />
-  );
+  const sheet = (className: string): React.JSX.Element =>
+    jobId === null ? (
+      <BridgeQueue
+        snapshot={snapshot}
+        defaultBudgetUsd={defaultBudgetUsd}
+        onOpenJob={selectJob}
+        onOpenSettings={() => openSettings('agencyAdmiral')}
+        className={className}
+      />
+    ) : (
+      <JobSheet
+        snapshot={snapshot}
+        jobId={jobId}
+        detail={detail}
+        working={working.has(jobId)}
+        defaultBudgetUsd={defaultBudgetUsd}
+        onAnswer={answer}
+        onOpenSettings={() => openSettings('agencyAdmiral')}
+        className={className}
+      />
+    );
+  const column = SIDE_COLUMN_NAME[jobId === null ? 'bridge' : 'job'];
 
   return (
     <div ref={frameRef} className="relative flex h-full w-full flex-col bg-fleet-bg">
@@ -295,9 +313,9 @@ function AdmiralWorkspace({
           <button
             type="button"
             onClick={() => setSheetOpen(!sheetOpen)}
-            aria-label={sheetOpen ? 'Hide the job sheet' : 'Show the job sheet'}
+            aria-label={sheetOpen ? `Hide ${column.name}` : `Show ${column.name}`}
             aria-expanded={sheetOpen}
-            title="Job sheet"
+            title={column.title}
             className={`relative flex size-7 shrink-0 items-center justify-center rounded-md transition-colors focus-ring ${
               sheetOpen
                 ? 'bg-fleet-surface-2 text-fleet-text'
@@ -358,7 +376,7 @@ function AdmiralWorkspace({
               <button
                 type="button"
                 onClick={() => setSheetOpen(false)}
-                aria-label="Close the job sheet"
+                aria-label={`Close ${column.name}`}
                 className="absolute top-3 right-3 flex size-6 items-center justify-center rounded text-fleet-text-muted transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text focus-ring"
               >
                 <X size={13} />

@@ -32,3 +32,6 @@ Do not return a new object from a zustand selector to avoid this, since that ren
 Repeated on 2026-10-18 with `MeetYou`: it read `onboarding` from the agency store, so every test rendered "Saving…".
 `AdmiralPane` now passes `onboarding` down as a prop.
 Before writing an SSR test for a new component, check which hooks it reads, and lift them to the parent first.
+
+Repeated on 2026-10-18 with `BridgeQueue`: it read job details and refusals from two stores, so the queue tests saw only loading rows.
+`BridgeQueue` now reads the hooks and passes them to `BridgeQueueView`, which the tests render.

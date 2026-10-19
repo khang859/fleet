@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { AgencyQuestion, AgencySnapshot } from '../../../../../shared/agency';
 import { agencyJob, agencyQuestion } from '../../../../../shared/__tests__/agency-fixtures';
+import { BridgeQueue } from '../BridgeQueue';
 import { JobSheet } from '../JobSheet';
 import { QuestionCard } from '../QuestionCard';
 
@@ -71,17 +72,25 @@ const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
   ...over
 });
 
+/** The column beside the conversation: the Bridge queue in the lobby, else the job's sheet. */
 const sheet = (snapshot: AgencySnapshot, jobId: number | null = null): string =>
   renderToStaticMarkup(
-    createElement(JobSheet, {
-      snapshot,
-      jobId,
-      detail: undefined,
-      working: false,
-      defaultBudgetUsd: 10,
-      onAnswer: async () => Promise.resolve(true),
-      onOpenSettings: () => {}
-    })
+    jobId === null
+      ? createElement(BridgeQueue, {
+          snapshot,
+          defaultBudgetUsd: 10,
+          onOpenJob: () => {},
+          onOpenSettings: () => {}
+        })
+      : createElement(JobSheet, {
+          snapshot,
+          jobId,
+          detail: undefined,
+          working: false,
+          defaultBudgetUsd: 10,
+          onAnswer: async () => Promise.resolve(true),
+          onOpenSettings: () => {}
+        })
   );
 
 describe('a client file card', () => {

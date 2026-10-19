@@ -20,11 +20,11 @@
 
 ## 3. Phase 3 - The queue on the Bridge
 
-- [ ] 3.1 Add `BridgeQueue` in place of the lobby `JobSheet` in `AdmiralWorkspace`, with the client file notice, leftovers, past jobs, first-run explainer and settings box below the queue; keep the narrow-pane toggle
-- [ ] 3.2 Add `QueueCard` per kind, with a one-line row for a `loading` item, and inline actions: Allow once and Deny; Approve, Change and Reject; question picks and free answer; the existing settings, delivered and needs-you actions; refusals on the card
-- [ ] 3.3 Send plan and question decisions from the Bridge through `hold`, and show a held decision as one line with Undo and a countdown
-- [ ] 3.4 Add the empty state and the Done today list from `snapshot.decisions`
-- [ ] 3.5 Check every state against canvas row A with fleet-drive screenshots in light and dark themes, at a wide and a narrow pane
+- [x] 3.1 Add `BridgeQueue` in place of the lobby `JobSheet` in `AdmiralWorkspace`, with the client file notice, leftovers, past jobs, first-run explainer and settings box below the queue; keep the narrow-pane toggle
+- [x] 3.2 Add `QueueCard` per kind, with a one-line row for a `loading` item, and inline actions: Allow once and Deny; Approve, Change and Reject; question picks and free answer; the existing settings, delivered and needs-you actions; refusals on the card
+- [x] 3.3 Send plan and question decisions from the Bridge through `hold`, and show a held decision as one line with Undo and a countdown
+- [x] 3.4 Add the empty state and the Done today list from `snapshot.decisions`
+- [x] 3.5 Check every state against canvas row A with fleet-drive screenshots in light and dark themes, at a wide and a narrow pane
 
 ## 4. Phase 4 - The reader
 

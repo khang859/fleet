@@ -18,7 +18,6 @@ import { itemsOf, waitingItems } from './waiting-queue';
 import { ClientFileNotice } from './ClientFileViews';
 import { CrewSwapForm } from './CrewSwap';
 import { CancelJob, DeliveredCard, LeftoverList, SECONDARY } from './JobClose';
-import { PastJobList } from './PastJobs';
 import { PermissionCard } from './PermissionCard';
 import { PlanCard, UseChipList } from './PlanCard';
 import { ResultCard } from './ResultCard';
@@ -37,14 +36,17 @@ import { formatUsd, jobStatus, runtimeName, TONE_DOT } from './job-view';
 /** How wide the sheet is beside the conversation. */
 export const JOB_SHEET_WIDTH_PX = 380;
 
+/** The frame of the column beside the conversation: the job sheet or the Bridge queue. */
+export const SIDE_COLUMN =
+  'flex shrink-0 flex-col gap-[18px] overflow-y-auto border-l border-fleet-border bg-fleet-surface p-4';
+
 /**
- * The right-hand column of an Admiral pane: what the job is, what is waiting
- * on the client, and the settings it runs on.
+ * The right-hand column of a job's tab: what the job is, what is waiting on
+ * the client, and the settings it runs on. The Bridge has `BridgeQueue` there.
  *
- * In the lobby, before any job exists, it explains how a job goes instead -
- * the one moment the client has nothing else to read there. A plan version
- * waiting on the client is a card under WAITING ON YOU, the same card as in
- * the conversation; the plan the job runs is the PLAN section, step by step.
+ * A plan version waiting on the client is a card under WAITING ON YOU, the
+ * same card as in the conversation; the plan the job runs is the PLAN
+ * section, step by step.
  */
 export function JobSheet({
   snapshot,
@@ -57,8 +59,8 @@ export function JobSheet({
   className = ''
 }: {
   snapshot: AgencySnapshot | undefined;
-  /** The job on screen, or null for the lobby. */
-  jobId: number | null;
+  /** The job on screen. */
+  jobId: number;
   /** That job's plan versions and steps, once loaded. */
   detail: AgencyJobDetail | undefined;
   /** Whether a turn is running on the job on screen. */
@@ -68,38 +70,29 @@ export function JobSheet({
   onOpenSettings: () => void;
   className?: string;
 }): React.JSX.Element {
-  const job = jobId === null ? null : (snapshot?.jobs.find((j) => j.id === jobId) ?? null);
+  const job = snapshot?.jobs.find((j) => j.id === jobId) ?? null;
   const { approved } = planVersions(detail);
   const { pending, waiting, settings, delivered, crew, permissions, count } = waitingOnClient(
     snapshot,
     job,
     detail
   );
-  const firstRun = jobId === null && (snapshot?.jobs.length ?? 0) === 0;
 
   return (
     <aside
       aria-label="Job sheet"
       style={{ width: JOB_SHEET_WIDTH_PX }}
-      className={`flex shrink-0 flex-col gap-[18px] overflow-y-auto border-l border-fleet-border bg-fleet-surface ${
-        firstRun ? 'p-5' : 'p-4'
-      } ${className}`}
+      className={`${SIDE_COLUMN} ${className}`}
     >
-      <Section label="THE JOB" gap="gap-1">
-        {job !== null ? (
+      {job !== null && (
+        <Section label="THE JOB" gap="gap-1">
           <JobHeading job={job} detail={detail} asking={count > 0} working={working} />
-        ) : (
-          <p className="text-[13px] text-fleet-text-muted">
-            {firstRun
-              ? 'Your job sheet shows up here once I open a job.'
-              : 'Pick a job above to see its sheet, or brief a new one here.'}
-          </p>
-        )}
-      </Section>
+        </Section>
+      )}
 
       {snapshot?.clientFileChanged === true && <ClientFileNotice repoId={snapshot.repoId} />}
 
-      {(count > 0 || job !== null) && (
+      {job !== null && (
         <WaitingSection
           count={count}
           delivered={delivered}
@@ -129,19 +122,11 @@ export function JobSheet({
         <SpendSection spend={detail.spend} />
       )}
 
-      {firstRun && <HowAJobGoes trust={snapshot?.trust.level ?? 'ask'} />}
-
       <LeftoversSection snapshot={snapshot} />
-
-      {jobId === null && snapshot !== undefined && snapshot.pastJobs.length > 0 && (
-        <Section label="PAST JOBS">
-          <PastJobList jobs={snapshot.pastJobs} />
-        </Section>
-      )}
 
       <div className="flex-1" />
       <SettingsBox
-        budgetLabel={job !== null ? 'Budget' : 'Default budget'}
+        budgetLabel="Budget"
         budgetUsd={job?.budgetUsd ?? defaultBudgetUsd}
         onOpenSettings={onOpenSettings}
       />
@@ -208,7 +193,7 @@ function ResultsSection({
 }
 
 /** What closed jobs' cleanup left in the repository, shown in every view of it. */
-function LeftoversSection({
+export function LeftoversSection({
   snapshot
 }: {
   snapshot: AgencySnapshot | undefined;
@@ -287,14 +272,24 @@ function WaitingSection({
   );
 }
 
-/** A crew member that has not started a minute after its hire: its pane waits on the client. */
-function NeedsYouCard({ member }: { member: AgencyCrewMember }): React.JSX.Element {
+/**
+ * A crew member that has not started a minute after its hire: its pane waits
+ * on the client. The Bridge queue names the job in `head`.
+ */
+export function NeedsYouCard({
+  member,
+  head
+}: {
+  member: AgencyCrewMember;
+  head?: React.ReactNode;
+}): React.JSX.Element {
   const { paneId } = member;
   return (
     <section
       aria-label={`${member.label} needs you`}
       className="flex flex-col gap-1.5 rounded-md border border-amber-400/35 bg-fleet-bg p-2.5"
     >
+      {head}
       <span className="text-[13px] font-medium text-fleet-text">
         {member.label} needs you in its pane
       </span>
@@ -734,7 +729,7 @@ function SpendMeterRow({
   );
 }
 
-function Section({
+export function Section({
   label,
   tone = 'muted',
   gap = 'gap-2',
@@ -911,7 +906,7 @@ export function HowAJobGoes({ trust }: { trust: TrustLevel }): React.JSX.Element
   );
 }
 
-function SettingsBox({
+export function SettingsBox({
   budgetLabel,
   budgetUsd,
   onOpenSettings

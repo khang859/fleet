@@ -20,9 +20,16 @@ const STATUS_TEXT: Record<SettingChange['status'], string> = {
  * The settings one `settings_change` call changed or asked to change. A change
  * that gave no more money or reach is already in place, with Undo; one that
  * gives more waits for its own Approve or No, so the client can take part of a
- * card. The same card in the conversation and under WAITING ON YOU.
+ * card. The same card in the conversation, under WAITING ON YOU and in the
+ * Bridge queue, which names the job in `head`.
  */
-export function SettingsCardView({ card }: { card: SettingsCard }): React.JSX.Element {
+export function SettingsCardView({
+  card,
+  head
+}: {
+  card: SettingsCard;
+  head?: React.ReactNode;
+}): React.JSX.Element {
   const waiting = card.changes.some((c) => c.status === 'pending');
   return (
     <section
@@ -31,6 +38,7 @@ export function SettingsCardView({ card }: { card: SettingsCard }): React.JSX.El
         waiting ? 'border-amber-400/35' : 'border-fleet-border'
       }`}
     >
+      {head}
       <div className="flex items-baseline gap-2">
         <span className="flex-1 text-[13px] font-medium text-fleet-text">
           {waiting ? 'Change these settings?' : 'Settings changed'}

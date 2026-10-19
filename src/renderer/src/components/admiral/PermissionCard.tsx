@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
 import { Check, X } from 'lucide-react';
 import {
   permissionDisplayId,
   type AgencyPermission,
   type PermissionDecision
 } from '../../../../shared/agency-permissions';
+import { useNow } from '../../hooks/use-now';
 import { focusPane } from '../../lib/focus-pane';
 import { PRIMARY, SECONDARY } from './JobClose';
+import { leftText } from './job-view';
 import { useRefusable } from './use-refusable';
 
 /** How a request that no longer waits ended, on its card. */
@@ -26,37 +27,23 @@ function endedText(p: AgencyPermission): string {
   }
 }
 
-/** `4m`, or `45s` in the last minute. */
-function leftText(ms: number): string {
-  const sec = Math.max(0, Math.ceil(ms / 1000));
-  return sec >= 60 ? `${Math.ceil(sec / 60)}m` : `${sec}s`;
-}
-
-/** The clock, once a second while a card counts down. */
-function useNow(active: boolean): number {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [active]);
-  return now;
-}
-
 /**
  * A crew member's permission request, as the client answers it. The answer
  * the Admiral recommends comes first, marked as its pick; an unanswered card
  * is denied when it expires. A request Fleet no longer holds waits in the
  * crew pane, so Peek takes the client there. The same card in the
- * conversation and under WAITING ON YOU.
+ * conversation, under WAITING ON YOU and in the Bridge queue.
  */
 export function PermissionCard({
   permission: p,
-  paneId
+  paneId,
+  head
 }: {
   permission: AgencyPermission;
   /** The crew member's pane, for Peek. */
   paneId: string | null;
+  /** A first row, as the Bridge queue names the job and kind. */
+  head?: React.ReactNode;
 }): React.JSX.Element {
   const waiting = p.state === 'client';
   const now = useNow(waiting && p.expiresAt !== null);
@@ -73,6 +60,7 @@ export function PermissionCard({
         open ? 'border-amber-400/35' : 'border-fleet-border'
       }`}
     >
+      {head}
       <div className="flex items-baseline gap-2">
         <span className="flex-1 text-[13px] font-medium text-fleet-text">{title}</span>
         {waiting && p.expiresAt !== null && (
