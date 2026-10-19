@@ -5,7 +5,7 @@ import { openRouterTarget } from '../agent/openrouter';
 
 /** A stand-in for `completeOnce` that answers with the given text. */
 function answering(text: string): typeof completeOnce {
-  return vi.fn(async () => Promise.resolve({ text, usage: null }));
+  return vi.fn(async () => Promise.resolve({ text, usage: null, finishReason: 'stop' }));
 }
 
 /** A stand-in for `completeOnce` that fails the way a rate-limited call does. */

@@ -87,22 +87,32 @@ const ExtractionLine = z.object({
 
 const Extraction = z.object({ lines: z.array(z.unknown()) });
 
+/** A local model's thinking, which some servers leave in the answer. */
+const THINKING = /<(think|thinking)>[\s\S]*?<\/\1>/g;
+
+/** The JSON object in the answer: the one that starts with "lines" when there is one. */
+function answerJson(text: string): unknown {
+  const answer = text.replace(THINKING, '');
+  const end = answer.lastIndexOf('}');
+  const starts = [answer.search(/\{\s*"lines"\s*:/), answer.indexOf('{')];
+  for (const start of starts) {
+    if (start < 0 || end < start) continue;
+    try {
+      return JSON.parse(answer.slice(start, end + 1));
+    } catch {
+      // The next start, if any.
+    }
+  }
+  return null;
+}
+
 /**
  * The lines in the model's answer, or null when it is not the JSON asked for.
- * A fence or words around the object are allowed; a line that does not fit
- * the shape is left out, and every line is made one line and cut to size.
+ * Thinking, a fence or words around the object are allowed; a line that does
+ * not fit the shape is left out, and every line is made one line and cut to size.
  */
 export function parseExtraction(text: string): ReadProposal[] | null {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start < 0 || end < start) return null;
-  let json: unknown;
-  try {
-    json = JSON.parse(text.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-  const parsed = Extraction.safeParse(json);
+  const parsed = Extraction.safeParse(answerJson(text));
   if (!parsed.success) return null;
   return parsed.data.lines.flatMap((raw) => {
     const line = ExtractionLine.safeParse(raw);

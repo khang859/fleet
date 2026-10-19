@@ -22,10 +22,19 @@ describe('parseExtraction', () => {
     ).toEqual([{ ...rest, clash: null }]);
   });
 
+  it('reads the JSON after thinking, or after words with braces in them', () => {
+    const json = JSON.stringify({ lines: [line] });
+    expect(parseExtraction(`<think>Maybe {"lines": [] } fits?</think>\n${json}`)).toHaveLength(1);
+    expect(parseExtraction(`I read the {commits} you ticked.\n${json}`)).toHaveLength(1);
+  });
+
   it('is null for an answer that is not the JSON asked for', () => {
     expect(parseExtraction('I cannot help with that.')).toBeNull();
     expect(parseExtraction('{"lines": "none"}')).toBeNull();
     expect(parseExtraction('{"lines": [}')).toBeNull();
+    // Cut off at the token limit.
+    expect(parseExtraction('{"lines": [{"text": "Open PRs as dr')).toBeNull();
+    expect(parseExtraction('')).toBeNull();
   });
 
   it('leaves out a line that does not fit, and makes the rest one line, cut to size', () => {

@@ -19,6 +19,7 @@ import {
   type ReadSource,
   type ReadSourceId
 } from '../../../shared/agency-understanding';
+import { createLogger } from '../../logger';
 import { maskCredentials, type Redactor } from '../../redactor';
 import type { ClientFiles } from '../projects/client-file';
 import { ghState, type GhRun } from '../projects/gh';
@@ -39,12 +40,19 @@ import {
 } from './collect';
 import { keepProposals, READ_MAX_TOKENS, READ_SYSTEM_PROMPT, readRequest } from './extract';
 
+const log = createLogger('agency:read');
+
 /** One completion on the Admiral's model and target, with what it cost when the target says. */
 export type AdmiralCompletion = (req: {
   system: string;
   user: string;
   maxTokens: number;
-}) => Promise<{ text: string; costUsd: number | null }>;
+}) => Promise<{
+  text: string;
+  costUsd: number | null;
+  /** The model stopped at `maxTokens`, so the answer may end mid-way. */
+  cutOff: boolean;
+}>;
 
 export type UnderstandingDeps = {
   store: Pick<AgencyStore, 'plans' | 'listQuestions' | 'listJobs' | 'preferences'>;
@@ -156,20 +164,23 @@ export class Understanding {
     const user = maskCredentials(redactor.redact(readRequest({ saved, rules, collected })));
     const gate = this.deps.spend.reserveAdmiralCall();
     if (!gate.ok) return { ok: false, reason: gate.text };
-    let answer: string;
+    let out: Awaited<ReturnType<AdmiralCompletion>>;
     try {
-      const out = await complete({ system: READ_SYSTEM_PROMPT, user, maxTokens: READ_MAX_TOKENS });
+      out = await complete({ system: READ_SYSTEM_PROMPT, user, maxTokens: READ_MAX_TOKENS });
       this.deps.spend.admiralCallDone(gate.reservationId, out.costUsd);
-      answer = out.text;
     } catch (err) {
       this.deps.spend.admiralCallDone(gate.reservationId, null);
       return { ok: false, reason: `The Admiral's model did not answer: ${String(err)}` };
     }
-    const proposals = parseExtraction(answer);
+    const proposals = parseExtraction(out.text);
     if (proposals === null) {
+      // Lengths only: the answer quotes the client's own text.
+      log.warn('read answer not parsed', { cutOff: out.cutOff, length: out.text.length });
       return {
         ok: false,
-        reason: "The Admiral's model sent back something Fleet could not read. Try again."
+        reason: out.cutOff
+          ? "The Admiral's model ran out of room before it finished. Tick fewer things, or pick a model that thinks less."
+          : "The Admiral's model sent back something Fleet could not read. Try again."
       };
     }
     const lines = keepProposals(proposals, {

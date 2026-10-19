@@ -19,7 +19,7 @@ const input = {
 
 /** A model that answers with whatever it is handed. */
 function answering(text: string): typeof completeOnce {
-  return vi.fn(async () => Promise.resolve({ text, usage: null }));
+  return vi.fn(async () => Promise.resolve({ text, usage: null, finishReason: 'stop' }));
 }
 
 describe('readVerdict', () => {
@@ -130,7 +130,8 @@ describe('classifyCommand', () => {
       webSearches: 0,
       serverToolCostUsd: null
     };
-    const complete: typeof completeOnce = async () => Promise.resolve({ text: 'safe', usage });
+    const complete: typeof completeOnce = async () =>
+      Promise.resolve({ text: 'safe', usage, finishReason: 'stop' });
 
     await expect(classifyCommand(complete, input)).resolves.toEqual({
       verdict: 'safe',
@@ -143,6 +144,7 @@ describe('classifyCommand', () => {
     const complete: typeof completeOnce = async () =>
       Promise.resolve({
         text: 'I would rather not say',
+        finishReason: 'stop',
         usage: {
           promptTokens: 120,
           completionTokens: 6,
@@ -193,7 +195,8 @@ describe('classifyCommand', () => {
       webSearches: 0,
       serverToolCostUsd: null
     };
-    const complete: typeof completeOnce = async () => Promise.resolve({ text: '', usage });
+    const complete: typeof completeOnce = async () =>
+      Promise.resolve({ text: '', usage, finishReason: 'length' });
 
     const result = await classifyCommand(complete, input);
     expect(result.verdict).toBeNull();

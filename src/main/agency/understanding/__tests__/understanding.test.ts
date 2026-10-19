@@ -68,7 +68,7 @@ beforeEach(() => {
   files = new ClientFiles({ store, home: () => join(dir, 'agency') });
   gh = fakeGh((args) => (args[0] === 'auth' ? { code: 1, stdout: '' } : null));
   complete = vi.fn<AdmiralCompletion>(async () =>
-    Promise.resolve({ text: answer([]), costUsd: 0.02 })
+    Promise.resolve({ text: answer([]), costUsd: 0.02, cutOff: false })
   );
   const spend = new SpendService({
     store,
@@ -177,7 +177,8 @@ describe('read', () => {
         }),
         said({ layer: undefined, text: 'No layer.' })
       ])}\n\`\`\``,
-      costUsd: 0.02
+      costUsd: 0.02,
+      cutOff: false
     });
     const result = await understanding.read(repo, ['commits', 'instructions']);
     expect(result).toEqual({
@@ -198,13 +199,23 @@ describe('read', () => {
   });
 
   it('refuses an answer that is not the JSON asked for, and still counts its cost', async () => {
-    complete.mockResolvedValue({ text: 'Sorry, I cannot help with that.', costUsd: 0.01 });
+    complete.mockResolvedValue({
+      text: 'Sorry, I cannot help with that.',
+      costUsd: 0.01,
+      cutOff: false
+    });
     const result = await understanding.read(repo, ['commits']);
     expect(result).toEqual({
       ok: false,
       reason: "The Admiral's model sent back something Fleet could not read. Try again."
     });
     expect(spentUsd()).toBeCloseTo(0.01);
+  });
+
+  it('says so when thinking used up the limit and the answer was cut off', async () => {
+    complete.mockResolvedValue({ text: '{"lines": [{"text": "Open', costUsd: 0.01, cutOff: true });
+    const result = await understanding.read(repo, ['commits']);
+    expect(!result.ok && result.reason).toContain('ran out of room');
   });
 
   it('refuses at the monthly cap without calling the model', async () => {
