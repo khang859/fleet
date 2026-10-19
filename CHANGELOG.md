@@ -1,5 +1,33 @@
 # Changelog
 
+## v2.135.0
+
+- **Meet the Admiral.**
+  An Admiral runs one repository's work for you.
+  You brief it, it plans the job, it hires Claude Code or eva crew in their own panes, and it brings back the result.
+  Open it with the compass next to **New agent**, or run **Open Admiral** from the command palette.
+  See `docs/admiral.md` for the full guide (#653, #654, #655, #656, #657, #658, #659, #660).
+- **Crew roles, permissions and budgets.**
+  Each crew member works in its own git worktree with a role and a playbook.
+  The Admiral answers crew permission prompts by your rules, keeps env values out of view, and tracks spend against a budget (#656, #658, #659).
+- **The Admiral learns how you work.**
+  **Meet you** asks how you like the work, one question at a time.
+  **Read your work** learns from what you wrote, and **Learn from you** remembers what you tell it.
+  Trust levels decide how much the Admiral does without asking (#665, #666, #667, #668, #669, #670).
+- **What the Admiral knows.**
+  A settings page shows what the Admiral knows about you and about each project.
+  Pick a project from a searchable list in place of one tab per project (#665, #679).
+- **Waiting on you, on the Bridge.**
+  The Bridge tab shows every permission, plan, question and delivered job that waits on you, soonest to expire first.
+  An amber count on the tab shows how many items wait, from any tab.
+  Open an item to read it in full, ask for a change to a plan in your own words, and see what changed between plan versions.
+  A plan or question decision waits 5 seconds, so you can undo it.
+  Use **J**/**K** to move, **Enter** to read, **A** to approve, **D** to deny, **C** to ask for a change and **R** to reply (#662, #672, #673, #674, #675, #676, #677).
+- **Fixes.**
+  Meet you no longer gets stuck when a client file changes outside Fleet; you can keep the change or undo it (#678).
+  Read your work no longer fails when the model thinks for a long time (#680).
+  A closed job asks nothing, a resumed subscription crew member counts no money, and re-setup reads a member's remote fresh (#661, #663, #664).
+
 ## v2.134.0
 
 - **Inline images in the terminal.**
