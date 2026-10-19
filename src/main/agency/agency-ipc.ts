@@ -264,8 +264,10 @@ export function registerAgencyIpc(service: AgencyService): void {
     (_e, repoId: unknown): AgencySnapshot => service.snapshot(RepoId.parse(repoId))
   );
 
-  ipcMain.handle(IPC_CHANNELS.AGENCY_ANSWER, (_e, req: unknown): AgencyQuestion | null =>
-    service.answer(AnswerArgs.parse(req))
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_ANSWER,
+    async (_e, req: unknown): Promise<AgencyQuestion | null> =>
+      service.answerClient(AnswerArgs.parse(req))
   );
 
   ipcMain.handle(

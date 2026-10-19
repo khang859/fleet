@@ -38,7 +38,8 @@ export const HOME_INSTRUCTIONS = ['.claude', 'CLAUDE.md'] as const;
 
 const RECORD = '\x1e';
 
-const cut = (text: string, max: number): string =>
+/** `text` cut to `max` characters, marked where it was cut. */
+export const cut = (text: string, max: number): string =>
   text.length > max ? `${text.slice(0, max)}…` : text;
 
 /** The client's instruction file path, which nothing else under the home folder is. */
