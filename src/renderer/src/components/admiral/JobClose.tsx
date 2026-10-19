@@ -67,14 +67,16 @@ function MergeNote({ merge }: { merge: AgencyJobDetail['merge'] }): React.JSX.El
 
 /**
  * A delivered job waits on the client: merge its PRs, one at a time in member
- * order, or accept it, which closes it.
+ * order, or accept it, which closes it. The Bridge queue names the job in `head`.
  */
 export function DeliveredCard({
   job,
-  detail
+  detail,
+  head
 }: {
   job: AgencyJob;
   detail: AgencyJobDetail | undefined;
+  head?: React.ReactNode;
 }): React.JSX.Element {
   const { busy, refused, run: close } = useClose(job);
   const merging = useRefusable(async () => useAgencyStore.getState().mergePrs(job.repoId, job.id));
@@ -91,6 +93,7 @@ export function DeliveredCard({
       aria-label={`${jobDisplayId(job.id)} is delivered`}
       className="flex flex-col gap-1.5 rounded-md border border-amber-400/35 bg-fleet-bg p-2.5"
     >
+      {head}
       <span className="text-[13px] font-medium text-fleet-text">Everything in the plan is in</span>
       <p className="text-xs leading-relaxed text-fleet-text-muted">
         {prs > 1

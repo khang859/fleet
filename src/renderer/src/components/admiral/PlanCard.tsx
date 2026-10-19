@@ -22,7 +22,7 @@ import { CancelConfirm } from './JobClose';
 import { OnboardingButton } from './onboarding-ui';
 import { PillRadio } from '../ui/pill-radio';
 import { PlanEditor } from './PlanEditor';
-import { formatUsd, runtimeName } from './job-view';
+import { baseChoice, formatUsd, plural, runtimeName } from './job-view';
 import { useRefusable, type RefusableAction } from './use-refusable';
 
 /**
@@ -260,8 +260,6 @@ function PlanSteps({ version }: { version: AgencyPlanVersion }): React.JSX.Eleme
     </Block>
   );
 }
-
-const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** What a change changes against the approved plan, and what approving it does. */
 function ChangeBlock({
@@ -516,7 +514,7 @@ function BaseValue({
     );
   }
   const tip = `${base.defaultBranch ?? 'default'} ${shortSha(base.defaultSha)}`;
-  if (base.defaultSha === null || base.headSha === null || base.defaultSha === base.headSha) {
+  if (!baseChoice(base)) {
     return (
       <span className="font-mono text-fleet-text-muted">
         {base.defaultSha === null ? `HEAD ${shortSha(base.headSha)}` : tip}

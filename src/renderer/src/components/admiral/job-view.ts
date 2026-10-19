@@ -1,4 +1,5 @@
 import type { AgencyJob, AgencySnapshot } from '../../../../shared/agency';
+import type { AgencyPlanVersion, MemberBase } from '../../../../shared/agency-jobs';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 
 /** How a job that ended is labeled wherever it shows. */
@@ -111,4 +112,35 @@ export function formatUsd(n: number): string {
 /** A crew runtime by the name the client knows it. */
 export function runtimeName(runtime: 'claude' | 'eva'): string {
   return runtime === 'claude' ? 'Claude Code' : 'eva';
+}
+
+export const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** `4m`, or `45s` in the last minute. */
+export function leftText(ms: number): string {
+  const sec = Math.max(0, Math.ceil(ms / 1000));
+  return sec >= 60 ? `${Math.ceil(sec / 60)}m` : `${sec}s`;
+}
+
+/** A member not pinned yet whose default branch tip and HEAD differ: the client picks where it starts. */
+export function baseChoice(base: MemberBase): boolean {
+  return (
+    base.pinned === null &&
+    base.defaultSha !== null &&
+    base.headSha !== null &&
+    base.defaultSha !== base.headSha
+  );
+}
+
+/**
+ * Whether approving a version takes a choice only its full card asks for:
+ * steps whose cost Fleet cannot measure, what a swapped step does with its
+ * work so far, or where a member's work starts.
+ */
+export function needsChoices(version: AgencyPlanVersion): boolean {
+  return (
+    version.checks.issues.some((i) => i.severity === 'accept') ||
+    (version.effects?.swaps.length ?? 0) > 0 ||
+    version.checks.bases.some(baseChoice)
+  );
 }

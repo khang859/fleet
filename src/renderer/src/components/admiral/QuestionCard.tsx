@@ -31,7 +31,8 @@ export function QuestionCard({
   question,
   onAnswer,
   onOpenSettings,
-  clientFileChanged = false
+  clientFileChanged = false,
+  head
 }: {
   question: AgencyQuestion;
   /** Resolves false when main would not take the answer. */
@@ -39,6 +40,8 @@ export function QuestionCard({
   onOpenSettings: () => void;
   /** The project's client file has a change from outside Fleet the client has not kept. */
   clientFileChanged?: boolean;
+  /** A first row, as the Bridge queue names the job and kind. */
+  head?: React.ReactNode;
 }): React.JSX.Element | null {
   const outsideChange = question.proposal !== null && clientFileChanged;
   if (question.status === 'hidden') return null;
@@ -48,6 +51,7 @@ export function QuestionCard({
         question={question}
         onAnswer={onAnswer}
         onOpenSettings={onOpenSettings}
+        head={head}
       />
     );
   }
@@ -62,6 +66,7 @@ export function QuestionCard({
         question.status === 'open' ? 'border-amber-400/35' : 'border-fleet-border'
       }`}
     >
+      {head}
       <div className="flex items-baseline gap-2">
         <span
           className={`flex-1 text-[13px] font-medium ${settled || withdrawn ? 'text-fleet-text-secondary' : 'text-fleet-text'}`}
@@ -374,11 +379,13 @@ function Settled({ question }: { question: AgencyQuestion }): React.JSX.Element 
 function ModelUnreachableCard({
   question,
   onAnswer,
-  onOpenSettings
+  onOpenSettings,
+  head
 }: {
   question: AgencyQuestion;
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
   onOpenSettings: () => void;
+  head: React.ReactNode;
 }): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const open = question.status === 'open' && question.answeredAt === null;
@@ -389,6 +396,7 @@ function ModelUnreachableCard({
         open ? 'border-amber-400/35' : 'border-fleet-border'
       }`}
     >
+      {head}
       <div className="flex items-center gap-1.5 text-[13px] font-medium text-fleet-text">
         <CircleAlert size={13} className="shrink-0 text-amber-700 dark:text-amber-400" />
         {question.question}

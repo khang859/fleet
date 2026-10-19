@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../../shared/agency';
 import { agencyJob, agencyQuestion } from '../../../../../shared/__tests__/agency-fixtures';
 import { QuestionCard } from '../QuestionCard';
+import { BridgeQueue } from '../BridgeQueue';
 import { JobSheet } from '../JobSheet';
 import { JobTabs } from '../JobTabs';
 import { askedQuestionId, jobLink, jobStatus } from '../job-view';
@@ -45,15 +46,22 @@ function sheet(
   working = false
 ): string {
   return renderToStaticMarkup(
-    createElement(JobSheet, {
-      snapshot,
-      jobId,
-      detail: undefined,
-      working,
-      defaultBudgetUsd: 10,
-      onAnswer: async () => Promise.resolve(true),
-      onOpenSettings: () => {}
-    })
+    jobId === null
+      ? createElement(BridgeQueue, {
+          snapshot,
+          defaultBudgetUsd: 10,
+          onOpenJob: () => {},
+          onOpenSettings: () => {}
+        })
+      : createElement(JobSheet, {
+          snapshot,
+          jobId,
+          detail: undefined,
+          working,
+          defaultBudgetUsd: 10,
+          onAnswer: async () => Promise.resolve(true),
+          onOpenSettings: () => {}
+        })
   );
 }
 
@@ -129,15 +137,15 @@ describe('QuestionCard', () => {
 });
 
 describe('JobSheet', () => {
-  it('explains how a job goes before the first brief', () => {
+  it('explains how a job goes on the Bridge before the first brief', () => {
     const html = sheet(snap(), null);
     expect(html).toContain('width:380px');
-    expect(html).toContain('THE JOB');
-    expect(html).toContain('Your job sheet shows up here once I open a job.');
+    expect(html).toContain('WAITING ON YOU · 0');
+    expect(html).toContain('Nothing waits on you');
     expect(html).toContain('HOW A JOB GOES');
     expect(html).toContain('Default budget');
     expect(html).toContain('$10');
-    expect(html).not.toContain('>WAITING ON YOU');
+    expect(html).not.toContain('THE JOB');
     expect(html).toContain('You approve. Crew start in their own tab');
     expect(sheet(snap({ trust: { level: 'pr', autoStartUsd: null } }), null)).toContain(
       'A small plan starts on its own, a bigger one when you approve.'
@@ -169,10 +177,6 @@ describe('JobSheet', () => {
     const html = sheet(snap({ jobs: [job()] }), 2, true);
     expect(html).toContain('Nothing needs you right now.');
     expect(html).toContain('Working');
-  });
-
-  it('points at the tabs from a lobby that already has jobs', () => {
-    expect(sheet(snap({ jobs: [job()] }), null)).toContain('Pick a job above');
   });
 
   it('asks the client to accept a delivered job, and offers Cancel on an open one', () => {
