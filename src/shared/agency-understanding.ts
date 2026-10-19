@@ -90,11 +90,11 @@ const Extraction = z.object({ lines: z.array(z.unknown()) });
 /** A local model's thinking, which some servers leave in the answer. */
 const THINKING = /<(think|thinking)>[\s\S]*?<\/\1>/g;
 
-/** The JSON object in the answer: the one that starts with "lines" when there is one. */
-function answerJson(text: string): unknown {
+/** The JSON object in the answer: the one that starts with `key` when there is one. */
+export function answerJson(text: string, key = 'lines'): unknown {
   const answer = text.replace(THINKING, '');
   const end = answer.lastIndexOf('}');
-  const starts = [answer.search(/\{\s*"lines"\s*:/), answer.indexOf('{')];
+  const starts = [answer.search(new RegExp(`\\{\\s*"${key}"\\s*:`)), answer.indexOf('{')];
   for (const start of starts) {
     if (start < 0 || end < start) continue;
     try {

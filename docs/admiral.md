@@ -203,6 +203,25 @@ To save it in your own words, type them in **Or put it your way:** before you pi
 If you ignore the card, nothing is saved.
 The Admiral asks once per kind of change, and never asks about what a saved line says already.
 
+## Crew lessons
+
+When a job ends, Fleet reads the job's record once on the Admiral's model.
+It looks for one thing a crew role should do differently next time.
+Most jobs teach nothing, and then nothing happens.
+
+When the record shows a lesson, a **Teach the builder role?** card goes up on the project's Bridge.
+The card shows the lesson, when it applies, and what in the job shows it.
+It also shows the role's text it would replace, struck out, above the new text.
+
+- **This project** saves a copy of the role for this project, with the change.
+- **All projects** saves the change to your own copy of the role, used by every project.
+- **Change it** shows for a role the project has already, and changes that file.
+- **Not now** changes nothing, and Fleet does not offer the same lesson on this project again.
+
+Fleet never changes the roles it ships.
+If you edit the role before you answer, Fleet applies the change to your new text, or refuses it when the text it replaces is gone.
+A project has at most one open lesson card, and each review is one call inside your monthly cap.
+
 ## What the Admiral knows
 
 **Settings > Agency > Admiral > What the Admiral knows** shows every line the Admiral reads at the start of a job.

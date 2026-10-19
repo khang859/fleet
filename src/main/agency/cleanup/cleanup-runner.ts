@@ -32,6 +32,8 @@ export type CleanupDeps = {
   changed: (touched: AgencyTouched[]) => void;
   /** Crew places freed up, so a queued step may start. */
   crewFreed: () => void;
+  /** A job ended: its cleanup is done and its record is complete. */
+  closed?: (jobId: number) => void;
   /** Lines the close summary adds about what the job delivered, like a PR closed unmerged. */
   closeNotes?: (jobId: number) => Promise<string[]>;
   isOnline: () => boolean;
@@ -107,6 +109,7 @@ export class CleanupRunner {
       store.finishClose(jobId, 'cleanup done');
     });
     this.touch(jobId);
+    this.deps.closed?.(jobId);
   }
 
   /**

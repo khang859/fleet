@@ -28,6 +28,7 @@ import {
 } from '../../../shared/agency';
 import type { AgencyProjectSummary } from '../../../shared/agency-projects';
 import type { Plan } from '../../../shared/agency-plan';
+import { LessonAnswer, type CrewLesson } from '../../../shared/agency-lessons';
 import { YOU_LAYER } from '../../../shared/agency-client-file';
 import { meetLeft } from '../../../shared/agency-meet';
 import { parseJsonAs } from '../../../shared/parse-json';
@@ -134,6 +135,8 @@ export type AskQuestionInput = {
   proposal?: ClientFileProposal;
   /** What a `budget` card raises, and to what. */
   raise?: BudgetRaise;
+  /** What a `crew_lesson` card would change in a role. */
+  lesson?: CrewLesson;
 };
 
 export type AnswerOutcome = {
@@ -205,7 +208,11 @@ const QuestionData = z.object({
     .optional(),
   raise: z
     .object({ target: z.enum(['usd', 'week_pct', 'cap']), to: z.number().positive() })
-    .optional()
+    .optional(),
+  lesson: LessonAnswer.extend({
+    jobId: z.number().int(),
+    source: z.enum(['project', 'user', 'bundled'])
+  }).optional()
 });
 
 const HOLD_KINDS: readonly JobHoldKind[] = ['model', 'chain_limit', 'budget', 'client'];
@@ -281,6 +288,10 @@ function toQuestion(row: QuestionRow): AgencyQuestion {
         ? (parseJsonAs(QuestionData, row.data_json)?.proposal ?? null)
         : null,
     raise: row.kind === 'budget' ? (parseJsonAs(QuestionData, row.data_json)?.raise ?? null) : null,
+    lesson:
+      row.kind === 'crew_lesson'
+        ? (parseJsonAs(QuestionData, row.data_json)?.lesson ?? null)
+        : null,
     late: row.late === 1,
     withdrawnReason: row.withdrawn_reason,
     createdAt: row.created_at,
@@ -875,7 +886,8 @@ export class AgencyStore {
           this.now(),
           JSON.stringify({
             ...(input.proposal !== undefined && { proposal: input.proposal }),
-            ...(input.raise !== undefined && { raise: input.raise })
+            ...(input.raise !== undefined && { raise: input.raise }),
+            ...(input.lesson !== undefined && { lesson: input.lesson })
           })
         );
       const question = this.getQuestion(Number(lastInsertRowid));

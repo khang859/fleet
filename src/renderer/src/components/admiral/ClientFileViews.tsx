@@ -4,7 +4,7 @@ import type { ClientFileProposal } from '../../../../shared/agency';
 import { openClientFileSettings } from '../../store/settings-nav-store';
 import { PRIMARY, SECONDARY } from './JobClose';
 
-function Line({ sign, text }: { sign: 'add' | 'remove'; text: string }): React.JSX.Element {
+export function Line({ sign, text }: { sign: 'add' | 'remove'; text: string }): React.JSX.Element {
   const Icon = sign === 'add' ? Plus : Minus;
   return (
     <li className="flex items-start gap-1.5">
