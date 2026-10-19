@@ -378,6 +378,8 @@ export type AgencySettings = {
     reserveSevenDayPct: number;
     /** How many times the Admiral may nudge a crew member that ends a turn without reporting. */
     nudgeLimit: number;
+    /** How many automatic Admiral turns a job takes in a row before it asks the client to continue. */
+    turnLimit: number;
     /** How long a client permission card waits before it is denied, in seconds. */
     permissionExpirySec: number;
   };
@@ -402,6 +404,7 @@ export const DEFAULT_AGENCY_SETTINGS: AgencySettings = {
     reserveFiveHourPct: 80,
     reserveSevenDayPct: 90,
     nudgeLimit: 3,
+    turnLimit: 20,
     permissionExpirySec: PERMISSION_EXPIRY_SEC_DEFAULT
   },
   crew: {

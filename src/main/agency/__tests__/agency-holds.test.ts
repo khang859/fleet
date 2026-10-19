@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { WAKEUP_GIVE_UP_ATTEMPTS } from '../backoff';
-import { CHAIN_LIMIT } from '../jobs/chain';
+import { DEFAULT_AGENCY_SETTINGS } from '../../../shared/agency';
+import { chainLimit } from '../jobs/chain';
 import type { AgencyStore } from '../store/agency-store';
 import { REPO, YES_NO, moveJob, openJob, storeFixture } from './fixture';
 
@@ -79,6 +80,8 @@ describe('holds', () => {
   });
 });
 
+const CHAIN_LIMIT = DEFAULT_AGENCY_SETTINGS.admiral.turnLimit;
+
 describe('automatic turn limit', () => {
   it('runs up to the limit, then waits behind one "continue?" card', () => {
     const job = openJob(store);
@@ -141,5 +144,71 @@ describe('automatic turn limit', () => {
     store.resetChain(job.id);
     expect(openCards(job.id, 'continue')).toBe(0);
     expect(store.getJob(job.id)).toMatchObject({ state: 'running', holds: [] });
+  });
+
+  it('defaults to 20 turns', () => {
+    expect(CHAIN_LIMIT).toBe(20);
+    const job = openJob(store);
+    approve(job.id);
+    store['db'].prepare('UPDATE jobs SET chain_count = ? WHERE id = ?').run(19, job.id);
+    event(job.id, 'x');
+    expect(pull(job.id).ids).toHaveLength(1);
+    event(job.id, 'y');
+    expect(pull(job.id).ids).toEqual([]);
+    expect(openCards(job.id, 'continue')).toBe(1);
+  });
+
+  it('pauses at the configured limit and says that number on the card', () => {
+    cleanup();
+    let limit = 4;
+    ({ store, clock, cleanup } = storeFixture({ turnLimit: () => limit }));
+    const job = openJob(store);
+    approve(job.id);
+    for (let turn = 0; turn < 4; turn++) {
+      const id = event(job.id, `crew update ${turn}`);
+      expect(pull(job.id).ids).toEqual([id]);
+      store.ackWakeups([id]);
+    }
+    event(job.id, 'one more');
+    expect(pull(job.id).ids).toEqual([]);
+    expect(store.getJob(job.id)).toMatchObject({ holds: ['chain_limit'] });
+
+    const card = store
+      .listQuestions(REPO.repoId, { jobId: job.id, statuses: ['open'] })
+      .find((q) => q.kind === 'continue');
+    expect(card?.question).toBe('The Admiral took 4 turns in a row on its own');
+    expect(card?.options[0]).toEqual({ label: 'Continue', detail: '4 more turns' });
+
+    // A changed setting applies to the next count.
+    limit = 6;
+    store.resetChain(job.id);
+    for (let turn = 0; turn < 6; turn++) {
+      store.ackWakeups(pull(job.id).ids);
+      event(job.id, `again ${turn}`);
+    }
+    expect(store.getJob(job.id)?.chainCount).toBe(6);
+    store.ackWakeups(pull(job.id).ids);
+    event(job.id, 'past six');
+    expect(pull(job.id).ids).toEqual([]);
+    expect(store.getJob(job.id)).toMatchObject({ holds: ['chain_limit'] });
+    const again = store
+      .listQuestions(REPO.repoId, { jobId: job.id, statuses: ['open'] })
+      .find((q) => q.kind === 'continue');
+    expect(again?.question).toBe('The Admiral took 6 turns in a row on its own');
+    expect(again?.options[0]).toEqual({ label: 'Continue', detail: '6 more turns' });
+  });
+});
+
+describe('chainLimit', () => {
+  const admiral = DEFAULT_AGENCY_SETTINGS.admiral;
+
+  it('reads the configured limit', () => {
+    expect(chainLimit({ ...admiral, turnLimit: 50 })).toBe(50);
+  });
+
+  it('falls back to 20 when the stored value is missing or out of range', () => {
+    for (const turnLimit of [undefined, 0, -3, 1.5, 201, Number.NaN]) {
+      expect(chainLimit({ ...admiral, turnLimit: turnLimit as number })).toBe(20);
+    }
   });
 });

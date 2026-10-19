@@ -16,7 +16,7 @@ export const REPO = { repoId: '0123456789abcdef', root: '/dev/fleet', name: 'fle
 export const OTHER_REPO = { repoId: 'fedcba9876543210', root: '/dev/other', name: 'other' };
 
 /** A fresh agency.db in a temp dir, on a clock the test moves by hand. */
-export function storeFixture(): {
+export function storeFixture(opts: { turnLimit?: () => number } = {}): {
   store: AgencyStore;
   dbPath: string;
   clock: { now: number };
@@ -25,7 +25,7 @@ export function storeFixture(): {
   const dir = mkdtempSync(join(tmpdir(), 'fleet-agency-'));
   const dbPath = join(dir, 'agency.db');
   const clock = { now: 1_000_000 };
-  const store = new AgencyStore(dbPath, { now: () => clock.now });
+  const store = new AgencyStore(dbPath, { now: () => clock.now, ...opts });
   return {
     store,
     dbPath,

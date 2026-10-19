@@ -83,6 +83,7 @@ import { testRuntime, type RuntimeTestDeps } from './crew/runtime-test';
 import { CrewPermissions, type PermissionDeps } from './crew/permissions';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
 import { StackSlots } from './jobs/stack-slots';
+import { chainLimit } from './jobs/chain';
 import { OPEN_JOB_STATES } from './jobs/job-machine';
 import { ServerWatch } from './workspaces/server-watch';
 import { exportJob } from './jobs/job-export';
@@ -274,7 +275,12 @@ export class AgencyService {
   private readonly runtimeTests = new Map<CrewRuntime, Promise<RuntimeTestResult>>();
 
   constructor(private readonly deps: AgencyServiceDeps) {
-    this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
+    const agencySettings = deps.agencySettings ?? memorySettings();
+    this.agencySettings = agencySettings;
+    this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), {
+      now: deps.now,
+      turnLimit: () => chainLimit(agencySettings.get().admiral)
+    });
     this.clientFiles = new ClientFiles({
       store: this.store,
       home: () => deps.agencyHome ?? agencyHome(),
@@ -290,8 +296,6 @@ export class AgencyService {
       home: deps.agencyHome
     });
     const panes = deps.crewPanes ?? null;
-    const agencySettings = deps.agencySettings ?? memorySettings();
-    this.agencySettings = agencySettings;
     this.crewControl = deps.crew ?? (panes === null ? NO_CREW : paneControl(panes));
     this.spend = new SpendService({
       store: this.store,

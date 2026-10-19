@@ -77,6 +77,8 @@ const List = z.array(z.string().max(400)).max(200);
 
 /** The most nudges the client can allow an idle crew member. */
 export const NUDGE_LIMIT_MAX = 20;
+/** The most automatic Admiral turns the client can allow a job in a row. */
+export const TURN_LIMIT_MAX = 200;
 /** The shortest and longest a client permission card waits, in seconds. */
 export const PERMISSION_EXPIRY_MIN_SEC = 30;
 export const PERMISSION_EXPIRY_MAX_SEC = 3_600;
@@ -115,6 +117,12 @@ const AGENCY_SETTINGS = {
   'agency.admiral.nudgeLimit': {
     label: 'Nudges per idle crew member',
     schema: z.number().int().min(0).max(NUDGE_LIMIT_MAX),
+    ...moreNeedsOk
+  },
+  // Each automatic turn is another Admiral turn the job pays for.
+  'agency.admiral.turnLimit': {
+    label: 'Automatic turns before a job asks to continue',
+    schema: z.number().int().min(1).max(TURN_LIMIT_MAX),
     ...moreNeedsOk
   },
   // How long the client has to answer a crew permission card is theirs to set.
