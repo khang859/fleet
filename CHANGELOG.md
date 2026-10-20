@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.137.0
+
+- **Crew lessons.**
+  When a job that ran crew ends, Fleet reviews it once and can propose one change to a crew role.
+  The change goes up as a card on the Bridge, and nothing is written until you pick **This project** or **All projects**.
+  **Not now** is remembered, and bundled roles are never changed (#686).
+- **Crew permission modes.**
+  New settings under Settings > Agency > Crew let Claude crew run in auto mode and eva crew run in bypass mode, so routine work does not ask for every command.
+  Both are off by default, and crew can still never push or open, merge or review a PR on their own (#685).
+- **Turn limit is a setting.**
+  Set how many turns in a row the Admiral takes on its own before it asks to continue, in Settings > Agency > Admiral (default 20) (#684).
+- **`/clear` in the Admiral.**
+  `/clear` starts the conversation in the current Admiral tab over, and keeps the other tabs as they are (#683).
+- **Fixed: crew stuck waiting for approval.**
+  Crew permission requests no longer count toward the Admiral's turn limit, and they still reach the Admiral when a job waits at the limit (#687).
+- **PR conflicts show up.**
+  When a job's open PR comes to conflict with its base branch, the PR card says so and the Admiral is told to fix it (#687).
+
 ## v2.136.0
 
 - **Findings come back to the Bridge.**
