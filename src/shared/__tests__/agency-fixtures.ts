@@ -20,6 +20,7 @@ export function agencyQuestion(over: Partial<AgencyQuestion> = {}): AgencyQuesti
     answerText: null,
     proposal: null,
     raise: null,
+    lesson: null,
     late: false,
     withdrawnReason: null,
     createdAt: 1,

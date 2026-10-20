@@ -5,6 +5,7 @@ import { z } from 'zod';
 import {
   ADMIRAL_QUESTION_KINDS,
   AGENCY_QUESTION_KINDS,
+  DEFAULT_AGENCY_SETTINGS,
   RUNNING_JOB_STATES,
   TERMINAL_JOB_STATES,
   jobDisplayId,
@@ -28,11 +29,12 @@ import {
 } from '../../../shared/agency';
 import type { AgencyProjectSummary } from '../../../shared/agency-projects';
 import type { Plan } from '../../../shared/agency-plan';
+import { LessonAnswer, type CrewLesson } from '../../../shared/agency-lessons';
 import { YOU_LAYER } from '../../../shared/agency-client-file';
 import { meetLeft } from '../../../shared/agency-meet';
 import { parseJsonAs } from '../../../shared/parse-json';
 import { WAKEUP_GIVE_UP_ATTEMPTS, WAKEUP_STALE_CLAIM_MS, wakeupBackoffMs } from '../backoff';
-import { CHAIN_LIMIT, chainExhausted } from '../jobs/chain';
+import { chainExhausted } from '../jobs/chain';
 import { reduceJob, type CloseTarget, type JobEvent, type Transition } from '../jobs/job-machine';
 import { renderWakeupText, type WakeupItem } from '../wakeup-text';
 import { openAgencyDb } from './agency-db';
@@ -134,6 +136,8 @@ export type AskQuestionInput = {
   proposal?: ClientFileProposal;
   /** What a `budget` card raises, and to what. */
   raise?: BudgetRaise;
+  /** What a `crew_lesson` card would change in a role. */
+  lesson?: CrewLesson;
 };
 
 export type AnswerOutcome = {
@@ -150,8 +154,11 @@ const CLIENT_KINDS = "AND kind IN ('answer', 'client_action')";
 export type EnqueueWakeupInput = {
   repoId: string;
   jobId: number | null;
-  /** `client_action` is the client deciding on a card (a plan, a setting): their words, unfenced. */
-  kind: 'answer' | 'event' | 'client_action';
+  /**
+   * `client_action` is the client deciding on a card (a plan, a setting): their words, unfenced.
+   * `permission` is a crew member waiting on the Admiral to answer a permission request.
+   */
+  kind: 'answer' | 'event' | 'client_action' | 'permission';
   questionId?: number | null;
   payload?: Record<string, unknown>;
   /** Higher runs first. Permission requests outrank everything else. */
@@ -205,7 +212,11 @@ const QuestionData = z.object({
     .optional(),
   raise: z
     .object({ target: z.enum(['usd', 'week_pct', 'cap']), to: z.number().positive() })
-    .optional()
+    .optional(),
+  lesson: LessonAnswer.extend({
+    jobId: z.number().int(),
+    source: z.enum(['project', 'user', 'bundled'])
+  }).optional()
 });
 
 const HOLD_KINDS: readonly JobHoldKind[] = ['model', 'chain_limit', 'budget', 'client'];
@@ -281,6 +292,10 @@ function toQuestion(row: QuestionRow): AgencyQuestion {
         ? (parseJsonAs(QuestionData, row.data_json)?.proposal ?? null)
         : null,
     raise: row.kind === 'budget' ? (parseJsonAs(QuestionData, row.data_json)?.raise ?? null) : null,
+    lesson:
+      row.kind === 'crew_lesson'
+        ? (parseJsonAs(QuestionData, row.data_json)?.lesson ?? null)
+        : null,
     late: row.late === 1,
     withdrawnReason: row.withdrawn_reason,
     createdAt: row.created_at,
@@ -326,6 +341,8 @@ function distinctTouched(rows: AgencyTouched[]): AgencyTouched[] {
 export class AgencyStore {
   private readonly db: Database.Database;
   private readonly now: () => number;
+  /** How many automatic Admiral turns a job takes in a row before it asks to continue. */
+  private readonly turnLimit: () => number;
   readonly plans: PlanStore;
   readonly crew: CrewStore;
   readonly permissions: PermissionStore;
@@ -337,9 +354,13 @@ export class AgencyStore {
   readonly spend: SpendStore;
   readonly preferences: PreferenceStore;
 
-  constructor(db: Database.Database | string, opts: { now?: () => number } = {}) {
+  constructor(
+    db: Database.Database | string,
+    opts: { now?: () => number; turnLimit?: () => number } = {}
+  ) {
     this.db = typeof db === 'string' ? openAgencyDb(db) : db;
     this.now = opts.now ?? Date.now;
+    this.turnLimit = opts.turnLimit ?? (() => DEFAULT_AGENCY_SETTINGS.admiral.turnLimit);
     this.plans = new PlanStore(this.db, this.now);
     this.crew = new CrewStore(this.db, this.now);
     this.permissions = new PermissionStore(this.db, this.now);
@@ -714,7 +735,8 @@ export class AgencyStore {
    */
   private countAutomaticTurn(job: AgencyJob): boolean {
     if (job.approvedVersion === null) return true;
-    if (!chainExhausted(job.chainCount)) {
+    const limit = this.turnLimit();
+    if (!chainExhausted(job.chainCount, limit)) {
       this.db.prepare('UPDATE jobs SET chain_count = chain_count + 1 WHERE id = ?').run(job.id);
       return true;
     }
@@ -723,10 +745,10 @@ export class AgencyStore {
         repoId: job.repoId,
         jobId: job.id,
         kind: 'continue',
-        question: `The Admiral took ${CHAIN_LIMIT} turns in a row on its own`,
+        question: `The Admiral took ${limit} turns in a row on its own`,
         context: 'The job waits so it does not run away. Continue to let it go on.',
         options: [
-          { label: 'Continue', detail: `${CHAIN_LIMIT} more turns` },
+          { label: 'Continue', detail: `${limit} more turns` },
           { label: 'Not now', detail: 'the job waits; send a message to go on' }
         ],
         recommended: 0
@@ -899,7 +921,8 @@ export class AgencyStore {
           this.now(),
           JSON.stringify({
             ...(input.proposal !== undefined && { proposal: input.proposal }),
-            ...(input.raise !== undefined && { raise: input.raise })
+            ...(input.raise !== undefined && { raise: input.raise }),
+            ...(input.lesson !== undefined && { lesson: input.lesson })
           })
         );
       const question = this.getQuestion(Number(lastInsertRowid));
@@ -1186,19 +1209,24 @@ export class AgencyStore {
         )
         .all(input.repoId, input.jobId, now);
       const job = input.jobId === null ? null : this.getJob(input.jobId);
-      if (job?.holds.includes('chain_limit')) return { ids: [], text: null, nextDueAt: null };
-      if (job && rows.length > 0 && !this.countAutomaticTurn(job)) {
-        return { ids: [], text: null, nextDueAt: null };
-      }
-      if (rows.length > 0) {
+      // A crew member waiting on a permission answer is crew work, not the
+      // Admiral running on its own: it neither counts as an automatic turn nor
+      // waits behind the limit, while everything else does.
+      const limited =
+        job !== null &&
+        rows.some((r) => r.kind !== 'permission') &&
+        (job.holds.includes('chain_limit') || !this.countAutomaticTurn(job));
+      const due = limited ? rows.filter((r) => r.kind === 'permission') : rows;
+      if (limited && due.length === 0) return { ids: [], text: null, nextDueAt: null };
+      if (due.length > 0) {
         this.db
-          .prepare(`UPDATE wakeups SET claimed_at = ? WHERE id IN (${marks(rows.length)})`)
-          .run(now, ...rows.map((r) => r.id));
+          .prepare(`UPDATE wakeups SET claimed_at = ? WHERE id IN (${marks(due.length)})`)
+          .run(now, ...due.map((r) => r.id));
       }
       return {
-        ids: rows.map((r) => r.id),
-        text: renderWakeupText(rows.flatMap((r) => this.wakeupItem(r))),
-        nextDueAt: this.nextDueAt(input.repoId, input.jobId, clientOnly)
+        ids: due.map((r) => r.id),
+        text: renderWakeupText(due.flatMap((r) => this.wakeupItem(r))),
+        nextDueAt: limited ? null : this.nextDueAt(input.repoId, input.jobId, clientOnly)
       };
     })();
   }

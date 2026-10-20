@@ -6,7 +6,7 @@ import { loadSetup } from '../projects/project-store';
 import { memberOf, projectMembers, type ProjectMember } from '../projects/workspace-projects';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
 import { readPr } from './gh-pr';
-import { prReview, readPrReview, reviewEvents } from './pr-reviews';
+import { conflictEvent, prReview, readPrReview, reviewEvents } from './pr-reviews';
 import { Ticker } from '../ticker';
 
 /** A PR card shown again within this long is not asked of GitHub again. */
@@ -118,14 +118,21 @@ export class PrCards {
    * moved in its review since the card last showed it. Returns whether the
    * card changed.
    */
-  record(resultId: number, pr: PrState): boolean {
+  record(resultId: number, read: PrState): boolean {
     const { store } = this.deps;
     const result = store.results.get(resultId);
     const job = result ? store.getJob(result.jobId) : null;
     if (result?.body.kind !== 'pr' || !job) return false;
-    const before = result.body.pr.review;
-    const events =
-      pr.review === undefined ? [] : reviewEvents(pr, result.stepId, before, pr.review);
+    const before = result.body.pr;
+    // While GitHub works out whether it conflicts, keep what was known.
+    const pr =
+      read.conflicts === undefined && before.conflicts !== undefined
+        ? { ...read, conflicts: before.conflicts }
+        : read;
+    const events = [
+      ...(pr.review === undefined ? [] : reviewEvents(pr, result.stepId, before.review, pr.review)),
+      ...[conflictEvent(pr, result.stepId, before)].filter((e) => e !== null)
+    ];
     return store.tx(() => {
       for (const payload of events) {
         store.enqueueWakeup({ repoId: job.repoId, jobId: job.id, kind: 'event', payload });

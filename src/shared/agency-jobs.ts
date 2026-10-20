@@ -195,6 +195,8 @@ export type PrState = {
   deletions: number;
   changedFiles: number;
   checks: { passed: number; failed: number; pending: number };
+  /** Whether the PR has conflicts with its base; absent until GitHub has worked it out. */
+  conflicts?: boolean;
   /** What an open PR waits on and its open bot comments; absent until read. */
   review?: PrReview;
 };

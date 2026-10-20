@@ -1,11 +1,16 @@
 import { useState } from 'react';
 import { ArrowUp, CircleAlert } from 'lucide-react';
 import type { AgencyQuestion } from '../../../../shared/agency';
-import { questionDisplayId, REMEMBER_OPTION } from '../../../../shared/agency';
+import {
+  ADMIRAL_QUESTION_KINDS,
+  questionDisplayId,
+  REMEMBER_OPTION
+} from '../../../../shared/agency';
 import { CLIENT_LINE_MAX_CHARS } from '../../../../shared/agency-tools';
 import { openClientFileSettings } from '../../store/settings-nav-store';
 import { AgentMarkdown } from '../agent/AgentMarkdown';
 import { ProposalLines } from './ClientFileViews';
+import { LessonChange } from './LessonChange';
 import { PRIMARY } from './JobClose';
 import { Kbd, ReaderFrame, ReaderSection } from './ReaderFrame';
 import { keyProps } from './queue-keys';
@@ -105,6 +110,7 @@ export function QuestionCard({
       {question.proposal !== null && line === null && (
         <ProposalLines proposal={question.proposal} />
       )}
+      {question.lesson !== null && <LessonChange lesson={question.lesson} />}
       {settled ? (
         <>
           {line !== null && <RememberLine line={line} replaced={rewrote(question)} />}
@@ -218,31 +224,33 @@ function Options({
         disabled={(i) => busy || (blockFirst && i === 0)}
         onPick={(i) => void answer({ option: i })}
       />
-      <form
-        className="flex h-7 items-center gap-1 rounded-md border border-fleet-border bg-fleet-surface pr-0.5 pl-2 focus-within:border-fleet-border-strong"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (typed !== '') void answer({ text: typed });
-        }}
-      >
-        <input
-          value={text}
-          disabled={busy}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Or answer in your own words"
-          aria-label={`Your own answer to ${questionDisplayId(question.id)}`}
-          {...keyProps('reply')}
-          className="min-w-0 flex-1 bg-transparent text-xs text-fleet-text outline-none placeholder:text-fleet-text-subtle"
-        />
-        <button
-          type="submit"
-          disabled={busy || typed === ''}
-          aria-label="Send answer"
-          className="flex size-6 shrink-0 items-center justify-center rounded text-fleet-text-muted transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text disabled:opacity-30 focus-ring"
+      {takesText(question) && (
+        <form
+          className="flex h-7 items-center gap-1 rounded-md border border-fleet-border bg-fleet-surface pr-0.5 pl-2 focus-within:border-fleet-border-strong"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (typed !== '') void answer({ text: typed });
+          }}
         >
-          <ArrowUp size={13} />
-        </button>
-      </form>
+          <input
+            value={text}
+            disabled={busy}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Or answer in your own words"
+            aria-label={`Your own answer to ${questionDisplayId(question.id)}`}
+            {...keyProps('reply')}
+            className="min-w-0 flex-1 bg-transparent text-xs text-fleet-text outline-none placeholder:text-fleet-text-subtle"
+          />
+          <button
+            type="submit"
+            disabled={busy || typed === ''}
+            aria-label="Send answer"
+            className="flex size-6 shrink-0 items-center justify-center rounded text-fleet-text-muted transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text disabled:opacity-30 focus-ring"
+          >
+            <ArrowUp size={13} />
+          </button>
+        </form>
+      )}
       {refused && <Refused />}
     </div>
   );
@@ -309,6 +317,9 @@ function Refused(): React.JSX.Element {
     </p>
   );
 }
+
+/** A crew lesson card is answered by its options only: typed words have no one to read them. */
+const takesText = (question: AgencyQuestion): boolean => question.kind !== 'crew_lesson';
 
 /** The line a Remember this? card would save, struck out once the client's own words replace it. */
 function RememberLine({ line, replaced }: { line: string; replaced: boolean }): React.JSX.Element {
@@ -560,8 +571,45 @@ function QuestionReader({
         </p>
       )}
       {outsideChange && <OutsideChange repoId={question.repoId} />}
+      <ReaderWhy question={question} />
+      <ReaderSection label="Options">
+        <OptionList
+          question={question}
+          pick={pick}
+          disabled={(i) => busy || blocked(i)}
+          onPick={setPick}
+        />
+      </ReaderSection>
+      {takesText(question) && (
+        <ReaderSection label="In your own words">
+          <textarea
+            value={text}
+            disabled={busy}
+            rows={3}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Add to the option, or answer in your own words"
+            aria-label={`Your own answer to ${id}`}
+            {...keyProps('reply')}
+            className="resize-none rounded-md border border-fleet-border bg-fleet-surface px-2.5 py-2 text-[13px] text-fleet-text outline-none placeholder:text-fleet-text-subtle focus:border-fleet-border-strong"
+          />
+        </ReaderSection>
+      )}
+    </ReaderFrame>
+  );
+}
+
+/** Why a question is asked, and what it would change: the part of the reader the client only reads. */
+function ReaderWhy({ question }: { question: AgencyQuestion }): React.JSX.Element {
+  return (
+    <>
       {question.context !== '' && (
-        <ReaderSection label="Why the Admiral asks">
+        <ReaderSection
+          label={
+            ADMIRAL_QUESTION_KINDS.includes(question.kind)
+              ? 'Why the Admiral asks'
+              : 'Why Fleet asks'
+          }
+        >
           <AgentMarkdown
             streaming={false}
             className="text-[13px] leading-relaxed text-fleet-text-secondary [&_code]:text-xs"
@@ -571,27 +619,12 @@ function QuestionReader({
         </ReaderSection>
       )}
       {question.proposal !== null && <ProposalLines proposal={question.proposal} />}
-      <ReaderSection label="Options">
-        <OptionList
-          question={question}
-          pick={pick}
-          disabled={(i) => busy || blocked(i)}
-          onPick={setPick}
-        />
-      </ReaderSection>
-      <ReaderSection label="In your own words">
-        <textarea
-          value={text}
-          disabled={busy}
-          rows={3}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Add to the option, or answer in your own words"
-          aria-label={`Your own answer to ${id}`}
-          {...keyProps('reply')}
-          className="resize-none rounded-md border border-fleet-border bg-fleet-surface px-2.5 py-2 text-[13px] text-fleet-text outline-none placeholder:text-fleet-text-subtle focus:border-fleet-border-strong"
-        />
-      </ReaderSection>
-    </ReaderFrame>
+      {question.lesson !== null && (
+        <ReaderSection label="The change">
+          <LessonChange lesson={question.lesson} />
+        </ReaderSection>
+      )}
+    </>
   );
 }
 

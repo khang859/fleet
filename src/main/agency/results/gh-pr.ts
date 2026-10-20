@@ -15,7 +15,8 @@ export const PR_FIELDS = [
   'additions',
   'deletions',
   'changedFiles',
-  'statusCheckRollup'
+  'statusCheckRollup',
+  'mergeable'
 ].join(',');
 
 /** A check run reports a conclusion once complete; a commit status reports a state. */
@@ -38,7 +39,9 @@ const PrView = z.object({
   additions: z.number().int(),
   deletions: z.number().int(),
   changedFiles: z.number().int(),
-  statusCheckRollup: z.array(Check).nullish()
+  statusCheckRollup: z.array(Check).nullish(),
+  /** `MERGEABLE`, `CONFLICTING`, or `UNKNOWN` while GitHub works it out. */
+  mergeable: z.string().nullish()
 });
 
 const PASSED = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
@@ -83,7 +86,9 @@ function toPrState(pr: z.infer<typeof PrView>): PrState {
     additions: pr.additions,
     deletions: pr.deletions,
     changedFiles: pr.changedFiles,
-    checks: countChecks(pr.statusCheckRollup ?? [])
+    checks: countChecks(pr.statusCheckRollup ?? []),
+    ...(pr.mergeable === 'CONFLICTING' && { conflicts: true }),
+    ...(pr.mergeable === 'MERGEABLE' && { conflicts: false })
   };
 }
 

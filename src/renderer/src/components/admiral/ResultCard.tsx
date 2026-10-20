@@ -187,6 +187,11 @@ function PrBody({
         )}
       </p>
       {pr.state === 'open' && pr.review !== undefined && <ReviewNotes review={pr.review} />}
+      {pr.state === 'open' && pr.conflicts === true && (
+        <p className="text-[11px] text-amber-700 dark:text-amber-400/90">
+          Conflicts with {pr.base}
+        </p>
+      )}
       {changed && (
         <p className="text-[11px] text-amber-700 dark:text-amber-400/90">Changed after delivery</p>
       )}
