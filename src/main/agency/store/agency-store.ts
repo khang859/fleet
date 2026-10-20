@@ -410,6 +410,30 @@ export class AgencyStore {
     })();
   }
 
+  /**
+   * Give the lobby (`jobId` null) or one of the repository's jobs a fresh
+   * session id, for `/clear`, and return it. The old transcript stays on disk
+   * under the old id. Null when there is no such conversation.
+   */
+  clearConversation(
+    input: { repoId: string; jobId: number | null },
+    mintSessionId: () => string = randomUUID
+  ): string | null {
+    return this.db.transaction(() => {
+      const sessionId = mintSessionId();
+      if (input.jobId === null) {
+        const { changes } = this.db
+          .prepare('UPDATE lobbies SET session_id = ? WHERE repo_id = ?')
+          .run(sessionId, input.repoId);
+        return changes === 0 ? null : sessionId;
+      }
+      const { changes } = this.db
+        .prepare('UPDATE jobs SET session_id = ?, updated_at = ? WHERE id = ? AND repo_id = ?')
+        .run(sessionId, this.now(), input.jobId, input.repoId);
+      return changes === 0 ? null : sessionId;
+    })();
+  }
+
   /** A job and the repository it is in, or null when either is not known. */
   jobRepo(jobId: number): { job: AgencyJob; repo: AgencyRepoRef } | null {
     const job = this.getJob(jobId);

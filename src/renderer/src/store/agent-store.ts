@@ -84,6 +84,17 @@ export type AdmiralThreadHooks = {
   turnEnded: (key: string, streamId: string, error: string | null) => void;
   /** The client wrote on an Admiral thread, now or queued behind a turn. */
   clientWrote: (key: string) => void;
+  /**
+   * Start an Admiral thread on a fresh session. Main records the session ids,
+   * so it mints the new one and the thread moves to it once main has it.
+   * Resolves whether it did.
+   */
+  clear: (key: string) => Promise<boolean>;
+  /**
+   * Keep a message the client sent for later, while the thread cannot take one
+   * on any session: `/clear` is waiting on main for the new one. True when kept.
+   */
+  hold: (key: string, text: string, attachments: AgentAttachment[]) => boolean;
 };
 
 let admiralHooks: AdmiralThreadHooks | null = null;
@@ -389,8 +400,17 @@ type AgentStoreState = {
   /**
    * Start this pane on a fresh session. What was said stays on disk under the
    * old id; the pane simply stops being the place it is read back into.
+   * Resolves whether the pane is now on a fresh session: an Admiral thread
+   * waits on main for its id, and can be refused.
    */
-  startNewSession: (paneId: string, cwd: string) => void;
+  startNewSession: (paneId: string, cwd: string) => Promise<boolean>;
+  /**
+   * Start this pane on a fresh session someone else minted: an Admiral thread,
+   * whose session ids main records. Like `startNewSession` the old transcript
+   * stays on disk; unlike it the id is not written to the layout's agent
+   * session. False, and nothing changed, while a turn is in flight.
+   */
+  adoptNewSession: (paneId: string, sessionId: string, cwd: string) => boolean;
   /**
    * Put a session this pane wrote earlier back on screen, in place. Unlike
    * `openSession` this deliberately replaces whatever the pane is showing,
@@ -488,14 +508,25 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     await replayInto(paneId, sessionId);
   },
 
-  startNewSession: (paneId, cwd) => {
-    if (!canSwitch(paneId)) return;
+  startNewSession: async (paneId, cwd) => {
+    if (!canSwitch(paneId)) return false;
+    // A session id minted here would be undone by the next reload.
+    if (isAdmiralKey(paneId)) return (await admiralHooks?.clear(paneId)) ?? false;
     const sessionId = crypto.randomUUID();
     log.debug('startNewSession', { paneId, sessionId });
     // The transcript waits for a first event. Scratch still prepares a working
     // folder before the new chat can use any tools.
     switchTo(paneId, isScratchDir(cwd) ? scratchDir() : cwd, sessionId);
     if (isScratchDir(cwd)) void replayInto(paneId, sessionId);
+    return true;
+  },
+
+  adoptNewSession: (paneId, sessionId, cwd) => {
+    if (!canSwitch(paneId)) return false;
+    log.debug('adoptNewSession', { paneId, sessionId });
+    claimSession(paneId, cwd, sessionId);
+    reportActivity(paneId, 'idle');
+    return true;
   },
 
   resumeSession: async (paneId, cwd, sessionId) => {
@@ -519,6 +550,8 @@ export const useAgentStore = create<AgentStoreState>((set, get) => ({
     const current = get().threads[paneId] ?? EMPTY_THREAD;
     // A turn sent before the history arrives would be answered without it.
     if (current.loading) return;
+    // Sent again by the runtime once the thread is on the session it is moving to.
+    if (isAdmiralKey(paneId) && admiralHooks?.hold(paneId, text, attachments) === true) return;
     if (isAdmiralKey(paneId)) admiralHooks?.clientWrote(paneId);
     if (current.streamId !== null) {
       // The client can always talk to the Admiral. What they say while it works

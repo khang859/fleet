@@ -6,7 +6,7 @@ import type {
   WakeupPull
 } from '../../../shared/agency';
 import { jobDisplayId } from '../../../shared/agency';
-import type { AgentMessage } from '../../../shared/agent-types';
+import type { AgentAttachment, AgentMessage } from '../../../shared/agent-types';
 import { textMessage } from '../../../shared/agent-types';
 import type { ActivityState } from '../../../shared/types';
 import { admiralKey, parseAdmiralKey } from './admiral-thread';
@@ -66,6 +66,15 @@ const inFlight = new Map<string, { key: string; ids: number[] }>();
 const held = new Map<string, { ids: number[]; text: string }>();
 /** Threads with a pull in flight, so a burst of changes makes one round trip. */
 const pulling = new Set<string>();
+/** Threads waiting on main for a fresh session, which no turn may start on meanwhile. */
+const clearing = new Set<string>();
+/** What the client sent while their thread was clearing, by thread key: sent once it is done. */
+const sentWhileClearing = new Map<
+  string,
+  Array<{ text: string; attachments: AgentAttachment[] }>
+>();
+/** The session a clear moved a thread to while a turn ran anyway, by thread key: adopted once it ends. */
+const adoptAfterTurn = new Map<string, string>();
 /** When each thread next has a wakeup coming due, as a timer that checks it then. */
 const timers = new Map<string, { at: number; timer: ReturnType<typeof setTimeout> }>();
 /** Jobs whose handoff is waiting for the lobby to be free, by pane. */
@@ -213,7 +222,7 @@ async function openThreads(paneId: string, snapshot: AgencySnapshot): Promise<vo
   ];
   for (const job of snapshot.jobs) {
     opening.push(store.openSession(admiralKey(paneId, job.id), job.sessionId, pane.repo.root));
-    useWorkspaceStore.getState().setAdmiralJobSession(paneId, job.id, job.sessionId);
+    useWorkspaceStore.getState().setAdmiralSession(paneId, job.id, job.sessionId);
   }
   await Promise.all(opening);
 }
@@ -246,7 +255,13 @@ export function check(key: string): void {
   const scope = parseAdmiralKey(key);
   const pane = scope === null ? undefined : attached.get(scope.paneId);
   const current = thread(key);
-  if (scope === null || pane === undefined || current === undefined || !canDeliverTo(current)) {
+  if (
+    scope === null ||
+    pane === undefined ||
+    current === undefined ||
+    !canDeliverTo(current) ||
+    clearing.has(key)
+  ) {
     return;
   }
   if (flushQueued(key)) return;
@@ -283,7 +298,8 @@ export function check(key: string): void {
 function deliver(key: string, ids: number[], text: string): void {
   const current = thread(key);
   const queued = current?.messages.some((m) => m.meta?.kind === 'queued') ?? false;
-  if (current === undefined || !canDeliverTo(current) || queued) {
+  // A clear's end checks the thread again, which delivers what was held.
+  if (current === undefined || !canDeliverTo(current) || queued || clearing.has(key)) {
     const before = held.get(key);
     held.set(key, {
       ids: [...(before?.ids ?? []), ...ids],
@@ -348,9 +364,64 @@ function turnEnded(key: string, streamId: string, error: string | null): void {
         });
     }
   }
+  // Main no longer takes the old session, so the thread moves before its next turn.
+  const sessionId = adoptAfterTurn.get(key);
+  const root = thread(key)?.cwd;
+  if (
+    sessionId !== undefined &&
+    root !== undefined &&
+    useAgentStore.getState().adoptNewSession(key, sessionId, root)
+  ) {
+    adoptAfterTurn.delete(key);
+  }
   const scope = parseAdmiralKey(key);
   if (scope?.jobId === null) runPendingHandoffs(scope.paneId);
   check(key);
+}
+
+/**
+ * `/clear` on one Admiral thread: the lobby or one job, never the others.
+ *
+ * Main mints the fresh session id and records it, so a reload adopts the new
+ * conversation rather than the old one; the old transcript stays on disk. No
+ * turn starts on the thread meanwhile: main takes no turn on the old session
+ * once it has the new one. Resolves whether the thread moved.
+ */
+export async function clearConversation(key: string): Promise<boolean> {
+  const scope = parseAdmiralKey(key);
+  const pane = scope === null ? undefined : attached.get(scope.paneId);
+  if (scope === null || pane === undefined || clearing.has(key)) return false;
+  clearing.add(key);
+  try {
+    const sessionId = await window.fleet.agency.clearConversation({
+      repoId: pane.repo.repoId,
+      jobId: scope.jobId
+    });
+    if (sessionId === null || attached.get(scope.paneId) !== pane) return false;
+    useWorkspaceStore.getState().setAdmiralSession(scope.paneId, scope.jobId, sessionId);
+    if (scope.jobId === null) {
+      // In place: work under way for this attach checks it is still the same object.
+      pane.lobbySessionId = sessionId;
+      setStatus(scope.paneId, { kind: 'ready', lobbySessionId: sessionId });
+    }
+    if (!useAgentStore.getState().adoptNewSession(key, sessionId, pane.repo.root)) {
+      log.warn('clear landed during a turn; the thread moves when it ends', { key });
+      adoptAfterTurn.set(key, sessionId);
+    }
+    return true;
+  } catch (err) {
+    log.warn('clear failed', { key, error: String(err) });
+    return false;
+  } finally {
+    clearing.delete(key);
+    const sent = sentWhileClearing.get(key) ?? [];
+    sentWhileClearing.delete(key);
+    if (attached.get(scope.paneId) === pane) {
+      for (const m of sent)
+        useAgentStore.getState().send(key, pane.repo.root, m.text, m.attachments);
+    }
+    check(key);
+  }
 }
 
 /** Hand a job the lobby talk that led to it, now or once the lobby is free. */
@@ -391,7 +462,7 @@ export async function handoff(paneId: string, jobId: number, show: boolean): Pro
     const jobKey = admiralKey(paneId, jobId);
     const lobbyKey = admiralKey(paneId, null);
     await useAgentStore.getState().openSession(jobKey, job.sessionId, pane.repo.root);
-    useWorkspaceStore.getState().setAdmiralJobSession(paneId, jobId, job.sessionId);
+    useWorkspaceStore.getState().setAdmiralSession(paneId, jobId, job.sessionId);
     if (attached.get(paneId) !== pane) return;
 
     if (!job.handoffDone) {
@@ -544,6 +615,12 @@ export function initAdmiralRuntime(): () => void {
       window.fleet.agency.clientActivity(jobId).catch((err: unknown) => {
         log.warn('client activity failed', { key, error: String(err) });
       });
+    },
+    clear: clearConversation,
+    hold: (key, text, attachments) => {
+      if (!clearing.has(key)) return false;
+      sentWhileClearing.set(key, [...(sentWhileClearing.get(key) ?? []), { text, attachments }]);
+      return true;
     }
   });
 
@@ -583,5 +660,6 @@ export function initAdmiralRuntime(): () => void {
     for (const paneId of [...attached.keys(), ...attaching.keys()]) detachAdmiral(paneId);
     inFlight.clear();
     handingOff.clear();
+    adoptAfterTurn.clear();
   };
 }

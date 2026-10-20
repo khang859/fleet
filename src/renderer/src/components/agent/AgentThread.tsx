@@ -220,8 +220,9 @@ export function AgentThread({
   cwd: string;
   /**
    * An Admiral's conversation rather than an Agent pane's: no tool mode,
-   * orchestrator or folder controls, no `/clear`, and a message sent while a
-   * turn runs is queued for it instead of refused.
+   * orchestrator or folder controls, `/clear` starts only this conversation
+   * over, and a message sent while a turn runs is queued for it instead of
+   * refused.
    */
   variant?: 'agent' | 'admiral';
   /** What an empty conversation shows instead of the Agent pane's watermark. */
@@ -427,7 +428,8 @@ export function AgentThread({
           blind={modelCard !== null && !modelCard.inputImage}
           onSend={(text, attachments) => send(paneId, cwd, text, attachments)}
           onStop={() => cancel(paneId)}
-          onClear={() => startNewSession(paneId, cwd)}
+          // An Admiral thread's new session comes from main; the store routes it there.
+          onClear={async () => startNewSession(paneId, cwd)}
           branch={gitHead?.branch ?? null}
           admiral={admiral}
           placeholder={placeholder}
@@ -1185,7 +1187,8 @@ function Composer({
   blind: boolean;
   onSend: (text: string, attachments: AgentAttachment[]) => void;
   onStop: () => void;
-  onClear: () => void;
+  /** Start a new session. Resolves whether the pane is on one. */
+  onClear: () => Promise<boolean>;
 }): React.JSX.Element {
   const [text, setText] = useState(() => drafts.get(paneId) ?? '');
   // Kept past an unmount: an Admiral remounts its composer on every job tab switch.
@@ -1194,6 +1197,8 @@ function Composer({
     else drafts.set(paneId, text);
   }, [paneId, text]);
   const [refused, setRefused] = useState(false);
+  /** The last `/clear` did not start a new session. */
+  const [clearFailed, setClearFailed] = useState(false);
   /** Whether an Escape is loaded, waiting on the second one that stops the turn. */
   const [armed, setArmed] = useState(false);
   const [menuDismissed, setMenuDismissed] = useState(false);
@@ -1233,12 +1238,7 @@ function Composer({
     return () => document.removeEventListener('fleet:agent-prefill', handler);
   }, [paneId, onDraft]);
 
-  const found = useAgentCommands(cwd, isSlashQuery(text) && !menuDismissed);
-  // An Admiral's conversations are its repository's, not something to clear.
-  const commands = useMemo(
-    () => (admiral ? found.filter((c) => c.kind !== 'builtin') : found),
-    [admiral, found]
-  );
+  const commands = useAgentCommands(cwd, isSlashQuery(text) && !menuDismissed);
   const slashMenu = agentSlashMenu(text, commands, menuDismissed);
   const mentionQuery = agentMentionQuery(text, mentionDismissed);
 
@@ -1446,12 +1446,20 @@ function Composer({
     // The box is being emptied; a transcript still in flight must not land in
     // the fresh one.
     droppedRef.current = true;
-    onClear();
-    setText('');
-    // The chips go too. They were filed under the session being left behind,
-    // and deleting that session would delete the files out from under them.
-    setAttachments([]);
-    setAttachError(null);
+    setClearFailed(false);
+    // Emptied only once the new session is there: an Admiral's comes from main,
+    // which can refuse it, and then the box keeps what was in it.
+    void onClear().then((cleared) => {
+      if (!cleared) {
+        setClearFailed(true);
+        return;
+      }
+      setText('');
+      // The chips go too. They were filed under the session being left behind,
+      // and deleting that session would delete the files out from under them.
+      setAttachments([]);
+      setAttachError(null);
+    });
   };
 
   /**
@@ -1561,6 +1569,7 @@ function Composer({
     }
     // A message going out means a transcript that returns now has no home.
     droppedRef.current = true;
+    setClearFailed(false);
     onSend(trimmed, attachments);
     history.remember(trimmed);
     setText('');
@@ -1610,6 +1619,11 @@ function Composer({
           {asking
             ? 'Answer the question above first - your message is still here.'
             : 'The agent is still working - your message is still here.'}
+        </p>
+      )}
+      {clearFailed && (
+        <p role="status" className="px-1 pb-1.5 text-[11px] text-fleet-text-subtle">
+          Could not start a new conversation - your message is still here.
         </p>
       )}
       {/* Amber rather than subtle: this is the one line here that is about

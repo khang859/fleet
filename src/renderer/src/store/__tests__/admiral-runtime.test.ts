@@ -50,7 +50,7 @@ vi.mock('../workspace-store', async () => {
       workspace: { id: 'default', label: 'Default', tabs: [{ id: 'tab', splitRoot: leaf }] },
       backgroundWorkspaces: new Map(),
       setAgentSession: () => {},
-      setAdmiralJobSession: () => {},
+      setAdmiralSession: admiralSession,
       setAdmiralActiveJob: activeJob
     }))
   };
@@ -71,6 +71,7 @@ function emit(channel: string, payload: unknown): void {
 }
 
 const activeJob = vi.fn();
+const admiralSession = vi.fn();
 const send = vi.fn();
 const queue = vi.fn();
 const appendSession = vi.fn();
@@ -84,6 +85,8 @@ const agency = {
   ackWakeups: vi.fn(),
   releaseWakeups: vi.fn(),
   markHandoff: vi.fn(),
+  clearConversation:
+    vi.fn<(args: { repoId: string; jobId: number | null }) => Promise<string | null>>(),
   answerQuestion: vi.fn(),
   cancelJobs: vi.fn(),
   clientActivity: vi.fn(),
@@ -146,7 +149,9 @@ beforeEach(async () => {
   vi.resetModules();
   listeners.clear();
   replays.clear();
-  for (const fn of [send, queue, appendSession, report, activeJob]) fn.mockReset();
+  for (const fn of [send, queue, appendSession, report, activeJob, admiralSession]) {
+    fn.mockReset();
+  }
   for (const fn of Object.values(agency)) if (vi.isMockFunction(fn)) fn.mockReset();
   agency.onChanged = listen('agency:changed');
   snap = {
@@ -420,6 +425,168 @@ describe('pulling wakeups', () => {
       role: 'fleet',
       parts: [{ text: 'Late news' }]
     });
+  });
+});
+
+describe('/clear', () => {
+  beforeEach(() => {
+    agency.clearConversation.mockImplementation(async ({ jobId }) =>
+      Promise.resolve(jobId === null ? 'lobby-fresh' : `job-fresh-${jobId}`)
+    );
+  });
+
+  it('starts the lobby over on a session main mints, and leaves the jobs alone', async () => {
+    agentStore.useAgentStore.getState().send(LOBBY_KEY, REPO.root, 'hello');
+    endTurn(LOBBY_KEY);
+    await tick();
+    expect(thread(LOBBY_KEY).messages).not.toHaveLength(0);
+
+    await agentStore.useAgentStore.getState().startNewSession(LOBBY_KEY, REPO.root);
+    await tick();
+
+    expect(agency.clearConversation).toHaveBeenCalledWith({ repoId: REPO.repoId, jobId: null });
+    expect(thread(LOBBY_KEY)).toMatchObject({ sessionId: 'lobby-fresh', messages: [] });
+    expect(admiralSession).toHaveBeenCalledWith(PANE, null, 'lobby-fresh');
+    expect(runtime.useAdmiralRuntimeStore.getState().panes[PANE]).toEqual({
+      kind: 'ready',
+      lobbySessionId: 'lobby-fresh'
+    });
+    expect(thread(keyOf(1)).sessionId).toBe('job-session-1');
+    expect(thread(keyOf(2)).sessionId).toBe('job-session-2');
+
+    // The next turn is written to the new session.
+    agentStore.useAgentStore.getState().send(LOBBY_KEY, REPO.root, 'again');
+    expect(sends().at(-1)?.threadId).toBe('lobby-fresh');
+  });
+
+  it('starts one job over and leaves the lobby and the other job alone', async () => {
+    await agentStore.useAgentStore.getState().startNewSession(keyOf(2), REPO.root);
+    await tick();
+
+    expect(agency.clearConversation).toHaveBeenCalledWith({ repoId: REPO.repoId, jobId: 2 });
+    expect(thread(keyOf(2)).sessionId).toBe('job-fresh-2');
+    expect(admiralSession).toHaveBeenCalledWith(PANE, 2, 'job-fresh-2');
+    expect(thread(LOBBY_KEY).sessionId).toBe(LOBBY);
+    expect(thread(keyOf(1)).sessionId).toBe('job-session-1');
+  });
+
+  it('does nothing while a turn is in flight', async () => {
+    agentStore.useAgentStore.getState().send(keyOf(1), REPO.root, 'start');
+    void agentStore.useAgentStore.getState().startNewSession(keyOf(1), REPO.root);
+    await tick();
+
+    expect(agency.clearConversation).not.toHaveBeenCalled();
+    expect(thread(keyOf(1)).sessionId).toBe('job-session-1');
+  });
+
+  it('keeps the conversation when main has nothing to clear', async () => {
+    agency.clearConversation.mockResolvedValue(null);
+    admiralSession.mockClear();
+    const cleared = agentStore.useAgentStore.getState().startNewSession(keyOf(1), REPO.root);
+    await tick();
+
+    await expect(cleared).resolves.toBe(false);
+    expect(thread(keyOf(1)).sessionId).toBe('job-session-1');
+    expect(admiralSession).not.toHaveBeenCalled();
+  });
+
+  /** A clear that waits on main until the test answers for it. */
+  function clearLater(): (sessionId: string | null) => void {
+    const { promise, resolve } = Promise.withResolvers<string | null>();
+    agency.clearConversation.mockReturnValue(promise);
+    return resolve;
+  }
+
+  /** A pull for one job that waits until the test answers for it. */
+  function pullLater(jobId: number): (pull: WakeupPull) => void {
+    const { promise, resolve } = Promise.withResolvers<WakeupPull>();
+    agency.pullWakeups.mockImplementation(async (args) =>
+      args.jobId === jobId ? promise : Promise.resolve(NOTHING)
+    );
+    return resolve;
+  }
+
+  it('starts no turn on the old session for a wakeup pulled during the clear', async () => {
+    const answerPull = pullLater(1);
+    changed({ jobIds: [1] });
+    await tick();
+    const answerClear = clearLater();
+    void agentStore.useAgentStore.getState().startNewSession(keyOf(1), REPO.root);
+    await tick();
+
+    answerPull({ ids: [4], text: 'Crew finished', nextDueAt: null });
+    await tick();
+    expect(sends()).toHaveLength(0);
+
+    agency.pullWakeups.mockResolvedValue(NOTHING);
+    answerClear('job-fresh-1');
+    await tick();
+    expect(thread(keyOf(1)).sessionId).toBe('job-fresh-1');
+    expect(sends().map((s) => s.threadId)).toEqual(['job-fresh-1']);
+    expect(sends()[0].history.at(-1)).toMatchObject({
+      role: 'fleet',
+      parts: [{ text: 'Crew finished' }]
+    });
+  });
+
+  it('sends a message written during the clear on the new session', async () => {
+    const answerClear = clearLater();
+    void agentStore.useAgentStore.getState().startNewSession(LOBBY_KEY, REPO.root);
+    await tick();
+    appendSession.mockClear();
+
+    agentStore.useAgentStore.getState().send(LOBBY_KEY, REPO.root, 'first thing');
+    expect(sends()).toHaveLength(0);
+
+    answerClear('lobby-fresh');
+    await tick();
+    expect(thread(LOBBY_KEY).sessionId).toBe('lobby-fresh');
+    expect(sends().map((s) => s.threadId)).toEqual(['lobby-fresh']);
+    expect(sends()[0].text).toBe('first thing');
+    expect(appended().map((a) => a.sessionId)).not.toContain(LOBBY);
+  });
+
+  it('moves the thread once a turn that started during the clear ends', async () => {
+    const schedule = await import('../agent-schedule');
+    const answerClear = clearLater();
+    void agentStore.useAgentStore.getState().startNewSession(keyOf(1), REPO.root);
+    await tick();
+    schedule.startUnpromptedTurn(keyOf(1), thread(keyOf(1)), []);
+
+    answerClear('job-fresh-1');
+    await tick();
+    expect(thread(keyOf(1)).sessionId).toBe('job-session-1');
+
+    endTurn(keyOf(1), 'This conversation is not J-1’s');
+    await tick();
+    expect(thread(keyOf(1)).sessionId).toBe('job-fresh-1');
+    agentStore.useAgentStore.getState().send(keyOf(1), REPO.root, 'again');
+    expect(sends().at(-1)?.threadId).toBe('job-fresh-1');
+  });
+
+  it('still delivers a job’s wakeup pulled while the lobby was cleared', async () => {
+    const answerPull = pullLater(1);
+    changed({ jobIds: [1] });
+    await tick();
+
+    await agentStore.useAgentStore.getState().startNewSession(LOBBY_KEY, REPO.root);
+    answerPull({ ids: [4], text: 'Crew finished', nextDueAt: null });
+    await tick();
+
+    expect(sends().map((s) => s.threadId)).toEqual(['job-session-1']);
+  });
+
+  it('keeps the new job session when main says the job changed', async () => {
+    await agentStore.useAgentStore.getState().startNewSession(keyOf(2), REPO.root);
+    snap = { ...snap, jobs: [job(1), job(2, { sessionId: 'job-fresh-2' })] };
+    admiralSession.mockClear();
+
+    changed({ jobIds: [2] });
+    await tick();
+
+    expect(thread(keyOf(2)).sessionId).toBe('job-fresh-2');
+    expect(admiralSession).toHaveBeenCalledWith(PANE, 2, 'job-fresh-2');
+    expect(admiralSession).not.toHaveBeenCalledWith(PANE, 2, 'job-session-2');
   });
 });
 

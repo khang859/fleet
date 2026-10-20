@@ -1159,6 +1159,11 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.AGENCY_CANCEL_JOBS, repoId),
     markHandoff: async (args: { jobId: number; lobbyMessageId: string }): Promise<boolean> =>
       typedInvoke(IPC_CHANNELS.AGENCY_MARK_HANDOFF, args),
+    /** `/clear`: a fresh session id for the lobby (`jobId` null) or a job. Null when there is no such conversation. */
+    clearConversation: async (args: {
+      repoId: string;
+      jobId: number | null;
+    }): Promise<string | null> => typedInvoke(IPC_CHANNELS.AGENCY_CLEAR_CONVERSATION, args),
     /** The client wrote to a job's Admiral, which restarts its automatic-turn count. */
     clientActivity: async (jobId: number): Promise<void> =>
       typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_ACTIVITY, jobId),

@@ -1663,8 +1663,8 @@ describe('Admiral panes', () => {
   it('records job sessions and the job on screen, and counts every session as in use', () => {
     open();
     const store = useWorkspaceStore.getState();
-    store.setAdmiralJobSession('pane-admiral', 3, 'job-3');
-    store.setAdmiralJobSession('pane-admiral', 4, 'job-4');
+    store.setAdmiralSession('pane-admiral', 3, 'job-3');
+    store.setAdmiralSession('pane-admiral', 4, 'job-4');
     store.setAdmiralActiveJob('pane-admiral', 4);
 
     const leaf = collectPaneLeafs(admiralTab()!.splitRoot)[0];
@@ -1674,6 +1674,16 @@ describe('Admiral panes', () => {
     });
     expect(leaf.admiralActiveJob).toBe(4);
     expect(agentSessionsInUse()).toEqual(new Set(['lobby-1', 'job-3', 'job-4']));
+  });
+
+  it('records the lobby session /clear moved it to', () => {
+    open();
+    const store = useWorkspaceStore.getState();
+    store.setAdmiralSession('pane-admiral', 3, 'job-3');
+    store.setAdmiralSession('pane-admiral', null, 'lobby-2');
+
+    const leaf = collectPaneLeafs(admiralTab()!.splitRoot)[0];
+    expect(leaf.admiralSessions).toEqual({ lobby: 'lobby-2', jobs: { '3': 'job-3' } });
   });
 
   it('never moves to another folder', () => {
