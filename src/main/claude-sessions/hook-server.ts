@@ -1,8 +1,8 @@
 import { createServer, type Server, type Socket } from 'net';
-import { unlinkSync, existsSync, chmodSync } from 'fs';
 import { createLogger } from '../logger';
 import { COPILOT_SOCKET_PATH } from '../../shared/constants';
 import { HOOK_PROTOCOL, parseHookEvent, type HookEvent } from './hook-events';
+import { listenOnSocket, removeSocketFile } from './socket-file';
 
 const log = createLogger('claude-sessions:hook-server');
 
@@ -37,31 +37,8 @@ export class HookServer {
   ) {}
 
   async start(): Promise<void> {
-    this.removeSocketFile();
-
-    return new Promise((resolve, reject) => {
-      const server = createServer({ allowHalfOpen: true }, (client) =>
-        this.handleConnection(client)
-      );
-      this.server = server;
-
-      server.on('error', (err) => {
-        log.error('hook server error', { error: String(err) });
-        reject(err);
-      });
-
-      server.listen(this.socketPath, () => {
-        try {
-          // Owner only: whoever can connect can forge session events and answer
-          // permission requests, and every hook runs as this same user.
-          chmodSync(this.socketPath, 0o600);
-        } catch {
-          log.warn('failed to chmod socket');
-        }
-        log.info('hook server listening', { path: this.socketPath });
-        resolve();
-      });
-    });
+    this.server = createServer({ allowHalfOpen: true }, (client) => this.handleConnection(client));
+    return listenOnSocket(this.server, this.socketPath, log);
   }
 
   async stop(): Promise<void> {
@@ -81,17 +58,8 @@ export class HookServer {
       })
     ]);
     clearTimeout(timer);
-    this.removeSocketFile();
+    removeSocketFile(this.socketPath, log);
     log.info('hook server stopped');
-  }
-
-  private removeSocketFile(): void {
-    if (!existsSync(this.socketPath)) return;
-    try {
-      unlinkSync(this.socketPath);
-    } catch {
-      log.warn('failed to remove socket file', { path: this.socketPath });
-    }
   }
 
   private handleConnection(client: Socket): void {

@@ -1,0 +1,6 @@
+{
+  "name": "fleet-bridge",
+  "version": "0.1.0",
+  "description": "Submits the prompts Fleet sends a Claude Code session in a Fleet pane.",
+  "author": { "name": "Fleet" }
+}

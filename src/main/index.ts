@@ -70,6 +70,7 @@ import type {
 import { createLogger } from './logger';
 import { initCopilot, stopCopilot } from './copilot/index';
 import { ClaudeSessionsService } from './claude-sessions';
+import { installClaudeMod } from './claude-sessions/claude-mod';
 import { createTeleprompter } from './teleprompter/index';
 import type { TeleprompterService } from './teleprompter/service';
 import { restoreDockIcon } from './dock-icon';
@@ -748,6 +749,15 @@ void app.whenReady().then(async () => {
   const backfilled = await backfillBackgroundStore(savedBackground);
   if (backfilled) settingsStore.set({ general: { terminalBackground: backfilled } });
   pruneBackgroundStore(backfilled ?? savedBackground);
+
+  // Before the window, whose panes load the mod from where this puts it.
+  try {
+    installClaudeMod();
+  } catch (err) {
+    log.warn('failed to install claude mod', {
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
 
   createWindow();
 

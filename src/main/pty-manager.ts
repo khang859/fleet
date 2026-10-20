@@ -4,6 +4,7 @@ import { getDefaultShell } from './shell-detection';
 import { wslExePath } from './wsl-service';
 import { createLogger } from './logger';
 import { buildEnvSnapshot } from '../shared/shell-env-snapshot';
+import { claudeModEnv } from './claude-sessions/claude-mod';
 import { PaneScreen } from './pane-screen';
 import type { ShellProfile } from '../shared/shell-profiles';
 import type { EnvSource, ShellEnvSnapshot } from '../shared/shell-env-types';
@@ -161,8 +162,11 @@ export class PtyManager {
     // COLORTERM and TERM_PROGRAM describe this terminal, so they replace any
     // value inherited from the terminal Fleet was launched from: xterm.js draws
     // 24-bit color, and image tools pick a protocol by terminal name.
+    // claudeModEnv loads the fleet-bridge mod into Claude Code run in the pane.
+    const baseEnv = withUtf8Locale(opts.env ?? process.env);
     const finalEnv = {
-      ...withUtf8Locale(opts.env ?? process.env),
+      ...baseEnv,
+      ...claudeModEnv(baseEnv),
       FLEET_SESSION: '1',
       FLEET_PANE_ID: opts.paneId,
       COLORTERM: 'truecolor',

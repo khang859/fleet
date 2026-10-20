@@ -30,6 +30,12 @@ export const COPILOT_SOCKET_PATH =
     ? `\\\\.\\pipe\\fleet-copilot${suffix}`
     : join(homedir(), '.fleet', `fleet-copilot${suffix}.sock`);
 
+/** The socket the fleet-bridge Claude Code mod asks for prompts on. Unix only, as the mod reaches it. */
+export const BRIDGE_SOCKET_PATH = join(homedir(), '.fleet', `fleet-bridge${suffix}.sock`);
+
+/** Where Fleet installs the fleet-bridge mod, a folder Claude Code also writes into. */
+export const CLAUDE_MOD_DIR = join(homedir(), '.fleet', `claude-mods${suffix}`, 'fleet-bridge');
+
 export const DEFAULT_SETTINGS: FleetSettings = {
   general: {
     defaultShell: '',

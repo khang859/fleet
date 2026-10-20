@@ -22,6 +22,7 @@ import type { HookEvent } from './hook-events';
 import * as hookInstaller from './hook-installer';
 import { HookServer, PermissionBroker, type PermissionAnswer } from './hook-server';
 import { PromptInput, type SendResult } from './input';
+import { PromptBridge } from './prompt-bridge';
 import { registerClaudeSessionsIpc, type IpcRegistrar } from './ipc-handlers';
 import { PaneActivityBridge, type SetHookState } from './pane-activity-bridge';
 import { PaneResolver, type PaneHost, type WorkspaceLookup } from './pane-resolver';
@@ -57,6 +58,7 @@ export type ClaudeSessionsDeps = {
   /** Receives the whole status view each time it changes, coalesced. */
   onSnapshot?: (snapshot: ClaudeSessionsSnapshot) => void;
   socketPath?: string;
+  bridgeSocketPath?: string;
   installer?: Pick<typeof hookInstaller, 'ensureHooks' | 'uninstall'>;
   git?: GitRunner;
 };
@@ -124,6 +126,7 @@ export class ClaudeSessionsService {
   readonly broker: PermissionBroker;
   private readonly input: PromptInput;
   private readonly server: HookServer;
+  private readonly promptBridge: PromptBridge;
   private readonly resolver: PaneResolver;
   private readonly bridge: PaneActivityBridge;
   private readonly installer: Pick<typeof hookInstaller, 'ensureHooks' | 'uninstall'>;
@@ -155,11 +158,13 @@ export class ClaudeSessionsService {
     this.transcripts = new SessionTranscripts({
       onSignal: (sessionId, signal) => this.registry.settle(sessionId, signal)
     });
+    this.promptBridge = new PromptBridge(deps.bridgeSocketPath);
     this.input = new PromptInput({
       session: (sessionId) => this.registry.get(sessionId),
       noteInput: (sessionId, origin, text) => this.registry.noteInput(sessionId, origin, text),
       subscribe: (listener) => this.registry.subscribe(listener),
-      write: deps.writeToPane
+      write: deps.writeToPane,
+      bridge: this.promptBridge
     });
     this.resolver = new PaneResolver(deps.panes, deps.workspaceOf);
     this.bridge = new PaneActivityBridge(deps.setHookState);
@@ -387,6 +392,12 @@ export class ClaudeSessionsService {
       throw err;
     }
     this.startError = null;
+    try {
+      await this.promptBridge.start();
+    } catch (err) {
+      // Prompts are typed into the terminal instead, as without the mod.
+      log.warn('prompt bridge did not start', { error: String(err) });
+    }
     this.liveness = setInterval(() => this.registry.pruneDead(), LIVENESS_INTERVAL_MS);
     this.liveness.unref();
     this.running = true;
@@ -399,6 +410,8 @@ export class ClaudeSessionsService {
     this.running = false;
     if (this.liveness) clearInterval(this.liveness);
     this.liveness = null;
+    // First, so no prompt goes to a mod while the rest stops.
+    await this.promptBridge.stop();
     await this.broker.dispose();
     await this.server.stop();
     this.registry.clear();
