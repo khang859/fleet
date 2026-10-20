@@ -202,6 +202,7 @@ function MiniTabButton({
   return (
     <MiniSidebarTooltip label={tab.label}>
       <button
+        data-tab-id={tab.id}
         onClick={onClick}
         className={`relative p-1 rounded transition-colors active:scale-90 ${
           isActive
