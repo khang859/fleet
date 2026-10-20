@@ -38,3 +38,32 @@ Keep helpers that take `$` as top-level functions.
 `$.prompt.submit({ text, asUser: true })` reaches the model as the person's own words, not as `<pasted_content>`, however long.
 The classic `UserPromptSubmit` hook still fires with the exact text, so Fleet's prompt-hash acknowledgement works unchanged.
 The transcript line carries `origin: { kind: 'plugin', name: 'fleet-bridge', asUser: true }`.
+
+## Answering permissions from the mod
+
+The mod's `classic.PermissionRequest` hook asks Fleet over `POST /permission` (`src/main/claude-sessions/permission-bridge.ts`).
+These held on Claude Code 2.1.304:
+
+- The hook runs while the terminal's dialog is already open, not before it.
+  An allow it returns late still closes the dialog, which shows "Allowed by PermissionRequest hook".
+- An answer in the terminal aborts `next.signal`, and with it the hook's open `$.http.fetch`.
+  Fleet sees the ask close and drops the card at once.
+  The hook must return `{}` then, not call `next(e)`, or the Go hook would ask Fleet a second time.
+- Returning without `next(e)` skips the settings hooks, so the Go hook does not run for a request the mod handled.
+- The hook's input has no `tool_use_id`.
+  The registry takes it from the earlier `PreToolUse` with the same tool and input.
+- `updatedPermissions` from `permission_suggestions` apply as in the dialog: a `setMode` to `acceptEdits` turned the status line to "accept edits on".
+
+## Testing it end to end on Linux
+
+The copilot window is macOS-only (`initCopilot` returns early), so the card cannot be clicked on Linux as shipped.
+To check it, change the platform gate locally, enable the copilot in settings with `__FLEET__.stores.settings`, and drive the "Fleet Copilot" page with `agent-browser --cdp <port>`, the port Electron prints as "DevTools listening on" in `.fleet-drive/dev.log`.
+Revert the gate afterwards.
+
+`npm run drive -- term-send '<text>' --enter` sometimes leaves the prompt in Claude Code's input unsent.
+Send `term-key enter` on its own after a short wait.
+In tmux, `send-keys Enter` had the same problem, and `send-keys -H 0d` worked.
+
+A long "Always allow access to <path>" label made the whole session row wider than the panel, because Radix `ScrollArea` lays its content out as a table that grows to its widest child.
+A `truncate` button cannot shrink it, since its min-content width is still the full label.
+**Fix:** let the label wrap with `[overflow-wrap:anywhere]`.

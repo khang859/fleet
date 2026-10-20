@@ -34,11 +34,36 @@ export type ClaudeToolInfo = {
   toolUseId?: string;
 };
 
+/** Where Claude Code saves a permission change: `session` keeps it in memory only. */
+export type PermissionDestination =
+  | 'userSettings'
+  | 'projectSettings'
+  | 'localSettings'
+  | 'session'
+  | 'cliArg';
+
+/**
+ * A change Claude Code suggests with a permission request, such as a rule that
+ * stops it asking again. Allowing the request with one applies it. Only the
+ * kinds Fleet offers are kept.
+ */
+export type PermissionSuggestion =
+  | {
+      type: 'addRules';
+      rules: Array<{ toolName: string; ruleContent?: string }>;
+      behavior: 'allow';
+      destination: PermissionDestination;
+    }
+  | { type: 'addDirectories'; directories: string[]; destination: PermissionDestination }
+  | { type: 'setMode'; mode: string; destination: PermissionDestination };
+
 export type ClaudePendingPermission = {
   sessionId: string;
   toolUseId: string;
   tool: ClaudeToolInfo;
   receivedAt: number;
+  /** What Claude Code suggests allowing with it; only a request the fleet-bridge mod sent has any. */
+  suggestions?: PermissionSuggestion[];
   /**
    * Fleet holds it for an answerer that takes it to the user its own way, as
    * the agency's Admiral does, so the session does not wait on the user for it.

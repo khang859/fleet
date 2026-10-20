@@ -31,12 +31,14 @@ const copilotApi = {
   respondPermission: async (
     toolUseId: string,
     decision: 'allow' | 'deny',
-    reason?: string
+    reason?: string,
+    suggestion?: number
   ): Promise<boolean> =>
     typedInvoke<boolean>(IPC_CHANNELS.COPILOT_RESPOND_PERMISSION, {
       toolUseId,
       decision,
-      reason
+      reason,
+      suggestion
     }),
 
   getSettings: async (): Promise<CopilotSettings> =>

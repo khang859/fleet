@@ -1,4 +1,4 @@
-import type { EngineInterface, Register } from 'claude-code';
+import type { Args, EngineInterface, Next, Register, ResultOf } from 'claude-code';
 
 /**
  * Fleet's way into a Claude Code session in a Fleet pane. Fleet copies this
@@ -8,6 +8,10 @@ import type { EngineInterface, Register } from 'claude-code';
  * the request until it has one, or answers 204 after a while, and the mod asks
  * again at once. A prompt it gets is submitted as the person's own, so Fleet
  * never has to type it into the terminal (src/main/claude-sessions/prompt-bridge.ts).
+ *
+ * It also asks Fleet about each permission request while Claude Code shows its
+ * dialog, so the request can be answered in Fleet or in the terminal, whichever
+ * comes first (src/main/claude-sessions/permission-bridge.ts).
  */
 
 /** How long to wait before asking again after the socket failed, e.g. Fleet is not running. */
@@ -32,6 +36,70 @@ async function ask($: EngineInterface, loop: Loop, socketPath: string): Promise<
     return res.ok ? 0 : RETRY_MS;
   } catch {
     return RETRY_MS;
+  }
+}
+
+type PermissionAsk = Args<'classic.PermissionRequest'>;
+type PermissionResult = ResultOf['classic.PermissionRequest'];
+
+/** Fleet's answer to a permission request. */
+type FleetAnswer = {
+  decision: 'allow' | 'deny';
+  reason: string;
+  updatedPermissions?: PermissionAsk['permission_suggestions'];
+};
+
+/** Fleet's answer as the dialog takes it. */
+function permissionResult(answer: FleetAnswer): PermissionResult {
+  if (answer.decision === 'deny') {
+    const message = answer.reason || 'Denied by user via Fleet Copilot';
+    return { decision: { behavior: 'deny', message } };
+  }
+  const { updatedPermissions } = answer;
+  return { decision: { behavior: 'allow', ...(updatedPermissions && { updatedPermissions }) } };
+}
+
+/**
+ * Ask Fleet about a permission request until it answers. Fleet holds each ask
+ * a while and answers 204 to have the mod ask again, or 409 when it will not
+ * answer, and the dialog decides. When Fleet cannot be reached, the Go hook in
+ * the settings takes the request, as without the mod.
+ */
+async function askPermission(
+  $: EngineInterface,
+  e: PermissionAsk,
+  next: Next<'classic.PermissionRequest'>,
+  socketPath: string
+): Promise<PermissionResult> {
+  const paneId = await $.env.get('FLEET_PANE_ID');
+  if (!paneId) return next(e);
+  const body = JSON.stringify({
+    request_id: crypto.randomUUID(),
+    session_id: e.session_id,
+    pane_id: paneId,
+    cwd: e.cwd,
+    transcript_path: e.transcript_path,
+    tool_name: e.tool_name,
+    tool_input: e.tool_input,
+    permission_suggestions: e.permission_suggestions
+  });
+  for (;;) {
+    let res: Awaited<ReturnType<EngineInterface['http']['fetch']>>;
+    try {
+      res = await $.http.fetch('http://fleet/permission', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+        socketPath
+      });
+    } catch {
+      // Answered in the terminal, which aborts the ask: the dialog settled it.
+      return next.signal.aborted ? {} : next(e);
+    }
+    if (res.status === 204) continue;
+    if (res.status === 200) return permissionResult(JSON.parse(res.text) as FleetAnswer);
+    if (res.status === 409) return {};
+    return next(e);
   }
 }
 
@@ -70,6 +138,13 @@ export const register: Register = (on) => {
     if (loop.socketPath) start($, loop, loop.socketPath);
     return result;
   });
+
+  // A question is answered in its dialog: the Go hook only tells Fleet of it.
+  // A failure leaves the request to the Go hook, as without the mod.
+  on('classic.PermissionRequest', async ($, e, next) => {
+    if (e.tool_name === 'AskUserQuestion' || !loop.socketPath) return next(e);
+    return askPermission($, e, next, loop.socketPath);
+  }).catch(async (_$, e, next) => (next.called || next.signal.aborted ? {} : next(e)));
 
   // After /clear or a resume the process goes on under another id, while the
   // open request still names the old one: start over without waiting it out.

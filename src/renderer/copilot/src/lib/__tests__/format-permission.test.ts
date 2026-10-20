@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatPermissionSummary } from '../format-permission';
+import { formatPermissionSummary, suggestionLabel } from '../format-permission';
 import type { CopilotToolInfo } from '../../../../../shared/types';
 
 function tool(toolName: string, toolInput: Record<string, unknown>): CopilotToolInfo {
@@ -98,5 +98,31 @@ describe('formatPermissionSummary', () => {
 
   it('has no description when the tool gives none', () => {
     expect(formatPermissionSummary(tool('Read', { file_path: 'a.ts' })).description).toBeNull();
+  });
+});
+
+describe('suggestionLabel', () => {
+  it('names the rules to add and how long they last', () => {
+    expect(
+      suggestionLabel({
+        type: 'addRules',
+        rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }, { toolName: 'WebSearch' }],
+        behavior: 'allow',
+        destination: 'localSettings'
+      })
+    ).toBe('Always allow Bash(npm test:*), WebSearch in this project');
+  });
+
+  it('names the folders to allow', () => {
+    expect(
+      suggestionLabel({ type: 'addDirectories', directories: ['/tmp/x'], destination: 'session' })
+    ).toBe('Always allow access to /tmp/x this session');
+  });
+
+  it('names the mode to switch to, by name when it knows it', () => {
+    const mode = (m: string): string =>
+      suggestionLabel({ type: 'setMode', mode: m, destination: 'session' });
+    expect(mode('acceptEdits')).toBe('Allow, then switch to accept edits');
+    expect(mode('someNewMode')).toBe('Allow, then switch to someNewMode');
   });
 });

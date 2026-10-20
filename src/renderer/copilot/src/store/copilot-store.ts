@@ -56,10 +56,12 @@ type CopilotStoreState = {
   topPermissionId: () => string | null;
   loadSettings: () => Promise<void>;
   updateSettings: (partial: Partial<CopilotSettings>) => Promise<void>;
+  /** `suggestion` allows one of the request's `suggestions` along with it, by its place. */
   respondPermission: (
     toolUseId: string,
     decision: 'allow' | 'deny',
-    reason?: string
+    reason?: string,
+    suggestion?: number
   ) => Promise<void>;
   checkHookStatus: () => Promise<void>;
   installHooks: () => Promise<void>;
@@ -173,7 +175,7 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
     set({ settings });
   },
 
-  respondPermission: async (toolUseId, decision, reason) => {
+  respondPermission: async (toolUseId, decision, reason, suggestion) => {
     // A second answer to the same request would only race the first.
     if (get().permissionStatus[toolUseId]) return;
     log.info('respondPermission', { toolUseId, decision });
@@ -181,7 +183,7 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
       set((s) => ({ permissionStatus: { ...s.permissionStatus, [toolUseId]: status } }));
     setStatus('sending');
     const delivered = await window.copilot
-      .respondPermission(toolUseId, decision, reason)
+      .respondPermission(toolUseId, decision, reason, suggestion)
       .catch(() => false);
     // Delivered stays 'sending' until the session update removes the request.
     if (!delivered) setStatus('failed');

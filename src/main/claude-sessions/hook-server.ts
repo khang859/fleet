@@ -2,6 +2,7 @@ import { createServer, type Server, type Socket } from 'net';
 import { createLogger } from '../logger';
 import { COPILOT_SOCKET_PATH } from '../../shared/constants';
 import { HOOK_PROTOCOL, parseHookEvent, type HookEvent } from './hook-events';
+import type { HeldRequest, PermissionAnswer } from './permission-broker';
 import { listenOnSocket, removeSocketFile } from './socket-file';
 
 const log = createLogger('claude-sessions:hook-server');
@@ -112,106 +113,34 @@ export class HookServer {
   }
 }
 
-type HeldPermission = { sessionId: string; socket: Socket };
-
-/** The answer a held request got through Fleet. */
-export type PermissionAnswer = { decision: 'allow' | 'deny'; reason: string };
-
 /**
- * Keeps the connections of hook processes waiting on a permission answer, and
- * delivers the answer when one comes.
- *
- * `onReleased` fires once per held request that goes away: answered here,
- * with the answer, or with null when Fleet let it go or the hook exited (the
- * user answered in the terminal, or the hook timed out).
+ * A Go hook's permission request, held on its connection. The hook has already
+ * half-closed its side, so its exit is not seen until something is written:
+ * the timeout destroys the socket so 'close' fires.
  */
-export class PermissionBroker {
-  private readonly held = new Map<string, HeldPermission>();
-
+export class SocketHold implements HeldRequest {
   constructor(
-    private readonly onReleased: (
-      sessionId: string,
-      toolUseId: string,
-      answer: PermissionAnswer | null
-    ) => void,
-    private readonly holdMs: number = PERMISSION_HOLD_MS
-  ) {}
-
-  hold(sessionId: string, toolUseId: string, socket: Socket): void {
-    this.held.set(toolUseId, { sessionId, socket });
-    // The hook has already half-closed its side, so its exit is not seen until
-    // something is written. The timeout destroys the socket so 'close' fires.
-    socket.setTimeout(this.holdMs);
+    private readonly socket: Socket,
+    holdMs: number = PERMISSION_HOLD_MS
+  ) {
+    socket.setTimeout(holdMs);
     socket.on('timeout', () => socket.destroy());
-    socket.on('close', () => {
-      const current = this.held.get(toolUseId);
-      if (current?.socket !== socket) return;
-      log.info('permission hook went away', { toolUseId, sessionId });
-      this.release(toolUseId, null);
-    });
-    log.debug('holding permission', { toolUseId });
   }
 
-  has(toolUseId: string): boolean {
-    return this.held.has(toolUseId);
+  deliver(answer: PermissionAnswer): boolean {
+    this.socket.end(JSON.stringify({ decision: answer.decision, reason: answer.reason }));
+    return true;
   }
 
-  /** Every request held now. */
-  list(): Array<{ sessionId: string; toolUseId: string }> {
-    return [...this.held].map(([toolUseId, h]) => ({ sessionId: h.sessionId, toolUseId }));
+  letGo(): void {
+    this.socket.end();
   }
 
-  /** Stop holding one request without an answer, so the runtime's own prompt takes it. */
-  letGo(toolUseId: string): void {
-    this.held.get(toolUseId)?.socket.end();
-    this.release(toolUseId, null);
+  discard(): void {
+    this.socket.destroy();
   }
 
-  respond(toolUseId: string, decision: 'allow' | 'deny', reason?: string): boolean {
-    const pending = this.held.get(toolUseId);
-    if (!pending) {
-      log.warn('no held permission', { toolUseId });
-      return false;
-    }
-    let delivered = true;
-    try {
-      pending.socket.end(JSON.stringify({ decision, reason: reason ?? '' }));
-    } catch (err) {
-      log.error('failed to write permission answer', { toolUseId, error: String(err) });
-      delivered = false;
-    }
-    this.release(toolUseId, delivered ? { decision, reason: reason ?? '' } : null);
-    if (delivered) log.info('permission answered', { toolUseId, decision });
-    return delivered;
-  }
-
-  /**
-   * Drop held requests the session no longer lists, without reporting them:
-   * the event stream already said they are settled (the tool ran, or the turn
-   * ended), typically because the user answered in the terminal.
-   */
-  retainOnly(sessionId: string, toolUseIds: ReadonlySet<string>): void {
-    for (const [toolUseId, pending] of this.held) {
-      if (pending.sessionId !== sessionId || toolUseIds.has(toolUseId)) continue;
-      this.held.delete(toolUseId);
-      pending.socket.destroy();
-    }
-  }
-
-  /** Close every held connection, giving the hooks a moment to read the end. */
-  async dispose(): Promise<void> {
-    const sockets = [...this.held.values()].map((h) => h.socket);
-    this.held.clear();
-    for (const socket of sockets) socket.end();
-    if (sockets.length === 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    for (const socket of sockets) socket.destroy();
-  }
-
-  private release(toolUseId: string, answer: PermissionAnswer | null): void {
-    const pending = this.held.get(toolUseId);
-    if (!pending) return;
-    this.held.delete(toolUseId);
-    this.onReleased(pending.sessionId, toolUseId, answer);
+  onGone(cb: () => void): void {
+    this.socket.on('close', cb);
   }
 }

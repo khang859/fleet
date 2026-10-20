@@ -70,6 +70,16 @@ export function hashPrompt(text: string): string {
   return createHash('sha256').update(text.trim()).digest('hex');
 }
 
+/**
+ * A `JSON.stringify` replacer that writes object keys in order, so one tool
+ * input gives one key whether the Go hook (which sorts keys) or the mod
+ * (which keeps Claude Code's order) sent it.
+ */
+function sortedKeys(_key: string, value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+  return Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
 function projectNameFromCwd(cwd: string): string {
   const parts = cwd.split(/[/\\]/);
   return parts[parts.length - 1] || cwd;
@@ -218,6 +228,7 @@ export class ClaudeSessionRegistry {
       notificationType: event.notificationType,
       delegated:
         event.status === 'waiting_for_approval' && toolUseId !== undefined && delegates(toolUseId),
+      suggestions: event.permissionSuggestions,
       at: now
     });
 
@@ -420,7 +431,7 @@ export class ClaudeSessionRegistry {
     // outlive the turn and be handed to a later, identical call.
     if (TURN_BOUNDARIES.has(event.event)) entry.toolUseIds.clear();
     if (!event.tool) return event.toolUseId;
-    const key = `${event.tool}:${JSON.stringify(event.toolInput ?? {})}`;
+    const key = `${event.tool}:${JSON.stringify(event.toolInput ?? {}, sortedKeys)}`;
     if (event.event === 'PreToolUse' && event.toolUseId) {
       const queue = entry.toolUseIds.get(key) ?? [];
       queue.push(event.toolUseId);

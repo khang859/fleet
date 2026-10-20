@@ -1,7 +1,8 @@
 import type {
   ClaudePendingPermission,
   ClaudeSessionPhase,
-  ClaudeWaitingKind
+  ClaudeWaitingKind,
+  PermissionSuggestion
 } from '../../shared/claude-sessions';
 
 /** The part of a session that hook events move. */
@@ -22,6 +23,8 @@ export type PhaseInput = {
   notificationType?: string;
   /** The request is held for an answerer that takes it to the user its own way. */
   delegated?: boolean;
+  /** What Claude Code suggests allowing with a permission request. */
+  suggestions?: PermissionSuggestion[];
   at: number;
 };
 
@@ -107,7 +110,8 @@ function addRequest(
       toolUseId,
       tool: { toolName, toolInput: input.toolInput ?? {}, toolUseId: input.toolUseId },
       receivedAt: input.at,
-      ...(input.delegated === true && { delegated: true })
+      ...(input.delegated === true && { delegated: true }),
+      ...(input.suggestions?.length && { suggestions: input.suggestions })
     }
   ];
 }

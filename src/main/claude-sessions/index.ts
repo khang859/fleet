@@ -1,4 +1,3 @@
-import type { Socket } from 'net';
 import { createLogger } from '../logger';
 import { resolveClaudeConfig } from '../../shared/claude-config';
 import type { FleetSettings } from '../../shared/types';
@@ -20,7 +19,10 @@ import type {
 import { createGitRunner, probeGit, type GitRunner } from './git-probe';
 import type { HookEvent } from './hook-events';
 import * as hookInstaller from './hook-installer';
-import { HookServer, PermissionBroker, type PermissionAnswer } from './hook-server';
+import { BridgeServer } from './bridge-server';
+import { HookServer, SocketHold } from './hook-server';
+import { PermissionBridge } from './permission-bridge';
+import { PermissionBroker, type HeldRequest, type PermissionAnswer } from './permission-broker';
 import { PromptInput, type SendResult } from './input';
 import { PromptBridge } from './prompt-bridge';
 import { registerClaudeSessionsIpc, type IpcRegistrar } from './ipc-handlers';
@@ -126,7 +128,8 @@ export class ClaudeSessionsService {
   readonly broker: PermissionBroker;
   private readonly input: PromptInput;
   private readonly server: HookServer;
-  private readonly promptBridge: PromptBridge;
+  private readonly promptBridge = new PromptBridge();
+  private readonly bridgeServer: BridgeServer;
   private readonly resolver: PaneResolver;
   private readonly bridge: PaneActivityBridge;
   private readonly installer: Pick<typeof hookInstaller, 'ensureHooks' | 'uninstall'>;
@@ -158,7 +161,15 @@ export class ClaudeSessionsService {
     this.transcripts = new SessionTranscripts({
       onSignal: (sessionId, signal) => this.registry.settle(sessionId, signal)
     });
-    this.promptBridge = new PromptBridge(deps.bridgeSocketPath);
+    this.bridgeServer = new BridgeServer(
+      {
+        'GET /prompt': this.promptBridge,
+        'POST /permission': new PermissionBridge((event, request) =>
+          this.onHookEvent(event, () => request)
+        )
+      },
+      deps.bridgeSocketPath
+    );
     this.input = new PromptInput({
       session: (sessionId) => this.registry.get(sessionId),
       noteInput: (sessionId, origin, text) => this.registry.noteInput(sessionId, origin, text),
@@ -175,7 +186,7 @@ export class ClaudeSessionsService {
       this.registry.resolvePermission(sessionId, toolUseId);
     });
     this.server = new HookServer(
-      (event, client) => this.onHookEvent(event, client),
+      (event, client) => this.onHookEvent(event, () => new SocketHold(client)),
       deps.socketPath
     );
 
@@ -330,8 +341,24 @@ export class ClaudeSessionsService {
     return this.registry.inputsFor(sessionId);
   }
 
-  respondToPermission(toolUseId: string, decision: 'allow' | 'deny', reason?: string): boolean {
-    return this.broker.respond(toolUseId, decision, reason);
+  /**
+   * Answer a held request. `suggestion` picks one of the changes Claude Code
+   * suggested with it to allow along with it, by its place in the request's
+   * `suggestions`; refused for a deny, or a suggestion the request does not have.
+   */
+  respondToPermission(
+    toolUseId: string,
+    decision: 'allow' | 'deny',
+    reason?: string,
+    suggestion?: number
+  ): boolean {
+    if (suggestion === undefined) return this.broker.respond(toolUseId, decision, reason);
+    if (decision !== 'allow') return false;
+    const offered = this.registry
+      .list()
+      .flatMap((s) => s.pendingPermissions)
+      .find((p) => p.toolUseId === toolUseId)?.suggestions?.[suggestion];
+    return offered !== undefined && this.broker.respond(toolUseId, decision, reason, [offered]);
   }
 
   async stop(): Promise<void> {
@@ -393,10 +420,10 @@ export class ClaudeSessionsService {
     }
     this.startError = null;
     try {
-      await this.promptBridge.start();
+      await this.bridgeServer.start();
     } catch (err) {
-      // Prompts are typed into the terminal instead, as without the mod.
-      log.warn('prompt bridge did not start', { error: String(err) });
+      // Prompts are typed and permissions go to the Go hook instead, as without the mod.
+      log.warn('fleet-bridge socket did not start', { error: String(err) });
     }
     this.liveness = setInterval(() => this.registry.pruneDead(), LIVENESS_INTERVAL_MS);
     this.liveness.unref();
@@ -411,7 +438,7 @@ export class ClaudeSessionsService {
     if (this.liveness) clearInterval(this.liveness);
     this.liveness = null;
     // First, so no prompt goes to a mod while the rest stops.
-    await this.promptBridge.stop();
+    await this.bridgeServer.stop();
     await this.broker.dispose();
     await this.server.stop();
     this.registry.clear();
@@ -493,7 +520,11 @@ export class ClaudeSessionsService {
     }, SNAPSHOT_COALESCE_MS);
   }
 
-  private onHookEvent(event: HookEvent, client: Socket): boolean {
+  /**
+   * Take in one hook event. A permission request some answerer can answer is
+   * held through `open`, and true is returned; otherwise the asker gets no answer.
+   */
+  private onHookEvent(event: HookEvent, open: () => HeldRequest): boolean {
     const placement = this.resolver.resolve(event);
     if (!placement) {
       log.debug('hook event from outside a Fleet pane dropped', { sessionId: event.sessionId });
@@ -524,7 +555,7 @@ export class ClaudeSessionsService {
     if (!this.canAnswer({ sessionId: session.sessionId, paneId: session.paneId, toolUseId })) {
       return false;
     }
-    this.broker.hold(event.sessionId, toolUseId, client);
+    this.broker.hold(event.sessionId, toolUseId, open());
     this.emitPermission({ kind: 'held', session, request });
     return true;
   }

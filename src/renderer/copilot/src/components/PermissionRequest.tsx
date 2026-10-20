@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useCopilotStore, type PermissionStatus } from '../store/copilot-store';
-import { formatPermissionSummary } from '../lib/format-permission';
+import { formatPermissionSummary, suggestionLabel } from '../lib/format-permission';
 import type { CopilotPendingPermission } from '../../../../shared/types';
 import { Button } from './ui/button';
 import { GoToTerminalButton } from './GoToTerminalButton';
@@ -51,17 +51,22 @@ function PermissionDetail({
   );
 }
 
-/** Allow / Deny, or where to answer instead once Fleet can no longer answer. */
+/**
+ * Allow / Deny, and Allow with each change Claude Code suggests, or where to
+ * answer instead once Fleet can no longer answer.
+ */
 function PermissionActions({
   sessionId,
   status,
   isTop,
+  suggestions,
   respond
 }: {
   sessionId: string;
   status: PermissionStatus | undefined;
   isTop: boolean;
-  respond: (decision: 'allow' | 'deny') => void;
+  suggestions: CopilotPendingPermission['suggestions'];
+  respond: (decision: 'allow' | 'deny', suggestion?: number) => void;
 }): React.JSX.Element {
   if (status === 'failed') {
     return (
@@ -74,25 +79,42 @@ function PermissionActions({
     );
   }
   return (
-    <div className="flex gap-1">
-      <Button
-        variant="success"
-        size="sm"
-        disabled={status === 'sending'}
-        onClick={() => respond('allow')}
-      >
-        Allow
-        {isTop && <Key>Y</Key>}
-      </Button>
-      <Button
-        variant="destructive"
-        size="sm"
-        disabled={status === 'sending'}
-        onClick={() => respond('deny')}
-      >
-        Deny
-        {isTop && <Key>N</Key>}
-      </Button>
+    <div className="flex flex-col items-start gap-1">
+      <div className="flex gap-1">
+        <Button
+          variant="success"
+          size="sm"
+          disabled={status === 'sending'}
+          onClick={() => respond('allow')}
+        >
+          Allow
+          {isTop && <Key>Y</Key>}
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          disabled={status === 'sending'}
+          onClick={() => respond('deny')}
+        >
+          Deny
+          {isTop && <Key>N</Key>}
+        </Button>
+      </div>
+      {suggestions?.map((suggestion, i) => {
+        const label = suggestionLabel(suggestion);
+        return (
+          <Button
+            key={i}
+            variant="outline"
+            size="sm"
+            className="max-w-full justify-start text-left [overflow-wrap:anywhere]"
+            disabled={status === 'sending'}
+            onClick={() => respond('allow', i)}
+          >
+            {label}
+          </Button>
+        );
+      })}
     </div>
   );
 }
@@ -109,8 +131,8 @@ export function PermissionRequest({
 
   const { tool } = permission;
   const { description } = formatPermissionSummary(tool);
-  const respond = (decision: 'allow' | 'deny'): void => {
-    void respondPermission(permission.toolUseId, decision);
+  const respond = (decision: 'allow' | 'deny', suggestion?: number): void => {
+    void respondPermission(permission.toolUseId, decision, undefined, suggestion);
   };
 
   return (
@@ -120,7 +142,13 @@ export function PermissionRequest({
         {description && <span className="text-xs text-neutral-400 truncate">{description}</span>}
       </div>
       <PermissionDetail tool={tool} compact={compact} />
-      <PermissionActions sessionId={sessionId} status={status} isTop={isTop} respond={respond} />
+      <PermissionActions
+        sessionId={sessionId}
+        status={status}
+        isTop={isTop}
+        suggestions={permission.suggestions}
+        respond={respond}
+      />
     </div>
   );
 }

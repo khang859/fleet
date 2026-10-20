@@ -3,7 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from 'fs';
 import { connect, type Socket } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { HookServer, PermissionBroker, PERMISSION_HOLD_MS } from '../hook-server';
+import { HookServer, PERMISSION_HOLD_MS, SocketHold } from '../hook-server';
+import { PermissionBroker } from '../permission-broker';
 
 const { warn } = vi.hoisted(() => ({ warn: vi.fn() }));
 vi.mock('../../logger', () => ({
@@ -45,14 +46,11 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     socketPath = join(dir, 'hook.sock');
     received = [];
     released = [];
-    broker = new PermissionBroker(
-      (sessionId, toolUseId) => released.push([sessionId, toolUseId]),
-      200
-    );
+    broker = new PermissionBroker((sessionId, toolUseId) => released.push([sessionId, toolUseId]));
     server = new HookServer((event: HookEvent, client: Socket) => {
       received.push(event);
       if (event.status !== 'waiting_for_approval' || !event.toolUseId) return false;
-      broker.hold(event.sessionId, event.toolUseId, client);
+      broker.hold(event.sessionId, event.toolUseId, new SocketHold(client, 200));
       return true;
     }, socketPath);
     await server.start();

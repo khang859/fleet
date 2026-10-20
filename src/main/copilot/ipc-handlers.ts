@@ -39,9 +39,24 @@ export function registerCopilotIpcHandlers(
 
   ipcMain.handle(
     IPC_CHANNELS.COPILOT_RESPOND_PERMISSION,
-    (_event, args: { toolUseId: string; decision: 'allow' | 'deny'; reason?: string }) => {
-      log.info('permission response', { toolUseId: args.toolUseId, decision: args.decision });
-      return claudeSessions.respondToPermission(args.toolUseId, args.decision, args.reason);
+    // Typed as the renderer may send it, so the checks below mean something.
+    (
+      _event,
+      args: { toolUseId: string; decision: string; reason?: string; suggestion?: number }
+    ) => {
+      log.info('permission response', {
+        toolUseId: args.toolUseId,
+        decision: args.decision,
+        suggestion: args.suggestion
+      });
+      if (args.decision !== 'allow' && args.decision !== 'deny') return false;
+      const suggestion = Number.isInteger(args.suggestion) ? args.suggestion : undefined;
+      return claudeSessions.respondToPermission(
+        args.toolUseId,
+        args.decision,
+        args.reason,
+        suggestion
+      );
     }
   );
 
