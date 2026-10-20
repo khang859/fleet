@@ -43,6 +43,9 @@ describe('PromptInput', () => {
   let noted: Array<{ origin: string; text: string }>;
   let listeners: Set<(change: ClaudeSessionChange) => void>;
   let ackOnSubmit: boolean;
+  /** Sessions whose fleet-bridge mod is waiting for a prompt, and what it was handed. */
+  let waiting: Set<string>;
+  let delivered: string[];
   let input: PromptInput;
 
   /** What Claude Code says it got on submit: no hash, as older hook binaries send. */
@@ -75,6 +78,8 @@ describe('PromptInput', () => {
     listeners = new Set();
     ackOnSubmit = true;
     submitHash = () => undefined;
+    waiting = new Set();
+    delivered = [];
     let typed = '';
     input = new PromptInput({
       session: (id) => (current?.sessionId === id ? current : undefined),
@@ -92,6 +97,16 @@ describe('PromptInput', () => {
         // Claude Code acknowledges the submit with UserPromptSubmit.
         if (ackOnSubmit) emit('UserPromptSubmit', current, submitHash(typed));
         typed = '';
+      },
+      bridge: {
+        has: (id) => waiting.has(id),
+        deliver: (id, text) => {
+          if (!waiting.delete(id)) return false;
+          delivered.push(text);
+          // The mod submits it, and Claude Code acknowledges as for a typed one.
+          if (ackOnSubmit) emit('UserPromptSubmit', current, submitHash(text));
+          return true;
+        }
       },
       now: () => now,
       sleep: async (ms) => {
@@ -129,6 +144,30 @@ describe('PromptInput', () => {
     expect(sleeps).toEqual([SUBMIT_DELAY_MS]);
     expect(noted).toEqual([{ origin: 'orchestrator', text: '[orchestrator] Run the tests' }]);
     expect(listeners.size).toBe(1); // only its own draft listener is left
+  });
+
+  it('hands the prompt to a waiting fleet-bridge mod instead of typing it', async () => {
+    waiting.add('s1');
+    submitHash = (text) => hashPrompt(text);
+    const text = `${'a'.repeat(300)}\n${'b'.repeat(100)}`;
+    expect(await input.send('s1', text, 'orchestrator')).toEqual({
+      ok: true,
+      confirmed: true,
+      text
+    });
+    expect(delivered).toEqual([text]);
+    expect(writes).toEqual([]);
+    expect(sleeps).toEqual([]);
+    expect(noted).toEqual([{ origin: 'orchestrator', text }]);
+  });
+
+  it('lets a waiting mod take a prompt while the user has a draft in the pane', async () => {
+    waiting.add('s1');
+    input.onUserInput(PANE, 'half a thou');
+    expect(input.refusal('s1')).toBeNull();
+    expect((await input.send('s1', 'hello', 'user')).ok).toBe(true);
+    expect(delivered).toEqual(['hello']);
+    expect(writes).toEqual([]);
   });
 
   it('types a long prompt in chunks small enough not to read as a paste', async () => {

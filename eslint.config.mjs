@@ -16,6 +16,7 @@ export default defineConfig(
       '.worktrees/**',
       'resources/pi-extensions/**',
       'resources/opencode-plugin/fleet.ts',
+      'resources/claude-mod/**',
       'scripts/copy-pdfjs-assets.mjs',
       'eslint.config.mjs'
     ]

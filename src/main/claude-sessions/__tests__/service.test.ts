@@ -79,6 +79,7 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
       writeToPane,
       ipc: { handle: (channel, listener) => handled.set(channel, listener) },
       socketPath,
+      bridgeSocketPath: join(dir, 'bridge.sock'),
       installer: installer as never,
       priceTable: () => BUNDLED_PRICES,
       onSnapshot: (snapshot) => snapshots.push(snapshot),

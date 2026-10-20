@@ -3,6 +3,7 @@ import type {
   ClaudeSession,
   ClaudeSessionChange
 } from '../../shared/claude-sessions';
+import type { PromptBridge } from './prompt-bridge';
 import { hashPrompt } from './registry';
 
 /**
@@ -18,6 +19,9 @@ import { hashPrompt } from './registry';
  * eva is the other way round: it takes a bracketed paste as typed text, sent
  * as it is, while typed text can open its command list. So an eva session
  * gets the prompt as one paste, then `\r`.
+ *
+ * A Claude Code session that loaded the fleet-bridge mod takes the prompt
+ * through it instead, with no typing at all (`PromptBridge`).
  */
 
 /** Characters per write: a sixth of the size Claude Code takes as a paste. */
@@ -56,6 +60,8 @@ export type PromptInputDeps = {
   noteInput(sessionId: string, origin: ClaudeInputOrigin, text: string): void;
   subscribe(listener: (change: ClaudeSessionChange) => void): () => void;
   write(paneId: string, data: string): void;
+  /** The fleet-bridge mod's end, which takes a prompt for a session whose mod is waiting. */
+  bridge?: Pick<PromptBridge, 'has' | 'deliver'>;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   ackTimeoutMs?: number;
@@ -199,10 +205,13 @@ export class PromptInput {
     const ack = this.watchAck(sessionId, hashPrompt(clean));
     try {
       this.deps.noteInput(sessionId, origin, clean);
-      if (eva) this.deps.write(session.paneId, `${PASTE_START}${clean}${PASTE_END}`);
-      else await this.type(session.paneId, clean);
-      await this.sleep(SUBMIT_DELAY_MS);
-      this.deps.write(session.paneId, '\r');
+      // In the same tick as `refusal`, so a mod that let the draft through is still waiting.
+      if (!this.deps.bridge?.deliver(sessionId, clean)) {
+        if (eva) this.deps.write(session.paneId, `${PASTE_START}${clean}${PASTE_END}`);
+        else await this.type(session.paneId, clean);
+        await this.sleep(SUBMIT_DELAY_MS);
+        this.deps.write(session.paneId, '\r');
+      }
       const heard = await ack.wait();
       if (heard === 'mismatch') return { ok: false, reason: PROMPT_MISMATCH };
       return { ok: true, confirmed: heard === 'match', text: clean };
@@ -222,9 +231,12 @@ export class PromptInput {
     if (!session) return 'That session is not running in a Fleet pane.';
     const busy = busyReason(session);
     if (busy) return `Not sent: ${busy}.`;
-    const draft = this.draft(session.paneId);
-    if (draft.dirty) return 'Not sent: the user has typed text in that pane and not sent it yet.';
-    if (this.now() - draft.keyAt < QUIET_MS) return 'Not sent: the user is typing in that pane.';
+    // The mod submits a prompt of its own and leaves the draft in the box alone.
+    if (!this.deps.bridge?.has(sessionId)) {
+      const draft = this.draft(session.paneId);
+      if (draft.dirty) return 'Not sent: the user has typed text in that pane and not sent it yet.';
+      if (this.now() - draft.keyAt < QUIET_MS) return 'Not sent: the user is typing in that pane.';
+    }
     if (this.sending.has(sessionId)) {
       return 'Not sent: another prompt is being typed into that session.';
     }

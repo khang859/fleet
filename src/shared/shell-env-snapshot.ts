@@ -9,6 +9,7 @@ import type { EnvSource, ShellEnvSnapshot, ShellEnvVar } from './shell-env-types
 const FLEET_BUILTIN_KEYS = new Set([
   'FLEET_SESSION',
   'FLEET_PANE_ID',
+  'FLEET_BRIDGE_SOCKET',
   'COLORTERM',
   'TERM_PROGRAM',
   'TERM_PROGRAM_VERSION'
