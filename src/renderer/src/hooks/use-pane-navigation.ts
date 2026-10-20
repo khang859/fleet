@@ -11,13 +11,6 @@ function sc(id: string): ShortcutDef {
   return def;
 }
 
-/** Filter out pinned tools for Cmd+1-9 tab switching. */
-export function getNormalTabs<T extends { type?: string; cwd: string }>(tabs: T[]): T[] {
-  return tabs.filter(
-    (t) => t.type !== 'settings' && t.type !== 'annotate' && t.type !== 'sessions'
-  );
-}
-
 /**
  * The id one row above or below `tabId` in `rowIds`, or undefined at either end
  * of the list - the arrows stop there rather than wrap.
@@ -33,8 +26,9 @@ export function neighbourTabId(
 }
 
 /**
- * Tab ids in the order the sidebar drew them. Read off the rendered rows,
- * because only the sidebar knows that order - groups, nested files and
+ * Tab ids in the order the sidebar drew them - the full sidebar or, when it is
+ * collapsed, the icon rail. Read off the rendered rows, because only the
+ * sidebar knows that order - groups, nested files, the agents section and
  * collapsed sections all move a tab away from its place in `workspace.tabs`.
  */
 function sidebarRowIds(): Array<string | null> {
@@ -236,16 +230,15 @@ export function usePaneNavigation(): void {
         return;
       }
 
-      // Cmd/Ctrl+1-9 to switch tabs (check metaKey on mac, ctrlKey on other)
-      // Only count normal tabs — special tabs (Sessions, Settings) are excluded
+      // Cmd/Ctrl+1-9 to switch tabs (check metaKey on mac, ctrlKey on other).
+      // Counted down the rows the sidebar draws, so Cmd+3 is the third row the
+      // user sees - pinned tools and the tabs of a folded group are not rows.
       const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
       const modHeld = isMac ? e.metaKey : e.ctrlKey;
       if (modHeld && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
-        const index = parseInt(e.key) - 1;
-        const normalTabs = getNormalTabs(workspace.tabs);
-        const tab = normalTabs.at(index);
-        if (tab) setActiveTab(tab.id);
+        const tabId = sidebarRowIds()[parseInt(e.key) - 1];
+        if (tabId) setActiveTab(tabId);
         return;
       }
     }
