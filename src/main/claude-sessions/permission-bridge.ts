@@ -241,10 +241,12 @@ export class PermissionBridge implements BridgeRoute {
       if (text.length <= MAX_ASK_CHARS) return;
       tooLarge = true;
       text = '';
-      reply(res, 413);
     });
     req.on('end', () => {
-      if (!tooLarge) this.onAsk(text, res);
+      // Answered only once all of it is read: an answer while the mod is still
+      // sending closes the connection under it, and it sees an error, not the 413.
+      if (tooLarge) reply(res, 413);
+      else this.onAsk(text, res);
     });
   }
 

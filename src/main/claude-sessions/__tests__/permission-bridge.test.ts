@@ -18,11 +18,16 @@ type Reply = { status: number; body: string };
 function ask(socketPath: string, body: object): { reply: Promise<Reply>; abort: () => void } {
   let abort = (): void => {};
   const reply = new Promise<Reply>((resolve, reject) => {
-    const req = request({ socketPath, path: '/permission', method: 'POST' }, (res) => {
-      let text = '';
-      res.on('data', (chunk) => (text += chunk.toString()));
-      res.on('end', () => resolve({ status: res.statusCode ?? 0, body: text }));
-    });
+    // A connection of its own, as the mod's: one kept alive in the shared agent
+    // throws EPIPE with nothing listening when the server closes it after a large body.
+    const req = request(
+      { socketPath, path: '/permission', method: 'POST', agent: false },
+      (res) => {
+        let text = '';
+        res.on('data', (chunk) => (text += chunk.toString()));
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, body: text }));
+      }
+    );
     req.on('error', reject);
     req.end(JSON.stringify(body));
     abort = () => req.destroy();
@@ -210,6 +215,7 @@ describe.skipIf(process.platform === 'win32')('PermissionBridge', () => {
     const again = ask(socketPath, permission);
     await vi.waitFor(() => expect(admitted).toHaveLength(2));
     again.abort();
+    await expect(again.reply).rejects.toThrow();
   });
 
   it('knows which tool calls the mod asked about, whatever the order of their input', async () => {

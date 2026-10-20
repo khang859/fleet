@@ -71,3 +71,15 @@ In tmux, `send-keys Enter` had the same problem, and `send-keys -H 0d` worked.
 A long "Always allow access to <path>" label made the whole session row wider than the panel, because Radix `ScrollArea` lays its content out as a table that grows to its widest child.
 A `truncate` button cannot shrink it, since its min-content width is still the full label.
 **Fix:** let the label wrap with `[overflow-wrap:anywhere]`.
+
+## Unhandled errors in the bridge tests
+
+PR #692 went red in CI with every test passing: Vitest counted two unhandled errors, and that fails the run.
+Locally they were missed because only the "Tests" line was checked, not the "Errors" line or the exit code.
+
+- A test that aborts an ask with `req.destroy()` must await the rejected reply, or the "socket hang up" is an unhandled rejection.
+- A Node `http.request` on the shared keep-alive agent throws EPIPE with nothing listening when the server closes the connection after a body of about 1 MB or more, even after the response was read.
+  **Fix:** ask with `agent: false`, a connection of its own as the mod's.
+- The bridge answers 413 only after it has read the whole body, so the client is not cut off mid-send and sees the 413 rather than a connection error.
+
+Run `npm test` and check its exit code, not just the pass counts.
