@@ -181,6 +181,7 @@ describe('SettingsStore settings merge', () => {
         reserveFiveHourPct: 80,
         reserveSevenDayPct: 90,
         nudgeLimit: 3,
+        turnLimit: 20,
         permissionExpirySec: 180
       },
       crew: {
@@ -204,6 +205,7 @@ describe('SettingsStore settings merge', () => {
         reserveFiveHourPct: 80,
         reserveSevenDayPct: 90,
         nudgeLimit: 3,
+        turnLimit: 20,
         permissionExpirySec: 180
       },
       crew: {

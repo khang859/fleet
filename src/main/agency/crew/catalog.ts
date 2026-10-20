@@ -189,6 +189,17 @@ export async function saveRole(
   return { ok: true, path: target.path };
 }
 
+/** Write `role` to `path` with new instructions and its frontmatter as it is. */
+export async function writeRole(path: string, role: CrewRole, instructions: string): Promise<void> {
+  await writeFrontmatterFile<Record<string, unknown>>(
+    path,
+    roleFront(asNewRole(role)),
+    instructions,
+    RoleFrontmatter,
+    'role'
+  );
+}
+
 const hashOf = (value: unknown): string =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
 

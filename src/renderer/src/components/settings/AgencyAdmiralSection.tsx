@@ -3,7 +3,8 @@ import { DEFAULT_AGENCY_SETTINGS, type AgencySettings } from '../../../../shared
 import {
   NUDGE_LIMIT_MAX,
   PERMISSION_EXPIRY_MAX_SEC,
-  PERMISSION_EXPIRY_MIN_SEC
+  PERMISSION_EXPIRY_MIN_SEC,
+  TURN_LIMIT_MAX
 } from '../../../../shared/agency-settings';
 import { clockTime } from '../../../../shared/agency-crew';
 import { nextMonthStart } from '../../../../shared/agency-spend';
@@ -230,6 +231,25 @@ export function AgencyAdmiralSection(): React.JSX.Element | null {
             that, its step is blocked.
           </p>
           <AdmiralChangeNote marks={marks} settingKey="agency.admiral.nudgeLimit" />
+        </div>
+
+        <div>
+          <SettingRow label="Automatic turns in a row">
+            <BoundedNumber
+              id="agency-turn-limit"
+              label="Automatic turns in a row"
+              value={agency.admiral.turnLimit}
+              min={1}
+              max={TURN_LIMIT_MAX}
+              fallback={DEFAULT_AGENCY_SETTINGS.admiral.turnLimit}
+              onCommit={(turnLimit) => patchAdmiral({ turnLimit })}
+            />
+          </SettingRow>
+          <p className="text-xs text-fleet-text-subtle mt-1">
+            How many turns the Admiral may take on its own before a job stops and asks you whether
+            to go on. Anything you do for the job, or a finished step, starts the count again.
+          </p>
+          <AdmiralChangeNote marks={marks} settingKey="agency.admiral.turnLimit" />
         </div>
 
         <div>

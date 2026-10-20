@@ -1,4 +1,5 @@
 import type { CrewRuntime } from './agency-crew';
+import type { CrewLesson } from './agency-lessons';
 import type { SettingsCard } from './agency-settings';
 import type { MeetQuestionId } from './agency-meet';
 import type { ProjectTrust } from './agency-projects';
@@ -131,7 +132,8 @@ export type AgencyQuestionKind =
   | 'continue'
   | 'resume'
   | 'rehire'
-  | 'budget';
+  | 'budget'
+  | 'crew_lesson';
 
 export const AGENCY_QUESTION_KINDS: readonly AgencyQuestionKind[] = [
   'ask',
@@ -140,7 +142,8 @@ export const AGENCY_QUESTION_KINDS: readonly AgencyQuestionKind[] = [
   'continue',
   'resume',
   'rehire',
-  'budget'
+  'budget',
+  'crew_lesson'
 ];
 
 /** The kinds the Admiral puts up itself, whose answers wake it; the rest are Fleet's own cards. */
@@ -204,6 +207,8 @@ export type AgencyQuestion = {
   proposal: ClientFileProposal | null;
   /** What a `budget` card raises; null for every other kind. */
   raise: BudgetRaise | null;
+  /** What a `crew_lesson` card would change in a role; null for every other kind. */
+  lesson: CrewLesson | null;
   /** Answered after it was withdrawn: kept, and the Admiral is told it came late. */
   late: boolean;
   withdrawnReason: string | null;
@@ -378,6 +383,8 @@ export type AgencySettings = {
     reserveSevenDayPct: number;
     /** How many times the Admiral may nudge a crew member that ends a turn without reporting. */
     nudgeLimit: number;
+    /** How many automatic Admiral turns a job takes in a row before it asks the client to continue. */
+    turnLimit: number;
     /** How long a client permission card waits before it is denied, in seconds. */
     permissionExpirySec: number;
   };
@@ -407,6 +414,7 @@ export const DEFAULT_AGENCY_SETTINGS: AgencySettings = {
     reserveFiveHourPct: 80,
     reserveSevenDayPct: 90,
     nudgeLimit: 3,
+    turnLimit: 20,
     permissionExpirySec: PERMISSION_EXPIRY_SEC_DEFAULT
   },
   crew: {

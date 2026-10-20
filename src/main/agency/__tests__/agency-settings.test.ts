@@ -13,7 +13,7 @@ import { SettingsChangeArgs, type AgentAgencyCapability } from '../../../shared/
 import { AgencyService } from '../index';
 import { loadSetup, saveSetup } from '../projects/project-store';
 import { createAgencyCapability } from '../tools';
-import { REPO } from './fixture';
+import { REPO, moveJob, openJob } from './fixture';
 
 /** `settings_read` and `settings_change`: what applies, what waits on a card, and Undo. */
 
@@ -247,6 +247,50 @@ describe('settings_change', () => {
     }
     expect(agency.crew.claude.permissionMode).toBe('default');
     expect(agency.crew.eva.permissionMode).toBe('default');
+  });
+
+  it('lowers the automatic turn limit at once, and waits for the client to raise it', async () => {
+    await change([{ key: 'agency.admiral.turnLimit', value: 10 }]);
+    expect(agency.admiral.turnLimit).toBe(10);
+
+    await change([{ key: 'agency.admiral.turnLimit', value: 50 }]);
+    expect(agency.admiral.turnLimit).toBe(10);
+    const [pending] = cards()
+      .flatMap((card) => card.changes)
+      .filter((c) => c.status === 'pending');
+    expect(pending).toMatchObject({ key: 'agency.admiral.turnLimit', kind: 'approve' });
+    expect(await service.settings.decide(pending.id, true)).toBe(true);
+    expect(agency.admiral.turnLimit).toBe(50);
+
+    expect((await change([{ key: 'agency.admiral.turnLimit', value: 0 }])).text).toContain(
+      'agency.admiral.turnLimit'
+    );
+    expect(agency.admiral.turnLimit).toBe(50);
+  });
+
+  it('pauses a job at the turn limit the settings hold', async () => {
+    await change([{ key: 'agency.admiral.turnLimit', value: 3 }]);
+    const job = openJob(service.store);
+    moveJob(service.store, job.id, 'running');
+    // Turns count only inside an approved plan.
+    service.store['db'].prepare('UPDATE jobs SET approved_version = 1 WHERE id = ?').run(job.id);
+    const scope = { repoId: REPO.repoId, jobId: job.id };
+    const event = (line: string): number =>
+      service.store.enqueueWakeup({ ...scope, kind: 'event', payload: { line } });
+
+    for (let turn = 0; turn < 3; turn++) {
+      const id = event(`crew update ${turn}`);
+      expect(service.store.pullWakeups(scope).ids).toEqual([id]);
+      service.store.ackWakeups([id]);
+    }
+    event('one more');
+    expect(service.store.pullWakeups(scope).ids).toEqual([]);
+    expect(service.store.getJob(job.id)).toMatchObject({ holds: ['chain_limit'] });
+    const card = service.store
+      .listQuestions(REPO.repoId, { jobId: job.id, statuses: ['open'] })
+      .find((q) => q.kind === 'continue');
+    expect(card?.question).toBe('The Admiral took 3 turns in a row on its own');
+    expect(card?.options[0]).toEqual({ label: 'Continue', detail: '3 more turns' });
   });
 
   it('turns a request injected into a file into a card at most', async () => {

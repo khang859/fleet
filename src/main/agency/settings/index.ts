@@ -58,6 +58,7 @@ const ADMIRAL_NUMBERS = {
   'agency.admiral.reserveFiveHourPct': 'reserveFiveHourPct',
   'agency.admiral.reserveSevenDayPct': 'reserveSevenDayPct',
   'agency.admiral.nudgeLimit': 'nudgeLimit',
+  'agency.admiral.turnLimit': 'turnLimit',
   'agency.admiral.permissionExpirySec': 'permissionExpirySec'
 } as const satisfies Partial<Record<AgencySettingKey, keyof AgencySettings['admiral']>>;
 

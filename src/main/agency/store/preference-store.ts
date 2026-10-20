@@ -109,6 +109,16 @@ export class PreferenceStore {
       .run(projectId, topic, this.now());
   }
 
+  /** The topics declined on a project that start with `prefix`, oldest first. */
+  declinedTopics(projectId: string, prefix: string): string[] {
+    return this.db
+      .prepare<[string, number, string], { topic: string }>(
+        'SELECT topic FROM declined_topics WHERE project_id = ? AND substr(topic, 1, ?) = ? ORDER BY at'
+      )
+      .all(projectId, prefix.length, prefix)
+      .map((row) => row.topic);
+  }
+
   topicDeclined(projectId: string, topic: string): boolean {
     return (
       this.db

@@ -6,6 +6,7 @@ import { botName, waitingFor } from '../../../../shared/pr-review';
 import {
   CHECK_START_LIMIT_MS,
   commentSummary,
+  conflictEvent,
   deliveryNote,
   parsePrReview,
   prReview,
@@ -129,6 +130,26 @@ describe('reviewEvents', () => {
     );
     expect(note).toContain('Greptile and Claude left 5 comments');
     expect(deliveryNote({ ...PR, state: 'merged', review }, 'builder')).toBe('');
+  });
+});
+
+describe('conflictEvent', () => {
+  const pr = { ...PR, base: 'main' };
+
+  it('tells the Admiral once when its PR comes to conflict with the base', () => {
+    const event = conflictEvent({ ...pr, conflicts: true }, 'build-1', { ...pr, conflicts: false });
+    expect(event?.line).toBe('PR #18959 has conflicts with main');
+    expect(event?.body).toContain('Step build-1 delivered this PR');
+    expect(conflictEvent({ ...pr, conflicts: true }, 'build-1', pr)).not.toBeNull();
+    expect(
+      conflictEvent({ ...pr, conflicts: true }, 'build-1', { ...pr, conflicts: true })
+    ).toBeNull();
+    expect(conflictEvent({ ...pr, conflicts: false }, 'build-1', pr)).toBeNull();
+  });
+
+  it('says nothing about a PR that is no longer open', () => {
+    const merged = { ...pr, state: 'merged', conflicts: true } as PrState;
+    expect(conflictEvent(merged, 'build-1', pr)).toBeNull();
   });
 });
 

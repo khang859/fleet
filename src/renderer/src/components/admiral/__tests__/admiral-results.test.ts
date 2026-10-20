@@ -106,6 +106,18 @@ describe('ResultCard', () => {
     expect(html(result({ kind: 'pr', pr: { ...PR, state: 'merged' } }))).toContain('Merged');
   });
 
+  it('says when an open PR has conflicts with its base', () => {
+    expect(html(result({ kind: 'pr', pr: { ...PR, conflicts: true } }))).toContain(
+      `Conflicts with ${PR.base}`
+    );
+    expect(html(result({ kind: 'pr', pr: { ...PR, conflicts: false } }))).not.toContain(
+      'Conflicts with'
+    );
+    expect(
+      html(result({ kind: 'pr', pr: { ...PR, state: 'merged', conflicts: true } }))
+    ).not.toContain('Conflicts with');
+  });
+
   it('says what an open PR waits on, and lists its open bot comments', () => {
     const out = html(result({ kind: 'pr', pr: { ...PR, review: REVIEW } }));
     expect(out).toContain('Waiting for Greptile and the build check');

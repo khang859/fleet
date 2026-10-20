@@ -84,6 +84,7 @@ import { testRuntime, type RuntimeTestDeps } from './crew/runtime-test';
 import { CrewPermissions, type PermissionDeps } from './crew/permissions';
 import { JobsService, NO_CREW, type CrewControl } from './jobs';
 import { StackSlots } from './jobs/stack-slots';
+import { chainLimit } from './jobs/chain';
 import { OPEN_JOB_STATES } from './jobs/job-machine';
 import { ServerWatch } from './workspaces/server-watch';
 import { exportJob } from './jobs/job-export';
@@ -118,6 +119,7 @@ import { agencyDbPath } from './store/agency-db';
 import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/agency-store';
 import { SpendService } from './spend/spend-service';
 import { Understanding, type AdmiralCompletion } from './understanding';
+import { CrewLessons } from './lessons';
 import { pctText, usdText } from '../../shared/agency-spend';
 
 const PASSING_RUNTIME = { path: null, version: null, checks: [] };
@@ -267,6 +269,7 @@ export class AgencyService {
   private readonly held: HeldDecisions;
   readonly spend: SpendService;
   readonly understanding: Understanding;
+  readonly lessons: CrewLessons;
   /** How crew panes are stopped and found live. */
   private readonly crewControl: CrewControl;
   /** Folders already written to the trust table this run. */
@@ -279,7 +282,12 @@ export class AgencyService {
   private readonly runtimeTests = new Map<CrewRuntime, Promise<RuntimeTestResult>>();
 
   constructor(private readonly deps: AgencyServiceDeps) {
-    this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), { now: deps.now });
+    const agencySettings = deps.agencySettings ?? memorySettings();
+    this.agencySettings = agencySettings;
+    this.store = new AgencyStore(deps.dbPath ?? agencyDbPath(), {
+      now: deps.now,
+      turnLimit: () => chainLimit(agencySettings.get().admiral)
+    });
     this.clientFiles = new ClientFiles({
       store: this.store,
       home: () => deps.agencyHome ?? agencyHome(),
@@ -295,8 +303,6 @@ export class AgencyService {
       home: deps.agencyHome
     });
     const panes = deps.crewPanes ?? null;
-    const agencySettings = deps.agencySettings ?? memorySettings();
-    this.agencySettings = agencySettings;
     this.crewControl = deps.crew ?? (panes === null ? NO_CREW : paneControl(panes));
     this.spend = new SpendService({
       store: this.store,
@@ -319,6 +325,16 @@ export class AgencyService {
       redactor: async (repoId) => this.redactor(repoId),
       complete: deps.admiralCompletion ?? null,
       emit: (repoId) => deps.emit({ repoId, jobIds: [] })
+    });
+    this.lessons = new CrewLessons({
+      store: this.store,
+      spend: this.spend,
+      complete: deps.admiralCompletion ?? null,
+      record: async (jobId) => (await this.exportJob(jobId))?.text ?? null,
+      catalog: async (repoId) => this.crewCatalog(repoId),
+      userCrew: deps.crewDirs?.user ?? null,
+      projectCrew: (repoId) => projectCrewDir(repoId, deps.agencyHome ?? agencyHome()),
+      changed: (repoId) => this.changed([{ repoId, jobId: null }])
     });
     this.servers = new ServerWatch({
       store: this.store,
@@ -448,6 +464,11 @@ export class AgencyService {
       },
       changed: (touched) => this.changed(touched),
       crewFreed: () => this.jobs.admitQueued(),
+      closed: (jobId) => {
+        this.lessons.review(jobId).catch((err: unknown) => {
+          log.error('Could not review an ended job', { jobId, err: String(err) });
+        });
+      },
       closeNotes: async (jobId) => this.prs.closeNotes(jobId),
       isOnline: deps.isOnline ?? (() => true)
     });
@@ -606,6 +627,16 @@ export class AgencyService {
       clientFileChanged: this.clientFiles.changedOutside(repoId),
       held: this.held.list(repoId)
     };
+  }
+
+  /**
+   * The client answers a card. A crew lesson card writes its role first,
+   * which reads and writes files; every other card is answered at once.
+   */
+  async answerClient(req: AgencyAnswerRequest): Promise<AgencyQuestion | null> {
+    const q = this.store.getQuestion(req.id);
+    if (q !== null && !(await this.lessons.apply(q, req))) return null;
+    return this.answer(req);
   }
 
   answer(req: AgencyAnswerRequest): AgencyQuestion | null {

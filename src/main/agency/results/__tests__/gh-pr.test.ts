@@ -44,6 +44,17 @@ describe('parsePr', () => {
     expect(parsePr(pr)?.checks).toEqual({ passed: 1, failed: 2, pending: 2 });
   });
 
+  it('reads whether an open PR has conflicts with its base, once GitHub has worked it out', () => {
+    const open = (mergeable: string): unknown => ({
+      ...(recorded('pr-654-merged.json') as object),
+      state: 'OPEN',
+      mergeable
+    });
+    expect(parsePr(open('CONFLICTING'))?.conflicts).toBe(true);
+    expect(parsePr(open('MERGEABLE'))?.conflicts).toBe(false);
+    expect(parsePr(open('UNKNOWN'))).not.toHaveProperty('conflicts');
+  });
+
   it('is null for anything that is not a PR', () => {
     expect(parsePr({ message: 'Not Found' })).toBeNull();
     expect(parsePr(null)).toBeNull();

@@ -225,6 +225,15 @@ export function reviewEvents(
   return events;
 }
 
+/** What the Admiral hears when an open PR comes to conflict with its base, or null. */
+export function conflictEvent(pr: PrState, step: string, before: PrState): ReviewEvent | null {
+  if (pr.state !== 'open' || pr.conflicts !== true || before.conflicts === true) return null;
+  return {
+    line: `PR #${pr.number} has conflicts with ${pr.base}`,
+    body: `Step ${step} delivered this PR, and ${pr.base} has moved on since: GitHub cannot merge it until its branch is brought up to date. Send it to step ${step} to merge ${pr.base} into its branch, settle the conflicts and push, or tell the client why not.`
+  };
+}
+
 function commentsEvent(pr: PrState, step: string, fresh: PrComment[]): ReviewEvent {
   const bots = formatList([...new Set(fresh.map((c) => botName(c.author)))]);
   const n = fresh.length === 1 ? 'a comment' : `${fresh.length} comments`;
