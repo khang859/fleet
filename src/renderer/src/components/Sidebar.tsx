@@ -11,7 +11,8 @@ import {
   Compass,
   MessageCircle,
   SlidersHorizontal,
-  Server
+  Server,
+  X
 } from 'lucide-react';
 import { getFileIcon } from '../lib/file-icons';
 import { TabItem } from './TabItem';
@@ -230,6 +231,9 @@ function UserGroupHeader({
   );
 }
 
+const GROUP_HEADER_BUTTON =
+  'opacity-60 group-hover/header:opacity-100 text-fleet-text-muted hover:text-fleet-text w-5 h-5 flex items-center justify-center rounded border border-fleet-border-strong hover:border-fleet-border-strong hover:bg-fleet-surface-3 transition active:scale-90 cursor-pointer';
+
 function GroupHeader({
   label,
   tabCount,
@@ -237,6 +241,7 @@ function GroupHeader({
   onToggle,
   onAddWorktree,
   onRename,
+  onUngroup,
   onDragStart,
   onDragOver,
   onDrop,
@@ -248,6 +253,7 @@ function GroupHeader({
   onToggle: () => void;
   onAddWorktree: () => void;
   onRename: (newLabel: string) => void;
+  onUngroup: () => void;
   onDragStart: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
@@ -335,7 +341,7 @@ function GroupHeader({
               <span className="text-[10px] text-fleet-text-subtle">{tabCount} tabs</span>
             )}
             <button
-              className="opacity-60 group-hover/header:opacity-100 text-fleet-text-muted hover:text-fleet-text w-5 h-5 flex items-center justify-center text-sm rounded border border-fleet-border-strong hover:border-fleet-border-strong hover:bg-fleet-surface-3 transition active:scale-90 cursor-pointer"
+              className={`${GROUP_HEADER_BUTTON} text-sm`}
               onClick={(e) => {
                 e.stopPropagation();
                 onAddWorktree();
@@ -343,6 +349,17 @@ function GroupHeader({
               title="Add worktree"
             >
               +
+            </button>
+            <button
+              className={GROUP_HEADER_BUTTON}
+              onClick={(e) => {
+                e.stopPropagation();
+                onUngroup();
+              }}
+              title="Ungroup (tabs stay open)"
+              aria-label="Ungroup"
+            >
+              <X size={12} />
             </button>
           </span>
         </div>
@@ -359,6 +376,12 @@ function GroupHeader({
             }}
           >
             Rename
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
+            onSelect={onUngroup}
+          >
+            Ungroup
           </ContextMenu.Item>
         </ContextMenu.Content>
       </ContextMenu.Portal>
@@ -461,6 +484,7 @@ export function Sidebar({
     createWorktreeGroup,
     closeWorktreeTab,
     renameWorktreeGroup,
+    ungroupWorktreeGroup,
     worktreeCloseConfirm,
     setWorktreeCloseConfirm,
     setSidebarWidth,
@@ -491,6 +515,7 @@ export function Sidebar({
       createWorktreeGroup: s.createWorktreeGroup,
       closeWorktreeTab: s.closeWorktreeTab,
       renameWorktreeGroup: s.renameWorktreeGroup,
+      ungroupWorktreeGroup: s.ungroupWorktreeGroup,
       worktreeCloseConfirm: s.worktreeCloseConfirm,
       setWorktreeCloseConfirm: s.setWorktreeCloseConfirm,
       setSidebarWidth: s.setSidebarWidth,
@@ -1271,6 +1296,7 @@ export function Sidebar({
                     isCollapsed={isCollapsed}
                     onToggle={() => toggleGroupCollapsed(groupId)}
                     onRename={(newLabel) => renameWorktreeGroup(groupId, newLabel)}
+                    onUngroup={() => ungroupWorktreeGroup(groupId)}
                     onAddWorktree={() => {
                       const anyTab = groupTabs[0];
                       const firstPane = collectPaneIds(anyTab.splitRoot)[0];
@@ -1372,7 +1398,7 @@ export function Sidebar({
                   worktreeDisabledReason={
                     isFile
                       ? undefined
-                      : tab.groupRole === 'worktree'
+                      : tab.worktreePath
                         ? 'Already a worktree'
                         : tab.groupId
                           ? 'Worktrees already created'

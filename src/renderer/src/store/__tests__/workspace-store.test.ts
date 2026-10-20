@@ -753,6 +753,66 @@ describe('closeWorktreeTab — dissolved group', () => {
   });
 });
 
+describe('ungroupWorktreeGroup', () => {
+  const GROUP_FIELDS = { groupId: 'g1', groupLabel: 'repo' };
+  const PARENT_TAB = {
+    id: 'tab-parent',
+    label: 'repo',
+    labelIsCustom: false,
+    cwd: '/repo',
+    ...GROUP_FIELDS,
+    groupRole: 'parent' as const,
+    splitRoot: { type: 'leaf' as const, id: 'pane-parent', cwd: '/repo' }
+  };
+  const WORKTREE_TAB = {
+    id: 'tab-wt',
+    label: 'feature-branch',
+    labelIsCustom: true,
+    cwd: '/repo-wt',
+    ...GROUP_FIELDS,
+    groupRole: 'worktree' as const,
+    worktreeBranch: 'feature-branch',
+    worktreePath: '/repo-wt',
+    splitRoot: { type: 'leaf' as const, id: 'pane-wt', cwd: '/repo-wt' }
+  };
+
+  beforeEach(() => {
+    useWorkspaceStore.setState({
+      workspace: { ...WS_A, tabs: [...WS_A.tabs, PARENT_TAB, WORKTREE_TAB] },
+      activeTabId: 'tab-wt',
+      activePaneId: 'pane-wt',
+      collapsedGroups: new Set(['g1'])
+    });
+  });
+
+  it('keeps every tab open, in order, with no group left', () => {
+    useWorkspaceStore.getState().ungroupWorktreeGroup('g1');
+
+    const { workspace, activeTabId, collapsedGroups } = useWorkspaceStore.getState();
+    expect(workspace.tabs.map((t) => t.id)).toEqual([
+      'tab-ann-a',
+      'tab-a1',
+      'tab-parent',
+      'tab-wt'
+    ]);
+    for (const t of workspace.tabs) {
+      expect(t.groupId).toBeUndefined();
+      expect(t.groupRole).toBeUndefined();
+      expect(t.groupLabel).toBeUndefined();
+    }
+    expect(activeTabId).toBe('tab-wt');
+    expect(collapsedGroups.has('g1')).toBe(false);
+  });
+
+  it('keeps the worktree fields so closing the tab still cleans up the worktree', () => {
+    useWorkspaceStore.getState().ungroupWorktreeGroup('g1');
+
+    const wt = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === 'tab-wt');
+    expect(wt?.worktreePath).toBe('/repo-wt');
+    expect(wt?.worktreeBranch).toBe('feature-branch');
+  });
+});
+
 describe('closePane — worktree tab last pane', () => {
   const WORKTREE_TAB = {
     id: 'tab-wt2',
