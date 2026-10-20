@@ -248,6 +248,7 @@ type WorkspaceStore = {
   ) => void;
   closeWorktreeTab: (tabId: string) => void;
   closeWorktreeGroup: (groupId: string) => void;
+  ungroupWorktreeGroup: (groupId: string) => void;
   toggleGroupCollapsed: (groupId: string) => void;
   reorderWithinGroup: (groupId: string, fromIndex: number, toIndex: number) => void;
   reorderGroup: (groupId: string, targetIndex: number) => void;
@@ -1158,6 +1159,24 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         workspace: { ...state.workspace, tabs },
         activeTabId: nextTab?.id ?? null,
         activePaneId: nextTab ? (collectPaneIds(nextTab.splitRoot)[0] ?? null) : null,
+        collapsedGroups: newCollapsed,
+        isDirty: true
+      };
+    });
+  },
+
+  ungroupWorktreeGroup: (groupId) => {
+    set((state) => {
+      // Worktree fields stay, so closing a former member still removes its worktree.
+      const tabs = state.workspace.tabs.map((t) =>
+        t.groupId === groupId
+          ? { ...t, groupId: undefined, groupRole: undefined, groupLabel: undefined }
+          : t
+      );
+      const newCollapsed = new Set(state.collapsedGroups);
+      newCollapsed.delete(groupId);
+      return {
+        workspace: { ...state.workspace, tabs },
         collapsedGroups: newCollapsed,
         isDirty: true
       };
