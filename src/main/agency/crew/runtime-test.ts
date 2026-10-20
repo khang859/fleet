@@ -6,6 +6,7 @@ import {
   type RuntimeTestResult,
   type RuntimeTestRow
 } from '../../../shared/agency-crew';
+import type { CrewPermissionMode } from '../../../shared/agency';
 import type { HookEntry } from '../../claude-sessions/hook-installer';
 import { testLaunch } from './runtimes';
 
@@ -150,6 +151,7 @@ export async function testRuntime(
   runtime: CrewRuntime,
   cwd: string,
   model: string | undefined,
+  permissionMode: CrewPermissionMode,
   deps: RuntimeTestDeps
 ): Promise<RuntimeTestResult> {
   const paneId = deps.newId();
@@ -161,6 +163,7 @@ export async function testRuntime(
     hooks: deps.hooks(),
     evaHook,
     model,
+    permissionMode,
     prompt: TEST_PROMPT
   });
   for (const file of launch.files) {

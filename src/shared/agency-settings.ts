@@ -60,6 +60,13 @@ const addingNeedsOk = {
   rule: "removing one applies at once; adding one needs the client's OK"
 };
 
+/** A crew mode that asks the Admiral less: only the client turns it on. */
+const onIsClientOnly = {
+  kind: (_before: SettingValue, after: SettingValue): SettingKind =>
+    after === 'default' ? 'apply' : 'client-only',
+  rule: 'turning it off applies at once; only the client turns it on, in Settings > Agency > Crew'
+};
+
 /** A change that can cost more either way, such as another model. */
 const needsOk = {
   kind: (): SettingKind => 'approve',
@@ -138,7 +145,17 @@ const AGENCY_SETTINGS = {
     schema: Model,
     ...needsOk
   },
-  'agency.crew.eva.defaultModel': { label: 'Default eva model', schema: Model, ...needsOk }
+  'agency.crew.eva.defaultModel': { label: 'Default eva model', schema: Model, ...needsOk },
+  'agency.crew.claude.permissionMode': {
+    label: 'Claude crew permission mode',
+    schema: z.enum(['default', 'auto']),
+    ...onIsClientOnly
+  },
+  'agency.crew.eva.permissionMode': {
+    label: 'eva crew bypass mode',
+    schema: z.enum(['default', 'bypass']),
+    ...onIsClientOnly
+  }
 } satisfies Record<string, SettingDef>;
 
 export type AgencySettingKey = keyof typeof AGENCY_SETTINGS;

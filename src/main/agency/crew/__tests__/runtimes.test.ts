@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { fleetHookEntries } from '../../../claude-sessions/hook-installer';
-import { claudeJobSettings } from '../job-settings';
+import { claudeJobSettings, evaJobPermissions } from '../job-settings';
 import {
   crewLaunch,
   evaHooksToml,
   testLaunch,
   TYPED_BRIEF_MAX_CHARS,
-  type CrewHire
+  type CrewHire,
+  type TestStart
 } from '../runtimes';
 
 const HOOKS = fleetHookEntries('/home/u/.claude');
@@ -26,6 +27,7 @@ const hire = (patch: Partial<CrewHire> = {}): CrewHire => ({
   label: 'builder 2',
   hooks: HOOKS,
   hookCommand: HOOK_COMMAND,
+  permissionMode: 'default',
   ...patch
 });
 
@@ -71,7 +73,9 @@ describe('claude launch', () => {
     expect(files.map((f) => f.path)).toEqual([
       '/fleet/agency/jobs/42/crew/build-2/claude-settings.json'
     ]);
-    expect(JSON.parse(files[0].text)).toEqual(claudeJobSettings(HOOKS, HOOK_COMMAND));
+    expect(JSON.parse(files[0].text)).toEqual(
+      claudeJobSettings(HOOKS, { hookCommand: HOOK_COMMAND })
+    );
   });
 
   it('gives the member a status line that runs the hook binary, for its spend', () => {
@@ -232,11 +236,115 @@ describe('eva launch', () => {
       dir: '/t',
       hooks: HOOKS,
       evaHook: HOOK_COMMAND,
+      permissionMode: 'default',
       prompt: 'Reply.'
     });
     expect(test.cmd).toBe(
       'eva --session-id "$FLEET_CREW_SESSION_ID" --name "$FLEET_CREW_NAME" --no-ask-user --hooks "$FLEET_CREW_HOOKS" -- "$FLEET_SPAWN_PROMPT"'
     );
     expect(test.files.map((f) => f.path)).toEqual(['/t/eva-hooks.toml']);
+  });
+});
+
+const test = (patch: Partial<TestStart> = {}): TestStart => ({
+  runtime: 'claude',
+  sessionId: 's',
+  dir: '/t',
+  hooks: HOOKS,
+  permissionMode: 'default',
+  prompt: 'Reply.',
+  ...patch
+});
+
+const settingsOf = (launch: { files: Array<{ path: string; text: string }> }) =>
+  JSON.parse(launch.files.find((f) => f.path.endsWith('claude-settings.json'))?.text ?? '{}') as {
+    permissions: { deny: string[]; disableBypassPermissionsMode: string };
+    autoMode?: { hard_deny: string[] };
+  };
+
+describe('permission modes', () => {
+  it('starts Claude crew in auto mode, with the guardrails in the job file', () => {
+    for (const resume of [false, true]) {
+      const launch = crewLaunch(hire({ permissionMode: 'auto', resume }));
+      expect(launch.cmd).toContain(' --permission-mode auto ');
+      const settings = settingsOf(launch);
+      expect(settings.permissions).toEqual({
+        deny: [
+          'AskUserQuestion',
+          'Bash(git push*)',
+          'Bash(gh pr create*)',
+          'Bash(gh pr merge*)',
+          'Bash(gh pr review*)'
+        ],
+        disableBypassPermissionsMode: 'disable'
+      });
+      expect(settings.autoMode?.hard_deny[0]).toBe('$defaults');
+      expect(settings).toEqual(claudeJobSettings(HOOKS, { hookCommand: HOOK_COMMAND, auto: true }));
+    }
+  });
+
+  it('starts Claude crew in default mode for any other value, bypass included', () => {
+    for (const permissionMode of ['default', 'bypass'] as const) {
+      const launch = crewLaunch(hire({ permissionMode }));
+      expect(launch.cmd).toContain(' --permission-mode default ');
+      expect(launch.cmd).not.toMatch(/bypass/i);
+      expect(settingsOf(launch)).toEqual(claudeJobSettings(HOOKS, { hookCommand: HOOK_COMMAND }));
+    }
+  });
+
+  it('starts eva crew with -b and the deny file in bypass mode, on hire and on resume', () => {
+    const path = '/fleet/agency/jobs/42/crew/build-2/eva-permissions.toml';
+    for (const resume of [false, true]) {
+      const launch = crewLaunch(
+        hire({ runtime: 'eva', permissionMode: 'bypass', resume, evaHook: HOOK_COMMAND })
+      );
+      expect(launch.cmd).toContain(
+        ' --hooks "$FLEET_CREW_HOOKS" -b --permissions "$FLEET_CREW_PERMISSIONS" --name '
+      );
+      expect(launch.env.FLEET_CREW_PERMISSIONS).toBe(path);
+      expect(launch.files).toContainEqual({ path, text: evaJobPermissions() });
+    }
+  });
+
+  it('starts eva crew as always for any other value, auto included', () => {
+    for (const permissionMode of ['default', 'auto'] as const) {
+      for (const resume of [false, true]) {
+        const launch = crewLaunch(hire({ runtime: 'eva', permissionMode, resume }));
+        const plain = crewLaunch(hire({ runtime: 'eva', resume }));
+        expect(launch).toEqual(plain);
+        expect(launch.cmd.split(' ')).not.toContain('-b');
+        expect(launch.cmd).not.toContain('--permissions');
+        expect(launch.files.map((f) => f.path)).not.toContain(
+          '/fleet/agency/jobs/42/crew/build-2/eva-permissions.toml'
+        );
+        expect(launch.env.FLEET_CREW_PERMISSIONS).toBeUndefined();
+      }
+    }
+  });
+
+  it('tests each runtime in the mode its crew start in', () => {
+    const auto = testLaunch(test({ permissionMode: 'auto' }));
+    expect(auto.cmd).toContain(' --permission-mode auto ');
+    expect(settingsOf(auto)).toEqual(claudeJobSettings(HOOKS, { auto: true }));
+    for (const permissionMode of ['default', 'bypass'] as const) {
+      const plain = testLaunch(test({ permissionMode }));
+      expect(plain.cmd).toBe(
+        'claude --session-id "$FLEET_CREW_SESSION_ID" --settings "$FLEET_CREW_SETTINGS" --permission-mode default -- "$FLEET_SPAWN_PROMPT"'
+      );
+      expect(settingsOf(plain)).toEqual(claudeJobSettings(HOOKS));
+    }
+
+    const bypass = testLaunch(test({ runtime: 'eva', permissionMode: 'bypass' }));
+    expect(bypass.cmd).toBe(
+      'eva --session-id "$FLEET_CREW_SESSION_ID" --name "$FLEET_CREW_NAME" --no-ask-user -b --permissions "$FLEET_CREW_PERMISSIONS" -- "$FLEET_SPAWN_PROMPT"'
+    );
+    expect(bypass.files).toEqual([{ path: '/t/eva-permissions.toml', text: evaJobPermissions() }]);
+    for (const permissionMode of ['default', 'auto'] as const) {
+      const plain = testLaunch(test({ runtime: 'eva', permissionMode }));
+      expect(plain.cmd).toBe(
+        'eva --session-id "$FLEET_CREW_SESSION_ID" --name "$FLEET_CREW_NAME" --no-ask-user -- "$FLEET_SPAWN_PROMPT"'
+      );
+      expect(plain.files).toEqual([]);
+    }
   });
 });

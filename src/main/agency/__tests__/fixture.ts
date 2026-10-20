@@ -132,8 +132,8 @@ export function crewAtOnce(atOnce: number): AgencySettingsAccess {
   let settings: AgencySettings = {
     ...DEFAULT_AGENCY_SETTINGS,
     crew: {
-      claude: { atOnce, defaultModel: '' },
-      eva: { atOnce, defaultModel: '' }
+      claude: { atOnce, defaultModel: '', permissionMode: 'default' },
+      eva: { atOnce, defaultModel: '', permissionMode: 'default' }
     }
   };
   return { get: () => settings, set: (next) => void (settings = next) };

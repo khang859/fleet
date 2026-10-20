@@ -7,7 +7,7 @@ import {
   type CrewRuntimeView,
   type RoleDraft
 } from '../../../../../shared/agency-crew';
-import type { CrewRuntimeSettings } from '../../../../../shared/agency';
+import type { CrewPermissionMode, CrewRuntimeSettings } from '../../../../../shared/agency';
 import { useSettingsStore } from '../../../store/settings-store';
 import { useAdmiralMarks } from '../../../hooks/use-admiral-marks';
 import { AdmiralChangeNote } from '../AdmiralChangeNote';
@@ -229,6 +229,69 @@ export function AtOnce(props: { runtime: CrewRuntime; view: CrewRuntimeView }): 
         </div>
       </div>
       <AdmiralChangeNote marks={marks} settingKey={`agency.crew.${props.runtime}.atOnce`} />
+    </div>
+  );
+}
+
+const PERMISSION_MODE: Record<
+  CrewRuntime,
+  { on: CrewPermissionMode; label: string; name: string; note: string }
+> = {
+  claude: {
+    on: 'auto',
+    label: 'Auto mode',
+    name: 'Claude crew permissions',
+    note: 'Auto mode lets a classifier approve routine work. Pushes, pull requests and writes outside the worktree stay blocked.'
+  },
+  eva: {
+    on: 'bypass',
+    label: 'Bypass',
+    name: 'eva crew permissions',
+    note: 'Bypass runs every call unasked. Only pushes and pull requests stay blocked; nothing else is checked or logged.'
+  }
+};
+
+/** Whether crew of the runtime ask the Admiral, or run routine work unasked. Only the client turns it on. */
+export function PermissionMode(props: { runtime: CrewRuntime }): React.JSX.Element {
+  const [settings, patch] = useCrewSettings(props.runtime);
+  const marks = useAdmiralMarks(null);
+  const { on, label, name, note } = PERMISSION_MODE[props.runtime];
+  const value = settings?.permissionMode === on ? on : 'default';
+  const options: Array<[CrewPermissionMode, string]> = [
+    ['default', 'Ask the Admiral'],
+    [on, label]
+  ];
+  return (
+    <div>
+      <div className="flex items-center gap-3.5 rounded-lg border border-fleet-border bg-fleet-bg px-3.5 py-2.5">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium text-fleet-text">{name}</span>
+          <span className="text-xs text-fleet-text-subtle">{note}</span>
+        </div>
+        <div
+          role="radiogroup"
+          aria-label={name}
+          className="flex shrink-0 items-center gap-0.5 rounded-md border border-fleet-border-strong bg-fleet-surface p-0.5"
+        >
+          {options.map(([mode, text]) => (
+            <button
+              key={mode}
+              type="button"
+              role="radio"
+              aria-checked={value === mode}
+              onClick={() => patch({ permissionMode: mode })}
+              className={`h-[24px] whitespace-nowrap rounded px-2.5 text-xs transition-colors focus-ring ${
+                value === mode
+                  ? 'bg-blue-400/[0.15] text-fleet-text'
+                  : 'text-fleet-text-secondary hover:text-fleet-text'
+              }`}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+      </div>
+      <AdmiralChangeNote marks={marks} settingKey={`agency.crew.${props.runtime}.permissionMode`} />
     </div>
   );
 }

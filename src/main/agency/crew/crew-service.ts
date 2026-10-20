@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { jobDisplayId, type AgencyJob } from '../../../shared/agency';
+import { jobDisplayId, type AgencyJob, type CrewPermissionMode } from '../../../shared/agency';
 import { isFileResultKind } from '../../../shared/agency-jobs';
 import { CrewReportSchema, type CrewRuntime, type CrewSnapshot } from '../../../shared/agency-crew';
 import { capText, type PlanStep, type StepCap } from '../../../shared/agency-plan';
@@ -103,6 +103,8 @@ export type CrewServiceDeps = {
   nudgeLimit: () => number;
   /** The model of a role that names none, from Settings; unset leaves it to the runtime. */
   defaultModel?: (runtime: CrewRuntime) => string | undefined;
+  /** The permission mode of the runtime's crew, from Settings; unset, crew ask as always. */
+  permissionMode?: (runtime: CrewRuntime) => CrewPermissionMode;
   /** Reads a swapped-out member's changes for the handoff; defaults to the `git` on PATH. */
   git?: GitWrite;
   /** The budget checks before a hire or a prompt; unset, crew work costs nothing. */
@@ -439,7 +441,8 @@ export class CrewService {
         label: crew.label,
         hooks: panes.hooks(),
         hookCommand: panes.hookCommand(),
-        evaHook
+        evaHook,
+        permissionMode: this.deps.permissionMode?.(runtime) ?? 'default'
       });
       await this.openPane(panes, job, crew, workspace, launch);
     } catch (err) {

@@ -206,16 +206,17 @@ A `CrewRuntime` adapter has `available()`, `command(role, step, job)`, and `firs
   - `--session-id <uuid>` that Fleet picks and stores, so the session maps to the crew member without guessing and can be resumed;
   - `--model` when the role sets one;
   - `--append-system-prompt` with the role body, so it survives `/clear` and compaction;
-  - `--permission-mode default`;
+  - `--permission-mode default`, or `--permission-mode auto` when the client turns on `agency.crew.claude.permissionMode` (only the client turns it on; the Admiral can only turn it off);
   - `--settings <job file>` with: `deny` for AskUserQuestion; `disableBypassPermissionsMode`; Fleet's hook entries with the same command string as a global install, so Claude Code drops duplicates, including a `PermissionRequest` hook that sends each prompt to the Admiral; a `StopFailure` hook; and a `statusLine` command (the Go hook binary's `statusline` verb) that forwards `rate_limits` and `cost` to Fleet and prints the job and step.
+    In auto mode the job file also denies `Bash(git push*)`, `Bash(gh pr create*)`, `Bash(gh pr merge*)` and `Bash(gh pr review*)`, and adds `autoMode.hard_deny` with `"$defaults"` and Fleet's boundaries: no pushes or pull requests, no writes outside the working folder and its `--add-dir` folders, no deploys or cloud changes.
     All other permission rules come from the user's own Claude Code settings.
     The step brief is typed as the first prompt through `FleetSpawns`.
     A brief over about 4k characters goes in a brief file in a folder passed with `--add-dir`, and the typed prompt points to it.
     No `-p`, no SDK, no `ANTHROPIC_*` env, and Fleet never writes the Claude config folder or `~/.claude.json`.
     Every flag and settings key here is checked against the Claude Code docs for the minimum supported version before phase 3 ships.
 - **eva:** the pane command is `eva --session-id <id> --name <job/role> --goal <brief> --model <model> --instructions <role file>` (eva #13, #15 and the new issues), with eva hooks pointed at Fleet's hook binary (eva #9).
-  Fleet never passes `-b`.
-  eva uses the user's own permission settings.
+  Fleet passes `-b` only when the client turns on `agency.crew.eva.permissionMode`, and then with `--permissions <file>` that denies `bash(git push*)`, `bash(gh pr create*)`, `bash(gh pr merge*)` and `bash(gh pr review*)`.
+  Otherwise eva uses the user's own permission settings.
   Without eva #12, eva asks in its own pane, and the card says to answer there.
   Later prompts use bracketed paste.
 
@@ -257,6 +258,11 @@ Each answer goes to `agency.db` with who answered and why, and shows in the chat
 
 This is the Admiral's judgment, not a lock.
 The approved plan, client cards for risky requests, and the deny rules in the user's own Claude Code and eva settings are what stand between crew and a mistake.
+
+The client can trade the Admiral's judgment for speed, per runtime, in Settings > Agency > Crew:
+
+- Claude Code auto mode: the auto-mode classifier judges each call that the rules do not settle, with Fleet's `hard_deny` boundaries. Calls it blocks fire `PermissionDenied`, not `PermissionRequest`, so they never reach the Admiral, and calls it allows leave no job-log record.
+- eva bypass: every call runs unasked except the push and pull request deny rules. eva's `PermissionRequest` hook never fires, so no eva crew request reaches the Admiral. eva has no classifier and no rule for "outside the worktree", so writes outside the worktree and deploys are not held.
 
 ### 9. Env file values stay hidden
 

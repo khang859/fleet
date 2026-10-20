@@ -82,6 +82,10 @@ function readAgency(settings: AgencySettings, key: AgencySettingKey): SettingVal
       return settings.crew.claude.defaultModel;
     case 'agency.crew.eva.defaultModel':
       return settings.crew.eva.defaultModel;
+    case 'agency.crew.claude.permissionMode':
+      return settings.crew.claude.permissionMode;
+    case 'agency.crew.eva.permissionMode':
+      return settings.crew.eva.permissionMode;
   }
 }
 
@@ -123,6 +127,11 @@ function writeAgency(
     case 'agency.crew.eva.defaultModel':
       return writeCrew(settings, key === 'agency.crew.eva.defaultModel' ? 'eva' : 'claude', {
         defaultModel: String(value ?? '')
+      });
+    case 'agency.crew.claude.permissionMode':
+    case 'agency.crew.eva.permissionMode':
+      return writeCrew(settings, key === 'agency.crew.eva.permissionMode' ? 'eva' : 'claude', {
+        permissionMode: value === 'auto' || value === 'bypass' ? value : 'default'
       });
   }
 }
@@ -287,9 +296,10 @@ export class AgencySettingsService {
       const before = await this.current(repoId, c.key);
       if (before === undefined) return { ok: false, reason: await this.missing(repoId, c.key) };
       if (settingKind(c.key, before, parsed.value) === 'client-only') {
+        const tab = c.key.startsWith('agency.crew.') ? 'Crew' : 'Admiral';
         return {
           ok: false,
-          reason: `${settingLabel(c.key)} is the client's own setting. Tell them to change it in Settings > Agency > Admiral; nothing was changed.`
+          reason: `${settingLabel(c.key)} is the client's own setting. Tell them to change it in Settings > Agency > ${tab}; nothing was changed.`
         };
       }
       writes.push({ key: c.key, before, after: parsed.value });

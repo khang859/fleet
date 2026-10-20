@@ -8,7 +8,7 @@ import {
   type RuntimeTestResult
 } from '../../../../../shared/agency-crew';
 import { useWorkspaceStore } from '../../../store/workspace-store';
-import { AtOnce, RuntimeModels } from './RuntimeModels';
+import { AtOnce, PermissionMode, RuntimeModels } from './RuntimeModels';
 import { checkSummary, runtimeFacts, shownChecks, TONE_DOT, TONE_TEXT } from './runtime-view';
 
 export type TestState = { running: boolean; result: RuntimeTestResult | null };
@@ -96,6 +96,7 @@ export function RuntimeDetail(props: {
       <Checks checks={shownChecks(runtime, view)} />
       <RuntimeModels runtime={runtime} view={view} roles={props.roles} />
       <AtOnce runtime={runtime} view={view} />
+      <PermissionMode runtime={runtime} />
     </section>
   );
 }
