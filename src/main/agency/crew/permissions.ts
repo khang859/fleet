@@ -382,7 +382,7 @@ export class CrewPermissions {
     this.store.enqueueWakeup({
       repoId,
       jobId: row.jobId,
-      kind: 'event',
+      kind: 'permission',
       priority: PERMISSION_PRIORITY,
       payload: {
         line: `Permission request ${id}: ${row.crewLabel} asks to use ${row.tool} on step ${row.stepId}`,

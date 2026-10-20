@@ -14,8 +14,8 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-function event(jobId: number, line: string): number {
-  return store.enqueueWakeup({ repoId: REPO.repoId, jobId, kind: 'event', payload: { line } });
+function event(jobId: number, line: string, kind: 'event' | 'permission' = 'event'): number {
+  return store.enqueueWakeup({ repoId: REPO.repoId, jobId, kind, payload: { line } });
 }
 function pull(jobId: number): ReturnType<AgencyStore['pullWakeups']> {
   return store.pullWakeups({ repoId: REPO.repoId, jobId });
@@ -103,6 +103,39 @@ describe('automatic turn limit', () => {
     store.answerQuestion({ id: card?.id ?? 0, option: 0 });
     expect(store.getJob(job.id)).toMatchObject({ state: 'running', chainCount: 0, holds: [] });
     expect(pull(job.id).ids).toEqual([next]);
+  });
+
+  it('does not count a turn that only answers crew permission requests', () => {
+    const job = openJob(store);
+    approve(job.id);
+    for (let turn = 0; turn < CHAIN_LIMIT + 5; turn++) {
+      const id = event(job.id, `qa 1 asks to use Bash ${turn}`, 'permission');
+      expect(pull(job.id).ids).toEqual([id]);
+      store.ackWakeups([id]);
+    }
+    expect(store.getJob(job.id)).toMatchObject({ state: 'running', chainCount: 0, holds: [] });
+    expect(openCards(job.id, 'continue')).toBe(0);
+  });
+
+  it('still brings crew permission requests to a job waiting at the limit', () => {
+    const job = openJob(store);
+    approve(job.id);
+    for (let turn = 0; turn < CHAIN_LIMIT; turn++) {
+      event(job.id, `crew update ${turn}`);
+      store.ackWakeups(pull(job.id).ids);
+    }
+    const update = event(job.id, 'one more');
+    const asks = event(job.id, 'qa 1 asks to use Bash', 'permission');
+    const turn = pull(job.id);
+    expect(turn.ids).toEqual([asks]);
+    expect(turn.text).toContain('qa 1 asks to use Bash');
+    expect(turn.text).not.toContain('one more');
+    store.ackWakeups(turn.ids);
+    expect(store.getJob(job.id)).toMatchObject({ state: 'waiting', holds: ['chain_limit'] });
+    expect(pull(job.id)).toEqual({ ids: [], text: null, nextDueAt: null });
+
+    store.resetChain(job.id);
+    expect(pull(job.id).ids).toEqual([update]);
   });
 
   it('starts counting again on a client message, an answer, and not before approval', () => {
