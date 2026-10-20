@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.138.0
+
+- **Prompts arrive whole.**
+  Fleet now sends prompts to Claude Code panes through a bundled `fleet-bridge` Claude Code mod, so a prompt of any length reaches the model as your own message and the draft in the box is left alone.
+  Sessions without the mod (eva, older Claude Code, Windows) are typed into as before (#689).
+- **Ungroup a worktree group.**
+  Worktree group headers have an X button and a right-click **Ungroup** item that remove the group and keep every tab open in place.
+  A worktree tab outside a group now shows "Already a worktree" instead of a create-worktree item that did nothing (#691).
+- **Fixed: Cmd+1-9 follow the sidebar.**
+  The shortcuts now open the Nth row as the sidebar shows it, skipping folded groups, and follow the icon rail when the sidebar is collapsed (#688).
+
 ## v2.137.0
 
 - **Crew lessons.**
