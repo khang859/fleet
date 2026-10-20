@@ -277,7 +277,7 @@ describe('wakeups', () => {
     pullDigest.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
     setSessions(finished());
     await tick(2_000);
-    agentStore.useAgentStore.getState().startNewSession(PANE, CWD);
+    await agentStore.useAgentStore.getState().startNewSession(PANE, CWD);
     answer({ text: '- abcdef12 ended.', paused: false });
     await tick();
     expect(send).not.toHaveBeenCalled();
