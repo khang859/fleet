@@ -23,6 +23,7 @@ const reply = (status: number, body?: object): Response => ({
 
 describe('fleet-bridge mod: permission requests', () => {
   let hooks: Map<string, Hook>;
+  let catches: Map<string, Hook>;
   let fetch: ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<Response>>>;
   let env: Record<string, string>;
   let next: NextFn;
@@ -53,6 +54,7 @@ describe('fleet-bridge mod: permission requests', () => {
 
   beforeEach(async () => {
     hooks = new Map();
+    catches = new Map();
     fetch = vi.fn<(...args: unknown[]) => Promise<Response>>();
     env = { FLEET_BRIDGE_SOCKET: '/s.sock', FLEET_PANE_ID: 'pane-1' };
     abort = new AbortController();
@@ -61,11 +63,11 @@ describe('fleet-bridge mod: permission requests', () => {
       { signal: abort.signal }
     );
     const { register } = (await import(/* @vite-ignore */ MOD)) as {
-      register: (on: (name: string, hook: Hook) => { catch: () => void }) => void;
+      register: (on: (name: string, hook: Hook) => { catch: (handler: Hook) => void }) => void;
     };
     register((name, hook) => {
       hooks.set(name, hook);
-      return { catch: () => {} };
+      return { catch: (handler) => catches.set(name, handler) };
     });
     const start = hooks.get('session.start');
     await start?.(
@@ -102,8 +104,17 @@ describe('fleet-bridge mod: permission requests', () => {
     });
   });
 
-  it('leaves a request Fleet will not answer to the dialog, without the Go hook', async () => {
+  it('passes a request Fleet will not answer on to the settings hooks', async () => {
     fetch.mockResolvedValueOnce(reply(409));
+    await expect(permissionHook()($, request, next)).resolves.toEqual({ fromGoHook: true });
+  });
+
+  it('leaves the request to the dialog when Fleet answers with nothing it can read', async () => {
+    fetch.mockResolvedValueOnce({ status: 200, ok: true, text: 'not json' });
+    await expect(permissionHook()($, request, next)).resolves.toEqual({});
+    fetch.mockResolvedValueOnce(reply(200, { decision: 'maybe', reason: '' }));
+    await expect(permissionHook()($, request, next)).resolves.toEqual({});
+    fetch.mockResolvedValueOnce({ status: 200, ok: true, text: 'null' });
     await expect(permissionHook()($, request, next)).resolves.toEqual({});
     expect(next).not.toHaveBeenCalled();
   });
@@ -113,6 +124,25 @@ describe('fleet-bridge mod: permission requests', () => {
     await expect(permissionHook()($, request, next)).resolves.toEqual({ fromGoHook: true });
     fetch.mockResolvedValueOnce(reply(404));
     await expect(permissionHook()($, request, next)).resolves.toEqual({ fromGoHook: true });
+  });
+
+  it('does not ask again once the request is answered in the terminal between two asks', async () => {
+    fetch.mockImplementationOnce(async () => {
+      abort.abort();
+      return Promise.resolve(reply(204));
+    });
+    await expect(permissionHook()($, request, next)).resolves.toEqual({});
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('hands a hook that failed to the settings hooks, unless it was settled', async () => {
+    const onFailure = catches.get('classic.PermissionRequest');
+    if (!onFailure) throw new Error('no catch handler');
+    await expect(onFailure($, request, next)).resolves.toEqual({ fromGoHook: true });
+    const called = Object.assign(vi.fn(), { signal: abort.signal, called: true });
+    await expect(onFailure($, request, called)).resolves.toEqual({});
+    expect(called).not.toHaveBeenCalled();
   });
 
   it('stops quietly once the request is answered in the terminal', async () => {

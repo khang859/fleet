@@ -129,6 +129,9 @@ export class ClaudeSessionsService {
   private readonly input: PromptInput;
   private readonly server: HookServer;
   private readonly promptBridge = new PromptBridge();
+  private readonly permissionBridge = new PermissionBridge((event, request) =>
+    this.onHookEvent(event, () => request)
+  );
   private readonly bridgeServer: BridgeServer;
   private readonly resolver: PaneResolver;
   private readonly bridge: PaneActivityBridge;
@@ -164,9 +167,7 @@ export class ClaudeSessionsService {
     this.bridgeServer = new BridgeServer(
       {
         'GET /prompt': this.promptBridge,
-        'POST /permission': new PermissionBridge((event, request) =>
-          this.onHookEvent(event, () => request)
-        )
+        'POST /permission': this.permissionBridge
       },
       deps.bridgeSocketPath
     );
@@ -186,7 +187,11 @@ export class ClaudeSessionsService {
       this.registry.resolvePermission(sessionId, toolUseId);
     });
     this.server = new HookServer(
-      (event, client) => this.onHookEvent(event, () => new SocketHold(client)),
+      (event, client) =>
+        // The mod asked about it first, then passed it on to the settings hooks.
+        event.event === 'PermissionRequest' && this.permissionBridge.asked(event)
+          ? false
+          : this.onHookEvent(event, () => new SocketHold(client)),
       deps.socketPath
     );
 

@@ -167,6 +167,18 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     expect(released).toEqual([]);
   });
 
+  it('drops a request held under an id a newer one takes', async () => {
+    const first = sendEvent(socketPath, permission);
+    await vi.waitFor(() => expect(broker.has('tu-1')).toBe(true));
+    const second = sendEvent(socketPath, permission);
+    // At once, not when its hold of 200 ms runs out.
+    const late = new Promise((resolve) => setTimeout(() => resolve('still held'), 150));
+    await expect(Promise.race([first, late])).resolves.toBe('');
+
+    expect(broker.respond('tu-1', 'allow')).toBe(true);
+    expect(JSON.parse(await second)).toEqual({ decision: 'allow', reason: '' });
+  });
+
   it('removes the socket file on stop', async () => {
     await server.stop();
     expect(() => statSync(socketPath)).toThrow();

@@ -48,6 +48,8 @@ export class PermissionBroker {
   ) {}
 
   hold(sessionId: string, toolUseId: string, request: HeldRequest): void {
+    // A request already held under the id is one Fleet can no longer answer.
+    this.held.get(toolUseId)?.request.discard();
     this.held.set(toolUseId, { sessionId, request });
     request.onGone(() => {
       if (this.held.get(toolUseId)?.request !== request) return;

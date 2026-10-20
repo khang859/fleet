@@ -315,8 +315,12 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
   });
 
   describe('a permission request the fleet-bridge mod asks about', () => {
-    const modAsk = async (overrides: object = {}): Promise<{ status: number; body: string }> =>
-      new Promise((resolve, reject) => {
+    /** Ask as the mod does; `abort` drops the ask, as an answer in the terminal does. */
+    const openAsk = (
+      overrides: object = {}
+    ): { reply: Promise<{ status: number; body: string }>; abort: () => void } => {
+      let abort = (): void => {};
+      const reply = new Promise<{ status: number; body: string }>((resolve, reject) => {
         const req = request(
           { socketPath: join(dir, 'bridge.sock'), path: '/permission', method: 'POST' },
           (res) => {
@@ -341,7 +345,12 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
             ...overrides
           })
         );
+        abort = () => req.destroy();
       });
+      return { reply, abort };
+    };
+    const modAsk = async (overrides: object = {}): Promise<{ status: number; body: string }> =>
+      openAsk(overrides).reply;
 
     /** The Go hook's PreToolUse, which names the tool use the mod's request leaves out. */
     const preToolUse = async (): Promise<void> => {
@@ -402,19 +411,72 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     it('finds the tool use whatever order the input keys come in', async () => {
       await service.start();
       service.addPermissionAnswerer();
-      // The Go hook sorts the input's keys; the mod keeps Claude Code's order.
+      // The Go hook sorts the input's keys, nested ones too; the mod keeps Claude Code's order.
       await send(
         socketPath,
         event({
           event: 'PreToolUse',
           status: 'running_tool',
-          tool: 'Write',
-          tool_input: { content: 'x', file_path: '/repo/a' },
+          tool: 'MultiEdit',
+          tool_input: { edits: [{ new_string: 'b', old_string: 'a' }], file_path: '/repo/a' },
           tool_use_id: 'tu-2'
         })
       );
-      void modAsk({ tool_name: 'Write', tool_input: { file_path: '/repo/a', content: 'x' } });
+      void modAsk({
+        tool_name: 'MultiEdit',
+        tool_input: { file_path: '/repo/a', edits: [{ old_string: 'a', new_string: 'b' }] }
+      });
       await vi.waitFor(() => expect(service.broker.has('tu-2')).toBe(true));
+    });
+
+    it('lets the request go when the mod stops asking, as an answer in the terminal does', async () => {
+      await service.start();
+      service.addPermissionAnswerer();
+      await preToolUse();
+      const { reply, abort } = openAsk();
+      await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(true));
+      abort();
+      await expect(reply).rejects.toThrow();
+      await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(false));
+      expect(service.registry.get('s1')?.pendingPermissions).toEqual([]);
+    });
+
+    it('answers the mod 409 once the tool ran', async () => {
+      await service.start();
+      service.addPermissionAnswerer();
+      await preToolUse();
+      const { reply } = openAsk();
+      await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(true));
+      await send(
+        socketPath,
+        event({
+          event: 'PostToolUse',
+          status: 'processing',
+          tool: 'Bash',
+          tool_input: { command: 'touch a' },
+          tool_use_id: 'tu-1'
+        })
+      );
+      expect((await reply).status).toBe(409);
+      expect(service.broker.has('tu-1')).toBe(false);
+    });
+
+    it('leaves alone the Go hook copy of a request the mod passed on', async () => {
+      await service.start();
+      await preToolUse();
+      expect((await modAsk()).status).toBe(409);
+      // The mod passes the request on to the settings hooks, Fleet's Go hook among them.
+      const goHook = await send(
+        socketPath,
+        event({
+          event: 'PermissionRequest',
+          status: 'waiting_for_approval',
+          tool: 'Bash',
+          tool_input: { command: 'touch a' }
+        })
+      );
+      expect(goHook).toBe('');
+      expect(service.registry.get('s1')?.pendingPermissions).toHaveLength(1);
     });
 
     it('is recorded but left to the dialog when nothing can answer it', async () => {

@@ -77,6 +77,7 @@ describe.skipIf(process.platform === 'win32')('PermissionBridge', () => {
   let dir: string;
   let socketPath: string;
   let server: BridgeServer;
+  let bridge: PermissionBridge;
   let admitted: Array<{ event: HookEvent; request: HeldRequest }>;
   let admit: boolean;
   let gone: number;
@@ -87,23 +88,33 @@ describe.skipIf(process.platform === 'win32')('PermissionBridge', () => {
     return request;
   };
 
+  /**
+   * Serve the bridge with these hold and grace times. Both are long unless a
+   * test waits for one to run out, so a slow machine does not end a hold early.
+   */
+  const serve = async (holdMs = 10_000, graceMs = 10_000): Promise<void> => {
+    await server.stop();
+    bridge = new PermissionBridge(
+      (event, request) => {
+        admitted.push({ event, request });
+        request.onGone(() => gone++);
+        return admit;
+      },
+      holdMs,
+      graceMs
+    );
+    server = new BridgeServer({ 'POST /permission': bridge }, socketPath);
+    await server.start();
+  };
+
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'fleet-permission-bridge-'));
     socketPath = join(dir, 'bridge.sock');
     admitted = [];
     admit = true;
     gone = 0;
-    const bridge = new PermissionBridge(
-      (event, request) => {
-        admitted.push({ event, request });
-        request.onGone(() => gone++);
-        return admit;
-      },
-      100,
-      150
-    );
-    server = new BridgeServer({ 'POST /permission': bridge }, socketPath);
-    await server.start();
+    server = new BridgeServer({}, socketPath);
+    await serve();
   });
 
   afterEach(async () => {
@@ -119,7 +130,7 @@ describe.skipIf(process.platform === 'win32')('PermissionBridge', () => {
       decision: 'allow' as const,
       reason: '',
       updatedPermissions: [
-        { type: 'setMode' as const, mode: 'acceptEdits', destination: 'session' as const }
+        { type: 'setMode' as const, mode: 'acceptEdits' as const, destination: 'session' as const }
       ]
     };
     expect(held().deliver(answer)).toBe(true);
@@ -128,6 +139,7 @@ describe.skipIf(process.platform === 'win32')('PermissionBridge', () => {
   });
 
   it('has the mod ask again after a while, admitting the request once', async () => {
+    await serve(100);
     expect((await ask(socketPath, permission).reply).status).toBe(204);
     const again = ask(socketPath, permission);
     await vi.waitFor(() => expect(admitted).toHaveLength(1));
@@ -141,12 +153,14 @@ describe.skipIf(process.platform === 'win32')('PermissionBridge', () => {
   });
 
   it('keeps an answer that came between two asks for the next one', async () => {
+    await serve(100);
     expect((await ask(socketPath, permission).reply).status).toBe(204);
     expect(held().deliver({ decision: 'allow', reason: '' })).toBe(true);
     expect((await ask(socketPath, permission).reply).status).toBe(200);
   });
 
   it('tells Fleet the mod went away when it stops asking', async () => {
+    await serve(100, 150);
     expect((await ask(socketPath, permission).reply).status).toBe(204);
     await vi.waitFor(() => expect(gone).toBe(1));
     expect(held().deliver({ decision: 'allow', reason: '' })).toBe(false);
@@ -182,15 +196,57 @@ describe.skipIf(process.platform === 'win32')('PermissionBridge', () => {
     expect(admitted).toHaveLength(1);
   });
 
+  it('forgets an answered request after a while, so the same id is a new request', async () => {
+    await serve(10_000, 150);
+    const first = ask(socketPath, permission);
+    await vi.waitFor(() => expect(admitted).toHaveLength(1));
+    held().deliver({ decision: 'allow', reason: '' });
+    expect((await first.reply).status).toBe(200);
+    // Kept a while: an ask now gets the same answer, and nothing new is admitted.
+    expect((await ask(socketPath, permission).reply).status).toBe(200);
+    expect(admitted).toHaveLength(1);
+
+    await vi.waitFor(() => expect(bridge.asked(admitted[0].event)).toBe(false));
+    const again = ask(socketPath, permission);
+    await vi.waitFor(() => expect(admitted).toHaveLength(2));
+    again.abort();
+  });
+
+  it('knows which tool calls the mod asked about, whatever the order of their input', async () => {
+    const { reply } = ask(socketPath, {
+      ...permission,
+      tool_name: 'Write',
+      tool_input: { file_path: '/repo/a', content: 'x' }
+    });
+    await vi.waitFor(() => expect(admitted).toHaveLength(1));
+    const goHook = (sessionId: string, toolInput: Record<string, unknown>): HookEvent => ({
+      ...admitted[0].event,
+      sessionId,
+      toolInput
+    });
+    expect(bridge.asked(goHook('s1', { content: 'x', file_path: '/repo/a' }))).toBe(true);
+    expect(bridge.asked(goHook('s1', { content: 'y', file_path: '/repo/a' }))).toBe(false);
+    expect(bridge.asked(goHook('s2', { content: 'x', file_path: '/repo/a' }))).toBe(false);
+    held().letGo();
+    expect((await reply).status).toBe(409);
+  });
+
   it('answers a request it cannot read with 400', async () => {
     expect((await ask(socketPath, { session_id: 's1' }).reply).status).toBe(400);
     expect(admitted).toEqual([]);
   });
 
-  it('answers open asks with 409 when it stops', async () => {
+  it('answers a request too large to read with 413', async () => {
+    const huge = { ...permission, tool_input: { content: 'x'.repeat(33 * 1024 * 1024) } };
+    expect((await ask(socketPath, huge).reply).status).toBe(413);
+    expect(admitted).toEqual([]);
+  });
+
+  it('answers open asks with 409 when it stops, and takes no answer after', async () => {
     const { reply } = ask(socketPath, permission);
     await vi.waitFor(() => expect(admitted).toHaveLength(1));
     await server.stop();
     expect((await reply).status).toBe(409);
+    expect(held().deliver({ decision: 'allow', reason: '' })).toBe(false);
   });
 });

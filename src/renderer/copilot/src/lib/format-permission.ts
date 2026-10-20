@@ -1,7 +1,8 @@
 import type { CopilotToolInfo } from '../../../../shared/types';
 import type {
   PermissionDestination,
-  PermissionSuggestion
+  PermissionSuggestion,
+  SuggestedMode
 } from '../../../../shared/claude-sessions';
 
 type PermissionSummary = {
@@ -66,21 +67,21 @@ export function formatPermissionSummary(tool: CopilotToolInfo): PermissionSummar
   return { label, detail: rawValue, matched: true, description };
 }
 
-/** How long a suggestion's change lasts, as a suffix to its label. */
+/** Where a suggestion's change is kept and how far it reaches, as a suffix to its label. */
 const SCOPES: Record<PermissionDestination, string> = {
   session: ' this session',
   cliArg: ' this session',
   localSettings: ' in this project',
-  projectSettings: ' in this project',
-  userSettings: ''
+  // .claude/settings.json, which is usually committed.
+  projectSettings: ' in this project (shared)',
+  userSettings: ' in all projects'
 };
 
-const MODE_NAMES: Record<string, string> = {
+const MODE_NAMES: Record<SuggestedMode, string> = {
+  default: 'default mode',
   acceptEdits: 'accept edits',
-  auto: 'auto mode',
   plan: 'plan mode',
-  bypassPermissions: 'bypass permissions',
-  dontAsk: "don't ask"
+  auto: 'auto mode'
 };
 
 /** The label of the button that allows a request along with one of Claude Code's suggestions. */
@@ -91,11 +92,11 @@ export function suggestionLabel(suggestion: PermissionSuggestion): string {
       const rules = suggestion.rules.map((r) =>
         r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName
       );
-      return `Always allow ${rules.join(', ')}${scope}`;
+      return `Allow, and don't ask again for ${rules.join(', ')}${scope}`;
     }
     case 'addDirectories':
-      return `Always allow access to ${suggestion.directories.join(', ')}${scope}`;
+      return `Allow, and don't ask again in ${suggestion.directories.join(', ')}${scope}`;
     case 'setMode':
-      return `Allow, then switch to ${MODE_NAMES[suggestion.mode] ?? suggestion.mode}`;
+      return `Allow, and switch to ${MODE_NAMES[suggestion.mode]}${scope}`;
   }
 }

@@ -55,7 +55,10 @@ export type PermissionSuggestion =
       destination: PermissionDestination;
     }
   | { type: 'addDirectories'; directories: string[]; destination: PermissionDestination }
-  | { type: 'setMode'; mode: string; destination: PermissionDestination };
+  | { type: 'setMode'; mode: SuggestedMode; destination: PermissionDestination };
+
+/** The permission modes Fleet offers to switch to; bypassPermissions is never one. */
+export type SuggestedMode = 'default' | 'acceptEdits' | 'plan' | 'auto';
 
 export type ClaudePendingPermission = {
   sessionId: string;

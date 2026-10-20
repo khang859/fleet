@@ -102,7 +102,7 @@ describe('formatPermissionSummary', () => {
 });
 
 describe('suggestionLabel', () => {
-  it('names the rules to add and how long they last', () => {
+  it('names the rules to add and where they are kept', () => {
     expect(
       suggestionLabel({
         type: 'addRules',
@@ -110,19 +110,35 @@ describe('suggestionLabel', () => {
         behavior: 'allow',
         destination: 'localSettings'
       })
-    ).toBe('Always allow Bash(npm test:*), WebSearch in this project');
+    ).toBe("Allow, and don't ask again for Bash(npm test:*), WebSearch in this project");
+  });
+
+  it('tells a shared project rule and a rule for every project apart', () => {
+    const rule = (destination: 'projectSettings' | 'userSettings'): string =>
+      suggestionLabel({
+        type: 'addRules',
+        rules: [{ toolName: 'Bash', ruleContent: 'ls:*' }],
+        behavior: 'allow',
+        destination
+      });
+    expect(rule('projectSettings')).toBe(
+      "Allow, and don't ask again for Bash(ls:*) in this project (shared)"
+    );
+    expect(rule('userSettings')).toBe("Allow, and don't ask again for Bash(ls:*) in all projects");
   });
 
   it('names the folders to allow', () => {
     expect(
       suggestionLabel({ type: 'addDirectories', directories: ['/tmp/x'], destination: 'session' })
-    ).toBe('Always allow access to /tmp/x this session');
+    ).toBe("Allow, and don't ask again in /tmp/x this session");
   });
 
-  it('names the mode to switch to, by name when it knows it', () => {
-    const mode = (m: string): string =>
-      suggestionLabel({ type: 'setMode', mode: m, destination: 'session' });
-    expect(mode('acceptEdits')).toBe('Allow, then switch to accept edits');
-    expect(mode('someNewMode')).toBe('Allow, then switch to someNewMode');
+  it('names the mode to switch to and how long it lasts', () => {
+    expect(suggestionLabel({ type: 'setMode', mode: 'acceptEdits', destination: 'session' })).toBe(
+      'Allow, and switch to accept edits this session'
+    );
+    expect(suggestionLabel({ type: 'setMode', mode: 'plan', destination: 'localSettings' })).toBe(
+      'Allow, and switch to plan mode in this project'
+    );
   });
 });

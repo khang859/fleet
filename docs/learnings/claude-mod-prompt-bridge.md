@@ -49,9 +49,13 @@ These held on Claude Code 2.1.304:
 - An answer in the terminal aborts `next.signal`, and with it the hook's open `$.http.fetch`.
   Fleet sees the ask close and drops the card at once.
   The hook must return `{}` then, not call `next(e)`, or the Go hook would ask Fleet a second time.
-- Returning without `next(e)` skips the settings hooks, so the Go hook does not run for a request the mod handled.
+- Returning without `next(e)` skips every settings hook, the person's own `PermissionRequest` hooks too, not just Fleet's Go hook.
+  A first version returned `{}` on a 409 as well, so in a Fleet pane with no answerer the person's own hooks stopped running.
+  **Fix:** on a 409 the mod calls `next(e)`. Fleet's Go hook then tells Fleet of the request a second time, so the hook server drops a `PermissionRequest` the mod already asked about (`PermissionBridge.asked`), and the Go hook writes no decision.
+  Only an answer from Fleet still skips the settings hooks.
 - The hook's input has no `tool_use_id`.
   The registry takes it from the earlier `PreToolUse` with the same tool and input.
+  The Go hook sorts the input's keys and the mod keeps Claude Code's order, so the match uses a key with sorted keys (`toolCallKey`).
 - `updatedPermissions` from `permission_suggestions` apply as in the dialog: a `setMode` to `acceptEdits` turned the status line to "accept edits on".
 
 ## Testing it end to end on Linux

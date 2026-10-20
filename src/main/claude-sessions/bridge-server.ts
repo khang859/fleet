@@ -13,7 +13,9 @@ export const POLL_HOLD_MS = 20_000;
 
 /**
  * The answer to a request Fleet will not answer: a newer one took its place,
- * or Fleet let it go. The mod stops asking about it.
+ * or Fleet let it go. For a prompt, the mod waits before it asks again, so two
+ * mods asking for one session do not take turns in a busy loop. For a
+ * permission request, the mod passes it on to the settings hooks.
  */
 export const NOT_ANSWERED = 409;
 

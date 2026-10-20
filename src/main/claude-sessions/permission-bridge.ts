@@ -5,6 +5,7 @@ import type { PermissionSuggestion } from '../../shared/claude-sessions';
 import { NOT_ANSWERED, POLL_HOLD_MS, reply, type BridgeRoute } from './bridge-server';
 import { HOOK_PROTOCOL, lenient, nonEmpty, type HookEvent } from './hook-events';
 import type { HeldRequest, PermissionAnswer } from './permission-broker';
+import { toolCallKey } from './registry';
 
 const log = createLogger('claude-sessions:permission-bridge');
 
@@ -13,6 +14,14 @@ const log = createLogger('claude-sessions:permission-bridge');
  * once. A mod that has not asked by then went away.
  */
 export const REASK_GRACE_MS = 5_000;
+
+/** The most an ask's body may hold. Generous, since it carries a tool's whole input, such as a file to write. */
+const MAX_ASK_CHARS = 32 * 1024 * 1024;
+
+/** One session's one tool call, as both the mod and the Go hook tell of it. */
+function callOf(event: HookEvent): string {
+  return `${event.sessionId}\n${toolCallKey(event.tool ?? '', event.toolInput)}`;
+}
 
 const destination = z.enum([
   'userSettings',
@@ -35,7 +44,12 @@ const Suggestion = z.discriminatedUnion('type', [
     directories: z.array(nonEmpty).min(1),
     destination
   }),
-  z.object({ type: z.literal('setMode'), mode: nonEmpty, destination })
+  // Never a switch past every prompt, as bypassPermissions is, on one click.
+  z.object({
+    type: z.literal('setMode'),
+    mode: z.enum(['default', 'acceptEdits', 'plan', 'auto']),
+    destination
+  })
 ]) satisfies z.ZodType<PermissionSuggestion>;
 
 /** What the mod sends: the `PermissionRequest` hook's input, with its pane and an id of its own. */
@@ -106,6 +120,8 @@ class BridgeHold implements HeldRequest {
   private onGoneCb: (() => void) | null = null;
 
   constructor(
+    /** The tool call it asks about, as `callOf` gives it. */
+    readonly call: string,
     private readonly holdMs: number,
     private readonly graceMs: number,
     private readonly forget: () => void
@@ -116,7 +132,7 @@ class BridgeHold implements HeldRequest {
       reply(res, this.settled.status, this.settled.body);
       return;
     }
-    clearTimeout(this.graceTimer);
+    this.clearTimers();
     // Another copy of the mod asking about the same request.
     this.answerAsk({ status: NOT_ANSWERED });
     this.ask = res;
@@ -148,9 +164,10 @@ class BridgeHold implements HeldRequest {
     this.onGoneCb = cb;
   }
 
-  /** Fleet is stopping: answer the open ask and keep nothing. */
+  /** Fleet is stopping: answer the open ask, and take no answer after it. */
   stop(): void {
-    this.answerAsk({ status: NOT_ANSWERED });
+    this.settled = { status: NOT_ANSWERED };
+    this.answerAsk(this.settled);
     this.clearTimers();
   }
 
@@ -201,7 +218,9 @@ export type AdmitPermission = (event: HookEvent, request: HeldRequest) => boolea
  * Unlike a Go hook's, the request is held for as long as the dialog is open.
  *
  * Each request is admitted once, as a hook event; a later ask about it only
- * waits on. One Fleet does not hold is answered 409, and the dialog decides.
+ * waits on. One Fleet does not hold is answered 409, and the mod passes it on
+ * to the settings hooks, as without the mod. Fleet's own Go hook is among
+ * them, and `asked` tells Fleet to leave its copy alone.
  */
 export class PermissionBridge implements BridgeRoute {
   private readonly holds = new Map<string, BridgeHold>();
@@ -214,9 +233,25 @@ export class PermissionBridge implements BridgeRoute {
 
   handle(req: IncomingMessage, res: ServerResponse): void {
     let text = '';
+    let tooLarge = false;
     req.setEncoding('utf8');
-    req.on('data', (chunk: string) => (text += chunk));
-    req.on('end', () => this.onAsk(text, res));
+    req.on('data', (chunk: string) => {
+      if (tooLarge) return;
+      text += chunk;
+      if (text.length <= MAX_ASK_CHARS) return;
+      tooLarge = true;
+      text = '';
+      reply(res, 413);
+    });
+    req.on('end', () => {
+      if (!tooLarge) this.onAsk(text, res);
+    });
+  }
+
+  /** Whether the mod asked about this permission request, so the Go hook's copy of it is one too many. */
+  asked(event: HookEvent): boolean {
+    const call = callOf(event);
+    return [...this.holds.values()].some((hold) => hold.call === call);
   }
 
   stop(): void {
@@ -236,7 +271,7 @@ export class PermissionBridge implements BridgeRoute {
   }
 
   private admitNew(requestId: string, event: HookEvent): BridgeHold {
-    const hold: BridgeHold = new BridgeHold(this.holdMs, this.graceMs, () => {
+    const hold: BridgeHold = new BridgeHold(callOf(event), this.holdMs, this.graceMs, () => {
       if (this.holds.get(requestId) === hold) this.holds.delete(requestId);
     });
     this.holds.set(requestId, hold);

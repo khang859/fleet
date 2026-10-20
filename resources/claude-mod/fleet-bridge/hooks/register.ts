@@ -49,21 +49,29 @@ type FleetAnswer = {
   updatedPermissions?: PermissionAsk['permission_suggestions'];
 };
 
-/** Fleet's answer as the dialog takes it. */
-function permissionResult(answer: FleetAnswer): PermissionResult {
-  if (answer.decision === 'deny') {
+/** Fleet's answer as the dialog takes it; none, so the dialog decides, when it cannot be read. */
+function permissionResult(text: string): PermissionResult {
+  let answer: Partial<FleetAnswer> | null;
+  try {
+    answer = JSON.parse(text) as Partial<FleetAnswer> | null;
+  } catch {
+    return {};
+  }
+  if (answer?.decision === 'deny') {
     const message = answer.reason || 'Denied by user via Fleet Copilot';
     return { decision: { behavior: 'deny', message } };
   }
+  if (answer?.decision !== 'allow') return {};
   const { updatedPermissions } = answer;
   return { decision: { behavior: 'allow', ...(updatedPermissions && { updatedPermissions }) } };
 }
 
 /**
  * Ask Fleet about a permission request until it answers. Fleet holds each ask
- * a while and answers 204 to have the mod ask again, or 409 when it will not
- * answer, and the dialog decides. When Fleet cannot be reached, the Go hook in
- * the settings takes the request, as without the mod.
+ * a while and answers 204 to have the mod ask again. When Fleet will not
+ * answer (409) or cannot be reached, the settings hooks take the request, as
+ * without the mod: the person's own, and Fleet's Go hook, whose copy Fleet
+ * leaves alone when the mod already asked. An answer from Fleet skips them.
  */
 async function askPermission(
   $: EngineInterface,
@@ -84,6 +92,8 @@ async function askPermission(
     permission_suggestions: e.permission_suggestions
   });
   for (;;) {
+    // Answered in the terminal between two asks.
+    if (next.signal.aborted) return {};
     let res: Awaited<ReturnType<EngineInterface['http']['fetch']>>;
     try {
       res = await $.http.fetch('http://fleet/permission', {
@@ -97,8 +107,7 @@ async function askPermission(
       return next.signal.aborted ? {} : next(e);
     }
     if (res.status === 204) continue;
-    if (res.status === 200) return permissionResult(JSON.parse(res.text) as FleetAnswer);
-    if (res.status === 409) return {};
+    if (res.status === 200) return permissionResult(res.text);
     return next(e);
   }
 }
@@ -140,7 +149,7 @@ export const register: Register = (on) => {
   });
 
   // A question is answered in its dialog: the Go hook only tells Fleet of it.
-  // A failure leaves the request to the Go hook, as without the mod.
+  // A failure leaves the request to the settings hooks, as without the mod.
   on('classic.PermissionRequest', async ($, e, next) => {
     if (e.tool_name === 'AskUserQuestion' || !loop.socketPath) return next(e);
     return askPermission($, e, next, loop.socketPath);

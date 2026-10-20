@@ -40,9 +40,7 @@ export class PromptBridge implements BridgeRoute {
       res.writeHead(404).end();
       return;
     }
-    // A newer request took the older one's place: a reloaded mod's, or a
-    // second mod's. The mod waits before it asks again, so two mods asking
-    // for one session do not take turns in a busy loop.
+    // A newer request takes the older one's place: a reloaded mod's, or a second mod's.
     this.answer(sessionId, NOT_ANSWERED);
     const poll: Poll = { res, timer: setTimeout(() => this.answer(sessionId, 204), this.holdMs) };
     this.polls.set(sessionId, poll);
