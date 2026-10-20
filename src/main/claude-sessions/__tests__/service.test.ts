@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { appendFileSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { request } from 'http';
 import { connect } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -311,6 +312,178 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     expect(service.answerQuestion('s1', 'Postgres')).toBe(false);
     expect(service.answerQuestion('s1', '2')).toBe(true);
     expect(writeToPane.mock.calls).toEqual([['pane-1', '2\r']]);
+  });
+
+  describe('a permission request the fleet-bridge mod asks about', () => {
+    /** Ask as the mod does; `abort` drops the ask, as an answer in the terminal does. */
+    const openAsk = (
+      overrides: object = {}
+    ): { reply: Promise<{ status: number; body: string }>; abort: () => void } => {
+      let abort = (): void => {};
+      const reply = new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const req = request(
+          { socketPath: join(dir, 'bridge.sock'), path: '/permission', method: 'POST' },
+          (res) => {
+            let body = '';
+            res.on('data', (chunk) => (body += chunk.toString()));
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+          }
+        );
+        req.on('error', reject);
+        req.end(
+          JSON.stringify({
+            request_id: 'r1',
+            session_id: 's1',
+            pane_id: 'pane-1',
+            cwd: '/repo',
+            tool_name: 'Bash',
+            tool_input: { command: 'touch a' },
+            permission_suggestions: [
+              { type: 'addDirectories', directories: ['/repo/x'], destination: 'session' },
+              { type: 'setMode', mode: 'acceptEdits', destination: 'session' }
+            ],
+            ...overrides
+          })
+        );
+        abort = () => req.destroy();
+      });
+      return { reply, abort };
+    };
+    const modAsk = async (overrides: object = {}): Promise<{ status: number; body: string }> =>
+      openAsk(overrides).reply;
+
+    /** The Go hook's PreToolUse, which names the tool use the mod's request leaves out. */
+    const preToolUse = async (): Promise<void> => {
+      await send(
+        socketPath,
+        event({
+          event: 'PreToolUse',
+          status: 'running_tool',
+          tool: 'Bash',
+          tool_input: { command: 'touch a' },
+          tool_use_id: 'tu-1'
+        })
+      );
+    };
+
+    it('is held under the tool use the Go hook named, with its suggestions', async () => {
+      await service.start();
+      service.addPermissionAnswerer();
+      await preToolUse();
+      const reply = modAsk();
+      await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(true));
+      expect(service.registry.get('s1')).toMatchObject({
+        phase: 'waitingForApproval',
+        pendingPermissions: [
+          {
+            toolUseId: 'tu-1',
+            suggestions: [
+              { type: 'addDirectories', directories: ['/repo/x'], destination: 'session' },
+              { type: 'setMode', mode: 'acceptEdits', destination: 'session' }
+            ]
+          }
+        ]
+      });
+
+      expect(service.respondToPermission('tu-1', 'allow', undefined, 1)).toBe(true);
+      expect(JSON.parse((await reply).body)).toEqual({
+        decision: 'allow',
+        reason: '',
+        updatedPermissions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }]
+      });
+      expect(service.registry.get('s1')?.phase).toBe('processing');
+    });
+
+    it('refuses a suggestion with a deny, or one the request does not have', async () => {
+      await service.start();
+      service.addPermissionAnswerer();
+      await preToolUse();
+      const reply = modAsk();
+      await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(true));
+
+      expect(service.respondToPermission('tu-1', 'deny', undefined, 0)).toBe(false);
+      expect(service.respondToPermission('tu-1', 'allow', undefined, 2)).toBe(false);
+      expect(service.broker.has('tu-1')).toBe(true);
+      expect(service.respondToPermission('tu-1', 'allow')).toBe(true);
+      expect(JSON.parse((await reply).body)).toEqual({ decision: 'allow', reason: '' });
+    });
+
+    it('finds the tool use whatever order the input keys come in', async () => {
+      await service.start();
+      service.addPermissionAnswerer();
+      // The Go hook sorts the input's keys, nested ones too; the mod keeps Claude Code's order.
+      await send(
+        socketPath,
+        event({
+          event: 'PreToolUse',
+          status: 'running_tool',
+          tool: 'MultiEdit',
+          tool_input: { edits: [{ new_string: 'b', old_string: 'a' }], file_path: '/repo/a' },
+          tool_use_id: 'tu-2'
+        })
+      );
+      void modAsk({
+        tool_name: 'MultiEdit',
+        tool_input: { file_path: '/repo/a', edits: [{ old_string: 'a', new_string: 'b' }] }
+      });
+      await vi.waitFor(() => expect(service.broker.has('tu-2')).toBe(true));
+    });
+
+    it('lets the request go when the mod stops asking, as an answer in the terminal does', async () => {
+      await service.start();
+      service.addPermissionAnswerer();
+      await preToolUse();
+      const { reply, abort } = openAsk();
+      await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(true));
+      abort();
+      await expect(reply).rejects.toThrow();
+      await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(false));
+      expect(service.registry.get('s1')?.pendingPermissions).toEqual([]);
+    });
+
+    it('answers the mod 409 once the tool ran', async () => {
+      await service.start();
+      service.addPermissionAnswerer();
+      await preToolUse();
+      const { reply } = openAsk();
+      await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(true));
+      await send(
+        socketPath,
+        event({
+          event: 'PostToolUse',
+          status: 'processing',
+          tool: 'Bash',
+          tool_input: { command: 'touch a' },
+          tool_use_id: 'tu-1'
+        })
+      );
+      expect((await reply).status).toBe(409);
+      expect(service.broker.has('tu-1')).toBe(false);
+    });
+
+    it('leaves alone the Go hook copy of a request the mod passed on', async () => {
+      await service.start();
+      await preToolUse();
+      expect((await modAsk()).status).toBe(409);
+      // The mod passes the request on to the settings hooks, Fleet's Go hook among them.
+      const goHook = await send(
+        socketPath,
+        event({
+          event: 'PermissionRequest',
+          status: 'waiting_for_approval',
+          tool: 'Bash',
+          tool_input: { command: 'touch a' }
+        })
+      );
+      expect(goHook).toBe('');
+      expect(service.registry.get('s1')?.pendingPermissions).toHaveLength(1);
+    });
+
+    it('is recorded but left to the dialog when nothing can answer it', async () => {
+      await service.start();
+      expect((await modAsk()).status).toBe(409);
+      expect(service.registry.get('s1')?.phase).toBe('waitingForApproval');
+    });
   });
 
   it('stops, removes its hooks and forgets sessions when tracking is turned off', async () => {

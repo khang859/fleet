@@ -38,3 +38,48 @@ Keep helpers that take `$` as top-level functions.
 `$.prompt.submit({ text, asUser: true })` reaches the model as the person's own words, not as `<pasted_content>`, however long.
 The classic `UserPromptSubmit` hook still fires with the exact text, so Fleet's prompt-hash acknowledgement works unchanged.
 The transcript line carries `origin: { kind: 'plugin', name: 'fleet-bridge', asUser: true }`.
+
+## Answering permissions from the mod
+
+The mod's `classic.PermissionRequest` hook asks Fleet over `POST /permission` (`src/main/claude-sessions/permission-bridge.ts`).
+These held on Claude Code 2.1.304:
+
+- The hook runs while the terminal's dialog is already open, not before it.
+  An allow it returns late still closes the dialog, which shows "Allowed by PermissionRequest hook".
+- An answer in the terminal aborts `next.signal`, and with it the hook's open `$.http.fetch`.
+  Fleet sees the ask close and drops the card at once.
+  The hook must return `{}` then, not call `next(e)`, or the Go hook would ask Fleet a second time.
+- Returning without `next(e)` skips every settings hook, the person's own `PermissionRequest` hooks too, not just Fleet's Go hook.
+  A first version returned `{}` on a 409 as well, so in a Fleet pane with no answerer the person's own hooks stopped running.
+  **Fix:** on a 409 the mod calls `next(e)`. Fleet's Go hook then tells Fleet of the request a second time, so the hook server drops a `PermissionRequest` the mod already asked about (`PermissionBridge.asked`), and the Go hook writes no decision.
+  Only an answer from Fleet still skips the settings hooks.
+- The hook's input has no `tool_use_id`.
+  The registry takes it from the earlier `PreToolUse` with the same tool and input.
+  The Go hook sorts the input's keys and the mod keeps Claude Code's order, so the match uses a key with sorted keys (`toolCallKey`).
+- `updatedPermissions` from `permission_suggestions` apply as in the dialog: a `setMode` to `acceptEdits` turned the status line to "accept edits on".
+
+## Testing it end to end on Linux
+
+The copilot window is macOS-only (`initCopilot` returns early), so the card cannot be clicked on Linux as shipped.
+To check it, change the platform gate locally, enable the copilot in settings with `__FLEET__.stores.settings`, and drive the "Fleet Copilot" page with `agent-browser --cdp <port>`, the port Electron prints as "DevTools listening on" in `.fleet-drive/dev.log`.
+Revert the gate afterwards.
+
+`npm run drive -- term-send '<text>' --enter` sometimes leaves the prompt in Claude Code's input unsent.
+Send `term-key enter` on its own after a short wait.
+In tmux, `send-keys Enter` had the same problem, and `send-keys -H 0d` worked.
+
+A long "Always allow access to <path>" label made the whole session row wider than the panel, because Radix `ScrollArea` lays its content out as a table that grows to its widest child.
+A `truncate` button cannot shrink it, since its min-content width is still the full label.
+**Fix:** let the label wrap with `[overflow-wrap:anywhere]`.
+
+## Unhandled errors in the bridge tests
+
+PR #692 went red in CI with every test passing: Vitest counted two unhandled errors, and that fails the run.
+Locally they were missed because only the "Tests" line was checked, not the "Errors" line or the exit code.
+
+- A test that aborts an ask with `req.destroy()` must await the rejected reply, or the "socket hang up" is an unhandled rejection.
+- A Node `http.request` on the shared keep-alive agent throws EPIPE with nothing listening when the server closes the connection after a body of about 1 MB or more, even after the response was read.
+  **Fix:** ask with `agent: false`, a connection of its own as the mod's.
+- The bridge answers 413 only after it has read the whole body, so the client is not cut off mid-send and sees the 413 rather than a connection error.
+
+Run `npm test` and check its exit code, not just the pass counts.

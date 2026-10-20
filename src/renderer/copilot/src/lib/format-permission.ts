@@ -1,4 +1,9 @@
 import type { CopilotToolInfo } from '../../../../shared/types';
+import type {
+  PermissionDestination,
+  PermissionSuggestion,
+  SuggestedMode
+} from '../../../../shared/claude-sessions';
 
 type PermissionSummary = {
   label: string;
@@ -60,4 +65,38 @@ export function formatPermissionSummary(tool: CopilotToolInfo): PermissionSummar
   const label = `${prefix}: ${truncate(rawValue, maxValueLength)}`;
 
   return { label, detail: rawValue, matched: true, description };
+}
+
+/** Where a suggestion's change is kept and how far it reaches, as a suffix to its label. */
+const SCOPES: Record<PermissionDestination, string> = {
+  session: ' this session',
+  cliArg: ' this session',
+  localSettings: ' in this project',
+  // .claude/settings.json, which is usually committed.
+  projectSettings: ' in this project (shared)',
+  userSettings: ' in all projects'
+};
+
+const MODE_NAMES: Record<SuggestedMode, string> = {
+  default: 'default mode',
+  acceptEdits: 'accept edits',
+  plan: 'plan mode',
+  auto: 'auto mode'
+};
+
+/** The label of the button that allows a request along with one of Claude Code's suggestions. */
+export function suggestionLabel(suggestion: PermissionSuggestion): string {
+  const scope = SCOPES[suggestion.destination];
+  switch (suggestion.type) {
+    case 'addRules': {
+      const rules = suggestion.rules.map((r) =>
+        r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName
+      );
+      return `Allow, and don't ask again for ${rules.join(', ')}${scope}`;
+    }
+    case 'addDirectories':
+      return `Allow, and don't ask again in ${suggestion.directories.join(', ')}${scope}`;
+    case 'setMode':
+      return `Allow, and switch to ${MODE_NAMES[suggestion.mode]}${scope}`;
+  }
 }

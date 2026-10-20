@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatPermissionSummary } from '../format-permission';
+import { formatPermissionSummary, suggestionLabel } from '../format-permission';
 import type { CopilotToolInfo } from '../../../../../shared/types';
 
 function tool(toolName: string, toolInput: Record<string, unknown>): CopilotToolInfo {
@@ -98,5 +98,47 @@ describe('formatPermissionSummary', () => {
 
   it('has no description when the tool gives none', () => {
     expect(formatPermissionSummary(tool('Read', { file_path: 'a.ts' })).description).toBeNull();
+  });
+});
+
+describe('suggestionLabel', () => {
+  it('names the rules to add and where they are kept', () => {
+    expect(
+      suggestionLabel({
+        type: 'addRules',
+        rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }, { toolName: 'WebSearch' }],
+        behavior: 'allow',
+        destination: 'localSettings'
+      })
+    ).toBe("Allow, and don't ask again for Bash(npm test:*), WebSearch in this project");
+  });
+
+  it('tells a shared project rule and a rule for every project apart', () => {
+    const rule = (destination: 'projectSettings' | 'userSettings'): string =>
+      suggestionLabel({
+        type: 'addRules',
+        rules: [{ toolName: 'Bash', ruleContent: 'ls:*' }],
+        behavior: 'allow',
+        destination
+      });
+    expect(rule('projectSettings')).toBe(
+      "Allow, and don't ask again for Bash(ls:*) in this project (shared)"
+    );
+    expect(rule('userSettings')).toBe("Allow, and don't ask again for Bash(ls:*) in all projects");
+  });
+
+  it('names the folders to allow', () => {
+    expect(
+      suggestionLabel({ type: 'addDirectories', directories: ['/tmp/x'], destination: 'session' })
+    ).toBe("Allow, and don't ask again in /tmp/x this session");
+  });
+
+  it('names the mode to switch to and how long it lasts', () => {
+    expect(suggestionLabel({ type: 'setMode', mode: 'acceptEdits', destination: 'session' })).toBe(
+      'Allow, and switch to accept edits this session'
+    );
+    expect(suggestionLabel({ type: 'setMode', mode: 'plan', destination: 'localSettings' })).toBe(
+      'Allow, and switch to plan mode in this project'
+    );
   });
 });

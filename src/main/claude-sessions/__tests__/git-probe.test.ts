@@ -14,6 +14,7 @@ function git(...args: string[]): string {
 function gitIn(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, {
     cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
       GIT_AUTHOR_NAME: 't',

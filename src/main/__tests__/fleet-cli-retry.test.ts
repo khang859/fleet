@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { FleetCLI } from '../fleet-cli';
 import { SocketServer } from '../socket-server';
 import { join } from 'path';
@@ -25,7 +25,16 @@ function makeMockServices() {
   } as any;
 }
 
+function captureStderr(): () => string {
+  const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  return () => spy.mock.calls.map(([chunk]) => String(chunk)).join('');
+}
+
 describe('FleetCLI.sendWithRetry', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('succeeds immediately when socket is available', async () => {
     const socketPath = tmpSocket();
     const server = new SocketServer(socketPath, makeMockServices());
@@ -44,6 +53,7 @@ describe('FleetCLI.sendWithRetry', () => {
   it('retries on transient errors and eventually fails', async () => {
     const socketPath = tmpSocket();
     // No server running, socket file doesn't exist
+    const stderr = captureStderr();
     const cli = new FleetCLI(socketPath);
     const result = await cli.sendWithRetry(
       'ping',
@@ -51,6 +61,8 @@ describe('FleetCLI.sendWithRetry', () => {
       { waitForAppMs: 0, maxRetries: 2, initialBackoffMs: 50 }
     );
     expect(result.ok).toBe(false);
+    expect(stderr()).toContain('Connection failed (ENOENT), retrying (1/2)...');
+    expect(stderr()).toContain('Connection failed (ENOENT), retrying (2/2)...');
   });
 
   it('waits for socket file to appear', async () => {
@@ -63,11 +75,13 @@ describe('FleetCLI.sendWithRetry', () => {
       void server.start();
     }, 300);
 
+    const stderr = captureStderr();
     const cli = new FleetCLI(socketPath);
     const result = await cli.sendWithRetry('ping', {}, { waitForAppMs: 3000, pollIntervalMs: 100 });
 
     expect(result.ok).toBe(true);
     expect((result.data as any).pong).toBe(true);
+    expect(stderr()).toContain('Waiting for Fleet app to start...');
 
     await server.stop();
   });

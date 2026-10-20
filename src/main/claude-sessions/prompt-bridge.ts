@@ -1,57 +1,27 @@
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
-import { createLogger } from '../logger';
-import { BRIDGE_SOCKET_PATH } from '../../shared/constants';
-import { listenOnSocket, removeSocketFile } from './socket-file';
-
-const log = createLogger('claude-sessions:prompt-bridge');
-
-/** How long a request for a prompt is held before it is answered with none. */
-export const POLL_HOLD_MS = 20_000;
+import type { IncomingMessage, ServerResponse } from 'http';
+import { NOT_ANSWERED, POLL_HOLD_MS, reply, type BridgeRoute } from './bridge-server';
 
 type Poll = { res: ServerResponse; timer: ReturnType<typeof setTimeout> };
 
 /**
- * What a request is answered with when a newer one for its session took its
- * place: a reloaded mod's, or a second mod's. The mod waits before it asks
- * again, so two mods asking for one session do not take turns in a busy loop.
- */
-const REPLACED = 409;
-
-/**
- * The other end of the fleet-bridge mod (resources/claude-mod/fleet-bridge),
- * which Claude Code loads in every Fleet pane. The mod asks this socket for a
- * prompt for its session (`GET /prompt?session=<id>`), and the request is held
- * until `deliver` answers it with one, or answered with 204 after
- * `POLL_HOLD_MS`. The mod submits what it gets as the person's own prompt, so
- * the prompt needs no typing into the terminal: it is not read as a paste, and
- * it leaves the person's draft as it was.
+ * The bridge's `GET /prompt?session=<id>` route: the fleet-bridge mod asks it
+ * for a prompt for its session, and the request is held until `deliver`
+ * answers it with one, or answered with 204 after `POLL_HOLD_MS`. The mod
+ * submits what it gets as the person's own prompt, so the prompt needs no
+ * typing into the terminal: it is not read as a paste, and it leaves the
+ * person's draft as it was.
  *
  * A session whose mod is not asking right now (an older Claude Code, a mod
  * between two requests, eva) gets its prompt typed as before.
  */
-export class PromptBridge {
-  private server: Server | null = null;
+export class PromptBridge implements BridgeRoute {
   /** The request each session's mod has open, newest only. */
   private readonly polls = new Map<string, Poll>();
 
-  constructor(
-    private readonly socketPath: string = BRIDGE_SOCKET_PATH,
-    private readonly holdMs: number = POLL_HOLD_MS
-  ) {}
+  constructor(private readonly holdMs: number = POLL_HOLD_MS) {}
 
-  async start(): Promise<void> {
-    this.server = createServer((req, res) => this.onRequest(req, res));
-    return listenOnSocket(this.server, this.socketPath, log);
-  }
-
-  async stop(): Promise<void> {
-    const server = this.server;
-    if (!server) return;
-    this.server = null;
+  stop(): void {
     for (const sessionId of [...this.polls.keys()]) this.answer(sessionId, 204);
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    removeSocketFile(this.socketPath, log);
   }
 
   /** Whether the session's mod is waiting for a prompt now, so `deliver` would take one. */
@@ -64,14 +34,14 @@ export class PromptBridge {
     return this.answer(sessionId, 200, JSON.stringify({ text }));
   }
 
-  private onRequest(req: IncomingMessage, res: ServerResponse): void {
-    const url = new URL(req.url ?? '/', 'http://fleet');
+  handle(_req: IncomingMessage, res: ServerResponse, url: URL): void {
     const sessionId = url.searchParams.get('session');
-    if (req.method !== 'GET' || url.pathname !== '/prompt' || !sessionId) {
+    if (!sessionId) {
       res.writeHead(404).end();
       return;
     }
-    this.answer(sessionId, REPLACED);
+    // A newer request takes the older one's place: a reloaded mod's, or a second mod's.
+    this.answer(sessionId, NOT_ANSWERED);
     const poll: Poll = { res, timer: setTimeout(() => this.answer(sessionId, 204), this.holdMs) };
     this.polls.set(sessionId, poll);
     res.on('close', () => {
@@ -88,8 +58,7 @@ export class PromptBridge {
     clearTimeout(poll.timer);
     // The mod went away and 'close' has not fired yet: the prompt would be lost.
     if (poll.res.destroyed) return false;
-    if (body === undefined) poll.res.writeHead(status).end();
-    else poll.res.writeHead(status, { 'content-type': 'application/json' }).end(body);
+    reply(poll.res, status, body);
     return true;
   }
 }

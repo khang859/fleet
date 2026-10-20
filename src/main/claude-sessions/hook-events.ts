@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { SessionRuntime } from '../../shared/claude-sessions';
+import type { PermissionSuggestion, SessionRuntime } from '../../shared/claude-sessions';
 import type { UsageWindow } from '../../shared/agency-spend';
 import { evaToolInput, evaToolName } from './eva-tools';
 
@@ -19,11 +19,11 @@ import { evaToolInput, evaToolName } from './eva-tools';
 export const HOOK_PROTOCOL = 5;
 
 /** An optional field that is dropped, not fatal, when it has the wrong type. */
-function lenient<T extends z.ZodType>(schema: T): z.ZodCatch<z.ZodOptional<T>> {
+export function lenient<T extends z.ZodType>(schema: T): z.ZodCatch<z.ZodOptional<T>> {
   return schema.optional().catch(undefined);
 }
 
-const nonEmpty = z.string().min(1);
+export const nonEmpty = z.string().min(1);
 
 const WireWindow = z.object({
   used_percentage: z.number().min(0).max(100),
@@ -95,6 +95,8 @@ export type HookEvent = {
   costUsd?: number;
   /** `StatusLine` only: Claude Code's subscription windows; absent on an API key. */
   rateLimits?: { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null };
+  /** A permission request the fleet-bridge mod sent: what Claude Code suggests allowing with it. */
+  permissionSuggestions?: PermissionSuggestion[];
   /** 1 for binaries that predate the field. */
   protocol: number;
 };

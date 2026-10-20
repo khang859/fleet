@@ -7,6 +7,7 @@ import { join } from 'path';
 vi.mock('../../logger', () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() })
 }));
+import { BridgeServer } from '../bridge-server';
 import { PromptBridge } from '../prompt-bridge';
 
 type Reply = { status: number; body: string };
@@ -34,16 +35,18 @@ describe.skipIf(process.platform === 'win32')('PromptBridge', () => {
   let dir: string;
   let socketPath: string;
   let bridge: PromptBridge;
+  let server: BridgeServer;
 
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'fleet-bridge-'));
     socketPath = join(dir, 'bridge.sock');
-    bridge = new PromptBridge(socketPath, 200);
-    await bridge.start();
+    bridge = new PromptBridge(200);
+    server = new BridgeServer({ 'GET /prompt': bridge }, socketPath);
+    await server.start();
   });
 
   afterEach(async () => {
-    await bridge.stop();
+    await server.stop();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -98,7 +101,7 @@ describe.skipIf(process.platform === 'win32')('PromptBridge', () => {
   it('answers open requests and removes its socket when it stops', async () => {
     const { reply } = ask(socketPath, '/prompt?session=s1');
     await until(() => bridge.has('s1'));
-    await bridge.stop();
+    await server.stop();
     expect((await reply).status).toBe(204);
     expect(() => statSync(socketPath)).toThrow();
   });

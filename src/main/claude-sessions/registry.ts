@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { isProcessAlive } from '../process-liveness';
 import type {
@@ -68,6 +68,20 @@ const IN_PLACE_SOURCES = new Set(['clear', 'resume']);
 export function hashPrompt(text: string): string {
   // Trimmed, so the text as sent and as the transcript records it agree.
   return createHash('sha256').update(text.trim()).digest('hex');
+}
+
+/**
+ * One tool call's tool and input as a key. Object keys are written in order,
+ * so one input gives one key whether the Go hook (which sorts keys) or the
+ * mod (which keeps Claude Code's order) sent it.
+ */
+export function toolCallKey(tool: string, input: unknown): string {
+  return `${tool}:${JSON.stringify(input ?? {}, sortedKeys)}`;
+}
+
+function sortedKeys(_key: string, value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+  return Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
 function projectNameFromCwd(cwd: string): string {
@@ -206,7 +220,7 @@ export class ClaudeSessionRegistry {
       entry.removal = null;
     }
 
-    const toolUseId = this.toolUseIdFor(entry, event, now);
+    const toolUseId = this.toolUseIdFor(entry, event);
     const before = entry.session;
     const next = reducePhase(before, {
       sessionId: event.sessionId,
@@ -218,6 +232,7 @@ export class ClaudeSessionRegistry {
       notificationType: event.notificationType,
       delegated:
         event.status === 'waiting_for_approval' && toolUseId !== undefined && delegates(toolUseId),
+      suggestions: event.permissionSuggestions,
       at: now
     });
 
@@ -415,12 +430,12 @@ export class ClaudeSessionRegistry {
    * so ids seen on `PreToolUse` are queued by tool and input and handed out in
    * order.
    */
-  private toolUseIdFor(entry: Entry, event: HookEvent, now: number): string | undefined {
+  private toolUseIdFor(entry: Entry, event: HookEvent): string | undefined {
     // A tool that was denied or interrupted never finishes; its id must not
     // outlive the turn and be handed to a later, identical call.
     if (TURN_BOUNDARIES.has(event.event)) entry.toolUseIds.clear();
     if (!event.tool) return event.toolUseId;
-    const key = `${event.tool}:${JSON.stringify(event.toolInput ?? {})}`;
+    const key = toolCallKey(event.tool, event.toolInput);
     if (event.event === 'PreToolUse' && event.toolUseId) {
       const queue = entry.toolUseIds.get(key) ?? [];
       queue.push(event.toolUseId);
@@ -430,7 +445,7 @@ export class ClaudeSessionRegistry {
     if (event.status === 'waiting_for_approval' && !event.toolUseId) {
       // Every permission needs an id to be answered by; one Claude never named
       // gets a local one.
-      return entry.toolUseIds.get(key)?.shift() ?? `unknown-${now}`;
+      return entry.toolUseIds.get(key)?.shift() ?? `unknown-${randomUUID()}`;
     }
     if (TOOL_FINISHED.has(event.event) && event.toolUseId) {
       const queue = entry.toolUseIds.get(key);

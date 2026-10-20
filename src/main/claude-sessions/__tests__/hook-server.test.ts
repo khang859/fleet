@@ -3,7 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from 'fs';
 import { connect, type Socket } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { HookServer, PermissionBroker, PERMISSION_HOLD_MS } from '../hook-server';
+import { HookServer, PERMISSION_HOLD_MS, SocketHold } from '../hook-server';
+import { PermissionBroker } from '../permission-broker';
 
 const { warn } = vi.hoisted(() => ({ warn: vi.fn() }));
 vi.mock('../../logger', () => ({
@@ -45,14 +46,11 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     socketPath = join(dir, 'hook.sock');
     received = [];
     released = [];
-    broker = new PermissionBroker(
-      (sessionId, toolUseId) => released.push([sessionId, toolUseId]),
-      200
-    );
+    broker = new PermissionBroker((sessionId, toolUseId) => released.push([sessionId, toolUseId]));
     server = new HookServer((event: HookEvent, client: Socket) => {
       received.push(event);
       if (event.status !== 'waiting_for_approval' || !event.toolUseId) return false;
-      broker.hold(event.sessionId, event.toolUseId, client);
+      broker.hold(event.sessionId, event.toolUseId, new SocketHold(client, 200));
       return true;
     }, socketPath);
     await server.start();
@@ -167,6 +165,18 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     expect(broker.has('tu-1')).toBe(false);
     await expect(reply).resolves.toBe('');
     expect(released).toEqual([]);
+  });
+
+  it('drops a request held under an id a newer one takes', async () => {
+    const first = sendEvent(socketPath, permission);
+    await vi.waitFor(() => expect(broker.has('tu-1')).toBe(true));
+    const second = sendEvent(socketPath, permission);
+    // At once, not when its hold of 200 ms runs out.
+    const late = new Promise((resolve) => setTimeout(() => resolve('still held'), 150));
+    await expect(Promise.race([first, late])).resolves.toBe('');
+
+    expect(broker.respond('tu-1', 'allow')).toBe(true);
+    expect(JSON.parse(await second)).toEqual({ decision: 'allow', reason: '' });
   });
 
   it('removes the socket file on stop', async () => {
