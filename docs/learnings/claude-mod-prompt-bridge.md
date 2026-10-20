@@ -21,6 +21,7 @@ So the mod cannot be loaded from the signed, read-only app bundle.
 After `/clear` the process goes on under a new id, and the mod's open request still names the old one for up to the hold time.
 Prompts sent then fell back to typing.
 **Fix:** on `session.end` with reason `clear` or `resume`, start a new poll loop and stop the old one by a generation counter.
+The new loop skips only the id that just ended: `/resume` back to an earlier session runs under that session's old id again, so an id that ended once is not stale for good.
 
 ## Two mods asking for one session
 

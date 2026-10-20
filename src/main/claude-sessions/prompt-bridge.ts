@@ -86,6 +86,8 @@ export class PromptBridge {
     if (!poll) return false;
     this.polls.delete(sessionId);
     clearTimeout(poll.timer);
+    // The mod went away and 'close' has not fired yet: the prompt would be lost.
+    if (poll.res.destroyed) return false;
     if (body === undefined) poll.res.writeHead(status).end();
     else poll.res.writeHead(status, { 'content-type': 'application/json' }).end(body);
     return true;

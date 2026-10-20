@@ -16,14 +16,12 @@ const RETRY_MS = 5_000;
 const SWITCH_MS = 250;
 
 /** Ask once, and answer how long to wait before asking again. */
-async function ask(
-  $: EngineInterface,
-  socketPath: string,
-  ended: ReadonlySet<string>
-): Promise<number> {
+async function ask($: EngineInterface, loop: Loop, socketPath: string): Promise<number> {
   try {
     const session = await $.session.id();
-    if (ended.has(session)) return SWITCH_MS;
+    if (session === loop.ending) return SWITCH_MS;
+    // Only the id that just ended is stale: a resume may come back to an older one.
+    loop.ending = undefined;
     const res = await $.http.fetch(`http://fleet/prompt?session=${encodeURIComponent(session)}`, {
       socketPath
     });
@@ -42,8 +40,8 @@ type Loop = {
   socketPath?: string;
   /** Bumped to stop the running loop and start another. */
   generation: number;
-  /** Ids this process ran under before /clear or a resume. */
-  ended: Set<string>;
+  /** The id that /clear or a resume just ended, until the new one reads. */
+  ending?: string;
 };
 
 function start($: EngineInterface, loop: Loop, socketPath: string): void {
@@ -57,12 +55,12 @@ async function poll(
   socketPath: string,
   gen: number
 ): Promise<void> {
-  const wait = await ask($, socketPath, loop.ended);
+  const wait = await ask($, loop, socketPath);
   if (gen === loop.generation) $.clock.after(wait, () => void poll($, loop, socketPath, gen));
 }
 
 export const register: Register = (on) => {
-  const loop: Loop = { generation: 0, ended: new Set() };
+  const loop: Loop = { generation: 0 };
 
   on('session.start', async ($, e, next) => {
     const result = await next(e);
@@ -77,8 +75,8 @@ export const register: Register = (on) => {
   // open request still names the old one: start over without waiting it out.
   on('session.end', async ($, e, next) => {
     const result = await next(e);
-    loop.ended.add(e.sessionId);
     if (loop.socketPath && (e.reason === 'clear' || e.reason === 'resume')) {
+      loop.ending = e.sessionId;
       start($, loop, loop.socketPath);
     }
     return result;

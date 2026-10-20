@@ -410,9 +410,10 @@ export class ClaudeSessionsService {
     this.running = false;
     if (this.liveness) clearInterval(this.liveness);
     this.liveness = null;
+    // First, so no prompt goes to a mod while the rest stops.
+    await this.promptBridge.stop();
     await this.broker.dispose();
     await this.server.stop();
-    await this.promptBridge.stop();
     this.registry.clear();
     this.usage.dispose();
     this.transcripts.dispose();
