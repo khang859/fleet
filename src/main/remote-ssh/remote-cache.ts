@@ -3,13 +3,13 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { RemoteHost } from '../../shared/remote-ssh-types';
 import { createLogger } from '../logger';
 import { hostKey } from './ssh-control';
 import { getFileExtension } from '../../shared/file-open';
+import { FLEET_HOME } from '../../shared/constants';
 
 const log = createLogger('remote-ssh:cache');
 
@@ -39,7 +39,7 @@ const CacheMetaSchema = z.object({
 type CacheMeta = z.infer<typeof CacheMetaSchema>;
 
 export function cacheRoot(): string {
-  return join(homedir(), '.fleet', 'remote-cache');
+  return join(FLEET_HOME, 'remote-cache');
 }
 
 function hostDir(host: RemoteHost): string {

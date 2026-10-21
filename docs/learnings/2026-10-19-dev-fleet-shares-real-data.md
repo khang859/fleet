@@ -24,3 +24,9 @@ Found while: job j30, checking the crew permission mode controls with fleet-driv
 
 Before starting a dev Fleet, ask: does anything else use `~/Library/Application Support/Fleet` right now?
 If Fleet runs jobs, do not start one.
+
+## Update (2026-10-21): fixed at the source
+
+A dev Fleet now has its own sandbox per checkout and shares no state with the installed app.
+Starting one while the installed app runs jobs is safe.
+See `2026-10-21-dev-fleet-gets-its-own-sandbox.md`.

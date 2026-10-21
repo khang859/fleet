@@ -40,7 +40,9 @@ import { registerIpcHandlers } from './ipc-handlers';
 import { GitService } from './git-service';
 import { SettingsStore } from './settings-store';
 import { backfillBackgroundStore, pruneBackgroundStore } from './background-store';
-import { IPC_CHANNELS, IS_FLEET_DEV, SOCKET_PATH } from '../shared/constants';
+import { FLEET_HOME, IPC_CHANNELS, IS_FLEET_DEV, SOCKET_PATH } from '../shared/constants';
+import { RELEASE_FLEET_HOME } from '../shared/fleet-home';
+import { enterDevSandbox } from './dev-sandbox';
 import { deriveDebugPort, sessionFilePath, type DriveSession } from '../shared/drive-session';
 import { SocketSupervisor } from './socket-supervisor';
 import { QuitGuard } from './quit-guard';
@@ -153,6 +155,10 @@ import type { AppUpdater } from 'electron-updater';
 const log = createLogger('fleet-main');
 const updaterLog = createLogger('auto-updater');
 
+// A dev build keeps its settings, panes and browser storage apart from the
+// installed app's, one folder per checkout. Before anything opens a store.
+if (IS_FLEET_DEV) enterDevSandbox();
+
 // Preferred loopback port for the Learnings KB MCP server. Fixed so the URL written
 // into ~/.claude.json stays stable across restarts; falls back
 // to an OS-assigned port on conflict (the entry is then rewritten with the live port).
@@ -256,7 +262,7 @@ const ptyOscBridge = new PtyOscBridge({
   downloadsDir: () => app.getPath('downloads')
 });
 ensureScratchDir();
-const ANNOTATIONS_DIR = join(homedir(), '.fleet', 'annotations');
+const ANNOTATIONS_DIR = join(FLEET_HOME, 'annotations');
 const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
 const annotateService = new AnnotateService(annotationStore);
 const envSyncSecrets = new EnvSyncSecrets();
@@ -575,21 +581,20 @@ if (IS_FLEET_DEV) {
   app.commandLine.appendSwitch('remote-debugging-port', String(fleetDrivePort));
 }
 
-// Single instance lock — prevent multiple Fleet instances from fighting over fleet.sock
-// In dev mode (FLEET_DEV=1), skip the lock so dev and production can coexist.
-if (!IS_FLEET_DEV) {
-  const gotTheLock = app.requestSingleInstanceLock();
+// Single instance lock — prevent multiple Fleet instances from fighting over fleet.sock.
+// The lock belongs to the data folder, so a dev build, with its own folder per
+// checkout, runs beside the installed app and beside other checkouts.
+const gotTheLock = app.requestSingleInstanceLock();
 
-  if (!gotTheLock) {
-    app.quit();
-  } else {
-    app.on('second-instance', () => {
-      if (mainWindow) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.focus();
-      }
-    });
-  }
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
 }
 
 // Register fleet-image:// protocol to serve local images without base64 IPC overhead
@@ -809,17 +814,20 @@ void app.whenReady().then(async () => {
       error: err instanceof Error ? err.message : String(err)
     });
   });
-  void installOpencodePlugin().catch((err) => {
-    log.warn('failed to install opencode plugin', {
-      error: err instanceof Error ? err.message : String(err)
+  // opencode's config folder is global, so only the installed app writes it.
+  if (!IS_FLEET_DEV) {
+    void installOpencodePlugin().catch((err) => {
+      log.warn('failed to install opencode plugin', {
+        error: err instanceof Error ? err.message : String(err)
+      });
     });
-  });
+  }
   void installFleetCLI()
     .catch((err: unknown) => {
       log.error('failed to install CLI binary', {
         error: err instanceof Error ? err.message : String(err)
       });
-      return join(homedir(), '.fleet', 'bin');
+      return join(FLEET_HOME, 'bin');
     })
     .then((fleetBinPath) => {
       const pathDirs = (process.env.PATH ?? '').split(':');
@@ -1416,8 +1424,9 @@ void app.whenReady().then(async () => {
 
   // One shared embedding worker (transformers.js model in a worker thread) backs
   // the learnings KB: a single model download and a single inference thread.
-  const learningsHome = join(homedir(), '.fleet', 'learnings');
-  const learningsModelDir = join(learningsHome, 'models');
+  const learningsHome = join(FLEET_HOME, 'learnings');
+  // The model is large and only read, so a dev build uses the installed app's copy.
+  const learningsModelDir = join(RELEASE_FLEET_HOME, 'learnings', 'models');
   const sharedEmbedder = new WorkerEmbedder({ modelCacheDir: learningsModelDir });
 
   const openRouterSecrets = new OpenRouterSecrets();
@@ -1651,6 +1660,7 @@ void app.whenReady().then(async () => {
       bundled: app.isPackaged
         ? join(process.resourcesPath, 'resources', 'crew')
         : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources', 'crew'),
+      // Crew the user wrote, not app state, so a dev build reads the same ones.
       user: join(homedir(), '.fleet', 'crew')
     },
     checkRuntime: async (runtime, cwd, mode) =>
@@ -1992,7 +2002,8 @@ void app.whenReady().then(async () => {
       // Register first, then persist: the port file is what the next launch prefers,
       // so only record it once the configs pointing at that port are written, keeping
       // the port file and the registered configs from diverging.
-      registerLearningsMcp(port);
+      // ~/.claude.json is global, so only the installed app points Claude Code here.
+      if (!IS_FLEET_DEV) registerLearningsMcp(port);
       // Remember the bound port so a forced OS-fallback (default port busy) stays
       // stable next launch instead of rewriting the global configs each time.
       persistPort(port);

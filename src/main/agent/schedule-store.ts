@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { jitterMs, nextFireAfter, parseCron } from '../../shared/agent-schedule-cron';
 import {
@@ -13,10 +12,11 @@ import {
   type AgentScheduleRecord
 } from '../../shared/agent-schedule';
 import { createLogger } from '../logger';
+import { FLEET_HOME } from '../../shared/constants';
 
 const log = createLogger('agent:schedules');
 
-const SCHEDULE_FILE = join(homedir(), '.fleet', 'agent', 'schedules.json');
+const SCHEDULE_FILE = join(FLEET_HOME, 'agent', 'schedules.json');
 
 /**
  * A create declined because the conversation is already holding as many

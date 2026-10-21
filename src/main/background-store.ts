@@ -7,7 +7,6 @@ import {
   unlinkSync
 } from 'node:fs';
 import { mkdir, rename, rm, stat, utimes } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
@@ -17,6 +16,7 @@ import { getFileExtension } from '../shared/file-open';
 import type { Dirent } from 'node:fs';
 import type { BackgroundAdoptResponse } from '../shared/ipc-api';
 import type { TerminalBackground } from '../shared/types';
+import { FLEET_HOME } from '../shared/constants';
 
 const log = createLogger('background-store');
 
@@ -32,7 +32,7 @@ const log = createLogger('background-store');
  * that becomes a background is copied here first, and the setting points at the
  * copy.
  */
-const BACKGROUNDS_DIR = join(homedir(), '.fleet', 'backgrounds');
+const BACKGROUNDS_DIR = join(FLEET_HOME, 'backgrounds');
 
 /**
  * How long a copy is safe from the sweep whether or not a setting names it.

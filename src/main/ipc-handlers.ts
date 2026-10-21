@@ -10,7 +10,6 @@ const log = createLogger('ipc');
 import { readFile, writeFile, stat, readdir, mkdir } from 'fs/promises';
 import type { Dirent } from 'fs';
 import { extname, join, relative, posix as posixPath } from 'path';
-import { homedir } from 'node:os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { execInContext } from './run-in-context';
@@ -120,7 +119,7 @@ async function listFilesWsl(
     return { success: true, files: [] };
   }
 }
-import { IPC_CHANNELS } from '../shared/constants';
+import { IPC_CHANNELS, FLEET_HOME } from '../shared/constants';
 import type {
   PtyCreateRequest,
   PtyDataPayload,
@@ -1140,7 +1139,7 @@ export function registerIpcHandlers(
   // A per-project markdown note, keyed by scope path (repo root, or the folder
   // itself when not a repo). The renderer resolves the scope path; main derives
   // the storage key and reads/writes under ~/.fleet/notes/.
-  const notesBaseDir = join(homedir(), '.fleet', 'notes');
+  const notesBaseDir = join(FLEET_HOME, 'notes');
   ipcMain.handle(IPC_CHANNELS.NOTES_READ, (_e, scopePath: string, pathContext?: PathContext) =>
     readNote(notesBaseDir, noteKey(scopePath, pathContext))
   );

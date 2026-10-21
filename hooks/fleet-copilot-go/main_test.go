@@ -564,3 +564,24 @@ func TestRun_EvaStopCarriesTheCost(t *testing.T) {
 		t.Errorf("an unknown cost stays unset: %v", *sent.CostUSD)
 	}
 }
+
+func envOf(vars map[string]string) func(string) string {
+	return func(key string) string { return vars[key] }
+}
+
+func TestSocketPathFrom_PrefersTheSocketFleetNames(t *testing.T) {
+	got := socketPathFrom(envOf(map[string]string{
+		"FLEET_COPILOT_SOCKET": "/x/fleet-copilot.sock",
+		"FLEET_DEV":            "1",
+	}))
+	if got != "/x/fleet-copilot.sock" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestSocketPathFrom_FallsBackToTheDevName(t *testing.T) {
+	got := socketPathFrom(envOf(map[string]string{"FLEET_DEV": "1"}))
+	if filepath.Base(got) != "fleet-copilot-dev.sock" {
+		t.Fatalf("got %q", got)
+	}
+}

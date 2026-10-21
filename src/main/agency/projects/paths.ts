@@ -1,6 +1,6 @@
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { YOU_LAYER } from '../../../shared/agency-client-file';
+import { FLEET_HOME } from '../../../shared/constants';
 
 /**
  * Where the agency keeps per-project files: `~/.fleet/agency/`, or
@@ -8,7 +8,7 @@ import { YOU_LAYER } from '../../../shared/agency-client-file';
  * folder.
  */
 export function agencyHome(): string {
-  return process.env.FLEET_AGENCY_HOME ?? join(homedir(), '.fleet', 'agency');
+  return process.env.FLEET_AGENCY_HOME ?? join(FLEET_HOME, 'agency');
 }
 
 /** A job's folder: its delivered files and its workspaces, outside every checkout. */

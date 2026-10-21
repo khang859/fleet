@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { FLEET_HOME } from '../../../shared/constants';
 
 /**
  * Where the agency keeps its durable state. One file for every repository:
@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
  * the app. `FLEET_AGENCY_DB_PATH` points it somewhere else, for tests.
  */
 export function agencyDbPath(): string {
-  return process.env.FLEET_AGENCY_DB_PATH ?? join(homedir(), '.fleet', 'agency.db');
+  return process.env.FLEET_AGENCY_DB_PATH ?? join(FLEET_HOME, 'agency.db');
 }
 
 /**

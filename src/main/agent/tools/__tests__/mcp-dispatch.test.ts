@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { runAgentTool } from '../run';
 import type { AgentToolContext } from '../../../../shared/agent-tools';
@@ -129,6 +129,7 @@ describe('running an MCP tool', () => {
     expect(readFileSync(result.image?.path ?? '')).toEqual(pixel);
     expect(result.text).toBe('the page');
 
-    rmSync(result.image?.path ?? '', { force: true });
+    // The picture's folder is in the real store; take it away with the picture.
+    rmSync(dirname(result.image?.path ?? ''), { recursive: true, force: true });
   });
 });

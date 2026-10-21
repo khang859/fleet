@@ -1,15 +1,25 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WorktreeService } from '../worktree-service';
+import type * as FleetHome from '../../shared/fleet-home';
 
 /** Real git in a temp folder: worktrees made apart from one pinned commit start alike. */
 
 let dir: string;
 let repo: string;
-let home: string | undefined;
+
+const paths = vi.hoisted(() => ({ fleetHome: '' }));
+
+// Worktrees go under FLEET_HOME/worktrees; keep them in the temp folder.
+vi.mock('../../shared/fleet-home', async (importOriginal) => ({
+  ...(await importOriginal<typeof FleetHome>()),
+  get FLEET_HOME(): string {
+    return paths.fleetHome;
+  }
+}));
 
 const ENV = {
   ...process.env,
@@ -32,14 +42,11 @@ function commit(name: string): string {
 beforeEach(() => {
   dir = realpathSync(mkdtempSync(join(tmpdir(), 'fleet-wt-start-')));
   repo = join(dir, 'app');
-  home = process.env.HOME;
-  // Worktrees go under ~/.fleet/worktrees; keep them in the temp folder.
-  process.env.HOME = dir;
+  paths.fleetHome = join(dir, '.fleet');
   execFileSync('git', ['init', '-q', '-b', 'main', repo], { env: ENV });
 });
 
 afterEach(() => {
-  process.env.HOME = home;
   rmSync(dir, { recursive: true, force: true });
 });
 

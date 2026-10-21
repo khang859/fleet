@@ -6,15 +6,12 @@ import { execInContext } from './run-in-context';
 import { toWindowsAccessiblePath } from '../shared/path-platform';
 import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { WslService } from './wsl-service';
+import { FLEET_HOME } from '../shared/constants';
 
 const log = createLogger('worktree');
 
 // A WSL distro can be cold-booting; give worktree git operations a wide timeout.
 const WSL_GIT_TIMEOUT_MS = 30_000;
-
-function getHomeDir(): string {
-  return process.env.HOME ?? process.env.USERPROFILE ?? '/tmp';
-}
 
 function getRepoName(repoPath: string): string {
   const parts = repoPath.replace(/\/+$/, '').split('/');
@@ -162,7 +159,7 @@ export class WorktreeService {
       const home = await this.wslService.homeDir(ctx.distro);
       return posixPath.join(home, '.fleet', 'worktrees', repoName);
     }
-    return join(getHomeDir(), '.fleet', 'worktrees', repoName);
+    return join(FLEET_HOME, 'worktrees', repoName);
   }
 
   /**

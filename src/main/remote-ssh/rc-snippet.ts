@@ -1,12 +1,12 @@
 // src/main/remote-ssh/rc-snippet.ts
 
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { RemoteHost } from '../../shared/remote-ssh-types';
 import { createLogger } from '../logger';
 import { execSsh } from './ssh-control';
 import { resolveRemotePath } from './ssh-listing';
 import { writeRemoteText } from './ssh-transfer';
+import { FLEET_HOME } from '../../shared/constants';
 
 const log = createLogger('remote-ssh:rc');
 
@@ -140,7 +140,7 @@ export function rcAppendCommand(): string {
 
 /** Where Fleet stages the script before uploading it. */
 function scratchDir(): string {
-  return join(homedir(), '.fleet', 'remote-cache', '.scratch');
+  return join(FLEET_HOME, 'remote-cache', '.scratch');
 }
 
 /** Whether this host already sources Fleet's snippet, and at which version. */
