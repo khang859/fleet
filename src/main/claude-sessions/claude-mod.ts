@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { delimiter, dirname, join } from 'node:path';
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { delimiter, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BRIDGE_SOCKET_PATH, CLAUDE_MOD_DIR } from '../../shared/constants';
 import { writeAtomicSync } from '../fs-atomic';
@@ -9,6 +9,9 @@ const log = createLogger('claude-sessions:claude-mod');
 
 /** The fleet-bridge mod's files, relative to its folder. */
 const MOD_FILES = ['.claude-plugin/plugin.json', 'hooks/hooks.json', 'hooks/register.ts'];
+
+/** The mod's folders, where a file not in `MOD_FILES` was left by an older Fleet. */
+const MOD_DIRS = ['.claude-plugin', 'hooks'];
 
 /**
  * Copy the fleet-bridge mod (resources/claude-mod/fleet-bridge) to
@@ -28,12 +31,39 @@ export function installClaudeMod(): void {
     log.warn('fleet-bridge mod not found, skipping install');
     return;
   }
+  copyClaudeMod(source, CLAUDE_MOD_DIR);
+}
+
+/**
+ * Write the mod's files from `source` to `dest`, then remove the files an
+ * older Fleet shipped and this one does not. The type files Claude Code
+ * writes, under a `types/` folder or in `dest` itself, are left alone.
+ */
+export function copyClaudeMod(source: string, dest: string): void {
   for (const file of MOD_FILES) {
     const text = readFileSync(join(source, file), 'utf8');
-    const dest = join(CLAUDE_MOD_DIR, file);
-    if (existsSync(dest) && readFileSync(dest, 'utf8') === text) continue;
-    writeAtomicSync(dest, text);
+    const target = join(dest, file);
+    if (existsSync(target) && readFileSync(target, 'utf8') === text) continue;
+    writeAtomicSync(target, text);
   }
+
+  for (const file of staleModFiles(dest)) {
+    rmSync(join(dest, file), { force: true });
+  }
+}
+
+/** The files in the mod's folders that are neither in `MOD_FILES` nor Claude Code's type files. */
+function staleModFiles(dest: string): string[] {
+  return MOD_DIRS.flatMap((dir) => {
+    const path = join(dest, dir);
+    if (!existsSync(path)) return [];
+    return readdirSync(path, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => relative(dest, join(entry.parentPath, entry.name)).split(sep).join('/'))
+      .filter(
+        (file) => !MOD_FILES.includes(file) && !file.split('/').slice(0, -1).includes('types')
+      );
+  });
 }
 
 /** A Fleet mod folder, this Fleet's or another's (dev or not), as a path list names it. */

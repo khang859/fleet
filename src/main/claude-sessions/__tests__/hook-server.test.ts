@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync } from 'fs';
 import { connect, type Socket } from 'net';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -43,6 +43,7 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
 
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'fleet-hook-server-'));
+    chmodSync(dir, 0o755);
     socketPath = join(dir, 'hook.sock');
     received = [];
     released = [];
@@ -74,7 +75,8 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('is readable and writable by its owner only', () => {
+  it('is readable and writable by its owner only, in a folder only its owner can enter', () => {
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
     expect(statSync(socketPath).mode & 0o777).toBe(0o600);
   });
 
