@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.139.0
+
+- **Answer permissions from Fleet, the whole time the dialog is open.**
+  The bundled `fleet-bridge` mod asks Fleet when Claude Code wants a permission, and holds the request as long as Claude Code's dialog is open.
+  The terminal and Fleet can both answer, and the first answer wins.
+  The copilot card also shows Claude Code's "always allow" suggestions as buttons (#692).
+- **Dev Fleet no longer touches your real Fleet.**
+  A dev build has its own sandbox per checkout in `~/.fleet/dev/<id>/`, so it can no longer interrupt Admiral jobs or panes in the installed app, and dev apps in parallel worktrees stay apart.
+  The installed Claude Code hook and `fleet` CLI hand off to a dev pane's own builds (#695).
+- **Fixed: tighter socket permissions.**
+  Fleet now locks the socket folder before it listens, and removes stale files left in the `fleet-bridge` mod folder by older versions (#694).
+
 ## v2.138.0
 
 - **Prompts arrive whole.**
