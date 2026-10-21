@@ -1,10 +1,10 @@
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join, relative, isAbsolute } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { AgentSessionId } from '../../shared/agent-session';
 import { realpathOrNearest } from './tools/paths';
 import { createLogger } from '../logger';
+import { FLEET_HOME } from '../../shared/constants';
 
 const log = createLogger('agent:images');
 
@@ -25,12 +25,12 @@ const log = createLogger('agent:images');
 
 /** Where the agent's own output goes, one folder per conversation. Exported so
  *  the gallery can read the whole store rather than one session at a time. */
-export const AGENT_IMAGES_DIR = join(homedir(), '.fleet', 'agent', 'images');
+export const AGENT_IMAGES_DIR = join(FLEET_HOME, 'agent', 'images');
 
 /** Where an attachment is copied to. Separate from what the agent generated:
  *  they are deleted together, but they are not the same thing, and a folder
  *  that mixes them cannot say which picture came from whom. */
-export const AGENT_ATTACHMENTS_DIR = join(homedir(), '.fleet', 'agent', 'attachments');
+export const AGENT_ATTACHMENTS_DIR = join(FLEET_HOME, 'agent', 'attachments');
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': 'png',

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveDebugPort, sessionFilePath } from '../drive-session';
+import { deriveDebugPort, deriveRendererPort, sessionFilePath } from '../drive-session';
 
 describe('deriveDebugPort', () => {
   it('returns a valid override port verbatim', () => {
@@ -8,13 +8,13 @@ describe('deriveDebugPort', () => {
 
   it('ignores an empty override and derives from the path', () => {
     const port = deriveDebugPort('/Users/x/fleet', '');
-    expect(port).toBeGreaterThanOrEqual(41000);
-    expect(port).toBeLessThan(61000);
+    expect(port).toBeGreaterThanOrEqual(31000);
+    expect(port).toBeLessThan(39000);
   });
 
   it('ignores a non-numeric override', () => {
     const port = deriveDebugPort('/Users/x/fleet', 'not-a-port');
-    expect(port).toBeGreaterThanOrEqual(41000);
+    expect(port).toBeGreaterThanOrEqual(31000);
   });
 
   it('is deterministic for the same path', () => {
@@ -23,6 +23,13 @@ describe('deriveDebugPort', () => {
 
   it('differs across worktree paths', () => {
     expect(deriveDebugPort('/wt/one')).not.toBe(deriveDebugPort('/wt/two'));
+  });
+});
+
+describe('deriveRendererPort', () => {
+  it('is the port after the checkout debug port, below the crew port blocks', () => {
+    expect(deriveRendererPort('/wt/one')).toBe(deriveDebugPort('/wt/one') + 1);
+    expect(deriveRendererPort('/wt/one')).toBeLessThan(41000);
   });
 });
 

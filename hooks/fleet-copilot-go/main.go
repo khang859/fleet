@@ -31,13 +31,21 @@ const (
 	protocolVersion = 5
 )
 
-var socketPath = func() string {
+var socketPath = socketPathFrom(os.Getenv)
+
+// socketPathFrom is where Fleet listens. Fleet names its socket in every pane
+// it starts, as each dev checkout has its own; an older Fleet does not, and
+// the name follows FLEET_DEV.
+func socketPathFrom(getenv func(string) string) string {
+	if path := getenv("FLEET_COPILOT_SOCKET"); path != "" {
+		return path
+	}
 	name := "fleet-copilot.sock"
-	if os.Getenv("FLEET_DEV") != "" {
+	if getenv("FLEET_DEV") != "" {
 		name = "fleet-copilot-dev.sock"
 	}
 	return filepath.Join(homeDir(), ".fleet", name)
-}()
+}
 
 func homeDir() string {
 	if h, err := os.UserHomeDir(); err == nil {
@@ -426,6 +434,11 @@ func main() {
 	// foreground process group. Without this, the binary is killed
 	// before it can send the Stop/SubagentStop event to Fleet.
 	signal.Ignore(syscall.SIGINT)
+	if self, err := os.Executable(); err == nil {
+		if bin := handOffTarget(os.Getenv("FLEET_HOOK_BIN"), self); bin != "" {
+			execHook(bin, os.Args[1:])
+		}
+	}
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Getenv, hookPID))
 }
 

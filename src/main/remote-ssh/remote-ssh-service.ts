@@ -1,7 +1,6 @@
 // src/main/remote-ssh/remote-ssh-service.ts
 
 import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
   RemoteDirEntry,
@@ -31,6 +30,7 @@ import {
 } from './ssh-transfer';
 import { buildRecursiveDeletePlan, listRecursive } from './ssh-delete-plan';
 import { TransferManager, type TransferEmit } from './transfer-manager';
+import { FLEET_HOME } from '../../shared/constants';
 
 const log = createLogger('remote-ssh:service');
 
@@ -38,7 +38,7 @@ const log = createLogger('remote-ssh:service');
 const MAX_TEXT_BYTES = 10 * 1024 * 1024;
 
 function scratchDir(): string {
-  return join(homedir(), '.fleet', 'remote-cache', '.scratch');
+  return join(FLEET_HOME, 'remote-cache', '.scratch');
 }
 
 /**

@@ -1,7 +1,6 @@
 import { createConnection } from 'node:net';
 import { randomUUID } from 'node:crypto';
-import { join, resolve } from 'node:path';
-import { homedir } from 'node:os';
+import { resolve } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import {
   getPaneTypeForFilePath,
@@ -9,6 +8,7 @@ import {
   type OpenablePaneType
 } from '../shared/file-open';
 import { isRecord } from '../shared/is-record';
+import { SOCKET_PATH } from '../shared/fleet-home';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -655,9 +655,7 @@ async function agencyCommand(
 // ── CLI entrypoint ────────────────────────────────────────────────────────────
 
 if (typeof process !== 'undefined' && /fleet-cli\.(mjs|[jt]s)$/.test(process.argv[1] ?? '')) {
-  const suffix = process.env.FLEET_DEV ? '-dev' : '';
-  const sockPath = join(homedir(), '.fleet', `fleet${suffix}.sock`);
-  void runCLI(process.argv.slice(2), sockPath, { retry: true }).then((output) => {
+  void runCLI(process.argv.slice(2), SOCKET_PATH, { retry: true }).then((output) => {
     if (output) process.stdout.write(output + '\n');
     // A crew member's shell tool reads the exit code to tell a failed report from a sent one.
     if (output.startsWith('Error:')) process.exitCode = 1;

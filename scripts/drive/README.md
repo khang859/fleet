@@ -144,7 +144,15 @@ npm run drive -- eval "(async () => { el.dispatchEvent(ev); await new Promise(r 
 
 ## Notes
 
-- Each checkout uses a stable per-checkout debug port (override: `FLEET_DEBUG_PORT`).
-  Parallel dev worktrees do not collide.
+- Each checkout uses a stable per-checkout debug port (override: `FLEET_DEBUG_PORT`) and the renderer port after it.
+  Both sit below the 41000+ range that agency jobs hand out as crew ports.
+- Each checkout's dev app keeps all of its state in its own sandbox, `~/.fleet/dev/<id>/` (the `checkout` file in it names the checkout).
+  That holds its settings, saved panes, `agency.db`, sockets, logs and `fleet` CLI.
+  A new sandbox copies the installed app's settings and API keys once, and nothing else.
+  So parallel dev worktrees, and the installed app, do not collide.
+  Delete a sandbox folder to start that checkout fresh.
+- A dev app never writes Claude Code's hooks, `~/.claude.json`, shell profiles or `~/.fleet/bin`.
+  Its panes set `FLEET_HOOK_BIN` and `FLEET_CLI`, and the installed hook and CLI hand off to the checkout's own builds.
+  An installed app older than this change has no hand-off, so hooks in a dev pane report nowhere until it updates.
 - `keys` reaches renderer DOM handlers only (e.g. ⌘K), not native menu
   accelerators or `globalShortcut`.

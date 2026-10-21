@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { IPC_CHANNELS } from '../../../shared/ipc-channels';
 import {
@@ -27,11 +26,12 @@ import { AgentSessionStore } from '../session-store';
 import { killThreadBackgroundCommands } from '../tools/background';
 import { createLogger } from '../../logger';
 import { loadSubagents } from './definitions';
+import { FLEET_HOME } from '../../../shared/constants';
 
 const log = createLogger('agent:subagents');
 
 /** Where a subagent's own transcript is kept, beside the sessions it serves. */
-const TASKS_DIR = join(homedir(), '.fleet', 'agent', 'tasks');
+const TASKS_DIR = join(FLEET_HOME, 'agent', 'tasks');
 
 /**
  * What running one subagent takes, once the definition has been found and the

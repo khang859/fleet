@@ -7,6 +7,7 @@ import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { z } from 'zod';
 import { createLogger } from '../logger';
+import { FLEET_HOME } from '../../shared/constants';
 
 const log = createLogger('learnings-mcp-registrar');
 
@@ -28,7 +29,7 @@ export function learningsMcpEntry(): McpHttpEntry | null {
 }
 
 function defaultPortFile(): string {
-  return join(homedir(), '.fleet', 'learnings', 'mcp-port');
+  return join(FLEET_HOME, 'learnings', 'mcp-port');
 }
 
 /**

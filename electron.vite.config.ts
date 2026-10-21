@@ -2,6 +2,7 @@ import { resolve } from 'path';
 import { defineConfig } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { deriveRendererPort } from './src/shared/drive-session';
 
 export default defineConfig({
   main: {
@@ -35,6 +36,9 @@ export default defineConfig({
     }
   },
   renderer: {
+    // One port per checkout, and fail rather than move to another: a moved
+    // port can be one another checkout's dev window then loads.
+    server: { port: deriveRendererPort(process.cwd()), strictPort: true },
     resolve: {
       // streamdown and @git-diff-view/shiki both depend on shiki ^3, which npm
       // nests beside our own shiki 4 as two more private copies. Rollup then

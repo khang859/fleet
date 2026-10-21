@@ -6,14 +6,14 @@ import {
   renameSync,
   writeFileSync
 } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { AgentHistoryEntry, HISTORY_LIMIT, recallable } from '../../shared/agent-history';
 import { createLogger } from '../logger';
+import { FLEET_HOME } from '../../shared/constants';
 
 const log = createLogger('agent:history');
 
-const HISTORY_FILE = join(homedir(), '.fleet', 'agent', 'history.jsonl');
+const HISTORY_FILE = join(FLEET_HOME, 'agent', 'history.jsonl');
 
 /**
  * Compact once the file has this many lines.

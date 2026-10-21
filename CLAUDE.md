@@ -77,6 +77,8 @@ To see and control the running app during development, use `fleet-drive`. From t
 
 A background daemon keeps the connection warm, so a call takes about 60 ms with `node scripts/drive/client.mts <verb>` (the npm form adds about 100 ms).
 Only one `npm run dev` runs per checkout: a second one exits with the running one's pid instead of opening another window.
+Each checkout's dev app has its own sandbox in `~/.fleet/dev/<id>/` (settings, panes, `agency.db`, sockets), so dev apps in parallel worktrees and the installed app never share state.
+Its panes reach the checkout's own Claude Code hook and `fleet` CLI through `FLEET_HOOK_BIN` and `FLEET_CLI`.
 
 Selectors are Playwright `page.locator()` syntax: `role=button[name="Chat"]`, `text=Settings`, CSS, `testid=<id>`, or a snapshot ref. It attaches over CDP to the dev window (dev-only, enabled in `src/main/index.ts` behind `IS_FLEET_DEV`) - no macOS Screen Recording permission needed, since capture goes through Chromium's compositor, not the OS. This is the correct way to visually verify UI changes yourself. Full details: `scripts/drive/README.md`.
 

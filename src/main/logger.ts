@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import winston from 'winston';
+import { FLEET_HOME, IS_FLEET_DEV } from '../shared/constants';
 import { logRedactor } from './redactor';
 
 /**
@@ -73,10 +74,14 @@ const fileFormat = winston.format.combine(
  * and the fallback is the user's real home, so anything that is not the app
  * itself would otherwise append to the log the app is still writing. A log
  * shared with a test run cannot be read back as evidence of what the app did,
- * and diagnostics reads it back.
+ * and diagnostics reads it back. A dev build logs into its own checkout's
+ * folder, apart from the installed app.
  */
 const logDir =
-  process.env.FLEET_LOG_DIR ?? join(electronApp ? electronApp.home : homedir(), '.fleet', 'logs');
+  process.env.FLEET_LOG_DIR ??
+  (IS_FLEET_DEV
+    ? join(FLEET_HOME, 'logs')
+    : join(electronApp ? electronApp.home : homedir(), '.fleet', 'logs'));
 
 /** Absolute path to the daily log directory. Single source of truth for any
  * module (e.g. diagnostics) that needs to read these logs back. */

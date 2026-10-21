@@ -15,6 +15,7 @@ import { existsSync } from 'node:fs';
 import { z } from 'zod';
 
 import { createLogger } from './logger';
+import { FLEET_HOME, IS_FLEET_DEV } from '../shared/constants';
 const log = createLogger('fleet-cli');
 
 async function copyDirectoryRecursive(sourceDir: string, destDir: string): Promise<void> {
@@ -52,6 +53,15 @@ async function installBundledCliArtifacts(compiledPath: string, libDir: string):
   return cliEntrypoint;
 }
 
+// A dev Fleet's pane names its checkout's own CLI in FLEET_CLI. The shell
+// profile puts the release wrapper first on PATH, so it hands off to that one.
+// Only the release wrapper does: the dev one is what it hands off to.
+const DEV_HAND_OFF_SCRIPT = `
+if [ -n "$FLEET_CLI" ] && [ "$FLEET_CLI" != "$0" ] && [ -x "$FLEET_CLI" ]; then
+  exec "$FLEET_CLI" "$@"
+fi
+`;
+
 // ── installFleetCLI ───────────────────────────────────────────────────────────
 //
 // Ensures the `fleet` CLI binary is available at ~/.fleet/bin/fleet.
@@ -62,9 +72,8 @@ async function installBundledCliArtifacts(compiledPath: string, libDir: string):
 //   ~/.fleet/lib/fleet-cli.js   — JS entrypoint (or symlink to compiled output)
 
 export async function installFleetCLI(): Promise<string> {
-  const fleetHome = join(homedir(), '.fleet');
-  const binDir = join(fleetHome, 'bin');
-  const libDir = join(fleetHome, 'lib');
+  const binDir = join(FLEET_HOME, 'bin');
+  const libDir = join(FLEET_HOME, 'lib');
 
   // 1. Create directories
   await mkdir(binDir, { recursive: true });
@@ -134,14 +143,21 @@ fi
       : join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.js');
 
     // Copy the compiled CLI plus any emitted Rollup chunks to ~/.fleet/lib.
-    // The CLI is ESM and may import ./chunks/*.mjs helper files.
-    cliEntrypoint = await installBundledCliArtifacts(compiledPath, libDir);
+    // The CLI is ESM and may import ./chunks/*.mjs helper files. A dev build
+    // runs its checkout's own output instead: the CLI finds its checkout's
+    // sockets from where its code lives.
+    cliEntrypoint = IS_FLEET_DEV
+      ? compiledPath
+      : await installBundledCliArtifacts(compiledPath, libDir);
+    const cliPath = IS_FLEET_DEV
+      ? JSON.stringify(cliEntrypoint)
+      : `"$FLEET_DIR/lib/${basename(cliEntrypoint)}"`;
 
     wrapperContent = `#!/bin/bash
 # Fleet CLI — connects to running Fleet app via Unix socket
-${nodeResolverScript}
+${IS_FLEET_DEV ? '' : DEV_HAND_OFF_SCRIPT}${nodeResolverScript}
 FLEET_DIR="$(dirname "$(dirname "$0")")"
-exec node "$FLEET_DIR/lib/${basename(cliEntrypoint)}" "$@"
+exec node ${cliPath} "$@"
 `;
   } else {
     // Dev mode: resolve the TypeScript source file
@@ -189,12 +205,15 @@ exec node "$FLEET_DIR/lib/${basename(cliEntrypoint)}" "$@"
   // 4. Make the shell wrapper executable (chmod 755)
   await chmod(wrapperPath, 0o755);
 
-  // 5. Add ~/.fleet/bin to user's shell profile (idempotent)
-  await addFleetBinToShellProfile().catch((err) => {
-    log.warn('could not update shell profile', {
-      error: err instanceof Error ? err.message : String(err)
+  // 5. Add ~/.fleet/bin to user's shell profile (idempotent). A dev build's
+  //    CLI is reached through FLEET_CLI instead, so it leaves profiles alone.
+  if (!IS_FLEET_DEV) {
+    await addFleetBinToShellProfile().catch((err) => {
+      log.warn('could not update shell profile', {
+        error: err instanceof Error ? err.message : String(err)
+      });
     });
-  });
+  }
 
   log.info('installed fleet CLI', { path: wrapperPath });
 
@@ -220,8 +239,7 @@ exec node "$FLEET_DIR/lib/${basename(cliEntrypoint)}" "$@"
 // the stray file is skipped rather than read as a broken skill.
 
 export async function installSkillFile(): Promise<void> {
-  const fleetHome = join(homedir(), '.fleet');
-  const skillsDir = join(fleetHome, 'skills');
+  const skillsDir = join(FLEET_HOME, 'skills');
 
   await mkdir(skillsDir, { recursive: true });
 

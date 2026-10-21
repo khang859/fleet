@@ -20,11 +20,15 @@ describe('claudeModEnv', () => {
   });
 
   it('drops the mod folder of the Fleet it was started from, dev or not, so one mod asks', () => {
-    const fleet = (name: string): string => join(homedir(), '.fleet', name, 'fleet-bridge');
+    const fleet = (...parts: string[]): string =>
+      join(homedir(), '.fleet', ...parts, 'fleet-bridge');
     const env = {
-      CLAUDE_CODE_PLUGIN_DIRS: [fleet('claude-mods'), '/a', fleet('claude-mods-dev')].join(
-        delimiter
-      )
+      CLAUDE_CODE_PLUGIN_DIRS: [
+        fleet('claude-mods'),
+        '/a',
+        fleet('claude-mods-dev'),
+        fleet('dev', '0123456789ab', 'claude-mods')
+      ].join(delimiter)
     };
     expect(claudeModEnv(env, 'darwin').CLAUDE_CODE_PLUGIN_DIRS).toBe(
       ['/a', CLAUDE_MOD_DIR].join(delimiter)

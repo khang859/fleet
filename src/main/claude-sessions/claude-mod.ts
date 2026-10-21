@@ -36,8 +36,13 @@ export function installClaudeMod(): void {
   }
 }
 
-/** A Fleet mod folder, this Fleet's or another's (dev or not), as a path list names it. */
-const FLEET_MOD_DIR = /[\\/]\.fleet[\\/]claude-mods(?:-dev)?[\\/]fleet-bridge$/;
+/**
+ * A Fleet mod folder, this Fleet's or another's, as a path list names it: the
+ * installed app's, a dev checkout's under `.fleet/dev/<id>`, or the older
+ * shared `claude-mods-dev`.
+ */
+const FLEET_MOD_DIR =
+  /[\\/]\.fleet[\\/](?:dev[\\/][0-9a-f]+[\\/])?claude-mods(?:-dev)?[\\/]fleet-bridge$/;
 
 /**
  * The variables that load the mod in a pane's Claude Code and tell it where

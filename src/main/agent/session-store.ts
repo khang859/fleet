@@ -10,7 +10,6 @@ import {
   statSync,
   unlinkSync
 } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   AgentSessionId,
@@ -34,6 +33,7 @@ import type { AgentTurnUsage } from '../../shared/agent-types';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './image-store';
 import { ensureScratchSessionDir, isScratchDir } from './scratch-dir';
 import { createLogger } from '../logger';
+import { FLEET_HOME } from '../../shared/constants';
 
 const log = createLogger('agent:sessions');
 
@@ -50,7 +50,7 @@ const log = createLogger('agent:sessions');
  * disk before the renderer is told the turn ended rather than some time after.
  */
 
-export const AGENT_SESSIONS_DIR = join(homedir(), '.fleet', 'agent', 'sessions');
+export const AGENT_SESSIONS_DIR = join(FLEET_HOME, 'agent', 'sessions');
 
 export class AgentSessionStore {
   constructor(

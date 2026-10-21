@@ -11,6 +11,7 @@ import {
 import { join } from 'path';
 import { homedir } from 'os';
 import { createLogger } from '../logger';
+import { IS_FLEET_DEV } from '../../shared/constants';
 import { isRecord } from '../../shared/is-record';
 import { isFleetHookCommand, quoteHookCommand } from '../../shared/claude-hooks';
 import type { HookFolderStatus } from '../../shared/claude-sessions';
@@ -260,6 +261,16 @@ export function isInstalled(configDir?: string): boolean {
   }
 }
 
+/**
+ * A dev build never changes Claude Code's hooks: they are the installed app's,
+ * and a dev pane reaches its checkout's own hook through FLEET_HOOK_BIN.
+ */
+function leftToReleaseApp(action: string): boolean {
+  if (!IS_FLEET_DEV) return false;
+  log.info(`dev build: leaving the hook ${action} to the installed app`);
+  return true;
+}
+
 export function hookStatus(configDir?: string): HookFolderStatus {
   const { settingsPath } = resolvePaths(configDir);
   try {
@@ -298,6 +309,7 @@ export function ensureHooks(configDirs: readonly string[]): Map<string, Error> {
  * leaves exactly the current set.
  */
 export function install(configDir?: string): void {
+  if (leftToReleaseApp('install')) return;
   const { hooksDir, settingsPath, hookDest } = resolvePaths(configDir);
 
   const settings = readSettings(settingsPath);
@@ -344,6 +356,7 @@ export function install(configDir?: string): void {
  * cannot be read or written.
  */
 export function uninstall(configDir?: string): void {
+  if (leftToReleaseApp('uninstall')) return;
   log.info('uninstalling hooks');
   const { hooksDir, settingsPath, hookDest } = resolvePaths(configDir);
 

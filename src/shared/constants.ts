@@ -1,5 +1,3 @@
-import { join } from 'path';
-import { homedir } from 'os';
 import type { FleetSettings } from './types';
 import { DEFAULT_SCROLLBACK, DEFAULT_TERMINAL_BACKGROUND } from './types';
 import {
@@ -16,25 +14,14 @@ export { IPC_CHANNELS } from './ipc-channels';
 // --- Main-process only (Node.js built-ins) ---
 // Do NOT import these from renderer code.
 
-export const IS_FLEET_DEV = !!process.env.FLEET_DEV;
-
-const suffix = IS_FLEET_DEV ? '-dev' : '';
-
-export const SOCKET_PATH =
-  process.platform === 'win32'
-    ? `\\\\.\\pipe\\fleet${suffix}`
-    : join(homedir(), '.fleet', `fleet${suffix}.sock`);
-
-export const COPILOT_SOCKET_PATH =
-  process.platform === 'win32'
-    ? `\\\\.\\pipe\\fleet-copilot${suffix}`
-    : join(homedir(), '.fleet', `fleet-copilot${suffix}.sock`);
-
-/** The socket the fleet-bridge Claude Code mod asks for prompts on. Unix only, as the mod reaches it. */
-export const BRIDGE_SOCKET_PATH = join(homedir(), '.fleet', `fleet-bridge${suffix}.sock`);
-
-/** Where Fleet installs the fleet-bridge mod, a folder Claude Code also writes into. */
-export const CLAUDE_MOD_DIR = join(homedir(), '.fleet', `claude-mods${suffix}`, 'fleet-bridge');
+export {
+  IS_FLEET_DEV,
+  FLEET_HOME,
+  SOCKET_PATH,
+  COPILOT_SOCKET_PATH,
+  BRIDGE_SOCKET_PATH,
+  CLAUDE_MOD_DIR
+} from './fleet-home';
 
 export const DEFAULT_SETTINGS: FleetSettings = {
   general: {
