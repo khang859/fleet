@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, statSync } from 'fs';
+import { chmodSync, mkdtempSync, rmSync, statSync } from 'fs';
 import { request } from 'http';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -39,6 +39,7 @@ describe.skipIf(process.platform === 'win32')('PromptBridge', () => {
 
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'fleet-bridge-'));
+    chmodSync(dir, 0o755);
     socketPath = join(dir, 'bridge.sock');
     bridge = new PromptBridge(200);
     server = new BridgeServer({ 'GET /prompt': bridge }, socketPath);
@@ -50,7 +51,8 @@ describe.skipIf(process.platform === 'win32')('PromptBridge', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('listens on a socket only its owner can use', () => {
+  it('listens on a socket only its owner can use, in a folder only its owner can enter', () => {
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
     expect(statSync(socketPath).mode & 0o777).toBe(0o600);
   });
 
