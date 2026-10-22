@@ -83,3 +83,12 @@ Locally they were missed because only the "Tests" line was checked, not the "Err
 - The bridge answers 413 only after it has read the whole body, so the client is not cut off mid-send and sees the 413 rather than a connection error.
 
 Run `npm test` and check its exit code, not just the pass counts.
+
+## Allowing a plan on the Go hook path
+
+The Go hook answered allow with a bare `{"behavior":"allow"}`, so on the Go hook path (no mod) Allow on an `ExitPlanMode` card dropped the card and left the plan dialog open.
+**Fix:** `permissionOutput` in `hooks/fleet-copilot-go/main.go` adds `updatedInput`, the `tool_input` as received, on an allow for `ExitPlanMode`, as the mod's `permissionResult` does.
+Other tools keep the bare allow: a `Write` allowed from the card on the same path ran without it.
+Checked on 2.1.308 with `env -u CLAUDE_CODE_PLUGIN_DIRS -u FLEET_BRIDGE_SOCKET claude --permission-mode plan`; a pane's `FLEET_HOOK_BIN` set to an old build reproduces the bug.
+The dev app's copilot is off by default, and with it off Fleet holds no ask, so the card shows "Fleet can no longer answer this one".
+Turn it on before the ask with `__FLEET__.stores.settings`.

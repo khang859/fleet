@@ -140,8 +140,9 @@ type PermissionDecision struct {
 	HookSpecificOutput struct {
 		HookEventName string `json:"hookEventName"`
 		Decision      struct {
-			Behavior string `json:"behavior"`
-			Message  string `json:"message,omitempty"`
+			Behavior     string          `json:"behavior"`
+			Message      string          `json:"message,omitempty"`
+			UpdatedInput json.RawMessage `json:"updatedInput,omitempty"`
 		} `json:"decision"`
 	} `json:"hookSpecificOutput"`
 }
@@ -384,9 +385,14 @@ func runtimeArg(args []string) (string, bool) {
 	return "", false
 }
 
+// needsInputToAllow are the tools whose dialog an allow closes only when it
+// carries the input: for a tool that requires the person, a hook's bare allow
+// does not dismiss it. The mod's permissionResult does the same.
+var needsInputToAllow = map[string]bool{"ExitPlanMode": true}
+
 // permissionOutput is the hook's answer to a permission request, in Claude
 // Code's form, which eva takes too; nil when Fleet left it to the pane.
-func permissionOutput(resp *SocketResponse) []byte {
+func permissionOutput(resp *SocketResponse, input *HookInput) []byte {
 	if resp == nil {
 		return nil
 	}
@@ -395,6 +401,10 @@ func permissionOutput(resp *SocketResponse) []byte {
 	switch resp.Decision {
 	case "allow":
 		output.HookSpecificOutput.Decision.Behavior = "allow"
+		if needsInputToAllow[input.ToolName] {
+			// As received, so the plan keeps its keys in Claude Code's order.
+			output.HookSpecificOutput.Decision.UpdatedInput = input.ToolInput
+		}
 	case "deny":
 		output.HookSpecificOutput.Decision.Behavior = "deny"
 		msg := resp.Reason
@@ -530,7 +540,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer, getenv func(string) s
 			return 0
 		}
 
-		if out := permissionOutput(sendEvent(state, true)); out != nil {
+		if out := permissionOutput(sendEvent(state, true), &input); out != nil {
 			fmt.Fprintln(stdout, string(out))
 		}
 		return 0
