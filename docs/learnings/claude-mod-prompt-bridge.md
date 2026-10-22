@@ -54,9 +54,36 @@ These held on Claude Code 2.1.304:
   **Fix:** on a 409 the mod calls `next(e)`. Fleet's Go hook then tells Fleet of the request a second time, so the hook server drops a `PermissionRequest` the mod already asked about (`PermissionBridge.asked`), and the Go hook writes no decision.
   Only an answer from Fleet still skips the settings hooks.
 - The hook's input has no `tool_use_id`.
-  The registry takes it from the earlier `PreToolUse` with the same tool and input.
+  The Go hook's has none either, so the registry takes it from the earlier `PreToolUse` with the same tool and input.
   The Go hook sorts the input's keys and the mod keeps Claude Code's order, so the match uses a key with sorted keys (`toolCallKey`).
+  The mod now sends the id itself, see "The call id on the mod's asks" below.
 - `updatedPermissions` from `permission_suggestions` apply as in the dialog: a `setMode` to `acceptEdits` turned the status line to "accept edits on".
+
+## Allowing a plan (ExitPlanMode)
+
+On 2.1.307 a bare `{"decision":{"behavior":"allow"}}` for `ExitPlanMode` leaves the terminal's plan dialog open.
+Fleet still dropped the card, so the session waited on a dialog nobody could see.
+The types say why: for a tool that requires the person (a plan, a question), a hook's `allow` alone does not dismiss the dialog.
+**Fix:** `permissionResult` adds `updatedInput: e.tool_input` on an allow for `ExitPlanMode`.
+Checked in a Fleet pane with the copilot card:
+
+- Allow with `updatedInput` alone closed the dialog, showed "Allowed by PermissionRequest hook", and the plan ran.
+- The session landed in `default` mode: the status line read "⏸ manual mode on", and the plan's first Write asked for permission.
+  So a plain Allow is the dialog's "Yes, manually approve edits".
+- A plan ask carries no `permission_suggestions`, so the card offers no mode; a `setMode` in `updatedPermissions` picks one (see the probe report on #693).
+- Deny with a `message` still means "keep planning".
+
+## The call id on the mod's asks
+
+`classic.PermissionRequest` carries no `tool_use_id`, but `tool.check` (`e.tool_use_id`) and `tool.call` do.
+On 2.1.307 `tool.check` runs right before its call's `PermissionRequest`, and its `e.input` is the same JSON, in the same key order, as the request's `e.tool_input`.
+So the mod queues the id in `tool.check` when `next(e)` returns `ask`, keyed by agent id, tool and `JSON.stringify(input)`, and takes it off in `PermissionRequest` into the `POST /permission` body.
+It takes the id before it decides to ask Fleet, so a request left to the Go hook (AskUserQuestion) does not leave its id to the next one.
+A `tool.call` hook forgets the id when the call ends, for asks no dialog took, such as one auto mode settled.
+
+Fleet reads it as the event's `toolUseId`, and the registry takes that id off its `PreToolUse` queue, so a later Go hook request of an identical call is not handed it.
+The `toolCallKey` match stays in two places, because the Go hook's `PermissionRequest` still has no id: the registry's queue for the Go hook's requests (eva, older Claude Code, a 409), and `PermissionBridge.asked`, which matches the Go hook's copy of a request the mod already asked about.
+Checked in a Fleet pane: the ask arrived with the transcript's own `toolu_...` id.
 
 ## Testing it end to end on Linux
 
