@@ -168,6 +168,97 @@ describe('fleet-bridge mod: permission requests', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  describe('the id of the call it asks about', () => {
+    const hook = (name: string): Hook => {
+      const found = hooks.get(name);
+      if (!found) throw new Error(`no ${name} hook`);
+      return found;
+    };
+
+    const nextOf = (result: Record<string, unknown>): NextFn =>
+      Object.assign(async () => Promise.resolve(result), { signal: abort.signal });
+
+    /** `tool.check` for the request's call, as Claude Code runs it before the dialog. */
+    const check = async (id: string, decision = 'ask'): Promise<void> => {
+      await hook('tool.check')(
+        $,
+        { tool: 'Bash', input: request.tool_input, tool_use_id: id },
+        nextOf({ decision })
+      );
+    };
+
+    /** The `tool_use_id` the mod sent Fleet for one permission request. */
+    const askedId = async (e: Record<string, unknown> = request): Promise<unknown> => {
+      fetch.mockResolvedValueOnce(reply(200, { decision: 'allow', reason: '' }));
+      await permissionHook()($, e, next);
+      const [, init] = fetch.mock.calls.at(-1) as [string, { body: string }];
+      return (JSON.parse(init.body) as Record<string, unknown>).tool_use_id;
+    };
+
+    it('sends the id of the call its check put to the dialog', async () => {
+      await check('toolu_1');
+      await expect(askedId()).resolves.toBe('toolu_1');
+    });
+
+    it('hands two asks of the same call their ids in order', async () => {
+      await check('toolu_1');
+      await check('toolu_2');
+      await expect(askedId()).resolves.toBe('toolu_1');
+      await expect(askedId()).resolves.toBe('toolu_2');
+      await expect(askedId()).resolves.toBeUndefined();
+    });
+
+    it('sends no id for a call its check allowed, or for another input', async () => {
+      await check('toolu_1', 'allow');
+      await expect(askedId()).resolves.toBeUndefined();
+      await check('toolu_2');
+      await expect(askedId({ ...request, tool_input: { command: 'touch b' } })).resolves.toBe(
+        undefined
+      );
+    });
+
+    it('keeps apart the same call in a subagent', async () => {
+      await hook('tool.check')(
+        $,
+        { tool: 'Bash', input: request.tool_input, tool_use_id: 'toolu_sub', agentId: 'a1' },
+        nextOf({ decision: 'ask' })
+      );
+      await check('toolu_main');
+      await expect(askedId()).resolves.toBe('toolu_main');
+      await expect(askedId({ ...request, agent_id: 'a1' })).resolves.toBe('toolu_sub');
+    });
+
+    it('forgets the id of an ask no dialog took once its call ends', async () => {
+      await check('toolu_1');
+      await hook('tool.call')($, { tool: 'Bash', tool_use_id: 'toolu_1' }, nextOf({}));
+      await check('toolu_2');
+      await expect(askedId()).resolves.toBe('toolu_2');
+    });
+
+    it('forgets the id when the call fails too', async () => {
+      await check('toolu_1');
+      const failing = Object.assign(async () => Promise.reject(new Error('tool failed')), {
+        signal: abort.signal
+      });
+      await expect(
+        hook('tool.call')($, { tool: 'Bash', tool_use_id: 'toolu_1' }, failing)
+      ).rejects.toThrow('tool failed');
+      await expect(askedId()).resolves.toBeUndefined();
+    });
+
+    it('takes the id of a request it leaves to the Go hook, so the next one gets its own', async () => {
+      const question = { ...request, tool_name: 'AskUserQuestion' };
+      await hook('tool.check')(
+        $,
+        { tool: 'AskUserQuestion', input: request.tool_input, tool_use_id: 'toolu_q' },
+        nextOf({ decision: 'ask' })
+      );
+      await permissionHook()($, question, next);
+      await check('toolu_1');
+      await expect(askedId()).resolves.toBe('toolu_1');
+    });
+  });
+
   it('leaves a question, or a pane without a Fleet pane id, to the Go hook', async () => {
     await permissionHook()($, { ...request, tool_name: 'AskUserQuestion' }, next);
     delete env.FLEET_PANE_ID;

@@ -195,6 +195,27 @@ describe('ClaudeSessionRegistry', () => {
       expect(session?.pendingPermissions.map((p) => p.toolUseId)).toEqual(['tu-1']);
     });
 
+    it('takes the id a request names, and leaves the Go hook the next call', () => {
+      const toolInput = { command: 'npm test' };
+      const pre = (toolUseId: string): HookEvent =>
+        ev({ event: 'PreToolUse', status: 'running_tool', tool: 'Bash', toolInput, toolUseId });
+      const request = (toolUseId?: string): HookEvent =>
+        ev({
+          event: 'PermissionRequest',
+          status: 'waiting_for_approval',
+          tool: 'Bash',
+          toolInput,
+          toolUseId
+        });
+      registry.ingest(pre('tu-1'), pane);
+      registry.ingest(pre('tu-2'), pane);
+
+      // The mod names the second call; the Go hook's request without an id gets the first.
+      expect(registry.ingest(request('tu-2'), pane)?.toolUseId).toBe('tu-2');
+      expect(registry.ingest(request(), pane)?.toolUseId).toBe('tu-1');
+      expect(registry.ingest(request(), pane)?.toolUseId).toMatch(/^unknown-/);
+    });
+
     it('does not hand a later request the id of a tool that never finished', () => {
       const toolInput = { command: 'rm -rf build' };
       const pre = (toolUseId: string): HookEvent =>
