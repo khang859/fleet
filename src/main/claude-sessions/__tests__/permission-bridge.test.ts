@@ -71,6 +71,24 @@ describe('parsePermissionAsk', () => {
     });
   });
 
+  it('keeps a plan whole, and the session mode the mod sends', () => {
+    const plan = {
+      ...permission,
+      tool_name: 'ExitPlanMode',
+      tool_input: { plan: '1. Create hello.txt', planFilePath: '/plans/p.md' },
+      permission_suggestions: undefined,
+      permission_mode: 'plan'
+    };
+    expect(parsePermissionAsk(JSON.stringify(plan))?.event).toMatchObject({
+      tool: 'ExitPlanMode',
+      toolInput: { plan: '1. Create hello.txt', planFilePath: '/plans/p.md' },
+      permissionMode: 'plan'
+    });
+    const unknown = parsePermissionAsk(JSON.stringify({ ...plan, permission_mode: 'yolo' }));
+    expect(unknown?.event.tool).toBe('ExitPlanMode');
+    expect(unknown?.event.permissionMode).toBeUndefined();
+  });
+
   it('takes the call id the mod sends, and reads a request without one', () => {
     const named = parsePermissionAsk(JSON.stringify({ ...permission, tool_use_id: 'toolu_1' }));
     expect(named?.event.toolUseId).toBe('toolu_1');

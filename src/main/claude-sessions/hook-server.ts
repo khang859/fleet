@@ -128,7 +128,14 @@ export class SocketHold implements HeldRequest {
   }
 
   deliver(answer: PermissionAnswer): boolean {
-    this.socket.end(JSON.stringify({ decision: answer.decision, reason: answer.reason }));
+    const { decision, reason, updatedPermissions } = answer;
+    this.socket.end(
+      JSON.stringify({
+        decision,
+        reason,
+        ...(updatedPermissions && { updated_permissions: updatedPermissions })
+      })
+    );
     return true;
   }
 

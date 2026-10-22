@@ -5,6 +5,8 @@ import type {
   ClaudeInputOrigin,
   ClaudePendingPermission,
   ClaudeSession,
+  PermissionSuggestion,
+  PlanApprovalMode,
   SessionRuntime
 } from '../../shared/claude-sessions';
 import type { UsageWindow } from '../../shared/agency-spend';
@@ -347,23 +349,43 @@ export class ClaudeSessionsService {
   }
 
   /**
-   * Answer a held request. `suggestion` picks one of the changes Claude Code
-   * suggested with it to allow along with it, by its place in the request's
-   * `suggestions`; refused for a deny, or a suggestion the request does not have.
+   * Answer a held request. A deny's `reason` is what the model reads, such as
+   * what to change in a plan. An allow can take one change along with it:
+   * `suggestion` picks one Claude Code suggested, by its place in the
+   * request's `suggestions`, and `mode` the mode an `ExitPlanMode` plan is
+   * approved into, for this session only. Refused for a deny, a suggestion
+   * the request does not have, a mode for any other tool, or both.
    */
   respondToPermission(
     toolUseId: string,
     decision: 'allow' | 'deny',
     reason?: string,
-    suggestion?: number
+    suggestion?: number,
+    mode?: PlanApprovalMode
   ): boolean {
-    if (suggestion === undefined) return this.broker.respond(toolUseId, decision, reason);
+    if (suggestion === undefined && mode === undefined) {
+      return this.broker.respond(toolUseId, decision, reason);
+    }
     if (decision !== 'allow') return false;
-    const offered = this.registry
+    const change = this.changeToAllow(toolUseId, suggestion, mode);
+    return change !== undefined && this.broker.respond(toolUseId, decision, reason, [change]);
+  }
+
+  /** The change an allow applies along with a held request, as `respondToPermission` picks it. */
+  private changeToAllow(
+    toolUseId: string,
+    suggestion?: number,
+    mode?: PlanApprovalMode
+  ): PermissionSuggestion | undefined {
+    const pending = this.registry
       .list()
       .flatMap((s) => s.pendingPermissions)
-      .find((p) => p.toolUseId === toolUseId)?.suggestions?.[suggestion];
-    return offered !== undefined && this.broker.respond(toolUseId, decision, reason, [offered]);
+      .find((p) => p.toolUseId === toolUseId);
+    if (mode === undefined) {
+      return suggestion === undefined ? undefined : pending?.suggestions?.[suggestion];
+    }
+    if (suggestion !== undefined || pending?.tool.toolName !== 'ExitPlanMode') return undefined;
+    return { type: 'setMode', mode, destination: 'session' };
   }
 
   async stop(): Promise<void> {

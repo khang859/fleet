@@ -27,8 +27,9 @@ const (
 	// protocolVersion tells Fleet which fields this binary sends. Version 2 adds
 	// pane_id, transcript_path, config_dir and source. Version 3 adds
 	// prompt_sha256. Version 4 adds runtime and db_path, for eva. Version 5
-	// adds cost_usd and rate_limits, and the StatusLine event.
-	protocolVersion = 5
+	// adds cost_usd and rate_limits, and the StatusLine event. Version 6 adds
+	// permission_mode.
+	protocolVersion = 6
 )
 
 var socketPath = socketPathFrom(os.Getenv)
@@ -70,6 +71,9 @@ type HookInput struct {
 	Error            string          `json:"error,omitempty"`
 	ErrorDetails     string          `json:"error_details,omitempty"`
 	Prompt           string          `json:"prompt,omitempty"`
+	// PermissionMode is the session's live mode, such as "plan". Claude Code
+	// sends it on most events, but not when the person switches it.
+	PermissionMode string `json:"permission_mode,omitempty"`
 	// LastAssistantMessage is set on StopFailure to the API error text.
 	LastAssistantMessage string `json:"last_assistant_message,omitempty"`
 
@@ -133,6 +137,7 @@ type State struct {
 	DBPath           string                 `json:"db_path,omitempty"`
 	CostUSD          *float64               `json:"cost_usd,omitempty"`
 	RateLimits       *RateLimits            `json:"rate_limits,omitempty"`
+	PermissionMode   string                 `json:"permission_mode,omitempty"`
 	Protocol         int                    `json:"protocol"`
 }
 
@@ -140,9 +145,10 @@ type PermissionDecision struct {
 	HookSpecificOutput struct {
 		HookEventName string `json:"hookEventName"`
 		Decision      struct {
-			Behavior     string          `json:"behavior"`
-			Message      string          `json:"message,omitempty"`
-			UpdatedInput json.RawMessage `json:"updatedInput,omitempty"`
+			Behavior           string          `json:"behavior"`
+			Message            string          `json:"message,omitempty"`
+			UpdatedInput       json.RawMessage `json:"updatedInput,omitempty"`
+			UpdatedPermissions json.RawMessage `json:"updatedPermissions,omitempty"`
 		} `json:"decision"`
 	} `json:"hookSpecificOutput"`
 }
@@ -150,6 +156,9 @@ type PermissionDecision struct {
 type SocketResponse struct {
 	Decision string `json:"decision"`
 	Reason   string `json:"reason"`
+	// UpdatedPermissions are the changes allowed along with the request, such
+	// as the mode a plan is approved into, passed on as Fleet sends them.
+	UpdatedPermissions json.RawMessage `json:"updated_permissions,omitempty"`
 }
 
 const fleetSkillContextTemplate = "You're running inside Fleet. A `fleet` CLI is available (open files/images in Fleet tabs, annotate web pages, generate/edit AI images). Read %s for the full command reference before using it."
@@ -327,6 +336,7 @@ func newState(input *HookInput, tty *string, pid int, getenv func(string) string
 		ErrorDetails:   input.ErrorDetails,
 		Message:        stopFailureText(input),
 		PromptSHA256:   promptHash(input.Prompt),
+		PermissionMode: input.PermissionMode,
 		Protocol:       protocolVersion,
 	}
 }
@@ -405,6 +415,7 @@ func permissionOutput(resp *SocketResponse, input *HookInput) []byte {
 			// As received, so the plan keeps its keys in Claude Code's order.
 			output.HookSpecificOutput.Decision.UpdatedInput = input.ToolInput
 		}
+		output.HookSpecificOutput.Decision.UpdatedPermissions = resp.UpdatedPermissions
 	case "deny":
 		output.HookSpecificOutput.Decision.Behavior = "deny"
 		msg := resp.Reason

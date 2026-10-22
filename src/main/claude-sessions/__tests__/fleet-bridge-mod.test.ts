@@ -109,6 +109,33 @@ describe('fleet-bridge mod: permission requests', () => {
     await expect(permissionHook()($, plan, next)).resolves.toEqual({
       decision: { behavior: 'allow', updatedInput: plan.tool_input }
     });
+
+    const updatedPermissions = [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }];
+    fetch.mockResolvedValueOnce(reply(200, { decision: 'allow', reason: '', updatedPermissions }));
+    await expect(permissionHook()($, plan, next)).resolves.toEqual({
+      decision: { behavior: 'allow', updatedInput: plan.tool_input, updatedPermissions }
+    });
+  });
+
+  it('sends the plan and the session mode with the ask', async () => {
+    const plan = {
+      ...request,
+      permission_mode: 'plan',
+      tool_name: 'ExitPlanMode',
+      tool_input: { plan: '1. Create hello.txt', planFilePath: '/plans/p.md' },
+      permission_suggestions: undefined
+    };
+    fetch.mockResolvedValueOnce(reply(200, { decision: 'deny', reason: 'Also print its size.' }));
+
+    await expect(permissionHook()($, plan, next)).resolves.toEqual({
+      decision: { behavior: 'deny', message: 'Also print its size.' }
+    });
+    const [, init] = fetch.mock.calls[0] as [string, { body: string }];
+    expect(JSON.parse(init.body)).toMatchObject({
+      tool_name: 'ExitPlanMode',
+      tool_input: plan.tool_input,
+      permission_mode: 'plan'
+    });
   });
 
   it('denies with the reason Fleet gave', async () => {
