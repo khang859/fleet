@@ -248,6 +248,7 @@ export class ClaudeSessionRegistry {
       workspaceName: placement.workspaceName ?? before.workspaceName,
       transcriptPath: event.transcriptPath ?? before.transcriptPath,
       configDir: event.configDir ?? before.configDir,
+      permissionMode: event.permissionMode ?? before.permissionMode,
       lastActivity: now
     };
 

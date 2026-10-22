@@ -69,7 +69,8 @@ Checked in a Fleet pane with the copilot card:
 
 - Allow with `updatedInput` alone closed the dialog, showed "Allowed by PermissionRequest hook", and the plan ran.
 - The session landed in `default` mode: the status line read "⏸ manual mode on", and the plan's first Write asked for permission.
-  So a plain Allow is the dialog's "Yes, manually approve edits".
+  That held only because the session started in plan mode.
+  On 2.1.308 a plain Allow puts back the mode from before plan mode: accept edits after Shift+Tab from accept edits, auto after `/plan` from auto.
 - A plan ask carries no `permission_suggestions`, so the card offers no mode; a `setMode` in `updatedPermissions` picks one (see the probe report on #693).
 - Deny with a `message` still means "keep planning".
 

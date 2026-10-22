@@ -39,7 +39,28 @@ describe('copilot permission answers', () => {
 
   it('passes an allow with the suggestion picked', () => {
     expect(respond({ toolUseId: 'tu-1', decision: 'allow', suggestion: 1 })).toBe(true);
-    expect(respondToPermission).toHaveBeenCalledWith('tu-1', 'allow', undefined, 1);
+    expect(respondToPermission).toHaveBeenCalledWith('tu-1', 'allow', undefined, 1, undefined);
+  });
+
+  it('passes the mode a plan is approved into, and drops one a plan cannot pick', () => {
+    respond({ toolUseId: 'tu-1', decision: 'allow', mode: 'acceptEdits' });
+    respond({ toolUseId: 'tu-1', decision: 'allow', mode: 'bypassPermissions' });
+    expect(respondToPermission).toHaveBeenNthCalledWith(
+      1,
+      'tu-1',
+      'allow',
+      undefined,
+      undefined,
+      'acceptEdits'
+    );
+    expect(respondToPermission).toHaveBeenNthCalledWith(
+      2,
+      'tu-1',
+      'allow',
+      undefined,
+      undefined,
+      undefined
+    );
   });
 
   it('refuses a decision that is neither allow nor deny', () => {
@@ -50,7 +71,21 @@ describe('copilot permission answers', () => {
   it('drops a suggestion that is not a whole number', () => {
     respond({ toolUseId: 'tu-1', decision: 'allow', suggestion: 0.5 });
     respond({ toolUseId: 'tu-1', decision: 'allow', suggestion: '0' });
-    expect(respondToPermission).toHaveBeenNthCalledWith(1, 'tu-1', 'allow', undefined, undefined);
-    expect(respondToPermission).toHaveBeenNthCalledWith(2, 'tu-1', 'allow', undefined, undefined);
+    expect(respondToPermission).toHaveBeenNthCalledWith(
+      1,
+      'tu-1',
+      'allow',
+      undefined,
+      undefined,
+      undefined
+    );
+    expect(respondToPermission).toHaveBeenNthCalledWith(
+      2,
+      'tu-1',
+      'allow',
+      undefined,
+      undefined,
+      undefined
+    );
   });
 });

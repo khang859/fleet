@@ -74,6 +74,21 @@ describe('ClaudeSessionRegistry', () => {
     expect(registry.get('e1')?.runtime).toBe('eva');
   });
 
+  it('keeps the mode a session last reported, through events that report none', () => {
+    registry.ingest(ev(), pane);
+    expect(registry.get('s1')?.permissionMode).toBeUndefined();
+
+    registry.ingest(ev({ permissionMode: 'plan' }), pane);
+    registry.ingest(ev({ event: 'Notification', status: 'waiting_for_input' }), pane);
+    expect(registry.get('s1')?.permissionMode).toBe('plan');
+
+    registry.ingest(
+      ev({ event: 'Stop', status: 'waiting_for_input', permissionMode: 'acceptEdits' }),
+      pane
+    );
+    expect(registry.get('s1')?.permissionMode).toBe('acceptEdits');
+  });
+
   it('tracks a session in the pane it was placed in', () => {
     registry.ingest(ev({ transcriptPath: '/c/projects/-repo/s1.jsonl', configDir: '/c' }), pane);
 
