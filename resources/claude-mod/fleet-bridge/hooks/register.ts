@@ -49,8 +49,14 @@ type FleetAnswer = {
   updatedPermissions?: PermissionAsk['permission_suggestions'];
 };
 
+/**
+ * Tools whose dialog an allow closes only when it carries the input: for a
+ * tool that requires the person, a hook's bare allow does not dismiss it.
+ */
+const NEEDS_INPUT_TO_ALLOW = new Set(['ExitPlanMode']);
+
 /** Fleet's answer as the dialog takes it; none, so the dialog decides, when it cannot be read. */
-function permissionResult(text: string): PermissionResult {
+function permissionResult(text: string, e: PermissionAsk): PermissionResult {
   let answer: Partial<FleetAnswer> | null;
   try {
     answer = JSON.parse(text) as Partial<FleetAnswer> | null;
@@ -63,7 +69,16 @@ function permissionResult(text: string): PermissionResult {
   }
   if (answer?.decision !== 'allow') return {};
   const { updatedPermissions } = answer;
-  return { decision: { behavior: 'allow', ...(updatedPermissions && { updatedPermissions }) } };
+  const updatedInput = NEEDS_INPUT_TO_ALLOW.has(e.tool_name)
+    ? (e.tool_input as Record<string, unknown>)
+    : undefined;
+  return {
+    decision: {
+      behavior: 'allow',
+      ...(updatedInput && { updatedInput }),
+      ...(updatedPermissions && { updatedPermissions })
+    }
+  };
 }
 
 /**
@@ -107,7 +122,7 @@ async function askPermission(
       return next.signal.aborted ? {} : next(e);
     }
     if (res.status === 204) continue;
-    if (res.status === 200) return permissionResult(res.text);
+    if (res.status === 200) return permissionResult(res.text, e);
     return next(e);
   }
 }

@@ -97,6 +97,20 @@ describe('fleet-bridge mod: permission requests', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it('allows a plan with its input, which the plan dialog needs to close', async () => {
+    const plan = {
+      ...request,
+      tool_name: 'ExitPlanMode',
+      tool_input: { plan: '1. Create hello.txt', planFilePath: '/plans/p.md' },
+      permission_suggestions: undefined
+    };
+    fetch.mockResolvedValueOnce(reply(200, { decision: 'allow', reason: '' }));
+
+    await expect(permissionHook()($, plan, next)).resolves.toEqual({
+      decision: { behavior: 'allow', updatedInput: plan.tool_input }
+    });
+  });
+
   it('denies with the reason Fleet gave', async () => {
     fetch.mockResolvedValueOnce(reply(200, { decision: 'deny', reason: 'not now' }));
     await expect(permissionHook()($, request, next)).resolves.toEqual({
