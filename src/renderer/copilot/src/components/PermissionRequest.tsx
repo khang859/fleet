@@ -148,17 +148,19 @@ function PlanActions({
 
   return (
     <div className="flex flex-col items-start gap-1">
-      {PLAN_APPROVAL_CHOICES.map(({ mode, label }) => (
-        <Button
-          key={mode}
-          variant="success"
-          size="sm"
-          disabled={sending}
-          onClick={() => respond('allow', { mode })}
-        >
-          {label}
-        </Button>
-      ))}
+      <div className="flex flex-wrap gap-1">
+        {PLAN_APPROVAL_CHOICES.map(({ mode, label }) => (
+          <Button
+            key={mode}
+            variant="success"
+            size="sm"
+            disabled={sending}
+            onClick={() => respond('allow', { mode })}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
       <textarea
         aria-label="Tell Claude what to change"
         placeholder="Tell Claude what to change"
