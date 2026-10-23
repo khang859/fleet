@@ -277,6 +277,22 @@ func TestNewState_ForwardsPaneTranscriptAndConfigDir(t *testing.T) {
 	}
 }
 
+func TestNewState_ForwardsPermissionMode(t *testing.T) {
+	input := readInput(t, `{"session_id":"s1","hook_event_name":"UserPromptSubmit","cwd":"/repo",`+
+		`"permission_mode":"acceptEdits"}`)
+	if state := newState(input, nil, 1, func(string) string { return "" }); state.PermissionMode != "acceptEdits" {
+		t.Errorf("permission mode = %q, want acceptEdits", state.PermissionMode)
+	}
+	input = readInput(t, `{"session_id":"s1","hook_event_name":"Notification","cwd":"/repo"}`)
+	data, err := json.Marshal(newState(input, nil, 1, func(string) string { return "" }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "permission_mode") {
+		t.Errorf("sent %s, want no permission_mode when Claude Code sent none", data)
+	}
+}
+
 func TestNewState_ForwardsStopFailureError(t *testing.T) {
 	input := readInput(t, `{"session_id":"s1","hook_event_name":"StopFailure","cwd":"/repo",`+
 		`"error":"rate_limit","error_details":"429 Too Many Requests",`+
@@ -484,6 +500,35 @@ func TestRun_DenyCarriesTheReason(t *testing.T) {
 	startAnsweringServer(t, `{"decision":"deny","reason":"not in the plan"}`)
 	_, out := runHook(t, []string{"--runtime", "eva"}, `{"session_id":"e1","hook_event_name":"PermissionRequest","tool_name":"bash","tool_use_id":"c"}`)
 	if !strings.Contains(out, `"behavior":"deny","message":"not in the plan"`) {
+		t.Errorf("stdout = %q", out)
+	}
+}
+
+func TestRun_PlanAllowCarriesThePlanBack(t *testing.T) {
+	startAnsweringServer(t, `{"decision":"allow","reason":""}`)
+	plan := `{"session_id":"c1","hook_event_name":"PermissionRequest","tool_name":"ExitPlanMode",
+		"tool_input":{"plan":"1. Create hello.txt","planFilePath":"/plans/p.md"}}`
+	_, out := runHook(t, nil, plan)
+	want := `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow",` +
+		`"updatedInput":{"plan":"1. Create hello.txt","planFilePath":"/plans/p.md"}}}}`
+	if strings.TrimSpace(out) != want {
+		t.Errorf("stdout = %q", out)
+	}
+
+	startAnsweringServer(t, `{"decision":"allow","reason":"",`+
+		`"updated_permissions":[{"type":"setMode","mode":"acceptEdits","destination":"session"}]}`)
+	_, out = runHook(t, nil, plan)
+	if !strings.Contains(out, `"updatedPermissions":[{"type":"setMode","mode":"acceptEdits","destination":"session"}]`) ||
+		!strings.Contains(out, `"updatedInput":{`) {
+		t.Errorf("stdout = %q", out)
+	}
+}
+
+func TestRun_OtherAllowsCarryNoInput(t *testing.T) {
+	startAnsweringServer(t, `{"decision":"allow","reason":""}`)
+	_, out := runHook(t, nil, `{"session_id":"c1","hook_event_name":"PermissionRequest","tool_name":"Bash",
+		"tool_input":{"command":"ls"}}`)
+	if strings.Contains(out, "updatedInput") || !strings.Contains(out, `"behavior":"allow"`) {
 		t.Errorf("stdout = %q", out)
 	}
 }

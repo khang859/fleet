@@ -177,6 +177,35 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     expect(service.registry.get('s1')?.phase).toBe('processing');
   });
 
+  it('approves a plan into the mode picked, and refuses a mode for any other tool', async () => {
+    await service.start();
+    service.addPermissionAnswerer();
+    void send(socketPath, permission('tu-1'));
+    const plan = send(
+      socketPath,
+      event({
+        event: 'PermissionRequest',
+        status: 'waiting_for_approval',
+        tool: 'ExitPlanMode',
+        tool_input: { plan: '1. Create hello.txt' },
+        tool_use_id: 'tu-2'
+      })
+    );
+    await vi.waitFor(() => expect(service.broker.has('tu-2')).toBe(true));
+
+    expect(service.respondToPermission('tu-1', 'allow', undefined, undefined, 'auto')).toBe(false);
+    expect(service.respondToPermission('tu-2', 'deny', undefined, undefined, 'auto')).toBe(false);
+    expect(service.respondToPermission('tu-2', 'allow', undefined, 0, 'auto')).toBe(false);
+    expect(service.respondToPermission('tu-2', 'allow', undefined, undefined, 'acceptEdits')).toBe(
+      true
+    );
+    expect(JSON.parse(await plan)).toEqual({
+      decision: 'allow',
+      reason: '',
+      updated_permissions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }]
+    });
+  });
+
   it('does not make a session wait for approval on a request an answerer delegates', async () => {
     await service.start();
     let crew = true;

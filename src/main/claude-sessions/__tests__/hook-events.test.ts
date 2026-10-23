@@ -121,6 +121,16 @@ describe('parseHookEvent', () => {
     expect(parseHookEvent(JSON.stringify({ ...v1, cost_usd: -1 }))?.costUsd).toBeUndefined();
   });
 
+  it('reads the session mode of a protocol 6 event, and drops one it does not know', () => {
+    const stop = { ...v1, event: 'Stop', status: 'waiting_for_input', protocol: 6 };
+    expect(
+      parseHookEvent(JSON.stringify({ ...stop, permission_mode: 'acceptEdits' }))
+    ).toMatchObject({ permissionMode: 'acceptEdits', protocol: 6 });
+    const unknown = parseHookEvent(JSON.stringify({ ...stop, permission_mode: 'yolo' }));
+    expect(unknown?.event).toBe('Stop');
+    expect(unknown?.permissionMode).toBeUndefined();
+  });
+
   it('reads the API error of a StopFailure', () => {
     const event = parseHookEvent(
       JSON.stringify({

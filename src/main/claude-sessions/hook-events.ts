@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import type { PermissionSuggestion, SessionRuntime } from '../../shared/claude-sessions';
+import type {
+  ClaudePermissionMode,
+  PermissionSuggestion,
+  SessionRuntime
+} from '../../shared/claude-sessions';
 import type { UsageWindow } from '../../shared/agency-spend';
 import { evaToolInput, evaToolName } from './eva-tools';
 
@@ -10,13 +14,14 @@ import { evaToolInput, evaToolName } from './eva-tools';
  * Protocol 1 binaries send no `protocol` field and none of the pane, transcript,
  * config dir or source fields; protocol 3 adds `prompt_sha256`; protocol 4 adds
  * `runtime` and `db_path`, for eva; protocol 5 adds `cost_usd` and `rate_limits`,
- * and the `StatusLine` event a crew member's status line sends. Every version up to `HOOK_PROTOCOL` is
+ * and the `StatusLine` event a crew member's status line sends; protocol 6 adds
+ * `permission_mode`. Every version up to `HOOK_PROTOCOL` is
  * accepted, because a Claude session started before Fleet updated its hook binary
  * keeps running the old one.
  */
 
 /** The newest protocol this Fleet reads; the hook server ignores a newer one. */
-export const HOOK_PROTOCOL = 5;
+export const HOOK_PROTOCOL = 6;
 
 /** An optional field that is dropped, not fatal, when it has the wrong type. */
 export function lenient<T extends z.ZodType>(schema: T): z.ZodCatch<z.ZodOptional<T>> {
@@ -24,6 +29,11 @@ export function lenient<T extends z.ZodType>(schema: T): z.ZodCatch<z.ZodOptiona
 }
 
 export const nonEmpty = z.string().min(1);
+
+/** A session's mode as Claude Code sends it in `permission_mode`; an unknown one is dropped. */
+export const permissionMode = lenient(
+  z.enum(['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions'])
+) satisfies z.ZodType<ClaudePermissionMode | undefined>;
 
 const WireWindow = z.object({
   used_percentage: z.number().min(0).max(100),
@@ -55,6 +65,7 @@ const WireHookEvent = z.object({
   rate_limits: lenient(
     z.object({ five_hour: lenient(WireWindow), seven_day: lenient(WireWindow) })
   ),
+  permission_mode: permissionMode,
   protocol: lenient(z.number().int().positive())
 });
 
@@ -97,6 +108,8 @@ export type HookEvent = {
   rateLimits?: { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null };
   /** A permission request the fleet-bridge mod sent: what Claude Code suggests allowing with it. */
   permissionSuggestions?: PermissionSuggestion[];
+  /** From protocol 6: the session's mode as the event found it. */
+  permissionMode?: ClaudePermissionMode;
   /** 1 for binaries that predate the field. */
   protocol: number;
 };
@@ -139,6 +152,7 @@ export function parseHookEvent(text: string): HookEvent | null {
       fiveHour: usageWindow(w.rate_limits.five_hour),
       sevenDay: usageWindow(w.rate_limits.seven_day)
     },
+    permissionMode: w.permission_mode,
     protocol: w.protocol ?? 1
   };
 }

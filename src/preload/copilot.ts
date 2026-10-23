@@ -6,7 +6,7 @@ import type {
   CopilotPosition,
   CopilotChatMessage
 } from '../shared/types';
-import type { HookFolderStatus } from '../shared/claude-sessions';
+import type { HookFolderStatus, PlanApprovalMode } from '../shared/claude-sessions';
 
 // Typed wrapper for ipcRenderer.invoke to avoid unsafe-return at every IPC call site.
 // The cast is safe: callers declare the return type, and main process implements it.
@@ -32,13 +32,15 @@ const copilotApi = {
     toolUseId: string,
     decision: 'allow' | 'deny',
     reason?: string,
-    suggestion?: number
+    suggestion?: number,
+    mode?: PlanApprovalMode
   ): Promise<boolean> =>
     typedInvoke<boolean>(IPC_CHANNELS.COPILOT_RESPOND_PERMISSION, {
       toolUseId,
       decision,
       reason,
-      suggestion
+      suggestion,
+      mode
     }),
 
   getSettings: async (): Promise<CopilotSettings> =>

@@ -60,6 +60,15 @@ export type PermissionSuggestion =
 /** The permission modes Fleet offers to switch to; bypassPermissions is never one. */
 export type SuggestedMode = 'default' | 'acceptEdits' | 'plan' | 'auto';
 
+/** The modes a session can run in, as Claude Code names them. */
+export type ClaudePermissionMode = SuggestedMode | 'dontAsk' | 'bypassPermissions';
+
+/**
+ * The modes a plan can be approved into, as the terminal's plan dialog offers
+ * them: "Yes, and use auto mode", accept edits, and "Yes, manually approve edits".
+ */
+export type PlanApprovalMode = 'auto' | 'acceptEdits' | 'default';
+
 export type ClaudePendingPermission = {
   sessionId: string;
   toolUseId: string;
@@ -102,6 +111,12 @@ export type ClaudeSession = {
   transcriptPath: string | null;
   /** The Claude config folder the session runs with, when it is not the default. */
   configDir: string | null;
+  /**
+   * The mode Claude Code last reported, on a prompt, a stop or a permission
+   * request; absent until it reports one. Shift+Tab sends nothing, so it lags
+   * a switch until the next of those.
+   */
+  permissionMode?: ClaudePermissionMode;
   pendingPermissions: ClaudePendingPermission[];
   lastActivity: number;
   createdAt: number;

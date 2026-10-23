@@ -49,8 +49,14 @@ type FleetAnswer = {
   updatedPermissions?: PermissionAsk['permission_suggestions'];
 };
 
+/**
+ * Tools whose dialog an allow closes only when it carries the input: for a
+ * tool that requires the person, a hook's bare allow does not dismiss it.
+ */
+const NEEDS_INPUT_TO_ALLOW = new Set(['ExitPlanMode']);
+
 /** Fleet's answer as the dialog takes it; none, so the dialog decides, when it cannot be read. */
-function permissionResult(text: string): PermissionResult {
+function permissionResult(text: string, e: PermissionAsk): PermissionResult {
   let answer: Partial<FleetAnswer> | null;
   try {
     answer = JSON.parse(text) as Partial<FleetAnswer> | null;
@@ -63,7 +69,47 @@ function permissionResult(text: string): PermissionResult {
   }
   if (answer?.decision !== 'allow') return {};
   const { updatedPermissions } = answer;
-  return { decision: { behavior: 'allow', ...(updatedPermissions && { updatedPermissions }) } };
+  const updatedInput = NEEDS_INPUT_TO_ALLOW.has(e.tool_name)
+    ? (e.tool_input as Record<string, unknown>)
+    : undefined;
+  return {
+    decision: {
+      behavior: 'allow',
+      ...(updatedInput && { updatedInput }),
+      ...(updatedPermissions && { updatedPermissions })
+    }
+  };
+}
+
+/**
+ * The ids of the calls `tool.check` put to a dialog, by tool call, oldest
+ * first. `classic.PermissionRequest` carries no id, but it comes right after
+ * its call's check, with the same input in the same key order.
+ */
+type AskedIds = Map<string, string[]>;
+
+function askKey(agentId: string | undefined, tool: string, input: unknown): string {
+  return `${agentId ?? ''}\n${tool}\n${JSON.stringify(input)}`;
+}
+
+/** The id of the call a permission request asks about, taken off its queue. */
+function takeAskedId(asked: AskedIds, e: PermissionAsk): string | undefined {
+  const key = askKey(e.agent_id, e.tool_name, e.tool_input);
+  const queue = asked.get(key);
+  const id = queue?.shift();
+  if (queue?.length === 0) asked.delete(key);
+  return id;
+}
+
+/** Forget a call's id once the call is over, whether or not a dialog took it. */
+function forgetAskedId(asked: AskedIds, id: string): void {
+  for (const [key, queue] of asked) {
+    const at = queue.indexOf(id);
+    if (at < 0) continue;
+    queue.splice(at, 1);
+    if (queue.length === 0) asked.delete(key);
+    return;
+  }
 }
 
 /**
@@ -77,19 +123,23 @@ async function askPermission(
   $: EngineInterface,
   e: PermissionAsk,
   next: Next<'classic.PermissionRequest'>,
-  socketPath: string
+  socketPath: string,
+  toolUseId: string | undefined
 ): Promise<PermissionResult> {
   const paneId = await $.env.get('FLEET_PANE_ID');
   if (!paneId) return next(e);
   const body = JSON.stringify({
     request_id: crypto.randomUUID(),
     session_id: e.session_id,
+    tool_use_id: toolUseId,
     pane_id: paneId,
     cwd: e.cwd,
     transcript_path: e.transcript_path,
     tool_name: e.tool_name,
     tool_input: e.tool_input,
-    permission_suggestions: e.permission_suggestions
+    permission_suggestions: e.permission_suggestions,
+    // Fleet drops the Go hook's copy of this request, and with it the mode.
+    permission_mode: e.permission_mode
   });
   for (;;) {
     // Answered in the terminal between two asks.
@@ -107,7 +157,7 @@ async function askPermission(
       return next.signal.aborted ? {} : next(e);
     }
     if (res.status === 204) continue;
-    if (res.status === 200) return permissionResult(res.text);
+    if (res.status === 200) return permissionResult(res.text, e);
     return next(e);
   }
 }
@@ -138,6 +188,7 @@ async function poll(
 
 export const register: Register = (on) => {
   const loop: Loop = { generation: 0 };
+  const asked: AskedIds = new Map();
 
   on('session.start', async ($, e, next) => {
     const result = await next(e);
@@ -148,11 +199,32 @@ export const register: Register = (on) => {
     return result;
   });
 
+  // Each ask's call id, for the permission request that follows it.
+  on('tool.check', async (_$, e, next) => {
+    const result = await next(e);
+    if (result.decision === 'ask' && e.tool_use_id) {
+      const key = askKey(e.agentId, e.tool, e.input);
+      asked.set(key, [...(asked.get(key) ?? []), e.tool_use_id]);
+    }
+    return result;
+  });
+
+  // An ask no dialog took, such as one auto mode settled, ends with its call.
+  on('tool.call', async (_$, e, next) => {
+    try {
+      return await next(e);
+    } finally {
+      forgetAskedId(asked, e.tool_use_id);
+    }
+  });
+
   // A question is answered in its dialog: the Go hook only tells Fleet of it.
   // A failure leaves the request to the settings hooks, as without the mod.
   on('classic.PermissionRequest', async ($, e, next) => {
+    // Taken first, so a request Fleet does not ask about leaves the next one its id.
+    const toolUseId = takeAskedId(asked, e);
     if (e.tool_name === 'AskUserQuestion' || !loop.socketPath) return next(e);
-    return askPermission($, e, next, loop.socketPath);
+    return askPermission($, e, next, loop.socketPath, toolUseId);
   }).catch(async (_$, e, next) => (next.called || next.signal.aborted ? {} : next(e)));
 
   // After /clear or a resume the process goes on under another id, while the

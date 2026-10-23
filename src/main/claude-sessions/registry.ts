@@ -248,6 +248,7 @@ export class ClaudeSessionRegistry {
       workspaceName: placement.workspaceName ?? before.workspaceName,
       transcriptPath: event.transcriptPath ?? before.transcriptPath,
       configDir: event.configDir ?? before.configDir,
+      permissionMode: event.permissionMode ?? before.permissionMode,
       lastActivity: now
     };
 
@@ -426,9 +427,9 @@ export class ClaudeSessionRegistry {
   }
 
   /**
-   * The tool use id for an event. Permission requests can arrive without one,
-   * so ids seen on `PreToolUse` are queued by tool and input and handed out in
-   * order.
+   * The tool use id for an event. The mod's permission requests carry one, the
+   * Go hook's do not, so ids seen on `PreToolUse` are queued by tool and input
+   * and handed out in order.
    */
   private toolUseIdFor(entry: Entry, event: HookEvent): string | undefined {
     // A tool that was denied or interrupted never finishes; its id must not
@@ -447,7 +448,11 @@ export class ClaudeSessionRegistry {
       // gets a local one.
       return entry.toolUseIds.get(key)?.shift() ?? `unknown-${randomUUID()}`;
     }
-    if (TOOL_FINISHED.has(event.event) && event.toolUseId) {
+    // A request that names its call takes its own id off the queue, so the
+    // Go hook's next request of an identical call does not get it.
+    const asksOrFinished =
+      event.status === 'waiting_for_approval' || TOOL_FINISHED.has(event.event);
+    if (asksOrFinished && event.toolUseId) {
       const queue = entry.toolUseIds.get(key);
       const at = queue?.indexOf(event.toolUseId) ?? -1;
       if (queue && at >= 0) queue.splice(at, 1);

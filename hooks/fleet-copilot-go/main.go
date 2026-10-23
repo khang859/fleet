@@ -27,8 +27,9 @@ const (
 	// protocolVersion tells Fleet which fields this binary sends. Version 2 adds
 	// pane_id, transcript_path, config_dir and source. Version 3 adds
 	// prompt_sha256. Version 4 adds runtime and db_path, for eva. Version 5
-	// adds cost_usd and rate_limits, and the StatusLine event.
-	protocolVersion = 5
+	// adds cost_usd and rate_limits, and the StatusLine event. Version 6 adds
+	// permission_mode.
+	protocolVersion = 6
 )
 
 var socketPath = socketPathFrom(os.Getenv)
@@ -70,6 +71,9 @@ type HookInput struct {
 	Error            string          `json:"error,omitempty"`
 	ErrorDetails     string          `json:"error_details,omitempty"`
 	Prompt           string          `json:"prompt,omitempty"`
+	// PermissionMode is the session's live mode, such as "plan". Claude Code
+	// sends it on most events, but not when the person switches it.
+	PermissionMode string `json:"permission_mode,omitempty"`
 	// LastAssistantMessage is set on StopFailure to the API error text.
 	LastAssistantMessage string `json:"last_assistant_message,omitempty"`
 
@@ -133,6 +137,7 @@ type State struct {
 	DBPath           string                 `json:"db_path,omitempty"`
 	CostUSD          *float64               `json:"cost_usd,omitempty"`
 	RateLimits       *RateLimits            `json:"rate_limits,omitempty"`
+	PermissionMode   string                 `json:"permission_mode,omitempty"`
 	Protocol         int                    `json:"protocol"`
 }
 
@@ -140,8 +145,10 @@ type PermissionDecision struct {
 	HookSpecificOutput struct {
 		HookEventName string `json:"hookEventName"`
 		Decision      struct {
-			Behavior string `json:"behavior"`
-			Message  string `json:"message,omitempty"`
+			Behavior           string                 `json:"behavior"`
+			Message            string                 `json:"message,omitempty"`
+			UpdatedInput       map[string]interface{} `json:"updatedInput,omitempty"`
+			UpdatedPermissions json.RawMessage        `json:"updatedPermissions,omitempty"`
 		} `json:"decision"`
 	} `json:"hookSpecificOutput"`
 }
@@ -149,7 +156,15 @@ type PermissionDecision struct {
 type SocketResponse struct {
 	Decision string `json:"decision"`
 	Reason   string `json:"reason"`
+	// UpdatedPermissions are the changes allowed along with the request, such
+	// as the mode a plan is approved into, passed on as Fleet sends them.
+	UpdatedPermissions json.RawMessage `json:"updated_permissions,omitempty"`
 }
+
+// needsInputToAllow names the tools whose dialog an allow closes only when it
+// carries the input: for a tool that requires the person, a bare allow does
+// not dismiss it.
+var needsInputToAllow = map[string]bool{"ExitPlanMode": true}
 
 const fleetSkillContextTemplate = "You're running inside Fleet. A `fleet` CLI is available (open files/images in Fleet tabs, annotate web pages, generate/edit AI images). Read %s for the full command reference before using it."
 
@@ -326,6 +341,7 @@ func newState(input *HookInput, tty *string, pid int, getenv func(string) string
 		ErrorDetails:   input.ErrorDetails,
 		Message:        stopFailureText(input),
 		PromptSHA256:   promptHash(input.Prompt),
+		PermissionMode: input.PermissionMode,
 		Protocol:       protocolVersion,
 	}
 }
@@ -385,8 +401,9 @@ func runtimeArg(args []string) (string, bool) {
 }
 
 // permissionOutput is the hook's answer to a permission request, in Claude
-// Code's form, which eva takes too; nil when Fleet left it to the pane.
-func permissionOutput(resp *SocketResponse) []byte {
+// Code's form, which eva takes too; nil when Fleet left it to the pane. An
+// allow of a plan carries the plan back as its input, or the dialog stays open.
+func permissionOutput(resp *SocketResponse, state *State) []byte {
 	if resp == nil {
 		return nil
 	}
@@ -395,6 +412,10 @@ func permissionOutput(resp *SocketResponse) []byte {
 	switch resp.Decision {
 	case "allow":
 		output.HookSpecificOutput.Decision.Behavior = "allow"
+		if needsInputToAllow[state.Tool] {
+			output.HookSpecificOutput.Decision.UpdatedInput = state.ToolInput
+		}
+		output.HookSpecificOutput.Decision.UpdatedPermissions = resp.UpdatedPermissions
 	case "deny":
 		output.HookSpecificOutput.Decision.Behavior = "deny"
 		msg := resp.Reason
@@ -530,7 +551,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer, getenv func(string) s
 			return 0
 		}
 
-		if out := permissionOutput(sendEvent(state, true)); out != nil {
+		if out := permissionOutput(sendEvent(state, true), state); out != nil {
 			fmt.Fprintln(stdout, string(out))
 		}
 		return 0
