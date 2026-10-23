@@ -43,7 +43,7 @@ export function PlanMarkdown({
     <div
       className={cn(
         'overflow-y-auto rounded bg-neutral-800/50 px-1.5 py-1 text-[11px] text-neutral-300 [overflow-wrap:anywhere]',
-        compact ? 'max-h-24' : 'max-h-64'
+        compact ? 'max-h-24' : 'max-h-48'
       )}
     >
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
